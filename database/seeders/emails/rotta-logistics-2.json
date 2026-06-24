@@ -1,0 +1,884 @@
+[
+    {
+        "subject": "Conferma apertura reclamo RL-2024-0815 su GestiClaim",
+        "from_name": "GestiClaim Notifiche",
+        "from_email": "no-reply@rotta-logistics.example.com",
+        "date": "2024-01-08 09:14:22",
+        "body_text": "Gentile cliente,\nconfermiamo l'apertura del reclamo RL-2024-0815 tramite il portale GestiClaim.\n\nOggetto: ritardo consegna su spedizione con tracking RL-TRACK-8842.\nStato attuale: In lavorazione.\nData prevista di prima risposta: entro 2 giorni lavorativi.\n\nPotrai seguire l'avanzamento accedendo al portale con le tue credenziali. Per urgenze contatta il numero verde 800-ROTTA1, attivo dal lunedì al venerdì dalle 8:30 alle 18:00.\n\nQuesta è una notifica automatica, ti preghiamo di non rispondere a questa email.\n\nServizio Customer Care\nRotta Sicura Logistics"
+    },
+    {
+        "subject": "Aggiornamento stato spedizione RL-TRACK-8842",
+        "from_name": "Tracking Rotta Sicura",
+        "from_email": "tracking@rotta-logistics.example.com",
+        "date": "2024-01-09 11:42:05",
+        "body_text": "Buongiorno,\nla spedizione con codice di tracciamento RL-TRACK-8842 ha aggiornato il proprio stato.\n\nStato: In transito presso hub HUB-MI-07.\nPrevisione consegna: 10/01/2024 entro le ore 18:00.\nServizio: Consegna Lampo 24h.\n\nIn caso di assenza al recapito verrà lasciato un avviso di giacenza. La spedizione resterà disponibile per 5 giorni lavorativi prima della restituzione al mittente.\n\nPer modifiche all'indirizzo di consegna accedi al portale clienti o chiama il numero verde 800-ROTTA1.\n\nNotifica automatica di sistema."
+    },
+    {
+        "subject": "Ricevuta richiesta preventivo trasporto Milano-Napoli",
+        "from_name": "Ufficio Commerciale",
+        "from_email": "commerciale@rotta-logistics.example.com",
+        "date": "2024-01-10 15:08:47",
+        "body_text": "Gentile Sig.ra Conti,\nabbiamo ricevuto la sua richiesta di preventivo per il trasporto di 12 pallet sulla tratta HUB-MI-07 - HUB-NA-03.\n\nNumero pratica: PREV-2024-1130.\nIl preventivo sarà elaborato sulla base del Tariffario Aprile 2024 e inviato entro 24 ore lavorative.\n\nLe ricordiamo che per volumi superiori a 10 pallet mensili è applicabile uno sconto volumi dedicato. Sul totale verrà inoltre conteggiato il supplemento carburante in vigore nel mese di emissione.\n\nRestiamo a disposizione.\nUfficio Commerciale Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Emissione fattura n. 2024/0451 - scadenza pagamento",
+        "from_name": "Amministrazione Rotta Sicura",
+        "from_email": "fatturazione@rotta-logistics.example.com",
+        "date": "2024-01-11 10:23:11",
+        "body_text": "Gentile cliente,\nè stata emessa la fattura n. 2024/0451 relativa ai servizi di trasporto del mese di dicembre 2023.\n\nImporto totale: 3.240,00 euro (IVA inclusa).\nScadenza pagamento: 10/02/2024.\nModalità: bonifico bancario su IBAN indicato in fattura.\n\nNell'importo è incluso il supplemento carburante pari al 4,2% sull'imponibile trasporti. Il documento è disponibile nell'area riservata del portale clienti.\n\nIn caso di discrepanze apri una segnalazione tramite GestiClaim entro 15 giorni dalla data di emissione.\n\nAmministrazione Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Alert giacenza spedizione presso HUB-NA-03",
+        "from_name": "Notifiche Logistica",
+        "from_email": "no-reply@rotta-logistics.example.com",
+        "date": "2024-01-12 08:51:33",
+        "body_text": "Avviso automatico.\nLa spedizione associata al tracking RL-TRACK-8842 risulta in giacenza presso l'hub HUB-NA-03 a seguito di destinatario assente.\n\nMotivo: nessuno presente all'indirizzo di consegna.\nGiorni di giacenza residui: 4.\nAzione richiesta: confermare indirizzo o fissare nuovo appuntamento.\n\nPuoi gestire la giacenza dal portale clienti oppure contattare il numero verde 800-ROTTA1. Trascorsi i termini la merce sarà restituita al mittente con addebito delle spese di reso.\n\nQuesto messaggio è generato automaticamente."
+    },
+    {
+        "subject": "Preventivo PREV-2024-1130 pronto per la consultazione",
+        "from_name": "Ufficio Commerciale",
+        "from_email": "commerciale@rotta-logistics.example.com",
+        "date": "2024-01-15 14:36:09",
+        "body_text": "Gentile Sig.ra Conti,\nil preventivo PREV-2024-1130 per la tratta HUB-MI-07 - HUB-NA-03 è disponibile nell'area riservata.\n\nTotale stimato: 1.485,00 euro + IVA.\nValidità offerta: 30 giorni dalla data odierna.\nServizio proposto: Consegna Lampo 24h con assicurazione standard inclusa.\n\nIl prezzo applica lo sconto volumi del 7% previsto per i clienti business e tiene conto del supplemento carburante aggiornato. Per accettare l'offerta è sufficiente rispondere o confermare dal portale.\n\nCordiali saluti,\nUfficio Commerciale Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Sollecito pagamento fattura n. 2024/0398",
+        "from_name": "Amministrazione Rotta Sicura",
+        "from_email": "fatturazione@rotta-logistics.example.com",
+        "date": "2024-01-17 09:47:18",
+        "body_text": "Gentile cliente,\nrisulta non ancora saldata la fattura n. 2024/0398 emessa il 05/12/2023.\n\nImporto dovuto: 2.110,00 euro.\nScadenza originaria: 04/01/2024.\nGiorni di ritardo: 13.\n\nLa preghiamo di provvedere al pagamento entro 7 giorni per evitare la sospensione del servizio di trasporto e l'applicazione degli interessi di mora previsti dal contratto. Se il pagamento è già stato effettuato, ci invii la contabile via portale.\n\nPer chiarimenti chiami il numero verde 800-ROTTA1.\nAmministrazione Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Conferma accettazione contratto di trasporto CT-2024-077",
+        "from_name": "Ufficio Contratti",
+        "from_email": "contratti@rotta-logistics.example.com",
+        "date": "2024-01-19 16:14:30",
+        "body_text": "Gentile Dott. Ferraro,\nconfermiamo l'avvenuta sottoscrizione del contratto di trasporto CT-2024-077 tra la vostra azienda e Rotta Sicura Logistics.\n\nDecorrenza: 01/02/2024.\nDurata: 12 mesi rinnovabili.\nTariffario applicato: Tariffario Aprile 2024 con sconto volumi del 9%.\nServizi inclusi: Consegna Lampo 24h e ritiri programmati settimanali.\n\nUna copia firmata digitalmente è disponibile nell'area riservata. Per attivare le credenziali operative su GestiClaim contatti il numero verde 800-ROTTA1.\n\nUfficio Contratti Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Esito reclamo RL-2024-0815: rimborso parziale approvato",
+        "from_name": "Customer Care Reclami",
+        "from_email": "reclami@rotta-logistics.example.com",
+        "date": "2024-01-23 13:29:17",
+        "body_text": "Gentile cliente,\nabbiamo concluso l'analisi del reclamo RL-2024-0815 aperto su GestiClaim.\n\nEsito: rimborso parziale approvato.\nMotivazione: ritardo confermato sul servizio Consegna Lampo 24h per la spedizione RL-TRACK-8842, smistata con ritardo presso l'hub HUB-NA-03.\nImporto riconosciuto: 38,00 euro come nota di credito sulla prossima fattura.\n\nLa nota di credito sarà emessa entro 10 giorni lavorativi. Per ulteriori chiarimenti il numero verde è 800-ROTTA1.\n\nCustomer Care Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Tariffario Aprile 2024 disponibile per i clienti business",
+        "from_name": "Ufficio Commerciale",
+        "from_email": "commerciale@rotta-logistics.example.com",
+        "date": "2024-01-24 10:56:40",
+        "body_text": "Gentili clienti business,\nvi informiamo che il nuovo Tariffario Aprile 2024 è in fase di pubblicazione e sarà consultabile dall'area riservata a partire dal 25/03/2024.\n\nPrincipali aggiornamenti: revisione delle fasce di peso, aggiornamento del supplemento carburante e nuove soglie per lo sconto volumi a partire da 15 spedizioni mensili.\n\nLe condizioni del Tariffario corrente restano valide fino alla data di entrata in vigore. Per simulazioni personalizzate richiedete un preventivo dedicato.\n\nUfficio Commerciale Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Promemoria scadenza preventivo PREV-2024-1130",
+        "from_name": "Notifiche Commerciali",
+        "from_email": "no-reply@rotta-logistics.example.com",
+        "date": "2024-01-25 09:12:08",
+        "body_text": "Gentile Sig.ra Conti,\nle ricordiamo che il preventivo PREV-2024-1130 per la tratta HUB-MI-07 - HUB-NA-03 scadrà tra 5 giorni.\n\nTotale offerto: 1.485,00 euro + IVA.\nServizio: Consegna Lampo 24h.\nScadenza validità: 30/01/2024.\n\nPer confermare l'offerta alle condizioni attuali è sufficiente accettare dal portale clienti entro la data indicata. Dopo la scadenza il preventivo sarà ricalcolato sul tariffario vigente, con possibili variazioni del supplemento carburante.\n\nNotifica automatica. Per assistenza: 800-ROTTA1."
+    },
+    {
+        "subject": "Alert anomalia smistamento presso HUB-TO-02",
+        "from_name": "Notifiche Logistica",
+        "from_email": "no-reply@rotta-logistics.example.com",
+        "date": "2024-01-26 18:05:22",
+        "body_text": "Avviso automatico di anomalia.\nUna o più spedizioni a vostro carico hanno registrato un rallentamento nello smistamento presso l'hub HUB-TO-02.\n\nCausa: picco volumi in ingresso.\nImpatto stimato: ritardo fino a 24 ore sulle consegne in partenza oggi.\nServizio interessato: Consegna Lampo 24h.\nVettore in subappalto su questa tratta: VeloxCorriere.\n\nIl nostro team sta riallineando i flussi e le consegne riprenderanno regolarmente. Se desiderate verificare lo stato di una specifica spedizione utilizzate il tracking sul portale o chiamate il numero verde 800-ROTTA1.\n\nMessaggio generato automaticamente."
+    },
+    {
+        "subject": "Conferma registrazione nuovo cliente business",
+        "from_name": "Ufficio Commerciale",
+        "from_email": "commerciale@rotta-logistics.example.com",
+        "date": "2024-01-29 11:48:14",
+        "body_text": "Gentile cliente,\nbenvenuto in Rotta Sicura Logistics. La registrazione del vostro profilo business è andata a buon fine.\n\nCodice cliente: BC-2024-0312.\nHub di riferimento: HUB-MI-07.\nTariffario assegnato: Tariffario Aprile 2024.\nAccesso GestiClaim: attivo per apertura reclami e consultazione preventivi.\n\nDal portale potrete richiedere preventivi, monitorare le spedizioni e gestire la fatturazione. Per supporto all'onboarding chiamate il numero verde 800-ROTTA1.\n\nUn cordiale benvenuto,\nUfficio Commerciale Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Aggiornamento stato: spedizione presa in carico",
+        "from_name": "Tracking Rotta Sicura",
+        "from_email": "tracking@rotta-logistics.example.com",
+        "date": "2024-01-31 08:27:39",
+        "body_text": "Buongiorno,\nla vostra spedizione è stata presa in carico dalla rete Rotta Sicura Logistics.\n\nCodice tracking: RL-TRACK-9027.\nOrigine: HUB-RM-05.\nDestinazione: HUB-TO-02.\nServizio: Consegna Lampo 24h.\nPrevisione consegna: 01/02/2024 entro le ore 18:00.\nUltimo miglio affidato al partner TurboPony.\n\nRiceverete una nuova notifica al cambio di stato. Per seguire la spedizione in tempo reale accedete al portale clienti.\n\nQuesta è una notifica automatica, non rispondere a questa email."
+    },
+    {
+        "subject": "Conferma apertura reclamo per merce danneggiata",
+        "from_name": "GestiClaim Notifiche",
+        "from_email": "no-reply@rotta-logistics.example.com",
+        "date": "2024-02-01 10:19:55",
+        "body_text": "Gentile cliente,\nconfermiamo l'apertura del reclamo RL-2024-0921 sul portale GestiClaim.\n\nTipologia: merce danneggiata durante il trasporto.\nSpedizione collegata: RL-TRACK-9027.\nHub di transito: HUB-TO-02.\nStato: In lavorazione.\n\nPer accelerare l'istruttoria carica le fotografie dell'imballo e del contenuto direttamente sul portale entro 3 giorni. La prima risposta è prevista entro 2 giorni lavorativi.\n\nAssistenza dedicata al numero verde 800-ROTTA1. Notifica automatica del sistema."
+    },
+    {
+        "subject": "Sollecito documentazione per reclamo RL-2024-0921",
+        "from_name": "Customer Care Reclami",
+        "from_email": "reclami@rotta-logistics.example.com",
+        "date": "2024-02-05 09:58:26",
+        "body_text": "Gentile cliente,\nper procedere con l'istruttoria del reclamo RL-2024-0921 relativo alla spedizione RL-TRACK-9027 ci mancano alcuni documenti.\n\nDocumenti richiesti: fotografie del danno e copia del documento di trasporto.\nTermine per l'invio: 3 giorni lavorativi.\nCanale: caricamento diretto sul portale GestiClaim.\n\nIn assenza della documentazione il reclamo verrà sospeso. Per supporto al caricamento contatta il numero verde 800-ROTTA1.\n\nGrazie per la collaborazione,\nCustomer Care Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Notifica aggiornamento supplemento carburante febbraio",
+        "from_name": "Ufficio Commerciale",
+        "from_email": "commerciale@rotta-logistics.example.com",
+        "date": "2024-02-07 16:02:31",
+        "body_text": "Gentili clienti,\nvi comunichiamo l'aggiornamento del supplemento carburante valido per le spedizioni del mese di febbraio 2024.\n\nNuovo valore: 4,5% sull'imponibile trasporti.\nDecorrenza: dal 08/02/2024.\nApplicazione: tutte le tratte, incluse quelle servite da HUB-MI-07, HUB-NA-03 e HUB-RM-05.\n\nIl supplemento sarà evidenziato in ogni fattura come voce separata. Le condizioni dei contratti di trasporto attivi e gli sconti volumi restano invariati.\n\nUfficio Commerciale Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Alert mancata consegna - tentativo non riuscito",
+        "from_name": "Notifiche Logistica",
+        "from_email": "no-reply@rotta-logistics.example.com",
+        "date": "2024-02-08 18:47:12",
+        "body_text": "Avviso automatico.\nIl tentativo di consegna della spedizione RL-TRACK-9027 non è andato a buon fine.\n\nMotivo: indirizzo non corretto.\nHub di rientro: HUB-TO-02.\nServizio: Consegna Lampo 24h.\nNuovo tentativo: previsto entro il giorno lavorativo successivo, previa verifica indirizzo.\n\nTi invitiamo a confermare o correggere l'indirizzo dal portale clienti per evitare la restituzione al mittente. Per assistenza immediata chiama il numero verde 800-ROTTA1.\n\nMessaggio generato automaticamente."
+    },
+    {
+        "subject": "Conferma rinnovo contratto di trasporto CT-2023-044",
+        "from_name": "Ufficio Contratti",
+        "from_email": "contratti@rotta-logistics.example.com",
+        "date": "2024-02-12 09:21:18",
+        "body_text": "Gentile cliente,\nconfermiamo il rinnovo automatico del contratto di trasporto CT-2023-044 per ulteriori 12 mesi.\n\nNuova decorrenza: 01/03/2024.\nTariffario applicato: Tariffario Aprile 2024.\nSconto volumi confermato: 8%.\nServizi: Consegna Lampo 24h e ritiri programmati dall'hub HUB-RM-05.\n\nNon è richiesta alcuna azione da parte vostra. Per richiedere variazioni delle condizioni contattate l'ufficio commerciale tramite portale o al numero verde 800-ROTTA1.\n\nUfficio Contratti Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Notifica spedizione in consegna oggi - RL-TRACK-9027",
+        "from_name": "Tracking Rotta Sicura",
+        "from_email": "tracking@rotta-logistics.example.com",
+        "date": "2024-02-13 07:54:29",
+        "body_text": "Buongiorno,\nla spedizione RL-TRACK-9027 è uscita per la consegna.\n\nStato: in consegna.\nHub di partenza: HUB-TO-02.\nFascia oraria stimata: 09:00 - 14:00.\nServizio: Consegna Lampo 24h.\n\nVi consigliamo di garantire la presenza di un incaricato al recapito. In caso di assenza verrà lasciato un avviso e la merce tornerà in giacenza presso l'hub. Per seguire il corriere in tempo reale accedete al portale.\n\nNotifica automatica, non rispondere a questa email."
+    },
+    {
+        "subject": "Esito reclamo RL-2024-0921: rimborso totale disposto",
+        "from_name": "Customer Care Reclami",
+        "from_email": "reclami@rotta-logistics.example.com",
+        "date": "2024-02-19 11:43:36",
+        "body_text": "Gentile cliente,\nla perizia tecnica sul reclamo RL-2024-0921 si è conclusa.\n\nEsito: danno confermato, rimborso totale disposto.\nSpedizione: RL-TRACK-9027 transitata da HUB-TO-02.\nImporto riconosciuto: 215,00 euro.\nModalità: nota di credito sulla prossima fattura.\n\nCi scusiamo per il disagio. Il servizio Consegna Lampo 24h prevede un indennizzo a copertura del valore dichiarato della merce. La nota di credito sarà emessa entro 10 giorni lavorativi.\n\nCustomer Care Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Promemoria scadenza fattura n. 2024/0451 tra 3 giorni",
+        "from_name": "Notifiche Amministrative",
+        "from_email": "no-reply@rotta-logistics.example.com",
+        "date": "2024-02-20 09:08:14",
+        "body_text": "Avviso automatico di scadenza.\nLa fattura n. 2024/0451 risulta in scadenza tra 3 giorni.\n\nImporto: 3.240,00 euro.\nScadenza: 23/02/2024.\nModalità: bonifico bancario su IBAN in fattura.\n\nSe il pagamento è già stato disposto la preghiamo di ignorare questo promemoria. Ricordiamo che eventuali contestazioni vanno aperte su GestiClaim entro i termini previsti. Per assistenza amministrativa: 800-ROTTA1.\n\nMessaggio generato automaticamente dal sistema di fatturazione."
+    },
+    {
+        "subject": "Conferma attivazione servizio Consegna Lampo 24h",
+        "from_name": "Ufficio Commerciale",
+        "from_email": "commerciale@rotta-logistics.example.com",
+        "date": "2024-02-21 15:29:07",
+        "body_text": "Gentile cliente,\nconfermiamo l'attivazione del servizio Consegna Lampo 24h sul vostro profilo business.\n\nCodice cliente: BC-2024-0312.\nHub abilitati: HUB-MI-07, HUB-NA-03, HUB-RM-05 e HUB-TO-02.\nTariffario: Tariffario Aprile 2024.\nSconto volumi associato: 7%.\n\nIl servizio garantisce la consegna entro 24 ore sulle tratte coperte. Da ora potrete selezionarlo in fase di richiesta preventivo o spedizione direttamente dal portale. Per informazioni: numero verde 800-ROTTA1.\n\nUfficio Commerciale Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Aggiornamento stato: spedizione in transito HUB-RM-05",
+        "from_name": "Tracking Rotta Sicura",
+        "from_email": "tracking@rotta-logistics.example.com",
+        "date": "2024-02-22 12:11:53",
+        "body_text": "Buongiorno,\naggiornamento sulla spedizione RL-TRACK-9341.\n\nStato: in transito presso hub HUB-RM-05.\nOrigine: HUB-NA-03.\nDestinazione: HUB-MI-07.\nServizio: Consegna Lampo 24h.\nPrevisione consegna: 23/02/2024 entro le ore 18:00.\nColli in transito: 5 pallet.\n\nLa spedizione procede regolarmente e sarà smistata in serata verso la destinazione finale. Riceverete una nuova notifica quando la merce sarà in consegna. Per dettagli e per modificare l'appuntamento di recapito accedete al portale clienti con le vostre credenziali oppure chiamate il numero verde 800-ROTTA1.\n\nQuesta è una notifica automatica di sistema."
+    },
+    {
+        "subject": "Ricevuta richiesta preventivo trasporto refrigerato",
+        "from_name": "Ufficio Commerciale",
+        "from_email": "commerciale@rotta-logistics.example.com",
+        "date": "2024-02-26 09:33:21",
+        "body_text": "Gentile cliente,\nabbiamo ricevuto la sua richiesta di preventivo per un trasporto a temperatura controllata.\n\nNumero pratica: PREV-2024-1247.\nTratta: HUB-RM-05 - HUB-TO-02.\nVolumi: 4 pallet refrigerati settimanali.\n\nIl preventivo terrà conto del Tariffario Aprile 2024, del supplemento carburante e di eventuali sconti volumi per le forniture continuative. Lo riceverà entro 24 ore lavorative nell'area riservata.\n\nPer parlare con un consulente è disponibile il numero verde 800-ROTTA1.\nUfficio Commerciale Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Alert sospensione servizio per insoluto",
+        "from_name": "Amministrazione Rotta Sicura",
+        "from_email": "fatturazione@rotta-logistics.example.com",
+        "date": "2024-02-27 16:52:44",
+        "body_text": "Gentile cliente,\nnonostante i precedenti solleciti, la fattura n. 2024/0451 risulta ancora insoluta.\n\nImporto dovuto: 3.240,00 euro.\nGiorni di ritardo: 4.\nAzione prevista: sospensione del servizio di trasporto a partire dal 02/03/2024.\n\nPer evitare l'interruzione delle spedizioni, incluso il servizio Consegna Lampo 24h, la preghiamo di saldare entro 3 giorni e di inviare la contabile. Per accordi di pagamento contatti l'amministrazione al numero verde 800-ROTTA1.\n\nAmministrazione Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Notifica preventivo PREV-2024-1247 disponibile",
+        "from_name": "Ufficio Commerciale",
+        "from_email": "commerciale@rotta-logistics.example.com",
+        "date": "2024-03-01 14:08:36",
+        "body_text": "Gentile cliente,\nil preventivo PREV-2024-1247 per il trasporto refrigerato sulla tratta HUB-RM-05 - HUB-TO-02 è pronto.\n\nTotale stimato: 920,00 euro + IVA a settimana.\nValidità: 30 giorni.\nServizio: Consegna Lampo 24h a temperatura controllata.\nSconto volumi applicato: 6% per fornitura continuativa.\n\nL'offerta include il supplemento carburante in vigore. Per accettare confermate dal portale o rispondete a questa email. Restiamo a disposizione per personalizzazioni.\n\nUfficio Commerciale Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Aggiornamento stato: spedizione consegnata HUB-MI-07",
+        "from_name": "Tracking Rotta Sicura",
+        "from_email": "tracking@rotta-logistics.example.com",
+        "date": "2024-03-06 17:58:24",
+        "body_text": "Buongiorno,\nla spedizione RL-TRACK-9341 è stata consegnata.\n\nData consegna: 06/03/2024 ore 17:22.\nHub di smistamento: HUB-MI-07.\nServizio: Consegna Lampo 24h.\nFirma ricevuta: acquisita a sistema.\n\nGrazie per aver scelto Rotta Sicura Logistics. In caso di anomalie sulla merce ricevuta potete aprire un reclamo tramite GestiClaim entro 8 giorni dalla consegna. Il numero verde per assistenza è 800-ROTTA1.\n\nNotifica automatica, non rispondere a questa email."
+    },
+    {
+        "subject": "Notifica scadenza contratto di trasporto CT-2024-077",
+        "from_name": "Ufficio Contratti",
+        "from_email": "contratti@rotta-logistics.example.com",
+        "date": "2024-03-11 09:52:30",
+        "body_text": "Gentile Dott. Ferraro,\nle ricordiamo che il contratto di trasporto CT-2024-077 si avvicina alla prima verifica annuale.\n\nDecorrenza: 01/02/2024.\nProssima verifica condizioni: 01/02/2025.\nTariffario applicato: Tariffario Aprile 2024.\nSconto volumi attuale: 9%.\n\nNon è richiesta alcuna azione immediata. In vista del rinnovo potremo ridiscutere le soglie di sconto e i servizi, incluso il Consegna Lampo 24h, sugli hub HUB-MI-07 e HUB-NA-03. Per un confronto: numero verde 800-ROTTA1.\n\nUfficio Contratti Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Alert spedizione in giacenza prolungata HUB-TO-02",
+        "from_name": "Notifiche Logistica",
+        "from_email": "no-reply@rotta-logistics.example.com",
+        "date": "2024-03-13 18:21:47",
+        "body_text": "Avviso automatico di giacenza prolungata.\nLa spedizione RL-TRACK-9502 è in giacenza presso l'hub HUB-TO-02 da oltre 3 giorni.\n\nMotivo: destinatario irreperibile.\nGiorni residui prima del reso: 2.\nServizio: Consegna Lampo 24h.\nPosizione di magazzino registrata sul gestionale OrbitaWMS.\n\nVi invitiamo a fornire un recapito alternativo o a fissare un nuovo appuntamento dal portale clienti. Trascorso il termine la merce sarà restituita al mittente con addebito delle spese di reso secondo il Tariffario Aprile 2024.\n\nMessaggio generato automaticamente. Assistenza: 800-ROTTA1."
+    },
+    {
+        "subject": "Conferma apertura reclamo per consegna errata",
+        "from_name": "GestiClaim Notifiche",
+        "from_email": "no-reply@rotta-logistics.example.com",
+        "date": "2024-03-14 11:07:18",
+        "body_text": "Gentile cliente,\nconfermiamo l'apertura del reclamo RL-2024-1088 sul portale GestiClaim.\n\nTipologia: consegna a destinatario errato.\nSpedizione collegata: RL-TRACK-9502.\nHub di smistamento: HUB-TO-02.\nStato: In lavorazione.\n\nIl Customer Care avvierà immediatamente le verifiche con il corriere incaricato. Riceverai la prima risposta entro 2 giorni lavorativi. Per integrare informazioni utilizza il portale o chiama il numero verde 800-ROTTA1.\n\nNotifica automatica del sistema di gestione reclami."
+    },
+    {
+        "subject": "Esito reclamo RL-2024-1088: spedizione recuperata",
+        "from_name": "Customer Care Reclami",
+        "from_email": "reclami@rotta-logistics.example.com",
+        "date": "2024-03-20 13:14:05",
+        "body_text": "Gentile cliente,\nabbiamo concluso le verifiche sul reclamo RL-2024-1088.\n\nEsito: spedizione recuperata e riconsegnata correttamente.\nSpedizione: RL-TRACK-9502, riallineata dall'hub HUB-TO-02.\nServizio: Consegna Lampo 24h.\nIndennizzo per il disagio: 25,00 euro come nota di credito.\n\nLa merce, consegnata erroneamente, è stata ritirata e recapitata al destinatario corretto. Ci scusiamo per l'inconveniente. La nota di credito sarà emessa entro 10 giorni lavorativi.\n\nCustomer Care Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Conferma applicazione nuovo sconto volumi 11%",
+        "from_name": "Ufficio Commerciale",
+        "from_email": "commerciale@rotta-logistics.example.com",
+        "date": "2024-03-22 10:28:41",
+        "body_text": "Gentile cliente,\nin esito alla pratica SC-2024-0145 confermiamo l'aggiornamento dello sconto volumi.\n\nCodice cliente: BC-2024-0312.\nNuovo sconto volumi: 11%.\nDecorrenza: 01/04/2024.\nTariffario di riferimento: Tariffario Aprile 2024.\n\nLo sconto sarà applicato automaticamente a tutte le spedizioni, incluso il servizio Consegna Lampo 24h, sugli hub abilitati HUB-MI-07, HUB-NA-03, HUB-RM-05 e HUB-TO-02. Le nuove condizioni saranno visibili in fattura.\n\nUfficio Commerciale Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Notifica emissione fattura n. 2024/0612",
+        "from_name": "Amministrazione Rotta Sicura",
+        "from_email": "fatturazione@rotta-logistics.example.com",
+        "date": "2024-03-26 11:53:27",
+        "body_text": "Gentile cliente,\nè stata emessa la fattura n. 2024/0612 relativa ai servizi di trasporto del mese di febbraio 2024.\n\nImporto totale: 2.875,00 euro (IVA inclusa).\nScadenza pagamento: 25/04/2024.\nSupplemento carburante applicato: 4,5% sull'imponibile.\nSconto volumi: 8%.\n\nIl dettaglio delle spedizioni e degli hub coinvolti è riportato in fattura, disponibile nell'area riservata. Per contestazioni apri una segnalazione su GestiClaim entro 15 giorni dall'emissione.\n\nAmministrazione Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Conferma chiusura contratto di trasporto CT-2022-019",
+        "from_name": "Ufficio Contratti",
+        "from_email": "contratti@rotta-logistics.example.com",
+        "date": "2024-04-02 09:47:36",
+        "body_text": "Gentile cliente,\nconfermiamo la chiusura del contratto di trasporto CT-2022-019 alla scadenza naturale.\n\nData chiusura: 31/03/2024.\nMotivo: cessazione concordata.\nSaldo posizione: regolare, nessun importo pendente.\n\nTutte le spedizioni in corso al momento della chiusura sono state regolarmente consegnate. Le credenziali GestiClaim restano attive 30 giorni per la sola consultazione storica. Per riattivare un nuovo contratto contatti l'ufficio commerciale al numero verde 800-ROTTA1.\n\nUfficio Contratti Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Ricevuta automatica reclamo RL-2024-1156",
+        "from_name": "GestiClaim Notifiche",
+        "from_email": "no-reply@rotta-logistics.example.com",
+        "date": "2024-04-08 10:16:43",
+        "body_text": "Gentile cliente,\nabbiamo ricevuto e registrato il reclamo RL-2024-1156 tramite il portale GestiClaim.\n\nTipologia: ritardo consegna.\nSpedizione collegata: RL-TRACK-9744.\nHub di smistamento: HUB-MI-07.\nStato: In lavorazione.\n\nIl ritardo potrebbe essere collegato alle condizioni meteo segnalate nei giorni scorsi. Un operatore verificherà i tempi del servizio Consegna Lampo 24h e ti risponderà entro 2 giorni lavorativi. Assistenza al numero verde 800-ROTTA1.\n\nNotifica automatica del sistema reclami."
+    },
+    {
+        "subject": "Esito reclamo RL-2024-1156: ritardo riconosciuto",
+        "from_name": "Customer Care Reclami",
+        "from_email": "reclami@rotta-logistics.example.com",
+        "date": "2024-04-15 13:42:19",
+        "body_text": "Gentile cliente,\nabbiamo completato l'analisi del reclamo RL-2024-1156.\n\nEsito: ritardo riconosciuto per cause di forza maggiore (condizioni meteo).\nSpedizione: RL-TRACK-9744, smistata da HUB-MI-07.\nServizio: Consegna Lampo 24h.\nIndennizzo riconosciuto: 30,00 euro come nota di credito a titolo di cortesia commerciale.\n\nIl contratto di trasporto prevede esclusioni per eventi di forza maggiore; tuttavia, in segno di attenzione, abbiamo disposto un piccolo rimborso. La nota di credito sarà emessa entro 10 giorni lavorativi.\n\nCustomer Care Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Notifica preventivo trasporto urgente PREV-2024-1389",
+        "from_name": "Ufficio Commerciale",
+        "from_email": "commerciale@rotta-logistics.example.com",
+        "date": "2024-04-18 15:24:50",
+        "body_text": "Gentile cliente,\nin riscontro alla sua richiesta urgente, il preventivo PREV-2024-1389 è disponibile.\n\nTratta: HUB-TO-02 - HUB-NA-03.\nVolume: 3 pallet.\nServizio richiesto: Consegna Lampo 24h con priorità.\nTotale: 540,00 euro + IVA.\nValidità: 7 giorni.\n\nL'offerta include il supplemento carburante e applica lo sconto volumi dell'11% del suo profilo business. Per confermare in tempi rapidi risponda a questa email o chiami il numero verde 800-ROTTA1.\n\nUfficio Commerciale Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Aggiornamento stato: spedizione consegnata HUB-NA-03",
+        "from_name": "Tracking Rotta Sicura",
+        "from_email": "tracking@rotta-logistics.example.com",
+        "date": "2024-04-25 17:46:11",
+        "body_text": "Buongiorno,\nla spedizione RL-TRACK-9881 è stata consegnata con successo.\n\nData consegna: 25/04/2024 ore 17:09.\nHub di smistamento: HUB-NA-03.\nServizio: Consegna Lampo 24h con priorità.\nFirma ricevuta: acquisita a sistema.\n\nGrazie per aver scelto Rotta Sicura Logistics. In caso di anomalie sulla merce ricevuta puoi aprire un reclamo tramite GestiClaim entro 8 giorni. Per assistenza è disponibile il numero verde 800-ROTTA1.\n\nNotifica automatica, non rispondere a questa email."
+    },
+    {
+        "subject": "Conferma attivazione contratto di trasporto CT-2024-091",
+        "from_name": "Ufficio Contratti",
+        "from_email": "contratti@rotta-logistics.example.com",
+        "date": "2024-04-28 10:52:44",
+        "body_text": "Gentile cliente,\nconfermiamo l'attivazione del contratto di trasporto CT-2024-091 a seguito del completamento della documentazione.\n\nDecorrenza: 01/05/2024.\nDurata: 12 mesi.\nTariffario applicato: Tariffario Aprile 2024.\nSconto volumi: 9%.\nServizi inclusi: Consegna Lampo 24h e ritiri programmati dagli hub HUB-MI-07 e HUB-TO-02.\n\nLe credenziali operative su GestiClaim sono ora attive per apertura reclami, preventivi e tracking. Per il supporto all'avvio: numero verde 800-ROTTA1.\n\nUfficio Contratti Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Richiesta preventivo spedizione pallet Milano-Bari",
+        "from_name": "Federica Galli",
+        "from_email": "federica.galli@cliente.example.com",
+        "date": "2024-05-02 09:14:32",
+        "body_text": "Buongiorno,\nsiamo un'azienda di componentistica e avremmo necessità di spedire regolarmente 6-8 pallet a settimana dalla nostra sede di Milano verso Bari.\nCi potreste cortesemente preparare un preventivo? I pallet sono standard EUR 120x80, peso medio 320 kg ciascuno, merce non pericolosa.\nCi interesserebbe valutare anche il servizio Consegna Lampo 24h per le spedizioni urgenti.\nVorremmo capire se applicate sconti volumi e in che misura, dato il flusso continuativo.\nResto in attesa di un vostro riscontro con tempistiche di consegna e condizioni.\nCordiali saluti,\nFederica Galli - Ufficio Acquisti"
+    },
+    {
+        "subject": "Re: Richiesta preventivo spedizione pallet Milano-Bari",
+        "from_name": "Andrea Conti",
+        "from_email": "andrea.conti@rotta-logistics.example.com",
+        "date": "2024-05-02 15:48:10",
+        "body_text": "Gentile Sig.ra Galli,\nla ringraziamo per l'interesse. Sulla tratta Milano-Bari, pallet EUR 120x80 fino a 350 kg, applichiamo una tariffa base di 48,00 euro a pallet secondo il Tariffario Aprile 2024.\nCon un flusso di 6-8 pallet settimanali rientrate nella fascia sconto volumi del 12%, portando il costo a circa 42,24 euro a pallet.\nLa consegna standard è in 48-72h; il servizio Consegna Lampo 24h prevede un supplemento di 18,00 euro a spedizione.\nSegnalo che si applica il supplemento carburante mensile, attualmente al 4,5%.\nResto a disposizione per formalizzare un contratto di trasporto continuativo.\nCordiali saluti,\nAndrea Conti - Ufficio Commerciale"
+    },
+    {
+        "subject": "Reclamo per ritardo consegna ordine spedizione",
+        "from_name": "Marco Pellegrini",
+        "from_email": "marco.pellegrini@cliente.example.com",
+        "date": "2024-05-06 11:02:45",
+        "body_text": "Spettabile Customer Care,\nscrivo per segnalare un disservizio sulla spedizione partita lo scorso 30 aprile da Torino e destinata a Napoli.\nLa consegna era prevista in 48h ma a oggi, 6 maggio, la merce non è ancora arrivata e il destinatario è fermo con la produzione.\nHo provato a chiamare ma le linee erano occupate. Vorrei aprire un reclamo formale e ricevere un aggiornamento sullo stato del trasporto.\nVi chiedo anche se è prevista una forma di rimborso o storno per il ritardo, visto il danno operativo che stiamo subendo.\nIn attesa di un vostro urgente riscontro.\nMarco Pellegrini"
+    },
+    {
+        "subject": "Re: Reclamo per ritardo consegna ordine spedizione",
+        "from_name": "Sara Vitale",
+        "from_email": "sara.vitale@rotta-logistics.example.com",
+        "date": "2024-05-06 14:27:33",
+        "body_text": "Gentile Sig. Pellegrini,\nci scusiamo per il disagio. Abbiamo registrato il suo reclamo sul portale GestiClaim con codice RCL-2024-0831.\nDalla tracciatura risulta che la spedizione ha subito una sosta non programmata presso l'hub HUB-TO-02 a causa di un guasto al mezzo. La merce è ripartita stamattina e la consegna è confermata per domani 7 maggio entro le 13:00.\nPer il ritardo, riconosciamo uno storno del 30% sul costo di trasporto di questa spedizione, che troverà in nota di credito nella prossima fatturazione.\nLa terremo aggiornata via portale fino alla chiusura del reclamo.\nCordiali saluti,\nSara Vitale - Customer Care"
+    },
+    {
+        "subject": "Domanda su fattura n. 2024-1187 importo non chiaro",
+        "from_name": "Luca Ferraro",
+        "from_email": "luca.ferraro@cliente.example.com",
+        "date": "2024-05-09 10:35:18",
+        "body_text": "Buongiorno ufficio fatturazione,\nho ricevuto la fattura n. 2024-1187 del 30 aprile e non mi torna l'importo totale.\nIn particolare vedo una voce \"supplemento carburante\" di 87,50 euro che non era presente nelle fatture precedenti, e una voce \"adeguamento tariffario\" che non capisco.\nLe spedizioni del mese sono state 14, tutte sulla tratta Roma-Verona come da contratto.\nMi potete cortesemente dettagliare il calcolo e confermare se le condizioni del nostro contratto di trasporto sono variate?\nGrazie per il chiarimento.\nLuca Ferraro - Amministrazione"
+    },
+    {
+        "subject": "Re: Domanda su fattura n. 2024-1187 importo non chiaro",
+        "from_name": "Giulia Moretti",
+        "from_email": "giulia.moretti@rotta-logistics.example.com",
+        "date": "2024-05-09 16:12:07",
+        "body_text": "Gentile Sig. Ferraro,\nle confermo il dettaglio della fattura n. 2024-1187.\nLe 14 spedizioni Roma-Verona sono fatturate alla tariffa contrattuale di 39,00 euro ciascuna, per un imponibile trasporto di 546,00 euro.\nIl supplemento carburante di 87,50 euro deriva dall'adeguamento mensile previsto da contratto, salito al 4,5% per aprile a fronte del rincaro gasolio: la voce è sempre stata presente, ma da aprile è esposta come riga separata per maggiore trasparenza.\nLe condizioni del contratto non sono variate, solo l'esposizione in fattura.\nLe invio in allegato il prospetto di calcolo riga per riga.\nResto a disposizione,\nGiulia Moretti - Ufficio Fatturazione"
+    },
+    {
+        "subject": "Richiesta condizioni servizio Consegna Lampo 24h",
+        "from_name": "Chiara Bianchi",
+        "from_email": "chiara.bianchi@cliente.example.com",
+        "date": "2024-05-13 08:52:41",
+        "body_text": "Salve,\nsiamo interessati al vostro servizio Consegna Lampo 24h per spedizioni urgenti di ricambi.\nVorremmo capire le condizioni: copertura geografica, orario limite per la presa, supplemento applicato e garanzie in caso di mancato rispetto delle 24h.\nLe nostre spedizioni partirebbero dalla zona di Bologna verso varie destinazioni del centro-nord, peso variabile tra 5 e 80 kg.\nC'è un volume minimo richiesto per attivare il servizio?\nGrazie in anticipo per le informazioni.\nChiara Bianchi - Logistica Ricambi"
+    },
+    {
+        "subject": "Re: Richiesta condizioni servizio Consegna Lampo 24h",
+        "from_name": "Andrea Conti",
+        "from_email": "andrea.conti@rotta-logistics.example.com",
+        "date": "2024-05-13 12:30:55",
+        "body_text": "Gentile Sig.ra Bianchi,\ngrazie per l'interesse al servizio Consegna Lampo 24h.\nLa copertura riguarda tutto il centro-nord Italia con presa entro le ore 17:00 e consegna garantita entro 24h lavorative. Per le destinazioni servite dal nostro hub HUB-TO-02 la garanzia è piena.\nIl supplemento è di 18,00 euro a spedizione sopra la tariffa base; in caso di mancato rispetto delle 24h per causa a noi imputabile, il supplemento viene stornato integralmente.\nNon è richiesto un volume minimo: il servizio si attiva spedizione per spedizione.\nPosso prepararle un preventivo dedicato se mi indica le destinazioni più frequenti.\nCordiali saluti,\nAndrea Conti - Ufficio Commerciale"
+    },
+    {
+        "subject": "Sollecito pagamento fattura scaduta 2024-0962",
+        "from_name": "Roberta Esposito",
+        "from_email": "roberta.esposito@rotta-logistics.example.com",
+        "date": "2024-05-16 09:20:14",
+        "body_text": "Spettabile Cliente,\nrisulta ancora insoluta la fattura n. 2024-0962 del 31 marzo 2024, per un importo di 1.342,80 euro, con scadenza il 30 aprile 2024.\nVi invitiamo cortesemente a provvedere al saldo entro 10 giorni dalla presente.\nNel caso il pagamento fosse già stato effettuato, vi preghiamo di trasmetterci la contabile così da aggiornare la nostra posizione.\nPer qualsiasi chiarimento sulle voci della fattura o per concordare un piano di rientro, restiamo a disposizione.\nDistinti saluti,\nRoberta Esposito - Ufficio Crediti"
+    },
+    {
+        "subject": "Re: Sollecito pagamento fattura scaduta 2024-0962",
+        "from_name": "Davide Ricci",
+        "from_email": "davide.ricci@cliente.example.com",
+        "date": "2024-05-16 14:05:39",
+        "body_text": "Gentile ufficio crediti,\nvi confermo che la fattura n. 2024-0962 è stata effettivamente trascurata per un disguido interno durante il cambio del nostro responsabile amministrativo.\nProvvederemo al bonifico dell'intero importo di 1.342,80 euro entro venerdì 17 maggio; vi invierò la contabile non appena disponibile.\nMi scuso per il ritardo e vi chiedo di non sospendere il servizio sulle spedizioni in corso, dato che abbiamo consegne programmate per la prossima settimana.\nResto a disposizione per qualsiasi conferma.\nCordiali saluti,\nDavide Ricci - Amministrazione"
+    },
+    {
+        "subject": "Richiesta copia contratto di trasporto 2024",
+        "from_name": "Elena Marchetti",
+        "from_email": "elena.marchetti@cliente.example.com",
+        "date": "2024-05-21 10:48:27",
+        "body_text": "Buongiorno,\nper un controllo interno della nostra revisione contabile avremmo bisogno di una copia del contratto di trasporto in essere con la vostra azienda, sottoscritto a inizio 2024.\nIn particolare ci servono le clausole relative alle tariffe applicate, alle modalità di adeguamento del supplemento carburante e ai termini di pagamento.\nPotete inviarci il documento in PDF a questo indirizzo? Se necessario possiamo fornire una richiesta su carta intestata.\nGrazie per la collaborazione.\nElena Marchetti - Controllo di Gestione"
+    },
+    {
+        "subject": "Re: Richiesta copia contratto di trasporto 2024",
+        "from_name": "Giulia Moretti",
+        "from_email": "giulia.moretti@rotta-logistics.example.com",
+        "date": "2024-05-21 15:33:50",
+        "body_text": "Gentile Sig.ra Marchetti,\nin allegato trova copia del contratto di trasporto n. CT-2024-0148 sottoscritto il 12 gennaio 2024.\nLe riepilogo i punti richiesti: tariffe riferite al Tariffario Aprile 2024 con sconto volumi del 10% per la vostra fascia; supplemento carburante adeguato mensilmente in base all'indice gasolio (attualmente 4,5%); termini di pagamento a 60 giorni data fattura fine mese.\nIl documento include anche le condizioni del servizio Consegna Lampo 24h, opzionale e attivabile su richiesta.\nSe le occorre la versione firmata digitalmente con marca temporale, posso predisporla.\nCordiali saluti,\nGiulia Moretti - Ufficio Fatturazione"
+    },
+    {
+        "subject": "Reclamo merce danneggiata alla consegna",
+        "from_name": "Stefano Greco",
+        "from_email": "stefano.greco@cliente.example.com",
+        "date": "2024-05-24 09:37:12",
+        "body_text": "Spettabile Customer Care,\nsegnalo che la spedizione consegnata ieri 23 maggio presso il nostro magazzino di Padova presentava due colli visibilmente danneggiati su un totale di cinque.\nIl materiale all'interno (apparecchiature elettroniche) è risultato in parte inutilizzabile. Ho fatto annotare riserva specifica sulla bolla al momento della consegna e ho scattato foto dei colli.\nVorrei aprire un reclamo per danno trasporto e capire la procedura per il risarcimento.\nA quanto ammonta la copertura assicurativa prevista dal nostro contratto?\nAllego le fotografie.\nStefano Greco - Magazzino"
+    },
+    {
+        "subject": "Re: Reclamo merce danneggiata alla consegna",
+        "from_name": "Sara Vitale",
+        "from_email": "sara.vitale@rotta-logistics.example.com",
+        "date": "2024-05-24 13:50:44",
+        "body_text": "Gentile Sig. Greco,\ngrazie per la tempestiva segnalazione e per aver apposto riserva specifica sulla bolla, elemento essenziale per la pratica.\nAbbiamo aperto il reclamo sul portale GestiClaim con codice RCL-2024-0907 e protocollato le sue fotografie.\nLa procedura prevede: invio entro 8 giorni della distinta del valore della merce danneggiata e della fattura d'acquisto. La copertura prevista dal vostro contratto di trasporto è pari a 1,00 euro per kg di merce, con eventuale assicurazione integrale se sottoscritta a parte.\nVerifico subito se nel vostro contratto risulta la copertura integrale e le riscrivo con l'importo risarcibile.\nResto a disposizione,\nSara Vitale - Customer Care"
+    },
+    {
+        "subject": "Aggiornamento tariffario richiesta listino vigente",
+        "from_name": "Paolo Lombardi",
+        "from_email": "paolo.lombardi@cliente.example.com",
+        "date": "2024-05-28 11:15:08",
+        "body_text": "Buongiorno ufficio commerciale,\nstiamo preparando il budget logistico del secondo semestre e ci servirebbe il vostro listino tariffe aggiornato.\nAttualmente lavoriamo con il Tariffario Aprile 2024: è ancora quello in vigore o avete previsto un aggiornamento per l'estate?\nCi interessano in particolare le tratte dal nord verso il sud Italia e la fascia di sconto volumi applicabile a un flusso stimato di circa 40 spedizioni mensili.\nVi ringrazio per l'invio del documento aggiornato.\nPaolo Lombardi - Direzione Operativa"
+    },
+    {
+        "subject": "Re: Aggiornamento tariffario richiesta listino vigente",
+        "from_name": "Andrea Conti",
+        "from_email": "andrea.conti@rotta-logistics.example.com",
+        "date": "2024-05-28 16:40:21",
+        "body_text": "Gentile Sig. Lombardi,\nle confermo che il Tariffario Aprile 2024 resta in vigore fino al 31 luglio; dal 1° agosto entrerà in vigore un aggiornamento con un incremento medio del 3% sulle lunghe percorrenze, di cui le invieremo comunicazione formale.\nPer un flusso di circa 40 spedizioni mensili rientrate nella fascia sconto volumi del 15%, la più alta del nostro listino.\nLe allego il tariffario vigente e una stima delle principali tratte nord-sud già scontate, così può impostare il budget del semestre.\nQuando sarà disponibile il listino di agosto glielo trasmetterò in anteprima.\nCordiali saluti,\nAndrea Conti - Ufficio Commerciale"
+    },
+    {
+        "subject": "Domanda su accesso portale GestiClaim per reclami",
+        "from_name": "Valentina Rinaldi",
+        "from_email": "valentina.rinaldi@cliente.example.com",
+        "date": "2024-06-03 09:05:33",
+        "body_text": "Salve,\nvorremmo iniziare a usare il portale GestiClaim per aprire e seguire i reclami trasporto invece di passare dalle email.\nNon ho però le credenziali di accesso e non trovo il link di registrazione.\nPotete dirmi come ottenere un account aziendale e quali permessi vengono assegnati? Saremmo in due o tre persone dell'ufficio logistica a doverlo utilizzare.\nÈ possibile vedere lo storico dei reclami già aperti via email nei mesi scorsi?\nGrazie per le indicazioni.\nValentina Rinaldi - Logistica"
+    },
+    {
+        "subject": "Re: Domanda su accesso portale GestiClaim per reclami",
+        "from_name": "Sara Vitale",
+        "from_email": "sara.vitale@rotta-logistics.example.com",
+        "date": "2024-06-03 11:48:19",
+        "body_text": "Gentile Sig.ra Rinaldi,\nvolentieri. Per attivare l'account aziendale sul portale GestiClaim mi serve l'elenco dei nominativi e delle email delle persone da abilitare; creo un profilo \"amministratore\" e fino a due profili \"operatore\".\nL'amministratore può aprire, seguire e chiudere i reclami e vede tutto lo storico aziendale; l'operatore può aprire e consultare ma non chiudere.\nProvvederò io a caricare a sistema i reclami già aperti via email negli scorsi mesi (ne risultano tre), così li ritroverete nello storico.\nRiceverete le credenziali con link di primo accesso e password temporanea entro domani.\nCordiali saluti,\nSara Vitale - Customer Care"
+    },
+    {
+        "subject": "Richiesta preventivo trasporto merce refrigerata",
+        "from_name": "Antonio De Luca",
+        "from_email": "antonio.deluca@cliente.example.com",
+        "date": "2024-06-07 10:22:50",
+        "body_text": "Buongiorno,\nsiamo un'azienda alimentare e dovremmo spedire prodotti che richiedono trasporto a temperatura controllata (0-4°C).\nVorremmo sapere se gestite trasporti refrigerati e a quali condizioni. Le spedizioni partirebbero da Verona verso la GDO del centro Italia, circa 10 pallet a settimana.\nCi servirebbe anche capire se il servizio Consegna Lampo 24h è compatibile con la catena del freddo.\nPotete prepararci un preventivo con le tariffe dedicate?\nResto in attesa.\nAntonio De Luca - Responsabile Spedizioni"
+    },
+    {
+        "subject": "Re: Richiesta preventivo trasporto merce refrigerata",
+        "from_name": "Andrea Conti",
+        "from_email": "andrea.conti@rotta-logistics.example.com",
+        "date": "2024-06-07 15:58:42",
+        "body_text": "Gentile Sig. De Luca,\nla ringrazio per la richiesta. Gestiamo trasporti a temperatura controllata con mezzi attrezzati per la fascia 0-4°C e registratore di temperatura a bordo.\nPer la tratta Verona-centro Italia, 10 pallet settimanali, la tariffa refrigerata è di 72,00 euro a pallet secondo il Tariffario Aprile 2024, già comprensiva di monitoraggio; con il vostro volume applichiamo lo sconto volumi del 12%.\nIl servizio Consegna Lampo 24h è compatibile con la catena del freddo sulle destinazioni servite dall'hub HUB-TO-02, con supplemento di 25,00 euro a spedizione per il refrigerato urgente.\nResto a disposizione per definire un contratto di trasporto dedicato.\nCordiali saluti,\nAndrea Conti - Ufficio Commerciale"
+    },
+    {
+        "subject": "Domanda su sconto volumi soglia raggiunta",
+        "from_name": "Cristina Ferri",
+        "from_email": "cristina.ferri@cliente.example.com",
+        "date": "2024-06-11 09:48:17",
+        "body_text": "Buongiorno,\nnel nostro contratto di trasporto è previsto uno sconto volumi del 10% fino a 30 spedizioni mensili e del 15% oltre tale soglia.\nNegli ultimi due mesi abbiamo superato stabilmente le 35 spedizioni e vorremmo capire se lo sconto del 15% viene applicato in automatico dalla fatturazione oppure se dobbiamo farne richiesta formale.\nInoltre, lo scaglione superiore vale sull'intero volume del mese o solo sulle spedizioni eccedenti le 30?\nGrazie per il chiarimento.\nCristina Ferri - Amministrazione"
+    },
+    {
+        "subject": "Re: Domanda su sconto volumi soglia raggiunta",
+        "from_name": "Giulia Moretti",
+        "from_email": "giulia.moretti@rotta-logistics.example.com",
+        "date": "2024-06-11 14:19:36",
+        "body_text": "Gentile Sig.ra Ferri,\nle confermo che, al superamento delle 30 spedizioni mensili, lo sconto volumi del 15% viene applicato sull'intero volume del mese e non solo sulle eccedenze, come da clausola del vostro contratto di trasporto.\nL'applicazione è automatica: il sistema conteggia le spedizioni a fine mese e ricalcola lo scaglione. Ho verificato aprile e maggio: entrambi superano la soglia, quindi lo sconto del 15% è già stato applicato in fattura.\nSe nota in fattura uno sconto al 10% per quei mesi, me lo segnali subito e provvedo a nota di credito.\nResto a disposizione,\nGiulia Moretti - Ufficio Fatturazione"
+    },
+    {
+        "subject": "Reclamo collo mancante nella spedizione",
+        "from_name": "Giorgio Russo",
+        "from_email": "giorgio.russo@cliente.example.com",
+        "date": "2024-06-14 11:40:55",
+        "body_text": "Spettabile Customer Care,\nla spedizione consegnata stamattina al nostro punto vendita di Firenze risulta incompleta: la bolla indica 4 colli ma ne sono arrivati solo 3.\nIl corriere ha confermato verbalmente la discrepanza ma non ha annotato nulla. Ho comunque fatto firmare con riserva.\nIl collo mancante contiene materiale importante per un allestimento previsto per sabato.\nVi chiedo di aprire un reclamo urgente e di rintracciare il collo mancante. È possibile attivare il servizio Consegna Lampo 24h per recuperarlo in tempo?\nGrazie,\nGiorgio Russo - Punto Vendita Firenze"
+    },
+    {
+        "subject": "Re: Reclamo collo mancante nella spedizione",
+        "from_name": "Sara Vitale",
+        "from_email": "sara.vitale@rotta-logistics.example.com",
+        "date": "2024-06-14 13:25:08",
+        "body_text": "Gentile Sig. Russo,\nho aperto immediatamente il reclamo sul portale GestiClaim con codice RCL-2024-0978 per collo mancante, allegando la riserva da lei apposta.\nDalla tracciatura il quarto collo risulta rimasto presso l'hub HUB-TO-02 per un errore di smistamento. L'ho già fatto rintracciare fisicamente ed è disponibile.\nPer rispettare la sua scadenza di sabato attivo a nostro carico il servizio Consegna Lampo 24h: il collo ripartirà oggi e arriverà a Firenze entro domani 15 giugno.\nNessun costo aggiuntivo per lei, trattandosi di un nostro errore.\nLe aggiorno il reclamo non appena partito.\nCordiali saluti,\nSara Vitale - Customer Care"
+    },
+    {
+        "subject": "Richiesta rettifica fattura doppio addebito",
+        "from_name": "Monica Galassi",
+        "from_email": "monica.galassi@cliente.example.com",
+        "date": "2024-06-18 10:11:29",
+        "body_text": "Buongiorno ufficio fatturazione,\ncontrollando la fattura n. 2024-1356 ho notato che la spedizione con riferimento SPD-44721 risulta addebitata due volte, una a riga 7 e una a riga 19, entrambe per 41,00 euro.\nSi tratta di una sola spedizione effettuata il 5 giugno verso Cagliari.\nVi chiedo cortesemente di verificare e di emettere nota di credito per l'importo addebitato in eccesso.\nPotete confermarmi i tempi per la rettifica? Vorrei evitare di pagare l'importo errato alla scadenza.\nGrazie,\nMonica Galassi - Amministrazione"
+    },
+    {
+        "subject": "Re: Richiesta rettifica fattura doppio addebito",
+        "from_name": "Giulia Moretti",
+        "from_email": "giulia.moretti@rotta-logistics.example.com",
+        "date": "2024-06-18 15:07:44",
+        "body_text": "Gentile Sig.ra Galassi,\nha ragione, ho verificato: la spedizione SPD-44721 verso Cagliari del 5 giugno è stata erroneamente esposta due volte sulla fattura n. 2024-1356, per un doppio addebito di 41,00 euro più la relativa quota di supplemento carburante.\nEmetto oggi stesso la nota di credito n. NC-2024-0211 di 42,85 euro a storno dell'importo errato.\nPer la scadenza: può detrarre l'importo della nota di credito dal pagamento della fattura, così salda solo il dovuto corretto.\nMi scuso per il disguido, dovuto a un doppio import del file spedizioni di quella giornata.\nResto a disposizione,\nGiulia Moretti - Ufficio Fatturazione"
+    },
+    {
+        "subject": "Domanda su orari ritiro presso nostra sede",
+        "from_name": "Riccardo Fontana",
+        "from_email": "riccardo.fontana@cliente.example.com",
+        "date": "2024-06-24 08:45:12",
+        "body_text": "Buongiorno,\navremmo bisogno di capire meglio gli orari di ritiro presso la nostra sede di Brescia.\nAttualmente i ritiri avvengono in modo irregolare, a volte la mattina presto a volte nel pomeriggio, e questo ci crea problemi con l'organizzazione del magazzino.\nÈ possibile concordare una fascia oraria fissa per il ritiro giornaliero? Preferiremmo tra le 15:00 e le 17:00.\nInoltre, qual è l'orario limite per garantire la partenza in giornata e quindi rispettare i tempi della Consegna Lampo 24h?\nGrazie,\nRiccardo Fontana - Responsabile Magazzino"
+    },
+    {
+        "subject": "Re: Domanda su orari ritiro presso nostra sede",
+        "from_name": "Andrea Conti",
+        "from_email": "andrea.conti@rotta-logistics.example.com",
+        "date": "2024-06-24 12:33:57",
+        "body_text": "Gentile Sig. Fontana,\nnessun problema a concordare una fascia fissa di ritiro. Per la sua sede di Brescia possiamo assegnare il ritiro giornaliero nella fascia 15:00-17:00, comunicandolo al corriere di zona da lunedì prossimo.\nPer il servizio Consegna Lampo 24h l'orario limite di ritiro è le 17:00: tutto ciò che viene caricato entro quell'ora transita in serata dall'hub HUB-TO-02 e riparte per la consegna entro 24h.\nQuindi la sua fascia 15:00-17:00 è perfettamente compatibile con la Consegna Lampo.\nFormalizziamo la fascia fissa come addendum al contratto di trasporto?\nCordiali saluti,\nAndrea Conti - Ufficio Commerciale"
+    },
+    {
+        "subject": "Reclamo applicazione supplemento carburante errato",
+        "from_name": "Alessia Costa",
+        "from_email": "alessia.costa@cliente.example.com",
+        "date": "2024-06-27 09:58:34",
+        "body_text": "Spettabile ufficio,\nsulla fattura di giugno (n. 2024-1402) il supplemento carburante risulta applicato al 6%, mentre nel nostro contratto di trasporto la clausola lega il supplemento all'indice gasolio mensile, che per giugno mi risulta intorno al 4,5%.\nVi chiedo di verificare la percentuale applicata e, se confermato l'errore, di correggere la fattura.\nVorrei anche capire dove posso consultare l'indice ufficiale che usate come riferimento, per poter controllare in autonomia i prossimi mesi.\nGrazie per il chiarimento.\nAlessia Costa - Controllo Fatture"
+    },
+    {
+        "subject": "Re: Reclamo applicazione supplemento carburante errato",
+        "from_name": "Giulia Moretti",
+        "from_email": "giulia.moretti@rotta-logistics.example.com",
+        "date": "2024-06-27 14:42:19",
+        "body_text": "Gentile Sig.ra Costa,\nha fatto bene a segnalarlo. Ho controllato: per giugno il supplemento carburante corretto è il 4,5%, mentre sulla fattura n. 2024-1402 è stato applicato per errore il 6% di un mese precedente.\nEmetto nota di credito n. NC-2024-0227 a storno della differenza, pari a 31,20 euro.\nL'indice di riferimento che utilizziamo è quello medio mensile del gasolio pubblicato dal Ministero, da cui ricaviamo la percentuale comunicata a inizio mese. Posso inserirla nella mailing list dell'avviso mensile sul supplemento carburante, così riceve la percentuale aggiornata prima della fattura.\nMi scuso per l'errore.\nGiulia Moretti - Ufficio Fatturazione"
+    },
+    {
+        "subject": "Richiesta informazioni assicurazione integrale merce",
+        "from_name": "Tommaso Barbieri",
+        "from_email": "tommaso.barbieri@cliente.example.com",
+        "date": "2024-07-02 10:30:48",
+        "body_text": "Buongiorno,\nspediamo regolarmente apparecchiature di valore elevato e la copertura standard di 1 euro/kg prevista dal contratto non è sufficiente a coprire il valore reale della merce.\nVorremmo sottoscrivere un'assicurazione integrale sul valore dichiarato.\nCi potete spiegare come funziona, qual è il costo (percentuale sul valore?) e come va dichiarato il valore per ogni spedizione?\nLa copertura vale anche per le spedizioni effettuate con il servizio Consegna Lampo 24h?\nResto in attesa di dettagli.\nTommaso Barbieri - Ufficio Spedizioni"
+    },
+    {
+        "subject": "Re: Richiesta informazioni assicurazione integrale merce",
+        "from_name": "Andrea Conti",
+        "from_email": "andrea.conti@rotta-logistics.example.com",
+        "date": "2024-07-02 16:18:25",
+        "body_text": "Gentile Sig. Barbieri,\nvolentieri. L'assicurazione integrale copre il valore reale dichiarato della merce, in deroga al limite standard di 1,00 euro/kg.\nIl costo è pari allo 0,4% del valore dichiarato per spedizione, con un minimo di 5,00 euro. Il valore va indicato in fase di prenotazione del ritiro, nel campo \"valore assicurato\"; in caso di sinistro fa fede quel valore unito alla fattura d'acquisto.\nLa copertura integrale vale per tutte le modalità, incluso il servizio Consegna Lampo 24h, senza variazioni di premio.\nPosso aggiornare il vostro contratto di trasporto inserendo l'opzione integrale come attiva di default su tutte le spedizioni, se preferite non doverla indicare ogni volta.\nCordiali saluti,\nAndrea Conti - Ufficio Commerciale"
+    },
+    {
+        "subject": "Domanda interna su gestione reclamo HUB-TO-02",
+        "from_name": "Sara Vitale",
+        "from_email": "sara.vitale@rotta-logistics.example.com",
+        "date": "2024-07-08 09:15:40",
+        "body_text": "Ciao Matteo,\nho un picco di reclami su GestiClaim legati a ritardi e smistamenti errati passati dall'hub HUB-TO-02 nelle ultime due settimane (siamo a 9 reclami aperti).\nDiversi clienti del segmento business chiedono storni e qualcuno minaccia di rivedere il contratto di trasporto.\nMi sai dire se c'è una causa nota sull'hub (guasti, carenza personale, picchi di volume)? Mi serve per dare una risposta uniforme e credibile ai clienti invece di scuse generiche.\nGrazie, fammi sapere appena puoi.\nSara"
+    },
+    {
+        "subject": "Re: Domanda interna su gestione reclamo HUB-TO-02",
+        "from_name": "Matteo Sanna",
+        "from_email": "matteo.sanna@rotta-logistics.example.com",
+        "date": "2024-07-08 11:52:13",
+        "body_text": "Ciao Sara,\nsì, c'è una causa precisa. Da fine giugno l'hub HUB-TO-02 ha lavorato con un nastro di smistamento su due fuori servizio per un guasto meccanico, in piena coincidenza con il picco volumi pre-ferie. Da qui ritardi e qualche errore di instradamento.\nLa riparazione è completata da lunedì scorso e i tempi sono già rientrati nella norma.\nPer i clienti puoi comunicare: disservizio temporaneo dovuto a un guasto tecnico all'hub, ora risolto, con riconoscimento dello storno del 30% sul trasporto delle spedizioni impattate.\nPer i clienti business più esposti ti preparo io l'elenco delle spedizioni coinvolte così personalizzi la risposta.\nMatteo - Operations"
+    },
+    {
+        "subject": "Richiesta proroga termini di pagamento",
+        "from_name": "Beatrice Villa",
+        "from_email": "beatrice.villa@cliente.example.com",
+        "date": "2024-07-15 10:05:21",
+        "body_text": "Buongiorno ufficio crediti,\nstiamo attraversando un periodo di tensione di cassa dovuto a incassi ritardati da parte di alcuni nostri clienti.\nIl nostro contratto prevede pagamento a 60 giorni; vorremmo chiedere, in via eccezionale e limitata alle fatture di giugno e luglio, una proroga a 90 giorni.\nSiamo clienti dal 2021 e abbiamo sempre saldato puntualmente fino a oggi.\nÈ possibile concordare questa dilazione temporanea senza interessi di mora? Restiamo ovviamente disponibili a formalizzare un accordo scritto.\nGrazie per la comprensione.\nBeatrice Villa - Direzione Amministrativa"
+    },
+    {
+        "subject": "Re: Richiesta proroga termini di pagamento",
+        "from_name": "Roberta Esposito",
+        "from_email": "roberta.esposito@rotta-logistics.example.com",
+        "date": "2024-07-15 15:44:38",
+        "body_text": "Gentile Sig.ra Villa,\nla ringraziamo per la trasparenza e per la collaborazione storica.\nIn considerazione della vostra puntualità dal 2021, possiamo accogliere la richiesta: concediamo eccezionalmente la proroga a 90 giorni per le sole fatture di giugno e luglio 2024, senza applicazione di interessi di mora.\nDa agosto si tornerà ai consueti 60 giorni previsti dal contratto di trasporto.\nLe invio un breve accordo di dilazione da controfirmare, che riepiloga le fatture interessate e le nuove scadenze.\nIl servizio sulle vostre spedizioni prosegue regolarmente senza alcuna sospensione.\nRestiamo a disposizione,\nRoberta Esposito - Ufficio Crediti"
+    },
+    {
+        "subject": "Domanda su consegna a destinatari multipli",
+        "from_name": "Nicola Bruno",
+        "from_email": "nicola.bruno@cliente.example.com",
+        "date": "2024-07-22 09:33:54",
+        "body_text": "Salve,\navremmo necessità di organizzare delle spedizioni con consegna a destinatari multipli: un unico ritiro presso la nostra sede di Modena e poi consegna frazionata a 5-6 punti vendita diversi nella stessa città di destinazione.\nGestite questo tipo di servizio (distribuzione capillare)? Come viene tariffato, a singola consegna o a spedizione complessiva?\nCi interesserebbe anche sapere se è abbinabile alla Consegna Lampo 24h per le distribuzioni urgenti.\nPotete prepararci un'ipotesi di preventivo?\nGrazie,\nNicola Bruno - Logistica Distributiva"
+    },
+    {
+        "subject": "Re: Domanda su consegna a destinatari multipli",
+        "from_name": "Andrea Conti",
+        "from_email": "andrea.conti@rotta-logistics.example.com",
+        "date": "2024-07-22 14:27:46",
+        "body_text": "Gentile Sig. Bruno,\nsì, offriamo il servizio di distribuzione capillare con ritiro unico e consegne frazionate a più destinatari nella stessa area.\nLa tariffazione prevede un costo di ritiro/linea principale più una quota per ciascun punto di consegna: per la tratta Modena-area urbana, indicativamente 55,00 euro per la linea più 9,00 euro a punto di consegna aggiuntivo, secondo il Tariffario Aprile 2024.\nIl servizio è abbinabile alla Consegna Lampo 24h con il consueto supplemento, a condizione che tutti i punti rientrino nell'area coperta dall'hub HUB-TO-02.\nLe preparo un preventivo dettagliato se mi conferma le 5-6 destinazioni e la frequenza prevista.\nCordiali saluti,\nAndrea Conti - Ufficio Commerciale"
+    },
+    {
+        "subject": "Domanda su esito reclamo risarcimento merce",
+        "from_name": "Stefano Greco",
+        "from_email": "stefano.greco@cliente.example.com",
+        "date": "2024-07-29 10:48:09",
+        "body_text": "Buongiorno Sara,\nle scrivo per avere un aggiornamento sul reclamo RCL-2024-0907 aperto a fine maggio per la merce danneggiata consegnata a Padova.\nAvevo trasmesso, come richiesto, la distinta del valore e la fattura d'acquisto della merce inutilizzabile, per un valore complessivo di 1.480,00 euro.\nDa allora non ho ricevuto comunicazioni sull'esito della pratica né sull'importo riconosciuto.\nMi potete dire a che punto è il risarcimento e con quali tempi e modalità verrà liquidato?\nGrazie,\nStefano Greco - Magazzino"
+    },
+    {
+        "subject": "Re: Domanda su esito reclamo risarcimento merce",
+        "from_name": "Sara Vitale",
+        "from_email": "sara.vitale@rotta-logistics.example.com",
+        "date": "2024-07-29 13:36:52",
+        "body_text": "Gentile Sig. Greco,\ngrazie per il sollecito e mi scuso per l'attesa. Il reclamo RCL-2024-0907 è stato istruito e approvato.\nVerificato il vostro contratto di trasporto, risultava attiva l'assicurazione integrale: viene quindi riconosciuto l'intero valore documentato della merce danneggiata, pari a 1.480,00 euro, e non il limite standard di 1 euro/kg.\nLa liquidazione avverrà tramite nota di credito a vostro favore, emessa entro il 5 agosto e detraibile dalla prossima fattura, oppure rimborsabile via bonifico se preferite: mi faccia sapere la modalità.\nChiudo il reclamo su GestiClaim non appena emessa la nota.\nAncora scuse per il disagio,\nSara Vitale - Customer Care"
+    },
+    {
+        "subject": "Comunicazione aggiornamento tariffario agosto 2024",
+        "from_name": "Paolo Lombardi",
+        "from_email": "paolo.lombardi@cliente.example.com",
+        "date": "2024-08-05 09:20:37",
+        "body_text": "Buongiorno Andrea,\ncome anticipato a maggio, attendevamo il nuovo listino in vigore da agosto.\nMi confermi che è già attivo? Avevate parlato di un incremento medio del 3% sulle lunghe percorrenze.\nNel nostro caso vorrei capire l'impatto concreto sulle tratte che usiamo di più (nord-sud) e se la nostra fascia sconto volumi del 15% resta invariata anche con il nuovo tariffario.\nCi serve il documento aggiornato per chiudere il budget del semestre.\nGrazie,\nPaolo Lombardi - Direzione Operativa"
+    },
+    {
+        "subject": "Re: Comunicazione aggiornamento tariffario agosto 2024",
+        "from_name": "Andrea Conti",
+        "from_email": "andrea.conti@rotta-logistics.example.com",
+        "date": "2024-08-05 15:11:48",
+        "body_text": "Gentile Sig. Lombardi,\nle confermo: dal 1° agosto è in vigore il nuovo tariffario, con incremento medio del 3% sulle lunghe percorrenze rispetto al Tariffario Aprile 2024. Le tratte brevi e regionali restano invariate.\nLa sua fascia sconto volumi del 15% resta pienamente confermata e si applica sulle nuove tariffe, quindi l'impatto netto sulle vostre tratte nord-sud è di circa +2,5%.\nLe allego il listino aggiornato di agosto con le principali tratte già scontate al 15%, così può finalizzare il budget.\nIl supplemento carburante di agosto è fissato al 4,2%, in lieve calo.\nResto a disposizione per qualsiasi simulazione,\nAndrea Conti - Ufficio Commerciale"
+    },
+    {
+        "subject": "Reclamo consegna a indirizzo errato",
+        "from_name": "Laura Caruso",
+        "from_email": "laura.caruso@cliente.example.com",
+        "date": "2024-08-12 10:15:26",
+        "body_text": "Spettabile Customer Care,\nla spedizione SPD-51230 partita il 9 agosto da Bergamo era destinata alla nostra filiale di Catania, ma risulta consegnata a un indirizzo di Messina che non ci appartiene.\nLa filiale di Catania è ferma in attesa della merce e il cliente finale sta sollecitando.\nL'indirizzo sui documenti di trasporto era corretto, quindi l'errore è in fase di consegna.\nVi chiedo di aprire un reclamo urgente, di recuperare la merce dall'indirizzo sbagliato e di consegnarla a Catania nel più breve tempo possibile.\nResto in attesa di un riscontro immediato.\nLaura Caruso - Coordinamento Filiali"
+    },
+    {
+        "subject": "Re: Reclamo consegna a indirizzo errato",
+        "from_name": "Sara Vitale",
+        "from_email": "sara.vitale@rotta-logistics.example.com",
+        "date": "2024-08-12 12:08:41",
+        "body_text": "Gentile Sig.ra Caruso,\nho aperto subito il reclamo su GestiClaim con codice RCL-2024-1102 per errata consegna.\nConfermo che l'indirizzo sui documenti era corretto: l'errore è del corriere in fase di consegna a Messina. Ho già attivato il recupero della merce, che verrà ritirata oggi pomeriggio dall'indirizzo errato.\nPer non penalizzare la filiale di Catania attivo a nostro carico il servizio Consegna Lampo 24h: la merce, una volta recuperata, ripartirà via hub HUB-TO-02 e sarà consegnata a Catania entro domani 13 agosto.\nNessun addebito per voi, trattandosi di nostro errore. La aggiorno appena la merce è recuperata.\nCordiali saluti,\nSara Vitale - Customer Care"
+    },
+    {
+        "subject": "Domanda su rinnovo contratto di trasporto 2025",
+        "from_name": "Federica Galli",
+        "from_email": "federica.galli@cliente.example.com",
+        "date": "2024-08-20 09:42:18",
+        "body_text": "Buongiorno Andrea,\nil nostro contratto di trasporto CT-2024 è in scadenza a fine anno e vorremmo iniziare a parlare del rinnovo per il 2025.\nNell'ultimo periodo i volumi sono cresciuti: siamo passati da 6-8 a circa 14 pallet settimanali sulla Milano-Bari, e abbiamo aggiunto la Milano-Palermo.\nVorremmo capire se, dato l'aumento, possiamo accedere a una fascia sconto volumi superiore e congelare le tariffe per tutto il 2025, evitando gli aggiornamenti infra-annuali.\nPossiamo fissare un incontro o una call per discuterne?\nGrazie,\nFederica Galli - Ufficio Acquisti"
+    },
+    {
+        "subject": "Re: Domanda su rinnovo contratto di trasporto 2025",
+        "from_name": "Andrea Conti",
+        "from_email": "andrea.conti@rotta-logistics.example.com",
+        "date": "2024-08-20 16:05:33",
+        "body_text": "Gentile Sig.ra Galli,\ncon piacere. L'aumento dei volumi a circa 14 pallet settimanali, sommato alla nuova tratta Milano-Palermo, vi colloca nella fascia sconto volumi del 15%, la più alta del nostro listino.\nPer il 2025 possiamo proporre un contratto di trasporto con tariffe bloccate per l'intero anno solare, senza adeguamenti infra-annuali; resterebbe variabile solo il supplemento carburante, legato per natura all'indice mensile.\nLe preparo una bozza di rinnovo con le due tratte, lo sconto al 15% e la clausola di tariffe congelate 2025.\nProponiamo una call la prossima settimana? Sono disponibile martedì 27 agosto pomeriggio.\nCordiali saluti,\nAndrea Conti - Ufficio Commerciale"
+    },
+    {
+        "subject": "Report mensile reclami trasporto - Settembre 2024",
+        "from_name": "Customer Care Rotta Sicura",
+        "from_email": "customercare@rotta-logistics.example.com",
+        "date": "2024-09-03 09:14:22",
+        "body_text": "Buongiorno a tutti,\nin allegato il report mensile dei reclami trasporto gestiti via portale GestiClaim per settembre 2024.\nNumeri principali:\n- Reclami aperti: 142\n- Reclami chiusi entro 5 giorni: 118 (83%)\n- Reclami per ritardo Consegna Lampo 24h: 37\n- Reclami per merce danneggiata: 29\nL'hub HUB-TO-02 resta quello con il maggior volume di pratiche, principalmente per ritardi sulle tratte verso il Nord-Est.\nVi chiedo di concentrare gli sforzi sulla riduzione dei tempi di prima risposta, ancora sopra le 48 ore in alcuni casi.\nNe parliamo al prossimo allineamento.\nGrazie,\nLaura"
+    },
+    {
+        "subject": "Fattura n. 2024-0912 - Trasporti Agosto",
+        "from_name": "Amministrazione Rotta Sicura",
+        "from_email": "fatturazione@rotta-logistics.example.com",
+        "date": "2024-09-04 11:32:05",
+        "body_text": "Spett.le Cliente,\ncon la presente Vi trasmettiamo la fattura n. 2024-0912 relativa ai servizi di trasporto erogati nel mese di agosto 2024.\nImporto totale: 8.450,00 EUR (IVA inclusa).\nIl dettaglio comprende 24 spedizioni, di cui 6 con servizio Consegna Lampo 24h e l'applicazione del supplemento carburante in vigore.\nLe tariffe applicate seguono il Tariffario Aprile 2024 con lo sconto volumi del 7% riconosciuto in base al contratto di trasporto attivo.\nScadenza pagamento: 30 giorni data fattura.\nRestiamo a disposizione per qualsiasi chiarimento.\nCordiali saluti,\nUfficio Amministrazione"
+    },
+    {
+        "subject": "Sollecito pagamento fattura n. 2024-0788",
+        "from_name": "Ufficio Crediti",
+        "from_email": "crediti@rotta-logistics.example.com",
+        "date": "2024-09-05 15:47:18",
+        "body_text": "Gentile cliente,\nrisulta ancora insoluta la fattura n. 2024-0788 del 15 luglio 2024, di importo 3.210,50 EUR, con scadenza superata da oltre 30 giorni.\nVi invitiamo a provvedere al saldo entro il 15 settembre 2024 per evitare la sospensione del servizio Consegna Lampo 24h previsto dal Vostro contratto di trasporto.\nQualora il pagamento fosse già stato eseguito, Vi preghiamo di trasmetterci la contabile bancaria così da aggiornare la Vostra posizione.\nPer eventuali necessità di rateizzazione potete contattare il nostro ufficio.\nDistinti saluti,\nUfficio Crediti Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Richiesta preventivo spedizioni ricorrenti Milano-Bologna",
+        "from_name": "Marco Verdi",
+        "from_email": "acquisti@cliente.example.com",
+        "date": "2024-09-06 10:05:44",
+        "body_text": "Buongiorno,\nsiamo interessati ad avviare una collaborazione per spedizioni ricorrenti sulla tratta Milano-Bologna, con frequenza di circa 3 consegne settimanali.\nVolumi stimati: pallet standard, peso medio 180 kg, dimensioni 120x80 cm.\nVi chiediamo cortesemente un preventivo dettagliato che includa l'eventuale supplemento carburante e le condizioni per lo sconto volumi.\nCi interessa anche capire la disponibilità del servizio Consegna Lampo 24h per le urgenze.\nIn attesa di un Vostro riscontro, restiamo a disposizione per ogni informazione.\nCordiali saluti,\nMarco Verdi - Ufficio Acquisti"
+    },
+    {
+        "subject": "Invito riunione commerciale - Revisione Tariffario",
+        "from_name": "Direzione Commerciale",
+        "from_email": "commerciale@rotta-logistics.example.com",
+        "date": "2024-09-09 08:50:33",
+        "body_text": "Cari colleghi,\nvi invito alla riunione commerciale di revisione del Tariffario Aprile 2024, prevista per giovedì 12 settembre alle ore 14:30 in sala riunioni grande (e in collegamento video).\nOrdine del giorno:\n1. Andamento sconti volumi per i clienti business\n2. Adeguamento del supplemento carburante per Q4\n3. Posizionamento del servizio Consegna Lampo 24h\n4. Nuove richieste di preventivo in pipeline\nVi chiedo di portare i dati aggiornati dei vostri portafogli clienti.\nLa riunione durerà circa 90 minuti.\nGrazie e a presto,\nGiulia - Direzione Commerciale"
+    },
+    {
+        "subject": "Escalation reclamo GestiClaim #RC-4471 merce danneggiata",
+        "from_name": "Paolo Ferrari",
+        "from_email": "logistica@cliente.example.com",
+        "date": "2024-09-10 16:22:09",
+        "body_text": "Buongiorno,\nsono a sollecitare con urgenza il reclamo aperto sul portale GestiClaim con codice #RC-4471 relativo alla spedizione del 2 settembre, consegnata con due colli gravemente danneggiati.\nNonostante il reclamo sia stato registrato 8 giorni fa, non abbiamo ancora ricevuto alcun riscontro né una proposta di indennizzo.\nIl valore della merce compromessa ammonta a circa 1.900 EUR.\nVi chiedo di escalare la pratica e di fornirci tempi certi di risoluzione, dato che si tratta di un cliente finale che attende il reso.\nResto in attesa di un riscontro entro domani.\nCordialmente,\nPaolo Ferrari"
+    },
+    {
+        "subject": "Comunicazione interna: chiusura turni hub HUB-TO-02",
+        "from_name": "Coordinamento Operativo",
+        "from_email": "operativo@rotta-logistics.example.com",
+        "date": "2024-09-11 17:40:55",
+        "body_text": "A tutto il personale interessato,\nvi comunichiamo una rimodulazione dei turni presso l'hub HUB-TO-02 a partire da lunedì 16 settembre.\nIl turno serale sarà esteso fino alle 22:00 per assorbire i picchi di volume legati al servizio Consegna Lampo 24h.\nQuesta variazione si rende necessaria per ridurre i ritardi che stanno generando un numero crescente di reclami sul portale GestiClaim.\nI responsabili di reparto raccoglieranno le disponibilità entro venerdì 13 settembre.\nRingraziamo per la collaborazione e restiamo a disposizione per chiarimenti.\nCoordinamento Operativo"
+    },
+    {
+        "subject": "Newsletter clienti - Novità autunno 2024",
+        "from_name": "Rotta Sicura Logistics",
+        "from_email": "newsletter@rotta-logistics.example.com",
+        "date": "2024-09-12 09:00:12",
+        "body_text": "Gentile cliente,\nbenvenuto nella newsletter autunnale di Rotta Sicura Logistics.\nIn questo numero:\n- Potenziamento del servizio Consegna Lampo 24h su nuove tratte del Centro Italia\n- Aggiornamento del supplemento carburante in funzione dell'andamento dei prezzi\n- Programma sconti volumi rinnovato per i clienti business\n- Anteprima del nuovo Tariffario in arrivo per il 2025\nRicordiamo che ogni richiesta di preventivo o reclamo può essere gestita tramite i nostri canali dedicati e il portale GestiClaim.\nGrazie per aver scelto Rotta Sicura.\nIl team commerciale"
+    },
+    {
+        "subject": "Riepilogo trimestrale Q3 - Servizio Consegna Lampo 24h",
+        "from_name": "Luca Bianchi",
+        "from_email": "operativo@rotta-logistics.example.com",
+        "date": "2024-09-13 14:18:37",
+        "body_text": "Ciao a tutti,\ncondivido il riepilogo del terzo trimestre per il servizio Consegna Lampo 24h.\nDati salienti:\n- Spedizioni totali in modalità 24h: 1.284\n- Consegne nei tempi: 91%\n- Ritardi oltre le 24h: 9% (in calo rispetto all'8,2% del Q2... in realtà in lieve aumento, da monitorare)\n- Reclami collegati su GestiClaim: 64\nLa criticità principale resta l'hub HUB-TO-02 nelle giornate di lunedì.\nProporrei di rivedere i cut-off di accettazione merce per migliorare la puntualità.\nNe discutiamo alla prossima riunione operativa.\nA presto,\nLuca"
+    },
+    {
+        "subject": "Conferma rinnovo contratto di trasporto 2024-2025",
+        "from_name": "Direzione Commerciale",
+        "from_email": "commerciale@rotta-logistics.example.com",
+        "date": "2024-09-16 11:25:48",
+        "body_text": "Spett.le Cliente,\nsiamo lieti di confermare il rinnovo del Vostro contratto di trasporto per il periodo ottobre 2024 - settembre 2025.\nLe condizioni economiche restano allineate al Tariffario Aprile 2024, con conferma dello sconto volumi del 9% riservato ai clienti business con volumi superiori alle 200 spedizioni annue.\nIl supplemento carburante continuerà a essere applicato secondo l'indice mensile pubblicato.\nIl servizio Consegna Lampo 24h è incluso senza variazioni di prezzo.\nVi invieremo a breve la documentazione contrattuale da firmare digitalmente.\nRingraziandoVi per la fiducia, restiamo a disposizione.\nCordiali saluti,\nDirezione Commerciale Rotta Sicura"
+    },
+    {
+        "subject": "Reclamo ritardo consegna - ordine 88512",
+        "from_name": "Francesca Romano",
+        "from_email": "ordini@cliente.example.com",
+        "date": "2024-09-17 13:09:21",
+        "body_text": "Buongiorno,\nscrivo per segnalare un grave ritardo sulla consegna dell'ordine 88512, spedito con servizio Consegna Lampo 24h il 14 settembre e ancora non recapitato.\nIl cliente finale ci sta sollecitando da due giorni e la situazione sta diventando insostenibile.\nHo già aperto il reclamo sul portale GestiClaim ma vorrei un contatto diretto per capire dove si trova la merce.\nTrattandosi di un servizio espresso pagato a tariffa piena, mi aspetto un riscontro rapido e, se confermato il disservizio, il rimborso del supplemento.\nResto in attesa.\nGrazie,\nFrancesca Romano"
+    },
+    {
+        "subject": "Verbale riunione operativa del 16 settembre",
+        "from_name": "Coordinamento Operativo",
+        "from_email": "operativo@rotta-logistics.example.com",
+        "date": "2024-09-18 10:44:02",
+        "body_text": "Buongiorno a tutti,\nin allegato il verbale della riunione operativa del 16 settembre.\nPunti decisi:\n1. Estensione del turno serale all'hub HUB-TO-02 confermata da lunedì\n2. Anticipo del cut-off di accettazione merce alle 16:00 per le spedizioni Consegna Lampo 24h\n3. Task force dedicata allo smaltimento dei reclami arretrati su GestiClaim entro fine mese\n4. Verifica settimanale dei KPI di puntualità\nProssima riunione: 30 settembre ore 09:30.\nVi chiedo conferma di lettura.\nGrazie,\nCoordinamento Operativo"
+    },
+    {
+        "subject": "Nota di credito n. NC-2024-061 - storno supplemento",
+        "from_name": "Amministrazione Rotta Sicura",
+        "from_email": "fatturazione@rotta-logistics.example.com",
+        "date": "2024-09-19 16:01:55",
+        "body_text": "Spett.le Cliente,\na seguito del riconoscimento del reclamo #RC-4471 gestito tramite portale GestiClaim, Vi emettiamo la nota di credito n. NC-2024-061.\nL'importo stornato è di 245,00 EUR, corrispondente al supplemento carburante e alla quota del servizio Consegna Lampo 24h applicati alla spedizione oggetto del disservizio.\nLa nota di credito sarà compensata sulla prossima fattura mensile.\nCi scusiamo per l'inconveniente e Vi ringraziamo per la pazienza dimostrata.\nPer ulteriori dettagli restiamo a disposizione.\nCordiali saluti,\nUfficio Amministrazione Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Richiesta tariffario aggiornato per gara fornitura",
+        "from_name": "Andrea Costa",
+        "from_email": "procurement@cliente.example.com",
+        "date": "2024-09-20 09:38:14",
+        "body_text": "Gentili,\nstiamo predisponendo una gara per la fornitura di servizi logistici per il 2025 e vorremmo includervi tra i fornitori invitati.\nVi chiediamo cortesemente di trasmetterci il tariffario aggiornato e una proposta commerciale che includa:\n- condizioni di sconto volumi per fasce di spedizioni\n- modalità di calcolo del supplemento carburante\n- disponibilità e costo del servizio Consegna Lampo 24h\n- termini di pagamento e bozza di contratto di trasporto\nIl termine per la presentazione delle offerte è il 11 ottobre 2024.\nRestiamo in attesa e Vi ringraziamo per la collaborazione.\nCordiali saluti,\nAndrea Costa"
+    },
+    {
+        "subject": "Report settimanale reclami GestiClaim - settimana 38",
+        "from_name": "Customer Care Rotta Sicura",
+        "from_email": "customercare@rotta-logistics.example.com",
+        "date": "2024-09-23 09:20:47",
+        "body_text": "Buongiorno team,\necco il consueto report settimanale dei reclami trasporto sul portale GestiClaim (settimana 38).\n- Nuovi reclami: 31\n- Risolti: 27\n- In lavorazione: 22\n- Tempo medio di prima risposta: 36 ore (in miglioramento)\nLe categorie prevalenti restano ritardo di consegna (45%) e merce danneggiata (31%).\nL'hub HUB-TO-02 ha ridotto i ritardi dopo l'estensione dei turni serali, segnale incoraggiante.\nContinuiamo a presidiare i casi escalati e i clienti business prioritari.\nBuona settimana,\nCustomer Care"
+    },
+    {
+        "subject": "Comunicazione interna: aggiornamento supplemento carburante ottobre",
+        "from_name": "Direzione Commerciale",
+        "from_email": "commerciale@rotta-logistics.example.com",
+        "date": "2024-09-24 14:55:30",
+        "body_text": "A tutta la rete commerciale,\nvi informiamo che, in seguito all'andamento dei prezzi dei carburanti, il supplemento carburante per il mese di ottobre 2024 sarà aggiornato dal 4,8% al 5,3%.\nL'adeguamento si applica a tutte le spedizioni, incluso il servizio Consegna Lampo 24h, e non modifica le altre voci del Tariffario Aprile 2024.\nVi chiedo di comunicarlo ai clienti business in portafoglio con almeno 7 giorni di anticipo, come previsto dai contratti di trasporto.\nIn allegato il prospetto con il nuovo valore e le FAQ per gestire eventuali obiezioni.\nGrazie per la consueta collaborazione.\nDirezione Commerciale"
+    },
+    {
+        "subject": "Preventivo PRV-9981 spedizioni pallet Roma-Napoli",
+        "from_name": "Ufficio Commerciale",
+        "from_email": "commerciale@rotta-logistics.example.com",
+        "date": "2024-09-25 11:12:08",
+        "body_text": "Gentile cliente,\nin riferimento alla Vostra richiesta, Vi trasmettiamo il preventivo PRV-9981 per le spedizioni di pallet sulla tratta Roma-Napoli.\nDettaglio offerta:\n- Tariffa per pallet standard: 42,00 EUR (Tariffario Aprile 2024)\n- Sconto volumi 6% per più di 50 spedizioni mensili\n- Supplemento carburante: 5,3%\n- Opzione Consegna Lampo 24h: +18,00 EUR a spedizione\nIl preventivo è valido 30 giorni.\nIn caso di adesione predisporremo il relativo contratto di trasporto.\nRestiamo a disposizione per qualunque chiarimento o personalizzazione dell'offerta.\nCordiali saluti,\nUfficio Commerciale Rotta Sicura"
+    },
+    {
+        "subject": "Escalation cliente business - reclami ripetuti",
+        "from_name": "Laura Conti",
+        "from_email": "customercare@rotta-logistics.example.com",
+        "date": "2024-09-26 15:33:41",
+        "body_text": "Ciao Giulia,\nti scrivo perché il cliente business Delta Forniture ha aperto il quinto reclamo in tre settimane sul portale GestiClaim, tutti per ritardi sulla tratta servita dall'hub HUB-TO-02.\nÈ un cliente che genera oltre 300 spedizioni mensili con sconto volumi al 9% e sta minacciando di non rinnovare il contratto di trasporto.\nPropongo di fissare con loro una call congiunta commerciale + operativo per concordare un piano di rientro sulla puntualità.\nMi serve il tuo supporto per la parte commerciale e una proposta di gesto commerciale (storno supplemento carburante?).\nFammi sapere la tua disponibilità.\nGrazie,\nLaura"
+    },
+    {
+        "subject": "Invito webinar formazione portale GestiClaim",
+        "from_name": "Ufficio Formazione",
+        "from_email": "formazione@rotta-logistics.example.com",
+        "date": "2024-09-27 10:08:19",
+        "body_text": "Care colleghe e cari colleghi,\nsiete invitati al webinar di formazione sul portale GestiClaim, dedicato alla corretta gestione dei reclami trasporto.\nData: martedì 1 ottobre 2024, ore 11:00-12:30.\nProgramma:\n- Apertura e classificazione di un reclamo\n- Gestione delle escalation e dei tempi di risposta\n- Collegamento tra reclamo, nota di credito e fatturazione\n- Casi pratici su ritardi del servizio Consegna Lampo 24h\nIl webinar è rivolto in particolare ai nuovi addetti del customer care e alla rete commerciale.\nIl link di partecipazione verrà inviato il giorno precedente.\nVi aspettiamo numerosi.\nUfficio Formazione"
+    },
+    {
+        "subject": "Report contabilità - incassi e insoluti settembre",
+        "from_name": "Amministrazione Rotta Sicura",
+        "from_email": "fatturazione@rotta-logistics.example.com",
+        "date": "2024-09-30 17:14:53",
+        "body_text": "Buonasera,\ncondivido il riepilogo di contabilità relativo agli incassi di settembre 2024.\n- Fatturato emesso: 187.300,00 EUR\n- Incassato nel mese: 162.450,00 EUR\n- Insoluti oltre 30 giorni: 14.870,00 EUR\n- Note di credito emesse (storni reclami): 1.940,00 EUR\nLe posizioni più critiche riguardano due clienti su cui l'Ufficio Crediti ha già avviato i solleciti.\nLe note di credito derivano principalmente dai reclami riconosciuti tramite portale GestiClaim per disservizi sul servizio Consegna Lampo 24h.\nResto a disposizione per il dettaglio per singola fattura.\nCordiali saluti,\nUfficio Amministrazione"
+    },
+    {
+        "subject": "Richiesta chiarimento fattura 2024-0912",
+        "from_name": "Silvia Marchetti",
+        "from_email": "amministrazione@cliente.example.com",
+        "date": "2024-10-01 09:47:36",
+        "body_text": "Buongiorno,\nabbiamo ricevuto la fattura n. 2024-0912 relativa ai trasporti di agosto e riscontriamo una discrepanza sull'importo del supplemento carburante, che ci risulta calcolato al 5,3% anziché al 4,8% in vigore ad agosto.\nVi chiediamo cortesemente di verificare il calcolo e, se confermata l'anomalia, di emettere la relativa nota di credito.\nConfermiamo invece la correttezza dello sconto volumi del 7% previsto dal nostro contratto di trasporto.\nIn attesa di un Vostro riscontro, sospendiamo temporaneamente il pagamento della sola voce contestata.\nGrazie per la collaborazione.\nCordiali saluti,\nSilvia Marchetti - Amministrazione"
+    },
+    {
+        "subject": "Comunicazione interna: nuovo referente reclami HUB-TO-02",
+        "from_name": "Coordinamento Operativo",
+        "from_email": "operativo@rotta-logistics.example.com",
+        "date": "2024-10-02 08:30:25",
+        "body_text": "A tutto il personale,\nvi comunichiamo che da lunedì 7 ottobre il referente per la gestione dei reclami trasporto presso l'hub HUB-TO-02 sarà Davide Russo.\nDavide coordinerà l'interfaccia tra operativo e customer care per accelerare la chiusura delle pratiche aperte sul portale GestiClaim, con particolare attenzione ai disservizi del servizio Consegna Lampo 24h.\nPer le segnalazioni urgenti potete scrivere direttamente a davide.russo@rotta-logistics.example.com.\nRingraziamo Marco Gallo per il lavoro svolto finora nel ruolo.\nGrazie a tutti per la collaborazione.\nCoordinamento Operativo"
+    },
+    {
+        "subject": "Preventivo trasporto merce voluminosa - urgente",
+        "from_name": "Giorgio De Luca",
+        "from_email": "logistica@fornitore.example.com",
+        "date": "2024-10-03 12:26:50",
+        "body_text": "Buongiorno,\nabbiamo necessità urgente di un preventivo per il trasporto di tre macchinari voluminosi (singolo collo 1.500 kg, dimensioni 220x140x160 cm) da Torino a Verona.\nLa consegna dovrebbe avvenire entro il 9 ottobre, idealmente con servizio Consegna Lampo 24h se compatibile con le dimensioni.\nVi chiediamo di indicarci tariffa, eventuale supplemento per merce voluminosa, supplemento carburante e disponibilità mezzi.\nSe la collaborazione funziona, valuteremo un contratto di trasporto continuativo con i relativi sconti volumi.\nRestiamo in attesa di un riscontro rapido, possibilmente entro domani.\nGrazie,\nGiorgio De Luca"
+    },
+    {
+        "subject": "Riepilogo KPI customer care - settembre 2024",
+        "from_name": "Laura Conti",
+        "from_email": "customercare@rotta-logistics.example.com",
+        "date": "2024-10-04 16:40:11",
+        "body_text": "Buonasera a tutti,\nriepilogo gli indicatori del customer care per settembre.\n- Reclami gestiti su GestiClaim: 142\n- Tempo medio prima risposta: 34 ore (target 24h)\n- Tasso di risoluzione entro 5 giorni: 83%\n- Soddisfazione clienti business: 4,1/5\n- Reclami escalati alla direzione: 6\nIl margine di miglioramento maggiore resta sui tempi di prima risposta, soprattutto nei picchi del lunedì legati al servizio Consegna Lampo 24h.\nProporrò in riunione un turno aggiuntivo di presidio per le prime ore della mattina.\nGrazie del lavoro fatto in un mese impegnativo.\nLaura"
+    },
+    {
+        "subject": "Sollecito secondo avviso - fattura 2024-0788",
+        "from_name": "Ufficio Crediti",
+        "from_email": "crediti@rotta-logistics.example.com",
+        "date": "2024-10-07 10:15:42",
+        "body_text": "Gentile cliente,\nnonostante il precedente sollecito, risulta ancora insoluta la fattura n. 2024-0788 di 3.210,50 EUR.\nQuesto costituisce il secondo e ultimo avviso bonario.\nVi invitiamo a saldare l'importo entro il 14 ottobre 2024.\nIn assenza di pagamento o di un riscontro, saremo costretti a sospendere il servizio Consegna Lampo 24h previsto dal Vostro contratto di trasporto e ad avviare le procedure di recupero crediti, con addebito degli interessi di mora.\nRestiamo comunque disponibili a valutare un piano di rientro concordato.\nDistinti saluti,\nUfficio Crediti Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Invito riunione interna - chiusura reclami arretrati",
+        "from_name": "Davide Russo",
+        "from_email": "operativo@rotta-logistics.example.com",
+        "date": "2024-10-08 09:05:58",
+        "body_text": "Ciao a tutti,\norganizzo una riunione operativa per pianificare la chiusura dei reclami arretrati sul portale GestiClaim.\nQuando: mercoledì 9 ottobre, ore 15:00, sala HUB-TO-02 + collegamento video.\nObiettivo: smaltire le 22 pratiche aperte da oltre 7 giorni, con priorità ai clienti business e ai casi del servizio Consegna Lampo 24h.\nVi chiedo di arrivare con l'elenco delle pratiche assegnate e lo stato di ciascuna.\nDefiniremo responsabili e scadenze pratica per pratica.\nConfermate la presenza, per favore.\nGrazie,\nDavide"
+    },
+    {
+        "subject": "Newsletter operatori - aggiornamenti rete ottobre",
+        "from_name": "Rotta Sicura Logistics",
+        "from_email": "newsletter@rotta-logistics.example.com",
+        "date": "2024-10-09 09:00:33",
+        "body_text": "Cari operatori e partner,\necco gli aggiornamenti della rete per ottobre.\n- Nuovo turno serale stabilizzato all'hub HUB-TO-02 con riduzione dei ritardi\n- Adeguamento del supplemento carburante al 5,3%\n- Avvio della task force per la gestione rapida dei reclami su GestiClaim\n- Estensione del servizio Consegna Lampo 24h a nuove province del Centro\nRicordiamo che tutte le richieste di preventivo possono essere indirizzate all'ufficio commerciale e che i clienti business beneficiano dello sconto volumi secondo contratto di trasporto.\nGrazie per il lavoro quotidiano.\nIl team Rotta Sicura"
+    },
+    {
+        "subject": "Reclamo collo mancante - spedizione 90233",
+        "from_name": "Elena Gatti",
+        "from_email": "magazzino@cliente.example.com",
+        "date": "2024-10-10 14:21:07",
+        "body_text": "Buongiorno,\nsegnalo che la spedizione 90233, consegnata ieri presso il nostro magazzino, presenta un collo mancante rispetto ai 5 previsti dalla bolla.\nIl documento di trasporto indica chiaramente 5 colli, ma ne sono arrivati solo 4.\nHo già aperto il reclamo sul portale GestiClaim ma chiedo un riscontro rapido perché il collo mancante contiene materiale necessario alla produzione di lunedì.\nVi prego di verificare presso l'hub HUB-TO-02 se il collo è rimasto a terra durante lo smistamento.\nResto in attesa di indicazioni su tempi e modalità di recupero.\nGrazie,\nElena Gatti"
+    },
+    {
+        "subject": "Report mensile reclami trasporto - Ottobre 2024",
+        "from_name": "Customer Care Rotta Sicura",
+        "from_email": "customercare@rotta-logistics.example.com",
+        "date": "2024-10-31 16:50:44",
+        "body_text": "Buonasera a tutti,\nin allegato il report mensile dei reclami trasporto gestiti su portale GestiClaim per ottobre 2024.\nNumeri principali:\n- Reclami aperti: 128 (in calo rispetto a settembre)\n- Risolti entro 5 giorni: 89%\n- Tempo medio prima risposta: 28 ore\n- Reclami merce danneggiata: 24\n- Reclami ritardo Consegna Lampo 24h: 29\nL'intervento sull'hub HUB-TO-02 e la task force dedicata hanno prodotto risultati tangibili.\nResta da consolidare il presidio del lunedì mattina.\nGrazie a tutti per l'impegno, è stato un mese di netto miglioramento.\nCustomer Care"
+    },
+    {
+        "subject": "Conferma accettazione preventivo PRV-9981",
+        "from_name": "Andrea Costa",
+        "from_email": "procurement@cliente.example.com",
+        "date": "2024-11-04 10:33:19",
+        "body_text": "Buongiorno,\nconfermiamo l'accettazione del preventivo PRV-9981 per le spedizioni di pallet sulla tratta Roma-Napoli.\nProcediamo quindi alla firma del contratto di trasporto alle condizioni indicate: tariffa da Tariffario Aprile 2024, sconto volumi 6%, supplemento carburante 5,3% e opzione Consegna Lampo 24h disponibile su richiesta.\nVi chiediamo di inviarci la documentazione contrattuale e di indicarci la data di attivazione del servizio.\nVorremmo partire già dalla prima settimana di dicembre, se possibile.\nRestiamo a disposizione per definire i dettagli operativi.\nCordiali saluti,\nAndrea Costa - Procurement"
+    },
+    {
+        "subject": "Comunicazione interna: chiusura uffici ponte novembre",
+        "from_name": "Risorse Umane",
+        "from_email": "risorseumane@rotta-logistics.example.com",
+        "date": "2024-11-05 11:48:27",
+        "body_text": "Gentili colleghi,\nvi comunichiamo che gli uffici amministrativi e commerciali resteranno chiusi venerdì 1 novembre per la festività.\nL'hub HUB-TO-02 e il servizio Consegna Lampo 24h continueranno a operare con il personale di turno per garantire le consegne urgenti.\nLe pratiche di reclamo aperte sul portale GestiClaim verranno gestite a partire da lunedì 4 novembre.\nVi invitiamo a pianificare per tempo le attività di fatturazione e i solleciti in modo da non lasciare scoperte le scadenze del periodo.\nGrazie e buona festività a tutti.\nRisorse Umane"
+    },
+    {
+        "subject": "Escalation direzione - rischio perdita cliente business",
+        "from_name": "Giulia Moretti",
+        "from_email": "commerciale@rotta-logistics.example.com",
+        "date": "2024-11-06 17:22:14",
+        "body_text": "Cara Direzione,\nporto in escalation la situazione del cliente Delta Forniture.\nNonostante i miglioramenti operativi, il cliente ha aperto altri 3 reclami su GestiClaim a ottobre e valuta seriamente di non rinnovare il contratto di trasporto in scadenza a dicembre.\nGenera oltre 300 spedizioni mensili con sconto volumi al 9%: la sua perdita peserebbe in modo significativo sul fatturato.\nPropongo: 1) call congiunta entro la settimana; 2) gesto commerciale con storno parziale del supplemento carburante di ottobre; 3) referente dedicato sull'hub HUB-TO-02.\nResto a disposizione per allinearci prima del contatto con il cliente.\nGiulia Moretti"
+    },
+    {
+        "subject": "Fattura n. 2024-1188 - Trasporti Ottobre",
+        "from_name": "Amministrazione Rotta Sicura",
+        "from_email": "fatturazione@rotta-logistics.example.com",
+        "date": "2024-11-07 10:55:39",
+        "body_text": "Spett.le Cliente,\nVi trasmettiamo la fattura n. 2024-1188 relativa ai servizi di trasporto erogati nel mese di ottobre 2024.\nImporto totale: 9.120,00 EUR (IVA inclusa).\nIl documento include 28 spedizioni, di cui 9 con servizio Consegna Lampo 24h, con applicazione del supplemento carburante al 5,3% e dello sconto volumi del 7% previsto dal contratto di trasporto.\nDall'importo è stata detratta la nota di credito NC-2024-061 di 245,00 EUR riconosciuta per il reclamo gestito su GestiClaim.\nScadenza pagamento: 30 giorni data fattura.\nRestiamo a disposizione per ogni chiarimento.\nCordiali saluti,\nUfficio Amministrazione"
+    },
+    {
+        "subject": "Invito riunione budget commerciale 2025",
+        "from_name": "Direzione Commerciale",
+        "from_email": "commerciale@rotta-logistics.example.com",
+        "date": "2024-11-11 09:12:48",
+        "body_text": "Cari colleghi,\nvi convoco per la riunione di definizione del budget commerciale 2025.\nData: giovedì 14 novembre, ore 10:00, sala riunioni grande + collegamento video.\nOrdine del giorno:\n1. Revisione del Tariffario in vista del 2025\n2. Obiettivi di crescita dei clienti business e dello sconto volumi\n3. Espansione del servizio Consegna Lampo 24h e impatto sull'hub HUB-TO-02\n4. Pipeline preventivi e nuovi contratti di trasporto\n5. Politica del supplemento carburante per l'anno prossimo\nVi chiedo di preparare i forecast dei rispettivi portafogli entro mercoledì.\nGrazie,\nDirezione Commerciale"
+    },
+    {
+        "subject": "Risposta a richiesta chiarimento fattura 2024-0912",
+        "from_name": "Amministrazione Rotta Sicura",
+        "from_email": "fatturazione@rotta-logistics.example.com",
+        "date": "2024-11-12 14:38:05",
+        "body_text": "Gentile Sig.ra Marchetti,\nin riferimento alla Vostra segnalazione sulla fattura n. 2024-0912, confermiamo che il supplemento carburante è stato erroneamente applicato al 5,3% anziché al 4,8% in vigore ad agosto.\nProvvediamo pertanto a emettere la nota di credito n. NC-2024-073 per la differenza di 38,50 EUR, che sarà compensata sulla prossima fattura.\nLo sconto volumi del 7% risulta correttamente applicato come da contratto di trasporto.\nVi ringraziamo per la segnalazione e Vi confermiamo che potete procedere al saldo del residuo.\nCi scusiamo per il disguido.\nCordiali saluti,\nUfficio Amministrazione Rotta Sicura"
+    },
+    {
+        "subject": "Reclamo qualità servizio - ritardi ripetuti tratta Nord-Est",
+        "from_name": "Roberto Sala",
+        "from_email": "direzione@cliente.example.com",
+        "date": "2024-11-15 16:09:51",
+        "body_text": "Spett.le Rotta Sicura,\nin qualità di responsabile logistica di Delta Forniture, scrivo per formalizzare la nostra forte insoddisfazione per i ritardi ripetuti sulle spedizioni verso il Nord-Est.\nNegli ultimi due mesi abbiamo aperto numerosi reclami sul portale GestiClaim, la maggior parte legati al transito presso l'hub HUB-TO-02 e al servizio Consegna Lampo 24h non rispettato.\nNonostante lo sconto volumi e un contratto di trasporto pluriennale, il livello di servizio non è all'altezza degli accordi.\nChiediamo un incontro entro la settimana per discutere un piano di miglioramento concreto, in mancanza del quale valuteremo il non rinnovo del contratto in scadenza.\nIn attesa di un Vostro urgente riscontro.\nRoberto Sala"
+    },
+    {
+        "subject": "Report task force reclami GestiClaim - risultati novembre",
+        "from_name": "Davide Russo",
+        "from_email": "operativo@rotta-logistics.example.com",
+        "date": "2024-11-25 15:44:30",
+        "body_text": "Buongiorno a tutti,\ncondivido i risultati della task force dedicata ai reclami su portale GestiClaim.\nNel mese di novembre:\n- Pratiche arretrate smaltite: 22 su 22 (100%)\n- Tempo medio di chiusura ridotto a 3,8 giorni\n- Reclami escalati alla direzione: 4\n- Reclami legati all'hub HUB-TO-02: in calo del 35%\nIl miglioramento sui tempi di consegna del servizio Consegna Lampo 24h sta riducendo gradualmente il flusso di nuovi reclami.\nProporrei di trasformare la task force in un presidio stabile.\nNe discutiamo alla prossima riunione operativa.\nGrazie del grande lavoro,\nDavide"
+    },
+    {
+        "subject": "Preventivo PRV-1042 logistica integrata clienti business",
+        "from_name": "Ufficio Commerciale",
+        "from_email": "commerciale@rotta-logistics.example.com",
+        "date": "2024-12-02 11:27:16",
+        "body_text": "Gentile cliente,\na seguito del nostro incontro, Vi trasmettiamo il preventivo PRV-1042 per un servizio di logistica integrata pensato per i clienti business.\nLa proposta comprende:\n- Tariffe dedicate basate sul Tariffario Aprile 2024\n- Sconto volumi progressivo fino al 12% oltre le 400 spedizioni mensili\n- Servizio Consegna Lampo 24h con priorità di smistamento all'hub HUB-TO-02\n- Supplemento carburante calcolato sull'indice mensile (attualmente 5,3%)\n- Reportistica periodica e referente dedicato\nIl preventivo è valido fino al 31 dicembre 2024.\nIn caso di interesse predisporremo il relativo contratto di trasporto.\nRestiamo a disposizione.\nCordiali saluti,\nUfficio Commerciale"
+    },
+    {
+        "subject": "Comunicazione interna: orari festività e turni dicembre",
+        "from_name": "Coordinamento Operativo",
+        "from_email": "operativo@rotta-logistics.example.com",
+        "date": "2024-12-09 08:42:55",
+        "body_text": "A tutto il personale,\nvi comunichiamo l'organizzazione dei turni per il periodo natalizio.\n- L'hub HUB-TO-02 resterà operativo fino al 24 dicembre con turno ridotto\n- Il servizio Consegna Lampo 24h sarà sospeso dal 25 dicembre al 1 gennaio\n- Le consegne ordinarie riprenderanno regolarmente dal 2 gennaio 2025\n- Il customer care presidierà il portale GestiClaim con personale ridotto durante le festività\nVi chiediamo di informare per tempo i clienti business sulle date di cut-off per garantire le consegne entro Natale (ultima accettazione 20 dicembre).\nGrazie per la collaborazione e buone feste a tutti.\nCoordinamento Operativo"
+    },
+    {
+        "subject": "Riepilogo annuale reclami e qualità servizio 2024",
+        "from_name": "Laura Conti",
+        "from_email": "customercare@rotta-logistics.example.com",
+        "date": "2024-12-18 16:30:22",
+        "body_text": "Care colleghe e cari colleghi,\ncondivido il riepilogo annuale dei reclami trasporto e della qualità del servizio per il 2024.\nNumeri salienti:\n- Reclami totali gestiti su GestiClaim: 1.512\n- Tempo medio prima risposta sceso da 48 a 28 ore\n- Tasso di risoluzione entro 5 giorni: 87% (era 79% a inizio anno)\n- Note di credito per disservizi: 1,2% del fatturato\n- Reclami servizio Consegna Lampo 24h: in calo nel secondo semestre grazie all'intervento sull'hub HUB-TO-02\nÈ stato un anno di crescita e di miglioramento misurabile.\nGrazie a tutti per l'impegno: nel 2025 punteremo al target delle 24 ore di prima risposta.\nBuone feste,\nLaura"
+    }
+]

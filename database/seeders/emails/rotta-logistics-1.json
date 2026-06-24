@@ -1,0 +1,954 @@
+[
+    {
+        "subject": "Conferma spedizione RL-2024-0815 presa in carico",
+        "from_name": "Sistema OrbitaWMS",
+        "from_email": "no-reply@rotta-logistics.example.com",
+        "date": "2024-01-08 09:14:22",
+        "body_text": "Gentile cliente,\n\nconfermiamo che la spedizione RL-2024-0815 è stata correttamente presa in carico presso l'hub HUB-MI-07 di Milano.\n\nDettagli:\n- Codice tracking: RL-TRACK-8842\n- Corriere assegnato: VeloxCorriere\n- Servizio: Consegna Lampo 24h\n- Colli: 3\n- Peso totale: 41,5 kg\n\nLa merce è stata registrata su OrbitaWMS e risulta in fase di smistamento. Riceverà aggiornamenti automatici a ogni cambio di stato.\n\nPer assistenza è attivo il numero verde 800-ROTTA1.\n\nCordiali saluti,\nRotta Sicura Logistics"
+    },
+    {
+        "subject": "Aggiornamento tracking RL-TRACK-8842: in transito",
+        "from_name": "Tracking Rotta Sicura",
+        "from_email": "tracking@rotta-logistics.example.com",
+        "date": "2024-01-09 11:42:05",
+        "body_text": "Buongiorno,\n\nla sua spedizione RL-2024-0815 ha cambiato stato.\n\nNuovo stato: IN TRANSITO\nPosizione attuale: in uscita da HUB-MI-07\nProssimo hub previsto: HUB-RM-05 Roma\nCorriere: VeloxCorriere\nConsegna stimata: 10/01/2024 entro le 13:00\n\nPuò seguire il percorso in tempo reale con il codice RL-TRACK-8842 sul nostro portale.\n\nIn caso di necessità contatti il numero verde 800-ROTTA1.\n\nGrazie per aver scelto Consegna Lampo 24h.\n\nRotta Sicura Logistics"
+    },
+    {
+        "subject": "ALERT ritardo corriere su tratta Milano-Napoli",
+        "from_name": "Centrale Operativa",
+        "from_email": "operations@rotta-logistics.example.com",
+        "date": "2024-01-10 08:27:48",
+        "body_text": "Attenzione,\n\nsi segnala un ritardo sulle consegne in partenza da HUB-MI-07 con destinazione HUB-NA-03 Napoli.\n\nCausa: blocco autostradale A1 per incidente all'altezza di Firenze.\nImpatto stimato: +4 ore sulle consegne odierne.\nSpedizioni coinvolte: 47, tra cui Consegna Lampo 24h con SLA 24h a rischio.\n\nIl corriere TurboPony sta valutando un percorso alternativo. Aggiorneremo lo stato dei tracking interessati entro le 12:00.\n\nMonitorare il rispetto dello SLA 98% e preparare eventuale comunicazione clienti.\n\nCentrale Operativa - 800-ROTTA1"
+    },
+    {
+        "subject": "Consegna completata - spedizione RL-2024-0815",
+        "from_name": "Sistema OrbitaWMS",
+        "from_email": "no-reply@rotta-logistics.example.com",
+        "date": "2024-01-10 12:51:33",
+        "body_text": "Gentile cliente,\n\nla spedizione RL-2024-0815 è stata CONSEGNATA con successo.\n\nData e ora consegna: 10/01/2024 12:48\nRicevuto da: M. Ferraro (firma digitale acquisita)\nCorriere: VeloxCorriere\nTracking: RL-TRACK-8842\n\nLa consegna rientra nei termini del servizio Consegna Lampo 24h. Il DDT firmato è disponibile nell'area riservata.\n\nLa ringraziamo per la fiducia. Per qualsiasi necessità il numero verde 800-ROTTA1 è a sua disposizione.\n\nRotta Sicura Logistics"
+    },
+    {
+        "subject": "Ricevuta DDT n. 2024/1182 disponibile",
+        "from_name": "Amministrazione Spedizioni",
+        "from_email": "ddt@rotta-logistics.example.com",
+        "date": "2024-01-12 14:18:10",
+        "body_text": "Buongiorno,\n\nè disponibile il Documento Di Trasporto relativo alla sua ultima spedizione.\n\nDDT n. 2024/1182\nData emissione: 12/01/2024\nMittente: HUB-TO-02 Torino\nDestinatario: Magazzino cliente, Roma\nColli: 5 - Peso: 78,2 kg\nCausale: vendita\n\nIl documento è scaricabile in PDF dall'area riservata ed è stato archiviato automaticamente su OrbitaWMS. Conservare copia per eventuali controlli doganali e fiscali.\n\nPer chiarimenti il numero verde 800-ROTTA1 è a disposizione.\n\nCordiali saluti,\nAmministrazione Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Spedizione bloccata in dogana: documenti mancanti",
+        "from_name": "Ufficio Dogana",
+        "from_email": "dogana@rotta-logistics.example.com",
+        "date": "2024-01-17 09:38:41",
+        "body_text": "Gentile cliente,\n\nla spedizione internazionale collegata al tracking RL-TRACK-9015 risulta trattenuta in dogana.\n\nMotivo: fattura proforma incompleta (manca codice HS su 2 articoli).\nUfficio: dogana di Malpensa.\nGiacenza dal: 17/01/2024.\n\nPer sbloccare la merce è necessario inviare la documentazione integrata entro 48 ore, altrimenti scatteranno costi di giacenza. La spedizione resta visibile su OrbitaWMS con stato SOSPESA.\n\nInviare i documenti rispondendo a questa email. Per assistenza il numero verde 800-ROTTA1 è attivo negli orari d'ufficio.\n\nUfficio Dogana - Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Report SLA settimanale: 98,4% rispettato",
+        "from_name": "Quality & SLA",
+        "from_email": "quality@rotta-logistics.example.com",
+        "date": "2024-01-19 16:22:07",
+        "body_text": "Buongiorno team,\n\nin allegato il riepilogo del rispetto SLA per la settimana 03/2024.\n\nSLA target: 98% consegne entro 24h.\nRisultato: 98,4% (1.247 consegne su 1.267 nei termini).\nConsegne fuori SLA: 20 (di cui 12 per ritardo VeloxCorriere su tratta Roma-Napoli).\nPenali maturate: nessuna soglia critica superata.\n\nL'hub con performance migliore è HUB-TO-02 (99,1%), il più critico HUB-NA-03 (96,8%) per congestione magazzino. Dati estratti da OrbitaWMS.\n\nProssima revisione lunedì. Numero verde 800-ROTTA1.\n\nQuality & SLA - Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Notifica tentativo di consegna fallito RL-TRACK-7731",
+        "from_name": "Tracking Rotta Sicura",
+        "from_email": "tracking@rotta-logistics.example.com",
+        "date": "2024-01-22 13:09:25",
+        "body_text": "Gentile cliente,\n\nil corriere TurboPony ha effettuato un tentativo di consegna non andato a buon fine.\n\nTracking: RL-TRACK-7731\nMotivo: destinatario assente.\nData tentativo: 22/01/2024 12:55.\nNuovo tentativo: previsto domani 23/01 in fascia 09:00-13:00.\n\nPuò gestire la riconsegna o richiedere il ritiro presso il punto convenzionato collegato a HUB-RM-05 accedendo all'area riservata.\n\nPer modificare la consegna chiami il numero verde 800-ROTTA1.\n\nRotta Sicura Logistics"
+    },
+    {
+        "subject": "Apertura pratica reclamo su GestiClaim - rif. RL-2024-0815",
+        "from_name": "Customer Care",
+        "from_email": "reclami@rotta-logistics.example.com",
+        "date": "2024-01-24 10:47:53",
+        "body_text": "Gentile cliente,\n\nabbiamo registrato la sua segnalazione e aperto una pratica sul sistema GestiClaim.\n\nNumero pratica: GC-2024-0331\nSpedizione di riferimento: RL-2024-0815\nTipologia: collo danneggiato (1 su 3).\nStato: in lavorazione.\n\nUn nostro operatore esaminerà la documentazione fotografica e il DDT entro 5 giorni lavorativi. Le risposte e gli aggiornamenti verranno tracciati su GestiClaim e notificati via email.\n\nPer urgenze il numero verde 800-ROTTA1 è a sua disposizione.\n\nCordiali saluti,\nCustomer Care Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Conferma ritiro programmato presso HUB-NA-03",
+        "from_name": "Sistema OrbitaWMS",
+        "from_email": "no-reply@rotta-logistics.example.com",
+        "date": "2024-01-26 08:55:12",
+        "body_text": "Buongiorno,\n\nconfermiamo la programmazione del ritiro merce.\n\nData ritiro: 27/01/2024\nFascia oraria: 10:00 - 12:00\nHub di riferimento: HUB-NA-03 Napoli\nCorriere incaricato: VeloxCorriere\nColli previsti: 8 - Peso stimato: 120 kg\n\nIl ritiro è stato inserito nel giro odierno su OrbitaWMS. Si prega di avere la merce imballata e i DDT pronti al momento del passaggio del corriere.\n\nPer modifiche contattare il numero verde 800-ROTTA1.\n\nRotta Sicura Logistics"
+    },
+    {
+        "subject": "ALERT: saturazione magazzino HUB-MI-07",
+        "from_name": "Gestione Magazzino",
+        "from_email": "magazzino@rotta-logistics.example.com",
+        "date": "2024-01-29 15:31:40",
+        "body_text": "Attenzione team operativo,\n\nOrbitaWMS segnala una saturazione dello stoccaggio presso HUB-MI-07 al 94% della capacità.\n\nLe ubicazioni della zona B sono quasi piene e rischiamo rallentamenti sullo smistamento delle Consegne Lampo 24h.\n\nAzioni richieste:\n- Anticipare le partenze pomeridiane con VeloxCorriere e TurboPony.\n- Dirottare i nuovi ingressi su HUB-TO-02 dove c'è capienza.\n- Verificare i colli in giacenza oltre 72h da prioritizzare.\n\nMonitorare la dashboard fino al rientro sotto l'85%.\n\nGestione Magazzino - 800-ROTTA1"
+    },
+    {
+        "subject": "Report mensile gennaio: volumi e performance hub",
+        "from_name": "Quality & SLA",
+        "from_email": "quality@rotta-logistics.example.com",
+        "date": "2024-02-01 16:48:55",
+        "body_text": "Buongiorno team,\n\nriepilogo operativo del mese di gennaio 2024 estratto da OrbitaWMS.\n\nSpedizioni totali gestite: 5.412.\nSLA 24h medio: 98,1% (target 98% rispettato).\nHub top: HUB-TO-02 (99,0%).\nHub critico: HUB-NA-03 (96,5%) per maltempo e saturazione.\nPenali maturate: 1 cliente, 420 €.\nReclami aperti su GestiClaim: 23, chiusi 19.\nRipartizione corrieri: VeloxCorriere 58%, TurboPony 42%.\n\nFocus febbraio: ridurre i tempi di smistamento a Napoli e bilanciare i carichi su Torino. Numero verde 800-ROTTA1.\n\nQuality & SLA - Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Conferma spedizione multipla ordine #ORD-4471",
+        "from_name": "Sistema OrbitaWMS",
+        "from_email": "no-reply@rotta-logistics.example.com",
+        "date": "2024-02-02 08:41:07",
+        "body_text": "Gentile cliente,\n\nl'ordine #ORD-4471 è stato evaso in due spedizioni separate per ottimizzare i tempi di consegna.\n\nSpedizione 1: RL-2024-1280 - tracking RL-TRACK-8810 - VeloxCorriere - da HUB-MI-07.\nSpedizione 2: RL-2024-1281 - tracking RL-TRACK-8811 - TurboPony - da HUB-TO-02.\n\nEntrambe viaggiano con servizio Consegna Lampo 24h. Riceverà aggiornamenti distinti per ciascun tracking.\n\nIl dettaglio articoli per spedizione è consultabile su OrbitaWMS. Numero verde 800-ROTTA1.\n\nRotta Sicura Logistics"
+    },
+    {
+        "subject": "Notifica scadenza documenti doganali pratica DOG-2024-017",
+        "from_name": "Ufficio Dogana",
+        "from_email": "dogana@rotta-logistics.example.com",
+        "date": "2024-02-07 09:05:33",
+        "body_text": "Gentile cliente,\n\nle ricordiamo che mancano 24 ore alla scadenza per l'integrazione documenti della pratica doganale DOG-2024-017.\n\nSpedizione collegata: tracking RL-TRACK-9015.\nDocumenti ancora attesi: certificato di origine, fattura definitiva.\nScadenza: 08/02/2024 ore 09:00.\n\nIn assenza dei documenti la merce resterà in giacenza con addebito dei relativi costi e lo stato su OrbitaWMS rimarrà SOSPESA.\n\nLa preghiamo di provvedere con urgenza. Numero verde 800-ROTTA1.\n\nUfficio Dogana - Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Esito pratica GestiClaim GC-2024-0331: rimborso approvato",
+        "from_name": "Customer Care",
+        "from_email": "reclami@rotta-logistics.example.com",
+        "date": "2024-02-09 14:55:02",
+        "body_text": "Gentile cliente,\n\nla pratica GC-2024-0331 aperta su GestiClaim per la spedizione RL-2024-0815 è stata definita.\n\nEsito: rimborso APPROVATO.\nMotivazione: collo danneggiato confermato dalla documentazione fotografica.\nImporto riconosciuto: 85,00 €.\nModalità: nota di credito sulla prossima fattura.\n\nLa pratica passa ora allo stato CHIUSA. Tutti i dettagli restano consultabili su GestiClaim.\n\nCi scusiamo per l'inconveniente e la ringraziamo per la pazienza. Numero verde 800-ROTTA1.\n\nCustomer Care - Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Nuovo corriere TurboPony attivo su tratta Torino",
+        "from_name": "Coordinamento Corrieri",
+        "from_email": "corrieri@rotta-logistics.example.com",
+        "date": "2024-02-12 09:48:29",
+        "body_text": "Comunicazione operativa,\n\nda oggi il corriere TurboPony è operativo anche sulle tratte in partenza da HUB-TO-02 Torino, affiancando VeloxCorriere.\n\nObiettivo: aumentare la capacità sulle Consegne Lampo 24h e migliorare lo SLA verso il Nord-Ovest.\n\nLa ripartizione dei carichi è gestita automaticamente da OrbitaWMS in base alla destinazione e al peso. Gli operatori troveranno i nuovi codici corriere già mappati nelle anagrafiche.\n\nSegnalate eventuali anomalie di assegnazione al numero verde 800-ROTTA1.\n\nCoordinamento Corrieri - Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Ricevuta DDT n. 2024/1390 e bolla doganale",
+        "from_name": "Amministrazione Spedizioni",
+        "from_email": "ddt@rotta-logistics.example.com",
+        "date": "2024-02-14 11:47:12",
+        "body_text": "Buongiorno,\n\nsono disponibili i documenti di trasporto relativi alla spedizione RL-2024-1602.\n\nDDT n. 2024/1390 (data 14/02/2024).\nBolla doganale allegata per la quota in transito internazionale.\nMittente: HUB-MI-07 Milano.\nDestinatario: cliente di Verona.\nColli: 4 - Peso: 52 kg - Tracking: RL-TRACK-9450.\n\nI file PDF sono scaricabili dall'area riservata e archiviati su OrbitaWMS. Conservare per controlli fiscali e doganali.\n\nPer chiarimenti: numero verde 800-ROTTA1.\n\nAmministrazione - Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Conferma sblocco merce in dogana RL-TRACK-9015",
+        "from_name": "Ufficio Dogana",
+        "from_email": "dogana@rotta-logistics.example.com",
+        "date": "2024-02-16 09:41:07",
+        "body_text": "Gentile cliente,\n\nbuone notizie: la merce trattenuta in dogana è stata svincolata.\n\nTracking: RL-TRACK-9015.\nPratica: DOG-2024-017 (chiusa).\nDocumenti ricevuti e validati: certificato di origine + fattura definitiva.\nNuovo stato su OrbitaWMS: IN TRANSITO verso HUB-NA-03 Napoli.\nConsegna stimata: 19/02/2024.\n\nNon sono stati addebitati costi di giacenza grazie all'integrazione tempestiva. Riceverà i consueti aggiornamenti di tracking.\n\nGrazie per la collaborazione. Numero verde 800-ROTTA1.\n\nUfficio Dogana - Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Avviso riprogrammazione consegne per sciopero trasporti",
+        "from_name": "Centrale Operativa",
+        "from_email": "operations@rotta-logistics.example.com",
+        "date": "2024-02-20 08:14:53",
+        "body_text": "Avviso clienti,\n\nper lo sciopero nazionale del trasporto merci previsto il 22/02/2024, alcune consegne subiranno variazioni.\n\nHub coinvolti: HUB-MI-07, HUB-RM-05, HUB-NA-03.\nCorrieri: VeloxCorriere e TurboPony con servizio ridotto.\nSLA 24h sospeso per la giornata di sciopero (causa di forza maggiore).\n\nLe spedizioni in partenza saranno riprogrammate al 23/02 e marcate su OrbitaWMS con causale sciopero. Le Consegne Lampo 24h urgenti verranno valutate caso per caso.\n\nAggiornamenti sul portale. Numero verde 800-ROTTA1.\n\nCentrale Operativa - Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Conferma apertura ticket GestiClaim per smarrimento collo",
+        "from_name": "Customer Care",
+        "from_email": "reclami@rotta-logistics.example.com",
+        "date": "2024-02-21 10:09:18",
+        "body_text": "Gentile cliente,\n\nabbiamo aperto una pratica su GestiClaim per il presunto smarrimento di un collo.\n\nNumero pratica: GC-2024-0407.\nSpedizione: RL-2024-1281.\nTracking: RL-TRACK-8811.\nUltima scansione registrata: HUB-TO-02 Torino, 16/02/2024.\nStato pratica: indagine in corso.\n\nIl reparto magazzino di HUB-TO-02 sta effettuando una verifica fisica delle ubicazioni. Le forniremo un riscontro entro 7 giorni lavorativi, con eventuale procedura di indennizzo.\n\nLa terremo aggiornata su GestiClaim. Numero verde 800-ROTTA1.\n\nCustomer Care - Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Promemoria scadenza fattura trasporto FT-2024-0412",
+        "from_name": "Amministrazione",
+        "from_email": "amministrazione@rotta-logistics.example.com",
+        "date": "2024-02-26 11:19:54",
+        "body_text": "Spettabile cliente,\n\nle ricordiamo la prossima scadenza di pagamento.\n\nFattura: FT-2024-0412.\nImporto: 1.284,50 € (servizi di trasporto febbraio 2024, comprensivi di Consegne Lampo 24h).\nScadenza: 05/03/2024.\nModalità: bonifico bancario.\n\nIl dettaglio delle spedizioni fatturate, con relativi tracking e DDT, è consultabile nell'area riservata e su OrbitaWMS. Eventuali note di credito per penali SLA sono già state scalate.\n\nPer chiarimenti contabili: numero verde 800-ROTTA1.\n\nAmministrazione - Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Notifica chiusura indagine GestiClaim GC-2024-0407",
+        "from_name": "Customer Care",
+        "from_email": "reclami@rotta-logistics.example.com",
+        "date": "2024-02-28 15:33:21",
+        "body_text": "Gentile cliente,\n\nl'indagine sulla pratica GC-2024-0407 è conclusa.\n\nSpedizione: RL-2024-1281 - tracking RL-TRACK-8811.\nEsito: collo RITROVATO presso HUB-TO-02 Torino, ubicazione errata in fase di smistamento.\nAzione: rispedizione immediata con VeloxCorriere.\nNuova consegna stimata: 01/03/2024.\n\nLa pratica resta aperta su GestiClaim fino alla consegna definitiva. Ci scusiamo per il disagio e per i tempi di indagine.\n\nPer qualsiasi necessità: numero verde 800-ROTTA1.\n\nCustomer Care - Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Report performance corrieri febbraio 2024",
+        "from_name": "Coordinamento Corrieri",
+        "from_email": "corrieri@rotta-logistics.example.com",
+        "date": "2024-03-04 16:40:12",
+        "body_text": "Team,\n\nriepilogo performance corrieri per febbraio 2024 da OrbitaWMS.\n\nVeloxCorriere: 3.020 consegne, SLA 24h 98,7%, tasso danni 0,4%.\nTurboPony: 2.510 consegne, SLA 24h 97,2%, tasso danni 0,9%.\n\nNote:\n- TurboPony sotto target sulla tratta Napoli (HUB-NA-03), in recupero.\n- VeloxCorriere stabile su Milano (HUB-MI-07) e Torino (HUB-TO-02).\n- Reclami GestiClaim per corriere: Velox 9, Turbo 17.\n\nProssimo step: riassegnazione carichi pesanti a VeloxCorriere sulle tratte critiche. Numero verde 800-ROTTA1.\n\nCoordinamento Corrieri - Rotta Sicura Logistics"
+    },
+    {
+        "subject": "ALERT: ritardo smistamento per guasto nastro HUB-NA-03",
+        "from_name": "Gestione Magazzino",
+        "from_email": "magazzino@rotta-logistics.example.com",
+        "date": "2024-03-06 07:48:25",
+        "body_text": "Attenzione team operativo,\n\nsi è verificato un guasto al nastro trasportatore principale di HUB-NA-03 Napoli.\n\nImpatto: smistamento rallentato del 40%, possibili ritardi sulle Consegne Lampo 24h in partenza oggi.\nSpedizioni in coda su OrbitaWMS: 320.\n\nAzioni:\n- Smistamento manuale sui colli prioritari con SLA in scadenza.\n- Dirottare parte del volume su HUB-RM-05 Roma.\n- Avvisare VeloxCorriere e TurboPony del possibile slittamento partenze.\n\nIntervento tecnico in corso, ripristino stimato entro le 11:00. Numero verde 800-ROTTA1.\n\nGestione Magazzino - Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Conferma spedizione urgente RL-2024-1980",
+        "from_name": "Sistema OrbitaWMS",
+        "from_email": "no-reply@rotta-logistics.example.com",
+        "date": "2024-03-11 08:33:46",
+        "body_text": "Gentile cliente,\n\nla spedizione urgente RL-2024-1980 è stata presa in carico.\n\nTracking: RL-TRACK-9712.\nHub di origine: HUB-MI-07 Milano.\nCorriere: VeloxCorriere.\nServizio: Consegna Lampo 24h con priorità massima.\nColli: 1 - Peso: 6,2 kg.\nDestinazione: Firenze.\n\nDato il flag di urgenza, OrbitaWMS ha collocato il collo in cima alla coda di smistamento. Consegna stimata: 12/03/2024 entro le 10:00. Riceverà notifiche frequenti.\n\nPer assistenza: numero verde 800-ROTTA1.\n\nRotta Sicura Logistics"
+    },
+    {
+        "subject": "Notifica anomalia peso dichiarato RL-2024-1980",
+        "from_name": "Gestione Magazzino",
+        "from_email": "magazzino@rotta-logistics.example.com",
+        "date": "2024-03-12 14:26:11",
+        "body_text": "Gentile cliente,\n\nin fase di controllo presso HUB-MI-07 è emersa una discrepanza tra il peso dichiarato e quello rilevato per la spedizione RL-2024-1980.\n\nPeso dichiarato: 6,2 kg.\nPeso rilevato: 9,5 kg.\nTracking: RL-TRACK-9712.\n\nLa differenza non ha bloccato la consegna ma comporta un conguaglio tariffario, già registrato su OrbitaWMS. Il dettaglio sarà riportato nella prossima fattura.\n\nLa invitiamo a verificare i dati di peso in fase di prenotazione per evitare conguagli futuri. Numero verde 800-ROTTA1.\n\nGestione Magazzino - Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Ricevuta automatica reso accettato RES-2024-0152",
+        "from_name": "Gestione Resi",
+        "from_email": "resi@rotta-logistics.example.com",
+        "date": "2024-03-18 09:44:03",
+        "body_text": "Buongiorno,\n\nconfermiamo l'accettazione del reso.\n\nNumero reso: RES-2024-0152.\nSpedizione originaria: RL-2024-1740.\nMotivo: prodotto non conforme.\nRitiro programmato: 20/03/2024, fascia 14:00 - 17:00.\nCorriere: VeloxCorriere.\nHub di rientro: HUB-NA-03 Napoli.\n\nAlla ricezione e verifica della merce, OrbitaWMS aggiornerà lo stato e avvieremo rimborso o sostituzione. Tenga pronta la merce nell'imballo originale con la copia del DDT.\n\nPer assistenza: numero verde 800-ROTTA1.\n\nGestione Resi - Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Conferma spedizione RL-2024-2110 con consegna pianificata",
+        "from_name": "Sistema OrbitaWMS",
+        "from_email": "no-reply@rotta-logistics.example.com",
+        "date": "2024-03-21 09:12:55",
+        "body_text": "Gentile cliente,\n\nla spedizione RL-2024-2110 è stata acquisita con consegna su appuntamento.\n\nTracking: RL-TRACK-9905.\nHub di origine: HUB-RM-05 Roma.\nCorriere: TurboPony.\nColli: 12 - Peso: 240 kg.\nConsegna concordata: 25/03/2024, fascia 09:00 - 12:00.\n\nTrattandosi di consegna pianificata, lo SLA 24h standard non si applica; vale l'appuntamento concordato. Lo stato è registrato su OrbitaWMS come SCHEDULATA.\n\nPer variazioni d'appuntamento: numero verde 800-ROTTA1.\n\nRotta Sicura Logistics"
+    },
+    {
+        "subject": "Avviso giacenza doganale spedizione internazionale",
+        "from_name": "Ufficio Dogana",
+        "from_email": "dogana@rotta-logistics.example.com",
+        "date": "2024-03-25 09:29:48",
+        "body_text": "Gentile cliente,\n\nla informiamo che una spedizione in import è in giacenza doganale in attesa di liquidazione dazi.\n\nTracking: RL-TRACK-9988.\nUfficio: dogana di Civitavecchia.\nGiacenza dal: 24/03/2024.\nImporto dazi stimato: 312,00 €.\nDestinazione finale: HUB-RM-05 Roma.\n\nPer procedere allo svincolo è necessaria la sua autorizzazione al pagamento dei dazi. Lo stato su OrbitaWMS resta SOSPESA fino alla liquidazione. Costi di giacenza esenti per i primi 3 giorni.\n\nPer autorizzare risponda a questa email. Numero verde 800-ROTTA1.\n\nUfficio Dogana - Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Notifica consegna parziale RL-2024-2110",
+        "from_name": "Tracking Rotta Sicura",
+        "from_email": "tracking@rotta-logistics.example.com",
+        "date": "2024-03-25 11:48:22",
+        "body_text": "Gentile cliente,\n\nla consegna su appuntamento è stata effettuata in modo parziale.\n\nSpedizione: RL-2024-2110.\nTracking: RL-TRACK-9905.\nColli consegnati: 10 su 12.\nColli mancanti: 2 (rimasti a HUB-RM-05 per ingombro mezzo).\nNuova consegna dei colli residui: 26/03/2024.\nCorriere: TurboPony.\n\nLa consegna parziale è registrata su OrbitaWMS; il DDT riporta i colli effettivamente consegnati. I 2 colli residui ripartiranno domani.\n\nCi scusiamo per il disagio. Numero verde 800-ROTTA1.\n\nRotta Sicura Logistics"
+    },
+    {
+        "subject": "ALERT volumi: picco di fine mese in arrivo",
+        "from_name": "Pianificazione Spedizioni",
+        "from_email": "planning@rotta-logistics.example.com",
+        "date": "2024-03-28 09:06:41",
+        "body_text": "Comunicazione operativa,\n\nle previsioni OrbitaWMS indicano un picco di volumi per gli ultimi giorni di marzo.\n\nIncremento atteso: +35% di spedizioni rispetto alla media.\nHub più sollecitati: HUB-MI-07 e HUB-RM-05.\nServizio più richiesto: Consegna Lampo 24h.\n\nAzioni preventive:\n- Turni rinforzati allo smistamento.\n- Capacità extra richiesta a VeloxCorriere e TurboPony.\n- Cut-off rispettati rigorosamente per non compromettere lo SLA 98%.\n\nMonitorare le code e segnalare colli prioritari. Numero verde 800-ROTTA1.\n\nPianificazione - Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Ricevuta liquidazione dazi e svincolo RL-TRACK-9988",
+        "from_name": "Ufficio Dogana",
+        "from_email": "dogana@rotta-logistics.example.com",
+        "date": "2024-04-02 09:58:14",
+        "body_text": "Gentile cliente,\n\nconfermiamo la liquidazione dei dazi e lo svincolo della spedizione in import.\n\nTracking: RL-TRACK-9988.\nDazi liquidati: 312,00 €.\nUfficio: dogana di Civitavecchia.\nNuovo stato su OrbitaWMS: IN TRANSITO verso HUB-RM-05 Roma.\nConsegna stimata: 04/04/2024.\n\nLa ricevuta di pagamento dazi e la bolla doganale sono disponibili nell'area riservata. Da questo momento la spedizione segue il normale flusso di tracking con notifiche automatiche.\n\nGrazie per l'autorizzazione tempestiva. Numero verde 800-ROTTA1.\n\nUfficio Dogana - Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Conferma consegna RL-2024-2340 e questionario qualità",
+        "from_name": "Sistema OrbitaWMS",
+        "from_email": "no-reply@rotta-logistics.example.com",
+        "date": "2024-04-06 12:19:44",
+        "body_text": "Gentile cliente,\n\nla spedizione RL-2024-2340 è stata consegnata.\n\nData e ora: 06/04/2024 12:15.\nRicevuto da: ufficio merci (firma acquisita).\nCorriere: VeloxCorriere.\nTracking: RL-TRACK-10112.\nServizio: standard 48h, consegna nei termini.\n\nIl DDT firmato è disponibile nell'area riservata e su OrbitaWMS. Se desidera, può lasciare una valutazione del servizio dal link nell'area riservata: il suo feedback ci aiuta a migliorare lo SLA.\n\nGrazie per la fiducia. Numero verde 800-ROTTA1.\n\nRotta Sicura Logistics"
+    },
+    {
+        "subject": "Notifica reclamo cliente su tempi di consegna",
+        "from_name": "Customer Care",
+        "from_email": "reclami@rotta-logistics.example.com",
+        "date": "2024-04-08 10:52:09",
+        "body_text": "Gentile cliente,\n\nabbiamo registrato la sua segnalazione relativa ai tempi di consegna e aperto pratica su GestiClaim.\n\nNumero pratica: GC-2024-0511.\nSpedizione: RL-2024-2340.\nTracking: RL-TRACK-10112.\nLamentela: consegna percepita oltre i tempi attesi.\n\nDalla verifica su OrbitaWMS la spedizione era a servizio standard 48h e risulta consegnata nei termini il 06/04. Le invieremo il dettaglio degli stati a riprova. Restiamo comunque a disposizione per chiarimenti.\n\nLa pratica resta tracciata su GestiClaim. Numero verde 800-ROTTA1.\n\nCustomer Care - Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Promemoria appuntamento ritiro merce HUB-RM-05",
+        "from_name": "Centrale Operativa",
+        "from_email": "operations@rotta-logistics.example.com",
+        "date": "2024-04-15 09:23:31",
+        "body_text": "Gentile cliente,\n\nle ricordiamo l'appuntamento per il ritiro merce di domani.\n\nData ritiro: 16/04/2024.\nFascia oraria: 09:00 - 11:00.\nHub di riferimento: HUB-RM-05 Roma.\nCorriere incaricato: TurboPony.\nColli previsti: 15 - Peso stimato: 280 kg.\n\nIl ritiro è confermato su OrbitaWMS. La preghiamo di avere la merce imballata, etichettata e accompagnata dai DDT. In caso di impedimento ci avvisi entro oggi per riprogrammare.\n\nPer modifiche: numero verde 800-ROTTA1.\n\nCentrale Operativa - Rotta Sicura Logistics"
+    },
+    {
+        "subject": "ALERT: tentata consegna fuori orario, riprogrammazione",
+        "from_name": "Tracking Rotta Sicura",
+        "from_email": "tracking@rotta-logistics.example.com",
+        "date": "2024-04-18 17:12:58",
+        "body_text": "Gentile cliente,\n\nil corriere VeloxCorriere ha tentato la consegna oltre l'orario di apertura del destinatario.\n\nTracking: RL-TRACK-10245.\nSpedizione: RL-2024-2510.\nMotivo: sede chiusa al momento del passaggio (18:40).\nNuovo tentativo: 19/04/2024 in fascia 09:00 - 12:00.\n\nLe consigliamo di confermare gli orari di apertura per evitare ulteriori tentativi a vuoto. Lo stato è aggiornato su OrbitaWMS come RICONSEGNA PROGRAMMATA.\n\nPuò gestire la consegna dall'area riservata o al numero verde 800-ROTTA1.\n\nRotta Sicura Logistics"
+    },
+    {
+        "subject": "Conferma rimborso penale e nota di credito",
+        "from_name": "Amministrazione",
+        "from_email": "amministrazione@rotta-logistics.example.com",
+        "date": "2024-04-22 11:36:25",
+        "body_text": "Spettabile cliente,\n\na seguito della verifica delle consegne fuori SLA del primo trimestre, abbiamo emesso una nota di credito.\n\nNota di credito: NC-2024-0078.\nImporto: 156,00 €.\nMotivazione: superamento soglia SLA 24h su 4 spedizioni.\nApplicazione: scalata sulla prossima fattura.\n\nIl dettaglio delle spedizioni penalizzate è disponibile su OrbitaWMS. Stiamo lavorando con i corrieri VeloxCorriere e TurboPony per ridurre i ritardi futuri sulla tratta HUB-NA-03.\n\nPer chiarimenti contabili: numero verde 800-ROTTA1.\n\nAmministrazione - Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Report trimestrale Q1 2024: sintesi operativa",
+        "from_name": "Quality & SLA",
+        "from_email": "quality@rotta-logistics.example.com",
+        "date": "2024-04-24 16:58:47",
+        "body_text": "Buongiorno team,\n\nsintesi del primo trimestre 2024 estratta da OrbitaWMS.\n\nSpedizioni totali: 16.940.\nSLA 24h medio: 98,0% (target centrato).\nConsegne Consegna Lampo 24h: 61% del totale.\nReclami GestiClaim: 78 aperti, 71 chiusi.\nPenali maturate: 576 € (note di credito già emesse).\nHub top trimestre: HUB-TO-02 (98,8%).\nCorriere top: VeloxCorriere.\n\nObiettivi Q2: portare HUB-NA-03 sopra il 98% e ridurre i tentativi di consegna a vuoto. Numero verde 800-ROTTA1.\n\nQuality & SLA - Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Avviso aggiornamento listino servizi Consegna Lampo 24h",
+        "from_name": "Coordinamento Corrieri",
+        "from_email": "corrieri@rotta-logistics.example.com",
+        "date": "2024-04-26 10:41:19",
+        "body_text": "Spettabile cliente,\n\nla informiamo dell'aggiornamento del listino per il servizio Consegna Lampo 24h, in vigore dal 01/05/2024.\n\nVariazione: adeguamento tariffario medio +3% per i costi carburante dei corrieri VeloxCorriere e TurboPony.\nResta invariato lo SLA 98% / 24h e la copertura su tutti gli hub (HUB-MI-07, HUB-RM-05, HUB-NA-03, HUB-TO-02).\nLe penali per mancato rispetto SLA restano a nostro carico.\n\nIl nuovo listino sarà visibile nell'area riservata. Per un preventivo personalizzato contatti il numero verde 800-ROTTA1.\n\nCoordinamento Corrieri - Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Notifica chiusura mensile e backup OrbitaWMS",
+        "from_name": "IT Operations",
+        "from_email": "it@rotta-logistics.example.com",
+        "date": "2024-04-28 18:02:44",
+        "body_text": "Avviso a tutti gli operatori,\n\nquesta sera, domenica 28/04/2024, dalle 22:00 partirà la procedura di chiusura mensile e backup di OrbitaWMS.\n\nDurante la finestra (circa 90 minuti):\n- Consolidamento dei dati di spedizione, tracking, DDT e pratiche GestiClaim di aprile.\n- Tracking pubblico in sola lettura.\n- Nessuna nuova registrazione spedizione fino a fine procedura.\n\nLe partenze notturne di HUB-MI-07 e HUB-TO-02 sono già pianificate. A fine backup invieremo conferma di ripristino completo.\n\nPer emergenze: numero verde 800-ROTTA1.\n\nIT Operations - Rotta Sicura Logistics"
+    },
+    {
+        "subject": "Stato spedizione RL-2024-0815, quando arriva?",
+        "from_name": "Giulia Ferraro",
+        "from_email": "giulia.ferraro@cliente.example.com",
+        "date": "2024-05-02 09:14:22",
+        "body_text": "Buongiorno,\nvi scrivo per avere notizie sulla spedizione RL-2024-0815, partita la settimana scorsa dal vostro magazzino. Il tracking RL-TRACK-8842 risulta fermo da due giorni sullo stato \"in transito\" e il cliente finale inizia a chiedermi aggiornamenti.\nMi confermate cortesemente la data di consegna prevista e l'hub di smistamento attuale? Avevamo concordato la formula Consegna Lampo 24h, quindi vorrei capire se i tempi sono rispettati.\nResto in attesa di un vostro riscontro.\nCordiali saluti,\nGiulia Ferraro"
+    },
+    {
+        "subject": "Re: Stato spedizione RL-2024-0815, quando arriva?",
+        "from_name": "Marco Trevisan",
+        "from_email": "marco.trevisan@rotta-logistics.example.com",
+        "date": "2024-05-02 10:48:51",
+        "body_text": "Gentile Sig.ra Ferraro,\ngrazie per il messaggio. Ho verificato la spedizione RL-2024-0815: il collo ha lasciato l'HUB-MI-07 di Milano ieri sera ed è ora in carico al corriere VeloxCorriere verso l'HUB-RM-05 di Roma. Il tracking RL-TRACK-8842 si aggiornerà entro stasera con lo scan di arrivo all'hub di destinazione.\nLa consegna è confermata per domani entro le 13:00, nel rispetto della formula Consegna Lampo 24h. Il blocco che ha notato era dovuto a un disallineamento dello scan in partenza, ora risolto.\nPer qualsiasi necessità resto a disposizione anche al numero verde 800-ROTTA1.\nCordiali saluti,\nMarco Trevisan"
+    },
+    {
+        "subject": "Richiesta DDT per ordine consegnato",
+        "from_name": "Davide Lombardi",
+        "from_email": "amministrazione@cliente.example.com",
+        "date": "2024-05-06 11:32:09",
+        "body_text": "Salve,\nabbiamo ricevuto regolarmente la merce relativa alla spedizione RL-2024-0790, ma in fase di registrazione contabile ci siamo accorti che manca il DDT cartaceo: il fattorino non lo ha lasciato al ricevimento.\nPotete inviarci copia del documento di trasporto in PDF, così da chiudere la pratica? Ci serve per la corrispondenza con la fattura.\nGrazie in anticipo per la collaborazione.\nDavide Lombardi\nUfficio Acquisti"
+    },
+    {
+        "subject": "Re: Richiesta DDT per ordine consegnato",
+        "from_name": "Sara Bianchi",
+        "from_email": "sara.bianchi@rotta-logistics.example.com",
+        "date": "2024-05-06 14:05:40",
+        "body_text": "Gentile Sig. Lombardi,\nci scusiamo per la mancata consegna del cartaceo. In allegato trova il DDT in PDF relativo alla spedizione RL-2024-0790, generato dal nostro gestionale OrbitaWMS e firmato digitalmente.\nIl documento riporta la data di consegna, i colli e il riferimento ordine; può abbinarlo senza problemi alla fattura.\nAbbiamo inoltre segnalato al corriere VeloxCorriere l'episodio del DDT non rilasciato, per evitare che si ripeta.\nSe le serve anche la prova di consegna firmata (POD) ce lo faccia sapere.\nCordiali saluti,\nSara Bianchi"
+    },
+    {
+        "subject": "Possibile ritardo per maltempo sull'A1?",
+        "from_name": "Elena Russo",
+        "from_email": "elena.russo@posta.example.com",
+        "date": "2024-05-09 08:27:14",
+        "body_text": "Buongiorno,\nho visto al telegiornale che ci sono forti temporali e rallentamenti sull'autostrada A1 tra Bologna e Firenze. La mia spedizione RL-2024-0833 dovrebbe transitare proprio da quella tratta oggi.\nC'è il rischio che la consegna prevista per domani slitti? Vi chiedo perché devo organizzarmi per essere presente al ritiro.\nGrazie mille per un cortese aggiornamento.\nElena Russo"
+    },
+    {
+        "subject": "Re: Possibile ritardo per maltempo sull'A1?",
+        "from_name": "Marco Trevisan",
+        "from_email": "marco.trevisan@rotta-logistics.example.com",
+        "date": "2024-05-09 09:50:33",
+        "body_text": "Gentile Sig.ra Russo,\nla ringrazio per la segnalazione. Confermiamo che monitoriamo la situazione sull'A1: i mezzi di VeloxCorriere sono stati deviati sulla viabilità alternativa per ridurre i tempi morti.\nLa sua spedizione RL-2024-0833 è già transitata dall'HUB-MI-07 e al momento il tracking non segnala ritardi: la consegna resta confermata per domani in fascia mattutina. Qualora il maltempo dovesse aggravarsi, le invieremo un alert tempestivo con la nuova finestra.\nLe consigliamo comunque di tenere d'occhio il tracking, che si aggiorna in tempo reale.\nCordiali saluti,\nMarco Trevisan"
+    },
+    {
+        "subject": "Cut-off ordini: entro che ora devo trasmettere?",
+        "from_name": "Roberto Conti",
+        "from_email": "roberto.conti@cliente.example.com",
+        "date": "2024-05-13 16:41:58",
+        "body_text": "Salve,\nstiamo ridefinendo i nostri processi interni e vorrei un chiarimento sui vostri orari di cut-off. Entro che ora devo trasmettere gli ordini affinché vengano lavorati e spediti in giornata dall'HUB-MI-07?\nIn passato mi pare che il limite fosse le 16:00, ma alcuni ordini delle 16:30 sono comunque partiti. Vorrei avere la regola ufficiale per non sbagliare con la formula Consegna Lampo 24h.\nGrazie,\nRoberto Conti"
+    },
+    {
+        "subject": "Re: Cut-off ordini: entro che ora devo trasmettere?",
+        "from_name": "Sara Bianchi",
+        "from_email": "sara.bianchi@rotta-logistics.example.com",
+        "date": "2024-05-13 17:22:11",
+        "body_text": "Gentile Sig. Conti,\nle confermo la regola ufficiale: il cut-off per la lavorazione in giornata è fissato alle ore 16:00 per tutti gli hub, incluso l'HUB-MI-07. Gli ordini trasmessi entro tale orario partono in serata e rientrano nella formula Consegna Lampo 24h.\nGli ordini delle 16:30 che sono partiti comunque sono stati gestiti come eccezione quando il magazzino aveva capacità residua, ma non possiamo garantirlo: oltre il cut-off la spedizione slitta al giorno lavorativo successivo.\nLe suggerisco quindi di mantenersi entro le 16:00 per avere la certezza dei tempi.\nCordiali saluti,\nSara Bianchi"
+    },
+    {
+        "subject": "Spedizione consegnata a indirizzo errato",
+        "from_name": "Francesca Galli",
+        "from_email": "francesca.galli@posta.example.com",
+        "date": "2024-05-16 10:08:45",
+        "body_text": "Buongiorno,\nho un problema con la spedizione RL-2024-0851, tracking RL-TRACK-8910. Il sistema la dà come consegnata ieri alle 14:20, ma io non ho ricevuto nulla. Ho sentito i vicini e nessuno ha ritirato per conto mio.\nTemo che il pacco sia stato lasciato a un indirizzo sbagliato. Potete verificare con il corriere dove è stato effettivamente consegnato e recuperarlo?\nÈ merce urgente, vi chiedo di intervenire al più presto.\nFrancesca Galli"
+    },
+    {
+        "subject": "Re: Spedizione consegnata a indirizzo errato",
+        "from_name": "Andrea Marini",
+        "from_email": "andrea.marini@rotta-logistics.example.com",
+        "date": "2024-05-16 11:37:29",
+        "body_text": "Gentile Sig.ra Galli,\nmi dispiace per il disguido. Ho aperto subito una verifica sulla spedizione RL-2024-0851: dalla geolocalizzazione del POD risulta che il corriere TurboPony ha consegnato a un civico adiacente al suo, probabilmente per un errore di lettura del numero.\nHo già dato disposizione al corriere di recuperare il collo presso quell'indirizzo e riconsegnarlo a lei entro domani mattina. Le invierò il nuovo tracking aggiornato non appena il ritiro è registrato in OrbitaWMS.\nLe rinnovo le scuse e resto a disposizione al numero verde 800-ROTTA1.\nCordiali saluti,\nAndrea Marini"
+    },
+    {
+        "subject": "Mancata consegna: penale applicabile?",
+        "from_name": "Stefano Greco",
+        "from_email": "stefano.greco@cliente.example.com",
+        "date": "2024-05-20 09:55:03",
+        "body_text": "Spettabile Rotta Sicura,\nla spedizione RL-2024-0867 era contrattualizzata con SLA 98%/24h ma è stata consegnata con un giorno di ritardo rispetto alla finestra concordata. Si tratta di una fornitura time-critical e il nostro cliente ci ha contestato il disservizio.\nIn base al contratto quadro, vorrei sapere se in questo caso scatta la penale prevista e con quali modalità di calcolo. Vi chiedo anche un riscontro sulle cause del ritardo.\nIn attesa di riscontro,\nStefano Greco\nResponsabile Logistica"
+    },
+    {
+        "subject": "Re: Mancata consegna: penale applicabile?",
+        "from_name": "Laura De Santis",
+        "from_email": "laura.desantis@rotta-logistics.example.com",
+        "date": "2024-05-20 12:14:47",
+        "body_text": "Gentile Sig. Greco,\nho analizzato il caso della spedizione RL-2024-0867. Il ritardo è imputabile a un fermo tecnico di un mezzo presso l'HUB-NA-03 di Napoli, quindi rientra nella nostra responsabilità.\nIn base al contratto quadro, essendo stato superato lo SLA 98%/24h sulla singola spedizione, applichiamo la penale pari al 15% del costo di trasporto della spedizione interessata, che verrà accreditata come nota di credito sulla prossima fatturazione mensile.\nLe trasmetto entro fine settimana il report formale con causa, tempistiche e importo. Ci scusiamo per il disservizio.\nCordiali saluti,\nLaura De Santis"
+    },
+    {
+        "subject": "Documenti doganali per spedizione extra-UE",
+        "from_name": "Chiara Moretti",
+        "from_email": "chiara.moretti@cliente.example.com",
+        "date": "2024-05-23 14:19:36",
+        "body_text": "Buongiorno,\ndobbiamo inviare una spedizione verso la Svizzera e non ci è chiaro quali documenti doganali dobbiamo fornirvi noi e quali predisponete voi. È la prima volta che spediamo extra-UE tramite Rotta Sicura.\nCi servirebbe l'elenco completo: fattura proforma, codici doganali, eventuale documento di esportazione. Vogliamo evitare blocchi in dogana che facciano slittare la consegna.\nGrazie per il supporto.\nChiara Moretti"
+    },
+    {
+        "subject": "Re: Documenti doganali per spedizione extra-UE",
+        "from_name": "Laura De Santis",
+        "from_email": "laura.desantis@rotta-logistics.example.com",
+        "date": "2024-05-23 15:48:22",
+        "body_text": "Gentile Sig.ra Moretti,\nper una spedizione verso la Svizzera occorre quanto segue da parte vostra: fattura commerciale (o proforma se campionatura) in triplice copia, descrizione merce con relativo codice doganale HS, peso netto e lordo, e dichiarazione di origine se richiesta.\nLa dichiarazione di esportazione e l'interfaccia con lo spedizioniere doganale le predisponiamo noi, una volta ricevuta la vostra documentazione. Vi consiglio di trasmettere tutto almeno 48 ore prima del cut-off per evitare blocchi in dogana.\nVi invio in allegato il modulo standard da compilare. Per dubbi sul codice HS possiamo affiancarvi.\nCordiali saluti,\nLaura De Santis"
+    },
+    {
+        "subject": "Posso modificare l'indirizzo di consegna?",
+        "from_name": "Paolo Rinaldi",
+        "from_email": "paolo.rinaldi@posta.example.com",
+        "date": "2024-05-27 08:43:17",
+        "body_text": "Salve,\nho una spedizione in arrivo, RL-2024-0888, tracking RL-TRACK-8975, prevista per domani. Purtroppo domani non sarò in ufficio e vorrei farla consegnare a casa mia, a un indirizzo diverso da quello indicato in origine.\nÈ ancora possibile modificare l'indirizzo di destinazione o il pacco è già in viaggio? In tal caso come dobbiamo procedere?\nGrazie e buona giornata,\nPaolo Rinaldi"
+    },
+    {
+        "subject": "Re: Posso modificare l'indirizzo di consegna?",
+        "from_name": "Andrea Marini",
+        "from_email": "andrea.marini@rotta-logistics.example.com",
+        "date": "2024-05-27 09:31:55",
+        "body_text": "Gentile Sig. Rinaldi,\nho controllato la spedizione RL-2024-0888: il collo è ancora in giacenza all'HUB-TO-02 di Torino e non è stato ancora affidato al corriere per l'ultimo miglio, quindi la modifica dell'indirizzo è possibile.\nHo aggiornato la destinazione con il nuovo indirizzo che le chiedo di confermarmi via risposta a questa mail (via, civico, CAP e città). Una volta confermato, il tracking RL-TRACK-8975 rifletterà la variazione entro un paio d'ore.\nLa consegna resterà comunque prevista per domani. Per future variazioni può usare anche il numero verde 800-ROTTA1.\nCordiali saluti,\nAndrea Marini"
+    },
+    {
+        "subject": "Capacità magazzino per picco stagionale",
+        "from_name": "Antonio Esposito",
+        "from_email": "antonio.esposito@cliente.example.com",
+        "date": "2024-05-30 15:22:48",
+        "body_text": "Buongiorno,\nin vista della stagione estiva prevediamo un raddoppio dei volumi tra giugno e luglio. Vorremmo capire se l'HUB-NA-03 di Napoli ha capacità di stoccaggio sufficiente per gestire i nostri pallet aggiuntivi senza incidere sui tempi di evasione.\nParliamo di circa 120 pallet a settimana in più rispetto al volume attuale. Potete confermarci la disponibilità e gli eventuali costi di stoccaggio extra?\nGrazie,\nAntonio Esposito"
+    },
+    {
+        "subject": "Re: Capacità magazzino per picco stagionale",
+        "from_name": "Laura De Santis",
+        "from_email": "laura.desantis@rotta-logistics.example.com",
+        "date": "2024-05-30 17:06:12",
+        "body_text": "Gentile Sig. Esposito,\nabbiamo verificato la disponibilità presso l'HUB-NA-03 di Napoli. Per il volume aggiuntivo di circa 120 pallet/settimana possiamo accogliere fino a 100 pallet in giacenza simultanea senza impatti sui tempi di evasione; per la quota eccedente attiviamo lo spillover verso l'HUB-RM-05 di Roma con transito interno notturno.\nIl costo di stoccaggio extra è di 4,50 euro/pallet/giorno oltre la franchigia contrattuale. Per gestire il picco al meglio le proponiamo una call di pianificazione la prossima settimana, così schediamo gli arrivi e ottimizziamo l'occupazione su OrbitaWMS.\nResto a disposizione.\nCordiali saluti,\nLaura De Santis"
+    },
+    {
+        "subject": "Collo danneggiato alla consegna",
+        "from_name": "Valentina Costa",
+        "from_email": "valentina.costa@posta.example.com",
+        "date": "2024-06-03 10:17:29",
+        "body_text": "Buongiorno,\nho appena ricevuto la spedizione RL-2024-0901 ma il cartone era visibilmente schiacciato su un lato e parte del contenuto risulta danneggiato. Ho apposto riserva sul palmare del fattorino e scattato delle foto.\nCome devo procedere per aprire una pratica di reclamo e ottenere il rimborso o la sostituzione? Devo conservare l'imballo?\nResto in attesa di istruzioni.\nValentina Costa"
+    },
+    {
+        "subject": "Re: Collo danneggiato alla consegna",
+        "from_name": "Andrea Marini",
+        "from_email": "andrea.marini@rotta-logistics.example.com",
+        "date": "2024-06-03 11:44:08",
+        "body_text": "Gentile Sig.ra Costa,\nha fatto benissimo ad apporre la riserva sul palmare e a scattare le foto: sono i due elementi fondamentali per la pratica. Le confermo che ho già aperto il reclamo collegato alla spedizione RL-2024-0901.\nLe chiedo di conservare l'imballo originale e il contenuto danneggiato fino a chiusura della pratica, poiché potrebbe servire la perizia. Mi invii in allegato le foto del collo e del contenuto e una breve descrizione del danno.\nUna volta valutato, procederemo con sostituzione o rimborso secondo le condizioni assicurative del trasporto. Tempi di gestione stimati: 7-10 giorni lavorativi.\nCordiali saluti,\nAndrea Marini"
+    },
+    {
+        "subject": "Tracking non si aggiorna da ieri",
+        "from_name": "Lorenzo Ricci",
+        "from_email": "lorenzo.ricci@posta.example.com",
+        "date": "2024-06-07 09:02:51",
+        "body_text": "Salve,\nseguo la spedizione RL-2024-0915 con il tracking RL-TRACK-9020, ma da ieri pomeriggio non si aggiorna: l'ultimo evento registrato è \"presa in carico all'HUB-MI-07\".\nIl pacco è effettivamente in movimento o è bloccato da qualche parte? Vorrei capire se c'è un problema o se è solo un mancato aggiornamento del sistema.\nGrazie per il chiarimento.\nLorenzo Ricci"
+    },
+    {
+        "subject": "Re: Tracking non si aggiorna da ieri",
+        "from_name": "Marco Trevisan",
+        "from_email": "marco.trevisan@rotta-logistics.example.com",
+        "date": "2024-06-07 10:29:34",
+        "body_text": "Gentile Sig. Ricci,\nho verificato internamente su OrbitaWMS: la spedizione RL-2024-0915 è regolarmente in viaggio, attualmente sul mezzo VeloxCorriere diretto verso l'HUB-RM-05 di Roma. Il mancato aggiornamento del tracking RL-TRACK-9020 era dovuto a un problema temporaneo del lettore barcode su un punto di transito, già risolto.\nIl tracking pubblico tornerà allineato entro stasera con gli eventi mancanti. La consegna resta prevista per dopodomani in fascia mattutina, senza ritardi.\nMi scuso per l'apprensione causata dal blocco apparente. Per controlli in tempo reale può sempre contattare il numero verde 800-ROTTA1.\nCordiali saluti,\nMarco Trevisan"
+    },
+    {
+        "subject": "Ritiro pallet dal nostro magazzino",
+        "from_name": "Martina Fontana",
+        "from_email": "martina.fontana@fornitore.example.com",
+        "date": "2024-06-11 13:38:42",
+        "body_text": "Buongiorno,\nsiamo un vostro fornitore e dobbiamo organizzare il ritiro di 8 pallet dal nostro stabilimento di Bergamo, da destinare al vostro HUB-MI-07.\nVorremmo prenotare il ritiro per giovedì prossimo. Quali sono le fasce orarie disponibili e quali informazioni vi servono per pianificare il mezzo? Il nostro magazzino accetta camion fino a 13,60 m.\nIn attesa di un vostro riscontro per confermare.\nMartina Fontana"
+    },
+    {
+        "subject": "Re: Ritiro pallet dal nostro magazzino",
+        "from_name": "Sara Bianchi",
+        "from_email": "sara.bianchi@rotta-logistics.example.com",
+        "date": "2024-06-11 15:11:19",
+        "body_text": "Gentile Sig.ra Fontana,\nperfetto, possiamo organizzare il ritiro degli 8 pallet da Bergamo per giovedì verso l'HUB-MI-07. Le fasce disponibili sono 8:00-10:00 oppure 14:00-16:00; mi confermi quella che preferite.\nPer pianificare il mezzo mi servono: peso e dimensioni dei pallet, se sono impilabili, l'eventuale necessità di sponda idraulica e un referente in loco con contatto telefonico. Con camion fino a 13,60 m non ci sono vincoli dal nostro lato.\nUna volta ricevute le info genero l'ordine di ritiro su OrbitaWMS e vi invio il riferimento. Resto in attesa della conferma.\nCordiali saluti,\nSara Bianchi"
+    },
+    {
+        "subject": "Report SLA del mese di maggio",
+        "from_name": "Giorgio Pellegrini",
+        "from_email": "giorgio.pellegrini@cliente.example.com",
+        "date": "2024-06-14 11:25:07",
+        "body_text": "Buongiorno,\ncome da accordi contrattuali vi chiediamo il report mensile sul rispetto dello SLA 98%/24h relativo al mese di maggio. Ci serve per la review interna con la direzione.\nIn particolare vorremmo il dettaglio delle spedizioni consegnate in finestra, quelle in ritardo e l'eventuale incidenza di penali. Se possibile gradiremmo anche la suddivisione per hub di partenza.\nGrazie per la consueta disponibilità.\nGiorgio Pellegrini"
+    },
+    {
+        "subject": "Re: Report SLA del mese di maggio",
+        "from_name": "Laura De Santis",
+        "from_email": "laura.desantis@rotta-logistics.example.com",
+        "date": "2024-06-14 14:52:38",
+        "body_text": "Gentile Sig. Pellegrini,\nin allegato trova il report SLA di maggio. Sintesi: su 1.342 spedizioni gestite, il 98,6% è stato consegnato entro lo SLA 98%/24h, quindi al di sopra del target contrattuale. Le spedizioni fuori finestra sono state 19, concentrate prevalentemente sull'HUB-NA-03 a causa del fermo mezzo del 20 maggio.\nÈ stata applicata una sola penale, già accreditata come nota di credito. Nel file trova la suddivisione per hub di partenza (Milano, Roma, Napoli, Torino) e il dettaglio delle singole spedizioni in ritardo.\nResto a disposizione per la review con la vostra direzione, anche in call.\nCordiali saluti,\nLaura De Santis"
+    },
+    {
+        "subject": "Spedizione in giacenza, come la sblocco?",
+        "from_name": "Simone Barbieri",
+        "from_email": "simone.barbieri@posta.example.com",
+        "date": "2024-06-18 08:51:33",
+        "body_text": "Salve,\nil tracking RL-TRACK-9088 della spedizione RL-2024-0950 segnala \"in giacenza presso hub\" da due giorni. Non ho ricevuto alcun avviso di mancata consegna e non capisco cosa sia successo.\nCosa devo fare per sbloccarla e ricevere il pacco? Posso eventualmente passare a ritirarlo io direttamente all'hub?\nGrazie per l'aiuto.\nSimone Barbieri"
+    },
+    {
+        "subject": "Re: Spedizione in giacenza, come la sblocco?",
+        "from_name": "Andrea Marini",
+        "from_email": "andrea.marini@rotta-logistics.example.com",
+        "date": "2024-06-18 09:47:21",
+        "body_text": "Gentile Sig. Barbieri,\nho verificato la spedizione RL-2024-0950: il primo tentativo di consegna è andato a vuoto perché il destinatario risultava assente, e il collo è ora in giacenza all'HUB-RM-05 di Roma. L'avviso di mancata consegna purtroppo non è stato lasciato, e me ne scuso.\nPer sbloccarla ho due opzioni per lei: ri-programmare la consegna a domicilio per la data e la fascia che preferisce, oppure il ritiro diretto allo sportello dell'HUB-RM-05 con un documento d'identità. Mi indichi la scelta e procedo subito.\nIl tracking RL-TRACK-9088 si aggiornerà di conseguenza. Resto a disposizione.\nCordiali saluti,\nAndrea Marini"
+    },
+    {
+        "subject": "Attivazione Consegna Lampo 24h sul nostro contratto",
+        "from_name": "Beatrice Sartori",
+        "from_email": "beatrice.sartori@cliente.example.com",
+        "date": "2024-06-21 16:09:55",
+        "body_text": "Buongiorno,\nattualmente spediamo con voi in modalità standard, ma vorremmo attivare il servizio Consegna Lampo 24h almeno per le spedizioni urgenti verso il centro-sud.\nPotete dirci come funziona l'attivazione, su quali destinazioni è garantito il servizio e quali sono i costi aggiuntivi rispetto alla tariffa standard? Vorremmo partire dal mese prossimo.\nGrazie e a presto,\nBeatrice Sartori"
+    },
+    {
+        "subject": "Re: Attivazione Consegna Lampo 24h sul nostro contratto",
+        "from_name": "Laura De Santis",
+        "from_email": "laura.desantis@rotta-logistics.example.com",
+        "date": "2024-06-21 17:33:48",
+        "body_text": "Gentile Sig.ra Sartori,\nvolentieri. Il servizio Consegna Lampo 24h garantisce la consegna entro 24 ore dal cut-off delle 16:00 ed è coperto su tutte le destinazioni servite dai nostri hub di Milano, Roma, Napoli e Torino, capoluoghi e principali aree urbane del centro-sud incluse; per alcune zone disagiate il tempo sale a 48h.\nL'attivazione richiede solo un'integrazione al contratto quadro che le predispongo. Il sovrapprezzo rispetto allo standard è del 22% sulla tariffa di trasporto, con lo SLA 98%/24h e relative penali applicate.\nLe invio la bozza di addendum entro domani; partenza dal primo del mese prossimo fattibile senza problemi.\nCordiali saluti,\nLaura De Santis"
+    },
+    {
+        "subject": "Differenza colli tra DDT e merce ricevuta",
+        "from_name": "Nicola Ferrari",
+        "from_email": "magazzino@cliente.example.com",
+        "date": "2024-06-25 09:36:14",
+        "body_text": "Buongiorno,\nin fase di ricevimento della spedizione RL-2024-0978 abbiamo riscontrato una discordanza: il DDT riporta 12 colli, ma ne abbiamo ricevuti solo 11. Abbiamo annotato la riserva sul documento.\nPotete verificare dove si trova il dodicesimo collo? È rimasto in hub o si è perso durante il transito? Ci serve completare l'ordine il prima possibile.\nGrazie,\nNicola Ferrari\nResponsabile Magazzino"
+    },
+    {
+        "subject": "Re: Differenza colli tra DDT e merce ricevuta",
+        "from_name": "Sara Bianchi",
+        "from_email": "sara.bianchi@rotta-logistics.example.com",
+        "date": "2024-06-25 11:18:42",
+        "body_text": "Gentile Sig. Ferrari,\ngrazie per la riserva annotata, ci aiuta molto. Ho tracciato i colli della spedizione RL-2024-0978 su OrbitaWMS: il dodicesimo collo è rimasto erroneamente sulla baia di carico dell'HUB-TO-02 di Torino, scansionato ma non caricato sul mezzo.\nL'ho già inserito sulla prima partenza utile di stasera con corriere VeloxCorriere: la consegna del collo mancante è prevista per domani. Le invio il tracking dedicato non appena generato.\nAggiorneremo internamente il DDT con la consegna in due tranche, così la contabilità resta allineata. Ci scusiamo per il disguido.\nCordiali saluti,\nSara Bianchi"
+    },
+    {
+        "subject": "Costo spedizione voluminosa verso Torino",
+        "from_name": "Alessandro Vitale",
+        "from_email": "alessandro.vitale@cliente.example.com",
+        "date": "2024-06-28 14:47:26",
+        "body_text": "Salve,\ndobbiamo spedire un macchinario imballato di dimensioni considerevoli (190x80x110 cm, circa 230 kg) da Milano a un cliente a Torino. Vorrei un preventivo e capire se rientra nelle vostre tariffe standard o se serve un trasporto dedicato.\nLa consegna ideale sarebbe entro 48 ore. Mi confermate fattibilità, costo e modalità di gestione di un collo così ingombrante?\nGrazie,\nAlessandro Vitale"
+    },
+    {
+        "subject": "Re: Costo spedizione voluminosa verso Torino",
+        "from_name": "Laura De Santis",
+        "from_email": "laura.desantis@rotta-logistics.example.com",
+        "date": "2024-06-28 16:20:09",
+        "body_text": "Gentile Sig. Vitale,\nper un collo da 190x80x110 cm e 230 kg si supera la soglia del pacco standard: lo gestiamo come spedizione pallettizzata via HUB-MI-07 verso l'HUB-TO-02, con peso volumetrico tariffato. La tratta Milano-Torino è breve, quindi la consegna entro 48 ore è ampiamente fattibile.\nIl preventivo indicativo è di 68 euro più IVA, comprensivo di gestione collo fuori sagoma; se serve sponda idraulica alla consegna si aggiungono 15 euro. Non occorre un trasporto dedicato.\nMi confermi indirizzo esatto di consegna e referente, così formalizzo l'ordine su OrbitaWMS e le invio il tracking.\nCordiali saluti,\nLaura De Santis"
+    },
+    {
+        "subject": "Alert ritardo: cosa è successo all'HUB-MI-07?",
+        "from_name": "Federico Gatti",
+        "from_email": "federico.gatti@cliente.example.com",
+        "date": "2024-07-02 08:39:18",
+        "body_text": "Buongiorno,\nho ricevuto stamattina un alert automatico di ritardo su tre nostre spedizioni in partenza dall'HUB-MI-07 (RL-2024-1003, RL-2024-1004, RL-2024-1007). Non avevamo segnalazioni la scorsa settimana.\nCosa è successo all'hub di Milano? È un problema circoscritto a queste spedizioni o c'è un disservizio più ampio che potrebbe impattare anche gli ordini di oggi?\nAttendo un chiarimento urgente.\nFederico Gatti"
+    },
+    {
+        "subject": "Re: Alert ritardo: cosa è successo all'HUB-MI-07?",
+        "from_name": "Marco Trevisan",
+        "from_email": "marco.trevisan@rotta-logistics.example.com",
+        "date": "2024-07-02 09:28:53",
+        "body_text": "Gentile Sig. Gatti,\nle confermo che stanotte all'HUB-MI-07 di Milano si è verificato un guasto al nastro di smistamento automatico, che ha rallentato la lavorazione del primo turno. Le tre spedizioni segnalate (RL-2024-1003, 1004 e 1007) sono partite con un ritardo di circa tre ore, ma sono già in viaggio: stimiamo la consegna in giornata o al più tardi domani mattina.\nIl guasto è stato risolto entro le 7:30 e la lavorazione è tornata a regime: gli ordini di oggi non subiranno impatti. Gli alert automatici sono partiti correttamente proprio per garantirle trasparenza.\nLe monitoro personalmente le tre spedizioni e la aggiorno a fine giornata.\nCordiali saluti,\nMarco Trevisan"
+    },
+    {
+        "subject": "Fatturazione: addebito stoccaggio non chiaro",
+        "from_name": "Cristina Moro",
+        "from_email": "cristina.moro@cliente.example.com",
+        "date": "2024-07-08 10:44:31",
+        "body_text": "Buongiorno,\nnell'ultima fattura troviamo una voce di addebito per stoccaggio extra di 312 euro che non ci aspettavamo. I nostri pallet dovrebbero rientrare nella franchigia contrattuale.\nPotete dettagliarci a quali giorni e a quali pallet si riferisce l'addebito? Vogliamo capire se è corretto o se c'è stato un errore di conteggio prima di procedere al pagamento.\nGrazie per la verifica.\nCristina Moro\nUfficio Amministrazione"
+    },
+    {
+        "subject": "Re: Fatturazione: addebito stoccaggio non chiaro",
+        "from_name": "Laura De Santis",
+        "from_email": "laura.desantis@rotta-logistics.example.com",
+        "date": "2024-07-08 13:02:17",
+        "body_text": "Gentile Sig.ra Moro,\nho estratto da OrbitaWMS il dettaglio dell'addebito. La voce di 312 euro si riferisce a 13 pallet rimasti in giacenza presso l'HUB-NA-03 di Napoli oltre la franchigia di 7 giorni, per un totale di 16 giornate eccedenti tariffate a 4,50 euro/pallet/giorno.\nNel periodo a cavallo di fine giugno i vostri arrivi hanno superato la rotazione abituale, generando lo sforamento. In allegato trova il prospetto giorno per giorno con i codici pallet, così può riscontrarlo con i vostri registri.\nSe dovesse emergere una discrepanza ce lo segnali e rivediamo volentieri. L'addebito risulta comunque corretto rispetto al contratto.\nCordiali saluti,\nLaura De Santis"
+    },
+    {
+        "subject": "Consegna sabato: è possibile?",
+        "from_name": "Marco Ferro",
+        "from_email": "marco.ferro@posta.example.com",
+        "date": "2024-07-12 09:15:44",
+        "body_text": "Salve,\nho la spedizione RL-2024-1042 in arrivo e vorrei sapere se è possibile riceverla di sabato, dato che durante la settimana non sono mai in casa per lavoro.\nIl tracking RL-TRACK-9201 indica consegna prevista per venerdì. C'è modo di posticiparla al sabato o le consegne nel weekend non sono previste? In alternativa posso indicare un punto di ritiro?\nGrazie mille.\nMarco Ferro"
+    },
+    {
+        "subject": "Re: Consegna sabato: è possibile?",
+        "from_name": "Andrea Marini",
+        "from_email": "andrea.marini@rotta-logistics.example.com",
+        "date": "2024-07-12 10:33:27",
+        "body_text": "Gentile Sig. Ferro,\nle consegne a domicilio standard sono operative dal lunedì al venerdì, quindi di norma non effettuiamo recapiti il sabato. Tuttavia per la sua spedizione RL-2024-1042 ho due soluzioni.\nLa prima: posso mettere il collo in giacenza fino a lunedì e riconsegnarlo in fascia oraria serale, se per lei è comodo. La seconda: indirizzarlo a un punto di ritiro convenzionato vicino a casa sua, dove potrà passare quando preferisce, sabato incluso, entro 7 giorni.\nMi indichi la preferenza e aggiorno il tracking RL-TRACK-9201. Resto a disposizione anche al numero verde 800-ROTTA1.\nCordiali saluti,\nAndrea Marini"
+    },
+    {
+        "subject": "Integrazione gestionale con OrbitaWMS",
+        "from_name": "Diego Marchetti",
+        "from_email": "diego.marchetti@fornitore.example.com",
+        "date": "2024-07-17 15:28:53",
+        "body_text": "Buongiorno,\nstiamo valutando di collegare il nostro sistema gestionale al vostro OrbitaWMS per automatizzare l'invio degli ordini di spedizione ed evitare l'inserimento manuale.\nAvete delle API o un tracciato standard per lo scambio dati? Vorremmo capire quali campi sono obbligatori, come gestite l'autenticazione e se è previsto un ambiente di test prima di andare in produzione.\nGrazie per le informazioni.\nDiego Marchetti\nIT Manager"
+    },
+    {
+        "subject": "Re: Integrazione gestionale con OrbitaWMS",
+        "from_name": "Laura De Santis",
+        "from_email": "laura.desantis@rotta-logistics.example.com",
+        "date": "2024-07-17 17:01:39",
+        "body_text": "Gentile Sig. Marchetti,\nvolentieri. OrbitaWMS espone API REST per l'inserimento ordini di spedizione, la generazione tracking e il recupero stati. I campi obbligatori sono mittente, destinatario completo, numero colli, peso, tipo servizio (standard o Consegna Lampo 24h) e riferimento ordine; opzionali contrassegno e note.\nL'autenticazione avviene tramite chiave API dedicata su connessione HTTPS. Mettiamo a disposizione un ambiente di test (sandbox) separato dalla produzione, così potete validare il tracciato senza generare spedizioni reali.\nVi giro la documentazione tecnica e le credenziali sandbox; per il kick-off possiamo organizzare una call con il nostro reparto IT. Tempi di integrazione tipici: 2-3 settimane.\nCordiali saluti,\nLaura De Santis"
+    },
+    {
+        "subject": "Reso al mittente: come procedo?",
+        "from_name": "Ilaria Conte",
+        "from_email": "ilaria.conte@posta.example.com",
+        "date": "2024-07-22 11:51:08",
+        "body_text": "Buongiorno,\nho ricevuto la spedizione RL-2024-1078 ma il contenuto non corrisponde a quanto ordinato e devo restituirlo al mittente. Il venditore mi ha detto di organizzare il reso tramite voi.\nCome devo procedere? Devo io prenotare il ritiro o lo organizza il mittente? E serve un'etichetta di reso particolare? Vorrei chiudere la pratica in tempi rapidi.\nGrazie del supporto.\nIlaria Conte"
+    },
+    {
+        "subject": "Re: Reso al mittente: come procedo?",
+        "from_name": "Sara Bianchi",
+        "from_email": "sara.bianchi@rotta-logistics.example.com",
+        "date": "2024-07-22 14:26:55",
+        "body_text": "Gentile Sig.ra Conte,\nper il reso della spedizione RL-2024-1078 la procedura è semplice. Di norma è il mittente (il venditore) ad autorizzare e attivare il reso a suo carico: una volta che ci trasmette l'autorizzazione, noi generiamo l'etichetta di reso e gliela inviamo via email, da applicare sul collo originale ben richiuso.\nIl ritiro a domicilio lo prenotiamo noi, concordando con lei una fascia oraria; non deve organizzare nulla autonomamente. Le chiedo solo di conservare l'imballo.\nLe consiglio di sollecitare il venditore ad aprire il reso; appena ricevuto il via libera procediamo entro 1 giorno lavorativo. Resto a disposizione.\nCordiali saluti,\nSara Bianchi"
+    },
+    {
+        "subject": "Disservizio TurboPony in zona Napoli",
+        "from_name": "Gabriele Marino",
+        "from_email": "gabriele.marino@cliente.example.com",
+        "date": "2024-07-26 09:08:37",
+        "body_text": "Buongiorno,\nnelle ultime due settimane abbiamo notato un peggioramento delle consegne nella zona di Napoli affidate al corriere TurboPony: ritardi ripetuti e un paio di tentativi di consegna falliti senza avviso.\nVi chiediamo se siete a conoscenza del problema e cosa intendete fare. Per noi quella zona è strategica e non possiamo permetterci che lo SLA 98%/24h venga compromesso. Gradiremmo un piano d'azione.\nCordiali saluti,\nGabriele Marino"
+    },
+    {
+        "subject": "Re: Disservizio TurboPony in zona Napoli",
+        "from_name": "Laura De Santis",
+        "from_email": "laura.desantis@rotta-logistics.example.com",
+        "date": "2024-07-26 12:14:22",
+        "body_text": "Gentile Sig. Marino,\nla ringrazio per la segnalazione puntuale, che conferma quanto stavamo già monitorando. Nelle ultime settimane il corriere TurboPony ha avuto criticità di organico sull'area di Napoli, con impatto sulle consegne gestite dall'HUB-NA-03.\nIl piano d'azione è già operativo: abbiamo ridistribuito parte dei carichi sull'area napoletana al corriere VeloxCorriere e affiancato un secondo giro pomeridiano per riassorbire i ritardi. Stiamo inoltre rivedendo gli accordi di servizio con TurboPony per ripristinare lo SLA 98%/24h.\nLe invierò un follow-up settimanale sull'andamento delle vostre consegne in zona finché la situazione non sarà normalizzata. Ci scusiamo per il disagio.\nCordiali saluti,\nLaura De Santis"
+    },
+    {
+        "subject": "Conferma spedizione ordine urgente di oggi",
+        "from_name": "Veronica Longo",
+        "from_email": "veronica.longo@cliente.example.com",
+        "date": "2024-08-01 15:47:19",
+        "body_text": "Buongiorno,\nabbiamo appena trasmesso un ordine urgente (rif. nostro PO-5582) che deve assolutamente partire oggi in modalità Consegna Lampo 24h. Sono le 15:47 e siamo in ansia per il cut-off.\nMi confermate che l'ordine è stato preso in carico e partirà in serata dall'HUB-MI-07? Appena disponibile vi chiedo gentilmente il numero di spedizione e il tracking, così possiamo girarlo al cliente finale.\nGrazie infinite per la priorità.\nVeronica Longo"
+    },
+    {
+        "subject": "Re: Conferma spedizione ordine urgente di oggi",
+        "from_name": "Sara Bianchi",
+        "from_email": "sara.bianchi@rotta-logistics.example.com",
+        "date": "2024-08-01 16:05:48",
+        "body_text": "Gentile Sig.ra Longo,\nnessuna ansia: l'ordine PO-5582 è arrivato prima del cut-off delle 16:00 ed è stato preso in carico per la lavorazione di oggi all'HUB-MI-07. Partirà in serata in modalità Consegna Lampo 24h.\nLe confermo i riferimenti: spedizione RL-2024-1120, tracking RL-TRACK-9355. Può già girarlo al cliente finale; gli eventi si popoleranno a partire dallo scan di partenza di stasera. Consegna prevista per domani entro le 13:00.\nLe ho messo un flag di priorità sulla spedizione e la monitoro personalmente. Per qualsiasi cosa il numero verde 800-ROTTA1 è sempre attivo.\nCordiali saluti,\nSara Bianchi"
+    },
+    {
+        "subject": "Spedizione bloccata in dogana",
+        "from_name": "Tommaso Rizzo",
+        "from_email": "tommaso.rizzo@cliente.example.com",
+        "date": "2024-08-07 10:22:54",
+        "body_text": "Buongiorno,\nla spedizione RL-2024-1145 diretta in Svizzera risulta ferma in dogana da tre giorni secondo il tracking RL-TRACK-9402. Il destinatario ci sta sollecitando perché la merce è urgente.\nPotete verificare il motivo del blocco doganale e cosa serve per sbloccarlo? Se manca un documento da parte nostra ditecelo subito che provvediamo nel giro di poche ore.\nResto in attesa di un riscontro urgente.\nTommaso Rizzo"
+    },
+    {
+        "subject": "Re: Spedizione bloccata in dogana",
+        "from_name": "Laura De Santis",
+        "from_email": "laura.desantis@rotta-logistics.example.com",
+        "date": "2024-08-07 11:39:31",
+        "body_text": "Gentile Sig. Rizzo,\nho approfondito con il nostro spedizioniere doganale: la spedizione RL-2024-1145 è ferma perché sulla fattura commerciale manca il dettaglio del valore unitario di una delle voci merce, che la dogana svizzera richiede per la corretta classificazione.\nPer sbloccarla servirebbe una fattura rettificata con il valore unitario riga per riga. Se ce la inviate entro oggi pomeriggio, la trasmettiamo immediatamente alla dogana e contiamo di liberare il collo già domani.\nNel frattempo il tracking RL-TRACK-9402 resterà sullo stato \"giacenza doganale\". Le invio il template di fattura corretto in allegato. Ci coordiniamo in tempo reale via mail o telefono.\nCordiali saluti,\nLaura De Santis"
+    },
+    {
+        "subject": "Aggiornamento volumi previsti per settembre",
+        "from_name": "Claudia Neri",
+        "from_email": "claudia.neri@cliente.example.com",
+        "date": "2024-08-13 14:11:46",
+        "body_text": "Buongiorno,\ncome concordato vi anticipiamo i volumi previsti per settembre, in ripresa dopo la pausa estiva: stimiamo circa 90 spedizioni settimanali, in prevalenza verso il nord Italia, con partenza dall'HUB-MI-07.\nVorremmo sapere se serve un riallineamento della pianificazione o se la capacità attuale è sufficiente a mantenere lo SLA 98%/24h. Restiamo disponibili per una call se utile.\nGrazie,\nClaudia Neri"
+    },
+    {
+        "subject": "Re: Aggiornamento volumi previsti per settembre",
+        "from_name": "Laura De Santis",
+        "from_email": "laura.desantis@rotta-logistics.example.com",
+        "date": "2024-08-13 16:38:09",
+        "body_text": "Gentile Sig.ra Neri,\ngrazie per l'anticipo dei volumi: ci è molto utile per pianificare. Circa 90 spedizioni settimanali verso il nord Italia dall'HUB-MI-07 rientrano agevolmente nella nostra capacità di settembre, anche considerando la ripresa generale post-estiva.\nNon è necessario un riallineamento straordinario; abbiamo già dimensionato i turni di Milano per assorbire l'aumento mantenendo lo SLA 98%/24h. Vi suggeriamo solo di rispettare il cut-off delle 16:00 nei giorni di picco per non comprimere la lavorazione serale.\nProgrammiamo comunque volentieri una call di allineamento a inizio settembre per condividere il forecast aggiornato. Mi indichi due slot e fisso.\nCordiali saluti,\nLaura De Santis"
+    },
+    {
+        "subject": "Etichetta tracking illeggibile sul collo",
+        "from_name": "Pietro Fabbri",
+        "from_email": "pietro.fabbri@fornitore.example.com",
+        "date": "2024-08-20 09:33:27",
+        "body_text": "Buongiorno,\nabbiamo preparato una spedizione in partenza per voi ma ci siamo accorti che su uno dei colli l'etichetta con il tracking si è rovinata in fase di imballaggio ed è parzialmente illeggibile: il barcode non si scansiona.\nCome dobbiamo procedere? Possiamo ristampare un'etichetta da soli o dobbiamo richiederne una nuova a voi per non creare problemi allo smistamento in hub?\nGrazie del chiarimento.\nPietro Fabbri"
+    },
+    {
+        "subject": "Re: Etichetta tracking illeggibile sul collo",
+        "from_name": "Sara Bianchi",
+        "from_email": "sara.bianchi@rotta-logistics.example.com",
+        "date": "2024-08-20 10:55:14",
+        "body_text": "Gentile Sig. Fabbri,\ngrazie per averlo segnalato prima della partenza: un barcode illeggibile bloccherebbe lo scan automatico in hub e rallenterebbe lo smistamento. Le chiedo di non applicare etichette improvvisate.\nSe avete generato voi la spedizione tramite OrbitaWMS, potete semplicemente ristampare l'etichetta originale dal portale e riapplicarla coprendo quella danneggiata. Se invece l'etichetta l'abbiamo prodotta noi, mi confermi il riferimento collo e gliene rigenero subito una in PDF da stampare.\nL'importante è che resti un solo barcode valido e visibile per evitare doppie letture. Mi faccia sapere quale dei due casi è il vostro.\nCordiali saluti,\nSara Bianchi"
+    },
+    {
+        "subject": "Consegna confermata ma destinatario assente",
+        "from_name": "Daniela Pagano",
+        "from_email": "daniela.pagano@cliente.example.com",
+        "date": "2024-08-26 11:07:42",
+        "body_text": "Buongiorno,\nil tracking RL-TRACK-9488 della spedizione RL-2024-1190 indica \"consegna effettuata\" stamattina, ma il nostro destinatario afferma di non aver ricevuto nulla ed era effettivamente assente in quel momento.\nPotete verificare chi ha firmato il POD e dove è stato lasciato il collo? Temiamo che lo stato sia stato registrato per errore o che il pacco sia stato affidato a terzi senza autorizzazione.\nAttendo riscontro.\nDaniela Pagano"
+    },
+    {
+        "subject": "Re: Consegna confermata ma destinatario assente",
+        "from_name": "Andrea Marini",
+        "from_email": "andrea.marini@rotta-logistics.example.com",
+        "date": "2024-08-26 12:41:58",
+        "body_text": "Gentile Sig.ra Pagano,\nho richiesto subito al corriere TurboPony copia del POD della spedizione RL-2024-1190. Dalla verifica risulta che il fattorino, trovando il destinatario assente, ha consegnato alla reception del condominio, dove un addetto ha firmato il palmare: per questo lo stato è passato a \"consegna effettuata\".\nIl collo non è stato quindi smarrito né affidato a terzi non autorizzati nel senso improprio, ma il destinatario va indirizzato alla reception per ritirarlo. Le allego il POD con nome del firmatario e orario.\nSe la consegna alla reception non è consentita dalle vostre policy, ce lo segnali e impostiamo la consegna a mani proprie per le prossime spedizioni. Resto a disposizione.\nCordiali saluti,\nAndrea Marini"
+    },
+    {
+        "subject": "Report settimanale spedizioni HUB-MI-07 — settimana 36",
+        "from_name": "Davide Ferraro",
+        "from_email": "davide.ferraro@rotta-logistics.example.com",
+        "date": "2024-09-02 08:42:00",
+        "body_text": "Ciao team,\nin allegato il riepilogo della settimana 36 per HUB-MI-07.\nVolumi gestiti: 4.218 spedizioni, di cui 612 con servizio Consegna Lampo 24h.\nSLA consegne nei termini: 98,3% — sopra la soglia contrattuale del 98%.\nCorriere VeloxCorriere ha movimentato il 64% dei colli, TurboPony il restante 36%.\nGiacenze residue a fine settimana: 47 colli, tutti in lavorazione su OrbitaWMS.\nNessuna penale maturata.\nUnica nota: martedì abbiamo registrato un picco di ingressi merce nel pomeriggio che ha rallentato lo smistamento serale. Valutiamo di anticipare il cut-off ordini di 30 minuti nelle giornate ad alto volume.\nResto a disposizione per dettagli.\nDavide"
+    },
+    {
+        "subject": "Fattura n. 2024/1187 — servizi logistici agosto",
+        "from_name": "Amministrazione Rotta Sicura",
+        "from_email": "amministrazione@rotta-logistics.example.com",
+        "date": "2024-09-03 10:15:00",
+        "body_text": "Gentile cliente,\nin allegato trasmettiamo la fattura n. 2024/1187 relativa ai servizi logistici erogati nel mese di agosto 2024.\nImporto totale: 14.380,00 € IVA inclusa.\nDettaglio: 2.940 spedizioni standard, 318 spedizioni Consegna Lampo 24h, gestione giacenze magazzino HUB-RM-05.\nScadenza pagamento: 30 giorni data fattura, quindi entro il 03/10/2024.\nModalità: bonifico bancario sulle coordinate riportate in calce al documento.\nLa preghiamo di indicare nella causale il numero fattura.\nPer qualsiasi chiarimento il nostro ufficio amministrativo è a disposizione allo 800-ROTTA1.\nCordiali saluti,\nUfficio Amministrazione"
+    },
+    {
+        "subject": "Escalation: ritardo ricorrente consegne zona Napoli",
+        "from_name": "Marta Esposito",
+        "from_email": "marta.esposito@cliente.example.com",
+        "date": "2024-09-04 14:28:00",
+        "body_text": "Buongiorno,\nscrivo per segnalare formalmente un problema ricorrente sulle nostre consegne in area Napoli gestite tramite HUB-NA-03.\nNelle ultime due settimane tre spedizioni Consegna Lampo 24h (RL-2024-0691, RL-2024-0712, RL-2024-0738) sono arrivate con oltre 36 ore di ritardo, ben oltre lo SLA garantito.\nI nostri clienti finali si stanno lamentando e la cosa inizia a danneggiare la nostra reputazione.\nChiedo: 1) una spiegazione sulle cause, 2) un piano correttivo concreto, 3) il riconoscimento delle penali previste da contratto.\nGradirei una risposta entro 48 ore, altrimenti sarò costretta a coinvolgere il vostro referente commerciale.\nIn attesa di un vostro riscontro.\nMarta Esposito — Logistica InBound"
+    },
+    {
+        "subject": "Convocazione riunione operativa hub — giovedì 12/09",
+        "from_name": "Roberta Galli",
+        "from_email": "roberta.galli@rotta-logistics.example.com",
+        "date": "2024-09-05 09:05:00",
+        "body_text": "Cari responsabili hub,\nvi convoco alla riunione operativa mensile fissata per giovedì 12 settembre alle ore 15:00, sala riunioni sede di Milano (collegamento video disponibile per chi è fuori sede).\nOrdine del giorno:\n- Analisi SLA agosto per ciascun hub (MI-07, NA-03, RM-05, TO-02)\n- Stato penali e reclami aperti\n- Aggiornamento configurazione cut-off ordini su OrbitaWMS\n- Pianificazione picco autunnale\n- Varie ed eventuali\nVi chiedo di preparare i numeri del vostro hub e di inviarmi eventuali punti da aggiungere all'odg entro mercoledì.\nConfermate la presenza rispondendo a questa mail.\nGrazie,\nRoberta"
+    },
+    {
+        "subject": "Newsletter interna — Rotta in Rotta n. 14",
+        "from_name": "Comunicazione Interna",
+        "from_email": "comunicazione@rotta-logistics.example.com",
+        "date": "2024-09-06 11:30:00",
+        "body_text": "Buongiorno a tutti,\necco il numero 14 di Rotta in Rotta, la newsletter interna.\nIN QUESTO NUMERO:\n- Traguardo raggiunto: SLA aziendale medio del 98,1% nel mese di agosto, grazie all'impegno di tutti gli hub.\n- Novità OrbitaWMS: dal 16 settembre arriva la nuova dashboard giacenze in tempo reale.\n- Persone: diamo il benvenuto a quattro nuovi colleghi smistamento presso HUB-TO-02.\n- Sicurezza: ricordiamo l'obbligo di indossare le scarpe antinfortunistiche in tutte le aree di movimentazione.\n- Numero verde clienti 800-ROTTA1: nuovi orari, ora attivo dal lunedì al sabato 8-20.\nBuona lettura e buon lavoro!\nIl team Comunicazione"
+    },
+    {
+        "subject": "Alert ritardo corriere VeloxCorriere tratta MI-RM",
+        "from_name": "Sistema Monitoraggio OrbitaWMS",
+        "from_email": "alert@rotta-logistics.example.com",
+        "date": "2024-09-09 07:18:00",
+        "body_text": "ALERT AUTOMATICO\nTipo: Ritardo corriere in tratta\nCorriere: VeloxCorriere\nTratta: HUB-MI-07 → HUB-RM-05\nPartenza prevista: 09/09 05:30 — Partenza effettiva: NON ANCORA AVVENUTA alle 07:15\nSpedizioni impattate: 184, di cui 41 in servizio Consegna Lampo 24h\nTracking di riferimento: da RL-TRACK-8801 a RL-TRACK-8984\nRischio SLA: ALTO sulle 41 spedizioni 24h\nAzione suggerita: contattare il referente VeloxCorriere e valutare rerouting via HUB-TO-02.\nQuesto messaggio è generato automaticamente. Per la gestione operativa aprire un ticket interno o chiamare la centrale."
+    },
+    {
+        "subject": "Riepilogo mensile penali agosto 2024",
+        "from_name": "Controllo di Gestione",
+        "from_email": "controllo.gestione@rotta-logistics.example.com",
+        "date": "2024-09-10 16:40:00",
+        "body_text": "Ciao,\nin allegato il riepilogo delle penali maturate ad agosto 2024.\nTotale penali del mese: 1.240,00 €.\nDettaglio per causa:\n- Mancato rispetto SLA 24h: 6 spedizioni, 720,00 €\n- Consegna oltre i termini standard: 4 spedizioni, 320,00 €\n- Disservizio segnalato e accettato: 2 casi, 200,00 €\nL'hub con maggiore incidenza è HUB-NA-03 (5 casi su 12 totali).\nRispetto a luglio (1.860 €) c'è un miglioramento del 33%.\nProporrei di portare l'analisi delle cause NA-03 alla riunione del 12.\nFatemi sapere se servono i dettagli per singola spedizione.\nSaluti,\nControllo di Gestione"
+    },
+    {
+        "subject": "Solleciti pagamento fattura 2024/1102 scaduta",
+        "from_name": "Amministrazione Rotta Sicura",
+        "from_email": "amministrazione@rotta-logistics.example.com",
+        "date": "2024-09-11 09:50:00",
+        "body_text": "Gentile cliente,\nrisulta tuttora insoluta la nostra fattura n. 2024/1102 del 15/07/2024, importo 8.760,00 €, con scadenza il 14/08/2024.\nQuesto è il secondo sollecito.\nLa preghiamo di provvedere al pagamento entro 7 giorni dal ricevimento della presente.\nQualora il pagamento fosse già stato effettuato, La invitiamo a trasmetterci la contabile in modo da poterlo riconciliare.\nIn assenza di riscontro, ci vedremo costretti a sospendere temporaneamente i nuovi ritiri programmati e ad applicare gli interessi di mora previsti dalle condizioni contrattuali.\nRestiamo a disposizione per concordare un piano di rientro.\nDistinti saluti,\nUfficio Amministrazione — 800-ROTTA1"
+    },
+    {
+        "subject": "Report giacenze magazzino HUB-TO-02 al 15/09",
+        "from_name": "Luca Bianchi",
+        "from_email": "luca.bianchi@rotta-logistics.example.com",
+        "date": "2024-09-13 08:20:00",
+        "body_text": "Buongiorno,\nfoto della situazione giacenze a HUB-TO-02 alla data odierna, estratta da OrbitaWMS.\nColli totali in giacenza: 1.342\n- In attesa di smistamento: 218\n- In attesa di ritiro corriere: 174\n- In giacenza per indirizzo errato / destinatario assente: 96\n- Resi in lavorazione: 63\nIl dato critico restano i 96 colli in giacenza per problemi di consegna: alcuni sono fermi da oltre 10 giorni. Propongo di avviare la procedura di sollecito al mittente e, se nessun riscontro entro 5 giorni, attivare la gestione resi.\nLo spazio a scaffale è al 78%, ancora sotto la soglia di allerta.\nResto a disposizione,\nLuca"
+    },
+    {
+        "subject": "Aggiornamento DDT mancanti spedizione RL-2024-0815",
+        "from_name": "Ufficio Documentale",
+        "from_email": "documentale@rotta-logistics.example.com",
+        "date": "2024-09-16 10:35:00",
+        "body_text": "Ciao colleghi,\nper la spedizione RL-2024-0815 (tracking RL-TRACK-8842) risulta mancante il DDT di consegna controfirmato.\nLa merce è stata consegnata regolarmente il 14/09 secondo OrbitaWMS, ma il documento cartaceo non è ancora rientrato dal corriere TurboPony.\nIl cliente lo sta chiedendo per la propria contabilità e non possiamo chiudere la pratica senza.\nChiedo a chi gestisce il rapporto con TurboPony di sollecitare il rientro del DDT entro venerdì.\nIn alternativa, verificate se è disponibile la prova di consegna digitale (POD) da inviare come documento sostitutivo.\nGrazie mille,\nUfficio Documentale"
+    },
+    {
+        "subject": "Invito webinar interno: novità OrbitaWMS 4.2",
+        "from_name": "Formazione & Sistemi",
+        "from_email": "formazione@rotta-logistics.example.com",
+        "date": "2024-09-17 13:10:00",
+        "body_text": "Cari colleghi,\nsiete invitati al webinar interno dedicato alle novità della release OrbitaWMS 4.2, in arrivo a fine mese.\nQuando: martedì 24 settembre, ore 11:00-12:00\nDove: link video che riceverete il giorno prima\nContenuti:\n- Nuova dashboard giacenze in tempo reale\n- Gestione automatica degli alert ritardo corriere\n- Tracciamento DDT digitale integrato\n- Reportistica SLA per hub esportabile in un clic\nIl webinar è rivolto a responsabili hub, operatori smistamento e ufficio documentale.\nLa partecipazione è caldamente raccomandata: dalla settimana successiva opereremo tutti sulla nuova versione.\nConfermate la presenza compilando il modulo in fondo alla mail.\nA presto,\nFormazione & Sistemi"
+    },
+    {
+        "subject": "Reclamo: collo danneggiato RL-2024-0902",
+        "from_name": "Giorgio Rinaldi",
+        "from_email": "giorgio.rinaldi@posta.example.com",
+        "date": "2024-09-18 17:45:00",
+        "body_text": "Buonasera,\nho ricevuto oggi la spedizione RL-2024-0902 (tracking RL-TRACK-9015) ma il collo era visibilmente danneggiato: scatola schiacciata su un lato e il contenuto in parte rotto.\nIl corriere VeloxCorriere mi ha fatto firmare velocemente senza darmi il tempo di controllare.\nVoglio segnalare il disservizio e capire come procedere per il rimborso o la sostituzione.\nHo scattato delle foto che allego a questa email.\nGradirei una risposta in tempi rapidi perché la merce mi serviva con urgenza.\nIn attesa di un vostro riscontro,\nGiorgio Rinaldi"
+    },
+    {
+        "subject": "Riepilogo KPI trimestrale Q3 2024",
+        "from_name": "Roberta Galli",
+        "from_email": "roberta.galli@rotta-logistics.example.com",
+        "date": "2024-09-20 09:30:00",
+        "body_text": "Team,\ncondivido i KPI consolidati del terzo trimestre 2024.\nSpedizioni totali gestite: 51.840 (+7% sul Q2).\nSLA medio aziendale: 98,2% — obiettivo del 98% raggiunto.\nConsegne Consegna Lampo 24h: 7.910, puntualità 97,4% (da migliorare).\nPenali totali trimestre: 4.120 € (in calo del 18% sul Q2).\nReclami formali ricevuti: 38, risolti 34.\nMigliore hub per SLA: HUB-TO-02 (99,1%). Da attenzionare: HUB-NA-03 (96,8%).\nNel Q4 ci aspetta il picco stagionale: dobbiamo arrivarci con NA-03 stabilizzato.\nNe parliamo nel dettaglio alla prossima riunione di direzione.\nComplimenti a tutti per il trimestre.\nRoberta"
+    },
+    {
+        "subject": "Comunicazione interna: nuovo cut-off ordini dal 1° ottobre",
+        "from_name": "Operations Rotta Sicura",
+        "from_email": "operations@rotta-logistics.example.com",
+        "date": "2024-09-23 08:55:00",
+        "body_text": "A tutti gli operatori,\ncomunichiamo che a partire dal 1° ottobre 2024 il cut-off ordini per il servizio Consegna Lampo 24h viene anticipato dalle 16:30 alle 16:00.\nMotivazione: nelle giornate ad alto volume lo smistamento serale risultava in ritardo, mettendo a rischio lo SLA delle 24h.\nOrdini ricevuti dopo le 16:00 verranno lavorati con partenza il giorno lavorativo successivo.\nIl numero verde 800-ROTTA1 e tutti i materiali destinati ai clienti verranno aggiornati con i nuovi orari.\nLa modifica è già stata configurata su OrbitaWMS e sarà attiva automaticamente dalla data indicata.\nPer dubbi rivolgetevi al vostro responsabile hub.\nGrazie della collaborazione,\nOperations"
+    },
+    {
+        "subject": "Stato consegna spedizione RL-2024-0967 in giacenza",
+        "from_name": "Servizio Clienti",
+        "from_email": "clienti@rotta-logistics.example.com",
+        "date": "2024-09-24 15:12:00",
+        "body_text": "Gentile cliente,\nLa contattiamo in merito alla spedizione RL-2024-0967 (tracking RL-TRACK-9128).\nIl collo si trova attualmente in giacenza presso HUB-RM-05 a seguito di un tentativo di consegna non andato a buon fine il 23/09 (destinatario assente).\nPer completare la consegna La preghiamo di indicarci entro 3 giorni lavorativi:\n- una data e una fascia oraria preferita per il secondo tentativo, oppure\n- un punto di ritiro alternativo.\nTrascorsi 10 giorni senza riscontro la merce verrà rispedita al mittente.\nPuò gestire tutto anche dal portale tracking o chiamando il numero verde 800-ROTTA1.\nRestiamo a disposizione.\nServizio Clienti Rotta Sicura"
+    },
+    {
+        "subject": "Verbale riunione operativa hub del 12/09",
+        "from_name": "Roberta Galli",
+        "from_email": "roberta.galli@rotta-logistics.example.com",
+        "date": "2024-09-25 10:00:00",
+        "body_text": "Cari tutti,\nriepilogo i punti emersi nella riunione operativa del 12 settembre.\n1) SLA agosto: media 98,1%. NA-03 sotto soglia (96,8%), avviata analisi cause.\n2) Penali: 1.240 € ad agosto, in calo. Concentrarsi su NA-03.\n3) Cut-off ordini anticipato alle 16:00 dal 1° ottobre (vedi comunicazione dedicata).\n4) Picco autunnale: previsto +25% volumi novembre-dicembre. Pianificare turni extra.\n5) OrbitaWMS 4.2: rollout dal 30/09, webinar formativo il 24/09.\nAZIONI:\n- Esposito (NA-03): piano correttivo entro 30/09.\n- Bianchi (TO-02): proposta gestione giacenze lunga durata.\n- HR: stima fabbisogno personale interinale picco.\nProssima riunione: 10 ottobre, ore 15:00.\nGrazie a tutti per la partecipazione.\nRoberta"
+    },
+    {
+        "subject": "Nota di credito 2024/NC-031 su fattura 1187",
+        "from_name": "Amministrazione Rotta Sicura",
+        "from_email": "amministrazione@rotta-logistics.example.com",
+        "date": "2024-09-26 11:25:00",
+        "body_text": "Gentile cliente,\nin allegato la nota di credito n. 2024/NC-031 emessa a parziale storno della fattura n. 2024/1187.\nImporto accreditato: 480,00 € IVA inclusa.\nMotivazione: riconoscimento penali per 4 spedizioni Consegna Lampo 24h consegnate oltre lo SLA nel mese di agosto, come da Sua segnalazione e successiva verifica congiunta.\nL'importo verrà compensato sulla prossima fattura oppure rimborsato su Sua richiesta.\nCi scusiamo per il disservizio e La ringraziamo per la segnalazione, che ci ha permesso di intervenire sulle cause.\nPer qualsiasi necessità il nostro ufficio è a disposizione allo 800-ROTTA1.\nCordiali saluti,\nUfficio Amministrazione"
+    },
+    {
+        "subject": "Report quotidiano consegne 27/09 — tutti gli hub",
+        "from_name": "Sistema Reportistica OrbitaWMS",
+        "from_email": "report@rotta-logistics.example.com",
+        "date": "2024-09-27 19:30:00",
+        "body_text": "REPORT GIORNALIERO CONSEGNE — 27/09/2024\nConsegne completate: 2.984\nConsegne in giacenza/rinviate: 137\nSpedizioni in transito: 1.620\nDettaglio per hub:\n- HUB-MI-07: 1.180 consegnate, SLA 98,7%\n- HUB-NA-03: 624 consegnate, SLA 97,1%\n- HUB-RM-05: 742 consegnate, SLA 98,4%\n- HUB-TO-02: 438 consegnate, SLA 99,3%\nConsegna Lampo 24h: 402 spedizioni, puntualità 97,8%\nAlert attivi a fine giornata: 3 (ritardi corriere TurboPony tratta RM-NA).\nReport generato automaticamente alle 19:30. Per dettagli consultare la dashboard OrbitaWMS."
+    },
+    {
+        "subject": "Escalation interna: ricorso penali NA-03 settembre",
+        "from_name": "Antonio Esposito",
+        "from_email": "antonio.esposito@rotta-logistics.example.com",
+        "date": "2024-09-30 16:05:00",
+        "body_text": "Ciao Roberta, ciao Controllo di Gestione,\nporto in escalation la situazione penali di HUB-NA-03 a settembre.\nAbbiamo maturato 5 contestazioni su consegne in ritardo, ma su 3 di queste il ritardo è imputabile esclusivamente al corriere VeloxCorriere, che ha saltato due partenze programmate per problemi di mezzi loro.\nLe spedizioni coinvolte: RL-2024-0691, RL-2024-0712, RL-2024-0738.\nChiedo di: 1) rivalere le penali sul corriere secondo il contratto di vettoriamento, 2) aprire un confronto formale con VeloxCorriere sulle performance della tratta.\nNon è accettabile che NA-03 venga penalizzato per disservizi non nostri.\nResto a disposizione con tutta la documentazione tracking.\nAntonio Esposito — Responsabile HUB-NA-03"
+    },
+    {
+        "subject": "Pianificazione turni picco ottobre-novembre",
+        "from_name": "Risorse Umane",
+        "from_email": "hr@rotta-logistics.example.com",
+        "date": "2024-10-01 09:40:00",
+        "body_text": "Cari responsabili hub,\nin vista del picco autunnale (volumi stimati +25% da metà novembre) condividiamo la bozza di pianificazione turni.\nPunti principali:\n- Apertura turno serale aggiuntivo presso HUB-MI-07 e HUB-RM-05 dal 4 novembre.\n- Inserimento di 18 risorse interinali sullo smistamento, distribuite sui quattro hub.\n- Estensione del presidio numero verde 800-ROTTA1 anche la domenica nel periodo 25/11-22/12.\nVi chiediamo di confermare il fabbisogno effettivo del vostro hub entro il 10 ottobre, indicando ruoli e orari.\nLa formazione delle nuove risorse su OrbitaWMS è prevista nelle settimane del 21 e 28 ottobre.\nGrazie per la collaborazione,\nUfficio Risorse Umane"
+    },
+    {
+        "subject": "Riepilogo dogana spedizioni extra-UE settembre",
+        "from_name": "Ufficio Dogane",
+        "from_email": "dogane@rotta-logistics.example.com",
+        "date": "2024-10-02 11:50:00",
+        "body_text": "Buongiorno,\nriepilogo della gestione doganale per le spedizioni extra-UE di settembre.\nSpedizioni sdoganate: 142\nTempo medio di svincolo: 1,8 giorni lavorativi\nSpedizioni ferme in dogana a fine mese: 7 (in attesa di integrazione documentale dei mittenti)\nLe pratiche bloccate riguardano principalmente fatture commerciali incomplete o classificazioni merceologiche errate.\nRicordo a tutti gli operatori che per le spedizioni extra-UE servono SEMPRE: fattura commerciale, packing list e codice HS corretto, da caricare su OrbitaWMS prima della partenza.\nLa mancanza di anche uno solo di questi documenti blocca la spedizione e mette a rischio lo SLA.\nResto a disposizione per le pratiche aperte.\nUfficio Dogane"
+    },
+    {
+        "subject": "Reclamo formale: spedizione persa RL-2024-1044",
+        "from_name": "Federica Conti",
+        "from_email": "federica.conti@cliente.example.com",
+        "date": "2024-10-03 14:15:00",
+        "body_text": "Spettabile Rotta Sicura,\ninoltro reclamo formale per la spedizione RL-2024-1044 (tracking RL-TRACK-9301), affidatavi il 26/09.\nIl tracking risulta fermo a \"in transito presso HUB-RM-05\" dal 27/09, senza alcun aggiornamento da sei giorni.\nIl destinatario non ha ricevuto nulla e il vostro numero verde non è riuscito a darmi informazioni utili.\nA questo punto temo che la merce sia andata persa.\nChiedo formalmente: 1) localizzazione immediata del collo, 2) in caso di smarrimento, l'avvio della procedura di rimborso per il valore dichiarato di 640,00 €.\nResto in attesa di un riscontro entro 48 ore, dopodiché valuterò le vie legali.\nFederica Conti"
+    },
+    {
+        "subject": "Report mensile performance corrieri settembre",
+        "from_name": "Controllo di Gestione",
+        "from_email": "controllo.gestione@rotta-logistics.example.com",
+        "date": "2024-10-04 10:20:00",
+        "body_text": "Ciao,\nin allegato il confronto performance corrieri per settembre.\nVELOXCORRIERE:\n- Colli movimentati: 21.480\n- Puntualità ritiri: 96,2%\n- Partenze saltate/ritardate: 4 (tutte tratta Centro-Sud)\n- Reclami imputabili: 9\nTURBOPONY:\n- Colli movimentati: 12.310\n- Puntualità ritiri: 98,5%\n- Partenze saltate/ritardate: 1\n- Reclami imputabili: 3\nValutazione: TurboPony più affidabile sui ritiri; VeloxCorriere ha un problema strutturale sulle tratte verso Sud che impatta HUB-NA-03.\nPropongo di rivedere il mix di assegnazione corriere per le tratte critiche e di formalizzare la rivalsa penali su VeloxCorriere.\nCi sentiamo per i dettagli.\nControllo di Gestione"
+    },
+    {
+        "subject": "Invito riunione direzione — chiusura Q3 e piano Q4",
+        "from_name": "Segreteria Direzione",
+        "from_email": "direzione@rotta-logistics.example.com",
+        "date": "2024-10-07 09:00:00",
+        "body_text": "Gentili colleghi,\nla Direzione vi convoca alla riunione di chiusura terzo trimestre e pianificazione Q4.\nData: martedì 15 ottobre, ore 10:00\nLuogo: sede di Milano, sala grande\nDurata stimata: 2 ore\nPartecipanti: responsabili hub, Controllo di Gestione, HR, Operations, Commerciale.\nAgenda:\n- Risultati Q3 (volumi, SLA, penali, reclami)\n- Stato hub NA-03 e piano correttivo\n- Preparazione picco stagionale Q4\n- Rapporti con corrieri VeloxCorriere e TurboPony\n- Obiettivi e budget Q4\nÈ richiesta la partecipazione in presenza. Materiali da inviare in anticipo entro il 13 ottobre.\nConfermare presenza alla segreteria.\nCordiali saluti,\nSegreteria Direzione"
+    },
+    {
+        "subject": "Newsletter clienti — Rotta News ottobre 2024",
+        "from_name": "Marketing Rotta Sicura",
+        "from_email": "newsletter@rotta-logistics.example.com",
+        "date": "2024-10-08 12:00:00",
+        "body_text": "Gentile cliente,\nbenvenuto nel numero di ottobre di Rotta News.\nLE NOVITÀ DEL MESE:\n- Consegna Lampo 24h ora disponibile anche su nuove province del Sud Italia.\n- Nuova area tracking: segui le tue spedizioni in tempo reale e gestisci le riconsegne in autonomia.\n- SLA confermato al 98% su consegne 24h: il nostro impegno per la puntualità.\nIN ARRIVO PER IL PERIODO NATALIZIO:\n- Ricorda di anticipare gli ordini: il cut-off per la Consegna Lampo 24h è alle 16:00.\n- Hub potenziati e turni estesi per gestire i volumi di fine anno.\nPer assistenza, il numero verde 800-ROTTA1 è attivo dal lunedì al sabato, 8-20.\nGrazie per aver scelto Rotta Sicura Logistics.\nIl team Rotta Sicura"
+    },
+    {
+        "subject": "Stato consegne in tempo reale — richiesta cliente",
+        "from_name": "Paolo Marchetti",
+        "from_email": "paolo.marchetti@cliente.example.com",
+        "date": "2024-10-09 16:30:00",
+        "body_text": "Buongiorno,\navrei bisogno di un aggiornamento sullo stato di tre nostre spedizioni partite ieri:\n- RL-2024-1078 (tracking RL-TRACK-9355)\n- RL-2024-1079 (tracking RL-TRACK-9356)\n- RL-2024-1080 (tracking RL-TRACK-9357)\nTutte e tre destinate alla zona di Torino con servizio Consegna Lampo 24h.\nIl mio cliente finale mi sta chiedendo conferma per organizzarsi con la ricezione.\nPotete dirmi se sono in consegna oggi e indicarmi indicativamente la fascia oraria?\nHo provato il portale tracking ma vorrei una conferma diretta.\nGrazie mille per la cortese e rapida risposta,\nPaolo Marchetti — Ufficio Spedizioni"
+    },
+    {
+        "subject": "Riepilogo resi e gestione giacenze lunga durata",
+        "from_name": "Luca Bianchi",
+        "from_email": "luca.bianchi@rotta-logistics.example.com",
+        "date": "2024-10-10 08:35:00",
+        "body_text": "Ciao team,\ncome richiesto in riunione, ecco la proposta sulla gestione delle giacenze di lunga durata.\nSituazione attuale (dato consolidato sui 4 hub da OrbitaWMS): 214 colli fermi da oltre 15 giorni, di cui 58 da oltre 30.\nPROPOSTA in 3 step:\n1) Giorno 10: sollecito automatico al mittente con richiesta istruzioni.\n2) Giorno 20: secondo sollecito + avviso di addebito costi di stoccaggio.\n3) Giorno 30: rispedizione al mittente o avvio procedura smaltimento/asta secondo contratto.\nQuesto libererebbe spazio a scaffale (oggi HUB-TO-02 al 78%, HUB-NA-03 all'85%) e ridurrebbe i costi di stoccaggio improduttivo.\nServe configurare i solleciti automatici su OrbitaWMS: ne parlo con Sistemi.\nFatemi sapere se procediamo.\nLuca"
+    },
+    {
+        "subject": "Fattura n. 2024/1243 — servizi logistici settembre",
+        "from_name": "Amministrazione Rotta Sicura",
+        "from_email": "amministrazione@rotta-logistics.example.com",
+        "date": "2024-10-11 10:05:00",
+        "body_text": "Gentile cliente,\ntrasmettiamo in allegato la fattura n. 2024/1243 per i servizi logistici del mese di settembre 2024.\nImporto totale: 16.920,00 € IVA inclusa.\nDettaglio:\n- 3.180 spedizioni standard\n- 402 spedizioni Consegna Lampo 24h\n- Gestione giacenze e movimentazione HUB-MI-07 e HUB-RM-05\n- Detrazione nota di credito 2024/NC-031: -480,00 €\nScadenza pagamento: 10/11/2024.\nModalità: bonifico bancario, causale = numero fattura.\nLa contabilità di dettaglio per singola spedizione è disponibile nell'area riservata.\nPer qualsiasi chiarimento contattateci allo 800-ROTTA1.\nCordiali saluti,\nUfficio Amministrazione"
+    },
+    {
+        "subject": "Alert capacità magazzino HUB-NA-03 sopra soglia",
+        "from_name": "Sistema Monitoraggio OrbitaWMS",
+        "from_email": "alert@rotta-logistics.example.com",
+        "date": "2024-10-14 06:55:00",
+        "body_text": "ALERT AUTOMATICO\nTipo: Saturazione capacità magazzino\nHub: HUB-NA-03 (Napoli)\nOccupazione scaffali: 91% (soglia di allerta: 85%)\nColli in giacenza: 2.106\nDi cui in attesa di smistamento: 412\nResi in lavorazione: 188\nTrend ultime 72h: +6%\nRischio: rallentamento operazioni di ingresso merce, possibile impatto su SLA.\nAzione suggerita: accelerare lo smistamento, valutare trasferimento parziale colli a HUB-RM-05, sollecitare i ritiri corriere.\nQuesto è un messaggio automatico generato da OrbitaWMS. Aprire ticket operativo per la gestione."
+    },
+    {
+        "subject": "Comunicazione interna: chiusura straordinaria HUB-TO-02",
+        "from_name": "Operations Rotta Sicura",
+        "from_email": "operations@rotta-logistics.example.com",
+        "date": "2024-10-15 17:20:00",
+        "body_text": "A tutto il personale interessato,\ncomunichiamo che HUB-TO-02 (Torino) resterà chiuso per manutenzione straordinaria degli impianti di smistamento sabato 19 ottobre, dalle 06:00 alle 18:00.\nDurante la chiusura:\n- Le spedizioni in partenza dal Nord-Ovest saranno temporaneamente reindirizzate su HUB-MI-07.\n- Non saranno accettati ingressi merce a TO-02 nella giornata.\n- I ritiri programmati saranno spostati a lunedì 21.\nIl servizio Consegna Lampo 24h subirà un'estensione dei tempi solo per le spedizioni in carico a TO-02 nella giornata di sabato; i clienti interessati saranno avvisati.\nGli operatori TO-02 riceveranno comunicazione separata sui turni.\nPer urgenze: numero verde 800-ROTTA1.\nGrazie per la collaborazione,\nOperations"
+    },
+    {
+        "subject": "Report SLA per hub — prima metà ottobre",
+        "from_name": "Davide Ferraro",
+        "from_email": "davide.ferraro@rotta-logistics.example.com",
+        "date": "2024-10-16 09:15:00",
+        "body_text": "Ciao,\nriepilogo SLA consegne nei primi 15 giorni di ottobre.\n- HUB-MI-07: 98,6% (24h: 97,9%)\n- HUB-RM-05: 98,2% (24h: 97,5%)\n- HUB-TO-02: 99,0% (24h: 98,8%)\n- HUB-NA-03: 97,4% (24h: 96,5%)\nMedia aziendale: 98,3%.\nNA-03 resta sotto la soglia interna del 98%, ma in lieve miglioramento rispetto a settembre (+0,6 punti) dopo il piano correttivo di Esposito.\nLa criticità principale resta la saturazione del magazzino NA-03 (alert capacità di lunedì), che rallenta lo smistamento.\nProporrei il trasferimento temporaneo di una quota di colli su RM-05, come da alert OrbitaWMS.\nDettaglio completo in allegato.\nDavide"
+    },
+    {
+        "subject": "Escalation cliente VIP: disservizio ripetuto",
+        "from_name": "Commerciale Rotta Sicura",
+        "from_email": "commerciale@rotta-logistics.example.com",
+        "date": "2024-10-18 11:40:00",
+        "body_text": "Ciao Operations, ciao Direzione,\nporto in escalation una situazione delicata con un cliente strategico.\nNelle ultime tre settimane ha subìto 4 disservizi (ritardi e una giacenza per indirizzo errato) su spedizioni Consegna Lampo 24h, le ultime RL-2024-1044 e RL-2024-1078.\nIl cliente vale circa 180.000 € annui di fatturato e minaccia di rivolgersi a un concorrente.\nChiedo con urgenza:\n1) una verifica end-to-end delle sue ultime 10 spedizioni;\n2) un referente operativo dedicato per le sue consegne;\n3) un incontro entro la settimana per presentare un piano di recovery e, se necessario, un riconoscimento commerciale.\nÈ una priorità assoluta: non possiamo permetterci di perderlo.\nResto a disposizione per organizzare il tutto.\nUfficio Commerciale"
+    },
+    {
+        "subject": "Verbale riunione direzione del 15/10",
+        "from_name": "Segreteria Direzione",
+        "from_email": "direzione@rotta-logistics.example.com",
+        "date": "2024-10-21 10:30:00",
+        "body_text": "Gentili colleghi,\nin sintesi le decisioni della riunione di direzione del 15 ottobre.\n1) Q3 chiuso con SLA medio 98,2% e penali in calo del 18%: risultato positivo.\n2) HUB-NA-03: confermato piano correttivo, monitoraggio settimanale dello SLA fino a fine anno; valutato trasferimento colli su RM-05 in caso di saturazione.\n3) Picco Q4: approvati turni serali extra e 18 risorse interinali; budget straordinario stanziato.\n4) Corrieri: avviata trattativa con VeloxCorriere per le tratte Sud e formalizzazione rivalsa penali.\n5) Cliente VIP: assegnato referente operativo dedicato, recovery plan in corso.\nPROSSIMI PASSI: HR completa reclutamento entro 28/10; Operations definisce piano picco entro 25/10.\nVerbale completo agli atti.\nSegreteria Direzione"
+    },
+    {
+        "subject": "Riepilogo settimanale tracking spedizioni in transito",
+        "from_name": "Sistema Reportistica OrbitaWMS",
+        "from_email": "report@rotta-logistics.example.com",
+        "date": "2024-10-25 18:45:00",
+        "body_text": "RIEPILOGO SETTIMANALE TRACKING — settimana 43\nSpedizioni create: 7.842\nConsegnate nei termini: 7.218 (92,0%)\nIn transito a fine settimana: 498\nIn giacenza: 126\nIn eccezione (indirizzo errato/destinatario assente/danno): 89\nTracking più consultati dai clienti: RL-TRACK-9501, RL-TRACK-9533, RL-TRACK-9560.\nTempo medio di consegna standard: 2,3 giorni\nTempo medio Consegna Lampo 24h: 21,4 ore\nLe 89 spedizioni in eccezione sono già assegnate al servizio clienti per la lavorazione.\nReport generato automaticamente da OrbitaWMS. Per il dettaglio aprire la dashboard tracking."
+    },
+    {
+        "subject": "Comunicazione interna: aggiornamento procedura resi",
+        "from_name": "Operations Rotta Sicura",
+        "from_email": "operations@rotta-logistics.example.com",
+        "date": "2024-10-29 09:25:00",
+        "body_text": "A tutti gli operatori di magazzino,\ndal 4 novembre entra in vigore la nuova procedura resi, integrata in OrbitaWMS 4.2.\nPunti chiave:\n1) Ogni reso in ingresso va registrato a sistema entro 24 ore dall'arrivo all'hub.\n2) Verifica obbligatoria delle condizioni del collo con foto allegata alla pratica.\n3) Classificazione del reso: rivendibile / da rilavorare / da smaltire.\n4) Notifica automatica al mittente con esito e tracking di ritorno.\nObiettivo: ridurre i tempi di gestione resi e svuotare più rapidamente le aree dedicate, oggi sature soprattutto a HUB-NA-03 e HUB-TO-02.\nLa procedura completa è disponibile nell'area documentale interna.\nPer dubbi contattate il vostro responsabile hub.\nGrazie,\nOperations"
+    },
+    {
+        "subject": "Reclamo: addebito costi di stoccaggio contestato",
+        "from_name": "Stefano Bruni",
+        "from_email": "stefano.bruni@fornitore.example.com",
+        "date": "2024-11-04 15:50:00",
+        "body_text": "Buongiorno,\nho ricevuto un addebito di costi di stoccaggio per la spedizione RL-2024-1182 ferma presso HUB-NA-03, ma lo contesto.\nLa merce è in giacenza perché il VOSTRO corriere non è riuscito a consegnarla per due tentativi, non per un mio errore.\nIl destinatario era regolarmente presente all'indirizzo corretto da me indicato in OrbitaWMS.\nNon ritengo corretto che debba pagare lo stoccaggio di un collo bloccato per un disservizio di consegna.\nChiedo lo storno immediato dell'addebito e una verifica dei due tentativi di consegna falliti.\nRimango in attesa di un vostro chiarimento prima di procedere al pagamento della relativa fattura.\nCordiali saluti,\nStefano Bruni"
+    },
+    {
+        "subject": "Report avanzamento picco — prima settimana novembre",
+        "from_name": "Davide Ferraro",
+        "from_email": "davide.ferraro@rotta-logistics.example.com",
+        "date": "2024-11-11 08:50:00",
+        "body_text": "Ciao team,\nprimo aggiornamento sul picco stagionale dopo l'avvio dei turni serali.\nVolumi settimana 45: 11.240 spedizioni (+22% sulla media autunnale), in linea con le previsioni.\nSLA medio aziendale: 97,9% — sotto la soglia del 98% per la prima volta da agosto, ma fisiologico in fase di rampa.\nDettaglio: MI-07 98,4%, RM-05 98,0%, TO-02 98,9%, NA-03 96,6%.\nLe 18 risorse interinali sono operative; la curva di apprendimento su OrbitaWMS sta migliorando.\nCriticità: NA-03 resta il collo di bottiglia per saturazione magazzino. Abbiamo iniziato a trasferire colli su RM-05.\nProssima settimana attesi i volumi più alti: teniamo monitorato il cut-off ordini delle 16:00.\nReport completo in allegato.\nDavide"
+    },
+    {
+        "subject": "Invito riunione straordinaria gestione picco Black Friday",
+        "from_name": "Operations Rotta Sicura",
+        "from_email": "operations@rotta-logistics.example.com",
+        "date": "2024-11-18 09:10:00",
+        "body_text": "Cari responsabili,\nin vista del Black Friday e del picco di fine novembre, convoco una riunione straordinaria di coordinamento.\nQuando: mercoledì 20 novembre, ore 09:30 (collegamento video)\nDurata: 45 minuti, focus operativo.\nTemi:\n- Capacità residua per hub e piano anti-saturazione (priorità NA-03)\n- Presidio rafforzato numero verde 800-ROTTA1\n- Coordinamento corrieri VeloxCorriere e TurboPony per i giorni di picco\n- Gestione cut-off ordini e comunicazione ai clienti\n- Procedura escalation rapida per spedizioni Consegna Lampo 24h a rischio\nVi chiedo di arrivare con la fotografia aggiornata della capacità del vostro hub da OrbitaWMS.\nConfermate la presenza.\nGrazie,\nOperations"
+    },
+    {
+        "subject": "Riepilogo contabile fatture insolute al 30/11",
+        "from_name": "Controllo di Gestione",
+        "from_email": "controllo.gestione@rotta-logistics.example.com",
+        "date": "2024-12-02 10:40:00",
+        "body_text": "Ciao Amministrazione,\nin allegato il riepilogo delle fatture insolute alla data del 30/11/2024.\nTotale crediti scaduti: 23.640,00 € su 6 clienti.\nDettaglio principali:\n- Fattura 2024/1102: 8.760 € — scaduta da 108 giorni, secondo sollecito inviato, da valutare azione di recupero.\n- Fattura 2024/1243: 16.920 € — recente, scaduta da 22 giorni, primo sollecito da inviare.\nIl resto sono importi minori sotto i 2.000 €.\nSuggerisco: 1) per la 2024/1102 procedere con messa in mora formale, 2) sospendere i nuovi ritiri ai clienti con scaduto oltre 90 giorni.\nL'esposizione complessiva resta sotto controllo ma il caso 1102 va chiuso entro l'anno.\nNe parliamo lunedì?\nControllo di Gestione"
+    },
+    {
+        "subject": "Auguri e chiusura uffici festività — comunicazione interna",
+        "from_name": "Segreteria Direzione",
+        "from_email": "direzione@rotta-logistics.example.com",
+        "date": "2024-12-18 16:00:00",
+        "body_text": "Cari colleghi,\nun grazie sincero a tutti per il lavoro svolto durante un picco stagionale impegnativo: nonostante i volumi record abbiamo chiuso l'anno con uno SLA medio sopra il 98%.\nCALENDARIO FESTIVITÀ:\n- Uffici amministrativi chiusi dal 24 dicembre al 1° gennaio.\n- Hub operativi con presidio ridotto il 24 e il 31 dicembre; chiusi il 25-26 dicembre e il 1° gennaio.\n- Numero verde 800-ROTTA1 attivo con orario ridotto nei giorni feriali tra le festività.\n- Ultimo cut-off ordini Consegna Lampo 24h pre-natalizio: 23 dicembre ore 16:00.\nI dettagli operativi per ciascun hub seguiranno in comunicazione separata.\nA tutti voi e alle vostre famiglie i migliori auguri di Buone Feste.\nLa Direzione di Rotta Sicura Logistics"
+    }
+]
