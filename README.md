@@ -1933,11 +1933,14 @@ via `KB_INGEST_PII_STRATEGY`, building the strategy through the package factory
 so the host `TenantResolver` + per-tenant salt wire in (R30); originals land in
 the per-tenant `pii_token_maps` vault, surrogates go to disk/chunks/embeddings.
 *PR2:* extends tokenisation to the **inline** ingestion path (HTTP
-`POST /api/kb/ingest` + `kb:ingest-folder` CLI) — `DocumentIngestor` redacts each
-**chunk's text** before hashing/embedding/persist (raw markdown stays the
-idempotency anchor; canonical frontmatter stays parseable; deterministic tokens
-keep re-ingest idempotent), gated by `KB_INLINE_INGEST_PII_REDACT` (default OFF,
-R43). Adds a per-`(tenant, project)` **`kb_pii_settings`** policy
+`POST /api/kb/ingest` + `kb:ingest-folder` CLI, which run the `kb.ingest` Flow
+saga). The Flow's `chunk-document` step redacts each **chunk's text** — via the
+shared `ChunkRedactor` — so the downstream `embed-chunks` + `persist-chunks`
+steps only ever see surrogates (the legacy direct `DocumentIngestor` path shares
+the same `ChunkRedactor`). Raw markdown stays the idempotency anchor; canonical
+frontmatter stays parseable; deterministic tokens keep re-ingest idempotent; a
+dry-run preview forces the side-effect-free mask (no vault tokens). Gated by
+`KB_INLINE_INGEST_PII_REDACT` (default OFF, R43). Adds a per-`(tenant, project)` **`kb_pii_settings`** policy
 (`redact_enabled` + `strategy`) resolved most-specific-wins
 (`config ← tenant '*' ← project`) by `KbPiiPolicyResolver`, delivered tri-surface
 (R44): **HTTP** (`GET /api/admin/pii/policy` `viewPiiRedactorAdmin`; `PUT`

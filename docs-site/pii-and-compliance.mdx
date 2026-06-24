@@ -135,15 +135,23 @@ no-op), the host master switch `KB_PII_REDACTOR_ENABLED=true`, and
 ### Inline ingestion path (v8.23/PR2)
 
 The same redaction now also runs on the **inline** ingestion path — the HTTP
-`POST /api/kb/ingest` batch and the `kb:ingest-folder` CLI, both via
-`IngestDocumentJob → DocumentIngestor`. Each **chunk's text** is rewritten
-through the active strategy **before** it is hashed, embedded, and persisted, so
-the vector store + `chunk_text` never hold raw PII while the per-tenant vault
-keeps the originals. Redaction is deliberately scoped to the chunk text, not the
-whole markdown: the raw markdown stays the idempotency anchor (`document_hash`)
-and the canonical frontmatter stays parseable. Tokens are deterministic, so a
-re-ingest of identical content yields identical surrogates and remains
-idempotent (same `chunk_hash`).
+`POST /api/kb/ingest` batch and the `kb:ingest-folder` CLI. Both dispatch
+`IngestDocumentJob`, which runs the `kb.ingest` **Flow saga**
+(`parse-markdown → chunk-document → embed-chunks → persist-chunks`). The
+**`chunk-document`** step redacts each chunk's text — through the shared
+`App\Services\Kb\Pii\ChunkRedactor` — so the downstream `embed-chunks` and
+`persist-chunks` steps (which both read the chunk drafts) only ever see
+surrogates. The vector store + `chunk_text` therefore never hold raw PII while
+the per-tenant vault keeps the originals. (The legacy direct path,
+`DocumentIngestor::persistFromDrafts()`, redacts through the same `ChunkRedactor`
+after its idempotency short-circuit, so both code paths share one contract.)
+
+Redaction is deliberately scoped to the chunk text, not the whole markdown: the
+raw markdown stays the idempotency anchor (`document_hash`) and the canonical
+frontmatter stays parseable. Tokens are deterministic, so a re-ingest of
+identical content yields identical surrogates and remains idempotent (same
+`chunk_hash`). On a **dry-run** preview the redactor forces the side-effect-free
+`mask` strategy, so a preview never mints vault tokens and never stores raw PII.
 
 The inline path is gated by `KB_INLINE_INGEST_PII_REDACT` (default **OFF**, R43)
 on top of the same two master flags.

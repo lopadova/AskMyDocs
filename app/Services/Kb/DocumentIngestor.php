@@ -10,8 +10,7 @@ use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
 use App\Services\Kb\Canonical\CanonicalParsedDocument;
 use App\Services\Kb\Canonical\CanonicalParser;
-use App\Services\Kb\Pii\IngestStrategyResolver;
-use App\Services\Kb\Pii\KbPiiPolicyResolver;
+use App\Services\Kb\Pii\ChunkRedactor;
 use App\Services\Kb\Pipeline\ChunkDraft;
 use App\Services\Kb\Pipeline\PipelineRegistry;
 use App\Services\Kb\Pipeline\SourceDocument;
@@ -20,7 +19,6 @@ use App\Support\KbPath;
 use App\Support\TenantContext;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Padosoft\PiiRedactor\RedactorEngine;
 use RuntimeException;
 
 /**
@@ -363,13 +361,13 @@ class DocumentIngestor
             return $existing;
         }
 
-        // v8.23 (Ciclo 4) — inline-path PII redaction of the chunk text. Runs
+        // v8.23 (Ciclo 4) — PII redaction of the chunk text (direct path). Runs
         // here, AFTER the idempotency short-circuit above, so an identical
-        // re-ingest is a pure no-op and never re-touches the token vault. No-op
-        // unless the master engine flags are on AND the per-(tenant, project)
-        // policy enables it. (The connector boundary handles its own path via
-        // HostIngestionBridge.)
-        $chunkDrafts = $this->redactChunkDraftsIfEnabled($projectKey, $chunkDrafts);
+        // re-ingest is a pure no-op and never re-touches the token vault. The
+        // Flow saga (the real HTTP/CLI path) redacts in ChunkDocumentStep
+        // instead; both share App\Services\Kb\Pii\ChunkRedactor so the contract
+        // is identical. No-op unless redaction is genuinely active.
+        $chunkDrafts = app(ChunkRedactor::class)->redact($projectKey, $chunkDrafts);
 
         $canonical = $this->tryParseCanonical($projectKey, $sourcePath, $markdown);
         $embeddingResponse = $this->embeddingCache->generate(
@@ -640,57 +638,4 @@ class DocumentIngestor
         CanonicalIndexerJob::dispatch($document->id, $tenantId);
     }
 
-    // -----------------------------------------------------------------
-    // PII redaction (inline HTTP/CLI path — v8.23 Ciclo 4)
-    // -----------------------------------------------------------------
-
-    /**
-     * Rewrite each chunk's text through the resolved redaction strategy when
-     * the per-(tenant, project) policy enables it AND the master engine flags
-     * are on. `mask` = one-way; `tokenise` = reversible per-tenant vault.
-     *
-     * Deliberately scoped to the CHUNK text, not the whole markdown: the raw
-     * markdown stays the idempotency anchor (`document_hash`) and keeps the
-     * canonical frontmatter parseable, while the chunks — the only payload that
-     * reaches the embedding provider and the vector index — are the
-     * GDPR-relevant boundary ("never raw PII in the vector store"). Tokens are
-     * deterministic, so a re-ingest of identical content yields identical
-     * surrogates and stays idempotent (same `chunk_hash`).
-     *
-     * Gating mirrors {@see \App\Connectors\HostIngestionBridge::redactContent()}:
-     * the package engine no-ops while `pii-redactor.enabled` is off, so the
-     * strict-strategy throw in {@see IngestStrategyResolver} only fires when
-     * redaction is genuinely active.
-     *
-     * @param  list<ChunkDraft>  $chunkDrafts
-     * @return list<ChunkDraft>
-     */
-    private function redactChunkDraftsIfEnabled(string $projectKey, array $chunkDrafts): array
-    {
-        if (! (bool) config('pii-redactor.enabled', false)) {
-            return $chunkDrafts;
-        }
-        if (! (bool) config('kb.pii_redactor.enabled', false)) {
-            return $chunkDrafts;
-        }
-
-        $tenantId = app(TenantContext::class)->current();
-        $policy = app(KbPiiPolicyResolver::class)->resolve($tenantId, $projectKey);
-        if (! $policy['redact_enabled']) {
-            return $chunkDrafts;
-        }
-
-        $strategy = app(IngestStrategyResolver::class)->forName($policy['strategy']);
-        $engine = app(RedactorEngine::class);
-
-        return array_map(
-            fn (ChunkDraft $draft): ChunkDraft => new ChunkDraft(
-                text: $engine->redact($draft->text, $strategy),
-                order: $draft->order,
-                headingPath: $draft->headingPath,
-                metadata: $draft->metadata,
-            ),
-            $chunkDrafts,
-        );
-    }
 }
