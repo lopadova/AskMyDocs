@@ -95,10 +95,13 @@ Two decisions govern the compliance integration; changing either needs a new ADR
   encryption.
 - Detokenize is a privileged, audited reverse-lookup — never widen its gate.
 - **`KB_INGEST_PII_STRATEGY` must match exactly.** Accepted values are `mask`
-  (default) and `tokenise` (with a trailing `s`). Any other value — including the
-  common typo `tokenize` — throws an `InvalidArgumentException` at ingest time so
-  the misconfiguration surfaces immediately (R14), rather than silently falling
-  back to masking.
+  (default) and `tokenise` (with a trailing `s`). When the connector ingest
+  redaction boundary is enabled (`KB_PII_REDACTOR_ENABLED=true` +
+  `KB_CONNECTOR_INGEST_PII_REDACT=true`), any other value — including the common
+  typo `tokenize` — throws an `InvalidArgumentException` at ingest time so the
+  misconfiguration surfaces immediately (R14), rather than silently masking.
+  While the boundary is OFF, `redactContent()` returns the original untouched and
+  the value is never consulted.
 - **`tokenise` requires `PII_REDACTOR_SALT`.** The per-tenant token vault uses an
   HMAC salt; the package factory throws loudly if `PII_REDACTOR_SALT` is empty or
   absent. Set it before enabling `tokenise` to avoid ingest failures.
