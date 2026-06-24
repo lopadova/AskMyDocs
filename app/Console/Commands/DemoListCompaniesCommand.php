@@ -144,7 +144,8 @@ class DemoListCompaniesCommand extends Command
             ->when($tenantFilter !== null, fn ($q) => $q->where('tenant_id', $tenantFilter))
             ->get();
         foreach ($installations as $installation) {
-            $projectKey = (string) (((array) $installation->config_json)['project_key'] ?? '');
+            // v8.20: project_key è una COLONNA (non più in config_json).
+            $projectKey = (string) ($installation->project_key ?? '');
             if ($projectKey === '') {
                 continue;
             }

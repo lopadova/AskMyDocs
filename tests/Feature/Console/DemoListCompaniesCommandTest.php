@@ -13,6 +13,7 @@ use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Hash;
+use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
 use Tests\TestCase;
 
 /**
@@ -61,6 +62,33 @@ final class DemoListCompaniesCommandTest extends TestCase
             '/rotta-logistics.*?\|\s*3\s*\|\s*2\s*\|/',
             $output,
         );
+    }
+
+    public function test_lists_connector_installations_by_project_key_column(): void
+    {
+        // v8.20: project_key è una COLONNA — il comando deve leggerla da lì,
+        // non da config_json (regressione del rebase).
+        Project::create([
+            'tenant_id' => 'default',
+            'project_key' => 'rotta-logistics',
+            'name' => 'Rotta',
+            'description' => '',
+        ]);
+        ConnectorInstallation::create([
+            'tenant_id' => 'default',
+            'connector_name' => 'imap',
+            'label' => 'rotta-logistics-1',
+            'project_key' => 'rotta-logistics',
+            'config_json' => ['auth_mode' => 'basic'],
+            'status' => ConnectorInstallation::STATUS_ACTIVE,
+        ]);
+
+        $exit = Artisan::call('demo:list-companies', ['--tenant' => 'default']);
+        $output = Artisan::output();
+
+        $this->assertSame(0, $exit);
+        // La riga rotta-logistics mostra il connettore (non "—").
+        $this->assertMatchesRegularExpression('/rotta-logistics.*imap#\d+\(active\)/', $output);
     }
 
     public function test_surfaces_orphan_project_keys_without_a_project_row(): void
