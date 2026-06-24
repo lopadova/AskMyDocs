@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "427beb76f9f8519229c759124a854ced",
+    "content-hash": "a5390ad75872366953fbc9a1e075643b",
     "packages": [
         {
             "name": "aws/aws-crt-php",
@@ -4662,6 +4662,75 @@
                 "source": "https://github.com/padosoft/laravel-invitations/tree/v1.0.0"
             },
             "time": "2026-06-23T16:41:28+00:00"
+        },
+        {
+            "name": "padosoft/laravel-invitations-admin",
+            "version": "v1.0.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/padosoft/laravel-invitations-admin.git",
+                "reference": "8f50466bc2b7c5cd1c3cf927f1b1bd57b996b66e"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/padosoft/laravel-invitations-admin/zipball/8f50466bc2b7c5cd1c3cf927f1b1bd57b996b66e",
+                "reference": "8f50466bc2b7c5cd1c3cf927f1b1bd57b996b66e",
+                "shasum": ""
+            },
+            "require": {
+                "illuminate/contracts": "^12.0|^13.0",
+                "illuminate/support": "^12.0|^13.0",
+                "padosoft/laravel-invitations": "^1.0|dev-main",
+                "php": "^8.3",
+                "spatie/laravel-package-tools": "^1.92"
+            },
+            "require-dev": {
+                "larastan/larastan": "^3.0",
+                "laravel/pint": "^1.18",
+                "orchestra/testbench": "^10.0|^11.0",
+                "phpunit/phpunit": "^11.5|^12.0"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "providers": [
+                        "Padosoft\\Invitations\\Admin\\InvitationsAdminServiceProvider"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Padosoft\\Invitations\\Admin\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Padosoft",
+                    "email": "support@padosoft.com",
+                    "homepage": "https://www.padosoft.com"
+                }
+            ],
+            "description": "React + Tailwind admin SPA for padosoft/laravel-invitations — campaigns, codes, invitations, referrals, reward ledger, waitlist, anti-abuse review and virality analytics.",
+            "homepage": "https://github.com/padosoft/laravel-invitations-admin",
+            "keywords": [
+                "SPA",
+                "admin",
+                "dashboard",
+                "invitations",
+                "laravel",
+                "react",
+                "referral",
+                "tailwind"
+            ],
+            "support": {
+                "issues": "https://github.com/padosoft/laravel-invitations-admin/issues",
+                "source": "https://github.com/padosoft/laravel-invitations-admin/tree/v1.0.0"
+            },
+            "time": "2026-06-23T16:20:08+00:00"
         },
         {
             "name": "padosoft/laravel-pii-redactor",

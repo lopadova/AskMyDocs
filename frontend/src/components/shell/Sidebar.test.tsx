@@ -26,6 +26,7 @@ describe('Sidebar (unified rail)', () => {
             'compliance-reports',
             'pii-redactor',
             'connectors',
+            'invitations',
             'flows',
             'eval-harness',
             'mcp-tools',
