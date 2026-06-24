@@ -37,7 +37,8 @@
         "smalot/pdfparser": "^2.10",
         "spatie/laravel-activitylog": "^4.12|^5.0",
         "spatie/laravel-permission": "^6.25",
-        "symfony/yaml": "^7.4|^8.0"
+        "symfony/yaml": "^7.4|^8.0",
+        "webklex/php-imap": "^6.0"
     },
     "require-dev": {
         "laravel/mcp": "^0.7",

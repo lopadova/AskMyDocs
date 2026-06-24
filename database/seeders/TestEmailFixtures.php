@@ -252,6 +252,15 @@ final class TestEmailFixtures
 
         $path = self::emailsPath($mailboxKey);
         if (! is_file($path)) {
+            // R14 — una casella REGISTRATA senza il suo file fa inviare 0 e-mail
+            // riportando comunque successo: fallisci forte (coerente con il ramo
+            // JSON-corrotto sotto). Per chiavi non registrate resta [].
+            if (array_key_exists($mailboxKey, self::MAILBOXES)) {
+                throw new \RuntimeException(
+                    "Fixture e-mail mancante per la casella registrata '{$mailboxKey}': {$path}",
+                );
+            }
+
             return self::$emailCache[$mailboxKey] = [];
         }
 

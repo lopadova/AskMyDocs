@@ -46,7 +46,7 @@ class DemoListCompaniesCommand extends Command
         }
 
         $projectNames = $this->projectNames();
-        $connectorMap = $this->connectorMap();
+        $connectorMap = $this->connectorMap($tenantFilter);
 
         $rows = [];
         foreach ($keys as $key) {
@@ -133,14 +133,17 @@ class DemoListCompaniesCommand extends Command
     /**
      * @return array<string,string>  "tenant_id|project_key" => descrizione connettori
      */
-    private function connectorMap(): array
+    private function connectorMap(?string $tenantFilter): array
     {
         if (! Schema::hasTable('connector_installations')) {
             return [];
         }
 
         $map = [];
-        foreach (ConnectorInstallation::query()->get() as $installation) {
+        $installations = ConnectorInstallation::query()
+            ->when($tenantFilter !== null, fn ($q) => $q->where('tenant_id', $tenantFilter))
+            ->get();
+        foreach ($installations as $installation) {
             $projectKey = (string) (((array) $installation->config_json)['project_key'] ?? '');
             if ($projectKey === '') {
                 continue;

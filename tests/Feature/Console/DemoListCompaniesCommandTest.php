@@ -40,8 +40,13 @@ final class DemoListCompaniesCommandTest extends TestCase
             'name' => 'Rotta Sicura Logistics',
             'description' => 'logistica',
         ]);
-        $doc = $this->makeDoc('rotta-logistics', 'emails/inbox/1.md', 'seed-1');
-        $this->makeChunk($doc, 'rotta-logistics');
+        // 3 documenti, 2 chunk → conteggi distinguibili (3 ≠ 2) per provare
+        // davvero le colonne docs/chunks (R16), non solo le stringhe.
+        $d1 = $this->makeDoc('rotta-logistics', 'emails/inbox/1.md', 'seed-1');
+        $d2 = $this->makeDoc('rotta-logistics', 'emails/inbox/2.md', 'seed-2');
+        $this->makeDoc('rotta-logistics', 'emails/inbox/3.md', 'seed-3');
+        $this->makeChunk($d1, 'rotta-logistics');
+        $this->makeChunk($d2, 'rotta-logistics');
         $this->makeMember('rotta@case-study.local', 'rotta-logistics');
 
         $exit = Artisan::call('demo:list-companies');
@@ -51,6 +56,11 @@ final class DemoListCompaniesCommandTest extends TestCase
         $this->assertStringContainsString('rotta-logistics', $output);
         $this->assertStringContainsString('Rotta Sicura Logistics', $output);
         $this->assertStringContainsString('rotta@case-study.local', $output);
+        // La riga della casella deve riportare docs=3, chunks=2 nelle colonne.
+        $this->assertMatchesRegularExpression(
+            '/rotta-logistics.*?\|\s*3\s*\|\s*2\s*\|/',
+            $output,
+        );
     }
 
     public function test_surfaces_orphan_project_keys_without_a_project_row(): void
