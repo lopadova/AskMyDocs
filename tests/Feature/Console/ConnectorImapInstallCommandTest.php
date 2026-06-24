@@ -57,11 +57,11 @@ final class ConnectorImapInstallCommandTest extends TestCase
 
     public function test_installs_activates_vaults_password_and_merges_extra_config(): void
     {
-        $this->setPassword('CONNECTOR_TEST_ROTTA_PASSWORD', 's3cr3t-app-pw');
+        $this->setPassword('CONNECTOR_TEST_ROTTA_1_PASSWORD', 's3cr3t-app-pw');
         $this->makeUser();
         $this->bindImapFactory(pingSucceeds: true);
 
-        $this->artisan('connector:imap:install', ['--project' => ['rotta-logistics']])
+        $this->artisan('connector:imap:install', ['--mailbox' => ['rotta-logistics-1']])
             ->assertExitCode(0);
 
         $installation = ConnectorInstallation::query()
@@ -73,7 +73,7 @@ final class ConnectorImapInstallCommandTest extends TestCase
 
         $config = (array) $installation->config_json;
         $this->assertSame('basic', $config['auth_mode']);
-        $this->assertSame('rotta.test.askmydocs@gmail.com', $config['connection']['username']);
+        $this->assertSame('rotta.test1.askmydocs@gmail.com', $config['connection']['username']);
         $this->assertSame('rotta-logistics', $config['project_key']);
         // Le chiavi extra che configure() non persiste sono ri-aggiunte.
         $this->assertSame(['INBOX'], $config['folders']['include']);
@@ -92,24 +92,23 @@ final class ConnectorImapInstallCommandTest extends TestCase
     public function test_sync_flag_dispatches_a_connector_sync_job(): void
     {
         Queue::fake();
-        $this->setPassword('CONNECTOR_TEST_ROTTA_PASSWORD', 'pw');
+        $this->setPassword('CONNECTOR_TEST_ROTTA_1_PASSWORD', 'pw');
         $this->makeUser();
         $this->bindImapFactory(pingSucceeds: true);
 
         $this->artisan('connector:imap:install', [
-            '--project' => ['rotta-logistics'],
+            '--mailbox' => ['rotta-logistics-1'],
             '--sync' => true,
         ])->assertExitCode(0);
 
         Queue::assertPushed(ConnectorSyncJob::class);
     }
 
-    public function test_multi_company_without_sync_is_rejected(): void
+    public function test_multi_mailbox_without_sync_is_rejected(): void
     {
         // Vincolo single-installation per tenant: senza --sync fallisce loud
-        // invece di installare solo l'ultima azienda (Finding #1 / R14).
-        $this->setPassword('CONNECTOR_TEST_ROTTA_PASSWORD', 'pw');
-        $this->setPassword('CONNECTOR_TEST_PROMETEO_PASSWORD', 'pw');
+        // invece di installare solo l'ultima casella (Finding #1 / R14).
+        $this->setAllPasswords();
         $this->makeUser();
         $this->bindImapFactory(pingSucceeds: true);
 
@@ -119,17 +118,15 @@ final class ConnectorImapInstallCommandTest extends TestCase
         $this->assertSame(0, ConnectorInstallation::query()->count());
     }
 
-    public function test_all_with_sync_configures_each_company_serially(): void
+    public function test_all_with_sync_configures_each_mailbox_serially(): void
     {
         // La riga (tenant,imap) è unica: il sync DEVE girare con la config di
-        // ogni azienda PRIMA che la successiva la sovrascriva. Il recorder cattura
+        // ogni casella PRIMA che la successiva la sovrascriva. Il recorder cattura
         // il project_key SOLO al momento del sync (in listMailboxes(), che il path
-        // di configure/ping NON chiama): se la serializzazione è corretta vede
-        // [A, B, C] nell'ordine; se il comando accodasse/clobberasse, vedrebbe
-        // tre volte l'ULTIMA azienda → il test fallirebbe (R16).
-        $this->setPassword('CONNECTOR_TEST_ROTTA_PASSWORD', 'pw-r');
-        $this->setPassword('CONNECTOR_TEST_PROMETEO_PASSWORD', 'pw-p');
-        $this->setPassword('CONNECTOR_TEST_PASSOLIBERO_PASSWORD', 'pw-l');
+        // di configure/ping NON chiama): se la serializzazione è corretta vede i
+        // project_key delle 6 caselle nell'ordine; se il comando accodasse/
+        // clobberasse, vedrebbe sei volte l'ULTIMA azienda → fallirebbe (R16).
+        $this->setAllPasswords();
         $this->makeUser();
 
         $recorder = new class
@@ -142,9 +139,13 @@ final class ConnectorImapInstallCommandTest extends TestCase
         $this->artisan('connector:imap:install', ['--all' => true, '--sync' => true])
             ->assertExitCode(0);
 
-        // Ogni sync ha visto la config della SUA azienda, nell'ordine serializzato.
+        // Ordine serializzato: 2 caselle per azienda, project_key ripetuto.
         $this->assertSame(
-            ['rotta-logistics', 'prometeo-antincendio', 'passolibero-calzature'],
+            [
+                'rotta-logistics', 'rotta-logistics',
+                'prometeo-antincendio', 'prometeo-antincendio',
+                'passolibero-calzature', 'passolibero-calzature',
+            ],
             $recorder->projectKeys,
         );
 
@@ -154,12 +155,12 @@ final class ConnectorImapInstallCommandTest extends TestCase
 
     public function test_unknown_actor_fails(): void
     {
-        $this->setPassword('CONNECTOR_TEST_ROTTA_PASSWORD', 'pw');
+        $this->setPassword('CONNECTOR_TEST_ROTTA_1_PASSWORD', 'pw');
         $this->makeUser();
         $this->bindImapFactory(pingSucceeds: true);
 
         $this->artisan('connector:imap:install', [
-            '--project' => ['rotta-logistics'],
+            '--mailbox' => ['rotta-logistics-1'],
             '--actor' => 'ghost@nowhere.local',
         ])->assertExitCode(1);
 
@@ -168,11 +169,11 @@ final class ConnectorImapInstallCommandTest extends TestCase
 
     public function test_bad_credentials_keep_installation_pending_and_fail(): void
     {
-        $this->setPassword('CONNECTOR_TEST_ROTTA_PASSWORD', 'pw');
+        $this->setPassword('CONNECTOR_TEST_ROTTA_1_PASSWORD', 'pw');
         $this->makeUser();
         $this->bindImapFactory(pingSucceeds: false);
 
-        $this->artisan('connector:imap:install', ['--project' => ['rotta-logistics']])
+        $this->artisan('connector:imap:install', ['--mailbox' => ['rotta-logistics-1']])
             ->assertExitCode(1);
 
         $installation = ConnectorInstallation::query()
@@ -189,6 +190,13 @@ final class ConnectorImapInstallCommandTest extends TestCase
         $_ENV[$envKey] = $value;
         $_SERVER[$envKey] = $value;
         $this->touchedEnv[] = $envKey;
+    }
+
+    private function setAllPasswords(): void
+    {
+        foreach (\Database\Seeders\TestEmailFixtures::MAILBOXES as $mailbox) {
+            $this->setPassword((string) $mailbox['password_env'], 'pw-'.$mailbox['mailbox_key']);
+        }
     }
 
     private function makeUser(): User

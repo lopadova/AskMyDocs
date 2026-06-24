@@ -42,15 +42,22 @@ runbook in modo ripetibile.
 >    `project_key`) per capire il settore e il lessico (es. logistica, sicurezza
 >    antincendio, e-commerce calzature). Le e-mail devono suonare plausibili in
 >    quel dominio e **coerenti** con i documenti già presenti.
-> 4. **Estendere le fixtures.** In `database/seeders/TestEmailFixtures.php`:
->    - aggiungi/aggiorna l'entry in `ACCOUNTS` per ogni `project_key` selezionato:
->      `project_key`, `company_name`, `email` (casella Gmail di test dedicata),
->      `password_env` (es. `CONNECTOR_TEST_<AZIENDA>_PASSWORD`);
->    - aggiungi 3–8 e-mail in `EMAILS[<project_key>]` con `subject`, `from_name`,
->      `from_email`, `date`, `body_text`. Inserisci in ognuna ≥1 fatto-esca unico
->      per l'azienda e annota quali sono (servono per i test di §8).
->    - `configJson()` è già generico (host/port/encryption da env,
->      `folders.include=[INBOX]`, `date_window_days`): non serve modificarlo.
+> 4. **Estendere le fixtures.** In `database/seeders/TestEmailFixtures.php`
+>    (ogni azienda ha **2 caselle** → 2 `mailbox_key`, es. `<project>-1`,
+>    `<project>-2`):
+>    - aggiungi/aggiorna in `MAILBOXES` un'entry per ogni casella selezionata:
+>      `mailbox_key`, `project_key`, `company_name`, `email` (casella Gmail
+>      dedicata), `host`/`port`/`encryption`/`validate_cert`, `password_env`
+>      (es. `CONNECTOR_TEST_<AZIENDA>_<N>_PASSWORD`);
+>    - aggiungi le e-mail in `database/seeders/emails/<mailbox_key>.json` (array
+>      JSON; le 2 caselle della stessa azienda hanno e-mail diverse; ≥100 per
+>      casella, vario tipo + thread domanda/risposta) con le chiavi `subject`,
+>      `from_name`, `from_email`, `date`, `body_text`. Inserisci i fatti-esca
+>      unici dell'azienda e annota quali sono (servono per i test di §8). Per la
+>      generazione di massa usa un multi-agente (un agente per casella/batch che
+>      scrive il proprio file).
+>    - `configJson()` è già generico (host/port/encryption dal fixture + env
+>      override, `folders.include=[INBOX]`, `date_window_days`): non modificarlo.
 > 5. **Credenziali.** Per ogni nuova casella crea l'account Gmail di test con
 >    App Password e metti la password nella env `password_env` in `.env`
 >    (mai committarla). Aggiorna `.env.example` con le nuove chiavi (vuote).
@@ -86,7 +93,9 @@ runbook in modo ripetibile.
 ## Note di implementazione (riferimenti rapidi)
 
 - Fixtures: [`database/seeders/TestEmailFixtures.php`](../../database/seeders/TestEmailFixtures.php)
-  (`ACCOUNTS`, `EMAILS`, `passwordFor()`, `configJson()`, `SEED_HEADER`).
+  (`MAILBOXES`, `mailboxKeys()`, `mailboxKeysForProject()`, `passwordFor()`,
+  `configJson()`, `emailsForMailbox()` → `database/seeders/emails/*.json`,
+  `SEED_HEADER`).
 - Consegna: `app/Console/Commands/MailSeedImapCommand.php` →
   `app/Services/Demo/ImapMailboxSeeder.php` (+ `EmailMessageBuilder`,
   `WebklexMailboxAppender`).

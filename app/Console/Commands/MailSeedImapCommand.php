@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Console\Commands;
 
 use App\Services\Demo\ImapMailboxSeeder;
+use App\Services\Demo\MailboxSelection;
 use App\Support\TenantContext;
 use Database\Seeders\TestEmailFixtures;
 use Illuminate\Console\Command;
@@ -24,8 +25,9 @@ use Throwable;
 class MailSeedImapCommand extends Command
 {
     protected $signature = 'mail:seed-imap
-        {--project=* : project_key da popolare (ripetibile). Vuoto + --all = tutte le aziende di test}
-        {--all : Popola tutte le aziende definite in TestEmailFixtures}
+        {--mailbox=* : mailbox_key da popolare (ripetibile), es. rotta-logistics-1}
+        {--project=* : project_key: espande a TUTTE le caselle dell\'azienda (ripetibile)}
+        {--all : Popola tutte le caselle definite in TestEmailFixtures}
         {--purge : Prima elimina i messaggi di test già presenti (header X-AskMyDocs-Seed) — DISTRUTTIVO}
         {--retries=2 : Tentativi extra su errori IMAP transitori (R42)}
         {--retry-delay=60 : Secondi di attesa tra i retry}
@@ -39,10 +41,10 @@ class MailSeedImapCommand extends Command
         // di test (R30/R31): allinea il contesto anche se qui non si scrive a DB.
         $tenant->set('default');
 
-        $projectKeys = $this->resolveProjectKeys();
-        if ($projectKeys === []) {
-            $this->error('Nessuna azienda selezionata. Usa --all oppure --project=<key> (ripetibile).');
-            $this->line('Aziende disponibili: '.implode(', ', TestEmailFixtures::projectKeys()));
+        $mailboxKeys = $this->resolveMailboxKeys();
+        if ($mailboxKeys === []) {
+            $this->error('Nessuna casella selezionata. Usa --all, --mailbox=<key> o --project=<key>.');
+            $this->line('Caselle disponibili: '.implode(', ', TestEmailFixtures::mailboxKeys()));
 
             return self::FAILURE;
         }
@@ -59,18 +61,18 @@ class MailSeedImapCommand extends Command
 
         try {
             $outcomes = $seeder->seed(
-                projectKeys: $projectKeys,
+                mailboxKeys: $mailboxKeys,
                 dryRun: $dryRun,
                 purge: $purge,
                 retries: (int) $this->option('retries'),
                 retryDelaySeconds: (int) $this->option('retry-delay'),
-                onMessage: function (string $projectKey, int $index, string $subject): void {
-                    $this->line(sprintf('  [%s] #%d %s', $projectKey, $index + 1, $subject));
+                onMessage: function (string $mailboxKey, int $index, string $subject): void {
+                    $this->line(sprintf('  [%s] #%d %s', $mailboxKey, $index + 1, $subject));
                 },
             );
         } catch (Throwable $e) {
             // R14/R4 — fallimento rumoroso: credenziali mancanti, casella non
-            // raggiungibile, project_key sconosciuto, append fallito.
+            // raggiungibile, mailbox sconosciuta, append fallito.
             $this->error('Seeding fallito: '.$e->getMessage());
 
             return self::FAILURE;
@@ -80,10 +82,11 @@ class MailSeedImapCommand extends Command
             $verb = $outcome->dryRun ? 'pronte (dry-run)' : 'inviate';
             $purgedNote = $outcome->purged > 0 ? " (purgate {$outcome->purged})" : '';
             $this->info(sprintf(
-                '%s [%s → %s]: %d e-mail %s%s',
+                '%s [%s → %s, project %s]: %d e-mail %s%s',
                 $outcome->companyName,
-                $outcome->projectKey,
+                $outcome->mailboxKey,
                 $outcome->email,
+                $outcome->projectKey,
                 $outcome->appended,
                 $verb,
                 $purgedNote,
@@ -94,20 +97,17 @@ class MailSeedImapCommand extends Command
     }
 
     /**
+     * Risolve le caselle da popolare: --all, --mailbox=<key>, oppure
+     * --project=<key> (espanso a tutte le caselle dell'azienda).
+     *
      * @return list<string>
      */
-    private function resolveProjectKeys(): array
+    private function resolveMailboxKeys(): array
     {
-        if ((bool) $this->option('all')) {
-            return TestEmailFixtures::projectKeys();
-        }
-
-        /** @var list<string> $selected */
-        $selected = array_values(array_filter(array_map(
-            'trim',
-            (array) $this->option('project'),
-        )));
-
-        return $selected;
+        return MailboxSelection::resolve(
+            all: (bool) $this->option('all'),
+            mailboxes: (array) $this->option('mailbox'),
+            projects: (array) $this->option('project'),
+        );
     }
 }

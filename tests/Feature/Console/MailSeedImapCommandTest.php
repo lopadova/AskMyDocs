@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Console;
 
 use App\Services\Demo\Contracts\MailboxAppender;
+use Database\Seeders\TestEmailFixtures;
 use Tests\Support\Demo\RecordingMailboxAppender;
 use Tests\TestCase;
 
@@ -13,8 +14,10 @@ use Tests\TestCase;
  * (R13): lo sostituiamo con un {@see RecordingMailboxAppender} che registra gli
  * APPEND invece di toccare un server reale. Niente DB necessario.
  *
- * Pin: --all inietta tutte le e-mail; --dry-run NON invia nulla (prova R26);
- * password mancante fallisce rumorosamente (R14); --purge invoca il purge.
+ * Modello: 2 caselle per azienda (6 caselle totali). Pin: --all inietta tutte le
+ * e-mail di tutte le caselle; --project espande alle 2 caselle dell'azienda;
+ * --dry-run NON invia nulla (prova R26); password mancante fallisce (R14);
+ * --purge invoca il purge della casella.
  */
 final class MailSeedImapCommandTest extends TestCase
 {
@@ -48,21 +51,45 @@ final class MailSeedImapCommandTest extends TestCase
         return $appender;
     }
 
-    public function test_all_companies_get_their_emails_appended(): void
+    public function test_every_mailbox_has_at_least_100_emails(): void
     {
-        $this->setPassword('CONNECTOR_TEST_ROTTA_PASSWORD', 'pw-rotta');
-        $this->setPassword('CONNECTOR_TEST_PROMETEO_PASSWORD', 'pw-prometeo');
-        $this->setPassword('CONNECTOR_TEST_PASSOLIBERO_PASSWORD', 'pw-passolibero');
+        // Requisito: ≥100 e-mail di vario tipo per casella (guard puro sul fixture,
+        // non costruisce messaggi → veloce anche con 600+ e-mail).
+        foreach (TestEmailFixtures::mailboxKeys() as $mailboxKey) {
+            $this->assertGreaterThanOrEqual(
+                100,
+                count(TestEmailFixtures::emailsForMailbox($mailboxKey)),
+                "La casella {$mailboxKey} deve avere almeno 100 e-mail.",
+            );
+        }
+    }
+
+    public function test_single_mailbox_appends_all_its_emails(): void
+    {
+        $this->setPassword('CONNECTOR_TEST_ROTTA_1_PASSWORD', 'pw');
         $appender = $this->bindRecorder();
 
-        $this->artisan('mail:seed-imap', ['--all' => true])->assertExitCode(0);
+        $this->artisan('mail:seed-imap', ['--mailbox' => ['rotta-logistics-1']])->assertExitCode(0);
 
-        // 3 aziende × 3 e-mail = 9 APPEND, con 3 per ogni project_key.
-        $this->assertCount(9, $appender->appends);
-        $counts = array_count_values($appender->appendedProjectKeys());
-        $this->assertSame(3, $counts['rotta-logistics'] ?? 0);
-        $this->assertSame(3, $counts['prometeo-antincendio'] ?? 0);
-        $this->assertSame(3, $counts['passolibero-calzature'] ?? 0);
+        // Conteggio derivato dal fixture (R18).
+        $this->assertCount(
+            count(TestEmailFixtures::emailsForMailbox('rotta-logistics-1')),
+            $appender->appends,
+        );
+        $this->assertSame(['rotta-logistics-1'], array_values(array_unique($appender->appendedMailboxKeys())));
+    }
+
+    public function test_project_expands_to_both_company_mailboxes(): void
+    {
+        $this->setPassword('CONNECTOR_TEST_ROTTA_1_PASSWORD', 'pw');
+        $this->setPassword('CONNECTOR_TEST_ROTTA_2_PASSWORD', 'pw');
+        $appender = $this->bindRecorder();
+
+        $this->artisan('mail:seed-imap', ['--project' => ['rotta-logistics']])->assertExitCode(0);
+
+        $seen = array_values(array_unique($appender->appendedMailboxKeys()));
+        sort($seen);
+        $this->assertSame(['rotta-logistics-1', 'rotta-logistics-2'], $seen);
     }
 
     public function test_dry_run_appends_nothing(): void
@@ -70,7 +97,7 @@ final class MailSeedImapCommandTest extends TestCase
         // Nessuna password impostata: in dry-run non serve e non si tocca la rete.
         $appender = $this->bindRecorder();
 
-        $this->artisan('mail:seed-imap', ['--all' => true, '--dry-run' => true])->assertExitCode(0);
+        $this->artisan('mail:seed-imap', ['--mailbox' => ['rotta-logistics-1'], '--dry-run' => true])->assertExitCode(0);
 
         $this->assertSame([], $appender->appends, 'dry-run non deve inviare alcun messaggio');
         $this->assertSame([], $appender->purges);
@@ -78,15 +105,15 @@ final class MailSeedImapCommandTest extends TestCase
 
     public function test_missing_password_fails_loudly(): void
     {
-        // CONNECTOR_TEST_ROTTA_PASSWORD volutamente assente.
+        // CONNECTOR_TEST_ROTTA_1_PASSWORD volutamente assente.
         $appender = $this->bindRecorder();
 
-        $this->artisan('mail:seed-imap', ['--project' => ['rotta-logistics']])->assertExitCode(1);
+        $this->artisan('mail:seed-imap', ['--mailbox' => ['rotta-logistics-1']])->assertExitCode(1);
 
         $this->assertSame([], $appender->appends, 'senza password non deve inviare nulla');
     }
 
-    public function test_no_company_selected_fails(): void
+    public function test_no_mailbox_selected_fails(): void
     {
         $this->bindRecorder();
 
@@ -95,16 +122,19 @@ final class MailSeedImapCommandTest extends TestCase
 
     public function test_purge_runs_before_append(): void
     {
-        $this->setPassword('CONNECTOR_TEST_ROTTA_PASSWORD', 'pw-rotta');
+        $this->setPassword('CONNECTOR_TEST_ROTTA_1_PASSWORD', 'pw');
         $appender = $this->bindRecorder(purgeReturns: 2);
 
         $this->artisan('mail:seed-imap', [
-            '--project' => ['rotta-logistics'],
+            '--mailbox' => ['rotta-logistics-1'],
             '--purge' => true,
         ])->assertExitCode(0);
 
         $this->assertCount(1, $appender->purges);
-        $this->assertSame('rotta-logistics', $appender->purges[0]['value']);
-        $this->assertCount(3, $appender->appends);
+        $this->assertSame('rotta-logistics-1', $appender->purges[0]['value']);
+        $this->assertCount(
+            count(TestEmailFixtures::emailsForMailbox('rotta-logistics-1')),
+            $appender->appends,
+        );
     }
 }

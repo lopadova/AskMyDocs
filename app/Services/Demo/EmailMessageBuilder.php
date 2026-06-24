@@ -16,8 +16,8 @@ use Symfony\Component\Mime\Email;
  * vive in {@see WebklexMailboxAppender}. Punti chiave:
  *   - `To` = indirizzo REALE della casella target, così il messaggio è coerente
  *     una volta dentro la mailbox (e l'ingest lo attribuisce al destinatario).
- *   - header custom {@see TestEmailFixtures::SEED_HEADER} = project_key, usato dal
- *     `--purge` per ritrovare/eliminare solo i messaggi di test.
+ *   - header custom {@see TestEmailFixtures::SEED_HEADER} = mailbox_key, usato dal
+ *     `--purge` per ritrovare/eliminare solo i messaggi di test di quella casella.
  *   - `Date:` = la data narrativa della fixture; la data di consegna IMAP
  *     (INTERNALDATE) la decide l'appender (now()) per restare dentro la finestra
  *     `date_window_days` del connettore anche con fixture datate nel passato.
@@ -36,7 +36,7 @@ final class EmailMessageBuilder
             ->date(Carbon::parse((string) $fixture['date']))
             ->text((string) $fixture['body_text']);
 
-        $email->getHeaders()->addTextHeader(TestEmailFixtures::SEED_HEADER, $target->projectKey);
+        $email->getHeaders()->addTextHeader(TestEmailFixtures::SEED_HEADER, $target->mailboxKey);
 
         return $email->toString();
     }
