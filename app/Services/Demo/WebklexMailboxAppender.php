@@ -19,6 +19,16 @@ use Webklex\PHPIMAP\ClientManager;
  * messaggi (no login-per-messaggio). Niente fallimenti silenziosi — ogni problema
  * (auth, folder assente, append) solleva un'eccezione; gli errori di connessione
  * TRANSITORI fanno retry, quelli di autenticazione fermano subito (R42).
+ *
+ * NOTA R42: il retry copre solo la CONNESSIONE. Un drop transitorio a metà
+ * batch (durante appendMessage o il loop di purge) NON viene ritentato — di
+ * proposito: un retry dell'intero batch ri-appenderebbe i messaggi già inseriti
+ * (duplicati). In caso di fallimento a metà, ri-eseguire con `--purge` ripulisce
+ * e re-inserisce in modo idempotente.
+ *
+ * NOTA R13: questi due metodi colpiscono un server IMAP reale e NON hanno test
+ * automatici (solo il fake è esercitato). In particolare `purgeSeeded` è
+ * DISTRUTTIVO e il match dell'header custom è verificato solo nei run live.
  */
 final class WebklexMailboxAppender implements MailboxAppender
 {
@@ -136,7 +146,11 @@ final class WebklexMailboxAppender implements MailboxAppender
     {
         $message = strtolower($e->getMessage());
 
-        foreach (['authenticat', 'invalid credential', 'login', 'permission denied'] as $needle) {
+        // Solo frasi che indicano un rifiuto REALE delle credenziali. NON usare
+        // il bare 'login': errori transitori lo contengono ('login server
+        // timeout', 'LOGIN failed: temporary system problem') e andrebbero
+        // ritentati (R42), non fermati.
+        foreach (['authenticationfailed', 'authentication failed', 'invalid credential', 'login failed', 'permission denied'] as $needle) {
             if (str_contains($message, $needle)) {
                 return true;
             }

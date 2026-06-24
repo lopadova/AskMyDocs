@@ -136,5 +136,19 @@ final class MailSeedImapCommandTest extends TestCase
             count(TestEmailFixtures::emailsForMailbox('rotta-logistics-1')),
             $appender->appends,
         );
+
+        // R16 — il purge DEVE avvenire PRIMA dell'append: un append-then-purge
+        // cancellerebbe i messaggi appena iniettati (purge filtra per header).
+        // La timeline condivisa lo rende osservabile.
+        $this->assertSame('purge', $appender->events[0]['op'] ?? null);
+        $appendIndex = null;
+        foreach ($appender->events as $i => $event) {
+            if ($event['op'] === 'append') {
+                $appendIndex = $i;
+                break;
+            }
+        }
+        $this->assertNotNull($appendIndex, 'deve esserci un append dopo il purge');
+        $this->assertGreaterThan(0, $appendIndex, 'il purge (indice 0) precede il primo append');
     }
 }

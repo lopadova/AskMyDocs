@@ -124,8 +124,11 @@ final class ConnectorImapInstallCommandTest extends TestCase
         // ogni casella PRIMA che la successiva la sovrascriva. Il recorder cattura
         // il project_key SOLO al momento del sync (in listMailboxes(), che il path
         // di configure/ping NON chiama): se la serializzazione è corretta vede i
-        // project_key delle 6 caselle nell'ordine; se il comando accodasse/
-        // clobberasse, vedrebbe sei volte l'ULTIMA azienda → fallirebbe (R16).
+        // project_key delle 6 caselle nell'ordine. Una regressione che
+        // CONFIGURASSE tutte le caselle e POI sincronizzasse (clobber) vedrebbe
+        // sei volte l'ULTIMA azienda → questo test fallirebbe (R16, provato per
+        // mutazione). NB: non distingue dispatchSync da dispatch (in test la coda
+        // è 'sync', gira inline comunque); garantisce l'invariante di clobber.
         $this->setAllPasswords();
         $this->makeUser();
 

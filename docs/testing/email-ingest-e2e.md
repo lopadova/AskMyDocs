@@ -263,7 +263,8 @@ isolamento (R30) da investigare.
 
 | Sintomo | Causa probabile | Rimedio |
 |---|---|---|
-| `mail:seed-imap` → "Env var ... non impostata" | App Password mancante in `.env` | Compila `CONNECTOR_TEST_<AZIENDA>_PASSWORD`. |
+| `mail:seed-imap` → "Env var ... non impostata" | App Password mancante in `.env` | Compila `CONNECTOR_TEST_<AZIENDA>_<N>_PASSWORD`. |
+| "Env var ... non impostata" anche con password presente nel `.env` | Config cache attiva: il fixture legge `env()` e sotto `config:cache` ritorna `null` | `php artisan config:clear` prima di lanciare l'harness (l'harness è dev/test: non usare la config cache). |
 | APPEND fallisce con auth error | Password normale invece dell'App Password, o IMAP off | Usa l'App Password; abilita IMAP. |
 | Le e-mail non vengono ingerite | Fuori finestra temporale | L'APPEND usa INTERNALDATE=now(); se hai forzato date vecchie alza `CONNECTOR_TEST_IMAP_DATE_WINDOW_DAYS`. |
 | Doppioni di e-mail | Più `mail:seed-imap` senza `--purge`, o folders non limitati a INBOX | Usa `--purge`; il connettore è già limitato a `folders.include=[INBOX]`. |

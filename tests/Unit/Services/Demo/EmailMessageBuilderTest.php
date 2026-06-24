@@ -56,7 +56,7 @@ final class EmailMessageBuilderTest extends TestCase
         $this->assertStringContainsString('RL-2024-0815', $raw);
     }
 
-    public function test_seed_header_matches_the_target_project_key(): void
+    public function test_seed_header_matches_the_target_mailbox_key(): void
     {
         $fixture = [
             'subject' => 'Test',
