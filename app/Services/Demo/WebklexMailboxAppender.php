@@ -165,10 +165,12 @@ final class WebklexMailboxAppender implements MailboxAppender
         $message = strtolower($e->getMessage());
 
         // Solo frasi che indicano un rifiuto REALE delle credenziali. NON usare
-        // il bare 'login': errori transitori lo contengono ('login server
-        // timeout', 'LOGIN failed: temporary system problem') e andrebbero
-        // ritentati (R42), non fermati.
-        foreach (['authenticationfailed', 'authentication failed', 'invalid credential', 'login failed', 'permission denied'] as $needle) {
+        // né il bare 'login' né 'login failed': errori transitori li contengono
+        // ('login server timeout', 'LOGIN failed: temporary system problem') e
+        // andrebbero ritentati (R42), non fermati. Il rifiuto credenziali di
+        // Gmail/Dovecot è già coperto da 'authenticationfailed' /
+        // 'authentication failed' / 'invalid credential'.
+        foreach (['authenticationfailed', 'authentication failed', 'invalid credential', 'permission denied'] as $needle) {
             if (str_contains($message, $needle)) {
                 return true;
             }
