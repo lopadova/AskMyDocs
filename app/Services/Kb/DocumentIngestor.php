@@ -103,12 +103,6 @@ class DocumentIngestor
         $converted = $this->projectChunkerHints($converted, $normalizedSource, $sourceType);
         $chunkDrafts = $chunker->chunk($converted);
 
-        // v8.23 (Ciclo 4) — inline-path PII redaction of the chunk text BEFORE
-        // it is hashed, embedded, and persisted (the connector boundary handles
-        // its own path via HostIngestionBridge). No-op unless the master engine
-        // flags are on AND the per-(tenant, project) policy enables it.
-        $chunkDrafts = $this->redactChunkDraftsIfEnabled($projectKey, $chunkDrafts);
-
         $combinedMetadata = array_merge($normalizedSource->metadata, $extraMetadata, [
             'connector' => $normalizedSource->connectorType,
             'external_url' => $normalizedSource->externalUrl,
@@ -368,6 +362,14 @@ class DocumentIngestor
             $existing->update(['indexed_at' => now()]);
             return $existing;
         }
+
+        // v8.23 (Ciclo 4) — inline-path PII redaction of the chunk text. Runs
+        // here, AFTER the idempotency short-circuit above, so an identical
+        // re-ingest is a pure no-op and never re-touches the token vault. No-op
+        // unless the master engine flags are on AND the per-(tenant, project)
+        // policy enables it. (The connector boundary handles its own path via
+        // HostIngestionBridge.)
+        $chunkDrafts = $this->redactChunkDraftsIfEnabled($projectKey, $chunkDrafts);
 
         $canonical = $this->tryParseCanonical($projectKey, $sourcePath, $markdown);
         $embeddingResponse = $this->embeddingCache->generate(

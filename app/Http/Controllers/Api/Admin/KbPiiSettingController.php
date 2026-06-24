@@ -105,6 +105,11 @@ final class KbPiiSettingController extends Controller
             $update,
         );
 
+        // If clearing the last field left an all-NULL override (every column
+        // inherits), the row is indistinguishable from "no row" — delete it so
+        // no-op rows never accumulate, and the response reflects no override.
+        $row = $this->discardEmptyOverride($row);
+
         // Resolve effective using the (possibly distinct) tenant-wide row.
         $wildcard = $projectKey === KbPiiSetting::WILDCARD
             ? $row
@@ -114,6 +119,23 @@ final class KbPiiSettingController extends Controller
             'ok' => true,
             'setting' => $this->entry($projectKey, $row, $wildcard),
         ]);
+    }
+
+    /**
+     * Delete a row whose every override column inherits (all NULL/blank) and
+     * return null; otherwise return the row unchanged. Keeps the table free of
+     * no-op rows that would otherwise surface as `override: {null, null}`.
+     */
+    private function discardEmptyOverride(KbPiiSetting $row): ?KbPiiSetting
+    {
+        $strategy = is_string($row->strategy) ? trim($row->strategy) : '';
+        if ($row->redact_enabled === null && $strategy === '') {
+            $row->delete();
+
+            return null;
+        }
+
+        return $row;
     }
 
     /**

@@ -156,6 +156,28 @@ final class DocumentIngestorInlinePiiTest extends TestCase
         ]);
     }
 
+    public function test_identical_reingest_short_circuits_before_redaction(): void
+    {
+        Queue::fake();
+        $this->enableRedaction('tokenise', tokenStore: 'database');
+
+        $first = $this->ingest('support');
+
+        // A second ingest of identical content hits the idempotency short-circuit
+        // (same version_hash) BEFORE redaction runs. RedactorEngine is `final`
+        // (un-mockable), so prove the short-circuit by binding a throwing factory:
+        // if the no-op path ever resolved the engine, this test would error
+        // (R26 short-circuit proof).
+        $this->app->forgetInstance(RedactorEngine::class);
+        $this->app->bind(RedactorEngine::class, function (): RedactorEngine {
+            throw new \RuntimeException('RedactorEngine must not be resolved on an idempotent re-ingest.');
+        });
+
+        $second = $this->ingest('support');
+
+        $this->assertSame($first->id, $second->id);
+    }
+
     public function test_per_project_policy_enables_redaction_when_the_config_default_is_off(): void
     {
         Queue::fake();

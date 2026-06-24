@@ -163,6 +163,33 @@ final class KbPiiSettingControllerTest extends TestCase
         $this->assertDatabaseMissing('kb_pii_settings', ['project_key' => 'support']);
     }
 
+    public function test_clearing_all_fields_deletes_the_no_op_override_row(): void
+    {
+        $dpo = $this->makeUser('dpo');
+        KbPiiSetting::create([
+            'tenant_id' => 'default',
+            'project_key' => 'support',
+            'redact_enabled' => true,
+            'strategy' => 'tokenise',
+        ]);
+
+        // Explicitly clear BOTH fields → all-NULL override → row is deleted.
+        $this->actingAs($dpo)->putJson('/api/admin/pii/policy', [
+            'project_key' => 'support',
+            'redact_enabled' => null,
+            'strategy' => null,
+        ])->assertOk()
+            ->assertJsonPath('setting.override', null)
+            // effective falls back to the config defaults.
+            ->assertJsonPath('setting.effective.redact_enabled', false)
+            ->assertJsonPath('setting.effective.strategy', 'mask');
+
+        $this->assertDatabaseMissing('kb_pii_settings', [
+            'tenant_id' => 'default',
+            'project_key' => 'support',
+        ]);
+    }
+
     public function test_invalid_strategy_is_rejected_with_422(): void
     {
         $this->actingAs($this->makeUser('dpo'))->putJson('/api/admin/pii/policy', [
