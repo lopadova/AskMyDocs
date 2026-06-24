@@ -192,10 +192,13 @@ and the plaintext is never cached. It is delivered tri-surface (R44) over one
 | MCP | `KbDetokenizeTool` | MCP authorizer (admin/super-admin) **+** `pii.detokenize` → net **super-admin only** |
 
 Every surface enforces the **`tokenise` strategy preflight** (422 / error under
-mask/hash/drop — nothing was minted to reverse), is **tenant-scoped** (R30 — an
-operator cannot re-identify another tenant's document by id), and writes an
-immutable `admin_command_audit` row (`command='pii.detokenize'`,
-`status=completed|rejected`, with the `surface`) for **every** unmask attempt.
+mask/hash/drop — nothing was minted to reverse) and is **tenant-scoped** (R30 —
+an operator cannot re-identify another tenant's document by id). A **completed
+unmask** and a **permission-denied attempt** each write an immutable
+`admin_command_audit` row (`command='pii.detokenize'`,
+`status=completed|rejected`, with the `surface`). The strategy-preflight refusal
+and the not-found path are deliberately **not** audited — no unmask is attempted
+in either case (consistent with the chat-log precedent).
 The document lookup deliberately bypasses the per-project `AccessScopeScope` read
 ACL — a DPO servicing a DSAR must reach any document in the tenant — while the
 tenant boundary and the permission gate remain in force. The MCP tool is the

@@ -142,7 +142,8 @@ class KnowledgeBaseServer extends Server
         // v8.23 (Ciclo 4) — KB-document re-identification (R44). Surfaces raw PII,
         // so doubly gated: the MCP authorizer admits admin/super-admin, and the
         // tool additionally requires the pii.detokenize permission (net: super-admin
-        // only). Tenant-scoped (R30); every call audited.
+        // only). Tenant-scoped (R30); successful unmasks + permission-denied
+        // attempts are audited.
         KbDetokenizeTool::class,
 
         // v8.x — padosoft/laravel-invitations tri-surface (R44 third surface).

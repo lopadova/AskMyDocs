@@ -131,6 +131,23 @@ final class KbDetokenizeToolTest extends TestCase
         ]);
     }
 
+    public function test_it_cannot_detokenize_a_document_from_another_tenant(): void
+    {
+        // Doc created under tenant 'globex'…
+        $tenants = app(TenantContext::class);
+        $tenants->set('globex');
+        $doc = $this->tokenisedDoc('mario.rossi@example.com');
+        $tenants->reset();
+
+        // …a super-admin acting in the default tenant cannot re-identify it by id
+        // (R30 / IDOR guard) — findDocument is forTenant-scoped → not found.
+        $this->actingAs($this->user('super-admin'));
+        $response = $this->invoke($doc->id);
+
+        $this->assertStringContainsString('not found', (string) $response->content());
+        $this->assertStringNotContainsString('mario.rossi@example.com', (string) $response->content());
+    }
+
     public function test_it_refuses_when_strategy_is_not_tokenise(): void
     {
         config()->set('pii-redactor.strategy', 'mask');

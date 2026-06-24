@@ -1955,7 +1955,9 @@ super-admin only — the LLM-facing PII surface carries the tightest gate; roste
 **41 → 42**). Every surface enforces the `tokenise` preflight, is tenant-scoped
 (R30 — no cross-tenant re-id by id), bypasses the per-project read ACL for this
 privileged compliance op while keeping the tenant + permission gates, and audits
-every unmask (`admin_command_audit`, `command='pii.detokenize'`).
+each completed unmask + permission-denied attempt (`admin_command_audit`,
+`command='pii.detokenize'`; the strategy preflight + not-found are not audited —
+no unmask is attempted).
 
 **v8.22.0 — Runtime configuration governance (GA, shipped 2026-06-23).**
 Ciclo 3 of the connectors / observability / config / PII roadmap. A curated set

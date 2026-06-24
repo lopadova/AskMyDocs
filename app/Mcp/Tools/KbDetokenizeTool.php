@@ -30,10 +30,12 @@ use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
  *     endpoint's dpo+super-admin: re-identifying PII through an LLM-facing tool
  *     warrants the tightest boundary).
  *
- * Tenant-scoped (R30); requires the reversible `tokenise` strategy; every
- * completed OR rejected call writes an `admin_command_audit` row.
+ * Tenant-scoped (R30); requires the reversible `tokenise` strategy. A completed
+ * unmask AND a permission-denied attempt each write an `admin_command_audit`
+ * row; the strategy-preflight refusal and the not-found path are NOT audited (no
+ * unmask is attempted in either case).
  */
-#[Description('Re-identify (detokenise) a tokenised knowledge document: return its chunk text with the original PII restored from the per-tenant vault. Requires the tokenise strategy and the pii.detokenize permission (super-admin); every call is audited. Read-only.')]
+#[Description('Re-identify (detokenise) a tokenised knowledge document: return its chunk text with the original PII restored from the per-tenant vault. Requires the tokenise strategy and the pii.detokenize permission (super-admin); successful unmasks and permission-denied attempts are audited. Read-only.')]
 #[IsReadOnly]
 #[IsIdempotent]
 class KbDetokenizeTool extends Tool
