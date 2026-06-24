@@ -11,8 +11,6 @@ use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
 use Laravel\Mcp\Server\Attributes\Description;
 use Laravel\Mcp\Server\Tool;
-use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
-use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
 /**
  * v8.23 (Ciclo 4) — MCP surface (R44 third surface) for re-identifying a
@@ -35,9 +33,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
  * row; the strategy-preflight refusal and the not-found path are NOT audited (no
  * unmask is attempted in either case).
  */
-#[Description('Re-identify (detokenise) a tokenised knowledge document: return its chunk text with the original PII restored from the per-tenant vault. Requires the tokenise strategy and the pii.detokenize permission (super-admin); successful unmasks and permission-denied attempts are audited. Read-only.')]
-#[IsReadOnly]
-#[IsIdempotent]
+#[Description('Re-identify (detokenise) a tokenised knowledge document: return its chunk text with the original PII restored from the per-tenant vault. Requires the tokenise strategy and the pii.detokenize permission (super-admin); successful unmasks and permission-denied attempts are audited.')]
 class KbDetokenizeTool extends Tool
 {
     public function schema(JsonSchema $schema): array
