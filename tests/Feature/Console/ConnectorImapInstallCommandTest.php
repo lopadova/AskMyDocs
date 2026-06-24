@@ -26,7 +26,7 @@ use Tests\TestCase;
  * ConfigureConnectorTest, così il flusso configure() gira offline.
  *
  * Pin: l'install crea la riga ACTIVE con config_json corretto (connection +
- * project_key + folders.include=[INBOX] + date_window_days) e vaulta la password
+ * project_key + folders.include=[<label>] + date_window_days) e vaulta la password
  * (mai in config_json); --sync accoda un ConnectorSyncJob; actor inesistente
  * fallisce (R14).
  */
@@ -57,7 +57,7 @@ final class ConnectorImapInstallCommandTest extends TestCase
 
     public function test_installs_activates_vaults_password_and_merges_extra_config(): void
     {
-        $this->setPassword('CONNECTOR_TEST_ROTTA_1_PASSWORD', 's3cr3t-app-pw');
+        $this->setPassword('CONNECTOR_TEST_GMAIL_PASSWORD', 's3cr3t-app-pw');
         $this->makeUser();
         $this->bindImapFactory(pingSucceeds: true);
 
@@ -75,8 +75,9 @@ final class ConnectorImapInstallCommandTest extends TestCase
         $this->assertSame('basic', $config['auth_mode']);
         $this->assertSame('rotta.test1.askmydocs@gmail.com', $config['connection']['username']);
         $this->assertSame('rotta-logistics', $config['project_key']);
-        // Le chiavi extra che configure() non persiste sono ri-aggiunte.
-        $this->assertSame(['INBOX'], $config['folders']['include']);
+        // Le chiavi extra che configure() non persiste sono ri-aggiunte; la
+        // include è la LABEL della casella (account unico, separazione per label).
+        $this->assertSame(['rotta-logistics-1'], $config['folders']['include']);
         $this->assertIsInt($config['date_window_days']);
         // La password non finisce mai in config_json.
         $this->assertArrayNotHasKey('password', $config);
@@ -92,7 +93,7 @@ final class ConnectorImapInstallCommandTest extends TestCase
     public function test_sync_flag_dispatches_a_connector_sync_job(): void
     {
         Queue::fake();
-        $this->setPassword('CONNECTOR_TEST_ROTTA_1_PASSWORD', 'pw');
+        $this->setPassword('CONNECTOR_TEST_GMAIL_PASSWORD', 'pw');
         $this->makeUser();
         $this->bindImapFactory(pingSucceeds: true);
 
@@ -158,7 +159,7 @@ final class ConnectorImapInstallCommandTest extends TestCase
 
     public function test_unknown_actor_fails(): void
     {
-        $this->setPassword('CONNECTOR_TEST_ROTTA_1_PASSWORD', 'pw');
+        $this->setPassword('CONNECTOR_TEST_GMAIL_PASSWORD', 'pw');
         $this->makeUser();
         $this->bindImapFactory(pingSucceeds: true);
 
@@ -172,7 +173,7 @@ final class ConnectorImapInstallCommandTest extends TestCase
 
     public function test_bad_credentials_keep_installation_pending_and_fail(): void
     {
-        $this->setPassword('CONNECTOR_TEST_ROTTA_1_PASSWORD', 'pw');
+        $this->setPassword('CONNECTOR_TEST_GMAIL_PASSWORD', 'pw');
         $this->makeUser();
         $this->bindImapFactory(pingSucceeds: false);
 

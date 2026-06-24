@@ -10,6 +10,7 @@ use RuntimeException;
 use Throwable;
 use Webklex\PHPIMAP\Client;
 use Webklex\PHPIMAP\ClientManager;
+use Webklex\PHPIMAP\Folder;
 
 /**
  * Implementazione reale di {@see MailboxAppender} sopra webklex/php-imap.
@@ -42,12 +43,9 @@ final class WebklexMailboxAppender implements MailboxAppender
         $appended = 0;
 
         try {
-            $folder = $client->getFolder($target->folder);
-            if ($folder === null) {
-                throw new RuntimeException(
-                    "Cartella IMAP '{$target->folder}' non trovata su {$target->email}.",
-                );
-            }
+            // Crea la label/cartella se non esiste (Gmail: un IMAP CREATE crea la
+            // label) — su un account-unico-con-label la cartella nasce qui.
+            $folder = $this->ensureFolder($client, $target->folder);
 
             foreach ($rfc822Messages as $raw) {
                 // INTERNALDATE = $internalDate (now()) così i messaggi cadono nella
@@ -68,11 +66,10 @@ final class WebklexMailboxAppender implements MailboxAppender
         $deleted = 0;
 
         try {
-            $folder = $client->getFolder($target->folder);
+            // Label assente = niente da purgare (primo run): non è un errore.
+            $folder = $client->getFolderByPath($target->folder, false, true);
             if ($folder === null) {
-                throw new RuntimeException(
-                    "Cartella IMAP '{$target->folder}' non trovata su {$target->email}.",
-                );
+                return 0;
             }
 
             // `all()` imposta il criterio SEARCH ALL: senza un criterio Gmail
@@ -104,6 +101,25 @@ final class WebklexMailboxAppender implements MailboxAppender
         }
 
         return $deleted;
+    }
+
+    /**
+     * Ritorna la cartella/label target, creandola se non esiste. Su Gmail un
+     * IMAP CREATE crea la label; con un account-unico-con-label la cartella di
+     * una casella nasce al primo seeding.
+     */
+    private function ensureFolder(Client $client, string $name): Folder
+    {
+        $folder = $client->getFolderByPath($name, false, true);
+        if ($folder === null) {
+            $folder = $client->createFolder($name);
+        }
+
+        if ($folder === null) {
+            throw new RuntimeException("Impossibile creare/aprire la cartella IMAP '{$name}'.");
+        }
+
+        return $folder;
     }
 
     /**

@@ -45,10 +45,12 @@ runbook in modo ripetibile.
 > 4. **Estendere le fixtures.** In `database/seeders/TestEmailFixtures.php`
 >    (ogni azienda ha **2 caselle** → 2 `mailbox_key`, es. `<project>-1`,
 >    `<project>-2`):
->    - aggiungi/aggiorna in `MAILBOXES` un'entry per ogni casella selezionata:
->      `mailbox_key`, `project_key`, `company_name`, `email` (casella Gmail
->      dedicata), `host`/`port`/`encryption`/`validate_cert`, `password_env`
->      (es. `CONNECTOR_TEST_<AZIENDA>_<N>_PASSWORD`);
+>    - aggiungi/aggiorna in `MAILBOXES` un'entry per ogni casella: `mailbox_key`,
+>      `project_key`, `company_name`, `email`, `folder` (la label IMAP), conn.
+>      params, `password_env`. Modello di default: UN account Gmail condiviso
+>      (`ACCOUNT_EMAIL` + `ACCOUNT_PASSWORD_ENV`) con una `folder`/label distinta
+>      per casella — Google limita gli account per telefono. In alternativa, account
+>      separati: `email`/`password_env` diversi per casella;
 >    - aggiungi le e-mail in `database/seeders/emails/<mailbox_key>.json` (array
 >      JSON; le 2 caselle della stessa azienda hanno e-mail diverse; ≥100 per
 >      casella, vario tipo + thread domanda/risposta) con le chiavi `subject`,
@@ -57,10 +59,11 @@ runbook in modo ripetibile.
 >      generazione di massa usa un multi-agente (un agente per casella/batch che
 >      scrive il proprio file).
 >    - `configJson()` è già generico (host/port/encryption dal fixture + env
->      override, `folders.include=[INBOX]`, `date_window_days`): non modificarlo.
-> 5. **Credenziali.** Per ogni nuova casella crea l'account Gmail di test con
->    App Password e metti la password nella env `password_env` in `.env`
->    (mai committarla). Aggiorna `.env.example` con le nuove chiavi (vuote).
+>      override, `folders.include=[<folder>]`, `date_window_days`): non modificarlo.
+> 5. **Credenziali.** Crea l'account Gmail (uno solo se usi le label) con App
+>    Password (2FA + IMAP on) e metti la password nella env `password_env` in
+>    `.env` (mai committarla). Aggiorna `.env.example` con le chiavi (vuote). Le
+>    label vengono create da `mail:seed-imap` al primo invio.
 > 6. **Anteprima.** `php artisan mail:seed-imap --all --dry-run` e verifica
 >    oggetti/contenuti.
 > 7. **Consegna.** `php artisan mail:seed-imap --all` (usa `--purge` per re-run
