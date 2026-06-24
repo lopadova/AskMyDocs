@@ -14,6 +14,12 @@ use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
  * (`PATCH /api/admin/connectors/{installationId}`): rename the `label` and/or
  * rebind `project_key`. PARTIAL — only present keys are validated/applied.
  *
+ * v8.24 — also accepts the connection-settings the picker edits:
+ * `folders.include` (array of EXACT, case-sensitive IMAP folder paths — the
+ * sync whitelist; empty = sync all non-excluded folders) and
+ * `date_window_days` (how far back to walk). Both land in `config_json` via a
+ * read-modify-write in {@see \App\Services\Admin\Connectors\ConnectorInstallationService::updateMetadata}.
+ *
  * The `label` unique is scoped to (tenant, connector) and ignores the row
  * itself, so re-saving the same label is a no-op rather than a false collision.
  * Credential re-auth is out of scope (delete + re-add); this never touches the
@@ -33,6 +39,20 @@ final class UpdateConnectorInstallationRequest extends FormRequest
         // the `exists` rule and the column is genuinely cleared.
         if ($this->input('project_key') === '') {
             $this->merge(['project_key' => null]);
+        }
+
+        // Normalize folders.include BEFORE validation: trim each path, drop blank
+        // entries, dedupe. `distinct` does NOT trim, so without this a "  " or a
+        // trailing-space duplicate would slip past. An explicit empty array is
+        // preserved (it means "clear the whitelist → sync all non-excluded").
+        $folders = $this->input('folders');
+        if (is_array($folders) && array_key_exists('include', $folders)) {
+            $include = is_array($folders['include']) ? $folders['include'] : [];
+            $folders['include'] = array_values(array_unique(array_filter(
+                array_map(static fn ($v) => is_string($v) ? trim($v) : $v, $include),
+                static fn ($v) => is_string($v) && $v !== '',
+            )));
+            $this->merge(['folders' => $folders]);
         }
     }
 
@@ -68,6 +88,13 @@ final class UpdateConnectorInstallationRequest extends FormRequest
                 'sometimes', 'nullable', 'string', 'max:120',
                 Rule::exists('projects', 'project_key')->where('tenant_id', $tenantId),
             ],
+            // v8.24 — connection settings the picker edits. `folders.include` is
+            // the sync whitelist (exact, case-sensitive paths); an empty array is
+            // valid and means "clear → sync all non-excluded folders".
+            'folders' => ['sometimes', 'array'],
+            'folders.include' => ['sometimes', 'array', 'max:200'],
+            'folders.include.*' => ['string', 'distinct', 'min:1', 'max:255'],
+            'date_window_days' => ['sometimes', 'integer', 'min:0', 'max:3650'],
         ];
     }
 }

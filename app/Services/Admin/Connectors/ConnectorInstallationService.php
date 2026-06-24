@@ -52,11 +52,15 @@ final class ConnectorInstallationService
         // Select only the columns the roster serializes — never hydrate the
         // potentially-large `config_json` (or other unused columns) just to
         // render a status list (lean as installations grow).
+        // `config_json` is hydrated so the read surface can expose the
+        // picker-owned sub-keys (folders.include + date_window_days); only those
+        // are serialized — never connection/host/username/secret (see
+        // {@see installationArray}). The blob is small for credential connectors.
         $byConnector = ConnectorInstallation::query()
             ->where('tenant_id', $this->tenantContext->current())
             ->orderBy('connector_name')
             ->orderBy('label')
-            ->get(['id', 'connector_name', 'label', 'project_key', 'status', 'last_sync_at', 'error_json'])
+            ->get(['id', 'connector_name', 'label', 'project_key', 'status', 'last_sync_at', 'error_json', 'config_json'])
             ->groupBy('connector_name');
 
         return $this->registry->all()->map(function ($connector) use ($byConnector): array {
@@ -101,7 +105,38 @@ final class ConnectorInstallationService
             'status' => $i->status,
             'last_sync_at' => $i->last_sync_at?->toIso8601String(),
             'error' => $i->error_json,
+            // v8.24 (R27 additive) — the picker-owned connection settings, read
+            // back for the edit form. ONLY folders.include + date_window_days are
+            // exposed; the rest of config_json (connection/host/username) stays
+            // private and the secret lives only in the vault.
+            'folders' => ['include' => $this->folderIncludeOf($i)],
+            'date_window_days' => $this->dateWindowOf($i),
         ];
+    }
+
+    /**
+     * The sync whitelist (config_json.folders.include) of an installation, or []
+     * when unset / config_json not hydrated.
+     *
+     * @return list<string>
+     */
+    private function folderIncludeOf(ConnectorInstallation $i): array
+    {
+        $config = (array) ($i->config_json ?? []);
+        $include = (array) (($config['folders'] ?? [])['include'] ?? []);
+
+        return array_values(array_map('strval', $include));
+    }
+
+    /**
+     * The sync window (config_json.date_window_days) of an installation, or null
+     * when unset / config_json not hydrated.
+     */
+    private function dateWindowOf(ConnectorInstallation $i): ?int
+    {
+        $config = (array) ($i->config_json ?? []);
+
+        return isset($config['date_window_days']) ? (int) $config['date_window_days'] : null;
     }
 
     /**
@@ -283,10 +318,13 @@ final class ConnectorInstallationService
      *
      * R21 — lockForUpdate + save inside DB::transaction so a concurrent rename on
      * the same installation does not interleave (a label rename can fail the DB
-     * unique; the transaction ensures we hold the row from read to write).
+     * unique; the transaction ensures we hold the row from read to write). The
+     * config_json edits (folders.include / date_window_days) are a read-modify-
+     * write of the same locked row, so they cannot race a concurrent edit either.
      *
-     * @param  array<string,mixed>  $attrs  Subset of {label, project_key}; only
-     *                                       present keys are updated (PATCH).
+     * @param  array<string,mixed>  $attrs  Subset of {label, project_key, folders,
+     *                                       date_window_days}; only present keys
+     *                                       are updated (PATCH).
      */
     public function updateMetadata(int $installationId, array $attrs): ConnectorInstallation
     {
@@ -310,12 +348,52 @@ final class ConnectorInstallationService
                 $update['project_key'] = ($value === '' || $value === null) ? null : (string) $value;
             }
 
+            $config = $this->applyConfigJsonEdits($installation, $attrs);
+            if ($config !== null) {
+                $update['config_json'] = $config;
+            }
+
             if ($update !== []) {
                 $installation->forceFill($update)->save();
             }
 
             return $installation;
         });
+    }
+
+    /**
+     * Build the next config_json for the connection-settings edits (v8.24),
+     * writing ONLY the picker-owned sub-keys so connection/auth_mode/exclude and
+     * any other config the operator never sees are preserved. Returns null when
+     * neither key is present (so the caller skips the config_json write entirely).
+     *
+     * @param  array<string,mixed>  $attrs
+     * @return array<string,mixed>|null
+     */
+    private function applyConfigJsonEdits(ConnectorInstallation $installation, array $attrs): ?array
+    {
+        $hasFolders = array_key_exists('folders', $attrs) && array_key_exists('include', (array) $attrs['folders']);
+        $hasWindow = array_key_exists('date_window_days', $attrs);
+
+        if (! $hasFolders && ! $hasWindow) {
+            return null;
+        }
+
+        $config = (array) ($installation->config_json ?? []);
+
+        if ($hasFolders) {
+            // Overwrite the include sub-key only — never the whole folders map,
+            // so the default/edited `exclude` list survives an include edit.
+            $folders = (array) ($config['folders'] ?? []);
+            $folders['include'] = array_values((array) $attrs['folders']['include']);
+            $config['folders'] = $folders;
+        }
+
+        if ($hasWindow) {
+            $config['date_window_days'] = (int) $attrs['date_window_days'];
+        }
+
+        return $config;
     }
 
     /**
