@@ -1923,6 +1923,28 @@ including commercial use.
 
 ## Changelog
 
+**v8.23.0 — PII-safe ingestion & reversible vault (Ciclo 4, in progress).**
+Makes the knowledge base **PII-safe by default** while letting an authorised
+operator re-identify on demand — the Presidio/Skyflow/DLP "detect → tokenise
+before embedding, reversible per-tenant vault outside the AI path" pattern.
+*PR1 (#368):* tenant-isolated reversible tokenisation at the **connector ingest
+boundary** — `HostIngestionBridge::redactContent()` selects mask vs `tokenise`
+via `KB_INGEST_PII_STRATEGY`, building the strategy through the package factory
+so the host `TenantResolver` + per-tenant salt wire in (R30); originals land in
+the per-tenant `pii_token_maps` vault, surrogates go to disk/chunks/embeddings.
+*PR2:* extends tokenisation to the **inline** ingestion path (HTTP
+`POST /api/kb/ingest` + `kb:ingest-folder` CLI) — `DocumentIngestor` redacts each
+**chunk's text** before hashing/embedding/persist (raw markdown stays the
+idempotency anchor; canonical frontmatter stays parseable; deterministic tokens
+keep re-ingest idempotent), gated by `KB_INLINE_INGEST_PII_REDACT` (default OFF,
+R43). Adds a per-`(tenant, project)` **`kb_pii_settings`** policy
+(`redact_enabled` + `strategy`) resolved most-specific-wins
+(`config ← tenant '*' ← project`) by `KbPiiPolicyResolver`, delivered tri-surface
+(R44): **HTTP** (`GET /api/admin/pii/policy` `viewPiiRedactorAdmin`; `PUT`
+`manageKbPiiPolicy` — dpo / super-admin; R32 matrix rows), **CLI**
+(`kb:pii-policy`), **MCP** (`KbPiiPolicyTool` read, roster **40 → 41**).
+Tenant-aware (R30/R31), `UNIQUE(tenant_id, project_key)`.
+
 **v8.22.0 — Runtime configuration governance (GA, shipped 2026-06-23).**
 Ciclo 3 of the connectors / observability / config / PII roadmap. A curated set
 of operational knobs becomes editable **per `(tenant, project)` at runtime —

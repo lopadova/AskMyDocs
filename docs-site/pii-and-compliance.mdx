@@ -130,8 +130,45 @@ The strategy applies at the **connector ingest boundary**
 (`HostIngestionBridge::redactContent`) when **all three** are on: the package
 engine `PII_REDACTOR_ENABLED=true` (otherwise `RedactorEngine::redact()` is a
 no-op), the host master switch `KB_PII_REDACTOR_ENABLED=true`, and
-`KB_CONNECTOR_INGEST_PII_REDACT=true`. Extending tokenisation to the inline
-`DocumentIngestor` (HTTP/CLI) path is a follow-up in this cycle.
+`KB_CONNECTOR_INGEST_PII_REDACT=true`.
+
+### Inline ingestion path (v8.23/PR2)
+
+The same redaction now also runs on the **inline** ingestion path — the HTTP
+`POST /api/kb/ingest` batch and the `kb:ingest-folder` CLI, both via
+`IngestDocumentJob → DocumentIngestor`. Each **chunk's text** is rewritten
+through the active strategy **before** it is hashed, embedded, and persisted, so
+the vector store + `chunk_text` never hold raw PII while the per-tenant vault
+keeps the originals. Redaction is deliberately scoped to the chunk text, not the
+whole markdown: the raw markdown stays the idempotency anchor (`document_hash`)
+and the canonical frontmatter stays parseable. Tokens are deterministic, so a
+re-ingest of identical content yields identical surrogates and remains
+idempotent (same `chunk_hash`).
+
+The inline path is gated by `KB_INLINE_INGEST_PII_REDACT` (default **OFF**, R43)
+on top of the same two master flags.
+
+### Per-(tenant, project) policy (`kb_pii_settings`)
+
+Because the inline path has the project key (the connector boundary does not),
+the effective on/off + strategy are resolved **per project** by
+`KbPiiPolicyResolver`, layering most-specific-wins:
+
+```
+config('kb.pii_redactor.*')  →  kb_pii_settings (tenant, '*')  →  kb_pii_settings (tenant, project)
+```
+
+So a tenant can mask everywhere but `tokenise` only the `support` project, or
+keep ingestion raw globally and opt one project in — without a deploy. The
+policy is **tri-surface** (R44) over the one `KbPiiPolicyResolver` core:
+
+| Surface | Read | Write |
+|---|---|---|
+| HTTP | `GET /api/admin/pii/policy` (`viewPiiRedactorAdmin`) | `PUT /api/admin/pii/policy` (`manageKbPiiPolicy` — dpo / super-admin) |
+| CLI | `kb:pii-policy --tenant= --project=` | — |
+| MCP | `KbPiiPolicyTool` (read-only) | — |
+
+Every row is tenant-scoped (R30) with a composite `UNIQUE(tenant_id, project_key)`.
 
 Detokenisation today is exposed for **chat-log** rows via the Log Viewer
 endpoint (`POST /api/admin/logs/chat/{id}/detokenize`) and the PII Redactor

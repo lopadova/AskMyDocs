@@ -627,6 +627,8 @@ class AppServiceProvider extends ServiceProvider
             KbPromoteCommand::class,
             KbValidateCanonicalCommand::class,
             KbRebuildGraphCommand::class,
+            // v8.23 (Ciclo 4) — read the effective PII ingestion policy (R44 CLI surface).
+            \App\Console\Commands\KbPiiPolicyCommand::class,
             // PR3 — RBAC
             AuthGrantCommand::class,
             // Operator helper: seed a demo user inside a tenant in the
@@ -756,6 +758,19 @@ class AppServiceProvider extends ServiceProvider
             }
 
             return $user->hasRole('super-admin');
+        });
+
+        // v8.23 (Ciclo 4) — write the per-(tenant, project) PII ingestion
+        // policy (`kb_pii_settings`). Reading the policy rides the broader
+        // `viewPiiRedactorAdmin` gate (admin / dpo / super-admin); MUTATING it
+        // is a privacy-governance action, so it is restricted to the data
+        // owner roles — dpo / super-admin — mirroring `detokenisePiiRedactor`.
+        Gate::define('manageKbPiiPolicy', function ($user): bool {
+            if ($user === null) {
+                return false;
+            }
+
+            return $user->hasAnyRole(['super-admin', 'dpo']);
         });
     }
 

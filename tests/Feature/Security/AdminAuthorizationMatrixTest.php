@@ -102,6 +102,7 @@ final class AdminAuthorizationMatrixTest extends TestCase
             '/api/admin/mcp/tokens' => ['super-admin'],                 // manageMcpTools
             '/api/admin/mcp-tool-call-audit' => ['admin', 'super-admin'], // viewMcpAudit
             '/api/admin/pii/strategy' => ['admin', 'dpo', 'super-admin'], // viewPiiRedactorAdmin
+            '/api/admin/pii/policy' => ['admin', 'dpo', 'super-admin'], // viewPiiRedactorAdmin (GET); PUT adds manageKbPiiPolicy (see write-boundary test)
             '/api/admin/eval-harness/bootstrap-config' => ['admin', 'dpo', 'editor', 'super-admin'], // eval-harness.viewer
             '/api/admin/tabular-reviews' => ['admin', 'viewer', 'super-admin'], // viewTabularReviews
             '/api/admin/workflows' => ['admin', 'viewer', 'super-admin'], // viewWorkflows
@@ -219,6 +220,43 @@ final class AdminAuthorizationMatrixTest extends TestCase
         // (Guest auth on finops routes is already covered by
         // test_guests_are_rejected_with_401_on_every_protected_endpoint — this
         // method's job is the admin-vs-super-admin WRITE boundary specifically.)
+    }
+
+    /**
+     * v8.23 (Ciclo 4) — the PII ingestion-policy API splits authorization by
+     * HTTP method: GET rides `viewPiiRedactorAdmin` (admin / dpo / super-admin,
+     * proved by the matrix above), but the PUT adds `can:manageKbPiiPolicy`
+     * (dpo / super-admin ONLY). The GET-only matrix cannot catch an `admin`
+     * accidentally gaining WRITE access to the privacy posture, so assert the
+     * write boundary explicitly.
+     */
+    public function test_kb_pii_policy_write_requires_the_manage_gate(): void
+    {
+        $writeUri = '/api/admin/pii/policy';
+        $body = ['project_key' => '*', 'redact_enabled' => true, 'strategy' => 'mask'];
+
+        // admin passes the READ gate but must be DENIED (403) on a WRITE.
+        $adminStatus = $this->actingAs($this->userWithRole('admin'))
+            ->putJson($writeUri, $body)
+            ->getStatusCode();
+        $this->assertSame(
+            403,
+            $adminStatus,
+            "Role [admin] must be DENIED (403) on write [{$writeUri}] (manageKbPiiPolicy = dpo/super-admin only) but got {$adminStatus}.",
+        );
+
+        // dpo + super-admin pass the manage gate; the controller may 200/422 on
+        // the body — never 403.
+        foreach (['dpo', 'super-admin'] as $role) {
+            $status = $this->actingAs($this->userWithRole($role))
+                ->putJson($writeUri, $body)
+                ->getStatusCode();
+            $this->assertNotSame(
+                403,
+                $status,
+                "Role [{$role}] must pass the manage gate on write [{$writeUri}] but got 403.",
+            );
+        }
     }
 
     /**

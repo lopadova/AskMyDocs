@@ -29,10 +29,11 @@ class KnowledgeBaseServerRegistrationTest extends TestCase
         return $property->getDefaultValue();
     }
 
-    public function test_server_registers_exactly_forty_tools(): void
+    public function test_server_registers_exactly_forty_one_tools(): void
     {
-        // 36 (v8.21) + 3 invitations tools (v8.x) + 1 AppSettingsTool (v8.22).
-        $this->assertCount(40, $this->registeredTools());
+        // 36 (v8.21) + 3 invitations tools (v8.x) + 1 AppSettingsTool (v8.22)
+        // + 1 KbPiiPolicyTool (v8.23/Ciclo 4).
+        $this->assertCount(41, $this->registeredTools());
     }
 
     public function test_server_registers_the_invitations_tools(): void
@@ -55,6 +56,12 @@ class KnowledgeBaseServerRegistrationTest extends TestCase
     {
         // v8.22/Ciclo 3 — the runtime config governance MCP read surface.
         $this->assertContains(\App\Mcp\Tools\AppSettingsTool::class, $this->registeredTools());
+    }
+
+    public function test_server_registers_the_kb_pii_policy_tool(): void
+    {
+        // v8.23/Ciclo 4 — the PII ingestion-policy MCP read surface (R44).
+        $this->assertContains(\App\Mcp\Tools\KbPiiPolicyTool::class, $this->registeredTools());
     }
 
     public function test_server_registers_the_run_report_tool(): void
