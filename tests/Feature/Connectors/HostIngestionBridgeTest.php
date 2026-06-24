@@ -114,6 +114,44 @@ final class HostIngestionBridgeTest extends TestCase
         );
     }
 
+    public function test_redact_content_masks_by_default(): void
+    {
+        // R43 — default ingest_strategy is the pre-v8.23 one-way mask.
+        config()->set('kb.pii_redactor.enabled', true);
+        config()->set('kb.pii_redactor.redact_before_ingest', true);
+
+        /** @var HostIngestionBridge $bridge */
+        $bridge = $this->app->make(ConnectorIngestionContract::class);
+        $out = $bridge->redactContent('My email is user@example.com');
+
+        $this->assertStringNotContainsString('user@example.com', $out);
+        $this->assertStringNotContainsString('[tok:', $out, 'default strategy must mask, not tokenise');
+    }
+
+    public function test_redact_content_tokenises_reversibly_when_configured(): void
+    {
+        // v8.23 — tokenise puts a reversible surrogate in the content while the
+        // original lives in the per-tenant vault (recoverable on demand).
+        config()->set('kb.pii_redactor.enabled', true);
+        config()->set('kb.pii_redactor.redact_before_ingest', true);
+        config()->set('kb.pii_redactor.ingest_strategy', 'tokenise');
+        config()->set('pii-redactor.salt', 'test-salt');
+
+        /** @var HostIngestionBridge $bridge */
+        $bridge = $this->app->make(ConnectorIngestionContract::class);
+        $out = $bridge->redactContent('My email is user@example.com');
+
+        $this->assertStringNotContainsString('user@example.com', $out);
+        $this->assertMatchesRegularExpression('/\[tok:email:[0-9a-f]+\]/', $out);
+
+        // The original is recoverable from the shared (singleton) vault.
+        $restored = $this->app
+            ->make(\Padosoft\PiiRedactor\Strategies\RedactionStrategyFactory::class)
+            ->make('tokenise')
+            ->detokeniseString($out);
+        $this->assertStringContainsString('user@example.com', $restored);
+    }
+
     public function test_emit_audit_writes_to_canonical_audit_with_namespaced_event(): void
     {
         /** @var TenantContext $ctx */

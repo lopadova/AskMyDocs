@@ -194,6 +194,35 @@ class AppServiceProvider extends ServiceProvider
         $this->registerFakeImapFactory();
         $this->registerInvitationsIntegration();
         $this->registerInvitationsGates();
+        $this->registerPiiRedactorTenancy();
+    }
+
+    /**
+     * v8.23 (Ciclo 4) — bind the laravel-pii-redactor TenantResolver to the
+     * host's request-scoped TenantContext so the reversible token vault is
+     * isolated per tenant (R30): the same PII yields a different token per
+     * tenant and a token only ever detokenises within its own tenant. The
+     * package binds a single-tenant DefaultTenantResolver via bindIf(); this
+     * explicit bind() makes the host multi-tenant definitively.
+     */
+    private function registerPiiRedactorTenancy(): void
+    {
+        $this->app->bind(
+            \Padosoft\PiiRedactor\Contracts\TenantResolver::class,
+            function ($app): \Padosoft\PiiRedactor\Contracts\TenantResolver {
+                $ctx = $app->make(TenantContext::class);
+
+                return new class($ctx) implements \Padosoft\PiiRedactor\Contracts\TenantResolver
+                {
+                    public function __construct(private readonly TenantContext $ctx) {}
+
+                    public function currentTenantId(): string
+                    {
+                        return $this->ctx->current();
+                    }
+                };
+            },
+        );
     }
 
     /**

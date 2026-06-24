@@ -131,9 +131,23 @@ final class HostIngestionBridge implements ConnectorIngestionContract
 
         /** @var RedactorEngine $engine */
         $engine = app(RedactorEngine::class);
-        $strategy = app(MaskStrategy::class);
 
-        return $engine->redact($content, $strategy);
+        return $engine->redact($content, $this->ingestStrategy());
+    }
+
+    /**
+     * v8.23 (Ciclo 4) — the ingest redaction strategy. `tokenise` (reversible,
+     * per-tenant vault) when configured, else `mask` (one-way, pre-v8.23
+     * default). Built through the package factory so `tokenise` gets the
+     * host-bound tenant resolver + salt; an unknown value falls back to mask.
+     */
+    private function ingestStrategy(): \Padosoft\PiiRedactor\Strategies\RedactionStrategy
+    {
+        if ((string) config('kb.pii_redactor.ingest_strategy', 'mask') !== 'tokenise') {
+            return app(MaskStrategy::class);
+        }
+
+        return app(\Padosoft\PiiRedactor\Strategies\RedactionStrategyFactory::class)->make('tokenise');
     }
 
     public function emitAudit(

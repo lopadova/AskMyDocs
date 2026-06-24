@@ -961,6 +961,21 @@ return [
         'redact_before_ingest' => (bool) env('KB_CONNECTOR_INGEST_PII_REDACT', false),
 
         /*
+        | v8.23 (Ciclo 4) — ingest redaction STRATEGY. `mask` (default, the
+        | pre-v8.23 one-way behaviour) or `tokenise`. With `tokenise`, the
+        | content written to the KB disk + chunked + embedded carries reversible
+        | `[tok:<detector>:<hex>]` surrogates while the originals live in the
+        | per-tenant `pii_token_maps` vault (tenant-scoped via the host
+        | TenantResolver binding, R30) — so the KB is PII-safe by default and an
+        | authorised operator re-identifies on demand (DetokenizeService).
+        | `tokenise` REQUIRES `PII_REDACTOR_SALT` (the factory throws loudly if
+        | missing, R14). Applies to BOTH the connector boundary
+        | (`HostIngestionBridge::redactContent`) and the inline ingest path
+        | (`DocumentIngestor`) when `enabled` + `redact_before_ingest` are on.
+        */
+        'ingest_strategy' => (string) env('KB_INGEST_PII_STRATEGY', 'mask'),
+
+        /*
         | Detokenize permission — Spatie permission name required for the
         | `LogViewerController::chatDetokenize` action
         | (`POST /api/admin/logs/chat/{id}/detokenize`) that surfaces the
