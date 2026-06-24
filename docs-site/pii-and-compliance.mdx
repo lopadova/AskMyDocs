@@ -113,10 +113,17 @@ By default, connector ingestion uses one-way **masking** — PII is replaced wit
 replaced with reversible surrogates (`[tok:email:4a3f…]`) stored in a per-tenant
 vault, so an authorised operator can recover the original on demand.
 
+<Warning>
+`tokenise` keeps the originals in the package token store. The package default
+is `PII_REDACTOR_TOKEN_STORE=memory` (process-local — lost on restart, useless
+across workers). For a **persistent, recoverable** vault set
+`PII_REDACTOR_TOKEN_STORE=database` (the `pii_token_maps` table) — or `cache`.
+</Warning>
+
 | `KB_INGEST_PII_STRATEGY` | `config('kb.pii_redactor.ingest_strategy')` | Behaviour |
 |---|---|---|
 | `mask` (default) | `mask` | One-way replacement — PII is gone after ingest. |
-| `tokenise` | `tokenise` | Reversible surrogate in KB; original in per-tenant vault. Requires `PII_REDACTOR_SALT`. |
+| `tokenise` | `tokenise` | Reversible surrogate in KB; original in per-tenant vault. Requires `PII_REDACTOR_SALT` + a persistent `PII_REDACTOR_TOKEN_STORE`. |
 | anything else | — | `InvalidArgumentException` thrown at ingest time (R14). |
 
 The strategy applies at the **connector ingest boundary**

@@ -964,8 +964,11 @@ return [
         | pre-v8.23 one-way behaviour) or `tokenise`. With `tokenise`, the
         | content written to the KB disk + chunked + embedded carries reversible
         | `[tok:<detector>:<hex>]` surrogates while the originals live in the
-        | per-tenant `pii_token_maps` vault (tenant-scoped via the host
-        | TenantResolver binding, R30) — so the KB is PII-safe by default and an
+        | per-tenant token vault (tenant-scoped via the host TenantResolver
+        | binding, R30). For a PERSISTENT vault (the `pii_token_maps` table) set
+        | `PII_REDACTOR_TOKEN_STORE=database` — the package default `memory`
+        | store is process-local and lost on restart. So the KB is PII-safe by
+        | default and an
         | authorised operator re-identifies on demand via the existing
         | detokenise surfaces (`TokenResolutionService` /
         | `LogViewerController::chatDetokenize`). `tokenise` REQUIRES

@@ -1324,9 +1324,11 @@ the package engine `PII_REDACTOR_ENABLED=true`, the host master switch
 engine is off), then pick the strategy via
 `KB_INGEST_PII_STRATEGY`: `mask` (default, one-way) or `tokenise` — the latter
 writes reversible `[tok:…]` surrogates to the KB while the originals live in a
-**per-tenant** vault (`pii_token_maps`), so the KB is PII-safe by default and an
-authorised operator re-identifies on demand. `tokenise` requires
-`PII_REDACTOR_SALT`.
+**per-tenant** vault, so the KB is PII-safe by default and an authorised
+operator re-identifies on demand. `tokenise` requires `PII_REDACTOR_SALT`, and
+for a persistent vault (the `pii_token_maps` table) set
+`PII_REDACTOR_TOKEN_STORE=database` — the package default `memory` store is
+process-local.
 
 **Milestone ritual.** Run `php artisan kb:benchmark --stub` (deterministic)
 at the close of any retrieval-touching milestone, and the LIVE run before
