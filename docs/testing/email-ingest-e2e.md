@@ -62,9 +62,25 @@ Assicurati che esistano (e abbiano già la documentazione markdown):
 
 ```bash
 php artisan db:seed --class=Database\\Seeders\\RbacSeeder
-php artisan db:seed --class=Database\\Seeders\\CaseStudyUsersSeeder
+php artisan db:seed --class=Database\\Seeders\\CaseStudyUsersSeeder   # esegui PER ULTIMO
 php artisan demo:list-companies
 ```
+
+**Account per azienda** (3 ruoli ciascuna, password `password`). Il `viewer` è
+isolato (membership solo sulla sua azienda); `admin`/`super-admin` per ruolo
+vedono anche oltre. Il **super-admin** è l'unico che entra in *Admin → Connessioni*
+(gate `manageConnectors`):
+
+| Azienda | viewer | admin | super-admin |
+|---|---|---|---|
+| `rotta-logistics` | `rotta@case-study.local` | `rotta.admin@case-study.local` | `rotta.super@case-study.local` |
+| `prometeo-antincendio` | `prometeo@case-study.local` | `prometeo.admin@case-study.local` | `prometeo.super@case-study.local` |
+| `passolibero-calzature` | `passolibero@case-study.local` | `passolibero.admin@case-study.local` | `passolibero.super@case-study.local` |
+
+> Nota: `CaseStudyUsersSeeder` va eseguito **dopo** `RbacSeeder` — quel seeder fa
+> un backfill che dà a ogni utente esistente la membership su tutti i progetti
+> con documenti; il case-study seeder ripristina poi l'isolamento (azzera le
+> membership estranee dei suoi account).
 
 > Puntando il connettore al **project_key esistente** dell'azienda, l'utente
 > case-study (già membro) vede subito le e-mail ingerite — nessun wiring extra.
