@@ -10,6 +10,8 @@ use App\Services\Kb\DocumentIngestor;
 use App\Services\Kb\Pipeline\SourceDocument;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Filesystem\FileNotFoundException;
+use League\Flysystem\UnableToReadFile;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
@@ -73,18 +75,19 @@ class ReembedDocumentJob implements ShouldQueue
 
             $resolved = app(ConnectorIngestionContract::class)->resolveKbSourcePath((string) $document->source_path);
 
-            // Storage::get() THROWS on a missing/unreadable file (it does not
-            // reliably return null) — and an exists()+get() pair is TOCTOU (the
-            // file can vanish between the two calls). Wrap the read so a
-            // missing/unreadable source is a logged skip, never a job crash/retry.
+            // Swallow ONLY the missing-file case (Storage::get may return null OR
+            // throw, depending on the disk's `throw` config / driver) — a logged
+            // skip, no TOCTOU exists()+get() race. REAL I/O failures (permissions,
+            // a transient storage outage) propagate so the job retries instead of
+            // silently leaving stale chunks.
             try {
                 $bytes = Storage::disk($resolved['disk'])->get($resolved['absolute']);
-            } catch (\Throwable $e) {
+            } catch (FileNotFoundException|UnableToReadFile $e) {
                 $bytes = null;
             }
 
             if ($bytes === null) {
-                Log::warning('ReembedDocumentJob: source markdown missing/unreadable on disk; skipping re-embed.', [
+                Log::warning('ReembedDocumentJob: source markdown missing on disk; skipping re-embed.', [
                     'document_id' => $document->id,
                     'source_path' => $document->source_path,
                     'tenant_id' => $this->tenantId,

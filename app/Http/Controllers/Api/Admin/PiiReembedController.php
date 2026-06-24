@@ -35,12 +35,15 @@ final class PiiReembedController extends Controller
             'project_key' => ['required', 'string', 'max:120', 'regex:/\S/'],
         ]);
 
+        // Trim before the query/echo so a padded key (e.g. "support ") matches
+        // the stored project_key — parity with the CLI + MCP surfaces.
+        $projectKey = trim((string) $data['project_key']);
         $tenantId = $this->tenant->current();
-        $queued = $this->service->reembedProject($tenantId, (string) $data['project_key']);
+        $queued = $this->service->reembedProject($tenantId, $projectKey);
 
         return response()->json([
             'tenant_id' => $tenantId,
-            'project_key' => $data['project_key'],
+            'project_key' => $projectKey,
             'queued' => $queued,
         ]);
     }

@@ -122,8 +122,12 @@ final class KbPiiSettingController extends Controller
 
         // A changed effective strategy / redact-toggle leaves prior chunks +
         // embeddings stale; hint the operator to run a re-embed (POST
-        // /api/admin/pii/reembed) for the affected project. v8.23/PR5.
-        $after = $this->resolver->resolve($tenantId, $projectKey);
+        // /api/admin/pii/reembed) for the affected project. v8.23/PR5. Compute
+        // the post-update effective policy from the already-loaded rows (no
+        // re-query) — same layering entry() uses.
+        $after = $projectKey === KbPiiSetting::WILDCARD
+            ? $this->resolver->layer($row)
+            : $this->resolver->layer($wildcard, $row);
         $reembedRecommended = $before !== $after;
 
         return response()->json([
