@@ -73,6 +73,22 @@ export function useUpdateInstallation() {
     });
 }
 
+/**
+ * v8.24 — live folder list for an IMAP installation, fetched when the
+ * connection-settings picker opens. `retry:false` so a 503 (mailbox unreachable)
+ * surfaces immediately instead of spinning; `staleTime:0` so each open re-lists
+ * the real folders. Gated by `enabled` so it only fires while the modal is open.
+ */
+export function useInstallationFolders(installationId: number, enabled: boolean) {
+    return useQuery<string[]>({
+        queryKey: [...CONNECTORS_KEY, 'folders', installationId],
+        queryFn: () => adminConnectorsApi.listFolders(installationId),
+        enabled,
+        staleTime: 0,
+        retry: false,
+    });
+}
+
 /*
  * v8.17 — configure a credential-based connector (IMAP). On success the BE has
  * upserted the installation (active for basic-auth, pending for xoauth2); we

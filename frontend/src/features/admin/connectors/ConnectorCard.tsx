@@ -31,6 +31,8 @@ export interface ConnectorCardProps {
     onDisable: (installationId: number) => void;
     onRemove: (installationId: number) => void;
     onEdit: (installation: ConnectorInstallationDto) => void;
+    /** v8.24 — open the connection-settings (folder picker) modal for an account. */
+    onManageFolders?: (installation: ConnectorInstallationDto) => void;
     onCancelInstall: (installationId: number) => void;
     /** installation ids whose sync is in flight. */
     syncingIds?: ReadonlySet<number>;
@@ -48,6 +50,7 @@ export function ConnectorCard({
     onDisable,
     onRemove,
     onEdit,
+    onManageFolders,
     onCancelInstall,
     syncingIds,
     busyIds,
@@ -55,6 +58,9 @@ export function ConnectorCard({
     now,
 }: ConnectorCardProps) {
     const accounts = entry.installations ?? [];
+    // Folder selection / sync-window settings are IMAP-specific; surface the
+    // action only for credential connectors (IMAP today).
+    const isCredential = entry.auth_kind === 'credential';
 
     return (
         <div
@@ -155,6 +161,8 @@ export function ConnectorCard({
                             onDisable={onDisable}
                             onRemove={onRemove}
                             onEdit={onEdit}
+                            onManageFolders={onManageFolders}
+                            isCredential={isCredential}
                             onCancelInstall={onCancelInstall}
                             syncing={syncingIds?.has(acct.id) ?? false}
                             busy={busyIds?.has(acct.id) ?? false}
@@ -173,6 +181,8 @@ interface AccountRowProps {
     onDisable: (id: number) => void;
     onRemove: (id: number) => void;
     onEdit: (installation: ConnectorInstallationDto) => void;
+    onManageFolders?: (installation: ConnectorInstallationDto) => void;
+    isCredential: boolean;
     onCancelInstall: (id: number) => void;
     syncing: boolean;
     busy: boolean;
@@ -185,6 +195,8 @@ function AccountRow({
     onDisable,
     onRemove,
     onEdit,
+    onManageFolders,
+    isCredential,
     onCancelInstall,
     syncing,
     busy,
@@ -314,6 +326,24 @@ function AccountRow({
                         style={ghostButton(locked)}
                     >
                         Edit
+                    </button>
+                )}
+
+                {/*
+                 * v8.24 — connection settings (folder picker + sync window). Only
+                 * for credential connectors (IMAP); the picker lists live folders,
+                 * which needs verified credentials, so it's hidden while pending.
+                 */}
+                {status !== 'pending' && isCredential && onManageFolders && (
+                    <button
+                        type="button"
+                        data-testid={`connector-account-${account.id}-folders`}
+                        className="focus-ring"
+                        disabled={locked}
+                        onClick={() => onManageFolders(account)}
+                        style={ghostButton(locked)}
+                    >
+                        Folders
                     </button>
                 )}
 

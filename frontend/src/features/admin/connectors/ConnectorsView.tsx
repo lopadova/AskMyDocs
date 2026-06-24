@@ -5,6 +5,7 @@ import { toAdminError } from '../shared/errors';
 import { AccountMetaForm, type AccountMetaFormValues } from './AccountMetaForm';
 import { ConnectorCard } from './ConnectorCard';
 import { CredentialConnectorForm } from './CredentialConnectorForm';
+import { FolderSettingsForm, type FolderSettingsValues } from './FolderSettingsForm';
 import type {
     ConfigureConnectorPayload,
     ConnectorEntry,
@@ -53,6 +54,7 @@ type Modal =
     | { kind: 'credential-add'; entry: ConnectorEntry }
     | { kind: 'oauth-add'; entry: ConnectorEntry }
     | { kind: 'edit'; entry: ConnectorEntry; account: ConnectorInstallationDto }
+    | { kind: 'folders'; entry: ConnectorEntry; account: ConnectorInstallationDto }
     | null;
 
 export function ConnectorsView() {
@@ -130,6 +132,10 @@ export function ConnectorsView() {
         openModalReset({ kind: 'edit', entry, account });
     }
 
+    function handleManageFolders(entry: ConnectorEntry, account: ConnectorInstallationDto) {
+        openModalReset({ kind: 'folders', entry, account });
+    }
+
     async function handleCredentialSubmit(payload: ConfigureConnectorPayload) {
         const current = modal;
         if (current?.kind !== 'credential-add') return;
@@ -194,6 +200,30 @@ export function ConnectorsView() {
         } catch (e) {
             const open = modalRef.current;
             if (open?.kind !== 'edit' || open.account.id !== target.id) return;
+            const { message, fieldErrors } = parseConfigureError(e);
+            setModalError(message);
+            setModalFieldErrors(fieldErrors);
+        }
+    }
+
+    async function handleFoldersSubmit(values: FolderSettingsValues) {
+        const current = modal;
+        if (current?.kind !== 'folders') return;
+        const target = current.account;
+        setModalError(null);
+        setModalFieldErrors({});
+        try {
+            await updateInstallation.mutateAsync({
+                installationId: target.id,
+                folders: { include: values.include },
+                // null = leave the connector default window untouched (omit the key).
+                date_window_days: values.dateWindowDays ?? undefined,
+            });
+            setModal((cur) => (cur?.kind === 'folders' && cur.account.id === target.id ? null : cur));
+            toast.success('Connection settings saved.', 'toast-connector-folders-saved');
+        } catch (e) {
+            const open = modalRef.current;
+            if (open?.kind !== 'folders' || open.account.id !== target.id) return;
             const { message, fieldErrors } = parseConfigureError(e);
             setModalError(message);
             setModalFieldErrors(fieldErrors);
@@ -388,6 +418,7 @@ export function ConnectorsView() {
                                 onDisable={handleDisable}
                                 onRemove={handleRemove}
                                 onEdit={(installation) => handleEdit(entry, installation)}
+                                onManageFolders={(installation) => handleManageFolders(entry, installation)}
                                 onCancelInstall={handleRemove}
                                 syncingIds={syncingIds}
                                 busyIds={busyIds}
@@ -453,6 +484,24 @@ export function ConnectorsView() {
                     fieldErrors={modalFieldErrors}
                     // Scope to THIS account — editing another account while a
                     // PATCH is in flight must not disable this modal.
+                    isSubmitting={
+                        updateInstallation.isPending &&
+                        updateInstallation.variables?.installationId === modal.account.id
+                    }
+                />
+            )}
+
+            {modal?.kind === 'folders' && (
+                <FolderSettingsForm
+                    // key on the account identity → remount with fresh folder
+                    // fetch + pre-filled selection when switching between accounts.
+                    key={`folders-${modal.account.id}`}
+                    connectorKey={modal.entry.key}
+                    account={modal.account}
+                    onSubmit={handleFoldersSubmit}
+                    onClose={() => setModal(null)}
+                    submitError={modalError}
+                    fieldErrors={modalFieldErrors}
                     isSubmitting={
                         updateInstallation.isPending &&
                         updateInstallation.variables?.installationId === modal.account.id

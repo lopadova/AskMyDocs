@@ -28,6 +28,12 @@ export interface ConnectorInstallationDto {
     status: ConnectorStatus;
     last_sync_at: string | null;
     error: Record<string, unknown> | null;
+    // v8.24 — picker-owned connection settings (read surface; mirrors
+    // ConnectorInstallationResource). `folders.include` is the sync whitelist
+    // (empty = sync all non-excluded folders); `date_window_days` is the look-back
+    // window (null = the connector default).
+    folders: { include: string[] };
+    date_window_days: number | null;
 }
 
 /*
@@ -99,6 +105,19 @@ export interface UpdateInstallationParams {
      * the PATCH body). The wrapper maps a present null → '' on the wire.
      */
     project_key?: string | null;
+    /**
+     * v8.24 — the connection-settings the folder picker edits. `folders.include`
+     * is the exact-path sync whitelist (empty array = clear → sync all
+     * non-excluded folders). `undefined` leaves it untouched.
+     */
+    folders?: { include: string[] };
+    /** v8.24 — sync look-back window in days. `undefined` leaves it untouched. */
+    date_window_days?: number;
+}
+
+/** v8.24 — live IMAP folder list for the connection-settings picker. */
+export interface FolderListResponse {
+    data: { folders: string[] };
 }
 
 export interface SyncNowResponse {
@@ -188,7 +207,7 @@ export const adminConnectorsApi = {
     },
 
     async update(params: UpdateInstallationParams): Promise<ConnectorInstallationDto> {
-        const body: Record<string, string> = {};
+        const body: Record<string, unknown> = {};
         if (params.label !== undefined) {
             body.label = params.label;
         }
@@ -196,11 +215,28 @@ export const adminConnectorsApi = {
             // '' clears the binding; a key binds it.
             body.project_key = params.project_key ?? '';
         }
+        if (params.folders !== undefined) {
+            body.folders = params.folders;
+        }
+        if (params.date_window_days !== undefined) {
+            body.date_window_days = params.date_window_days;
+        }
         const { data } = await api.patch<UpdateInstallationResponse>(
             `/api/admin/connectors/${params.installationId}`,
             body,
         );
         return data.data;
+    },
+
+    /**
+     * v8.24 — live folder list for an IMAP installation (the picker's options).
+     * 503 when the mailbox is unreachable; 404 for a cross-tenant / non-IMAP id.
+     */
+    async listFolders(installationId: number): Promise<string[]> {
+        const { data } = await api.get<FolderListResponse>(
+            `/api/admin/connectors/${installationId}/folders`,
+        );
+        return data.data.folders;
     },
 
     async syncNow(installationId: number): Promise<SyncNowResponse['data']> {

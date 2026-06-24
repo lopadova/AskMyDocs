@@ -32,6 +32,8 @@ describe('accountStatus', () => {
             status: 'active',
             last_sync_at: null,
             error: null,
+            folders: { include: [] },
+            date_window_days: null,
         };
         expect(accountStatus(installation)).toBe('active');
     });
