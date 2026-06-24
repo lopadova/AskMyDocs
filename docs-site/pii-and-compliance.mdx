@@ -94,6 +94,37 @@ Two decisions govern the compliance integration; changing either needs a new ADR
   than data-residency alone — but it is not a substitute for transport/storage
   encryption.
 - Detokenize is a privileged, audited reverse-lookup — never widen its gate.
+- **`KB_INGEST_PII_STRATEGY` must match exactly.** Accepted values are `mask`
+  (default) and `tokenise` (with a trailing `s`). Any other value — including the
+  common typo `tokenize` — throws an `InvalidArgumentException` at ingest time so
+  the misconfiguration surfaces immediately (R14), rather than silently falling
+  back to masking.
+- **`tokenise` requires `PII_REDACTOR_SALT`.** The per-tenant token vault uses an
+  HMAC salt; the package factory throws loudly if `PII_REDACTOR_SALT` is empty or
+  absent. Set it before enabling `tokenise` to avoid ingest failures.
+
+## Ingest redaction strategy (`KB_INGEST_PII_STRATEGY`)
+
+By default, connector ingestion uses one-way **masking** — PII is replaced with
+`[REDACTED]` and cannot be recovered. v8.23 adds a **tokenise** mode where PII is
+replaced with reversible surrogates (`[tok:email:4a3f…]`) stored in a per-tenant
+vault, so an authorised operator can recover the original on demand.
+
+| `KB_INGEST_PII_STRATEGY` | `config('kb.pii_redactor.ingest_strategy')` | Behaviour |
+|---|---|---|
+| `mask` (default) | `mask` | One-way replacement — PII is gone after ingest. |
+| `tokenise` | `tokenise` | Reversible surrogate in KB; original in per-tenant vault. Requires `PII_REDACTOR_SALT`. |
+| anything else | — | `InvalidArgumentException` thrown at ingest time (R14). |
+
+The strategy applies at the **connector ingest boundary**
+(`HostIngestionBridge::redactContent`) when `KB_CONNECTOR_INGEST_PII_REDACT=true`.
+Extending tokenisation to the inline `DocumentIngestor` (HTTP/CLI) path is a
+follow-up in this cycle.
+
+To reverse a tokenised document, use the **Log Viewer detokenize endpoint**
+(`POST /api/admin/logs/chat/{id}/detokenize`) or the PII Redactor Admin SPA
+cross-mounted at `/app/admin/pii-redactor`. Both surfaces are RBAC-gated and
+fully audited.
 
 <CardGroup cols={2}>
   <Card title="Multi-tenant isolation" icon="building-shield" href="/multi-tenant-isolation">

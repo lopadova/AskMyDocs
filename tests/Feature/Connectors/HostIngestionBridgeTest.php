@@ -152,6 +152,21 @@ final class HostIngestionBridgeTest extends TestCase
         $this->assertStringContainsString('user@example.com', $restored);
     }
 
+    public function test_redact_content_throws_on_unknown_ingest_strategy(): void
+    {
+        // R14 — unknown strategy value must throw, never silently degrade to mask.
+        config()->set('kb.pii_redactor.enabled', true);
+        config()->set('kb.pii_redactor.redact_before_ingest', true);
+        config()->set('kb.pii_redactor.ingest_strategy', 'tokenize'); // common typo — missing trailing 's'
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/tokenize/');
+
+        /** @var HostIngestionBridge $bridge */
+        $bridge = $this->app->make(ConnectorIngestionContract::class);
+        $bridge->redactContent('My email is user@example.com');
+    }
+
     public function test_emit_audit_writes_to_canonical_audit_with_namespaced_event(): void
     {
         /** @var TenantContext $ctx */
