@@ -951,14 +951,36 @@ return [
         | `App\Connectors\HostIngestionBridge::redactContent()` IoC
         | method (called by every standalone `padosoft/askmydocs-connector-*`
         | package BEFORE it writes the freshly-fetched document body
-        | to the KB disk) applies `RedactorEngine::redact($content,
-        | MaskStrategy)`. Mask strategy because the redacted form ends
-        | up on the KB disk and inside `knowledge_documents.metadata` —
-        | one-way semantics like the embedding cache (no round-trip
-        | tokenisation required). Default off so existing connector
-        | users see no behaviour change until they explicitly opt in.
+        | to the KB disk) applies `RedactorEngine::redact()` using the
+        | strategy selected by `ingest_strategy` below (`mask` by default;
+        | `tokenise` for the reversible per-tenant vault, v8.23). Default
+        | off so existing connector users see no behaviour change until
+        | they explicitly opt in.
         */
         'redact_before_ingest' => (bool) env('KB_CONNECTOR_INGEST_PII_REDACT', false),
+
+        /*
+        | v8.23 (Ciclo 4) — ingest redaction STRATEGY. `mask` (default, the
+        | pre-v8.23 one-way behaviour) or `tokenise`. With `tokenise`, the
+        | content written to the KB disk + chunked + embedded carries reversible
+        | `[tok:<detector>:<hex>]` surrogates while the originals live in the
+        | per-tenant token vault (tenant-scoped via the host TenantResolver
+        | binding, R30). For a PERSISTENT vault (the `pii_token_maps` table) set
+        | `PII_REDACTOR_TOKEN_STORE=database` — the package default `memory`
+        | store is process-local and lost on restart. So the KB is PII-safe by
+        | default and an
+        | authorised operator re-identifies on demand via the existing
+        | detokenise surfaces (`TokenResolutionService` /
+        | `LogViewerController::chatDetokenize`). `tokenise` REQUIRES
+        | `PII_REDACTOR_SALT` (the factory throws loudly if missing, R14).
+        | Consumed at the connector boundary
+        | (`HostIngestionBridge::redactContent`) when `enabled` +
+        | `redact_before_ingest` are on AND the package engine itself is enabled
+        | (`pii-redactor.enabled` / `PII_REDACTOR_ENABLED` — `RedactorEngine::redact()`
+        | no-ops while it is off); extending it to the inline `DocumentIngestor`
+        | (HTTP/CLI) path is a follow-up in this cycle.
+        */
+        'ingest_strategy' => (string) env('KB_INGEST_PII_STRATEGY', 'mask'),
 
         /*
         | Detokenize permission — Spatie permission name required for the

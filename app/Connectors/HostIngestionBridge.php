@@ -129,11 +129,42 @@ final class HostIngestionBridge implements ConnectorIngestionContract
             return $content;
         }
 
+        // The package RedactorEngine no-ops when its own engine flag is off, so
+        // skip strategy resolution entirely in that case — otherwise a typo'd
+        // KB_INGEST_PII_STRATEGY would throw even though no redaction would run.
+        // The strict-strategy throw is thus reserved for when redaction is
+        // actually active (engine ON), where the misconfig genuinely matters.
+        if (! (bool) config('pii-redactor.enabled', false)) {
+            return $content;
+        }
+
         /** @var RedactorEngine $engine */
         $engine = app(RedactorEngine::class);
-        $strategy = app(MaskStrategy::class);
 
-        return $engine->redact($content, $strategy);
+        return $engine->redact($content, $this->ingestStrategy());
+    }
+
+    /**
+     * v8.23 (Ciclo 4) — the ingest redaction strategy. `tokenise` (reversible,
+     * per-tenant vault) when configured, else `mask` (one-way, pre-v8.23
+     * default). Built through the package factory so `tokenise` gets the
+     * host-bound tenant resolver + salt. Unknown values throw immediately so
+     * an operator typo (e.g. `tokenize` instead of `tokenise`) surfaces loudly
+     * at ingest time rather than silently masking data (R14).
+     *
+     * @throws \InvalidArgumentException for unrecognised strategy values.
+     */
+    private function ingestStrategy(): \Padosoft\PiiRedactor\Strategies\RedactionStrategy
+    {
+        $strategy = (string) config('kb.pii_redactor.ingest_strategy', 'mask');
+
+        return match ($strategy) {
+            'mask'     => app(MaskStrategy::class),
+            'tokenise' => app(\Padosoft\PiiRedactor\Strategies\RedactionStrategyFactory::class)->make('tokenise'),
+            default    => throw new \InvalidArgumentException(
+                "Unknown KB_INGEST_PII_STRATEGY value '{$strategy}'. Accepted: mask, tokenise."
+            ),
+        };
     }
 
     public function emitAudit(
