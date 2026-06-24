@@ -69,6 +69,14 @@ class AppServiceProvider extends ServiceProvider
         // dependencies before boot() on a warm container.
         $this->app->bind(PdfRenderer::class, fn () => PdfRendererFactory::resolve());
 
+        // Email-ingest test harness (dev/test) — the `mail:seed-imap` command's
+        // IMAP APPEND seam. Real webklex impl in app code; feature tests rebind
+        // a fake so the command is exercised without a live IMAP server.
+        $this->app->bind(
+            \App\Services\Demo\Contracts\MailboxAppender::class,
+            \App\Services\Demo\WebklexMailboxAppender::class,
+        );
+
         // T1.4 — KB ingestion pipeline registry. Singleton so the converter +
         // chunker boot cost is paid once per request. Driven by `config/kb-pipeline.php`
         // (see README → "Extending the Ingestion Pipeline").
