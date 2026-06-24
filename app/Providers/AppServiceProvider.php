@@ -671,13 +671,20 @@ class AppServiceProvider extends ServiceProvider
             // Case study — per-company documentation-isolation verifier
             // (README §6 matrix against the live KB). Dev/ops diagnostic.
             \App\Console\Commands\CaseStudyVerifyIsolationCommand::class,
+            // Email-ingest test harness (dev/test): deliver fixtures into the
+            // real IMAP mailboxes, install the IMAP connector per company, and
+            // discover existing companies. See docs/testing/email-ingest-e2e.md.
+            \App\Console\Commands\MailSeedImapCommand::class,
+            \App\Console\Commands\ConnectorImapInstallCommand::class,
+            \App\Console\Commands\DemoListCompaniesCommand::class,
+
             // v8.20 — multi-account connectors PHP surface (R44): read roster +
             // interactive credential install, over ConnectorInstallationService /
             // ConfigureConnectorService.
             \App\Console\Commands\ConnectorsListCommand::class,
             \App\Console\Commands\ConnectorsInstallCommand::class,
             // v8.21/Ciclo 2 — ingestion/sync observability PHP surface (R44).
-            \App\Console\Commands\IngestionStatusCommand::class,
+            \App\Console\Commands+\IngestionStatusCommand::class,
             // v8.22/Ciclo 3 — runtime config governance PHP surface (R44).
             \App\Console\Commands\AppSettingsListCommand::class,
             \App\Console\Commands\AppSettingsSetCommand::class,
