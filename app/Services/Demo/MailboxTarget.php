@@ -5,7 +5,8 @@ declare(strict_types=1);
 namespace App\Services\Demo;
 
 /**
- * Coordinate IMAP risolte di una singola casella di test (una per azienda).
+ * Coordinate IMAP risolte di una singola casella di test (ogni azienda ne ha 2:
+ * `<project>-1` / `<project>-2`).
  *
  * Immutabile e privo di I/O: lo costruisce {@see ImapMailboxSeeder} da
  * {@see \Database\Seeders\TestEmailFixtures} + le env, e lo consuma un
