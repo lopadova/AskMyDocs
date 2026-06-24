@@ -14,6 +14,7 @@ use Padosoft\AskMyDocsConnectorBase\Auth\OAuthCredentialVault;
 use Padosoft\AskMyDocsConnectorBase\ConnectorRegistry;
 use Padosoft\AskMyDocsConnectorBase\ConnectorSyncJob;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
+use Padosoft\AskMyDocsConnectorBase\Support\TenantContext as PackageTenantContext;
 use Padosoft\AskMyDocsConnectorImap\Imap\ImapClientFactoryInterface;
 use Padosoft\AskMyDocsConnectorImap\Imap\ImapClientInterface;
 use Padosoft\AskMyDocsConnectorImap\Imap\ImapMessage;
@@ -25,11 +26,13 @@ use Tests\TestCase;
  * L'IMAP è il solo confine esterno: si binda un fake ImapClientFactory (ping
  * configurabile) come in ConfigureConnectorTest, così configure() gira offline.
  *
- * Pin: ogni casella → UNA installazione (label = mailbox_key, project_key =
- * azienda come COLONNE); config_json porta connection + folders.include=[label] +
- * date_window_days (NON project_key); la password è nel vault; --sync accoda un
- * ConnectorSyncJob; --all crea un'installazione per casella; actor inesistente o
- * credenziali errate falliscono (R14).
+ * Pin: ogni casella → UNA installazione nel TENANT dell'azienda (un tenant per
+ * azienda, tenant_id = project_key; R30/R31), con label = mailbox_key e
+ * project_key = azienda come COLONNE; config_json porta connection +
+ * folders.include=[label] + date_window_days (NON project_key); la password è nel
+ * vault (anch'esso tenant-scoped → si legge nel contesto dell'azienda); --sync
+ * accoda un ConnectorSyncJob; --all crea un'installazione per casella; actor
+ * inesistente o credenziali errate falliscono (R14).
  */
 final class ConnectorImapInstallCommandTest extends TestCase
 {
@@ -65,14 +68,20 @@ final class ConnectorImapInstallCommandTest extends TestCase
         $this->artisan('connector:imap:install', ['--mailbox' => ['rotta-logistics-1']])
             ->assertExitCode(0);
 
+        // Un tenant per azienda: l'installazione nasce nel tenant 'rotta-logistics',
+        // NON in quello del chiamante ('default'). Il vault legge il TenantContext del
+        // PACCHETTO, quindi ci si mette in quel contesto per le letture sottostanti.
+        $this->setTenant('rotta-logistics');
+
         $installation = ConnectorInstallation::query()
-            ->where('tenant_id', 'default')
+            ->where('tenant_id', 'rotta-logistics')
             ->where('connector_name', 'imap')
             ->where('label', 'rotta-logistics-1')
             ->firstOrFail();
 
         $this->assertSame(ConnectorInstallation::STATUS_ACTIVE, $installation->status);
-        // v8.20: project_key + label sono COLONNE.
+        // v8.20: project_key + label sono COLONNE; tenant = azienda.
+        $this->assertSame('rotta-logistics', $installation->tenant_id);
         $this->assertSame('rotta-logistics', $installation->project_key);
         $this->assertSame('rotta-logistics-1', $installation->label);
 
@@ -104,7 +113,7 @@ final class ConnectorImapInstallCommandTest extends TestCase
 
         $rows = ConnectorInstallation::query()
             ->where('connector_name', 'imap')
-            ->get(['label', 'project_key'])
+            ->get(['label', 'project_key', 'tenant_id'])
             ->mapWithKeys(fn ($r) => [$r->label => $r->project_key])
             ->all();
 
@@ -117,6 +126,19 @@ final class ConnectorImapInstallCommandTest extends TestCase
             'passolibero-calzature-1' => 'passolibero-calzature',
             'passolibero-calzature-2' => 'passolibero-calzature',
         ], $rows);
+
+        // Un tenant per azienda: ogni installazione sta nel tenant = project_key.
+        $tenants = ConnectorInstallation::query()
+            ->where('connector_name', 'imap')
+            ->get(['tenant_id', 'project_key']);
+        foreach ($tenants as $row) {
+            $this->assertSame($row->project_key, $row->tenant_id);
+        }
+        // Tre tenant distinti (le 3 aziende), niente residuo in 'default'.
+        $this->assertEqualsCanonicalizing(
+            ['rotta-logistics', 'prometeo-antincendio', 'passolibero-calzature'],
+            $tenants->pluck('tenant_id')->unique()->values()->all(),
+        );
     }
 
     public function test_reinstall_same_label_is_idempotent(): void
@@ -147,7 +169,12 @@ final class ConnectorImapInstallCommandTest extends TestCase
             '--sync' => true,
         ])->assertExitCode(0);
 
-        Queue::assertPushed(ConnectorSyncJob::class);
+        // Il job va accodato nel tenant dell'azienda, non in 'default' (R30): è
+        // il tenant che ConnectorSyncJob::handle() ripristina prima del sync.
+        Queue::assertPushed(
+            ConnectorSyncJob::class,
+            fn (ConnectorSyncJob $job): bool => $job->tenantId === 'rotta-logistics',
+        );
     }
 
     public function test_unknown_actor_fails(): void
@@ -173,12 +200,29 @@ final class ConnectorImapInstallCommandTest extends TestCase
         $this->artisan('connector:imap:install', ['--mailbox' => ['rotta-logistics-1']])
             ->assertExitCode(1);
 
+        // L'installazione PENDING vive nel tenant dell'azienda; ci si mette in quel
+        // contesto così l'assenza dal vault prova "login fallito → niente segreto"
+        // e non una semplice mancata corrispondenza di tenant (R16).
+        $this->setTenant('rotta-logistics');
+
         $installation = ConnectorInstallation::query()
+            ->where('tenant_id', 'rotta-logistics')
             ->where('connector_name', 'imap')
             ->firstOrFail();
         $this->assertSame(ConnectorInstallation::STATUS_PENDING, $installation->status);
         // Login fallito → la password non deve essere vaultata.
         $this->assertNull(app(OAuthCredentialVault::class)->getAccessToken($installation->id));
+    }
+
+    /**
+     * Allinea ENTRAMBI i TenantContext (host + pacchetto) al tenant dell'azienda,
+     * così le letture post-comando (model ConnectorInstallation, vault) vedono il
+     * tenant giusto — il pacchetto ne usa un'istanza separata dall'host.
+     */
+    private function setTenant(string $tenantId): void
+    {
+        app(TenantContext::class)->set($tenantId);
+        app(PackageTenantContext::class)->set($tenantId);
     }
 
     private function setPassword(string $envKey, string $value): void

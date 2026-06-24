@@ -8,6 +8,7 @@ use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
 use App\Models\ProjectMembership;
 use App\Models\User;
+use App\Support\TenantContext;
 use Database\Seeders\CaseStudyUsersSeeder;
 use Database\Seeders\RbacSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -33,6 +34,12 @@ use Tests\TestCase;
  * projects, memberships dormant) AND ON (the per-company user is confined to
  * its membership set). The accounts + memberships come from the real
  * {@see CaseStudyUsersSeeder} so this suite also covers that seeder.
+ *
+ * ONE TENANT PER COMPANY (R30/R31): the seeder now pins each company to its own
+ * tenant (tenant_id = project_key), so documents are seeded in the company tenant
+ * and the ON assertions run under that company's tenant context —
+ * {@see User::allowedProjects()} resolves memberships `forTenant(current)`, so a
+ * mismatched context would (correctly) yield zero access.
  */
 final class CaseStudyProjectIsolationTest extends TestCase
 {
@@ -142,6 +149,9 @@ final class CaseStudyProjectIsolationTest extends TestCase
         // chat `filters.project_keys` escalation attempt), the document scope
         // strips those chunks — the filter can only narrow, never widen.
         $this->enableIsolation();
+        // Contesto = tenant dell'azienda del rotta-user: allowedProjects() risolve
+        // le membership forTenant(corrente).
+        app(TenantContext::class)->set('rotta-logistics');
         $rotta = $this->userFor('rotta-logistics');
         $this->actingAs($rotta);
 
@@ -161,6 +171,9 @@ final class CaseStudyProjectIsolationTest extends TestCase
     private function assertCompanyUserIsolated(string $project): void
     {
         $this->enableIsolation();
+        // Un tenant per azienda: opera nel tenant dell'azienda così
+        // allowedProjects() (membership forTenant(corrente)) risolve l'accesso.
+        app(TenantContext::class)->set($project);
         $user = $this->userFor($project);
         $this->actingAs($user);
 
@@ -197,7 +210,10 @@ final class CaseStudyProjectIsolationTest extends TestCase
 
     private function seedDoc(string $projectKey, string $canary): void
     {
+        // Un tenant per azienda: il documento vive nel tenant dell'azienda
+        // (tenant_id = project_key), come lo ingerirebbe il connettore reale.
         $doc = KnowledgeDocument::create([
+            'tenant_id' => $projectKey,
             'project_key' => $projectKey,
             'source_type' => 'markdown',
             'title' => "Doc {$projectKey}",
@@ -210,6 +226,7 @@ final class CaseStudyProjectIsolationTest extends TestCase
         ]);
 
         KnowledgeChunk::create([
+            'tenant_id' => $projectKey,
             'knowledge_document_id' => $doc->id,
             'project_key' => $projectKey,
             'chunk_order' => 0,
