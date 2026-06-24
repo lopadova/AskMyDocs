@@ -63,7 +63,9 @@ final class KbPiiSettingController extends Controller
         return response()->json([
             'defaults' => [
                 'redact_enabled' => (bool) config('kb.pii_redactor.redact_inline_ingest', false),
-                'strategy' => (string) config('kb.pii_redactor.ingest_strategy', 'mask'),
+                // Trimmed to match KbPiiPolicyResolver::layer() so the displayed
+                // default agrees with the effective behaviour.
+                'strategy' => trim((string) config('kb.pii_redactor.ingest_strategy', 'mask')),
             ],
             'strategies' => KbPiiSetting::STRATEGIES,
             // Resolve effective values from the ALREADY-LOADED override rows so a

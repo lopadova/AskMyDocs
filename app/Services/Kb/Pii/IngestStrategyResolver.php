@@ -32,6 +32,11 @@ final class IngestStrategyResolver
 
     public function forName(string $name): RedactionStrategy
     {
+        // Trim incidental whitespace (e.g. `KB_INGEST_PII_STRATEGY=mask `) so both
+        // ingestion surfaces behave identically and a stray space is not a hard
+        // failure — while a real typo (`tokenize`) still throws loudly (R14).
+        $name = trim($name);
+
         return match ($name) {
             'mask' => app(MaskStrategy::class),
             'tokenise' => $this->factory->make('tokenise'),
