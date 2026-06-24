@@ -39,6 +39,14 @@ final class RecordingMailboxAppender implements MailboxAppender
     }
 
     /**
+     * @return list<string>  mailbox_key di ogni APPEND registrato
+     */
+    public function appendedMailboxKeys(): array
+    {
+        return array_map(static fn (array $r): string => $r['target']->mailboxKey, $this->appends);
+    }
+
+    /**
      * @return list<string>  project_key di ogni APPEND registrato
      */
     public function appendedProjectKeys(): array

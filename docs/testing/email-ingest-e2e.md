@@ -32,7 +32,10 @@ Tre comandi compongono l'harness (tutti idempotenti, tenant `default`):
 
 La sorgente dati unica è
 [`database/seeders/TestEmailFixtures.php`](../../database/seeders/TestEmailFixtures.php):
-account IMAP (`ACCOUNTS`) + e-mail per azienda (`EMAILS`). Ogni e-mail porta un
+caselle IMAP (`MAILBOXES`, 2 per azienda). Le **e-mail** di ogni casella (≥100,
+di vario tipo + thread **domanda/risposta**) vivono in
+`database/seeders/emails/<mailbox_key>.json` (generate via multi-agente,
+versionate) e sono caricate da `TestEmailFixtures::emailsForMailbox()`. Ogni e-mail porta un
 **"fatto-esca"** unico (un codice/nome/numero, es. `RL-2024-0815`, `Protocollo
 Fenice-7`, `ClubPasso Aero`) che **non deve** comparire nelle risposte di
 un'altra azienda: è il rilevatore di contaminazione del test di isolamento.
@@ -42,13 +45,16 @@ un'altra azienda: è il rilevatore di contaminazione del test di isolamento.
 ## 1. Prerequisiti
 
 ### 1.1 Aziende già presenti
-Le fixtures coprono le 3 aziende del `CaseStudyUsersSeeder` (tenant `default`):
+Le fixtures coprono le 3 aziende del `CaseStudyUsersSeeder` (tenant `default`),
+ognuna con **2 caselle di posta** (6 caselle totali). Entrambe le caselle di
+un'azienda confluiscono nello **stesso** `project_key`, quindi la sua KB
+raccoglie le e-mail di tutte e due le inbox.
 
-| project_key | Azienda | Utente per la chat (pwd `password`) |
-|---|---|---|
-| `rotta-logistics` | Rotta Sicura Logistics | `rotta@case-study.local` |
-| `prometeo-antincendio` | Prometeo Sicurezza Antincendio | `prometeo@case-study.local` |
-| `passolibero-calzature` | PassoLibero Calzature | `passolibero@case-study.local` |
+| project_key | Azienda | Caselle (mailbox_key) | Utente chat (pwd `password`) |
+|---|---|---|---|
+| `rotta-logistics` | Rotta Sicura Logistics | `rotta-logistics-1`, `rotta-logistics-2` | `rotta@case-study.local` |
+| `prometeo-antincendio` | Prometeo Sicurezza Antincendio | `prometeo-antincendio-1`, `prometeo-antincendio-2` | `prometeo@case-study.local` |
+| `passolibero-calzature` | PassoLibero Calzature | `passolibero-calzature-1`, `passolibero-calzature-2` | `passolibero@case-study.local` |
 
 Assicurati che esistano (e abbiano già la documentazione markdown):
 
@@ -63,26 +69,32 @@ php artisan demo:list-companies
 > Se invece usi un project_key nuovo, ricordati la membership (vedi §6).
 
 ### 1.2 Caselle Gmail di test
-Per ogni azienda serve una casella Gmail dedicata (le indica `ACCOUNTS`):
-`rotta.test.askmydocs@gmail.com`, `prometeo.test.askmydocs@gmail.com`,
-`passolibero.test.askmydocs@gmail.com` (oppure cambia gli indirizzi nel fixture).
+Servono **2 caselle Gmail per azienda** (6 in totale), come indicato in
+`TestEmailFixtures::MAILBOXES`. Indirizzi di default:
+`rotta.test1@…` / `rotta.test2@…`, `prometeo.test1@…` / `prometeo.test2@…`,
+`passolibero.test1@…` / `passolibero.test2@…` (`*.askmydocs@gmail.com`; cambiali
+nel fixture se vuoi).
 
-Su ciascun account Gmail:
+Su **ciascun** account Gmail:
 1. Attiva la verifica in due passaggi.
 2. Crea una **App Password** (Google Account → Sicurezza → Password per le app).
    La password normale **non** funziona con IMAP.
 3. IMAP è abilitato di default sugli account Google Workspace/Gmail.
 
 ### 1.3 `.env`
-I parametri di connessione (host/port/encryption + indirizzo casella) di ogni
-azienda stanno nel fixture
-[`TestEmailFixtures::ACCOUNTS`](../../database/seeders/TestEmailFixtures.php) —
-in `.env` servono SOLO le App Password (i segreti, mai committati):
+I parametri di connessione (host/port/encryption + indirizzo) di ogni casella
+stanno nel fixture
+[`TestEmailFixtures::MAILBOXES`](../../database/seeders/TestEmailFixtures.php) —
+in `.env` servono SOLO le App Password (i segreti, mai committati), **una per
+casella**:
 
 ```dotenv
-CONNECTOR_TEST_ROTTA_PASSWORD=<app-password-rotta>
-CONNECTOR_TEST_PROMETEO_PASSWORD=<app-password-prometeo>
-CONNECTOR_TEST_PASSOLIBERO_PASSWORD=<app-password-passolibero>
+CONNECTOR_TEST_ROTTA_1_PASSWORD=<app-password-rotta-1>
+CONNECTOR_TEST_ROTTA_2_PASSWORD=<app-password-rotta-2>
+CONNECTOR_TEST_PROMETEO_1_PASSWORD=<app-password-prometeo-1>
+CONNECTOR_TEST_PROMETEO_2_PASSWORD=<app-password-prometeo-2>
+CONNECTOR_TEST_PASSOLIBERO_1_PASSWORD=<app-password-passolibero-1>
+CONNECTOR_TEST_PASSOLIBERO_2_PASSWORD=<app-password-passolibero-2>
 ```
 
 Override globale opzionale (raro): `CONNECTOR_TEST_IMAP_HOST` / `_PORT` /
@@ -127,14 +139,17 @@ Utile per controllare contenuti/oggetti prima della consegna reale.
 ## 4. Consegna delle e-mail nelle caselle (APPEND)
 
 ```bash
-# tutte le aziende
+# tutte le caselle (6)
 php artisan mail:seed-imap --all
 
-# una singola azienda
+# tutte le caselle di un'azienda (espande ai 2 mailbox_key)
 php artisan mail:seed-imap --project=rotta-logistics
 
+# una singola casella
+php artisan mail:seed-imap --mailbox=rotta-logistics-2
+
 # re-run pulito: prima rimuove i messaggi di test già presenti (DISTRUTTIVO,
-# tocca SOLO i messaggi con header X-AskMyDocs-Seed)
+# tocca SOLO i messaggi con header X-AskMyDocs-Seed di quella casella)
 php artisan mail:seed-imap --all --purge
 ```
 
@@ -154,22 +169,27 @@ Dettagli:
 
 > **Vincolo importante — un solo connettore IMAP per tenant.**
 > `connector_installations` ha UNIQUE `(tenant_id, connector_name)`: nel tenant
-> `default` esiste **una sola** riga `imap`. L'harness la riusa **una azienda
-> alla volta**, azzerando il cursore di sync ad ogni (ri)configurazione così il
-> sync successivo è un **FULL clean** della casella corrente. I documenti già
-> ingeriti restano (l'ingest è additivo per project_key; `reconcile_deletions`
-> è OFF di default → riconfigurare non cancella nulla).
+> `default` esiste **una sola** riga `imap`. L'harness la riusa **una casella
+> alla volta** (6 caselle in totale), azzerando il cursore di sync ad ogni
+> (ri)configurazione così il sync successivo è un **FULL clean** della casella
+> corrente. I documenti già ingeriti restano (l'ingest è additivo per
+> project_key; `reconcile_deletions` è OFF di default → riconfigurare non
+> cancella nulla). Le 2 caselle di un'azienda confluiscono nello stesso
+> project_key.
 
 ```bash
-# tutte le aziende: configura+sincronizza in modo SERIALIZZATO (A→sync A→B→…).
-# Con più aziende --sync è OBBLIGATORIO (vedi vincolo sopra).
+# tutte le caselle: configura+sincronizza in modo SERIALIZZATO (1→sync→2→…).
+# Con più caselle --sync è OBBLIGATORIO (vedi vincolo sopra).
 php artisan connector:imap:install --all --sync
 
-# singola azienda, attore per l'audit (created_by, solo alla 1ª creazione riga)
+# tutte le caselle di un'azienda (2 mailbox), attore per l'audit
 php artisan connector:imap:install --project=prometeo-antincendio --actor=super@demo.local --sync
+
+# una singola casella
+php artisan connector:imap:install --mailbox=rotta-logistics-1 --sync
 ```
 
-Cosa fa per ogni azienda:
+Cosa fa per ogni casella:
 - Riusa `ConfigureConnectorService` → **verifica davvero** le credenziali
   (ping IMAP) prima di portare l'installazione ad `ACTIVE`.
 - Salva `config_json` con `connection.*`, `project_key = <azienda>`,
@@ -177,15 +197,16 @@ Cosa fa per ogni azienda:
   virtuali Gmail) e `date_window_days`. La password va nel **vault cifrato**,
   mai in `config_json`. Azzera `last_sync_at` + `mailboxes_state` (FULL clean).
 - Con `--sync`:
-  - **più aziende** → esegue il `ConnectorSyncJob` **sincrono e serializzato**
-    (ogni azienda viene ingerita prima di riconfigurare la riga per la prossima:
+  - **più caselle** → esegue il `ConnectorSyncJob` **sincrono e serializzato**
+    (ogni casella viene ingerita prima di riconfigurare la riga per la prossima:
     senza serializzazione i job in coda leggerebbero tutti l'ultima config);
-  - **una azienda** → **accoda** un `ConnectorSyncJob` (parità con l'admin
+  - **una casella** → **accoda** un `ConnectorSyncJob` (parità con l'admin
     "sync now"): assicurati che la coda giri (§1.4).
 
-`--all` **senza** `--sync` viene **rifiutato** (fallirebbe in silenzio lasciando
-solo l'ultima azienda configurata). Senza `--sync` su una singola azienda
-l'ingest parte comunque dallo scheduler (ogni 15 min) o ridispacciando il job.
+`--all`/più caselle **senza** `--sync` viene **rifiutato** (fallirebbe in
+silenzio lasciando solo l'ultima casella configurata). Senza `--sync` su una
+singola casella l'ingest parte comunque dallo scheduler (ogni 15 min) o
+ridispacciando il job.
 
 ---
 
@@ -227,7 +248,7 @@ Esempi (usa il "fatto-esca" come sonda):
 | Azienda / utente | Domanda | Deve contenere | Non deve mai contenere |
 |---|---|---|---|
 | `rotta@case-study.local` | «Qual è il codice della spedizione Consegna Lampo 24h?» | `RL-2024-0815`, `VeloxCorriere` | `Protocollo Fenice-7`, `ClubPasso` |
-| `prometeo@case-study.local` | «Qual è il protocollo del rinnovo CPI e la scadenza?» | `Protocollo Fenice-7`, `15/03/2029` | `RL-2024-0815`, `ClubPasso` |
+| `prometeo@case-study.local` | «Qual è il protocollo del rinnovo CPI dell'edificio B-MI-07?» | `Protocollo Fenice-7`, `CPI` | `RL-2024-0815`, `ClubPasso` |
 | `passolibero@case-study.local` | «Qual è il modello recensito 5 stelle e l'ordine collegato?» | `ClubPasso Aero`, `#CLB-5521` | `Protocollo Fenice-7`, `VeloxCorriere` |
 
 **Test di isolamento (cross-tenant/cross-project)**: ponendo a un account la

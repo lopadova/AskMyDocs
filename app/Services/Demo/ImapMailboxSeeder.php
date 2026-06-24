@@ -33,12 +33,12 @@ final class ImapMailboxSeeder
     ) {}
 
     /**
-     * @param  list<string>  $projectKeys  project_key da popolare (devono esistere nelle fixtures)
-     * @param  Closure(string, int, string): void|null  $onMessage  callback (projectKey, index, subject)
+     * @param  list<string>  $mailboxKeys  caselle da popolare (devono esistere nelle fixtures)
+     * @param  Closure(string, int, string): void|null  $onMessage  callback (mailboxKey, index, subject)
      * @return list<SeedOutcome>
      */
     public function seed(
-        array $projectKeys,
+        array $mailboxKeys,
         bool $dryRun = false,
         bool $purge = false,
         int $retries = 2,
@@ -47,43 +47,44 @@ final class ImapMailboxSeeder
     ): array {
         $outcomes = [];
 
-        foreach ($projectKeys as $projectKey) {
-            $outcomes[] = $this->seedOne($projectKey, $dryRun, $purge, $retries, $retryDelaySeconds, $onMessage);
+        foreach ($mailboxKeys as $mailboxKey) {
+            $outcomes[] = $this->seedOne($mailboxKey, $dryRun, $purge, $retries, $retryDelaySeconds, $onMessage);
         }
 
         return $outcomes;
     }
 
     private function seedOne(
-        string $projectKey,
+        string $mailboxKey,
         bool $dryRun,
         bool $purge,
         int $retries,
         int $retryDelaySeconds,
         ?Closure $onMessage,
     ): SeedOutcome {
-        if (! in_array($projectKey, TestEmailFixtures::projectKeys(), true)) {
+        if (! in_array($mailboxKey, TestEmailFixtures::mailboxKeys(), true)) {
             throw new InvalidArgumentException(
-                "project_key '{$projectKey}' non definito in TestEmailFixtures (attesi: "
-                .implode(', ', TestEmailFixtures::projectKeys()).').',
+                "mailbox '{$mailboxKey}' non definita in TestEmailFixtures (attese: "
+                .implode(', ', TestEmailFixtures::mailboxKeys()).').',
             );
         }
 
-        $account = TestEmailFixtures::account($projectKey);
-        $config = TestEmailFixtures::configJson($projectKey);
+        $mailbox = TestEmailFixtures::mailbox($mailboxKey);
+        $config = TestEmailFixtures::configJson($mailboxKey);
         $connection = (array) ($config['connection'] ?? []);
         $folders = (array) ($config['folders']['include'] ?? ['INBOX']);
         $folder = (string) ($folders[0] ?? 'INBOX');
-        $emails = TestEmailFixtures::emailsFor($projectKey);
+        $emails = TestEmailFixtures::emailsForMailbox($mailboxKey);
 
         // In dry-run NON serve (né si legge) la password: si valida solo la
         // costruzione dei messaggi senza toccare la rete.
-        $secret = $dryRun ? '' : TestEmailFixtures::passwordFor($projectKey);
+        $secret = $dryRun ? '' : TestEmailFixtures::passwordFor($mailboxKey);
 
         $target = new MailboxTarget(
-            projectKey: $projectKey,
-            companyName: (string) $account['company_name'],
-            email: (string) $account['email'],
+            mailboxKey: $mailboxKey,
+            projectKey: (string) $mailbox['project_key'],
+            companyName: (string) $mailbox['company_name'],
+            email: (string) $mailbox['email'],
             host: (string) ($connection['host'] ?? 'imap.gmail.com'),
             port: (int) ($connection['port'] ?? 993),
             encryption: (string) ($connection['encryption'] ?? 'ssl'),
@@ -97,17 +98,17 @@ final class ImapMailboxSeeder
             foreach ($emails as $index => $fixture) {
                 $this->builder->build($target, $fixture);
                 if ($onMessage !== null) {
-                    $onMessage($projectKey, (int) $index, (string) $fixture['subject']);
+                    $onMessage($mailboxKey, (int) $index, (string) $fixture['subject']);
                 }
             }
 
-            return new SeedOutcome($projectKey, $target->companyName, $target->email, count($emails), 0, true);
+            return new SeedOutcome($mailboxKey, $target->projectKey, $target->companyName, $target->email, count($emails), 0, true);
         }
 
         return $this->withRetry($retries, $retryDelaySeconds, function () use ($target, $emails, $purge, $onMessage): SeedOutcome {
             $purged = 0;
             if ($purge) {
-                $purged = $this->appender->purgeSeeded($target, TestEmailFixtures::SEED_HEADER, $target->projectKey);
+                $purged = $this->appender->purgeSeeded($target, TestEmailFixtures::SEED_HEADER, $target->mailboxKey);
             }
 
             $appended = 0;
@@ -116,11 +117,11 @@ final class ImapMailboxSeeder
                 $this->appender->append($target, $raw, Carbon::now());
                 $appended++;
                 if ($onMessage !== null) {
-                    $onMessage($target->projectKey, (int) $index, (string) $fixture['subject']);
+                    $onMessage($target->mailboxKey, (int) $index, (string) $fixture['subject']);
                 }
             }
 
-            return new SeedOutcome($target->projectKey, $target->companyName, $target->email, $appended, $purged, false);
+            return new SeedOutcome($target->mailboxKey, $target->projectKey, $target->companyName, $target->email, $appended, $purged, false);
         });
     }
 

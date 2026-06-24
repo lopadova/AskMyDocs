@@ -19,9 +19,10 @@ final class EmailMessageBuilderTest extends TestCase
     private function target(): MailboxTarget
     {
         return new MailboxTarget(
+            mailboxKey: 'rotta-logistics-1',
             projectKey: 'rotta-logistics',
             companyName: 'Rotta Sicura Logistics',
-            email: 'rotta.test.askmydocs@gmail.com',
+            email: 'rotta.test1.askmydocs@gmail.com',
             host: 'imap.gmail.com',
             port: 993,
             encryption: 'ssl',
@@ -44,11 +45,11 @@ final class EmailMessageBuilderTest extends TestCase
         $raw = (new EmailMessageBuilder)->build($this->target(), $fixture);
 
         // To = casella reale (l'ingest attribuisce il messaggio al destinatario).
-        $this->assertStringContainsString('To: rotta.test.askmydocs@gmail.com', $raw);
+        $this->assertStringContainsString('To: rotta.test1.askmydocs@gmail.com', $raw);
         // From conserva l'indirizzo del mittente (ASCII, non codificato).
         $this->assertStringContainsString('noreply@orbitawms.example.com', $raw);
-        // Header di seeding usato da --purge.
-        $this->assertStringContainsString(TestEmailFixtures::SEED_HEADER.': rotta-logistics', $raw);
+        // Header di seeding (mailbox_key) usato da --purge.
+        $this->assertStringContainsString(TestEmailFixtures::SEED_HEADER.': rotta-logistics-1', $raw);
         // Date header = data narrativa della fixture (anno 2024 presente).
         $this->assertMatchesRegularExpression('/^Date: .*2024/m', $raw);
         // Il "fatto-esca" sopravvive alla codifica del corpo (ASCII).
@@ -66,9 +67,10 @@ final class EmailMessageBuilderTest extends TestCase
         ];
 
         $target = new MailboxTarget(
+            mailboxKey: 'prometeo-antincendio-2',
             projectKey: 'prometeo-antincendio',
             companyName: 'Prometeo',
-            email: 'prometeo.test.askmydocs@gmail.com',
+            email: 'prometeo.test2.askmydocs@gmail.com',
             host: 'imap.gmail.com',
             port: 993,
             encryption: 'ssl',
@@ -79,7 +81,8 @@ final class EmailMessageBuilderTest extends TestCase
 
         $raw = (new EmailMessageBuilder)->build($target, $fixture);
 
-        $this->assertStringContainsString(TestEmailFixtures::SEED_HEADER.': prometeo-antincendio', $raw);
-        $this->assertStringContainsString('To: prometeo.test.askmydocs@gmail.com', $raw);
+        // Header = mailbox_key (purge mailbox-scoped); To = indirizzo della casella.
+        $this->assertStringContainsString(TestEmailFixtures::SEED_HEADER.': prometeo-antincendio-2', $raw);
+        $this->assertStringContainsString('To: prometeo.test2.askmydocs@gmail.com', $raw);
     }
 }

@@ -15,6 +15,7 @@ namespace App\Services\Demo;
 final readonly class MailboxTarget
 {
     public function __construct(
+        public string $mailboxKey,
         public string $projectKey,
         public string $companyName,
         public string $email,
