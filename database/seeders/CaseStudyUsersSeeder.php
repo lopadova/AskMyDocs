@@ -29,10 +29,14 @@ use Padosoft\AiActCompliance\MultiTenancy\Models\Tenant;
  * on the default tenant) and (re)creates the single own membership. A user thus
  * only ever sees its own company's tenant after the team switcher resolves it.
  *
+ * The membership reset applies to EVERY tier — viewer, admin AND super-admin —
+ * not just the viewer: {@see seedAccount()} deletes any non-company membership
+ * for each account regardless of role.
+ *
  * Idempotent: firstOrCreate on the unique tuples; role assignment guarded by
  * hasRole; the membership reset is deterministic. **Run LAST** (after RbacSeeder,
  * which must exist for the roles), otherwise a later RbacSeeder backfill would
- * re-widen the viewers:
+ * re-widen these memberships again (every tier, not only the viewer):
  *
  *   php artisan db:seed --class=Database\\Seeders\\RbacSeeder
  *   php artisan db:seed --class=Database\\Seeders\\CaseStudyUsersSeeder
