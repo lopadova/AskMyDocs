@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Requests\Admin;
 
 use App\Models\KbPiiSetting;
+use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -36,5 +37,28 @@ final class UpsertKbPiiSettingRequest extends FormRequest
             // explicit null clears the override (inherit the config default).
             'strategy' => ['nullable', Rule::in(KbPiiSetting::STRATEGIES)],
         ];
+    }
+
+    /**
+     * Reject a payload that carries ONLY `project_key`: with no mutable field
+     * present the controller's partial update would `updateOrCreate` an all-NULL
+     * override row (a no-op policy that is indistinguishable from "no row") —
+     * almost certainly an accidental call. At least one of `redact_enabled` /
+     * `strategy` must be present (an EXPLICIT null is allowed — that is the
+     * documented clear-to-inherit gesture). Keyed on `array_key_exists` to match
+     * the controller's partial-update detection (so explicit null counts as
+     * present, unlike `filled()`/`has()` which treat null as absent).
+     */
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $validator): void {
+            $data = $this->all();
+            if (! array_key_exists('redact_enabled', $data) && ! array_key_exists('strategy', $data)) {
+                $validator->errors()->add(
+                    'strategy',
+                    'Provide at least one of redact_enabled or strategy (an explicit null clears the field).',
+                );
+            }
+        });
     }
 }

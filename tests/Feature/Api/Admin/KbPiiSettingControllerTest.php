@@ -152,6 +152,17 @@ final class KbPiiSettingControllerTest extends TestCase
             ->assertJsonPath('setting.effective.redact_enabled', true);
     }
 
+    public function test_upsert_with_only_project_key_is_rejected_with_422(): void
+    {
+        // No mutable field → would create an all-NULL no-op row; reject it.
+        $this->actingAs($this->makeUser('dpo'))->putJson('/api/admin/pii/policy', [
+            'project_key' => 'support',
+        ])->assertStatus(422)
+            ->assertJsonValidationErrorFor('strategy');
+
+        $this->assertDatabaseMissing('kb_pii_settings', ['project_key' => 'support']);
+    }
+
     public function test_invalid_strategy_is_rejected_with_422(): void
     {
         $this->actingAs($this->makeUser('dpo'))->putJson('/api/admin/pii/policy', [
