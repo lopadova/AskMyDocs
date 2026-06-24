@@ -152,6 +152,41 @@ final class HostIngestionBridgeTest extends TestCase
         $this->assertStringContainsString('user@example.com', $restored);
     }
 
+    public function test_tokenise_is_tenant_isolated(): void
+    {
+        // Core v8.23 contract: the same PII yields a DIFFERENT token per tenant,
+        // and a token minted under tenant A cannot be detokenised under tenant B
+        // (the TenantResolver binding + per-tenant vault, R30).
+        config()->set('kb.pii_redactor.enabled', true);
+        config()->set('kb.pii_redactor.redact_before_ingest', true);
+        config()->set('kb.pii_redactor.ingest_strategy', 'tokenise');
+        config()->set('pii-redactor.salt', 'test-salt');
+
+        /** @var TenantContext $ctx */
+        $ctx = $this->app->make(TenantContext::class);
+        /** @var HostIngestionBridge $bridge */
+        $bridge = $this->app->make(ConnectorIngestionContract::class);
+
+        $ctx->set('tenant-a');
+        $outA = $bridge->redactContent('My email is user@example.com');
+
+        $ctx->set('tenant-b');
+        $outB = $bridge->redactContent('My email is user@example.com');
+
+        // Same PII → different token per tenant (no cross-tenant correlation).
+        $this->assertNotSame($outA, $outB);
+
+        // Under tenant B, tenant A's token does NOT resolve — stays tokenised.
+        $factory = $this->app->make(\Padosoft\PiiRedactor\Strategies\RedactionStrategyFactory::class);
+        $underB = $factory->make('tokenise')->detokeniseString($outA);
+        $this->assertStringNotContainsString('user@example.com', $underB);
+
+        // Back under tenant A, it resolves.
+        $ctx->set('tenant-a');
+        $underA = $factory->make('tokenise')->detokeniseString($outA);
+        $this->assertStringContainsString('user@example.com', $underA);
+    }
+
     public function test_redact_content_throws_on_unknown_ingest_strategy(): void
     {
         // R14 — unknown strategy value must throw, never silently degrade to mask.

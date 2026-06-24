@@ -967,11 +967,14 @@ return [
         | `[tok:<detector>:<hex>]` surrogates while the originals live in the
         | per-tenant `pii_token_maps` vault (tenant-scoped via the host
         | TenantResolver binding, R30) — so the KB is PII-safe by default and an
-        | authorised operator re-identifies on demand (DetokenizeService).
-        | `tokenise` REQUIRES `PII_REDACTOR_SALT` (the factory throws loudly if
-        | missing, R14). Applies to BOTH the connector boundary
-        | (`HostIngestionBridge::redactContent`) and the inline ingest path
-        | (`DocumentIngestor`) when `enabled` + `redact_before_ingest` are on.
+        | authorised operator re-identifies on demand via the existing
+        | detokenise surfaces (`TokenResolutionService` /
+        | `LogViewerController::chatDetokenize`). `tokenise` REQUIRES
+        | `PII_REDACTOR_SALT` (the factory throws loudly if missing, R14).
+        | Consumed at the connector boundary
+        | (`HostIngestionBridge::redactContent`) when `enabled` +
+        | `redact_before_ingest` are on; extending it to the inline
+        | `DocumentIngestor` (HTTP/CLI) path is a follow-up in this cycle.
         */
         'ingest_strategy' => (string) env('KB_INGEST_PII_STRATEGY', 'mask'),
 
