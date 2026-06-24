@@ -290,7 +290,15 @@ final class TestEmailFixtures
             return self::$emailCache[$mailboxKey] = [];
         }
 
-        $decoded = json_decode((string) file_get_contents($path), true);
+        // R14 — distingui il fallimento I/O dal JSON malformato: `is_file()` sopra
+        // non garantisce la leggibilità (permessi, race/TOCTOU), e un errore di
+        // lettura non è un "JSON non decodificabile". Diagnostica fuorviante = bug.
+        $raw = file_get_contents($path);
+        if ($raw === false) {
+            throw new \RuntimeException("Impossibile leggere il file fixture e-mail (errore I/O): {$path}");
+        }
+
+        $decoded = json_decode($raw, true);
         if (! is_array($decoded)) {
             // R14 — fixture corrotta: meglio fallire forte che inviare 0 e-mail
             // in silenzio.
