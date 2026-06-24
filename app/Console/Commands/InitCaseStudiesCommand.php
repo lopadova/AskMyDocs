@@ -23,9 +23,11 @@ use RuntimeException;
  *      viewer/admin/super-admin, membership isolata).
  *   2. Documenti         → copia docs/case-studies/data/<key>/ sul disco kb e
  *      `kb:ingest-folder case-studies/<key> --project=<key> --recursive --sync`.
- *   3. E-mail            → `mail:seed-imap --all --purge` (crea le label, ripulisce
- *      i messaggi di test e ri-appende le ~751 e-mail).
- *   4. (opz.) Ingest e-mail → `connector:imap:install --all --sync`.
+ *   3. E-mail + connettori → `mail:seed-imap --all --purge` (crea le label,
+ *      ripulisce e ri-appende le ~751 e-mail) e `connector:imap:install --all`
+ *      (una installazione connettore per casella — i connettori NON sono nei
+ *      seeder, servono ping IMAP reale + vault). Con `--ingest-emails` aggiunge
+ *      `--sync` per ingerire subito le e-mail in KB.
  *
  *   php artisan demo:init-case-studies
  *   php artisan demo:init-case-studies --fresh --ingest-emails
@@ -79,22 +81,26 @@ class InitCaseStudiesCommand extends Command
             $this->components->warn('2/4 — Documenti: saltato (--skip-docs)');
         }
 
-        // 3) E-MAIL (purge + APPEND su IMAP)
+        // 3) E-MAIL: APPEND su IMAP + installazione dei CONNETTORI per azienda.
+        //    I connettori NON sono nei seeder puri (servono ping IMAP reale +
+        //    segreto nel vault, impossibili in un seeder/test senza credenziali):
+        //    si creano qui, una installazione per casella (label/project_key).
+        //    `--sync` (con --ingest-emails) avvia anche l'ingest in KB.
         if (! (bool) $this->option('skip-emails')) {
-            $this->components->info('3/4 — E-mail: purge + APPEND su IMAP');
+            $this->components->info('3/4 — E-mail: APPEND su IMAP + connettori');
             if ($this->emailPasswordPresent()) {
                 $this->call('mail:seed-imap', ['--all' => true, '--purge' => true]);
+
+                $installArgs = ['--all' => true];
+                if ((bool) $this->option('ingest-emails')) {
+                    $installArgs['--sync'] = true;
+                }
+                $this->call('connector:imap:install', $installArgs);
             } else {
-                $this->components->warn('E-mail saltate: CONNECTOR_TEST_GMAIL_PASSWORD non impostata in .env.');
+                $this->components->warn('E-mail/connettori saltati: CONNECTOR_TEST_GMAIL_PASSWORD non impostata in .env.');
             }
         } else {
-            $this->components->warn('3/4 — E-mail: saltato (--skip-emails)');
-        }
-
-        // 4) (opzionale) INGEST E-MAIL via connettore
-        if ((bool) $this->option('ingest-emails')) {
-            $this->components->info('4/4 — Ingest e-mail (connettore IMAP)');
-            $this->call('connector:imap:install', ['--all' => true, '--sync' => true]);
+            $this->components->warn('3/4 — E-mail + connettori: saltato (--skip-emails)');
         }
 
         $this->newLine();
