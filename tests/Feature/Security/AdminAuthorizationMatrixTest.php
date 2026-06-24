@@ -322,6 +322,33 @@ final class AdminAuthorizationMatrixTest extends TestCase
         }
     }
 
+    /**
+     * v8.24 — the IMAP folder-listing `GET /api/admin/connectors/{id}/folders`
+     * (folder picker data source). Same `can:manageConnectors` (admin +
+     * super-admin) gate as the rest of the group. Both roles pass the gate; a
+     * non-existent id then 404s (service findOr404) — not an authz failure. A
+     * viewer is blocked at the gate with 403.
+     */
+    public function test_folders_listing_requires_the_manage_connectors_gate(): void
+    {
+        $uri = '/api/admin/connectors/1/folders';
+
+        foreach (['admin', 'super-admin'] as $role) {
+            $status = $this->actingAs($this->userWithRole($role))
+                ->getJson($uri)
+                ->getStatusCode();
+            $this->assertSame(
+                404,
+                $status,
+                "Role [{$role}] must pass the manageConnectors gate and then 404 on the missing id for GET [{$uri}] but got {$status}.",
+            );
+        }
+
+        $this->actingAs($this->userWithRole('viewer'))
+            ->getJson($uri)
+            ->assertStatus(403);
+    }
+
     private function userWithRole(string $role): User
     {
         $user = User::create([

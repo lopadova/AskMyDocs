@@ -48,9 +48,14 @@ final class UpdateConnectorInstallationRequest extends FormRequest
         $folders = $this->input('folders');
         if (is_array($folders) && array_key_exists('include', $folders)) {
             $include = is_array($folders['include']) ? $folders['include'] : [];
+            // Trim strings + drop blank entries (the global TrimStrings /
+            // ConvertEmptyStringsToNull middleware already turns "  " into null) +
+            // dedupe. Other non-string entries are deliberately KEPT so the
+            // `folders.include.* => string` rule rejects them (422) instead of
+            // being silently swallowed here (R14).
             $folders['include'] = array_values(array_unique(array_filter(
                 array_map(static fn ($v) => is_string($v) ? trim($v) : $v, $include),
-                static fn ($v) => is_string($v) && $v !== '',
+                static fn ($v) => $v !== '' && $v !== null,
             )));
             $this->merge(['folders' => $folders]);
         }

@@ -535,6 +535,147 @@ final class ConnectorAdminControllerTest extends TestCase
         $this->assertNull($installation->project_key);
     }
 
+    public function test_update_sets_folders_include_and_date_window_preserving_other_config(): void
+    {
+        // v8.24 — the picker writes ONLY folders.include + date_window_days; the
+        // rest of config_json (connection / auth_mode / folders.exclude) survives.
+        $admin = $this->makeSuperAdmin();
+        $installation = ConnectorInstallation::create([
+            'tenant_id' => 'default',
+            'connector_name' => 'imap',
+            'label' => 'rotta-1',
+            'config_json' => [
+                'auth_mode' => 'basic',
+                'connection' => ['host' => 'imap.example.test', 'username' => 'u@example.test'],
+                'folders' => ['exclude' => ['[Gmail]/Spam']],
+            ],
+            'status' => ConnectorInstallation::STATUS_ACTIVE,
+            'created_by' => $admin->id,
+        ]);
+
+        $resp = $this->actingAs($admin)->patchJson(
+            "/api/admin/connectors/{$installation->id}",
+            ['folders' => ['include' => ['INBOX', 'rotta-logistics-1']], 'date_window_days' => 90],
+        );
+
+        $resp->assertOk();
+        $this->assertSame(['INBOX', 'rotta-logistics-1'], $resp->json('data.folders.include'));
+        $this->assertSame(90, $resp->json('data.date_window_days'));
+
+        $config = $installation->fresh()->config_json;
+        $this->assertSame(['INBOX', 'rotta-logistics-1'], $config['folders']['include']);
+        // exclude + connection + auth_mode untouched.
+        $this->assertSame(['[Gmail]/Spam'], $config['folders']['exclude']);
+        $this->assertSame('imap.example.test', $config['connection']['host']);
+        $this->assertSame('basic', $config['auth_mode']);
+        $this->assertSame(90, $config['date_window_days']);
+    }
+
+    public function test_update_clears_folders_include_with_an_empty_array(): void
+    {
+        // R43 — the OTHER state: an empty include clears the whitelist (sync all
+        // non-excluded folders), distinct from "untouched".
+        $admin = $this->makeSuperAdmin();
+        $installation = ConnectorInstallation::create([
+            'tenant_id' => 'default',
+            'connector_name' => 'imap',
+            'label' => 'rotta-1',
+            'config_json' => ['folders' => ['include' => ['INBOX']]],
+            'status' => ConnectorInstallation::STATUS_ACTIVE,
+            'created_by' => $admin->id,
+        ]);
+
+        $resp = $this->actingAs($admin)->patchJson(
+            "/api/admin/connectors/{$installation->id}",
+            ['folders' => ['include' => []]],
+        );
+
+        $resp->assertOk();
+        $this->assertSame([], $resp->json('data.folders.include'));
+        $this->assertSame([], $installation->fresh()->config_json['folders']['include']);
+    }
+
+    public function test_update_trims_dedupes_and_drops_blank_folder_paths(): void
+    {
+        $admin = $this->makeSuperAdmin();
+        $installation = ConnectorInstallation::create([
+            'tenant_id' => 'default',
+            'connector_name' => 'imap',
+            'label' => 'rotta-1',
+            'status' => ConnectorInstallation::STATUS_ACTIVE,
+            'created_by' => $admin->id,
+        ]);
+
+        $resp = $this->actingAs($admin)->patchJson(
+            "/api/admin/connectors/{$installation->id}",
+            ['folders' => ['include' => ['  INBOX ', 'INBOX', 'Sent', '   ', '']]],
+        );
+
+        $resp->assertOk();
+        // '  INBOX ' trimmed → 'INBOX', the duplicate dropped, blanks removed.
+        $this->assertSame(['INBOX', 'Sent'], $resp->json('data.folders.include'));
+    }
+
+    public function test_update_rejects_an_out_of_range_date_window(): void
+    {
+        $admin = $this->makeSuperAdmin();
+        $installation = ConnectorInstallation::create([
+            'tenant_id' => 'default',
+            'connector_name' => 'imap',
+            'label' => 'rotta-1',
+            'status' => ConnectorInstallation::STATUS_ACTIVE,
+            'created_by' => $admin->id,
+        ]);
+
+        $this->actingAs($admin)
+            ->patchJson("/api/admin/connectors/{$installation->id}", ['date_window_days' => 99999])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['date_window_days']);
+    }
+
+    public function test_update_rejects_a_non_string_folder_path(): void
+    {
+        $admin = $this->makeSuperAdmin();
+        $installation = ConnectorInstallation::create([
+            'tenant_id' => 'default',
+            'connector_name' => 'imap',
+            'label' => 'rotta-1',
+            'status' => ConnectorInstallation::STATUS_ACTIVE,
+            'created_by' => $admin->id,
+        ]);
+
+        $this->actingAs($admin)
+            ->patchJson(
+                "/api/admin/connectors/{$installation->id}",
+                ['folders' => ['include' => [123]]],
+            )
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['folders.include.0']);
+    }
+
+    public function test_index_exposes_folders_include_and_date_window(): void
+    {
+        // Read surface (R44 MCP/HTTP parity): the index reports the picker-owned
+        // settings back so the FE edit form can pre-fill them.
+        $admin = $this->makeSuperAdmin();
+        ConnectorInstallation::create([
+            'tenant_id' => 'default',
+            'connector_name' => 'imap',
+            'label' => 'rotta-1',
+            'config_json' => ['folders' => ['include' => ['rotta-logistics-1']], 'date_window_days' => 120],
+            'status' => ConnectorInstallation::STATUS_ACTIVE,
+            'created_by' => $admin->id,
+        ]);
+
+        $resp = $this->actingAs($admin)->getJson('/api/admin/connectors');
+        $resp->assertOk();
+
+        $entry = collect($resp->json('data'))->firstWhere('key', 'imap');
+        $account = $entry['installations'][0];
+        $this->assertSame(['rotta-logistics-1'], $account['folders']['include']);
+        $this->assertSame(120, $account['date_window_days']);
+    }
+
     public function test_update_rejects_a_duplicate_label(): void
     {
         $admin = $this->makeSuperAdmin();
