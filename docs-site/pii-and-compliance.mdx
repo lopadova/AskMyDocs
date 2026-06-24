@@ -124,10 +124,11 @@ The strategy applies at the **connector ingest boundary**
 Extending tokenisation to the inline `DocumentIngestor` (HTTP/CLI) path is a
 follow-up in this cycle.
 
-To reverse a tokenised document, use the **Log Viewer detokenize endpoint**
-(`POST /api/admin/logs/chat/{id}/detokenize`) or the PII Redactor Admin SPA
-cross-mounted at `/app/admin/pii-redactor`. Both surfaces are RBAC-gated and
-fully audited.
+Detokenisation today is exposed for **chat-log** rows via the Log Viewer
+endpoint (`POST /api/admin/logs/chat/{id}/detokenize`) and the PII Redactor
+Admin SPA cross-mounted at `/app/admin/pii-redactor` (both RBAC-gated and fully
+audited). A dedicated **KB-document** detokenise surface — re-identifying an
+ingest-tokenised document on demand — is a follow-up in this cycle.
 
 <CardGroup cols={2}>
   <Card title="Multi-tenant isolation" icon="building-shield" href="/multi-tenant-isolation">
