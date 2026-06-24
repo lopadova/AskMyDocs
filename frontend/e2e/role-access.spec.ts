@@ -33,7 +33,7 @@ const ENDPOINTS: ReadonlyArray<{ uri: string; allowed: readonly string[] }> = [
     { uri: '/api/admin/logs/chat', allowed: ['admin', 'super-admin'] },
     { uri: '/api/admin/kb/tree', allowed: ['admin', 'super-admin'] },
     // gate-based groups
-    { uri: '/api/admin/connectors', allowed: ['super-admin'] },
+    { uri: '/api/admin/connectors', allowed: ['admin', 'super-admin'] },
     { uri: '/api/admin/mcp-servers', allowed: ['super-admin'] },
     { uri: '/api/admin/mcp-tool-call-audit', allowed: ['admin', 'super-admin'] },
     { uri: '/api/admin/pii/strategy', allowed: ['admin', 'dpo', 'super-admin'] },

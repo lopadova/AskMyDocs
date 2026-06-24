@@ -23,7 +23,7 @@ use Tests\TestCase;
  * (`test_non_super_admin_gets_403_on_every_endpoint` +
  * `test_guest_gets_401`). This file adds positive coverage:
  *   - super-admin role → 200 on the list endpoint.
- *   - admin role       → 403 (super-admin only by design).
+ *   - admin role       → 200 (admin + super-admin manage connectors).
  *   - viewer role      → 403.
  *   - guest            → 401.
  *
@@ -56,13 +56,13 @@ final class ConnectorAdminGateTest extends TestCase
             ->assertStatus(200);
     }
 
-    public function test_admin_role_gets_403_on_index(): void
+    public function test_admin_role_gets_200_on_index(): void
     {
         $user = $this->makeUserWithRole('admin', 'admin');
 
         $this->actingAs($user)
             ->getJson('/api/admin/connectors')
-            ->assertStatus(403);
+            ->assertStatus(200);
     }
 
     public function test_viewer_role_gets_403_on_index(): void
@@ -81,10 +81,12 @@ final class ConnectorAdminGateTest extends TestCase
 
     public function test_gate_applies_to_install_endpoint(): void
     {
-        $admin = $this->makeUserWithRole('admin', 'admin-install');
+        // A role OUTSIDE the allow-set (viewer) proves the Gate guards the
+        // install endpoint, independent of any provider-specific controller path.
+        $viewer = $this->makeUserWithRole('viewer', 'viewer-install');
 
         // The install endpoint sits behind the same Gate as index.
-        $this->actingAs($admin)
+        $this->actingAs($viewer)
             ->getJson('/api/admin/connectors/google-drive/install')
             ->assertStatus(403);
     }

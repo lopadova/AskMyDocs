@@ -96,8 +96,8 @@ final class AdminAuthorizationMatrixTest extends TestCase
             '/api/admin/notifications/defaults' => ['admin', 'super-admin'],
 
             // ── Gate-based groups — Gate::define() in AppServiceProvider ──
-            '/api/admin/connectors' => ['super-admin'],                 // manageConnectors
-            '/api/admin/ingestion/queue' => ['super-admin'],            // manageConnectors (v8.21 Ciclo 2)
+            '/api/admin/connectors' => ['admin', 'super-admin'],        // manageConnectors
+            '/api/admin/ingestion/queue' => ['admin', 'super-admin'],   // manageConnectors (v8.21 Ciclo 2)
             '/api/admin/mcp-servers' => ['super-admin'],                // manageMcpTools
             '/api/admin/mcp/tokens' => ['super-admin'],                 // manageMcpTools
             '/api/admin/mcp-tool-call-audit' => ['admin', 'super-admin'], // viewMcpAudit
@@ -259,8 +259,8 @@ final class AdminAuthorizationMatrixTest extends TestCase
     /**
      * v8.17 — the credential-connector `configure` endpoint is POST-only (a GET
      * would 405, so it can't ride the GET matrix above). It sits in the same
-     * `admin/connectors` group gated by `can:manageConnectors` (super-admin only),
-     * so assert the write boundary explicitly: admin denied, super-admin passes.
+     * `admin/connectors` group gated by `can:manageConnectors` (admin +
+     * super-admin), so assert the write boundary explicitly: both pass.
      * (Guest → 401 is already covered for the whole `admin/connectors` group by
      * test_guests_are_rejected_with_401 on the GET `/api/admin/connectors` entry,
      * which shares this route's identical middleware stack.)
@@ -269,18 +269,18 @@ final class AdminAuthorizationMatrixTest extends TestCase
     {
         $writeUri = '/api/admin/connectors/imap/configure';
 
-        // admin is NOT in the manageConnectors allow-set → 403.
+        // admin is now IN the manageConnectors allow-set → passes the gate
+        // (controller/FormRequest may 422 on the empty body, but NOT 403).
         $adminStatus = $this->actingAs($this->userWithRole('admin'))
             ->postJson($writeUri, [])
             ->getStatusCode();
-        $this->assertSame(
+        $this->assertNotSame(
             403,
             $adminStatus,
-            "Role [admin] must be DENIED (403) on [{$writeUri}] (manageConnectors = super-admin only) but got {$adminStatus}.",
+            "Role [admin] must pass the manageConnectors gate on [{$writeUri}] but got 403.",
         );
 
-        // super-admin passes the gate; the controller/FormRequest may 422 on the
-        // empty body — not an authz failure — but it must NOT be 403.
+        // super-admin passes the gate too; empty body → 422, never 403.
         $superStatus = $this->actingAs($this->userWithRole('super-admin'))
             ->postJson($writeUri, [])
             ->getStatusCode();
@@ -301,34 +301,25 @@ final class AdminAuthorizationMatrixTest extends TestCase
     /**
      * v8.20 — the multi-account `PATCH /api/admin/connectors/{installationId}`
      * metadata edit. PATCH-only (can't ride the GET matrix), same
-     * `can:manageConnectors` (super-admin only) gate as the rest of the group.
-     * Assert the write boundary explicitly: admin denied, super-admin passes
-     * the gate (a non-existent id then 404s — not an authz failure).
+     * `can:manageConnectors` (admin + super-admin) gate as the rest of the group.
+     * Both pass the gate; a non-existent id then 404s — not an authz failure.
+     * Asserting the precise 404 (not just "not 403") keeps this a real route+gate
+     * regression check.
      */
     public function test_update_connector_installation_requires_the_manage_connectors_gate(): void
     {
         $writeUri = '/api/admin/connectors/1';
 
-        $adminStatus = $this->actingAs($this->userWithRole('admin'))
-            ->patchJson($writeUri, ['label' => 'x'])
-            ->getStatusCode();
-        $this->assertSame(
-            403,
-            $adminStatus,
-            "Role [admin] must be DENIED (403) on PATCH [{$writeUri}] (manageConnectors = super-admin only) but got {$adminStatus}.",
-        );
-
-        // super-admin passes the gate; no installation #1 exists → exactly 404
-        // (not 403, and not a 500 that would also satisfy "not 403"). Asserting
-        // the precise status keeps this a real route+gate regression check.
-        $superStatus = $this->actingAs($this->userWithRole('super-admin'))
-            ->patchJson($writeUri, ['label' => 'x'])
-            ->getStatusCode();
-        $this->assertSame(
-            404,
-            $superStatus,
-            "Role [super-admin] must pass the manageConnectors gate and then 404 on the missing id for PATCH [{$writeUri}] but got {$superStatus}.",
-        );
+        foreach (['admin', 'super-admin'] as $role) {
+            $status = $this->actingAs($this->userWithRole($role))
+                ->patchJson($writeUri, ['label' => 'x'])
+                ->getStatusCode();
+            $this->assertSame(
+                404,
+                $status,
+                "Role [{$role}] must pass the manageConnectors gate and then 404 on the missing id for PATCH [{$writeUri}] but got {$status}.",
+            );
+        }
     }
 
     private function userWithRole(string $role): User

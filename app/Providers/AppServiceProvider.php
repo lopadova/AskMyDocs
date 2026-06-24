@@ -550,7 +550,9 @@ class AppServiceProvider extends ServiceProvider
                 return false;
             }
 
-            return $user->hasRole('super-admin');
+            // Policy (scelta esplicita): la gestione connettori — incluse le
+            // credenziali nel vault — è consentita ad admin E super-admin.
+            return $user->hasAnyRole(['admin', 'super-admin']);
         });
     }
 

@@ -23,7 +23,7 @@ use Tests\TestCase;
  * v4.5/W1 — REST surface coverage for the connector admin endpoints.
  *
  * Auth posture: every endpoint sits behind `can:manageConnectors`
- * (super-admin only by default). Cross-tenant isolation enforced
+ * (admin + super-admin). Cross-tenant isolation enforced
  * inside the controller via TenantContext::current().
  */
 final class ConnectorAdminControllerTest extends TestCase
@@ -596,9 +596,10 @@ final class ConnectorAdminControllerTest extends TestCase
         ]);
     }
 
-    public function test_non_super_admin_gets_403_on_every_endpoint(): void
+    public function test_unauthorized_role_gets_403_on_every_endpoint(): void
     {
-        $user = $this->makeRegularAdmin();
+        // viewer is OUTSIDE the manageConnectors allow-set (admin + super-admin).
+        $user = $this->makeViewer();
 
         // index
         $this->actingAs($user)->getJson('/api/admin/connectors')->assertStatus(403);
@@ -668,14 +669,14 @@ final class ConnectorAdminControllerTest extends TestCase
         return $user;
     }
 
-    private function makeRegularAdmin(): User
+    private function makeViewer(): User
     {
         $user = User::create([
-            'name' => 'RegularAdmin',
-            'email' => 'admin-'.uniqid().'@demo.local',
+            'name' => 'Viewer',
+            'email' => 'viewer-'.uniqid().'@demo.local',
             'password' => Hash::make('secret123'),
         ]);
-        $user->assignRole('admin');
+        $user->assignRole('viewer');
 
         return $user;
     }

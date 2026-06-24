@@ -68,8 +68,8 @@ php artisan demo:list-companies
 
 **Account per azienda** (3 ruoli ciascuna, password `password`). Il `viewer` è
 isolato (membership solo sulla sua azienda); `admin`/`super-admin` per ruolo
-vedono anche oltre. Il **super-admin** è l'unico che entra in *Admin → Connessioni*
-(gate `manageConnectors`):
+vedono anche oltre. *Admin → Connessioni* (gate `manageConnectors`) è accessibile
+ad **admin + super-admin**:
 
 | Azienda | viewer | admin | super-admin |
 |---|---|---|---|
