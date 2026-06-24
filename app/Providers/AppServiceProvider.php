@@ -579,6 +579,12 @@ class AppServiceProvider extends ServiceProvider
             // Case study — per-company documentation-isolation verifier
             // (README §6 matrix against the live KB). Dev/ops diagnostic.
             \App\Console\Commands\CaseStudyVerifyIsolationCommand::class,
+            // Email-ingest test harness (dev/test): deliver fixtures into the
+            // real IMAP mailboxes, install the IMAP connector per company, and
+            // discover existing companies. See docs/testing/email-ingest-e2e.md.
+            \App\Console\Commands\MailSeedImapCommand::class,
+            \App\Console\Commands\ConnectorImapInstallCommand::class,
+            \App\Console\Commands\DemoListCompaniesCommand::class,
         ]);
     }
 
