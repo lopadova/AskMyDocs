@@ -972,8 +972,10 @@ return [
         | `PII_REDACTOR_SALT` (the factory throws loudly if missing, R14).
         | Consumed at the connector boundary
         | (`HostIngestionBridge::redactContent`) when `enabled` +
-        | `redact_before_ingest` are on; extending it to the inline
-        | `DocumentIngestor` (HTTP/CLI) path is a follow-up in this cycle.
+        | `redact_before_ingest` are on AND the package engine itself is enabled
+        | (`pii-redactor.enabled` / `PII_REDACTOR_ENABLED` — `RedactorEngine::redact()`
+        | no-ops while it is off); extending it to the inline `DocumentIngestor`
+        | (HTTP/CLI) path is a follow-up in this cycle.
         */
         'ingest_strategy' => (string) env('KB_INGEST_PII_STRATEGY', 'mask'),
 

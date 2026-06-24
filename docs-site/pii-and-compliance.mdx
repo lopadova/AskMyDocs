@@ -120,9 +120,11 @@ vault, so an authorised operator can recover the original on demand.
 | anything else | — | `InvalidArgumentException` thrown at ingest time (R14). |
 
 The strategy applies at the **connector ingest boundary**
-(`HostIngestionBridge::redactContent`) when `KB_CONNECTOR_INGEST_PII_REDACT=true`.
-Extending tokenisation to the inline `DocumentIngestor` (HTTP/CLI) path is a
-follow-up in this cycle.
+(`HostIngestionBridge::redactContent`) when **all three** are on: the package
+engine `PII_REDACTOR_ENABLED=true` (otherwise `RedactorEngine::redact()` is a
+no-op), the host master switch `KB_PII_REDACTOR_ENABLED=true`, and
+`KB_CONNECTOR_INGEST_PII_REDACT=true`. Extending tokenisation to the inline
+`DocumentIngestor` (HTTP/CLI) path is a follow-up in this cycle.
 
 Detokenisation today is exposed for **chat-log** rows via the Log Viewer
 endpoint (`POST /api/admin/logs/chat/{id}/detokenize`) and the PII Redactor

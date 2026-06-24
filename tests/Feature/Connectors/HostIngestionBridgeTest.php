@@ -117,6 +117,7 @@ final class HostIngestionBridgeTest extends TestCase
     public function test_redact_content_masks_by_default(): void
     {
         // R43 — default ingest_strategy is the pre-v8.23 one-way mask.
+        config()->set('pii-redactor.enabled', true); // package engine (RedactorEngine no-ops when off)
         config()->set('kb.pii_redactor.enabled', true);
         config()->set('kb.pii_redactor.redact_before_ingest', true);
 
@@ -132,6 +133,7 @@ final class HostIngestionBridgeTest extends TestCase
     {
         // v8.23 — tokenise puts a reversible surrogate in the content while the
         // original lives in the per-tenant vault (recoverable on demand).
+        config()->set('pii-redactor.enabled', true);
         config()->set('kb.pii_redactor.enabled', true);
         config()->set('kb.pii_redactor.redact_before_ingest', true);
         config()->set('kb.pii_redactor.ingest_strategy', 'tokenise');
@@ -157,6 +159,7 @@ final class HostIngestionBridgeTest extends TestCase
         // Core v8.23 contract: the same PII yields a DIFFERENT token per tenant,
         // and a token minted under tenant A cannot be detokenised under tenant B
         // (the TenantResolver binding + per-tenant vault, R30).
+        config()->set('pii-redactor.enabled', true);
         config()->set('kb.pii_redactor.enabled', true);
         config()->set('kb.pii_redactor.redact_before_ingest', true);
         config()->set('kb.pii_redactor.ingest_strategy', 'tokenise');
