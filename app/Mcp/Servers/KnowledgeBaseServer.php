@@ -7,6 +7,7 @@ use App\Mcp\Methods\ReadCollectionResource;
 use App\Mcp\Tools\FinOpsBudgetStatusTool;
 use App\Mcp\Tools\ConnectorInstallationsTool;
 use App\Mcp\Tools\AppSettingsTool;
+use App\Mcp\Tools\KbPiiPolicyTool;
 use App\Mcp\Tools\KbIngestionStatusTool;
 use App\Mcp\Tools\FinOpsSpendSummaryTool;
 use App\Mcp\Tools\FinOpsTopModelsTool;
@@ -132,6 +133,10 @@ class KnowledgeBaseServer extends Server
         // v8.22 (Ciclo 3) — runtime config governance read surface (R44):
         // governable settings with effective value + provenance, tenant-scoped (R30).
         AppSettingsTool::class,
+
+        // v8.23 (Ciclo 4) — PII ingestion policy read surface (R44): the
+        // effective redact-on/off + strategy per (tenant, project), tenant-scoped (R30).
+        KbPiiPolicyTool::class,
 
         // v8.x — padosoft/laravel-invitations tri-surface (R44 third surface).
         // The invite engine's MCP tools over the SAME services the HTTP + PHP

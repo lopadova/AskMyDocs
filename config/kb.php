@@ -977,10 +977,31 @@ return [
         | (`HostIngestionBridge::redactContent`) when `enabled` +
         | `redact_before_ingest` are on AND the package engine itself is enabled
         | (`pii-redactor.enabled` / `PII_REDACTOR_ENABLED` — `RedactorEngine::redact()`
-        | no-ops while it is off); extending it to the inline `DocumentIngestor`
-        | (HTTP/CLI) path is a follow-up in this cycle.
+        | no-ops while it is off), AND at the inline `DocumentIngestor` (HTTP/CLI)
+        | path when `redact_inline_ingest` below is on (v8.23/PR2). The effective
+        | strategy for the inline path is resolved per-(tenant, project) by
+        | `App\Services\Kb\Pii\KbPiiPolicyResolver`, falling back to this value.
         */
         'ingest_strategy' => (string) env('KB_INGEST_PII_STRATEGY', 'mask'),
+
+        /*
+        | v8.23 (Ciclo 4, PR2) — inline ingestion redaction master default.
+        | When true, the inline `DocumentIngestor` path (the HTTP
+        | `POST /api/kb/ingest` batch + the `kb:ingest-folder` CLI, both via
+        | `IngestDocumentJob`) redacts each chunk's text through the
+        | `ingest_strategy` above BEFORE it is hashed, embedded, and persisted —
+        | so the vector store + `chunk_text` never hold raw PII while the vault
+        | keeps the originals. Unlike the connector boundary (which lacks project
+        | context and so uses this tenant-wide value), the inline path has the
+        | project key and resolves the effective on/off per-(tenant, project) via
+        | the `kb_pii_settings` policy (`KbPiiPolicyResolver`); this env value is
+        | the config-level default that policy rows inherit. Default OFF (R43):
+        | existing inline ingests keep writing raw markdown's chunks until an
+        | operator opts in. Still gated by the master flags `enabled` +
+        | `pii-redactor.enabled`; `tokenise` REQUIRES `PII_REDACTOR_SALT` and a
+        | persistent `PII_REDACTOR_TOKEN_STORE=database` vault.
+        */
+        'redact_inline_ingest' => (bool) env('KB_INLINE_INGEST_PII_REDACT', false),
 
         /*
         | Detokenize permission — Spatie permission name required for the

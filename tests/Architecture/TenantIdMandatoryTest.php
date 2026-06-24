@@ -72,6 +72,8 @@ final class TenantIdMandatoryTest extends TestCase
         \App\Models\KbDocAnalysis::class,
         // v8.8/W3 — per-(tenant, project) deep-analysis gate override.
         \App\Models\KbAnalysisSetting::class,
+        // v8.23/Ciclo 4 — per-(tenant, project) PII ingestion policy.
+        \App\Models\KbPiiSetting::class,
         // v8.8/W4 — content-gap analytics (refused-query rollup).
         \App\Models\KbSearchFailure::class,
         \App\Models\KnowledgeDocumentAcl::class,

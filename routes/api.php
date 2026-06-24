@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\Admin\EvalHarnessUiBootstrapController;
 use App\Http\Controllers\Api\Admin\KbDocumentController;
 use App\Http\Controllers\Api\Admin\KbCollectionController;
 use App\Http\Controllers\Api\Admin\KbHealthController;
+use App\Http\Controllers\Api\Admin\KbPiiSettingController;
 use App\Http\Controllers\Api\Admin\KbTreeController;
 use App\Http\Controllers\Api\Admin\LogViewerController;
 use App\Http\Controllers\Api\Admin\MaintenanceCommandController;
@@ -756,6 +757,16 @@ Route::middleware([
     ->group(function () {
         Route::get('/strategy', [PiiStrategyController::class, 'show'])
             ->name('api.admin.pii.strategy');
+
+        // v8.23 (Ciclo 4) — per-(tenant, project) PII ingestion policy. READ
+        // rides the group's `viewPiiRedactorAdmin` gate (admin / dpo /
+        // super-admin); WRITE adds `can:manageKbPiiPolicy` (dpo / super-admin)
+        // so mutating the privacy posture is restricted to the data owners.
+        Route::get('/policy', [KbPiiSettingController::class, 'index'])
+            ->name('api.admin.pii.policy.index');
+        Route::put('/policy', [KbPiiSettingController::class, 'upsert'])
+            ->middleware('can:manageKbPiiPolicy')
+            ->name('api.admin.pii.policy.upsert');
     });
 
 /*

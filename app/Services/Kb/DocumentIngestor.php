@@ -10,6 +10,7 @@ use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
 use App\Services\Kb\Canonical\CanonicalParsedDocument;
 use App\Services\Kb\Canonical\CanonicalParser;
+use App\Services\Kb\Pii\ChunkRedactor;
 use App\Services\Kb\Pipeline\ChunkDraft;
 use App\Services\Kb\Pipeline\PipelineRegistry;
 use App\Services\Kb\Pipeline\SourceDocument;
@@ -360,6 +361,14 @@ class DocumentIngestor
             return $existing;
         }
 
+        // v8.23 (Ciclo 4) — PII redaction of the chunk text (direct path). Runs
+        // here, AFTER the idempotency short-circuit above, so an identical
+        // re-ingest is a pure no-op and never re-touches the token vault. The
+        // Flow saga (the real HTTP/CLI path) redacts in ChunkDocumentStep
+        // instead; both share App\Services\Kb\Pii\ChunkRedactor so the contract
+        // is identical. No-op unless redaction is genuinely active.
+        $chunkDrafts = app(ChunkRedactor::class)->redact($projectKey, $chunkDrafts);
+
         $canonical = $this->tryParseCanonical($projectKey, $sourcePath, $markdown);
         $embeddingResponse = $this->embeddingCache->generate(
             array_map(fn (ChunkDraft $d) => $d->text, $chunkDrafts),
@@ -628,4 +637,5 @@ class DocumentIngestor
         $tenantId = app(TenantContext::class)->current();
         CanonicalIndexerJob::dispatch($document->id, $tenantId);
     }
+
 }
