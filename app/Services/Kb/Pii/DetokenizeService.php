@@ -8,6 +8,7 @@ use App\Models\AdminCommandAudit;
 use App\Models\KnowledgeDocument;
 use App\Scopes\AccessScopeScope;
 use App\Support\TenantContext;
+use Illuminate\Support\Facades\Log;
 use Padosoft\PiiRedactor\Strategies\RedactionStrategy;
 use Padosoft\PiiRedactor\Strategies\TokeniseStrategy;
 use Padosoft\PiiRedactor\TokenStore\TokenResolutionService;
@@ -76,18 +77,43 @@ final class DetokenizeService
         $unresolved = [];
         $chunks = [];
 
-        foreach ($document->chunks()->orderBy('chunk_order')->get() as $chunk) {
-            $result = $this->resolver->detokeniseString((string) $chunk->chunk_text);
-            $tokenCount += $result->tokenCount;
-            $resolvedCount += $result->resolvedCount;
-            $unresolved = array_merge($unresolved, $result->unresolvedTokens);
+        foreach ($document->chunks()->orderBy('chunk_order')->forTenant(app(TenantContext::class)->current())->get() as $chunk) {
+            $original = (string) $chunk->chunk_text;
+
+            // Mirror the chat-log precedent (LogViewerController::safeDetokenise):
+            // the vault resolver can throw on a corrupt / key-rotated ciphertext
+            // (DecryptException). A single bad chunk must NOT abort the whole
+            // document (raw 500 + lost audit) — degrade it to its still-redacted
+            // form, count its surrogates as unresolved, and carry on so the
+            // surface still records the audited attempt.
+            try {
+                $result = $this->resolver->detokeniseString($original);
+                $tokenCount += $result->tokenCount;
+                $resolvedCount += $result->resolvedCount;
+                $unresolved = array_merge($unresolved, $result->unresolvedTokens);
+                $text = $result->output;
+                $chunkTokenCount = $result->tokenCount;
+                $chunkResolved = $result->resolvedCount;
+            } catch (\Throwable $e) {
+                Log::warning('DetokenizeService: chunk detokenisation failed; keeping the redacted form.', [
+                    'document_id' => $document->id,
+                    'chunk_order' => $chunk->chunk_order,
+                    'exception' => $e::class,
+                ]);
+                $surrogates = $this->surrogatesIn($original);
+                $tokenCount += count($surrogates);
+                $unresolved = array_merge($unresolved, $surrogates);
+                $text = $original;
+                $chunkTokenCount = count($surrogates);
+                $chunkResolved = 0;
+            }
 
             $chunks[] = [
                 'chunk_order' => (int) $chunk->chunk_order,
                 'heading_path' => (string) $chunk->heading_path,
-                'text' => $result->output,
-                'token_count' => $result->tokenCount,
-                'resolved_count' => $result->resolvedCount,
+                'text' => $text,
+                'token_count' => $chunkTokenCount,
+                'resolved_count' => $chunkResolved,
             ];
         }
 
@@ -97,6 +123,22 @@ final class DetokenizeService
             'resolved_count' => $resolvedCount,
             'unresolved_tokens' => array_values(array_unique($unresolved)),
         ];
+    }
+
+    /**
+     * Extract the `[tok:detector:hex]` surrogate literals from a string (same
+     * grammar as the package resolver), used to account a failed chunk's tokens
+     * as unresolved without re-running the throwing resolver.
+     *
+     * @return list<string>
+     */
+    private function surrogatesIn(string $text): array
+    {
+        if (preg_match_all('/\[tok:[A-Za-z0-9_]+:[0-9a-f]+\]/', $text, $matches) === false) {
+            return [];
+        }
+
+        return array_values(array_unique($matches[0]));
     }
 
     /**

@@ -51,8 +51,11 @@ final class KbDocumentDetokenizeController extends Controller
             'user_agent' => $request->userAgent(),
         ];
 
-        // Tenant-scoped lookup BEFORE the permission branch so a missing doc 404s
-        // for everyone (no existence oracle), but AFTER the cheap strategy gate.
+        // Lookup runs after the cheap strategy gate. It is before the permission
+        // branch so the cheap 404 short-circuits ahead of any re-identification;
+        // this is not a meaningful existence oracle because every role admitted
+        // by the route group (`viewPiiRedactorAdmin` = admin/dpo/super-admin)
+        // already holds `kb.read.any`, i.e. document existence is not privileged.
         $document = $this->detokenizer->findDocument($id);
         if ($document === null) {
             abort(Response::HTTP_NOT_FOUND);

@@ -10,6 +10,9 @@ use App\Services\Kb\Pii\DetokenizeService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Padosoft\PiiRedactor\Facades\Pii;
 use Padosoft\PiiRedactor\Strategies\RedactionStrategy;
+use Padosoft\PiiRedactor\TokenStore\TokenResolutionService;
+use Padosoft\PiiRedactor\TokenStore\TokenStore;
+use RuntimeException;
 use Tests\TestCase;
 
 /**
@@ -75,5 +78,56 @@ final class DetokenizeServiceTest extends TestCase
         $this->assertSame(1, $result['token_count']);
         $this->assertSame([], $result['unresolved_tokens']);
         $this->assertStringContainsString($email, $result['chunks'][0]['text']);
+    }
+
+    public function test_a_chunk_whose_vault_lookup_throws_degrades_to_the_redacted_form(): void
+    {
+        // A corrupt / key-rotated vault row can make the resolver throw. One bad
+        // chunk must NOT abort the whole document — it degrades to its redacted
+        // form, counts as unresolved, and the method still returns.
+        $throwingStore = new class implements TokenStore
+        {
+            public function put(string $token, string $original): void {}
+
+            public function get(string $token): ?string
+            {
+                throw new RuntimeException('vault decrypt failed');
+            }
+
+            public function has(string $token): bool
+            {
+                return false;
+            }
+
+            public function clear(): void {}
+
+            public function dump(): array
+            {
+                return [];
+            }
+
+            public function load(array $map): void {}
+        };
+        $service = new DetokenizeService(new TokenResolutionService($throwingStore));
+
+        $surrogate = '[tok:email:abcdef0123456789]';
+        $doc = $this->makeDoc();
+        KnowledgeChunk::create([
+            'knowledge_document_id' => $doc->id,
+            'project_key' => $doc->project_key,
+            'chunk_order' => 0,
+            'chunk_hash' => hash('sha256', $surrogate),
+            'heading_path' => '',
+            'chunk_text' => "Contact {$surrogate}.",
+            'metadata' => [],
+            'embedding' => [0.1, 0.2, 0.3],
+        ]);
+
+        $result = $service->detokenizeDocument($doc->fresh());
+
+        // Did not throw; the surrogate is preserved and accounted as unresolved.
+        $this->assertSame(0, $result['resolved_count']);
+        $this->assertSame([$surrogate], $result['unresolved_tokens']);
+        $this->assertStringContainsString($surrogate, $result['chunks'][0]['text']);
     }
 }
