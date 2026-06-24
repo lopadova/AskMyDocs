@@ -181,23 +181,19 @@ Dettagli:
 
 ## 5. Installazione connettore + ingest
 
-> **Vincolo importante — un solo connettore IMAP per tenant.**
-> `connector_installations` ha UNIQUE `(tenant_id, connector_name)`: nel tenant
-> `default` esiste **una sola** riga `imap`. L'harness la riusa **una casella
-> alla volta** (6 caselle in totale), azzerando il cursore di sync ad ogni
-> (ri)configurazione così il sync successivo è un **FULL clean** della casella
-> corrente. I documenti già ingeriti restano (l'ingest è additivo per
-> project_key; `reconcile_deletions` è OFF di default → riconfigurare non
-> cancella nulla). Le 2 caselle di un'azienda confluiscono nello stesso
-> project_key.
+> **Multi-account (v8.20).** `connector_installations` è unico su
+> `(tenant_id, connector_name, label)`: ogni casella è una **installazione a sé**
+> con `label` = mailbox_key e `project_key` = azienda (entrambe COLONNE, non più
+> in `config_json`). Le 6 caselle coesistono; ciascuna sincronizza solo la propria
+> label e ingerisce nel proprio project_key. Le 2 caselle di un'azienda confluiscono
+> nello stesso project_key.
 
 ```bash
-# tutte le caselle: configura+sincronizza in modo SERIALIZZATO (1→sync→2→…).
-# Con più caselle --sync è OBBLIGATORIO (vedi vincolo sopra).
+# tutte le caselle (6 installazioni, una per label) + sync di ciascuna
 php artisan connector:imap:install --all --sync
 
-# tutte le caselle di un'azienda (2 mailbox), attore per l'audit
-php artisan connector:imap:install --project=prometeo-antincendio --actor=super@demo.local --sync
+# tutte le caselle di un'azienda (2 installazioni)
+php artisan connector:imap:install --project=prometeo-antincendio --sync
 
 # una singola casella
 php artisan connector:imap:install --mailbox=rotta-logistics-1 --sync
@@ -206,21 +202,17 @@ php artisan connector:imap:install --mailbox=rotta-logistics-1 --sync
 Cosa fa per ogni casella:
 - Riusa `ConfigureConnectorService` → **verifica davvero** le credenziali
   (ping IMAP) prima di portare l'installazione ad `ACTIVE`.
-- Salva `config_json` con `connection.*`, `project_key = <azienda>`,
+- Crea l'installazione con le COLONNE `label = <mailbox_key>` e
+  `project_key = <azienda>`, e `config_json` con `connection.*`,
   `folders.include = ["<label>"]` (solo la label della casella: evita i doppioni
-  di INBOX/"Tutti i messaggi") e `date_window_days`. La password va nel **vault cifrato**,
-  mai in `config_json`. Azzera `last_sync_at` + `mailboxes_state` (FULL clean).
-- Con `--sync`:
-  - **più caselle** → esegue il `ConnectorSyncJob` **sincrono e serializzato**
-    (ogni casella viene ingerita prima di riconfigurare la riga per la prossima:
-    senza serializzazione i job in coda leggerebbero tutti l'ultima config);
-  - **una casella** → **accoda** un `ConnectorSyncJob` (parità con l'admin
-    "sync now"): assicurati che la coda giri (§1.4).
-
-`--all`/più caselle **senza** `--sync` viene **rifiutato** (fallirebbe in
-silenzio lasciando solo l'ultima casella configurata). Senza `--sync` su una
-singola casella l'ingest parte comunque dallo scheduler (ogni 15 min) o
-ridispacciando il job.
+  di INBOX/"Tutti i messaggi") e `date_window_days`. La password va nel **vault
+  cifrato**, mai in `config_json`.
+- Idempotente: ri-eseguire rimuove e ricrea la riga di quella label (le
+  credenziali nel vault cascadano via FK) — niente duplicati.
+- Con `--sync` accoda un `ConnectorSyncJob` per ogni installazione (le installazioni
+  sono indipendenti: nessuna serializzazione). Assicurati che la coda giri
+  (`QUEUE_CONNECTION=sync` o un worker, §1.4); senza `--sync` l'ingest parte dallo
+  scheduler (ogni 15 min).
 
 ---
 

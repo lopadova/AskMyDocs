@@ -21,14 +21,15 @@ use Padosoft\AskMyDocsConnectorImap\Imap\MailboxState;
 use Tests\TestCase;
 
 /**
- * Feature test di `connector:imap:install`. L'IMAP è il solo confine esterno:
- * si binda un fake {@see ImapClientFactoryInterface} (ping configurabile) come in
- * ConfigureConnectorTest, così il flusso configure() gira offline.
+ * Feature test di `connector:imap:install` — modello v8.20 MULTI-ACCOUNT.
+ * L'IMAP è il solo confine esterno: si binda un fake ImapClientFactory (ping
+ * configurabile) come in ConfigureConnectorTest, così configure() gira offline.
  *
- * Pin: l'install crea la riga ACTIVE con config_json corretto (connection +
- * project_key + folders.include=[<label>] + date_window_days) e vaulta la password
- * (mai in config_json); --sync accoda un ConnectorSyncJob; actor inesistente
- * fallisce (R14).
+ * Pin: ogni casella → UNA installazione (label = mailbox_key, project_key =
+ * azienda come COLONNE); config_json porta connection + folders.include=[label] +
+ * date_window_days (NON project_key); la password è nel vault; --sync accoda un
+ * ConnectorSyncJob; --all crea un'installazione per casella; actor inesistente o
+ * credenziali errate falliscono (R14).
  */
 final class ConnectorImapInstallCommandTest extends TestCase
 {
@@ -55,7 +56,7 @@ final class ConnectorImapInstallCommandTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_installs_activates_vaults_password_and_merges_extra_config(): void
+    public function test_installs_one_account_with_columns_and_vaulted_password(): void
     {
         $this->setPassword('CONNECTOR_TEST_GMAIL_PASSWORD', 's3cr3t-app-pw');
         $this->makeUser();
@@ -67,19 +68,22 @@ final class ConnectorImapInstallCommandTest extends TestCase
         $installation = ConnectorInstallation::query()
             ->where('tenant_id', 'default')
             ->where('connector_name', 'imap')
+            ->where('label', 'rotta-logistics-1')
             ->firstOrFail();
 
         $this->assertSame(ConnectorInstallation::STATUS_ACTIVE, $installation->status);
+        // v8.20: project_key + label sono COLONNE.
+        $this->assertSame('rotta-logistics', $installation->project_key);
+        $this->assertSame('rotta-logistics-1', $installation->label);
 
         $config = (array) $installation->config_json;
         $this->assertSame('basic', $config['auth_mode']);
         $this->assertSame('rotta.test1.askmydocs@gmail.com', $config['connection']['username']);
-        $this->assertSame('rotta-logistics', $config['project_key']);
-        // Le chiavi extra che configure() non persiste sono ri-aggiunte; la
-        // include è la LABEL della casella (account unico, separazione per label).
+        // folders.include = la LABEL della casella; date_window_days presente.
         $this->assertSame(['rotta-logistics-1'], $config['folders']['include']);
         $this->assertIsInt($config['date_window_days']);
-        // La password non finisce mai in config_json.
+        // project_key e password NON stanno in config_json.
+        $this->assertArrayNotHasKey('project_key', $config);
         $this->assertArrayNotHasKey('password', $config);
         $this->assertStringNotContainsString('s3cr3t-app-pw', json_encode($config));
 
@@ -87,6 +91,47 @@ final class ConnectorImapInstallCommandTest extends TestCase
         $this->assertSame(
             's3cr3t-app-pw',
             app(OAuthCredentialVault::class)->getAccessToken($installation->id),
+        );
+    }
+
+    public function test_all_creates_one_installation_per_mailbox(): void
+    {
+        $this->setPassword('CONNECTOR_TEST_GMAIL_PASSWORD', 'pw');
+        $this->makeUser();
+        $this->bindImapFactory(pingSucceeds: true);
+
+        $this->artisan('connector:imap:install', ['--all' => true])->assertExitCode(0);
+
+        $rows = ConnectorInstallation::query()
+            ->where('connector_name', 'imap')
+            ->get(['label', 'project_key'])
+            ->mapWithKeys(fn ($r) => [$r->label => $r->project_key])
+            ->all();
+
+        // Una installazione per casella, project_key (colonna) corretto.
+        $this->assertSame([
+            'rotta-logistics-1' => 'rotta-logistics',
+            'rotta-logistics-2' => 'rotta-logistics',
+            'prometeo-antincendio-1' => 'prometeo-antincendio',
+            'prometeo-antincendio-2' => 'prometeo-antincendio',
+            'passolibero-calzature-1' => 'passolibero-calzature',
+            'passolibero-calzature-2' => 'passolibero-calzature',
+        ], $rows);
+    }
+
+    public function test_reinstall_same_label_is_idempotent(): void
+    {
+        $this->setPassword('CONNECTOR_TEST_GMAIL_PASSWORD', 'pw');
+        $this->makeUser();
+        $this->bindImapFactory(pingSucceeds: true);
+
+        $this->artisan('connector:imap:install', ['--mailbox' => ['rotta-logistics-1']])->assertExitCode(0);
+        $this->artisan('connector:imap:install', ['--mailbox' => ['rotta-logistics-1']])->assertExitCode(0);
+
+        // Nessun duplicato: la label viene rimossa e ricreata.
+        $this->assertSame(
+            1,
+            ConnectorInstallation::query()->where('connector_name', 'imap')->where('label', 'rotta-logistics-1')->count(),
         );
     }
 
@@ -103,58 +148,6 @@ final class ConnectorImapInstallCommandTest extends TestCase
         ])->assertExitCode(0);
 
         Queue::assertPushed(ConnectorSyncJob::class);
-    }
-
-    public function test_multi_mailbox_without_sync_is_rejected(): void
-    {
-        // Vincolo single-installation per tenant: senza --sync fallisce loud
-        // invece di installare solo l'ultima casella (Finding #1 / R14).
-        $this->setAllPasswords();
-        $this->makeUser();
-        $this->bindImapFactory(pingSucceeds: true);
-
-        $this->artisan('connector:imap:install', ['--all' => true])
-            ->assertExitCode(1);
-
-        $this->assertSame(0, ConnectorInstallation::query()->count());
-    }
-
-    public function test_all_with_sync_configures_each_mailbox_serially(): void
-    {
-        // La riga (tenant,imap) è unica: il sync DEVE girare con la config di
-        // ogni casella PRIMA che la successiva la sovrascriva. Il recorder cattura
-        // il project_key SOLO al momento del sync (in listMailboxes(), che il path
-        // di configure/ping NON chiama): se la serializzazione è corretta vede i
-        // project_key delle 6 caselle nell'ordine. Una regressione che
-        // CONFIGURASSE tutte le caselle e POI sincronizzasse (clobber) vedrebbe
-        // sei volte l'ULTIMA azienda → questo test fallirebbe (R16, provato per
-        // mutazione). NB: non distingue dispatchSync da dispatch (in test la coda
-        // è 'sync', gira inline comunque); garantisce l'invariante di clobber.
-        $this->setAllPasswords();
-        $this->makeUser();
-
-        $recorder = new class
-        {
-            /** @var list<string> */
-            public array $projectKeys = [];
-        };
-        $this->bindRecordingImapFactory($recorder);
-
-        $this->artisan('connector:imap:install', ['--all' => true, '--sync' => true])
-            ->assertExitCode(0);
-
-        // Ordine serializzato: 2 caselle per azienda, project_key ripetuto.
-        $this->assertSame(
-            [
-                'rotta-logistics', 'rotta-logistics',
-                'prometeo-antincendio', 'prometeo-antincendio',
-                'passolibero-calzature', 'passolibero-calzature',
-            ],
-            $recorder->projectKeys,
-        );
-
-        // Resta una sola riga (documenta il vincolo single-installation).
-        $this->assertSame(1, ConnectorInstallation::query()->where('connector_name', 'imap')->count());
     }
 
     public function test_unknown_actor_fails(): void
@@ -196,13 +189,6 @@ final class ConnectorImapInstallCommandTest extends TestCase
         $this->touchedEnv[] = $envKey;
     }
 
-    private function setAllPasswords(): void
-    {
-        foreach (\Database\Seeders\TestEmailFixtures::MAILBOXES as $mailbox) {
-            $this->setPassword((string) $mailbox['password_env'], 'pw-'.$mailbox['mailbox_key']);
-        }
-    }
-
     private function makeUser(): User
     {
         return User::create([
@@ -227,17 +213,17 @@ final class ConnectorImapInstallCommandTest extends TestCase
 
             public function listMailboxes(): array
             {
-                throw new \LogicException('not used in configure');
+                return [];
             }
 
             public function selectMailbox(string $name): MailboxState
             {
-                throw new \LogicException('not used in configure');
+                return new MailboxState(uidValidity: 1, lastUid: 0);
             }
 
             public function searchUids(string $mailbox, ?Carbon $since, ?int $sinceUid): array
             {
-                throw new \LogicException('not used in configure');
+                return [];
             }
 
             public function fetchMessage(string $mailbox, int $uid): ImapMessage
@@ -259,67 +245,6 @@ final class ConnectorImapInstallCommandTest extends TestCase
         $this->app->instance(ImapClientFactoryInterface::class, $factory);
         // Il registry costruisce ogni connettore nel costruttore: scarta il
         // singleton così viene ricreato con la factory fake.
-        $this->app->forgetInstance(ConnectorRegistry::class);
-    }
-
-    /**
-     * Factory il cui client registra, in `listMailboxes()` (chiamato SOLO durante
-     * il sync, mai durante configure/ping), il project_key correntemente salvato
-     * sulla riga unica (tenant,imap). Mailbox vuota → il sync è un no-op clean.
-     * `$recorder->projectKeys` raccoglie così l'azienda attiva ad ogni sync.
-     */
-    private function bindRecordingImapFactory(object $recorder): void
-    {
-        $client = new class($recorder) implements ImapClientInterface
-        {
-            public function __construct(private readonly object $recorder) {}
-
-            public function ping(): bool
-            {
-                return true;
-            }
-
-            public function close(): void {}
-
-            public function listMailboxes(): array
-            {
-                $installation = ConnectorInstallation::query()
-                    ->where('tenant_id', 'default')
-                    ->where('connector_name', 'imap')
-                    ->first();
-
-                $this->recorder->projectKeys[] = (string) (((array) $installation?->config_json)['project_key'] ?? '');
-
-                return []; // nessuna cartella → sync no-op (niente fetch reale)
-            }
-
-            public function selectMailbox(string $name): MailboxState
-            {
-                throw new \LogicException('not reached (no mailboxes)');
-            }
-
-            public function searchUids(string $mailbox, ?Carbon $since, ?int $sinceUid): array
-            {
-                throw new \LogicException('not reached (no mailboxes)');
-            }
-
-            public function fetchMessage(string $mailbox, int $uid): ImapMessage
-            {
-                throw new \LogicException('not reached (no mailboxes)');
-            }
-        };
-
-        $factory = new class($client) implements ImapClientFactoryInterface
-        {
-            public function __construct(private readonly ImapClientInterface $client) {}
-
-            public function make(array $connection, string $secret, string $authMode): ImapClientInterface
-            {
-                return $this->client;
-            }
-        };
-
-        $this->app->instance(ImapClientFactoryInterface::class, $factory);
         $this->app->forgetInstance(ConnectorRegistry::class);
     }
 }

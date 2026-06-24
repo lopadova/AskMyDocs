@@ -10,34 +10,23 @@ use App\Services\Demo\MailboxSelection;
 use App\Support\TenantContext;
 use Database\Seeders\TestEmailFixtures;
 use Illuminate\Console\Command;
-use Padosoft\AskMyDocsConnectorBase\Auth\OAuthCredentialVault;
 use Padosoft\AskMyDocsConnectorBase\ConnectorSyncJob;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
 use Throwable;
 
 /**
- * Installa (o riconfigura) il connettore IMAP per le caselle di test da CLI,
+ * Installa (o re-installa) il connettore IMAP per le caselle di test da CLI,
  * riusando ConfigureConnectorService — così l'intero flusso e-mail→ingest è
- * scriptabile senza passare dalla admin UI. Vedi docs/testing/email-ingest-e2e.md.
+ * scriptabile senza la admin UI. Vedi docs/testing/email-ingest-e2e.md.
  *
- * Ogni azienda ha 2 caselle (mailbox_key), entrambe mappate sul project_key
- * dell'azienda: installarle entrambe fa confluire le e-mail di tutte e due le
- * inbox nello stesso progetto KB.
- *
- * VINCOLO ARCHITETTURALE — un SOLO connettore IMAP per tenant:
- * `connector_installations` ha UNIQUE (tenant_id, connector_name), quindi nel
- * tenant 'default' esiste una sola riga `imap`. Per ingerire più caselle nello
- * stesso tenant si riusa quella riga UNA casella alla volta:
- *   - ad ogni (ri)configurazione il cursore di sync viene AZZERATO
- *     (last_sync_at=null + mailboxes_state svuotato) così il sync successivo è un
- *     FULL clean della casella corrente (le e-mail, datate nel passato, non
- *     verrebbero altrimenti riprese da un sync incrementale);
- *   - i documenti già ingeriti dalle caselle precedenti restano (l'ingest è
- *     additivo per project_key); reconcile_deletions è OFF di default, quindi
- *     riconfigurare non cancella nulla.
- * Con più caselle il sync DEVE essere sincrono e serializzato (configura A →
- * sync A → configura B → ...), altrimenti job in coda leggerebbero tutti
- * l'ultima configurazione: per questo `--all`/multi richiede `--sync`.
+ * Modello v8.20 MULTI-ACCOUNT: `connector_installations` è unico su
+ * (tenant_id, connector_name, **label**), e `label` + `project_key` sono COLONNE
+ * (non più config_json). Quindi ogni casella diventa una **installazione a sé**,
+ * con `label` = mailbox_key e `project_key` = azienda. Niente più "una sola
+ * installazione per tenant": le 6 caselle coesistono, ognuna sincronizza solo la
+ * propria label e ingerisce nel proprio project_key. Re-eseguire è idempotente —
+ * la riga con quella label viene rimossa e ricreata (le credenziali nel vault
+ * cascadano via FK).
  *
  * ConfigureConnectorService verifica DAVVERO le credenziali (ping IMAP) prima di
  * portare l'installazione ad ACTIVE; per i test offline usare
@@ -54,17 +43,14 @@ class ConnectorImapInstallCommand extends Command
     protected $signature = 'connector:imap:install
         {--mailbox=* : mailbox_key da installare (ripetibile), es. rotta-logistics-1}
         {--project=* : project_key: espande a TUTTE le caselle dell\'azienda (ripetibile)}
-        {--all : Installa per tutte le caselle di test (richiede --sync)}
-        {--actor= : Email dell\'utente registrato come created_by alla PRIMA creazione della riga (default: primo utente)}
-        {--sync : Sincronizza dopo l\'install (sincrono+serializzato se più caselle)}';
+        {--all : Installa per tutte le caselle di test}
+        {--actor= : Email dell\'utente registrato come created_by (default: primo utente)}
+        {--sync : Dispatcha un ConnectorSyncJob dopo ogni install}';
 
-    protected $description = 'Installa il connettore IMAP per le caselle di test (riusa ConfigureConnectorService).';
+    protected $description = 'Installa il connettore IMAP (multi-account) per le caselle di test (riusa ConfigureConnectorService).';
 
-    public function handle(
-        ConfigureConnectorService $configurator,
-        OAuthCredentialVault $vault,
-        TenantContext $tenant,
-    ): int {
+    public function handle(ConfigureConnectorService $configurator, TenantContext $tenant): int
+    {
         // Le installazioni connettore sono tenant-aware (R30/R31): le aziende di
         // test vivono nel tenant 'default'.
         $tenant->set('default');
@@ -77,32 +63,17 @@ class ConnectorImapInstallCommand extends Command
             return self::FAILURE;
         }
 
-        $sync = (bool) $this->option('sync');
-        $multi = count($mailboxKeys) > 1;
-
-        if ($multi && ! $sync) {
-            // Vincolo single-installation: senza sync serializzato sopravviverebbe
-            // solo l'ultima configurazione (R14 — fallisci, non fingere successo).
-            $this->error(
-                'Più caselle selezionate ma il connettore IMAP ammette UNA sola installazione per tenant '
-                .'(UNIQUE tenant_id+connector_name). Usa --sync: ogni casella viene configurata e '
-                .'sincronizzata (sincrono, serializzato) prima della successiva. In alternativa installa '
-                .'una casella alla volta.',
-            );
-
-            return self::FAILURE;
-        }
-
         $actor = $this->resolveActor();
         if ($actor === null) {
             return self::FAILURE;
         }
 
+        $sync = (bool) $this->option('sync');
         $failed = false;
 
         foreach ($mailboxKeys as $mailboxKey) {
             try {
-                $installation = $this->installOne($configurator, $vault, $mailboxKey, $actor->id);
+                $installation = $this->installOne($configurator, $mailboxKey, $actor->id);
             } catch (Throwable $e) {
                 // R14 — credenziali errate / ping IMAP fallito / mailbox ignota.
                 $this->error(sprintf('[%s] install fallita: %s', $mailboxKey, $e->getMessage()));
@@ -111,17 +82,9 @@ class ConnectorImapInstallCommand extends Command
                 continue;
             }
 
-            if (! $sync) {
-                continue;
-            }
-
-            // Multi → sincrono+serializzato: il sync deve leggere la config di
-            // QUESTA casella prima che la prossima riconfiguri la riga unica.
-            // Singola casella → coda (parità con l'admin "sync now").
-            if ($multi) {
-                ConnectorSyncJob::dispatchSync($installation->id, 'default');
-                $this->line(sprintf('  → sync (sincrono) eseguito per %s', $mailboxKey));
-            } else {
+            if ($sync) {
+                // Multi-account: ogni installazione è indipendente → niente
+                // serializzazione, basta accodare il job per ciascuna.
                 ConnectorSyncJob::dispatch($installation->id, 'default');
                 $this->line(sprintf('  → ConnectorSyncJob accodato (installation #%d)', $installation->id));
             }
@@ -132,7 +95,6 @@ class ConnectorImapInstallCommand extends Command
 
     private function installOne(
         ConfigureConnectorService $configurator,
-        OAuthCredentialVault $vault,
         string $mailboxKey,
         int $actorId,
     ): ConnectorInstallation {
@@ -141,8 +103,17 @@ class ConnectorImapInstallCommand extends Command
         $connection = (array) ($config['connection'] ?? []);
         $projectKey = (string) $mailbox['project_key'];
 
-        // Payload keyed by SCHEMA field name (ConfigureConnectorService::splitPayload
-        // li smista per target: connection.* / secret / auth_mode / project_key).
+        // Idempotenza re-run: rimuovi l'eventuale installazione con questa label
+        // (configure() è additivo e la unique (tenant,connector,label) rifiuterebbe
+        // il duplicato). La FK su connector_credentials cascada il segreto.
+        ConnectorInstallation::query()
+            ->where('tenant_id', 'default')
+            ->where('connector_name', self::CONNECTOR)
+            ->where('label', $mailboxKey)
+            ->delete();
+
+        // Payload: campi del form (connection.* / password→secret / auth_mode) +
+        // le COLONNE v8.20 label/project_key.
         $validated = [
             'auth_mode' => 'basic',
             'host' => (string) ($connection['host'] ?? 'imap.gmail.com'),
@@ -151,31 +122,28 @@ class ConnectorImapInstallCommand extends Command
             'validate_cert' => (bool) ($connection['validate_cert'] ?? true),
             'username' => (string) $mailbox['email'],
             'password' => TestEmailFixtures::passwordFor($mailboxKey),
+            'label' => $mailboxKey,
             'project_key' => $projectKey,
         ];
 
         $result = $configurator->configure(self::CONNECTOR, $validated, $actorId);
         $installation = $result->installation;
 
-        // configure() persiste solo i campi del form + project_key: rimettiamo le
-        // chiavi extra (folders/date_window_days) che il connettore legge in sync.
+        // configure() persiste i campi del form + le colonne label/project_key.
+        // Rimettiamo le chiavi config_json extra che il connettore legge in sync
+        // (la label scoping + la finestra temporale).
         $stored = (array) $installation->config_json;
         $stored['folders'] = $config['folders'];
         $stored['date_window_days'] = $config['date_window_days'];
         $installation->config_json = $stored;
-
-        // Azzera il cursore: la riga unica viene riusata tra caselle diverse, e un
-        // sync incrementale (since=last_sync_at) salterebbe le e-mail datate nel
-        // passato. Con last_sync_at=null il prossimo sync è FULL clean.
-        $installation->last_sync_at = null;
         $installation->save();
-        $vault->setExtraKey($installation->id, 'mailboxes_state', []);
 
         $this->info(sprintf(
-            '[%s] connettore IMAP configurato su %s → project %s (installation #%d, status=%s)',
+            '[%s] connettore IMAP su %s → project %s, label %s (installation #%d, status=%s)',
             $mailboxKey,
             $mailbox['email'],
             $projectKey,
+            $installation->label,
             $installation->id,
             $installation->status,
         ));
@@ -210,7 +178,7 @@ class ConnectorImapInstallCommand extends Command
 
         $actor = User::query()->orderBy('id')->first();
         if ($actor === null) {
-            $this->error('Nessun utente nel DB: esegui prima `php artisan db:seed` (RbacSeeder + DemoSeeder/CaseStudyUsersSeeder).');
+            $this->error('Nessun utente nel DB: esegui prima `php artisan db:seed` (RbacSeeder + CaseStudyUsersSeeder).');
         }
 
         return $actor;
