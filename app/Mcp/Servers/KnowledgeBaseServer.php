@@ -8,6 +8,7 @@ use App\Mcp\Tools\FinOpsBudgetStatusTool;
 use App\Mcp\Tools\ConnectorInstallationsTool;
 use App\Mcp\Tools\AppSettingsTool;
 use App\Mcp\Tools\KbDetokenizeTool;
+use App\Mcp\Tools\KbEraseSubjectTool;
 use App\Mcp\Tools\KbPiiPolicyTool;
 use App\Mcp\Tools\KbIngestionStatusTool;
 use App\Mcp\Tools\FinOpsSpendSummaryTool;
@@ -145,6 +146,12 @@ class KnowledgeBaseServer extends Server
         // only). Tenant-scoped (R30); successful unmasks + permission-denied
         // attempts are audited.
         KbDetokenizeTool::class,
+
+        // v8.23 (Ciclo 4) — GDPR Art.17 right-to-erasure (R44). Destructive write
+        // (no IsReadOnly → MCP authorizer requires super-admin) + the pii.erase
+        // permission. Tenant-scoped (R30); crypto-shreds the subject's vault
+        // entries; every attempt audited.
+        KbEraseSubjectTool::class,
 
         // v8.x — padosoft/laravel-invitations tri-surface (R44 third surface).
         // The invite engine's MCP tools over the SAME services the HTTP + PHP

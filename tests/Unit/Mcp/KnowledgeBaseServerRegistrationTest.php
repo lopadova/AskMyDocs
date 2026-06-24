@@ -29,11 +29,11 @@ class KnowledgeBaseServerRegistrationTest extends TestCase
         return $property->getDefaultValue();
     }
 
-    public function test_server_registers_exactly_forty_two_tools(): void
+    public function test_server_registers_exactly_forty_three_tools(): void
     {
         // 36 (v8.21) + 3 invitations tools (v8.x) + 1 AppSettingsTool (v8.22)
-        // + 1 KbPiiPolicyTool + 1 KbDetokenizeTool (v8.23/Ciclo 4).
-        $this->assertCount(42, $this->registeredTools());
+        // + 1 KbPiiPolicyTool + 1 KbDetokenizeTool + 1 KbEraseSubjectTool (v8.23/Ciclo 4).
+        $this->assertCount(43, $this->registeredTools());
     }
 
     public function test_server_registers_the_invitations_tools(): void
@@ -68,6 +68,12 @@ class KnowledgeBaseServerRegistrationTest extends TestCase
     {
         // v8.23/Ciclo 4 — the KB-document re-identification MCP surface (R44).
         $this->assertContains(\App\Mcp\Tools\KbDetokenizeTool::class, $this->registeredTools());
+    }
+
+    public function test_server_registers_the_kb_erase_subject_tool(): void
+    {
+        // v8.23/Ciclo 4 — the GDPR Art.17 right-to-erasure MCP surface (R44).
+        $this->assertContains(\App\Mcp\Tools\KbEraseSubjectTool::class, $this->registeredTools());
     }
 
     public function test_server_registers_the_run_report_tool(): void

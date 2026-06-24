@@ -1019,6 +1019,19 @@ return [
         'detokenize_permission' => (string) env('KB_PII_DETOKENIZE_PERMISSION', 'pii.detokenize'),
 
         /*
+        | v8.23 (Ciclo 4) — Erasure permission — Spatie permission name required
+        | for the GDPR Art.17 right-to-erasure surfaces (`kb:erase-subject` CLI,
+        | `POST /api/admin/pii/erase-subject`, the `KbEraseSubjectTool` MCP tool)
+        | that crypto-shred a subject's reversible token-vault entries. More
+        | destructive than detokenise, so held by dpo + super-admin only.
+        | Without it the HTTP/MCP surfaces return 403; every completed erasure
+        | and every 403 rejection writes an `admin_command_audit` row tagged
+        | `command = 'pii.erase'`. (The DSAR Art.17 flow records its own
+        | `dsar_requests` row instead.)
+        */
+        'erase_permission' => (string) env('KB_PII_ERASE_PERMISSION', 'pii.erase'),
+
+        /*
         | v4.3/W1 sub-PR 4.5 — comprehensive boundary coverage knobs.
         | Each one is INDEPENDENTLY default-off and gated by the master
         | `enabled` flag above. See `App\Providers\PiiBoundaryCoverageServiceProvider`

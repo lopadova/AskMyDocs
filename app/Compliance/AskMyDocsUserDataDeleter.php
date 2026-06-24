@@ -5,6 +5,7 @@ namespace App\Compliance;
 use App\Models\Conversation;
 use App\Models\ChatLog;
 use App\Models\McpToolCallAudit;
+use App\Services\Kb\Pii\SubjectErasureService;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
@@ -20,6 +21,9 @@ class AskMyDocsUserDataDeleter
         // tenant set the resolver returns — not the active tenant
         // specifically.
         private readonly UserTenantResolver $tenantResolver,
+        // v8.23 (Ciclo 4) — DSAR Art.17 also crypto-shreds the reversible
+        // token vault so the subject's PII can no longer be re-identified.
+        private readonly SubjectErasureService $eraser,
     ) {}
 
     public function delete(object $user): void
@@ -44,9 +48,9 @@ class AskMyDocsUserDataDeleter
         // wipes.
         $tenantIds = $this->tenantResolver->tenantsForUser($userId, $userEmail);
 
-        DB::transaction(function () use ($tenantIds, $userId, $mcpActors): void {
+        DB::transaction(function () use ($tenantIds, $userId, $userEmail, $mcpActors): void {
             foreach ($tenantIds as $tenantId) {
-                $this->deleteForTenant($tenantId, $userId, $mcpActors);
+                $this->deleteForTenant($tenantId, $userId, $userEmail, $mcpActors);
             }
         });
     }
@@ -54,8 +58,15 @@ class AskMyDocsUserDataDeleter
     /**
      * @param  list<string>  $mcpActors
      */
-    private function deleteForTenant(string $tenantId, int $userId, array $mcpActors): void
+    private function deleteForTenant(string $tenantId, int $userId, ?string $userEmail, array $mcpActors): void
     {
+        // v8.23 (Ciclo 4) — crypto-shred the subject's reversible token-vault
+        // entries in THIS tenant (Art.17). The user's email is the linkable PII
+        // value; deleting the vault mapping makes any surviving `[tok:...]`
+        // surrogate permanently unresolvable. Tenant-scoped (R30). A null email
+        // (no linkable value) shreds nothing — eraseValues guards the empty set.
+        $this->eraser->eraseValues($tenantId, $userEmail !== null ? [$userEmail] : []);
+
         // v7.0/W6.3 — the package writes audit rows with
         // `user_id=null` and an opaque `actor` string (e.g.
         // `"user:42"` or the user's email). DSAR delete MUST cover

@@ -16,6 +16,7 @@ use App\Http\Controllers\Api\Admin\KbTreeController;
 use App\Http\Controllers\Api\Admin\LogViewerController;
 use App\Http\Controllers\Api\Admin\MaintenanceCommandController;
 use App\Http\Controllers\Api\Admin\PermissionController;
+use App\Http\Controllers\Api\Admin\PiiEraseSubjectController;
 use App\Http\Controllers\Api\Admin\PiiStrategyController;
 use App\Http\Controllers\Api\Admin\ProjectMembershipController;
 use App\Http\Controllers\Api\Admin\McpServersAdminController;
@@ -778,6 +779,14 @@ Route::middleware([
         Route::post('/documents/{id}/detokenize', [KbDocumentDetokenizeController::class, 'detokenize'])
             ->whereNumber('id')
             ->name('api.admin.pii.documents.detokenize');
+
+        // v8.23 (Ciclo 4) — GDPR Art.17 right-to-erasure: crypto-shred a
+        // subject's reversible token-vault entries in the active tenant. Rides
+        // the group's `viewPiiRedactorAdmin` gate; the controller additionally
+        // enforces the `pii.erase` permission (dpo / super-admin) — else 403.
+        // Audited (command='pii.erase').
+        Route::post('/erase-subject', [PiiEraseSubjectController::class, 'erase'])
+            ->name('api.admin.pii.erase-subject');
     });
 
 /*

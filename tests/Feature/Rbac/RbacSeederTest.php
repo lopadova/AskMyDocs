@@ -47,6 +47,8 @@ class RbacSeederTest extends TestCase
             // backing the `detokenisePiiRedactor` Gate (super-admin +
             // dpo). Granted to dpo + super-admin in RbacSeeder.
             'pii.detokenize',
+            // v8.23 (Ciclo 4) — GDPR Art.17 erasure capability (dpo + super-admin).
+            'pii.erase',
             'roles.manage',
             // v8.0.3 security hotfix (C1) — cross-tenant override capability
             // for the AuthorizeTenantHeader middleware. super-admin only.
@@ -70,6 +72,8 @@ class RbacSeederTest extends TestCase
         // v4.2/W4 sub-PR 5 — DPO sanity: gets pii.detokenize, NOT kb.edit.any.
         $dpo = Role::findByName('dpo', 'web');
         $this->assertTrue($dpo->hasPermissionTo('pii.detokenize'));
+        // v8.23 (Ciclo 4) — DPO also gets the Art.17 erasure permission.
+        $this->assertTrue($dpo->hasPermissionTo('pii.erase'));
         $this->assertTrue($dpo->hasPermissionTo('admin.access'));
         $this->assertFalse($dpo->hasPermissionTo('kb.edit.any'));
         $this->assertFalse($dpo->hasPermissionTo('commands.destructive'));
@@ -84,8 +88,8 @@ class RbacSeederTest extends TestCase
         $this->assertSame(5, Role::count());
         // 11 pre-H2 + `commands.destructive` (H2) + `pii.detokenize` (W4)
         // + `tenant.cross-access` (v8.0.3 C1) + `kb.read.all_projects`
-        // (per-project isolation) = 15.
-        $this->assertSame(15, Permission::count());
+        // (per-project isolation) + `pii.erase` (v8.23 Ciclo 4) = 16.
+        $this->assertSame(16, Permission::count());
     }
 
     public function test_seeder_backfills_existing_users_with_viewer_role_and_project_membership(): void

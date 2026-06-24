@@ -1958,6 +1958,16 @@ privileged compliance op while keeping the tenant + permission gates, and audits
 each completed unmask + permission-denied attempt (`admin_command_audit`,
 `command='pii.detokenize'`; the strategy preflight + not-found are not audited —
 no unmask is attempted).
+*PR4:* **right-to-erasure (GDPR Art.17) via crypto-shred** — destroying a
+subject's `pii_token_maps` entries makes every surviving `[tok:...]` surrogate
+permanently unresolvable, no downstream rewrite needed. Tri-surface (R44) over
+one `SubjectErasureService`: **HTTP** `POST /api/admin/pii/erase-subject`
+(`pii.erase` — dpo / super-admin; new permission), **CLI** `kb:erase-subject`,
+**MCP** `KbEraseSubjectTool` (write → super-admin only; roster **42 → 43**).
+Tenant-scoped (R30), audited (`command='pii.erase'`, count-only — no raw PII in
+the trail). Wired into the `laravel-ai-act-compliance` **DSAR** flow: Art.17
+delete crypto-shreds the subject's vault (by email) in every tenant; Art.15
+export adds a `pii_vault` snapshot.
 
 **v8.22.0 — Runtime configuration governance (GA, shipped 2026-06-23).**
 Ciclo 3 of the connectors / observability / config / PII roadmap. A curated set
