@@ -77,14 +77,16 @@ final class DetokenizeService
         $unresolved = [];
         $chunks = [];
 
-        // Only the columns the response needs — never hydrate the large
-        // `embedding` vector for a text re-identification (Copilot review).
+        // Scope by the document's OWN tenant_id (not the ambient TenantContext)
+        // and stream via cursor() (R3 — same pattern DocumentDeleter uses for
+        // chunk_text), selecting only the columns the response needs so the large
+        // `embedding` vector is never hydrated even for a huge document.
         $chunkQuery = $document->chunks()
-            ->forTenant(app(TenantContext::class)->current())
+            ->where('tenant_id', $document->tenant_id)
             ->orderBy('chunk_order')
             ->select(['chunk_order', 'heading_path', 'chunk_text']);
 
-        foreach ($chunkQuery->get() as $chunk) {
+        foreach ($chunkQuery->cursor() as $chunk) {
             $original = (string) $chunk->chunk_text;
 
             // Mirror the chat-log precedent (LogViewerController::safeDetokenise):
