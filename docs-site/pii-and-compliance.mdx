@@ -208,6 +208,42 @@ The **chat-log** sibling (`POST /api/admin/logs/chat/{id}/detokenize`) and the
 PII Redactor Admin SPA cross-mounted at `/app/admin/pii-redactor` provide the
 same capability for conversation rows (both RBAC-gated and audited).
 
+## Right-to-erasure (GDPR Art.17) — crypto-shred (v8.23/PR4)
+
+Because tokenisation is **pseudonymisation** (GDPR Art.4(5)), the indexed
+surrogates remain personal data — but the per-tenant vault makes **erasure**
+cheap and total: destroying the `pii_token_maps` row(s) for a subject's value(s)
+**crypto-shreds** the only link between a `[tok:...]` surrogate and the real
+person. Every surrogate left in the KB / chat / embeddings becomes permanently
+unresolvable (detokenise returns it unresolved), so the data is no longer
+personal data linkable to the subject — **without rewriting every downstream
+row**. This is the canonical vault-erasure pattern (Skyflow / DLP).
+
+It is delivered tri-surface (R44) over one `App\Services\Kb\Pii\SubjectErasureService`:
+
+| Surface | Entry | Authorization |
+|---|---|---|
+| HTTP | `POST /api/admin/pii/erase-subject` `{values:[…]}` | `viewPiiRedactorAdmin` group + the `pii.erase` permission (dpo / super-admin) |
+| CLI | `kb:erase-subject <value…> --tenant=` | operator (shell access) |
+| MCP | `KbEraseSubjectTool` | write tool → MCP authorizer super-admin **+** `pii.erase` → super-admin only |
+
+Erasure is **tenant-scoped** (R30 — a value is shredded ONLY in the caller's
+tenant; two tenants holding the same value are independent) and **audited**
+(`admin_command_audit`, `command='pii.erase'` — the audit records only the value
+*count*, never the raw PII, so the trail itself is not a PII sink).
+
+### DSAR (Art.15 access + Art.17 erasure)
+
+The same core is wired into the `padosoft/laravel-ai-act-compliance` **DSAR**
+flow via the host's `UserDataExporter` / `UserDataDeleter` implementations:
+
+- an Art.17 **delete** request crypto-shreds the subject's vault entries (keyed
+  by their email) in every tenant they have data in, inside the same atomic
+  transaction that wipes their conversations / chat-logs / audit rows;
+- an Art.15 **export** request surfaces a `pii_vault` snapshot — the vault
+  entries the system can still re-identify to the subject's PII — so the access
+  response is complete.
+
 <CardGroup cols={2}>
   <Card title="Multi-tenant isolation" icon="building-shield" href="/multi-tenant-isolation">
     The tenant boundary that complements field-level redaction.

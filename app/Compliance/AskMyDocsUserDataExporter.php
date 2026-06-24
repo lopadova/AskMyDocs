@@ -8,6 +8,7 @@ use App\Models\ChatLog;
 use App\Models\ChatLogProvenance;
 use App\Models\KbCanonicalAudit;
 use App\Models\McpToolCallAudit;
+use App\Services\Kb\Pii\SubjectErasureService;
 use App\Support\TenantContext;
 use InvalidArgumentException;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
@@ -17,6 +18,9 @@ class AskMyDocsUserDataExporter
     public function __construct(
         private readonly TenantContext $tenantContext,
         private readonly UserTenantResolver $tenantResolver,
+        // v8.23 (Ciclo 4) — DSAR Art.15 also surfaces the reversible token-vault
+        // entries the system can still re-identify to the subject's PII.
+        private readonly SubjectErasureService $eraser,
     ) {}
 
     public function export(object $user): array
@@ -45,10 +49,11 @@ class AskMyDocsUserDataExporter
             'kb_canonical_audit' => [],
             'connector_installations' => [],
             'mcp_tool_call_audit' => [],
+            'pii_vault' => [],
         ];
 
         foreach ($tenantIds as $tenantId) {
-            $perTenant = $this->exportForTenant($userId, $tenantId, $auditActors, $mcpActors);
+            $perTenant = $this->exportForTenant($userId, $tenantId, $userEmail, $auditActors, $mcpActors);
             foreach ($perTenant as $category => $rows) {
                 $aggregate[$category] = array_merge($aggregate[$category], $rows);
             }
@@ -71,7 +76,7 @@ class AskMyDocsUserDataExporter
      * @param  list<string>  $mcpActors
      * @return array<string, array<int, mixed>>
      */
-    private function exportForTenant(int $userId, string $tenantId, array $auditActors, array $mcpActors): array
+    private function exportForTenant(int $userId, string $tenantId, ?string $userEmail, array $auditActors, array $mcpActors): array
     {
         $conversationIds = Conversation::query()
             ->forTenant($tenantId)
@@ -127,6 +132,13 @@ class AskMyDocsUserDataExporter
                 })
                 ->get()
                 ->toArray(),
+            // v8.23 (Ciclo 4) — the reversible token-vault entries the system can
+            // still re-identify to the subject's PII (keyed by their email).
+            // Tenant-scoped (R30). Returning the subject their OWN PII is the
+            // point of an Art.15 access request.
+            'pii_vault' => $userEmail !== null
+                ? $this->eraser->snapshotValues($tenantId, [$userEmail])
+                : [],
         ];
     }
 

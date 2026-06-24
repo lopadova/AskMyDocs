@@ -260,6 +260,38 @@ final class AdminAuthorizationMatrixTest extends TestCase
     }
 
     /**
+     * v8.23 (Ciclo 4) — the GDPR Art.17 erasure endpoint rides the
+     * `viewPiiRedactorAdmin` group but the controller requires the `pii.erase`
+     * permission (dpo / super-admin). `admin` passes the group gate yet must be
+     * denied the destructive erase; assert that boundary explicitly.
+     */
+    public function test_pii_erase_subject_requires_the_erase_permission(): void
+    {
+        $writeUri = '/api/admin/pii/erase-subject';
+        $body = ['values' => ['someone@example.com']];
+
+        $adminStatus = $this->actingAs($this->userWithRole('admin'))
+            ->postJson($writeUri, $body)
+            ->getStatusCode();
+        $this->assertSame(
+            403,
+            $adminStatus,
+            "Role [admin] must be DENIED (403) on [{$writeUri}] (pii.erase = dpo/super-admin only) but got {$adminStatus}.",
+        );
+
+        foreach (['dpo', 'super-admin'] as $role) {
+            $status = $this->actingAs($this->userWithRole($role))
+                ->postJson($writeUri, $body)
+                ->getStatusCode();
+            $this->assertNotSame(
+                403,
+                $status,
+                "Role [{$role}] must pass the pii.erase gate on [{$writeUri}] but got 403.",
+            );
+        }
+    }
+
+    /**
      * v8.19 — the AI Guardrails API splits authorization by HTTP method via
      * GuardrailsAuthorize: safe methods → `viewAiGuardrails` (super-admin + admin),
      * mutating methods → `manageAiGuardrails` (super-admin ONLY). The GET-only
