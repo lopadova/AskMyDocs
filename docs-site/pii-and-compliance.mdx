@@ -178,11 +178,32 @@ policy is **tri-surface** (R44) over the one `KbPiiPolicyResolver` core:
 
 Every row is tenant-scoped (R30) with a composite `UNIQUE(tenant_id, project_key)`.
 
-Detokenisation today is exposed for **chat-log** rows via the Log Viewer
-endpoint (`POST /api/admin/logs/chat/{id}/detokenize`) and the PII Redactor
-Admin SPA cross-mounted at `/app/admin/pii-redactor` (both RBAC-gated and fully
-audited). A dedicated **KB-document** detokenise surface — re-identifying an
-ingest-tokenised document on demand — is a follow-up in this cycle.
+## Re-identification (detokenise) — tri-surface, gated, audited (v8.23/PR3)
+
+Re-identification is **JIT and gated**: an authorised operator restores the
+originals for a single request; the redacted form stays the system-of-record
+and the plaintext is never cached. It is delivered tri-surface (R44) over one
+`App\Services\Kb\Pii\DetokenizeService` core:
+
+| Surface | Endpoint / tool | Authorization |
+|---|---|---|
+| HTTP | `POST /api/admin/pii/documents/{id}/detokenize` | `viewPiiRedactorAdmin` group + the `pii.detokenize` permission (dpo / super-admin) |
+| CLI | `kb:detokenize-document {id} --tenant=` | operator (shell access) |
+| MCP | `KbDetokenizeTool` | MCP authorizer (admin/super-admin) **+** `pii.detokenize` → net **super-admin only** |
+
+Every surface enforces the **`tokenise` strategy preflight** (422 / error under
+mask/hash/drop — nothing was minted to reverse), is **tenant-scoped** (R30 — an
+operator cannot re-identify another tenant's document by id), and writes an
+immutable `admin_command_audit` row (`command='pii.detokenize'`,
+`status=completed|rejected`, with the `surface`) for **every** unmask attempt.
+The document lookup deliberately bypasses the per-project `AccessScopeScope` read
+ACL — a DPO servicing a DSAR must reach any document in the tenant — while the
+tenant boundary and the permission gate remain in force. The MCP tool is the
+single tool that can surface raw PII, so it carries the tightest gate.
+
+The **chat-log** sibling (`POST /api/admin/logs/chat/{id}/detokenize`) and the
+PII Redactor Admin SPA cross-mounted at `/app/admin/pii-redactor` provide the
+same capability for conversation rows (both RBAC-gated and audited).
 
 <CardGroup cols={2}>
   <Card title="Multi-tenant isolation" icon="building-shield" href="/multi-tenant-isolation">

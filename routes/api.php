@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\Admin\EvalHarnessUiBootstrapController;
 use App\Http\Controllers\Api\Admin\KbDocumentController;
 use App\Http\Controllers\Api\Admin\KbCollectionController;
 use App\Http\Controllers\Api\Admin\KbHealthController;
+use App\Http\Controllers\Api\Admin\KbDocumentDetokenizeController;
 use App\Http\Controllers\Api\Admin\KbPiiSettingController;
 use App\Http\Controllers\Api\Admin\KbTreeController;
 use App\Http\Controllers\Api\Admin\LogViewerController;
@@ -767,6 +768,16 @@ Route::middleware([
         Route::put('/policy', [KbPiiSettingController::class, 'upsert'])
             ->middleware('can:manageKbPiiPolicy')
             ->name('api.admin.pii.policy.upsert');
+
+        // v8.23 (Ciclo 4) — operator-driven re-identification of a tokenised KB
+        // document (document-level sibling of the chat-log detokenise). Rides
+        // the group's `viewPiiRedactorAdmin` gate; the controller additionally
+        // enforces the `pii.detokenize` permission (dpo / super-admin) — else
+        // 403 — and the `tokenise` strategy preflight (else 422). Every 200/403
+        // writes an `admin_command_audit` row.
+        Route::post('/documents/{id}/detokenize', [KbDocumentDetokenizeController::class, 'detokenize'])
+            ->whereNumber('id')
+            ->name('api.admin.pii.documents.detokenize');
     });
 
 /*
