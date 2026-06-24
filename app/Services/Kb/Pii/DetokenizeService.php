@@ -77,7 +77,14 @@ final class DetokenizeService
         $unresolved = [];
         $chunks = [];
 
-        foreach ($document->chunks()->orderBy('chunk_order')->forTenant(app(TenantContext::class)->current())->get() as $chunk) {
+        // Only the columns the response needs — never hydrate the large
+        // `embedding` vector for a text re-identification (Copilot review).
+        $chunkQuery = $document->chunks()
+            ->forTenant(app(TenantContext::class)->current())
+            ->orderBy('chunk_order')
+            ->select(['chunk_order', 'heading_path', 'chunk_text']);
+
+        foreach ($chunkQuery->get() as $chunk) {
             $original = (string) $chunk->chunk_text;
 
             // Mirror the chat-log precedent (LogViewerController::safeDetokenise):

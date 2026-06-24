@@ -13,6 +13,7 @@ use App\Services\Kb\Pii\DetokenizeService;
 use App\Support\TenantContext;
 use Database\Seeders\RbacSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Laravel\Mcp\Request;
 use Padosoft\PiiRedactor\Facades\Pii;
@@ -37,6 +38,9 @@ final class KbDetokenizeToolTest extends TestCase
         parent::setUp();
         app(TenantContext::class)->reset();
         $this->seed(RbacSeeder::class);
+        // Flush the Spatie permission cache so $user->can() is not order-dependent
+        // across methods under Testbench (RefreshDatabase doesn't clear it).
+        Cache::flush();
         config()->set('pii-redactor.strategy', 'tokenise');
         config()->set('pii-redactor.salt', 'detok-mcp-salt');
     }

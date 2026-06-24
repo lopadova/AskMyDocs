@@ -51,16 +51,9 @@ final class KbDocumentDetokenizeController extends Controller
             'user_agent' => $request->userAgent(),
         ];
 
-        // Lookup runs after the cheap strategy gate. It is before the permission
-        // branch so the cheap 404 short-circuits ahead of any re-identification;
-        // this is not a meaningful existence oracle because every role admitted
-        // by the route group (`viewPiiRedactorAdmin` = admin/dpo/super-admin)
-        // already holds `kb.read.any`, i.e. document existence is not privileged.
-        $document = $this->detokenizer->findDocument($id);
-        if ($document === null) {
-            abort(Response::HTTP_NOT_FOUND);
-        }
-
+        // Enforce the permission BEFORE the lookup so the endpoint is never an
+        // existence oracle (403 precedes 404 uniformly) and is robust to future
+        // role-policy drift — matching the MCP tool's ordering.
         $hasPermission = $user !== null && method_exists($user, 'can') && $user->can($permission);
         if (! $hasPermission) {
             $this->detokenizer->audit(
@@ -74,6 +67,11 @@ final class KbDocumentDetokenizeController extends Controller
             return response()->json([
                 'message' => "Forbidden: missing {$permission} permission.",
             ], Response::HTTP_FORBIDDEN);
+        }
+
+        $document = $this->detokenizer->findDocument($id);
+        if ($document === null) {
+            abort(Response::HTTP_NOT_FOUND);
         }
 
         $result = $this->detokenizer->detokenizeDocument($document);
