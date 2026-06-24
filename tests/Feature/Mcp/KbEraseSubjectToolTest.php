@@ -105,6 +105,15 @@ final class KbEraseSubjectToolTest extends TestCase
         ]);
     }
 
+    public function test_it_rejects_an_oversized_value(): void
+    {
+        $this->actingAs($this->user('super-admin'));
+
+        $response = $this->invoke([str_repeat('a', 256)]);
+
+        $this->assertStringContainsString('255 characters', (string) $response->content());
+    }
+
     public function test_erasure_never_crosses_tenants(): void
     {
         $this->vault('default', self::EMAIL);

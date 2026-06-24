@@ -107,6 +107,16 @@ final class PiiEraseSubjectControllerTest extends TestCase
             ->assertJsonPath('erased', 1);
     }
 
+    public function test_whitespace_only_values_are_rejected_with_422(): void
+    {
+        // A whitespace-only value would normalise to an empty set; reject it as
+        // a validation error rather than answer a misleading no-op success.
+        $this->actingAs($this->user('dpo'))
+            ->postJson('/api/admin/pii/erase-subject', ['values' => ['   ']])
+            ->assertStatus(422)
+            ->assertJsonValidationErrorFor('values.0');
+    }
+
     public function test_missing_values_is_rejected_with_422(): void
     {
         $this->actingAs($this->user('dpo'))

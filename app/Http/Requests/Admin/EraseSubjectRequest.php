@@ -27,7 +27,20 @@ final class EraseSubjectRequest extends FormRequest
     {
         return [
             'values' => ['required', 'array', 'min:1', 'max:100'],
-            'values.*' => ['required', 'string', 'max:255'],
+            // `regex:/\S/` rejects whitespace-only values, which would otherwise
+            // pass validation yet normalise to an empty set — a misleading
+            // no-op "success" instead of an explicit 422.
+            'values.*' => ['required', 'string', 'max:255', 'regex:/\S/'],
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'values.*.regex' => 'Each value must contain a non-whitespace character.',
         ];
     }
 }

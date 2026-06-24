@@ -69,10 +69,15 @@ class KbEraseSubjectTool extends Tool
             return Response::error('Provide at least one PII value to erase.');
         }
 
-        // Match the HTTP surface's cap (FormRequest max:100) so an LLM cannot
-        // submit an unbounded batch.
+        // Match the HTTP surface's caps (FormRequest max:100 + per-value max:255)
+        // so an LLM cannot submit an unbounded batch or oversized values.
         if (count($values) > 100) {
             return Response::error('At most 100 values may be erased per call.');
+        }
+        foreach ($values as $value) {
+            if (mb_strlen($value) > 255) {
+                return Response::error('Each value must be at most 255 characters.');
+            }
         }
 
         $tenantId = $tenants->current();
