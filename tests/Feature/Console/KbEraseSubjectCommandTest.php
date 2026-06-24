@@ -48,6 +48,12 @@ final class KbEraseSubjectCommandTest extends TestCase
         ]);
     }
 
+    public function test_it_fails_on_a_whitespace_only_value_set(): void
+    {
+        $this->artisan('kb:erase-subject', ['values' => ['   '], '--tenant' => 'acme'])
+            ->assertFailed();
+    }
+
     public function test_it_is_tenant_scoped(): void
     {
         $this->vault('acme', 'mario@example.com');

@@ -31,6 +31,10 @@ final class SubjectErasureService
     /** The audit command tag for an erasure attempt. */
     public const AUDIT_COMMAND = 'pii.erase';
 
+    /** Tri-surface input caps (single source of truth for HTTP / CLI / MCP). */
+    public const MAX_VALUES = 100;
+    public const MAX_VALUE_LENGTH = 255;
+
     /**
      * Crypto-shred the vault entries for the given PII value(s) in a tenant.
      * Returns the number of vault rows destroyed. A no-op (returns 0) for an

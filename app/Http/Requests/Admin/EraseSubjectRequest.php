@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\Admin;
 
+use App\Services\Kb\Pii\SubjectErasureService;
 use Illuminate\Foundation\Http\FormRequest;
 
 /**
@@ -26,11 +27,11 @@ final class EraseSubjectRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'values' => ['required', 'array', 'min:1', 'max:100'],
+            'values' => ['required', 'array', 'min:1', 'max:'.SubjectErasureService::MAX_VALUES],
             // `regex:/\S/` rejects whitespace-only values, which would otherwise
             // pass validation yet normalise to an empty set — a misleading
             // no-op "success" instead of an explicit 422.
-            'values.*' => ['required', 'string', 'max:255', 'regex:/\S/'],
+            'values.*' => ['required', 'string', 'max:'.SubjectErasureService::MAX_VALUE_LENGTH, 'regex:/\S/'],
         ];
     }
 
