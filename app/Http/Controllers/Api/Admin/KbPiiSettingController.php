@@ -91,6 +91,11 @@ final class KbPiiSettingController extends Controller
         $tenantId = $this->tenant->current();
         $projectKey = (string) $data['project_key'];
 
+        // Capture the EFFECTIVE policy before the change so we can tell the
+        // caller whether existing chunks/embeddings are now stale (a strategy or
+        // redact-toggle change means a re-embed is recommended).
+        $before = $this->resolver->resolve($tenantId, $projectKey);
+
         // Only touch fields the client actually SENT. An OMITTED field is left
         // unchanged (partial update); an EXPLICIT null clears it to inherit.
         $update = [];
@@ -115,9 +120,16 @@ final class KbPiiSettingController extends Controller
             ? $row
             : KbPiiSetting::query()->forTenant($tenantId)->where('project_key', KbPiiSetting::WILDCARD)->first();
 
+        // A changed effective strategy / redact-toggle leaves prior chunks +
+        // embeddings stale; hint the operator to run a re-embed (POST
+        // /api/admin/pii/reembed) for the affected project. v8.23/PR5.
+        $after = $this->resolver->resolve($tenantId, $projectKey);
+        $reembedRecommended = $before !== $after;
+
         return response()->json([
             'ok' => true,
             'setting' => $this->entry($projectKey, $row, $wildcard),
+            'reembed_recommended' => $reembedRecommended,
         ]);
     }
 

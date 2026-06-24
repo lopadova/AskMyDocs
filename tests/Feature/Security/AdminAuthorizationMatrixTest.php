@@ -299,6 +299,35 @@ final class AdminAuthorizationMatrixTest extends TestCase
     }
 
     /**
+     * v8.23 (Ciclo 4, PR5) — the re-embed endpoint rides the
+     * `viewPiiRedactorAdmin` group but adds `can:manageKbPiiPolicy`
+     * (dpo / super-admin). `admin` passes the group but must be denied the
+     * policy-governance re-embed.
+     */
+    public function test_pii_reembed_requires_the_manage_gate(): void
+    {
+        $writeUri = '/api/admin/pii/reembed';
+        $body = ['project_key' => 'acme'];
+
+        $adminStatus = $this->actingAs($this->userWithRole('admin'))
+            ->postJson($writeUri, $body)
+            ->getStatusCode();
+        $this->assertSame(
+            403,
+            $adminStatus,
+            "Role [admin] must be DENIED (403) on [{$writeUri}] (manageKbPiiPolicy = dpo/super-admin) but got {$adminStatus}.",
+        );
+
+        foreach (['dpo', 'super-admin'] as $role) {
+            $status = $this->actingAs($this->userWithRole($role))
+                ->postJson($writeUri, $body)
+                ->getStatusCode();
+            $this->assertNotSame(403, $status, "Role [{$role}] must pass manageKbPiiPolicy on [{$writeUri}] but got 403.");
+            $this->assertNotSame(404, $status, "Endpoint [{$writeUri}] must be mounted for [{$role}] but got 404.");
+        }
+    }
+
+    /**
      * v8.19 — the AI Guardrails API splits authorization by HTTP method via
      * GuardrailsAuthorize: safe methods → `viewAiGuardrails` (super-admin + admin),
      * mutating methods → `manageAiGuardrails` (super-admin ONLY). The GET-only

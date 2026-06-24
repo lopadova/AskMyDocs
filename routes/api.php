@@ -17,6 +17,7 @@ use App\Http\Controllers\Api\Admin\LogViewerController;
 use App\Http\Controllers\Api\Admin\MaintenanceCommandController;
 use App\Http\Controllers\Api\Admin\PermissionController;
 use App\Http\Controllers\Api\Admin\PiiEraseSubjectController;
+use App\Http\Controllers\Api\Admin\PiiReembedController;
 use App\Http\Controllers\Api\Admin\PiiStrategyController;
 use App\Http\Controllers\Api\Admin\ProjectMembershipController;
 use App\Http\Controllers\Api\Admin\McpServersAdminController;
@@ -787,6 +788,13 @@ Route::middleware([
         // Audited (command='pii.erase').
         Route::post('/erase-subject', [PiiEraseSubjectController::class, 'erase'])
             ->name('api.admin.pii.erase-subject');
+
+        // v8.23 (Ciclo 4, PR5) — re-embed a project under the current PII policy
+        // (after a mask⇄tokenise switch). A policy-governance action, so it adds
+        // `can:manageKbPiiPolicy` (dpo / super-admin) on top of the group gate.
+        Route::post('/reembed', [PiiReembedController::class, 'reembed'])
+            ->middleware('can:manageKbPiiPolicy')
+            ->name('api.admin.pii.reembed');
     });
 
 /*

@@ -1968,6 +1968,18 @@ Tenant-scoped (R30), audited (`command='pii.erase'`, count-only — no raw PII i
 the trail). Wired into the `laravel-ai-act-compliance` **DSAR** flow: Art.17
 delete crypto-shreds the subject's vault (by email) in every tenant; Art.15
 export adds a `pii_vault` snapshot.
+*PR5:* **re-embed on policy change + recall gate + Art.50 disclosure.** Changing
+the policy (mask⇄tokenise) leaves old chunks/embeddings stale; a **forced
+re-embed** (`DocumentIngestor::ingest(forceReembed:true)` — skips the
+version-hash no-op + replaces the chunk set) is exposed tri-surface (R44) over
+one `ReembedProjectService` (one `ReembedDocumentJob` per live doc, R30/R3):
+**HTTP** `POST /api/admin/pii/reembed` (`manageKbPiiPolicy`), **CLI**
+`kb:reembed-project`, **MCP** `KbReembedProjectTool` (write → super-admin; roster
+**43 → 44**). The policy `PUT` now returns `reembed_recommended` when the
+effective policy changed. The existing `rag-regression` CI gate (golden Q&A set
+through the live RAG pipeline) guards tokenisation embedding-drift; the
+`ai.disclosure` middleware already emits the **EU AI Act Art.50(1)**
+`X-AI-Disclosure` header on every chat route (API + SSE).
 
 **v8.22.0 — Runtime configuration governance (GA, shipped 2026-06-23).**
 Ciclo 3 of the connectors / observability / config / PII roadmap. A curated set

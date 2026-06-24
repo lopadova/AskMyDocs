@@ -9,6 +9,7 @@ use App\Mcp\Tools\ConnectorInstallationsTool;
 use App\Mcp\Tools\AppSettingsTool;
 use App\Mcp\Tools\KbDetokenizeTool;
 use App\Mcp\Tools\KbEraseSubjectTool;
+use App\Mcp\Tools\KbReembedProjectTool;
 use App\Mcp\Tools\KbPiiPolicyTool;
 use App\Mcp\Tools\KbIngestionStatusTool;
 use App\Mcp\Tools\FinOpsSpendSummaryTool;
@@ -152,6 +153,11 @@ class KnowledgeBaseServer extends Server
         // permission. Tenant-scoped (R30); crypto-shreds the subject's vault
         // entries; every attempt audited.
         KbEraseSubjectTool::class,
+
+        // v8.23 (Ciclo 4, PR5) — re-embed a project under the current PII policy
+        // (R44). Write (queues vector-store mutations) → authorizer super-admin.
+        // Tenant-scoped (R30).
+        KbReembedProjectTool::class,
 
         // v8.x — padosoft/laravel-invitations tri-surface (R44 third surface).
         // The invite engine's MCP tools over the SAME services the HTTP + PHP
