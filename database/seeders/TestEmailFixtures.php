@@ -15,16 +15,18 @@ namespace Database\Seeders;
  * dopo l'ingest, le email sono isolabili per progetto esattamente
  * come i documenti markdown.
  *
- * CONFIGURARE le credenziali reali nel .env prima di eseguire il seeder:
+ * I PARAMETRI DI CONNESSIONE (host/port/encryption/validate_cert + indirizzo
+ * casella) di ogni azienda stanno QUI nel fixture (`ACCOUNTS`) — "ognuno c'ha la
+ * sua" — così si possono mischiare provider diversi senza toccare le env.
+ * In .env restano SOLO le PASSWORD (segreti, mai committate), una per azienda:
  *
- *   CONNECTOR_TEST_IMAP_HOST=imap.gmail.com
- *   CONNECTOR_TEST_IMAP_PORT=993
- *   CONNECTOR_TEST_IMAP_ENCRYPTION=ssl
  *   CONNECTOR_TEST_ROTTA_PASSWORD=xxxx
  *   CONNECTOR_TEST_PROMETEO_PASSWORD=xxxx
  *   CONNECTOR_TEST_PASSOLIBERO_PASSWORD=xxxx
  *
  * Le email devono essere create su Gmail con App Password (non password normale).
+ * Gli host/port/encryption qui sotto sono comunque sovrascrivibili da env
+ * (CONNECTOR_TEST_IMAP_HOST/PORT/ENCRYPTION) per un override globale al volo.
  */
 final class TestEmailFixtures
 {
@@ -36,12 +38,17 @@ final class TestEmailFixtures
     public const SEED_HEADER = 'X-AskMyDocs-Seed';
 
     /**
-     * Configurazione IMAP per ogni azienda di test.
+     * Configurazione IMAP per ogni azienda di test — parametri di connessione
+     * inclusi (la password resta in env per non committare segreti).
      *
      * @var array<string, array{
      *     project_key: string,
      *     company_name: string,
      *     email: string,
+     *     host: string,
+     *     port: int,
+     *     encryption: string,
+     *     validate_cert: bool,
      *     password_env: string,
      * }>
      */
@@ -50,18 +57,30 @@ final class TestEmailFixtures
             'project_key' => 'rotta-logistics',
             'company_name' => 'Rotta Sicura Logistics',
             'email' => 'rotta.test.askmydocs@gmail.com',
+            'host' => 'imap.gmail.com',
+            'port' => 993,
+            'encryption' => 'ssl',
+            'validate_cert' => true,
             'password_env' => 'CONNECTOR_TEST_ROTTA_PASSWORD',
         ],
         'prometeo-antincendio' => [
             'project_key' => 'prometeo-antincendio',
             'company_name' => 'Prometeo Sicurezza Antincendio',
             'email' => 'prometeo.test.askmydocs@gmail.com',
+            'host' => 'imap.gmail.com',
+            'port' => 993,
+            'encryption' => 'ssl',
+            'validate_cert' => true,
             'password_env' => 'CONNECTOR_TEST_PROMETEO_PASSWORD',
         ],
         'passolibero-calzature' => [
             'project_key' => 'passolibero-calzature',
             'company_name' => 'PassoLibero Calzature',
             'email' => 'passolibero.test.askmydocs@gmail.com',
+            'host' => 'imap.gmail.com',
+            'port' => 993,
+            'encryption' => 'ssl',
+            'validate_cert' => true,
             'password_env' => 'CONNECTOR_TEST_PASSOLIBERO_PASSWORD',
         ],
     ];
@@ -265,10 +284,12 @@ final class TestEmailFixtures
         return [
             'auth_mode' => 'basic',
             'connection' => [
-                'host' => (string) env('CONNECTOR_TEST_IMAP_HOST', 'imap.gmail.com'),
-                'port' => (int) env('CONNECTOR_TEST_IMAP_PORT', 993),
-                'encryption' => (string) env('CONNECTOR_TEST_IMAP_ENCRYPTION', 'ssl'),
-                'validate_cert' => true,
+                // Parametri di connessione dell'azienda (dal fixture); env
+                // opzionale per un override globale al volo.
+                'host' => (string) env('CONNECTOR_TEST_IMAP_HOST', $account['host'] ?? 'imap.gmail.com'),
+                'port' => (int) env('CONNECTOR_TEST_IMAP_PORT', $account['port'] ?? 993),
+                'encryption' => (string) env('CONNECTOR_TEST_IMAP_ENCRYPTION', $account['encryption'] ?? 'ssl'),
+                'validate_cert' => (bool) ($account['validate_cert'] ?? true),
                 'username' => $account['email'],
             ],
             'project_key' => $projectKey,
@@ -292,7 +313,7 @@ final class TestEmailFixtures
     /**
      * Account IMAP di un'azienda di test.
      *
-     * @return array{project_key: string, company_name: string, email: string, password_env: string}
+     * @return array{project_key: string, company_name: string, email: string, host: string, port: int, encryption: string, validate_cert: bool, password_env: string}
      */
     public static function account(string $projectKey): array
     {

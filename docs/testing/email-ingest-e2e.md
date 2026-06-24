@@ -74,17 +74,20 @@ Su ciascun account Gmail:
 3. IMAP è abilitato di default sugli account Google Workspace/Gmail.
 
 ### 1.3 `.env`
-Compila (dev/test) le variabili dell'harness — vedi `.env.example`:
+I parametri di connessione (host/port/encryption + indirizzo casella) di ogni
+azienda stanno nel fixture
+[`TestEmailFixtures::ACCOUNTS`](../../database/seeders/TestEmailFixtures.php) —
+in `.env` servono SOLO le App Password (i segreti, mai committati):
 
 ```dotenv
-CONNECTOR_TEST_IMAP_HOST=imap.gmail.com
-CONNECTOR_TEST_IMAP_PORT=993
-CONNECTOR_TEST_IMAP_ENCRYPTION=ssl
-CONNECTOR_TEST_IMAP_DATE_WINDOW_DAYS=365
 CONNECTOR_TEST_ROTTA_PASSWORD=<app-password-rotta>
 CONNECTOR_TEST_PROMETEO_PASSWORD=<app-password-prometeo>
 CONNECTOR_TEST_PASSOLIBERO_PASSWORD=<app-password-passolibero>
 ```
+
+Override globale opzionale (raro): `CONNECTOR_TEST_IMAP_HOST` / `_PORT` /
+`_ENCRYPTION` / `_DATE_WINDOW_DAYS` sovrascrivono i valori del fixture per tutte
+le caselle in un colpo solo.
 
 ### 1.4 Coda + provider AI (per l'ingest reale)
 L'ingest è asincrono e genera embedding → richiede:
@@ -149,25 +152,40 @@ Dettagli:
 
 ## 5. Installazione connettore + ingest
 
+> **Vincolo importante — un solo connettore IMAP per tenant.**
+> `connector_installations` ha UNIQUE `(tenant_id, connector_name)`: nel tenant
+> `default` esiste **una sola** riga `imap`. L'harness la riusa **una azienda
+> alla volta**, azzerando il cursore di sync ad ogni (ri)configurazione così il
+> sync successivo è un **FULL clean** della casella corrente. I documenti già
+> ingeriti restano (l'ingest è additivo per project_key; `reconcile_deletions`
+> è OFF di default → riconfigurare non cancella nulla).
+
 ```bash
-# installa il connettore IMAP per tutte le aziende e avvia subito il sync
+# tutte le aziende: configura+sincronizza in modo SERIALIZZATO (A→sync A→B→…).
+# Con più aziende --sync è OBBLIGATORIO (vedi vincolo sopra).
 php artisan connector:imap:install --all --sync
 
-# singola azienda, attore specifico per l'audit (created_by)
+# singola azienda, attore per l'audit (created_by, solo alla 1ª creazione riga)
 php artisan connector:imap:install --project=prometeo-antincendio --actor=super@demo.local --sync
 ```
 
-Cosa fa:
+Cosa fa per ogni azienda:
 - Riusa `ConfigureConnectorService` → **verifica davvero** le credenziali
   (ping IMAP) prima di portare l'installazione ad `ACTIVE`.
 - Salva `config_json` con `connection.*`, `project_key = <azienda>`,
   `folders.include = ["INBOX"]` (solo INBOX: evita i doppioni delle cartelle
   virtuali Gmail) e `date_window_days`. La password va nel **vault cifrato**,
-  mai in `config_json`.
-- Con `--sync` accoda un `ConnectorSyncJob` → ingest delle e-mail nuove.
+  mai in `config_json`. Azzera `last_sync_at` + `mailboxes_state` (FULL clean).
+- Con `--sync`:
+  - **più aziende** → esegue il `ConnectorSyncJob` **sincrono e serializzato**
+    (ogni azienda viene ingerita prima di riconfigurare la riga per la prossima:
+    senza serializzazione i job in coda leggerebbero tutti l'ultima config);
+  - **una azienda** → **accoda** un `ConnectorSyncJob` (parità con l'admin
+    "sync now"): assicurati che la coda giri (§1.4).
 
-Se NON usi `--sync`, l'ingest parte comunque dallo scheduler (ogni 15 min) o
-puoi ridispacciare il job manualmente. Ricorda la coda (§1.4).
+`--all` **senza** `--sync` viene **rifiutato** (fallirebbe in silenzio lasciando
+solo l'ultima azienda configurata). Senza `--sync` su una singola azienda
+l'ingest parte comunque dallo scheduler (ogni 15 min) o ridispacciando il job.
 
 ---
 
