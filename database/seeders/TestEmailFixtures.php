@@ -7,29 +7,27 @@ namespace Database\Seeders;
 /**
  * Dati condivisi per il testing dell'ingest email via IMAP.
  *
- * Modello: ogni AZIENDA (project_key) ha DUE caselle di posta (`MAILBOXES`),
- * entrambe mappate sullo stesso project_key — così, dopo l'ingest, la knowledge
- * base dell'azienda raccoglie le e-mail di ENTRAMBE le inbox. Il `mailbox_key`
- * (es. `rotta-logistics-1`, `rotta-logistics-2`) è l'unità con cui lavorano i
- * comandi; il `project_key` è la destinazione KB (coincide con CaseStudyUsersSeeder).
+ * Modello: UN SOLO account Gmail di test, con 6 ETICHETTE (label) — 2 per azienda.
+ * Ogni casella logica (`mailbox_key`, es. `rotta-logistics-1`) corrisponde a una
+ * label Gmail (campo `folder`), non a un account separato: Google limita la
+ * creazione di account per numero di telefono, quindi si riusa un account unico e
+ * si separano le aziende per label. Le 2 caselle di un'azienda confluiscono nello
+ * stesso `project_key` (destinazione KB, coincide con CaseStudyUsersSeeder).
  *
- * Le E-MAIL di ogni casella (≥100, vario tipo + thread domanda/risposta) vivono
- * in `database/seeders/emails/<mailbox_key>.json` — generate via multi-agente,
- * versionate nel repo. Sono caricate da {@see emailsForMailbox()}. Ogni e-mail
- * porta i "fatti-esca" dell'azienda (codici/nomi/numeri) che NON devono comparire
- * nelle risposte di un'altra azienda: è il rilevatore del test di isolamento.
+ * `mail:seed-imap` crea la label e ci fa APPEND; `connector:imap:install` punta il
+ * connettore su quella label (`folders.include=[<folder>]`). Su Gmail un messaggio
+ * appeso a una label NON entra in INBOX (sta solo nella label + "Tutti i messaggi"),
+ * e il connettore sincronizza SOLO la label inclusa → niente doppioni.
  *
- * I PARAMETRI DI CONNESSIONE (host/port/encryption/validate_cert + indirizzo)
- * di ogni casella stanno QUI nel fixture — "ognuna c'ha la sua". In .env restano
- * SOLO le PASSWORD (segreti, mai committate), UNA PER CASELLA:
+ * Le E-MAIL di ogni casella (≥100, vario tipo + thread domanda/risposta) vivono in
+ * `database/seeders/emails/<mailbox_key>.json` (generate via multi-agente,
+ * versionate), caricate da {@see emailsForMailbox()}. Ogni e-mail porta i
+ * "fatti-esca" dell'azienda — assenti nelle altre — per il test di isolamento.
  *
- *   CONNECTOR_TEST_ROTTA_1_PASSWORD / CONNECTOR_TEST_ROTTA_2_PASSWORD
- *   CONNECTOR_TEST_PROMETEO_1_PASSWORD / CONNECTOR_TEST_PROMETEO_2_PASSWORD
- *   CONNECTOR_TEST_PASSOLIBERO_1_PASSWORD / CONNECTOR_TEST_PASSOLIBERO_2_PASSWORD
- *
- * Le caselle vanno create su Gmail con App Password (non la password normale).
- * Gli host/port/encryption sono sovrascrivibili da env
- * (CONNECTOR_TEST_IMAP_HOST/PORT/ENCRYPTION) per un override globale al volo.
+ * I PARAMETRI DI CONNESSIONE stanno nel fixture; in .env c'è SOLO la password
+ * (segreto) dell'account condiviso: `CONNECTOR_TEST_GMAIL_PASSWORD` (App Password
+ * Gmail). Host/port/encryption sovrascrivibili da env
+ * (CONNECTOR_TEST_IMAP_HOST/PORT/ENCRYPTION) per puntare a un altro server IMAP.
  */
 final class TestEmailFixtures
 {
@@ -40,16 +38,22 @@ final class TestEmailFixtures
      */
     public const SEED_HEADER = 'X-AskMyDocs-Seed';
 
+    /** Account Gmail unico condiviso da tutte le caselle (separate per label). */
+    public const ACCOUNT_EMAIL = 'rotta.test1.askmydocs@gmail.com';
+
+    /** Env var con la App Password dell'account condiviso. */
+    public const ACCOUNT_PASSWORD_ENV = 'CONNECTOR_TEST_GMAIL_PASSWORD';
+
     /**
-     * Caselle IMAP di test — DUE per azienda — con i parametri di connessione
-     * inclusi (la password resta in env per non committare segreti). La chiave
-     * dell'array è il `mailbox_key`.
+     * Caselle IMAP di test — DUE per azienda — mappate su label dell'unico account.
+     * La chiave dell'array è il `mailbox_key`; `folder` è la label Gmail.
      *
      * @var array<string, array{
      *     mailbox_key: string,
      *     project_key: string,
      *     company_name: string,
      *     email: string,
+     *     folder: string,
      *     host: string,
      *     port: int,
      *     encryption: string,
@@ -62,67 +66,73 @@ final class TestEmailFixtures
             'mailbox_key' => 'rotta-logistics-1',
             'project_key' => 'rotta-logistics',
             'company_name' => 'Rotta Sicura Logistics',
-            'email' => 'rotta.test1.askmydocs@gmail.com',
+            'email' => self::ACCOUNT_EMAIL,
+            'folder' => 'rotta-logistics-1',
             'host' => 'imap.gmail.com',
             'port' => 993,
             'encryption' => 'ssl',
             'validate_cert' => true,
-            'password_env' => 'CONNECTOR_TEST_ROTTA_1_PASSWORD',
+            'password_env' => self::ACCOUNT_PASSWORD_ENV,
         ],
         'rotta-logistics-2' => [
             'mailbox_key' => 'rotta-logistics-2',
             'project_key' => 'rotta-logistics',
             'company_name' => 'Rotta Sicura Logistics',
-            'email' => 'rotta.test2.askmydocs@gmail.com',
+            'email' => self::ACCOUNT_EMAIL,
+            'folder' => 'rotta-logistics-2',
             'host' => 'imap.gmail.com',
             'port' => 993,
             'encryption' => 'ssl',
             'validate_cert' => true,
-            'password_env' => 'CONNECTOR_TEST_ROTTA_2_PASSWORD',
+            'password_env' => self::ACCOUNT_PASSWORD_ENV,
         ],
         'prometeo-antincendio-1' => [
             'mailbox_key' => 'prometeo-antincendio-1',
             'project_key' => 'prometeo-antincendio',
             'company_name' => 'Prometeo Sicurezza Antincendio',
-            'email' => 'prometeo.test1.askmydocs@gmail.com',
+            'email' => self::ACCOUNT_EMAIL,
+            'folder' => 'prometeo-antincendio-1',
             'host' => 'imap.gmail.com',
             'port' => 993,
             'encryption' => 'ssl',
             'validate_cert' => true,
-            'password_env' => 'CONNECTOR_TEST_PROMETEO_1_PASSWORD',
+            'password_env' => self::ACCOUNT_PASSWORD_ENV,
         ],
         'prometeo-antincendio-2' => [
             'mailbox_key' => 'prometeo-antincendio-2',
             'project_key' => 'prometeo-antincendio',
             'company_name' => 'Prometeo Sicurezza Antincendio',
-            'email' => 'prometeo.test2.askmydocs@gmail.com',
+            'email' => self::ACCOUNT_EMAIL,
+            'folder' => 'prometeo-antincendio-2',
             'host' => 'imap.gmail.com',
             'port' => 993,
             'encryption' => 'ssl',
             'validate_cert' => true,
-            'password_env' => 'CONNECTOR_TEST_PROMETEO_2_PASSWORD',
+            'password_env' => self::ACCOUNT_PASSWORD_ENV,
         ],
         'passolibero-calzature-1' => [
             'mailbox_key' => 'passolibero-calzature-1',
             'project_key' => 'passolibero-calzature',
             'company_name' => 'PassoLibero Calzature',
-            'email' => 'passolibero.test1.askmydocs@gmail.com',
+            'email' => self::ACCOUNT_EMAIL,
+            'folder' => 'passolibero-calzature-1',
             'host' => 'imap.gmail.com',
             'port' => 993,
             'encryption' => 'ssl',
             'validate_cert' => true,
-            'password_env' => 'CONNECTOR_TEST_PASSOLIBERO_1_PASSWORD',
+            'password_env' => self::ACCOUNT_PASSWORD_ENV,
         ],
         'passolibero-calzature-2' => [
             'mailbox_key' => 'passolibero-calzature-2',
             'project_key' => 'passolibero-calzature',
             'company_name' => 'PassoLibero Calzature',
-            'email' => 'passolibero.test2.askmydocs@gmail.com',
+            'email' => self::ACCOUNT_EMAIL,
+            'folder' => 'passolibero-calzature-2',
             'host' => 'imap.gmail.com',
             'port' => 993,
             'encryption' => 'ssl',
             'validate_cert' => true,
-            'password_env' => 'CONNECTOR_TEST_PASSOLIBERO_2_PASSWORD',
+            'password_env' => self::ACCOUNT_PASSWORD_ENV,
         ],
     ];
 
@@ -150,8 +160,9 @@ final class TestEmailFixtures
 
     /**
      * Costruisce la config_json per una ConnectorInstallation IMAP da una casella.
-     * Il project_key è quello dell'azienda proprietaria della casella, così
-     * entrambe le caselle confluiscono nello stesso progetto KB.
+     * Il project_key è quello dell'azienda; `folders.include` è la label della
+     * casella, così entrambe le label di un'azienda confluiscono nello stesso
+     * progetto KB.
      *
      * @return array<string, mixed>
      */
@@ -171,9 +182,9 @@ final class TestEmailFixtures
                 'username' => $mailbox['email'],
             ],
             'project_key' => $mailbox['project_key'],
-            // Solo INBOX: su Gmail le altre cartelle virtuali ([Gmail]/Tutti i
-            // messaggi, Inviati, ...) duplicherebbero gli stessi messaggi.
-            'folders' => ['include' => ['INBOX']],
+            // Solo la label di questa casella: su Gmail "Tutti i messaggi"/INBOX
+            // duplicherebbero gli stessi messaggi.
+            'folders' => ['include' => [$mailbox['folder']]],
             'date_window_days' => (int) env('CONNECTOR_TEST_IMAP_DATE_WINDOW_DAYS', 365),
         ];
     }
@@ -217,7 +228,7 @@ final class TestEmailFixtures
     /**
      * Configurazione di una casella di test.
      *
-     * @return array{mailbox_key: string, project_key: string, company_name: string, email: string, host: string, port: int, encryption: string, validate_cert: bool, password_env: string}
+     * @return array{mailbox_key: string, project_key: string, company_name: string, email: string, folder: string, host: string, port: int, encryption: string, validate_cert: bool, password_env: string}
      */
     public static function mailbox(string $mailboxKey): array
     {

@@ -16,7 +16,7 @@ quelle caselle, esattamente come in produzione.
 
 ```mermaid
 flowchart LR
-    F[TestEmailFixtures<br/>account + e-mail] -->|mail:seed-imap<br/>IMAP APPEND| M[(Casella Gmail<br/>INBOX)]
+    F[TestEmailFixtures<br/>account + e-mail] -->|mail:seed-imap<br/>IMAP APPEND| M[(Gmail unico<br/>6 label)]
     M -->|connector:imap:install --sync<br/>ConnectorSyncJob| I[IngestDocumentJob<br/>parse→chunk→embed→persist]
     I --> KB[(knowledge_documents<br/>+ knowledge_chunks<br/>project_key = azienda)]
     KB -->|membership esistente| C[Chat per account<br/>risposta grounded + citazione]
@@ -46,11 +46,13 @@ un'altra azienda: è il rilevatore di contaminazione del test di isolamento.
 
 ### 1.1 Aziende già presenti
 Le fixtures coprono le 3 aziende del `CaseStudyUsersSeeder` (tenant `default`),
-ognuna con **2 caselle di posta** (6 caselle totali). Entrambe le caselle di
-un'azienda confluiscono nello **stesso** `project_key`, quindi la sua KB
-raccoglie le e-mail di tutte e due le inbox.
+ognuna con **2 caselle logiche** (6 totali). Google limita gli account per
+numero di telefono, quindi le 6 caselle sono **6 etichette (label) di UN UNICO
+account Gmail** (campo `folder` nel fixture). Entrambe le label di un'azienda
+confluiscono nello **stesso** `project_key`, quindi la sua KB raccoglie le e-mail
+di tutte e due.
 
-| project_key | Azienda | Caselle (mailbox_key) | Utente chat (pwd `password`) |
+| project_key | Azienda | Caselle = label Gmail (mailbox_key) | Utente chat (pwd `password`) |
 |---|---|---|---|
 | `rotta-logistics` | Rotta Sicura Logistics | `rotta-logistics-1`, `rotta-logistics-2` | `rotta@case-study.local` |
 | `prometeo-antincendio` | Prometeo Sicurezza Antincendio | `prometeo-antincendio-1`, `prometeo-antincendio-2` | `prometeo@case-study.local` |
@@ -68,38 +70,32 @@ php artisan demo:list-companies
 > case-study (già membro) vede subito le e-mail ingerite — nessun wiring extra.
 > Se invece usi un project_key nuovo, ricordati la membership (vedi §6).
 
-### 1.2 Caselle Gmail di test
-Servono **2 caselle Gmail per azienda** (6 in totale), come indicato in
-`TestEmailFixtures::MAILBOXES`. Indirizzi di default:
-`rotta.test1@…` / `rotta.test2@…`, `prometeo.test1@…` / `prometeo.test2@…`,
-`passolibero.test1@…` / `passolibero.test2@…` (`*.askmydocs@gmail.com`; cambiali
-nel fixture se vuoi).
-
-Su **ciascun** account Gmail:
+### 1.2 Account Gmail di test (uno solo)
+Serve **UN solo account Gmail** (`TestEmailFixtures::ACCOUNT_EMAIL`, default
+`rotta.test1.askmydocs@gmail.com`). Le 6 caselle sono **etichette** create
+automaticamente da `mail:seed-imap` (IMAP CREATE) al primo invio — NON servono 6
+account. Su quell'account:
 1. Attiva la verifica in due passaggi.
 2. Crea una **App Password** (Google Account → Sicurezza → Password per le app).
    La password normale **non** funziona con IMAP.
-3. IMAP è abilitato di default sugli account Google Workspace/Gmail.
+3. Abilita **IMAP** (Gmail → Impostazioni → Inoltro e POP/IMAP → IMAP attivo).
+
+> Nota Gmail: un messaggio appeso a una label NON entra in INBOX (sta nella label
+> + "Tutti i messaggi"); il connettore sincronizza SOLO la label inclusa → niente
+> doppioni tra aziende.
 
 ### 1.3 `.env`
-I parametri di connessione (host/port/encryption + indirizzo) di ogni casella
-stanno nel fixture
-[`TestEmailFixtures::MAILBOXES`](../../database/seeders/TestEmailFixtures.php) —
-in `.env` servono SOLO le App Password (i segreti, mai committati), **una per
-casella**:
+I parametri di connessione + le label stanno nel fixture
+[`TestEmailFixtures`](../../database/seeders/TestEmailFixtures.php) — in `.env`
+serve SOLO la App Password dell'account condiviso (segreto, mai committato):
 
 ```dotenv
-CONNECTOR_TEST_ROTTA_1_PASSWORD=<app-password-rotta-1>
-CONNECTOR_TEST_ROTTA_2_PASSWORD=<app-password-rotta-2>
-CONNECTOR_TEST_PROMETEO_1_PASSWORD=<app-password-prometeo-1>
-CONNECTOR_TEST_PROMETEO_2_PASSWORD=<app-password-prometeo-2>
-CONNECTOR_TEST_PASSOLIBERO_1_PASSWORD=<app-password-passolibero-1>
-CONNECTOR_TEST_PASSOLIBERO_2_PASSWORD=<app-password-passolibero-2>
+CONNECTOR_TEST_GMAIL_PASSWORD=<app-password-account-condiviso>
 ```
 
 Override globale opzionale (raro): `CONNECTOR_TEST_IMAP_HOST` / `_PORT` /
-`_ENCRYPTION` / `_DATE_WINDOW_DAYS` sovrascrivono i valori del fixture per tutte
-le caselle in un colpo solo.
+`_ENCRYPTION` / `_DATE_WINDOW_DAYS` sovrascrivono i valori del fixture (es. per
+puntare a un altro server IMAP invece di Gmail).
 
 ### 1.4 Coda + provider AI (per l'ingest reale)
 L'ingest è asincrono e genera embedding → richiede:
@@ -154,8 +150,9 @@ php artisan mail:seed-imap --all --purge
 ```
 
 Dettagli:
-- I messaggi di una casella vengono **APPESI** in `INBOX` in un **unico batch**
-  (una sola connessione IMAP per casella — robusto con 100+ e-mail) via webklex;
+- I messaggi di una casella vengono **APPESI** nella sua **label** (creata se
+  manca) in un **unico batch** (una connessione per casella — robusto con 100+
+  e-mail) via webklex;
   la data di consegna (INTERNALDATE) è `now()`, così le e-mail (datate 2024 nelle
   fixtures) restano dentro la finestra `date_window_days` del connettore.
 - Su errori di **connessione transitori** il client ritenta automaticamente
@@ -194,8 +191,8 @@ Cosa fa per ogni casella:
 - Riusa `ConfigureConnectorService` → **verifica davvero** le credenziali
   (ping IMAP) prima di portare l'installazione ad `ACTIVE`.
 - Salva `config_json` con `connection.*`, `project_key = <azienda>`,
-  `folders.include = ["INBOX"]` (solo INBOX: evita i doppioni delle cartelle
-  virtuali Gmail) e `date_window_days`. La password va nel **vault cifrato**,
+  `folders.include = ["<label>"]` (solo la label della casella: evita i doppioni
+  di INBOX/"Tutti i messaggi") e `date_window_days`. La password va nel **vault cifrato**,
   mai in `config_json`. Azzera `last_sync_at` + `mailboxes_state` (FULL clean).
 - Con `--sync`:
   - **più caselle** → esegue il `ConnectorSyncJob` **sincrono e serializzato**
@@ -263,11 +260,11 @@ isolamento (R30) da investigare.
 
 | Sintomo | Causa probabile | Rimedio |
 |---|---|---|
-| `mail:seed-imap` → "Env var ... non impostata" | App Password mancante in `.env` | Compila `CONNECTOR_TEST_<AZIENDA>_<N>_PASSWORD`. |
+| `mail:seed-imap` → "Env var ... non impostata" | App Password mancante in `.env` | Compila `CONNECTOR_TEST_GMAIL_PASSWORD`. |
 | "Env var ... non impostata" anche con password presente nel `.env` | Config cache attiva: il fixture legge `env()` e sotto `config:cache` ritorna `null` | `php artisan config:clear` prima di lanciare l'harness (l'harness è dev/test: non usare la config cache). |
 | APPEND fallisce con auth error | Password normale invece dell'App Password, o IMAP off | Usa l'App Password; abilita IMAP. |
 | Le e-mail non vengono ingerite | Fuori finestra temporale | L'APPEND usa INTERNALDATE=now(); se hai forzato date vecchie alza `CONNECTOR_TEST_IMAP_DATE_WINDOW_DAYS`. |
-| Doppioni di e-mail | Più `mail:seed-imap` senza `--purge`, o folders non limitati a INBOX | Usa `--purge`; il connettore è già limitato a `folders.include=[INBOX]`. |
+| Doppioni di e-mail | Più `mail:seed-imap` senza `--purge` | Usa `--purge`; ogni casella è una label isolata e il connettore include solo quella label. |
 | Ingest non parte | Coda non attiva | `QUEUE_CONNECTION=sync` o `php artisan queue:work`. |
 | La chat non trova le e-mail | project_key senza membership (orfano) | Punta il connettore al project_key dell'azienda, o §6. |
 | Embedding error in ingest | Provider AI non configurato | Imposta `AI_EMBEDDINGS_PROVIDER` + API key. |

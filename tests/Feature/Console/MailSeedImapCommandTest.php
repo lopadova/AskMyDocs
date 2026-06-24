@@ -66,7 +66,7 @@ final class MailSeedImapCommandTest extends TestCase
 
     public function test_single_mailbox_appends_all_its_emails(): void
     {
-        $this->setPassword('CONNECTOR_TEST_ROTTA_1_PASSWORD', 'pw');
+        $this->setPassword('CONNECTOR_TEST_GMAIL_PASSWORD', 'pw');
         $appender = $this->bindRecorder();
 
         $this->artisan('mail:seed-imap', ['--mailbox' => ['rotta-logistics-1']])->assertExitCode(0);
@@ -81,8 +81,8 @@ final class MailSeedImapCommandTest extends TestCase
 
     public function test_project_expands_to_both_company_mailboxes(): void
     {
-        $this->setPassword('CONNECTOR_TEST_ROTTA_1_PASSWORD', 'pw');
-        $this->setPassword('CONNECTOR_TEST_ROTTA_2_PASSWORD', 'pw');
+        $this->setPassword('CONNECTOR_TEST_GMAIL_PASSWORD', 'pw');
+        $this->setPassword('CONNECTOR_TEST_GMAIL_PASSWORD', 'pw');
         $appender = $this->bindRecorder();
 
         $this->artisan('mail:seed-imap', ['--project' => ['rotta-logistics']])->assertExitCode(0);
@@ -105,7 +105,7 @@ final class MailSeedImapCommandTest extends TestCase
 
     public function test_missing_password_fails_loudly(): void
     {
-        // CONNECTOR_TEST_ROTTA_1_PASSWORD volutamente assente.
+        // CONNECTOR_TEST_GMAIL_PASSWORD volutamente assente.
         $appender = $this->bindRecorder();
 
         $this->artisan('mail:seed-imap', ['--mailbox' => ['rotta-logistics-1']])->assertExitCode(1);
@@ -122,7 +122,7 @@ final class MailSeedImapCommandTest extends TestCase
 
     public function test_purge_runs_before_append(): void
     {
-        $this->setPassword('CONNECTOR_TEST_ROTTA_1_PASSWORD', 'pw');
+        $this->setPassword('CONNECTOR_TEST_GMAIL_PASSWORD', 'pw');
         $appender = $this->bindRecorder(purgeReturns: 2);
 
         $this->artisan('mail:seed-imap', [
