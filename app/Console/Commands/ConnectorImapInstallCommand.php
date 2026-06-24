@@ -12,6 +12,7 @@ use Database\Seeders\TestEmailFixtures;
 use Illuminate\Console\Command;
 use Padosoft\AskMyDocsConnectorBase\ConnectorSyncJob;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
+use Padosoft\AskMyDocsConnectorBase\Support\TenantContext as PackageTenantContext;
 use Throwable;
 
 /**
@@ -49,12 +50,11 @@ class ConnectorImapInstallCommand extends Command
 
     protected $description = 'Installa il connettore IMAP (multi-account) per le caselle di test (riusa ConfigureConnectorService).';
 
-    public function handle(ConfigureConnectorService $configurator, TenantContext $tenant): int
-    {
-        // Le installazioni connettore sono tenant-aware (R30/R31): le aziende di
-        // test vivono nel tenant 'default'.
-        $tenant->set('default');
-
+    public function handle(
+        ConfigureConnectorService $configurator,
+        TenantContext $tenant,
+        PackageTenantContext $packageTenant,
+    ): int {
         $mailboxKeys = $this->resolveMailboxKeys();
         if ($mailboxKeys === []) {
             $this->error('Nessuna casella selezionata. Usa --all, --mailbox=<key> o --project=<key>.');
@@ -70,24 +70,46 @@ class ConnectorImapInstallCommand extends Command
 
         $sync = (bool) $this->option('sync');
         $failed = false;
+        $previousTenant = $tenant->current();
+        $previousPackageTenant = $packageTenant->current();
 
-        foreach ($mailboxKeys as $mailboxKey) {
-            try {
-                $installation = $this->installOne($configurator, $mailboxKey, $actor->id);
-            } catch (Throwable $e) {
-                // R14 — credenziali errate / ping IMAP fallito / mailbox ignota.
-                $this->error(sprintf('[%s] install fallita: %s', $mailboxKey, $e->getMessage()));
-                $failed = true;
+        try {
+            foreach ($mailboxKeys as $mailboxKey) {
+                // Un tenant per azienda (R30/R31): l'installazione nasce nel tenant
+                // della casella, così il pannello connettori (scoping per tenant)
+                // mostra a ogni azienda SOLO i propri connettori.
+                //
+                // Vanno settati ENTRAMBI i contesti: ConfigureConnectorService scrive
+                // via l'host TenantContext (App\Support), mentre il connettore IMAP, il
+                // model ConnectorInstallation e l'OAuthCredentialVault leggono il
+                // TenantContext del PACCHETTO (un singleton "snapshot" allineato all'host
+                // solo alla prima risoluzione — vedi AppServiceProvider). Senza mirror,
+                // configure() creerebbe la riga nel tenant azienda ma il ping/vault la
+                // cercherebbe nel tenant precedente → "installation not found".
+                $tenantId = TestEmailFixtures::tenantFor($mailboxKey);
+                $tenant->set($tenantId);
+                $packageTenant->set($tenantId);
 
-                continue;
+                try {
+                    $installation = $this->installOne($configurator, $mailboxKey, $tenantId, $actor->id);
+                } catch (Throwable $e) {
+                    // R14 — credenziali errate / ping IMAP fallito / mailbox ignota.
+                    $this->error(sprintf('[%s] install fallita: %s', $mailboxKey, $e->getMessage()));
+                    $failed = true;
+
+                    continue;
+                }
+
+                if ($sync) {
+                    // Multi-account: ogni installazione è indipendente → basta
+                    // accodare il job per ciascuna (nel suo tenant).
+                    ConnectorSyncJob::dispatch($installation->id, $tenantId);
+                    $this->line(sprintf('  → ConnectorSyncJob accodato (installation #%d, tenant %s)', $installation->id, $tenantId));
+                }
             }
-
-            if ($sync) {
-                // Multi-account: ogni installazione è indipendente → niente
-                // serializzazione, basta accodare il job per ciascuna.
-                ConnectorSyncJob::dispatch($installation->id, 'default');
-                $this->line(sprintf('  → ConnectorSyncJob accodato (installation #%d)', $installation->id));
-            }
+        } finally {
+            $tenant->set($previousTenant);
+            $packageTenant->set($previousPackageTenant);
         }
 
         return $failed ? self::FAILURE : self::SUCCESS;
@@ -96,6 +118,7 @@ class ConnectorImapInstallCommand extends Command
     private function installOne(
         ConfigureConnectorService $configurator,
         string $mailboxKey,
+        string $tenantId,
         int $actorId,
     ): ConnectorInstallation {
         $mailbox = TestEmailFixtures::mailbox($mailboxKey);
@@ -104,10 +127,11 @@ class ConnectorImapInstallCommand extends Command
         $projectKey = (string) $mailbox['project_key'];
 
         // Idempotenza re-run: rimuovi l'eventuale installazione con questa label
-        // (configure() è additivo e la unique (tenant,connector,label) rifiuterebbe
-        // il duplicato). La FK su connector_credentials cascada il segreto.
+        // nel tenant dell'azienda (configure() è additivo e la unique
+        // (tenant,connector,label) rifiuterebbe il duplicato). La FK su
+        // connector_credentials cascada il segreto.
         ConnectorInstallation::query()
-            ->where('tenant_id', 'default')
+            ->where('tenant_id', $tenantId)
             ->where('connector_name', self::CONNECTOR)
             ->where('label', $mailboxKey)
             ->delete();

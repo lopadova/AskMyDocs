@@ -75,8 +75,8 @@ class InitCaseStudiesCommand extends Command
 
         // 2) DOCUMENTI
         if (! (bool) $this->option('skip-docs')) {
-            $this->components->info('2/4 — Documenti (copia su disco kb + ingest)');
-            $this->ingestDocuments($tenantId);
+            $this->components->info('2/4 — Documenti (copia su disco kb + ingest, un tenant per azienda)');
+            $this->ingestDocuments();
         } else {
             $this->components->warn('2/4 — Documenti: saltato (--skip-docs)');
         }
@@ -104,8 +104,9 @@ class InitCaseStudiesCommand extends Command
         }
 
         $this->newLine();
-        $this->components->info('Fatto. Riepilogo:');
-        $this->call('demo:list-companies', ['--tenant' => $tenantId]);
+        $this->components->info('Fatto. Riepilogo (tutti i tenant):');
+        // Un tenant per azienda → niente filtro: mostra tutte le aziende.
+        $this->call('demo:list-companies');
 
         return self::SUCCESS;
     }
@@ -115,7 +116,7 @@ class InitCaseStudiesCommand extends Command
      * cartella. Le cartelle in docs/case-studies/data/ sono la fonte di verità
      * dei project_key (gating: tests/Unit/CaseStudies/CaseStudyDatasetTest).
      */
-    private function ingestDocuments(string $tenantId): void
+    private function ingestDocuments(): void
     {
         $disk = (string) config('kb.sources.disk', 'kb');
         $prefix = trim((string) config('kb.sources.path_prefix', ''), '/');
@@ -147,11 +148,12 @@ class InitCaseStudiesCommand extends Command
                 }
             }
 
-            $this->line(sprintf('  [%s] %d documenti → ingest', $projectKey, count($files)));
+            $this->line(sprintf('  [%s] %d documenti → ingest (tenant %s)', $projectKey, count($files), $projectKey));
+            // Un tenant per azienda: ingest nel tenant dell'azienda (= project_key).
             $this->call('kb:ingest-folder', [
                 'path' => self::KB_SUBDIR.'/'.$projectKey,
                 '--project' => $projectKey,
-                '--tenant' => $tenantId,
+                '--tenant' => $projectKey,
                 '--recursive' => true,
                 '--sync' => true,
             ]);
