@@ -35,8 +35,8 @@ class KbReembedProjectTool extends Tool
 
     public function handle(Request $request, ReembedProjectService $service, TenantContext $tenants): Response
     {
-        $projectKey = (string) $request->get('project_key');
-        if (trim($projectKey) === '') {
+        $projectKey = trim((string) $request->get('project_key'));
+        if ($projectKey === '') {
             return Response::error('project_key is required.');
         }
 

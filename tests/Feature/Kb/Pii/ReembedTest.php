@@ -166,6 +166,22 @@ final class ReembedTest extends TestCase
         $this->assertMatchesRegularExpression('/\[tok:[A-Za-z0-9_]+:[0-9a-f]+\]/', $text);
     }
 
+    public function test_job_skips_cleanly_when_the_source_is_missing_on_disk(): void
+    {
+        Storage::fake('kb'); // empty disk — the source file does not exist
+        $doc = $this->makeDoc('default', 'support', 'tickets/missing.md');
+        KnowledgeChunk::create([
+            'knowledge_document_id' => $doc->id, 'project_key' => 'support', 'chunk_order' => 0,
+            'chunk_hash' => hash('sha256', 'kept'), 'heading_path' => '', 'chunk_text' => 'kept chunk',
+            'metadata' => [], 'embedding' => [0.1, 0.2, 0.3],
+        ]);
+
+        // Must NOT throw (logged skip), and the existing chunk is left intact.
+        (new ReembedDocumentJob($doc->id, 'default'))->handle(app(TenantContext::class), app(DocumentIngestor::class));
+
+        $this->assertSame('kept chunk', KnowledgeChunk::where('knowledge_document_id', $doc->id)->value('chunk_text'));
+    }
+
     private function makeDoc(string $tenant, string $project, string $path): KnowledgeDocument
     {
         $tenants = app(TenantContext::class);
