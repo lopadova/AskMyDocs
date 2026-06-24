@@ -154,12 +154,13 @@ php artisan mail:seed-imap --all --purge
 ```
 
 Dettagli:
-- I messaggi vengono **APPESI** in `INBOX` via webklex; la data di consegna
-  (INTERNALDATE) è `now()`, così le e-mail (datate 2024 nelle fixtures) restano
-  dentro la finestra `date_window_days` del connettore.
-- Su errori IMAP **transitori** (timeout/connessione) il comando attende e
-  ritenta (`--retries`, `--retry-delay`); su errori di **autenticazione** si
-  ferma subito con messaggio chiaro (R42/R14).
+- I messaggi di una casella vengono **APPESI** in `INBOX` in un **unico batch**
+  (una sola connessione IMAP per casella — robusto con 100+ e-mail) via webklex;
+  la data di consegna (INTERNALDATE) è `now()`, così le e-mail (datate 2024 nelle
+  fixtures) restano dentro la finestra `date_window_days` del connettore.
+- Su errori di **connessione transitori** il client ritenta automaticamente
+  (R42); su errori di **autenticazione** si ferma subito con messaggio chiaro
+  (R14). Nessun fallimento silenzioso.
 - Verifica anche da web: apri la casella Gmail e controlla che le e-mail siano
   in arrivo.
 

@@ -9,12 +9,11 @@ use Carbon\Carbon;
 use Closure;
 use Database\Seeders\TestEmailFixtures;
 use InvalidArgumentException;
-use RuntimeException;
-use Throwable;
 
 /**
- * Orchestratore del seeding e-mail: per ogni azienda costruisce i messaggi
- * dalle fixtures e li inietta nella casella IMAP via {@see MailboxAppender}.
+ * Orchestratore del seeding e-mail: per ogni casella costruisce i messaggi dalle
+ * fixtures e li inietta nella INBOX via {@see MailboxAppender} in un unico batch
+ * (una connessione per casella — robusto con 100+ e-mail).
  *
  * Decisioni chiave:
  *   - INTERNALDATE = now() ad ogni APPEND, così i messaggi (datati nel 2024 nelle
@@ -22,8 +21,8 @@ use Throwable;
  *   - `--purge` (opzionale, distruttivo) elimina prima i messaggi marcati con
  *     l'header {@see TestEmailFixtures::SEED_HEADER}, rendendo i re-run idempotenti.
  *   - R14/R4: password mancante o errore IMAP → eccezione, mai esito silenzioso.
- *   - R42: gli errori IMAP TRANSITORI (connessione/timeout) fanno attesa+retry;
- *     gli errori di autenticazione sono permanenti e fermano subito.
+ *   - R42: il retry sugli errori di connessione TRANSITORI vive nell'appender
+ *     reale ({@see WebklexMailboxAppender}); l'auth fallita ferma subito.
  */
 final class ImapMailboxSeeder
 {
@@ -41,14 +40,12 @@ final class ImapMailboxSeeder
         array $mailboxKeys,
         bool $dryRun = false,
         bool $purge = false,
-        int $retries = 2,
-        int $retryDelaySeconds = 60,
         ?Closure $onMessage = null,
     ): array {
         $outcomes = [];
 
         foreach ($mailboxKeys as $mailboxKey) {
-            $outcomes[] = $this->seedOne($mailboxKey, $dryRun, $purge, $retries, $retryDelaySeconds, $onMessage);
+            $outcomes[] = $this->seedOne($mailboxKey, $dryRun, $purge, $onMessage);
         }
 
         return $outcomes;
@@ -58,8 +55,6 @@ final class ImapMailboxSeeder
         string $mailboxKey,
         bool $dryRun,
         bool $purge,
-        int $retries,
-        int $retryDelaySeconds,
         ?Closure $onMessage,
     ): SeedOutcome {
         if (! in_array($mailboxKey, TestEmailFixtures::mailboxKeys(), true)) {
@@ -93,96 +88,26 @@ final class ImapMailboxSeeder
             folder: $folder,
         );
 
+        // Costruisce tutti i messaggi (parte pura, valida il builder anche in dry-run).
+        $raws = [];
+        foreach ($emails as $index => $fixture) {
+            $raws[] = $this->builder->build($target, $fixture);
+            if ($onMessage !== null) {
+                $onMessage($mailboxKey, (int) $index, (string) $fixture['subject']);
+            }
+        }
+
         if ($dryRun) {
-            // Costruisce ogni messaggio (valida il builder) ma non invia nulla.
-            foreach ($emails as $index => $fixture) {
-                $this->builder->build($target, $fixture);
-                if ($onMessage !== null) {
-                    $onMessage($mailboxKey, (int) $index, (string) $fixture['subject']);
-                }
-            }
-
-            return new SeedOutcome($mailboxKey, $target->projectKey, $target->companyName, $target->email, count($emails), 0, true);
+            return new SeedOutcome($mailboxKey, $target->projectKey, $target->companyName, $target->email, count($raws), 0, true);
         }
 
-        return $this->withRetry($retries, $retryDelaySeconds, function () use ($target, $emails, $purge, $onMessage): SeedOutcome {
-            $purged = 0;
-            if ($purge) {
-                $purged = $this->appender->purgeSeeded($target, TestEmailFixtures::SEED_HEADER, $target->mailboxKey);
-            }
+        // Opzionale purge (idempotenza re-run), poi APPEND in un solo batch.
+        $purged = $purge
+            ? $this->appender->purgeSeeded($target, TestEmailFixtures::SEED_HEADER, $target->mailboxKey)
+            : 0;
 
-            $appended = 0;
-            foreach ($emails as $index => $fixture) {
-                $raw = $this->builder->build($target, $fixture);
-                $this->appender->append($target, $raw, Carbon::now());
-                $appended++;
-                if ($onMessage !== null) {
-                    $onMessage($target->mailboxKey, (int) $index, (string) $fixture['subject']);
-                }
-            }
+        $appended = $this->appender->appendBatch($target, $raws, Carbon::now());
 
-            return new SeedOutcome($target->mailboxKey, $target->projectKey, $target->companyName, $target->email, $appended, $purged, false);
-        });
-    }
-
-    /**
-     * Esegue l'operazione IMAP con retry sugli errori transitori (R42).
-     *
-     * @template T
-     *
-     * @param  Closure(): T  $op
-     * @return T
-     */
-    private function withRetry(int $retries, int $retryDelaySeconds, Closure $op): mixed
-    {
-        $attempt = 0;
-
-        while (true) {
-            try {
-                return $op();
-            } catch (Throwable $e) {
-                if (! $this->isTransient($e) || $attempt >= $retries) {
-                    throw $e;
-                }
-
-                $attempt++;
-                $this->pause($retryDelaySeconds);
-            }
-        }
-    }
-
-    /**
-     * Distingue gli errori IMAP recuperabili (rete) da quelli permanenti (auth).
-     */
-    private function isTransient(Throwable $e): bool
-    {
-        $message = strtolower($e->getMessage());
-
-        // Auth/credenziali/permessi → permanente: ritentare non serve.
-        foreach (['authenticat', 'login', 'credential', 'permission denied', 'invalid'] as $permanent) {
-            if (str_contains($message, $permanent)) {
-                return false;
-            }
-        }
-
-        // Connessione/timeout/rete → transitorio.
-        foreach (['connect', 'timeout', 'timed out', 'network', 'temporar', 'unreachable', 'reset by peer', 'broken pipe'] as $transient) {
-            if (str_contains($message, $transient)) {
-                return true;
-            }
-        }
-
-        // Sconosciuto: non ritentare alla cieca (un APPEND parziale è peggio).
-        return false;
-    }
-
-    /**
-     * Pausa tra i retry. Estratta per poter essere sovrascritta nei test.
-     */
-    protected function pause(int $seconds): void
-    {
-        if ($seconds > 0) {
-            sleep($seconds);
-        }
+        return new SeedOutcome($mailboxKey, $target->projectKey, $target->companyName, $target->email, $appended, $purged, false);
     }
 }
