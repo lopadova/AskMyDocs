@@ -10,6 +10,8 @@ use App\Models\User;
 use App\Support\TenantContext;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
+use Padosoft\AiActCompliance\MultiTenancy\Models\Tenant;
 
 /**
  * Per-company users + projects for the documentation-isolation case study.
@@ -19,15 +21,13 @@ use Illuminate\Support\Facades\Hash;
  * per company (e.g. the super-admin is the one that can reach Admin → Connectors,
  * gated `manageConnectors` = super-admin only).
  *
- * Isolation ("the user of company X must only ever see X's documents") is driven
- * by `project_memberships`, not by the role: this seeder pins every account's
- * memberships to EXACTLY its own company — it deletes any stray memberships on
- * other projects (e.g. the all-projects backfill of {@see RbacSeeder}, which
- * grants every existing user a membership on every project_key that already has
- * documents) and (re)creates the single own-project membership. So a viewer
- * reads exclusively its own project (with `KB_PROJECT_ISOLATION_ENABLED=true`).
- * NB: by role design `admin` (kb.read.all_projects) and `super-admin` still see
- * across companies — only the `viewer` tier is membership-isolated.
+ * ONE TENANT PER COMPANY: tenant_id = project_key (rotta-logistics, …). The tenant
+ * is the platform's isolation primitive, so EVERY admin surface (connectors,
+ * users, KB, …) is scoped per company — not just the documents. Each account's
+ * membership is pinned to EXACTLY its own (tenant, project): the seeder deletes any
+ * stray membership elsewhere (e.g. the all-projects backfill of {@see RbacSeeder}
+ * on the default tenant) and (re)creates the single own membership. A user thus
+ * only ever sees its own company's tenant after the team switcher resolves it.
  *
  * Idempotent: firstOrCreate on the unique tuples; role assignment guarded by
  * hasRole; the membership reset is deterministic. **Run LAST** (after RbacSeeder,
@@ -84,22 +84,32 @@ class CaseStudyUsersSeeder extends Seeder
 
     public function run(): void
     {
-        // All three companies live in the `default` tenant — isolation here is
-        // logical (per project_key + membership). Pin the context so every
-        // tenant-aware row (Project, ProjectMembership) auto-fills tenant_id.
+        // UN TENANT PER AZIENDA: tenant_id = project_key. Così l'isolamento vale
+        // su TUTTE le superfici (connettori, utenti, KB, ...) via lo scope-tenant
+        // della piattaforma, non solo sul project_key.
         $ctx = app(TenantContext::class);
         $previous = $ctx->current();
-        $ctx->set('default');
 
         try {
             foreach (self::COMPANIES as $projectKey => $meta) {
+                $tenantId = $projectKey;
+                // Pin il tenant dell'azienda così ogni riga tenant-aware
+                // (Project, ProjectMembership) auto-fill il tenant giusto.
+                $ctx->set($tenantId);
+
+                // Riga di registry del tenant (label nello switcher team) — solo
+                // se la tabella esiste (pacchetto AI-Act migrato).
+                if (Schema::hasTable('tenants')) {
+                    Tenant::firstOrCreate(['slug' => $tenantId], ['name' => $meta['name']]);
+                }
+
                 Project::updateOrCreate(
-                    ['tenant_id' => 'default', 'project_key' => $projectKey],
+                    ['tenant_id' => $tenantId, 'project_key' => $projectKey],
                     ['name' => $meta['name'], 'description' => $meta['desc']],
                 );
 
                 foreach ($meta['accounts'] as $account) {
-                    $this->seedAccount($projectKey, $account);
+                    $this->seedAccount($tenantId, $projectKey, $account);
                 }
             }
         } finally {
@@ -110,7 +120,7 @@ class CaseStudyUsersSeeder extends Seeder
     /**
      * @param  array{email: string, user: string, role: string}  $account
      */
-    private function seedAccount(string $projectKey, array $account): void
+    private function seedAccount(string $tenantId, string $projectKey, array $account): void
     {
         $user = User::firstOrCreate(
             ['email' => $account['email']],
@@ -121,18 +131,20 @@ class CaseStudyUsersSeeder extends Seeder
             $user->assignRole($account['role']);
         }
 
-        // Isolamento "per bene": le membership di questo account = SOLO la sua
-        // azienda. Rimuove eventuali membership su altri progetti (es. il
-        // backfill all-projects di RbacSeeder) così il viewer non vede altre
-        // aziende. Va eseguito DOPO RbacSeeder perché annulli quel backfill.
+        // L'account appartiene a UNA sola azienda → membership SOLO nel suo
+        // tenant/progetto. Rimuove qualunque altra membership (es. backfill
+        // all-projects di RbacSeeder sul tenant default) così, entrando, vede
+        // esclusivamente la propria azienda. Va eseguito DOPO RbacSeeder.
         ProjectMembership::query()
-            ->where('tenant_id', 'default')
             ->where('user_id', $user->id)
-            ->where('project_key', '!=', $projectKey)
+            ->where(function ($q) use ($tenantId, $projectKey): void {
+                $q->where('tenant_id', '!=', $tenantId)
+                    ->orWhere('project_key', '!=', $projectKey);
+            })
             ->delete();
 
         ProjectMembership::firstOrCreate(
-            ['tenant_id' => 'default', 'user_id' => $user->id, 'project_key' => $projectKey],
+            ['tenant_id' => $tenantId, 'user_id' => $user->id, 'project_key' => $projectKey],
             ['role' => 'member', 'scope_allowlist' => null],
         );
     }

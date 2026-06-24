@@ -51,6 +51,7 @@ final class TestEmailFixtures
      * @var array<string, array{
      *     mailbox_key: string,
      *     project_key: string,
+     *     tenant_id: string,
      *     company_name: string,
      *     email: string,
      *     folder: string,
@@ -65,6 +66,7 @@ final class TestEmailFixtures
         'rotta-logistics-1' => [
             'mailbox_key' => 'rotta-logistics-1',
             'project_key' => 'rotta-logistics',
+            'tenant_id' => 'rotta-logistics',
             'company_name' => 'Rotta Sicura Logistics',
             'email' => self::ACCOUNT_EMAIL,
             'folder' => 'rotta-logistics-1',
@@ -77,6 +79,7 @@ final class TestEmailFixtures
         'rotta-logistics-2' => [
             'mailbox_key' => 'rotta-logistics-2',
             'project_key' => 'rotta-logistics',
+            'tenant_id' => 'rotta-logistics',
             'company_name' => 'Rotta Sicura Logistics',
             'email' => self::ACCOUNT_EMAIL,
             'folder' => 'rotta-logistics-2',
@@ -89,6 +92,7 @@ final class TestEmailFixtures
         'prometeo-antincendio-1' => [
             'mailbox_key' => 'prometeo-antincendio-1',
             'project_key' => 'prometeo-antincendio',
+            'tenant_id' => 'prometeo-antincendio',
             'company_name' => 'Prometeo Sicurezza Antincendio',
             'email' => self::ACCOUNT_EMAIL,
             'folder' => 'prometeo-antincendio-1',
@@ -101,6 +105,7 @@ final class TestEmailFixtures
         'prometeo-antincendio-2' => [
             'mailbox_key' => 'prometeo-antincendio-2',
             'project_key' => 'prometeo-antincendio',
+            'tenant_id' => 'prometeo-antincendio',
             'company_name' => 'Prometeo Sicurezza Antincendio',
             'email' => self::ACCOUNT_EMAIL,
             'folder' => 'prometeo-antincendio-2',
@@ -113,6 +118,7 @@ final class TestEmailFixtures
         'passolibero-calzature-1' => [
             'mailbox_key' => 'passolibero-calzature-1',
             'project_key' => 'passolibero-calzature',
+            'tenant_id' => 'passolibero-calzature',
             'company_name' => 'PassoLibero Calzature',
             'email' => self::ACCOUNT_EMAIL,
             'folder' => 'passolibero-calzature-1',
@@ -125,6 +131,7 @@ final class TestEmailFixtures
         'passolibero-calzature-2' => [
             'mailbox_key' => 'passolibero-calzature-2',
             'project_key' => 'passolibero-calzature',
+            'tenant_id' => 'passolibero-calzature',
             'company_name' => 'PassoLibero Calzature',
             'email' => self::ACCOUNT_EMAIL,
             'folder' => 'passolibero-calzature-2',
@@ -228,7 +235,7 @@ final class TestEmailFixtures
     /**
      * Configurazione di una casella di test.
      *
-     * @return array{mailbox_key: string, project_key: string, company_name: string, email: string, folder: string, host: string, port: int, encryption: string, validate_cert: bool, password_env: string}
+     * @return array{mailbox_key: string, project_key: string, tenant_id: string, company_name: string, email: string, folder: string, host: string, port: int, encryption: string, validate_cert: bool, password_env: string}
      */
     public static function mailbox(string $mailboxKey): array
     {
@@ -238,6 +245,14 @@ final class TestEmailFixtures
         }
 
         return $mailbox;
+    }
+
+    /**
+     * Tenant di una casella (= l'azienda: un tenant per azienda).
+     */
+    public static function tenantFor(string $mailboxKey): string
+    {
+        return (string) self::mailbox($mailboxKey)['tenant_id'];
     }
 
     /**
