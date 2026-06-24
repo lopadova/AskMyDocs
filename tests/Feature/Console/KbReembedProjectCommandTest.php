@@ -36,6 +36,14 @@ final class KbReembedProjectCommandTest extends TestCase
         $tenants->reset();
     }
 
+    public function test_it_fails_fast_on_a_blank_project(): void
+    {
+        Queue::fake();
+        $this->artisan('kb:reembed-project', ['project' => '   ', '--tenant' => 'acme'])
+            ->assertFailed();
+        Queue::assertNothingPushed();
+    }
+
     public function test_it_queues_reembed_jobs_for_the_project(): void
     {
         Queue::fake();

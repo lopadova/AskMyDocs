@@ -72,13 +72,19 @@ class ReembedDocumentJob implements ShouldQueue
             }
 
             $resolved = app(ConnectorIngestionContract::class)->resolveKbSourcePath((string) $document->source_path);
-            $disk = Storage::disk($resolved['disk']);
 
-            // exists()-first: Storage::get() THROWS on a missing file (it does not
-            // return null), so check presence to keep the "logged skip, never a
-            // crash" contract instead of failing/retrying the job forever.
-            if (! $disk->exists($resolved['absolute'])) {
-                Log::warning('ReembedDocumentJob: source markdown missing on disk; skipping re-embed.', [
+            // Storage::get() THROWS on a missing/unreadable file (it does not
+            // reliably return null) — and an exists()+get() pair is TOCTOU (the
+            // file can vanish between the two calls). Wrap the read so a
+            // missing/unreadable source is a logged skip, never a job crash/retry.
+            try {
+                $bytes = Storage::disk($resolved['disk'])->get($resolved['absolute']);
+            } catch (\Throwable $e) {
+                $bytes = null;
+            }
+
+            if ($bytes === null) {
+                Log::warning('ReembedDocumentJob: source markdown missing/unreadable on disk; skipping re-embed.', [
                     'document_id' => $document->id,
                     'source_path' => $document->source_path,
                     'tenant_id' => $this->tenantId,
@@ -86,8 +92,6 @@ class ReembedDocumentJob implements ShouldQueue
 
                 return;
             }
-
-            $bytes = $disk->get($resolved['absolute']);
 
             $metadata = is_array($document->metadata) ? $document->metadata : [];
 

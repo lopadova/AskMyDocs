@@ -26,8 +26,21 @@ final class KbReembedProjectCommand extends Command
 
     public function handle(ReembedProjectService $service, TenantContext $tenants): int
     {
-        $project = (string) $this->argument('project');
-        $tenant = (string) $this->option('tenant');
+        $project = trim((string) $this->argument('project'));
+        $tenant = trim((string) $this->option('tenant'));
+
+        // Fail fast on a blank project (would queue 0 silently) or a blank
+        // tenant (would bind an invalid context) — tri-surface parity.
+        if ($project === '') {
+            $this->error('A non-empty project is required.');
+
+            return self::FAILURE;
+        }
+        if ($tenant === '') {
+            $this->error('--tenant must be a non-empty tenant id.');
+
+            return self::FAILURE;
+        }
 
         $previous = $tenants->current();
         $tenants->set($tenant);

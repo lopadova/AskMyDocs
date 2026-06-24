@@ -84,6 +84,14 @@ final class PiiReembedControllerTest extends TestCase
             ->assertJsonValidationErrorFor('project_key');
     }
 
+    public function test_whitespace_project_key_is_rejected_with_422(): void
+    {
+        $this->actingAs($this->user('dpo'))
+            ->postJson('/api/admin/pii/reembed', ['project_key' => '   '])
+            ->assertStatus(422)
+            ->assertJsonValidationErrorFor('project_key');
+    }
+
     public function test_guest_is_rejected_with_401(): void
     {
         $this->postJson('/api/admin/pii/reembed', ['project_key' => 'support'])->assertUnauthorized();

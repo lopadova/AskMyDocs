@@ -30,7 +30,9 @@ final class PiiReembedController extends Controller
     public function reembed(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'project_key' => ['required', 'string', 'max:120'],
+            // regex:/\S/ rejects whitespace-only keys (which would queue 0 docs
+            // and answer a misleading 200) — tri-surface parity with the MCP tool.
+            'project_key' => ['required', 'string', 'max:120', 'regex:/\S/'],
         ]);
 
         $tenantId = $this->tenant->current();
