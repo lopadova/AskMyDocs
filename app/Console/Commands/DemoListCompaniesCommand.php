@@ -45,7 +45,7 @@ class DemoListCompaniesCommand extends Command
             return self::SUCCESS;
         }
 
-        $projectNames = $this->projectNames();
+        $projectNames = $this->projectNames($tenantFilter);
         $connectorMap = $this->connectorMap($tenantFilter);
 
         $rows = [];
@@ -120,10 +120,13 @@ class DemoListCompaniesCommand extends Command
     /**
      * @return array<string,string>  "tenant_id|project_key" => name
      */
-    private function projectNames(): array
+    private function projectNames(?string $tenantFilter): array
     {
         $map = [];
-        foreach (Project::query()->get(['tenant_id', 'project_key', 'name']) as $project) {
+        $projects = Project::query()
+            ->when($tenantFilter !== null, fn ($q) => $q->where('tenant_id', $tenantFilter))
+            ->get(['tenant_id', 'project_key', 'name']);
+        foreach ($projects as $project) {
             $map[$project->tenant_id.'|'.$project->project_key] = (string) $project->name;
         }
 
