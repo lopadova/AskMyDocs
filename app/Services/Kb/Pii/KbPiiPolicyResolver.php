@@ -62,7 +62,13 @@ final class KbPiiPolicyResolver
     {
         $effective = [
             'redact_enabled' => (bool) config('kb.pii_redactor.redact_inline_ingest', false),
-            'strategy' => $this->normalizeStrategy(config('kb.pii_redactor.ingest_strategy', 'mask')),
+            // The config knob (`KB_INGEST_PII_STRATEGY`) is AUTHORITATIVE — passed
+            // through raw (trimmed only) so a typo surfaces loudly when
+            // IngestStrategyResolver rejects it at ingest time (R14), exactly as
+            // the connector boundary (HostIngestionBridge) behaves. Only DB rows
+            // below get the defensive fallback-to-mask (against manual
+            // corruption — rows are write-validated by UpsertKbPiiSettingRequest).
+            'strategy' => trim((string) config('kb.pii_redactor.ingest_strategy', 'mask')),
         ];
 
         foreach ($rows as $row) {
@@ -76,7 +82,7 @@ final class KbPiiPolicyResolver
             // rather than silently selecting an invalid strategy.
             $strategy = is_string($row->strategy) ? trim($row->strategy) : '';
             if ($strategy !== '') {
-                $effective['strategy'] = $this->normalizeStrategy($strategy);
+                $effective['strategy'] = $this->normalizeRowStrategy($strategy);
             }
         }
 
@@ -84,15 +90,15 @@ final class KbPiiPolicyResolver
     }
 
     /**
-     * Coerce a strategy value to a known token. An unrecognised value falls
-     * back to the safe one-way default (`mask`) rather than reaching the
-     * strategy factory with garbage — the strict-strategy throw is reserved
-     * for the explicit env/config knob ({@see IngestStrategyResolver}), not a
-     * (possibly legacy/corrupt) DB row.
+     * Coerce a DB-ROW strategy value to a known token. An unrecognised value
+     * falls back to the safe one-way default (`mask`) rather than reaching the
+     * strategy factory with garbage — rows are write-validated, so this only
+     * guards against manual DB corruption. (The config knob is NOT coerced — see
+     * {@see layer()} — so an operator typo throws loudly at ingest, R14.)
      */
-    private function normalizeStrategy(mixed $value): string
+    private function normalizeRowStrategy(string $value): string
     {
-        $value = is_string($value) ? trim($value) : '';
+        $value = trim($value);
 
         return in_array($value, KbPiiSetting::STRATEGIES, true) ? $value : 'mask';
     }

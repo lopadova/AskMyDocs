@@ -141,6 +141,17 @@ final class KbPiiPolicyResolverTest extends TestCase
         $this->assertSame('mask', $this->resolver->resolve('acme', KbPiiSetting::WILDCARD)['strategy']);
     }
 
+    public function test_unrecognised_config_strategy_is_returned_raw_for_a_loud_failure(): void
+    {
+        // The operator env knob is authoritative: a typo is NOT coerced to mask
+        // here — it is returned raw so IngestStrategyResolver throws loudly at
+        // ingest (R14), matching the connector boundary. (Contrast: a DB ROW with
+        // garbage IS coerced to mask above, since rows are write-validated.)
+        config(['kb.pii_redactor.ingest_strategy' => 'tokenize']); // typo, missing trailing 's'
+
+        $this->assertSame('tokenize', $this->resolver->resolve('acme', KbPiiSetting::WILDCARD)['strategy']);
+    }
+
     public function test_one_tenant_policy_never_leaks_into_another(): void
     {
         KbPiiSetting::create([
