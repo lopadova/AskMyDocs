@@ -279,7 +279,7 @@ final class TestEmailFixtures
      */
     public static function configJson(string $projectKey): array
     {
-        $account = self::ACCOUNTS[$projectKey];
+        $account = self::account($projectKey);
 
         return [
             'auth_mode' => 'basic',
