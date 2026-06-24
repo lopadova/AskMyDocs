@@ -104,6 +104,46 @@ final class ConnectorImapInstallCommandTest extends TestCase
         Queue::assertPushed(ConnectorSyncJob::class);
     }
 
+    public function test_multi_company_without_sync_is_rejected(): void
+    {
+        // Vincolo single-installation per tenant: senza --sync fallisce loud
+        // invece di installare solo l'ultima azienda (Finding #1 / R14).
+        $this->setPassword('CONNECTOR_TEST_ROTTA_PASSWORD', 'pw');
+        $this->setPassword('CONNECTOR_TEST_PROMETEO_PASSWORD', 'pw');
+        $this->makeUser();
+        $this->bindImapFactory(pingSucceeds: true);
+
+        $this->artisan('connector:imap:install', ['--all' => true])
+            ->assertExitCode(1);
+
+        $this->assertSame(0, ConnectorInstallation::query()->count());
+    }
+
+    public function test_all_with_sync_configures_each_company_serially(): void
+    {
+        // La riga (tenant,imap) è unica: il sync DEVE girare con la config di
+        // ogni azienda PRIMA che la successiva la sovrascriva. Con --sync il
+        // comando serializza (configura A → sync A → configura B → ...). Il
+        // factory registra la casella attiva ad ogni make() (ping + sync): se la
+        // serializzazione è corretta, vede tutte e 3 le aziende.
+        $this->setPassword('CONNECTOR_TEST_ROTTA_PASSWORD', 'pw-r');
+        $this->setPassword('CONNECTOR_TEST_PROMETEO_PASSWORD', 'pw-p');
+        $this->setPassword('CONNECTOR_TEST_PASSOLIBERO_PASSWORD', 'pw-l');
+        $this->makeUser();
+        $factory = $this->bindRecordingImapFactory();
+
+        $this->artisan('connector:imap:install', ['--all' => true, '--sync' => true])
+            ->assertExitCode(0);
+
+        $seen = array_values(array_unique($factory->usernames));
+        $this->assertContains('rotta.test.askmydocs@gmail.com', $seen);
+        $this->assertContains('prometeo.test.askmydocs@gmail.com', $seen);
+        $this->assertContains('passolibero.test.askmydocs@gmail.com', $seen);
+
+        // Resta una sola riga (documenta il vincolo single-installation).
+        $this->assertSame(1, ConnectorInstallation::query()->where('connector_name', 'imap')->count());
+    }
+
     public function test_unknown_actor_fails(): void
     {
         $this->setPassword('CONNECTOR_TEST_ROTTA_PASSWORD', 'pw');
@@ -200,5 +240,63 @@ final class ConnectorImapInstallCommandTest extends TestCase
         // Il registry costruisce ogni connettore nel costruttore: scarta il
         // singleton così viene ricreato con la factory fake.
         $this->app->forgetInstance(ConnectorRegistry::class);
+    }
+
+    /**
+     * Factory che registra la casella (username) attiva ad ogni make() e ritorna
+     * un client con mailbox vuota (il sync è un no-op clean). Restituisce
+     * l'istanza factory così il test può leggere `->usernames`.
+     */
+    private function bindRecordingImapFactory(): ImapClientFactoryInterface
+    {
+        $client = new class implements ImapClientInterface
+        {
+            public function ping(): bool
+            {
+                return true;
+            }
+
+            public function close(): void {}
+
+            public function listMailboxes(): array
+            {
+                return []; // nessuna cartella → sync no-op (niente fetch reale)
+            }
+
+            public function selectMailbox(string $name): MailboxState
+            {
+                throw new \LogicException('not reached (no mailboxes)');
+            }
+
+            public function searchUids(string $mailbox, ?Carbon $since, ?int $sinceUid): array
+            {
+                throw new \LogicException('not reached (no mailboxes)');
+            }
+
+            public function fetchMessage(string $mailbox, int $uid): ImapMessage
+            {
+                throw new \LogicException('not reached (no mailboxes)');
+            }
+        };
+
+        $factory = new class($client) implements ImapClientFactoryInterface
+        {
+            /** @var list<string> */
+            public array $usernames = [];
+
+            public function __construct(private readonly ImapClientInterface $client) {}
+
+            public function make(array $connection, string $secret, string $authMode): ImapClientInterface
+            {
+                $this->usernames[] = (string) ($connection['username'] ?? '');
+
+                return $this->client;
+            }
+        };
+
+        $this->app->instance(ImapClientFactoryInterface::class, $factory);
+        $this->app->forgetInstance(ConnectorRegistry::class);
+
+        return $factory;
     }
 }
