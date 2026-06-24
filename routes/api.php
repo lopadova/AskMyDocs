@@ -794,6 +794,10 @@ Route::middleware([
         // configure → ping/persist (basic) or redirect (xoauth2). Same gate group.
         Route::post('/{name}/configure', [ConnectorAdminController::class, 'configure'])
             ->name('api.admin.connectors.configure');
+        // v8.24 — live IMAP folder list for the connection-settings picker.
+        Route::get('/{installationId}/folders', [ConnectorAdminController::class, 'folders'])
+            ->whereNumber('installationId')
+            ->name('api.admin.connectors.folders');
         // v8.20 — edit an existing account's metadata (label / project binding).
         Route::patch('/{installationId}', [ConnectorAdminController::class, 'update'])
             ->whereNumber('installationId')

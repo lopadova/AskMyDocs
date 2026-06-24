@@ -10,6 +10,8 @@ use App\Http\Requests\Admin\UpdateConnectorInstallationRequest;
 use App\Http\Resources\Admin\ConnectorInstallationResource;
 use App\Services\Admin\Connectors\ConfigureConnectorService;
 use App\Services\Admin\Connectors\ConnectorInstallationService;
+use App\Services\Admin\Connectors\ImapFolderListingException;
+use App\Services\Admin\Connectors\ImapFolderListingService;
 use App\Support\TenantContext;
 use Padosoft\AskMyDocsConnectorBase\ConnectorRegistry;
 use Padosoft\AskMyDocsConnectorBase\ConnectorSyncJob;
@@ -60,6 +62,30 @@ final class ConnectorAdminController extends Controller
     public function index(): JsonResponse
     {
         return response()->json(['data' => $this->installations->summary()]);
+    }
+
+    /**
+     * GET /api/admin/connectors/{installationId}/folders
+     *
+     * v8.24 — live IMAP folder list for the "connection settings" picker. Opens a
+     * client for the (tenant-scoped) installation and returns its mailbox paths so
+     * the operator can multi-select which folders to sync into
+     * `config_json.folders.include`.
+     *
+     * R30 — cross-tenant / unknown id → 404 (NotFoundHttpException from the
+     * service). R14 — an unreachable server / rejected credentials →
+     * {@see ImapFolderListingException} mapped to 503, never a misleading empty
+     * 200. An IMAP account with genuinely no folders is a valid 200 with `[]`.
+     */
+    public function folders(int $installationId, ImapFolderListingService $folders): JsonResponse
+    {
+        try {
+            $list = $folders->listFolders($installationId);
+        } catch (ImapFolderListingException $e) {
+            return response()->json(['error' => $e->getMessage()], 503);
+        }
+
+        return response()->json(['data' => ['folders' => $list]]);
     }
 
     /**
