@@ -95,6 +95,18 @@ final class PiiEraseSubjectControllerTest extends TestCase
         $this->assertArrayNotHasKey('values', $audit->args_json);
     }
 
+    public function test_value_count_reflects_the_deduplicated_request(): void
+    {
+        $this->vault('default', self::EMAIL);
+
+        // Duplicates + whitespace collapse to ONE effective value.
+        $this->actingAs($this->user('dpo'))
+            ->postJson('/api/admin/pii/erase-subject', ['values' => [self::EMAIL, self::EMAIL, '  '.self::EMAIL.'  ']])
+            ->assertOk()
+            ->assertJsonPath('value_count', 1)
+            ->assertJsonPath('erased', 1);
+    }
+
     public function test_missing_values_is_rejected_with_422(): void
     {
         $this->actingAs($this->user('dpo'))

@@ -48,7 +48,9 @@ class KbEraseSubjectTool extends Tool
         ];
 
         $rawValues = $request->get('values');
-        $values = is_array($rawValues) ? array_values(array_filter($rawValues, 'is_string')) : [];
+        // Normalise (trim + de-dup) so the audit `value_count` matches the
+        // effective request the service acts on.
+        $values = $eraser->normalizeValues(is_array($rawValues) ? array_values(array_filter($rawValues, 'is_string')) : []);
 
         $hasPermission = $user !== null && method_exists($user, 'can') && $user->can($permission);
         if (! $hasPermission) {
@@ -65,6 +67,12 @@ class KbEraseSubjectTool extends Tool
 
         if ($values === []) {
             return Response::error('Provide at least one PII value to erase.');
+        }
+
+        // Match the HTTP surface's cap (FormRequest max:100) so an LLM cannot
+        // submit an unbounded batch.
+        if (count($values) > 100) {
+            return Response::error('At most 100 values may be erased per call.');
         }
 
         $tenantId = $tenants->current();

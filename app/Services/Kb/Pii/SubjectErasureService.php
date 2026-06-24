@@ -46,10 +46,17 @@ final class SubjectErasureService
             return 0;
         }
 
-        return PiiTokenMap::query()
-            ->where('tenant_id', $tenantId)
-            ->whereIn('original', $values)
-            ->delete();
+        // R3 — split the IN list into ≤1000-value chunks so a large erasure
+        // (e.g. a CLI batch) never emits a parser-hostile IN clause.
+        $deleted = 0;
+        foreach (array_chunk($values, 1000) as $chunk) {
+            $deleted += PiiTokenMap::query()
+                ->where('tenant_id', $tenantId)
+                ->whereIn('original', $chunk)
+                ->delete();
+        }
+
+        return $deleted;
     }
 
     /**
@@ -67,16 +74,21 @@ final class SubjectErasureService
             return [];
         }
 
-        return PiiTokenMap::query()
-            ->where('tenant_id', $tenantId)
-            ->whereIn('original', $values)
-            ->get(['token', 'detector', 'original'])
-            ->map(static fn (PiiTokenMap $row): array => [
-                'token' => (string) $row->token,
-                'detector' => (string) $row->detector,
-                'original' => (string) $row->original,
-            ])
-            ->all();
+        $rows = [];
+        foreach (array_chunk($values, 1000) as $chunk) {
+            foreach (PiiTokenMap::query()
+                ->where('tenant_id', $tenantId)
+                ->whereIn('original', $chunk)
+                ->get(['token', 'detector', 'original']) as $row) {
+                $rows[] = [
+                    'token' => (string) $row->token,
+                    'detector' => (string) $row->detector,
+                    'original' => (string) $row->original,
+                ];
+            }
+        }
+
+        return $rows;
     }
 
     /**
@@ -103,10 +115,14 @@ final class SubjectErasureService
     }
 
     /**
+     * Trim, drop empties, and de-duplicate a caller-supplied value list — the
+     * canonical "effective request" set. Public so every surface counts/audits
+     * the SAME set the service acts on (no pre-dedup divergence).
+     *
      * @param  list<string>  $values
      * @return list<string>
      */
-    private function normalizeValues(array $values): array
+    public function normalizeValues(array $values): array
     {
         $clean = [];
         foreach ($values as $value) {

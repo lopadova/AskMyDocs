@@ -35,7 +35,9 @@ final class PiiEraseSubjectController extends Controller
     {
         $permission = (string) config('kb.pii_redactor.erase_permission', 'pii.erase');
         $user = $request->user();
-        $values = array_values($request->validated()['values']);
+        // Normalise (trim + de-dup) up front so the response + audit `value_count`
+        // reflect the EFFECTIVE request the service acts on, not the raw payload.
+        $values = $this->eraser->normalizeValues($request->validated()['values']);
         $context = [
             'client_ip' => $request->ip(),
             'user_agent' => $request->userAgent(),

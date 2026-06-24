@@ -30,8 +30,9 @@ final class KbEraseSubjectCommand extends Command
 
     public function handle(SubjectErasureService $eraser, TenantContext $tenants): int
     {
-        /** @var list<string> $values */
-        $values = (array) $this->argument('values');
+        // Normalise (trim + de-dup) so the reported + audited count matches the
+        // effective request.
+        $values = $eraser->normalizeValues((array) $this->argument('values'));
         $tenant = (string) $this->option('tenant');
 
         $previous = $tenants->current();

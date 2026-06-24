@@ -288,6 +288,13 @@ final class AdminAuthorizationMatrixTest extends TestCase
                 $status,
                 "Role [{$role}] must pass the pii.erase gate on [{$writeUri}] but got 403.",
             );
+            // Also prove the route is actually MOUNTED (not silently 404) — a
+            // bare "not 403" would pass even on an unmounted endpoint.
+            $this->assertNotSame(
+                404,
+                $status,
+                "Endpoint [{$writeUri}] must be mounted for [{$role}] but got 404.",
+            );
         }
     }
 
