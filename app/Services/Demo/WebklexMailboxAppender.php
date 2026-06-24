@@ -112,7 +112,9 @@ final class WebklexMailboxAppender implements MailboxAppender
     {
         $folder = $client->getFolderByPath($name, false, true);
         if ($folder === null) {
-            $folder = $client->createFolder($name);
+            // expunge=false: subito dopo CREATE non c'è mailbox selezionata e
+            // Gmail risponde "BAD EXPUNGE not allowed now".
+            $folder = $client->createFolder($name, false);
         }
 
         if ($folder === null) {
