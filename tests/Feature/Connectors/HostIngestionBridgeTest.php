@@ -190,9 +190,29 @@ final class HostIngestionBridgeTest extends TestCase
         $this->assertStringContainsString('user@example.com', $underA);
     }
 
+    public function test_redact_content_is_no_op_and_does_not_throw_when_package_engine_off(): void
+    {
+        // Host boundary flags ON but the package engine OFF: redaction is a
+        // no-op, so even a typo'd strategy must NOT throw (the strict-strategy
+        // guard is reserved for when redaction actually runs).
+        config()->set('pii-redactor.enabled', false);
+        config()->set('kb.pii_redactor.enabled', true);
+        config()->set('kb.pii_redactor.redact_before_ingest', true);
+        config()->set('kb.pii_redactor.ingest_strategy', 'tokenize'); // typo, but engine off
+
+        /** @var HostIngestionBridge $bridge */
+        $bridge = $this->app->make(ConnectorIngestionContract::class);
+
+        $this->assertSame(
+            'My email is user@example.com',
+            $bridge->redactContent('My email is user@example.com'),
+        );
+    }
+
     public function test_redact_content_throws_on_unknown_ingest_strategy(): void
     {
         // R14 — unknown strategy value must throw, never silently degrade to mask.
+        config()->set('pii-redactor.enabled', true); // engine ON → redaction active → strict strategy applies
         config()->set('kb.pii_redactor.enabled', true);
         config()->set('kb.pii_redactor.redact_before_ingest', true);
         config()->set('kb.pii_redactor.ingest_strategy', 'tokenize'); // common typo — missing trailing 's'

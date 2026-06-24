@@ -129,6 +129,15 @@ final class HostIngestionBridge implements ConnectorIngestionContract
             return $content;
         }
 
+        // The package RedactorEngine no-ops when its own engine flag is off, so
+        // skip strategy resolution entirely in that case — otherwise a typo'd
+        // KB_INGEST_PII_STRATEGY would throw even though no redaction would run.
+        // The strict-strategy throw is thus reserved for when redaction is
+        // actually active (engine ON), where the misconfig genuinely matters.
+        if (! (bool) config('pii-redactor.enabled', false)) {
+            return $content;
+        }
+
         /** @var RedactorEngine $engine */
         $engine = app(RedactorEngine::class);
 
