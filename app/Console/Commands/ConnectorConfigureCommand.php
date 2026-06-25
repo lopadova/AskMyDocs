@@ -119,7 +119,7 @@ final class ConnectorConfigureCommand extends Command
         $name = (string) $field['name'];
 
         return match ((string) ($field['type'] ?? 'text')) {
-            'number' => $this->castInt($name, $value),
+            'number' => $this->castNullableInt($name, $value),
             'checkbox' => $this->castBool($name, $value),
             'select' => $this->castSelect($name, (array) ($field['options'] ?? []), $value),
             'multiselect', 'tags' => array_values(array_filter(
@@ -128,6 +128,23 @@ final class ConnectorConfigureCommand extends Command
             )),
             default => $value,
         };
+    }
+
+    /**
+     * Cast a number-field `--set` value, treating an empty value (or the literal
+     * `null`) as a clear-to-default — consistent with the HTTP/UI behaviour where
+     * an emptied number field sends null and the service unsets the override.
+     *
+     * @throws \InvalidArgumentException when a non-empty value can't be parsed
+     */
+    private function castNullableInt(string $name, string $value): ?int
+    {
+        $trimmed = trim($value);
+        if ($trimmed === '' || strtolower($trimmed) === 'null') {
+            return null;
+        }
+
+        return $this->castInt($name, $trimmed);
     }
 
     private function castInt(string $name, string $value): int

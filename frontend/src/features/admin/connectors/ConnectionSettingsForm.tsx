@@ -157,7 +157,10 @@ export function ConnectionSettingsForm({
                     setPath(settings, f.name, null);
                 } else {
                     const n = Number(t);
-                    if (Number.isFinite(n)) setPath(settings, f.name, n);
+                    // Finite → the number. Non-finite (e.g. "abc") → send the raw
+                    // string so the BE `integer` rule returns 422, rather than
+                    // silently dropping invalid input as if it were unchanged.
+                    setPath(settings, f.name, Number.isFinite(n) ? n : t);
                 }
                 continue;
             }

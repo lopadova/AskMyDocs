@@ -78,6 +78,28 @@ final class ConnectorConfigureCommandTest extends TestCase
         ])->assertExitCode(1);
     }
 
+    public function test_empty_value_clears_a_nullable_number_back_to_default(): void
+    {
+        $inst = $this->imapInstallation();
+
+        // Set an override, then clear it with an empty value — consistent with the
+        // HTTP/UI behaviour where an emptied number field sends null.
+        $this->artisan('connectors:configure', [
+            'installation' => $inst->id,
+            '--tenant' => 'default',
+            '--set' => ['date_window_days=90'],
+        ])->assertExitCode(0);
+        $this->assertSame(90, data_get($inst->refresh()->config_json, 'date_window_days'));
+
+        $this->artisan('connectors:configure', [
+            'installation' => $inst->id,
+            '--tenant' => 'default',
+            '--set' => ['date_window_days='],
+        ])->assertExitCode(0);
+
+        $this->assertNull(data_get($inst->refresh()->config_json, 'date_window_days'));
+    }
+
     public function test_invalid_value_for_a_typed_setting_is_rejected_not_coerced(): void
     {
         $inst = $this->imapInstallation();
