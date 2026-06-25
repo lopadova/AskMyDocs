@@ -183,8 +183,10 @@ final class UpdateConnectorInstallationRequest extends FormRequest
             'folders.include.*' => ['string', 'distinct', 'min:1', 'max:255'],
             // nullable: an explicit null CLEARS the override back to the connector
             // default (the service unsets the config_json key); an omitted key is
-            // left unchanged (PATCH).
-            'date_window_days' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:3650'],
+            // left unchanged (PATCH). max bound matches the schema-driven
+            // `settings.date_window_days` rule (the same config field) so a value
+            // can't be accepted on one surface and rejected on the other (R44).
+            'date_window_days' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:1000000'],
             // v8.25 — the generic settings object (a nested partial of config_json).
             'settings' => ['sometimes', 'array'],
         ];

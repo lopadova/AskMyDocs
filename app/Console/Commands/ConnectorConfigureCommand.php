@@ -66,8 +66,18 @@ final class ConnectorConfigureCommand extends Command
     ): int {
         $installation = $installations->findOr404($id);
         $schema = $settings->schemaFor($installation);
+        $sets = (array) $this->option('set');
 
         if ($schema === []) {
+            // A connector with no editable settings: `--show` (or no args) is a
+            // benign no-op, but a `--set` is a contract violation — fail loudly so
+            // automation can't believe a value was written when it wasn't.
+            if ($sets !== []) {
+                $this->error("Connector '{$installation->connector_name}' exposes no editable settings.");
+
+                return self::FAILURE;
+            }
+
             $this->warn("Connector '{$installation->connector_name}' exposes no editable settings.");
 
             return self::SUCCESS;
@@ -78,8 +88,6 @@ final class ConnectorConfigureCommand extends Command
         foreach ($schema as $field) {
             $byName[(string) $field['name']] = $field;
         }
-
-        $sets = (array) $this->option('set');
 
         if ($this->option('show') || $sets === []) {
             return $this->showSettings($installation, $schema, $settings);

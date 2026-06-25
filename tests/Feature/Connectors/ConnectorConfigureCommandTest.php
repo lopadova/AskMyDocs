@@ -117,6 +117,31 @@ final class ConnectorConfigureCommandTest extends TestCase
         $this->assertArrayNotHasKey('date_window_days', (array) $inst->refresh()->config_json);
     }
 
+    public function test_set_on_a_connector_with_no_settings_fails_loudly(): void
+    {
+        // Notion exposes no editable settings (no SupportsConnectionSettings).
+        $inst = ConnectorInstallation::create([
+            'tenant_id' => 'default',
+            'connector_name' => 'notion',
+            'label' => 'workspace',
+            'status' => ConnectorInstallation::STATUS_ACTIVE,
+        ]);
+
+        // --show is a benign no-op (exit 0), but --set must fail (exit 1) so
+        // automation can't believe a value was written when nothing applies.
+        $this->artisan('connectors:configure', [
+            'installation' => $inst->id,
+            '--tenant' => 'default',
+            '--show' => true,
+        ])->assertExitCode(0);
+
+        $this->artisan('connectors:configure', [
+            'installation' => $inst->id,
+            '--tenant' => 'default',
+            '--set' => ['anything=1'],
+        ])->assertExitCode(1);
+    }
+
     public function test_empty_value_clears_a_nullable_select_back_to_default(): void
     {
         $inst = $this->imapInstallation();
