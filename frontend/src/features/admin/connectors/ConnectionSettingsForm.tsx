@@ -406,6 +406,21 @@ function FolderOrOptionMultiselect({
     }, [live, field.options, liveFolders, selected]);
     const liveSet = useMemo(() => new Set(liveFolders), [liveFolders]);
     const selectedSet = useMemo(() => new Set(selected), [selected]);
+    // Collision-safe per-option testids: the stable `${base}-opt-${slug}` for the
+    // common case (distinct slugs), suffixing `-${i}` ONLY when two option paths
+    // slug to the same value (e.g. "Foo Bar" vs "Foo-Bar"). This keeps existing
+    // Playwright selectors valid and guarantees a slug collision can never emit
+    // two identical testids (R11/R29).
+    const testids = useMemo(() => {
+        const seen = new Set<string>();
+        return options.map((opt, i) => {
+            const s = slug(opt);
+            const id = `${base}-opt-${s}`;
+            if (seen.has(s)) return `${id}-${i}`;
+            seen.add(s);
+            return id;
+        });
+    }, [options, base]);
 
     const toggle = (path: string) => {
         const next = new Set(selectedSet);
@@ -442,12 +457,12 @@ function FolderOrOptionMultiselect({
     return (
         <ul data-testid={`${base}-list`} role="group" aria-labelledby={`${base}-label`} style={listStyle()}>
             {options.map((opt, i) => {
-                // id is index-based so it is GUARANTEED unique — two distinct folder
-                // paths can slug-collide (e.g. "Foo Bar" vs "Foo-Bar"), and a
-                // duplicate id silently breaks label↔input association. The
-                // data-testid stays slug-based for readable, stable selectors.
+                // id is index-based so it is GUARANTEED unique — a duplicate id
+                // silently breaks label↔input association. The testid is the
+                // collision-safe slug computed above: readable + stable for the
+                // common case, disambiguated only when two paths slug-collide.
                 const optId = `${base}-opt-${i}`;
-                const testid = `${base}-opt-${slug(opt)}`;
+                const testid = testids[i];
                 const missing = live && !liveSet.has(opt);
                 const display = live ? opt : (field.options[opt] ?? opt);
                 return (
