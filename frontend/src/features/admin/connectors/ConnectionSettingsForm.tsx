@@ -82,6 +82,11 @@ function seedValue(field: CredentialFieldSchema, settings: Record<string, unknow
             return Boolean(raw);
         case 'number':
             return raw == null ? '' : String(raw);
+        case 'select':
+            // Preserve null (don't stringify to '') so a nullable select seeds the
+            // empty option and round-trips a clear-to-default rather than submitting
+            // '' (which matches no option and would 422).
+            return raw == null ? null : String(raw);
         default:
             return raw == null ? '' : String(raw);
     }
@@ -341,6 +346,11 @@ function FieldRow({
     }
 
     if (field.type === 'select') {
+        // A non-required select can be cleared back to the connector default: it
+        // offers an explicit empty option and maps '' → null on change so the PATCH
+        // sends a real null (the BE select rule is nullable) rather than an empty
+        // string that matches no option.
+        const nullable = !field.required;
         return (
             <label htmlFor={base} style={fieldCol()}>
                 {label}
@@ -349,9 +359,10 @@ function FieldRow({
                     id={base}
                     data-testid={base}
                     value={String(value ?? '')}
-                    onChange={(e) => onChange(e.target.value)}
+                    onChange={(e) => onChange(e.target.value === '' ? null : e.target.value)}
                     style={inputStyle()}
                 >
+                    {nullable && <option value="">— connector default —</option>}
                     {Object.entries(field.options).map(([val, lbl]) => (
                         <option key={val} value={val}>
                             {lbl}
@@ -539,7 +550,9 @@ function TagInput({ base, ariaLabelledBy, values, onChange }: TagInputProps): Re
             {values.length > 0 && (
                 <ul data-testid={`${base}-chips`} style={{ ...listStyle(), maxHeight: 'none', flexDirection: 'row', flexWrap: 'wrap', padding: 4, gap: 4 }}>
                     {values.map((v, i) => (
-                        <li key={v} style={chipStyle()}>
+                        // key includes the index so a stored duplicate value (legacy
+                        // data / manual edit) cannot collide and corrupt reconciliation.
+                        <li key={`${v}-${i}`} style={chipStyle()}>
                             <span style={{ fontFamily: 'var(--font-mono)' }}>{v}</span>
                             <button
                                 type="button"
