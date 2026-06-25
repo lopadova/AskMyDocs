@@ -9,6 +9,8 @@ use App\Http\Requests\Admin\StartConnectorInstallRequest;
 use App\Http\Requests\Admin\UpdateConnectorInstallationRequest;
 use App\Http\Resources\Admin\ConnectorInstallationResource;
 use App\Services\Admin\Connectors\ConfigureConnectorService;
+use App\Services\Admin\Connectors\ConnectorEmailProbeException;
+use App\Services\Admin\Connectors\ConnectorEmailProbeService;
 use App\Services\Admin\Connectors\ConnectorInstallationService;
 use App\Services\Admin\Connectors\ConnectorFolderListingException;
 use App\Services\Admin\Connectors\ConnectorFolderListingService;
@@ -266,10 +268,43 @@ final class ConnectorAdminController extends Controller
      *
      * Dispatches a {@see ConnectorSyncJob} for the named installation.
      * Returns 202 — the actual sync is async.
+     *
+     * Retry semantics (the "Retry sync" button on an ERRORED account):
+     * `ConnectorSyncJob::runSync()` skips any installation whose status is not
+     * ACTIVE — so a bare dispatch against an ERRORED row is a silent no-op and the
+     * operator's "retry" never restarts. This is the operator-driven manual retry,
+     * so we re-arm the row to ACTIVE and clear `error_json` BEFORE dispatching; the
+     * job's guard then passes and a fresh sync actually runs (and re-stamps ERRORED
+     * if it fails again). The scheduler still never auto-resyncs ERRORED rows.
+     *
+     * R14 — a PENDING (mid-OAuth, no credentials) or DISABLED (operator-paused) row
+     * cannot be synced: returning 202 `queued:true` would lie about a job the guard
+     * drops. Surface a 422 telling the operator what to do (finish auth / Enable).
      */
     public function syncNow(int $installationId): JsonResponse
     {
         $installation = $this->installations->findOr404($installationId);
+
+        if ($installation->status === ConnectorInstallation::STATUS_PENDING) {
+            return response()->json([
+                'error' => 'This account is still authorising — finish the connection before syncing.',
+            ], 422);
+        }
+
+        if ($installation->status === ConnectorInstallation::STATUS_DISABLED) {
+            return response()->json([
+                'error' => 'This account is disabled — enable it before syncing.',
+            ], 422);
+        }
+
+        if ($installation->status === ConnectorInstallation::STATUS_ERRORED) {
+            // Operator-driven retry: re-arm so the sync job's ACTIVE-only guard
+            // passes. A still-failing source flips the row back to ERRORED.
+            $installation->forceFill([
+                'status' => ConnectorInstallation::STATUS_ACTIVE,
+                'error_json' => null,
+            ])->save();
+        }
 
         ConnectorSyncJob::dispatch($installation->id, $installation->tenant_id);
 
@@ -284,9 +319,8 @@ final class ConnectorAdminController extends Controller
     /**
      * POST /api/admin/connectors/{installationId}/disable
      *
-     * Pauses the scheduler-driven sync without revoking the
-     * credentials. Re-enable by re-installing or via a future
-     * "enable" action (W3 scope).
+     * Pauses the scheduler-driven sync without revoking the credentials. Reversible
+     * via {@see enable()} (no re-install / re-grant needed — the vault row is kept).
      */
     public function disable(int $installationId): JsonResponse
     {
@@ -302,6 +336,65 @@ final class ConnectorAdminController extends Controller
                 'status' => $installation->status,
             ],
         ]);
+    }
+
+    /**
+     * POST /api/admin/connectors/{installationId}/enable
+     *
+     * Re-activates a previously DISABLED (or ERRORED) account — the inverse of
+     * {@see disable()}. Credentials are untouched (disable never revoked them), so
+     * the scheduler resumes syncing the account on its next cadence and `error_json`
+     * is cleared. Idempotent on an already-ACTIVE row.
+     *
+     * R14/R43 — a PENDING row is mid-OAuth with no credentials yet; enabling it
+     * would let the scheduler sync a credential-less account (→ immediate ERRORED).
+     * Reject it with a 422 telling the operator to finish the connection instead.
+     */
+    public function enable(int $installationId): JsonResponse
+    {
+        $installation = $this->installations->findOr404($installationId);
+
+        if ($installation->status === ConnectorInstallation::STATUS_PENDING) {
+            return response()->json([
+                'error' => 'This account is still authorising — finish the connection instead of enabling.',
+            ], 422);
+        }
+
+        $installation->forceFill([
+            'status' => ConnectorInstallation::STATUS_ACTIVE,
+            'error_json' => null,
+        ])->save();
+
+        return response()->json([
+            'data' => [
+                'installation_id' => $installation->id,
+                'status' => $installation->status,
+            ],
+        ]);
+    }
+
+    /**
+     * POST /api/admin/connectors/{installationId}/test-fetch
+     *
+     * Diagnostic — connect to the account and download the SINGLE newest message of
+     * a folder, returning a sanitized preview WITHOUT ingesting it (no Storage
+     * write, no IngestDocumentJob). Lets the operator confirm credentials + folder
+     * access work end-to-end, beyond the bare connection ping. IMAP-only today
+     * ({@see ConnectorEmailProbeService}).
+     *
+     * R14 — a reachable-but-empty folder is a valid 200 with `message: null`; an
+     * unreachable mailbox / rejected credentials map to 503; a cross-tenant / unknown
+     * id (or a non-IMAP connector) 404s.
+     */
+    public function testFetch(int $installationId, ConnectorEmailProbeService $probe): JsonResponse
+    {
+        try {
+            $result = $probe->probe($installationId);
+        } catch (ConnectorEmailProbeException $e) {
+            return response()->json(['error' => $e->getMessage()], 503);
+        }
+
+        return response()->json(['data' => $result]);
     }
 
     /**
