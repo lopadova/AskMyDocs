@@ -1966,7 +1966,11 @@ QA of the ingest → chat → tenant-isolation flow: seedable IMAP mailboxes
 multi-company case-study fixtures (`CaseStudyUsersSeeder`,
 `ConnectorInstallationsSeeder`, per-company email JSON) and console drivers
 (`ConnectorImapInstallCommand`, `DemoListCompaniesCommand`,
-`InitCaseStudiesCommand`). Coverage: an R32 authorization-matrix row for the
+`InitCaseStudiesCommand`). As part of this, the `manageConnectors` gate is
+**widened from super-admin-only to admin + super-admin** so an admin can run the
+picker (consistently propagated across the gate, route group, FE role guards, the
+R32 matrix and `role-access.spec.ts`; it still touches credential vaults).
+Coverage: an R32 authorization-matrix row for the
 folders endpoint, real-data Playwright (`connectors-folders-super-admin.spec.ts`)
 and role-access. Finally it ships the `ios-testflight-release` skill that codifies
 the Tauri → TestFlight desktop release flow. See

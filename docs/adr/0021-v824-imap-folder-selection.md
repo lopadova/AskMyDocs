@@ -79,6 +79,12 @@ Two constraints shaped the design:
   `ConnectorInstallationsTool` (ADR 0017); the new live-discovery read is an
   admin-UI affordance, so no new MCP tool was added (roster stays 44). The CLI
   harness covers the PHP surface for repeatable seeding/install.
+- **The `manageConnectors` gate widens from super-admin-only to admin +
+  super-admin** so an admin (not just a super-admin) can run the folder picker.
+  This is a deliberate authorization change applied consistently across the gate
+  definition, the route group, the FE `<RequireRole>` guards, the R32
+  authorization matrix and `role-access.spec.ts`. The gate still touches
+  credential vaults, so it remains an admin-tier capability — never editor/viewer.
 - **The 503 distinction matters operationally** — an operator opening the picker
   against a mailbox whose credentials have since expired sees an explicit error,
   not an empty list they'd misread as "no folders".

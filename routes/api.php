@@ -799,13 +799,14 @@ Route::middleware([
 
 /*
 |--------------------------------------------------------------------------
-| Admin — Connector framework (gate-protected, super-admin)
+| Admin — Connector framework (gate-protected, admin + super-admin)
 |--------------------------------------------------------------------------
 |
 | v4.5/W1 — Mounts the connector admin surface. The `manageConnectors`
 | Gate (registered in `AppServiceProvider::registerConnectorGates()`)
-| restricts every action to super-admin only. Cross-tenant isolation
-| is enforced inside the controller via `TenantContext::current()`.
+| restricts every action to admin + super-admin (widened from super-admin
+| only in v8.24 so an admin can run the folder picker). Cross-tenant
+| isolation is enforced inside the controller via `TenantContext::current()`.
 |
 | The OAuth callback endpoint is mounted under the SAME group so
 | Sanctum's session + the active tenant scope are available when the
