@@ -122,10 +122,10 @@ final class ConnectorConfigureCommand extends Command
             'number' => $this->castNullableInt($name, $value),
             'checkbox' => $this->castBool($name, $value),
             'select' => $this->castSelect($name, (array) ($field['options'] ?? []), $value),
-            'multiselect', 'tags' => array_values(array_filter(
+            'multiselect', 'tags' => array_values(array_unique(array_filter(
                 array_map('trim', $value === '' ? [] : explode(',', $value)),
                 static fn ($v) => $v !== '',
-            )),
+            ))),
             default => $value,
         };
     }

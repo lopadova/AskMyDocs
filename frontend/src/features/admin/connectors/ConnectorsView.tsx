@@ -220,7 +220,7 @@ export function ConnectorsView() {
                 settings,
             });
             setModal((cur) => (cur?.kind === 'folders' && cur.account.id === target.id ? null : cur));
-            toast.success('Connection settings saved.', 'toast-connector-folders-saved');
+            toast.success('Connection settings saved.', 'toast-connector-settings-saved');
         } catch (e) {
             const open = modalRef.current;
             if (open?.kind !== 'folders' || open.account.id !== target.id) return;

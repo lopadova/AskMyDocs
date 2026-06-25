@@ -76,7 +76,7 @@ baseTest.describe('Connectors — IMAP connection settings (super-admin)', () =>
         await expect(page.getByTestId('connector-imap-settings-senders-exclude-chip-noreply-x-com-remove')).toBeVisible();
         await page.getByTestId('connector-imap-settings-form-submit').click();
 
-        await expect(page.getByTestId('toast-connector-folders-saved')).toBeVisible({ timeout: 10_000 });
+        await expect(page.getByTestId('toast-connector-settings-saved')).toBeVisible({ timeout: 10_000 });
         await expect(form).toHaveCount(0);
 
         // Reopen → the saved values round-trip (INBOX checked, window 90, tag chip present).

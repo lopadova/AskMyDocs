@@ -174,13 +174,18 @@ final class UpdateConnectorInstallationRequest extends FormRequest
         return match ((string) ($field['type'] ?? 'text')) {
             'multiselect', 'tags' => [
                 $key => ['sometimes', 'array', 'max:500'],
-                $key.'.*' => ['string', 'max:255'],
+                // distinct: a list field must not carry duplicates (matches the
+                // v8.24 folders.include.* rule) — redundant entries cause wasted
+                // connector work and inconsistent round-trips.
+                $key.'.*' => ['string', 'distinct', 'max:255'],
             ],
             // nullable: an explicit null clears the override back to the connector
             // default (the UI sends null when a number field is emptied).
             'number' => [$key => ['sometimes', 'nullable', 'integer', 'min:0', 'max:1000000']],
             'checkbox' => [$key => ['sometimes', 'boolean']],
-            'select' => [$key => ['sometimes', Rule::in(array_keys((array) ($field['options'] ?? [])))]],
+            // nullable: an empty value (UI/CLI clear → null via middleware) reverts
+            // the override to the connector default instead of 422-ing on Rule::in.
+            'select' => [$key => ['sometimes', 'nullable', Rule::in(array_keys((array) ($field['options'] ?? [])))]],
             default => [$key => ['sometimes', 'string', 'max:2000']],
         };
     }

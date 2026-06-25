@@ -512,6 +512,18 @@ function TagInput({ base, ariaLabelledBy, values, onChange }: TagInputProps): Re
         setDraft('');
     };
     const remove = (v: string) => onChange(values.filter((x) => x !== v));
+    // Collision-safe chip testids: the stable slug for the common case, suffixed
+    // `-${i}` only when two distinct values slug-collide (e.g. "Foo Bar" vs
+    // "Foo-Bar"), so a collision can never emit two identical testids (R11/R29).
+    const chipIds = useMemo(() => {
+        const seen = new Set<string>();
+        return values.map((v, i) => {
+            const s = slug(v);
+            if (seen.has(s)) return `${s}-${i}`;
+            seen.add(s);
+            return s;
+        });
+    }, [values]);
 
     const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
         if (e.key === 'Enter' || e.key === ',') {
@@ -526,12 +538,12 @@ function TagInput({ base, ariaLabelledBy, values, onChange }: TagInputProps): Re
         <div data-testid={`${base}`} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             {values.length > 0 && (
                 <ul data-testid={`${base}-chips`} style={{ ...listStyle(), maxHeight: 'none', flexDirection: 'row', flexWrap: 'wrap', padding: 4, gap: 4 }}>
-                    {values.map((v) => (
+                    {values.map((v, i) => (
                         <li key={v} style={chipStyle()}>
                             <span style={{ fontFamily: 'var(--font-mono)' }}>{v}</span>
                             <button
                                 type="button"
-                                data-testid={`${base}-chip-${slug(v)}-remove`}
+                                data-testid={`${base}-chip-${chipIds[i]}-remove`}
                                 aria-label={`Remove ${v}`}
                                 onClick={() => remove(v)}
                                 style={chipRemoveStyle()}
