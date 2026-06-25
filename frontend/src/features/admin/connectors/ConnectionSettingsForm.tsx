@@ -153,8 +153,13 @@ export function ConnectionSettingsForm({
     // expected value (parity with CredentialConnectorForm). Hidden fields are
     // neither rendered nor submitted, so a default-seeded but inapplicable setting
     // never overwrites stored config_json.
-    const isVisible = (field: CredentialFieldSchema): boolean =>
-        field.showIf === null || values[field.showIf.field] === field.showIf.equals;
+    const isVisible = (field: CredentialFieldSchema): boolean => {
+        if (field.showIf === null) return true;
+        // Compare by string form: `number` field values are stored as strings, so a
+        // strict === against a numeric/boolean `showIf.equals` (e.g. 90 vs '90',
+        // true vs 'true') would never match.
+        return String(values[field.showIf.field]) === String(field.showIf.equals);
+    };
 
     // Surface both field-level (`settings.<name>`) AND element-level
     // (`settings.<name>.0`) validation errors — Laravel keys list-item failures
