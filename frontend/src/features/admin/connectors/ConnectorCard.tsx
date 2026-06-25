@@ -10,10 +10,13 @@ import { accountStatus, formatRelative, statusBadgeStyle } from './status-utils'
  * to a KB `project_key`). The header carries an "Add account" CTA; each account
  * row carries its own status badge + per-account actions:
  *   - pending  → Cancel install (removes the PENDING row)
- *   - active   → Sync now · Edit · Disable · Remove
- *   - errored  → Retry sync · Edit · Disable · Remove
- *   - disabled → Edit · Remove (no "re-enable" button — there is no enable
- *                endpoint; re-add the account with the same label to re-arm)
+ *   - active   → Sync now · Test fetch · Edit · Disable · Remove
+ *   - errored  → Retry sync · Test fetch · Edit · Disable · Remove
+ *   - disabled → Enable · Test fetch · Edit · Remove
+ *
+ * "Enable" re-activates a disabled account (inverse of Disable; creds kept).
+ * "Test fetch" (credential connectors only) downloads ONE recent email as a
+ * preview without ingesting — the operator's end-to-end credential check.
  *
  * Stateless aside from the inline per-account "confirm remove" toggle, which is
  * keyed by installation id so two accounts' confirms never collide.
@@ -29,15 +32,22 @@ export interface ConnectorCardProps {
     onAddAccount: (key: string) => void;
     onSync: (installationId: number) => void;
     onDisable: (installationId: number) => void;
+    /** Re-activate a disabled account (inverse of disable). */
+    onEnable: (installationId: number) => void;
     onRemove: (installationId: number) => void;
     onEdit: (installation: ConnectorInstallationDto) => void;
     /** v8.24 — open the connection-settings (folder picker) modal for an account. */
     onManageFolders?: (installation: ConnectorInstallationDto) => void;
+    /** Diagnostic — download one recent email as a preview (credential connectors). */
+    onTestFetch?: (installation: ConnectorInstallationDto) => void;
     onCancelInstall: (installationId: number) => void;
     /** installation ids whose sync is in flight. */
     syncingIds?: ReadonlySet<number>;
-    /** installation ids whose disable/remove is in flight. */
+    /** installation ids whose disable/enable/remove is in flight. */
     busyIds?: ReadonlySet<number>;
+    /** installation ids whose test-fetch probe is in flight (tracked separately so
+     *  a read-only probe neither blocks nor is blocked by the write actions). */
+    probingIds?: ReadonlySet<number>;
     /** an add/connect for THIS connector is in flight. */
     addPending?: boolean;
     now?: Date;
@@ -48,12 +58,15 @@ export function ConnectorCard({
     onAddAccount,
     onSync,
     onDisable,
+    onEnable,
     onRemove,
     onEdit,
     onManageFolders,
+    onTestFetch,
     onCancelInstall,
     syncingIds,
     busyIds,
+    probingIds,
     addPending,
     now,
 }: ConnectorCardProps) {
@@ -159,13 +172,16 @@ export function ConnectorCard({
                             account={acct}
                             onSync={onSync}
                             onDisable={onDisable}
+                            onEnable={onEnable}
                             onRemove={onRemove}
                             onEdit={onEdit}
                             onManageFolders={onManageFolders}
+                            onTestFetch={onTestFetch}
                             isCredential={isCredential}
                             onCancelInstall={onCancelInstall}
                             syncing={syncingIds?.has(acct.id) ?? false}
                             busy={busyIds?.has(acct.id) ?? false}
+                            probing={probingIds?.has(acct.id) ?? false}
                             now={now}
                         />
                     ))}
@@ -179,13 +195,16 @@ interface AccountRowProps {
     account: ConnectorInstallationDto;
     onSync: (id: number) => void;
     onDisable: (id: number) => void;
+    onEnable: (id: number) => void;
     onRemove: (id: number) => void;
     onEdit: (installation: ConnectorInstallationDto) => void;
     onManageFolders?: (installation: ConnectorInstallationDto) => void;
+    onTestFetch?: (installation: ConnectorInstallationDto) => void;
     isCredential: boolean;
     onCancelInstall: (id: number) => void;
     syncing: boolean;
     busy: boolean;
+    probing: boolean;
     now?: Date;
 }
 
@@ -193,22 +212,27 @@ function AccountRow({
     account,
     onSync,
     onDisable,
+    onEnable,
     onRemove,
     onEdit,
     onManageFolders,
+    onTestFetch,
     isCredential,
     onCancelInstall,
     syncing,
     busy,
+    probing,
     now,
 }: AccountRowProps) {
     const status = accountStatus(account);
     const badge = statusBadgeStyle(status);
     const lastSync = formatRelative(account.last_sync_at, now);
     const [confirmingRemove, setConfirmingRemove] = useState(false);
-    // ANY action in flight for this account locks every action button — the
+    // ANY write action in flight for this account locks every write button — the
     // parent's in-flight guard ignores a second action on a busy id, so a still-
-    // enabled button would be a confusing silent no-op.
+    // enabled button would be a confusing silent no-op. The read-only test-fetch
+    // probe is tracked separately (`probing`) so it neither blocks nor is blocked
+    // by the write actions.
     const locked = syncing || busy;
 
     return (
@@ -309,13 +333,39 @@ function AccountRow({
                     </button>
                 )}
 
+                {/* Re-activate a disabled account (inverse of Disable; creds kept). */}
+                {status === 'disabled' && (
+                    <button
+                        type="button"
+                        data-testid={`connector-account-${account.id}-enable`}
+                        className="focus-ring"
+                        disabled={locked}
+                        onClick={() => onEnable(account.id)}
+                        style={primaryButton(locked)}
+                    >
+                        {busy ? 'Enabling…' : 'Enable'}
+                    </button>
+                )}
+
                 {/*
-                 * A DISABLED account intentionally exposes only Edit + Remove:
-                 * the BE has no "enable" endpoint (re-enabling is a future action
-                 * / re-install per the disable() contract), and a manual sync-now
-                 * would NOT clear the DISABLED status — so a "Re-enable" button
-                 * here would mislead the operator.
+                 * Diagnostic — download ONE recent email as a preview, no ingest.
+                 * Credential connectors (IMAP) only; hidden while pending (no
+                 * verified credentials yet). Tracked via `probing`, not `locked`, so
+                 * it stays usable while a write action runs and vice-versa.
                  */}
+                {status !== 'pending' && isCredential && onTestFetch && (
+                    <button
+                        type="button"
+                        data-testid={`connector-account-${account.id}-test-fetch`}
+                        className="focus-ring"
+                        disabled={probing}
+                        onClick={() => onTestFetch(account)}
+                        style={ghostButton(probing)}
+                    >
+                        {probing ? 'Fetching…' : 'Test fetch'}
+                    </button>
+                )}
+
                 {status !== 'pending' && (
                     <button
                         type="button"
