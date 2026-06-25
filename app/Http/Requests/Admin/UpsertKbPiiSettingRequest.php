@@ -31,7 +31,10 @@ final class UpsertKbPiiSettingRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'project_key' => ['required', 'string', 'max:120'],
+            // regex:/\S/ rejects whitespace-only keys (the controller also trims),
+            // so a policy row is never keyed by '   ' — which would orphan the
+            // override (never matching a real project). '*' (wildcard) passes.
+            'project_key' => ['required', 'string', 'max:120', 'regex:/\S/'],
             'redact_enabled' => ['nullable', 'boolean'],
             // Only the two ingestion strategies are valid policy values; an
             // explicit null clears the override (inherit the config default).

@@ -218,6 +218,26 @@ final class KbPiiSettingControllerTest extends TestCase
         ])->assertOk()->assertJsonPath('reembed_recommended', false);
     }
 
+    public function test_whitespace_only_project_key_is_rejected_with_422(): void
+    {
+        $this->actingAs($this->makeUser('dpo'))->putJson('/api/admin/pii/policy', [
+            'project_key' => '   ',
+            'redact_enabled' => true,
+        ])->assertStatus(422)->assertJsonValidationErrorFor('project_key');
+    }
+
+    public function test_padded_project_key_is_trimmed_before_storage(): void
+    {
+        $this->actingAs($this->makeUser('dpo'))->putJson('/api/admin/pii/policy', [
+            'project_key' => '  support  ',
+            'redact_enabled' => true,
+            'strategy' => 'tokenise',
+        ])->assertOk()->assertJsonPath('setting.project_key', 'support');
+
+        $this->assertDatabaseHas('kb_pii_settings', ['tenant_id' => 'default', 'project_key' => 'support']);
+        $this->assertDatabaseMissing('kb_pii_settings', ['project_key' => '  support  ']);
+    }
+
     public function test_invalid_strategy_is_rejected_with_422(): void
     {
         $this->actingAs($this->makeUser('dpo'))->putJson('/api/admin/pii/policy', [
