@@ -10,8 +10,8 @@ use App\Http\Requests\Admin\UpdateConnectorInstallationRequest;
 use App\Http\Resources\Admin\ConnectorInstallationResource;
 use App\Services\Admin\Connectors\ConfigureConnectorService;
 use App\Services\Admin\Connectors\ConnectorInstallationService;
-use App\Services\Admin\Connectors\ImapFolderListingException;
-use App\Services\Admin\Connectors\ImapFolderListingService;
+use App\Services\Admin\Connectors\ConnectorFolderListingException;
+use App\Services\Admin\Connectors\ConnectorFolderListingService;
 use App\Support\TenantContext;
 use Padosoft\AskMyDocsConnectorBase\ConnectorRegistry;
 use Padosoft\AskMyDocsConnectorBase\ConnectorSyncJob;
@@ -67,21 +67,23 @@ final class ConnectorAdminController extends Controller
     /**
      * GET /api/admin/connectors/{installationId}/folders
      *
-     * v8.24 — live IMAP folder list for the "connection settings" picker. Opens a
-     * client for the (tenant-scoped) installation and returns its mailbox paths so
-     * the operator can multi-select which folders to sync into
-     * `config_json.folders.include`.
+     * v8.25 — live folder/label list for the "connection settings" picker, for ANY
+     * connector that implements SupportsFolderDiscovery (IMAP today; the connector
+     * owns the upstream client). Returns the (tenant-scoped) installation's
+     * container paths so the operator can multi-select which to sync into
+     * `config_json.folders.include` / `.exclude`.
      *
-     * R30 — cross-tenant / unknown id → 404 (NotFoundHttpException from the
-     * service). R14 — an unreachable server / rejected credentials →
-     * {@see ImapFolderListingException} mapped to 503, never a misleading empty
-     * 200. An IMAP account with genuinely no folders is a valid 200 with `[]`.
+     * R30 — cross-tenant / unknown id, or a connector with no folder discovery →
+     * 404 (NotFoundHttpException from the service). R14 — an unreachable source /
+     * rejected credentials → {@see ConnectorFolderListingException} mapped to 503,
+     * never a misleading empty 200. An account with genuinely no folders is a
+     * valid 200 with `[]`.
      */
-    public function folders(int $installationId, ImapFolderListingService $folders): JsonResponse
+    public function folders(int $installationId, ConnectorFolderListingService $folders): JsonResponse
     {
         try {
             $list = $folders->listFolders($installationId);
-        } catch (ImapFolderListingException $e) {
+        } catch (ConnectorFolderListingException $e) {
             return response()->json(['error' => $e->getMessage()], 503);
         }
 

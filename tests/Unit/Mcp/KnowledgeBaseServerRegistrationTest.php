@@ -29,12 +29,12 @@ class KnowledgeBaseServerRegistrationTest extends TestCase
         return $property->getDefaultValue();
     }
 
-    public function test_server_registers_exactly_forty_four_tools(): void
+    public function test_server_registers_exactly_forty_five_tools(): void
     {
         // 36 (v8.21) + 3 invitations tools (v8.x) + 1 AppSettingsTool (v8.22)
         // + 1 KbPiiPolicyTool + 1 KbDetokenizeTool + 1 KbEraseSubjectTool
-        // + 1 KbReembedProjectTool (v8.23/Ciclo 4).
-        $this->assertCount(44, $this->registeredTools());
+        // + 1 KbReembedProjectTool (v8.23/Ciclo 4) + 1 ConnectorSettingsTool (v8.25).
+        $this->assertCount(45, $this->registeredTools());
     }
 
     public function test_server_registers_the_invitations_tools(): void
@@ -93,6 +93,12 @@ class KnowledgeBaseServerRegistrationTest extends TestCase
     {
         // v8.20 — the multi-account connectors MCP read surface (R44 third surface).
         $this->assertContains(\App\Mcp\Tools\ConnectorInstallationsTool::class, $this->registeredTools());
+    }
+
+    public function test_server_registers_the_connector_settings_tool(): void
+    {
+        // v8.25 — the connector settings MCP read surface (R44 third surface).
+        $this->assertContains(\App\Mcp\Tools\ConnectorSettingsTool::class, $this->registeredTools());
     }
 
     public function test_server_registers_the_gamification_insights_tool(): void

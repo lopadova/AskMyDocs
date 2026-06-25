@@ -723,6 +723,9 @@ class AppServiceProvider extends ServiceProvider
             // ConfigureConnectorService.
             \App\Console\Commands\ConnectorsListCommand::class,
             \App\Console\Commands\ConnectorsInstallCommand::class,
+            // v8.25 — post-install connector settings editor (R44 PHP surface),
+            // over ConnectorInstallationService / ConnectorSettingsService.
+            \App\Console\Commands\ConnectorConfigureCommand::class,
             // v8.21/Ciclo 2 — ingestion/sync observability PHP surface (R44).
             \App\Console\Commands\IngestionStatusCommand::class,
             // v8.22/Ciclo 3 — runtime config governance PHP surface (R44).
