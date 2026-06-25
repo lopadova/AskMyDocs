@@ -834,13 +834,13 @@ const adminAiActComplianceSplatRoute = createRoute({
 //   /app/admin/connectors/$key/callback         → OAuth callback handler
 //
 // Same flat-RBAC pattern: the BE Gate `manageConnectors` is the
-// authoritative defence (super-admin only); the FE <RequireRole>
+// authoritative defence (admin + super-admin); the FE <RequireRole>
 // guard short-circuits to <AdminForbidden /> for unprivileged roles so
 // a viewer hitting /app/admin/connectors directly never sees a 403
 // fetch storm.
 function AdminConnectorsRoute() {
     return (
-        <RequireRole roles={['super-admin']}>
+        <RequireRole roles={['admin', 'super-admin']}>
             <ConnectorsView />
         </RequireRole>
     );
@@ -849,7 +849,7 @@ function AdminConnectorsRoute() {
 function AdminConnectorCallbackRoute() {
     const params = useParams({ strict: false }) as { key?: string };
     return (
-        <RequireRole roles={['super-admin']}>
+        <RequireRole roles={['admin', 'super-admin']}>
             <ConnectorCallback connectorKey={params.key ?? ''} />
         </RequireRole>
     );
@@ -861,11 +861,11 @@ const adminConnectorsRoute = createRoute({
     component: AdminConnectorsRoute,
 });
 
-// v8.21 (Ciclo 2) — Ingestion & Sync observability. Same super-admin gate as
-// connectors (the BE `manageConnectors` Gate is authoritative).
+// v8.21 (Ciclo 2) — Ingestion & Sync observability. Same admin+super-admin gate
+// as connectors (the BE `manageConnectors` Gate is authoritative).
 function AdminIngestionRoute() {
     return (
-        <RequireRole roles={['super-admin']}>
+        <RequireRole roles={['admin', 'super-admin']}>
             <IngestionView />
         </RequireRole>
     );

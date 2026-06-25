@@ -1,0 +1,898 @@
+[
+    {
+        "subject": "Conferma rinnovo CPI edificio B-MI-07",
+        "from_name": "Sistema Pratiche Prometeo",
+        "from_email": "noreply@prometeo-antincendio.example.com",
+        "date": "2024-01-08 09:14:22",
+        "body_text": "Gentile cliente,\nconfermiamo l'avvenuta protocollazione della pratica di rinnovo del Certificato di Prevenzione Incendi (CPI) relativa all'edificio B-MI-07 sito in Via dei Vigili 12, Milano.\nNumero pratica: PRV-2024-0457\nProtocollo interno: Fenice-7\nStato: in lavorazione presso il Comando VV.F. competente.\nLe attività di sopralluogo preliminare sono state pianificate per la seconda metà di gennaio. Riceverà una notifica automatica al cambio di stato della pratica.\nLa documentazione tecnica allegata è stata acquisita correttamente.\nCordiali saluti,\nUfficio Tecnico Prometeo Sicurezza Antincendio"
+    },
+    {
+        "subject": "Promemoria scadenza verifica estintori MNT-PA-118",
+        "from_name": "Scadenzario Prometeo",
+        "from_email": "scadenze@prometeo-antincendio.example.com",
+        "date": "2024-01-09 11:02:47",
+        "body_text": "Avviso automatico di scadenza.\nLa manutenzione periodica semestrale degli estintori a polvere associata al contratto MNT-PA-118 risulta in scadenza il 31/01/2024.\nSede interessata: edificio B-MI-07, Via dei Vigili 12, Milano.\nDispositivi da verificare: 18 estintori a polvere, 6 estintori a CO2.\nLe ricordiamo che la mancata verifica entro la data prevista comporta la decadenza della validità del registro antincendio.\nPer confermare l'appuntamento risponda a questa email o contatti il nostro ufficio tecnico.\nQuesto è un messaggio generato automaticamente dal sistema di gestione scadenze Prometeo."
+    },
+    {
+        "subject": "Ricevuta sopralluogo tecnico del 11/01/2024",
+        "from_name": "Marco Ferraro",
+        "from_email": "m.ferraro@prometeo-antincendio.example.com",
+        "date": "2024-01-11 16:38:10",
+        "body_text": "Buongiorno,\nin allegato la ricevuta del sopralluogo effettuato in data odierna presso l'edificio B-MI-07 in Via dei Vigili 12, Milano.\nDurante il sopralluogo sono stati verificati: impianto sprinkler del piano interrato, rilevatori di fumo dei piani 1 e 2, segnaletica di emergenza.\nÈ stata riscontrata una porta tagliafuoco con chiusura automatica non perfettamente funzionante al piano 1, segnalata nel verbale.\nIl verbale completo confluirà nella pratica PRV-2024-0457 sotto protocollo Fenice-7.\nResto a disposizione per eventuali chiarimenti.\nMarco Ferraro\nTecnico Prevenzione Incendi"
+    },
+    {
+        "subject": "Alert: rilevatore di fumo in stato di guasto",
+        "from_name": "Centrale Monitoraggio Prometeo",
+        "from_email": "monitoraggio@prometeo-antincendio.example.com",
+        "date": "2024-01-12 07:51:33",
+        "body_text": "ALLARME TECNICO AUTOMATICO\nUn rilevatore di fumo collegato alla centrale dell'edificio B-MI-07 risulta in stato di guasto dalle ore 06:42 del 12/01/2024.\nUbicazione: piano 2, zona corridoio est, Via dei Vigili 12, Milano.\nCodice contratto manutenzione: MNT-PA-118.\nÈ stato generato un ticket di intervento tecnico. Un nostro operatore verrà inviato in giornata per la sostituzione del dispositivo.\nFino al ripristino si raccomanda sorveglianza rafforzata dell'area interessata.\nNon rispondere a questo messaggio automatico."
+    },
+    {
+        "subject": "Iscrizione confermata corso formazione antincendio rischio medio",
+        "from_name": "Segreteria Formazione Prometeo",
+        "from_email": "formazione@prometeo-antincendio.example.com",
+        "date": "2024-01-15 10:27:55",
+        "body_text": "Gentile responsabile,\nconfermiamo l'iscrizione di 8 partecipanti di Logos SpA al corso di formazione antincendio per attività a rischio medio.\nData: 29/01/2024, ore 09:00 - 17:00.\nSede del corso: aula didattica Prometeo presso edificio B-MI-07, Via dei Vigili 12, Milano.\nIl corso prevede esercitazioni pratiche con estintori a polvere e CO2 e la prova di evacuazione.\nAl termine verrà rilasciato l'attestato valido ai sensi della normativa vigente.\nLa preghiamo di comunicare eventuali variazioni nei nominativi entro il 25/01/2024.\nCordiali saluti,\nSegreteria Formazione"
+    },
+    {
+        "subject": "Aggiornamento stato pratica PRV-2024-0457",
+        "from_name": "Sistema Pratiche Prometeo",
+        "from_email": "noreply@prometeo-antincendio.example.com",
+        "date": "2024-01-17 14:19:08",
+        "body_text": "Notifica automatica di cambio stato.\nLa pratica PRV-2024-0457 (rinnovo CPI edificio B-MI-07) è passata dallo stato \"in lavorazione\" allo stato \"documentazione integrativa richiesta\".\nProtocollo: Fenice-7.\nIl Comando VV.F. ha richiesto l'integrazione della planimetria aggiornata delle vie di esodo e la certificazione di reazione al fuoco delle porte tagliafuoco installate.\nÈ necessario fornire la documentazione mancante entro 15 giorni dalla presente notifica.\nIl referente tecnico assegnato la contatterà per concordare la raccolta dei documenti.\nQuesto messaggio è generato automaticamente."
+    },
+    {
+        "subject": "Ricevuta pagamento canone manutenzione I trimestre",
+        "from_name": "Amministrazione Prometeo",
+        "from_email": "amministrazione@prometeo-antincendio.example.com",
+        "date": "2024-01-18 09:46:31",
+        "body_text": "Spettabile Logos SpA,\nconfermiamo la ricezione del pagamento relativo al canone di manutenzione impianti antincendio del primo trimestre 2024.\nContratto di riferimento: MNT-PA-118.\nImporto registrato: regolarmente acquisito.\nServizi coperti: manutenzione estintori a polvere e CO2, verifica impianto sprinkler, controllo rilevatori di fumo presso l'edificio B-MI-07 in Via dei Vigili 12, Milano.\nLa fattura quietanzata è disponibile nell'area riservata.\nLa ringraziamo per la collaborazione.\nUfficio Amministrazione"
+    },
+    {
+        "subject": "Promemoria verifica quinquennale impianto sprinkler",
+        "from_name": "Scadenzario Prometeo",
+        "from_email": "scadenze@prometeo-antincendio.example.com",
+        "date": "2024-01-19 08:33:14",
+        "body_text": "Avviso automatico di scadenza quinquennale.\nL'impianto sprinkler installato presso l'edificio B-MI-07, Via dei Vigili 12, Milano, è soggetto a verifica quinquennale obbligatoria con scadenza prevista per il 15/03/2024.\nLa verifica comprende il collaudo della rete idrica antincendio, il controllo delle valvole e la prova di funzionamento delle teste sprinkler.\nContratto: MNT-PA-118.\nLe consigliamo di pianificare l'intervento con almeno 30 giorni di anticipo per evitare interruzioni operative.\nMessaggio generato automaticamente dal sistema scadenze."
+    },
+    {
+        "subject": "Conferma appuntamento ispezione VV.F.",
+        "from_name": "Giulia Mancini",
+        "from_email": "g.mancini@prometeo-antincendio.example.com",
+        "date": "2024-01-22 15:08:42",
+        "body_text": "Gentile referente di Logos SpA,\nconfermiamo l'appuntamento per l'ispezione VV.F. presso l'edificio B-MI-07, Via dei Vigili 12, Milano.\nData: 05/02/2024, ore 10:00.\nLa visita rientra nell'iter della pratica PRV-2024-0457 (protocollo Fenice-7).\nSarà presente il nostro tecnico per accompagnare gli ispettori e fornire la documentazione richiesta.\nLa preghiamo di garantire l'accesso a tutti i locali, incluso il vano tecnico dell'impianto sprinkler e i percorsi di esodo.\nPer qualsiasi necessità sono a disposizione.\nGiulia Mancini\nUfficio Tecnico Prometeo"
+    },
+    {
+        "subject": "Ticket intervento chiuso - sostituzione rilevatore",
+        "from_name": "Centrale Monitoraggio Prometeo",
+        "from_email": "monitoraggio@prometeo-antincendio.example.com",
+        "date": "2024-01-23 17:44:19",
+        "body_text": "Notifica automatica di chiusura ticket.\nL'intervento di sostituzione del rilevatore di fumo guasto presso l'edificio B-MI-07 (piano 2, corridoio est) è stato completato con esito positivo.\nIndirizzo: Via dei Vigili 12, Milano.\nContratto: MNT-PA-118.\nIl nuovo dispositivo è stato collegato alla centrale e testato. Tutti i rilevatori della zona risultano ora operativi.\nL'evento di guasto è stato annotato nel registro antincendio.\nIl rapportino di intervento firmato è disponibile nell'area riservata.\nQuesto è un messaggio automatico, non rispondere."
+    },
+    {
+        "subject": "Documentazione integrativa ricevuta - PRV-2024-0457",
+        "from_name": "Sistema Pratiche Prometeo",
+        "from_email": "noreply@prometeo-antincendio.example.com",
+        "date": "2024-01-25 11:36:50",
+        "body_text": "Notifica automatica.\nConfermiamo la ricezione della documentazione integrativa relativa alla pratica PRV-2024-0457 (rinnovo CPI edificio B-MI-07).\nProtocollo: Fenice-7.\nDocumenti acquisiti: planimetria aggiornata delle vie di esodo, certificazione di reazione al fuoco delle porte tagliafuoco.\nLa pratica è stata riportata allo stato \"in lavorazione\" e trasmessa nuovamente al Comando VV.F. per la valutazione.\nRiceverà un aggiornamento al prossimo cambio di stato.\nUfficio Tecnico Prometeo Sicurezza Antincendio"
+    },
+    {
+        "subject": "Verbale sopralluogo porte tagliafuoco disponibile",
+        "from_name": "Andrea Costa",
+        "from_email": "a.costa@prometeo-antincendio.example.com",
+        "date": "2024-01-26 13:22:07",
+        "body_text": "Buongiorno,\nè disponibile il verbale del sopralluogo dedicato alle porte tagliafuoco dell'edificio B-MI-07, Via dei Vigili 12, Milano.\nSono state controllate 12 porte tagliafuoco REI 60 e REI 120 distribuite sui tre piani.\nEsito: 10 conformi, 2 da regolare. La porta del piano 1 lato scala richiede la sostituzione del meccanismo di autochiusura, già segnalata in precedenza.\nProgrammeremo l'intervento correttivo nell'ambito del contratto MNT-PA-118.\nIl verbale completo è allegato alla pratica protocollo Fenice-7.\nCordiali saluti,\nAndrea Costa"
+    },
+    {
+        "subject": "Promemoria scadenza attestati corso formazione",
+        "from_name": "Segreteria Formazione Prometeo",
+        "from_email": "formazione@prometeo-antincendio.example.com",
+        "date": "2024-01-29 09:58:26",
+        "body_text": "Avviso automatico.\nGli attestati del corso di formazione antincendio rischio medio rilasciati nel 2021 ai dipendenti di Logos SpA risultano in scadenza nel mese di marzo 2024.\nÈ necessario programmare il corso di aggiornamento (durata 5 ore) per il mantenimento dell'idoneità.\nSede di riferimento per la formazione: edificio B-MI-07, Via dei Vigili 12, Milano.\nLe proponiamo le seguenti date disponibili: 12/03, 19/03 e 26/03/2024.\nLa preghiamo di indicarci la data preferita per procedere con la pianificazione.\nSegreteria Formazione Prometeo"
+    },
+    {
+        "subject": "Esito positivo ispezione VV.F. del 05/02/2024",
+        "from_name": "Giulia Mancini",
+        "from_email": "g.mancini@prometeo-antincendio.example.com",
+        "date": "2024-02-05 16:14:38",
+        "body_text": "Gentile cliente,\nl'ispezione VV.F. svolta in data odierna presso l'edificio B-MI-07, Via dei Vigili 12, Milano, si è conclusa con esito favorevole.\nGli ispettori hanno verificato l'impianto sprinkler, i rilevatori di fumo, gli estintori e le vie di esodo, riscontrando la piena conformità.\nL'unica osservazione riguarda la porta tagliafuoco del piano 1, per la quale è già pianificato l'intervento correttivo.\nL'esito confluisce nella pratica PRV-2024-0457, protocollo Fenice-7, che prosegue verso il rilascio del CPI.\nLe invieremo aggiornamenti al prossimo step.\nGiulia Mancini"
+    },
+    {
+        "subject": "Conferma ordine ricarica estintori CO2",
+        "from_name": "Ufficio Acquisti Prometeo",
+        "from_email": "acquisti@prometeo-antincendio.example.com",
+        "date": "2024-02-06 10:41:53",
+        "body_text": "Spettabile fornitore,\nconfermiamo l'ordine per la ricarica di n. 6 estintori a CO2 destinati all'edificio B-MI-07 in Via dei Vigili 12, Milano.\nL'intervento rientra nel contratto di manutenzione MNT-PA-118.\nConsegna richiesta entro il 20/02/2024 presso il nostro magazzino tecnico.\nVi preghiamo di accludere i certificati di collaudo aggiornati delle bombole.\nIn attesa di conferma della disponibilità, restiamo a disposizione.\nUfficio Acquisti Prometeo Sicurezza Antincendio"
+    },
+    {
+        "subject": "Notifica avanzamento pratica verso rilascio CPI",
+        "from_name": "Sistema Pratiche Prometeo",
+        "from_email": "noreply@prometeo-antincendio.example.com",
+        "date": "2024-02-08 12:05:44",
+        "body_text": "Notifica automatica di cambio stato.\nLa pratica PRV-2024-0457 (rinnovo CPI edificio B-MI-07) è passata allo stato \"istruttoria conclusa - in attesa di emissione\".\nProtocollo: Fenice-7.\nA seguito dell'esito positivo dell'ispezione VV.F. del 05/02/2024, il Comando ha completato l'istruttoria.\nIl Certificato di Prevenzione Incendi sarà emesso nei prossimi giorni lavorativi.\nLe invieremo una notifica al momento del rilascio ufficiale del documento.\nQuesto messaggio è generato automaticamente dal sistema di gestione pratiche."
+    },
+    {
+        "subject": "Promemoria prova di evacuazione annuale",
+        "from_name": "Scadenzario Prometeo",
+        "from_email": "scadenze@prometeo-antincendio.example.com",
+        "date": "2024-02-09 08:17:29",
+        "body_text": "Avviso automatico di scadenza.\nLa prova di evacuazione annuale per l'edificio B-MI-07, Via dei Vigili 12, Milano, deve essere effettuata entro il 31/03/2024.\nLa prova rientra negli obblighi periodici di Logos SpA e prevede la simulazione completa dell'esodo con verifica dei tempi e del funzionamento della segnaletica luminosa.\nIl nostro personale può affiancare il responsabile dell'emergenza durante l'esercitazione.\nPer concordare data e modalità contatti l'ufficio tecnico.\nMessaggio generato automaticamente dal sistema scadenze Prometeo."
+    },
+    {
+        "subject": "Ricevuta richiesta preventivo nuovi estintori",
+        "from_name": "Sistema Preventivi Prometeo",
+        "from_email": "noreply@prometeo-antincendio.example.com",
+        "date": "2024-02-12 14:53:11",
+        "body_text": "Gentile cliente,\nabbiamo ricevuto la sua richiesta di preventivo per la fornitura di nuovi estintori a polvere da installare presso l'edificio B-MI-07, Via dei Vigili 12, Milano.\nNumero richiesta: protocollo interno collegato a Fenice-7.\nLa richiesta riguarda 4 estintori a polvere da 6 kg per l'area magazzino di Logos SpA.\nUn nostro tecnico commerciale predisporrà l'offerta entro 3 giorni lavorativi tenendo conto delle dotazioni già presenti nel contratto MNT-PA-118.\nGrazie per averci contattato.\nUfficio Tecnico Prometeo"
+    },
+    {
+        "subject": "CPI emesso - edificio B-MI-07",
+        "from_name": "Sistema Pratiche Prometeo",
+        "from_email": "noreply@prometeo-antincendio.example.com",
+        "date": "2024-02-14 11:29:47",
+        "body_text": "Notifica automatica.\nIl Certificato di Prevenzione Incendi (CPI) relativo all'edificio B-MI-07 in Via dei Vigili 12, Milano, è stato emesso dal Comando VV.F.\nPratica: PRV-2024-0457\nProtocollo: Fenice-7\nIntestatario: Logos SpA\nIl documento ha validità quinquennale. La nuova scadenza di rinnovo sarà inserita automaticamente nello scadenzario.\nIl certificato originale è disponibile per il ritiro presso il nostro ufficio e una copia digitale è caricata nell'area riservata.\nCongratulazioni per il completamento dell'iter.\nUfficio Tecnico Prometeo Sicurezza Antincendio"
+    },
+    {
+        "subject": "Conferma consegna ricarica estintori CO2",
+        "from_name": "Magazzino Tecnico Prometeo",
+        "from_email": "magazzino@prometeo-antincendio.example.com",
+        "date": "2024-02-15 09:36:18",
+        "body_text": "Notifica automatica di consegna.\nÈ stata registrata la consegna di n. 6 estintori a CO2 ricaricati, destinati all'edificio B-MI-07, Via dei Vigili 12, Milano.\nContratto di riferimento: MNT-PA-118.\nI dispositivi sono stati controllati al ricevimento: tutti i certificati di collaudo delle bombole risultano allegati e validi.\nL'installazione sostitutiva è in programma per il 19/02/2024.\nIl registro antincendio sarà aggiornato a installazione completata.\nMessaggio generato automaticamente dal sistema di magazzino Prometeo."
+    },
+    {
+        "subject": "Alert pressione impianto sprinkler sotto soglia",
+        "from_name": "Centrale Monitoraggio Prometeo",
+        "from_email": "monitoraggio@prometeo-antincendio.example.com",
+        "date": "2024-02-16 06:28:54",
+        "body_text": "ALLARME TECNICO AUTOMATICO\nLa pressione della rete dell'impianto sprinkler dell'edificio B-MI-07 è scesa sotto la soglia di sicurezza alle ore 05:50 del 16/02/2024.\nUbicazione: vano tecnico piano interrato, Via dei Vigili 12, Milano.\nContratto: MNT-PA-118.\nÈ stato aperto un ticket di intervento urgente. Un tecnico verrà inviato per la verifica del gruppo di pompaggio e delle valvole.\nSi raccomanda di non operare manualmente sull'impianto fino al sopralluogo.\nNon rispondere a questo messaggio automatico."
+    },
+    {
+        "subject": "Ricevuta verbale prova evacuazione",
+        "from_name": "Andrea Costa",
+        "from_email": "a.costa@prometeo-antincendio.example.com",
+        "date": "2024-02-19 17:11:39",
+        "body_text": "Buongiorno,\nin allegato il verbale della prova di evacuazione svolta presso l'edificio B-MI-07, Via dei Vigili 12, Milano.\nHanno partecipato all'esercitazione i dipendenti di Logos SpA presenti in sede.\nTempo di evacuazione rilevato: 4 minuti e 12 secondi, entro i parametri previsti.\nLa segnaletica luminosa e gli allarmi sonori hanno funzionato correttamente. È stata rilevata una via di esodo secondaria parzialmente ostruita da materiale, già rimossa durante la prova.\nIl verbale viene archiviato nel fascicolo protocollo Fenice-7.\nCordiali saluti,\nAndrea Costa"
+    },
+    {
+        "subject": "Intervento sprinkler completato - ripristino pressione",
+        "from_name": "Centrale Monitoraggio Prometeo",
+        "from_email": "monitoraggio@prometeo-antincendio.example.com",
+        "date": "2024-02-20 13:47:02",
+        "body_text": "Notifica automatica di chiusura ticket.\nL'intervento urgente sull'impianto sprinkler dell'edificio B-MI-07 è stato completato.\nIndirizzo: Via dei Vigili 12, Milano.\nContratto: MNT-PA-118.\nCausa del calo di pressione: guarnizione difettosa su una valvola del gruppo di pompaggio, ora sostituita. La pressione di rete è tornata nei valori nominali.\nL'impianto è stato testato e risulta pienamente operativo.\nIl rapportino tecnico firmato è disponibile nell'area riservata e l'evento è annotato nel registro antincendio.\nMessaggio automatico, non rispondere."
+    },
+    {
+        "subject": "Offerta fornitura estintori a polvere",
+        "from_name": "Roberto Sala",
+        "from_email": "r.sala@prometeo-antincendio.example.com",
+        "date": "2024-02-21 10:09:47",
+        "body_text": "Gentile cliente,\nin riscontro alla sua richiesta, le inviamo l'offerta per la fornitura di 4 estintori a polvere da 6 kg destinati all'area magazzino dell'edificio B-MI-07, Via dei Vigili 12, Milano.\nL'offerta include installazione, collaudo iniziale e inserimento nel registro antincendio.\nI nuovi dispositivi verranno integrati nel contratto di manutenzione MNT-PA-118 di Logos SpA.\nL'offerta è valida 30 giorni. Resto a disposizione per chiarimenti o per concordare un sopralluogo di posizionamento.\nCordiali saluti,\nRoberto Sala\nUfficio Tecnico Commerciale"
+    },
+    {
+        "subject": "Promemoria controllo semestrale rilevatori di fumo",
+        "from_name": "Scadenzario Prometeo",
+        "from_email": "scadenze@prometeo-antincendio.example.com",
+        "date": "2024-02-22 08:44:30",
+        "body_text": "Avviso automatico di scadenza.\nIl controllo semestrale dei rilevatori di fumo dell'edificio B-MI-07, Via dei Vigili 12, Milano, è in scadenza il 15/03/2024.\nDispositivi interessati: 24 rilevatori di fumo distribuiti sui tre piani.\nContratto: MNT-PA-118.\nIl controllo prevede il test di funzionamento, la pulizia delle camere ottiche e la verifica del collegamento alla centrale.\nLe ricordiamo che tale verifica è coordinata con il controllo semestrale degli estintori per ottimizzare l'intervento.\nMessaggio generato automaticamente dal sistema scadenze Prometeo."
+    },
+    {
+        "subject": "Conferma installazione nuovi estintori magazzino",
+        "from_name": "Magazzino Tecnico Prometeo",
+        "from_email": "magazzino@prometeo-antincendio.example.com",
+        "date": "2024-02-26 15:33:21",
+        "body_text": "Notifica automatica.\nConfermiamo l'avvenuta installazione di n. 4 estintori a polvere da 6 kg nell'area magazzino dell'edificio B-MI-07, Via dei Vigili 12, Milano.\nIntestatario: Logos SpA.\nI dispositivi sono stati collaudati, dotati di cartellino di manutenzione e inseriti nel contratto MNT-PA-118.\nLa posizione di ciascun estintore è stata segnalata con apposita cartellonistica.\nIl registro antincendio è stato aggiornato con i nuovi codici identificativi.\nMessaggio generato automaticamente dal sistema di magazzino."
+    },
+    {
+        "subject": "Ricevuta richiesta sopralluogo straordinario",
+        "from_name": "Sistema Ticket Prometeo",
+        "from_email": "noreply@prometeo-antincendio.example.com",
+        "date": "2024-02-27 11:18:46",
+        "body_text": "Gentile referente di Logos SpA,\nabbiamo ricevuto la sua richiesta di sopralluogo straordinario per l'edificio B-MI-07, Via dei Vigili 12, Milano.\nMotivazione indicata: ristrutturazione interna del piano 2 con modifica della disposizione degli arredi e possibile impatto sulle vie di esodo.\nNumero ticket assegnato, collegato al protocollo Fenice-7.\nUn nostro tecnico la contatterà entro 2 giorni lavorativi per concordare la data del sopralluogo.\nLe attività rientrano nel contratto MNT-PA-118.\nQuesto è un messaggio automatico di presa in carico."
+    },
+    {
+        "subject": "Aggiornamento scadenzario dopo rilascio CPI",
+        "from_name": "Scadenzario Prometeo",
+        "from_email": "scadenze@prometeo-antincendio.example.com",
+        "date": "2024-02-28 09:25:13",
+        "body_text": "Notifica automatica di aggiornamento.\nA seguito del rilascio del Certificato di Prevenzione Incendi (CPI) per l'edificio B-MI-07, lo scadenzario è stato aggiornato.\nIndirizzo: Via dei Vigili 12, Milano.\nPratica di riferimento: PRV-2024-0457, protocollo Fenice-7.\nLa nuova scadenza quinquennale del CPI è stata registrata. Riceverà i primi promemoria di rinnovo 180 giorni prima della scadenza.\nRestano attive le scadenze periodiche del contratto MNT-PA-118 per estintori, sprinkler e rilevatori.\nMessaggio generato automaticamente."
+    },
+    {
+        "subject": "Conferma data corso aggiornamento antincendio",
+        "from_name": "Segreteria Formazione Prometeo",
+        "from_email": "formazione@prometeo-antincendio.example.com",
+        "date": "2024-03-01 10:52:38",
+        "body_text": "Gentile responsabile,\nconfermiamo la data del corso di aggiornamento antincendio rischio medio per i dipendenti di Logos SpA: 19/03/2024, ore 09:00 - 14:00.\nSede: aula didattica Prometeo presso edificio B-MI-07, Via dei Vigili 12, Milano.\nPartecipanti previsti: 8.\nIl corso include il ripasso teorico e l'esercitazione pratica con estintori a polvere e CO2.\nGli attestati aggiornati verranno rilasciati al termine della giornata.\nLa preghiamo di confermare l'elenco definitivo dei partecipanti entro il 14/03/2024.\nSegreteria Formazione Prometeo"
+    },
+    {
+        "subject": "Verbale sopralluogo straordinario piano 2",
+        "from_name": "Marco Ferraro",
+        "from_email": "m.ferraro@prometeo-antincendio.example.com",
+        "date": "2024-03-04 16:47:55",
+        "body_text": "Buongiorno,\nin allegato il verbale del sopralluogo straordinario effettuato al piano 2 dell'edificio B-MI-07, Via dei Vigili 12, Milano, a seguito della ristrutturazione interna.\nLa nuova disposizione degli arredi mantiene la larghezza minima delle vie di esodo. Un estintore a polvere è stato riposizionato per garantire la visibilità e l'accessibilità.\nSi raccomanda di non collocare materiale davanti alla porta tagliafuoco lato scala.\nIl verbale è archiviato nel fascicolo protocollo Fenice-7 e collegato al contratto MNT-PA-118.\nCordiali saluti,\nMarco Ferraro"
+    },
+    {
+        "subject": "Promemoria scadenza certificati collaudo bombole",
+        "from_name": "Scadenzario Prometeo",
+        "from_email": "scadenze@prometeo-antincendio.example.com",
+        "date": "2024-03-06 08:39:42",
+        "body_text": "Avviso automatico di scadenza.\nIl collaudo decennale delle bombole di alcuni estintori a CO2 installati presso l'edificio B-MI-07, Via dei Vigili 12, Milano, è in avvicinamento alla scadenza prevista per maggio 2024.\nContratto: MNT-PA-118.\nDispositivi interessati: 3 estintori a CO2 con bombole prossime al limite decennale.\nLe consigliamo di programmare il revisionamento per evitare la messa fuori servizio dei dispositivi.\nIl nostro ufficio tecnico può predisporre il ritiro e la sostituzione temporanea.\nMessaggio generato automaticamente dal sistema scadenze Prometeo."
+    },
+    {
+        "subject": "Ricevuta automatica registro antincendio aggiornato",
+        "from_name": "Sistema Documentale Prometeo",
+        "from_email": "noreply@prometeo-antincendio.example.com",
+        "date": "2024-03-08 13:14:27",
+        "body_text": "Notifica automatica.\nIl registro antincendio dell'edificio B-MI-07, Via dei Vigili 12, Milano, è stato aggiornato e archiviato.\nIntestatario: Logos SpA.\nAggiornamenti registrati: sostituzione rilevatore piano 2, intervento sprinkler, installazione 4 estintori a polvere, ricarica 6 estintori a CO2.\nContratto: MNT-PA-118.\nProtocollo documentale: Fenice-7.\nLa copia aggiornata del registro è disponibile nell'area riservata. Si raccomanda di conservarne una copia cartacea presso la sede.\nMessaggio generato automaticamente dal sistema documentale."
+    },
+    {
+        "subject": "Conferma controllo semestrale estintori completato",
+        "from_name": "Andrea Costa",
+        "from_email": "a.costa@prometeo-antincendio.example.com",
+        "date": "2024-03-13 15:58:09",
+        "body_text": "Buongiorno,\nconfermiamo il completamento del controllo semestrale degli estintori presso l'edificio B-MI-07, Via dei Vigili 12, Milano.\nDispositivi verificati: 22 estintori a polvere e 6 estintori a CO2.\nEsito: tutti conformi, cartellini di manutenzione aggiornati con la data odierna.\nIn contestualità è stato eseguito anche il controllo semestrale dei 24 rilevatori di fumo, tutti funzionanti.\nL'intervento rientra nel contratto MNT-PA-118 e l'esito è registrato nel registro antincendio.\nCordiali saluti,\nAndrea Costa"
+    },
+    {
+        "subject": "Alert mancata risposta centrale rilevazione",
+        "from_name": "Centrale Monitoraggio Prometeo",
+        "from_email": "monitoraggio@prometeo-antincendio.example.com",
+        "date": "2024-03-14 22:06:51",
+        "body_text": "ALLARME TECNICO AUTOMATICO\nLa centrale di rilevazione incendi dell'edificio B-MI-07 non risponde alle interrogazioni di sistema dalle ore 21:48 del 14/03/2024.\nIndirizzo: Via dei Vigili 12, Milano.\nContratto: MNT-PA-118.\nLa perdita di comunicazione potrebbe essere dovuta a un'interruzione di rete o a un guasto della scheda di comunicazione.\nÈ stato aperto un ticket prioritario. Un tecnico contatterà il referente per verificare l'accesso alla sede.\nFino al ripristino mantenere sorveglianza diretta dei locali.\nNon rispondere a questo messaggio automatico."
+    },
+    {
+        "subject": "Ripristino comunicazione centrale rilevazione",
+        "from_name": "Centrale Monitoraggio Prometeo",
+        "from_email": "monitoraggio@prometeo-antincendio.example.com",
+        "date": "2024-03-15 10:22:34",
+        "body_text": "Notifica automatica di chiusura ticket.\nLa comunicazione con la centrale di rilevazione incendi dell'edificio B-MI-07 è stata ripristinata.\nIndirizzo: Via dei Vigili 12, Milano.\nContratto: MNT-PA-118.\nCausa: scheda di comunicazione difettosa, sostituita in giornata. Tutte le zone rilevatori e gli sprinkler risultano nuovamente collegati e monitorati.\nL'evento è stato annotato nel registro antincendio e il rapportino di intervento è disponibile nell'area riservata.\nCi scusiamo per il disagio.\nMessaggio automatico, non rispondere."
+    },
+    {
+        "subject": "Attestati corso aggiornamento disponibili",
+        "from_name": "Segreteria Formazione Prometeo",
+        "from_email": "formazione@prometeo-antincendio.example.com",
+        "date": "2024-03-20 09:47:16",
+        "body_text": "Gentile responsabile,\nconfermiamo lo svolgimento del corso di aggiornamento antincendio rischio medio del 19/03/2024 presso l'edificio B-MI-07, Via dei Vigili 12, Milano.\nPartecipanti di Logos SpA: 8, tutti idonei.\nGli attestati aggiornati sono stati emessi e sono disponibili per il download nell'area riservata.\nLa nuova validità degli attestati è stata registrata nello scadenzario, con il prossimo aggiornamento previsto tra cinque anni.\nLa ringraziamo per la partecipazione.\nSegreteria Formazione Prometeo"
+    },
+    {
+        "subject": "Conferma verifica quinquennale impianto sprinkler",
+        "from_name": "Marco Ferraro",
+        "from_email": "m.ferraro@prometeo-antincendio.example.com",
+        "date": "2024-03-25 14:36:48",
+        "body_text": "Buongiorno,\nconfermiamo l'esecuzione della verifica quinquennale dell'impianto sprinkler dell'edificio B-MI-07, Via dei Vigili 12, Milano.\nSono stati collaudati la rete idrica antincendio, il gruppo di pompaggio, le valvole di sezionamento e un campione di teste sprinkler.\nEsito: impianto conforme e pienamente efficiente.\nContratto: MNT-PA-118.\nIl verbale di verifica quinquennale è archiviato nel fascicolo protocollo Fenice-7 e la prossima scadenza è stata aggiornata nello scadenzario.\nCordiali saluti,\nMarco Ferraro\nTecnico Prevenzione Incendi"
+    },
+    {
+        "subject": "Ricevuta richiesta copia CPI per assicurazione",
+        "from_name": "Sistema Documentale Prometeo",
+        "from_email": "noreply@prometeo-antincendio.example.com",
+        "date": "2024-04-03 11:41:29",
+        "body_text": "Gentile cliente,\nabbiamo ricevuto la richiesta di copia conforme del Certificato di Prevenzione Incendi (CPI) dell'edificio B-MI-07, Via dei Vigili 12, Milano, da trasmettere alla compagnia assicurativa.\nPratica di riferimento: PRV-2024-0457, protocollo Fenice-7.\nIntestatario: Logos SpA.\nLa copia conforme sarà predisposta dal nostro ufficio entro 2 giorni lavorativi e resa disponibile sia in formato digitale nell'area riservata sia in cartaceo per il ritiro.\nQuesto è un messaggio automatico di presa in carico della richiesta."
+    },
+    {
+        "subject": "Promemoria revisionamento decennale estintori CO2",
+        "from_name": "Scadenzario Prometeo",
+        "from_email": "scadenze@prometeo-antincendio.example.com",
+        "date": "2024-04-15 08:28:57",
+        "body_text": "Avviso automatico di scadenza.\nIl revisionamento decennale di n. 3 estintori a CO2 presso l'edificio B-MI-07, Via dei Vigili 12, Milano, è in scadenza il 10/05/2024.\nContratto: MNT-PA-118.\nIl revisionamento comprende il collaudo delle bombole, la sostituzione delle parti soggette a usura e il ricaricamento.\nDurante l'intervento forniremo estintori sostitutivi temporanei per garantire la copertura antincendio dell'area.\nPer concordare il ritiro contatti l'ufficio tecnico.\nMessaggio generato automaticamente dal sistema scadenze Prometeo."
+    },
+    {
+        "subject": "Riepilogo trimestrale attività antincendio",
+        "from_name": "Ufficio Tecnico Prometeo",
+        "from_email": "ufficio.tecnico@prometeo-antincendio.example.com",
+        "date": "2024-04-28 16:53:40",
+        "body_text": "Spettabile Logos SpA,\ndi seguito il riepilogo automatico delle attività antincendio del primo trimestre 2024 per l'edificio B-MI-07, Via dei Vigili 12, Milano.\nContratto: MNT-PA-118. Protocollo: Fenice-7.\nAttività svolte: rinnovo CPI (pratica PRV-2024-0457) concluso con esito positivo; ispezione VV.F. favorevole; controllo semestrale estintori e rilevatori; verifica quinquennale sprinkler; due interventi correttivi su sprinkler e centrale; corso di aggiornamento per 8 dipendenti; prova di evacuazione annuale.\nProssime scadenze: revisionamento decennale estintori CO2 (maggio 2024).\nCordiali saluti,\nUfficio Tecnico Prometeo Sicurezza Antincendio"
+    },
+    {
+        "subject": "Scadenza CPI edificio B-MI-07: come procediamo?",
+        "from_name": "Laura Bianchi",
+        "from_email": "l.bianchi@cliente.example.com",
+        "date": "2024-05-02 09:14:00",
+        "body_text": "Buongiorno,\nsono il responsabile sicurezza dello stabile B-MI-07 in Via dei Vigili 12 a Milano. Mi risulta che il Certificato Prevenzione Incendi sia in scadenza nei prossimi mesi e vorrei capire come muovermi per il rinnovo quinquennale.\nPotete indicarmi la data esatta di scadenza che avete a sistema e l'elenco dei documenti che dovremo predisporre per la pratica VV.F.? Vorrei evitare di arrivare all'ultimo momento come successo cinque anni fa.\nResto in attesa di un vostro riscontro, anche telefonico se più comodo.\nGrazie e cordiali saluti,\nLaura Bianchi"
+    },
+    {
+        "subject": "Re: Scadenza CPI edificio B-MI-07: come procediamo?",
+        "from_name": "Marco Ferraro",
+        "from_email": "m.ferraro@prometeo-antincendio.example.com",
+        "date": "2024-05-02 11:48:00",
+        "body_text": "Gentile Sig.ra Bianchi,\ngrazie per averci scritto in anticipo. Dal nostro scadenzario il CPI dell'edificio B-MI-07 risulta in scadenza il 18/10/2024, quindi siamo perfettamente nei tempi.\nPer il rinnovo quinquennale serviranno: dichiarazione di mantenimento delle condizioni di sicurezza, registro dei controlli aggiornato, verbali di manutenzione di estintori e impianto sprinkler dell'ultimo anno e attestati dei corsi di formazione antincendio del personale.\nGestiamo la pratica nell'ambito del Protocollo Fenice-7. Possiamo fissare un sopralluogo preliminare già a giugno: le proporrei martedì 11/06 alle 10:00.\nResto a disposizione,\nMarco Ferraro"
+    },
+    {
+        "subject": "Richiesta preventivo manutenzione estintori uffici",
+        "from_name": "Giuseppe Romano",
+        "from_email": "g.romano@cliente.example.com",
+        "date": "2024-05-06 14:22:00",
+        "body_text": "Salve,\nabbiamo 24 estintori a polvere e 6 a CO2 distribuiti su tre piani di uffici. L'ultima manutenzione semestrale è stata fatta a novembre dell'anno scorso da un altro fornitore con cui non siamo soddisfatti.\nVorremmo un preventivo per il controllo semestrale e per l'eventuale revisione di quelli che lo richiedono. Potete anche dirci ogni quanto vanno effettuati i diversi tipi di verifica? C'è un po' di confusione interna sulle scadenze.\nGrazie,\nGiuseppe Romano - Ufficio Acquisti"
+    },
+    {
+        "subject": "Re: Richiesta preventivo manutenzione estintori uffici",
+        "from_name": "Silvia Conti",
+        "from_email": "s.conti@prometeo-antincendio.example.com",
+        "date": "2024-05-06 16:40:00",
+        "body_text": "Gentile Sig. Romano,\nla ringrazio per la richiesta. Le riepilogo le scadenze previste dalla norma UNI 9994-1: controllo semestrale per tutti gli estintori, revisione ogni 36 mesi per quelli a polvere e ogni 60 mesi per quelli a CO2, collaudo del serbatoio ogni 12 anni.\nPer i vostri 24 estintori a polvere e 6 a CO2 il controllo semestrale costa 8,50 euro cadauno. Le revisioni le quantifichiamo dopo il primo sopralluogo, controllando le etichette.\nLe invio il preventivo formale entro domani. Possiamo intervenire già nella settimana del 20 maggio.\nCordialmente,\nSilvia Conti"
+    },
+    {
+        "subject": "Allarme sprinkler scattato senza incendio",
+        "from_name": "Antonio Greco",
+        "from_email": "a.greco@cliente.example.com",
+        "date": "2024-05-09 08:31:00",
+        "body_text": "Buongiorno,\nstanotte alle 03:10 l'impianto sprinkler del magazzino al piano interrato è scattato senza che ci fosse alcun principio di incendio. Abbiamo trovato l'area allagata e parecchia merce danneggiata.\nLa centrale di rilevazione segnalava un guasto al gruppo di un settore. È un problema dei rilevatori di fumo o dello sprinkler stesso? Possiamo richiudere l'acqua in sicurezza nel frattempo o rischiamo di restare scoperti?\nVi chiedo un intervento urgente, oggi se possibile.\nAntonio Greco"
+    },
+    {
+        "subject": "Re: Allarme sprinkler scattato senza incendio",
+        "from_name": "Marco Ferraro",
+        "from_email": "m.ferraro@prometeo-antincendio.example.com",
+        "date": "2024-05-09 09:05:00",
+        "body_text": "Gentile Sig. Greco,\nmi dispiace per l'accaduto. Uno scatto notturno senza fiamma indica quasi sempre un falso allarme: testa sprinkler difettosa o sbalzo di pressione nella rete, non i rilevatori di fumo che sono su un circuito distinto.\nNON richiuda da solo la valvola principale: l'edificio resterebbe privo di protezione e non sarebbe a norma. Lasci il settore sezionato come è ora.\nHo già allertato il tecnico Rossi: sarà da voi oggi entro le 13:00 per individuare la testa scattata, sostituirla e ripristinare la pressione. Le rilasceremo verbale di intervento.\nA presto,\nMarco Ferraro"
+    },
+    {
+        "subject": "Porte tagliafuoco: chiusura non corretta",
+        "from_name": "Francesca Moretti",
+        "from_email": "f.moretti@cliente.example.com",
+        "date": "2024-05-13 10:50:00",
+        "body_text": "Salve,\ndurante una verifica interna abbiamo notato che due porte tagliafuoco del corridoio al secondo piano non si richiudono completamente da sole: restano socchiuse di qualche centimetro. Una ha anche il maniglione antipanico che fa resistenza.\nVolevo sapere se è qualcosa che può aspettare la manutenzione programmata di settembre o se va sistemato subito, anche in vista dell'ispezione VV.F. che ci hanno preannunciato.\nFatemi sapere come comportarci.\nGrazie,\nFrancesca Moretti"
+    },
+    {
+        "subject": "Re: Porte tagliafuoco: chiusura non corretta",
+        "from_name": "Silvia Conti",
+        "from_email": "s.conti@prometeo-antincendio.example.com",
+        "date": "2024-05-13 12:18:00",
+        "body_text": "Gentile Sig.ra Moretti,\nuna porta tagliafuoco che non si richiude completamente perde la sua funzione di compartimentazione: non è un intervento rinviabile, va sistemato prima dell'ispezione VV.F.\nNella maggior parte dei casi si tratta di registrare il chiudiporta o sostituire la molla; il maniglione che fa resistenza richiede invece la sostituzione del meccanismo. Sono interventi rapidi.\nVi mando un tecnico giovedì 16/05 mattina. Al termine vi rilasciamo il verbale di ripristino da allegare al registro dei controlli, utile da mostrare ai Vigili.\nResto a disposizione,\nSilvia Conti"
+    },
+    {
+        "subject": "Date disponibili corso formazione antincendio rischio medio",
+        "from_name": "Davide Esposito",
+        "from_email": "d.esposito@cliente.example.com",
+        "date": "2024-05-16 15:07:00",
+        "body_text": "Buongiorno,\ndobbiamo formare 8 addetti antincendio per la nostra sede, attività classificata a rischio medio. Alcuni sono al primo corso, altri devono fare l'aggiornamento perché sono passati più di tre anni.\nPotete dirmi durata, contenuti e date disponibili per i prossimi mesi? È previsto anche l'esame con i Vigili del Fuoco per la prova pratica di spegnimento?\nPreferiremmo svolgerlo presso la nostra sede se raggiungete il numero minimo.\nCordiali saluti,\nDavide Esposito - HR"
+    },
+    {
+        "subject": "Re: Date disponibili corso formazione antincendio rischio medio",
+        "from_name": "Giulia Marini",
+        "from_email": "g.marini@prometeo-antincendio.example.com",
+        "date": "2024-05-16 17:25:00",
+        "body_text": "Gentile Sig. Esposito,\nper il rischio medio il corso base dura 8 ore (4 teoria + 4 pratica) e l'aggiornamento 5 ore. Includono parte teorica su comportamento del fuoco e procedure di emergenza, più la prova pratica di spegnimento con estintori a polvere e CO2.\nCon 8 partecipanti raggiungiamo il numero minimo, quindi possiamo svolgerlo presso la vostra sede. Le propongo due date: corso base 12/06, aggiornamento 13/06.\nLa prova pratica la conduciamo noi; non è previsto esame diretto dei VV.F. per il rischio medio. Rilasciamo attestati nominali con validità triennale.\nLe mando il programma dettagliato in giornata.\nGiulia Marini"
+    },
+    {
+        "subject": "Verbale di sopralluogo: copia per assicurazione",
+        "from_name": "Roberto Galli",
+        "from_email": "r.galli@cliente.example.com",
+        "date": "2024-05-21 09:42:00",
+        "body_text": "Salve,\nla nostra compagnia assicurativa ci ha chiesto copia dell'ultimo verbale di sopralluogo dell'impianto antincendio per il rinnovo della polizza incendio.\nMi pare che l'ultimo sia stato fatto a marzo. Potete reinviarmelo in PDF firmato? E nel verbale è indicato anche lo stato dell'impianto sprinkler e dei rilevatori di fumo, o devo richiedere un documento separato?\nServirebbe entro la fine della settimana per non far slittare il rinnovo.\nGrazie mille,\nRoberto Galli"
+    },
+    {
+        "subject": "Re: Verbale di sopralluogo: copia per assicurazione",
+        "from_name": "Marco Ferraro",
+        "from_email": "m.ferraro@prometeo-antincendio.example.com",
+        "date": "2024-05-21 10:30:00",
+        "body_text": "Gentile Sig. Galli,\nin allegato trova il verbale di sopralluogo del 14/03/2024 in PDF con firma del tecnico.\nIl documento è completo per le esigenze dell'assicurazione: riporta lo stato dell'impianto sprinkler (pressione di rete, prova valvole), la verifica funzionale dei rilevatori di fumo e il controllo degli estintori. Non serve quindi alcun documento separato.\nSe la compagnia richiedesse anche la dichiarazione di conformità dell'impianto o il registro dei controlli, ci faccia sapere che li recuperiamo dall'archivio del Protocollo Fenice-7.\nBuon lavoro,\nMarco Ferraro"
+    },
+    {
+        "subject": "Fornitura ricariche estintori a polvere",
+        "from_name": "Paolo Vitale",
+        "from_email": "p.vitale@fornitore.example.com",
+        "date": "2024-05-24 11:15:00",
+        "body_text": "Buongiorno,\nsiamo il vostro fornitore di agenti estinguenti. Ci avete chiesto un'offerta per la fornitura di polvere ABC per le ricariche del prossimo trimestre.\nVorrei conferma del quantitativo: l'ultimo ordine era di 180 kg ma vista la commessa sull'edificio B-MI-07 immagino vi serva di più. Potete indicarmi i kg totali e se vi serve anche CO2 per gli estintori del cliente?\nIn base ai numeri vi blocco il prezzo per tutto il terzo trimestre.\nCordiali saluti,\nPaolo Vitale"
+    },
+    {
+        "subject": "Re: Fornitura ricariche estintori a polvere",
+        "from_name": "Silvia Conti",
+        "from_email": "s.conti@prometeo-antincendio.example.com",
+        "date": "2024-05-24 14:03:00",
+        "body_text": "Gentile Sig. Vitale,\ngrazie per la disponibilità a bloccare il prezzo. Per il terzo trimestre prevediamo un fabbisogno di 240 kg di polvere ABC, in aumento proprio per le revisioni programmate sull'edificio B-MI-07.\nCi serve anche CO2: stimiamo 90 kg, da consegnare in due tranche per non saturare il magazzino. La prima tranche ci servirebbe entro il 10/06 per partire con le revisioni.\nConfermateci prezzo unitario bloccato e tempi di consegna e procediamo con l'ordine formale.\nGrazie,\nSilvia Conti"
+    },
+    {
+        "subject": "Rilevatori di fumo: troppi falsi allarmi in cucina",
+        "from_name": "Chiara De Luca",
+        "from_email": "c.deluca@cliente.example.com",
+        "date": "2024-05-28 13:38:00",
+        "body_text": "Salve,\ngestiamo una mensa aziendale e i rilevatori di fumo installati nella zona cottura scattano in continuazione durante la preparazione dei pasti. Il personale ha iniziato a chiedere di disattivarli, cosa che ovviamente non voglio fare.\nC'è un tipo di rilevatore più adatto agli ambienti con vapori e fumi di cottura? Vorrei una soluzione a norma che non ci faccia perdere la copertura dell'impianto. Possiamo organizzare un sopralluogo per valutare?\nGrazie,\nChiara De Luca"
+    },
+    {
+        "subject": "Re: Rilevatori di fumo: troppi falsi allarmi in cucina",
+        "from_name": "Giulia Marini",
+        "from_email": "g.marini@prometeo-antincendio.example.com",
+        "date": "2024-05-28 15:52:00",
+        "body_text": "Gentile Sig.ra De Luca,\nha fatto benissimo a non disattivarli. In cucina i rilevatori ottici di fumo sono effettivamente inadatti: vanno sostituiti con rilevatori di calore (termovelocimetrici), che reagiscono all'aumento di temperatura e non ai vapori di cottura.\nÈ la soluzione standard e pienamente a norma per le zone di preparazione pasti. Manteniamo i rilevatori di fumo nelle restanti aree.\nOrganizziamo volentieri un sopralluogo: le propongo lunedì 03/06 alle 9:30. Verificheremo numero e posizione dei rilevatori da sostituire e le lasceremo un verbale con preventivo.\nA presto,\nGiulia Marini"
+    },
+    {
+        "subject": "Ispezione VV.F. preannunciata: come prepararci",
+        "from_name": "Stefano Ricci",
+        "from_email": "s.ricci@cliente.example.com",
+        "date": "2024-06-03 09:20:00",
+        "body_text": "Buongiorno,\nabbiamo ricevuto comunicazione di un'ispezione dei Vigili del Fuoco programmata per fine mese. È la prima volta da quando abbiamo ottenuto il CPI e siamo un po' in ansia.\nCosa controlleranno principalmente? Quali documenti dobbiamo avere pronti e in regola? Vorrei evitare prescrizioni o sospensioni. Potreste fare un sopralluogo di verifica preventiva prima della loro visita, così sistemiamo eventuali criticità?\nGrazie per il supporto,\nStefano Ricci"
+    },
+    {
+        "subject": "Re: Ispezione VV.F. preannunciata: come prepararci",
+        "from_name": "Marco Ferraro",
+        "from_email": "m.ferraro@prometeo-antincendio.example.com",
+        "date": "2024-06-03 11:10:00",
+        "body_text": "Gentile Sig. Ricci,\nnessuna ansia: con una buona preparazione l'ispezione VV.F. fila liscia. Controlleranno soprattutto: registro dei controlli aggiornato e firmato, etichette di manutenzione degli estintori valide, funzionamento dell'impianto sprinkler e dei rilevatori di fumo, integrità e chiusura delle porte tagliafuoco, vie di esodo libere e attestati di formazione antincendio del personale.\nProponiamo senz'altro un sopralluogo di verifica preventiva: fissiamolo per giovedì 13/06, così avete due settimane per sanare eventuali criticità.\nVi prepareremo una checklist e, al termine, un verbale con lo stato di conformità.\nA disposizione,\nMarco Ferraro"
+    },
+    {
+        "subject": "Costo collaudo decennale estintori CO2",
+        "from_name": "Elena Costa",
+        "from_email": "e.costa@cliente.example.com",
+        "date": "2024-06-07 14:45:00",
+        "body_text": "Salve,\ncontrollando le etichette di alcuni estintori a CO2 ho notato che hanno il bollo di collaudo del serbatoio del 2012. Mi pare che il collaudo vada rifatto, ma non ricordo ogni quanti anni.\nPotete confermarmi la periodicità e darmi un'idea del costo per il collaudo di 5 estintori a CO2? Conviene farlo o a volte è più economico sostituirli con apparecchi nuovi? Sono da 5 kg.\nGrazie per il chiarimento,\nElena Costa"
+    },
+    {
+        "subject": "Re: Costo collaudo decennale estintori CO2",
+        "from_name": "Silvia Conti",
+        "from_email": "s.conti@prometeo-antincendio.example.com",
+        "date": "2024-06-07 16:30:00",
+        "body_text": "Gentile Sig.ra Costa,\nesatto: per gli estintori a CO2 il collaudo del serbatoio (prova idraulica) va effettuato ogni 10 anni. Quelli con bollo 2012 sono quindi scaduti e vanno collaudati o messi fuori servizio.\nIl collaudo costa circa 35 euro a estintore, ricarica esclusa. Per apparecchi da 5 kg, considerando collaudo più ricarica, la spesa si avvicina a quella di un estintore nuovo: in genere per 5 pezzi conviene valutare la sostituzione, che azzera anche il rischio di esito negativo della prova.\nLe preparo un confronto economico tra le due opzioni entro domani.\nCordialmente,\nSilvia Conti"
+    },
+    {
+        "subject": "Aggiornamento planimetrie di emergenza dopo ristrutturazione",
+        "from_name": "Luca Ferri",
+        "from_email": "l.ferri@cliente.example.com",
+        "date": "2024-06-11 10:05:00",
+        "body_text": "Buongiorno,\nabbiamo terminato la ristrutturazione del primo piano: sono cambiate alcune pareti, è stata spostata un'uscita di emergenza e abbiamo ricollocato due estintori.\nLe planimetrie di emergenza affisse non sono più aggiornate. Dobbiamo rifarle obbligatoriamente? E queste modifiche impattano sul CPI esistente o basta aggiornare la documentazione interna? Vorrei mettermi in regola prima possibile.\nGrazie,\nLuca Ferri"
+    },
+    {
+        "subject": "Re: Aggiornamento planimetrie di emergenza dopo ristrutturazione",
+        "from_name": "Giulia Marini",
+        "from_email": "g.marini@prometeo-antincendio.example.com",
+        "date": "2024-06-11 11:55:00",
+        "body_text": "Gentile Sig. Ferri,\nsì, le planimetrie di emergenza vanno aggiornate obbligatoriamente quando cambiano percorsi di esodo, uscite o posizione dei presidi antincendio: quelle affisse devono sempre riflettere lo stato reale dei luoghi.\nSullo spostamento di un'uscita di emergenza occorre verificare l'impatto sul CPI: se modifica le vie di esodo va valutata una variazione presso i VV.F.; se invece la larghezza e il numero di uscite restano conformi, può bastare l'aggiornamento documentale.\nVi proponiamo un sopralluogo per misurare i percorsi e rifare le planimetrie. Disponibili lunedì 17/06.\nA presto,\nGiulia Marini"
+    },
+    {
+        "subject": "Conferma intervento manutenzione sprinkler 20 giugno",
+        "from_name": "Andrea Bruno",
+        "from_email": "a.bruno@cliente.example.com",
+        "date": "2024-06-14 08:55:00",
+        "body_text": "Salve,\nvolevo confermare con voi l'intervento di manutenzione annuale dell'impianto sprinkler che mi pare fosse calendarizzato per il 20 giugno.\nDurante la prova dovrete sezionare l'acqua? In tal caso devo avvisare il responsabile di produzione e organizzare una sorveglianza temporanea, perché non possiamo restare senza protezione nelle ore di lavoro. A che ora arrivano i tecnici e quanto dura indicativamente?\nGrazie per la conferma,\nAndrea Bruno"
+    },
+    {
+        "subject": "Re: Conferma intervento manutenzione sprinkler 20 giugno",
+        "from_name": "Marco Ferraro",
+        "from_email": "m.ferraro@prometeo-antincendio.example.com",
+        "date": "2024-06-14 10:20:00",
+        "body_text": "Gentile Sig. Bruno,\nconfermo l'intervento di manutenzione annuale dell'impianto sprinkler per giovedì 20/06. I tecnici arrivano alle 8:30 e la prova dura circa 3 ore.\nSì, per la prova delle valvole dovremo sezionare temporaneamente alcuni settori: l'acqua resterà esclusa per fasi di 20-30 minuti per volta, non sull'intero impianto contemporaneamente. È comunque corretto attivare una sorveglianza temporanea con un addetto antincendio durante quelle finestre.\nLe confermiamo i settori interessati la mattina stessa così coordina con la produzione. Al termine rilasciamo verbale.\nGrazie,\nMarco Ferraro"
+    },
+    {
+        "subject": "Estintore scaricato durante esercitazione: cosa fare",
+        "from_name": "Martina Rizzo",
+        "from_email": "m.rizzo@cliente.example.com",
+        "date": "2024-06-18 12:40:00",
+        "body_text": "Buongiorno,\ndurante la prova di evacuazione di ieri un addetto ha scaricato per errore un estintore a polvere. Ora è vuoto e ovviamente non è più utilizzabile in caso di emergenza.\nDobbiamo solo ricaricarlo o serve anche una nuova manutenzione/etichetta? E nel frattempo siamo coperti lo stesso o quel punto resta scoperto? È un estintore del corridoio del piano terra, posizione strategica.\nFatemi sapere come procedere.\nGrazie,\nMartina Rizzo"
+    },
+    {
+        "subject": "Re: Estintore scaricato durante esercitazione: cosa fare",
+        "from_name": "Silvia Conti",
+        "from_email": "s.conti@prometeo-antincendio.example.com",
+        "date": "2024-06-18 14:15:00",
+        "body_text": "Gentile Sig.ra Rizzo,\nun estintore a polvere scaricato va ricaricato e sottoposto a nuovo controllo, con conseguente aggiornamento dell'etichetta di manutenzione e annotazione sul registro dei controlli.\nFino al ripristino quel punto è scoperto: le consiglio di spostarvi temporaneamente un estintore carico da una zona meno critica, così il corridoio del piano terra resta protetto.\nPossiamo ritirare e ricaricare l'apparecchio mercoledì 26/06, riconsegnandolo collaudato. In alternativa, se preferisce non restare scoperta, le portiamo un estintore sostitutivo in comodato durante la ricarica.\nMi dica come procedere,\nSilvia Conti"
+    },
+    {
+        "subject": "Documentazione per gara appalto antincendio",
+        "from_name": "Vincenzo Marino",
+        "from_email": "v.marino@cliente.example.com",
+        "date": "2024-06-24 09:30:00",
+        "body_text": "Salve,\nstiamo partecipando a una gara d'appalto che richiede, tra i requisiti, l'affidamento della manutenzione antincendio a una ditta abilitata. Dobbiamo allegare documentazione che attesti il vostro contratto con noi e le abilitazioni.\nPotete inviarmi: copia del contratto di manutenzione in essere, attestazione delle qualifiche dei vostri tecnici e l'elenco dei presidi che gestite per noi (estintori, sprinkler, rilevatori)? Mi serve entro lunedì per la scadenza della gara.\nGrazie della collaborazione,\nVincenzo Marino"
+    },
+    {
+        "subject": "Re: Documentazione per gara appalto antincendio",
+        "from_name": "Marco Ferraro",
+        "from_email": "m.ferraro@prometeo-antincendio.example.com",
+        "date": "2024-06-24 11:48:00",
+        "body_text": "Gentile Sig. Marino,\nnessun problema, prepariamo il pacchetto. In allegato a questa mail trova già: copia del contratto di manutenzione in essere e l'attestazione delle qualifiche dei nostri tecnici.\nL'elenco dei presidi gestiti per la vostra sede (30 estintori tra polvere e CO2, impianto sprinkler, rete di rilevatori di fumo e porte tagliafuoco) lo riepiloghiamo in un documento dedicato su carta intestata, che le invio entro domani mattina così arriva ampiamente prima di lunedì.\nSe la gara richiede un formato o diciture specifiche, ce le segnali e adeguiamo.\nIn bocca al lupo per l'appalto,\nMarco Ferraro"
+    },
+    {
+        "subject": "Differenza tra controllo e revisione estintori",
+        "from_name": "Sara Gatti",
+        "from_email": "s.gatti@cliente.example.com",
+        "date": "2024-06-27 15:18:00",
+        "body_text": "Buongiorno,\nho una domanda forse banale ma vorrei capire bene per il registro. Sulle etichette dei nostri estintori vedo scritto a volte 'controllo' e a volte 'revisione', con date diverse. Qual è la differenza concreta tra le due operazioni?\nE come mi accorgo, leggendo l'etichetta, quando è in scadenza l'una o l'altra? Vorrei imparare a tenere d'occhio le scadenze senza dovervi chiamare ogni volta.\nGrazie della pazienza,\nSara Gatti"
+    },
+    {
+        "subject": "Re: Differenza tra controllo e revisione estintori",
+        "from_name": "Giulia Marini",
+        "from_email": "g.marini@prometeo-antincendio.example.com",
+        "date": "2024-06-27 16:55:00",
+        "body_text": "Gentile Sig.ra Gatti,\ndomanda tutt'altro che banale. Il controllo è la verifica semestrale: si controllano pressione, integrità, accessibilità e segnaletica, senza aprire l'estintore. La revisione è invece più profonda e periodica (36 mesi per la polvere, 60 mesi per la CO2): si apre l'apparecchio, si verifica l'agente estinguente e si sostituiscono le parti deteriorate.\nSull'etichetta trova entrambe le date con la dicitura corrispondente: il controllo ha cadenza semestrale, la revisione la data della prossima è scritta accanto alla voce 'revisione'.\nLe preparo volentieri uno schemino riepilogativo da tenere vicino al registro. A disposizione,\nGiulia Marini"
+    },
+    {
+        "subject": "Sopralluogo nuovo capannone prima dell'apertura",
+        "from_name": "Fabio Lombardi",
+        "from_email": "f.lombardi@cliente.example.com",
+        "date": "2024-07-02 09:48:00",
+        "body_text": "Salve,\nstiamo per aprire un nuovo capannone di stoccaggio e prima dell'avvio dell'attività vorremmo essere certi di essere in regola sul fronte antincendio. L'edificio è dotato di impianto sprinkler già installato dal costruttore e di alcuni estintori.\nPotete fare un sopralluogo per verificare che dotazione, segnaletica e vie di esodo siano conformi e dirci se serve avviare la pratica per il CPI? Vorremmo capire i tempi prima di programmare l'apertura.\nGrazie,\nFabio Lombardi"
+    },
+    {
+        "subject": "Re: Sopralluogo nuovo capannone prima dell'apertura",
+        "from_name": "Marco Ferraro",
+        "from_email": "m.ferraro@prometeo-antincendio.example.com",
+        "date": "2024-07-02 11:32:00",
+        "body_text": "Gentile Sig. Lombardi,\nfa benissimo a verificare prima dell'apertura. Per un capannone di stoccaggio, in base alla superficie e ai materiali depositati, l'attività potrebbe rientrare tra quelle soggette a controllo VV.F. e richiedere quindi la pratica per il CPI.\nFissiamo un sopralluogo: verificheremo idoneità dell'impianto sprinkler installato, numero e posizione degli estintori, segnaletica di sicurezza e vie di esodo. Le proporrei lunedì 08/07 alle 10:00.\nAl termine le diremo con chiarezza se serve la pratica CPI e con quali tempi: in genere, predisposta la documentazione, la presentazione SCIA è rapida.\nA presto,\nMarco Ferraro"
+    },
+    {
+        "subject": "Fattura manutenzione giugno: chiarimento voci",
+        "from_name": "Patrizia Sala",
+        "from_email": "p.sala@cliente.example.com",
+        "date": "2024-07-08 14:10:00",
+        "body_text": "Buongiorno,\nho ricevuto la fattura della manutenzione di giugno ma ci sono un paio di voci che non mi tornano. C'è un addebito per 'sostituzione testa sprinkler' che non ricordo di aver autorizzato e un costo per 'manodopera straordinaria notturna'.\nPotete spiegarmi a cosa si riferiscono? Se si tratta dell'intervento d'urgenza di maggio per il falso allarme allora è chiaro, ma vorrei la conferma prima di mandarla in pagamento all'amministrazione.\nGrazie,\nPatrizia Sala"
+    },
+    {
+        "subject": "Re: Fattura manutenzione giugno: chiarimento voci",
+        "from_name": "Silvia Conti",
+        "from_email": "s.conti@prometeo-antincendio.example.com",
+        "date": "2024-07-08 15:40:00",
+        "body_text": "Gentile Sig.ra Sala,\nconfermo: entrambe le voci si riferiscono all'intervento d'urgenza del 09/05 per lo scatto notturno dell'impianto sprinkler nel magazzino interrato.\nLa 'sostituzione testa sprinkler' è il ricambio della testa difettosa che aveva causato il falso allarme; la 'manodopera straordinaria notturna' copre la chiamata fuori orario, dato che la segnalazione era arrivata alle 03:10 e il tecnico è intervenuto in mattinata in regime di urgenza.\nLe inoltro nuovamente il verbale di intervento del 09/05 firmato, così l'amministrazione ha il riscontro documentale. Se vi serve nota di dettaglio sulla fattura, la prepariamo.\nCordialmente,\nSilvia Conti"
+    },
+    {
+        "subject": "Validità attestati corso antincendio in scadenza",
+        "from_name": "Nicola Ferretti",
+        "from_email": "n.ferretti@cliente.example.com",
+        "date": "2024-07-15 10:25:00",
+        "body_text": "Salve,\ncontrollando il fascicolo del personale mi sono accorto che gli attestati del corso di formazione antincendio di 4 nostri addetti riportano la data del 2021. Mi pare che la validità sia di tre anni, quindi sarebbero in scadenza.\nPotete confermarmi se è così e in quale periodo esatto scadono? Vorrei programmare l'aggiornamento per tempo, evitando che restino periodi scoperti che ci esporrebbero a problemi con i VV.F.\nGrazie,\nNicola Ferretti"
+    },
+    {
+        "subject": "Re: Validità attestati corso antincendio in scadenza",
+        "from_name": "Giulia Marini",
+        "from_email": "g.marini@prometeo-antincendio.example.com",
+        "date": "2024-07-15 12:08:00",
+        "body_text": "Gentile Sig. Ferretti,\nconfermo: gli attestati del corso di formazione antincendio hanno validità triennale, dopodiché è necessario l'aggiornamento. Dal nostro registro i 4 addetti hanno svolto il corso il 22/09/2021, quindi gli attestati scadono il 22/09/2024.\nLe consiglio di programmare l'aggiornamento entro la prima metà di settembre per non avere periodi scoperti. Per il vostro rischio medio l'aggiornamento dura 5 ore e possiamo svolgerlo presso la vostra sede.\nLe propongo la data del 11/09. Le riservo già i posti e le invio il programma. Resto a disposizione,\nGiulia Marini"
+    },
+    {
+        "subject": "Segnaletica di sicurezza sbiadita e illuminazione di emergenza",
+        "from_name": "Daniela Pellegrini",
+        "from_email": "d.pellegrini@cliente.example.com",
+        "date": "2024-07-22 09:15:00",
+        "body_text": "Buongiorno,\ndurante un giro di controllo ho notato che diversi cartelli della segnaletica di sicurezza (uscite di emergenza, posizione estintori) sono molto sbiaditi e poco leggibili. Inoltre due lampade dell'illuminazione di emergenza non si accendono quando provo a simulare il black-out.\nQueste cose rientrano nei vostri controlli o sono fuori dal contratto di manutenzione antincendio? E sono aspetti che i VV.F. verificano durante l'ispezione? Vorrei sistemare tutto in un colpo solo.\nGrazie,\nDaniela Pellegrini"
+    },
+    {
+        "subject": "Re: Segnaletica di sicurezza sbiadita e illuminazione di emergenza",
+        "from_name": "Marco Ferraro",
+        "from_email": "m.ferraro@prometeo-antincendio.example.com",
+        "date": "2024-07-22 11:30:00",
+        "body_text": "Gentile Sig.ra Pellegrini,\nha individuato due aspetti che i VV.F. verificano sempre durante l'ispezione: la segnaletica di sicurezza deve essere leggibile e l'illuminazione di emergenza deve attivarsi in mancanza di rete.\nLa verifica dell'illuminazione di emergenza rientra nel nostro contratto; la fornitura di nuova cartellonistica è a parte ma la gestiamo noi senza problemi. Possiamo sistemare tutto in un unico intervento: sostituzione dei cartelli sbiaditi, ripristino delle due lampade non funzionanti e prova generale dell'autonomia.\nLe propongo giovedì 25/07 mattina. Al termine aggiorniamo il registro dei controlli con l'esito.\nA disposizione,\nMarco Ferraro"
+    },
+    {
+        "subject": "Contratto manutenzione: passaggio a canone annuale",
+        "from_name": "Alberto Fontana",
+        "from_email": "a.fontana@cliente.example.com",
+        "date": "2024-07-29 14:50:00",
+        "body_text": "Salve,\nattualmente vi paghiamo a intervento e mi rendo conto che tra controlli semestrali estintori, manutenzione sprinkler e verifiche varie i costi sono difficili da prevedere a budget.\nEsiste la possibilità di un contratto a canone annuale tutto compreso? Vorrei capire cosa includerebbe (controlli, manutenzioni programmate, eventuali interventi d'urgenza) e se conviene rispetto a quanto spendiamo ora. Potete farmi una proposta sulla base dello storico dell'ultimo anno?\nGrazie,\nAlberto Fontana"
+    },
+    {
+        "subject": "Re: Contratto manutenzione: passaggio a canone annuale",
+        "from_name": "Silvia Conti",
+        "from_email": "s.conti@prometeo-antincendio.example.com",
+        "date": "2024-07-29 16:35:00",
+        "body_text": "Gentile Sig. Fontana,\nsì, offriamo un contratto a canone annuale che rende i costi prevedibili a budget. Include: i due controlli semestrali di tutti gli estintori, la manutenzione annuale dell'impianto sprinkler, la verifica periodica dei rilevatori di fumo e delle porte tagliafuoco, l'aggiornamento del registro dei controlli e priorità di intervento.\nLe revisioni periodiche degli estintori e le ricariche restano a consumo, ma a tariffa agevolata. Gli interventi d'urgenza rientrano nel canone con uscita prioritaria.\nAnalizzo lo storico del vostro ultimo anno e le preparo una proposta comparativa entro venerdì 02/08: nella maggior parte dei casi il canone risulta conveniente.\nCordialmente,\nSilvia Conti"
+    },
+    {
+        "subject": "Esito ispezione VV.F. e prescrizione ricevuta",
+        "from_name": "Stefano Ricci",
+        "from_email": "s.ricci@cliente.example.com",
+        "date": "2024-08-05 09:40:00",
+        "body_text": "Buongiorno Marco,\nl'ispezione VV.F. è andata complessivamente bene grazie al sopralluogo preventivo che avevamo fatto a giugno. Hanno però lasciato una prescrizione: chiedono di integrare la cartellonistica nel locale tecnico e di fornire la prova documentale dell'ultima manutenzione dell'impianto sprinkler.\nHo 30 giorni per ottemperare. Potete aiutarmi a chiudere la prescrizione? Cosa serve esattamente e in quanto tempo riuscite a intervenire?\nGrazie ancora del supporto,\nStefano Ricci"
+    },
+    {
+        "subject": "Re: Esito ispezione VV.F. e prescrizione ricevuta",
+        "from_name": "Marco Ferraro",
+        "from_email": "m.ferraro@prometeo-antincendio.example.com",
+        "date": "2024-08-05 11:20:00",
+        "body_text": "Gentile Sig. Ricci,\nottima notizia, e la prescrizione è di facile chiusura entro i 30 giorni.\nPer la cartellonistica del locale tecnico installiamo i cartelli mancanti (divieto di fumo, posizione estintore, quadro elettrico): mezza giornata di lavoro. Per la prova documentale dell'impianto sprinkler le forniamo subito copia del verbale di manutenzione del 20/06 firmato, valido come riscontro per i VV.F.\nProgrammiamo l'intervento sulla cartellonistica per giovedì 08/08 e le rilasciamo verbale di ottemperanza con foto, da allegare alla risposta al Comando. Così chiude la pratica con largo anticipo.\nLe invio il verbale del 20/06 in allegato.\nA disposizione,\nMarco Ferraro"
+    },
+    {
+        "subject": "Estintori per nuovo mezzo aziendale",
+        "from_name": "Gianni Barbieri",
+        "from_email": "g.barbieri@cliente.example.com",
+        "date": "2024-08-12 10:30:00",
+        "body_text": "Salve,\nabbiamo acquistato un nuovo furgone per le consegne e ci hanno detto che deve avere a bordo un estintore a norma. Non so quale tipo e quale capacità sia richiesta per un veicolo commerciale di questo tipo.\nPotete fornirci voi l'estintore adatto, con relativo supporto di fissaggio? E poi rientra nei normali controlli semestrali come quelli della sede o ha scadenze diverse? Vorremmo metterci subito in regola.\nGrazie,\nGianni Barbieri"
+    },
+    {
+        "subject": "Re: Estintori per nuovo mezzo aziendale",
+        "from_name": "Giulia Marini",
+        "from_email": "g.marini@prometeo-antincendio.example.com",
+        "date": "2024-08-12 12:05:00",
+        "body_text": "Gentile Sig. Barbieri,\nper un furgone commerciale è sufficiente un estintore a polvere ABC da 2 kg, omologato per uso su veicoli, fissato con apposito supporto a sgancio rapido in posizione accessibile dal posto di guida.\nLo forniamo noi completo di staffa di fissaggio e ve lo consegniamo già pronto all'uso. Il controllo segue le stesse cadenze degli estintori di sede: verifica semestrale e revisione ogni 36 mesi, da annotare sull'etichetta.\nLo inseriamo nel vostro giro di manutenzione così non rischiate di dimenticarlo. Possiamo consegnarlo e installarlo già la prossima settimana: le va bene mercoledì 21/08?\nResto a disposizione,\nGiulia Marini"
+    },
+    {
+        "subject": "Manutenzione porte tagliafuoco: ogni quanto va fatta",
+        "from_name": "Valentina Serra",
+        "from_email": "v.serra@cliente.example.com",
+        "date": "2024-08-19 09:55:00",
+        "body_text": "Buongiorno,\ngestiamo da poco un immobile dotato di numerose porte tagliafuoco e non ho chiaro con quale frequenza vadano manutenute. Per gli estintori e lo sprinkler abbiamo le scadenze ben definite, ma sulle porte tagliafuoco nessuno ci ha mai detto nulla di preciso.\nDevono essere controllate periodicamente da un tecnico? Cosa si verifica esattamente e ogni quanto? Vorrei inserirle nel nostro scadenzario delle verifiche per non trovarci impreparati a un'eventuale ispezione.\nGrazie,\nValentina Serra"
+    },
+    {
+        "subject": "Re: Manutenzione porte tagliafuoco: ogni quanto va fatta",
+        "from_name": "Marco Ferraro",
+        "from_email": "m.ferraro@prometeo-antincendio.example.com",
+        "date": "2024-08-19 11:42:00",
+        "body_text": "Gentile Sig.ra Serra,\nle porte tagliafuoco vanno sottoposte a manutenzione periodica almeno semestrale da parte di personale qualificato, come previsto dalla norma UNI 11473 e dalle istruzioni del fabbricante.\nDurante il controllo si verifica: corretta chiusura automatica, integrità di guarnizioni e cerniere, funzionamento del chiudiporta e del maniglione antipanico, assenza di ostacoli e leggibilità della targhetta. Eventuali registrazioni o sostituzioni vengono annotate sul registro dei controlli.\nLe consiglio di inserirle nello scadenzario con cadenza semestrale, allineandole ai controlli degli estintori così unifichiamo le uscite. Possiamo fare un primo censimento delle porte e partire: disponibili la settimana del 26/08.\nA disposizione,\nMarco Ferraro"
+    },
+    {
+        "subject": "Trasloco sede: spostamento presidi antincendio",
+        "from_name": "Riccardo Costa",
+        "from_email": "r.costa@cliente.example.com",
+        "date": "2024-08-26 14:20:00",
+        "body_text": "Salve,\na settembre trasferiamo gli uffici in una nuova sede nello stesso comune. Vorremmo portare con noi gli estintori esistenti, che sono ancora in buono stato e con manutenzione recente.\nPossiamo semplicemente spostarli o vanno ricollocati secondo un nuovo piano? Nella nuova sede ci sono già impianto sprinkler e rilevatori di fumo dell'inquilino precedente: sono utilizzabili o vanno riverificati prima di entrare? Vorrei organizzare tutto senza rischiare di restare scoperti.\nGrazie,\nRiccardo Costa"
+    },
+    {
+        "subject": "Re: Trasloco sede: spostamento presidi antincendio",
+        "from_name": "Silvia Conti",
+        "from_email": "s.conti@prometeo-antincendio.example.com",
+        "date": "2024-08-26 16:08:00",
+        "body_text": "Gentile Sig. Costa,\ngli estintori esistenti, se con manutenzione recente, potete portarli; non basta però spostarli a caso: vanno ricollocati secondo un piano che tenga conto delle nuove superfici e dei percorsi di esodo, con la relativa segnaletica.\nImpianto sprinkler e rilevatori di fumo già presenti nella nuova sede NON sono utilizzabili al buio: prima dell'ingresso vanno riverificati funzionalmente, perché non conosciamo lo stato della manutenzione del precedente inquilino.\nLe propongo un sopralluogo nella nuova sede per definire il piano di ricollocazione degli estintori e collaudare sprinkler e rilevatori. Disponibili venerdì 30/08. Così entrate già coperti e a norma.\nCordialmente,\nSilvia Conti"
+    },
+    {
+        "subject": "Report mensile manutenzioni estintori - Settembre 2024",
+        "from_name": "Davide Ferraro",
+        "from_email": "d.ferraro@prometeo-antincendio.example.com",
+        "date": "2024-09-03 09:14:22",
+        "body_text": "Buongiorno a tutti,\nin allegato trovate il report consuntivo delle manutenzioni estintori chiuse nel mese di settembre.\nNumeri di sintesi: 412 estintori a polvere e 178 a CO2 verificati su 34 cantieri.\nDi questi, 27 estintori sono stati sostituiti per manometro fuori scala e 9 ricaricati a seguito di scarica accidentale.\nL'edificio B-MI-07 in Via dei Vigili 12 ha richiesto la sostituzione integrale di 6 unità in area archivio.\nLe verifiche semestrali restano nei tempi, mentre tre clienti hanno chiesto di anticipare il collaudo annuale.\nVi chiedo di validare i dati entro venerdì così da chiudere la fatturazione di periodo.\nGrazie,\nDavide"
+    },
+    {
+        "subject": "Fattura n. 2024/0871 - Manutenzione impianto sprinkler",
+        "from_name": "Amministrazione Prometeo",
+        "from_email": "amministrazione@prometeo-antincendio.example.com",
+        "date": "2024-09-04 11:42:05",
+        "body_text": "Spettabile cliente,\nin allegato la fattura n. 2024/0871 del 03/09/2024 relativa al contratto di manutenzione annuale dell'impianto sprinkler presso il vostro stabilimento.\nImporto imponibile: 3.480,00 euro - IVA 22%: 765,60 euro - Totale: 4.245,60 euro.\nLa prestazione comprende la verifica delle pompe, il controllo della pressione di rete e la prova di scarica su due ali campione.\nIl pagamento è previsto a 30 giorni data fattura tramite bonifico bancario.\nVi ricordiamo di indicare nella causale il numero documento per agevolare la riconciliazione contabile.\nRestiamo a disposizione per qualsiasi chiarimento.\nCordiali saluti,\nUfficio Amministrazione Prometeo"
+    },
+    {
+        "subject": "Riunione ufficio tecnico - pianificazione sopralluoghi Q4",
+        "from_name": "Silvia Marchetti",
+        "from_email": "s.marchetti@prometeo-antincendio.example.com",
+        "date": "2024-09-05 08:55:31",
+        "body_text": "Ciao team,\nfisso la riunione di pianificazione sopralluoghi del quarto trimestre per martedì 10 settembre alle 14:30 in sala riunioni.\nOrdine del giorno: assegnazione cantieri, calendario verbali VV.F. e copertura ferie di ottobre.\nPorterò il calendario aggiornato dei rinnovi CPI in scadenza e l'elenco dei clienti con verifiche quinquennali da chiudere entro dicembre.\nChiedo a ciascun tecnico di arrivare con la stima ore dei propri cantieri aperti.\nSe qualcuno non può essere presente, mi avvisi entro lunedì così collego in videocall.\nA presto,\nSilvia"
+    },
+    {
+        "subject": "Sollecito pagamento fattura 2024/0794 scaduta",
+        "from_name": "Amministrazione Prometeo",
+        "from_email": "amministrazione@prometeo-antincendio.example.com",
+        "date": "2024-09-06 15:20:48",
+        "body_text": "Gentile cliente,\nrisulta ancora insoluta la fattura n. 2024/0794 del 12/07/2024 per la fornitura e posa di 4 porte tagliafuoco REI 120, importo 6.120,00 euro IVA inclusa, con scadenza 11/08/2024.\nVi preghiamo di voler regolarizzare la posizione entro 7 giorni dalla presente comunicazione.\nQualora il pagamento fosse già stato disposto, vi chiediamo cortesemente di trasmetterci la contabile così da aggiornare i nostri registri.\nIn assenza di riscontro saremo costretti a sospendere le prestazioni in calendario.\nConfidiamo nella vostra consueta collaborazione.\nDistinti saluti,\nUfficio Amministrazione Prometeo"
+    },
+    {
+        "subject": "Newsletter tecnica Prometeo - novità normative antincendio",
+        "from_name": "Comunicazione Prometeo",
+        "from_email": "newsletter@prometeo-antincendio.example.com",
+        "date": "2024-09-09 10:05:17",
+        "body_text": "Buongiorno,\nbenvenuti nella newsletter tecnica di settembre dedicata ai responsabili della sicurezza.\nIn questo numero approfondiamo le scadenze quinquennali del CPI e come prepararsi all'ispezione VV.F. senza sorprese.\nTroverete inoltre un focus sulla corretta tenuta del registro dei controlli per estintori, impianto sprinkler e rilevatori di fumo.\nNella sezione formazione anticipiamo le date dei prossimi corsi antincendio rischio medio e alto.\nInfine, un promemoria: pianificare per tempo la verifica delle porte tagliafuoco riduce i fermi e i costi straordinari.\nBuona lettura e a presto con il numero di ottobre.\nIl team Prometeo"
+    },
+    {
+        "subject": "Reclamo ritardo intervento estintori cantiere Lambrate",
+        "from_name": "Giorgio Pellegrini",
+        "from_email": "g.pellegrini@cliente.example.com",
+        "date": "2024-09-10 16:38:54",
+        "body_text": "Spettabile Prometeo,\nscrivo per segnalare un disservizio relativo all'intervento di manutenzione estintori programmato per il 6 settembre presso la nostra sede di Lambrate.\nIl tecnico non si è presentato e non abbiamo ricevuto alcuna comunicazione di rinvio.\nÈ il secondo slittamento in due mesi e questo ci espone in caso di controllo, dato che alcuni estintori a polvere hanno la verifica semestrale ormai scaduta.\nVi chiedo di riprogrammare con urgenza entro questa settimana e di indicarmi un riferimento diretto per le prossime pianificazioni.\nResto in attesa di un vostro tempestivo riscontro.\nCordiali saluti,\nGiorgio Pellegrini"
+    },
+    {
+        "subject": "Riepilogo verbali sopralluogo VV.F. agosto-settembre",
+        "from_name": "Davide Ferraro",
+        "from_email": "d.ferraro@prometeo-antincendio.example.com",
+        "date": "2024-09-11 09:47:29",
+        "body_text": "Ciao Silvia,\ncome richiesto ti giro il riepilogo dei verbali di sopralluogo redatti tra agosto e settembre.\nTotale 18 sopralluoghi, di cui 12 con esito conforme e 6 con prescrizioni minori.\nLe prescrizioni più ricorrenti riguardano la segnaletica delle uscite di emergenza e la mancata registrazione dei controlli sui rilevatori di fumo.\nPer l'edificio B-MI-07 il verbale evidenzia la necessità di adeguare due porte tagliafuoco prima dell'ispezione VV.F. di novembre.\nHo caricato tutti i PDF sulla cartella condivisa dell'ufficio tecnico.\nFammi sapere se vuoi che predisponga le lettere di prescrizione ai clienti.\nDavide"
+    },
+    {
+        "subject": "Convocazione riunione sicurezza - Protocollo Fenice-7",
+        "from_name": "Roberto Conti",
+        "from_email": "r.conti@prometeo-antincendio.example.com",
+        "date": "2024-09-12 13:11:40",
+        "body_text": "Buongiorno a tutti,\nconvoco una riunione operativa per la revisione del Protocollo Fenice-7 giovedì 19 settembre alle 09:30.\nL'incontro è dedicato ad allineare le procedure interne di sopralluogo e compilazione verbali con gli ultimi aggiornamenti.\nParteciperanno l'ufficio tecnico, il responsabile formazione e l'amministrazione per la parte di rendicontazione.\nVi chiedo di rivedere in anticipo i moduli di check-list e di segnalare eventuali criticità riscontrate sul campo.\nL'obiettivo è uniformare la documentazione prima della stagione di rinnovi CPI di fine anno.\nConfermate la presenza rispondendo a questa mail.\nGrazie,\nRoberto"
+    },
+    {
+        "subject": "Nota di credito 2024/NC-031 - storno doppia fatturazione",
+        "from_name": "Amministrazione Prometeo",
+        "from_email": "amministrazione@prometeo-antincendio.example.com",
+        "date": "2024-09-13 10:29:13",
+        "body_text": "Gentile cliente,\na seguito della vostra segnalazione abbiamo verificato una duplicazione nell'addebito del corso di formazione antincendio del 22/07/2024.\nEmettiamo pertanto la nota di credito n. 2024/NC-031 a storno della fattura 2024/0803, per un importo di 480,00 euro IVA inclusa.\nIl documento è allegato alla presente e sarà visibile anche nel portale clienti.\nCi scusiamo per il disguido, dovuto a un disallineamento tra il calendario corsi e il gestionale di fatturazione.\nL'importo verrà compensato sulla prossima fattura di manutenzione estintori.\nRestiamo a disposizione per ogni necessità.\nCordiali saluti,\nUfficio Amministrazione Prometeo"
+    },
+    {
+        "subject": "Scadenzario verifiche quinquennali - aggiornamento ottobre",
+        "from_name": "Silvia Marchetti",
+        "from_email": "s.marchetti@prometeo-antincendio.example.com",
+        "date": "2024-09-16 08:40:55",
+        "body_text": "Ciao a tutti,\nho aggiornato lo scadenzario delle verifiche quinquennali per il prossimo trimestre.\nA ottobre scadono 14 CPI, di cui 5 con asseverazione antincendio già pronta e 9 ancora da istruire.\nVi segnalo in particolare tre clienti del settore logistico con impianto sprinkler che richiedono prova di portata prima del rinnovo.\nPer evitare accavallamenti ho distribuito i sopralluoghi su quattro settimane, lasciando libero il ponte di inizio novembre.\nTrovate il file aggiornato nella cartella condivisa con evidenziate in rosso le scadenze critiche.\nChi nota incongruenze sui propri cantieri me lo scriva entro mercoledì.\nGrazie,\nSilvia"
+    },
+    {
+        "subject": "Invito open day formazione antincendio aziende",
+        "from_name": "Comunicazione Prometeo",
+        "from_email": "eventi@prometeo-antincendio.example.com",
+        "date": "2024-09-17 14:22:08",
+        "body_text": "Gentili clienti,\nsiamo lieti di invitarvi all'open day dedicato alla formazione antincendio che si terrà il 4 ottobre 2024 presso la nostra sede di Milano.\nDurante la giornata mostreremo le esercitazioni pratiche con estintori a polvere e CO2 e illustreremo i percorsi formativi per rischio basso, medio e alto.\nÈ prevista una sessione dimostrativa sull'uso corretto degli idranti e sulle procedure di evacuazione.\nLa partecipazione è gratuita ma a posti limitati: vi chiediamo di confermare entro il 30 settembre indicando il numero di partecipanti.\nAl termine sarà rilasciato un attestato di partecipazione e materiale informativo.\nVi aspettiamo numerosi.\nIl team Formazione Prometeo"
+    },
+    {
+        "subject": "Escalation: rilevatori di fumo fuori servizio sede direzionale",
+        "from_name": "Antonella Russo",
+        "from_email": "a.russo@cliente.example.com",
+        "date": "2024-09-18 17:05:36",
+        "body_text": "Buonasera,\nvi scrivo con carattere di urgenza perché da due giorni il pannello della centrale antincendio segnala guasto su un'intera zona di rilevatori di fumo al terzo piano della sede direzionale.\nIl precedente intervento del vostro tecnico non ha risolto e ora il sistema è in anomalia permanente.\nConsiderato che il piano ospita uffici con presenza continua di personale, la situazione non è gestibile oltre domani.\nChiedo formalmente l'invio di un tecnico domani mattina e una relazione scritta sulla causa del malfunzionamento.\nSe non riceveremo riscontro entro le 10:00 saremo costretti ad attivare un fornitore alternativo a vostre spese.\nIn attesa di urgente riscontro.\nAntonella Russo"
+    },
+    {
+        "subject": "Report trimestrale sopralluoghi e prescrizioni Q3 2024",
+        "from_name": "Roberto Conti",
+        "from_email": "r.conti@prometeo-antincendio.example.com",
+        "date": "2024-09-19 11:33:27",
+        "body_text": "Buongiorno,\ncondivido il report del terzo trimestre relativo all'attività di sopralluogo e gestione prescrizioni.\nNel periodo luglio-settembre sono stati effettuati 51 sopralluoghi e redatti altrettanti verbali, con 33 esiti conformi e 18 con prescrizioni.\nIl tempo medio di chiusura delle prescrizioni è sceso a 12 giorni rispetto ai 19 del trimestre precedente.\nLe categorie più frequenti restano la manutenzione estintori non registrata e l'adeguamento delle porte tagliafuoco.\nIl progetto pilota sul Protocollo Fenice-7 ha mostrato una riduzione del 22% degli errori di compilazione.\nResto disponibile per discuterne nel dettaglio in riunione.\nRoberto"
+    },
+    {
+        "subject": "Comunicazione interna: nuovo modulo verbale sopralluogo",
+        "from_name": "Silvia Marchetti",
+        "from_email": "s.marchetti@prometeo-antincendio.example.com",
+        "date": "2024-09-20 09:18:44",
+        "body_text": "Cari colleghi,\nda lunedì 23 settembre entra in vigore il nuovo modulo di verbale di sopralluogo allineato al Protocollo Fenice-7.\nLe principali novità: campo dedicato alla registrazione dei controlli sui rilevatori di fumo e checklist separata per le porte tagliafuoco.\nÈ stata aggiunta anche una sezione per annotare le scadenze quinquennali del CPI direttamente in calce al verbale.\nIl vecchio modulo non dovrà più essere utilizzato per evitare disallineamenti in fase di rendicontazione.\nTrovate il template e le istruzioni nella cartella condivisa dell'ufficio tecnico.\nPer dubbi sull'utilizzo scrivetemi pure o passate in ufficio.\nBuon lavoro,\nSilvia"
+    },
+    {
+        "subject": "Preventivo accettato - fornitura 8 porte tagliafuoco",
+        "from_name": "Marco Bianchi",
+        "from_email": "m.bianchi@cliente.example.com",
+        "date": "2024-09-23 10:51:19",
+        "body_text": "Buongiorno,\nconfermiamo l'accettazione del vostro preventivo n. PR-2024-217 per la fornitura e posa di 8 porte tagliafuoco REI 90 presso il nostro magazzino.\nProcedete pure con l'ordine alle condizioni concordate: importo 11.200,00 euro più IVA, con acconto del 30% alla firma.\nVi chiediamo di concordare le date di installazione preferibilmente nella seconda metà di ottobre, fuori dagli orari di carico merci.\nResta inteso che a fine lavori ci consegnerete le dichiarazioni di posa in opera necessarie per la pratica antincendio.\nInviateci i riferimenti bancari per il versamento dell'acconto.\nIn attesa di conferma, cordiali saluti.\nMarco Bianchi"
+    },
+    {
+        "subject": "Riepilogo costi cantiere B-MI-07 - intervento straordinario",
+        "from_name": "Amministrazione Prometeo",
+        "from_email": "amministrazione@prometeo-antincendio.example.com",
+        "date": "2024-09-24 15:47:02",
+        "body_text": "Ciao Roberto,\nti giro il riepilogo dei costi dell'intervento straordinario sull'edificio B-MI-07 di Via dei Vigili 12.\nManodopera tecnica: 38 ore per 1.710,00 euro - Materiali: 6 estintori a CO2 e ricambi rilevatori per 2.140,00 euro.\nTrasferte e noleggio piattaforma: 620,00 euro - Totale imponibile 4.470,00 euro.\nL'intervento ha coperto la sostituzione degli estintori in area archivio e il ripristino di una zona di rilevatori di fumo.\nPrima di fatturare attendo tua conferma sulla ripartizione tra contratto di manutenzione e extra a consuntivo.\nFammi sapere come procedere entro fine settimana.\nGrazie"
+    },
+    {
+        "subject": "Newsletter clienti - come prepararsi al rinnovo CPI",
+        "from_name": "Comunicazione Prometeo",
+        "from_email": "newsletter@prometeo-antincendio.example.com",
+        "date": "2024-09-25 09:30:51",
+        "body_text": "Gentili clienti,\nl'autunno è il momento ideale per pianificare il rinnovo del Certificato Prevenzione Incendi in scadenza.\nIn questo numero spieghiamo i passaggi chiave: raccolta della documentazione, verifica degli impianti e asseverazione tecnica.\nUn impianto sprinkler con manutenzione regolare e un registro estintori in ordine accorciano notevolmente i tempi dell'ispezione VV.F.\nRicordiamo che le verifiche quinquennali vanno programmate con almeno tre mesi di anticipo rispetto alla scadenza.\nNelle prossime settimane il nostro ufficio tecnico contatterà i clienti con CPI in scadenza entro marzo 2025.\nPer anticipare i tempi potete richiedere un sopralluogo preliminare gratuito.\nCordialmente, il team Prometeo"
+    },
+    {
+        "subject": "Reclamo qualità installazione porte tagliafuoco",
+        "from_name": "Francesca Lombardi",
+        "from_email": "f.lombardi@cliente.example.com",
+        "date": "2024-09-26 14:08:37",
+        "body_text": "Spettabile Prometeo,\na poche settimane dall'installazione delle porte tagliafuoco riscontriamo problemi nella chiusura automatica di due unità al piano interrato.\nIl dispositivo di autochiusura non riporta correttamente il battente in posizione e questo compromette la tenuta REI dichiarata.\nNel verbale di collaudo del 9 settembre le porte risultavano regolarmente funzionanti, motivo per cui chiediamo un intervento in garanzia.\nVi pregiamo di inviare un tecnico per la regolazione e di rilasciarci una nuova dichiarazione di conformità una volta ripristinato il funzionamento.\nGradiremmo un riscontro entro 48 ore vista l'imminente ispezione interna sulla sicurezza.\nDistinti saluti,\nFrancesca Lombardi"
+    },
+    {
+        "subject": "Aggiornamento report KPI ufficio tecnico settembre",
+        "from_name": "Roberto Conti",
+        "from_email": "r.conti@prometeo-antincendio.example.com",
+        "date": "2024-09-27 16:12:55",
+        "body_text": "Buongiorno team,\nin allegato i KPI dell'ufficio tecnico relativi a settembre.\nInterventi di manutenzione chiusi: 96 - Sopralluoghi effettuati: 21 - Corsi di formazione erogati: 7.\nIl tasso di puntualità sugli appuntamenti è risalito al 91% dopo le criticità di agosto.\nRestano due indicatori sotto target: i tempi di emissione dei verbali VV.F. e il backlog di richieste di preventivo, fermo a 14 pratiche aperte.\nProporrò in riunione una redistribuzione dei carichi per smaltire l'arretrato entro metà ottobre.\nVi chiedo di leggere il report prima del nostro incontro così da arrivare allineati.\nGrazie del lavoro di questo mese.\nRoberto"
+    },
+    {
+        "subject": "Invito sopralluogo congiunto pre-ispezione VV.F.",
+        "from_name": "Davide Ferraro",
+        "from_email": "d.ferraro@prometeo-antincendio.example.com",
+        "date": "2024-09-30 10:44:18",
+        "body_text": "Gentile responsabile,\nin vista dell'ispezione VV.F. programmata per metà novembre presso il vostro stabilimento, proponiamo un sopralluogo congiunto preliminare.\nLo scopo è verificare insieme lo stato di estintori, impianto sprinkler, rilevatori di fumo e porte tagliafuoco, individuando per tempo eventuali criticità.\nProporrei la data di mercoledì 9 ottobre alle 09:30, durata stimata tre ore con redazione di un verbale interno.\nVi chiederei di rendere disponibili il registro dei controlli e la documentazione del precedente CPI.\nSe la data non fosse comoda, indicatemi due alternative nella stessa settimana.\nResto a disposizione per ogni chiarimento.\nCordiali saluti,\nDavide Ferraro"
+    },
+    {
+        "subject": "Fattura n. 2024/0912 - corso formazione antincendio rischio medio",
+        "from_name": "Amministrazione Prometeo",
+        "from_email": "amministrazione@prometeo-antincendio.example.com",
+        "date": "2024-10-01 11:09:42",
+        "body_text": "Spettabile cliente,\nin allegato la fattura n. 2024/0912 relativa al corso di formazione antincendio rischio medio svolto il 26/09/2024 per 12 dipendenti.\nImporto: 1.440,00 euro più IVA 22%, totale 1.756,80 euro.\nLa prestazione comprende la parte teorica, l'esercitazione pratica con estintori a polvere e il rilascio degli attestati nominativi.\nGli attestati saranno trasmessi via PEC entro cinque giorni lavorativi.\nIl pagamento è previsto a 30 giorni data fattura tramite bonifico.\nPer prenotare la sessione di aggiornamento del prossimo anno potete contattare il nostro ufficio formazione.\nCordiali saluti,\nUfficio Amministrazione Prometeo"
+    },
+    {
+        "subject": "Comunicazione interna: turni reperibilità ottobre",
+        "from_name": "Silvia Marchetti",
+        "from_email": "s.marchetti@prometeo-antincendio.example.com",
+        "date": "2024-10-02 08:27:33",
+        "body_text": "Ciao a tutti,\npubblico i turni di reperibilità tecnica per il mese di ottobre.\nSettimana 1: Ferraro - Settimana 2: Greco - Settimana 3: Esposito - Settimana 4: Ferraro.\nLa reperibilità copre le emergenze su impianti sprinkler e centrali rilevazione fumo dei contratti H24.\nVi ricordo di tenere il telefono di servizio sempre raggiungibile e di registrare ogni chiamata sul foglio interventi.\nIn caso di impossibilità a coprire il proprio turno, organizzate uno scambio e avvisatemi in anticipo.\nIl recapito unico per i clienti resta invariato.\nBuon lavoro,\nSilvia"
+    },
+    {
+        "subject": "Sollecito documentazione per pratica rinnovo CPI",
+        "from_name": "Davide Ferraro",
+        "from_email": "d.ferraro@prometeo-antincendio.example.com",
+        "date": "2024-10-03 14:55:21",
+        "body_text": "Gentile cliente,\nper poter procedere con la pratica di rinnovo del Certificato Prevenzione Incendi ci mancano ancora alcuni documenti.\nNello specifico: planimetria aggiornata dei locali, registro dei controlli degli estintori degli ultimi dodici mesi e dichiarazione di corretta manutenzione dell'impianto sprinkler.\nSenza questi allegati non possiamo completare l'asseverazione prima della scadenza quinquennale fissata a fine novembre.\nVi chiedo cortesemente di inviarci il materiale entro l'11 ottobre, anche in formato digitale.\nQualora servisse supporto nella raccolta, possiamo organizzare un breve sopralluogo dedicato.\nResto in attesa di riscontro.\nCordiali saluti,\nDavide Ferraro"
+    },
+    {
+        "subject": "Report annuale interventi sprinkler - bozza per revisione",
+        "from_name": "Marco Greco",
+        "from_email": "m.greco@prometeo-antincendio.example.com",
+        "date": "2024-10-04 16:40:09",
+        "body_text": "Ciao Roberto,\nallego la bozza del report annuale sugli interventi agli impianti sprinkler per la tua revisione.\nNel 2024 abbiamo gestito 47 impianti, con 112 interventi di manutenzione e 9 modifiche di layout idraulico.\nLe anomalie più frequenti sono cali di pressione di rete e ostruzioni agli ugelli, entrambe in calo rispetto al 2023.\nHo inserito un grafico sull'andamento mensile e una sezione sugli interventi straordinari, incluso quello dell'edificio B-MI-07.\nManca solo la parte economica che mi servirebbe dall'amministrazione per chiudere il documento.\nFammi sapere se va bene la struttura prima che lo finalizzi.\nGrazie, Marco"
+    },
+    {
+        "subject": "Invito riunione commerciale - rinnovi contratti manutenzione",
+        "from_name": "Roberto Conti",
+        "from_email": "r.conti@prometeo-antincendio.example.com",
+        "date": "2024-10-07 09:05:48",
+        "body_text": "Buongiorno,\nvi convoco a una riunione commerciale lunedì 14 ottobre alle 11:00 per discutere i rinnovi dei contratti di manutenzione in scadenza a fine anno.\nSono interessati 23 contratti tra manutenzione estintori, impianti sprinkler e rilevatori di fumo, per un valore complessivo significativo.\nObiettivo dell'incontro: definire la proposta di adeguamento tariffario e individuare i clienti a rischio di non rinnovo.\nL'amministrazione presenterà lo storico fatturato e i tempi medi di pagamento per cliente.\nVi chiedo di portare le note sui clienti che seguite direttamente.\nConfermate la presenza, grazie.\nRoberto"
+    },
+    {
+        "subject": "Escalation reclamo: attestati formazione non ricevuti",
+        "from_name": "Paolo Vitale",
+        "from_email": "p.vitale@cliente.example.com",
+        "date": "2024-10-08 15:33:14",
+        "body_text": "Buongiorno,\nfaccio seguito alla mia precedente richiesta del 30 settembre rimasta senza risposta.\nA oltre tre settimane dal corso di formazione antincendio del 17 settembre non abbiamo ancora ricevuto gli attestati nominativi dei nostri 9 dipendenti.\nSenza questi documenti non possiamo aggiornare il nostro registro formazione e siamo scoperti in caso di verifica ispettiva.\nVi chiedo di trasmetterceli entro domani via PEC e di chiarire le ragioni del ritardo.\nGradirei inoltre un riferimento diretto per evitare di dover sollecitare ripetutamente.\nResto in attesa di un riscontro definitivo.\nCordiali saluti,\nPaolo Vitale"
+    },
+    {
+        "subject": "Riepilogo incassi settembre e crediti in sospeso",
+        "from_name": "Amministrazione Prometeo",
+        "from_email": "amministrazione@prometeo-antincendio.example.com",
+        "date": "2024-10-09 10:18:27",
+        "body_text": "Ciao Roberto,\nti invio il riepilogo incassi di settembre e la situazione dei crediti aperti.\nIncassato nel mese: 78.340,00 euro a fronte di 91.200,00 euro fatturati.\nCrediti scaduti oltre 30 giorni: 14.620,00 euro distribuiti su 6 clienti, di cui due già sollecitati formalmente.\nLa fattura 2024/0794 per le porte tagliafuoco resta la posizione più critica con oltre 50 giorni di ritardo.\nProporrei di sospendere le nuove forniture ai clienti con insoluti superiori a 30 giorni fino a regolarizzazione.\nNe parliamo in riunione commerciale lunedì.\nA presto"
+    },
+    {
+        "subject": "Comunicazione interna: aggiornamento listino ricambi",
+        "from_name": "Davide Ferraro",
+        "from_email": "d.ferraro@prometeo-antincendio.example.com",
+        "date": "2024-10-10 13:42:50",
+        "body_text": "Cari colleghi,\ndal 1 novembre entra in vigore il nuovo listino ricambi per estintori e componenti impianti.\nGli aumenti più rilevanti riguardano gli agenti estinguenti in polvere e i manometri, in media +6% rispetto al listino precedente.\nRimangono invariati i prezzi dei ricambi per rilevatori di fumo e degli accessori per porte tagliafuoco.\nVi chiedo di utilizzare il nuovo listino per tutti i preventivi con consegna successiva al 1 novembre, mentre gli ordini già confermati restano alle vecchie condizioni.\nIl file aggiornato è disponibile nella cartella condivisa dell'ufficio tecnico.\nPer dubbi su singole voci scrivetemi pure.\nDavide"
+    },
+    {
+        "subject": "Verbale riunione Protocollo Fenice-7 del 19 settembre",
+        "from_name": "Roberto Conti",
+        "from_email": "r.conti@prometeo-antincendio.example.com",
+        "date": "2024-10-11 09:51:36",
+        "body_text": "Buongiorno a tutti,\ncondivido il verbale della riunione del 19 settembre sulla revisione del Protocollo Fenice-7.\nDecisioni prese: adozione del nuovo modulo verbale dal 23 settembre, introduzione della checklist separata per le porte tagliafuoco e revisione della procedura di registrazione dei controlli sui rilevatori di fumo.\nÈ stato assegnato a Silvia il coordinamento della formazione interna sul nuovo protocollo, da completare entro fine ottobre.\nL'amministrazione integrerà i campi di rendicontazione nel gestionale entro novembre.\nProssima verifica di avanzamento fissata per il 30 ottobre.\nChi nota imprecisioni nel verbale me lo segnali entro due giorni.\nGrazie, Roberto"
+    },
+    {
+        "subject": "Report stato scadenze CPI - clienti a rischio",
+        "from_name": "Silvia Marchetti",
+        "from_email": "s.marchetti@prometeo-antincendio.example.com",
+        "date": "2024-10-14 11:27:44",
+        "body_text": "Ciao Roberto,\nho preparato il report sullo stato delle scadenze CPI con focus sui clienti a rischio.\nSu 38 certificati in scadenza entro marzo 2025, 11 presentano criticità che potrebbero allungare i tempi del rinnovo.\nNello specifico 4 hanno l'impianto sprinkler con manutenzione arretrata, 3 devono adeguare le porte tagliafuoco e 4 non hanno il registro estintori aggiornato.\nHo già contattato i primi sette per programmare i sopralluoghi preliminari.\nTi segnalo che per due clienti il rinnovo richiede una pratica di variazione presso i VV.F. con tempi più lunghi.\nNe discutiamo oggi in riunione commerciale.\nSilvia"
+    },
+    {
+        "subject": "Newsletter Prometeo ottobre - sicurezza nei luoghi di lavoro",
+        "from_name": "Comunicazione Prometeo",
+        "from_email": "newsletter@prometeo-antincendio.example.com",
+        "date": "2024-10-15 09:40:19",
+        "body_text": "Gentili clienti,\nnel numero di ottobre della newsletter affrontiamo il tema della cultura della sicurezza nei luoghi di lavoro.\nUn impianto antincendio efficiente vale poco senza personale formato: per questo dedichiamo un approfondimento ai corsi di formazione antincendio e alle esercitazioni pratiche di evacuazione.\nTroverete anche un promemoria sulle verifiche periodiche di estintori e rilevatori di fumo da non trascurare con l'arrivo della stagione fredda.\nSegnaliamo infine le date dei prossimi corsi e la possibilità di sessioni dedicate presso la vostra sede.\nCome sempre, il nostro ufficio tecnico è disponibile per consulenze e sopralluoghi.\nBuona lettura, il team Prometeo"
+    },
+    {
+        "subject": "Conferma riunione di reparto e nuovo organico tecnici",
+        "from_name": "Roberto Conti",
+        "from_email": "r.conti@prometeo-antincendio.example.com",
+        "date": "2024-10-16 14:15:58",
+        "body_text": "Buongiorno team,\nconfermo la riunione di reparto di venerdì 18 ottobre alle 15:00, anche per presentare il nuovo collega.\nDa lunedì 21 ottobre entra in organico Luca Esposito come tecnico manutentore, che affiancherà inizialmente Greco sugli impianti sprinkler.\nQuesto ci permetterà di ridurre il backlog di interventi e migliorare la copertura sui contratti H24.\nIn riunione assegneremo i primi cantieri a Luca e rivedremo la distribuzione dei sopralluoghi di novembre.\nVi chiedo di accoglierlo e di mettergli a disposizione la documentazione di processo, incluso il Protocollo Fenice-7.\nA venerdì,\nRoberto"
+    },
+    {
+        "subject": "Fattura n. 2024/0958 - verifica quinquennale estintori",
+        "from_name": "Amministrazione Prometeo",
+        "from_email": "amministrazione@prometeo-antincendio.example.com",
+        "date": "2024-10-17 10:33:11",
+        "body_text": "Spettabile cliente,\nin allegato la fattura n. 2024/0958 relativa alla verifica quinquennale e al collaudo di 42 estintori a polvere e CO2 effettuati il 10/10/2024.\nImporto imponibile: 2.310,00 euro - IVA 22%: 508,20 euro - Totale: 2.818,20 euro.\nLa prestazione include la prova idraulica, la sostituzione delle guarnizioni e l'aggiornamento dei cartellini di manutenzione.\nIl relativo verbale di collaudo è disponibile nel portale clienti.\nIl pagamento è previsto a 30 giorni data fattura tramite bonifico bancario.\nRingraziamo per la fiducia e restiamo a disposizione.\nCordiali saluti,\nUfficio Amministrazione Prometeo"
+    },
+    {
+        "subject": "Escalation interna: ritardo cronico verbali VV.F.",
+        "from_name": "Silvia Marchetti",
+        "from_email": "s.marchetti@prometeo-antincendio.example.com",
+        "date": "2024-10-18 16:48:25",
+        "body_text": "Ciao Roberto,\ndevo segnalarti formalmente una criticità ricorrente sui tempi di emissione dei verbali di sopralluogo VV.F.\nNegli ultimi due mesi il tempo medio è salito a 9 giorni, ben oltre i 3 previsti dal Protocollo Fenice-7.\nQuesto sta generando reclami dai clienti e rallenta le pratiche di rinnovo CPI a ridosso delle scadenze.\nLa causa principale è il sovraccarico dei tecnici che devono compilare i verbali dopo aver chiuso le manutenzioni in calendario.\nProporrei di dedicare mezza giornata fissa a settimana alla sola redazione documentale, oppure di valutare un supporto amministrativo.\nVorrei affrontare il tema con priorità nella prossima riunione di reparto.\nSilvia"
+    },
+    {
+        "subject": "Invito webinar tecnico - nuove norme su porte tagliafuoco",
+        "from_name": "Comunicazione Prometeo",
+        "from_email": "eventi@prometeo-antincendio.example.com",
+        "date": "2024-10-21 09:22:40",
+        "body_text": "Gentili clienti,\nvi invitiamo al webinar tecnico gratuito dedicato alle porte tagliafuoco che si terrà online il 6 novembre 2024 dalle 15:00 alle 16:30.\nAffronteremo i requisiti di manutenzione, le verifiche periodiche dei dispositivi di autochiusura e la corretta tenuta della documentazione REI.\nIl webinar è pensato per responsabili della sicurezza e facility manager che gestiscono edifici con compartimentazioni antincendio.\nÈ prevista una sessione di domande e risposte con i nostri tecnici.\nPer partecipare è sufficiente registrarsi al link che trovate in allegato entro il 4 novembre.\nA tutti i partecipanti invieremo le slide e una checklist riassuntiva.\nVi aspettiamo, il team Prometeo"
+    },
+    {
+        "subject": "Riepilogo settimanale interventi e segnalazioni aperte",
+        "from_name": "Marco Greco",
+        "from_email": "m.greco@prometeo-antincendio.example.com",
+        "date": "2024-10-22 17:30:53",
+        "body_text": "Ciao Silvia,\necco il riepilogo della settimana per l'ufficio tecnico.\nInterventi chiusi: 19 tra manutenzione estintori, sprinkler e rilevatori di fumo - Sopralluoghi: 5 - Verbali emessi: 4.\nSegnalazioni ancora aperte: 3, di cui una urgente sulla centrale rilevazione fumo della sede direzionale di un cliente storico.\nLa regolazione delle porte tagliafuoco al magazzino di Bianchi è stata completata e collaudata.\nResta da pianificare la prova di portata sull'impianto sprinkler del cliente logistico, in attesa di conferma data.\nLuca si sta inserendo bene e ha già seguito due interventi in affiancamento.\nBuon fine settimana, Marco"
+    },
+    {
+        "subject": "Comunicazione interna: chiusura uffici ponte di novembre",
+        "from_name": "Roberto Conti",
+        "from_email": "r.conti@prometeo-antincendio.example.com",
+        "date": "2024-10-23 11:14:07",
+        "body_text": "Buongiorno a tutti,\nvi comunico che gli uffici amministrativi resteranno chiusi venerdì 1 novembre per festività.\nL'attività tecnica sui contratti H24 sarà garantita dal servizio di reperibilità secondo i turni già pubblicati per inizio mese.\nVi chiedo di non lasciare in sospeso pratiche di fatturazione o emissione verbali a ridosso del ponte, così da non accumulare arretrato.\nGli interventi di manutenzione estintori e le verifiche programmate riprenderanno regolarmente lunedì 4 novembre.\nPer eventuali emergenze sui clienti, il recapito di reperibilità resta attivo come di consueto.\nBuon ponte a chi ne usufruirà,\nRoberto"
+    },
+    {
+        "subject": "Reclamo formale: doppio addebito manutenzione sprinkler",
+        "from_name": "Elena Costa",
+        "from_email": "e.costa@cliente.example.com",
+        "date": "2024-10-24 14:59:32",
+        "body_text": "Spettabile amministrazione,\nvi scrivo per contestare formalmente un doppio addebito sul contratto di manutenzione dell'impianto sprinkler.\nAbbiamo ricevuto sia la fattura 2024/0931 sia la 2024/0949, entrambe riferite alla medesima verifica trimestrale del mese di ottobre.\nL'importo duplicato ammonta a 1.190,00 euro IVA inclusa.\nVi chiedo di verificare con urgenza, emettere la relativa nota di credito e confermarci per iscritto l'avvenuta correzione.\nSospendiamo nel frattempo il pagamento di entrambi i documenti in attesa del vostro riscontro.\nResto a disposizione per fornire copia delle fatture in oggetto.\nCordiali saluti,\nElena Costa"
+    },
+    {
+        "subject": "Report consuntivo formazione antincendio Q4 - dati al 20/12",
+        "from_name": "Silvia Marchetti",
+        "from_email": "s.marchetti@prometeo-antincendio.example.com",
+        "date": "2024-12-20 15:27:48",
+        "body_text": "Buongiorno team,\nchiudo l'anno con il consuntivo dell'attività di formazione antincendio del quarto trimestre, dati aggiornati al 20 dicembre.\nCorsi erogati: 22 sessioni per un totale di 318 lavoratori formati tra rischio basso, medio e alto.\nLe esercitazioni pratiche con estintori a polvere e CO2 hanno coperto il 100% dei corsi, con ottimi riscontri nei questionari di gradimento.\nResta in agenda una sessione di recupero a gennaio per un cliente che ha rinviato due volte.\nGli attestati sono stati tutti emessi entro i termini, recuperando il ritardo che ci aveva causato qualche reclamo a ottobre.\nGrazie a tutti per l'impegno: ci vediamo alla riunione di pianificazione del nuovo anno.\nBuone feste, Silvia"
+    },
+    {
+        "subject": "Conferma fornitura ricariche estinguenti e ricambi sprinkler",
+        "from_name": "Stefano Moretti",
+        "from_email": "ordini@fornitore.example.com",
+        "date": "2024-11-12 09:36:24",
+        "body_text": "Spettabile Prometeo,\nconfermiamo la presa in carico del vostro ordine n. ORD-2024-3471 del 8 novembre.\nLa fornitura comprende 250 kg di agente estinguente in polvere, 60 manometri di ricambio per estintori e 24 ugelli per impianto sprinkler.\nLa merce sarà disponibile per la consegna presso il vostro magazzino entro il 20 novembre, salvo imprevisti sui trasporti.\nVi ricordiamo che a causa dell'adeguamento listino di novembre il prezzo dell'agente estinguente in polvere ha subito un lieve aumento, già recepito nella conferma d'ordine allegata.\nLa fattura sarà emessa alla spedizione con pagamento a 60 giorni come da accordi quadro.\nRestiamo a disposizione per anticipare parte della fornitura in caso di urgenze sui vostri cantieri.\nCordiali saluti,\nStefano Moretti"
+    }
+]

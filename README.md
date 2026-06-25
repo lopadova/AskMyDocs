@@ -1789,6 +1789,7 @@ For the full component map see [`CLAUDE.md`](CLAUDE.md) section 3.
 | **v8.22.0** | ✅ shipped 2026-06-23 | **Runtime configuration governance** (Ciclo 3 of the connectors/observability/config/PII roadmap). A curated set of operational knobs becomes editable **per `(tenant, project)` at runtime — no deploy**, layered `config default ← tenant '*' ← exact-project` over one `AppSettingsResolver` (the `KbAnalysisSetting`/`ChangeAnalysisGate` pattern). Governable keys live in a closed `AppSettingRegistry`: `ai.provider` (per-tenant chat provider, wired into `AiManager` fully-guarded → falls back to `config('ai.default')`, R43), `connector.sync_cadence_minutes` (per-tenant **and** per-project), and the **deploy-managed** `ai_finops.enabled` (visible, read-only at runtime → 422). Reads honour scope like writes and **skip corrupt override rows** (no silent coercion, R14); secrets are never registered. Tri-surface (R44): **PHP** (`app-settings:list` / `app-settings:set`), **HTTP** (`GET`/`PUT /api/admin/app-settings`, `role:super-admin`, R32, R30-scoped), **MCP** (`AppSettingsTool`, roster **39 → 40**). New super-admin **Configuration** admin screen (per-row editor + provenance badge + project-scope selector). [ADR 0019](docs/adr/0019-v822-runtime-config-governance.md) + deep doc-site page ([runtime config governance](https://padosoft.mintlify.app/runtime-config-governance), R45). |
 | **v8.22.0** | ✅ shipped 2026-06-23 (backend PR #363 + admin UI PR #366) | **Invite-by-code & referral suite** — integrates the standalone `padosoft/laravel-invitations` engine tri-surface (R44) into AskMyDocs over the package's vendor-neutral seams. Atomic, idempotent, concurrency-safe redemption (single conditional `UPDATE … WHERE current_uses < max_uses` + `UNIQUE(code_id, redeemer_id)`) drives campaigns / multi-use & vanity codes / referrals / rewards / waitlist / fail-open anti-abuse (HMAC'd PII) / funnel analytics — each invite carrying a per-tenant **grant** (Spatie role + KB project memberships). `App\Models\User` implements the `InvitedAccount` contract; the package `TenantResolver` binds to the host `TenantContext` (R30); a host `ProjectMembershipProvisioner` (GRANT-never-REVOKE, best-effort) joins the package's role provisioner under the `invitations.provisioners` tag so one code provisions role **and** project access across one or more tenants. Admin surface `/api/admin/invitations/*` (campaigns / code generation / metrics) gated by `can:manageInvitations` (super-admin + admin, R32-matrix-locked); user redeem surface `/api/invitations/*` behind the authenticated stack. Three package MCP tools (`Invite{ValidateCode,GenerateCodes,Metrics}Tool`, roster **36 → 39**). Signup gate `INVITE_REQUIRED` default-**OFF** (R43 both-states — existing registration unchanged). The **admin UI** lands as a cross-mount of the self-contained `padosoft/laravel-invitations-admin` SPA (its own prebuilt React panel served over a gated Blade route at `/admin/invitations`, `INVITATIONS_ADMIN_ENABLED` default-OFF → clean 404 R43, behind `can:manageInvitations`), surfaced through a native host **Invitations** landing (live funnel KPIs over the core `/api/admin/invitations/metrics` + a launcher to the panel) — same self-contained cross-mount model as ai-finops-admin / flow-admin; Vitest + real-data Playwright (R12/R13) + a role-access matrix row (R32). |
 | **v8.23.0** | ✅ shipped 2026-06-25 | **PII-safe ingestion & reversible vault** (Ciclo 4 — the last of the connectors/observability/config/PII roadmap). The KB is **PII-safe by default**: detect→tokenise **before** embedding (only deterministic surrogates in the vector store), a **reversible per-tenant vault** (`pii_token_maps`, per-tenant salt, R30) outside the AI path, **JIT re-identification gated by role+scope** and fully audited, **right-to-erasure via crypto-shred** (GDPR Art.17) wired into the `laravel-ai-act-compliance` DSAR flow (Art.15 export + Art.17 delete), **re-embed on policy change** + the `rag-regression` recall gate guarding tokenisation drift, and **EU AI Act Art.50(1)** disclosure (`X-AI-Disclosure`) on every chat route. Per-(tenant, project) `kb_pii_settings` policy (`KbPiiPolicyResolver`, the `KbAnalysisSetting` pattern). Five sub-PRs (#368/#370/#371/#372/#373), each tri-surface (R44) over one core, default-OFF (R43); four MCP tools (roster **40 → 44**). [ADR 0020](docs/adr/0020-v823-pii-safe-ingestion-reversible-vault.md) + deep doc-site page ([PII & compliance](https://padosoft.mintlify.app/pii-and-compliance), R45). |
+| **v8.24.0** | ✅ shipped 2026-06-25 | **IMAP folder selection + dev/test email-ingest harness.** Operators now pick exactly which mailbox folders an IMAP account syncs into the KB, straight from **Admin → Connectors**. A post-install **"Folders"** action opens a connection-settings modal that lists the mailbox's **real** folders (live) and multi-selects the sync whitelist. Live discovery is **host-side by design** — `ImapFolderListingService` reuses the connector's PUBLIC seams (`ImapClientFactoryInterface` + `OAuthCredentialVault` + the stored `config_json.connection`) to open a client and return mailbox paths **verbatim** (case-sensitive, round-tripping 1:1 with the whitelist), so no package change was needed beyond `padosoft/askmydocs-connector-imap` **^1.4**. `GET /api/admin/connectors/{installationId}/folders` is tenant-scoped (R30 → 404 cross-tenant) and surfaces an unreachable server / rejected credentials as a distinct **503** (R14 — never a misleading empty 200; a genuinely empty mailbox is a valid `200 []`). `UpdateConnectorInstallationRequest` gains `folders.include` (≤200 EXACT paths, trimmed + deduped + `distinct`; **empty = sync all non-excluded folders**) and `date_window_days`, both additive (R27) and pre-filled by `ConnectorInstallationResource`; the write is a read-modify-write inside `lockForUpdate` (R21). React `FolderSettingsForm` (R11/R15/R29). Plus a dev/test **email-ingest harness** for repeatable end-to-end QA of the ingest→chat→isolation flow across tenants: seedable IMAP mailboxes (`MailSeedImapCommand`, `ImapMailboxSeeder`, `EmailMessageBuilder`, `WebklexMailboxAppender` + a `FakeImapClientFactory` test seam), multi-company case-study fixtures (`CaseStudyUsersSeeder`, `ConnectorInstallationsSeeder`, per-company email JSON) and console drivers (`ConnectorImapInstallCommand`, `DemoListCompaniesCommand`, `InitCaseStudiesCommand`). R32 matrix row for the folders endpoint; real-data Playwright (`connectors-folders-super-admin.spec.ts`) + role-access. Also ships the `ios-testflight-release` skill documenting the Tauri → TestFlight desktop release flow. [ADR 0021](docs/adr/0021-v824-imap-folder-selection.md) + doc-site ([credential connectors → folder picker](https://padosoft.mintlify.app/connectors-credential), R45). |
 | **Future** | ⏳ planned for v8.x or v9.0 | Auto-Wiki follow-ups: navigator→chat wiring + benchmark-gated default-ON, source-retention wiring (save the converted markdown artifact). Agentic Knowledge Reports follow-ups: SSE progressive-paint generate + the Glide canvas grid (deferred for per-cell testability/a11y). SSO / SCIM enterprise auth + content export/portability — surfaced by the v8.8 Affine gap audit; #1 Semantic Time Travel + #8 v2 (answer drift replay) — parked from v8.0 |
 
 For the strategic reasoning behind v4.5+ see
@@ -1937,6 +1938,48 @@ including commercial use.
 ---
 
 ## Changelog
+
+**v8.24.0 — IMAP folder selection + dev/test email-ingest harness (GA, shipped 2026-06-25).**
+Operators choose exactly which mailbox folders an IMAP account ingests, from
+**Admin → Connectors**. A post-install **"Folders"** action opens a
+connection-settings modal that lists the mailbox's **real** folders live and
+multi-selects the sync whitelist. Live discovery is **host-side by design** —
+`ImapFolderListingService` reuses the connector's PUBLIC seams
+(`ImapClientFactoryInterface` + `OAuthCredentialVault` + the stored
+`config_json.connection`) to open a client and return mailbox paths **verbatim**
+(case-sensitive, round-tripping 1:1 with the whitelist), so the only dependency
+move was bumping `padosoft/askmydocs-connector-imap` to **^1.4**. The read
+endpoint `GET /api/admin/connectors/{installationId}/folders` is tenant-scoped
+(R30 → 404 on a cross-tenant id) and maps an unreachable server / rejected
+credentials to a distinct **503** (R14 — never a misleading empty 200; a
+genuinely empty mailbox is a valid `200 []`). `UpdateConnectorInstallationRequest`
+gains `folders.include` (≤ 200 EXACT, case-sensitive paths — trimmed, deduped,
+`distinct`; **an empty list means "sync all non-excluded folders"**) and
+`date_window_days`, both **additive** (R27) and pre-filled by
+`ConnectorInstallationResource`; the write is a read-modify-write performed
+inside `lockForUpdate` (R21) so concurrent edits never clobber `config_json`.
+React `FolderSettingsForm` follows the testid/a11y conventions (R11/R15/R29). The
+release also adds a dev/test **email-ingest harness** for repeatable end-to-end
+QA of the ingest → chat → tenant-isolation flow: seedable IMAP mailboxes
+(`MailSeedImapCommand`, `ImapMailboxSeeder`, `EmailMessageBuilder`,
+`WebklexMailboxAppender`, plus a `FakeImapClientFactory` test seam),
+multi-company case-study fixtures (`CaseStudyUsersSeeder`,
+`ConnectorInstallationsSeeder`, per-company email JSON) and console drivers
+(`ConnectorImapInstallCommand`, `DemoListCompaniesCommand`,
+`InitCaseStudiesCommand`). As part of this, the `manageConnectors` gate is
+**widened from super-admin-only to admin + super-admin** so an admin can run the
+picker (consistently propagated across the gate, route group, FE role guards, the
+R32 matrix and `role-access.spec.ts`; it still touches credential vaults).
+Coverage: an R32 authorization-matrix row for the
+folders endpoint, real-data Playwright (`connectors-folders-super-admin.spec.ts`)
+and role-access. Finally it ships the `ios-testflight-release` skill that codifies
+the Tauri → TestFlight desktop release flow. See
+[ADR 0021](docs/adr/0021-v824-imap-folder-selection.md) and the doc-site
+[credential-connectors folder-picker section](https://padosoft.mintlify.app/connectors-credential)
+(R45). CI reliability: Playwright `retries` is now **1** in CI (was 0) so a
+genuine intermittent flake in the streaming / admin-kb-edit specs auto-recovers
+in-run instead of forcing a manual re-run, while a real regression still fails
+twice; local stays 0 for fast, honest feedback.
 
 **v8.23.0 — PII-safe ingestion & reversible vault (GA, shipped 2026-06-25).**
 Ciclo 4 (the last) of the connectors / observability / config / PII roadmap.

@@ -10,80 +10,111 @@ use App\Models\User;
 use App\Support\TenantContext;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
+use Padosoft\AiActCompliance\MultiTenancy\Models\Tenant;
 
 /**
  * Per-company users + projects for the documentation-isolation case study.
  *
- * `docs/case-studies/ingest.sh` deliberately grants EVERY existing user a
- * membership on ALL THREE case-study projects so the topbar Project Switcher
- * can demo cross-project browsing. That is the OPPOSITE of what the isolation
- * objective ("the user of company X must only ever see X's documents") needs.
+ * For EACH of the 3 case-study companies it creates THREE accounts — a `viewer`,
+ * an `admin` and a `super-admin` — so every permission tier can be exercised
+ * per company (e.g. the super-admin is the one that can reach Admin → Connectors,
+ * gated `manageConnectors` = super-admin only).
  *
- * This seeder creates the per-user axis instead: one `viewer` account per
- * company, each a member of ONLY its own project. Combined with
- * `KB_PROJECT_ISOLATION_ENABLED=true` (config `kb.project_isolation.enabled`),
- * a logged-in company user reads exclusively their own project's documents and
- * citations — the membership set, not `kb.read.any`, becomes the lever
- * (see {@see \Database\Seeders\RbacSeeder} for the permission split and
- * `tests/Feature/Rbac/CaseStudyProjectIsolationTest` for the assertion).
+ * ONE TENANT PER COMPANY: tenant_id = project_key (rotta-logistics, …). The tenant
+ * is the platform's isolation primitive, so EVERY admin surface (connectors,
+ * users, KB, …) is scoped per company — not just the documents. Each account's
+ * membership is pinned to EXACTLY its own (tenant, project): the seeder deletes any
+ * stray membership elsewhere (e.g. the all-projects backfill of {@see RbacSeeder}
+ * on the default tenant) and (re)creates the single own membership. A user thus
+ * only ever sees its own company's tenant after the team switcher resolves it.
  *
- * Idempotent: firstOrCreate on the unique (tenant_id, project_key) /
- * (tenant_id, user_id, project_key) tuples, role assignment guarded by
- * hasRole. Run explicitly — it is intentionally NOT auto-wired into any
- * seeder (a case-study fixture, like the dataset itself):
+ * The membership reset applies to EVERY tier — viewer, admin AND super-admin —
+ * not just the viewer: {@see seedAccount()} deletes any non-company membership
+ * for each account regardless of role.
  *
+ * Idempotent: firstOrCreate on the unique tuples; role assignment guarded by
+ * hasRole; the membership reset is deterministic. **Run LAST** (after RbacSeeder,
+ * which must exist for the roles), otherwise a later RbacSeeder backfill would
+ * re-widen these memberships again (every tier, not only the viewer):
+ *
+ *   php artisan db:seed --class=Database\\Seeders\\RbacSeeder
  *   php artisan db:seed --class=Database\\Seeders\\CaseStudyUsersSeeder
  *
- * Prerequisite: roles must exist (run RbacSeeder first, or DemoSeeder which
- * seeds it). The accounts all use the demo password `password`.
+ * The project keys match `docs/case-studies/data/<key>/` one-for-one (gated by
+ * tests/Unit/CaseStudies/CaseStudyDatasetTest). All accounts use the demo
+ * password `password`.
  */
 class CaseStudyUsersSeeder extends Seeder
 {
     private const PASSWORD = 'password';
 
-    private const ROLE = 'viewer';
-
     /**
-     * project_key => [display name, description, account email, account name].
-     * The project keys match `docs/case-studies/data/<key>/` one-for-one — the
-     * single source of truth gated by tests/Unit/CaseStudies/CaseStudyDatasetTest.
+     * project_key => [display name, description, accounts[]]. Each account is
+     * [email, display name, Spatie role]. The `viewer` email is the historical
+     * one referenced by tests/docs — do not rename it.
      *
-     * @var array<string, array{name: string, desc: string, email: string, user: string}>
+     * @var array<string, array{name: string, desc: string, accounts: list<array{email: string, user: string, role: string}>}>
      */
     private const COMPANIES = [
         'rotta-logistics' => [
             'name' => 'Rotta Sicura Logistics',
             'desc' => 'Logistica e spedizioni (case study isolamento).',
-            'email' => 'rotta@case-study.local',
-            'user' => 'Rotta Logistics User',
+            'accounts' => [
+                ['email' => 'rotta@case-study.local', 'user' => 'Rotta Logistics — Viewer', 'role' => 'viewer'],
+                ['email' => 'rotta.admin@case-study.local', 'user' => 'Rotta Logistics — Admin', 'role' => 'admin'],
+                ['email' => 'rotta.super@case-study.local', 'user' => 'Rotta Logistics — Super Admin', 'role' => 'super-admin'],
+            ],
         ],
         'prometeo-antincendio' => [
             'name' => 'Prometeo Sicurezza Antincendio',
             'desc' => 'Normativa antincendio / Vigili del Fuoco (case study isolamento).',
-            'email' => 'prometeo@case-study.local',
-            'user' => 'Prometeo Antincendio User',
+            'accounts' => [
+                ['email' => 'prometeo@case-study.local', 'user' => 'Prometeo Antincendio — Viewer', 'role' => 'viewer'],
+                ['email' => 'prometeo.admin@case-study.local', 'user' => 'Prometeo Antincendio — Admin', 'role' => 'admin'],
+                ['email' => 'prometeo.super@case-study.local', 'user' => 'Prometeo Antincendio — Super Admin', 'role' => 'super-admin'],
+            ],
         ],
         'passolibero-calzature' => [
             'name' => 'PassoLibero Calzature',
             'desc' => 'Vendita scarpe e-commerce (case study isolamento).',
-            'email' => 'passolibero@case-study.local',
-            'user' => 'PassoLibero Calzature User',
+            'accounts' => [
+                ['email' => 'passolibero@case-study.local', 'user' => 'PassoLibero Calzature — Viewer', 'role' => 'viewer'],
+                ['email' => 'passolibero.admin@case-study.local', 'user' => 'PassoLibero Calzature — Admin', 'role' => 'admin'],
+                ['email' => 'passolibero.super@case-study.local', 'user' => 'PassoLibero Calzature — Super Admin', 'role' => 'super-admin'],
+            ],
         ],
     ];
 
     public function run(): void
     {
-        // All three companies live in the `default` tenant — isolation here is
-        // logical (per project_key + membership), exactly as the case-study
-        // README describes the dev environment. Pin the context so every
-        // tenant-aware row (Project, ProjectMembership) auto-fills tenant_id.
+        // UN TENANT PER AZIENDA: tenant_id = project_key. Così l'isolamento vale
+        // su TUTTE le superfici (connettori, utenti, KB, ...) via lo scope-tenant
+        // della piattaforma, non solo sul project_key.
         $ctx = app(TenantContext::class);
         $previous = $ctx->current();
-        $ctx->set('default');
 
         try {
             foreach (self::COMPANIES as $projectKey => $meta) {
-                $this->seedCompany($projectKey, $meta);
+                $tenantId = $projectKey;
+                // Pin il tenant dell'azienda così ogni riga tenant-aware
+                // (Project, ProjectMembership) auto-fill il tenant giusto.
+                $ctx->set($tenantId);
+
+                // Riga di registry del tenant (label nello switcher team) — solo
+                // se la tabella esiste (pacchetto AI-Act migrato).
+                if (Schema::hasTable('tenants')) {
+                    Tenant::firstOrCreate(['slug' => $tenantId], ['name' => $meta['name']]);
+                }
+
+                Project::updateOrCreate(
+                    ['tenant_id' => $tenantId, 'project_key' => $projectKey],
+                    ['name' => $meta['name'], 'description' => $meta['desc']],
+                );
+
+                foreach ($meta['accounts'] as $account) {
+                    $this->seedAccount($tenantId, $projectKey, $account);
+                }
             }
         } finally {
             $ctx->set($previous);
@@ -91,30 +122,33 @@ class CaseStudyUsersSeeder extends Seeder
     }
 
     /**
-     * @param  array{name: string, desc: string, email: string, user: string}  $meta
+     * @param  array{email: string, user: string, role: string}  $account
      */
-    private function seedCompany(string $projectKey, array $meta): void
+    private function seedAccount(string $tenantId, string $projectKey, array $account): void
     {
-        Project::updateOrCreate(
-            ['tenant_id' => 'default', 'project_key' => $projectKey],
-            ['name' => $meta['name'], 'description' => $meta['desc']],
-        );
-
         $user = User::firstOrCreate(
-            ['email' => $meta['email']],
-            ['name' => $meta['user'], 'password' => Hash::make(self::PASSWORD)],
+            ['email' => $account['email']],
+            ['name' => $account['user'], 'password' => Hash::make(self::PASSWORD)],
         );
 
-        if (! $user->hasRole(self::ROLE)) {
-            $user->assignRole(self::ROLE);
+        if (! $user->hasRole($account['role'])) {
+            $user->assignRole($account['role']);
         }
 
-        // Membership to ONLY this company's project — the whole point of the
-        // per-user isolation axis. firstOrCreate keyed on the tenant-scoped
-        // (tenant_id, user_id, project_key) tuple so re-running never widens
-        // the user's reach.
+        // L'account appartiene a UNA sola azienda → membership SOLO nel suo
+        // tenant/progetto. Rimuove qualunque altra membership (es. backfill
+        // all-projects di RbacSeeder sul tenant default) così, entrando, vede
+        // esclusivamente la propria azienda. Va eseguito DOPO RbacSeeder.
+        ProjectMembership::query()
+            ->where('user_id', $user->id)
+            ->where(function ($q) use ($tenantId, $projectKey): void {
+                $q->where('tenant_id', '!=', $tenantId)
+                    ->orWhere('project_key', '!=', $projectKey);
+            })
+            ->delete();
+
         ProjectMembership::firstOrCreate(
-            ['tenant_id' => 'default', 'user_id' => $user->id, 'project_key' => $projectKey],
+            ['tenant_id' => $tenantId, 'user_id' => $user->id, 'project_key' => $projectKey],
             ['role' => 'member', 'scope_allowlist' => null],
         );
     }

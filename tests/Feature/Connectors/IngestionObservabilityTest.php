@@ -183,10 +183,11 @@ final class IngestionObservabilityTest extends TestCase
             ->assertStatus(404);
     }
 
-    public function test_ingestion_endpoints_reject_non_super_admin_and_guest(): void
+    public function test_ingestion_endpoints_reject_unauthorized_and_guest(): void
     {
+        // manageConnectors = admin + super-admin → un viewer è fuori dall'allow-set.
         $this->getJson('/api/admin/ingestion/queue')->assertStatus(401);
-        $this->actingAs($this->regularAdmin())
+        $this->actingAs($this->viewer())
             ->getJson('/api/admin/ingestion/queue')->assertStatus(403);
     }
 
@@ -274,10 +275,10 @@ final class IngestionObservabilityTest extends TestCase
         return $user;
     }
 
-    private function regularAdmin(): User
+    private function viewer(): User
     {
-        $user = User::create(['name' => 'Admin', 'email' => 'admin-'.uniqid().'@demo.local', 'password' => Hash::make('secret123')]);
-        $user->assignRole('admin');
+        $user = User::create(['name' => 'Viewer', 'email' => 'viewer-'.uniqid().'@demo.local', 'password' => Hash::make('secret123')]);
+        $user->assignRole('viewer');
 
         return $user;
     }

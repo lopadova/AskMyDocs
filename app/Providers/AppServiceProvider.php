@@ -69,6 +69,14 @@ class AppServiceProvider extends ServiceProvider
         // dependencies before boot() on a warm container.
         $this->app->bind(PdfRenderer::class, fn () => PdfRendererFactory::resolve());
 
+        // Email-ingest test harness (dev/test) — the `mail:seed-imap` command's
+        // IMAP APPEND seam. Real webklex impl in app code; feature tests rebind
+        // a fake so the command is exercised without a live IMAP server.
+        $this->app->bind(
+            \App\Services\Demo\Contracts\MailboxAppender::class,
+            \App\Services\Demo\WebklexMailboxAppender::class,
+        );
+
         // T1.4 — KB ingestion pipeline registry. Singleton so the converter +
         // chunker boot cost is paid once per request. Driven by `config/kb-pipeline.php`
         // (see README → "Extending the Ingestion Pipeline").
@@ -571,7 +579,9 @@ class AppServiceProvider extends ServiceProvider
                 return false;
             }
 
-            return $user->hasRole('super-admin');
+            // Policy (scelta esplicita): la gestione connettori — incluse le
+            // credenziali nel vault — è consentita ad admin E super-admin.
+            return $user->hasAnyRole(['admin', 'super-admin']);
         });
     }
 
@@ -700,6 +710,14 @@ class AppServiceProvider extends ServiceProvider
             // Case study — per-company documentation-isolation verifier
             // (README §6 matrix against the live KB). Dev/ops diagnostic.
             \App\Console\Commands\CaseStudyVerifyIsolationCommand::class,
+            // Email-ingest test harness (dev/test): deliver fixtures into the
+            // real IMAP mailboxes, install the IMAP connector per company, and
+            // discover existing companies. See docs/testing/email-ingest-e2e.md.
+            \App\Console\Commands\MailSeedImapCommand::class,
+            \App\Console\Commands\ConnectorImapInstallCommand::class,
+            \App\Console\Commands\DemoListCompaniesCommand::class,
+            \App\Console\Commands\InitCaseStudiesCommand::class,
+
             // v8.20 — multi-account connectors PHP surface (R44): read roster +
             // interactive credential install, over ConnectorInstallationService /
             // ConfigureConnectorService.

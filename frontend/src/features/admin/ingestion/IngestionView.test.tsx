@@ -64,9 +64,11 @@ function entry(installations: { id: number; label: string }[]): ConnectorEntry {
             id: i.id,
             label: i.label,
             project_key: null,
-            status: 'active',
+            status: 'active' as const,
             last_sync_at: null,
             error: null,
+            folders: { include: [] },
+            date_window_days: null,
         })),
     };
 }

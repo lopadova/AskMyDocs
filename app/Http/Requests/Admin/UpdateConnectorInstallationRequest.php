@@ -14,6 +14,12 @@ use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
  * (`PATCH /api/admin/connectors/{installationId}`): rename the `label` and/or
  * rebind `project_key`. PARTIAL — only present keys are validated/applied.
  *
+ * v8.24 — also accepts the connection-settings the picker edits:
+ * `folders.include` (array of EXACT, case-sensitive IMAP folder paths — the
+ * sync whitelist; empty = sync all non-excluded folders) and
+ * `date_window_days` (how far back to walk). Both land in `config_json` via a
+ * read-modify-write in {@see \App\Services\Admin\Connectors\ConnectorInstallationService::updateMetadata}.
+ *
  * The `label` unique is scoped to (tenant, connector) and ignores the row
  * itself, so re-saving the same label is a no-op rather than a false collision.
  * Credential re-auth is out of scope (delete + re-add); this never touches the
@@ -34,6 +40,57 @@ final class UpdateConnectorInstallationRequest extends FormRequest
         if ($this->input('project_key') === '') {
             $this->merge(['project_key' => null]);
         }
+
+        // Normalize folders.include BEFORE validation: trim each path, drop blank
+        // entries, dedupe. `distinct` does NOT trim, so without this a "  " or a
+        // trailing-space duplicate would slip past. An explicit empty array is
+        // preserved (it means "clear the whitelist → sync all non-excluded").
+        $folders = $this->input('folders');
+        if (is_array($folders) && array_key_exists('include', $folders)) {
+            $include = is_array($folders['include']) ? $folders['include'] : [];
+            $folders['include'] = $this->normalizeIncludePaths($include);
+            $this->merge(['folders' => $folders]);
+        }
+    }
+
+    /**
+     * Trim + drop-blank + dedupe ONLY string entries, preserving any non-string
+     * element verbatim so the `folders.include.* => string` rule can reject it
+     * (422) instead of it being silently swallowed (R14). A manual loop is used
+     * deliberately over `array_unique()`, which (default SORT_STRING) would emit
+     * an "Array to string conversion" warning before validation if a nested
+     * array/object slipped into the payload (R19).
+     *
+     * @param  array<int|string, mixed>  $include
+     * @return list<mixed>
+     */
+    private function normalizeIncludePaths(array $include): array
+    {
+        $seen = [];
+        $out = [];
+        foreach ($include as $entry) {
+            // null = a blank entry the global TrimStrings/ConvertEmptyStringsToNull
+            // middleware already collapsed (e.g. "  ") — drop it silently, same as
+            // a blank string. Other non-strings (int, nested array, bool) are KEPT
+            // verbatim so the `folders.include.* => string` rule rejects them (422)
+            // instead of being swallowed (R14).
+            if ($entry === null) {
+                continue;
+            }
+            if (! is_string($entry)) {
+                $out[] = $entry; // keep for the validator to 422
+
+                continue;
+            }
+            $trimmed = trim($entry);
+            if ($trimmed === '' || isset($seen[$trimmed])) {
+                continue;
+            }
+            $seen[$trimmed] = true;
+            $out[] = $trimmed;
+        }
+
+        return $out;
     }
 
     /**
@@ -68,6 +125,16 @@ final class UpdateConnectorInstallationRequest extends FormRequest
                 'sometimes', 'nullable', 'string', 'max:120',
                 Rule::exists('projects', 'project_key')->where('tenant_id', $tenantId),
             ],
+            // v8.24 — connection settings the picker edits. `folders.include` is
+            // the sync whitelist (exact, case-sensitive paths); an empty array is
+            // valid and means "clear → sync all non-excluded folders".
+            'folders' => ['sometimes', 'array'],
+            'folders.include' => ['sometimes', 'array', 'max:200'],
+            'folders.include.*' => ['string', 'distinct', 'min:1', 'max:255'],
+            // nullable: an explicit null CLEARS the override back to the connector
+            // default (the service unsets the config_json key); an omitted key is
+            // left unchanged (PATCH).
+            'date_window_days' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:3650'],
         ];
     }
 }

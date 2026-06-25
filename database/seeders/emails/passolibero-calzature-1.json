@@ -1,0 +1,856 @@
+[
+    {
+        "subject": "Conferma ordine #CLB-5521 - ClubPasso",
+        "from_name": "PassoLibero Ordini",
+        "from_email": "ordini@passolibero-calzature.example.com",
+        "date": "2024-01-08 09:14:32",
+        "body_text": "Gentile cliente,\nGrazie per il tuo acquisto su PassoLibero Calzature.\n\nIl tuo ordine #CLB-5521 e' stato confermato e preso in carico dal nostro magazzino.\n\nDettaglio:\n- Modello Aero (running) - taglia 42 - colore antracite\n- Quantita': 1 paio\n\nImporto totale: 89,90 euro\nMetodo di pagamento: carta di credito\n\nRiceverai una seconda email non appena il pacco sara' affidato al corriere. Come membro ClubPasso accumuli punti su questo acquisto.\n\nGrazie per aver scelto il brand ClubPasso.\nIl team PassoLibero"
+    },
+    {
+        "subject": "Il tuo pacco e' in viaggio - tracking GLS-PL-99812",
+        "from_name": "PassoLibero Spedizioni",
+        "from_email": "spedizioni@passolibero-calzature.example.com",
+        "date": "2024-01-09 11:42:08",
+        "body_text": "Buongiorno,\nottime notizie: l'ordine #CLB-5521 e' stato spedito.\n\nIl tuo pacco viaggia con corriere GLS.\nCodice di tracking: GLS-PL-99812\n\nPuoi seguire la spedizione in tempo reale dall'area riservata del tuo account. La consegna prevista e' entro 2-3 giorni lavorativi all'indirizzo indicato in fase di ordine.\n\nSe non sarai presente, GLS lascera' un avviso di giacenza con le istruzioni per la riconsegna o il ritiro in punto Parcel Shop.\n\nGrazie per aver acquistato il modello Aero.\nIl team Spedizioni PassoLibero"
+    },
+    {
+        "subject": "Pacco consegnato - ordine #CLB-5521",
+        "from_name": "PassoLibero Spedizioni",
+        "from_email": "spedizioni@passolibero-calzature.example.com",
+        "date": "2024-01-11 15:27:51",
+        "body_text": "Gentile cliente,\nti confermiamo che il pacco relativo all'ordine #CLB-5521 e' stato consegnato oggi alle ore 15:18.\n\nCorriere: GLS\nTracking: GLS-PL-99812\nFirma ritiro: registrata\n\nCi auguriamo che il tuo modello Aero sia di tuo gradimento. Ricordati che hai 30 giorni di tempo per un eventuale reso gratuito.\n\nSe ti va, lascia una recensione: il tuo parere aiuta altri runner a scegliere.\n\nA presto,\nIl team PassoLibero"
+    },
+    {
+        "subject": "Ricevuta di pagamento - ordine #CLB-5521",
+        "from_name": "PassoLibero Amministrazione",
+        "from_email": "amministrazione@passolibero-calzature.example.com",
+        "date": "2024-01-08 09:16:05",
+        "body_text": "Buongiorno,\nin allegato trovi la ricevuta relativa al pagamento dell'ordine #CLB-5521.\n\nDettaglio importo:\n- Imponibile: 73,69 euro\n- IVA 22%: 16,21 euro\n- Totale: 89,90 euro\n\nTransazione autorizzata correttamente sulla carta indicata.\n\nQuesta e' una ricevuta automatica generata dal sistema. Per richieste di fattura intestata, rispondi a questa email indicando partita IVA e ragione sociale entro 12 giorni.\n\nCordiali saluti,\nAmministrazione PassoLibero Calzature"
+    },
+    {
+        "subject": "Promemoria: la tua iscrizione ClubPasso Premium scade tra 7 giorni",
+        "from_name": "ClubPasso Premium",
+        "from_email": "premium@passolibero-calzature.example.com",
+        "date": "2024-01-12 10:05:44",
+        "body_text": "Ciao,\nti scriviamo per ricordarti che la tua iscrizione a ClubPasso Premium scadra' tra 7 giorni.\n\nCon il rinnovo continuerai a beneficiare di:\n- spedizione gratuita sempre\n- accesso anticipato alle promozioni stagionali\n- doppi punti su ogni acquisto\n- resi prioritari\n\nIl rinnovo e' automatico salvo disdetta. L'addebito di 24,90 euro/anno verra' effettuato sulla carta registrata.\n\nSe vuoi modificare o disdire, accedi all'area riservata entro la data di scadenza.\n\nGrazie per essere un membro ClubPasso Premium.\nIl team ClubPasso"
+    },
+    {
+        "subject": "Aggiornamento stato ordine #CLB-5602: in preparazione",
+        "from_name": "PassoLibero Ordini",
+        "from_email": "ordini@passolibero-calzature.example.com",
+        "date": "2024-01-15 14:33:19",
+        "body_text": "Gentile cliente,\nil tuo ordine #CLB-5602 e' passato allo stato 'in preparazione' presso il nostro magazzino.\n\nArticoli:\n- Modello Eleganza - taglia 39 - colore cuoio\n- Quantita': 1 paio\n\nStiamo verificando la disponibilita' e preparando il pacco. Di norma questa fase richiede un giorno lavorativo, dopodiche' riceverai il codice di tracking GLS.\n\nNon e' richiesta alcuna azione da parte tua. Ti aggiorneremo automaticamente al cambio di stato.\n\nGrazie per aver scelto il modello Eleganza.\nIl team PassoLibero"
+    },
+    {
+        "subject": "Alert: pagamento in sospeso per ordine #CLB-5640",
+        "from_name": "PassoLibero Amministrazione",
+        "from_email": "amministrazione@passolibero-calzature.example.com",
+        "date": "2024-01-17 16:48:27",
+        "body_text": "Buongiorno,\nabbiamo rilevato che il pagamento per l'ordine #CLB-5640 risulta ancora in sospeso.\n\nLa transazione non e' andata a buon fine, probabilmente per un'autorizzazione negata dalla banca. L'ordine resta in attesa e non verra' spedito finche' il pagamento non sara' completato.\n\nTi invitiamo a riprovare dall'area riservata entro 48 ore, oppure a scegliere un metodo di pagamento alternativo. Trascorso questo termine l'ordine verra' annullato automaticamente e i tuoi articoli torneranno disponibili.\n\nPer assistenza siamo a disposizione.\nAmministrazione PassoLibero"
+    },
+    {
+        "subject": "Reso autorizzato RMA-7788 - istruzioni",
+        "from_name": "PassoLibero Assistenza Resi",
+        "from_email": "resi@passolibero-calzature.example.com",
+        "date": "2024-01-18 09:52:11",
+        "body_text": "Gentile cliente,\nabbiamo ricevuto la tua richiesta di reso e te la confermiamo.\n\nNumero pratica: RMA-7788\nOrdine di riferimento: #CLB-5521\nArticolo: modello Aero - taglia 42\nMotivo: taglia non corretta\n\nIstruzioni:\n1. Inserisci le scarpe nella confezione originale.\n2. Applica l'etichetta di reso prepagato GLS allegata.\n3. Consegna il pacco a un punto GLS entro 30 giorni dall'acquisto.\n\nIl reso e' gratuito. Una volta ricevuto e verificato l'articolo, procederemo al rimborso entro 5 giorni lavorativi sullo stesso metodo di pagamento.\n\nGrazie,\nAssistenza Resi PassoLibero"
+    },
+    {
+        "subject": "Reso RMA-7788 ricevuto in magazzino",
+        "from_name": "PassoLibero Assistenza Resi",
+        "from_email": "resi@passolibero-calzature.example.com",
+        "date": "2024-01-23 11:19:36",
+        "body_text": "Buongiorno,\nti confermiamo che il reso con pratica RMA-7788 e' stato ricevuto e controllato dal nostro magazzino.\n\nL'articolo modello Aero risulta integro e idoneo al reso. Procediamo quindi con il rimborso.\n\nImporto da rimborsare: 89,90 euro\nMetodo: stesso usato per l'ordine #CLB-5521\nTempistica: 3-5 giorni lavorativi\n\nRiceverai una notifica automatica all'avvenuto accredito. I tempi effettivi possono dipendere dal tuo istituto bancario.\n\nGrazie per la pazienza,\nAssistenza Resi PassoLibero"
+    },
+    {
+        "subject": "Rimborso completato - pratica RMA-7788",
+        "from_name": "PassoLibero Amministrazione",
+        "from_email": "amministrazione@passolibero-calzature.example.com",
+        "date": "2024-01-25 13:04:58",
+        "body_text": "Gentile cliente,\nil rimborso relativo alla pratica RMA-7788 e' stato eseguito con successo.\n\nImporto accreditato: 89,90 euro\nOrdine originale: #CLB-5521\nData operazione: 25/01/2024\n\nL'importo dovrebbe comparire sul tuo estratto conto entro pochi giorni lavorativi, secondo i tempi del circuito di pagamento.\n\nCi dispiace che il modello Aero non fosse della taglia giusta: ricorda che nella scheda prodotto trovi la guida alle taglie e il servizio di assistenza taglie via chat.\n\nA presto su PassoLibero,\nAmministrazione"
+    },
+    {
+        "subject": "Conferma ordine #CLB-5701 - sandali Brezza",
+        "from_name": "PassoLibero Ordini",
+        "from_email": "ordini@passolibero-calzature.example.com",
+        "date": "2024-01-29 10:27:14",
+        "body_text": "Gentile cliente,\nil tuo ordine #CLB-5701 e' stato registrato correttamente.\n\nDettaglio:\n- Modello Brezza (sandali) - taglia 37 - colore sabbia\n- Quantita': 1 paio\n\nImporto totale: 59,90 euro\nSpedizione: gratuita (membro ClubPasso)\n\nPrepareremo a breve il tuo pacco e ti invieremo il codice di tracking del corriere GLS appena affidato. Nonostante i sandali Brezza siano un articolo stagionale, le scorte sono al momento disponibili.\n\nGrazie per il tuo acquisto.\nIl team PassoLibero"
+    },
+    {
+        "subject": "Spedizione in giacenza - ordine #CLB-5701",
+        "from_name": "PassoLibero Spedizioni",
+        "from_email": "spedizioni@passolibero-calzature.example.com",
+        "date": "2024-02-02 12:38:45",
+        "body_text": "Buongiorno,\nil corriere GLS ci ha segnalato un tentativo di consegna non riuscito per l'ordine #CLB-5701. Il pacco e' attualmente in giacenza presso la filiale GLS di competenza.\n\nTracking: GLS-PL-99812\n\nCosa fare:\n- attendi un nuovo tentativo di consegna automatico nelle prossime 24-48 ore, oppure\n- contatta GLS con il codice di tracking per concordare data o ritiro in Parcel Shop.\n\nLa giacenza e' gratuita per i primi 5 giorni lavorativi. Dopo tale periodo il pacco potrebbe rientrare al mittente.\n\nRestiamo a disposizione,\nSpedizioni PassoLibero"
+    },
+    {
+        "subject": "Verifica taglia per il tuo modello Eleganza",
+        "from_name": "PassoLibero Assistenza Clienti",
+        "from_email": "assistenza@passolibero-calzature.example.com",
+        "date": "2024-02-05 09:41:22",
+        "body_text": "Ciao,\nhai recentemente acquistato il modello Eleganza e ci hai chiesto un consiglio sulla taglia.\n\nIl modello Eleganza calza in modo regolare ma, per via della punta affusolata, consigliamo a chi ha il piede largo di salire di mezza taglia. Per il modello Aero (running) vale invece la calzata standard.\n\nSe la taglia ricevuta non e' quella giusta, ricordati che hai 30 giorni per il reso gratuito: ti basta aprire una pratica dall'area riservata e riceverai un numero RMA con l'etichetta GLS prepagata.\n\nRestiamo a disposizione per qualsiasi dubbio.\nAssistenza Clienti PassoLibero"
+    },
+    {
+        "subject": "Promo invernale ClubPasso: -25% sul modello Aero",
+        "from_name": "ClubPasso Promozioni",
+        "from_email": "promozioni@passolibero-calzature.example.com",
+        "date": "2024-02-07 11:00:03",
+        "body_text": "Ciao runner,\nle promozioni stagionali ClubPasso sono arrivate.\n\nFino al 18 febbraio il modello Aero (running) e' scontato del 25% in tutte le taglie e colorazioni disponibili. Un'occasione per rinnovare il tuo passo prima della primavera.\n\nSe sei un membro ClubPasso Premium, hai gia' accesso anticipato e doppi punti su ogni acquisto in promozione.\n\nLa spedizione GLS resta gratuita sopra i 49 euro e i resi sono sempre gratuiti entro 30 giorni.\n\nNon farti scappare l'offerta.\nIl team ClubPasso Promozioni"
+    },
+    {
+        "subject": "Grazie per la tua recensione 5 stelle!",
+        "from_name": "PassoLibero Recensioni",
+        "from_email": "recensioni@passolibero-calzature.example.com",
+        "date": "2024-02-09 16:22:50",
+        "body_text": "Gentile cliente,\ngrazie di cuore per la recensione a 5 stelle che hai lasciato sul modello Aero acquistato con l'ordine #CLB-5521.\n\n\"Comode dal primo chilometro, ottima ammortizzazione\": parole che ci rendono orgogliosi del lavoro del brand ClubPasso.\n\nLa tua opinione e' ora pubblicata sulla scheda prodotto e aiutera' altri runner a scegliere. Come ringraziamento, abbiamo accreditato 50 punti extra sul tuo profilo ClubPasso.\n\nContinua a correre con noi.\nIl team Recensioni PassoLibero"
+    },
+    {
+        "subject": "Ordine #CLB-5640 annullato per mancato pagamento",
+        "from_name": "PassoLibero Ordini",
+        "from_email": "ordini@passolibero-calzature.example.com",
+        "date": "2024-02-12 10:15:38",
+        "body_text": "Gentile cliente,\nl'ordine #CLB-5640 e' stato annullato automaticamente in quanto il pagamento non e' stato completato entro le 48 ore previste.\n\nNessun importo e' stato addebitato e gli articoli sono tornati disponibili sul sito.\n\nSe desideri ancora acquistare il modello Eleganza, puoi creare un nuovo ordine in qualsiasi momento. Ti suggeriamo di verificare con la tua banca eventuali blocchi sulle transazioni online.\n\nSiamo a disposizione per assisterti nel completare l'acquisto.\nIl team PassoLibero"
+    },
+    {
+        "subject": "Notifica: punti ClubPasso in scadenza",
+        "from_name": "ClubPasso Premium",
+        "from_email": "premium@passolibero-calzature.example.com",
+        "date": "2024-02-14 09:30:17",
+        "body_text": "Ciao,\nti ricordiamo che hai 320 punti ClubPasso che scadranno il 29 febbraio 2024.\n\nI punti possono essere convertiti in buoni sconto da utilizzare sul prossimo acquisto:\n- 200 punti = 5 euro di sconto\n- 400 punti = 12 euro di sconto\n\nSe sei membro ClubPasso Premium, i tuoi punti hanno comunque validita' estesa di 6 mesi rispetto allo standard.\n\nAccedi all'area riservata per usarli prima della scadenza e abbinarli alle promozioni stagionali in corso.\n\nA presto,\nIl team ClubPasso"
+    },
+    {
+        "subject": "Conferma ordine #CLB-5755 - due paia",
+        "from_name": "PassoLibero Ordini",
+        "from_email": "ordini@passolibero-calzature.example.com",
+        "date": "2024-02-16 13:47:29",
+        "body_text": "Gentile cliente,\ngrazie per il tuo ordine #CLB-5755, registrato correttamente.\n\nDettaglio:\n- Modello Aero (running) - taglia 44 - colore blu notte - 1 paio\n- Modello Eleganza - taglia 44 - colore nero - 1 paio\n\nImporto totale: 159,80 euro\nSpedizione GLS: gratuita\n\nI due paia verranno spediti in un unico pacco. Ti invieremo il codice di tracking non appena affidato al corriere. Su questo ordine accumuli punti ClubPasso che potrai convertire in buoni sconto.\n\nGrazie per la fiducia.\nIl team PassoLibero"
+    },
+    {
+        "subject": "Aggiornamento spedizione: in transito verso di te",
+        "from_name": "PassoLibero Spedizioni",
+        "from_email": "spedizioni@passolibero-calzature.example.com",
+        "date": "2024-02-19 10:58:41",
+        "body_text": "Buongiorno,\nil pacco dell'ordine #CLB-5755 e' ora in transito ed e' partito dalla filiale GLS di smistamento.\n\nTracking: GLS-PL-99812\nStato attuale: in transito\nConsegna stimata: domani in giornata\n\nNel giorno della consegna riceverai una fascia oraria indicativa direttamente da GLS via SMS. Se l'indirizzo necessita di modifiche, intervieni subito tramite il portale del corriere usando il codice di tracking.\n\nGrazie per aver scelto i modelli Aero ed Eleganza.\nSpedizioni PassoLibero"
+    },
+    {
+        "subject": "Avviso disponibilita': modello Brezza di nuovo a stock",
+        "from_name": "ClubPasso Promozioni",
+        "from_email": "promozioni@passolibero-calzature.example.com",
+        "date": "2024-02-21 11:34:07",
+        "body_text": "Ciao,\nbuone notizie: il modello Brezza (sandali) che avevi messo tra i preferiti e' di nuovo disponibile a magazzino.\n\nIn vista della stagione calda, abbiamo rifornito le taglie dalla 36 alla 41 nelle colorazioni sabbia e nero.\n\nTrattandosi di un articolo molto richiesto, ti consigliamo di non attendere troppo. Come membro ClubPasso hai la spedizione gratuita e 30 giorni per il reso.\n\nVai sulla scheda prodotto per completare l'acquisto.\nIl team ClubPasso Promozioni"
+    },
+    {
+        "subject": "Richiesta recensione per ordine #CLB-5701",
+        "from_name": "PassoLibero Recensioni",
+        "from_email": "recensioni@passolibero-calzature.example.com",
+        "date": "2024-02-23 15:09:53",
+        "body_text": "Gentile cliente,\nsperiamo che tu ti stia trovando bene con i sandali Brezza dell'ordine #CLB-5701.\n\nLa tua opinione conta moltissimo. Ti va di dedicare due minuti a una recensione? Raccontaci comodita', vestibilita' e qualita' percepita.\n\nLe recensioni 5 stelle aiutano altri clienti a scegliere e contribuiscono a migliorare il brand ClubPasso.\n\nIn cambio del tuo tempo, accrediteremo 50 punti ClubPasso sul tuo profilo non appena la recensione verra' pubblicata.\n\nGrazie in anticipo,\nIl team Recensioni PassoLibero"
+    },
+    {
+        "subject": "Conferma rinnovo ClubPasso Premium",
+        "from_name": "ClubPasso Premium",
+        "from_email": "premium@passolibero-calzature.example.com",
+        "date": "2024-02-26 09:02:36",
+        "body_text": "Gentile membro,\nti confermiamo il rinnovo automatico della tua iscrizione ClubPasso Premium per i prossimi 12 mesi.\n\nImporto addebitato: 24,90 euro\nValidita': fino al 26/02/2025\n\nContinuerai a godere di spedizione sempre gratuita, accesso anticipato alle promozioni stagionali, doppi punti e resi prioritari.\n\nTrovi la ricevuta nell'area riservata. Per qualsiasi modifica al piano o al metodo di pagamento, accedi alle impostazioni del tuo account.\n\nGrazie per restare con ClubPasso Premium.\nIl team ClubPasso"
+    },
+    {
+        "subject": "Notifica fornitore: lotto FRN-2024-220 in arrivo",
+        "from_name": "Marco Tessari",
+        "from_email": "logistica@fornitore.example.com",
+        "date": "2024-02-28 14:18:44",
+        "body_text": "Buongiorno ufficio acquisti PassoLibero,\nvi confermiamo la spedizione del lotto pelli FRN-2024-220 destinato alla produzione del modello Eleganza.\n\nFornitore concia: ConceriaToscana\nQuantita': 180 metri quadri, pellame pieno fiore\nData partenza: 28/02/2024\nConsegna prevista al vostro magazzino: 04/03/2024\n\nIl documento di trasporto e il certificato di conformita' sono allegati. Vi preghiamo di verificare la merce alla ricezione e di segnalarci eventuali non conformita' entro 7 giorni.\n\nRestiamo a disposizione.\nMarco Tessari - Logistica fornitore"
+    },
+    {
+        "subject": "Ricezione lotto FRN-2024-220 confermata",
+        "from_name": "PassoLibero Magazzino",
+        "from_email": "magazzino@passolibero-calzature.example.com",
+        "date": "2024-03-04 10:46:12",
+        "body_text": "Buongiorno,\nconfermiamo la ricezione del lotto FRN-2024-220 proveniente da ConceriaToscana, destinato alla produzione del modello Eleganza.\n\nControllo qualita': superato\nQuantita' ricevuta: 180 mq, corrispondente al DDT\nNon conformita' rilevate: nessuna\n\nIl materiale e' stato registrato a sistema e trasferito al reparto produzione. Procederemo con il rilascio dell'ordine di produzione per il prossimo lotto di modello Eleganza.\n\nGrazie per la collaborazione.\nMagazzino PassoLibero Calzature"
+    },
+    {
+        "subject": "Alert stock basso: modello Aero taglia 43",
+        "from_name": "PassoLibero Magazzino",
+        "from_email": "magazzino@passolibero-calzature.example.com",
+        "date": "2024-03-06 08:55:29",
+        "body_text": "Notifica automatica di sistema.\n\nLivello scorte sotto soglia minima per il seguente articolo:\n- Modello Aero (running) - taglia 43 - colore antracite\n- Disponibilita' residua: 6 paia\n- Soglia di riordino: 15 paia\n\nSi consiglia di emettere un nuovo ordine di produzione o riapprovvigionamento per evitare rotture di stock sulle vendite e-commerce. La taglia 43 e' tra le piu' richieste del modello Aero.\n\nQuesta e' una notifica automatica del gestionale magazzino. Per agire, accedere al pannello riordini.\n\nMagazzino PassoLibero"
+    },
+    {
+        "subject": "Conferma ordine #CLB-5810 - modello Eleganza",
+        "from_name": "PassoLibero Ordini",
+        "from_email": "ordini@passolibero-calzature.example.com",
+        "date": "2024-03-08 11:23:47",
+        "body_text": "Gentile cliente,\ngrazie per il tuo ordine #CLB-5810, confermato e in lavorazione.\n\nDettaglio:\n- Modello Eleganza - taglia 41 - colore testa di moro\n- Quantita': 1 paio\n\nImporto totale: 99,90 euro\nMetodo di pagamento: PayPal\nSpedizione: corriere GLS\n\nLe scarpe della linea Eleganza sono realizzate con pellame della ConceriaToscana. Riceverai il tracking non appena il pacco sara' affidato al corriere.\n\nGrazie per aver scelto PassoLibero.\nIl team Ordini"
+    },
+    {
+        "subject": "Il tuo modello Eleganza e' stato spedito",
+        "from_name": "PassoLibero Spedizioni",
+        "from_email": "spedizioni@passolibero-calzature.example.com",
+        "date": "2024-03-11 09:38:55",
+        "body_text": "Buongiorno,\nl'ordine #CLB-5810 e' stato spedito con corriere GLS.\n\nTracking: GLS-PL-99812\nConsegna stimata: 2-3 giorni lavorativi\n\nPuoi monitorare ogni passaggio della spedizione dall'area riservata o sul portale GLS. Nel giorno di consegna riceverai una fascia oraria indicativa.\n\nRicorda che hai 30 giorni di tempo per un eventuale reso gratuito se la taglia o la calzata del modello Eleganza non fossero perfette.\n\nGrazie e buon passo,\nSpedizioni PassoLibero"
+    },
+    {
+        "subject": "Scadenza pagamento fattura fornitore ConceriaToscana",
+        "from_name": "PassoLibero Amministrazione",
+        "from_email": "amministrazione@passolibero-calzature.example.com",
+        "date": "2024-03-13 15:41:08",
+        "body_text": "Promemoria interno amministrazione.\n\nLa fattura relativa al lotto FRN-2024-220 emessa dal fornitore ConceriaToscana e' in scadenza tra 5 giorni.\n\nImporto: 9.450,00 euro\nScadenza pagamento: 18/03/2024\nModalita': bonifico bancario a 30 giorni\n\nSi prega di predisporre la disposizione di pagamento entro la data indicata per non incorrere in interessi di mora e mantenere le condizioni preferenziali sulle prossime forniture di pellame per il modello Eleganza.\n\nNotifica automatica del sistema contabile.\nAmministrazione PassoLibero"
+    },
+    {
+        "subject": "Reso autorizzato per ordine #CLB-5755",
+        "from_name": "PassoLibero Assistenza Resi",
+        "from_email": "resi@passolibero-calzature.example.com",
+        "date": "2024-03-15 10:12:33",
+        "body_text": "Gentile cliente,\nabbiamo registrato la tua richiesta di reso parziale per l'ordine #CLB-5755.\n\nArticolo da rendere: modello Eleganza - taglia 44 - colore nero\nMotivo indicato: calzata troppo stretta\nIl modello Aero dello stesso ordine non rientra nel reso.\n\nA breve riceverai il numero pratica RMA e l'etichetta GLS prepagata. Il reso e' gratuito entro 30 giorni dall'acquisto.\n\nTi ricordiamo che il modello Eleganza calza affusolato: per il piede largo consigliamo mezza taglia in piu'.\n\nAssistenza Resi PassoLibero"
+    },
+    {
+        "subject": "Newsletter ClubPasso - Marzo: il passo verso la primavera",
+        "from_name": "ClubPasso Newsletter",
+        "from_email": "newsletter@passolibero-calzature.example.com",
+        "date": "2024-03-18 09:00:21",
+        "body_text": "Ciao,\nbenvenuto nella newsletter ClubPasso di marzo.\n\nIn questo numero:\n- Anteprima collezione primavera: torna il modello Brezza (sandali) in nuove colorazioni\n- Consigli di assistenza taglie per scegliere bene online\n- Le recensioni 5 stelle del mese sul modello Aero\n- Promozioni stagionali riservate ai membri ClubPasso Premium\n\nApprofitta della spedizione GLS gratuita sopra i 49 euro e dei resi gratuiti entro 30 giorni.\n\nBuona lettura e buon passo,\nIl team ClubPasso\n\nPer disiscriverti, usa il link in fondo a questa email."
+    },
+    {
+        "subject": "Conferma ordine #CLB-5890 - sandali Brezza primavera",
+        "from_name": "PassoLibero Ordini",
+        "from_email": "ordini@passolibero-calzature.example.com",
+        "date": "2024-03-20 14:05:49",
+        "body_text": "Gentile cliente,\nil tuo ordine #CLB-5890 e' stato confermato.\n\nDettaglio:\n- Modello Brezza (sandali) - taglia 38 - colore corallo - 1 paio\n\nImporto totale: 64,90 euro\nSconto promo primavera applicato: -10%\nSpedizione GLS: gratuita\n\nIl modello Brezza inaugura la nuova collezione primaverile. Prepareremo il tuo pacco e ti invieremo a breve il codice di tracking del corriere.\n\nGrazie per aver scelto ClubPasso.\nIl team Ordini PassoLibero"
+    },
+    {
+        "subject": "Modifica indirizzo confermata per ordine #CLB-5890",
+        "from_name": "PassoLibero Assistenza Clienti",
+        "from_email": "assistenza@passolibero-calzature.example.com",
+        "date": "2024-03-22 11:27:14",
+        "body_text": "Buongiorno,\nabbiamo aggiornato l'indirizzo di consegna per l'ordine #CLB-5890 come da tua richiesta.\n\nNuovo indirizzo registrato a sistema. Poiche' il pacco non era ancora stato affidato al corriere, la modifica e' andata a buon fine senza ritardi.\n\nLa spedizione partira' regolarmente con corriere GLS e riceverai il codice di tracking appena disponibile.\n\nTi invitiamo a verificare che il nuovo indirizzo sia completo di numero civico e CAP per evitare giacenze.\n\nRestiamo a disposizione,\nAssistenza Clienti PassoLibero"
+    },
+    {
+        "subject": "Consegna prevista oggi - ordine #CLB-5890",
+        "from_name": "PassoLibero Spedizioni",
+        "from_email": "spedizioni@passolibero-calzature.example.com",
+        "date": "2024-03-25 08:47:39",
+        "body_text": "Buongiorno,\nil tuo pacco con i sandali modello Brezza dell'ordine #CLB-5890 e' fuori per la consegna oggi.\n\nCorriere: GLS\nTracking: GLS-PL-99812\nFascia oraria stimata: 10:00 - 14:00\n\nAssicurati che qualcuno sia presente all'indirizzo aggiornato. In caso di assenza, GLS lascera' un avviso con le istruzioni per la riconsegna o il ritiro in Parcel Shop.\n\nBuona primavera con il tuo nuovo modello Brezza.\nSpedizioni PassoLibero"
+    },
+    {
+        "subject": "Promemoria: completa il pagamento dell'ordine #CLB-5912",
+        "from_name": "PassoLibero Ordini",
+        "from_email": "ordini@passolibero-calzature.example.com",
+        "date": "2024-03-27 16:33:52",
+        "body_text": "Gentile cliente,\nil tuo ordine #CLB-5912 e' in attesa di pagamento.\n\nArticolo: modello Aero (running) - taglia 40 - colore verde lime\nImporto: 89,90 euro\n\nHai scelto il bonifico bancario come metodo di pagamento ma non risulta ancora accreditato. Ti ricordiamo di completarlo entro 3 giorni lavorativi, indicando come causale il numero ordine #CLB-5912.\n\nTrascorso il termine, l'ordine verra' annullato e l'articolo tornera' disponibile. Una volta ricevuto il pagamento, spediremo subito con GLS.\n\nGrazie,\nIl team Ordini PassoLibero"
+    },
+    {
+        "subject": "Avviso giacenza scaduta - ordine #CLB-5701 in rientro",
+        "from_name": "PassoLibero Spedizioni",
+        "from_email": "spedizioni@passolibero-calzature.example.com",
+        "date": "2024-03-29 10:09:18",
+        "body_text": "Gentile cliente,\nti informiamo che il pacco relativo all'ordine #CLB-5701 (modello Brezza) e' rimasto in giacenza presso GLS oltre i termini previsti ed e' ora in rientro verso il nostro magazzino.\n\nTracking: GLS-PL-99812\n\nNon appena lo riceveremo, ti contatteremo per concordare:\n- una nuova spedizione (con eventuale contributo spese), oppure\n- il rimborso dell'importo pagato.\n\nCi dispiace per il disguido. Per riprogrammare subito la consegna, rispondi a questa email o contatta l'assistenza.\n\nSpedizioni PassoLibero"
+    },
+    {
+        "subject": "Conferma cambio taglia - nuovo ordine #CLB-5930",
+        "from_name": "PassoLibero Assistenza Resi",
+        "from_email": "resi@passolibero-calzature.example.com",
+        "date": "2024-04-02 11:48:26",
+        "body_text": "Gentile cliente,\nabbiamo gestito il tuo cambio taglia legato alla pratica RMA-7788.\n\nAbbiamo ricevuto la restituzione del modello Aero taglia 42 e generato un nuovo ordine sostitutivo:\n- Ordine: #CLB-5930\n- Modello Aero (running) - taglia 43 - colore antracite\n- Costo aggiuntivo: nessuno\n\nIl nuovo paio verra' spedito con corriere GLS senza ulteriori addebiti. Riceverai il codice di tracking a breve. Grazie per la pazienza durante la gestione del cambio.\n\nAssistenza Resi PassoLibero"
+    },
+    {
+        "subject": "Recensione pubblicata e punti accreditati",
+        "from_name": "PassoLibero Recensioni",
+        "from_email": "recensioni@passolibero-calzature.example.com",
+        "date": "2024-04-05 15:14:41",
+        "body_text": "Gentile cliente,\nla tua recensione sul modello Brezza (ordine #CLB-5890) e' stata pubblicata sulla scheda prodotto.\n\nValutazione: 5 stelle\n\"Sandali leggerissimi e comodi, perfetti per le prime giornate di sole.\"\n\nComplimenti e grazie: il tuo contributo aiuta altri clienti a scegliere con fiducia il brand ClubPasso.\n\nAbbiamo accreditato 50 punti ClubPasso sul tuo profilo, utilizzabili al prossimo acquisto. Come membro Premium beneficeranno anche della validita' estesa.\n\nA presto,\nIl team Recensioni PassoLibero"
+    },
+    {
+        "subject": "Promozione di primavera ClubPasso Premium",
+        "from_name": "ClubPasso Promozioni",
+        "from_email": "promozioni@passolibero-calzature.example.com",
+        "date": "2024-04-10 09:30:55",
+        "body_text": "Ciao,\nin quanto membro ClubPasso Premium, hai accesso anticipato alle promozioni stagionali di primavera.\n\nPer 72 ore in esclusiva:\n- modello Brezza (sandali): -20%\n- modello Eleganza: -15%\n- modello Aero (running): -10%\n\nDoppi punti su tutti gli acquisti, spedizione GLS gratuita e resi gratuiti entro 30 giorni come sempre.\n\nLe offerte apriranno al pubblico solo tra tre giorni: approfitta del vantaggio Premium adesso.\n\nBuono shopping,\nIl team ClubPasso Promozioni"
+    },
+    {
+        "subject": "Conferma ordine #CLB-5990 - tre articoli",
+        "from_name": "PassoLibero Ordini",
+        "from_email": "ordini@passolibero-calzature.example.com",
+        "date": "2024-04-15 13:52:37",
+        "body_text": "Gentile cliente,\ngrazie per il tuo ordine #CLB-5990, registrato durante la promozione di primavera.\n\nDettaglio:\n- Modello Aero (running) - taglia 42 - blu notte - 1 paio\n- Modello Brezza (sandali) - taglia 42 - sabbia - 1 paio\n- Modello Eleganza - taglia 42 - cuoio - 1 paio\n\nImporto totale (sconti applicati): 219,40 euro\nSpedizione GLS: gratuita\n\nGli articoli verranno spediti insieme. Ti invieremo il codice di tracking del corriere a breve. Hai accumulato doppi punti ClubPasso Premium su questo ordine.\n\nGrazie,\nIl team Ordini PassoLibero"
+    },
+    {
+        "subject": "Riepilogo mensile attivita' account ClubPasso",
+        "from_name": "ClubPasso Premium",
+        "from_email": "premium@passolibero-calzature.example.com",
+        "date": "2024-04-28 10:24:13",
+        "body_text": "Gentile membro,\necco il riepilogo automatico della tua attivita' ClubPasso del mese di aprile.\n\n- Ordini effettuati: 1 (#CLB-5990)\n- Articoli acquistati: modello Aero, modello Brezza, modello Eleganza\n- Punti accumulati: 438 (doppi punti Premium)\n- Punti totali disponibili: 758\n- Resi gestiti: nessuno questo mese\n- Recensioni pubblicate: 1\n\nGrazie per essere un membro ClubPasso Premium attivo. Ricorda che puoi convertire i punti in buoni sconto dall'area riservata in qualsiasi momento.\n\nA presto e buon passo,\nIl team ClubPasso"
+    },
+    {
+        "subject": "Quando arriva il mio ordine #CLB-5521?",
+        "from_name": "Martina Greco",
+        "from_email": "martina.greco@cliente.example.com",
+        "date": "2024-05-03 09:14:22",
+        "body_text": "Buongiorno,\nho effettuato l'ordine #CLB-5521 lunedì scorso per un paio di Aero in taglia 39 e non ho ancora ricevuto alcun aggiornamento sulla spedizione. Avevo selezionato la consegna standard in fase di acquisto.\nPotreste dirmi a che punto è la lavorazione e quando posso aspettarmi la consegna? Mi servono per una gara di running domenica prossima, quindi vorrei capire se faccio in tempo.\nGrazie mille per la disponibilità.\nMartina"
+    },
+    {
+        "subject": "Re: Quando arriva il mio ordine #CLB-5521?",
+        "from_name": "Servizio Clienti PassoLibero",
+        "from_email": "ordini@passolibero-calzature.example.com",
+        "date": "2024-05-03 11:42:05",
+        "body_text": "Gentile Martina,\ngrazie per averci scritto. Il suo ordine #CLB-5521 (Aero taglia 39) è stato affidato al corriere GLS questa mattina con tracking GLS-PL-99812. La consegna standard prevede 2-3 giorni lavorativi, quindi la riceverà entro venerdì, in tempo per la gara di domenica.\nPuò seguire la spedizione in tempo reale sul sito GLS inserendo il codice di tracking. Le invieremo anche una notifica via email al momento della presa in carico.\nIn bocca al lupo per la gara!\nUn saluto,\nServizio Clienti PassoLibero Calzature"
+    },
+    {
+        "subject": "Posso cambiare la taglia delle Eleganza ordinate?",
+        "from_name": "Carlo Bianchi",
+        "from_email": "carlo.bianchi@posta.example.com",
+        "date": "2024-05-06 10:27:48",
+        "body_text": "Salve,\nho appena completato un ordine per un paio di Eleganza in taglia 43 ma ho il dubbio di aver sbagliato: di solito porto il 42 e temo che il 43 sia troppo grande.\nL'ordine non è ancora partito, almeno credo, visto che l'ho fatto venti minuti fa. È possibile modificare la taglia prima della spedizione senza dover fare un reso?\nResto in attesa di un vostro riscontro. Grazie."
+    },
+    {
+        "subject": "Re: Posso cambiare la taglia delle Eleganza ordinate?",
+        "from_name": "Servizio Clienti PassoLibero",
+        "from_email": "ordini@passolibero-calzature.example.com",
+        "date": "2024-05-06 12:05:31",
+        "body_text": "Gentile signor Bianchi,\nnessun problema: l'ordine non è ancora stato preso in carico dal magazzino, quindi abbiamo modificato la taglia delle Eleganza da 43 a 42 come richiesto. Le confermiamo che la prezzatura resta invariata.\nLe segnaliamo inoltre che il modello Eleganza calza in modo abbastanza regolare, quindi il 42 dovrebbe essere la scelta corretta se è la sua taglia abituale.\nRiceverà la conferma di spedizione con il tracking GLS appena il pacco lascerà il magazzino. Ricordiamo che, in caso di necessità, il reso è gratuito entro 30 giorni.\nCordiali saluti,\nServizio Clienti PassoLibero Calzature"
+    },
+    {
+        "subject": "Le Brezza calzano strette? Consiglio taglia sandali",
+        "from_name": "Giulia Ferrari",
+        "from_email": "giulia.ferrari@cliente.example.com",
+        "date": "2024-05-09 15:33:12",
+        "body_text": "Buon pomeriggio,\nsto valutando l'acquisto dei sandali Brezza per l'estate ma ho qualche dubbio sulla taglia. Ho il piede un po' largo nella parte anteriore e in passato con altri sandali la taglia giusta in lunghezza mi stringeva sulle dita.\nLe Brezza calzano strette o c'è un po' di margine? Mi conviene prendere la mia taglia abituale (38) o salire al 39?\nGrazie in anticipo per il consiglio."
+    },
+    {
+        "subject": "Re: Le Brezza calzano strette? Consiglio taglia sandali",
+        "from_name": "Sara Lombardi",
+        "from_email": "assistenza@passolibero-calzature.example.com",
+        "date": "2024-05-09 16:50:44",
+        "body_text": "Gentile Giulia,\ngrazie per la domanda. I sandali Brezza hanno una calzata regolare con un cinturino anteriore regolabile, quindi offrono un buon margine proprio sulla parte delle dita. Per un piede leggermente largo le consigliamo di mantenere la sua taglia abituale 38: salire al 39 rischierebbe di renderli lunghi e far scivolare il piede in avanti.\nIl cinturino regolabile le permetterà comunque di adattare la calzata al collo del piede. In ogni caso, ricordi che il reso è gratuito entro 30 giorni se la taglia non dovesse convincerla.\nUn caro saluto,\nSara - Assistenza PassoLibero Calzature"
+    },
+    {
+        "subject": "Come si attiva ClubPasso Premium?",
+        "from_name": "Davide Russo",
+        "from_email": "davide.russo@posta.example.com",
+        "date": "2024-05-13 08:58:19",
+        "body_text": "Salve,\nho letto sul vostro sito del programma fedeltà ClubPasso Premium ma non ho capito bene come si attiva e quali vantaggi include. Sono già cliente da due anni e ho fatto diversi acquisti del brand ClubPasso.\nDevo pagare una quota annuale? E i punti accumulati con gli ordini passati vengono conteggiati o si parte da zero?\nGrazie per i chiarimenti.\nDavide"
+    },
+    {
+        "subject": "Re: Come si attiva ClubPasso Premium?",
+        "from_name": "Servizio Clienti PassoLibero",
+        "from_email": "ordini@passolibero-calzature.example.com",
+        "date": "2024-05-13 10:11:37",
+        "body_text": "Gentile Davide,\nl'attivazione di ClubPasso Premium è gratuita e si effettua dall'area personale del sito, alla sezione \"Programma fedeltà\". Non è prevista alcuna quota annuale.\nCome cliente attivo da due anni, i punti maturati con i suoi ordini precedenti del brand ClubPasso verranno trasferiti automaticamente sul saldo Premium, quindi non riparte da zero. I vantaggi includono spedizione sempre gratuita, accesso anticipato alle promozioni stagionali e un buono compleanno.\nUna volta attivato, vedrà il saldo punti aggiornato entro 24 ore. Per qualsiasi dubbio resti pure in contatto.\nCordiali saluti,\nServizio Clienti PassoLibero Calzature"
+    },
+    {
+        "subject": "Tracking GLS-PL-99812 fermo da due giorni",
+        "from_name": "Martina Greco",
+        "from_email": "martina.greco@cliente.example.com",
+        "date": "2024-05-16 14:22:09",
+        "body_text": "Buongiorno,\nvi scrivo di nuovo per l'ordine #CLB-5521. Il tracking GLS-PL-99812 risulta fermo allo stato \"in transito\" da due giorni e non vedo aggiornamenti. Ero rimasta che la consegna sarebbe avvenuta entro venerdì.\nÈ successo qualcosa al pacco? Comincio a preoccuparmi perché avevo bisogno delle Aero per la gara.\nPotete verificare con il corriere? Grazie."
+    },
+    {
+        "subject": "Re: Tracking GLS-PL-99812 fermo da due giorni",
+        "from_name": "Sara Lombardi",
+        "from_email": "assistenza@passolibero-calzature.example.com",
+        "date": "2024-05-16 15:48:53",
+        "body_text": "Gentile Martina,\nci scusiamo per il disagio. Abbiamo aperto una verifica con GLS sul tracking GLS-PL-99812: il pacco è effettivamente rimasto fermo per un ritardo nello smistamento, ma risulta ora ripartito e in consegna per domani entro le 13:00.\nAbbiamo segnalato la priorità al corriere vista la sua esigenza per la gara. Se per qualsiasi motivo la consegna non andasse a buon fine entro domani, la contatteremo per organizzare una spedizione sostitutiva immediata delle Aero, senza costi aggiuntivi.\nLa terremo aggiornata. Grazie per la pazienza.\nSara - Assistenza PassoLibero Calzature"
+    },
+    {
+        "subject": "Reso gratuito: come procedo per le Aero?",
+        "from_name": "Lorenzo Conti",
+        "from_email": "lorenzo.conti@cliente.example.com",
+        "date": "2024-05-21 11:05:40",
+        "body_text": "Salve,\nho ricevuto le Aero dell'ordine #CLB-5847 ma purtroppo la taglia 44 mi sta un po' lunga e vorrei effettuare il reso. Ho letto che avete i resi gratuiti entro 30 giorni.\nCome devo procedere per spedire indietro il pacco? Devo stampare un'etichetta o passa il corriere a ritirare? E quanto tempo serve per il rimborso?\nGrazie mille.\nLorenzo"
+    },
+    {
+        "subject": "Re: Reso gratuito: come procedo per le Aero?",
+        "from_name": "Servizio Clienti PassoLibero",
+        "from_email": "ordini@passolibero-calzature.example.com",
+        "date": "2024-05-21 12:33:18",
+        "body_text": "Gentile Lorenzo,\nil reso delle Aero (ordine #CLB-5847) è semplicissimo e completamente gratuito entro 30 giorni dalla consegna. Acceda alla sua area personale, sezione \"I miei ordini\", e selezioni \"Richiedi reso\": genererà automaticamente l'etichetta prepagata GLS da applicare sul pacco.\nUna volta pronto, potrà richiedere il ritiro a domicilio direttamente dalla stessa pagina, oppure consegnarlo a un punto GLS. Le consigliamo di riutilizzare la scatola originale.\nIl rimborso viene elaborato entro 5 giorni lavorativi dalla ricezione del reso in magazzino, sullo stesso metodo di pagamento usato per l'acquisto.\nCordiali saluti,\nServizio Clienti PassoLibero Calzature"
+    },
+    {
+        "subject": "Disponibilità nuovo stock Eleganza nera 41",
+        "from_name": "Elena Marchetti",
+        "from_email": "elena.marchetti@posta.example.com",
+        "date": "2024-05-27 09:41:55",
+        "body_text": "Buongiorno,\nsto cercando le Eleganza nere in taglia 41 ma sul sito risultano esaurite. Le aspetto da settimane perché sono il regalo per mio marito.\nSapete dirmi se è previsto un riassortimento di questo modello e taglia? Posso ricevere una notifica quando tornano disponibili?\nGrazie per l'aiuto.\nElena"
+    },
+    {
+        "subject": "Re: Disponibilità nuovo stock Eleganza nera 41",
+        "from_name": "Sara Lombardi",
+        "from_email": "assistenza@passolibero-calzature.example.com",
+        "date": "2024-05-27 10:58:27",
+        "body_text": "Gentile Elena,\ngrazie per l'interesse. Le confermo che è previsto un riassortimento delle Eleganza nere taglia 41 in arrivo dal nostro fornitore intorno al 7 giugno. Sarà uno stock limitato, quindi le consiglio di non attendere troppo una volta tornate disponibili.\nHo attivato per lei l'avviso di disponibilità sulla scheda prodotto: riceverà una email automatica appena le Eleganza nere 41 saranno di nuovo a catalogo. Se preferisce, posso anche metterne da parte un paio per 48 ore dalla riapertura.\nMi faccia sapere e organizzo il tutto.\nUn saluto,\nSara - Assistenza PassoLibero Calzature"
+    },
+    {
+        "subject": "Promozione estiva valida anche sui sandali Brezza?",
+        "from_name": "Francesco Galli",
+        "from_email": "francesco.galli@cliente.example.com",
+        "date": "2024-06-04 16:12:33",
+        "body_text": "Salve,\nho ricevuto la newsletter con la promozione estiva del -20% e volevo capire se è valida anche sui sandali Brezza, dato che sono il modello che mi interessa.\nNella mail non era chiarissimo se i sandali fossero inclusi o esclusi. C'è anche un codice sconto da inserire al checkout o lo sconto si applica in automatico?\nGrazie e buona giornata.\nFrancesco"
+    },
+    {
+        "subject": "Re: Promozione estiva valida anche sui sandali Brezza?",
+        "from_name": "Servizio Clienti PassoLibero",
+        "from_email": "ordini@passolibero-calzature.example.com",
+        "date": "2024-06-04 17:30:08",
+        "body_text": "Gentile Francesco,\nle confermo che la promozione estiva -20% è valida anche sui sandali Brezza, che rientrano pienamente nei modelli in offerta. Sono esclusi solo gli articoli già in saldo e le edizioni limitate del brand ClubPasso.\nLo sconto non richiede codici: si applica automaticamente al checkout sui prodotti idonei e lo vedrà già scontato nel carrello. La promozione resta attiva fino al 30 giugno.\nSe è iscritto a ClubPasso Premium, beneficia anche della spedizione gratuita oltre allo sconto. Buon acquisto!\nCordiali saluti,\nServizio Clienti PassoLibero Calzature"
+    },
+    {
+        "subject": "Fattura intestata a partita IVA per ordine #CLB-6033",
+        "from_name": "Studio Rossi & Associati",
+        "from_email": "amministrazione@fornitore.example.com",
+        "date": "2024-06-10 09:20:14",
+        "body_text": "Buongiorno,\nabbiamo effettuato l'ordine #CLB-6033 per alcune paia di Aero da destinare al nostro team aziendale. Al momento del pagamento non siamo riusciti a inserire i dati della partita IVA per la fatturazione.\nÈ possibile emettere fattura intestata allo Studio Rossi & Associati con relativi dati fiscali? Vi inviamo volentieri tutto il necessario. Ci serve per la contabilità del trimestre.\nRestiamo in attesa. Cordiali saluti."
+    },
+    {
+        "subject": "Re: Fattura intestata a partita IVA per ordine #CLB-6033",
+        "from_name": "Amministrazione PassoLibero",
+        "from_email": "amministrazione@passolibero-calzature.example.com",
+        "date": "2024-06-10 11:47:39",
+        "body_text": "Gentili,\ngrazie per il vostro ordine #CLB-6033. Possiamo senz'altro emettere fattura intestata allo Studio Rossi & Associati. Vi chiediamo di inviarci ragione sociale, indirizzo, partita IVA, codice SDI o PEC per la fatturazione elettronica.\nUna volta ricevuti i dati, provvederemo a emettere la fattura entro 2 giorni lavorativi e ve la invieremo via PEC oltre che tramite il Sistema di Interscambio. L'ordine nel frattempo prosegue regolarmente la lavorazione e sarà spedito con GLS.\nRimaniamo a disposizione per qualsiasi necessità contabile.\nCordiali saluti,\nUfficio Amministrazione PassoLibero Calzature"
+    },
+    {
+        "subject": "Recensione 5 stelle Aero ma una domanda sulla manutenzione",
+        "from_name": "Beatrice Esposito",
+        "from_email": "beatrice.esposito@cliente.example.com",
+        "date": "2024-06-14 18:05:51",
+        "body_text": "Ciao,\nvolevo lasciarvi una recensione 5 stelle per le Aero: le uso per correre tre volte a settimana e sono davvero comodissime, leggere e con un'ottima ammortizzazione. Acquisto super consigliato!\nApprofitto per una domanda pratica: come pulisco la tomaia in mesh senza rovinarla? Posso metterle in lavatrice o è meglio evitare? Vorrei farle durare il più a lungo possibile.\nGrazie e complimenti per i prodotti.\nBeatrice"
+    },
+    {
+        "subject": "Re: Recensione 5 stelle Aero ma una domanda sulla manutenzione",
+        "from_name": "Sara Lombardi",
+        "from_email": "assistenza@passolibero-calzature.example.com",
+        "date": "2024-06-14 18:52:26",
+        "body_text": "Gentile Beatrice,\ngrazie di cuore per la recensione 5 stelle, ci fa davvero piacere che le Aero siano le sue compagne di corsa!\nPer la manutenzione della tomaia in mesh le sconsigliamo la lavatrice, che con il tempo può deformare la struttura e l'ammortizzazione. Meglio una pulizia a mano con una spazzola morbida, acqua tiepida e un po' di sapone neutro. Rimuova prima le solette e i lacci, lavandoli separatamente, e lasci asciugare le scarpe all'aria aperta lontano da fonti di calore dirette.\nSeguendo questi accorgimenti le Aero le dureranno a lungo. Buone corse!\nSara - Assistenza PassoLibero Calzature"
+    },
+    {
+        "subject": "Consegna a indirizzo diverso da quello di fatturazione",
+        "from_name": "Andrea Ferrara",
+        "from_email": "andrea.ferrara@posta.example.com",
+        "date": "2024-06-19 13:38:42",
+        "body_text": "Buongiorno,\nvorrei ordinare un paio di Eleganza come regalo per mio fratello, ma vorrei che venissero consegnate direttamente a casa sua, in un'altra città, mentre la fattura resta a mio nome.\nÈ possibile indicare un indirizzo di spedizione diverso da quello di fatturazione al momento dell'ordine? E si può inserire un biglietto regalo nel pacco?\nGrazie per il chiarimento.\nAndrea"
+    },
+    {
+        "subject": "Re: Consegna a indirizzo diverso da quello di fatturazione",
+        "from_name": "Servizio Clienti PassoLibero",
+        "from_email": "ordini@passolibero-calzature.example.com",
+        "date": "2024-06-19 14:55:17",
+        "body_text": "Gentile Andrea,\ncertamente. Durante il checkout, dopo i dati di fatturazione, troverà l'opzione \"Spedisci a un indirizzo diverso\": potrà inserire l'indirizzo di suo fratello per la consegna delle Eleganza, mantenendo la fattura a suo nome.\nPer il biglietto regalo, spuntando l'opzione \"Confezione regalo\" potrà scrivere un messaggio personalizzato che inseriremo nel pacco; in questo caso il documento con i prezzi viene omesso dalla confezione e inviato solo a lei via email.\nIl pacco viaggerà comunque con GLS e riceverà il tracking per monitorare la consegna a destinazione. Un pensiero gentile!\nCordiali saluti,\nServizio Clienti PassoLibero Calzature"
+    },
+    {
+        "subject": "Riunione interna: gestione picco resi post-saldi",
+        "from_name": "Paolo Vitale",
+        "from_email": "paolo.vitale@passolibero-calzature.example.com",
+        "date": "2024-06-25 08:30:05",
+        "body_text": "Ciao Sara,\ncome ogni anno dopo l'avvio delle promozioni stagionali ci aspettiamo un picco di resi nelle prossime settimane. Volevo confrontarmi con te su come organizzare il team assistenza per gestire i resi gratuiti entro i 30 giorni senza accumulare ritardi sui rimborsi.\nPensi sia il caso di rinforzare la fascia oraria del pomeriggio? E come stiamo messi con i tempi medi di rimborso attuali sugli ordini ClubPasso?\nFammi sapere, organizziamo una call.\nPaolo"
+    },
+    {
+        "subject": "Re: Riunione interna: gestione picco resi post-saldi",
+        "from_name": "Sara Lombardi",
+        "from_email": "assistenza@passolibero-calzature.example.com",
+        "date": "2024-06-25 09:47:31",
+        "body_text": "Ciao Paolo,\nsono d'accordo, il picco è già percepibile. Al momento il tempo medio di rimborso è di circa 4 giorni lavorativi dalla ricezione del reso, quindi sotto la soglia dei 5 che comunichiamo ai clienti, ma con il volume in crescita rischiamo di sforare.\nProporrei di rinforzare proprio la fascia pomeridiana 14-18, quando arriva la maggior parte delle richieste di reso post-saldi, e di dedicare una persona esclusivamente alla verifica dei pacchi GLS in entrata così da velocizzare l'avvio dei rimborsi.\nSono libera giovedì mattina per la call, fammi sapere l'orario.\nSara"
+    },
+    {
+        "subject": "Codice sconto compleanno non funziona al checkout",
+        "from_name": "Valentina Bruno",
+        "from_email": "valentina.bruno@cliente.example.com",
+        "date": "2024-07-02 10:18:49",
+        "body_text": "Salve,\nho ricevuto il buono compleanno come iscritta a ClubPasso Premium ma quando provo a inserirlo al checkout per acquistare un paio di Brezza il sito mi dà errore \"codice non valido\".\nIl codice l'ho copiato esattamente come riportato nella mail. Scade il 10 luglio quindi vorrei usarlo prima. Potete verificare cosa non funziona?\nGrazie e buona giornata.\nValentina"
+    },
+    {
+        "subject": "Re: Codice sconto compleanno non funziona al checkout",
+        "from_name": "Servizio Clienti PassoLibero",
+        "from_email": "ordini@passolibero-calzature.example.com",
+        "date": "2024-07-02 11:39:12",
+        "body_text": "Gentile Valentina,\nci scusiamo per l'inconveniente. Abbiamo verificato il suo account ClubPasso Premium: il buono compleanno era stato generato con un piccolo refuso nel sistema che impediva la validazione al checkout. Abbiamo corretto l'anomalia.\nLe abbiamo emesso un nuovo codice compleanno valido, che troverà nell'email che le inviamo a parte tra pochi minuti, con scadenza prorogata al 17 luglio per recuperare i giorni persi. Si applica regolarmente sui sandali Brezza che desidera acquistare.\nSe dovesse riscontrare ancora problemi, ci ricontatti pure e procederemo manualmente all'ordine. Buon compleanno da tutto il team!\nCordiali saluti,\nServizio Clienti PassoLibero Calzature"
+    },
+    {
+        "subject": "Differenza tra Aero standard e Aero ammortizzazione plus",
+        "from_name": "Matteo De Luca",
+        "from_email": "matteo.deluca@posta.example.com",
+        "date": "2024-07-08 17:24:36",
+        "body_text": "Buon pomeriggio,\nsto guardando il modello Aero e ho notato che esistono due versioni: la standard e una indicata come \"ammortizzazione plus\". Non mi è chiara la differenza e c'è circa 25 euro di scarto di prezzo.\nIo corro principalmente su asfalto, distanze medie di 8-10 km. Quale delle due mi consigliate? Vale la pena spendere di più per la versione plus?\nGrazie per il consiglio tecnico.\nMatteo"
+    },
+    {
+        "subject": "Re: Differenza tra Aero standard e Aero ammortizzazione plus",
+        "from_name": "Sara Lombardi",
+        "from_email": "assistenza@passolibero-calzature.example.com",
+        "date": "2024-07-08 18:40:58",
+        "body_text": "Gentile Matteo,\nottima domanda. La differenza principale tra le due Aero sta nell'intersuola: la versione \"ammortizzazione plus\" monta uno strato aggiuntivo di schiuma reattiva che riduce l'impatto sull'articolazione, particolarmente utile su asfalto e nelle uscite più lunghe.\nPer il suo profilo - asfalto, 8-10 km regolari - la versione plus è quella che le consigliamo: il maggiore assorbimento dà beneficio reale su quelle distanze e protegge ginocchia e caviglie nel tempo. La standard resta ottima per allenamenti brevi o su pista.\nDa runner a runner, in questo caso i 25 euro in più sono ben spesi. Ricordi che il reso resta gratuito entro 30 giorni se non dovesse trovarsi bene.\nBuone corse!\nSara - Assistenza PassoLibero Calzature"
+    },
+    {
+        "subject": "Ordine #CLB-6390 arrivato con scatola danneggiata",
+        "from_name": "Chiara Moretti",
+        "from_email": "chiara.moretti@cliente.example.com",
+        "date": "2024-07-15 12:11:28",
+        "body_text": "Buongiorno,\nho ricevuto oggi l'ordine #CLB-6390 con un paio di Eleganza, ma la scatola era visibilmente schiacciata e una delle scarpe presenta un segno sulla pelle, forse dovuto al trasporto.\nLe scarpe le avevo acquistate per un matrimonio la prossima settimana e così non posso usarle. Cosa posso fare? Vorrei un cambio rapido più che un rimborso, vista la scadenza.\nAllego foto del danno. Grazie per l'aiuto.\nChiara"
+    },
+    {
+        "subject": "Re: Ordine #CLB-6390 arrivato con scatola danneggiata",
+        "from_name": "Servizio Clienti PassoLibero",
+        "from_email": "ordini@passolibero-calzature.example.com",
+        "date": "2024-07-15 13:34:47",
+        "body_text": "Gentile Chiara,\nci dispiace molto per l'inconveniente e la ringraziamo per le foto, che confermano un danno da trasporto. Provvediamo subito a inviarle un paio di Eleganza sostitutivo nella stessa taglia, con spedizione GLS prioritaria così da arrivare ben prima del matrimonio.\nNon dovrà anticipare nulla: il paio danneggiato lo ritirerà GLS gratuitamente quando consegnerà quello nuovo, oppure può conservarlo fino a verifica. Le invieremo a breve il tracking della spedizione sostitutiva.\nVista la circostanza, abbiamo aggiunto al suo account un buono sconto del 15% sul prossimo ordine per scusarci del disagio. Le auguriamo un buon matrimonio!\nCordiali saluti,\nServizio Clienti PassoLibero Calzature"
+    },
+    {
+        "subject": "Riassortimento Brezza taglia 37 e 38 - disponibilità",
+        "from_name": "Calzature Centro Sud",
+        "from_email": "acquisti@fornitore.example.com",
+        "date": "2024-07-22 09:55:13",
+        "body_text": "Buongiorno,\nsiamo un rivenditore partner e vorremmo sapere se è disponibile un riassortimento dei sandali Brezza nelle taglie 37 e 38, le più richieste nel nostro punto vendita in questo periodo estivo.\nAvremmo bisogno di circa 40 paia per taglia entro fine luglio per coprire il picco di domanda. Potete confermarci disponibilità e tempi di consegna all'ingrosso?\nIn attesa di un riscontro, cordiali saluti.\nUfficio Acquisti Calzature Centro Sud"
+    },
+    {
+        "subject": "Re: Riassortimento Brezza taglia 37 e 38 - disponibilità",
+        "from_name": "Ufficio Commerciale PassoLibero",
+        "from_email": "commerciale@passolibero-calzature.example.com",
+        "date": "2024-07-22 11:28:40",
+        "body_text": "Gentili,\ngrazie per la richiesta. Confermiamo la disponibilità a magazzino dei sandali Brezza nelle taglie 37 e 38 per le quantità richieste (40 paia per taglia). Possiamo evadere l'ordine all'ingrosso entro 3 giorni lavorativi dalla conferma.\nVista la richiesta significativa, applichiamo lo sconto rivenditore standard del 35% sul listino, con consegna tramite corriere su pallet. Vi inviamo in allegato il preventivo dettagliato con condizioni di pagamento a 30 giorni.\nSe confermate entro mercoledì, riusciamo a garantirvi l'arrivo entro fine luglio in tempo per il picco. Restiamo a disposizione.\nCordiali saluti,\nUfficio Commerciale PassoLibero Calzature"
+    },
+    {
+        "subject": "Posso annullare l'ordine #CLB-6512 già pagato?",
+        "from_name": "Simone Costa",
+        "from_email": "simone.costa@cliente.example.com",
+        "date": "2024-08-01 10:42:55",
+        "body_text": "Salve,\nho effettuato e pagato l'ordine #CLB-6512 per un paio di Aero ieri sera, ma per un imprevisto economico avrei bisogno di annullarlo prima che venga spedito.\nÈ ancora possibile cancellare l'ordine e ricevere il rimborso completo? Non ho ancora ricevuto la mail di conferma spedizione, quindi spero di essere in tempo.\nGrazie per la comprensione.\nSimone"
+    },
+    {
+        "subject": "Re: Posso annullare l'ordine #CLB-6512 già pagato?",
+        "from_name": "Servizio Clienti PassoLibero",
+        "from_email": "ordini@passolibero-calzature.example.com",
+        "date": "2024-08-01 11:50:22",
+        "body_text": "Gentile Simone,\nnessun problema, è arrivato giusto in tempo. L'ordine #CLB-6512 non era ancora stato affidato al corriere GLS, quindi lo abbiamo annullato come da sua richiesta.\nIl rimborso completo è già stato avviato sullo stesso metodo di pagamento utilizzato per l'acquisto delle Aero; i tempi di accredito dipendono dal suo istituto e sono generalmente di 3-5 giorni lavorativi. Riceverà una email di conferma dell'annullamento a breve.\nQuando vorrà riprovare, le Aero saranno ancora qui ad aspettarla. Grazie per la comprensione e a presto.\nCordiali saluti,\nServizio Clienti PassoLibero Calzature"
+    },
+    {
+        "subject": "I punti ClubPasso Premium sono scaduti?",
+        "from_name": "Roberto Gallo",
+        "from_email": "roberto.gallo@posta.example.com",
+        "date": "2024-08-09 15:07:18",
+        "body_text": "Buongiorno,\nsono iscritto a ClubPasso Premium da un po' e ho accumulato diversi punti con gli acquisti delle Eleganza e delle Aero. Oggi però controllando l'area personale vedo un saldo punti più basso di quanto ricordassi.\nI punti hanno una scadenza? Temo di averne persi alcuni senza accorgermene. Potete verificare il mio saldo e dirmi se ho buoni da utilizzare prima che scadano?\nGrazie mille.\nRoberto"
+    },
+    {
+        "subject": "Re: I punti ClubPasso Premium sono scaduti?",
+        "from_name": "Servizio Clienti PassoLibero",
+        "from_email": "ordini@passolibero-calzature.example.com",
+        "date": "2024-08-09 16:21:44",
+        "body_text": "Gentile Roberto,\ngrazie per la segnalazione. Abbiamo verificato il suo account ClubPasso Premium: i punti hanno una validità di 18 mesi dalla data di maturazione, e in effetti un blocco accumulato a inizio 2023 è scaduto a luglio, da qui il saldo più basso.\nAttualmente dispone di 480 punti attivi, sufficienti per un buono sconto di 15 euro utilizzabile subito al checkout. I prossimi punti in scadenza saranno a dicembre 2024, quindi ha tempo per usarli senza fretta.\nLe segnaliamo che, attivando le notifiche promemoria dall'area personale, riceverà un avviso 30 giorni prima di ogni scadenza. Resti pure in contatto per qualsiasi dubbio.\nCordiali saluti,\nServizio Clienti PassoLibero Calzature"
+    },
+    {
+        "subject": "Le Eleganza sono adatte a un uso quotidiano in ufficio?",
+        "from_name": "Federica Rizzo",
+        "from_email": "federica.rizzo@cliente.example.com",
+        "date": "2024-08-16 09:33:27",
+        "body_text": "Salve,\nsto valutando le Eleganza per usarle tutti i giorni in ufficio, dove passo molte ore in piedi e cammino parecchio tra le riunioni. Esteticamente sono perfette per il mio dress code, ma temo che possano risultare poco comode per un uso così intenso.\nSono adatte a stare in piedi a lungo o sono più da occasione? C'è una soletta più ammortizzata da abbinare?\nGrazie per il consiglio.\nFederica"
+    },
+    {
+        "subject": "Re: Le Eleganza sono adatte a un uso quotidiano in ufficio?",
+        "from_name": "Sara Lombardi",
+        "from_email": "assistenza@passolibero-calzature.example.com",
+        "date": "2024-08-16 10:49:53",
+        "body_text": "Gentile Federica,\nle Eleganza nascono come modello elegante ma sono pensate anche per un uso prolungato: la suola interna ha un'imbottitura più generosa rispetto a una classica scarpa da cerimonia, quindi reggono bene una giornata in ufficio con riunioni e spostamenti.\nDetto questo, se prevede molte ore in piedi, le consigliamo di abbinare le nostre solette comfort in memory foam, acquistabili a parte: aumentano sensibilmente l'ammortizzazione mantenendo intatta la calzata. Molte clienti con esigenze simili alle sue le trovano ideali.\nLe ricordo che il reso è gratuito entro 30 giorni, quindi può provarle con tranquillità nella sua routine. Resto a disposizione.\nUn saluto,\nSara - Assistenza PassoLibero Calzature"
+    },
+    {
+        "subject": "Spedizione internazionale verso la Francia possibile?",
+        "from_name": "Lucia Ferraro",
+        "from_email": "lucia.ferraro@posta.example.com",
+        "date": "2024-08-23 14:50:11",
+        "body_text": "Buongiorno,\nmi sono trasferita da poco in Francia per lavoro ma vorrei continuare ad acquistare le vostre scarpe, in particolare un paio di Aero che mi servono.\nEffettuate spedizioni internazionali verso la Francia? Se sì, quali sono i costi e i tempi di consegna? E in caso di necessità il reso gratuito vale anche dall'estero?\nGrazie e a presto.\nLucia"
+    },
+    {
+        "subject": "Re: Spedizione internazionale verso la Francia possibile?",
+        "from_name": "Servizio Clienti PassoLibero",
+        "from_email": "ordini@passolibero-calzature.example.com",
+        "date": "2024-08-23 16:08:39",
+        "body_text": "Gentile Lucia,\nsì, spediamo regolarmente in Francia tramite GLS. Il costo della spedizione internazionale è di 12,90 euro, gratuita per gli iscritti a ClubPasso Premium, con consegna stimata in 4-5 giorni lavorativi.\nPer il reso: dall'estero è disponibile entro i 30 giorni, ma a differenza dell'Italia le spese di spedizione del reso sono a carico del cliente per le destinazioni internazionali; il rimborso del prodotto resta invece completo. Le invieremo comunque tutte le istruzioni nel pacco delle Aero.\nSe ha bisogno di assistenza con l'ordine dall'indirizzo francese, siamo qui per aiutarla. Buon trasferimento!\nCordiali saluti,\nServizio Clienti PassoLibero Calzature"
+    },
+    {
+        "subject": "Newsletter: come mi iscrivo per le anteprime promozioni?",
+        "from_name": "Giorgio Pellegrini",
+        "from_email": "giorgio.pellegrini@cliente.example.com",
+        "date": "2024-08-29 11:22:07",
+        "body_text": "Salve,\nun amico mi ha detto che con la vostra newsletter si ricevono in anteprima le promozioni stagionali e gli sconti riservati. Vorrei iscrivermi anch'io ma non trovo dove farlo sul sito.\nPotete indicarmi come iscrivermi alla newsletter? E ricevendo le mail rischio di essere sommerso di messaggi o si può scegliere la frequenza?\nGrazie per l'informazione.\nGiorgio"
+    },
+    {
+        "subject": "Re: Newsletter: come mi iscrivo per le anteprime promozioni?",
+        "from_name": "Servizio Clienti PassoLibero",
+        "from_email": "ordini@passolibero-calzature.example.com",
+        "date": "2024-08-29 12:40:55",
+        "body_text": "Gentile Giorgio,\nben volentieri. Per iscriversi alla newsletter trova il modulo in fondo a ogni pagina del sito, nella sezione \"Resta aggiornato\": basta inserire la sua email e confermare il link che le invieremo per la verifica.\nUna volta iscritto, riceverà in anteprima le promozioni stagionali, gli sconti riservati e le novità sui modelli Aero, Eleganza e Brezza. Non si preoccupi per la frequenza: inviamo in media due-tre email al mese e dall'area iscritti può impostare le preferenze o sospendere l'invio quando vuole.\nSe attiva anche ClubPasso Premium avrà accesso anticipato alle vendite ancora prima della newsletter. Benvenuto tra i nostri iscritti!\nCordiali saluti,\nServizio Clienti PassoLibero Calzature"
+    },
+    {
+        "subject": "Report vendite settembre 2024 - linea ClubPasso",
+        "from_name": "Davide Ferraro",
+        "from_email": "davide.ferraro@passolibero-calzature.example.com",
+        "date": "2024-10-02 09:14:00",
+        "body_text": "Ciao a tutti,\nin allegato il report vendite di settembre per il brand ClubPasso.\nNumeri principali: 1.842 paia spedite, fatturato di 184.500 euro, +12% rispetto ad agosto.\nIl modello Aero da running resta il bestseller con 640 paia, seguito da Eleganza (510) e dai sandali Brezza (390), questi ultimi in calo fisiologico per fine stagione.\nIl tasso di reso si attesta al 9,4%, in linea con la media e quasi tutto legato a problemi di taglia.\nGli ordini ClubPasso Premium pesano per il 31% del fatturato.\nNe parliamo nella riunione di lunedi.\nGrazie,\nDavide"
+    },
+    {
+        "subject": "Fattura n. 2024/0912 - ordine #CLB-5521",
+        "from_name": "Amministrazione PassoLibero",
+        "from_email": "amministrazione@passolibero-calzature.example.com",
+        "date": "2024-09-12 11:30:00",
+        "body_text": "Gentile cliente,\nin allegato trova la fattura n. 2024/0912 relativa all'ordine #CLB-5521 del 09/09/2024.\nDettaglio: 1 paio modello Aero taglia 42, colore blu, importo 89,90 euro IVA inclusa.\nSpedizione gratuita tramite corriere GLS, tracking GLS-PL-99812.\nIl pagamento risulta gia incassato con carta di credito.\nPer qualsiasi necessita contabile puo rispondere a questa email indicando sempre il numero ordine.\nLa ringraziamo per aver scelto PassoLibero Calzature.\nCordiali saluti,\nUfficio Amministrazione"
+    },
+    {
+        "subject": "Riepilogo resi terzo trimestre 2024",
+        "from_name": "Chiara Bonetti",
+        "from_email": "chiara.bonetti@passolibero-calzature.example.com",
+        "date": "2024-10-08 15:42:00",
+        "body_text": "Buongiorno,\ncondivido il riepilogo dei resi gratuiti del Q3 (luglio-settembre).\nTotale resi gestiti: 487, di cui il 71% per taglia errata e il 18% per cambio colore.\nIl modello con piu resi resta Eleganza, complice una calzata che molti clienti trovano stretta: suggerisco di valutare una nota taglia +1/2 nella scheda prodotto.\nTutti i resi sono rientrati nei 30 giorni previsti dalla policy.\nIl costo logistico GLS dei resi e stato di circa 3.100 euro.\nProporrei un punto in riunione su come ridurre i resi da taglia.\nGrazie,\nChiara"
+    },
+    {
+        "subject": "Convocazione riunione e-commerce - lunedi 14/10 ore 10",
+        "from_name": "Davide Ferraro",
+        "from_email": "davide.ferraro@passolibero-calzature.example.com",
+        "date": "2024-10-09 17:05:00",
+        "body_text": "Ciao team,\nvi convoco per la riunione mensile e-commerce di lunedi 14 ottobre alle 10 in sala riunioni grande.\nOrdine del giorno:\n1. Report vendite settembre e andamento ClubPasso Premium\n2. Resi da taglia e azioni sulle schede prodotto\n3. Pianificazione promozione autunnale modelli Aero ed Eleganza\n4. Stato del servizio corriere GLS e tempi di consegna\n5. Recensioni clienti e gestione delle 1 stella\nDurata prevista un'ora e mezza.\nChi non puo essere presente avvisi entro venerdi.\nGrazie,\nDavide"
+    },
+    {
+        "subject": "Reclamo cliente - ordine #CLB-5489 consegna in ritardo",
+        "from_name": "Giulia Marchetti",
+        "from_email": "giulia.marchetti@cliente.example.com",
+        "date": "2024-09-18 10:22:00",
+        "body_text": "Buongiorno,\nscrivo per segnalare un disservizio sull'ordine #CLB-5489 effettuato il 10 settembre.\nIl tracking GLS che mi avete inviato risulta fermo da quattro giorni e non ho ancora ricevuto le mie scarpe modello Brezza taglia 38.\nMi era stata promessa la consegna in 48 ore ma siamo ben oltre.\nAvevo bisogno dei sandali per un viaggio che parte sabato, quindi a questo punto temo non arrivino in tempo.\nVi chiedo di verificare con il corriere e di farmi sapere se conviene annullare l'ordine.\nResto in attesa di un riscontro rapido.\nCordiali saluti,\nGiulia Marchetti"
+    },
+    {
+        "subject": "Re: Reclamo cliente - ordine #CLB-5489",
+        "from_name": "Assistenza Clienti PassoLibero",
+        "from_email": "assistenza@passolibero-calzature.example.com",
+        "date": "2024-09-18 14:48:00",
+        "body_text": "Gentile signora Marchetti,\nci scusiamo per il disagio sull'ordine #CLB-5489.\nAbbiamo aperto una segnalazione al corriere GLS sul tracking GLS-PL-99654: risulta una giacenza in filiale che stiamo sbloccando, la consegna e prevista entro domani.\nSe i sandali Brezza non dovessero arrivare in tempo per il suo viaggio, possiamo procedere con la spedizione express di un secondo paio senza costi oppure con il rimborso totale.\nLe abbiamo inoltre accreditato 10 euro di buono ClubPasso per il disservizio.\nResti pure in contatto, la teniamo aggiornata sul tracking.\nUn cordiale saluto,\nAssistenza Clienti PassoLibero"
+    },
+    {
+        "subject": "Newsletter ottobre - Nuova collezione autunno e resi gratuiti",
+        "from_name": "PassoLibero Calzature",
+        "from_email": "newsletter@passolibero-calzature.example.com",
+        "date": "2024-10-01 08:00:00",
+        "body_text": "Ciao!\nL'autunno e arrivato e con lui la nuova collezione PassoLibero.\nScopri il rinnovato modello Aero per il running su asfalto bagnato, con suola antiscivolo, e l'elegante Eleganza in pelle per le tue serate in citta.\nPer i soci ClubPasso Premium: spedizione sempre gratuita e accesso anticipato ai nuovi arrivi.\nRicorda che hai 30 giorni di tempo per il reso gratuito su tutti gli ordini, nessuna domanda.\nUsa il codice AUTUNNO10 per uno sconto del 10% sul primo acquisto della stagione.\nA presto e buoni passi!\nIl team PassoLibero Calzature"
+    },
+    {
+        "subject": "Comunicazione interna - aggiornamento procedura cambio taglia",
+        "from_name": "Davide Ferraro",
+        "from_email": "davide.ferraro@passolibero-calzature.example.com",
+        "date": "2024-10-15 09:50:00",
+        "body_text": "Ciao team assistenza,\na partire da oggi cambiamo la procedura per i cambi taglia.\nQuando un cliente chiede un cambio entro i 30 giorni, non aspettiamo piu il rientro del primo paio: spediamo subito la taglia corretta con GLS e generiamo l'etichetta di reso prepagata in automatico.\nQuesto vale per Aero, Eleganza e Brezza fino a esaurimento scorte della nuova taglia.\nPer i soci ClubPasso Premium la spedizione del cambio resta sempre gratuita.\nAggiornate le risposte standard nel gestionale e segnalate eventuali casi limite.\nGrazie per la collaborazione,\nDavide"
+    },
+    {
+        "subject": "Conferma ordine #CLB-5602 - modello Eleganza",
+        "from_name": "Ordini PassoLibero",
+        "from_email": "ordini@passolibero-calzature.example.com",
+        "date": "2024-10-21 13:18:00",
+        "body_text": "Gentile cliente,\nconfermiamo la ricezione del suo ordine #CLB-5602 del 21/10/2024.\nDettaglio: 1 paio modello Eleganza taglia 39, colore nero, prezzo 119,00 euro.\nLa spedizione partira entro 24 ore con corriere GLS e ricevera il codice di tracking via email non appena il pacco sara affidato al corriere.\nLe ricordiamo che gode di 30 giorni per il reso gratuito.\nGrazie per aver acquistato su PassoLibero Calzature.\nCordiali saluti,\nUfficio Ordini"
+    },
+    {
+        "subject": "Spedizione in viaggio - ordine #CLB-5602 tracking GLS-PL-99877",
+        "from_name": "Ordini PassoLibero",
+        "from_email": "ordini@passolibero-calzature.example.com",
+        "date": "2024-10-22 09:05:00",
+        "body_text": "Gentile cliente,\nbuone notizie: il suo ordine #CLB-5602 e in viaggio.\nPuo seguire la spedizione con il codice GLS-PL-99877 sul sito del corriere GLS.\nConsegna prevista entro 2 giorni lavorativi all'indirizzo indicato in fase di acquisto.\nSe non sara in casa, GLS lascera un avviso e potra riprogrammare la consegna o ritirare in filiale.\nIl paio di Eleganza taglia 39 nero e gia stato controllato dal nostro magazzino.\nGrazie e buona giornata,\nUfficio Ordini PassoLibero"
+    },
+    {
+        "subject": "Escalation - cliente ClubPasso Premium insoddisfatto ordine #CLB-5510",
+        "from_name": "Assistenza Clienti PassoLibero",
+        "from_email": "assistenza@passolibero-calzature.example.com",
+        "date": "2024-09-25 16:30:00",
+        "body_text": "Ciao Davide,\nti giro un'escalation che richiede una decisione.\nIl signor Rossi, socio ClubPasso Premium da tre anni, ha ricevuto sull'ordine #CLB-5510 un paio di Aero con un difetto sulla suola (scollata sul tallone destro).\nE gia il secondo paio difettoso che riceve in due mesi ed e molto contrariato, minaccia recensione a 1 stella e chiusura account.\nGli ho gia offerto reso gratuito e sostituzione express con GLS, ma chiede un risarcimento o uno sconto significativo.\nCome procediamo? Proporrei buono da 30 euro piu mese gratuito Premium.\nFammi sapere,\nAssistenza"
+    },
+    {
+        "subject": "Re: Escalation - cliente ClubPasso Premium ordine #CLB-5510",
+        "from_name": "Davide Ferraro",
+        "from_email": "davide.ferraro@passolibero-calzature.example.com",
+        "date": "2024-09-25 17:15:00",
+        "body_text": "Ciao,\nok per la tua proposta, anzi alzo: buono da 40 euro spendibile su qualsiasi modello piu tre mesi di ClubPasso Premium in omaggio.\nFai partire subito la sostituzione express dell'Aero con GLS e fai controllare il nuovo paio uno per uno dal magazzino prima della spedizione.\nApri anche una segnalazione qualita sul lotto di quella suola: due difetti uguali in due mesi non sono casuali, voglio capire se c'e un problema di fornitura.\nChiamalo tu personalmente, un socio Premium di tre anni non lo perdiamo.\nTienimi aggiornato,\nDavide"
+    },
+    {
+        "subject": "Report recensioni clienti - settembre 2024",
+        "from_name": "Marco Tessari",
+        "from_email": "marco.tessari@passolibero-calzature.example.com",
+        "date": "2024-10-03 10:40:00",
+        "body_text": "Buongiorno,\nriepilogo recensioni del mese di settembre.\nMedia generale 4,6 su 5 su 312 recensioni raccolte.\nIl modello Aero spicca con 4,8 e numerose recensioni 5 stelle che lodano comfort e leggerezza.\nEleganza si ferma a 4,3, penalizzato da chi lamenta la calzata stretta.\nI sandali Brezza chiudono a 4,5.\nLe recensioni negative (1 e 2 stelle) sono 21, quasi tutte legate a ritardi del corriere e a problemi di taglia, non al prodotto.\nSuggerisco di rispondere pubblicamente a tutte le 1 stella entro 48 ore.\nGrazie,\nMarco"
+    },
+    {
+        "subject": "Fattura n. 2024/1003 fornitore - materiali suola Aero",
+        "from_name": "Suolificio Pianura",
+        "from_email": "contabilita@fornitore.example.com",
+        "date": "2024-10-03 14:12:00",
+        "body_text": "Spettabile PassoLibero Calzature,\ntrasmettiamo la fattura n. 2024/1003 per la fornitura di suole antiscivolo destinate al modello Aero.\nDettaglio: 1.500 paia di suole, importo totale 18.750 euro IVA esclusa.\nTermini di pagamento: bonifico a 60 giorni data fattura.\nLa merce e stata consegnata il 28/09 presso il vostro magazzino come da DDT allegato.\nRestiamo a disposizione per qualsiasi chiarimento sull'ordine.\nCogliamo l'occasione per ringraziarvi della collaborazione.\nCordiali saluti,\nUfficio Contabilita Suolificio Pianura"
+    },
+    {
+        "subject": "Invito riunione qualita - lotto suole Aero difettose",
+        "from_name": "Chiara Bonetti",
+        "from_email": "chiara.bonetti@passolibero-calzature.example.com",
+        "date": "2024-09-27 11:00:00",
+        "body_text": "Ciao,\ndopo i due casi di suole scollate sull'Aero (ultimo l'ordine #CLB-5510) organizzo una riunione qualita per mercoledi 2 ottobre alle 15.\nInviterei anche un referente del fornitore Suolificio Pianura.\nTemi:\n- analisi dei resi per difetto suola degli ultimi 60 giorni\n- identificazione del lotto sospetto\n- eventuale richiamo preventivo dei paia ancora a magazzino\n- procedura di controllo rinforzata prima della spedizione GLS\nPortate i numeri dei resi per difetto, non per taglia.\nConfermate la presenza.\nGrazie,\nChiara"
+    },
+    {
+        "subject": "Riepilogo spedizioni GLS - ottobre prima quindicina",
+        "from_name": "Logistica PassoLibero",
+        "from_email": "logistica@passolibero-calzature.example.com",
+        "date": "2024-10-16 09:30:00",
+        "body_text": "Buongiorno,\nriepilogo delle spedizioni affidate a GLS nella prima meta di ottobre.\nPacchi spediti: 1.024.\nConsegne andate a buon fine al primo tentativo: 91%.\nTempo medio di consegna: 1,8 giorni lavorativi.\nGiacenze in filiale: 38 casi, quasi tutti per destinatario assente.\nReclami legati al corriere: 14, di cui 9 risolti entro 24 ore.\nIl tracking di esempio GLS-PL-99812 e ora chiuso come consegnato.\nNel complesso il servizio resta nei livelli concordati, vi segnalo solo un leggero peggioramento sulle consegne in zona montana.\nGrazie,\nLogistica"
+    },
+    {
+        "subject": "Newsletter - Black Friday in anticipo per i soci ClubPasso Premium",
+        "from_name": "PassoLibero Calzature",
+        "from_email": "newsletter@passolibero-calzature.example.com",
+        "date": "2024-11-20 08:30:00",
+        "body_text": "Ciao!\nIl Black Friday arriva prima per te.\nDa oggi e fino a domenica i soci ClubPasso Premium hanno il 25% di sconto su tutta la collezione, inclusi i bestseller Aero ed Eleganza.\nNon sei ancora Premium? Iscriviti gratis e accedi subito alle offerte.\nSpedizione gratuita con GLS e resi gratuiti entro 30 giorni come sempre.\nLe scorte dei modelli piu richiesti vanno veloci, ti consigliamo di non aspettare l'ultimo giorno.\nUsa il codice PREMIUM25 al checkout.\nBuono shopping!\nIl team PassoLibero Calzature"
+    },
+    {
+        "subject": "Report mensile ClubPasso Premium - ottobre 2024",
+        "from_name": "Marco Tessari",
+        "from_email": "marco.tessari@passolibero-calzature.example.com",
+        "date": "2024-11-05 10:15:00",
+        "body_text": "Buongiorno,\nin allegato il report di ottobre sul programma fedelta ClubPasso Premium.\nIscritti attivi: 4.210, +185 nel mese.\nGli ordini dei soci Premium rappresentano il 34% del fatturato totale e hanno uno scontrino medio del 22% piu alto rispetto ai non soci.\nIl tasso di riacquisto a 90 giorni dei Premium e del 48%, ottimo dato.\nLa promozione accesso anticipato sulla nuova Eleganza ha generato 92 ordini nelle prime 24 ore.\nProporrei in riunione di valutare un livello Premium Gold per i clienti top.\nGrazie,\nMarco"
+    },
+    {
+        "subject": "Sollecito pagamento fattura 2024/0912 - ordine #CLB-5521",
+        "from_name": "Amministrazione PassoLibero",
+        "from_email": "amministrazione@passolibero-calzature.example.com",
+        "date": "2024-10-14 11:55:00",
+        "body_text": "Gentile cliente,\nrisulta ancora non saldata la fattura n. 2024/0912 relativa all'ordine #CLB-5521, in scadenza il 12/10/2024.\nLa invitiamo a verificare e a regolarizzare il pagamento dell'importo di 89,90 euro.\nSe il bonifico e gia stato effettuato, la preghiamo di ignorare questa comunicazione e di trasmetterci la contabile cosi da aggiornare la sua posizione.\nPer qualsiasi chiarimento contabile resti pure a disposizione rispondendo a questa email.\nLa ringraziamo per la collaborazione.\nCordiali saluti,\nUfficio Amministrazione PassoLibero"
+    },
+    {
+        "subject": "Comunicazione interna - chiusura magazzino ponte 1 novembre",
+        "from_name": "Logistica PassoLibero",
+        "from_email": "logistica@passolibero-calzature.example.com",
+        "date": "2024-10-28 16:00:00",
+        "body_text": "Ciao a tutti,\nvi informo che il magazzino restera chiuso venerdi 1 novembre per festivita.\nLe spedizioni con GLS saranno sospese quel giorno e riprenderanno regolarmente lunedi 4 novembre.\nGli ordini ricevuti da giovedi pomeriggio a domenica verranno evasi lunedi in ordine di arrivo, dando priorita ai soci ClubPasso Premium.\nAggiorniamo il messaggio automatico sul sito e nelle conferme d'ordine per avvisare i clienti dei tempi di consegna leggermente piu lunghi.\nL'assistenza clienti resta attiva via email anche durante il ponte.\nGrazie,\nLogistica"
+    },
+    {
+        "subject": "Reclamo - taglia ricevuta diversa da quella ordinata #CLB-5634",
+        "from_name": "Alessandro Conti",
+        "from_email": "alessandro.conti@posta.example.com",
+        "date": "2024-10-29 18:40:00",
+        "body_text": "Salve,\nho ricevuto oggi l'ordine #CLB-5634 ma c'e un errore.\nAvevo ordinato il modello Aero taglia 44 e invece nella scatola ho trovato un paio taglia 42, troppo piccolo per me.\nIl tracking GLS risultava regolare quindi il problema non e la consegna ma il contenuto del pacco.\nVi chiedo di inviarmi la taglia corretta il prima possibile, mi servono per allenamento.\nImmagino che il reso del paio sbagliato sia gratuito vista la situazione.\nResto in attesa di istruzioni su come rispedirvi le scarpe errate.\nGrazie,\nAlessandro Conti"
+    },
+    {
+        "subject": "Re: Reclamo - taglia errata ordine #CLB-5634",
+        "from_name": "Assistenza Clienti PassoLibero",
+        "from_email": "assistenza@passolibero-calzature.example.com",
+        "date": "2024-10-30 09:20:00",
+        "body_text": "Gentile signor Conti,\nci scusiamo per l'errore di preparazione sull'ordine #CLB-5634.\nAbbiamo gia disposto la spedizione immediata del modello Aero taglia 44 con corriere GLS, ricevera il nuovo tracking via email a breve.\nNon deve attendere il rientro: applichiamo la nostra procedura di cambio taglia rapida.\nIn allegato trova l'etichetta di reso prepagata per restituire il paio taglia 42 senza alcun costo: le basta riapplicarla sulla scatola e consegnarla a un punto GLS entro 30 giorni.\nLe abbiamo accreditato un buono di 10 euro per il disguido.\nGrazie per la pazienza,\nAssistenza Clienti PassoLibero"
+    },
+    {
+        "subject": "Report trimestrale e-commerce Q3 2024",
+        "from_name": "Davide Ferraro",
+        "from_email": "davide.ferraro@passolibero-calzature.example.com",
+        "date": "2024-10-10 09:00:00",
+        "body_text": "Ciao team,\necco la sintesi del terzo trimestre per la nostra casella e-commerce e ordini.\nFatturato Q3: 512.000 euro, +9% sullo stesso trimestre 2023.\nPaia vendute: 5.380.\nMix prodotto: Aero 38%, Eleganza 29%, Brezza 24%, altri 9%.\nTasso di reso medio 9,1%, con i sandali Brezza in calo per stagionalita.\nNuovi soci ClubPasso Premium: 540.\nNPS clienti: 62, in crescita.\nNote critiche: difetto suola su un lotto Aero (gestito con il fornitore) e ritardi GLS in zone montane.\nDettagli completi in allegato, ne parliamo in riunione.\nDavide"
+    },
+    {
+        "subject": "Invito webinar interno - rispondere alle recensioni negative",
+        "from_name": "Marco Tessari",
+        "from_email": "marco.tessari@passolibero-calzature.example.com",
+        "date": "2024-11-08 14:25:00",
+        "body_text": "Ciao colleghi dell'assistenza,\norganizzo un webinar interno di formazione su come rispondere alle recensioni negative dei clienti.\nAppuntamento giovedi 14 novembre alle 11, in collegamento online, durata 45 minuti.\nVedremo insieme come gestire le 1 stella legate a ritardi GLS o a problemi di taglia, come trasformare un cliente arrabbiato in un sostenitore e quando offrire un buono ClubPasso.\nPortate un paio di esempi reali di recensioni difficili che avete gestito sui modelli Aero o Eleganza.\nVi arrivera il link di partecipazione il giorno prima.\nGrazie,\nMarco"
+    },
+    {
+        "subject": "Recensione cliente 5 stelle - modello Brezza",
+        "from_name": "Francesca Lombardi",
+        "from_email": "francesca.lombardi@posta.example.com",
+        "date": "2024-09-09 19:10:00",
+        "body_text": "Buonasera,\nvolevo lasciarvi un feedback positivo sull'ordine #CLB-5476.\nI sandali Brezza taglia 37 sono arrivati in due giorni con GLS, ben imballati e perfettamente come da foto.\nLi ho usati tutta l'estate e sono comodissimi, ho gia lasciato una recensione a 5 stelle sul sito.\nDa socia ClubPasso Premium apprezzo molto la spedizione sempre gratuita e la possibilita del reso, anche se in questo caso non mi serve proprio.\nComplimenti per il servizio, comprero sicuramente anche un paio di Aero per l'autunno.\nGrazie di tutto!\nFrancesca Lombardi"
+    },
+    {
+        "subject": "Comunicazione interna - obiettivi vendita novembre",
+        "from_name": "Davide Ferraro",
+        "from_email": "davide.ferraro@passolibero-calzature.example.com",
+        "date": "2024-10-31 17:30:00",
+        "body_text": "Ciao team,\ncon l'avvicinarsi del Black Friday fissiamo gli obiettivi di novembre.\nTarget fatturato: 240.000 euro, il mese piu importante dell'anno.\nFocus prodotto: spingere Aero ed Eleganza, con la collezione Brezza in liquidazione di fine stagione.\nObiettivo nuovi soci ClubPasso Premium: 300.\nVoglio che l'assistenza risponda entro 4 ore in giornata per non perdere conversioni durante i picchi.\nMonitoriamo da vicino i tempi GLS: nei giorni di punta potremmo avere rallentamenti, gestiamo le aspettative dei clienti in modo trasparente.\nForza, e il nostro mese.\nDavide"
+    },
+    {
+        "subject": "Fattura n. 2024/1115 - ordine #CLB-5712 ClubPasso Premium",
+        "from_name": "Amministrazione PassoLibero",
+        "from_email": "amministrazione@passolibero-calzature.example.com",
+        "date": "2024-11-15 10:08:00",
+        "body_text": "Gentile socio,\nin allegato la fattura n. 2024/1115 per l'ordine #CLB-5712 del 14/11/2024.\nDettaglio: 2 paia modello Eleganza taglia 40 e taglia 41, colore testa di moro, importo totale 214,20 euro IVA inclusa, gia comprensivo dello sconto ClubPasso Premium del 10%.\nSpedizione gratuita con corriere GLS.\nPagamento incassato tramite carta.\nLe ricordiamo i 30 giorni di reso gratuito su entrambi i paia.\nLa ringraziamo per la fedelta al programma ClubPasso Premium.\nCordiali saluti,\nUfficio Amministrazione"
+    },
+    {
+        "subject": "Escalation reso non rimborsato - ordine #CLB-5398",
+        "from_name": "Roberto Esposito",
+        "from_email": "roberto.esposito@cliente.example.com",
+        "date": "2024-11-12 12:35:00",
+        "body_text": "Buongiorno,\nsono ormai tre settimane che attendo il rimborso del reso sull'ordine #CLB-5398.\nAvevo restituito un paio di Aero taglia 43 perche troppo larghe, spedendole con la vostra etichetta GLS prepagata il 22 ottobre.\nIl tracking conferma che il pacco e arrivato al vostro magazzino il 24 ottobre, ma sul mio conto non vedo ancora i 89,90 euro.\nHo gia scritto una volta all'assistenza senza ricevere risposta concreta.\nIl reso doveva essere gratuito e rapido entro 30 giorni, qui qualcosa non funziona.\nChiedo che qualcuno prenda in carico la pratica con urgenza.\nRoberto Esposito"
+    },
+    {
+        "subject": "Re: Escalation reso non rimborsato - ordine #CLB-5398",
+        "from_name": "Assistenza Clienti PassoLibero",
+        "from_email": "assistenza@passolibero-calzature.example.com",
+        "date": "2024-11-12 15:50:00",
+        "body_text": "Gentile signor Esposito,\nci scusiamo sinceramente per l'attesa e per la mancata risposta precedente.\nAbbiamo verificato: il suo reso dell'ordine #CLB-5398 risulta correttamente rientrato il 24 ottobre, ma per un disguido amministrativo il rimborso era rimasto in sospeso.\nAbbiamo appena disposto l'accredito di 89,90 euro sulla carta utilizzata per l'acquisto: lo vedra entro 3-5 giorni lavorativi a seconda della sua banca.\nPer le scuse le abbiamo aggiunto un buono ClubPasso di 15 euro sul suo account.\nLa ringraziamo per la pazienza e resti pure a disposizione.\nUn cordiale saluto,\nAssistenza Clienti"
+    },
+    {
+        "subject": "Riepilogo settimanale assistenza clienti - sett. 46",
+        "from_name": "Chiara Bonetti",
+        "from_email": "chiara.bonetti@passolibero-calzature.example.com",
+        "date": "2024-11-18 09:25:00",
+        "body_text": "Buongiorno,\nriepilogo dell'attivita assistenza della settimana 46 (11-17 novembre).\nTicket gestiti: 268.\nTempo medio di prima risposta: 3,2 ore.\nTemi principali: dubbi sulle taglie Eleganza (31%), tracking GLS (27%), info promozione Black Friday (22%), resi (14%).\nDue escalation rilevanti chiuse: rimborso in sospeso #CLB-5398 e cambio taglia #CLB-5634.\nBuoni ClubPasso emessi per disservizi: 14, per un totale di 175 euro.\nCon il Black Friday in arrivo prevedo un raddoppio dei volumi, valutiamo turni extra.\nGrazie a tutti,\nChiara"
+    },
+    {
+        "subject": "Newsletter dicembre - Regali di Natale e consegna garantita",
+        "from_name": "PassoLibero Calzature",
+        "from_email": "newsletter@passolibero-calzature.example.com",
+        "date": "2024-12-02 08:15:00",
+        "body_text": "Ciao!\nIl Natale si avvicina: regala il comfort di PassoLibero.\nOrdina entro il 18 dicembre e con il corriere GLS la consegna sotto l'albero e garantita.\nIdee regalo: il modello Aero per chi ama correre, l'elegante Eleganza per le feste e la confezione regalo gratuita su richiesta.\nI soci ClubPasso Premium hanno spedizione prioritaria e reso esteso fino al 31 gennaio per gli acquisti natalizi.\nNon sai la taglia giusta? Regala una gift card PassoLibero, pensiamo noi al resto.\nUsa il codice NATALE15 per il 15% di sconto.\nBuone feste!\nIl team PassoLibero"
+    },
+    {
+        "subject": "Report Black Friday 2024 - risultati a caldo",
+        "from_name": "Davide Ferraro",
+        "from_email": "davide.ferraro@passolibero-calzature.example.com",
+        "date": "2024-12-02 11:40:00",
+        "body_text": "Ciao team,\nprimi numeri del weekend Black Friday, complimenti a tutti.\nFatturato dei quattro giorni: 138.000 euro, record assoluto, +28% sul 2023.\nPaia vendute: 1.560.\nIl codice PREMIUM25 ha generato 720 ordini, l'Aero da solo ha fatto 480 paia.\nNuovi soci ClubPasso Premium acquisiti durante la promo: 210.\nNota dolente: il corriere GLS ha avuto qualche rallentamento nei picchi, una ventina di clienti ha scritto per tracking lenti, gestiti dall'assistenza con trasparenza.\nReport completo lunedi in riunione.\nOttimo lavoro,\nDavide"
+    },
+    {
+        "subject": "Convocazione riunione di bilancio annuale e-commerce",
+        "from_name": "Davide Ferraro",
+        "from_email": "davide.ferraro@passolibero-calzature.example.com",
+        "date": "2024-12-09 16:20:00",
+        "body_text": "Ciao a tutti,\nvi convoco per la riunione di bilancio annuale del reparto e-commerce e ordini.\nQuando: venerdi 13 dicembre alle 14:30, sala grande.\nOrdine del giorno:\n1. Consuntivo fatturato 2024 e confronto con il budget\n2. Performance dei modelli Aero, Eleganza e Brezza\n3. Crescita del programma ClubPasso Premium\n4. Tasso di reso annuale e azioni sulle taglie\n5. Valutazione del servizio corriere GLS e ipotesi rinegoziazione contratto\n6. Obiettivi e budget 2025\nPortate i vostri report di reparto.\nA seguire un brindisi di fine anno.\nDavide"
+    },
+    {
+        "subject": "Fattura n. 2024/1205 fornitore - packaging regalo natalizio",
+        "from_name": "Cartotecnica Verde",
+        "from_email": "amministrazione@fornitore.example.com",
+        "date": "2024-12-05 10:30:00",
+        "body_text": "Spettabile PassoLibero Calzature,\nin allegato la fattura n. 2024/1205 per la fornitura di confezioni regalo natalizie personalizzate.\nDettaglio: 2.000 scatole regalo con logo PassoLibero e 2.000 nastri coordinati, importo totale 4.400 euro IVA esclusa.\nLa merce e stata consegnata al vostro magazzino il 02/12 come da DDT.\nTermini di pagamento: bonifico a 30 giorni data fattura.\nVi auguriamo un periodo natalizio ricco di ordini e restiamo a disposizione per riassortimenti rapidi vista la stagione.\nCordiali saluti,\nUfficio Amministrazione Cartotecnica Verde"
+    },
+    {
+        "subject": "Reclamo - pacco arrivato danneggiato ordine #CLB-5801",
+        "from_name": "Silvia Greco",
+        "from_email": "silvia.greco@cliente.example.com",
+        "date": "2024-12-10 13:05:00",
+        "body_text": "Buongiorno,\noggi mi e stato consegnato dal corriere GLS l'ordine #CLB-5801 ma la scatola era visibilmente schiacciata e bagnata su un angolo.\nLe scarpe modello Eleganza taglia 38 all'interno hanno la tomaia segnata, non sono in condizioni da regalo come speravo.\nAvevo scelto la confezione regalo proprio perche erano un dono di Natale per mia sorella.\nVi allego le foto del danno.\nVi chiedo la sostituzione con un paio integro e in confezione regalo, possibilmente prima delle feste.\nResto in attesa,\nSilvia Greco"
+    },
+    {
+        "subject": "Re: Reclamo - pacco danneggiato ordine #CLB-5801",
+        "from_name": "Assistenza Clienti PassoLibero",
+        "from_email": "assistenza@passolibero-calzature.example.com",
+        "date": "2024-12-10 16:15:00",
+        "body_text": "Gentile signora Greco,\nci dispiace molto per il danno subito durante il trasporto dell'ordine #CLB-5801.\nGrazie per le foto, abbiamo gia aperto la pratica con il corriere GLS.\nProcediamo subito: oggi stesso spediamo un nuovo paio di Eleganza taglia 38 in confezione regalo, con consegna prioritaria garantita prima di Natale.\nNon deve preoccuparsi del rientro del paio danneggiato, lo gestiamo noi: trovera in allegato l'etichetta di reso GLS prepagata da usare con comodo.\nLe abbiamo aggiunto un buono ClubPasso di 15 euro per il disagio.\nLe auguriamo buone feste,\nAssistenza Clienti PassoLibero"
+    },
+    {
+        "subject": "Comunicazione interna - orari assistenza periodo natalizio",
+        "from_name": "Chiara Bonetti",
+        "from_email": "chiara.bonetti@passolibero-calzature.example.com",
+        "date": "2024-12-11 09:45:00",
+        "body_text": "Ciao team,\necco gli orari dell'assistenza clienti per il periodo natalizio.\nDal 23 al 24 dicembre: orario ridotto 9-13.\n25 e 26 dicembre: chiuso.\nDal 27 al 31 dicembre: orario pieno 9-18 per gestire i resi post Natale.\n1 gennaio: chiuso.\nDal 2 gennaio: orario normale.\nRicordo che per gli acquisti natalizi il reso e esteso fino al 31 gennaio, quindi aspettiamoci un picco di richieste cambio taglia su Eleganza e Aero a inizio anno.\nTeniamo aggiornato il messaggio automatico e diamo priorita ai soci ClubPasso Premium.\nGrazie a tutti e buone feste,\nChiara"
+    },
+    {
+        "subject": "Riepilogo ordini in giacenza presso GLS - aggiornamento",
+        "from_name": "Logistica PassoLibero",
+        "from_email": "logistica@passolibero-calzature.example.com",
+        "date": "2024-12-16 11:20:00",
+        "body_text": "Buongiorno,\nfaccio il punto sugli ordini attualmente in giacenza presso le filiali GLS.\nTotale giacenze: 27 pacchi, in aumento per i volumi natalizi.\nLa causa principale resta il destinatario assente alla consegna.\nHo gia inviato un sollecito al corriere per riprogrammare le consegne entro il 20 dicembre, cosi da garantire l'arrivo prima di Natale.\nPer gli ordini regalo piu a rischio (alcuni Eleganza ed Aero) sto contattando direttamente i clienti per concordare un punto di ritiro alternativo.\nVi aggiorno domani sull'evoluzione delle giacenze.\nGrazie,\nLogistica"
+    },
+    {
+        "subject": "Report finale campagne newsletter 2024",
+        "from_name": "Marco Tessari",
+        "from_email": "marco.tessari@passolibero-calzature.example.com",
+        "date": "2024-12-18 10:50:00",
+        "body_text": "Buongiorno,\nin allegato il consuntivo delle campagne newsletter dell'anno.\nNewsletter inviate: 26.\nTasso di apertura medio: 38%, tasso di click medio: 6,4%.\nLe campagne piu performanti sono state quella del Black Friday per i soci ClubPasso Premium (apertura 51%) e la newsletter di Natale con consegna garantita GLS (apertura 47%).\nIl codice promo che ha convertito di piu e stato PREMIUM25, seguito da NATALE15.\nLa lista iscritti e cresciuta del 19% nell'anno, trainata dai nuovi soci Premium.\nProposta per il 2025: segmentare di piu in base ai modelli acquistati (chi compra Aero vs chi compra Eleganza).\nGrazie,\nMarco"
+    },
+    {
+        "subject": "Consuntivo annuale resi e azioni sulle taglie 2025",
+        "from_name": "Chiara Bonetti",
+        "from_email": "chiara.bonetti@passolibero-calzature.example.com",
+        "date": "2024-12-19 15:30:00",
+        "body_text": "Buongiorno,\nin vista della riunione di bilancio condivido il consuntivo annuale dei resi.\nResi totali 2024: 1.940 paia, pari a un tasso del 9,2% sugli ordini.\nMotivazioni: taglia errata 68%, cambio colore 16%, difetto prodotto 9%, danno da trasporto GLS 7%.\nIl modello con piu resi resta Eleganza per la calzata stretta, seguito da Aero.\nTutti i resi gratuiti sono stati gestiti entro i 30 giorni di policy, costo logistico annuo circa 12.400 euro.\nAzioni proposte per il 2025: nota taglia consigliata +1/2 sulle schede Eleganza, guida taglie interattiva e controllo rinforzato sulle suole Aero.\nDettaglio numerico in allegato.\nGrazie,\nChiara"
+    }
+]

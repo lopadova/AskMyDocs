@@ -23,6 +23,8 @@ function account(
         status,
         last_sync_at: '2026-05-11T11:00:00Z',
         error: status === 'errored' ? { message: 'Token revoked by provider.' } : null,
+        folders: { include: [] },
+        date_window_days: null,
     };
 }
 

@@ -41,6 +41,15 @@ final class FakeImapClientFactory implements ImapClientFactoryInterface
  */
 final class FakeImapClient implements ImapClientInterface
 {
+    /**
+     * Deterministic folder set for the offline folder-picker E2E (v8.24). A fixed
+     * list so the picker has real-data options without a live server; sync still
+     * no-ops because {@see searchUids} returns [].
+     *
+     * @var list<string>
+     */
+    public const FAKE_FOLDERS = ['INBOX', '[Gmail]/Sent Mail', 'rotta-logistics-1'];
+
     public function __construct(private readonly bool $pingOk) {}
 
     public function ping(): bool
@@ -53,7 +62,13 @@ final class FakeImapClient implements ImapClientInterface
     /** @return list<string> */
     public function listMailboxes(): array
     {
-        return [];
+        if (! $this->pingOk) {
+            // Unreachable host (host contains 'invalid'/'fail') → mirror the real
+            // client's connect failure so the picker's 503 path is reachable too.
+            throw new \RuntimeException('FakeImapClient: IMAP connect failed (host marked invalid/fail).');
+        }
+
+        return self::FAKE_FOLDERS;
     }
 
     public function selectMailbox(string $name): MailboxState

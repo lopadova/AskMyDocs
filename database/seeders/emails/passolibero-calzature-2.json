@@ -1,0 +1,842 @@
+[
+    {
+        "subject": "Conferma ordine fornitore FRN-2024-220 a ConceriaToscana",
+        "from_name": "Portale Ordini PassoLibero",
+        "from_email": "noreply-ordini@passolibero-calzature.example.com",
+        "date": "2024-01-08 09:14:32",
+        "body_text": "Gentile ufficio acquisti,\nconfermiamo la trasmissione dell'ordine fornitore FRN-2024-220 a ConceriaToscana.\n\nDettaglio:\n- Pellame conciato al vegetale, fiore pieno, 320 mq\n- Destinazione produzione: modello Aero della linea ClubPasso\n- Termini di pagamento: 60 giorni data fattura fine mese\n\nLa consegna prevista è entro il 26/01/2024 presso il magazzino centrale. Riceverete una notifica automatica all'arrivo della bolla in entrata.\n\nPer eventuali variazioni rispondere a questa mail entro 48 ore.\nCordiali saluti,\nSistema Ordini PassoLibero Calzature"
+    },
+    {
+        "subject": "Apertura pratica reso cliente RMA-7788",
+        "from_name": "Servizio Resi",
+        "from_email": "resi@passolibero-calzature.example.com",
+        "date": "2024-01-09 11:42:05",
+        "body_text": "Notifica automatica.\n\nÈ stata aperta la pratica di reso RMA-7788 per un paio di ClubPasso modello Eleganza, taglia 42, lamentato difetto di cucitura sul tomaio.\n\nStato attuale: in attesa di ricezione merce.\nIl cliente è stato istruito a spedire al magazzino resi con la causale RMA-7788 ben visibile sul collo.\n\nAlla ricezione partirà il controllo qualità e verrà aggiornato lo stato della pratica. Tempo stimato di lavorazione: 5 giorni lavorativi dalla ricezione.\n\nQuesto messaggio è generato automaticamente, non rispondere."
+    },
+    {
+        "subject": "Bolla in entrata registrata - lotto pellame ConceriaToscana",
+        "from_name": "Magazzino Ricevimento",
+        "from_email": "magazzino@passolibero-calzature.example.com",
+        "date": "2024-01-11 08:27:18",
+        "body_text": "Buongiorno,\nregistrata la bolla in entrata n. BE-2024-0041 relativa all'ordine FRN-2024-220.\n\nMerce ricevuta: 12 colli di pellame conciato al vegetale da ConceriaToscana.\nQuantità dichiarata in bolla: 320 mq. Quantità verificata al banco: 318 mq.\n\nLieve scostamento di 2 mq segnalato al controllo qualità per verifica. La merce è stata posta in area quarantena in attesa di esito.\n\nVi aggiorneremo non appena il QC avrà completato l'ispezione del lotto.\nMagazzino PassoLibero"
+    },
+    {
+        "subject": "Esito controllo qualità lotto FRN-2024-220",
+        "from_name": "Controllo Qualità",
+        "from_email": "qualita@passolibero-calzature.example.com",
+        "date": "2024-01-12 14:55:40",
+        "body_text": "Notifica esito controllo qualità.\n\nLotto: pellame ConceriaToscana, ordine FRN-2024-220.\nEsito: CONFORME con riserva.\n\nIl 96% del pellame è risultato idoneo alla produzione del modello Aero (linea ClubPasso). Riscontrate due pelli con leggere abrasioni superficiali, accantonate per usi secondari.\n\nLa merce viene liberata dalla quarantena e resa disponibile per il prelievo in produzione. Lo scostamento di 2 mq rilevato in ricezione rientra nella tolleranza contrattuale.\n\nControllo Qualità PassoLibero Calzature"
+    },
+    {
+        "subject": "Promemoria scadenza pagamento fattura ConceriaToscana",
+        "from_name": "Amministrazione Fornitori",
+        "from_email": "amministrazione@passolibero-calzature.example.com",
+        "date": "2024-01-15 10:08:51",
+        "body_text": "Promemoria automatico.\n\nLa fattura n. CT-2023-1180 di ConceriaToscana, collegata all'ordine FRN-2024-220, andrà in scadenza il 31/01/2024 secondo i termini di pagamento concordati (60 giorni fine mese).\n\nImporto: 9.540,00 EUR.\nModalità: bonifico bancario su IBAN già censito a sistema.\n\nVi invitiamo a verificare la disponibilità di cassa e a predisporre il pagamento entro la data indicata per non incorrere in solleciti. Una seconda notifica verrà inviata a 5 giorni dalla scadenza.\nUfficio Amministrazione PassoLibero"
+    },
+    {
+        "subject": "Reso RMA-7788 ricevuto al magazzino",
+        "from_name": "Servizio Resi",
+        "from_email": "resi@passolibero-calzature.example.com",
+        "date": "2024-01-16 09:33:27",
+        "body_text": "Aggiornamento stato pratica RMA-7788.\n\nLa merce relativa al reso è stata ricevuta in data odierna presso il magazzino resi. Collo integro, calzature ClubPasso Eleganza taglia 42 corrispondenti alla pratica.\n\nNuovo stato: in lavorazione - controllo qualità avviato.\n\nIl team verificherà il difetto di cucitura segnalato e deciderà tra sostituzione, riparazione o rimborso. L'esito verrà comunicato al cliente entro 5 giorni lavorativi.\n\nMessaggio generato automaticamente dal sistema resi."
+    },
+    {
+        "subject": "Alert scorta minima modello Brezza in magazzino",
+        "from_name": "Gestionale Magazzino",
+        "from_email": "noreply-stock@passolibero-calzature.example.com",
+        "date": "2024-01-17 16:21:09",
+        "body_text": "ALERT GIACENZE.\n\nIl modello Brezza della linea ClubPasso ha raggiunto la soglia di scorta minima.\n\nGiacenza attuale: 18 paia (soglia impostata: 25).\nTaglie sotto soglia: 39, 40, 41.\n\nSi consiglia di avviare un riassortimento magazzino per evitare rotture di stock sui canali vendita. Codice articolo interno coinvolto: #CLB-5521.\n\nÈ possibile generare una proposta d'ordine fornitore dal gestionale alla voce Riassortimenti.\nNotifica automatica - non rispondere a questo indirizzo."
+    },
+    {
+        "subject": "Proposta riassortimento per #CLB-5521",
+        "from_name": "Ufficio Acquisti",
+        "from_email": "acquisti@passolibero-calzature.example.com",
+        "date": "2024-01-18 11:05:44",
+        "body_text": "Buongiorno,\na seguito dell'alert scorta minima è stata predisposta una proposta di riassortimento per l'articolo #CLB-5521, modello Brezza linea ClubPasso.\n\nQuantità proposta: 40 paia, ripartite sulle taglie 39-40-41.\nFornitore suolificio confermato per le suole; pellame da richiedere a ConceriaToscana con nuovo ordine dedicato.\n\nChiediamo conferma alla produzione sulla schedulazione prima di emettere l'ordine fornitore definitivo. In assenza di risposta entro lunedì procederemo con le quantità indicate.\n\nCordiali saluti,\nUfficio Acquisti PassoLibero"
+    },
+    {
+        "subject": "Spedizione tracking GLS-PL-99812 in consegna",
+        "from_name": "Logistica Outbound",
+        "from_email": "noreply-spedizioni@passolibero-calzature.example.com",
+        "date": "2024-01-19 13:47:30",
+        "body_text": "Notifica di spedizione.\n\nIl reso sostitutivo relativo alla pratica RMA-7788 è stato affidato al corriere con tracking GLS-PL-99812.\n\nContenuto: un paio ClubPasso Eleganza taglia 42, nuovo, controllato e conforme.\nDestinatario: cliente che ha aperto la pratica di reso.\nConsegna stimata: 2 giorni lavorativi.\n\nIl cliente riceverà separatamente il link di tracciamento. La pratica RMA-7788 passerà in stato 'chiusa' alla conferma di consegna.\n\nMessaggio automatico del sistema logistico PassoLibero."
+    },
+    {
+        "subject": "Conferma chiusura pratica reso RMA-7788",
+        "from_name": "Servizio Resi",
+        "from_email": "resi@passolibero-calzature.example.com",
+        "date": "2024-01-22 09:18:12",
+        "body_text": "Pratica RMA-7788: CHIUSA.\n\nLa spedizione sostitutiva con tracking GLS-PL-99812 risulta consegnata al cliente. È stata effettuata la sostituzione del paio ClubPasso Eleganza taglia 42 a fronte del difetto di cucitura riscontrato dal controllo qualità.\n\nNessun ulteriore addebito a carico del cliente. Il paio difettoso resta in giacenza tecnica per analisi sui processi di confezione.\n\nGrazie per aver gestito la pratica nei tempi previsti.\nServizio Resi PassoLibero Calzature"
+    },
+    {
+        "subject": "Nuovo ordine fornitore per riassortimento Brezza",
+        "from_name": "Portale Ordini PassoLibero",
+        "from_email": "noreply-ordini@passolibero-calzature.example.com",
+        "date": "2024-01-23 10:52:38",
+        "body_text": "Conferma emissione ordine.\n\nÈ stato generato l'ordine fornitore FRN-2024-241 verso ConceriaToscana per il riassortimento del modello Brezza (articolo #CLB-5521).\n\nDettaglio:\n- Pellame conciato al vegetale per 40 paia\n- Termini di pagamento: 60 giorni fine mese, come da accordo quadro\n- Consegna richiesta: entro 10/02/2024\n\nL'ordine deriva dalla proposta di riassortimento approvata dalla produzione. Stato attuale: trasmesso al fornitore, in attesa di conferma.\nSistema Ordini PassoLibero"
+    },
+    {
+        "subject": "Conferma ricezione ordine da ConceriaToscana",
+        "from_name": "Marta Sereni",
+        "from_email": "ordini@fornitore.example.com",
+        "date": "2024-01-24 15:09:55",
+        "body_text": "Gentile ufficio acquisti PassoLibero,\nconfermiamo la presa in carico del vostro ordine FRN-2024-241 per pellame conciato al vegetale destinato al modello Brezza.\n\nLa nostra produzione è già pianificata: la consegna avverrà entro il 09/02/2024, in anticipo di un giorno rispetto alla vostra richiesta.\n\nConfermiamo i termini di pagamento a 60 giorni fine mese. Riceverete da noi la conferma di spedizione con i riferimenti del trasporto qualche giorno prima dell'arrivo della bolla.\n\nGrazie per la collaborazione,\nMarta Sereni - ConceriaToscana"
+    },
+    {
+        "subject": "Apertura reso cliente RMA-7801 modello Aero",
+        "from_name": "Servizio Resi",
+        "from_email": "resi@passolibero-calzature.example.com",
+        "date": "2024-01-25 11:36:47",
+        "body_text": "Notifica automatica.\n\nAperta la pratica RMA-7801 per un paio ClubPasso modello Aero, taglia 44. Motivo dichiarato dal cliente: calzata non corretta, suola che cigola.\n\nStato: in attesa di ricezione merce.\nIl cliente ha richiesto, se possibile, la sostituzione con la stessa taglia anziché il rimborso.\n\nAlla ricezione verrà effettuato il controllo qualità per stabilire se il difetto è di produzione o legato all'uso. Tempistica indicativa: 5 giorni lavorativi.\n\nMessaggio generato dal sistema resi - non rispondere."
+    },
+    {
+        "subject": "Secondo sollecito scadenza pagamento ConceriaToscana",
+        "from_name": "Amministrazione Fornitori",
+        "from_email": "amministrazione@passolibero-calzature.example.com",
+        "date": "2024-01-26 09:44:21",
+        "body_text": "Promemoria automatico - seconda notifica.\n\nLa fattura CT-2023-1180 di ConceriaToscana (ordine FRN-2024-220) scade tra 5 giorni, il 31/01/2024.\n\nImporto residuo: 9.540,00 EUR.\nStato pagamento a sistema: non ancora disposto.\n\nSi raccomanda di procedere con il bonifico per mantenere le condizioni preferenziali a 60 giorni concordate con il fornitore. Il mancato rispetto delle scadenze potrebbe incidere sui termini di pagamento futuri.\n\nQuesta è l'ultima notifica automatica prima della scadenza.\nUfficio Amministrazione PassoLibero"
+    },
+    {
+        "subject": "Bolla in entrata anomala - quantità non corrispondente",
+        "from_name": "Magazzino Ricevimento",
+        "from_email": "magazzino@passolibero-calzature.example.com",
+        "date": "2024-01-29 08:51:33",
+        "body_text": "Alert ricevimento merce.\n\nÈ arrivata una bolla in entrata da un suolificio relativa alle suole per il modello Eleganza. Quantità in bolla: 120 paia di suole. Quantità fisicamente conteggiata: 110 paia.\n\nDifferenza: -10 paia. La merce è stata accettata con riserva e annotata sul documento di trasporto firmato.\n\nApriamo segnalazione al fornitore per il reintegro o la nota di credito. La produzione del modello Eleganza è bloccata in parte fino al chiarimento.\n\nVi terremo aggiornati.\nMagazzino PassoLibero"
+    },
+    {
+        "subject": "Conferma pagamento fattura CT-2023-1180",
+        "from_name": "Amministrazione Fornitori",
+        "from_email": "amministrazione@passolibero-calzature.example.com",
+        "date": "2024-01-30 16:14:58",
+        "body_text": "Notifica conferma pagamento.\n\nÈ stato disposto il bonifico a favore di ConceriaToscana a saldo della fattura CT-2023-1180, collegata all'ordine FRN-2024-220.\n\nImporto: 9.540,00 EUR.\nData valuta prevista: 01/02/2024.\nTermini rispettati: 60 giorni fine mese.\n\nLa partita risulta ora saldata nel partitario fornitori. Verrà inviata la contabile al fornitore come da prassi.\n\nNessuna ulteriore azione richiesta su questa scadenza.\nUfficio Amministrazione PassoLibero Calzature"
+    },
+    {
+        "subject": "Reso RMA-7801 ricevuto - avvio controllo qualità",
+        "from_name": "Servizio Resi",
+        "from_email": "resi@passolibero-calzature.example.com",
+        "date": "2024-01-31 10:27:46",
+        "body_text": "Aggiornamento pratica RMA-7801.\n\nRicevuto al magazzino resi il paio ClubPasso modello Aero taglia 44 oggetto della pratica. Imballo conforme, calzature complete di scatola originale.\n\nNuovo stato: controllo qualità in corso.\n\nVerificheremo il rumore della suola segnalato dal cliente per capire se si tratta di un difetto di incollaggio o di un assestamento normale. In caso di difetto confermato procederemo con la sostituzione richiesta dal cliente.\n\nNotifica automatica del sistema resi."
+    },
+    {
+        "subject": "Spedizione in arrivo tracking GLS-PL-99812 confermata",
+        "from_name": "Logistica Outbound",
+        "from_email": "noreply-spedizioni@passolibero-calzature.example.com",
+        "date": "2024-02-01 09:05:13",
+        "body_text": "Notifica logistica.\n\nIl corriere ha confermato l'esito di consegna per la spedizione GLS-PL-99812. Lo stato finale risulta CONSEGNATO con firma del destinatario.\n\nQuesta spedizione era collegata alla sostituzione della pratica RMA-7788, ora chiusa.\n\nNessuna giacenza presso il corriere. La pratica resta archiviata e consultabile a sistema con tutti i riferimenti di tracciamento.\n\nMessaggio automatico - sistema logistico PassoLibero Calzature."
+    },
+    {
+        "subject": "Conferma spedizione ConceriaToscana ordine FRN-2024-241",
+        "from_name": "Marta Sereni",
+        "from_email": "ordini@fornitore.example.com",
+        "date": "2024-02-06 14:38:29",
+        "body_text": "Gentili,\nvi avvisiamo che la merce relativa all'ordine FRN-2024-241 è partita oggi dal nostro stabilimento.\n\nContenuto: pellame conciato al vegetale per la produzione del modello Brezza, 8 colli.\nConsegna stimata presso il vostro magazzino: 08/02/2024.\n\nIn allegato alla bolla troverete i certificati di concia. Restiamo a disposizione per qualsiasi verifica del controllo qualità.\n\nUn cordiale saluto,\nMarta Sereni - Ufficio Spedizioni ConceriaToscana"
+    },
+    {
+        "subject": "Esito reso RMA-7801 - difetto confermato",
+        "from_name": "Controllo Qualità",
+        "from_email": "qualita@passolibero-calzature.example.com",
+        "date": "2024-02-07 11:52:17",
+        "body_text": "Esito controllo qualità pratica RMA-7801.\n\nModello: ClubPasso Aero taglia 44.\nEsito: difetto di produzione CONFERMATO. Distacco parziale tra suola e tomaio che genera il cigolio segnalato dal cliente.\n\nDecisione: sostituzione approvata, come da richiesta del cliente. Il paio difettoso viene escluso dalla rivendita e inviato all'analisi del processo di incollaggio.\n\nIl servizio resi può procedere con la spedizione del paio sostitutivo. La pratica passa in stato 'sostituzione autorizzata'.\nControllo Qualità PassoLibero"
+    },
+    {
+        "subject": "Bolla in entrata registrata - riassortimento Brezza",
+        "from_name": "Magazzino Ricevimento",
+        "from_email": "magazzino@passolibero-calzature.example.com",
+        "date": "2024-02-08 08:33:50",
+        "body_text": "Buongiorno,\nregistrata la bolla in entrata BE-2024-0067 relativa all'ordine FRN-2024-241 da ConceriaToscana.\n\nMerce: pellame conciato al vegetale per il modello Brezza, 8 colli. Quantità in bolla corrispondente al conteggio fisico. Certificati di concia presenti e allegati.\n\nLa merce è stata collocata in area quarantena in attesa del controllo qualità. Una volta liberato, il lotto sarà destinato al riassortimento dell'articolo #CLB-5521.\n\nMagazzino PassoLibero Calzature"
+    },
+    {
+        "subject": "Spedizione sostitutiva RMA-7801 affidata al corriere",
+        "from_name": "Logistica Outbound",
+        "from_email": "noreply-spedizioni@passolibero-calzature.example.com",
+        "date": "2024-02-09 13:21:04",
+        "body_text": "Notifica di spedizione.\n\nIl paio sostitutivo della pratica RMA-7801 è stato affidato al corriere con tracking GLS-PL-99845.\n\nContenuto: ClubPasso modello Aero taglia 44, nuovo, controllato e conforme dal QC.\nConsegna stimata: 2-3 giorni lavorativi.\n\nIl cliente riceverà il link di tracciamento. La pratica RMA-7801 passerà a 'chiusa' alla conferma di avvenuta consegna.\n\nMessaggio automatico del sistema logistico PassoLibero - non rispondere."
+    },
+    {
+        "subject": "Esito QC lotto riassortimento FRN-2024-241",
+        "from_name": "Controllo Qualità",
+        "from_email": "qualita@passolibero-calzature.example.com",
+        "date": "2024-02-12 10:46:39",
+        "body_text": "Notifica esito controllo qualità.\n\nLotto: pellame ConceriaToscana, ordine FRN-2024-241, bolla BE-2024-0067.\nEsito: CONFORME.\n\nIl pellame conciato al vegetale è risultato idoneo al 100% per la produzione del modello Brezza. Spessore, uniformità e finitura entro specifica.\n\nIl lotto viene liberato dalla quarantena e reso disponibile per il riassortimento dell'articolo #CLB-5521. La produzione può schedulare le 40 paia previste.\n\nControllo Qualità PassoLibero Calzature"
+    },
+    {
+        "subject": "Aggiornamento giacenze dopo riassortimento Brezza",
+        "from_name": "Gestionale Magazzino",
+        "from_email": "noreply-stock@passolibero-calzature.example.com",
+        "date": "2024-02-14 16:58:22",
+        "body_text": "Notifica giacenze.\n\nIl riassortimento del modello Brezza (articolo #CLB-5521) è stato registrato a magazzino.\n\nGiacenza precedente: 12 paia.\nQuantità caricata: 40 paia.\nGiacenza attuale: 52 paia.\n\nLe taglie 39, 40 e 41 sono tornate sopra la soglia di scorta minima. L'alert relativo a #CLB-5521 è stato chiuso automaticamente.\n\nNessuna azione richiesta. Notifica generata dal gestionale di magazzino PassoLibero."
+    },
+    {
+        "subject": "Reintegro suole Eleganza - conferma fornitore",
+        "from_name": "Davide Ricci",
+        "from_email": "assistenza@fornitore.example.com",
+        "date": "2024-02-15 09:29:48",
+        "body_text": "Gentile magazzino PassoLibero,\nin merito alla vostra segnalazione sulla bolla con 10 paia di suole mancanti per il modello Eleganza, confermiamo l'errore di prelievo presso il nostro magazzino.\n\nProvvederemo al reintegro delle 10 paia di suole con spedizione dedicata entro il 20/02/2024, senza alcun addebito aggiuntivo. In alternativa possiamo emettere nota di credito: attendiamo vostra preferenza.\n\nCi scusiamo per il disguido e per il fermo parziale alla vostra produzione.\nCordiali saluti,\nDavide Ricci - Servizio Clienti Suolificio"
+    },
+    {
+        "subject": "Chiusura pratica RMA-7801",
+        "from_name": "Servizio Resi",
+        "from_email": "resi@passolibero-calzature.example.com",
+        "date": "2024-02-16 10:11:35",
+        "body_text": "Pratica RMA-7801: CHIUSA.\n\nLa spedizione sostitutiva con tracking GLS-PL-99845 risulta consegnata. Il cliente ha ricevuto il nuovo paio ClubPasso modello Aero taglia 44 a fronte del difetto di incollaggio confermato dal controllo qualità.\n\nNessun addebito per il cliente. Il paio difettoso resta in giacenza tecnica per l'analisi del processo produttivo della linea ClubPasso.\n\nTempistiche di lavorazione rispettate. Messaggio automatico del sistema resi."
+    },
+    {
+        "subject": "Promemoria scadenza ordine FRN-2024-241",
+        "from_name": "Ufficio Acquisti",
+        "from_email": "acquisti@passolibero-calzature.example.com",
+        "date": "2024-02-19 11:23:57",
+        "body_text": "Promemoria interno.\n\nLa fattura collegata all'ordine FRN-2024-241 di ConceriaToscana entrerà nel ciclo di pagamento con scadenza a 60 giorni fine mese, ossia il 30/04/2024.\n\nL'ordine è stato evaso completamente e il controllo qualità ha dato esito conforme. La merce è già stata utilizzata per il riassortimento del modello Brezza.\n\nNessuna azione immediata richiesta: l'amministrazione riceverà la notifica automatica a ridosso della scadenza. Segnaliamo solo per la pianificazione di cassa.\nUfficio Acquisti PassoLibero"
+    },
+    {
+        "subject": "Alert scorta minima modello Eleganza",
+        "from_name": "Gestionale Magazzino",
+        "from_email": "noreply-stock@passolibero-calzature.example.com",
+        "date": "2024-02-20 15:40:12",
+        "body_text": "ALERT GIACENZE.\n\nIl modello Eleganza della linea ClubPasso è sceso sotto la soglia di scorta minima.\n\nGiacenza attuale: 21 paia (soglia: 30).\nTaglie critiche: 42 e 43.\n\nLa rottura di stock è aggravata dal fermo parziale di produzione dovuto alle 10 paia di suole mancanti, in attesa di reintegro dal fornitore. Si consiglia di sbloccare la produzione e valutare un riassortimento dedicato.\n\nNotifica automatica del gestionale - non rispondere a questo indirizzo."
+    },
+    {
+        "subject": "Conferma reintegro suole ricevuto a magazzino",
+        "from_name": "Magazzino Ricevimento",
+        "from_email": "magazzino@passolibero-calzature.example.com",
+        "date": "2024-02-21 08:47:26",
+        "body_text": "Buongiorno,\nconfermiamo la ricezione del reintegro delle 10 paia di suole per il modello Eleganza, come da accordo col fornitore a seguito della bolla anomala.\n\nQuantità ricevuta: 10 paia, conteggio verificato e corrispondente. Documento di trasporto archiviato con il riferimento alla segnalazione originaria.\n\nIl fermo parziale di produzione del modello Eleganza è ora rimosso. La produzione può completare i lotti sospesi e procedere al riassortimento richiesto.\n\nMagazzino PassoLibero Calzature"
+    },
+    {
+        "subject": "Nuovo ordine fornitore FRN-2024-258 a ConceriaToscana",
+        "from_name": "Portale Ordini PassoLibero",
+        "from_email": "noreply-ordini@passolibero-calzature.example.com",
+        "date": "2024-02-22 10:18:44",
+        "body_text": "Conferma emissione ordine.\n\nGenerato l'ordine fornitore FRN-2024-258 verso ConceriaToscana per il riassortimento del modello Eleganza (linea ClubPasso).\n\nDettaglio:\n- Pellame conciato al vegetale per 35 paia\n- Focus taglie 42 e 43, attualmente sotto soglia\n- Termini di pagamento: 60 giorni fine mese\n- Consegna richiesta: entro 08/03/2024\n\nStato attuale: trasmesso al fornitore, in attesa di conferma di ricezione. Riceverete una notifica all'arrivo della relativa bolla in entrata.\nSistema Ordini PassoLibero"
+    },
+    {
+        "subject": "Apertura reso cliente RMA-7815 modello Brezza",
+        "from_name": "Servizio Resi",
+        "from_email": "resi@passolibero-calzature.example.com",
+        "date": "2024-02-26 11:14:09",
+        "body_text": "Notifica automatica.\n\nAperta la pratica RMA-7815 per un paio ClubPasso modello Brezza, taglia 40. Motivo dichiarato: colore non corrispondente alla foto del catalogo, richiesta di rimborso.\n\nStato: in attesa di ricezione merce.\nTrattandosi di un reso per ripensamento estetico e non per difetto, alla ricezione verrà verificato lo stato della calzatura prima di autorizzare il rimborso.\n\nTempistica indicativa: 5 giorni lavorativi dalla ricezione del collo.\nMessaggio generato dal sistema resi."
+    },
+    {
+        "subject": "Conferma ricezione ordine FRN-2024-258",
+        "from_name": "Marta Sereni",
+        "from_email": "ordini@fornitore.example.com",
+        "date": "2024-02-27 14:52:33",
+        "body_text": "Gentile ufficio acquisti,\nconfermiamo la presa in carico dell'ordine FRN-2024-258 per pellame conciato al vegetale destinato al modello Eleganza.\n\nAbbiamo schedulato la produzione: la consegna è prevista entro il 07/03/2024, in linea con la vostra richiesta. Daremo priorità alle pelli adatte alle taglie 42 e 43 che ci avete segnalato come critiche.\n\nConfermiamo i consueti termini di pagamento a 60 giorni fine mese.\nRestiamo a disposizione,\nMarta Sereni - ConceriaToscana"
+    },
+    {
+        "subject": "Reso RMA-7815 ricevuto - verifica in corso",
+        "from_name": "Servizio Resi",
+        "from_email": "resi@passolibero-calzature.example.com",
+        "date": "2024-03-01 09:36:51",
+        "body_text": "Aggiornamento pratica RMA-7815.\n\nRicevuto al magazzino resi il paio ClubPasso modello Brezza taglia 40. La calzatura risulta non indossata, completa di etichette e scatola originale.\n\nNuovo stato: verifica idoneità al rimborso.\n\nTrattandosi di reso per motivo estetico, è sufficiente confermare che il prodotto sia rivendibile come nuovo. In caso positivo procederemo con il rimborso secondo le condizioni del reso. Esito entro pochi giorni lavorativi.\n\nNotifica automatica del sistema resi PassoLibero."
+    },
+    {
+        "subject": "Bolla in entrata FRN-2024-258 registrata",
+        "from_name": "Magazzino Ricevimento",
+        "from_email": "magazzino@passolibero-calzature.example.com",
+        "date": "2024-03-07 08:24:17",
+        "body_text": "Buongiorno,\nregistrata la bolla in entrata BE-2024-0089 relativa all'ordine FRN-2024-258 da ConceriaToscana.\n\nMerce: pellame conciato al vegetale per il modello Eleganza, 7 colli. Quantità in bolla corrispondente al conteggio fisico al banco. Certificati di concia presenti.\n\nLa merce è stata posta in area quarantena in attesa del controllo qualità. Una volta liberata, sarà destinata al riassortimento delle taglie 42 e 43.\n\nMagazzino PassoLibero Calzature"
+    },
+    {
+        "subject": "Rimborso autorizzato pratica RMA-7815",
+        "from_name": "Servizio Resi",
+        "from_email": "resi@passolibero-calzature.example.com",
+        "date": "2024-03-08 10:42:28",
+        "body_text": "Aggiornamento pratica RMA-7815.\n\nVerifica completata: il paio ClubPasso modello Brezza taglia 40 è risultato in condizioni di nuovo e rivendibile. Il reso per motivo estetico è quindi accettato.\n\nNuovo stato: rimborso autorizzato. L'amministrazione provvederà all'accredito sul metodo di pagamento del cliente entro i termini previsti.\n\nLa calzatura rientra in giacenza vendibile. La pratica passerà a 'chiusa' alla conferma dell'avvenuto rimborso.\nMessaggio automatico del sistema resi."
+    },
+    {
+        "subject": "Esito QC lotto Eleganza FRN-2024-258",
+        "from_name": "Controllo Qualità",
+        "from_email": "qualita@passolibero-calzature.example.com",
+        "date": "2024-03-11 11:07:54",
+        "body_text": "Notifica esito controllo qualità.\n\nLotto: pellame ConceriaToscana, ordine FRN-2024-258, bolla BE-2024-0089.\nEsito: CONFORME con nota.\n\nIl pellame è idoneo alla produzione del modello Eleganza. Su un collo si è rilevata una variazione di tono lievemente più scura, segnalata alla produzione affinché le pelli vengano abbinate per uniformità di colore all'interno delle paia.\n\nLotto liberato dalla quarantena e disponibile per il riassortimento delle taglie 42 e 43.\nControllo Qualità PassoLibero"
+    },
+    {
+        "subject": "Conferma chiusura pratica RMA-7815 con rimborso",
+        "from_name": "Amministrazione Resi",
+        "from_email": "amministrazione@passolibero-calzature.example.com",
+        "date": "2024-03-14 15:33:46",
+        "body_text": "Pratica RMA-7815: CHIUSA.\n\nÈ stato eseguito il rimborso al cliente per il reso del paio ClubPasso modello Brezza taglia 40, accettato per motivo estetico dopo verifica di idoneità.\n\nImporto rimborsato: corrispondente al prezzo d'acquisto, spese di reso a carico del cliente come da condizioni.\nLa calzatura è rientrata nella giacenza vendibile a magazzino.\n\nNessuna ulteriore azione richiesta sulla pratica. Notifica automatica del sistema amministrativo resi."
+    },
+    {
+        "subject": "Aggiornamento giacenze riassortimento Eleganza",
+        "from_name": "Gestionale Magazzino",
+        "from_email": "noreply-stock@passolibero-calzature.example.com",
+        "date": "2024-03-15 16:49:31",
+        "body_text": "Notifica giacenze.\n\nIl riassortimento del modello Eleganza è stato registrato a magazzino dopo la produzione delle paia dal lotto FRN-2024-258.\n\nGiacenza precedente: 21 paia.\nQuantità caricata: 35 paia.\nGiacenza attuale: 56 paia.\n\nLe taglie 42 e 43, precedentemente critiche, sono tornate ampiamente sopra la soglia di scorta minima. L'alert sul modello Eleganza è stato chiuso automaticamente.\n\nNotifica generata dal gestionale di magazzino PassoLibero - non rispondere."
+    },
+    {
+        "subject": "Promemoria scadenza pagamento FRN-2024-241",
+        "from_name": "Amministrazione Fornitori",
+        "from_email": "amministrazione@passolibero-calzature.example.com",
+        "date": "2024-04-22 10:05:19",
+        "body_text": "Promemoria automatico.\n\nLa fattura di ConceriaToscana collegata all'ordine FRN-2024-241 (riassortimento modello Brezza) andrà in scadenza il 30/04/2024 secondo i termini a 60 giorni fine mese.\n\nImporto: 5.880,00 EUR.\nModalità: bonifico su IBAN censito.\nStato a sistema: pagamento non ancora disposto.\n\nVi invitiamo a predisporre la disponibilità di cassa e a procedere entro la data indicata. Una seconda notifica verrà inviata a ridosso della scadenza in caso di mancato pagamento.\nUfficio Amministrazione PassoLibero"
+    },
+    {
+        "subject": "Riepilogo operativo fornitori e resi - aprile",
+        "from_name": "Report Automatico Operations",
+        "from_email": "noreply-report@passolibero-calzature.example.com",
+        "date": "2024-04-28 17:12:40",
+        "body_text": "Riepilogo automatico del periodo.\n\nOrdini fornitore a ConceriaToscana evasi: FRN-2024-220, FRN-2024-241, FRN-2024-258, tutti con esito controllo qualità conforme.\nResi gestiti e chiusi: RMA-7788 (sostituzione), RMA-7801 (sostituzione), RMA-7815 (rimborso).\nSpedizioni resi tracciate: GLS-PL-99812 e GLS-PL-99845, entrambe consegnate.\n\nRiassortimenti completati per i modelli Brezza (#CLB-5521) ed Eleganza della linea ClubPasso, oltre alla finitura speciale ClubPasso Premium. Tutte le giacenze sono attualmente sopra soglia. Scadenza aperta in monitoraggio: pagamento FRN-2024-241 al 30/04.\n\nReport generato automaticamente dal sistema operations PassoLibero Calzature."
+    },
+    {
+        "subject": "Disponibilità pellame conciato al vegetale per FRN-2024-220",
+        "from_name": "Andrea Ferri",
+        "from_email": "a.ferri@fornitore.example.com",
+        "date": "2024-05-02 09:14:00",
+        "body_text": "Buongiorno,\nin merito al vostro ordine FRN-2024-220 vorremmo confermare la disponibilità del pellame conciato al vegetale richiesto per la produzione dei modelli ClubPasso Aero.\nAbbiamo a magazzino circa 180 mq nella tonalità cuoio naturale, ma per la quantità totale di 420 mq prevista nell'ordine dovremmo programmare una seconda concia.\nCi confermate se i 420 mq sono il fabbisogno definitivo o se possiamo procedere con una prima spedizione parziale dei 180 mq già pronti?\nRestiamo in attesa di un vostro riscontro per organizzare la logistica in entrata.\nCordiali saluti,\nAndrea Ferri\nConceriaToscana"
+    },
+    {
+        "subject": "Re: Disponibilità pellame conciato al vegetale per FRN-2024-220",
+        "from_name": "Giulia Marchetti",
+        "from_email": "g.marchetti@passolibero-calzature.example.com",
+        "date": "2024-05-02 11:48:00",
+        "body_text": "Gentile Andrea,\ngrazie per il riscontro su FRN-2024-220.\nIl fabbisogno definitivo resta di 420 mq, quindi vi chiediamo di procedere comunque con la programmazione della seconda concia.\nNel frattempo accettiamo volentieri la spedizione parziale dei 180 mq già pronti: ci servono con urgenza per avviare il primo lotto Aero.\nVi preghiamo di emettere bolla separata per la prima tranche, così da agevolare il controllo qualità in entrata e la registrazione a magazzino.\nPer i restanti 260 mq attendiamo una data indicativa di consegna entro fine mese.\nGrazie,\nGiulia Marchetti\nUfficio Acquisti PassoLibero Calzature"
+    },
+    {
+        "subject": "Richiesta reso cliente per modello Eleganza taglia 41",
+        "from_name": "Marco Donati",
+        "from_email": "marco.donati@posta.example.com",
+        "date": "2024-05-06 16:22:00",
+        "body_text": "Salve,\nho acquistato un paio di ClubPasso Eleganza taglia 41 circa tre settimane fa, ma la calzata risulta troppo stretta sul collo del piede.\nLe scarpe sono ancora nella confezione originale e indossate solo per qualche minuto in casa.\nVorrei procedere con un reso e, se possibile, una sostituzione con la taglia 42.\nPotete indicarmi la procedura da seguire e se devo attendere un numero di pratica RMA prima di spedire?\nGrazie in anticipo per l'assistenza.\nCordiali saluti,\nMarco Donati"
+    },
+    {
+        "subject": "Re: Richiesta reso cliente per modello Eleganza taglia 41",
+        "from_name": "Sara Bianchi",
+        "from_email": "s.bianchi@passolibero-calzature.example.com",
+        "date": "2024-05-07 09:05:00",
+        "body_text": "Gentile signor Donati,\ngrazie per averci contattato.\nAbbiamo aperto la pratica RMA-7788 per il reso del suo paio di ClubPasso Eleganza taglia 41.\nLe chiediamo di inserire il codice RMA-7788 ben visibile sulla scatola di spedizione e di allegare la copia dello scontrino o della conferma d'ordine.\nAppena riceveremo il pacco, il nostro reparto controllo qualità verificherà lo stato delle calzature e, se conforme, procederemo con la sostituzione in taglia 42 senza costi aggiuntivi per lei.\nLa spedizione di ritorno è a nostro carico: le invieremo a breve l'etichetta prepagata.\nResto a disposizione,\nSara Bianchi\nServizio Resi PassoLibero"
+    },
+    {
+        "subject": "Conferma date consegna suole in gomma riassortimento",
+        "from_name": "Luca Pellegrini",
+        "from_email": "l.pellegrini@fornitore.example.com",
+        "date": "2024-05-10 10:37:00",
+        "body_text": "Buongiorno,\nvi scrivo per il riassortimento di suole in gomma destinate ai modelli Brezza.\nAbbiamo ricevuto la vostra richiesta per 600 paia di suole misura 39-44, ma il nostro impianto è in manutenzione la prossima settimana.\nPossiamo garantire la consegna entro il 24 maggio anziché il 17 come inizialmente ipotizzato.\nQuesto slittamento di una settimana crea problemi alla vostra programmazione di magazzino o riuscite ad assorbirlo?\nFatemi sapere così confermo l'ordine di produzione.\nGrazie,\nLuca Pellegrini\nUfficio Commerciale"
+    },
+    {
+        "subject": "Re: Conferma date consegna suole in gomma riassortimento",
+        "from_name": "Davide Conti",
+        "from_email": "d.conti@passolibero-calzature.example.com",
+        "date": "2024-05-10 14:12:00",
+        "body_text": "Ciao Luca,\ngrazie per l'anticipazione sullo slittamento.\nLa consegna delle 600 paia di suole entro il 24 maggio è gestibile: abbiamo ancora scorta sufficiente per coprire la produzione Brezza fino a quella data.\nTi chiedo però di confermare per iscritto la nuova data così aggiorno il piano di riassortimento magazzino ed evito di lanciare un secondo ordine d'emergenza.\nUna sola accortezza: la bolla in entrata deve riportare il dettaglio delle misure, perché lo scorso lotto avevamo trovato una discrepanza tra il 39 e il 40 in fase di controllo.\nGrazie e a presto,\nDavide Conti\nResponsabile Magazzino"
+    },
+    {
+        "subject": "Difetto di cucitura rilevato su lotto Aero",
+        "from_name": "Elena Rossi",
+        "from_email": "e.rossi@passolibero-calzature.example.com",
+        "date": "2024-05-14 08:51:00",
+        "body_text": "Buongiorno,\nin fase di controllo qualità sul lotto ClubPasso Aero proveniente dalla vostra ultima spedizione abbiamo riscontrato un difetto di cucitura ricorrente sul tomaia: la cucitura laterale tende a saltare già alla prima flessione.\nIl problema interessa circa 30 paia su 200 verificate.\nPrima di proseguire con l'accettazione del resto del lotto, vorremmo capire se si tratta di un problema di filato o di tensione macchina.\nPotete inviarci un tecnico o quantomeno una valutazione sulla causa?\nAttendiamo riscontro per decidere come gestire le paia difettose.\nCordiali saluti,\nElena Rossi\nControllo Qualità PassoLibero"
+    },
+    {
+        "subject": "Re: Difetto di cucitura rilevato su lotto Aero",
+        "from_name": "Andrea Ferri",
+        "from_email": "a.ferri@fornitore.example.com",
+        "date": "2024-05-14 15:30:00",
+        "body_text": "Gentile Elena,\nci dispiace molto per il difetto riscontrato sul lotto Aero.\nDopo una prima verifica interna, riteniamo che il problema derivi da una partita di filato con resistenza inferiore al previsto, utilizzata solo in quella tornata di produzione.\nVi proponiamo la sostituzione gratuita delle 30 paia difettose e un controllo a campione rinforzato sulla prossima fornitura.\nPotete tenere da parte le paia segnalate? Organizzeremo il ritiro insieme alla prossima consegna così evitiamo una spedizione dedicata.\nNel frattempo abbiamo già sostituito il filato sospetto in linea.\nVi terremo aggiornati.\nCordiali saluti,\nAndrea Ferri\nConceriaToscana"
+    },
+    {
+        "subject": "Chiarimento termini di pagamento ordine FRN-2024-231",
+        "from_name": "Roberto Gallo",
+        "from_email": "r.gallo@fornitore.example.com",
+        "date": "2024-05-17 11:09:00",
+        "body_text": "Buongiorno ufficio acquisti,\nin riferimento all'ordine FRN-2024-231 per pellame conciato al vegetale, avremmo bisogno di un chiarimento sui termini di pagamento.\nNella vostra conferma d'ordine leggiamo 90 giorni data fattura fine mese, mentre nel nostro accordo quadro avevamo concordato 60 giorni.\nSi tratta di un refuso o di una modifica alle condizioni?\nVe lo segnalo prima di emettere fattura per evitare contestazioni successive in fase di pagamento.\nResto in attesa di una vostra conferma.\nGrazie,\nRoberto Gallo\nAmministrazione ConceriaToscana"
+    },
+    {
+        "subject": "Re: Chiarimento termini di pagamento ordine FRN-2024-231",
+        "from_name": "Giulia Marchetti",
+        "from_email": "g.marchetti@passolibero-calzature.example.com",
+        "date": "2024-05-17 16:44:00",
+        "body_text": "Gentile Roberto,\ngrazie per la segnalazione tempestiva.\nSi tratta effettivamente di un refuso nella conferma d'ordine FRN-2024-231: i termini corretti restano 60 giorni data fattura fine mese, come da accordo quadro.\nProvvediamo subito a emettere una conferma rettificata con le condizioni esatte, così potete fatturare senza problemi.\nMi scuso per il disguido, che è dipeso da un template aggiornato di recente.\nLe confermo inoltre che gli altri parametri dell'ordine (quantità e prezzo al mq) restano invariati.\nLa nuova conferma le arriverà entro domani mattina.\nCordiali saluti,\nGiulia Marchetti\nUfficio Acquisti PassoLibero Calzature"
+    },
+    {
+        "subject": "Stato avanzamento reso RMA-7788",
+        "from_name": "Marco Donati",
+        "from_email": "marco.donati@posta.example.com",
+        "date": "2024-05-21 13:18:00",
+        "body_text": "Salve,\nho spedito il pacco con il reso RMA-7788 lo scorso giovedì utilizzando l'etichetta prepagata che mi avete fornito.\nDal tracking risulta consegnato al vostro magazzino da due giorni, ma non ho ancora ricevuto comunicazioni sulla sostituzione con la taglia 42.\nPotete dirmi a che punto è la pratica e quando posso aspettarmi di ricevere il nuovo paio di Eleganza?\nGrazie per l'aggiornamento.\nCordiali saluti,\nMarco Donati"
+    },
+    {
+        "subject": "Re: Stato avanzamento reso RMA-7788",
+        "from_name": "Sara Bianchi",
+        "from_email": "s.bianchi@passolibero-calzature.example.com",
+        "date": "2024-05-21 15:02:00",
+        "body_text": "Gentile signor Donati,\nconfermo la ricezione del suo reso RMA-7788 presso il nostro magazzino.\nIl controllo qualità ha verificato che le calzature sono in perfetto stato e conformi alle condizioni di reso, quindi abbiamo autorizzato la sostituzione.\nIl nuovo paio di ClubPasso Eleganza taglia 42 è già stato preparato e verrà spedito domani: riceverà via email il codice di tracciamento appena affidato al corriere.\nLa consegna è prevista entro 3-4 giorni lavorativi.\nGrazie per la pazienza e ci scusiamo per il piccolo disagio iniziale sulla calzata.\nCordiali saluti,\nSara Bianchi\nServizio Resi PassoLibero"
+    },
+    {
+        "subject": "Richiesta riassortimento urgente modello Brezza taglie centrali",
+        "from_name": "Francesca Lombardi",
+        "from_email": "f.lombardi@cliente.example.com",
+        "date": "2024-05-28 10:25:00",
+        "body_text": "Buongiorno,\nsono la responsabile acquisti di una boutique che tratta i vostri ClubPasso Brezza.\nStiamo esaurendo le taglie centrali, in particolare la 40 e la 41 nella colorazione testa di moro.\nAvremmo bisogno di un riassortimento urgente di almeno 24 paia (12 per taglia) entro la prima settimana di giugno per coprire la stagione.\nPotete dirmi se le avete disponibili a magazzino o se servono tempi di produzione?\nIn caso, mi servirebbe anche una conferma sui termini di pagamento applicati al riordino.\nGrazie mille,\nFrancesca Lombardi"
+    },
+    {
+        "subject": "Re: Richiesta riassortimento urgente modello Brezza taglie centrali",
+        "from_name": "Sara Bianchi",
+        "from_email": "s.bianchi@passolibero-calzature.example.com",
+        "date": "2024-05-28 14:50:00",
+        "body_text": "Gentile Francesca,\ngrazie per l'ordine di riassortimento.\nBuone notizie: abbiamo a magazzino le 24 paia richieste di ClubPasso Brezza in testa di moro, 12 nella taglia 40 e 12 nella 41, quindi non serve attendere tempi di produzione.\nPossiamo spedire entro 48 ore dalla conferma dell'ordine, con consegna prevista ben prima della prima settimana di giugno.\nPer i termini di pagamento applichiamo le condizioni standard rivenditore: 30 giorni data fattura.\nLe invio in giornata la proforma con il dettaglio quantità e prezzi: appena ce la rimanda firmata avviamo la spedizione.\nResto a disposizione,\nSara Bianchi\nServizio Clienti PassoLibero"
+    },
+    {
+        "subject": "Mancata ricezione note di accredito su resi precedenti",
+        "from_name": "Davide Conti",
+        "from_email": "d.conti@passolibero-calzature.example.com",
+        "date": "2024-06-04 11:55:00",
+        "body_text": "Buongiorno amministrazione,\nfacendo la riconciliazione degli ordini con ConceriaToscana abbiamo notato che non ci risultano arrivate le note di accredito per i 5 mq mancanti sulla bolla BOL-558 e per le 30 paia di tomaia difettose del lotto Aero.\nPotete verificare se sono state emesse?\nCi servono per chiudere la contabilità del trimestre e allineare i carichi di magazzino con i documenti fiscali.\nSe non sono ancora partite, vi chiediamo cortesemente di emetterle entro fine settimana.\nGrazie per la collaborazione,\nDavide Conti\nResponsabile Magazzino PassoLibero"
+    },
+    {
+        "subject": "Re: Mancata ricezione note di accredito su resi precedenti",
+        "from_name": "Roberto Gallo",
+        "from_email": "r.gallo@fornitore.example.com",
+        "date": "2024-06-04 15:20:00",
+        "body_text": "Gentile Davide,\nho verificato la situazione con la nostra contabilità.\nLa nota di accredito per le 30 paia difettose del lotto Aero è stata emessa la scorsa settimana ma, per un errore di indirizzo email, non vi è stata recapitata: ve la rinvio in allegato a questo messaggio.\nPer i 5 mq mancanti della bolla BOL-558, dato che avevate scelto l'integrazione nella prossima spedizione anziché l'accredito, non è prevista nota di accredito: i mq verranno aggiunti alla consegna della seconda concia.\nSe preferite invece l'accredito anche per quelli, possiamo cambiare e annullare l'integrazione.\nFatemi sapere come allineiamo i conti.\nCordiali saluti,\nRoberto Gallo\nConceriaToscana"
+    },
+    {
+        "subject": "Problema calzata reso multiplo modelli Aero ed Eleganza",
+        "from_name": "Giorgia Ferrari",
+        "from_email": "giorgia.ferrari@posta.example.com",
+        "date": "2024-06-07 17:40:00",
+        "body_text": "Salve,\nho ordinato due modelli, un ClubPasso Aero taglia 38 e un Eleganza taglia 38, ma riscontro un problema strano: l'Aero calza perfettamente mentre l'Eleganza risulta abbondante di mezza misura.\nNormale che la calzata vari così tanto tra due modelli della stessa marca e taglia?\nVorrei rendere solo l'Eleganza e capire se devo prendere la 37 oppure se mi conviene tenere la 38 con una soletta.\nPotete consigliarmi prima che apra il reso?\nGrazie,\nGiorgia Ferrari"
+    },
+    {
+        "subject": "Re: Problema calzata reso multiplo modelli Aero ed Eleganza",
+        "from_name": "Sara Bianchi",
+        "from_email": "s.bianchi@passolibero-calzature.example.com",
+        "date": "2024-06-10 09:12:00",
+        "body_text": "Gentile signora Ferrari,\ngrazie per la domanda, molto pertinente.\nÈ corretto: il modello Eleganza monta una forma più ampia rispetto all'Aero, quindi a parità di taglia calza circa mezza misura più grande.\nNel suo caso, se l'Aero 38 le va perfetto, per l'Eleganza le consigliamo effettivamente la taglia 37.\nPossiamo aprire il reso del solo Eleganza 38 con sostituzione nella 37, senza costi di spedizione a suo carico.\nSe invece preferisce tenere la 38 con soletta, possiamo inviarle gratuitamente un paio di solette anatomiche.\nMi confermi quale opzione preferisce e procedo subito con la pratica RMA dedicata.\nCordiali saluti,\nSara Bianchi\nServizio Resi PassoLibero"
+    },
+    {
+        "subject": "Conferma ordine fornitore FRN-2024-245 collante e accessori",
+        "from_name": "Davide Conti",
+        "from_email": "d.conti@passolibero-calzature.example.com",
+        "date": "2024-06-13 10:05:00",
+        "body_text": "Buongiorno,\nvi inoltro l'ordine FRN-2024-245 per il riassortimento di collante per suole e accessori di montaggio.\nQuantità: 40 confezioni di collante e 1.500 occhielli metallici per la linea Brezza.\nVi chiedo conferma di disponibilità e dei tempi di consegna, perché la produzione del prossimo lotto parte il 1 luglio e non possiamo permetterci fermi.\nInoltre, potete indicarmi se il prezzo del collante è rimasto invariato rispetto all'ultimo ordine o se ci sono stati aumenti?\nResto in attesa della conferma per pianificare la logistica in entrata.\nGrazie,\nDavide Conti\nResponsabile Magazzino PassoLibero"
+    },
+    {
+        "subject": "Re: Conferma ordine fornitore FRN-2024-245 collante e accessori",
+        "from_name": "Luca Pellegrini",
+        "from_email": "l.pellegrini@fornitore.example.com",
+        "date": "2024-06-13 14:33:00",
+        "body_text": "Ciao Davide,\nconfermo la ricezione dell'ordine FRN-2024-245.\nLe 40 confezioni di collante sono disponibili a stock e partono entro 3 giorni lavorativi.\nPer i 1.500 occhielli metallici, invece, abbiamo a magazzino solo 900 pezzi: i restanti 600 li recuperiamo con una consegna di rinforzo entro il 27 giugno, quindi sempre prima del vostro avvio produzione del 1 luglio.\nSul prezzo del collante purtroppo c'è stato un leggero aumento del 3% rispetto all'ultimo ordine, dovuto al rincaro delle materie prime; il prezzo degli occhielli resta invariato.\nTi mando in giornata la conferma d'ordine aggiornata con i nuovi importi.\nA presto,\nLuca Pellegrini\nUfficio Commerciale"
+    },
+    {
+        "subject": "Tomaie graffiate riscontrate in accettazione lotto Eleganza",
+        "from_name": "Elena Rossi",
+        "from_email": "e.rossi@passolibero-calzature.example.com",
+        "date": "2024-06-18 08:47:00",
+        "body_text": "Buongiorno,\nin sede di controllo qualità sul lotto di tomaie ClubPasso Eleganza appena arrivato abbiamo riscontrato graffi superficiali sul pellame in circa 18 pezzi.\nI graffi sembrano causati da un imballaggio inadeguato: le tomaie erano impilate senza fogli separatori.\nPrima di rifiutare i pezzi vorremmo capire se i graffi sono recuperabili con trattamento o se vanno sostituiti.\nVi alleghiamo qualche foto a parte.\nPotete inoltre rivedere il metodo di imballaggio per le prossime spedizioni così evitiamo il ripetersi del problema?\nAttendiamo indicazioni,\nElena Rossi\nControllo Qualità PassoLibero"
+    },
+    {
+        "subject": "Re: Tomaie graffiate riscontrate in accettazione lotto Eleganza",
+        "from_name": "Andrea Ferri",
+        "from_email": "a.ferri@fornitore.example.com",
+        "date": "2024-06-18 13:55:00",
+        "body_text": "Gentile Elena,\nabbiamo esaminato le foto delle tomaie Eleganza graffiate.\nIn 11 casi i graffi sono superficiali e si eliminano con un semplice trattamento di nutrizione e lucidatura: vi inviamo le istruzioni e, se preferite, il prodotto specifico.\nNei restanti 7 pezzi i graffi sono troppo profondi e procederemo con la sostituzione gratuita nella prossima consegna.\nConfermiamo inoltre che adotteremo i fogli separatori in carta velina tra le tomaie e ridurremo l'altezza delle pile in imballaggio, come da vostra richiesta.\nVi ringraziamo per la segnalazione puntuale, ci aiuta a migliorare il processo.\nCordiali saluti,\nAndrea Ferri\nConceriaToscana"
+    },
+    {
+        "subject": "Domanda su garanzia e usura suola modello Aero",
+        "from_name": "Paolo Greco",
+        "from_email": "paolo.greco@posta.example.com",
+        "date": "2024-06-22 12:30:00",
+        "body_text": "Buongiorno,\nho acquistato un paio di ClubPasso Aero circa quattro mesi fa e li uso quotidianamente per andare al lavoro.\nNoto che la suola in gomma si sta consumando piuttosto in fretta sul tallone, più di quanto mi aspettassi.\nQuesto rientra nella garanzia o è da considerarsi normale usura?\nNel caso non fosse coperto da garanzia, offrite un servizio di risuolatura o posso acquistare suole di ricambio?\nGrazie per il chiarimento.\nCordiali saluti,\nPaolo Greco"
+    },
+    {
+        "subject": "Re: Domanda su garanzia e usura suola modello Aero",
+        "from_name": "Sara Bianchi",
+        "from_email": "s.bianchi@passolibero-calzature.example.com",
+        "date": "2024-06-24 10:18:00",
+        "body_text": "Gentile signor Greco,\ngrazie per la domanda.\nIl consumo della suola legato all'uso quotidiano è considerato normale usura e quindi non rientra nella garanzia, che copre invece i difetti di materiale o produzione.\nTuttavia un consumo marcato sul tallone già a quattro mesi può indicare una camminata particolare: se desidera, può inviarci una foto e valutiamo eventuali anomalie del lotto.\nIn ogni caso offriamo un servizio di risuolatura per i modelli Aero a prezzo agevolato e vendiamo anche suole di ricambio compatibili.\nSe preferisce, possiamo aprire una pratica per la risuolatura e inviarle un preventivo.\nResto a disposizione,\nSara Bianchi\nServizio Clienti PassoLibero"
+    },
+    {
+        "subject": "Anticipo consegna seconda concia FRN-2024-220",
+        "from_name": "Giulia Marchetti",
+        "from_email": "g.marchetti@passolibero-calzature.example.com",
+        "date": "2024-06-27 09:22:00",
+        "body_text": "Buongiorno Andrea,\nvi scrivo in merito alla seconda concia dei 260 mq residui dell'ordine FRN-2024-220, comprensivi anche dei 5 mq da integrare per la bolla BOL-558.\nLa produzione del lotto Aero sta procedendo più velocemente del previsto e rischiamo di restare senza pellame.\nSarebbe possibile anticipare la consegna di una settimana rispetto alla data concordata?\nCi rendiamo conto della richiesta last-minute, ma anche una consegna parziale dei primi 130 mq ci aiuterebbe a non fermare la linea.\nFatemi sapere cosa riuscite a fare.\nGrazie mille,\nGiulia Marchetti\nUfficio Acquisti PassoLibero"
+    },
+    {
+        "subject": "Re: Anticipo consegna seconda concia FRN-2024-220",
+        "from_name": "Andrea Ferri",
+        "from_email": "a.ferri@fornitore.example.com",
+        "date": "2024-06-27 15:47:00",
+        "body_text": "Gentile Giulia,\ncapisco l'urgenza e abbiamo cercato di venirvi incontro.\nNon riusciamo ad anticipare l'intera consegna dei 260 mq, ma possiamo spedire una prima tranche di 130 mq con due giorni di anticipo rispetto alla data prevista: sono già usciti dalla concia e li imballiamo domani con i fogli separatori richiesti.\nIncludiamo in questa tranche anche i 5 mq di integrazione della bolla BOL-558, così chiudiamo quella partita.\nI restanti 130 mq seguiranno alla data originariamente concordata.\nVi mando la bolla aggiornata appena pronta la spedizione, con il dettaglio completo delle misure per agevolare il vostro controllo in entrata.\nCordiali saluti,\nAndrea Ferri\nConceriaToscana"
+    },
+    {
+        "subject": "Verifica disponibilità colorazioni speciali pellame autunno",
+        "from_name": "Davide Conti",
+        "from_email": "d.conti@passolibero-calzature.example.com",
+        "date": "2024-07-09 09:50:00",
+        "body_text": "Buongiorno Roberto,\nstiamo pianificando la collezione autunnale dei modelli Eleganza e vorremmo introdurre due colorazioni speciali di pellame conciato al vegetale: un bordeaux profondo e un verde bosco.\nPotete dirmi se siete in grado di produrre queste tonalità e con quali tempi di concia?\nCi servirebbe una prima campionatura entro fine luglio per validare il colore in controllo qualità prima di lanciare l'ordine vero e proprio.\nFatemi sapere anche eventuali quantità minime di concia per le tinte speciali.\nGrazie,\nDavide Conti\nResponsabile Magazzino PassoLibero"
+    },
+    {
+        "subject": "Re: Verifica disponibilità colorazioni speciali pellame autunno",
+        "from_name": "Roberto Gallo",
+        "from_email": "r.gallo@fornitore.example.com",
+        "date": "2024-07-09 14:28:00",
+        "body_text": "Gentile Davide,\nottima iniziativa per la collezione autunnale.\nSia il bordeaux profondo che il verde bosco rientrano nelle tinte che riusciamo a produrre con la concia al vegetale, anche se il verde bosco richiede un secondo bagno di colore e quindi tempi leggermente più lunghi.\nPossiamo inviarvi una prima campionatura di entrambe le tonalità entro il 28 luglio, perfettamente in linea con la vostra richiesta.\nLa quantità minima di concia per le tinte speciali è di 80 mq per colore: sotto questa soglia il costo unitario aumenta sensibilmente.\nUna volta validati i campioni in controllo qualità, possiamo definire insieme l'ordine definitivo e i tempi di consegna.\nResto a disposizione,\nRoberto Gallo\nConceriaToscana"
+    },
+    {
+        "subject": "Errore taglia su riassortimento Brezza ricevuto",
+        "from_name": "Francesca Lombardi",
+        "from_email": "f.lombardi@cliente.example.com",
+        "date": "2024-07-15 10:40:00",
+        "body_text": "Buongiorno,\nabbiamo ricevuto il riassortimento di ClubPasso Brezza in testa di moro, ma controllando i cartoni abbiamo trovato un errore: al posto di 12 paia in taglia 41 ne sono arrivate 12 in taglia 42.\nLe paia in taglia 40 sono invece corrette.\nCi servono con urgenza proprio le 41, quindi vi chiediamo come procedere per la sostituzione.\nDobbiamo rispedire le 42 errate prima di ricevere le 41 o riuscite a inviarci subito le taglie giuste?\nGrazie per la rapidità,\nFrancesca Lombardi"
+    },
+    {
+        "subject": "Re: Errore taglia su riassortimento Brezza ricevuto",
+        "from_name": "Sara Bianchi",
+        "from_email": "s.bianchi@passolibero-calzature.example.com",
+        "date": "2024-07-15 12:22:00",
+        "body_text": "Gentile Francesca,\nci scusiamo per l'errore di taglia nel riassortimento: è stato un disguido in fase di prelievo a magazzino.\nLe confermo che abbiamo a stock le 12 paia di ClubPasso Brezza taglia 41 in testa di moro e le spediamo oggi stesso, così le riceve al più presto senza dover attendere il rientro delle 42.\nPer le 12 paia in taglia 42 arrivate per errore, le invieremo un'etichetta di reso prepagata: può rispedircele con comodo, senza alcun costo a suo carico.\nNon le verrà addebitato nulla in più: si tratta di una semplice sostituzione per nostro errore.\nGrazie per la pazienza,\nSara Bianchi\nServizio Clienti PassoLibero"
+    },
+    {
+        "subject": "Conferma rientro paia difettose lotto Aero per ritiro",
+        "from_name": "Elena Rossi",
+        "from_email": "e.rossi@passolibero-calzature.example.com",
+        "date": "2024-07-22 08:35:00",
+        "body_text": "Buongiorno Andrea,\nvi confermo che le 30 paia di tomaia difettose del lotto Aero, con la cucitura laterale che salta, sono state messe da parte in magazzino e sono pronte per il ritiro.\nAvevate proposto di ritirarle insieme alla prossima consegna: la tranche dei 130 mq residui della seconda concia quando è prevista?\nVorrei far coincidere il ritiro con quella spedizione per evitare un viaggio dedicato.\nVi chiedo inoltre conferma che le 30 paia sostitutive siano realizzate con il filato nuovo già a regime, così le passiamo subito al controllo qualità all'arrivo.\nGrazie,\nElena Rossi\nControllo Qualità PassoLibero"
+    },
+    {
+        "subject": "Re: Conferma rientro paia difettose lotto Aero per ritiro",
+        "from_name": "Andrea Ferri",
+        "from_email": "a.ferri@fornitore.example.com",
+        "date": "2024-07-22 11:50:00",
+        "body_text": "Gentile Elena,\ngrazie per aver preparato le 30 paia difettose per il ritiro.\nLa tranche finale dei 130 mq residui della seconda concia partirà lunedì prossimo: faremo coincidere il ritiro delle paia difettose con quella consegna, così il corriere effettua sia la consegna che il ritiro in un unico passaggio.\nVi confermo che le 30 paia sostitutive sono già state prodotte con il filato nuovo, ormai pienamente a regime, e abbiamo eseguito un controllo a campione rinforzato prima dell'imballaggio: nessun problema di cucitura riscontrato.\nLe sostitutive viaggeranno insieme alla stessa spedizione, così potete verificarle subito in accettazione.\nA lunedì,\nAndrea Ferri\nConceriaToscana"
+    },
+    {
+        "subject": "Tempi di rimborso per reso non sostituibile",
+        "from_name": "Chiara Moretti",
+        "from_email": "chiara.moretti@posta.example.com",
+        "date": "2024-07-29 15:10:00",
+        "body_text": "Salve,\nho restituito un paio di ClubPasso Eleganza con la pratica RMA-7950 perché la taglia di cui avevo bisogno, la 36, risulta esaurita e non rispondibile.\nDato che non è possibile la sostituzione, vorrei il rimborso anziché un buono.\nIn quanti giorni viene processato il rimborso una volta che ricevete il reso?\nE su quale metodo viene accreditato, sulla stessa carta usata per l'acquisto o devo comunicarvi un IBAN?\nGrazie per il chiarimento.\nCordiali saluti,\nChiara Moretti"
+    },
+    {
+        "subject": "Re: Tempi di rimborso per reso non sostituibile",
+        "from_name": "Sara Bianchi",
+        "from_email": "s.bianchi@passolibero-calzature.example.com",
+        "date": "2024-07-30 09:48:00",
+        "body_text": "Gentile signora Moretti,\nconfermo la pratica RMA-7950 per il reso del paio di ClubPasso Eleganza, con rimborso anziché sostituzione data l'indisponibilità della taglia 36.\nUna volta ricevuto e verificato il reso dal nostro controllo qualità, il rimborso viene processato entro 5 giorni lavorativi.\nL'accredito avviene automaticamente sullo stesso metodo di pagamento usato per l'acquisto, quindi sulla carta: non serve comunicarci alcun IBAN.\nTenga presente che, a seconda della sua banca, l'importo può comparire sull'estratto conto qualche giorno dopo l'effettivo accredito da parte nostra.\nLe invieremo una email di conferma nel momento esatto in cui il rimborso viene disposto.\nResto a disposizione,\nSara Bianchi\nServizio Resi PassoLibero"
+    },
+    {
+        "subject": "Pianificazione ordine fornitore stagione invernale FRN-2024-260",
+        "from_name": "Giulia Marchetti",
+        "from_email": "g.marchetti@passolibero-calzature.example.com",
+        "date": "2024-08-05 10:30:00",
+        "body_text": "Buongiorno Roberto,\niniziamo a pianificare l'ordine fornitore FRN-2024-260 per la stagione invernale.\nPrevediamo un fabbisogno di circa 600 mq di pellame conciato al vegetale, di cui 80 mq nel bordeaux profondo e 80 mq nel verde bosco che abbiamo validato in controllo qualità, il resto in cuoio naturale.\nPrima di formalizzare l'ordine, ci confermate i prezzi al mq aggiornati per le tinte speciali e per il cuoio naturale?\nE quali tempi di consegna dovremmo mettere in conto per un volume di questo tipo?\nVorremmo evitare sorprese sulla programmazione di magazzino di novembre.\nGrazie,\nGiulia Marchetti\nUfficio Acquisti PassoLibero"
+    },
+    {
+        "subject": "Re: Pianificazione ordine fornitore stagione invernale FRN-2024-260",
+        "from_name": "Roberto Gallo",
+        "from_email": "r.gallo@fornitore.example.com",
+        "date": "2024-08-06 14:15:00",
+        "body_text": "Gentile Giulia,\ngrazie per averci coinvolto presto nella pianificazione di FRN-2024-260.\nPer il cuoio naturale il prezzo al mq resta in linea con l'ultimo ordine, con un adeguamento minimo del 2% legato al costo delle pelli grezze.\nPer le tinte speciali bordeaux profondo e verde bosco applichiamo un sovrapprezzo del 12% rispetto al cuoio naturale, dovuto al doppio bagno di colore e alle quantità minime di concia.\nSui tempi: per 600 mq complessivi, di cui due tinte speciali, vi consigliamo di mettere in conto circa 6 settimane dalla conferma dell'ordine, così arriviamo comodamente prima della vostra programmazione di novembre.\nVi preparo un'offerta dettagliata con i prezzi esatti entro pochi giorni.\nCordiali saluti,\nRoberto Gallo\nConceriaToscana"
+    },
+    {
+        "subject": "Aggiornamento imballaggio e palletizzazione consegne future",
+        "from_name": "Davide Conti",
+        "from_email": "d.conti@passolibero-calzature.example.com",
+        "date": "2024-08-12 11:20:00",
+        "body_text": "Buongiorno Andrea,\ndopo gli ultimi episodi di tomaie graffiate e di discrepanze sulle bolle, vorremmo concordare un protocollo di imballaggio e palletizzazione più rigoroso per le consegne future.\nIn particolare ci servirebbero: fogli separatori tra le tomaie, bolle che riportino sempre il dettaglio per misura, e una palletizzazione che non superi una certa altezza per evitare schiacciamenti.\nPotete formalizzare queste indicazioni in una scheda condivisa così la logistica in entrata e il controllo qualità lavorano sugli stessi standard?\nVi sembra fattibile partire già dalla consegna di settembre?\nGrazie,\nDavide Conti\nResponsabile Magazzino PassoLibero"
+    },
+    {
+        "subject": "Re: Aggiornamento imballaggio e palletizzazione consegne future",
+        "from_name": "Andrea Ferri",
+        "from_email": "a.ferri@fornitore.example.com",
+        "date": "2024-08-13 09:35:00",
+        "body_text": "Gentile Davide,\nsiamo pienamente d'accordo: standardizzare l'imballaggio aiuta entrambi a ridurre contestazioni e scarti.\nAbbiamo predisposto una scheda di imballaggio condivisa che prevede fogli separatori in carta velina tra le tomaie, bolle con dettaglio per misura e per colore, e pile di imballaggio con altezza massima ridotta per evitare schiacciamenti, esattamente come da vostra richiesta.\nLa scheda è già operativa internamente e applicheremo questi standard a partire dalla consegna di settembre, senza alcun costo aggiuntivo per voi.\nVi inviamo il documento in formato condivisibile così lo allineate con il vostro controllo qualità e la logistica in entrata.\nRestiamo aperti a ulteriori affinamenti dopo le prime consegne secondo il nuovo protocollo.\nCordiali saluti,\nAndrea Ferri\nConceriaToscana"
+    },
+    {
+        "subject": "Chiarimento prezzo risuolatura modello Aero",
+        "from_name": "Paolo Greco",
+        "from_email": "paolo.greco@posta.example.com",
+        "date": "2024-08-20 16:48:00",
+        "body_text": "Buongiorno,\nriprendo la conversazione di qualche settimana fa sulla suola consumata dei miei ClubPasso Aero.\nMi avevate parlato di un servizio di risuolatura a prezzo agevolato.\nVorrei procedere: potete indicarmi il costo esatto della risuolatura e quanto tempo tenete le scarpe in lavorazione?\nDevo spedirvele io o c'è un punto di raccolta?\nVorrei capire anche se durante la risuolatura controllate eventuali altri punti di usura, così evito di rimanere senza scarpe per il lavoro più del necessario.\nGrazie,\nPaolo Greco"
+    },
+    {
+        "subject": "Re: Chiarimento prezzo risuolatura modello Aero",
+        "from_name": "Sara Bianchi",
+        "from_email": "s.bianchi@passolibero-calzature.example.com",
+        "date": "2024-08-21 10:27:00",
+        "body_text": "Gentile signor Greco,\nfelice di proseguire con la risuolatura dei suoi ClubPasso Aero.\nIl costo del servizio a prezzo agevolato è di 35 euro, comprensivo della sostituzione completa della suola in gomma con ricambio originale.\nI tempi di lavorazione sono di circa 7-10 giorni lavorativi dal ricevimento delle scarpe.\nPuò spedircele direttamente al nostro laboratorio: le invio l'indirizzo e un modulo da inserire nel pacco con i suoi dati e il riferimento di questa pratica.\nDurante la risuolatura il nostro reparto verifica anche cuciture, occhielli e stato della tomaia: se notiamo altri punti di usura la avvisiamo con un preventivo prima di qualsiasi intervento aggiuntivo, così non resta senza scarpe più del necessario.\nResto a disposizione,\nSara Bianchi\nServizio Clienti PassoLibero"
+    },
+    {
+        "subject": "Riepilogo settimanale ordini fornitore — settimana 36",
+        "from_name": "Giulia Ferrante",
+        "from_email": "g.ferrante@passolibero-calzature.example.com",
+        "date": "2024-09-02 09:14:22",
+        "body_text": "Buongiorno a tutti,\nallego il riepilogo degli ordini fornitore aperti alla chiusura di venerdì.\nIn evidenza: FRN-2024-220 a ConceriaToscana per 600 mq di pellame conciato al vegetale, consegna prevista 12/09. FRN-2024-221 per suole in cuoio dei modelli ClubPasso Aero è confermato ma con bolla parziale.\nTotale ordini in entrata previsti per settembre: 9, di cui 3 in ritardo rispetto alla data concordata.\nVi chiedo di segnalarmi entro mercoledì eventuali urgenze sui riassortimenti per non bloccare il magazzino.\nGrazie,\nGiulia"
+    },
+    {
+        "subject": "Fattura 2024/4471 ConceriaToscana — verifica importi",
+        "from_name": "Amministrazione ConceriaToscana",
+        "from_email": "amministrazione@fornitore.example.com",
+        "date": "2024-09-03 11:42:09",
+        "body_text": "Spettabile PassoLibero Calzature,\nin allegato la fattura n. 2024/4471 relativa all'ordine FRN-2024-220 (pellame conciato al vegetale, lotto consegnato il 30/08).\nImporto imponibile: 8.940,00 €, IVA 22%, totale 10.906,80 €.\nTermini di pagamento concordati: 60 giorni data fattura, quindi scadenza 02/11/2024.\nVi preghiamo di confermare la corrispondenza con la bolla di consegna n. 1180. In caso di discrepanze sui metri quadri ricevuti, segnalatecele entro 10 giorni.\nRestiamo a disposizione.\nCordiali saluti,\nUfficio Amministrazione ConceriaToscana"
+    },
+    {
+        "subject": "Controllo qualità lotto suole — non conformità rilevate",
+        "from_name": "Marco Lippi",
+        "from_email": "m.lippi@passolibero-calzature.example.com",
+        "date": "2024-09-04 15:08:51",
+        "body_text": "Ciao Giulia,\nho completato il controllo qualità sul lotto di suole arrivato con la bolla 1183 per i modelli ClubPasso Eleganza.\nSu 240 paia controllate, 18 presentano difetti di incollaggio sul tacco e 5 hanno spessore fuori tolleranza.\nHo isolato i pezzi non conformi in zona quarantena. Propongo di aprire una contestazione formale al fornitore e bloccare il riassortimento finché non riceviamo i sostitutivi.\nTi mando le foto separatamente. Fammi sapere se procediamo con la contestazione oggi stesso.\nMarco"
+    },
+    {
+        "subject": "Invito riunione: pianificazione riassortimenti autunno",
+        "from_name": "Davide Conti",
+        "from_email": "d.conti@passolibero-calzature.example.com",
+        "date": "2024-09-05 10:30:00",
+        "body_text": "Buongiorno,\nvi invito alla riunione di pianificazione dei riassortimenti di magazzino per la stagione autunnale.\nQuando: martedì 10/09 ore 14:30 — Sala riunioni piano 1.\nOrdine del giorno:\n1. Stato scorte modelli ClubPasso Aero, Eleganza e Brezza\n2. Ordini fornitore da anticipare per evitare rotture di stock\n3. Tempistiche ConceriaToscana sul pellame conciato al vegetale\n4. Revisione soglie di riordino\nPortate i dati di vendita aggiornati delle ultime quattro settimane.\nConfermate la presenza rispondendo a questa mail.\nGrazie,\nDavide"
+    },
+    {
+        "subject": "RMA-7788 — reso cliente per difetto cucitura",
+        "from_name": "Servizio Resi",
+        "from_email": "resi@passolibero-calzature.example.com",
+        "date": "2024-09-06 16:22:34",
+        "body_text": "Gentile team,\napro la pratica RMA-7788 per un reso cliente sul modello ClubPasso Brezza taglia 41.\nMotivo dichiarato: cucitura laterale scucita dopo due settimane d'uso. Il cliente ha allegato foto e scontrino di acquisto del 18/08.\nValutazione iniziale: difetto di produzione, reso accettabile in garanzia.\nProcedo con sostituzione del prodotto e invio il pezzo difettoso al controllo qualità per analisi del lotto.\nResto in attesa di conferma per autorizzare il rimborso spese di spedizione al cliente.\nGrazie,\nUfficio Resi"
+    },
+    {
+        "subject": "Sollecito pagamento fattura 2024/4398 scaduta",
+        "from_name": "Crediti Fornitore Cuoificio",
+        "from_email": "crediti@fornitore.example.com",
+        "date": "2024-09-09 09:55:17",
+        "body_text": "Spettabile PassoLibero Calzature,\nrisulta ancora insoluta la nostra fattura n. 2024/4398 di 4.320,00 €, scaduta il 31/08/2024 e relativa alla fornitura di suole in cuoio.\nVi preghiamo di provvedere al saldo entro 7 giorni o di comunicarci eventuali contestazioni in essere.\nQualora il pagamento sia già stato disposto, vi chiediamo gentilmente di inviarci la contabile bancaria per la riconciliazione.\nRestiamo a disposizione per qualsiasi chiarimento sui termini di pagamento.\nDistinti saluti,\nUfficio Crediti"
+    },
+    {
+        "subject": "Bolla in entrata 1185 — discrepanza colli ricevuti",
+        "from_name": "Stefano Marini",
+        "from_email": "s.marini@passolibero-calzature.example.com",
+        "date": "2024-09-10 08:47:03",
+        "body_text": "Buongiorno Giulia,\nal ricevimento della merce di stamattina ho riscontrato una discrepanza sulla bolla in entrata n. 1185 collegata all'ordine FRN-2024-221.\nLa bolla indica 14 colli ma ne sono arrivati solo 12. Mancano due colli di suole per il modello ClubPasso Aero.\nHo fatto firmare al corriere con riserva e annotato l'ammanco. Ho scattato foto del bancale e dei sigilli.\nPuoi contattare ConceriaToscana per capire se i due colli mancanti partono con la prossima spedizione? Intanto blocco il riassortimento parziale.\nStefano"
+    },
+    {
+        "subject": "Comunicazione interna: nuova procedura accettazione merci",
+        "from_name": "Direzione Operations",
+        "from_email": "operations@passolibero-calzature.example.com",
+        "date": "2024-09-11 13:18:40",
+        "body_text": "A tutto il personale magazzino,\ndal 16/09 entra in vigore la nuova procedura di accettazione merci in entrata.\nPunti chiave:\n1. Verifica colli vs bolla PRIMA della firma; in caso di ammanco firmare sempre con riserva.\n2. Controllo qualità a campione obbligatorio su ogni lotto di pellame e suole.\n3. Registrazione fotografica di bancali con sigilli rotti o danneggiati.\n4. Apertura immediata della scheda non conformità per qualsiasi anomalia.\nLa procedura completa è disponibile sul gestionale, sezione Magazzino. Chiedo a tutti di prenderne visione entro venerdì.\nGrazie per la collaborazione,\nDirezione Operations"
+    },
+    {
+        "subject": "Re: Controllo qualità lotto suole — non conformità rilevate",
+        "from_name": "Giulia Ferrante",
+        "from_email": "g.ferrante@passolibero-calzature.example.com",
+        "date": "2024-09-11 17:05:12",
+        "body_text": "Ciao Marco,\nho ricevuto le foto, confermo la gravità dei difetti di incollaggio sul lotto ClubPasso Eleganza.\nHo aperto la contestazione formale verso il fornitore con riferimento alla bolla 1183. Ho richiesto la sostituzione delle 18 paia difettose e la verifica delle 5 fuori tolleranza.\nNel frattempo teniamo i pezzi in quarantena e NON li immettiamo nel riassortimento.\nIl fornitore ha 5 giorni lavorativi per rispondere. Se non riceviamo riscontro entro mercoledì prossimo, escaliamo a Davide.\nGrazie del lavoro accurato.\nGiulia"
+    },
+    {
+        "subject": "Newsletter fornitori — novità pellami conciati al vegetale",
+        "from_name": "ConceriaToscana News",
+        "from_email": "newsletter@fornitore.example.com",
+        "date": "2024-09-12 10:00:00",
+        "body_text": "Gentile cliente PassoLibero Calzature,\nvi presentiamo le novità della nostra collezione di pellame conciato al vegetale per la stagione 2025.\nNovità principali:\n- Nuova gamma di nabuk idrorepellente per calzature outdoor\n- Tre nuove tonalità terra disponibili da gennaio\n- Riduzione dei tempi di consegna standard a 10 giorni lavorativi\nPer gli ordini confermati entro ottobre, applichiamo uno sconto del 5% sui termini di pagamento a 60 giorni.\nContattate il vostro referente commerciale per i campionari.\nUn cordiale saluto,\nUfficio Marketing ConceriaToscana"
+    },
+    {
+        "subject": "Report mensile resi RMA — agosto 2024",
+        "from_name": "Servizio Resi",
+        "from_email": "resi@passolibero-calzature.example.com",
+        "date": "2024-09-13 09:40:28",
+        "body_text": "Buongiorno,\ncondivido il report dei resi RMA chiusi ad agosto.\nTotale pratiche aperte: 34. Chiuse: 31. In lavorazione: 3.\nRipartizione per causa:\n- Difetti di produzione: 14 (di cui 9 su lotti ClubPasso Eleganza)\n- Taglia errata o cambio: 11\n- Insoddisfazione cliente: 6\nTasso di reso sul venduto: 2,3%, in lieve aumento rispetto a luglio.\nNota: la concentrazione di difetti sul modello Eleganza suggerisce un problema di lotto in fase di controllo qualità. Segnalato a Marco per approfondimento.\nResto a disposizione,\nUfficio Resi"
+    },
+    {
+        "subject": "Conferma ordine FRN-2024-225 — riassortimento Brezza",
+        "from_name": "Giulia Ferrante",
+        "from_email": "g.ferrante@passolibero-calzature.example.com",
+        "date": "2024-09-16 11:12:55",
+        "body_text": "Spettabile ConceriaToscana,\nconfermiamo l'ordine FRN-2024-225 per il riassortimento del modello ClubPasso Brezza.\nDettaglio: 350 mq di pellame conciato al vegetale nella tonalità cuoio chiaro, qualità prima scelta.\nData di consegna richiesta: entro il 30/09 presso il nostro magazzino.\nTermini di pagamento: 60 giorni data fattura, come da accordo quadro.\nVi chiedo conferma scritta della disponibilità e della data di spedizione entro domani, così pianifichiamo l'accettazione merci.\nGrazie,\nGiulia Ferrante — Ufficio Acquisti"
+    },
+    {
+        "subject": "Escalation: ritardo cronico consegne suole",
+        "from_name": "Davide Conti",
+        "from_email": "d.conti@passolibero-calzature.example.com",
+        "date": "2024-09-17 14:33:19",
+        "body_text": "Gentile fornitore,\nscrivo per formalizzare un'escalation sui ritardi ricorrenti nelle consegne di suole.\nNegli ultimi tre ordini (FRN-2024-218, 221, 223) le consegne sono arrivate in media con 8 giorni di ritardo, causando rotture di stock sui modelli ClubPasso Aero ed Eleganza.\nQuesto sta impattando direttamente i nostri riassortimenti e le vendite.\nChiedo un confronto urgente entro questa settimana per rivedere le tempistiche e definire penali in caso di ulteriori ritardi.\nSe non riceviamo un piano di rientro credibile, saremo costretti a valutare fornitori alternativi.\nIn attesa di un vostro riscontro,\nDavide Conti — Responsabile Operations"
+    },
+    {
+        "subject": "Verbale riunione riassortimenti autunno del 10/09",
+        "from_name": "Davide Conti",
+        "from_email": "d.conti@passolibero-calzature.example.com",
+        "date": "2024-09-18 09:05:44",
+        "body_text": "Buongiorno a tutti,\ncondivido il verbale della riunione di martedì sui riassortimenti autunnali.\nDecisioni prese:\n1. Anticipare l'ordine di pellame per ClubPasso Aero a fine settembre (poi formalizzato come FRN-2024-225).\n2. Abbassare la soglia di riordino del modello Eleganza da 80 a 120 paia per il ritardo cronico delle suole.\n3. Monitoraggio settimanale delle scorte fino a fine novembre.\n4. Marco prepara un report sui difetti di lotto per la prossima riunione.\nProssimo incontro: martedì 24/09 ore 14:30.\nGrazie a tutti per la partecipazione,\nDavide"
+    },
+    {
+        "subject": "RMA-7801 — richiesta rimborso anziché sostituzione",
+        "from_name": "Laura Bianchi",
+        "from_email": "laura.bianchi@cliente.example.com",
+        "date": "2024-09-19 18:27:10",
+        "body_text": "Buonasera,\nin merito alla pratica RMA-7801 aperta per il mio paio di ClubPasso Eleganza con difetto alla suola, vi comunico che preferisco il rimborso invece della sostituzione.\nIl prodotto mi è arrivato già difettoso e ho perso fiducia nel modello.\nHo acquistato le scarpe il 02/09 per 139,00 €, pagamento con carta. Vi allego nuovamente lo scontrino.\nResto in attesa di conferma sulle modalità e i tempi del rimborso.\nDistinti saluti,\nLaura Bianchi"
+    },
+    {
+        "subject": "Riepilogo scorte magazzino — fine settembre",
+        "from_name": "Stefano Marini",
+        "from_email": "s.marini@passolibero-calzature.example.com",
+        "date": "2024-09-20 16:50:38",
+        "body_text": "Ciao Giulia,\necco la situazione scorte aggiornata a oggi.\nClubPasso Aero: 145 paia (sotto soglia, riordino in corso con FRN-2024-225).\nClubPasso Eleganza: 90 paia, ma 23 ancora in quarantena per il controllo qualità.\nClubPasso Brezza: 310 paia, livello buono.\nPellame conciato al vegetale a stock: circa 180 mq, sufficienti per due settimane di produzione.\nSuggerisco di sbloccare al più presto le 23 paia Eleganza in quarantena o di pianificare un riassortimento aggiuntivo.\nTi aggiorno lunedì dopo l'inventario fisico.\nStefano"
+    },
+    {
+        "subject": "Comunicazione interna: chiusura magazzino ponte ottobre",
+        "from_name": "Risorse Umane",
+        "from_email": "hr@passolibero-calzature.example.com",
+        "date": "2024-09-23 11:00:00",
+        "body_text": "Gentili colleghi,\nvi informiamo che il magazzino e l'ufficio accettazione merci resteranno chiusi venerdì 01/11 e sabato 02/11 per il ponte di Ognissanti.\nVi chiediamo di concordare con i fornitori che non siano programmate consegne in quelle giornate. Eventuali bolle in entrata previste vanno spostate a lunedì 04/11.\nL'ufficio resi continuerà a registrare le pratiche RMA online ma le lavorazioni fisiche riprenderanno il 04/11.\nPer urgenze contattate il referente di turno indicato sul gestionale.\nGrazie,\nUfficio Risorse Umane"
+    },
+    {
+        "subject": "Fattura 2024/4502 — nota di credito per non conformità",
+        "from_name": "Amministrazione ConceriaToscana",
+        "from_email": "amministrazione@fornitore.example.com",
+        "date": "2024-09-24 10:15:27",
+        "body_text": "Spettabile PassoLibero Calzature,\nin riferimento alla contestazione sul lotto suole della bolla 1183 (modello ClubPasso Eleganza), accettiamo la non conformità rilevata dal vostro controllo qualità.\nEmettiamo nota di credito n. NC-2024-067 di 612,00 € a storno parziale della fattura 2024/4502, corrispondente alle 18 paia difettose.\nI 18 pezzi sostitutivi sono già in produzione e spediranno entro il 27/09.\nCi scusiamo per il disagio e confermiamo il rafforzamento dei controlli sul nostro reparto incollaggio.\nCordiali saluti,\nUfficio Amministrazione ConceriaToscana"
+    },
+    {
+        "subject": "Reclamo: pellame ricevuto con tonalità non conforme",
+        "from_name": "Marco Lippi",
+        "from_email": "m.lippi@passolibero-calzature.example.com",
+        "date": "2024-09-25 09:33:02",
+        "body_text": "Gentile ConceriaToscana,\nho ispezionato il pellame conciato al vegetale arrivato con la bolla 1190 (ordine FRN-2024-225).\nLa tonalità consegnata è sensibilmente più scura del campione approvato per il modello ClubPasso Brezza. La differenza è visibile a occhio nudo sotto luce naturale.\nNon possiamo avviare la produzione con questo materiale perché creerebbe lotti di colore disomogeneo.\nVi chiedo di ritirare il lotto e sostituirlo con la tonalità cuoio chiaro corretta, oppure di proporre una soluzione entro 48 ore.\nResto in attesa,\nMarco Lippi — Controllo Qualità"
+    },
+    {
+        "subject": "Invito: audit annuale fornitori 2024",
+        "from_name": "Davide Conti",
+        "from_email": "d.conti@passolibero-calzature.example.com",
+        "date": "2024-09-26 15:20:11",
+        "body_text": "Buongiorno,\nvi invito a partecipare alla pianificazione dell'audit annuale dei nostri fornitori principali.\nQuando: lunedì 30/09 ore 10:00 — Sala riunioni piano 1.\nObiettivi dell'incontro:\n1. Definire i criteri di valutazione (puntualità consegne, qualità pellame e suole, gestione non conformità)\n2. Stilare la lista dei fornitori da visitare, ConceriaToscana in primis\n3. Calendarizzare gli audit per il quarto trimestre\nChiedo a Marco di preparare lo storico delle non conformità e a Giulia i dati sui ritardi di consegna.\nConfermate la presenza.\nDavide"
+    },
+    {
+        "subject": "Report trimestrale qualità Q3 2024",
+        "from_name": "Marco Lippi",
+        "from_email": "m.lippi@passolibero-calzature.example.com",
+        "date": "2024-09-30 17:08:46",
+        "body_text": "Buongiorno a tutti,\nallego il report del controllo qualità del terzo trimestre.\nLotti ispezionati: 47. Lotti con non conformità: 8 (17%).\nPrincipali criticità:\n- Difetti di incollaggio suole (lotto Eleganza, bolla 1183)\n- Tonalità pellame non conforme (lotto Brezza, bolla 1190)\n- Spessore suole fuori tolleranza in 3 lotti\nTutte le non conformità sono state gestite con contestazione formale e, dove applicabile, nota di credito.\nRaccomandazione: intensificare i controlli a campione su ConceriaToscana e introdurre la verifica colore con campione fisico al ricevimento.\nSono disponibile per discuterne in riunione.\nMarco"
+    },
+    {
+        "subject": "Re: Escalation: ritardo cronico consegne suole",
+        "from_name": "Commerciale ConceriaToscana",
+        "from_email": "commerciale@fornitore.example.com",
+        "date": "2024-10-01 10:48:33",
+        "body_text": "Gentile Sig. Conti,\nabbiamo ricevuto la vostra escalation sui ritardi e ce ne scusiamo.\nLe consegne in ritardo degli ultimi mesi sono dovute a un fermo macchina nel reparto taglio suole, ora risolto.\nPiano di rientro proposto:\n1. Recupero degli ordini arretrati entro il 10/10.\n2. Margine di sicurezza di 3 giorni anticipati su tutti gli ordini fino a dicembre.\n3. Referente dedicato per i vostri riassortimenti ClubPasso.\nAccettiamo l'introduzione di penali del 2% per ritardi superiori a 5 giorni lavorativi.\nProponiamo un incontro giovedì 03/10. Confermate?\nCordiali saluti,\nUfficio Commerciale ConceriaToscana"
+    },
+    {
+        "subject": "RMA-7815 — reso multiplo da rivenditore",
+        "from_name": "Servizio Resi",
+        "from_email": "resi@passolibero-calzature.example.com",
+        "date": "2024-10-02 14:12:57",
+        "body_text": "Buongiorno,\napro la pratica RMA-7815 per un reso multiplo dal rivenditore di Firenze.\nDettaglio: 12 paia di ClubPasso Eleganza invendute della collezione precedente, in ottime condizioni, rientro previsto da accordo di reso a fine stagione.\nValore commerciale: 1.668,00 €. Si tratta di reso amministrativo, non per difetto.\nProcedo con il rientro a magazzino e l'emissione della nota di credito al rivenditore.\nChiedo conferma a Giulia per la ricollocazione delle paia a stock o per l'eventuale destinazione outlet.\nGrazie,\nUfficio Resi"
+    },
+    {
+        "subject": "Comunicazione interna: aggiornamento codici fornitore",
+        "from_name": "Giulia Ferrante",
+        "from_email": "g.ferrante@passolibero-calzature.example.com",
+        "date": "2024-10-03 09:27:18",
+        "body_text": "Ciao a tutti,\ndal prossimo ordine cambia la numerazione degli ordini fornitore.\nManteniamo il prefisso FRN-2024 ma riprendiamo la sequenza da FRN-2024-230 per evitare sovrapposizioni con gli ordini archiviati.\nVi ricordo di indicare SEMPRE il codice ordine in ogni comunicazione con ConceriaToscana e con i cuoifici, così la riconciliazione delle bolle in entrata e delle fatture resta pulita.\nAggiornate eventuali template e firme automatiche.\nPer dubbi scrivetemi direttamente.\nGrazie,\nGiulia"
+    },
+    {
+        "subject": "Sollecito interno: fatture da approvare entro venerdì",
+        "from_name": "Amministrazione PassoLibero",
+        "from_email": "amministrazione@passolibero-calzature.example.com",
+        "date": "2024-10-04 11:35:49",
+        "body_text": "Gentili responsabili,\nci sono cinque fatture fornitore in attesa di approvazione che scadono a inizio novembre.\nIn particolare:\n- 2024/4471 ConceriaToscana (ordine FRN-2024-220) — 10.906,80 €\n- 2024/4502 ConceriaToscana, al netto della nota di credito NC-2024-067\n- tre fatture suole dei cuoifici\nVi chiedo di completare la verifica della corrispondenza con le bolle in entrata ed approvarle entro venerdì 11/10, così rispettiamo i termini di pagamento a 60 giorni.\nLe fatture non approvate in tempo rischiano solleciti dai fornitori.\nGrazie,\nUfficio Amministrazione"
+    },
+    {
+        "subject": "Invito riunione qualità post-audit ConceriaToscana",
+        "from_name": "Marco Lippi",
+        "from_email": "m.lippi@passolibero-calzature.example.com",
+        "date": "2024-10-07 10:05:33",
+        "body_text": "Buongiorno,\ndopo l'audit del 30/09 propongo una riunione operativa per definire le azioni correttive con ConceriaToscana.\nQuando: mercoledì 09/10 ore 11:00 — Sala qualità.\nTemi:\n1. Verifica colore pellame con campione fisico al ricevimento\n2. Doppio controllo incollaggio suole sui lotti ClubPasso\n3. Tracciabilità lotti tramite codice bolla\n4. Calendario di follow-up trimestrale\nInvito Giulia per la parte acquisti e Stefano per l'accettazione merci.\nPortate i dati delle ultime non conformità.\nGrazie,\nMarco"
+    },
+    {
+        "subject": "Report KPI logistica in entrata — settembre 2024",
+        "from_name": "Stefano Marini",
+        "from_email": "s.marini@passolibero-calzature.example.com",
+        "date": "2024-10-08 16:44:21",
+        "body_text": "Buongiorno,\ncondivido i KPI della logistica in entrata di settembre.\nBolle ricevute: 22. Con anomalie (ammanchi/discrepanze): 4 (18%).\nTempo medio di accettazione e controllo per bancale: 38 minuti.\nColli mancanti totali: 5 (caso bolla 1185, poi recuperati).\nLead time medio ordini ConceriaToscana: 13 giorni contro i 10 concordati.\nNota positiva: nessun bancale danneggiato durante lo scarico.\nObiettivo ottobre: ridurre le anomalie sotto il 10% applicando la nuova procedura di accettazione.\nResto a disposizione per chiarimenti,\nStefano"
+    },
+    {
+        "subject": "RMA-7822 — reso fuori garanzia, valutazione",
+        "from_name": "Servizio Resi",
+        "from_email": "resi@passolibero-calzature.example.com",
+        "date": "2024-10-09 15:18:09",
+        "body_text": "Buongiorno,\napro la pratica RMA-7822 per un paio di ClubPasso Aero con usura della suola.\nIl cliente lamenta consumo eccessivo, ma l'acquisto risale a oltre 14 mesi fa: la garanzia è scaduta.\nL'usura appare compatibile con l'uso normale e non si rilevano difetti di produzione al controllo visivo.\nProposta: respingere il reso in garanzia ma offrire al cliente uno sconto del 15% su un nuovo acquisto come gesto commerciale.\nChiedo conferma prima di rispondere al cliente.\nGrazie,\nUfficio Resi"
+    },
+    {
+        "subject": "Newsletter interna PassoLibero — ottobre 2024",
+        "from_name": "Comunicazione Interna",
+        "from_email": "comunicazione@passolibero-calzature.example.com",
+        "date": "2024-10-10 09:00:00",
+        "body_text": "Cari colleghi,\nbenvenuti alla newsletter interna di ottobre.\nNovità del mese:\n- Nuova procedura di accettazione merci attiva dal 16/09: primi risultati positivi sulle anomalie in entrata.\n- ConceriaToscana ha accettato penali sui ritardi e assegnato un referente dedicato ai nostri riassortimenti.\n- Avviato il piano di audit annuale fornitori: prossimo step la verifica colore pellame.\n- I resi RMA di settembre in lieve aumento, sotto monitoraggio per i lotti ClubPasso Eleganza.\nUn ringraziamento al team magazzino per la gestione impeccabile della discrepanza sulla bolla 1185.\nA presto,\nUfficio Comunicazione"
+    },
+    {
+        "subject": "Conferma spedizione lotto sostitutivo suole",
+        "from_name": "Logistica ConceriaToscana",
+        "from_email": "logistica@fornitore.example.com",
+        "date": "2024-10-11 11:52:40",
+        "body_text": "Spettabile PassoLibero Calzature,\nconfermiamo la spedizione del lotto sostitutivo relativo alla nota di credito NC-2024-067.\nContenuto: 18 paia di suole per modello ClubPasso Eleganza, controllate due volte sul reparto incollaggio.\nBolla di consegna: n. 1196. Vettore: corriere espresso. Consegna prevista: 14/10 mattina.\nAbbiamo aggiunto un campione fisico della tonalità cuoio chiaro per il pellame conciato al vegetale, così potete verificarlo al ricevimento del prossimo ordine.\nRestiamo a disposizione,\nUfficio Logistica ConceriaToscana"
+    },
+    {
+        "subject": "Escalation interna: ritardo approvazione fatture",
+        "from_name": "Amministrazione PassoLibero",
+        "from_email": "amministrazione@passolibero-calzature.example.com",
+        "date": "2024-10-14 10:22:15",
+        "body_text": "Gentili Davide e Giulia,\nnonostante il sollecito della scorsa settimana, due fatture ConceriaToscana risultano ancora non approvate.\nLa 2024/4471 scade il 02/11 e senza approvazione rischiamo un sollecito formale e l'incrinatura del rapporto proprio mentre stiamo rinegoziando le penali.\nVi chiedo di sbloccare la verifica entro domani. Se ci sono discrepanze con le bolle 1180 e 1183, segnalatemele subito così le gestisco con il fornitore.\nQuesta è la seconda escalation: la terza la porto in direzione.\nGrazie per la collaborazione,\nUfficio Amministrazione"
+    },
+    {
+        "subject": "Verbale audit fornitore ConceriaToscana del 09/10",
+        "from_name": "Marco Lippi",
+        "from_email": "m.lippi@passolibero-calzature.example.com",
+        "date": "2024-10-15 14:30:52",
+        "body_text": "Buongiorno a tutti,\ncondivido il verbale della riunione qualità post-audit con le azioni correttive concordate.\nAzioni a carico del fornitore:\n1. Doppio controllo incollaggio su ogni lotto suole ClubPasso.\n2. Allegare sempre campione colore fisico al pellame conciato al vegetale.\n3. Indicare lotto e codice bolla su ogni documento.\nAzioni interne:\n1. Verifica colore al ricevimento con campione di riferimento.\n2. Quarantena automatica per qualsiasi non conformità.\nFollow-up: riverifica a gennaio 2025. Il fornitore ha mostrato collaborazione.\nDettaglio completo in allegato.\nMarco"
+    },
+    {
+        "subject": "RMA-7830 — reso per taglia, riammissione a stock",
+        "from_name": "Servizio Resi",
+        "from_email": "resi@passolibero-calzature.example.com",
+        "date": "2024-10-17 16:05:38",
+        "body_text": "Buongiorno,\napro la pratica RMA-7830 per il reso di un paio di ClubPasso Brezza taglia 39.\nMotivo: taglia errata, il cliente desidera la 40. Prodotto integro, scatola originale.\nProcedo con il cambio taglia: spedisco la 40 e riammetto la 39 a stock dopo verifica del controllo qualità.\nNessun costo a carico del cliente trattandosi del primo cambio.\nLa pratica si chiuderà al rientro del paio reso, previsto entro il 22/10.\nAggiorno il livello scorte del modello Brezza di conseguenza.\nGrazie,\nUfficio Resi"
+    },
+    {
+        "subject": "Report avanzamento ordini fornitore — metà ottobre",
+        "from_name": "Giulia Ferrante",
+        "from_email": "g.ferrante@passolibero-calzature.example.com",
+        "date": "2024-10-18 11:40:07",
+        "body_text": "Buongiorno a tutti,\nstato degli ordini fornitore aperti a metà ottobre.\n- FRN-2024-225 (pellame Brezza): bolla 1190 rifiutata per tonalità, in attesa lotto sostitutivo corretto.\n- FRN-2024-230 (suole Aero): confermato, consegna prevista 24/10.\n- Lotto sostitutivo NC-2024-067 (suole Eleganza): consegnato il 14/10 con bolla 1196, controllo qualità superato.\nIl piano di rientro di ConceriaToscana sta funzionando: gli ultimi due ordini sono arrivati nei tempi.\nPropongo di formalizzare le penali nel prossimo accordo quadro.\nAggiornamenti la prossima settimana.\nGiulia"
+    },
+    {
+        "subject": "Reclamo cliente: ritardo sostituzione RMA-7788",
+        "from_name": "Antonio Greco",
+        "from_email": "antonio.greco@cliente.example.com",
+        "date": "2024-10-21 18:50:24",
+        "body_text": "Buonasera,\nho aperto la pratica RMA-7788 oltre un mese fa per un paio di ClubPasso Brezza con cucitura scucita, ma non ho ancora ricevuto la sostituzione promessa.\nMi era stato detto che il pezzo sarebbe arrivato entro due settimane. Sono rimasto senza scarpe e senza riscontri.\nVi chiedo di verificare urgentemente lo stato della pratica e di comunicarmi una data certa di spedizione, altrimenti chiederò il rimborso completo.\nResto in attesa di una risposta rapida.\nCordiali saluti,\nAntonio Greco"
+    },
+    {
+        "subject": "Comunicazione interna: inventario fisico fine ottobre",
+        "from_name": "Stefano Marini",
+        "from_email": "s.marini@passolibero-calzature.example.com",
+        "date": "2024-10-22 09:15:11",
+        "body_text": "Buongiorno a tutti,\nvenerdì 25/10 effettuiamo l'inventario fisico di fine mese.\nIstruzioni:\n1. Bloccare i movimenti di magazzino dalle 14:00 in poi.\n2. Concludere tutte le accettazioni delle bolle in entrata entro le 13:00.\n3. Sospendere temporaneamente le riammissioni dei resi RMA a stock.\nFocus particolare sulle scorte dei modelli ClubPasso Aero, Eleganza e Brezza e sul pellame conciato al vegetale residuo.\nServono due persone in più per la conta: chi è disponibile mi scriva entro mercoledì.\nGrazie,\nStefano"
+    },
+    {
+        "subject": "Re: Reclamo cliente: ritardo sostituzione RMA-7788",
+        "from_name": "Servizio Resi",
+        "from_email": "resi@passolibero-calzature.example.com",
+        "date": "2024-10-23 10:08:46",
+        "body_text": "Gentile Sig. Greco,\nci scusiamo per il ritardo sulla pratica RMA-7788.\nLa sostituzione del suo ClubPasso Brezza taglia 41 era rimasta in sospeso perché il modello era temporaneamente sotto soglia a magazzino, in attesa del riassortimento.\nIl suo paio è ora pronto e parte oggi stesso con consegna prevista entro 2-3 giorni lavorativi. Le riconosciamo inoltre un buono sconto del 10% per il disagio.\nLe inviamo a parte il codice di tracciamento.\nGrazie per la pazienza e ci scusiamo ancora.\nUfficio Resi PassoLibero"
+    },
+    {
+        "subject": "Riepilogo contabile fornitori — ottobre 2024",
+        "from_name": "Amministrazione PassoLibero",
+        "from_email": "amministrazione@passolibero-calzature.example.com",
+        "date": "2024-11-04 11:22:33",
+        "body_text": "Buongiorno,\nriepilogo della situazione contabile fornitori a inizio novembre.\nFatture pagate a ottobre: 7, per un totale di 41.280,00 €.\nFattura 2024/4471 ConceriaToscana: saldata il 31/10, entro la scadenza del 02/11.\nNota di credito NC-2024-067: correttamente compensata sulla 2024/4502.\nFatture in scadenza a novembre: 4, di cui due per suole dei cuoifici.\nNessun sollecito ricevuto questo mese: il rapporto con i fornitori è tornato regolare.\nResto a disposizione per la verifica dei singoli movimenti.\nUfficio Amministrazione"
+    },
+    {
+        "subject": "Invito: riunione chiusura stagione e bilancio fornitori",
+        "from_name": "Davide Conti",
+        "from_email": "d.conti@passolibero-calzature.example.com",
+        "date": "2024-11-18 15:40:19",
+        "body_text": "Buongiorno a tutti,\nvi invito alla riunione di chiusura stagione e bilancio fornitori.\nQuando: giovedì 28/11 ore 10:00 — Sala riunioni piano 1.\nOrdine del giorno:\n1. Bilancio puntualità consegne ConceriaToscana dopo il piano di rientro\n2. Resoconto non conformità e resi RMA dell'anno sui modelli ClubPasso\n3. Rinnovo accordo quadro con penali sui ritardi\n4. Pianificazione ordini e riassortimenti per il primo trimestre 2025\nGiulia prepara il quadro ordini, Marco i dati qualità, Stefano i KPI logistici.\nConfermate la presenza entro lunedì.\nGrazie,\nDavide"
+    },
+    {
+        "subject": "Report annuale resi e qualità — bozza per riunione",
+        "from_name": "Marco Lippi",
+        "from_email": "m.lippi@passolibero-calzature.example.com",
+        "date": "2024-12-10 16:18:55",
+        "body_text": "Buongiorno a tutti,\nin vista della chiusura anno allego la bozza del report annuale resi e qualità.\nDati salienti 2024:\n- Lotti ispezionati: 192, non conformità 6,8% (in calo dopo l'audit ConceriaToscana).\n- Pratiche RMA totali: 348, tasso di reso sul venduto 2,1%.\n- Causa principale resi: cambi taglia, seguiti dai difetti di lotto sui modelli ClubPasso Eleganza nel terzo trimestre, poi risolti.\n- Penali fornitore applicate: 2, per ritardi superiori a 5 giorni.\nLe azioni correttive sul controllo qualità del pellame conciato al vegetale hanno dato risultati concreti.\nLeggetela prima della riunione di bilancio e mandatemi correzioni.\nGrazie e buon lavoro,\nMarco"
+    }
+]

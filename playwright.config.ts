@@ -47,12 +47,15 @@ export default defineConfig({
      * Supported since Playwright 1.28; the project pins ^1.59.
      */
     snapshotPathTemplate: '{testDir}/__visual__/{testFilePath}/{arg}-{projectName}-{platform}{ext}',
-    // Retries kept at 0 in CI while the suite is being stabilised on
-    // the new pgvector-enabled Playwright job — a flaky test can
-    // compound to hours of runner time with retries:2 (60 tests * 90s
-    // worst case). Once green and stable, bump back to 2 for nightly
-    // runs.
-    retries: process.env.CI ? 0 : 0,
+    // CI gets ONE retry (v8.24): the suite is stable, but a small set of
+    // streaming / admin-kb-edit specs flake intermittently under the
+    // single-worker CI job (timing on SSE + CodeMirror), which forced a
+    // manual `gh run rerun --failed` on nearly every PR's final gate.
+    // retries:1 lets Playwright auto-recover a genuine flake in-run while
+    // still surfacing a real regression (which fails twice). We stay at 1
+    // (not 2) to bound worst-case runner time on the single-worker job.
+    // Local stays 0 for fast, honest feedback.
+    retries: process.env.CI ? 1 : 0,
     workers: process.env.CI ? 1 : undefined,
     // Per-test timeout. Default is 30s; tighter so a stuck test
     // (e.g., page.goto blocking on a slow CI server response) fails

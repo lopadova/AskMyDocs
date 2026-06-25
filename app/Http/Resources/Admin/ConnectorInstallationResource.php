@@ -15,10 +15,12 @@ use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
  * (R: route-contracts-match-fe-shape); the `configure` response merges one extra
  * sibling key, `redirect_to` (xoauth2 only), onto these fields.
  *
- * Security: NEVER exposes credentials. `config_json` is deliberately omitted — it
- * can carry connection metadata (host/username) but is not part of the admin
- * list/return contract, and the secret lives only in the encrypted vault, never
- * here.
+ * Security: NEVER exposes credentials. The bulk of `config_json` (connection
+ * host/username) is deliberately omitted; the secret lives only in the encrypted
+ * vault, never here. v8.24 surfaces ONLY the picker-owned sub-keys
+ * (`folders.include` + `date_window_days`) so the edit form can pre-fill them —
+ * kept in lockstep with {@see \App\Services\Admin\Connectors\ConnectorInstallationService::installationArray}
+ * (R27 additive).
  *
  * @mixin ConnectorInstallation
  */
@@ -29,6 +31,9 @@ final class ConnectorInstallationResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        $config = (array) ($this->config_json ?? []);
+        $include = (array) (($config['folders'] ?? [])['include'] ?? []);
+
         return [
             'id' => $this->id,
             // v8.20 — multi-account: `label` disambiguates the N accounts a
@@ -39,6 +44,9 @@ final class ConnectorInstallationResource extends JsonResource
             'status' => $this->status,
             'last_sync_at' => $this->last_sync_at?->toIso8601String(),
             'error' => $this->error_json,
+            // v8.24 — picker-owned connection settings (NEVER connection/secret).
+            'folders' => ['include' => array_values(array_map('strval', $include))],
+            'date_window_days' => isset($config['date_window_days']) ? (int) $config['date_window_days'] : null,
         ];
     }
 }
