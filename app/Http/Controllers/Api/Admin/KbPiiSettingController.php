@@ -89,7 +89,10 @@ final class KbPiiSettingController extends Controller
     {
         $data = $request->validated();
         $tenantId = $this->tenant->current();
-        $projectKey = (string) $data['project_key'];
+        // Trim so a padded key (e.g. "support ") matches the stored project_key
+        // and the before/after resolution compares the same scope — parity with
+        // the re-embed + MCP surfaces.
+        $projectKey = trim((string) $data['project_key']);
 
         // Capture the EFFECTIVE policy before the change so we can tell the
         // caller whether existing chunks/embeddings are now stale (a strategy or
