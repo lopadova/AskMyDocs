@@ -81,6 +81,73 @@ final class ConnectorEmailProbeTest extends TestCase
         $this->assertSame('rotta-logistics-1', $resp->json('data.folder'));
     }
 
+    public function test_falls_back_to_search_when_the_highest_uid_was_expunged(): void
+    {
+        // The newest UID (uidnext-1) can point at an expunged message (a gap at the
+        // top). The probe must then search for the newest UID still present rather
+        // than 503 on a reachable mailbox.
+        $admin = $this->makeSuperAdmin();
+        $message = $this->sampleMessage(98);
+
+        $client = new class(99, 98, $message) implements ImapClientInterface
+        {
+            public function __construct(
+                private readonly int $phantomUid,
+                private readonly int $presentUid,
+                private readonly ImapMessage $message,
+            ) {}
+
+            public function listMailboxes(): array
+            {
+                return ['INBOX'];
+            }
+
+            public function selectMailbox(string $name): MailboxState
+            {
+                // uidnext-1 = the phantom (expunged) UID.
+                return new MailboxState(uidValidity: 1, lastUid: $this->phantomUid);
+            }
+
+            public function searchUids(string $mailbox, ?Carbon $since, ?int $sinceUid): array
+            {
+                return [$this->presentUid];
+            }
+
+            public function fetchMessage(string $mailbox, int $uid): ImapMessage
+            {
+                if ($uid === $this->phantomUid) {
+                    throw new \RuntimeException('UID '.$uid.' has been expunged');
+                }
+
+                return $this->message;
+            }
+
+            public function ping(): bool
+            {
+                return true;
+            }
+
+            public function close(): void {}
+        };
+        $factory = new class($client) implements ImapClientFactoryInterface
+        {
+            public function __construct(private readonly ImapClientInterface $client) {}
+
+            public function make(array $connection, string $secret, string $authMode): ImapClientInterface
+            {
+                return $this->client;
+            }
+        };
+        $this->app->instance(ImapClientFactoryInterface::class, $factory);
+
+        $installation = $this->makeImapInstallation('default');
+
+        $resp = $this->actingAs($admin)->postJson("/api/admin/connectors/{$installation->id}/test-fetch");
+
+        $resp->assertOk();
+        $this->assertSame(98, $resp->json('data.message.uid'));
+    }
+
     public function test_empty_folder_is_a_valid_200_with_null_message(): void
     {
         // R43 — the OTHER state: a reachable but empty mailbox is a success, not a

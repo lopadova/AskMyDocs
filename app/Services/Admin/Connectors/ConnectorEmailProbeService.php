@@ -8,6 +8,7 @@ use App\Support\TenantContext;
 use Padosoft\AskMyDocsConnectorBase\Auth\OAuthCredentialVault;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
 use Padosoft\AskMyDocsConnectorImap\Imap\ImapClientFactoryInterface;
+use Padosoft\AskMyDocsConnectorImap\Imap\ImapClientInterface;
 use Padosoft\AskMyDocsConnectorImap\Imap\ImapMessage;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
@@ -100,17 +101,10 @@ final class ConnectorEmailProbeService
         $client = $this->factory->make($connection, $secret, $authMode);
 
         try {
-            $state = $client->selectMailbox($folder);
-            $newestUid = $state->lastUid;
+            $message = $this->fetchNewest($client, $folder);
 
-            if ($newestUid <= 0) {
-                // Reachable but empty folder — a valid 200, not a failure.
-                return ['folder' => $folder, 'message' => null];
-            }
-
-            $message = $client->fetchMessage($folder, $newestUid);
-
-            return ['folder' => $folder, 'message' => $this->preview($message)];
+            // A reachable but empty folder is a valid 200, not a failure.
+            return ['folder' => $folder, 'message' => $message === null ? null : $this->preview($message)];
         } catch (Throwable $e) {
             // R14 — surface "couldn't reach / read the mailbox" distinctly; never
             // let it look like an empty-but-successful probe.
@@ -121,6 +115,36 @@ final class ConnectorEmailProbeService
         } finally {
             $client->close();
         }
+    }
+
+    /**
+     * Fetch the newest message of a folder, or null when the folder is empty.
+     *
+     * Fast path: SELECT reports `uidnext`, so the highest existing UID is
+     * `uidnext - 1` — one round-trip, no full listing. Fallback: if that UID was
+     * expunged (a gap at the top), an explicit UID search finds the newest message
+     * actually present, so a reachable mailbox never degrades to a misleading 503.
+     */
+    private function fetchNewest(ImapClientInterface $client, string $folder): ?ImapMessage
+    {
+        $state = $client->selectMailbox($folder);
+
+        if ($state->lastUid > 0) {
+            try {
+                return $client->fetchMessage($folder, $state->lastUid);
+            } catch (Throwable) {
+                // The highest UID points at an expunged message — fall through to a
+                // search for the newest UID still present. A genuine transport error
+                // re-throws from the search below and surfaces as a 503.
+            }
+        }
+
+        $uids = $client->searchUids($folder, null, null);
+        if ($uids === []) {
+            return null;
+        }
+
+        return $client->fetchMessage($folder, max($uids));
     }
 
     /**
