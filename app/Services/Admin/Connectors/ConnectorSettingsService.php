@@ -87,9 +87,11 @@ final class ConnectorSettingsService
     /**
      * Merge a validated settings payload (a nested partial of config_json) into the
      * installation's config_json. Only schema-declared fields that are PRESENT in
-     * the payload are written, each overwritten WHOLE via data_set so a list value
+     * the payload are touched, each overwritten WHOLE via data_set so a list value
      * is replaced (not element-merged) and config the operator never sees
-     * (connection/auth_mode) is preserved untouched.
+     * (connection/auth_mode) is preserved untouched. A PRESENT-but-null value CLEARS
+     * the override (the key is removed, not set to null) so the connector default
+     * applies again.
      *
      * @param  array<string,mixed>  $settings  nested partial of config_json
      * @return array<string,mixed>  the next config_json
@@ -103,9 +105,20 @@ final class ConnectorSettingsService
             if ($name === '') {
                 continue;
             }
-            if (Arr::has($settings, $name)) {
-                data_set($config, $name, data_get($settings, $name));
+            if (! Arr::has($settings, $name)) {
+                continue;
             }
+            $value = data_get($settings, $name);
+            if ($value === null) {
+                // null = clear the override back to the connector default: REMOVE the
+                // key entirely (not write an explicit null) so currentSettings() falls
+                // back to the schema default and the connector reads its own default —
+                // parity with the legacy applyConfigJsonEdits() unset-on-null path.
+                Arr::forget($config, $name);
+
+                continue;
+            }
+            data_set($config, $name, $value);
         }
 
         return $config;

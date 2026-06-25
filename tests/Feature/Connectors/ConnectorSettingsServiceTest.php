@@ -88,4 +88,21 @@ final class ConnectorSettingsServiceTest extends TestCase
         $this->assertSame(10, data_get($next, 'date_window_days'));
         $this->assertArrayNotHasKey('not_a_setting', $next);
     }
+
+    public function test_merge_null_clears_the_override_back_to_default(): void
+    {
+        $inst = $this->imap(['date_window_days' => 90]);
+
+        // A present-but-null value must REMOVE the key (clear → connector default),
+        // not leave an explicit null — otherwise currentSettings() can't fall back
+        // to the schema default.
+        $next = $this->service()->mergeIntoConfig($inst, ['date_window_days' => null]);
+
+        $this->assertArrayNotHasKey('date_window_days', $next);
+
+        // And currentSettings on the cleared row reports the schema default again.
+        $inst->config_json = $next;
+        $current = $this->service()->currentSettings($inst);
+        $this->assertNotNull(data_get($current, 'date_window_days'));
+    }
 }
