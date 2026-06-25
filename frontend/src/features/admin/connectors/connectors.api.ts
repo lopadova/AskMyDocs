@@ -111,8 +111,12 @@ export interface UpdateInstallationParams {
      * non-excluded folders). `undefined` leaves it untouched.
      */
     folders?: { include: string[] };
-    /** v8.24 — sync look-back window in days. `undefined` leaves it untouched. */
-    date_window_days?: number;
+    /**
+     * v8.24 — sync look-back window in days. A number sets it; an explicit `null`
+     * CLEARS the override back to the connector default (the backend unsets the
+     * config_json key); `undefined` leaves it untouched (key omitted from PATCH).
+     */
+    date_window_days?: number | null;
 }
 
 /** v8.24 — live IMAP folder list for the connection-settings picker. */

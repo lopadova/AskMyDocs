@@ -82,6 +82,24 @@ export function FolderSettingsForm({
 
     const liveSet = useMemo(() => new Set(live), [live]);
 
+    // Collision-free DOM ids/testids per folder. slug() is lossy — two distinct
+    // IMAP paths ("Foo-Bar" vs "Foo Bar") can map to the same slug, which would
+    // emit duplicate ids, break label/checkbox association and make getByTestId
+    // ambiguous. Unique slugs keep their bare form (grep-/test-friendly); only a
+    // genuine collision gets a numeric suffix.
+    const idByPath = useMemo(() => {
+        const seen = new Map<string, number>();
+        const map = new Map<string, string>();
+        for (const path of options) {
+            const base = slug(path);
+            const n = seen.get(base) ?? 0;
+            seen.set(base, n + 1);
+            const unique = n === 0 ? base : `${base}-${n + 1}`;
+            map.set(path, `connector-${connectorKey}-folders-form-folder-${unique}`);
+        }
+        return map;
+    }, [options, connectorKey]);
+
     const fetchState: 'loading' | 'error' | 'empty' | 'ready' = foldersQuery.isLoading
         ? 'loading'
         : foldersQuery.isError
@@ -222,7 +240,7 @@ export function FolderSettingsForm({
                             }}
                         >
                             {options.map((path) => {
-                                const id = `connector-${connectorKey}-folders-form-folder-${slug(path)}`;
+                                const id = idByPath.get(path) ?? `connector-${connectorKey}-folders-form-folder-${slug(path)}`;
                                 const missing = !liveSet.has(path);
                                 return (
                                     <li key={path} style={{ display: 'flex' }}>

@@ -69,10 +69,11 @@ final class ImapFolderListingService
         $authMode = (string) ($config['auth_mode'] ?? 'basic');
         $secret = (string) ($this->vault->getAccessToken($installation->id) ?? '');
 
+        $client = null;
         try {
             $client = $this->factory->make($connection, $secret, $authMode);
-            $folders = $client->listMailboxes();
-            $client->close();
+
+            return array_values(array_map('strval', $client->listMailboxes()));
         } catch (Throwable $e) {
             // R14 — surface "couldn't reach the mailbox" as a distinct failure;
             // never let it look like an empty-but-successful list.
@@ -80,8 +81,16 @@ final class ImapFolderListingService
                 "Impossibile elencare le cartelle IMAP: {$e->getMessage()}",
                 previous: $e,
             );
+        } finally {
+            // Always release the socket — even when listMailboxes() throws — so a
+            // failed listing can't leak a connection between requests.
+            if ($client !== null) {
+                try {
+                    $client->close();
+                } catch (Throwable) {
+                    // Best-effort close; never mask the real outcome above.
+                }
+            }
         }
-
-        return array_values(array_map('strval', $folders));
     }
 }

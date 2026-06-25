@@ -216,8 +216,9 @@ export function ConnectorsView() {
             await updateInstallation.mutateAsync({
                 installationId: target.id,
                 folders: { include: values.include },
-                // null = leave the connector default window untouched (omit the key).
-                date_window_days: values.dateWindowDays ?? undefined,
+                // null = clear the override back to the connector default (the
+                // backend unsets config_json.date_window_days); a number sets it.
+                date_window_days: values.dateWindowDays,
             });
             setModal((cur) => (cur?.kind === 'folders' && cur.account.id === target.id ? null : cur));
             toast.success('Connection settings saved.', 'toast-connector-folders-saved');

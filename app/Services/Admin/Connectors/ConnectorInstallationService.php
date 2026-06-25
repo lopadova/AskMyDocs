@@ -390,7 +390,13 @@ final class ConnectorInstallationService
         }
 
         if ($hasWindow) {
-            $config['date_window_days'] = (int) $attrs['date_window_days'];
+            // null = clear the override back to the connector default (remove the
+            // key) — NOT coerce to 0, which would be a real "0-day window".
+            if ($attrs['date_window_days'] === null) {
+                unset($config['date_window_days']);
+            } else {
+                $config['date_window_days'] = (int) $attrs['date_window_days'];
+            }
         }
 
         return $config;

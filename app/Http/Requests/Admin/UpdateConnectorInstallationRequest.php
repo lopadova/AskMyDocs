@@ -48,17 +48,49 @@ final class UpdateConnectorInstallationRequest extends FormRequest
         $folders = $this->input('folders');
         if (is_array($folders) && array_key_exists('include', $folders)) {
             $include = is_array($folders['include']) ? $folders['include'] : [];
-            // Trim strings + drop blank entries (the global TrimStrings /
-            // ConvertEmptyStringsToNull middleware already turns "  " into null) +
-            // dedupe. Other non-string entries are deliberately KEPT so the
-            // `folders.include.* => string` rule rejects them (422) instead of
-            // being silently swallowed here (R14).
-            $folders['include'] = array_values(array_unique(array_filter(
-                array_map(static fn ($v) => is_string($v) ? trim($v) : $v, $include),
-                static fn ($v) => $v !== '' && $v !== null,
-            )));
+            $folders['include'] = $this->normalizeIncludePaths($include);
             $this->merge(['folders' => $folders]);
         }
+    }
+
+    /**
+     * Trim + drop-blank + dedupe ONLY string entries, preserving any non-string
+     * element verbatim so the `folders.include.* => string` rule can reject it
+     * (422) instead of it being silently swallowed (R14). A manual loop is used
+     * deliberately over `array_unique()`, which (default SORT_STRING) would emit
+     * an "Array to string conversion" warning before validation if a nested
+     * array/object slipped into the payload (R19).
+     *
+     * @param  array<int|string, mixed>  $include
+     * @return list<mixed>
+     */
+    private function normalizeIncludePaths(array $include): array
+    {
+        $seen = [];
+        $out = [];
+        foreach ($include as $entry) {
+            // null = a blank entry the global TrimStrings/ConvertEmptyStringsToNull
+            // middleware already collapsed (e.g. "  ") — drop it silently, same as
+            // a blank string. Other non-strings (int, nested array, bool) are KEPT
+            // verbatim so the `folders.include.* => string` rule rejects them (422)
+            // instead of being swallowed (R14).
+            if ($entry === null) {
+                continue;
+            }
+            if (! is_string($entry)) {
+                $out[] = $entry; // keep for the validator to 422
+
+                continue;
+            }
+            $trimmed = trim($entry);
+            if ($trimmed === '' || isset($seen[$trimmed])) {
+                continue;
+            }
+            $seen[$trimmed] = true;
+            $out[] = $trimmed;
+        }
+
+        return $out;
     }
 
     /**
@@ -99,7 +131,10 @@ final class UpdateConnectorInstallationRequest extends FormRequest
             'folders' => ['sometimes', 'array'],
             'folders.include' => ['sometimes', 'array', 'max:200'],
             'folders.include.*' => ['string', 'distinct', 'min:1', 'max:255'],
-            'date_window_days' => ['sometimes', 'integer', 'min:0', 'max:3650'],
+            // nullable: an explicit null CLEARS the override back to the connector
+            // default (the service unsets the config_json key); an omitted key is
+            // left unchanged (PATCH).
+            'date_window_days' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:3650'],
         ];
     }
 }

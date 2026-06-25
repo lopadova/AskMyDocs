@@ -653,6 +653,62 @@ final class ConnectorAdminControllerTest extends TestCase
             ->assertJsonValidationErrors(['folders.include.0']);
     }
 
+    public function test_update_rejects_a_nested_array_folder_path_without_a_warning(): void
+    {
+        // R19 — a nested array in include must 422 cleanly. The old
+        // array_unique() normalization would emit an "Array to string conversion"
+        // warning here BEFORE validation; the manual normalizeIncludePaths() loop
+        // preserves the non-string for the validator to reject. PHPUnit fails the
+        // test if any warning is emitted, so a green run proves no warning fired.
+        $admin = $this->makeSuperAdmin();
+        $installation = ConnectorInstallation::create([
+            'tenant_id' => 'default',
+            'connector_name' => 'imap',
+            'label' => 'rotta-1',
+            'status' => ConnectorInstallation::STATUS_ACTIVE,
+            'created_by' => $admin->id,
+        ]);
+
+        $this->actingAs($admin)
+            ->patchJson(
+                "/api/admin/connectors/{$installation->id}",
+                ['folders' => ['include' => ['INBOX', ['nested']]]],
+            )
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['folders.include.1']);
+    }
+
+    public function test_update_clears_date_window_with_null_back_to_connector_default(): void
+    {
+        // R43 — the OTHER state: an explicit null CLEARS the override (the key is
+        // removed from config_json) rather than coercing to a real 0-day window.
+        $admin = $this->makeSuperAdmin();
+        $installation = ConnectorInstallation::create([
+            'tenant_id' => 'default',
+            'connector_name' => 'imap',
+            'label' => 'rotta-1',
+            'config_json' => [
+                'connection' => ['host' => 'imap.example.test'],
+                'date_window_days' => 120,
+            ],
+            'status' => ConnectorInstallation::STATUS_ACTIVE,
+            'created_by' => $admin->id,
+        ]);
+
+        $resp = $this->actingAs($admin)->patchJson(
+            "/api/admin/connectors/{$installation->id}",
+            ['date_window_days' => null],
+        );
+
+        $resp->assertOk();
+        $this->assertNull($resp->json('data.date_window_days'));
+
+        $config = $installation->fresh()->config_json;
+        $this->assertArrayNotHasKey('date_window_days', $config);
+        // unrelated config survives the clear.
+        $this->assertSame('imap.example.test', $config['connection']['host']);
+    }
+
     public function test_index_exposes_folders_include_and_date_window(): void
     {
         // Read surface (R44 MCP/HTTP parity): the index reports the picker-owned
