@@ -12,7 +12,9 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
+use Padosoft\AskMyDocsConnectorBase\ConnectorRegistry;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorCredential;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
 use Padosoft\AskMyDocsConnectorImap\Imap\ImapClientFactoryInterface;
@@ -187,6 +189,60 @@ final class ConnectorEmailProbeTest extends TestCase
 
         $resp->assertStatus(503);
         $this->assertStringContainsString('credential', strtolower((string) $resp->json('error')));
+    }
+
+    public function test_xoauth2_account_with_an_expired_token_is_refreshed_not_treated_as_missing(): void
+    {
+        // Regression guard: the probe must resolve the secret through the connector's
+        // refreshTokenIfExpired() — NOT the raw vault token. For an xoauth2 account
+        // whose access token has expired, getAccessToken() returns null; reading it
+        // directly would 503 "no credentials" for a valid Gmail/M365 mailbox.
+        config([
+            'connectors.providers.imap.xoauth2.google' => [
+                'token_url' => 'https://oauth2.googleapis.com/token',
+                'client_id' => 'cid',
+                'client_secret' => 'csecret',
+            ],
+        ]);
+        $admin = $this->makeSuperAdmin();
+        $this->bindImapFactory(lastUid: 5, message: $this->sampleMessage(5));
+
+        $installation = ConnectorInstallation::create([
+            'tenant_id' => 'default',
+            'connector_name' => 'imap',
+            'label' => 'gmail-1',
+            'project_key' => null,
+            'config_json' => [
+                'auth_mode' => 'xoauth2',
+                'xoauth2_provider' => 'google',
+                'connection' => ['username' => 'ops@prometeo.test'],
+                'folders' => ['include' => []],
+            ],
+            'status' => ConnectorInstallation::STATUS_ACTIVE,
+            'created_by' => $admin->id,
+        ]);
+        // Access token already expired; refresh token still present.
+        ConnectorCredential::create([
+            'tenant_id' => 'default',
+            'connector_installation_id' => $installation->id,
+            'encrypted_access_token' => Crypt::encryptString('stale-access'),
+            'encrypted_refresh_token' => Crypt::encryptString('refresh-token'),
+            'expires_at' => Carbon::parse('2026-06-01T00:00:00Z'),
+        ]);
+
+        Http::fake([
+            'oauth2.googleapis.com/token' => Http::response([
+                'access_token' => 'fresh-xoauth-token',
+                'expires_in' => 3600,
+            ], 200),
+        ]);
+
+        $resp = $this->actingAs($admin)->postJson("/api/admin/connectors/{$installation->id}/test-fetch");
+
+        $resp->assertOk();
+        $this->assertSame(5, $resp->json('data.message.uid'));
+        // The probe refreshed via the connector rather than 503-ing on the expired token.
+        Http::assertSent(fn ($request) => str_contains($request->url(), 'oauth2.googleapis.com/token'));
     }
 
     public function test_non_imap_connector_is_404(): void
@@ -374,5 +430,7 @@ final class ConnectorEmailProbeTest extends TestCase
         };
 
         $this->app->instance(ImapClientFactoryInterface::class, $factory);
+        // Rebuild the connector (singleton-cached) so it picks up the fake factory.
+        $this->app->forgetInstance(ConnectorRegistry::class);
     }
 }

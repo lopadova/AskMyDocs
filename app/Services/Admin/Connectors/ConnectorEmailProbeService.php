@@ -5,7 +5,8 @@ declare(strict_types=1);
 namespace App\Services\Admin\Connectors;
 
 use App\Support\TenantContext;
-use Padosoft\AskMyDocsConnectorBase\Auth\OAuthCredentialVault;
+use Padosoft\AskMyDocsConnectorBase\BaseConnector;
+use Padosoft\AskMyDocsConnectorBase\ConnectorRegistry;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
 use Padosoft\AskMyDocsConnectorImap\Imap\ImapClientFactoryInterface;
 use Padosoft\AskMyDocsConnectorImap\Imap\ImapClientInterface;
@@ -22,9 +23,11 @@ use Throwable;
  * actually work end-to-end (more than the `health()` ping, which only NOOPs).
  *
  * Why host-side instead of a connector contract: the installed connector packages
- * predate a "fetch sample" capability, so — exactly like the v8.24 folder-picker
- * workaround did — this rebuilds the IMAP client from the connector's own
- * {@see ImapClientFactoryInterface} + the {@see OAuthCredentialVault} secret. It is
+ * predate a "fetch sample" capability, so this rebuilds the IMAP client from the
+ * connector's own {@see ImapClientFactoryInterface}. The credential, though, is
+ * resolved through the connector's {@see BaseConnector::refreshTokenIfExpired()}
+ * (NOT the raw vault token) so an xoauth2 account whose access token has expired is
+ * refreshed first — the same correctness the v8.25 folder picker moved to. It is
  * IMAP-specific by design; other connectors are rejected with a 404.
  *
  * R30 — the lookup is tenant-scoped; a cross-tenant / unknown id 404s.
@@ -43,7 +46,7 @@ final class ConnectorEmailProbeService
     public function __construct(
         private readonly TenantContext $tenantContext,
         private readonly ImapClientFactoryInterface $factory,
-        private readonly OAuthCredentialVault $vault,
+        private readonly ConnectorRegistry $registry,
     ) {}
 
     /**
@@ -91,7 +94,7 @@ final class ConnectorEmailProbeService
         $authMode = (string) ($config['auth_mode'] ?? 'basic');
         $folder = $this->resolveFolder($config);
 
-        $secret = (string) ($this->vault->getAccessToken($installation->id) ?? '');
+        $secret = $this->resolveSecret($installation);
         if ($secret === '') {
             throw new ConnectorEmailProbeException(
                 'No stored credentials for this account — re-add it before testing.',
@@ -114,6 +117,34 @@ final class ConnectorEmailProbeService
             );
         } finally {
             $client->close();
+        }
+    }
+
+    /**
+     * Resolve the live IMAP secret via the connector — NOT the raw vault token.
+     *
+     * For basic auth this returns the stored app-password unchanged; for xoauth2 it
+     * refreshes an expired access token first (the vault returns null on an expired
+     * token, which would otherwise read as "no credentials"). A refresh failure is a
+     * real "can't run the probe" condition (R14) → ConnectorEmailProbeException → 503.
+     */
+    private function resolveSecret(ConnectorInstallation $installation): string
+    {
+        $connector = $this->registry->get($installation->connector_name);
+
+        try {
+            // Every connector extends BaseConnector, which owns refreshTokenIfExpired;
+            // the instanceof keeps the call type-safe (the probe is IMAP-gated above).
+            if ($connector instanceof BaseConnector) {
+                return (string) ($connector->refreshTokenIfExpired($installation->id) ?? '');
+            }
+
+            return '';
+        } catch (Throwable $e) {
+            throw new ConnectorEmailProbeException(
+                "Impossibile verificare le credenziali: {$e->getMessage()}",
+                previous: $e,
+            );
         }
     }
 

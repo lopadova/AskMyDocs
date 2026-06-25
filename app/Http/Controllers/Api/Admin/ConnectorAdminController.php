@@ -39,7 +39,8 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
  *
  * Every action is behind `auth:sanctum` + `can:manageConnectors`
  * (route group in `routes/api.php`). The Gate is wired in
- * `AppServiceProvider::registerConnectorGates()` to super-admin only.
+ * `AppServiceProvider::registerConnectorGates()` to admin + super-admin
+ * (widened from super-admin only in v8.24 so an admin can run the folder picker).
  *
  * R30 — every Eloquent query against `connector_installations`
  *       is scoped by `tenant_id = TenantContext::current()`.
