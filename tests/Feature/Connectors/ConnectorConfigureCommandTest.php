@@ -142,6 +142,20 @@ final class ConnectorConfigureCommandTest extends TestCase
         ])->assertExitCode(1);
     }
 
+    public function test_list_setting_enforces_the_same_item_length_as_http(): void
+    {
+        $inst = $this->imapInstallation();
+
+        // A >255-char list item must be rejected (parity with the HTTP .* max:255).
+        $this->artisan('connectors:configure', [
+            'installation' => $inst->id,
+            '--tenant' => 'default',
+            '--set' => ['folders.exclude='.str_repeat('a', 256)],
+        ])->assertExitCode(1);
+
+        $this->assertArrayNotHasKey('folders', (array) $inst->refresh()->config_json);
+    }
+
     public function test_empty_value_clears_a_nullable_select_back_to_default(): void
     {
         $inst = $this->imapInstallation();

@@ -130,12 +130,37 @@ final class ConnectorConfigureCommand extends Command
             'number' => $this->castNullableInt($name, $value),
             'checkbox' => $this->castBool($name, $value),
             'select' => $this->castNullableSelect($name, (array) ($field['options'] ?? []), $value),
-            'multiselect', 'tags' => array_values(array_unique(array_filter(
-                array_map('trim', $value === '' ? [] : explode(',', $value)),
-                static fn ($v) => $v !== '',
-            ))),
+            'multiselect', 'tags' => $this->castList($name, $value),
             default => $value,
         };
+    }
+
+    /**
+     * Cast a comma-separated list value, enforcing the SAME constraints the HTTP
+     * surface does (≤500 items, ≤255 chars each) so the CLI can't persist a list the
+     * API/UI would 422 (R44). Trims, drops blanks, dedupes.
+     *
+     * @return list<string>
+     *
+     * @throws \InvalidArgumentException when the list breaks a constraint
+     */
+    private function castList(string $name, string $value): array
+    {
+        $items = array_values(array_unique(array_filter(
+            array_map('trim', $value === '' ? [] : explode(',', $value)),
+            static fn ($v) => $v !== '',
+        )));
+
+        if (count($items) > 500) {
+            throw new \InvalidArgumentException("Too many values for setting '{$name}' (max 500).");
+        }
+        foreach ($items as $item) {
+            if (mb_strlen($item) > 255) {
+                throw new \InvalidArgumentException("A value for setting '{$name}' exceeds 255 characters.");
+            }
+        }
+
+        return $items;
     }
 
     /**
