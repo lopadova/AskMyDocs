@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "35a4a81f9ac32e47884ef50472ecd045",
+    "content-hash": "0cb3c974a6a1706558450d19bbd04710",
     "packages": [
         {
             "name": "aws/aws-crt-php",
@@ -2913,16 +2913,16 @@
         },
         {
             "name": "padosoft/askmydocs-connector-base",
-            "version": "v1.3.1",
+            "version": "v1.4.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/padosoft/askmydocs-connector-base.git",
-                "reference": "a00f8d031b9269d20e91d36913236aa9b5d2f538"
+                "reference": "1e23e6151eb89728e9ad7c04c706de79d91ca805"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/padosoft/askmydocs-connector-base/zipball/a00f8d031b9269d20e91d36913236aa9b5d2f538",
-                "reference": "a00f8d031b9269d20e91d36913236aa9b5d2f538",
+                "url": "https://api.github.com/repos/padosoft/askmydocs-connector-base/zipball/1e23e6151eb89728e9ad7c04c706de79d91ca805",
+                "reference": "1e23e6151eb89728e9ad7c04c706de79d91ca805",
                 "shasum": ""
             },
             "require": {
@@ -2991,10 +2991,10 @@
                 "rag"
             ],
             "support": {
-                "source": "https://github.com/padosoft/askmydocs-connector-base/tree/v1.3.1",
+                "source": "https://github.com/padosoft/askmydocs-connector-base/tree/v1.4.0",
                 "issues": "https://github.com/padosoft/askmydocs-connector-base/issues"
             },
-            "time": "2026-06-22T15:42:35+00:00"
+            "time": "2026-06-25T00:33:58+00:00"
         },
         {
             "name": "padosoft/askmydocs-connector-confluence",
@@ -3355,16 +3355,16 @@
         },
         {
             "name": "padosoft/askmydocs-connector-imap",
-            "version": "v1.3.0",
+            "version": "v1.4.2",
             "source": {
                 "type": "git",
                 "url": "https://github.com/padosoft/askmydocs-connector-imap.git",
-                "reference": "e62693bf29523ce4e60ac2711fb619dbfd15eff1"
+                "reference": "c235a101de852571a6aeba64d2a68381e86a4824"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/padosoft/askmydocs-connector-imap/zipball/e62693bf29523ce4e60ac2711fb619dbfd15eff1",
-                "reference": "e62693bf29523ce4e60ac2711fb619dbfd15eff1",
+                "url": "https://api.github.com/repos/padosoft/askmydocs-connector-imap/zipball/c235a101de852571a6aeba64d2a68381e86a4824",
+                "reference": "c235a101de852571a6aeba64d2a68381e86a4824",
                 "shasum": ""
             },
             "require": {
@@ -3373,7 +3373,7 @@
                 "illuminate/support": "^12.0|^13.0",
                 "league/html-to-markdown": "^5.1",
                 "nesbot/carbon": "^2.0|^3.0",
-                "padosoft/askmydocs-connector-base": "^1.3",
+                "padosoft/askmydocs-connector-base": "^1.4",
                 "php": "^8.3",
                 "webklex/php-imap": "^6.0"
             },
@@ -3423,10 +3423,10 @@
             ],
             "description": "IMAP email connector for AskMyDocs — ingest mailboxes (body, headers, attachments) as RAG knowledge.",
             "support": {
-                "source": "https://github.com/padosoft/askmydocs-connector-imap/tree/v1.3.0",
+                "source": "https://github.com/padosoft/askmydocs-connector-imap/tree/v1.4.2",
                 "issues": "https://github.com/padosoft/askmydocs-connector-imap/issues"
             },
-            "time": "2026-06-22T15:48:59+00:00"
+            "time": "2026-06-25T07:33:23+00:00"
         },
         {
             "name": "padosoft/askmydocs-connector-jira",

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\Admin;
 
+use App\Services\Admin\Connectors\ConnectorSettingsService;
 use App\Support\TenantContext;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -19,6 +20,14 @@ use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
  * sync whitelist; empty = sync all non-excluded folders) and
  * `date_window_days` (how far back to walk). Both land in `config_json` via a
  * read-modify-write in {@see \App\Services\Admin\Connectors\ConnectorInstallationService::updateMetadata}.
+ *
+ * v8.25 — also accepts the GENERIC `settings` object: a nested partial of
+ * config_json validated DYNAMICALLY against the connector's
+ * {@see \Padosoft\AskMyDocsConnectorBase\Contracts\SupportsConnectionSettings::connectionSettingsSchema()}
+ * (each field's type → its rule; e.g. a `multiselect`/`tags` field → an array of
+ * strings, a `number` → an integer). There is no connector-specific rule list
+ * here (R23): any connector that advertises a settings schema validates for free.
+ * The v8.24 `folders`/`date_window_days` keys stay for back-compat (R27).
  *
  * The `label` unique is scoped to (tenant, connector) and ignores the row
  * itself, so re-saving the same label is a no-op rather than a false collision.
@@ -112,7 +121,7 @@ final class UpdateConnectorInstallationRequest extends FormRequest
             return [];
         }
 
-        return [
+        $rules = [
             'label' => [
                 'sometimes', 'required', 'string', 'max:64',
                 'regex:/^[\pL\pN][\pL\pN _.-]*$/u',
@@ -135,6 +144,42 @@ final class UpdateConnectorInstallationRequest extends FormRequest
             // default (the service unsets the config_json key); an omitted key is
             // left unchanged (PATCH).
             'date_window_days' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:3650'],
+            // v8.25 — the generic settings object (a nested partial of config_json).
+            'settings' => ['sometimes', 'array'],
         ];
+
+        // Derive a rule per settings field from the connector's own schema (R23 —
+        // no connector-name branch). The field `name` is a dotted path, so the
+        // rule key nests under `settings` (e.g. 'settings.folders.include').
+        foreach (app(ConnectorSettingsService::class)->schemaFor($installation) as $field) {
+            $name = (string) ($field['name'] ?? '');
+            if ($name === '') {
+                continue;
+            }
+            $rules += $this->settingsFieldRules('settings.'.$name, $field);
+        }
+
+        return $rules;
+    }
+
+    /**
+     * Validation rules for one settings field, keyed by its nested path under
+     * `settings`. A list field (multiselect/tags) also gets a `.*` element rule.
+     *
+     * @param  array<string,mixed>  $field
+     * @return array<string, list<mixed>>
+     */
+    private function settingsFieldRules(string $key, array $field): array
+    {
+        return match ((string) ($field['type'] ?? 'text')) {
+            'multiselect', 'tags' => [
+                $key => ['sometimes', 'array', 'max:500'],
+                $key.'.*' => ['string', 'max:255'],
+            ],
+            'number' => [$key => ['sometimes', 'integer', 'min:0', 'max:1000000']],
+            'checkbox' => [$key => ['sometimes', 'boolean']],
+            'select' => [$key => ['sometimes', Rule::in(array_keys((array) ($field['options'] ?? [])))]],
+            default => [$key => ['sometimes', 'string', 'max:2000']],
+        };
     }
 }

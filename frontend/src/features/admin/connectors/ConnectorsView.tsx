@@ -5,7 +5,7 @@ import { toAdminError } from '../shared/errors';
 import { AccountMetaForm, type AccountMetaFormValues } from './AccountMetaForm';
 import { ConnectorCard } from './ConnectorCard';
 import { CredentialConnectorForm } from './CredentialConnectorForm';
-import { FolderSettingsForm, type FolderSettingsValues } from './FolderSettingsForm';
+import { ConnectionSettingsForm } from './ConnectionSettingsForm';
 import type {
     ConfigureConnectorPayload,
     ConnectorEntry,
@@ -206,7 +206,7 @@ export function ConnectorsView() {
         }
     }
 
-    async function handleFoldersSubmit(values: FolderSettingsValues) {
+    async function handleSettingsSubmit(settings: Record<string, unknown>) {
         const current = modal;
         if (current?.kind !== 'folders') return;
         const target = current.account;
@@ -215,10 +215,9 @@ export function ConnectorsView() {
         try {
             await updateInstallation.mutateAsync({
                 installationId: target.id,
-                folders: { include: values.include },
-                // null = clear the override back to the connector default (the
-                // backend unsets config_json.date_window_days); a number sets it.
-                date_window_days: values.dateWindowDays,
+                // v8.25 — the full schema-driven settings payload (nested partial
+                // of config_json) the connection-settings form assembles.
+                settings,
             });
             setModal((cur) => (cur?.kind === 'folders' && cur.account.id === target.id ? null : cur));
             toast.success('Connection settings saved.', 'toast-connector-folders-saved');
@@ -493,13 +492,13 @@ export function ConnectorsView() {
             )}
 
             {modal?.kind === 'folders' && (
-                <FolderSettingsForm
+                <ConnectionSettingsForm
                     // key on the account identity → remount with fresh folder
-                    // fetch + pre-filled selection when switching between accounts.
-                    key={`folders-${modal.account.id}`}
+                    // fetch + pre-filled values when switching between accounts.
+                    key={`settings-${modal.account.id}`}
                     connectorKey={modal.entry.key}
                     account={modal.account}
-                    onSubmit={handleFoldersSubmit}
+                    onSubmit={handleSettingsSubmit}
                     onClose={() => setModal(null)}
                     submitError={modalError}
                     fieldErrors={modalFieldErrors}

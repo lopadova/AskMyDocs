@@ -2,15 +2,18 @@ import { test as baseTest, expect, type Page } from '@playwright/test';
 import { resetDb, seedDb } from './setup-helpers';
 
 /*
- * v8.24 — the connection-settings folder picker for a credential (IMAP) account.
+ * v8.25 — the schema-driven connection-settings editor for a credential (IMAP)
+ * account (supersedes the v8.24 folder-only picker). It renders the connector's
+ * full `connection_settings_schema` (folders include/exclude, sync window,
+ * sender/recipient/subject filters, body format, scope flags, attachments).
  *
  * Auth posture: `can:manageConnectors` (admin + super-admin) → runs under the
  * super-admin project. R13: real backend / DB / Sanctum / Gate. The ONLY external
  * boundary — the IMAP server — is reached by the BACKEND over TCP and is replaced
  * by the input-driven FakeImapClientFactory (CONNECTOR_IMAP_FAKE_PING=true), whose
  * listMailboxes() returns a fixed folder set (INBOX, [Gmail]/Sent Mail,
- * rotta-logistics-1). The happy path below uses that real-data flow; the failure
- * path uses a sanctioned internal-route injection (see its marker).
+ * rotta-logistics-1). The happy path uses that real-data flow; the failure path
+ * uses a sanctioned internal-route injection (see its marker).
  */
 
 const PASSWORD = 'password';
@@ -38,7 +41,7 @@ async function addImapAccount(page: Page, label: string): Promise<void> {
 
 baseTest.describe.configure({ timeout: 120_000 });
 
-baseTest.describe('Connectors — IMAP folder picker (super-admin)', () => {
+baseTest.describe('Connectors — IMAP connection settings (super-admin)', () => {
     baseTest.beforeEach(async ({ page }) => {
         await resetDb(page);
         await seedDb(page);
@@ -55,34 +58,35 @@ baseTest.describe('Connectors — IMAP folder picker (super-admin)', () => {
         );
     });
 
-    baseTest('happy — opens the picker, lists live folders, saves a selection + window', async ({
-        page,
-    }) => {
+    baseTest('happy — edits folders + window + a sender filter and persists them', async ({ page }) => {
         const card = page.getByTestId('connector-list-card-imap');
         await card.locator('[data-testid$="-folders"]').first().click();
 
-        const form = page.getByTestId('connector-imap-folders-form');
+        const form = page.getByTestId('connector-imap-settings-form');
         await expect(form).toBeVisible();
         // The live folder list resolves → data-state ready (R14 observable state).
         await expect(form).toHaveAttribute('data-state', 'ready', { timeout: 15_000 });
-        await expect(page.getByTestId('connector-imap-folders-form-list')).toBeVisible();
+        await expect(page.getByTestId('connector-imap-settings-folders-include-list')).toBeVisible();
 
-        // Pick INBOX and set a 90-day window, then save.
-        await page.getByTestId('connector-imap-folders-form-folder-inbox').check();
-        await page.getByTestId('connector-imap-folders-form-date-window').fill('90');
-        await page.getByTestId('connector-imap-folders-form-submit').click();
+        // Whitelist INBOX, set a 90-day window, add a sender exclude filter, then save.
+        await page.getByTestId('connector-imap-settings-folders-include-opt-inbox').check();
+        await page.getByTestId('connector-imap-settings-date-window-days').fill('90');
+        await page.getByTestId('connector-imap-settings-senders-exclude-input').fill('noreply@x.com');
+        await page.getByTestId('connector-imap-settings-senders-exclude-add').click();
+        await expect(page.getByTestId('connector-imap-settings-senders-exclude-chip-noreply-x-com-remove')).toBeVisible();
+        await page.getByTestId('connector-imap-settings-form-submit').click();
 
         await expect(page.getByTestId('toast-connector-folders-saved')).toBeVisible({ timeout: 10_000 });
         await expect(form).toHaveCount(0);
 
-        // Reopen → the saved INBOX selection is pre-checked (persisted round-trip).
+        // Reopen → the saved values round-trip (INBOX checked, window 90, tag chip present).
         await card.locator('[data-testid$="-folders"]').first().click();
-        await expect(page.getByTestId('connector-imap-folders-form')).toHaveAttribute(
-            'data-state',
-            'ready',
-            { timeout: 15_000 },
-        );
-        await expect(page.getByTestId('connector-imap-folders-form-folder-inbox')).toBeChecked();
+        await expect(page.getByTestId('connector-imap-settings-form')).toHaveAttribute('data-state', 'ready', {
+            timeout: 15_000,
+        });
+        await expect(page.getByTestId('connector-imap-settings-folders-include-opt-inbox')).toBeChecked();
+        await expect(page.getByTestId('connector-imap-settings-date-window-days')).toHaveValue('90');
+        await expect(page.getByTestId('connector-imap-settings-senders-exclude-chip-noreply-x-com-remove')).toBeVisible();
     });
 
     baseTest('failure — an unreachable mailbox surfaces the fetch-error state', async ({ page }) => {
@@ -93,17 +97,17 @@ baseTest.describe('Connectors — IMAP folder picker (super-admin)', () => {
             route.fulfill({
                 status: 503,
                 contentType: 'application/json',
-                body: JSON.stringify({ error: 'Impossibile elencare le cartelle IMAP.' }),
+                body: JSON.stringify({ error: 'Impossibile elencare le cartelle.' }),
             }),
         );
 
         const card = page.getByTestId('connector-list-card-imap');
         await card.locator('[data-testid$="-folders"]').first().click();
 
-        const form = page.getByTestId('connector-imap-folders-form');
+        const form = page.getByTestId('connector-imap-settings-form');
         await expect(form).toBeVisible();
         await expect(form).toHaveAttribute('data-state', 'error', { timeout: 15_000 });
-        await expect(page.getByTestId('connector-imap-folders-form-fetch-error')).toBeVisible();
-        await expect(page.getByTestId('connector-imap-folders-form-retry')).toBeVisible();
+        await expect(page.getByTestId('connector-imap-settings-folders-include-fetch-error').first()).toBeVisible();
+        await expect(page.getByTestId('connector-imap-settings-folders-include-retry').first()).toBeVisible();
     });
 });
