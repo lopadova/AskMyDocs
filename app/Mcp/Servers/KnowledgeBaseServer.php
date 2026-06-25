@@ -7,6 +7,10 @@ use App\Mcp\Methods\ReadCollectionResource;
 use App\Mcp\Tools\FinOpsBudgetStatusTool;
 use App\Mcp\Tools\ConnectorInstallationsTool;
 use App\Mcp\Tools\AppSettingsTool;
+use App\Mcp\Tools\KbDetokenizeTool;
+use App\Mcp\Tools\KbEraseSubjectTool;
+use App\Mcp\Tools\KbReembedProjectTool;
+use App\Mcp\Tools\KbPiiPolicyTool;
 use App\Mcp\Tools\KbIngestionStatusTool;
 use App\Mcp\Tools\FinOpsSpendSummaryTool;
 use App\Mcp\Tools\FinOpsTopModelsTool;
@@ -132,6 +136,28 @@ class KnowledgeBaseServer extends Server
         // v8.22 (Ciclo 3) — runtime config governance read surface (R44):
         // governable settings with effective value + provenance, tenant-scoped (R30).
         AppSettingsTool::class,
+
+        // v8.23 (Ciclo 4) — PII ingestion policy read surface (R44): the
+        // effective redact-on/off + strategy per (tenant, project), tenant-scoped (R30).
+        KbPiiPolicyTool::class,
+
+        // v8.23 (Ciclo 4) — KB-document re-identification (R44). Surfaces raw PII,
+        // so doubly gated: the MCP authorizer admits admin/super-admin, and the
+        // tool additionally requires the pii.detokenize permission (net: super-admin
+        // only). Tenant-scoped (R30); successful unmasks + permission-denied
+        // attempts are audited.
+        KbDetokenizeTool::class,
+
+        // v8.23 (Ciclo 4) — GDPR Art.17 right-to-erasure (R44). Destructive write
+        // (no IsReadOnly → MCP authorizer requires super-admin) + the pii.erase
+        // permission. Tenant-scoped (R30); crypto-shreds the subject's vault
+        // entries; every attempt audited.
+        KbEraseSubjectTool::class,
+
+        // v8.23 (Ciclo 4, PR5) — re-embed a project under the current PII policy
+        // (R44). Write (queues vector-store mutations) → authorizer super-admin.
+        // Tenant-scoped (R30).
+        KbReembedProjectTool::class,
 
         // v8.x — padosoft/laravel-invitations tri-surface (R44 third surface).
         // The invite engine's MCP tools over the SAME services the HTTP + PHP

@@ -10,10 +10,14 @@ use App\Http\Controllers\Api\Admin\EvalHarnessUiBootstrapController;
 use App\Http\Controllers\Api\Admin\KbDocumentController;
 use App\Http\Controllers\Api\Admin\KbCollectionController;
 use App\Http\Controllers\Api\Admin\KbHealthController;
+use App\Http\Controllers\Api\Admin\KbDocumentDetokenizeController;
+use App\Http\Controllers\Api\Admin\KbPiiSettingController;
 use App\Http\Controllers\Api\Admin\KbTreeController;
 use App\Http\Controllers\Api\Admin\LogViewerController;
 use App\Http\Controllers\Api\Admin\MaintenanceCommandController;
 use App\Http\Controllers\Api\Admin\PermissionController;
+use App\Http\Controllers\Api\Admin\PiiEraseSubjectController;
+use App\Http\Controllers\Api\Admin\PiiReembedController;
 use App\Http\Controllers\Api\Admin\PiiStrategyController;
 use App\Http\Controllers\Api\Admin\ProjectMembershipController;
 use App\Http\Controllers\Api\Admin\McpServersAdminController;
@@ -756,6 +760,41 @@ Route::middleware([
     ->group(function () {
         Route::get('/strategy', [PiiStrategyController::class, 'show'])
             ->name('api.admin.pii.strategy');
+
+        // v8.23 (Ciclo 4) — per-(tenant, project) PII ingestion policy. READ
+        // rides the group's `viewPiiRedactorAdmin` gate (admin / dpo /
+        // super-admin); WRITE adds `can:manageKbPiiPolicy` (dpo / super-admin)
+        // so mutating the privacy posture is restricted to the data owners.
+        Route::get('/policy', [KbPiiSettingController::class, 'index'])
+            ->name('api.admin.pii.policy.index');
+        Route::put('/policy', [KbPiiSettingController::class, 'upsert'])
+            ->middleware('can:manageKbPiiPolicy')
+            ->name('api.admin.pii.policy.upsert');
+
+        // v8.23 (Ciclo 4) — operator-driven re-identification of a tokenised KB
+        // document (document-level sibling of the chat-log detokenise). Rides
+        // the group's `viewPiiRedactorAdmin` gate; the controller additionally
+        // enforces the `pii.detokenize` permission (dpo / super-admin) — else
+        // 403 — and the `tokenise` strategy preflight (else 422). Every 200/403
+        // writes an `admin_command_audit` row.
+        Route::post('/documents/{id}/detokenize', [KbDocumentDetokenizeController::class, 'detokenize'])
+            ->whereNumber('id')
+            ->name('api.admin.pii.documents.detokenize');
+
+        // v8.23 (Ciclo 4) — GDPR Art.17 right-to-erasure: crypto-shred a
+        // subject's reversible token-vault entries in the active tenant. Rides
+        // the group's `viewPiiRedactorAdmin` gate; the controller additionally
+        // enforces the `pii.erase` permission (dpo / super-admin) — else 403.
+        // Audited (command='pii.erase').
+        Route::post('/erase-subject', [PiiEraseSubjectController::class, 'erase'])
+            ->name('api.admin.pii.erase-subject');
+
+        // v8.23 (Ciclo 4, PR5) — re-embed a project under the current PII policy
+        // (after a mask⇄tokenise switch). A policy-governance action, so it adds
+        // `can:manageKbPiiPolicy` (dpo / super-admin) on top of the group gate.
+        Route::post('/reembed', [PiiReembedController::class, 'reembed'])
+            ->middleware('can:manageKbPiiPolicy')
+            ->name('api.admin.pii.reembed');
     });
 
 /*

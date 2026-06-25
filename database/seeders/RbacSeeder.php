@@ -82,6 +82,12 @@ class RbacSeeder extends Seeder
         // tests, future API clients) reason about who can detokenise
         // through the standard `$user->can('pii.detokenize')` channel.
         'pii.detokenize',
+        // v8.23 (Ciclo 4) — GDPR Art.17 right-to-erasure capability:
+        // crypto-shred a subject's reversible token-vault entries so the
+        // surrogates left in the KB / chat become permanently inert. More
+        // destructive than detokenise, so granted to dpo + super-admin only
+        // (the data-protection owners). Checked via `$user->can('pii.erase')`.
+        'pii.erase',
         // C1 (R30) — explicit cross-tenant override capability. Lets a
         // holder send an `X-Tenant-Id` header pointing at a tenant other
         // than their own without being rejected by AuthorizeTenantHeader.
@@ -160,6 +166,7 @@ class RbacSeeder extends Seeder
             'admin.access',
             'logs.view',
             'pii.detokenize',
+            'pii.erase',
         ]);
 
         $editor->syncPermissions([

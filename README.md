@@ -1317,6 +1317,33 @@ mutation). To watch the opt-in ones fire locally, flip the relevant flags in
 chat turn fires grounded citations + the disclosure header + a `chat_logs` row
 + PII answer-redaction together.
 
+For **PII-safe ingestion** (v8.23), redact connector content as it lands with
+the package engine `PII_REDACTOR_ENABLED=true`, the host master switch
+`KB_PII_REDACTOR_ENABLED=true` **and** `KB_CONNECTOR_INGEST_PII_REDACT=true`
+(all three are required — `RedactorEngine::redact()` no-ops while the package
+engine is off), then pick the strategy via
+`KB_INGEST_PII_STRATEGY`: `mask` (default, one-way) or `tokenise` — the latter
+writes reversible `[tok:…]` surrogates to the KB while the originals live in a
+**per-tenant** vault, so the KB is PII-safe by default and an authorised
+operator re-identifies on demand. `tokenise` requires `PII_REDACTOR_SALT`, and
+for a persistent vault (the `pii_token_maps` table) set
+`PII_REDACTOR_TOKEN_STORE=database` — the package default `memory` store is
+process-local. The **inline** ingest path (HTTP `POST /api/kb/ingest` +
+`kb:ingest-folder`) redacts too via `KB_INLINE_INGEST_PII_REDACT`, governed
+per-(tenant, project) by the `kb_pii_settings` policy (`GET`/`PUT
+/api/admin/pii/policy` · `kb:pii-policy` · `KbPiiPolicyTool`). An authorised
+operator **re-identifies on demand** (`pii.detokenize`, dpo/super-admin) for a
+chat-log or a KB document (`POST /api/admin/pii/documents/{id}/detokenize` ·
+`kb:detokenize-document` · `KbDetokenizeTool`), exercises **GDPR Art.17
+right-to-erasure** via crypto-shred (`pii.erase`; `POST
+/api/admin/pii/erase-subject` · `kb:erase-subject` · `KbEraseSubjectTool`; also
+wired into the AI-Act DSAR flow), and **re-embeds** a project after a policy
+change (`POST /api/admin/pii/reembed` · `kb:reembed-project` ·
+`KbReembedProjectTool`). Every unmask/erase is audited; the `ai.disclosure`
+middleware emits the **EU AI Act Art.50(1)** `X-AI-Disclosure` header on every
+chat route. See the deep [PII & compliance](https://padosoft.mintlify.app/pii-and-compliance)
+doc + [ADR 0020](docs/adr/0020-v823-pii-safe-ingestion-reversible-vault.md).
+
 **Milestone ritual.** Run `php artisan kb:benchmark --stub` (deterministic)
 at the close of any retrieval-touching milestone, and the LIVE run before
 shipping a retrieval change — if a knob (rerank weights,
@@ -1761,7 +1788,8 @@ For the full component map see [`CLAUDE.md`](CLAUDE.md) section 3.
 | **v8.21.0** | ✅ shipped 2026-06-23 | **Ingestion & sync observability + queue baseline** (Ciclo 2 of the connectors/observability/config/PII roadmap). Connector sync is isolated onto a dedicated `connectors` queue (was `default`, which carried autowiki/change-analysis; `KB_INGEST_QUEUE` stays `kb-ingest`) and every `ConnectorSyncJob` run is recorded **host-side** into tenant-scoped `connector_sync_runs` (started/finished, duration, documents discovered, status running/success/partial/failed) via the Laravel **queue lifecycle** — no connector-package change (the package job emits no events). Operators get queue backlog + per-account sync history; tri-surface (R44) over one `IngestionObservabilityService`: **PHP** (`ingestion:status`), **HTTP** (`GET /api/admin/ingestion/queue` + `GET /api/admin/connectors/{installationId}/sync-runs`, R32, R30-scoped), **MCP** (`KbIngestionStatusTool`, roster **35 → 36**). New "Ingestion & Sync" admin screen (queue-depth cards + per-account run table, explicit loading/error/empty + retry, R14). Per-document status via `flow_runs` deferred (not tenant-aware yet). [ADR 0018](docs/adr/0018-v821-ingestion-sync-observability.md). |
 | **v8.22.0** | ✅ shipped 2026-06-23 | **Runtime configuration governance** (Ciclo 3 of the connectors/observability/config/PII roadmap). A curated set of operational knobs becomes editable **per `(tenant, project)` at runtime — no deploy**, layered `config default ← tenant '*' ← exact-project` over one `AppSettingsResolver` (the `KbAnalysisSetting`/`ChangeAnalysisGate` pattern). Governable keys live in a closed `AppSettingRegistry`: `ai.provider` (per-tenant chat provider, wired into `AiManager` fully-guarded → falls back to `config('ai.default')`, R43), `connector.sync_cadence_minutes` (per-tenant **and** per-project), and the **deploy-managed** `ai_finops.enabled` (visible, read-only at runtime → 422). Reads honour scope like writes and **skip corrupt override rows** (no silent coercion, R14); secrets are never registered. Tri-surface (R44): **PHP** (`app-settings:list` / `app-settings:set`), **HTTP** (`GET`/`PUT /api/admin/app-settings`, `role:super-admin`, R32, R30-scoped), **MCP** (`AppSettingsTool`, roster **39 → 40**). New super-admin **Configuration** admin screen (per-row editor + provenance badge + project-scope selector). [ADR 0019](docs/adr/0019-v822-runtime-config-governance.md) + deep doc-site page ([runtime config governance](https://padosoft.mintlify.app/runtime-config-governance), R45). |
 | **v8.22.0** | ✅ shipped 2026-06-23 (backend PR #363 + admin UI PR #366) | **Invite-by-code & referral suite** — integrates the standalone `padosoft/laravel-invitations` engine tri-surface (R44) into AskMyDocs over the package's vendor-neutral seams. Atomic, idempotent, concurrency-safe redemption (single conditional `UPDATE … WHERE current_uses < max_uses` + `UNIQUE(code_id, redeemer_id)`) drives campaigns / multi-use & vanity codes / referrals / rewards / waitlist / fail-open anti-abuse (HMAC'd PII) / funnel analytics — each invite carrying a per-tenant **grant** (Spatie role + KB project memberships). `App\Models\User` implements the `InvitedAccount` contract; the package `TenantResolver` binds to the host `TenantContext` (R30); a host `ProjectMembershipProvisioner` (GRANT-never-REVOKE, best-effort) joins the package's role provisioner under the `invitations.provisioners` tag so one code provisions role **and** project access across one or more tenants. Admin surface `/api/admin/invitations/*` (campaigns / code generation / metrics) gated by `can:manageInvitations` (super-admin + admin, R32-matrix-locked); user redeem surface `/api/invitations/*` behind the authenticated stack. Three package MCP tools (`Invite{ValidateCode,GenerateCodes,Metrics}Tool`, roster **36 → 39**). Signup gate `INVITE_REQUIRED` default-**OFF** (R43 both-states — existing registration unchanged). The **admin UI** lands as a cross-mount of the self-contained `padosoft/laravel-invitations-admin` SPA (its own prebuilt React panel served over a gated Blade route at `/admin/invitations`, `INVITATIONS_ADMIN_ENABLED` default-OFF → clean 404 R43, behind `can:manageInvitations`), surfaced through a native host **Invitations** landing (live funnel KPIs over the core `/api/admin/invitations/metrics` + a launcher to the panel) — same self-contained cross-mount model as ai-finops-admin / flow-admin; Vitest + real-data Playwright (R12/R13) + a role-access matrix row (R32). |
-| **Future** | ⏳ planned for v8.x or v9.0 | **v8.23 (Ciclo 4):** PII-safe ingestion & reversible vault — tokenize PII at ingest, authorized on-demand re-identification, per-profile redaction settings, right-to-erasure, EU AI Act Art. 50(1) disclosure. Auto-Wiki follow-ups: navigator→chat wiring + benchmark-gated default-ON, source-retention wiring (save the converted markdown artifact). Agentic Knowledge Reports follow-ups: SSE progressive-paint generate + the Glide canvas grid (deferred for per-cell testability/a11y). SSO / SCIM enterprise auth + content export/portability — surfaced by the v8.8 Affine gap audit; #1 Semantic Time Travel + #8 v2 (answer drift replay) — parked from v8.0 |
+| **v8.23.0** | ✅ shipped 2026-06-25 | **PII-safe ingestion & reversible vault** (Ciclo 4 — the last of the connectors/observability/config/PII roadmap). The KB is **PII-safe by default**: detect→tokenise **before** embedding (only deterministic surrogates in the vector store), a **reversible per-tenant vault** (`pii_token_maps`, per-tenant salt, R30) outside the AI path, **JIT re-identification gated by role+scope** and fully audited, **right-to-erasure via crypto-shred** (GDPR Art.17) wired into the `laravel-ai-act-compliance` DSAR flow (Art.15 export + Art.17 delete), **re-embed on policy change** + the `rag-regression` recall gate guarding tokenisation drift, and **EU AI Act Art.50(1)** disclosure (`X-AI-Disclosure`) on every chat route. Per-(tenant, project) `kb_pii_settings` policy (`KbPiiPolicyResolver`, the `KbAnalysisSetting` pattern). Five sub-PRs (#368/#370/#371/#372/#373), each tri-surface (R44) over one core, default-OFF (R43); four MCP tools (roster **40 → 44**). [ADR 0020](docs/adr/0020-v823-pii-safe-ingestion-reversible-vault.md) + deep doc-site page ([PII & compliance](https://padosoft.mintlify.app/pii-and-compliance), R45). |
+| **Future** | ⏳ planned for v8.x or v9.0 | Auto-Wiki follow-ups: navigator→chat wiring + benchmark-gated default-ON, source-retention wiring (save the converted markdown artifact). Agentic Knowledge Reports follow-ups: SSE progressive-paint generate + the Glide canvas grid (deferred for per-cell testability/a11y). SSO / SCIM enterprise auth + content export/portability — surfaced by the v8.8 Affine gap audit; #1 Semantic Time Travel + #8 v2 (answer drift replay) — parked from v8.0 |
 
 For the strategic reasoning behind v4.5+ see
 [`docs/v4-platform/AUDIT-2026-05-11-competitor-comparison.md`](docs/v4-platform/AUDIT-2026-05-11-competitor-comparison.md)
@@ -1909,6 +1937,68 @@ including commercial use.
 ---
 
 ## Changelog
+
+**v8.23.0 — PII-safe ingestion & reversible vault (GA, shipped 2026-06-25).**
+Ciclo 4 (the last) of the connectors / observability / config / PII roadmap.
+Makes the knowledge base **PII-safe by default** while letting an authorised
+operator re-identify on demand — the Presidio/Skyflow/DLP "detect → tokenise
+before embedding, reversible per-tenant vault outside the AI path" pattern.
+*PR1 (#368):* tenant-isolated reversible tokenisation at the **connector ingest
+boundary** — `HostIngestionBridge::redactContent()` selects mask vs `tokenise`
+via `KB_INGEST_PII_STRATEGY`, building the strategy through the package factory
+so the host `TenantResolver` + per-tenant salt wire in (R30); originals land in
+the per-tenant `pii_token_maps` vault, surrogates go to disk/chunks/embeddings.
+*PR2:* extends tokenisation to the **inline** ingestion path (HTTP
+`POST /api/kb/ingest` + `kb:ingest-folder` CLI, which run the `kb.ingest` Flow
+saga). The Flow's `chunk-document` step redacts each **chunk's text** — via the
+shared `ChunkRedactor` — so the downstream `embed-chunks` + `persist-chunks`
+steps only ever see surrogates (the legacy direct `DocumentIngestor` path shares
+the same `ChunkRedactor`). Raw markdown stays the idempotency anchor; canonical
+frontmatter stays parseable; deterministic tokens keep re-ingest idempotent; a
+dry-run preview forces the side-effect-free mask (no vault tokens). Gated by
+`KB_INLINE_INGEST_PII_REDACT` (default OFF, R43). Adds a per-`(tenant, project)` **`kb_pii_settings`** policy
+(`redact_enabled` + `strategy`) resolved most-specific-wins
+(`config ← tenant '*' ← project`) by `KbPiiPolicyResolver`, delivered tri-surface
+(R44): **HTTP** (`GET /api/admin/pii/policy` `viewPiiRedactorAdmin`; `PUT`
+`manageKbPiiPolicy` — dpo / super-admin; R32 matrix rows), **CLI**
+(`kb:pii-policy`), **MCP** (`KbPiiPolicyTool` read, roster **40 → 41**).
+Tenant-aware (R30/R31), `UNIQUE(tenant_id, project_key)`.
+*PR3:* **re-identification (detokenise)** of a tokenised KB document — JIT,
+gated, audited — tri-surface (R44) over one `DetokenizeService`: **HTTP**
+`POST /api/admin/pii/documents/{id}/detokenize` (`pii.detokenize` — dpo /
+super-admin), **CLI** `kb:detokenize-document`, **MCP** `KbDetokenizeTool` (net
+super-admin only — the LLM-facing PII surface carries the tightest gate; roster
+**41 → 42**). Every surface enforces the `tokenise` preflight, is tenant-scoped
+(R30 — no cross-tenant re-id by id), bypasses the per-project read ACL for this
+privileged compliance op while keeping the tenant + permission gates, and audits
+each completed unmask + permission-denied attempt (`admin_command_audit`,
+`command='pii.detokenize'`; the strategy preflight + not-found are not audited —
+no unmask is attempted).
+*PR4:* **right-to-erasure (GDPR Art.17) via crypto-shred** — destroying a
+subject's `pii_token_maps` entries makes every surviving `[tok:...]` surrogate
+permanently unresolvable, no downstream rewrite needed. Tri-surface (R44) over
+one `SubjectErasureService`: **HTTP** `POST /api/admin/pii/erase-subject`
+(`pii.erase` — dpo / super-admin; new permission), **CLI** `kb:erase-subject`,
+**MCP** `KbEraseSubjectTool` (write → super-admin only; roster **42 → 43**).
+Tenant-scoped (R30), audited (`command='pii.erase'`, count-only — no raw PII in
+the trail). Wired into the `laravel-ai-act-compliance` **DSAR** flow: Art.17
+delete crypto-shreds the subject's vault (by email) in every tenant; Art.15
+export adds a `pii_vault` snapshot.
+*PR5:* **re-embed on policy change + recall gate + Art.50 disclosure.** Changing
+the policy (mask⇄tokenise) leaves old chunks/embeddings stale; a **forced
+re-embed** (`DocumentIngestor::ingest(forceReembed:true)` — skips the
+version-hash no-op + replaces the chunk set) is exposed tri-surface (R44) over
+one `ReembedProjectService` (one `ReembedDocumentJob` per live doc, R30/R3):
+**HTTP** `POST /api/admin/pii/reembed` (`manageKbPiiPolicy`), **CLI**
+`kb:reembed-project`, **MCP** `KbReembedProjectTool` (write → super-admin; roster
+**43 → 44**). The policy `PUT` now returns `reembed_recommended` when the
+effective policy changed. The existing `rag-regression` CI gate (golden Q&A set
+through the live RAG pipeline) guards tokenisation embedding-drift; the
+`ai.disclosure` middleware already emits the **EU AI Act Art.50(1)**
+`X-AI-Disclosure` header on every chat route (API + SSE). The five sub-PRs added
+four MCP tools (roster **40 → 44**, locked by `KnowledgeBaseServerRegistrationTest`).
+[ADR 0020](docs/adr/0020-v823-pii-safe-ingestion-reversible-vault.md) + deep
+doc-site page ([PII & compliance](https://padosoft.mintlify.app/pii-and-compliance), R45).
 
 **v8.22.0 — Runtime configuration governance (GA, shipped 2026-06-23).**
 Ciclo 3 of the connectors / observability / config / PII roadmap. A curated set

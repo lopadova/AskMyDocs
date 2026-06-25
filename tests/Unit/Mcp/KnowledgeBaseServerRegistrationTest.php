@@ -29,10 +29,12 @@ class KnowledgeBaseServerRegistrationTest extends TestCase
         return $property->getDefaultValue();
     }
 
-    public function test_server_registers_exactly_forty_tools(): void
+    public function test_server_registers_exactly_forty_four_tools(): void
     {
-        // 36 (v8.21) + 3 invitations tools (v8.x) + 1 AppSettingsTool (v8.22).
-        $this->assertCount(40, $this->registeredTools());
+        // 36 (v8.21) + 3 invitations tools (v8.x) + 1 AppSettingsTool (v8.22)
+        // + 1 KbPiiPolicyTool + 1 KbDetokenizeTool + 1 KbEraseSubjectTool
+        // + 1 KbReembedProjectTool (v8.23/Ciclo 4).
+        $this->assertCount(44, $this->registeredTools());
     }
 
     public function test_server_registers_the_invitations_tools(): void
@@ -55,6 +57,30 @@ class KnowledgeBaseServerRegistrationTest extends TestCase
     {
         // v8.22/Ciclo 3 — the runtime config governance MCP read surface.
         $this->assertContains(\App\Mcp\Tools\AppSettingsTool::class, $this->registeredTools());
+    }
+
+    public function test_server_registers_the_kb_pii_policy_tool(): void
+    {
+        // v8.23/Ciclo 4 — the PII ingestion-policy MCP read surface (R44).
+        $this->assertContains(\App\Mcp\Tools\KbPiiPolicyTool::class, $this->registeredTools());
+    }
+
+    public function test_server_registers_the_kb_detokenize_tool(): void
+    {
+        // v8.23/Ciclo 4 — the KB-document re-identification MCP surface (R44).
+        $this->assertContains(\App\Mcp\Tools\KbDetokenizeTool::class, $this->registeredTools());
+    }
+
+    public function test_server_registers_the_kb_erase_subject_tool(): void
+    {
+        // v8.23/Ciclo 4 — the GDPR Art.17 right-to-erasure MCP surface (R44).
+        $this->assertContains(\App\Mcp\Tools\KbEraseSubjectTool::class, $this->registeredTools());
+    }
+
+    public function test_server_registers_the_kb_reembed_project_tool(): void
+    {
+        // v8.23/Ciclo 4 — the re-embed-on-policy-change MCP surface (R44).
+        $this->assertContains(\App\Mcp\Tools\KbReembedProjectTool::class, $this->registeredTools());
     }
 
     public function test_server_registers_the_run_report_tool(): void

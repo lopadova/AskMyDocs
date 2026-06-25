@@ -8,6 +8,7 @@ use App\Jobs\IngestDocumentJob;
 use App\Models\KbCanonicalAudit;
 use App\Models\KnowledgeDocument;
 use App\Services\Kb\DocumentDeleter;
+use App\Services\Kb\Pii\IngestStrategyResolver;
 use App\Support\KbPath;
 use App\Support\TenantContext;
 use Illuminate\Support\Facades\DB;
@@ -15,7 +16,6 @@ use Illuminate\Support\Facades\Log;
 use Padosoft\AskMyDocsConnectorBase\Contracts\ConnectorIngestionContract;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
 use Padosoft\PiiRedactor\RedactorEngine;
-use Padosoft\PiiRedactor\Strategies\MaskStrategy;
 
 /**
  * v4.6 — AskMyDocs host implementation of {@see ConnectorIngestionContract}.
@@ -129,11 +129,38 @@ final class HostIngestionBridge implements ConnectorIngestionContract
             return $content;
         }
 
+        // The package RedactorEngine no-ops when its own engine flag is off, so
+        // skip strategy resolution entirely in that case — otherwise a typo'd
+        // KB_INGEST_PII_STRATEGY would throw even though no redaction would run.
+        // The strict-strategy throw is thus reserved for when redaction is
+        // actually active (engine ON), where the misconfig genuinely matters.
+        if (! (bool) config('pii-redactor.enabled', false)) {
+            return $content;
+        }
+
         /** @var RedactorEngine $engine */
         $engine = app(RedactorEngine::class);
-        $strategy = app(MaskStrategy::class);
 
-        return $engine->redact($content, $strategy);
+        return $engine->redact($content, $this->ingestStrategy());
+    }
+
+    /**
+     * v8.23 (Ciclo 4) — the ingest redaction strategy. `tokenise` (reversible,
+     * per-tenant vault) when configured, else `mask` (one-way, pre-v8.23
+     * default). Delegated to the shared {@see IngestStrategyResolver} so the
+     * mask-vs-tokenise mapping lives in ONE place (also used by the inline
+     * `DocumentIngestor` path): `tokenise` is built through the package factory
+     * (host-bound tenant resolver + salt) and an unknown value throws
+     * immediately so an operator typo (e.g. `tokenize`) surfaces loudly at
+     * ingest time rather than silently masking data (R14).
+     *
+     * @throws \InvalidArgumentException for unrecognised strategy values.
+     */
+    private function ingestStrategy(): \Padosoft\PiiRedactor\Strategies\RedactionStrategy
+    {
+        return app(IngestStrategyResolver::class)->forName(
+            (string) config('kb.pii_redactor.ingest_strategy', 'mask'),
+        );
     }
 
     public function emitAudit(
