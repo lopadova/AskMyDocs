@@ -1,6 +1,13 @@
 # ADR 0021 — IMAP folder selection + dev/test email-ingest harness (v8.24)
 
 - **Status:** Accepted
+- **Superseded by:** ADR 0022 (v8.25) — for the **folder-discovery mechanism only**:
+  v8.25 moves discovery into the connector via `SupportsFolderDiscovery`, so the
+  host-side `ImapFolderListingService` described below is replaced by the generic
+  `ConnectorFolderListingService` (which also fixes XOAUTH2). The rest of this
+  record (the `folders.include` / `date_window_days` write contract, the 503/404
+  semantics, the email-ingest harness, the `manageConnectors` gate widening) still
+  stands and is generalised — not reversed — by ADR 0022.
 - **Date:** 2026-06-25
 - **Cycle:** v8.24
 - **Builds on:** ADR 0009 (connector boundary / `HostIngestionBridge`);
