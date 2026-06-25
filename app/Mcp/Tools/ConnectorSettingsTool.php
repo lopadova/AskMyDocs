@@ -76,8 +76,9 @@ class ConnectorSettingsTool extends Tool
                 'project_key' => $installation->project_key,
                 'status' => $installation->status,
             ],
-            'connection_settings_schema' => $settings->schemaFor($installation),
-            'settings' => $settings->currentSettings($installation),
+            // Resolve the schema once and reuse it for the current-values pass.
+            'connection_settings_schema' => $schema = $settings->schemaFor($installation),
+            'settings' => $settings->currentSettings($installation, $schema),
             'folders' => null,
             'folders_error' => null,
         ];

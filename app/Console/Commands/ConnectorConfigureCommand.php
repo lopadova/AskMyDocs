@@ -172,7 +172,8 @@ final class ConnectorConfigureCommand extends Command
         array $schema,
         ConnectorSettingsService $settings,
     ): int {
-        $current = $settings->currentSettings($installation);
+        // Reuse the already-resolved schema (avoids a second registry/connector call).
+        $current = $settings->currentSettings($installation, $schema);
 
         $rows = [];
         foreach ($schema as $field) {

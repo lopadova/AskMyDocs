@@ -176,7 +176,9 @@ final class UpdateConnectorInstallationRequest extends FormRequest
                 $key => ['sometimes', 'array', 'max:500'],
                 $key.'.*' => ['string', 'max:255'],
             ],
-            'number' => [$key => ['sometimes', 'integer', 'min:0', 'max:1000000']],
+            // nullable: an explicit null clears the override back to the connector
+            // default (the UI sends null when a number field is emptied).
+            'number' => [$key => ['sometimes', 'nullable', 'integer', 'min:0', 'max:1000000']],
             'checkbox' => [$key => ['sometimes', 'boolean']],
             'select' => [$key => ['sometimes', Rule::in(array_keys((array) ($field['options'] ?? [])))]],
             default => [$key => ['sometimes', 'string', 'max:2000']],

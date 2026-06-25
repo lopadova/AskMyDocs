@@ -151,9 +151,14 @@ export function ConnectionSettingsForm({
             const v = values[f.name];
             if (f.type === 'number') {
                 const t = String(v ?? '').trim();
-                if (t === '') continue; // empty number → leave untouched
-                const n = Number(t);
-                if (Number.isFinite(n)) setPath(settings, f.name, n);
+                if (t === '') {
+                    // Empty → send null to CLEAR the override back to the connector
+                    // default (the BE unsets it); a number sets it.
+                    setPath(settings, f.name, null);
+                } else {
+                    const n = Number(t);
+                    if (Number.isFinite(n)) setPath(settings, f.name, n);
+                }
                 continue;
             }
             setPath(settings, f.name, v);
@@ -436,23 +441,28 @@ function FolderOrOptionMultiselect({
 
     return (
         <ul data-testid={`${base}-list`} role="group" aria-labelledby={`${base}-label`} style={listStyle()}>
-            {options.map((opt) => {
-                const id = `${base}-opt-${slug(opt)}`;
+            {options.map((opt, i) => {
+                // id is index-based so it is GUARANTEED unique — two distinct folder
+                // paths can slug-collide (e.g. "Foo Bar" vs "Foo-Bar"), and a
+                // duplicate id silently breaks label↔input association. The
+                // data-testid stays slug-based for readable, stable selectors.
+                const optId = `${base}-opt-${i}`;
+                const testid = `${base}-opt-${slug(opt)}`;
                 const missing = live && !liveSet.has(opt);
                 const display = live ? opt : (field.options[opt] ?? opt);
                 return (
                     <li key={opt} style={{ display: 'flex' }}>
-                        <label htmlFor={id} style={optionLabelStyle()}>
+                        <label htmlFor={optId} style={optionLabelStyle()}>
                             <input
-                                id={id}
-                                data-testid={id}
+                                id={optId}
+                                data-testid={testid}
                                 type="checkbox"
                                 checked={selectedSet.has(opt)}
                                 onChange={() => toggle(opt)}
                             />
                             <span style={{ fontFamily: live ? 'var(--font-mono)' : undefined }}>{display}</span>
                             {missing && (
-                                <span data-testid={`${id}-missing`} style={{ fontSize: 10, color: 'var(--fg-3)' }}>
+                                <span data-testid={`${testid}-missing`} style={{ fontSize: 10, color: 'var(--fg-3)' }}>
                                     (not found on server)
                                 </span>
                             )}
