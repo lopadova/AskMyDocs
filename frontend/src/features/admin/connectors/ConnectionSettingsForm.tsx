@@ -156,6 +156,21 @@ export function ConnectionSettingsForm({
     const isVisible = (field: CredentialFieldSchema): boolean =>
         field.showIf === null || values[field.showIf.field] === field.showIf.equals;
 
+    // Surface both field-level (`settings.<name>`) AND element-level
+    // (`settings.<name>.0`) validation errors — Laravel keys list-item failures
+    // to the element, so without the prefix scan a 422 on a multiselect/tags entry
+    // would render no actionable feedback (R14).
+    const errorFor = (name: string): string | undefined => {
+        if (!fieldErrors) return undefined;
+        const exact = fieldErrors[`settings.${name}`];
+        if (exact) return exact;
+        const prefix = `settings.${name}.`;
+        for (const [key, msg] of Object.entries(fieldErrors)) {
+            if (key.startsWith(prefix)) return msg;
+        }
+        return undefined;
+    };
+
     const handleSubmit = (e: FormEvent) => {
         e.preventDefault();
         const settings: Record<string, unknown> = {};
@@ -227,7 +242,7 @@ export function ConnectionSettingsForm({
                                     liveFolders={live}
                                     fetchState={fetchState}
                                     onRetryFolders={() => foldersQuery.refetch()}
-                                    error={fieldErrors?.[`settings.${field.name}`]}
+                                    error={errorFor(field.name)}
                                 />
                             ))}
                         </fieldset>

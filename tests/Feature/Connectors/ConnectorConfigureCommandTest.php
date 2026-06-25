@@ -100,6 +100,23 @@ final class ConnectorConfigureCommandTest extends TestCase
         $this->assertNull(data_get($inst->refresh()->config_json, 'date_window_days'));
     }
 
+    public function test_out_of_range_number_is_rejected_matching_http_bounds(): void
+    {
+        $inst = $this->imapInstallation();
+
+        // CLI must enforce the same min:0/max:1000000 the HTTP PATCH does (R44) —
+        // no value the API would 422 may be persisted from the CLI.
+        foreach (['date_window_days=-5', 'date_window_days=2000000'] as $bad) {
+            $this->artisan('connectors:configure', [
+                'installation' => $inst->id,
+                '--tenant' => 'default',
+                '--set' => [$bad],
+            ])->assertExitCode(1);
+        }
+
+        $this->assertArrayNotHasKey('date_window_days', (array) $inst->refresh()->config_json);
+    }
+
     public function test_empty_value_clears_a_nullable_select_back_to_default(): void
     {
         $inst = $this->imapInstallation();

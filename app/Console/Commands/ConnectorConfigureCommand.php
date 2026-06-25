@@ -154,6 +154,12 @@ final class ConnectorConfigureCommand extends Command
             throw new \InvalidArgumentException("'{$value}' is not a valid integer for setting '{$name}'.");
         }
 
+        // Mirror the HTTP number rule (min:0, max:1000000) so the CLI cannot persist
+        // a value the PATCH surface would reject — no cross-surface drift (R44).
+        if ($parsed < 0 || $parsed > 1000000) {
+            throw new \InvalidArgumentException("'{$value}' is out of range for setting '{$name}' (0–1000000).");
+        }
+
         return $parsed;
     }
 
