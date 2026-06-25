@@ -70,6 +70,7 @@ class DocumentIngestor
         SourceDocument $source,
         string $title,
         array $extraMetadata = [],
+        bool $forceReembed = false,
     ): KnowledgeDocument {
         $normalizedPath = KbPath::normalize($source->sourcePath);
         $normalizedSource = $source->sourcePath === $normalizedPath
@@ -117,6 +118,7 @@ class DocumentIngestor
             markdown: $converted->markdown,
             chunkDrafts: $chunkDrafts,
             metadata: $combinedMetadata,
+            forceReembed: $forceReembed,
         );
     }
 
@@ -351,14 +353,23 @@ class DocumentIngestor
         string $markdown,
         array $chunkDrafts,
         array $metadata,
+        bool $forceReembed = false,
     ): KnowledgeDocument {
         $documentHash = hash('sha256', $markdown);
         $versionHash = $documentHash;
 
-        $existing = $this->findExistingVersion($projectKey, $sourcePath, $versionHash);
-        if ($existing !== null) {
-            $existing->update(['indexed_at' => now()]);
-            return $existing;
+        // v8.23 (Ciclo 4, PR5) — a `forceReembed` re-ingest (after a PII-policy
+        // change) deliberately SKIPS the version_hash idempotency short-circuit:
+        // the raw markdown — and thus the hash — is unchanged, but the chunks
+        // must be re-derived + re-embedded under the NEW policy. persistDocument-
+        // AndChunks then REPLACES the existing version's chunks rather than
+        // accumulating them.
+        if (! $forceReembed) {
+            $existing = $this->findExistingVersion($projectKey, $sourcePath, $versionHash);
+            if ($existing !== null) {
+                $existing->update(['indexed_at' => now()]);
+                return $existing;
+            }
         }
 
         // v8.23 (Ciclo 4) — PII redaction of the chunk text (direct path). Runs
@@ -386,6 +397,7 @@ class DocumentIngestor
             $chunkDrafts,
             $embeddingResponse,
             $canonical,
+            $forceReembed,
         ));
 
         $this->dispatchCanonicalIndexerIfCanonical($document);
@@ -413,6 +425,7 @@ class DocumentIngestor
         array $chunkDrafts,
         $embeddingResponse,
         ?CanonicalParsedDocument $canonical,
+        bool $forceReembed = false,
     ): KnowledgeDocument {
         // If this is a canonical re-ingest with changed content, previous
         // versions still hold the (project_key, slug) / (project_key, doc_id)
@@ -449,6 +462,18 @@ class DocumentIngestor
         );
 
         $this->archivePreviousVersions($projectKey, $sourcePath, $document->id);
+
+        // v8.23 (Ciclo 4, PR5) — on a forced re-embed the document row is the
+        // SAME version (unchanged version_hash), so its prior chunks would
+        // otherwise linger alongside the freshly re-redacted ones. Drop them
+        // first so the re-embed REPLACES the chunk set under the new policy.
+        if ($forceReembed) {
+            // R30 — knowledge_chunks is tenant-aware; scope explicitly so a
+            // document_id collision across tenants (impossible today with
+            // auto-increment PKs, but the rule is unconditional) cannot bleed.
+            KnowledgeChunk::query()->forTenant($tenantId)->where('knowledge_document_id', $document->id)->delete();
+        }
+
         $this->persistChunks($document, $projectKey, $chunkDrafts, $embeddingResponse);
 
         return $document;

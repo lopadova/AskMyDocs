@@ -190,6 +190,34 @@ final class KbPiiSettingControllerTest extends TestCase
         ]);
     }
 
+    public function test_upsert_recommends_reembed_when_the_effective_policy_changes(): void
+    {
+        // config default = redact off / mask; enabling redaction changes the
+        // effective policy → existing chunks are stale → re-embed recommended.
+        $this->actingAs($this->makeUser('dpo'))->putJson('/api/admin/pii/policy', [
+            'project_key' => 'support',
+            'redact_enabled' => true,
+            'strategy' => 'tokenise',
+        ])->assertOk()->assertJsonPath('reembed_recommended', true);
+    }
+
+    public function test_upsert_does_not_recommend_reembed_when_nothing_changes(): void
+    {
+        KbPiiSetting::create([
+            'tenant_id' => 'default',
+            'project_key' => 'support',
+            'redact_enabled' => true,
+            'strategy' => 'tokenise',
+        ]);
+
+        // Re-submitting the same effective values is a no-op → no re-embed needed.
+        $this->actingAs($this->makeUser('dpo'))->putJson('/api/admin/pii/policy', [
+            'project_key' => 'support',
+            'redact_enabled' => true,
+            'strategy' => 'tokenise',
+        ])->assertOk()->assertJsonPath('reembed_recommended', false);
+    }
+
     public function test_invalid_strategy_is_rejected_with_422(): void
     {
         $this->actingAs($this->makeUser('dpo'))->putJson('/api/admin/pii/policy', [

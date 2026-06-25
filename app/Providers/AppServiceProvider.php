@@ -633,6 +633,8 @@ class AppServiceProvider extends ServiceProvider
             \App\Console\Commands\KbDetokenizeDocumentCommand::class,
             // v8.23 (Ciclo 4) — GDPR Art.17 crypto-shred a subject (R44 CLI surface).
             \App\Console\Commands\KbEraseSubjectCommand::class,
+            // v8.23 (Ciclo 4) — re-embed a project under the current PII policy (R44 CLI surface).
+            \App\Console\Commands\KbReembedProjectCommand::class,
             // PR3 — RBAC
             AuthGrantCommand::class,
             // Operator helper: seed a demo user inside a tenant in the

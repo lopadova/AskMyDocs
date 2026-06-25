@@ -244,6 +244,43 @@ flow via the host's `UserDataExporter` / `UserDataDeleter` implementations:
   entries the system can still re-identify to the subject's PII — so the access
   response is complete.
 
+## Re-embed on policy change + recall gate (v8.23/PR5)
+
+Tokenisation is a one-way transform of the chunk text, so **changing the policy**
+(mask ⇄ tokenise, or toggling redaction) leaves the already-indexed chunks +
+embeddings produced under the *old* policy stale. Re-running ingestion alone does
+not fix this — the raw markdown is unchanged, so the `version_hash` idempotency
+short-circuit treats it as a no-op.
+
+PR5 adds a **forced re-embed**: `DocumentIngestor::ingest(forceReembed: true)`
+skips the version-hash no-op and **replaces** the document's chunk set, re-derived
+under the current policy. It is exposed tri-surface (R44) over one
+`ReembedProjectService` (one `ReembedDocumentJob` per live document, tenant-scoped
+R30, streamed with `chunkById` R3):
+
+| Surface | Entry | Authorization |
+|---|---|---|
+| HTTP | `POST /api/admin/pii/reembed {project_key}` | `viewPiiRedactorAdmin` group + `can:manageKbPiiPolicy` (dpo / super-admin) |
+| CLI | `kb:reembed-project <project> --tenant=` | operator |
+| MCP | `KbReembedProjectTool` | write tool → authorizer super-admin |
+
+The policy `PUT /api/admin/pii/policy` returns **`reembed_recommended: true`**
+whenever the effective strategy or redact-toggle changed, so an operator knows to
+run the re-embed.
+
+**Recall gate.** Tokenisation shifts the embedding vectors, which can degrade
+retrieval recall. The `rag-regression` CI workflow drives a golden Q&A set
+through the live RAG pipeline on every change and fails the build on a recall /
+citation-groundedness regression — the anti-drift guard for this whole cycle.
+
+## Transparency (EU AI Act Art.50(1))
+
+The `ai.disclosure` middleware (from `padosoft/laravel-ai-act-compliance`)
+appends the **Art.50(1) "you are interacting with an AI" disclosure** header
+(`X-AI-Disclosure`) on every chat route — the JSON API turn and the web SSE
+stream alike — so the transparency obligation (in force 2 Aug 2026) is met
+out of the box.
+
 <CardGroup cols={2}>
   <Card title="Multi-tenant isolation" icon="building-shield" href="/multi-tenant-isolation">
     The tenant boundary that complements field-level redaction.
