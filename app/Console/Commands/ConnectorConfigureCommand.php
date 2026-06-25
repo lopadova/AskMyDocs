@@ -121,7 +121,7 @@ final class ConnectorConfigureCommand extends Command
         return match ((string) ($field['type'] ?? 'text')) {
             'number' => $this->castNullableInt($name, $value),
             'checkbox' => $this->castBool($name, $value),
-            'select' => $this->castSelect($name, (array) ($field['options'] ?? []), $value),
+            'select' => $this->castNullableSelect($name, (array) ($field['options'] ?? []), $value),
             'multiselect', 'tags' => array_values(array_unique(array_filter(
                 array_map('trim', $value === '' ? [] : explode(',', $value)),
                 static fn ($v) => $v !== '',
@@ -165,6 +165,22 @@ final class ConnectorConfigureCommand extends Command
         }
 
         return $parsed;
+    }
+
+    /**
+     * Cast a select `--set` value, treating an empty value (or the literal `null`)
+     * as a clear-to-default — consistent with the HTTP/UI nullable-select behaviour.
+     *
+     * @param  array<string,string>  $options
+     */
+    private function castNullableSelect(string $name, array $options, string $value): ?string
+    {
+        $trimmed = trim($value);
+        if ($trimmed === '' || strtolower($trimmed) === 'null') {
+            return null;
+        }
+
+        return $this->castSelect($name, $options, $trimmed);
     }
 
     /**

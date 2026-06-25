@@ -149,10 +149,18 @@ export function ConnectionSettingsForm({
 
     const setValue = (name: string, v: unknown) => setValues((cur) => ({ ...cur, [name]: v }));
 
+    // A field with a `showIf` only applies when its controlling field holds the
+    // expected value (parity with CredentialConnectorForm). Hidden fields are
+    // neither rendered nor submitted, so a default-seeded but inapplicable setting
+    // never overwrites stored config_json.
+    const isVisible = (field: CredentialFieldSchema): boolean =>
+        field.showIf === null || values[field.showIf.field] === field.showIf.equals;
+
     const handleSubmit = (e: FormEvent) => {
         e.preventDefault();
         const settings: Record<string, unknown> = {};
         for (const f of schema) {
+            if (!isVisible(f)) continue;
             const v = values[f.name];
             if (f.type === 'number') {
                 const t = String(v ?? '').trim();
@@ -209,7 +217,7 @@ export function ConnectionSettingsForm({
                             <legend style={{ color: 'var(--fg-2)', fontSize: 11, padding: 0, fontWeight: 600 }}>
                                 {g.group}
                             </legend>
-                            {g.fields.map((field) => (
+                            {g.fields.filter(isVisible).map((field) => (
                                 <FieldRow
                                     key={field.name}
                                     connectorKey={connectorKey}

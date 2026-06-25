@@ -174,10 +174,11 @@ final class UpdateConnectorInstallationRequest extends FormRequest
         return match ((string) ($field['type'] ?? 'text')) {
             'multiselect', 'tags' => [
                 $key => ['sometimes', 'array', 'max:500'],
-                // distinct: a list field must not carry duplicates (matches the
-                // v8.24 folders.include.* rule) — redundant entries cause wasted
-                // connector work and inconsistent round-trips.
-                $key.'.*' => ['string', 'distinct', 'max:255'],
+                // distinct + min:1: a list field must not carry duplicates or
+                // empty-string entries (matches the v8.24 folders.include.* rule) —
+                // redundant/blank entries cause wasted connector work and dirty
+                // config_json.
+                $key.'.*' => ['string', 'distinct', 'min:1', 'max:255'],
             ],
             // nullable: an explicit null clears the override back to the connector
             // default (the UI sends null when a number field is emptied).

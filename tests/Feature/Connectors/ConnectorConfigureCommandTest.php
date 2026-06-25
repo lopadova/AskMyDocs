@@ -100,6 +100,26 @@ final class ConnectorConfigureCommandTest extends TestCase
         $this->assertNull(data_get($inst->refresh()->config_json, 'date_window_days'));
     }
 
+    public function test_empty_value_clears_a_nullable_select_back_to_default(): void
+    {
+        $inst = $this->imapInstallation();
+
+        $this->artisan('connectors:configure', [
+            'installation' => $inst->id,
+            '--tenant' => 'default',
+            '--set' => ['body_format=prefer_html'],
+        ])->assertExitCode(0);
+        $this->assertSame('prefer_html', data_get($inst->refresh()->config_json, 'body_format'));
+
+        $this->artisan('connectors:configure', [
+            'installation' => $inst->id,
+            '--tenant' => 'default',
+            '--set' => ['body_format='],
+        ])->assertExitCode(0);
+
+        $this->assertNull(data_get($inst->refresh()->config_json, 'body_format'));
+    }
+
     public function test_invalid_value_for_a_typed_setting_is_rejected_not_coerced(): void
     {
         $inst = $this->imapInstallation();
