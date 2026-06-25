@@ -455,6 +455,58 @@ final class AdminAuthorizationMatrixTest extends TestCase
             ->assertStatus(403);
     }
 
+    /**
+     * The `POST /api/admin/connectors/{id}/enable` re-activation endpoint. POST-only
+     * (can't ride the GET matrix), same `can:manageConnectors` (admin + super-admin)
+     * gate as the rest of the group. Both roles pass the gate; a non-existent id then
+     * 404s (service findOr404) — not an authz failure. A viewer is blocked with 403.
+     */
+    public function test_enable_connector_requires_the_manage_connectors_gate(): void
+    {
+        $uri = '/api/admin/connectors/1/enable';
+
+        foreach (['admin', 'super-admin'] as $role) {
+            $status = $this->actingAs($this->userWithRole($role))
+                ->postJson($uri)
+                ->getStatusCode();
+            $this->assertSame(
+                404,
+                $status,
+                "Role [{$role}] must pass the manageConnectors gate and then 404 on the missing id for POST [{$uri}] but got {$status}.",
+            );
+        }
+
+        $this->actingAs($this->userWithRole('viewer'))
+            ->postJson($uri)
+            ->assertStatus(403);
+    }
+
+    /**
+     * The `POST /api/admin/connectors/{id}/test-fetch` diagnostic endpoint. POST-only,
+     * same `can:manageConnectors` (admin + super-admin) gate. Both roles pass the gate;
+     * a non-existent id then 404s (the probe's tenant-scoped lookup) — not an authz
+     * failure. A viewer is blocked at the gate with 403.
+     */
+    public function test_test_fetch_requires_the_manage_connectors_gate(): void
+    {
+        $uri = '/api/admin/connectors/1/test-fetch';
+
+        foreach (['admin', 'super-admin'] as $role) {
+            $status = $this->actingAs($this->userWithRole($role))
+                ->postJson($uri)
+                ->getStatusCode();
+            $this->assertSame(
+                404,
+                $status,
+                "Role [{$role}] must pass the manageConnectors gate and then 404 on the missing id for POST [{$uri}] but got {$status}.",
+            );
+        }
+
+        $this->actingAs($this->userWithRole('viewer'))
+            ->postJson($uri)
+            ->assertStatus(403);
+    }
+
     private function userWithRole(string $role): User
     {
         $user = User::create([
