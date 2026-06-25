@@ -114,6 +114,117 @@ final class HostIngestionBridgeTest extends TestCase
         );
     }
 
+    public function test_redact_content_masks_by_default(): void
+    {
+        // R43 — default ingest_strategy is the pre-v8.23 one-way mask.
+        config()->set('pii-redactor.enabled', true); // package engine (RedactorEngine no-ops when off)
+        config()->set('kb.pii_redactor.enabled', true);
+        config()->set('kb.pii_redactor.redact_before_ingest', true);
+
+        /** @var HostIngestionBridge $bridge */
+        $bridge = $this->app->make(ConnectorIngestionContract::class);
+        $out = $bridge->redactContent('My email is user@example.com');
+
+        $this->assertStringNotContainsString('user@example.com', $out);
+        $this->assertStringNotContainsString('[tok:', $out, 'default strategy must mask, not tokenise');
+    }
+
+    public function test_redact_content_tokenises_reversibly_when_configured(): void
+    {
+        // v8.23 — tokenise puts a reversible surrogate in the content while the
+        // original lives in the per-tenant vault (recoverable on demand).
+        config()->set('pii-redactor.enabled', true);
+        config()->set('kb.pii_redactor.enabled', true);
+        config()->set('kb.pii_redactor.redact_before_ingest', true);
+        config()->set('kb.pii_redactor.ingest_strategy', 'tokenise');
+        config()->set('pii-redactor.salt', 'test-salt');
+
+        /** @var HostIngestionBridge $bridge */
+        $bridge = $this->app->make(ConnectorIngestionContract::class);
+        $out = $bridge->redactContent('My email is user@example.com');
+
+        $this->assertStringNotContainsString('user@example.com', $out);
+        $this->assertMatchesRegularExpression('/\[tok:email:[0-9a-f]+\]/', $out);
+
+        // The original is recoverable from the shared (singleton) vault.
+        $restored = $this->app
+            ->make(\Padosoft\PiiRedactor\Strategies\RedactionStrategyFactory::class)
+            ->make('tokenise')
+            ->detokeniseString($out);
+        $this->assertStringContainsString('user@example.com', $restored);
+    }
+
+    public function test_tokenise_is_tenant_isolated(): void
+    {
+        // Core v8.23 contract: the same PII yields a DIFFERENT token per tenant,
+        // and a token minted under tenant A cannot be detokenised under tenant B
+        // (the TenantResolver binding + per-tenant vault, R30).
+        config()->set('pii-redactor.enabled', true);
+        config()->set('kb.pii_redactor.enabled', true);
+        config()->set('kb.pii_redactor.redact_before_ingest', true);
+        config()->set('kb.pii_redactor.ingest_strategy', 'tokenise');
+        config()->set('pii-redactor.salt', 'test-salt');
+
+        /** @var TenantContext $ctx */
+        $ctx = $this->app->make(TenantContext::class);
+        /** @var HostIngestionBridge $bridge */
+        $bridge = $this->app->make(ConnectorIngestionContract::class);
+
+        $ctx->set('tenant-a');
+        $outA = $bridge->redactContent('My email is user@example.com');
+
+        $ctx->set('tenant-b');
+        $outB = $bridge->redactContent('My email is user@example.com');
+
+        // Same PII → different token per tenant (no cross-tenant correlation).
+        $this->assertNotSame($outA, $outB);
+
+        // Under tenant B, tenant A's token does NOT resolve — stays tokenised.
+        $factory = $this->app->make(\Padosoft\PiiRedactor\Strategies\RedactionStrategyFactory::class);
+        $underB = $factory->make('tokenise')->detokeniseString($outA);
+        $this->assertStringNotContainsString('user@example.com', $underB);
+
+        // Back under tenant A, it resolves.
+        $ctx->set('tenant-a');
+        $underA = $factory->make('tokenise')->detokeniseString($outA);
+        $this->assertStringContainsString('user@example.com', $underA);
+    }
+
+    public function test_redact_content_is_no_op_and_does_not_throw_when_package_engine_off(): void
+    {
+        // Host boundary flags ON but the package engine OFF: redaction is a
+        // no-op, so even a typo'd strategy must NOT throw (the strict-strategy
+        // guard is reserved for when redaction actually runs).
+        config()->set('pii-redactor.enabled', false);
+        config()->set('kb.pii_redactor.enabled', true);
+        config()->set('kb.pii_redactor.redact_before_ingest', true);
+        config()->set('kb.pii_redactor.ingest_strategy', 'tokenize'); // typo, but engine off
+
+        /** @var HostIngestionBridge $bridge */
+        $bridge = $this->app->make(ConnectorIngestionContract::class);
+
+        $this->assertSame(
+            'My email is user@example.com',
+            $bridge->redactContent('My email is user@example.com'),
+        );
+    }
+
+    public function test_redact_content_throws_on_unknown_ingest_strategy(): void
+    {
+        // R14 — unknown strategy value must throw, never silently degrade to mask.
+        config()->set('pii-redactor.enabled', true); // engine ON → redaction active → strict strategy applies
+        config()->set('kb.pii_redactor.enabled', true);
+        config()->set('kb.pii_redactor.redact_before_ingest', true);
+        config()->set('kb.pii_redactor.ingest_strategy', 'tokenize'); // common typo — missing trailing 's'
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/tokenize/');
+
+        /** @var HostIngestionBridge $bridge */
+        $bridge = $this->app->make(ConnectorIngestionContract::class);
+        $bridge->redactContent('My email is user@example.com');
+    }
+
     public function test_emit_audit_writes_to_canonical_audit_with_namespaced_event(): void
     {
         /** @var TenantContext $ctx */

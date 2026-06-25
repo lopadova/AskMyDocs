@@ -36,7 +36,7 @@ final class TenantReadScopeTest extends TestCase
         'Conversation', 'HiddenWorkflow', 'KbAnalysisSetting', 'KbCanonicalAudit',
         'KbCanonicalHealthSnapshot', 'KbChunkFeedback', 'KbCollection',
         'EngagementDigestFeedEntry', 'KbCollectionMember', 'KbContributionEvent', 'KbDocAnalysis', 'KbDocAnalysisApplication', 'KbEdge', 'KbEngagementSnapshot', 'KbGamificationInsight', 'KbIngestBatch',
-        'KbIngestBatchItem', 'KbNode', 'KbSearchFailure', 'KbSynonym', 'KbTag', 'KbUserBadge', 'KbWikiIndex', 'KnowledgeChunk',
+        'KbIngestBatchItem', 'KbNode', 'KbPiiSetting', 'KbSearchFailure', 'KbSynonym', 'KbTag', 'KbUserBadge', 'KbWikiIndex', 'KnowledgeChunk',
         'KnowledgeDocument', 'KnowledgeDocumentAcl', 'McpServer',
         'McpTenantToken', 'McpToolCallAudit', 'Message', 'NotificationDigest',
         'NotificationEvent', 'NotificationPreference', 'NotificationTenantDefault',

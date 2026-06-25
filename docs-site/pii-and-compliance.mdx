@@ -94,6 +94,192 @@ Two decisions govern the compliance integration; changing either needs a new ADR
   than data-residency alone — but it is not a substitute for transport/storage
   encryption.
 - Detokenize is a privileged, audited reverse-lookup — never widen its gate.
+- **`KB_INGEST_PII_STRATEGY` must match exactly.** Accepted values are `mask`
+  (default) and `tokenise` (with a trailing `s`). When redaction is actually
+  active — i.e. all of `PII_REDACTOR_ENABLED=true` (package engine),
+  `KB_PII_REDACTOR_ENABLED=true` and `KB_CONNECTOR_INGEST_PII_REDACT=true` —
+  any other value (including the common typo `tokenize`) throws an
+  `InvalidArgumentException` at ingest time so the misconfiguration surfaces
+  immediately (R14). If any of those is OFF, `redactContent()` returns the
+  original untouched and the value is never consulted (no throw).
+- **`tokenise` requires `PII_REDACTOR_SALT`.** The per-tenant token vault uses an
+  HMAC salt; the package factory throws loudly if `PII_REDACTOR_SALT` is empty or
+  absent. Set it before enabling `tokenise` to avoid ingest failures.
+
+## Ingest redaction strategy (`KB_INGEST_PII_STRATEGY`)
+
+By default, connector ingestion uses one-way **masking** — PII is replaced with
+`[REDACTED]` and cannot be recovered. v8.23 adds a **tokenise** mode where PII is
+replaced with reversible surrogates (`[tok:email:4a3f…]`) stored in a per-tenant
+vault, so an authorised operator can recover the original on demand.
+
+<Warning>
+`tokenise` keeps the originals in the package token store. The package default
+is `PII_REDACTOR_TOKEN_STORE=memory` (process-local — lost on restart, useless
+across workers). For a **persistent, recoverable** vault set
+`PII_REDACTOR_TOKEN_STORE=database` (the `pii_token_maps` table) — or `cache`.
+</Warning>
+
+| `KB_INGEST_PII_STRATEGY` | `config('kb.pii_redactor.ingest_strategy')` | Behaviour |
+|---|---|---|
+| `mask` (default) | `mask` | One-way replacement — PII is gone after ingest. |
+| `tokenise` | `tokenise` | Reversible surrogate in KB; original in per-tenant vault. Requires `PII_REDACTOR_SALT` + a persistent `PII_REDACTOR_TOKEN_STORE`. |
+| anything else | — | `InvalidArgumentException` thrown at ingest time (R14). |
+
+The strategy applies at the **connector ingest boundary**
+(`HostIngestionBridge::redactContent`) when **all three** are on: the package
+engine `PII_REDACTOR_ENABLED=true` (otherwise `RedactorEngine::redact()` is a
+no-op), the host master switch `KB_PII_REDACTOR_ENABLED=true`, and
+`KB_CONNECTOR_INGEST_PII_REDACT=true`.
+
+### Inline ingestion path (v8.23/PR2)
+
+The same redaction now also runs on the **inline** ingestion path — the HTTP
+`POST /api/kb/ingest` batch and the `kb:ingest-folder` CLI. Both dispatch
+`IngestDocumentJob`, which runs the `kb.ingest` **Flow saga**
+(`parse-markdown → chunk-document → embed-chunks → persist-chunks`). The
+**`chunk-document`** step redacts each chunk's text — through the shared
+`App\Services\Kb\Pii\ChunkRedactor` — so the downstream `embed-chunks` and
+`persist-chunks` steps (which both read the chunk drafts) only ever see
+surrogates. The vector store + `chunk_text` therefore never hold raw PII while
+the per-tenant vault keeps the originals. (The legacy direct path,
+`DocumentIngestor::persistFromDrafts()`, redacts through the same `ChunkRedactor`
+after its idempotency short-circuit, so both code paths share one contract.)
+
+Redaction is deliberately scoped to the chunk text, not the whole markdown: the
+raw markdown stays the idempotency anchor (`document_hash`) and the canonical
+frontmatter stays parseable. Tokens are deterministic, so a re-ingest of
+identical content yields identical surrogates and remains idempotent (same
+`chunk_hash`). On a **dry-run** preview the redactor forces the side-effect-free
+`mask` strategy, so a preview never mints vault tokens and never stores raw PII.
+
+The inline path is gated by `KB_INLINE_INGEST_PII_REDACT` (default **OFF**, R43)
+on top of the same two master flags.
+
+### Per-(tenant, project) policy (`kb_pii_settings`)
+
+Because the inline path has the project key (the connector boundary does not),
+the effective on/off + strategy are resolved **per project** by
+`KbPiiPolicyResolver`, layering most-specific-wins:
+
+```
+config('kb.pii_redactor.*')  →  kb_pii_settings (tenant, '*')  →  kb_pii_settings (tenant, project)
+```
+
+So a tenant can mask everywhere but `tokenise` only the `support` project, or
+keep ingestion raw globally and opt one project in — without a deploy. The
+policy is **tri-surface** (R44) over the one `KbPiiPolicyResolver` core:
+
+| Surface | Read | Write |
+|---|---|---|
+| HTTP | `GET /api/admin/pii/policy` (`viewPiiRedactorAdmin`) | `PUT /api/admin/pii/policy` (`manageKbPiiPolicy` — dpo / super-admin) |
+| CLI | `kb:pii-policy --tenant= --project=` | — |
+| MCP | `KbPiiPolicyTool` (read-only) | — |
+
+Every row is tenant-scoped (R30) with a composite `UNIQUE(tenant_id, project_key)`.
+
+## Re-identification (detokenise) — tri-surface, gated, audited (v8.23/PR3)
+
+Re-identification is **JIT and gated**: an authorised operator restores the
+originals for a single request; the redacted form stays the system-of-record
+and the plaintext is never cached. It is delivered tri-surface (R44) over one
+`App\Services\Kb\Pii\DetokenizeService` core:
+
+| Surface | Endpoint / tool | Authorization |
+|---|---|---|
+| HTTP | `POST /api/admin/pii/documents/{id}/detokenize` | `viewPiiRedactorAdmin` group + the `pii.detokenize` permission (dpo / super-admin) |
+| CLI | `kb:detokenize-document {id} --tenant=` | operator (shell access) |
+| MCP | `KbDetokenizeTool` | MCP authorizer (admin/super-admin) **+** `pii.detokenize` → net **super-admin only** |
+
+Every surface enforces the **`tokenise` strategy preflight** (422 / error under
+mask/hash/drop — nothing was minted to reverse) and is **tenant-scoped** (R30 —
+an operator cannot re-identify another tenant's document by id). A **completed
+unmask** and a **permission-denied attempt** each write an immutable
+`admin_command_audit` row (`command='pii.detokenize'`,
+`status=completed|rejected`, with the `surface`). The strategy-preflight refusal
+and the not-found path are deliberately **not** audited — no unmask is attempted
+in either case (consistent with the chat-log precedent).
+The document lookup deliberately bypasses the per-project `AccessScopeScope` read
+ACL — a DPO servicing a DSAR must reach any document in the tenant — while the
+tenant boundary and the permission gate remain in force. The MCP tool is the
+single tool that can surface raw PII, so it carries the tightest gate.
+
+The **chat-log** sibling (`POST /api/admin/logs/chat/{id}/detokenize`) and the
+PII Redactor Admin SPA cross-mounted at `/app/admin/pii-redactor` provide the
+same capability for conversation rows (both RBAC-gated and audited).
+
+## Right-to-erasure (GDPR Art.17) — crypto-shred (v8.23/PR4)
+
+Because tokenisation is **pseudonymisation** (GDPR Art.4(5)), the indexed
+surrogates remain personal data — but the per-tenant vault makes **erasure**
+cheap and total: destroying the `pii_token_maps` row(s) for a subject's value(s)
+**crypto-shreds** the only link between a `[tok:...]` surrogate and the real
+person. Every surrogate left in the KB / chat / embeddings becomes permanently
+unresolvable (detokenise returns it unresolved), so the data is no longer
+personal data linkable to the subject — **without rewriting every downstream
+row**. This is the canonical vault-erasure pattern (Skyflow / DLP).
+
+It is delivered tri-surface (R44) over one `App\Services\Kb\Pii\SubjectErasureService`:
+
+| Surface | Entry | Authorization |
+|---|---|---|
+| HTTP | `POST /api/admin/pii/erase-subject` `{values:[…]}` | `viewPiiRedactorAdmin` group + the `pii.erase` permission (dpo / super-admin) |
+| CLI | `kb:erase-subject <value…> --tenant=` | operator (shell access) |
+| MCP | `KbEraseSubjectTool` | write tool → MCP authorizer super-admin **+** `pii.erase` → super-admin only |
+
+Erasure is **tenant-scoped** (R30 — a value is shredded ONLY in the caller's
+tenant; two tenants holding the same value are independent) and **audited**
+(`admin_command_audit`, `command='pii.erase'` — the audit records only the value
+*count*, never the raw PII, so the trail itself is not a PII sink).
+
+### DSAR (Art.15 access + Art.17 erasure)
+
+The same core is wired into the `padosoft/laravel-ai-act-compliance` **DSAR**
+flow via the host's `UserDataExporter` / `UserDataDeleter` implementations:
+
+- an Art.17 **delete** request crypto-shreds the subject's vault entries (keyed
+  by their email) in every tenant they have data in, inside the same atomic
+  transaction that wipes their conversations / chat-logs / audit rows;
+- an Art.15 **export** request surfaces a `pii_vault` snapshot — the vault
+  entries the system can still re-identify to the subject's PII — so the access
+  response is complete.
+
+## Re-embed on policy change + recall gate (v8.23/PR5)
+
+Tokenisation is a one-way transform of the chunk text, so **changing the policy**
+(mask ⇄ tokenise, or toggling redaction) leaves the already-indexed chunks +
+embeddings produced under the *old* policy stale. Re-running ingestion alone does
+not fix this — the raw markdown is unchanged, so the `version_hash` idempotency
+short-circuit treats it as a no-op.
+
+PR5 adds a **forced re-embed**: `DocumentIngestor::ingest(forceReembed: true)`
+skips the version-hash no-op and **replaces** the document's chunk set, re-derived
+under the current policy. It is exposed tri-surface (R44) over one
+`ReembedProjectService` (one `ReembedDocumentJob` per live document, tenant-scoped
+R30, streamed with `chunkById` R3):
+
+| Surface | Entry | Authorization |
+|---|---|---|
+| HTTP | `POST /api/admin/pii/reembed {project_key}` | `viewPiiRedactorAdmin` group + `can:manageKbPiiPolicy` (dpo / super-admin) |
+| CLI | `kb:reembed-project <project> --tenant=` | operator |
+| MCP | `KbReembedProjectTool` | write tool → authorizer super-admin |
+
+The policy `PUT /api/admin/pii/policy` returns **`reembed_recommended: true`**
+whenever the effective strategy or redact-toggle changed, so an operator knows to
+run the re-embed.
+
+**Recall gate.** Tokenisation shifts the embedding vectors, which can degrade
+retrieval recall. The `rag-regression` CI workflow drives a golden Q&A set
+through the live RAG pipeline on every change and fails the build on a recall /
+citation-groundedness regression — the anti-drift guard for this whole cycle.
+
+## Transparency (EU AI Act Art.50(1))
+
+The `ai.disclosure` middleware (from `padosoft/laravel-ai-act-compliance`)
+appends the **Art.50(1) "you are interacting with an AI" disclosure** header
+(`X-AI-Disclosure`) on every chat route — the JSON API turn and the web SSE
+stream alike — so the transparency obligation (in force 2 Aug 2026) is met
+out of the box.
 
 <CardGroup cols={2}>
   <Card title="Multi-tenant isolation" icon="building-shield" href="/multi-tenant-isolation">

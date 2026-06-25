@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Flow\Steps;
 
+use App\Services\Kb\Pii\ChunkRedactor;
 use App\Services\Kb\Pipeline\ConvertedDocument;
 use App\Services\Kb\Pipeline\PipelineRegistry;
 use Padosoft\LaravelFlow\FlowContext;
@@ -26,6 +27,7 @@ final class ChunkDocumentStep implements FlowStepHandler
 {
     public function __construct(
         private readonly PipelineRegistry $registry,
+        private readonly ChunkRedactor $redactor,
     ) {}
 
     public function execute(FlowContext $context): FlowStepResult
@@ -59,6 +61,16 @@ final class ChunkDocumentStep implements FlowStepHandler
 
         $chunker = $this->registry->resolveChunker($sourceType);
         $chunkDrafts = $chunker->chunk($converted);
+
+        // v8.23 (Ciclo 4) — PII redaction of the chunk text HERE, so the
+        // downstream embed-chunks + persist-chunks steps (which both read
+        // `chunk_drafts`) only ever see surrogates — the real HTTP/CLI ingest
+        // path runs through this Flow, not DocumentIngestor::ingest(). On a
+        // dry-run the redactor forces the side-effect-free mask so the preview /
+        // flow-audit never stores raw PII and never mints vault tokens. No-op
+        // unless redaction is genuinely active (gates + per-project policy).
+        $projectKey = (string) ($context->input['project_key'] ?? '');
+        $chunkDrafts = $this->redactor->redact($projectKey, $chunkDrafts, previewSafe: $context->dryRun);
 
         $serialized = array_map(
             static fn ($draft): array => [

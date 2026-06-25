@@ -194,6 +194,35 @@ class AppServiceProvider extends ServiceProvider
         $this->registerFakeImapFactory();
         $this->registerInvitationsIntegration();
         $this->registerInvitationsGates();
+        $this->registerPiiRedactorTenancy();
+    }
+
+    /**
+     * v8.23 (Ciclo 4) — bind the laravel-pii-redactor TenantResolver to the
+     * host's request-scoped TenantContext so the reversible token vault is
+     * isolated per tenant (R30): the same PII yields a different token per
+     * tenant and a token only ever detokenises within its own tenant. The
+     * package binds a single-tenant DefaultTenantResolver via bindIf(); this
+     * explicit bind() makes the host multi-tenant definitively.
+     */
+    private function registerPiiRedactorTenancy(): void
+    {
+        $this->app->bind(
+            \Padosoft\PiiRedactor\Contracts\TenantResolver::class,
+            function ($app): \Padosoft\PiiRedactor\Contracts\TenantResolver {
+                $ctx = $app->make(TenantContext::class);
+
+                return new class($ctx) implements \Padosoft\PiiRedactor\Contracts\TenantResolver
+                {
+                    public function __construct(private readonly TenantContext $ctx) {}
+
+                    public function currentTenantId(): string
+                    {
+                        return $this->ctx->current();
+                    }
+                };
+            },
+        );
     }
 
     /**
@@ -598,6 +627,14 @@ class AppServiceProvider extends ServiceProvider
             KbPromoteCommand::class,
             KbValidateCanonicalCommand::class,
             KbRebuildGraphCommand::class,
+            // v8.23 (Ciclo 4) — read the effective PII ingestion policy (R44 CLI surface).
+            \App\Console\Commands\KbPiiPolicyCommand::class,
+            // v8.23 (Ciclo 4) — re-identify a tokenised KB document (R44 CLI surface).
+            \App\Console\Commands\KbDetokenizeDocumentCommand::class,
+            // v8.23 (Ciclo 4) — GDPR Art.17 crypto-shred a subject (R44 CLI surface).
+            \App\Console\Commands\KbEraseSubjectCommand::class,
+            // v8.23 (Ciclo 4) — re-embed a project under the current PII policy (R44 CLI surface).
+            \App\Console\Commands\KbReembedProjectCommand::class,
             // PR3 — RBAC
             AuthGrantCommand::class,
             // Operator helper: seed a demo user inside a tenant in the
@@ -727,6 +764,19 @@ class AppServiceProvider extends ServiceProvider
             }
 
             return $user->hasRole('super-admin');
+        });
+
+        // v8.23 (Ciclo 4) — write the per-(tenant, project) PII ingestion
+        // policy (`kb_pii_settings`). Reading the policy rides the broader
+        // `viewPiiRedactorAdmin` gate (admin / dpo / super-admin); MUTATING it
+        // is a privacy-governance action, so it is restricted to the data
+        // owner roles — dpo / super-admin — mirroring `detokenisePiiRedactor`.
+        Gate::define('manageKbPiiPolicy', function ($user): bool {
+            if ($user === null) {
+                return false;
+            }
+
+            return $user->hasAnyRole(['super-admin', 'dpo']);
         });
     }
 
