@@ -95,6 +95,17 @@ final class ConnectorSettingsTest extends TestCase
         ])->assertStatus(422);
     }
 
+    public function test_patch_settings_rejects_an_unknown_key_with_422(): void
+    {
+        $admin = $this->makeSuperAdmin();
+        $inst = $this->makeImapInstallation();
+
+        // A typo'd setting must 422, never 200-OK-then-silently-do-nothing (R14).
+        $this->actingAs($admin)->patchJson("/api/admin/connectors/{$inst->id}", [
+            'settings' => ['date_window_day' => 90],
+        ])->assertStatus(422)->assertJsonValidationErrors(['settings.date_window_day']);
+    }
+
     public function test_folder_discovery_404_for_a_non_discovering_connector(): void
     {
         $admin = $this->makeSuperAdmin();

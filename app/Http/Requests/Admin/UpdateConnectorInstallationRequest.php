@@ -7,7 +7,9 @@ namespace App\Http\Requests\Admin;
 use App\Services\Admin\Connectors\ConnectorSettingsService;
 use App\Support\TenantContext;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Arr;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
 
 /**
@@ -105,15 +107,54 @@ final class UpdateConnectorInstallationRequest extends FormRequest
     /**
      * @return array<string, list<mixed>>
      */
+    private ?ConnectorInstallation $installation = null;
+
+    private bool $installationResolved = false;
+
+    /** @var list<array<string,mixed>>|null */
+    private ?array $settingsSchemaCache = null;
+
+    /**
+     * The tenant-scoped installation under edit, resolved once. Null for an
+     * unknown / cross-tenant id (the controller's findOr404 turns that into a 404).
+     */
+    private function installation(): ?ConnectorInstallation
+    {
+        if (! $this->installationResolved) {
+            $tenantId = app(TenantContext::class)->current();
+            $id = (int) $this->route('installationId');
+            $this->installation = ConnectorInstallation::query()
+                ->where('id', $id)
+                ->where('tenant_id', $tenantId)
+                ->first();
+            $this->installationResolved = true;
+        }
+
+        return $this->installation;
+    }
+
+    /**
+     * The connector's settings schema, resolved once (reused by rules() +
+     * withValidator() so the registry/connector isn't queried twice).
+     *
+     * @return list<array<string,mixed>>
+     */
+    private function settingsSchema(): array
+    {
+        if ($this->settingsSchemaCache === null) {
+            $installation = $this->installation();
+            $this->settingsSchemaCache = $installation === null
+                ? []
+                : app(ConnectorSettingsService::class)->schemaFor($installation);
+        }
+
+        return $this->settingsSchemaCache;
+    }
+
     public function rules(): array
     {
         $tenantId = app(TenantContext::class)->current();
-        $id = (int) $this->route('installationId');
-
-        $installation = ConnectorInstallation::query()
-            ->where('id', $id)
-            ->where('tenant_id', $tenantId)
-            ->first();
+        $installation = $this->installation();
 
         if ($installation === null) {
             // Unknown / cross-tenant id — the controller's findOr404 turns this
@@ -151,7 +192,7 @@ final class UpdateConnectorInstallationRequest extends FormRequest
         // Derive a rule per settings field from the connector's own schema (R23 —
         // no connector-name branch). The field `name` is a dotted path, so the
         // rule key nests under `settings` (e.g. 'settings.folders.include').
-        foreach (app(ConnectorSettingsService::class)->schemaFor($installation) as $field) {
+        foreach ($this->settingsSchema() as $field) {
             $name = (string) ($field['name'] ?? '');
             if ($name === '') {
                 continue;
@@ -160,6 +201,50 @@ final class UpdateConnectorInstallationRequest extends FormRequest
         }
 
         return $rules;
+    }
+
+    /**
+     * Reject an unknown nested `settings` key (e.g. a typo like
+     * `settings.date_window_day`). Laravel includes unruled nested keys in the
+     * validated payload, and {@see ConnectorSettingsService::mergeIntoConfig} only
+     * writes schema-declared paths — so without this an operator typo would 200-OK
+     * yet silently do nothing (R14). A key is accepted when it equals a schema
+     * field's dotted name, is a descendant of one (a list element like
+     * `folders.include.0`), or is an ancestor container of one.
+     */
+    public function withValidator(Validator $validator): void
+    {
+        if ($this->installation() === null) {
+            return;
+        }
+        $settings = $this->input('settings');
+        if (! is_array($settings)) {
+            return;
+        }
+
+        $known = [];
+        foreach ($this->settingsSchema() as $field) {
+            $name = (string) ($field['name'] ?? '');
+            if ($name !== '') {
+                $known[] = $name;
+            }
+        }
+
+        $validator->after(function (Validator $validator) use ($settings, $known): void {
+            foreach (Arr::dot($settings) as $key => $value) {
+                $key = (string) $key;
+                $covered = false;
+                foreach ($known as $name) {
+                    if ($key === $name || str_starts_with($key, $name.'.') || str_starts_with($name, $key.'.')) {
+                        $covered = true;
+                        break;
+                    }
+                }
+                if (! $covered) {
+                    $validator->errors()->add("settings.{$key}", "Unknown setting '{$key}' for this connector.");
+                }
+            }
+        });
     }
 
     /**
