@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Resources\Admin;
 
+use App\Services\Admin\Connectors\ConnectorSettingsService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
@@ -33,6 +34,8 @@ final class ConnectorInstallationResource extends JsonResource
     {
         $config = (array) ($this->config_json ?? []);
         $include = (array) (($config['folders'] ?? [])['include'] ?? []);
+        // Resolve the settings core once (used for both keys below).
+        $settings = app(ConnectorSettingsService::class);
 
         return [
             'id' => $this->id,
@@ -47,6 +50,12 @@ final class ConnectorInstallationResource extends JsonResource
             // v8.24 — picker-owned connection settings (NEVER connection/secret).
             'folders' => ['include' => array_values(array_map('strval', $include))],
             'date_window_days' => isset($config['date_window_days']) ? (int) $config['date_window_days'] : null,
+            // v8.25 (R27 additive) — the connector's FULL editable settings schema +
+            // current values (the schema-driven editor). [] when the connector
+            // advertises none. Resolved here to keep this in lockstep with
+            // ConnectorInstallationService::installationArray (one contract, R44).
+            'connection_settings_schema' => $settings->schemaFor($this->resource),
+            'settings' => $settings->currentSettings($this->resource),
         ];
     }
 }

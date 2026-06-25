@@ -6,6 +6,7 @@ use App\Mcp\Methods\ListCollectionResources;
 use App\Mcp\Methods\ReadCollectionResource;
 use App\Mcp\Tools\FinOpsBudgetStatusTool;
 use App\Mcp\Tools\ConnectorInstallationsTool;
+use App\Mcp\Tools\ConnectorSettingsTool;
 use App\Mcp\Tools\AppSettingsTool;
 use App\Mcp\Tools\KbDetokenizeTool;
 use App\Mcp\Tools\KbEraseSubjectTool;
@@ -128,6 +129,12 @@ class KnowledgeBaseServer extends Server
         // list this tenant's connector accounts + sync status, tenant-scoped (R30),
         // over the same core as the HTTP index + `connectors:list` command.
         ConnectorInstallationsTool::class,
+
+        // v8.25 — connector settings read surface (R44 third surface): a connector
+        // account's editable sync-settings schema + current values (+ opt-in live
+        // folder list), tenant-scoped (R30), over the same core as the HTTP
+        // resource + `connectors:configure` command.
+        ConnectorSettingsTool::class,
 
         // v8.21 (Ciclo 2) — ingestion/sync observability read surface (R44):
         // queue depths + recent connector sync runs, tenant-scoped (R30).
