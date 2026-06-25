@@ -104,6 +104,13 @@ final class ConnectorSettingsTest extends TestCase
         $this->actingAs($admin)->patchJson("/api/admin/connectors/{$inst->id}", [
             'settings' => ['date_window_day' => 90],
         ])->assertStatus(422)->assertJsonValidationErrors(['settings.date_window_day']);
+
+        // A mis-shaped container (scalar where the schema expects folders.include)
+        // is an ancestor of a known field but is itself unknown — it must 422, not
+        // pass and then be silently dropped by mergeIntoConfig.
+        $this->actingAs($admin)->patchJson("/api/admin/connectors/{$inst->id}", [
+            'settings' => ['folders' => 'evil'],
+        ])->assertStatus(422)->assertJsonValidationErrors(['settings.folders']);
     }
 
     public function test_folder_discovery_404_for_a_non_discovering_connector(): void

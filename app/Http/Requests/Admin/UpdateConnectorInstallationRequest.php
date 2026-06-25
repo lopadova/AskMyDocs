@@ -210,9 +210,12 @@ final class UpdateConnectorInstallationRequest extends FormRequest
      * `settings.date_window_day`). Laravel includes unruled nested keys in the
      * validated payload, and {@see ConnectorSettingsService::mergeIntoConfig} only
      * writes schema-declared paths — so without this an operator typo would 200-OK
-     * yet silently do nothing (R14). A key is accepted when it equals a schema
-     * field's dotted name, is a descendant of one (a list element like
-     * `folders.include.0`), or is an ancestor container of one.
+     * yet silently do nothing (R14). A key is accepted ONLY when it equals a schema
+     * field's dotted name or is a descendant of one (a list element like
+     * `folders.include.0`). An ancestor/container key (`folders` for a
+     * `folders.include` field, or a scalar mis-shaped `folders: "x"`) is REJECTED —
+     * mergeIntoConfig would ignore it, so accepting it would re-open the silent
+     * no-op path this guard exists to close.
      */
     public function withValidator(Validator $validator): void
     {
@@ -237,7 +240,7 @@ final class UpdateConnectorInstallationRequest extends FormRequest
                 $key = (string) $key;
                 $covered = false;
                 foreach ($known as $name) {
-                    if ($key === $name || str_starts_with($key, $name.'.') || str_starts_with($name, $key.'.')) {
+                    if ($key === $name || str_starts_with($key, $name.'.')) {
                         $covered = true;
                         break;
                     }
