@@ -34,6 +34,13 @@ export interface ConnectorInstallationDto {
     // window (null = the connector default).
     folders: { include: string[] };
     date_window_days: number | null;
+    // v8.25 — the connector's FULL editable settings schema + current values. The
+    // schema-driven settings form renders `connection_settings_schema` (grouped by
+    // `group`) seeded from `settings` (a nested partial of config_json keyed by the
+    // field's dotted name). [] / {} when the connector advertises no settings.
+    // Optional in the type (additive); the BE emits both on every connector.
+    connection_settings_schema?: CredentialFieldSchema[];
+    settings?: Record<string, unknown>;
 }
 
 /*
@@ -48,16 +55,22 @@ export type ConnectorAuthKind = 'oauth' | 'credential';
 
 export interface CredentialFieldSchema {
     name: string;
+    // v8.25 — `multiselect` (a list chosen from a fixed or live option set) and
+    // `tags` (an open free-text string list) are the connection-settings types.
+    type: 'text' | 'number' | 'password' | 'select' | 'checkbox' | 'multiselect' | 'tags';
     label: string;
-    type: 'text' | 'number' | 'password' | 'select' | 'checkbox';
     target: 'auth_mode' | 'provider' | 'connection' | 'secret' | 'config';
     required: boolean;
     secret: boolean;
-    default: string | number | boolean | null;
+    default: string | number | boolean | string[] | null;
     options: Record<string, string>;
     showIf: { field: string; equals: string | number | boolean } | null;
     help: string | null;
     group: string | null;
+    // v8.25 — for a live `multiselect`, names the discovery source the host
+    // queries to populate the choices (`'folders'` → the live folder list).
+    // Optional (additive); the BE emits it (null for non-discovery fields).
+    discovery?: string | null;
 }
 
 export interface ConnectorEntry {
@@ -117,6 +130,12 @@ export interface UpdateInstallationParams {
      * config_json key); `undefined` leaves it untouched (key omitted from PATCH).
      */
     date_window_days?: number | null;
+    /**
+     * v8.25 — the generic settings object: a nested partial of config_json keyed
+     * by each schema field's dotted name (the schema-driven settings form sends
+     * this). `undefined` leaves settings untouched.
+     */
+    settings?: Record<string, unknown>;
 }
 
 /** v8.24 — live IMAP folder list for the connection-settings picker. */
@@ -224,6 +243,9 @@ export const adminConnectorsApi = {
         }
         if (params.date_window_days !== undefined) {
             body.date_window_days = params.date_window_days;
+        }
+        if (params.settings !== undefined) {
+            body.settings = params.settings;
         }
         const { data } = await api.patch<UpdateInstallationResponse>(
             `/api/admin/connectors/${params.installationId}`,

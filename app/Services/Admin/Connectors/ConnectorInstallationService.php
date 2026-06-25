@@ -36,6 +36,7 @@ final class ConnectorInstallationService
     public function __construct(
         private readonly ConnectorRegistry $registry,
         private readonly TenantContext $tenantContext,
+        private readonly ConnectorSettingsService $settings,
     ) {}
 
     /**
@@ -98,6 +99,9 @@ final class ConnectorInstallationService
      */
     public function installationArray(ConnectorInstallation $i): array
     {
+        // Resolve the settings schema ONCE and reuse it for the current-values pass.
+        $schema = $this->settings->schemaFor($i);
+
         return [
             'id' => $i->id,
             'label' => $i->label,
@@ -111,6 +115,13 @@ final class ConnectorInstallationService
             // private and the secret lives only in the vault.
             'folders' => ['include' => $this->folderIncludeOf($i)],
             'date_window_days' => $this->dateWindowOf($i),
+            // v8.25 (R27 additive) — the connector's FULL editable settings
+            // surface + the current value of each field, as a nested partial of
+            // config_json (the schema-driven editor seeds from this and PATCHes
+            // the same shape). [] when the connector advertises no settings; never
+            // exposes connection/auth/secret config.
+            'connection_settings_schema' => $schema,
+            'settings' => $this->settings->currentSettings($i, $schema),
         ];
     }
 
@@ -374,13 +385,20 @@ final class ConnectorInstallationService
     {
         $hasFolders = array_key_exists('folders', $attrs) && array_key_exists('include', (array) $attrs['folders']);
         $hasWindow = array_key_exists('date_window_days', $attrs);
+        $hasSettings = array_key_exists('settings', $attrs) && is_array($attrs['settings']);
 
-        if (! $hasFolders && ! $hasWindow) {
+        if (! $hasFolders && ! $hasWindow && ! $hasSettings) {
             return null;
         }
 
-        $config = (array) ($installation->config_json ?? []);
+        // v8.25 — the generic settings payload (a nested partial of config_json)
+        // writes the connector's full editable surface in one shot, overwriting
+        // only schema-declared fields and preserving connection/auth/secret config.
+        $config = $hasSettings
+            ? $this->settings->mergeIntoConfig($installation, (array) $attrs['settings'])
+            : (array) ($installation->config_json ?? []);
 
+        // v8.24 back-compat — the narrow picker keys still work, applied on top.
         if ($hasFolders) {
             // Overwrite the include sub-key only — never the whole folders map,
             // so the default/edited `exclude` list survives an include edit.

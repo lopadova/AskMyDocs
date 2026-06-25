@@ -627,10 +627,14 @@ final class ConnectorAdminControllerTest extends TestCase
             'created_by' => $admin->id,
         ]);
 
-        $this->actingAs($admin)
-            ->patchJson("/api/admin/connectors/{$installation->id}", ['date_window_days' => 99999])
-            ->assertStatus(422)
-            ->assertJsonValidationErrors(['date_window_days']);
+        // Bound aligned with the schema-driven settings.date_window_days rule
+        // (min:0, max:1000000) — a value outside it is rejected on both surfaces.
+        foreach ([-1, 2_000_000] as $bad) {
+            $this->actingAs($admin)
+                ->patchJson("/api/admin/connectors/{$installation->id}", ['date_window_days' => $bad])
+                ->assertStatus(422)
+                ->assertJsonValidationErrors(['date_window_days']);
+        }
     }
 
     public function test_update_rejects_a_non_string_folder_path(): void

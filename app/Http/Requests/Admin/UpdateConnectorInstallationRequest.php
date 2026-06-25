@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\Admin;
 
+use App\Services\Admin\Connectors\ConnectorSettingsService;
 use App\Support\TenantContext;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Arr;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
 
 /**
@@ -19,6 +22,14 @@ use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
  * sync whitelist; empty = sync all non-excluded folders) and
  * `date_window_days` (how far back to walk). Both land in `config_json` via a
  * read-modify-write in {@see \App\Services\Admin\Connectors\ConnectorInstallationService::updateMetadata}.
+ *
+ * v8.25 — also accepts the GENERIC `settings` object: a nested partial of
+ * config_json validated DYNAMICALLY against the connector's
+ * {@see \Padosoft\AskMyDocsConnectorBase\Contracts\SupportsConnectionSettings::connectionSettingsSchema()}
+ * (each field's type → its rule; e.g. a `multiselect`/`tags` field → an array of
+ * strings, a `number` → an integer). There is no connector-specific rule list
+ * here (R23): any connector that advertises a settings schema validates for free.
+ * The v8.24 `folders`/`date_window_days` keys stay for back-compat (R27).
  *
  * The `label` unique is scoped to (tenant, connector) and ignores the row
  * itself, so re-saving the same label is a no-op rather than a false collision.
@@ -96,15 +107,54 @@ final class UpdateConnectorInstallationRequest extends FormRequest
     /**
      * @return array<string, list<mixed>>
      */
+    private ?ConnectorInstallation $installation = null;
+
+    private bool $installationResolved = false;
+
+    /** @var list<array<string,mixed>>|null */
+    private ?array $settingsSchemaCache = null;
+
+    /**
+     * The tenant-scoped installation under edit, resolved once. Null for an
+     * unknown / cross-tenant id (the controller's findOr404 turns that into a 404).
+     */
+    private function installation(): ?ConnectorInstallation
+    {
+        if (! $this->installationResolved) {
+            $tenantId = app(TenantContext::class)->current();
+            $id = (int) $this->route('installationId');
+            $this->installation = ConnectorInstallation::query()
+                ->where('id', $id)
+                ->where('tenant_id', $tenantId)
+                ->first();
+            $this->installationResolved = true;
+        }
+
+        return $this->installation;
+    }
+
+    /**
+     * The connector's settings schema, resolved once (reused by rules() +
+     * withValidator() so the registry/connector isn't queried twice).
+     *
+     * @return list<array<string,mixed>>
+     */
+    private function settingsSchema(): array
+    {
+        if ($this->settingsSchemaCache === null) {
+            $installation = $this->installation();
+            $this->settingsSchemaCache = $installation === null
+                ? []
+                : app(ConnectorSettingsService::class)->schemaFor($installation);
+        }
+
+        return $this->settingsSchemaCache;
+    }
+
     public function rules(): array
     {
         $tenantId = app(TenantContext::class)->current();
-        $id = (int) $this->route('installationId');
-
-        $installation = ConnectorInstallation::query()
-            ->where('id', $id)
-            ->where('tenant_id', $tenantId)
-            ->first();
+        $installation = $this->installation();
 
         if ($installation === null) {
             // Unknown / cross-tenant id — the controller's findOr404 turns this
@@ -112,7 +162,7 @@ final class UpdateConnectorInstallationRequest extends FormRequest
             return [];
         }
 
-        return [
+        $rules = [
             'label' => [
                 'sometimes', 'required', 'string', 'max:64',
                 'regex:/^[\pL\pN][\pL\pN _.-]*$/u',
@@ -133,8 +183,104 @@ final class UpdateConnectorInstallationRequest extends FormRequest
             'folders.include.*' => ['string', 'distinct', 'min:1', 'max:255'],
             // nullable: an explicit null CLEARS the override back to the connector
             // default (the service unsets the config_json key); an omitted key is
-            // left unchanged (PATCH).
-            'date_window_days' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:3650'],
+            // left unchanged (PATCH). max bound matches the schema-driven
+            // `settings.date_window_days` rule (the same config field) so a value
+            // can't be accepted on one surface and rejected on the other (R44).
+            'date_window_days' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:1000000'],
+            // v8.25 — the generic settings object (a nested partial of config_json).
+            'settings' => ['sometimes', 'array'],
         ];
+
+        // Derive a rule per settings field from the connector's own schema (R23 —
+        // no connector-name branch). The field `name` is a dotted path, so the
+        // rule key nests under `settings` (e.g. 'settings.folders.include').
+        foreach ($this->settingsSchema() as $field) {
+            $name = (string) ($field['name'] ?? '');
+            if ($name === '') {
+                continue;
+            }
+            $rules += $this->settingsFieldRules('settings.'.$name, $field);
+        }
+
+        return $rules;
+    }
+
+    /**
+     * Reject an unknown nested `settings` key (e.g. a typo like
+     * `settings.date_window_day`). Laravel includes unruled nested keys in the
+     * validated payload, and {@see ConnectorSettingsService::mergeIntoConfig} only
+     * writes schema-declared paths — so without this an operator typo would 200-OK
+     * yet silently do nothing (R14). A key is accepted ONLY when it equals a schema
+     * field's dotted name or is a descendant of one (a list element like
+     * `folders.include.0`). An ancestor/container key (`folders` for a
+     * `folders.include` field, or a scalar mis-shaped `folders: "x"`) is REJECTED —
+     * mergeIntoConfig would ignore it, so accepting it would re-open the silent
+     * no-op path this guard exists to close.
+     */
+    public function withValidator(Validator $validator): void
+    {
+        if ($this->installation() === null) {
+            return;
+        }
+        $settings = $this->input('settings');
+        if (! is_array($settings)) {
+            return;
+        }
+
+        $known = [];
+        foreach ($this->settingsSchema() as $field) {
+            $name = (string) ($field['name'] ?? '');
+            if ($name !== '') {
+                $known[] = $name;
+            }
+        }
+
+        $validator->after(function (Validator $validator) use ($settings, $known): void {
+            foreach (Arr::dot($settings) as $key => $value) {
+                $key = (string) $key;
+                $covered = false;
+                foreach ($known as $name) {
+                    if ($key === $name || str_starts_with($key, $name.'.')) {
+                        $covered = true;
+                        break;
+                    }
+                }
+                if (! $covered) {
+                    $validator->errors()->add("settings.{$key}", "Unknown setting '{$key}' for this connector.");
+                }
+            }
+        });
+    }
+
+    /**
+     * Validation rules for one settings field, keyed by its nested path under
+     * `settings`. A list field (multiselect/tags) also gets a `.*` element rule.
+     *
+     * @param  array<string,mixed>  $field
+     * @return array<string, list<mixed>>
+     */
+    private function settingsFieldRules(string $key, array $field): array
+    {
+        return match ((string) ($field['type'] ?? 'text')) {
+            'multiselect', 'tags' => [
+                // nullable: a present null clears the override back to the connector
+                // default (mergeIntoConfig unsets the key), matching the scalar
+                // fields — without it a list couldn't be reverted to default.
+                $key => ['sometimes', 'nullable', 'array', 'max:500'],
+                // distinct + min:1: a list field must not carry duplicates or
+                // empty-string entries (matches the v8.24 folders.include.* rule) —
+                // redundant/blank entries cause wasted connector work and dirty
+                // config_json.
+                $key.'.*' => ['string', 'distinct', 'min:1', 'max:255'],
+            ],
+            // nullable: an explicit null clears the override back to the connector
+            // default (the UI sends null when a number field is emptied).
+            'number' => [$key => ['sometimes', 'nullable', 'integer', 'min:0', 'max:1000000']],
+            'checkbox' => [$key => ['sometimes', 'boolean']],
+            // nullable: an empty value (UI/CLI clear → null via middleware) reverts
+            // the override to the connector default instead of 422-ing on Rule::in.
+            'select' => [$key => ['sometimes', 'nullable', Rule::in(array_keys((array) ($field['options'] ?? [])))]],
+            default => [$key => ['sometimes', 'string', 'max:2000']],
+        };
     }
 }
