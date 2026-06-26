@@ -176,6 +176,25 @@ final class SerializedConnectorSyncJobTest extends TestCase
         Queue::assertNotPushed(SerializedConnectorSyncJob::class);
     }
 
+    public function test_dispatch_for_routes_an_unkeyable_imap_install_to_the_vendor_job(): void
+    {
+        // An IMAP row with no resolvable mailbox key gets no WithoutOverlapping either
+        // way, so the serialized envelope (tries=0 + retryUntil) buys nothing — route
+        // it to the vendor job so it keeps the standard retry semantics.
+        Queue::fake();
+
+        $installation = ConnectorInstallation::create([
+            'tenant_id' => 'default', 'connector_name' => 'imap', 'label' => 'broken',
+            'config_json' => ['connection' => []],
+            'status' => ConnectorInstallation::STATUS_ACTIVE, 'created_by' => 1,
+        ]);
+
+        SerializedConnectorSyncJob::dispatchFor($installation);
+
+        Queue::assertPushed(ConnectorSyncJob::class, 1);
+        Queue::assertNotPushed(SerializedConnectorSyncJob::class);
+    }
+
     public function test_retry_until_is_a_future_wall_clock_window(): void
     {
         config()->set('connectors.imap.mailbox_lock.requeue_window_minutes', 30);

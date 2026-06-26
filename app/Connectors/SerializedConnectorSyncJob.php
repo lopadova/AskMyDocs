@@ -78,7 +78,10 @@ final class SerializedConnectorSyncJob extends ConnectorSyncJob
      *      that seam's cache store may not host locks);
      *   4. the active cache store is lock-capable (a `LockProvider`) — otherwise
      *      `WithoutOverlapping` throws "this cache store does not support locks" and
-     *      crashes the worker.
+     *      crashes the worker;
+     *   5. the install resolves to a mailbox lock key (host+username present) —
+     *      an unkeyable IMAP row gets no `WithoutOverlapping` either way, so the
+     *      serialized envelope (tries=0 + retryUntil) would buy nothing.
      *
      * When any fails, {@see dispatchFor()} degrades to the vendor {@see ConnectorSyncJob}
      * (unchanged envelope) and {@see middleware()} adds no mutex — a clean no-op, never
@@ -95,6 +98,10 @@ final class SerializedConnectorSyncJob extends ConnectorSyncJob
         }
 
         if (config('connectors.fake_imap_ping', false) === true) {
+            return false;
+        }
+
+        if (MailboxLockKey::forInstallation($installation) === null) {
             return false;
         }
 
