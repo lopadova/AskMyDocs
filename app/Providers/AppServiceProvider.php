@@ -200,6 +200,7 @@ class AppServiceProvider extends ServiceProvider
         $this->registerFinOpsGates();
         $this->registerGuardrailsGates();
         $this->registerFakeImapFactory();
+        $this->registerImapConnectionSerializer();
         $this->registerInvitationsIntegration();
         $this->registerInvitationsGates();
         $this->registerPiiRedactorTenancy();
@@ -338,6 +339,49 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(
             \Padosoft\AskMyDocsConnectorImap\Imap\ImapClientFactoryInterface::class,
             \App\Connectors\Testing\FakeImapClientFactory::class,
+        );
+    }
+
+    /**
+     * Serialize IMAP connections per mailbox (host+port+username), cross-tenant, so
+     * a server never sees "Too many simultaneous connections". DECORATES whatever
+     * factory is currently bound (real OR the fake-ping seam above) via
+     * `$app->extend`, so EVERY connection path — sync, health, OAuth ping,
+     * test-fetch, folder picker — passes through the per-mailbox lock. Boot-time
+     * (after the fake-ping bind) so it wraps the final binding. Default-OFF in tests
+     * (single process); production defaults ON. Degrades to a no-op (no wrapping)
+     * when the cache store can't host atomic locks — never crashes boot.
+     */
+    private function registerImapConnectionSerializer(): void
+    {
+        if (config('connectors.imap.serialize_connections', true) !== true) {
+            return;
+        }
+
+        if (! interface_exists(\Padosoft\AskMyDocsConnectorImap\Imap\ImapClientFactoryInterface::class)) {
+            return;
+        }
+
+        $store = $this->app->make('cache')->store()->getStore();
+        if (! $store instanceof \Illuminate\Contracts\Cache\LockProvider) {
+            // No atomic-lock-capable store (e.g. a misconfigured null/array-less
+            // driver) — skip serialization rather than fail every IMAP call.
+            return;
+        }
+
+        $waitSeconds = (int) config('connectors.imap.mailbox_lock.wait_seconds', 15);
+        $ttlSeconds = (int) config('connectors.imap.mailbox_lock.ttl_seconds', 700);
+
+        $this->app->extend(
+            \Padosoft\AskMyDocsConnectorImap\Imap\ImapClientFactoryInterface::class,
+            static function ($factory) use ($store, $waitSeconds, $ttlSeconds): \App\Connectors\Imap\SerializingImapClientFactory {
+                return new \App\Connectors\Imap\SerializingImapClientFactory(
+                    $factory,
+                    $store,
+                    $waitSeconds,
+                    $ttlSeconds,
+                );
+            },
         );
     }
 
