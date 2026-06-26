@@ -122,6 +122,15 @@ class InitCaseStudiesCommand extends Command
         $prefix = trim((string) config('kb.sources.path_prefix', ''), '/');
         $base = base_path(self::DATA_DIR);
 
+        // R14 — il disco KB (es. "s3" su Laravel Cloud) gira con `throw => false`,
+        // quindi Flysystem inghiotte l'errore AWS reale e `put()` ritorna solo
+        // `false`. Forziamo `throw` (e ri-risolviamo il disco perché il setting
+        // sia effettivo) così l'eccezione S3 vera — AccessDenied / NoSuchBucket /
+        // SignatureDoesNotMatch / endpoint irraggiungibile — emerge nel log invece
+        // del generico "Copia fallita". Override runtime: vale anche con config:cache.
+        config(["filesystems.disks.{$disk}.throw" => true]);
+        Storage::forgetDisk($disk);
+
         $dirs = glob($base.'/*', GLOB_ONLYDIR) ?: [];
         if ($dirs === []) {
             $this->components->warn("Nessun dataset in {$base} — niente documenti da ingerire.");
@@ -142,9 +151,18 @@ class InitCaseStudiesCommand extends Command
                     throw new RuntimeException("Lettura fallita: {$file}");
                 }
 
-                // R4 — non ignorare il ritorno di Storage::put().
-                if (Storage::disk($disk)->put($target, $contents) === false) {
-                    throw new RuntimeException("Copia su disco '{$disk}' fallita: {$target}");
+                // R4 — non ignorare il fallimento di Storage::put(). Con `throw`
+                // forzato sopra, una scrittura fallita lancia l'eccezione AWS
+                // reale: la ri-lanciamo come `previous` mantenendo il contesto
+                // (disco + target) e propagando il motivo esatto (R14).
+                try {
+                    Storage::disk($disk)->put($target, $contents);
+                } catch (\Throwable $e) {
+                    throw new RuntimeException(
+                        "Copia su disco '{$disk}' fallita: {$target} — {$e->getMessage()}",
+                        0,
+                        $e,
+                    );
                 }
             }
 
