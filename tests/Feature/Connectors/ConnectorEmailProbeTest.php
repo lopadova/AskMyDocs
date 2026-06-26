@@ -178,6 +178,30 @@ final class ConnectorEmailProbeTest extends TestCase
         $this->assertArrayHasKey('error', $resp->json());
     }
 
+    public function test_factory_build_failure_is_503_not_an_uncaught_500(): void
+    {
+        // R14 — a failure while BUILDING the IMAP client (bad connection config,
+        // auth-mode mismatch, an eager connect inside make()) is still a
+        // "couldn't reach the mailbox" condition: it must map to 503 via
+        // ConnectorEmailProbeException, never bubble up as a 500.
+        $admin = $this->makeSuperAdmin();
+        $factory = new class implements ImapClientFactoryInterface
+        {
+            public function make(array $connection, string $secret, string $authMode): ImapClientInterface
+            {
+                throw new \RuntimeException('IMAP factory: invalid connection config');
+            }
+        };
+        $this->app->instance(ImapClientFactoryInterface::class, $factory);
+        $this->app->forgetInstance(ConnectorRegistry::class);
+        $installation = $this->makeImapInstallation('default');
+
+        $resp = $this->actingAs($admin)->postJson("/api/admin/connectors/{$installation->id}/test-fetch");
+
+        $resp->assertStatus(503);
+        $this->assertArrayHasKey('error', $resp->json());
+    }
+
     public function test_missing_credentials_is_503_with_a_clear_message(): void
     {
         // No ConnectorCredential row → the vault has no secret → the probe cannot run.

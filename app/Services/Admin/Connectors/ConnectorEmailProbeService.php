@@ -101,9 +101,14 @@ final class ConnectorEmailProbeService
             );
         }
 
-        $client = $this->factory->make($connection, $secret, $authMode);
+        // Build the client INSIDE the try: a factory-level failure (bad connection
+        // config, auth-mode mismatch, a connect/handshake that fails eagerly in
+        // make()) is a "couldn't reach the mailbox" condition too and must surface
+        // as a 503 — not bypass the mapping and bubble up as a 500 (R14).
+        $client = null;
 
         try {
+            $client = $this->factory->make($connection, $secret, $authMode);
             $message = $this->fetchNewest($client, $folder);
 
             // A reachable but empty folder is a valid 200, not a failure.
@@ -116,7 +121,8 @@ final class ConnectorEmailProbeService
                 previous: $e,
             );
         } finally {
-            $client->close();
+            // Null-safe: make() may have thrown before $client was assigned.
+            $client?->close();
         }
     }
 
