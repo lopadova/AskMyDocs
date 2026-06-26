@@ -133,20 +133,7 @@ class InitCaseStudiesCommand extends Command
             $projectKey = basename($dir);
             $files = glob($dir.'/*.md') ?: [];
 
-            foreach ($files as $file) {
-                $relative = self::KB_SUBDIR.'/'.$projectKey.'/'.basename($file);
-                $target = KbPath::normalize($prefix === '' ? $relative : $prefix.'/'.$relative);
-
-                $contents = file_get_contents($file);
-                if ($contents === false) {
-                    throw new RuntimeException("Lettura fallita: {$file}");
-                }
-
-                // R4 — non ignorare il ritorno di Storage::put().
-                if (Storage::disk($disk)->put($target, $contents) === false) {
-                    throw new RuntimeException("Copia su disco '{$disk}' fallita: {$target}");
-                }
-            }
+            $this->copyDatasetToDisk($disk, $prefix, $projectKey, $files);
 
             $this->line(sprintf('  [%s] %d documenti → ingest (tenant %s)', $projectKey, count($files), $projectKey));
             // Un tenant per azienda: ingest nel tenant dell'azienda (= project_key).
@@ -157,6 +144,63 @@ class InitCaseStudiesCommand extends Command
                 '--recursive' => true,
                 '--sync' => true,
             ]);
+        }
+    }
+
+    /**
+     * Copia i markdown di un progetto sul disco kb. `throw` è forzato SOLO per la
+     * durata della copia e ripristinato in `finally`, così la fase di ingest
+     * successiva (kb:ingest-folder, stesso processo) NON eredita le eccezioni del
+     * filesystem abilitate — il flag vale unicamente per lo step di copia.
+     *
+     * @param  list<string>  $files
+     */
+    private function copyDatasetToDisk(string $disk, string $prefix, string $projectKey, array $files): void
+    {
+        // R14 — il disco KB (es. "s3" su Laravel Cloud) gira con `throw => false`,
+        // quindi Flysystem inghiotte l'errore AWS reale e `put()` ritorna solo
+        // `false`. Forziamo `throw` (e ri-risolviamo il disco perché il setting
+        // sia effettivo) così l'eccezione S3 vera — AccessDenied / NoSuchBucket /
+        // SignatureDoesNotMatch / endpoint irraggiungibile — emerge nel log invece
+        // del generico "Copia fallita". Override runtime: vale anche con config:cache.
+        $previousThrow = config("filesystems.disks.{$disk}.throw");
+        config(["filesystems.disks.{$disk}.throw" => true]);
+        Storage::forgetDisk($disk);
+
+        try {
+            foreach ($files as $file) {
+                $relative = self::KB_SUBDIR.'/'.$projectKey.'/'.basename($file);
+                $target = KbPath::normalize($prefix === '' ? $relative : $prefix.'/'.$relative);
+
+                $contents = file_get_contents($file);
+                if ($contents === false) {
+                    throw new RuntimeException("Lettura fallita: {$file}");
+                }
+
+                // R4 — non ignorare il fallimento di Storage::put(). Con `throw`
+                // forzato sopra una scrittura fallita lancia l'eccezione AWS reale,
+                // che ri-lanciamo come `previous` col contesto (disco + target).
+                // Ma alcuni adapter ritornano `false` SENZA lanciare: copriamo anche
+                // quel caso, così il fallimento non passa mai silenzioso (R4 + R14).
+                try {
+                    $copied = Storage::disk($disk)->put($target, $contents);
+                } catch (\Throwable $e) {
+                    throw new RuntimeException(
+                        "Copia su disco '{$disk}' fallita: {$target} — {$e->getMessage()}",
+                        0,
+                        $e,
+                    );
+                }
+
+                if ($copied === false) {
+                    throw new RuntimeException("Copia su disco '{$disk}' fallita: {$target}");
+                }
+            }
+        } finally {
+            // Ripristina il valore originale di `throw` e ri-risolvi il disco:
+            // l'ingest successivo gira con la config di partenza.
+            config(["filesystems.disks.{$disk}.throw" => $previousThrow]);
+            Storage::forgetDisk($disk);
         }
     }
 
