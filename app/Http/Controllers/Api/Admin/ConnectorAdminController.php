@@ -308,7 +308,11 @@ final class ConnectorAdminController extends Controller
             ])->save();
         }
 
-        SerializedConnectorSyncJob::dispatch($installation->id, $installation->tenant_id);
+        if ($installation->connector_name === 'imap' && config('connectors.imap.serialize_connections', true) === true) {
+            SerializedConnectorSyncJob::dispatch($installation->id, $installation->tenant_id);
+        } else {
+            \Padosoft\AskMyDocsConnectorBase\ConnectorSyncJob::dispatch($installation->id, $installation->tenant_id);
+        }
 
         return response()->json([
             'data' => [
