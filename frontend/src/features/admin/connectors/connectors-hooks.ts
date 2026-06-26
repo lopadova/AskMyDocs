@@ -7,7 +7,9 @@ import {
     type ConnectorEntry,
     type ConnectorInstallationDto,
     type DisableResponse,
+    type EnableResponse,
     type StartInstallParams,
+    type TestFetchResponse,
     type UpdateInstallationParams,
 } from './connectors.api';
 
@@ -127,6 +129,31 @@ export function useDisableConnector() {
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: CONNECTORS_KEY });
         },
+    });
+}
+
+/**
+ * Re-activate a DISABLED/ERRORED account (inverse of disable). Invalidates the
+ * list so the card flips back to Active.
+ */
+export function useEnableConnector() {
+    const qc = useQueryClient();
+    return useMutation<EnableResponse['data'], unknown, number>({
+        mutationFn: (installationId: number) => adminConnectorsApi.enable(installationId),
+        onSuccess: () => {
+            qc.invalidateQueries({ queryKey: CONNECTORS_KEY });
+        },
+    });
+}
+
+/**
+ * Diagnostic test-fetch (download one recent email, no ingest). Read-only — it
+ * mutates no server state, so NO list invalidation; the caller renders the
+ * returned preview and surfaces failures via a toast.
+ */
+export function useTestFetch() {
+    return useMutation<TestFetchResponse['data'], unknown, number>({
+        mutationFn: (installationId: number) => adminConnectorsApi.testFetch(installationId),
     });
 }
 

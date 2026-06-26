@@ -6,19 +6,23 @@ import { AccountMetaForm, type AccountMetaFormValues } from './AccountMetaForm';
 import { ConnectorCard } from './ConnectorCard';
 import { CredentialConnectorForm } from './CredentialConnectorForm';
 import { ConnectionSettingsForm } from './ConnectionSettingsForm';
+import { TestFetchResultModal } from './TestFetchResultModal';
 import type {
     ConfigureConnectorPayload,
     ConnectorEntry,
     ConnectorInstallationDto,
+    TestFetchResponse,
 } from './connectors.api';
 import {
     useConfigureConnector,
     useConnectors,
     useDestroyConnector,
     useDisableConnector,
+    useEnableConnector,
     useProjectOptions,
     useStartInstall,
     useSyncNow,
+    useTestFetch,
     useUpdateInstallation,
 } from './connectors-hooks';
 
@@ -57,6 +61,13 @@ type Modal =
     | { kind: 'folders'; entry: ConnectorEntry; account: ConnectorInstallationDto }
     | null;
 
+/**
+ * Read-only test-fetch result lives in its OWN state (not the `Modal` union): it
+ * is triggered from a card, not a form, and reusing `Modal` would route it through
+ * the project-binding modal machinery (e.g. the projects-load error effect).
+ */
+type TestFetchModal = { account: ConnectorInstallationDto; result: TestFetchResponse['data'] } | null;
+
 export function ConnectorsView() {
     const toast = useToast();
     const connectorsQuery = useConnectors();
@@ -64,9 +75,11 @@ export function ConnectorsView() {
     const startInstall = useStartInstall();
     const syncNow = useSyncNow();
     const disableConnector = useDisableConnector();
+    const enableConnector = useEnableConnector();
     const destroyConnector = useDestroyConnector();
     const configureConnector = useConfigureConnector();
     const updateInstallation = useUpdateInstallation();
+    const testFetch = useTestFetch();
 
     const [modal, setModal] = useState<Modal>(null);
     const [modalError, setModalError] = useState<string | null>(null);
@@ -237,11 +250,21 @@ export function ConnectorsView() {
     // resolves.
     const [syncingIds, setSyncingIds] = useState<ReadonlySet<number>>(() => new Set());
     const [busyIds, setBusyIds] = useState<ReadonlySet<number>>(() => new Set());
+    // Enable is tracked apart from `busyIds` so only the Enable button shows
+    // "Enabling…"; another write on the same disabled account (e.g. Remove) must
+    // not relabel Enable. It still locks every write button via the shared
+    // in-flight guard + the row's `locked` (which folds in `enabling`).
+    const [enablingIds, setEnablingIds] = useState<ReadonlySet<number>>(() => new Set());
+    // Read-only test-fetch probe in-flight ids — tracked separately from the write
+    // actions so the diagnostic neither blocks nor is blocked by sync/disable/etc.
+    const [probingIds, setProbingIds] = useState<ReadonlySet<number>>(() => new Set());
+    const [testFetchModal, setTestFetchModal] = useState<TestFetchModal>(null);
     // Synchronous in-flight guard (a ref updates immediately, unlike batched
     // state) so a double-trigger on the same account can't start two overlapping
     // runs — the first finishing would otherwise clear the busy flag while the
-    // second is still in flight.
+    // second is still in flight. Probes use their own ref (independent of writes).
     const inFlightRef = useRef<Set<number>>(new Set());
+    const probeInFlightRef = useRef<Set<number>>(new Set());
 
     async function track(
         setter: Dispatch<SetStateAction<ReadonlySet<number>>>,
@@ -285,6 +308,41 @@ export function ConnectorsView() {
                 toast.error(toAdminError(e).message, 'toast-connector-error');
             }
         });
+    }
+
+    async function handleEnable(installationId: number) {
+        await track(setEnablingIds, installationId, async () => {
+            try {
+                await enableConnector.mutateAsync(installationId);
+                toast.success('Account enabled.', 'toast-connector-enabled');
+            } catch (e) {
+                toast.error(toAdminError(e).message, 'toast-connector-error');
+            }
+        });
+    }
+
+    async function handleTestFetch(account: ConnectorInstallationDto) {
+        const id = account.id;
+        if (probeInFlightRef.current.has(id)) {
+            return; // a probe for this account is already running — ignore.
+        }
+        probeInFlightRef.current.add(id);
+        setProbingIds((s) => new Set(s).add(id));
+        try {
+            const result = await testFetch.mutateAsync(id);
+            // Re-read the account from the fresh list if it moved, but the preview
+            // is point-in-time so the captured `account` is fine for the title.
+            setTestFetchModal({ account, result });
+        } catch (e) {
+            toast.error(toAdminError(e).message, 'toast-connector-error');
+        } finally {
+            probeInFlightRef.current.delete(id);
+            setProbingIds((s) => {
+                const next = new Set(s);
+                next.delete(id);
+                return next;
+            });
+        }
     }
 
     async function handleRemove(installationId: number) {
@@ -416,12 +474,16 @@ export function ConnectorsView() {
                                 onAddAccount={handleAddAccount}
                                 onSync={handleSync}
                                 onDisable={handleDisable}
+                                onEnable={handleEnable}
                                 onRemove={handleRemove}
                                 onEdit={(installation) => handleEdit(entry, installation)}
                                 onManageFolders={(installation) => handleManageFolders(entry, installation)}
+                                onTestFetch={handleTestFetch}
                                 onCancelInstall={handleRemove}
                                 syncingIds={syncingIds}
                                 busyIds={busyIds}
+                                enablingIds={enablingIds}
+                                probingIds={probingIds}
                                 addPending={addPendingFor(entry.key)}
                             />
                         ))}
@@ -506,6 +568,15 @@ export function ConnectorsView() {
                         updateInstallation.isPending &&
                         updateInstallation.variables?.installationId === modal.account.id
                     }
+                />
+            )}
+
+            {testFetchModal && (
+                <TestFetchResultModal
+                    key={`test-fetch-${testFetchModal.account.id}`}
+                    account={testFetchModal.account}
+                    result={testFetchModal.result}
+                    onClose={() => setTestFetchModal(null)}
                 />
             )}
         </AdminShell>

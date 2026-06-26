@@ -40,12 +40,27 @@ function entry(installations: ConnectorInstallationDto[]): ConnectorEntry {
     };
 }
 
+/** A credential connector (IMAP) — the auth_kind that exposes Folders + Test fetch. */
+function credentialEntry(installations: ConnectorInstallationDto[]): ConnectorEntry {
+    return {
+        key: 'imap',
+        display_name: 'Email (IMAP)',
+        icon_url: '/connectors/imap.svg',
+        oauth_scopes: [],
+        auth_kind: 'credential',
+        credential_form_schema: [],
+        installations,
+    };
+}
+
 const NOOP = {
     onAddAccount: vi.fn(),
     onSync: vi.fn(),
     onDisable: vi.fn(),
+    onEnable: vi.fn(),
     onRemove: vi.fn(),
     onEdit: vi.fn(),
+    onTestFetch: vi.fn(),
     onCancelInstall: vi.fn(),
 };
 
@@ -131,5 +146,84 @@ describe('ConnectorCard (multi-account)', () => {
     it('announces each account row with its label + status', () => {
         render(<ConnectorCard {...NOOP} entry={entry([account(1, 'support', 'active')])} />);
         expect(screen.getByTestId('connector-account-1')).toHaveAttribute('aria-label', 'support — Active');
+    });
+
+    it('exposes Enable (not Sync/Disable) on a disabled account and fires onEnable', async () => {
+        // The fix for "disabled accounts could not be re-enabled": a disabled row
+        // shows Enable + Edit + Remove, and NO Sync / Disable.
+        const onEnable = vi.fn();
+        render(<ConnectorCard {...NOOP} onEnable={onEnable} entry={entry([account(11, 'support', 'disabled')])} />);
+
+        expect(screen.queryByTestId('connector-account-11-sync')).toBeNull();
+        expect(screen.queryByTestId('connector-account-11-disable')).toBeNull();
+        const enableBtn = screen.getByTestId('connector-account-11-enable');
+        expect(enableBtn).toHaveTextContent('Enable');
+        await userEvent.click(enableBtn);
+        expect(onEnable).toHaveBeenCalledWith(11);
+    });
+
+    it('disables Enable + shows "Enabling…" while the enable is in flight', () => {
+        render(
+            <ConnectorCard
+                {...NOOP}
+                enablingIds={new Set([11])}
+                entry={entry([account(11, 'support', 'disabled')])}
+            />,
+        );
+        const btn = screen.getByTestId('connector-account-11-enable');
+        expect(btn).toBeDisabled();
+        expect(btn).toHaveTextContent('Enabling…');
+    });
+
+    it('keeps the Enable label "Enable" (disabled) when a NON-enable write is in flight', () => {
+        // Regression for the mislabel: a disabled account also exposes Remove, so a
+        // Remove in flight raises `busyIds` (not `enablingIds`). The Enable button
+        // must lock but must NOT claim to be "Enabling…".
+        render(
+            <ConnectorCard {...NOOP} busyIds={new Set([11])} entry={entry([account(11, 'support', 'disabled')])} />,
+        );
+        const btn = screen.getByTestId('connector-account-11-enable');
+        expect(btn).toBeDisabled();
+        expect(btn).toHaveTextContent('Enable');
+        expect(btn).not.toHaveTextContent('Enabling…');
+    });
+
+    it('renders Test fetch on a credential connector account and fires onTestFetch', async () => {
+        const onTestFetch = vi.fn();
+        const acct = account(20, 'prometeo-1', 'active');
+        render(
+            <ConnectorCard {...NOOP} onTestFetch={onTestFetch} entry={credentialEntry([acct])} />,
+        );
+        const btn = screen.getByTestId('connector-account-20-test-fetch');
+        expect(btn).toHaveTextContent('Test fetch');
+        await userEvent.click(btn);
+        expect(onTestFetch).toHaveBeenCalledWith(acct);
+    });
+
+    it('offers Test fetch even on an errored credential account (operator diagnostic)', () => {
+        render(<ConnectorCard {...NOOP} entry={credentialEntry([account(21, 'prometeo-2', 'errored')])} />);
+        expect(screen.getByTestId('connector-account-21-test-fetch')).toBeVisible();
+    });
+
+    it('does NOT render Test fetch for an OAuth (non-credential) connector', () => {
+        render(<ConnectorCard {...NOOP} entry={entry([account(30, 'support', 'active')])} />);
+        expect(screen.queryByTestId('connector-account-30-test-fetch')).toBeNull();
+    });
+
+    it('shows "Fetching…" + disables Test fetch while a probe is in flight, leaving Sync usable', () => {
+        // Probe tracking is independent of the write actions: a probe in flight must
+        // NOT disable Sync/Disable, and vice-versa.
+        render(
+            <ConnectorCard
+                {...NOOP}
+                probingIds={new Set([22])}
+                entry={credentialEntry([account(22, 'prometeo-1', 'active')])}
+            />,
+        );
+        const probe = screen.getByTestId('connector-account-22-test-fetch');
+        expect(probe).toBeDisabled();
+        expect(probe).toHaveTextContent('Fetching…');
+        // Sync stays enabled — write actions are not blocked by a read-only probe.
+        expect(screen.getByTestId('connector-account-22-sync')).toBeEnabled();
     });
 });

@@ -165,6 +165,37 @@ export interface DisableResponse {
 }
 
 /*
+ * `ConnectorAdminController::enable()` envelope — the inverse of disable(), same
+ * minimal `{ installation_id, status }` shape (the FE refetches the list after).
+ */
+export type EnableResponse = DisableResponse;
+
+/*
+ * `ConnectorAdminController::testFetch()` envelope — a sanitized preview of the
+ * SINGLE newest message of a folder, fetched WITHOUT ingesting. `message` is null
+ * when the folder is reachable but empty. Mirrors
+ * `App\Services\Admin\Connectors\ConnectorEmailProbeService::probe()`.
+ */
+export interface TestFetchMessage {
+    uid: number;
+    subject: string;
+    from_name: string;
+    from_email: string;
+    date: string | null;
+    to_count: number;
+    has_attachments: boolean;
+    attachments_count: number;
+    snippet: string;
+}
+
+export interface TestFetchResponse {
+    data: {
+        folder: string;
+        message: TestFetchMessage | null;
+    };
+}
+
+/*
  * v8.17 — `ConnectorAdminController::configure()` envelope. `status` reflects the
  * upserted installation (active for a successful basic-auth ping; pending for
  * xoauth2 awaiting the provider redirect). `redirect_to` is non-null ONLY for
@@ -275,6 +306,24 @@ export const adminConnectorsApi = {
     async disable(installationId: number): Promise<DisableResponse['data']> {
         const { data } = await api.post<DisableResponse>(
             `/api/admin/connectors/${installationId}/disable`,
+        );
+        return data.data;
+    },
+
+    async enable(installationId: number): Promise<EnableResponse['data']> {
+        const { data } = await api.post<EnableResponse>(
+            `/api/admin/connectors/${installationId}/enable`,
+        );
+        return data.data;
+    },
+
+    /**
+     * Diagnostic — download ONE recent email as a preview, no ingest. 503 when the
+     * mailbox is unreachable; 404 for a cross-tenant / non-IMAP id.
+     */
+    async testFetch(installationId: number): Promise<TestFetchResponse['data']> {
+        const { data } = await api.post<TestFetchResponse>(
+            `/api/admin/connectors/${installationId}/test-fetch`,
         );
         return data.data;
     },

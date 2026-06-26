@@ -278,6 +278,161 @@ final class ConnectorAdminControllerTest extends TestCase
         });
     }
 
+    public function test_sync_now_rearms_an_errored_account_then_dispatches(): void
+    {
+        // The "Retry sync" fix: ConnectorSyncJob::runSync() skips non-ACTIVE rows,
+        // so a bare dispatch against an ERRORED account was a silent no-op. The
+        // operator-driven retry must re-arm ERRORED -> ACTIVE + clear error_json
+        // BEFORE dispatch so the job's guard passes.
+        Queue::fake();
+        $admin = $this->makeSuperAdmin();
+
+        $installation = ConnectorInstallation::create([
+            'tenant_id' => 'default',
+            'connector_name' => 'imap',
+            'label' => 'prometeo-1',
+            'status' => ConnectorInstallation::STATUS_ERRORED,
+            'error_json' => ['message' => 'IMAP connect failed: Too many simultaneous connections.'],
+            'created_by' => $admin->id,
+        ]);
+
+        $resp = $this->actingAs($admin)
+            ->postJson("/api/admin/connectors/{$installation->id}/sync-now");
+
+        $resp->assertStatus(202);
+        $this->assertSame(true, $resp->json('data.queued'));
+
+        // Row re-armed so the job's ACTIVE-only guard now passes.
+        $installation->refresh();
+        $this->assertSame(ConnectorInstallation::STATUS_ACTIVE, $installation->status);
+        $this->assertNull($installation->error_json);
+
+        Queue::assertPushed(ConnectorSyncJob::class, function (ConnectorSyncJob $job) use ($installation) {
+            return $job->installationId === $installation->id && $job->tenantId === 'default';
+        });
+    }
+
+    public function test_sync_now_rejects_a_disabled_account_without_dispatching(): void
+    {
+        // R14/R43 — a disabled account cannot sync; returning 202 queued:true would
+        // lie about a job the guard would drop. 422 + no dispatch instead.
+        Queue::fake();
+        $admin = $this->makeSuperAdmin();
+
+        $installation = ConnectorInstallation::create([
+            'tenant_id' => 'default',
+            'connector_name' => 'imap',
+            'label' => 'prometeo-1',
+            'status' => ConnectorInstallation::STATUS_DISABLED,
+            'created_by' => $admin->id,
+        ]);
+
+        $this->actingAs($admin)
+            ->postJson("/api/admin/connectors/{$installation->id}/sync-now")
+            ->assertStatus(422);
+
+        $this->assertSame(ConnectorInstallation::STATUS_DISABLED, $installation->fresh()->status);
+        Queue::assertNothingPushed();
+    }
+
+    public function test_sync_now_rejects_a_pending_account_without_dispatching(): void
+    {
+        Queue::fake();
+        $admin = $this->makeSuperAdmin();
+
+        $installation = ConnectorInstallation::create([
+            'tenant_id' => 'default',
+            'connector_name' => 'imap',
+            'label' => 'prometeo-1',
+            'status' => ConnectorInstallation::STATUS_PENDING,
+            'created_by' => $admin->id,
+        ]);
+
+        $this->actingAs($admin)
+            ->postJson("/api/admin/connectors/{$installation->id}/sync-now")
+            ->assertStatus(422);
+
+        Queue::assertNothingPushed();
+    }
+
+    public function test_enable_reactivates_a_disabled_account_and_clears_error(): void
+    {
+        // The fix for "a disabled account could not be re-enabled". Enable flips
+        // DISABLED -> ACTIVE and clears any stale error_json; credentials untouched.
+        $admin = $this->makeSuperAdmin();
+
+        $installation = ConnectorInstallation::create([
+            'tenant_id' => 'default',
+            'connector_name' => 'imap',
+            'label' => 'prometeo-1',
+            'status' => ConnectorInstallation::STATUS_DISABLED,
+            'error_json' => ['message' => 'old failure'],
+            'created_by' => $admin->id,
+        ]);
+        ConnectorCredential::create([
+            'tenant_id' => 'default',
+            'connector_installation_id' => $installation->id,
+            'encrypted_access_token' => \Illuminate\Support\Facades\Crypt::encryptString('secret'),
+        ]);
+
+        $resp = $this->actingAs($admin)
+            ->postJson("/api/admin/connectors/{$installation->id}/enable");
+
+        $resp->assertOk();
+        $this->assertSame(ConnectorInstallation::STATUS_ACTIVE, $resp->json('data.status'));
+
+        $installation->refresh();
+        $this->assertSame(ConnectorInstallation::STATUS_ACTIVE, $installation->status);
+        $this->assertNull($installation->error_json);
+        // Disable never revoked the vault row, and enable must not either.
+        $this->assertDatabaseHas('connector_credentials', [
+            'connector_installation_id' => $installation->id,
+        ]);
+    }
+
+    public function test_enable_also_recovers_an_errored_account(): void
+    {
+        $admin = $this->makeSuperAdmin();
+
+        $installation = ConnectorInstallation::create([
+            'tenant_id' => 'default',
+            'connector_name' => 'imap',
+            'label' => 'prometeo-1',
+            'status' => ConnectorInstallation::STATUS_ERRORED,
+            'error_json' => ['message' => 'boom'],
+            'created_by' => $admin->id,
+        ]);
+
+        $this->actingAs($admin)
+            ->postJson("/api/admin/connectors/{$installation->id}/enable")
+            ->assertOk();
+
+        $installation->refresh();
+        $this->assertSame(ConnectorInstallation::STATUS_ACTIVE, $installation->status);
+        $this->assertNull($installation->error_json);
+    }
+
+    public function test_enable_rejects_a_pending_account(): void
+    {
+        // R43 — the OTHER state: a PENDING (mid-OAuth, no credentials) row must not
+        // be "enabled" into a credential-less ACTIVE; finish the connection instead.
+        $admin = $this->makeSuperAdmin();
+
+        $installation = ConnectorInstallation::create([
+            'tenant_id' => 'default',
+            'connector_name' => 'imap',
+            'label' => 'prometeo-1',
+            'status' => ConnectorInstallation::STATUS_PENDING,
+            'created_by' => $admin->id,
+        ]);
+
+        $this->actingAs($admin)
+            ->postJson("/api/admin/connectors/{$installation->id}/enable")
+            ->assertStatus(422);
+
+        $this->assertSame(ConnectorInstallation::STATUS_PENDING, $installation->fresh()->status);
+    }
+
     public function test_disable_marks_installation_disabled_without_revoking(): void
     {
         $admin = $this->makeSuperAdmin();
@@ -808,10 +963,12 @@ final class ConnectorAdminControllerTest extends TestCase
         $this->actingAs($user)->getJson('/api/admin/connectors/google-drive/install')->assertStatus(403);
         // callback
         $this->actingAs($user)->getJson('/api/admin/connectors/google-drive/oauth/callback')->assertStatus(403);
-        // update / sync-now / disable / destroy
+        // update / sync-now / test-fetch / disable / enable / destroy
         $this->actingAs($user)->patchJson('/api/admin/connectors/1', ['label' => 'x'])->assertStatus(403);
         $this->actingAs($user)->postJson('/api/admin/connectors/1/sync-now')->assertStatus(403);
+        $this->actingAs($user)->postJson('/api/admin/connectors/1/test-fetch')->assertStatus(403);
         $this->actingAs($user)->postJson('/api/admin/connectors/1/disable')->assertStatus(403);
+        $this->actingAs($user)->postJson('/api/admin/connectors/1/enable')->assertStatus(403);
         $this->actingAs($user)->deleteJson('/api/admin/connectors/1')->assertStatus(403);
     }
 
@@ -821,7 +978,9 @@ final class ConnectorAdminControllerTest extends TestCase
         $this->getJson('/api/admin/connectors/google-drive/install')->assertStatus(401);
         $this->patchJson('/api/admin/connectors/1', ['label' => 'x'])->assertStatus(401);
         $this->postJson('/api/admin/connectors/1/sync-now')->assertStatus(401);
+        $this->postJson('/api/admin/connectors/1/test-fetch')->assertStatus(401);
         $this->postJson('/api/admin/connectors/1/disable')->assertStatus(401);
+        $this->postJson('/api/admin/connectors/1/enable')->assertStatus(401);
         $this->deleteJson('/api/admin/connectors/1')->assertStatus(401);
     }
 
@@ -844,6 +1003,10 @@ final class ConnectorAdminControllerTest extends TestCase
         // disable 404s.
         $this->actingAs($admin)
             ->postJson("/api/admin/connectors/{$foreignInstallation->id}/disable")
+            ->assertStatus(404);
+        // enable 404s.
+        $this->actingAs($admin)
+            ->postJson("/api/admin/connectors/{$foreignInstallation->id}/enable")
             ->assertStatus(404);
         // destroy 404s.
         $this->actingAs($admin)

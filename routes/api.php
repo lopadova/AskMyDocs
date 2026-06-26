@@ -849,9 +849,17 @@ Route::middleware([
         Route::post('/{installationId}/sync-now', [ConnectorAdminController::class, 'syncNow'])
             ->whereNumber('installationId')
             ->name('api.admin.connectors.sync-now');
+        // Diagnostic — download ONE recent email as a preview, no ingest (IMAP).
+        Route::post('/{installationId}/test-fetch', [ConnectorAdminController::class, 'testFetch'])
+            ->whereNumber('installationId')
+            ->name('api.admin.connectors.test-fetch');
         Route::post('/{installationId}/disable', [ConnectorAdminController::class, 'disable'])
             ->whereNumber('installationId')
             ->name('api.admin.connectors.disable');
+        // Re-activate a DISABLED/ERRORED account (inverse of disable; creds kept).
+        Route::post('/{installationId}/enable', [ConnectorAdminController::class, 'enable'])
+            ->whereNumber('installationId')
+            ->name('api.admin.connectors.enable');
         Route::delete('/{installationId}', [ConnectorAdminController::class, 'destroy'])
             ->whereNumber('installationId')
             ->name('api.admin.connectors.destroy');
