@@ -256,17 +256,21 @@ final class ConnectorAdminControllerTest extends TestCase
         $this->assertNull($errored->error_json);
     }
 
-    public function test_sync_now_dispatches_the_serialized_connector_sync_job(): void
+    public function test_sync_now_dispatches_the_serialized_connector_sync_job_for_imap(): void
     {
-        // The manual "Sync now" dispatches the host SerializedConnectorSyncJob
-        // (per-mailbox re-queue), NOT the bare vendor ConnectorSyncJob — so a manual
-        // sync can't open a connection that races another to the same account.
+        // For an IMAP account with serialization ON, the manual "Sync now" dispatches
+        // the host SerializedConnectorSyncJob (per-mailbox re-queue), NOT the bare
+        // vendor ConnectorSyncJob — so a manual sync can't open a connection that
+        // races another to the same account. (Serialization is off by default in
+        // phpunit.xml per R43, so this test enables it explicitly.)
         Queue::fake();
+        config()->set('connectors.imap.serialize_connections', true);
         $admin = $this->makeSuperAdmin();
 
         $installation = ConnectorInstallation::create([
             'tenant_id' => 'default',
-            'connector_name' => 'google-drive',
+            'connector_name' => 'imap',
+            'config_json' => ['connection' => ['host' => 'imap.x.test', 'username' => 'u@x.test']],
             'status' => ConnectorInstallation::STATUS_ACTIVE,
             'created_by' => $admin->id,
         ]);
@@ -284,6 +288,58 @@ final class ConnectorAdminControllerTest extends TestCase
         Queue::assertNotPushed(ConnectorSyncJob::class);
     }
 
+    public function test_sync_now_dispatches_the_vendor_job_for_a_non_imap_connector(): void
+    {
+        // R43 — a non-IMAP connector does NOT share a per-account connection limit, so
+        // it keeps the vendor ConnectorSyncJob (and its unchanged retry envelope) even
+        // when serialization is enabled. The serialized job is IMAP-only.
+        Queue::fake();
+        config()->set('connectors.imap.serialize_connections', true);
+        $admin = $this->makeSuperAdmin();
+
+        $installation = ConnectorInstallation::create([
+            'tenant_id' => 'default',
+            'connector_name' => 'google-drive',
+            'status' => ConnectorInstallation::STATUS_ACTIVE,
+            'created_by' => $admin->id,
+        ]);
+
+        $this->actingAs($admin)
+            ->postJson("/api/admin/connectors/{$installation->id}/sync-now")
+            ->assertStatus(202);
+
+        Queue::assertPushed(ConnectorSyncJob::class, function (ConnectorSyncJob $job) use ($installation) {
+            return $job->installationId === $installation->id && $job->tenantId === 'default';
+        });
+        Queue::assertNotPushed(SerializedConnectorSyncJob::class);
+    }
+
+    public function test_sync_now_dispatches_the_vendor_job_when_imap_serialization_is_disabled(): void
+    {
+        // R43 OFF path — with the master switch off, even an IMAP account keeps the
+        // vendor ConnectorSyncJob (no altered retry envelope, no overlap middleware).
+        Queue::fake();
+        config()->set('connectors.imap.serialize_connections', false);
+        $admin = $this->makeSuperAdmin();
+
+        $installation = ConnectorInstallation::create([
+            'tenant_id' => 'default',
+            'connector_name' => 'imap',
+            'config_json' => ['connection' => ['host' => 'imap.x.test', 'username' => 'u@x.test']],
+            'status' => ConnectorInstallation::STATUS_ACTIVE,
+            'created_by' => $admin->id,
+        ]);
+
+        $this->actingAs($admin)
+            ->postJson("/api/admin/connectors/{$installation->id}/sync-now")
+            ->assertStatus(202);
+
+        Queue::assertPushed(ConnectorSyncJob::class, function (ConnectorSyncJob $job) use ($installation) {
+            return $job->installationId === $installation->id && $job->tenantId === 'default';
+        });
+        Queue::assertNotPushed(SerializedConnectorSyncJob::class);
+    }
+
     public function test_sync_now_rearms_an_errored_account_then_dispatches(): void
     {
         // The "Retry sync" fix: ConnectorSyncJob::runSync() skips non-ACTIVE rows,
@@ -291,12 +347,14 @@ final class ConnectorAdminControllerTest extends TestCase
         // operator-driven retry must re-arm ERRORED -> ACTIVE + clear error_json
         // BEFORE dispatch so the job's guard passes.
         Queue::fake();
+        config()->set('connectors.imap.serialize_connections', true);
         $admin = $this->makeSuperAdmin();
 
         $installation = ConnectorInstallation::create([
             'tenant_id' => 'default',
             'connector_name' => 'imap',
             'label' => 'prometeo-1',
+            'config_json' => ['connection' => ['host' => 'imap.x.test', 'username' => 'u@x.test']],
             'status' => ConnectorInstallation::STATUS_ERRORED,
             'error_json' => ['message' => 'IMAP connect failed: Too many simultaneous connections.'],
             'created_by' => $admin->id,

@@ -22,10 +22,12 @@ final class SerializedSyncSchedulerTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_dispatches_the_serialized_job_for_due_active_installations_only(): void
+    public function test_dispatches_the_serialized_job_for_due_active_imap_installations_only(): void
     {
         Queue::fake();
         config()->set('connectors.default_sync_cadence_minutes', 15);
+        // Off by default in phpunit.xml (R43) — enable so the IMAP routing engages.
+        config()->set('connectors.imap.serialize_connections', true);
 
         // Due: never synced.
         $due = ConnectorInstallation::create([
@@ -55,5 +57,29 @@ final class SerializedSyncSchedulerTest extends TestCase
         );
         // Never the bare vendor job (QueueFake keys by exact class).
         Queue::assertNotPushed(ConnectorSyncJob::class);
+    }
+
+    public function test_dispatches_the_vendor_job_for_a_non_imap_connector_even_with_serialization_on(): void
+    {
+        Queue::fake();
+        config()->set('connectors.default_sync_cadence_minutes', 15);
+        // Serialization ON, yet a non-IMAP connector must still keep the vendor job —
+        // it shares no per-account connection limit. Proves the routing is IMAP-only,
+        // not a blanket "wrap everything once enabled".
+        config()->set('connectors.imap.serialize_connections', true);
+
+        $drive = ConnectorInstallation::create([
+            'tenant_id' => 'default', 'connector_name' => 'google-drive', 'label' => 'drive',
+            'status' => ConnectorInstallation::STATUS_ACTIVE, 'last_sync_at' => null, 'created_by' => 1,
+        ]);
+
+        $dispatched = (new SerializedSyncScheduler)->dispatchDueSyncs();
+
+        $this->assertSame(1, $dispatched);
+        Queue::assertNotPushed(SerializedConnectorSyncJob::class);
+        Queue::assertPushed(
+            ConnectorSyncJob::class,
+            fn (ConnectorSyncJob $job) => $job->installationId === $drive->id && $job->tenantId === 'default',
+        );
     }
 }
