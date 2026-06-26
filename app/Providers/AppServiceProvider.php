@@ -371,8 +371,12 @@ class AppServiceProvider extends ServiceProvider
 
         $store = $this->app->make('cache')->store()->getStore();
         if (! $store instanceof \Illuminate\Contracts\Cache\LockProvider) {
-            // No atomic-lock-capable store (e.g. a misconfigured null/array-less
-            // driver) — skip serialization rather than fail every IMAP call.
+            // No lock-capable store (a LockProvider) — skip serialization rather than
+            // fail every IMAP call. NOTE: lock-capable ≠ distributed: a local store
+            // (array/file/database) only serializes within ONE host; full
+            // cross-process/cross-surface correctness needs a distributed store such
+            // as Redis. We gate only on lock capability here; the deployment is
+            // responsible for choosing Redis in production.
             return;
         }
 

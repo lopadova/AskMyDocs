@@ -6,7 +6,9 @@ namespace App\Connectors;
 
 use App\Connectors\Imap\MailboxLockKey;
 use DateTimeInterface;
+use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
+use Illuminate\Support\Facades\Cache;
 use Padosoft\AskMyDocsConnectorBase\ConnectorSyncJob;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
 
@@ -63,13 +65,54 @@ final class SerializedConnectorSyncJob extends ConnectorSyncJob
     }
 
     /**
-     * Whether $installation should use the per-mailbox serialized envelope: an
-     * IMAP account with serialization enabled (the master switch defaults on).
+     * Whether $installation should use the per-mailbox serialized envelope.
+     *
+     * The conditions MIRROR the Layer-1 factory decorator's gating in
+     * {@see \App\Providers\AppServiceProvider::registerImapConnectionSerializer()} —
+     * the serialized envelope leans on `WithoutOverlapping`, i.e. `Cache::lock()`,
+     * so it must NOT be dispatched in any state where Layer 1 itself stands down:
+     *
+     *   1. an IMAP account (others share no per-account connection limit);
+     *   2. `connectors.imap.serialize_connections` on (master switch, defaults on);
+     *   3. the IMAP is NOT faked (`fake_imap_ping` — no real server to protect, and
+     *      that seam's cache store may not host locks);
+     *   4. the active cache store is lock-capable (a `LockProvider`) — otherwise
+     *      `WithoutOverlapping` throws "this cache store does not support locks" and
+     *      crashes the worker.
+     *
+     * When any fails, {@see dispatchFor()} degrades to the vendor {@see ConnectorSyncJob}
+     * (unchanged envelope) and {@see middleware()} adds no mutex — a clean no-op, never
+     * a crash.
      */
     public static function serializes(ConnectorInstallation $installation): bool
     {
-        return $installation->connector_name === 'imap'
-            && config('connectors.imap.serialize_connections', true) === true;
+        if ($installation->connector_name !== 'imap') {
+            return false;
+        }
+
+        if (config('connectors.imap.serialize_connections', true) !== true) {
+            return false;
+        }
+
+        if (config('connectors.fake_imap_ping', false) === true) {
+            return false;
+        }
+
+        return self::cacheStoreSupportsLocks();
+    }
+
+    /**
+     * True when the active cache store can host atomic locks (a `LockProvider` —
+     * Redis/memcached/database/array). `WithoutOverlapping` needs this; a non-lock
+     * store (e.g. file/null) would throw on `Cache::lock()`.
+     */
+    private static function cacheStoreSupportsLocks(): bool
+    {
+        try {
+            return Cache::store()->getStore() instanceof LockProvider;
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     /**
@@ -82,9 +125,11 @@ final class SerializedConnectorSyncJob extends ConnectorSyncJob
             ->where('tenant_id', $this->tenantId)
             ->first();
 
-        // Only IMAP shares a per-account connection limit; other connectors (and an
-        // installation with no resolvable host/username) need no mailbox mutex.
-        if ($installation === null || $installation->connector_name !== 'imap') {
+        // No mutex unless serialization should actually run for this install (same
+        // gating as dispatchFor): non-IMAP, flag off, fake-ping, or a non-lock-capable
+        // store all skip it. This keeps a job that was enqueued under different
+        // conditions — or dispatched directly — from crashing on Cache::lock().
+        if ($installation === null || ! self::serializes($installation)) {
             return [];
         }
 
