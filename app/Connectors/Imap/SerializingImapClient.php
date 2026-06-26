@@ -23,9 +23,8 @@ use Padosoft\AskMyDocsConnectorImap\Imap\MailboxState;
  * TTL > the sync job timeout so a crashed process can never deadlock a mailbox; the
  * caller's `finally { close() }` is the normal release path.
  *
- * Cross-process correctness needs an atomic lock store (Redis in production). A
- * non-lock-capable store (file/array in dev) degrades to a process-local lock,
- * still correct within a single process.
+ * Cross-process correctness needs a distributed atomic lock store (Redis in production).
+ * Local lock stores (e.g. array/file) only serialize within a single PHP process/host.
  */
 final class SerializingImapClient implements ImapClientInterface
 {
