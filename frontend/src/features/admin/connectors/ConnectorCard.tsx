@@ -43,8 +43,12 @@ export interface ConnectorCardProps {
     onCancelInstall: (installationId: number) => void;
     /** installation ids whose sync is in flight. */
     syncingIds?: ReadonlySet<number>;
-    /** installation ids whose disable/enable/remove is in flight. */
+    /** installation ids whose disable/remove/cancel is in flight. */
     busyIds?: ReadonlySet<number>;
+    /** installation ids whose enable is in flight — tracked separately from
+     *  `busyIds` so ONLY the Enable button shows "Enabling…"; a different write
+     *  (e.g. Remove on a disabled account) must not mislabel the Enable button. */
+    enablingIds?: ReadonlySet<number>;
     /** installation ids whose test-fetch probe is in flight (tracked separately so
      *  a read-only probe neither blocks nor is blocked by the write actions). */
     probingIds?: ReadonlySet<number>;
@@ -66,6 +70,7 @@ export function ConnectorCard({
     onCancelInstall,
     syncingIds,
     busyIds,
+    enablingIds,
     probingIds,
     addPending,
     now,
@@ -181,6 +186,7 @@ export function ConnectorCard({
                             onCancelInstall={onCancelInstall}
                             syncing={syncingIds?.has(acct.id) ?? false}
                             busy={busyIds?.has(acct.id) ?? false}
+                            enabling={enablingIds?.has(acct.id) ?? false}
                             probing={probingIds?.has(acct.id) ?? false}
                             now={now}
                         />
@@ -204,6 +210,7 @@ interface AccountRowProps {
     onCancelInstall: (id: number) => void;
     syncing: boolean;
     busy: boolean;
+    enabling: boolean;
     probing: boolean;
     now?: Date;
 }
@@ -221,6 +228,7 @@ function AccountRow({
     onCancelInstall,
     syncing,
     busy,
+    enabling,
     probing,
     now,
 }: AccountRowProps) {
@@ -230,10 +238,11 @@ function AccountRow({
     const [confirmingRemove, setConfirmingRemove] = useState(false);
     // ANY write action in flight for this account locks every write button — the
     // parent's in-flight guard ignores a second action on a busy id, so a still-
-    // enabled button would be a confusing silent no-op. The read-only test-fetch
-    // probe is tracked separately (`probing`) so it neither blocks nor is blocked
-    // by the write actions.
-    const locked = syncing || busy;
+    // enabled button would be a confusing silent no-op. Enable is tracked in its
+    // OWN flag (`enabling`) so only it shows "Enabling…", but it still contributes
+    // to the lock. The read-only test-fetch probe is tracked separately (`probing`)
+    // so it neither blocks nor is blocked by the write actions.
+    const locked = syncing || busy || enabling;
 
     return (
         <li
@@ -343,7 +352,7 @@ function AccountRow({
                         onClick={() => onEnable(account.id)}
                         style={primaryButton(locked)}
                     >
-                        {busy ? 'Enabling…' : 'Enable'}
+                        {enabling ? 'Enabling…' : 'Enable'}
                     </button>
                 )}
 

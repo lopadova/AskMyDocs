@@ -164,11 +164,28 @@ describe('ConnectorCard (multi-account)', () => {
 
     it('disables Enable + shows "Enabling…" while the enable is in flight', () => {
         render(
-            <ConnectorCard {...NOOP} busyIds={new Set([11])} entry={entry([account(11, 'support', 'disabled')])} />,
+            <ConnectorCard
+                {...NOOP}
+                enablingIds={new Set([11])}
+                entry={entry([account(11, 'support', 'disabled')])}
+            />,
         );
         const btn = screen.getByTestId('connector-account-11-enable');
         expect(btn).toBeDisabled();
         expect(btn).toHaveTextContent('Enabling…');
+    });
+
+    it('keeps the Enable label "Enable" (disabled) when a NON-enable write is in flight', () => {
+        // Regression for the mislabel: a disabled account also exposes Remove, so a
+        // Remove in flight raises `busyIds` (not `enablingIds`). The Enable button
+        // must lock but must NOT claim to be "Enabling…".
+        render(
+            <ConnectorCard {...NOOP} busyIds={new Set([11])} entry={entry([account(11, 'support', 'disabled')])} />,
+        );
+        const btn = screen.getByTestId('connector-account-11-enable');
+        expect(btn).toBeDisabled();
+        expect(btn).toHaveTextContent('Enable');
+        expect(btn).not.toHaveTextContent('Enabling…');
     });
 
     it('renders Test fetch on a credential connector account and fires onTestFetch', async () => {

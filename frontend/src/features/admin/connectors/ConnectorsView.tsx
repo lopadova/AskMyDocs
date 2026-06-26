@@ -250,6 +250,11 @@ export function ConnectorsView() {
     // resolves.
     const [syncingIds, setSyncingIds] = useState<ReadonlySet<number>>(() => new Set());
     const [busyIds, setBusyIds] = useState<ReadonlySet<number>>(() => new Set());
+    // Enable is tracked apart from `busyIds` so only the Enable button shows
+    // "Enabling…"; another write on the same disabled account (e.g. Remove) must
+    // not relabel Enable. It still locks every write button via the shared
+    // in-flight guard + the row's `locked` (which folds in `enabling`).
+    const [enablingIds, setEnablingIds] = useState<ReadonlySet<number>>(() => new Set());
     // Read-only test-fetch probe in-flight ids — tracked separately from the write
     // actions so the diagnostic neither blocks nor is blocked by sync/disable/etc.
     const [probingIds, setProbingIds] = useState<ReadonlySet<number>>(() => new Set());
@@ -306,7 +311,7 @@ export function ConnectorsView() {
     }
 
     async function handleEnable(installationId: number) {
-        await track(setBusyIds, installationId, async () => {
+        await track(setEnablingIds, installationId, async () => {
             try {
                 await enableConnector.mutateAsync(installationId);
                 toast.success('Account enabled.', 'toast-connector-enabled');
@@ -477,6 +482,7 @@ export function ConnectorsView() {
                                 onCancelInstall={handleRemove}
                                 syncingIds={syncingIds}
                                 busyIds={busyIds}
+                                enablingIds={enablingIds}
                                 probingIds={probingIds}
                                 addPending={addPendingFor(entry.key)}
                             />
