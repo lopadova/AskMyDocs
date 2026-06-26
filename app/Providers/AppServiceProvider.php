@@ -349,8 +349,9 @@ class AppServiceProvider extends ServiceProvider
      * path — sync, health, OAuth ping, test-fetch, folder picker — passes through the
      * per-mailbox lock. When `connectors.fake_imap_ping` is enabled, the serializer
      * intentionally does NOT wrap the fake factory.
-     * (single process); production defaults ON. Degrades to a no-op (no wrapping)
-     * when the cache store can't host atomic locks — never crashes boot.
+     *
+     * Degrades to a no-op (no wrapping) when the cache store can't host atomic locks —
+     * never crashes boot.
      */
     private function registerImapConnectionSerializer(): void
     {
