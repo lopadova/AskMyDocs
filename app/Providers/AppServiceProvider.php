@@ -358,6 +358,12 @@ class AppServiceProvider extends ServiceProvider
             return;
         }
 
+        // No real server to protect when the IMAP is faked (E2E/local offline seam)
+        // — and the E2E env's cache store may not host locks. Skip wrapping the fake.
+        if (config('connectors.fake_imap_ping', false) === true) {
+            return;
+        }
+
         if (! interface_exists(\Padosoft\AskMyDocsConnectorImap\Imap\ImapClientFactoryInterface::class)) {
             return;
         }
