@@ -8,6 +8,8 @@ use App\Connectors\Imap\MailboxLockKey;
 use App\Connectors\SerializedConnectorSyncJob;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
+use Illuminate\Support\Facades\Queue;
+use Padosoft\AskMyDocsConnectorBase\ConnectorSyncJob;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
 use ReflectionProperty;
 use Tests\TestCase;
@@ -20,6 +22,18 @@ use Tests\TestCase;
 final class SerializedConnectorSyncJobTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // middleware() + serializes() now share dispatchFor's gating: an IMAP account
+        // with the flag on, NOT fake-ping, AND a lock-capable cache store. phpunit.xml
+        // disables serialization by default (R43); these tests exercise the serialized
+        // path so enable it. The array test store IS lock-capable; fake_imap_ping is
+        // off by default. Individual no-op tests below flip one condition each.
+        config()->set('connectors.imap.serialize_connections', true);
+    }
 
     public function test_imap_job_carries_a_without_overlapping_middleware_keyed_by_mailbox(): void
     {
@@ -94,6 +108,72 @@ final class SerializedConnectorSyncJobTest extends TestCase
         ]);
 
         $this->assertSame([], (new SerializedConnectorSyncJob($installation->id, 'default'))->middleware());
+    }
+
+    public function test_imap_job_has_no_overlap_middleware_when_serialization_is_disabled(): void
+    {
+        // R43 OFF path — the flag off makes the middleware a no-op even for IMAP, so
+        // a SerializedConnectorSyncJob enqueued under a now-disabled flag can't crash.
+        config()->set('connectors.imap.serialize_connections', false);
+
+        $installation = ConnectorInstallation::create([
+            'tenant_id' => 'default', 'connector_name' => 'imap', 'label' => 'imap',
+            'config_json' => ['connection' => ['host' => 'imap.example.test', 'username' => 'u@example.test']],
+            'status' => ConnectorInstallation::STATUS_ACTIVE, 'created_by' => 1,
+        ]);
+
+        $this->assertSame([], (new SerializedConnectorSyncJob($installation->id, 'default'))->middleware());
+    }
+
+    public function test_imap_job_has_no_overlap_middleware_when_fake_imap_ping_is_on(): void
+    {
+        // fake_imap_ping seam (offline/E2E): no real server to protect and the seam's
+        // cache may not host locks — Layer 1 skips, so Layer 2 must too.
+        config()->set('connectors.fake_imap_ping', true);
+
+        $installation = ConnectorInstallation::create([
+            'tenant_id' => 'default', 'connector_name' => 'imap', 'label' => 'imap',
+            'config_json' => ['connection' => ['host' => 'imap.example.test', 'username' => 'u@example.test']],
+            'status' => ConnectorInstallation::STATUS_ACTIVE, 'created_by' => 1,
+        ]);
+
+        $this->assertSame([], (new SerializedConnectorSyncJob($installation->id, 'default'))->middleware());
+    }
+
+    public function test_imap_job_has_no_overlap_middleware_when_the_cache_store_cannot_lock(): void
+    {
+        // No lock-capable store (here: an unresolvable default that makes Cache::store()
+        // throw → the graceful-degrade catch). WithoutOverlapping would throw on
+        // Cache::lock(); the gate degrades to a no-op instead of crashing the worker.
+        config()->set('cache.default', 'no-such-store-'.uniqid());
+
+        $installation = ConnectorInstallation::create([
+            'tenant_id' => 'default', 'connector_name' => 'imap', 'label' => 'imap',
+            'config_json' => ['connection' => ['host' => 'imap.example.test', 'username' => 'u@example.test']],
+            'status' => ConnectorInstallation::STATUS_ACTIVE, 'created_by' => 1,
+        ]);
+
+        $this->assertSame([], (new SerializedConnectorSyncJob($installation->id, 'default'))->middleware());
+    }
+
+    public function test_dispatch_for_routes_to_the_vendor_job_when_serialization_cannot_run(): void
+    {
+        // dispatchFor must degrade to the vendor ConnectorSyncJob (never enqueue a
+        // serialized job that would later crash on Cache::lock()) when the IMAP is
+        // faked — mirroring the middleware no-op above at dispatch time.
+        Queue::fake();
+        config()->set('connectors.fake_imap_ping', true);
+
+        $installation = ConnectorInstallation::create([
+            'tenant_id' => 'default', 'connector_name' => 'imap', 'label' => 'imap',
+            'config_json' => ['connection' => ['host' => 'imap.example.test', 'username' => 'u@example.test']],
+            'status' => ConnectorInstallation::STATUS_ACTIVE, 'created_by' => 1,
+        ]);
+
+        SerializedConnectorSyncJob::dispatchFor($installation);
+
+        Queue::assertPushed(ConnectorSyncJob::class, 1);
+        Queue::assertNotPushed(SerializedConnectorSyncJob::class);
     }
 
     public function test_retry_until_is_a_future_wall_clock_window(): void
