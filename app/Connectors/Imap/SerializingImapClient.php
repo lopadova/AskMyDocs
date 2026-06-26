@@ -88,6 +88,20 @@ final class SerializingImapClient implements ImapClientInterface
     }
 
     /**
+     * Backstop release: not every caller brackets the client in a `finally`
+     * (notably the vendor `ImapConnector::handleOAuthCallback` basic-auth check,
+     * whose `ping()` THROWS on a wrong/expired password and never reaches its
+     * close()). Releasing on destruction guarantees the cross-tenant mailbox lock
+     * is freed when the client object dies — instead of leaking until the TTL and
+     * blocking the account for every tenant for ~minutes. Idempotent + owner-safe:
+     * a no-op after a normal close() or once the TTL already expired.
+     */
+    public function __destruct()
+    {
+        $this->release();
+    }
+
+    /**
      * Acquire the per-mailbox lock once, blocking up to wait_seconds for the
      * previous connection to free. Idempotent: later calls on the same client no-op.
      *
@@ -123,9 +137,13 @@ final class SerializingImapClient implements ImapClientInterface
 
         // release() is owner-checked + best-effort: if the TTL already expired and
         // another process re-acquired, it is a no-op (never releases someone else's
-        // lock). Never let a release hiccup mask the real close() outcome.
+        // lock). Swallow any store hiccup — a release failure must never mask the
+        // real close() outcome, nor (from __destruct, during shutdown) escalate to a
+        // fatal "exception without a stack frame".
         try {
             $this->lock?->release();
+        } catch (\Throwable) {
+            // ignore — the lock TTL is the backstop.
         } finally {
             $this->lock = null;
             $this->held = false;

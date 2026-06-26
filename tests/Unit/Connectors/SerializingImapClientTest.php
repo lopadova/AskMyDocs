@@ -58,6 +58,38 @@ final class SerializingImapClientTest extends TestCase
         $this->assertTrue($this->isFree($store));
     }
 
+    public function test_releases_the_lock_when_destroyed_without_close_after_a_throw(): void
+    {
+        // Mirrors the vendor handleOAuthCallback basic-auth check: ping() throws on a
+        // bad/expired password and the caller never reaches close() (no finally). The
+        // lock must NOT leak until the TTL — __destruct frees it (else a wrong-password
+        // install attempt would block the account for every tenant for minutes).
+        $store = $this->lockStore();
+        $throwing = new class extends FakeImapClient
+        {
+            public function ping(): bool
+            {
+                throw new \RuntimeException('IMAP connect failed: bad credentials');
+            }
+        };
+        $client = new SerializingImapClient($throwing, $store, self::KEY, waitSeconds: 0, ttlSeconds: 60);
+
+        try {
+            $client->ping();
+            $this->fail('ping() should have thrown');
+        } catch (\RuntimeException) {
+            // expected
+        }
+
+        // Acquired before the inner ping() threw; no close() was called → still held.
+        $this->assertFalse($this->isFree($store), 'lock is held after a throw with no close()');
+
+        unset($client);
+        gc_collect_cycles();
+
+        $this->assertTrue($this->isFree($store), '__destruct must free the otherwise-leaked lock');
+    }
+
     public function test_a_busy_mailbox_throws_mailbox_busy(): void
     {
         $store = $this->lockStore();
@@ -122,7 +154,7 @@ final class SerializingImapClientTest extends TestCase
     }
 }
 
-final class FakeImapClient implements ImapClientInterface
+class FakeImapClient implements ImapClientInterface
 {
     public function listMailboxes(): array
     {

@@ -332,6 +332,24 @@ rotation. `kb:rebuild-graph` is a no-op when no canonical docs exist.
   `kb_edges` are **project-scoped** (intra-project referential integrity) —
   cross-tenant isolation is the application-layer R30 `forTenant()` scope, not
   the FK. Never assume global slug uniqueness in new code.
+- **IMAP connections are serialized per mailbox, CROSS-TENANT (deliberate R30
+  exception).** At most ONE live IMAP connection per account
+  (host+port+username) exists at a time, across ALL surfaces (sync, health,
+  OAuth/credential ping, test-fetch, folder picker) and ALL tenants — IMAP
+  servers (Gmail ~15/account) reject "Too many simultaneous connections". The
+  guarantee is **Layer 1**: a host decorator of `ImapClientFactoryInterface`
+  (`App\Connectors\Imap\SerializingImapClient`, wired via `$app->extend` in
+  `AppServiceProvider::registerImapConnectionSerializer()`, gated on
+  `connectors.imap.serialize_connections`, skipped when `fake_imap_ping` is on)
+  holding a per-mailbox `Cache::lock` from first-use to `close()` (plus a
+  `__destruct` backstop). The key (`App\Connectors\Imap\MailboxLockKey`)
+  **deliberately omits `tenant_id`** — a mailbox is a shared PHYSICAL resource,
+  so this is the one place cross-tenant scoping (R30) does NOT apply; do NOT
+  "fix" it to be tenant-scoped or two tenants on the same Gmail account will
+  blow the limit. **Layer 2** (`App\Connectors\SerializedConnectorSyncJob` +
+  `SerializedSyncScheduler`, swapped in `bootstrap/app.php`) re-queues sync JOBS
+  per mailbox via `WithoutOverlapping` so concurrent same-mailbox syncs never
+  block a worker or flap to ERRORED. Needs an atomic lock store (Redis in prod).
 
 ---
 

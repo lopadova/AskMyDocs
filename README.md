@@ -186,6 +186,11 @@ tells buyers to demand:
   advertises `SupportsCredentialForm`; the host renders the form and routes the **secret straight to
   the encrypted vault, never `config_json`**) — any future credential connector works unchanged. See
   the [doc-site](https://padosoft.mintlify.app/connectors-credential).
+  **IMAP connections are serialized per mailbox** (host+port+username, **cross-tenant**) so a server
+  never returns *"Too many simultaneous connections"*: at most one live connection per account at a
+  time across every surface, and concurrent same-mailbox sync jobs **re-queue** instead of piling up.
+  Tunable via `CONNECTOR_IMAP_SERIALIZE_CONNECTIONS` (default on; needs an atomic lock store / Redis)
+  + `CONNECTOR_IMAP_MAILBOX_LOCK_*`.
 - **AI Guardrails on the live chat path** (v8.19) — every chat turn is **screened on input** (a
   malicious / policy-violating prompt becomes a localized refusal — never a 500 — with an append-only
   audit row) and **sanitized on output** (exfil links defanged before the answer reaches the client),
