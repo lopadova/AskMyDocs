@@ -102,6 +102,22 @@ final class SerializingImapClientTest extends TestCase
         $client->selectMailbox('INBOX');
     }
 
+    public function test_a_zero_ttl_misconfiguration_is_clamped_and_still_holds(): void
+    {
+        // A 0 TTL from a misconfigured env would, unclamped, expire the lock the
+        // instant it is taken (ArrayStore stores expiry = now + ttl) → no mutual
+        // exclusion at all. The clamp (max(1, ttl)) keeps the lock genuinely held.
+        $store = $this->lockStore();
+        $client = new SerializingImapClient(new FakeImapClient, $store, self::KEY, waitSeconds: -5, ttlSeconds: 0);
+
+        $client->ping();
+
+        $this->assertFalse($this->isFree($store), 'a clamped TTL must keep the lock HELD, not expire immediately');
+
+        $client->close();
+        $this->assertTrue($this->isFree($store));
+    }
+
     public function test_delegates_results_to_the_inner_client(): void
     {
         $store = $this->lockStore();

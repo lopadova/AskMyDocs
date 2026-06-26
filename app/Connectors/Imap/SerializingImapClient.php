@@ -113,11 +113,19 @@ final class SerializingImapClient implements ImapClientInterface
             return;
         }
 
-        $lock = $this->lockProvider->lock($this->lockKey, $this->ttlSeconds);
+        // Clamp the env/config-sourced knobs defensively: a 0/negative TTL would
+        // expire the lock immediately (no mutual exclusion at all), and a negative
+        // wait window is meaningless to block(). A TTL needs ≥ 1s; the wait floor is
+        // 0 (try-once, no blocking) so a misconfiguration degrades safely rather than
+        // throwing or silently disabling serialization.
+        $ttlSeconds = max(1, $this->ttlSeconds);
+        $waitSeconds = max(0, $this->waitSeconds);
+
+        $lock = $this->lockProvider->lock($this->lockKey, $ttlSeconds);
 
         try {
             // block() returns true on acquire, throws LockTimeoutException on timeout.
-            $lock->block($this->waitSeconds);
+            $lock->block($waitSeconds);
         } catch (LockTimeoutException $e) {
             throw new MailboxBusyException(
                 'Mailbox busy: another connection to this account is already in progress.',
