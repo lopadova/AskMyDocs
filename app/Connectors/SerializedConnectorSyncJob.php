@@ -28,14 +28,17 @@ use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
 final class SerializedConnectorSyncJob extends ConnectorSyncJob
 {
     /**
-     * Preserve a fast fail on REAL errors even though {@see retryUntil} removes the
-     * attempt cap: WithoutOverlapping re-queues release the job WITHOUT throwing, so
-     * they don't count here — only genuine sync exceptions do. After 3 real failures
-     * the job lands in failed_jobs (matching the parent's $tries=3 intent), while a
-     * merely-busy mailbox keeps re-queuing until the retryUntil window.
+     * Preserve a fast fail on REAL errors while allowing a busy mailbox to keep re-queuing.
+     *
+     * We disable the max-attempts cap (tries=0) and bound retries by wall-clock via retryUntil().
+     * WithoutOverlapping re-queues don’t throw, so they don’t count toward maxExceptions.
      */
     public int $maxExceptions = 3;
 
+    /**
+     * Busy-mailbox re-queues can increment attempts; keep them from hitting a max-attempts cap.
+     */
+    public int $tries = 0;
     /**
      * @return array<int, object>
      */
