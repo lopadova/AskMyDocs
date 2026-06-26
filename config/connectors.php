@@ -139,6 +139,44 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | IMAP connection serialization (per-mailbox mutex)
+    |--------------------------------------------------------------------------
+    |
+    | Many IMAP servers (Gmail caps ~15/account) reject "Too many simultaneous
+    | connections" when several connections hit the SAME account at once — which
+    | happens with multiple installations (labels) on one mailbox, or a sync
+    | overlapping an operator action (test-fetch / folder picker). When
+    | `serialize_connections` is true (default) the host wraps the IMAP client
+    | factory so EVERY connection acquires a per-mailbox lock (keyed by
+    | host+port+username, cross-tenant) before connecting and releases it on close
+    | — at most one live connection per mailbox at any time, across all surfaces.
+    |
+    |   - wait_seconds          : how long a NEW connection blocks for the mailbox
+    |                             to free before giving up (→ 503 "busy" on the HTTP
+    |                             surfaces). Short: sync jobs re-queue (below), so the
+    |                             only residual wait is sync↔operator-action (seconds).
+    |   - ttl_seconds           : lock auto-expiry, > the sync job timeout (600s) so a
+    |                             dead process can never deadlock a mailbox.
+    |   - requeue_after_seconds : when a sync JOB finds the mailbox busy, the
+    |                             WithoutOverlapping middleware releases it back to the
+    |                             queue after this delay (no worker block, no ERRORED).
+    |
+    | The cross-process guarantee needs an atomic lock store (Redis in production).
+    | DEFAULT-OFF in the test env (single process), where the decorator is exercised
+    | in isolation.
+    |
+    */
+    'imap' => [
+        'serialize_connections' => (bool) env('CONNECTOR_IMAP_SERIALIZE_CONNECTIONS', true),
+        'mailbox_lock' => [
+            'wait_seconds' => (int) env('CONNECTOR_IMAP_MAILBOX_LOCK_WAIT', 15),
+            'ttl_seconds' => (int) env('CONNECTOR_IMAP_MAILBOX_LOCK_TTL', 700),
+            'requeue_after_seconds' => (int) env('CONNECTOR_IMAP_MAILBOX_REQUEUE_AFTER', 60),
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Per-connector provider settings
     |--------------------------------------------------------------------------
     |
