@@ -129,8 +129,7 @@ production. `AppServiceProvider` wires the decorator only when
 `serialize_connections` is on **and** the active cache store implements
 `LockProvider`.
 With Redis this is fully cross-process; with local stores like `array` (and, depending on deployment, `file`) it only serializes within a single process/host.
-If the store cannot provide locks at all, the app skips serialization without breaking functionality.
-without breaking functionality. This is the [R43](/isolation-testing)
+If the store cannot provide locks at all, the app skips serialization without breaking functionality. This is the [R43](/isolation-testing)
 "flag healthy in BOTH states" posture: the feature is safe on or off, and the
 test suite disables it by default (`phpunit.xml`) with dedicated tests that
 enable it explicitly.
