@@ -267,9 +267,10 @@ final class ConnectorAdminController extends Controller
     /**
      * POST /api/admin/connectors/{installationId}/sync-now
      *
-     * Dispatches a {@see SerializedConnectorSyncJob} only for IMAP installations when
-     * per-mailbox serialization is enabled; otherwise dispatches the vendor
-     * {@see \Padosoft\AskMyDocsConnectorBase\ConnectorSyncJob}. Returns 202 — the actual sync is async.
+     * Routes the sync through {@see SerializedConnectorSyncJob::dispatchFor()}: the
+     * per-mailbox serialized job only for an IMAP installation with serialization
+     * enabled, the vendor {@see \Padosoft\AskMyDocsConnectorBase\ConnectorSyncJob}
+     * otherwise. Returns 202 — the actual sync is async.
      *
      * Retry semantics (the "Retry sync" button on an ERRORED account):
      * `ConnectorSyncJob::runSync()` skips any installation whose status is not
@@ -308,11 +309,7 @@ final class ConnectorAdminController extends Controller
             ])->save();
         }
 
-        if ($installation->connector_name === 'imap' && config('connectors.imap.serialize_connections', true) === true) {
-            SerializedConnectorSyncJob::dispatch($installation->id, $installation->tenant_id);
-        } else {
-            \Padosoft\AskMyDocsConnectorBase\ConnectorSyncJob::dispatch($installation->id, $installation->tenant_id);
-        }
+        SerializedConnectorSyncJob::dispatchFor($installation);
 
         return response()->json([
             'data' => [

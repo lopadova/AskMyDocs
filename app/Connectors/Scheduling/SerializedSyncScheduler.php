@@ -11,16 +11,18 @@ use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
 use Padosoft\AskMyDocsConnectorBase\Scheduling\SyncScheduler;
 
 /**
- * Host scheduler that dispatches {@see SerializedConnectorSyncJob} (per-mailbox
- * re-queue) instead of the bare {@see \Padosoft\AskMyDocsConnectorBase\ConnectorSyncJob}.
+ * Host scheduler that routes each due install through
+ * {@see SerializedConnectorSyncJob::dispatchFor()} — the per-mailbox re-queue
+ * {@see SerializedConnectorSyncJob} for an IMAP account with serialization on, the
+ * bare vendor {@see \Padosoft\AskMyDocsConnectorBase\ConnectorSyncJob} otherwise.
  *
  * It MIRRORS the vendor {@see SyncScheduler::dispatchDueSyncs()} sweep verbatim
  * (cadence config + memory-safe chunkById over ACTIVE installations + the same
- * `isDue` window). The only difference is the dispatched class: the vendor sweep
+ * `isDue` window). The only difference is the dispatch call: the vendor sweep
  * hardcodes `ConnectorSyncJob::dispatch()` with no override seam, so swapping the
- * job requires reimplementing the (tiny) loop here. Wired in `bootstrap/app.php` in
- * place of the vendor scheduler. If the package later exposes a dispatch seam, this
- * collapses to a one-method override.
+ * routing requires reimplementing the (tiny) loop here. Wired in `bootstrap/app.php`
+ * in place of the vendor scheduler. If the package later exposes a dispatch seam,
+ * this collapses to a one-method override.
  */
 final class SerializedSyncScheduler extends SyncScheduler
 {
@@ -64,11 +66,7 @@ final class SerializedSyncScheduler extends SyncScheduler
                         continue;
                     }
 
-                    if ($installation->connector_name === 'imap' && config('connectors.imap.serialize_connections', true) === true) {
-                        \App\Connectors\SerializedConnectorSyncJob::dispatch($installation->id, $installation->tenant_id);
-                    } else {
-                        \Padosoft\AskMyDocsConnectorBase\ConnectorSyncJob::dispatch($installation->id, $installation->tenant_id);
-                    }
+                    SerializedConnectorSyncJob::dispatchFor($installation);
                     $dispatched++;
                 }
             });

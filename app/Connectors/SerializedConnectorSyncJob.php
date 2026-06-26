@@ -39,6 +39,39 @@ final class SerializedConnectorSyncJob extends ConnectorSyncJob
      * Busy-mailbox re-queues can increment attempts; keep them from hitting a max-attempts cap.
      */
     public int $tries = 0;
+
+    /**
+     * Route the sync of $installation to the correct queue job. The per-mailbox
+     * serialized envelope (tries=0 + retryUntil + WithoutOverlapping) only makes
+     * sense for an IMAP account while {@see serializes()} holds; every other
+     * connector — and IMAP with serialization disabled via
+     * `connectors.imap.serialize_connections` — keeps the vendor
+     * {@see ConnectorSyncJob} and its unchanged retry semantics.
+     *
+     * Single source of truth for the routing decision so the scheduled sweep and
+     * the admin "Sync now" path can never drift apart.
+     */
+    public static function dispatchFor(ConnectorInstallation $installation): void
+    {
+        if (self::serializes($installation)) {
+            self::dispatch($installation->id, $installation->tenant_id);
+
+            return;
+        }
+
+        ConnectorSyncJob::dispatch($installation->id, $installation->tenant_id);
+    }
+
+    /**
+     * Whether $installation should use the per-mailbox serialized envelope: an
+     * IMAP account with serialization enabled (the master switch defaults on).
+     */
+    public static function serializes(ConnectorInstallation $installation): bool
+    {
+        return $installation->connector_name === 'imap'
+            && config('connectors.imap.serialize_connections', true) === true;
+    }
+
     /**
      * @return array<int, object>
      */
