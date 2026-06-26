@@ -267,9 +267,9 @@ final class ConnectorAdminController extends Controller
     /**
      * POST /api/admin/connectors/{installationId}/sync-now
      *
-     * Dispatches a {@see SerializedConnectorSyncJob} for the named installation
-     * (per-mailbox re-queue, so a manual sync never opens a connection that races
-     * another to the same account). Returns 202 — the actual sync is async.
+     * Dispatches a {@see SerializedConnectorSyncJob} only for IMAP installations when
+     * per-mailbox serialization is enabled; otherwise dispatches the vendor
+     * {@see \Padosoft\AskMyDocsConnectorBase\ConnectorSyncJob}. Returns 202 — the actual sync is async.
      *
      * Retry semantics (the "Retry sync" button on an ERRORED account):
      * `ConnectorSyncJob::runSync()` skips any installation whose status is not
