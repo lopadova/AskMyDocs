@@ -190,7 +190,8 @@ tells buyers to demand:
   never returns *"Too many simultaneous connections"*: at most one live connection per account at a
   time across every surface, and concurrent same-mailbox sync jobs **re-queue** instead of piling up.
   Tunable via `CONNECTOR_IMAP_SERIALIZE_CONNECTIONS` (default on; needs an atomic lock store / Redis)
-  + `CONNECTOR_IMAP_MAILBOX_LOCK_*`.
+  + `CONNECTOR_IMAP_MAILBOX_LOCK_*`. See the
+  [doc-site](https://padosoft.mintlify.app/connectors-imap-serialization).
 - **AI Guardrails on the live chat path** (v8.19) — every chat turn is **screened on input** (a
   malicious / policy-violating prompt becomes a localized refusal — never a 500 — with an append-only
   audit row) and **sanitized on output** (exfil links defanged before the answer reaches the client),
