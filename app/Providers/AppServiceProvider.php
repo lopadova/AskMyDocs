@@ -345,10 +345,10 @@ class AppServiceProvider extends ServiceProvider
     /**
      * Serialize IMAP connections per mailbox (host+port+username), cross-tenant, so
      * a server never sees "Too many simultaneous connections". DECORATES whatever
-     * factory is currently bound (real OR the fake-ping seam above) via
-     * `$app->extend`, so EVERY connection path — sync, health, OAuth ping,
-     * test-fetch, folder picker — passes through the per-mailbox lock. Boot-time
-     * (after the fake-ping bind) so it wraps the final binding. Default-OFF in tests
+     * factory is currently bound (real) via `$app->extend`, so EVERY real connection
+     * path — sync, health, OAuth ping, test-fetch, folder picker — passes through the
+     * per-mailbox lock. When `connectors.fake_imap_ping` is enabled, the serializer
+     * intentionally does NOT wrap the fake factory.
      * (single process); production defaults ON. Degrades to a no-op (no wrapping)
      * when the cache store can't host atomic locks — never crashes boot.
      */
