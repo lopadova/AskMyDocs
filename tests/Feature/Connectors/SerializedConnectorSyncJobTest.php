@@ -100,9 +100,10 @@ final class SerializedConnectorSyncJobTest extends TestCase
     {
         config()->set('connectors.imap.mailbox_lock.requeue_window_minutes', 30);
 
+        $now = now();
         $until = (new SerializedConnectorSyncJob(1, 'default'))->retryUntil();
 
-        $this->assertGreaterThan(now()->addMinutes(29)->getTimestamp(), $until->getTimestamp());
-        $this->assertLessThanOrEqual(now()->addMinutes(31)->getTimestamp(), $until->getTimestamp());
+        $this->assertGreaterThan($now->copy()->addMinutes(29)->getTimestamp(), $until->getTimestamp());
+        $this->assertLessThanOrEqual($now->copy()->addMinutes(31)->getTimestamp(), $until->getTimestamp());
     }
 }
