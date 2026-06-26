@@ -60,10 +60,13 @@ final class SerializedConnectorSyncJob extends ConnectorSyncJob
             return [];
         }
 
+        $releaseAfter = max(0, (int) config('connectors.imap.mailbox_lock.requeue_after_seconds', 60));
+        $ttlSeconds = max(1, (int) config('connectors.imap.mailbox_lock.ttl_seconds', 700));
+
         return [
             (new WithoutOverlapping($key))
-                ->releaseAfter((int) config('connectors.imap.mailbox_lock.requeue_after_seconds', 60))
-                ->expireAfter((int) config('connectors.imap.mailbox_lock.ttl_seconds', 700)),
+                ->releaseAfter($releaseAfter)
+                ->expireAfter($ttlSeconds),
         ];
     }
 
