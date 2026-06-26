@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Connectors;
 
+use App\Connectors\SerializedConnectorSyncJob;
 use App\Models\Project;
 use App\Models\User;
 use App\Support\TenantContext;
@@ -255,8 +256,11 @@ final class ConnectorAdminControllerTest extends TestCase
         $this->assertNull($errored->error_json);
     }
 
-    public function test_sync_now_dispatches_connector_sync_job(): void
+    public function test_sync_now_dispatches_the_serialized_connector_sync_job(): void
     {
+        // The manual "Sync now" dispatches the host SerializedConnectorSyncJob
+        // (per-mailbox re-queue), NOT the bare vendor ConnectorSyncJob — so a manual
+        // sync can't open a connection that races another to the same account.
         Queue::fake();
         $admin = $this->makeSuperAdmin();
 
@@ -272,10 +276,12 @@ final class ConnectorAdminControllerTest extends TestCase
 
         $resp->assertStatus(202);
         $this->assertSame(true, $resp->json('data.queued'));
-        Queue::assertPushed(ConnectorSyncJob::class, function (ConnectorSyncJob $job) use ($installation) {
+        Queue::assertPushed(SerializedConnectorSyncJob::class, function (SerializedConnectorSyncJob $job) use ($installation) {
             return $job->installationId === $installation->id
                 && $job->tenantId === 'default';
         });
+        // Not the bare vendor job (QueueFake keys by exact class).
+        Queue::assertNotPushed(ConnectorSyncJob::class);
     }
 
     public function test_sync_now_rearms_an_errored_account_then_dispatches(): void
@@ -307,9 +313,12 @@ final class ConnectorAdminControllerTest extends TestCase
         $this->assertSame(ConnectorInstallation::STATUS_ACTIVE, $installation->status);
         $this->assertNull($installation->error_json);
 
-        Queue::assertPushed(ConnectorSyncJob::class, function (ConnectorSyncJob $job) use ($installation) {
+        // Dispatched as the serialized subclass (per-mailbox re-queue), not the bare
+        // vendor job (QueueFake keys by exact class).
+        Queue::assertPushed(SerializedConnectorSyncJob::class, function (SerializedConnectorSyncJob $job) use ($installation) {
             return $job->installationId === $installation->id && $job->tenantId === 'default';
         });
+        Queue::assertNotPushed(ConnectorSyncJob::class);
     }
 
     public function test_sync_now_rejects_a_disabled_account_without_dispatching(): void

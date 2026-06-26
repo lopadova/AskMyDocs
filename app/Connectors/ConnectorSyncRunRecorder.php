@@ -176,7 +176,10 @@ final class ConnectorSyncRunRecorder
             // commandName is optional on some drivers/payloads — fall back to
             // displayName (same posture as FailedJobResource::resolveJobClass).
             $commandName = $payload['data']['commandName'] ?? $payload['data']['displayName'] ?? null;
-            if ($commandName !== ConnectorSyncJob::class) {
+            // Accept ConnectorSyncJob AND its host subclass SerializedConnectorSyncJob
+            // (per-mailbox re-queue) — both carry the same int+string props and are
+            // recorded identically. is_a(..., true) matches the class or any subclass.
+            if (! is_string($commandName) || ! is_a($commandName, ConnectorSyncJob::class, true)) {
                 return null;
             }
             $serialized = $payload['data']['command'] ?? null;
@@ -185,7 +188,9 @@ final class ConnectorSyncRunRecorder
             }
             // Restrict allowed classes to prevent PHP object-injection from a
             // tampered queue payload (the job carries only int + string props).
-            $command = unserialize($serialized, ['allowed_classes' => [ConnectorSyncJob::class]]);
+            $command = unserialize($serialized, [
+                'allowed_classes' => [ConnectorSyncJob::class, SerializedConnectorSyncJob::class],
+            ]);
 
             return $command instanceof ConnectorSyncJob ? $command : null;
         } catch (Throwable) {

@@ -167,14 +167,19 @@ return Application::configure(basePath: dirname(__DIR__))
         //   to TierOneSchedulerRegistrar::SLOTS.
 
         // v4.5/W1 — Connector framework sync scheduler. Walks every
-        // active installation each minute and dispatches a
-        // ConnectorSyncJob for any whose cadence window has elapsed.
-        // The per-installation cadence is read from `config/connectors.php`
-        // (default 15 min, per-connector overrides supported). No-op
-        // when the migration hasn't run yet. NOT routed through the
-        // registrar — the package owns this registration; the Tier-1
-        // env knobs only cover host-side slots.
-        (new \Padosoft\AskMyDocsConnectorBase\Scheduling\SyncScheduler)->registerSchedules($schedule);
+        // active installation each minute and dispatches a sync job for
+        // any whose cadence window has elapsed. The per-installation
+        // cadence is read from `config/connectors.php` (default 15 min,
+        // per-connector overrides supported). No-op when the migration
+        // hasn't run yet. NOT routed through the registrar — the package
+        // owns this registration; the Tier-1 env knobs only cover
+        // host-side slots.
+        //
+        // Host scheduler (not the vendor SyncScheduler): dispatches
+        // SerializedConnectorSyncJob so concurrent syncs to the SAME IMAP
+        // mailbox re-queue instead of opening simultaneous connections
+        // ("Too many simultaneous connections"). Same sweep/cadence.
+        (new \App\Connectors\Scheduling\SerializedSyncScheduler)->registerSchedules($schedule);
 
         // v4.3/W3 — Nightly eval-harness regression run. Two gates,
         // BOTH must be true for the cron to fire:

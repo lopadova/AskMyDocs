@@ -172,6 +172,10 @@ return [
             'wait_seconds' => (int) env('CONNECTOR_IMAP_MAILBOX_LOCK_WAIT', 15),
             'ttl_seconds' => (int) env('CONNECTOR_IMAP_MAILBOX_LOCK_TTL', 700),
             'requeue_after_seconds' => (int) env('CONNECTOR_IMAP_MAILBOX_REQUEUE_AFTER', 60),
+            // Wall-clock window a sync job keeps re-queuing on a busy mailbox before
+            // giving up — decoupled from the failure-retry count (see
+            // SerializedConnectorSyncJob::retryUntil).
+            'requeue_window_minutes' => (int) env('CONNECTOR_IMAP_MAILBOX_REQUEUE_WINDOW_MIN', 30),
         ],
     ],
 

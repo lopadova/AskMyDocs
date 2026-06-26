@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Connectors;
 
+use App\Connectors\SerializedConnectorSyncJob;
 use App\Models\ConnectorSyncRun;
 use App\Models\User;
 use App\Services\Admin\IngestionObservabilityService;
@@ -71,6 +72,33 @@ final class IngestionObservabilityTest extends TestCase
         $this->assertSame(0, $run->items_discovered);
         $this->assertNotNull($run->started_at);
         $this->assertNotNull($run->finished_at);
+    }
+
+    public function test_recorder_records_a_run_for_the_serialized_subclass_job(): void
+    {
+        // Layer 2 dispatches SerializedConnectorSyncJob (extends ConnectorSyncJob).
+        // The recorder's resolveSyncJob must accept the subclass — else /sync-runs
+        // would silently stop logging the moment the host scheduler takes over.
+        config(['cache.default' => 'array']); // WithoutOverlapping lock store (in-process)
+        $installation = ConnectorInstallation::create([
+            'tenant_id' => 'default',
+            'connector_name' => 'imap',
+            'label' => 'prometeo-1',
+            'config_json' => ['connection' => ['host' => 'imap.x.test', 'username' => 'u@x.test']],
+            // PENDING → handle() no-ops (no network); the queue events still fire.
+            'status' => ConnectorInstallation::STATUS_PENDING,
+            'created_by' => 1,
+        ]);
+
+        config(['queue.default' => 'sync']);
+        SerializedConnectorSyncJob::dispatch($installation->id, 'default');
+
+        $run = ConnectorSyncRun::query()
+            ->where('connector_installation_id', $installation->id)
+            ->firstOrFail();
+        $this->assertSame(ConnectorSyncRun::STATUS_SUCCESS, $run->status);
+        $this->assertSame('imap', $run->connector_name);
+        $this->assertSame('prometeo-1', $run->label);
     }
 
     public function test_recorder_records_a_partial_run_when_install_has_partial_errors(): void
