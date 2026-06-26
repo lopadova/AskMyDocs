@@ -381,7 +381,7 @@ class AppServiceProvider extends ServiceProvider
 
         $this->app->extend(
             \Padosoft\AskMyDocsConnectorImap\Imap\ImapClientFactoryInterface::class,
-            static function ($factory) use ($store, $waitSeconds, $ttlSeconds): \App\Connectors\Imap\SerializingImapClientFactory {
+            static function ($factory, $app) use ($store, $waitSeconds, $ttlSeconds): \App\Connectors\Imap\SerializingImapClientFactory {
                 return new \App\Connectors\Imap\SerializingImapClientFactory(
                     $factory,
                     $store,
