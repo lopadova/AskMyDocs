@@ -125,11 +125,11 @@ disables mutual exclusion or breaks `block()`.
 ## The lock store requirement (graceful degrade)
 
 The cross-process guarantee needs an **atomic lock store** — Redis in
-production. `AppServiceProvider` only wires the decorator when
+production. `AppServiceProvider` wires the decorator only when
 `serialize_connections` is on **and** the active cache store implements
-`LockProvider` with real atomic locks. On a non-lock-capable dev store (file /
-array) it **degrades to a process-local lock** — still correct within a single
-process — and on a store that cannot lock at all it disables serialization
+`LockProvider`.
+With Redis this is fully cross-process; with local stores like `array` (and, depending on deployment, `file`) it only serializes within a single process/host.
+If the store cannot provide locks at all, the app skips serialization without breaking functionality.
 without breaking functionality. This is the [R43](/isolation-testing)
 "flag healthy in BOTH states" posture: the feature is safe on or off, and the
 test suite disables it by default (`phpunit.xml`) with dedicated tests that
