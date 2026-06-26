@@ -369,7 +369,14 @@ class AppServiceProvider extends ServiceProvider
             return;
         }
 
-        $store = $this->app->make('cache')->store()->getStore();
+        try {
+            $store = $this->app->make('cache')->store()->getStore();
+        } catch (\Throwable) {
+            // Resolving a misconfigured/unknown cache store throws — that must NOT
+            // hard-fail app boot (the docblock promises a no-op degrade). Skip wrapping.
+            return;
+        }
+
         if (! $store instanceof \Illuminate\Contracts\Cache\LockProvider) {
             // No lock-capable store (a LockProvider) — skip serialization rather than
             // fail every IMAP call. NOTE: lock-capable ≠ distributed: a local store
