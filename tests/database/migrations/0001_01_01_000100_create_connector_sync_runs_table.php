@@ -21,7 +21,10 @@ return new class extends Migration
             $table->unsignedBigInteger('connector_installation_id');
             $table->string('connector_name', 64);
             $table->string('label', 64)->default('default');
-            $table->string('queue', 64)->nullable();
+            // 255 mirrors the production widen (migration
+            // 2026_06_26_000001): on SQS the recorded value is the full SQS
+            // queue URL (~100+ chars), not a short queue name.
+            $table->string('queue', 255)->nullable();
             $table->string('status', 16)->default('running');
             $table->timestamp('started_at')->nullable();
             $table->timestamp('finished_at')->nullable();
