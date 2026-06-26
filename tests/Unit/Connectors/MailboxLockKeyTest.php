@@ -54,6 +54,31 @@ final class MailboxLockKeyTest extends TestCase
         $this->assertNull(MailboxLockKey::forConnection(['host' => '  ', 'username' => 'u@x.test']));
     }
 
+    public function test_empty_or_non_numeric_port_collapses_to_the_default(): void
+    {
+        $default = MailboxLockKey::forConnection(['host' => 'imap.x.test', 'port' => 993, 'username' => 'u@x.test']);
+
+        // An empty-string / non-numeric / zero port must NOT split the mailbox into
+        // its own key — it collapses to 993, the omitted-port identity.
+        $this->assertSame($default, MailboxLockKey::forConnection(['host' => 'imap.x.test', 'port' => '', 'username' => 'u@x.test']));
+        $this->assertSame($default, MailboxLockKey::forConnection(['host' => 'imap.x.test', 'port' => 'nope', 'username' => 'u@x.test']));
+        $this->assertSame($default, MailboxLockKey::forConnection(['host' => 'imap.x.test', 'port' => 0, 'username' => 'u@x.test']));
+        // A numeric string port is honoured (not treated as default).
+        $this->assertSame(
+            MailboxLockKey::forConnection(['host' => 'imap.x.test', 'port' => 143, 'username' => 'u@x.test']),
+            MailboxLockKey::forConnection(['host' => 'imap.x.test', 'port' => '143', 'username' => 'u@x.test']),
+        );
+    }
+
+    public function test_returns_null_for_non_scalar_host_or_username(): void
+    {
+        // A malformed config_json with an array/object host/username must not mint a
+        // meaningless "Array" key — it degrades to null so the caller skips locking.
+        $this->assertNull(MailboxLockKey::forConnection(['host' => ['x'], 'username' => 'u@x.test']));
+        $this->assertNull(MailboxLockKey::forConnection(['host' => 'imap.x.test', 'username' => ['u']]));
+        $this->assertNull(MailboxLockKey::forConnection(['host' => (object) [], 'username' => 'u@x.test']));
+    }
+
     public function test_for_installation_reads_the_connection_block(): void
     {
         $installation = new ConnectorInstallation([

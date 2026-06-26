@@ -35,14 +35,28 @@ final class MailboxLockKey
      */
     public static function forConnection(array $connection): ?string
     {
-        $host = strtolower(trim((string) ($connection['host'] ?? '')));
-        $username = strtolower(trim((string) ($connection['username'] ?? '')));
+        $hostRaw = $connection['host'] ?? null;
+        $usernameRaw = $connection['username'] ?? null;
+
+        // Non-scalar host/username (arrays/objects from a malformed config_json)
+        // would stringify to "Array"/"Object" and mint a meaningless lock key —
+        // treat them as absent so the caller skips locking instead.
+        if (! is_scalar($hostRaw) || ! is_scalar($usernameRaw)) {
+            return null;
+        }
+
+        $host = strtolower(trim((string) $hostRaw));
+        $username = strtolower(trim((string) $usernameRaw));
 
         if ($host === '' || $username === '') {
             return null;
         }
 
-        $port = (int) ($connection['port'] ?? self::DEFAULT_PORT);
+        // An empty string or any non-numeric/≤0 port must collapse to the IMAPS
+        // default (993), NOT to 0 — otherwise an omitted-vs-empty port would split
+        // one physical mailbox into two distinct lock keys and defeat serialization.
+        $portRaw = $connection['port'] ?? null;
+        $port = (is_numeric($portRaw) && (int) $portRaw > 0) ? (int) $portRaw : self::DEFAULT_PORT;
 
         return self::PREFIX.sha1($host.':'.$port.':'.$username);
     }
