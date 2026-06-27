@@ -1,97 +1,90 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactNode } from 'react';
+import { InvitationsView } from './InvitationsView';
+import { api } from '../../../lib/api';
+import { useAuthStore } from '../../../lib/auth-store';
 
 /*
- * InvitationsView unit tests — the native host landing for the
- * padosoft/laravel-invitations-admin panel. The view reads live funnel KPIs
- * over the SHARED SPA api client (lib/api.ts — which carries the stateful
- * Sanctum contract: X-Requested-With + withCredentials + the X-Tenant-Id
- * interceptor) from /api/admin/invitations/metrics, and links out to the
- * mounted Blade SPA. R16: each test drives the state it claims. R14: a non-ok
- * response AND a malformed-shape 200 both resolve to the error state, never NaN.
+ * InvitationsView is now an in-app tabbed surface over the core invitations
+ * API. These tests cover: the tab shell + switching, and — crucially for R43 —
+ * the "Advanced panel" launcher rendering in BOTH flag states (hidden when the
+ * package mount is OFF so it never links to a 404, shown when ON).
  */
 
-// Mock the shared api client so we assert the metrics read goes THROUGH it
-// (i.e. carries the SPA contract) — a regression to an unauthenticated raw
-// fetch would no longer call api.get and would fail these tests.
-const apiGet = vi.fn();
-vi.mock('../../../lib/api', () => ({
-    api: { get: (...args: unknown[]) => apiGet(...args) },
-}));
+const mockGet = vi.fn();
 
-import { InvitationsView } from './InvitationsView';
+beforeEach(() => {
+    mockGet.mockReset();
+    // Overview is the default tab → it fetches metrics + campaigns on mount.
+    mockGet.mockImplementation((url: string) => {
+        if (url.startsWith('/api/admin/invitations/metrics')) {
+            return Promise.resolve({
+                data: {
+                    data: {
+                        codes_issued: 0,
+                        redemptions: 0,
+                        invites_sent: 0,
+                        invites_accepted: 0,
+                        referrals_qualified: 0,
+                        distinct_referrers: 0,
+                        k_factor: 0,
+                        acceptance_rate: 0,
+                        conversion_rate: 0,
+                        ttr_p50_seconds: null,
+                        ttr_p90_seconds: null,
+                    },
+                },
+            });
+        }
+        return Promise.resolve({ data: { data: [] } });
+    });
+    vi.spyOn(api, 'get').mockImplementation(mockGet);
+    // Default: package panel mount OFF (the fresh-deploy state).
+    useAuthStore.setState({ features: {} });
+});
+
+afterEach(() => {
+    vi.restoreAllMocks();
+    useAuthStore.setState({ features: {} });
+});
+
+function withQueryClient(node: ReactNode): ReactNode {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return <QueryClientProvider client={qc}>{node}</QueryClientProvider>;
+}
 
 describe('InvitationsView', () => {
-    beforeEach(() => {
-        apiGet.mockReset();
+    it('renders the tab shell with Overview active by default', () => {
+        render(withQueryClient(<InvitationsView />));
+        expect(screen.getByTestId('admin-invitations')).toBeVisible();
+        expect(screen.getByTestId('admin-invitations-tab-overview')).toHaveAttribute('aria-selected', 'true');
+        expect(screen.getByTestId('admin-invitations-panel-overview')).toBeVisible();
     });
 
-    afterEach(() => {
-        vi.restoreAllMocks();
+    it('hides the Advanced panel launcher when the package mount is OFF (R14/R43 — no dead 404 link)', () => {
+        useAuthStore.setState({ features: { invitations_admin: false } });
+        render(withQueryClient(<InvitationsView />));
+        expect(screen.queryByTestId('admin-invitations-open-panel')).not.toBeInTheDocument();
     });
 
-    it('renders the open-panel link to the mounted Blade SPA', () => {
-        apiGet.mockReturnValue(new Promise(() => undefined)); // never resolves → stays loading
-        render(<InvitationsView />);
-
+    it('shows the Advanced panel launcher only when the mount is enabled (R43 ON state)', () => {
+        useAuthStore.setState({ features: { invitations_admin: true } });
+        render(withQueryClient(<InvitationsView />));
         const link = screen.getByTestId('admin-invitations-open-panel');
         expect(link).toHaveAttribute('href', '/admin/invitations');
         expect(link).toHaveAttribute('target', '_blank');
     });
 
-    it('reads metrics through the shared SPA api client (carries the Sanctum contract)', () => {
-        apiGet.mockReturnValue(new Promise(() => undefined));
-        render(<InvitationsView />);
-
-        // The request MUST go through the shared api client (which injects
-        // X-Requested-With + withCredentials + X-Tenant-Id), not a raw fetch.
-        expect(apiGet).toHaveBeenCalledTimes(1);
-        expect(apiGet).toHaveBeenCalledWith('/api/admin/invitations/metrics', expect.any(Object));
-    });
-
-    it('shows live KPIs from a valid metrics response (ready state)', async () => {
-        apiGet.mockResolvedValue({
-            data: {
-                data: {
-                    codes_issued: 42,
-                    redemptions: 7,
-                    k_factor: 1.5,
-                    // extra keys the view ignores must not break it
-                    invites_sent: 10,
-                },
-            },
+    it('switching tabs swaps the active panel (R16 — drives the transition)', async () => {
+        render(withQueryClient(<InvitationsView />));
+        await userEvent.click(screen.getByTestId('admin-invitations-tab-codes'));
+        await waitFor(() => {
+            expect(screen.getByTestId('admin-invitations-tab-codes')).toHaveAttribute('aria-selected', 'true');
         });
-        render(<InvitationsView />);
-
-        await waitFor(() =>
-            expect(screen.getByTestId('admin-invitations-host')).toHaveAttribute('data-state', 'ready'),
-        );
-        expect(screen.getByTestId('admin-invitations-kpi-codes')).toHaveTextContent('42');
-        expect(screen.getByTestId('admin-invitations-kpi-redemptions')).toHaveTextContent('7');
-        expect(screen.getByTestId('admin-invitations-kpi-k-factor')).toHaveTextContent('1.5');
-        expect(screen.queryByTestId('admin-invitations-error')).not.toBeInTheDocument();
-    });
-
-    it('surfaces the error state when the api client rejects (non-ok / network) (R14)', async () => {
-        apiGet.mockRejectedValue(new Error('Request failed with status code 403'));
-        render(<InvitationsView />);
-
-        await waitFor(() =>
-            expect(screen.getByTestId('admin-invitations-host')).toHaveAttribute('data-state', 'error'),
-        );
-        expect(screen.getByTestId('admin-invitations-error')).toBeInTheDocument();
-        // The open-panel link is still offered as a fallback.
-        expect(screen.getByTestId('admin-invitations-open-panel')).toBeInTheDocument();
-    });
-
-    it('surfaces the error state on a malformed 200 shape, never NaN KPIs (R14)', async () => {
-        // 200 OK but k_factor is a string → must NOT render as a KPI.
-        apiGet.mockResolvedValue({ data: { data: { codes_issued: 1, redemptions: 0, k_factor: 'oops' } } });
-        render(<InvitationsView />);
-
-        await waitFor(() =>
-            expect(screen.getByTestId('admin-invitations-host')).toHaveAttribute('data-state', 'error'),
-        );
-        expect(screen.queryByTestId('admin-invitations-kpi-codes')).not.toBeInTheDocument();
+        expect(screen.getByTestId('admin-invitations-panel-codes')).toBeVisible();
+        expect(screen.queryByTestId('admin-invitations-panel-overview')).not.toBeInTheDocument();
     });
 });

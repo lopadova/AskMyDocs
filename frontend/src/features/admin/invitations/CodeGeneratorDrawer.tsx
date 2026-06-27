@@ -149,7 +149,12 @@ export function CodeGeneratorDrawer({ campaigns, onClose }: CodeGeneratorDrawerP
                 </header>
 
                 {generated === null ? (
-                    <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    // noValidate: the JS validation in handleSubmit is the single
+                    // source of truth so out-of-range values surface as inline
+                    // errors (consistent with the rest of the admin forms) instead
+                    // of the browser's native constraint tooltip silently blocking
+                    // submit. The min/max attrs stay for spinner-stepping UX only.
+                    <form onSubmit={handleSubmit} noValidate style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                         <Field id="gen-campaign" label="Campaign (optional)" error={fieldErrors.campaign_id}>
                             <select
                                 id="gen-campaign"
