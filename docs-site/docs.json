@@ -33,6 +33,7 @@
           "connectors-credential",
           "connectors-multi-account",
           "connectors-sync-settings",
+          "connectors-imap-serialization",
           "kitt-widget",
           "admin-panel",
           "projects-registry",

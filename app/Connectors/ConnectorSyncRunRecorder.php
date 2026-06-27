@@ -30,6 +30,18 @@ use Throwable;
  */
 final class ConnectorSyncRunRecorder
 {
+    /**
+     * The job classes this recorder records. Used BOTH to gate the queue event
+     * (exact-class match) AND as the `unserialize()` allow-list — they MUST stay
+     * identical so a class can never pass the gate then fail to materialise into an
+     * allowed type (which would silently drop it from recording). `ConnectorSyncJob`
+     * is the vendor base; `SerializedConnectorSyncJob` is the host per-mailbox subclass
+     * (resolved via this `App\Connectors` namespace).
+     *
+     * @var list<class-string>
+     */
+    private const RECORDABLE_JOBS = [ConnectorSyncJob::class, SerializedConnectorSyncJob::class];
+
     public function __construct(private readonly SyncRunContext $context) {}
 
     public function subscribe(Dispatcher $events): void
@@ -176,7 +188,13 @@ final class ConnectorSyncRunRecorder
             // commandName is optional on some drivers/payloads — fall back to
             // displayName (same posture as FailedJobResource::resolveJobClass).
             $commandName = $payload['data']['commandName'] ?? $payload['data']['displayName'] ?? null;
-            if ($commandName !== ConnectorSyncJob::class) {
+            // Accept ConnectorSyncJob AND its host subclass SerializedConnectorSyncJob
+            // (per-mailbox re-queue) — both carry the same int+string props and are
+            // recorded identically. The accepted set MUST match the unserialize
+            // allow-list below exactly: an exact-class check keeps the two in lockstep,
+            // so a future subclass can't pass this gate then silently fail to unserialize
+            // into an allowed type (which would drop it from recording).
+            if (! is_string($commandName) || ! in_array($commandName, self::RECORDABLE_JOBS, true)) {
                 return null;
             }
             $serialized = $payload['data']['command'] ?? null;
@@ -185,7 +203,9 @@ final class ConnectorSyncRunRecorder
             }
             // Restrict allowed classes to prevent PHP object-injection from a
             // tampered queue payload (the job carries only int + string props).
-            $command = unserialize($serialized, ['allowed_classes' => [ConnectorSyncJob::class]]);
+            $command = unserialize($serialized, [
+                'allowed_classes' => self::RECORDABLE_JOBS,
+            ]);
 
             return $command instanceof ConnectorSyncJob ? $command : null;
         } catch (Throwable) {

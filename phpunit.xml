@@ -40,6 +40,12 @@
              doc; the dedicated AnalyzeDocumentChangeJob / KbChangeAnalyzer
              tests enable it explicitly via config()->set. -->
         <env name="KB_CHANGE_ANALYSIS_ENABLED" value="false"/>
+        <!-- IMAP per-mailbox connection serialization OFF across the suite: the
+             factory-decorator wrapper is single-process irrelevant and would wrap
+             test-injected fake factories. The dedicated SerializingImapClient tests
+             exercise the decorator class directly (both flag states). Production
+             defaults it ON (Redis lock). -->
+        <env name="CONNECTOR_IMAP_SERIALIZE_CONNECTIONS" value="false"/>
         <!-- v8.16 — FinOps metering OFF across the suite: the pricing path
              lazily HTTPs on a cache miss (LiteLLM / OpenRouter feeds), which must
              never fire in unit/feature tests. Production defaults metering ON;

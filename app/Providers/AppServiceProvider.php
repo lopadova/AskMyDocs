@@ -200,6 +200,7 @@ class AppServiceProvider extends ServiceProvider
         $this->registerFinOpsGates();
         $this->registerGuardrailsGates();
         $this->registerFakeImapFactory();
+        $this->registerImapConnectionSerializer();
         $this->registerInvitationsIntegration();
         $this->registerInvitationsGates();
         $this->registerPiiRedactorTenancy();
@@ -338,6 +339,67 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(
             \Padosoft\AskMyDocsConnectorImap\Imap\ImapClientFactoryInterface::class,
             \App\Connectors\Testing\FakeImapClientFactory::class,
+        );
+    }
+
+    /**
+     * Serialize IMAP connections per mailbox (host+port+username), cross-tenant, so
+     * a server never sees "Too many simultaneous connections". DECORATES whatever
+     * factory is currently bound (real) via `$app->extend`, so EVERY real connection
+     * path — sync, health, OAuth ping, test-fetch, folder picker — passes through the
+     * per-mailbox lock. When `connectors.fake_imap_ping` is enabled, the serializer
+     * intentionally does NOT wrap the fake factory.
+     *
+     * Degrades to a no-op (no wrapping) when the cache store can't host atomic locks —
+     * never crashes boot.
+     */
+    private function registerImapConnectionSerializer(): void
+    {
+        if (config('connectors.imap.serialize_connections', true) !== true) {
+            return;
+        }
+
+        // No real server to protect when the IMAP is faked (E2E/local offline seam)
+        // — and the E2E env's cache store may not host locks. Skip wrapping the fake.
+        if (config('connectors.fake_imap_ping', false) === true) {
+            return;
+        }
+
+        if (! interface_exists(\Padosoft\AskMyDocsConnectorImap\Imap\ImapClientFactoryInterface::class)) {
+            return;
+        }
+
+        try {
+            $store = $this->app->make('cache')->store()->getStore();
+        } catch (\Throwable) {
+            // Resolving a misconfigured/unknown cache store throws — that must NOT
+            // hard-fail app boot (the docblock promises a no-op degrade). Skip wrapping.
+            return;
+        }
+
+        if (! $store instanceof \Illuminate\Contracts\Cache\LockProvider) {
+            // No lock-capable store (a LockProvider) — skip serialization rather than
+            // fail every IMAP call. NOTE: lock-capable ≠ distributed: a local store
+            // (array/file/database) only serializes within ONE host; full
+            // cross-process/cross-surface correctness needs a distributed store such
+            // as Redis. We gate only on lock capability here; the deployment is
+            // responsible for choosing Redis in production.
+            return;
+        }
+
+        $waitSeconds = (int) config('connectors.imap.mailbox_lock.wait_seconds', 15);
+        $ttlSeconds = (int) config('connectors.imap.mailbox_lock.ttl_seconds', 700);
+
+        $this->app->extend(
+            \Padosoft\AskMyDocsConnectorImap\Imap\ImapClientFactoryInterface::class,
+            static function ($factory, $app) use ($store, $waitSeconds, $ttlSeconds): \App\Connectors\Imap\SerializingImapClientFactory {
+                return new \App\Connectors\Imap\SerializingImapClientFactory(
+                    $factory,
+                    $store,
+                    $waitSeconds,
+                    $ttlSeconds,
+                );
+            },
         );
     }
 

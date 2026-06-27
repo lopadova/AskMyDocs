@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\Admin;
 
+use App\Connectors\SerializedConnectorSyncJob;
 use App\Http\Requests\Admin\ConfigureConnectorRequest;
 use App\Http\Requests\Admin\StartConnectorInstallRequest;
 use App\Http\Requests\Admin\UpdateConnectorInstallationRequest;
@@ -16,7 +17,6 @@ use App\Services\Admin\Connectors\ConnectorFolderListingException;
 use App\Services\Admin\Connectors\ConnectorFolderListingService;
 use App\Support\TenantContext;
 use Padosoft\AskMyDocsConnectorBase\ConnectorRegistry;
-use Padosoft\AskMyDocsConnectorBase\ConnectorSyncJob;
 use Padosoft\AskMyDocsConnectorBase\Exceptions\ConnectorAuthException;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
 use Illuminate\Database\QueryException;
@@ -267,8 +267,10 @@ final class ConnectorAdminController extends Controller
     /**
      * POST /api/admin/connectors/{installationId}/sync-now
      *
-     * Dispatches a {@see ConnectorSyncJob} for the named installation.
-     * Returns 202 — the actual sync is async.
+     * Routes the sync through {@see SerializedConnectorSyncJob::dispatchFor()}: the
+     * per-mailbox serialized job only for an IMAP installation with serialization
+     * enabled, the vendor {@see \Padosoft\AskMyDocsConnectorBase\ConnectorSyncJob}
+     * otherwise. Returns 202 — the actual sync is async.
      *
      * Retry semantics (the "Retry sync" button on an ERRORED account):
      * `ConnectorSyncJob::runSync()` skips any installation whose status is not
@@ -307,7 +309,7 @@ final class ConnectorAdminController extends Controller
             ])->save();
         }
 
-        ConnectorSyncJob::dispatch($installation->id, $installation->tenant_id);
+        SerializedConnectorSyncJob::dispatchFor($installation);
 
         return response()->json([
             'data' => [
