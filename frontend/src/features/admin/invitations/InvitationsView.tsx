@@ -4,7 +4,9 @@ import { useAuthStore } from '../../../lib/auth-store';
 import { AdminShell } from '../shell/AdminShell';
 import { ToastHost } from '../shared/Toast';
 import { OverviewTab } from './OverviewTab';
+import { CampaignsTab } from './CampaignsTab';
 import { CodesTab } from './CodesTab';
+import { InviteTab } from './InviteTab';
 import { ReferralsTab } from './ReferralsTab';
 import { RewardsTab } from './RewardsTab';
 import { WaitlistTab } from './WaitlistTab';
@@ -29,11 +31,13 @@ import { AntiAbuseTab } from './AntiAbuseTab';
 
 const PANEL_URL = '/admin/invitations';
 
-type InvTab = 'overview' | 'codes' | 'referrals' | 'rewards' | 'waitlist' | 'abuse';
+type InvTab = 'overview' | 'campaigns' | 'codes' | 'invite' | 'referrals' | 'rewards' | 'waitlist' | 'abuse';
 
 const TABS: Array<{ id: InvTab; label: string }> = [
     { id: 'overview', label: 'Overview' },
+    { id: 'campaigns', label: 'Campaigns' },
     { id: 'codes', label: 'Codes' },
+    { id: 'invite', label: 'Invite' },
     { id: 'referrals', label: 'Referrals' },
     { id: 'rewards', label: 'Rewards' },
     { id: 'waitlist', label: 'Waitlist' },
@@ -150,7 +154,9 @@ export function InvitationsView() {
                     style={{ flex: 1, minHeight: 0, overflow: 'auto' }}
                 >
                     {tab === 'overview' && <OverviewTab />}
+                    {tab === 'campaigns' && <CampaignsTab />}
                     {tab === 'codes' && <CodesTab />}
+                    {tab === 'invite' && <InviteTab />}
                     {tab === 'referrals' && <ReferralsTab />}
                     {tab === 'rewards' && <RewardsTab />}
                     {tab === 'waitlist' && <WaitlistTab />}
