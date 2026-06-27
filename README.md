@@ -212,9 +212,10 @@ tells buyers to demand:
   role *and* KB project memberships — so one code provisions access across one or more tenants at
   once (GRANT-never-REVOKE). Tri-surface (PHP + HTTP + 3 MCP tools), admin gated by
   `can:manageInvitations`, surfaced as a **native in-app admin** (invite-funnel dashboard with 11 live
-  KPIs, code inventory with batch generation / CSV export / revoke, and referral / reward / waitlist /
-  anti-abuse tables) inside the unified admin chrome, and a closed-beta `INVITE_REQUIRED` signup gate
-  that is **default-OFF**. See the [doc-site](https://padosoft.mintlify.app/invitations).
+  KPIs, a campaign builder with the multi-tenant grant editor, code inventory with batch generation /
+  CSV export / revoke, a direct-invitation sender, and referral / reward / waitlist / anti-abuse tables)
+  inside the unified admin chrome, and a closed-beta `INVITE_REQUIRED` signup gate that is
+  **default-OFF**. See the [doc-site](https://padosoft.mintlify.app/invitations).
 
 ---
 
@@ -714,20 +715,22 @@ INVITE_REQUIRED=false
 ```
 
 The admin surface is a **native, in-app tabbed page** at
-`/app/{team}/admin/invitations` (Overview · Codes · Referrals · Rewards ·
-Waitlist · Anti-abuse), built on the same `/api/admin/invitations/*` core so it
-stays inside the unified admin chrome + team switcher — no new tab. It ships the
-invite-funnel dashboard (all 11 `MetricsService::summary` fields + a proportional
-funnel), code inventory with batch generation / Copy-all / CSV export / revoke,
-and read tables for referrals, rewards, waitlist and anti-abuse (each with the
-honest "first 500 rows" truncation notice, since the core read surfaces are
-capped at 500). The standalone `padosoft/laravel-invitations-admin` panel
-(campaign builder + multi-tenant grant editor) is offered as an optional
-**"Advanced"** launcher, shown **only when `INVITATIONS_ADMIN_ENABLED=true`** so
-it never links to the unregistered `/admin/invitations` 404 (R14/R43); the host
-learns the flag from the additive `features.invitations_admin` field on
-`/api/auth/me` (R27). A native campaign editor + invitation sender are the
-deferred follow-up. See the [doc-site page](https://padosoft.mintlify.app/invitations).
+`/app/{team}/admin/invitations` (Overview · Campaigns · Codes · Invite ·
+Referrals · Rewards · Waitlist · Anti-abuse), built on the same
+`/api/admin/invitations/*` core so it stays inside the unified admin chrome +
+team switcher — no new tab. It ships the invite-funnel dashboard (all 11
+`MetricsService::summary` fields + a proportional funnel), a **campaign builder**
+(create/edit with the **multi-tenant grant editor** — a Spatie role + KB project
+memberships across one or more tenants), code inventory with batch generation /
+Copy-all / CSV export / revoke, a **direct-invitation sender**, and read tables
+for referrals, rewards, waitlist and anti-abuse (each with the honest "first 500
+rows" truncation notice, since the core read surfaces are capped at 500). The
+standalone `padosoft/laravel-invitations-admin` package panel is still offered as
+an optional **"Advanced"** launcher, shown **only when
+`INVITATIONS_ADMIN_ENABLED=true`** so it never links to the unregistered
+`/admin/invitations` 404 (R14/R43); the host learns the flag from the additive
+`features.invitations_admin` field on `/api/auth/me` (R27). See the
+[doc-site page](https://padosoft.mintlify.app/invitations).
 
 ### Storage (Laravel disks)
 

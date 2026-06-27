@@ -84,6 +84,37 @@ seededTest.describe('Admin Invitations — native admin', () => {
         }
     });
 
+    seededTest('campaigns — live create writes a real campaign (R13 real write)', async ({ page }) => {
+        await page.goto('/app/admin/invitations');
+        await expect(page.getByTestId('admin-invitations')).toBeVisible({ timeout: 15_000 });
+
+        await page.getByTestId('admin-invitations-tab-campaigns').click();
+        await page.getByTestId('admin-invitations-campaigns-new').click();
+        await expect(page.getByTestId('admin-invitations-campaign-drawer')).toBeVisible();
+
+        await page.getByTestId('admin-invitations-campaign-key').fill('e2e-launch');
+        await page.getByTestId('admin-invitations-campaign-name').fill('E2E Launch');
+        await page.getByTestId('admin-invitations-campaign-submit').click();
+
+        // Real POST /campaigns → drawer closes, the list refetches, the row shows.
+        await expect(page.getByTestId('admin-invitations-campaigns-table')).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByText('E2E Launch')).toBeVisible();
+    });
+
+    seededTest('invite — live send records a session row (R13 real write)', async ({ page }) => {
+        await page.goto('/app/admin/invitations');
+        await expect(page.getByTestId('admin-invitations')).toBeVisible({ timeout: 15_000 });
+
+        await page.getByTestId('admin-invitations-tab-invite').click();
+        await page.getByTestId('admin-invitations-invite-open').click();
+        await page.getByTestId('admin-invitations-invite-recipient').fill('e2e-invitee@example.com');
+        await page.getByTestId('admin-invitations-invite-submit').click();
+
+        // Real POST /invitations → the session list shows the sent invitation.
+        await expect(page.getByTestId('admin-invitations-invites-table')).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByText('e2e-invitee@example.com')).toBeVisible();
+    });
+
     seededTest(
         // R13: failure injection — the happy path above covers the real-data flow.
         'failure — metrics probe 503 surfaces the overview error banner (R13: failure injection)',
