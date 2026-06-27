@@ -196,6 +196,15 @@ class AuthController extends Controller
                 'density' => 'balanced',
                 'language' => 'en',
             ],
+            // R27 additive — UI capability hints for the SPA (never strip or
+            // rename existing keys). `invitations_admin` mirrors the
+            // INVITATIONS_ADMIN_ENABLED master switch: the native Invitations
+            // page only offers the "open standalone panel" launcher when true,
+            // so the link never points at the unregistered /admin/invitations
+            // 404 route when the package mount is OFF (R14/R43).
+            'features' => [
+                'invitations_admin' => (bool) config('invitations-admin.enabled', false),
+            ],
         ], 200);
     }
 }
