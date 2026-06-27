@@ -62,6 +62,21 @@ describe('InvitationsView', () => {
         expect(screen.getByTestId('admin-invitations')).toBeVisible();
         expect(screen.getByTestId('admin-invitations-tab-overview')).toHaveAttribute('aria-selected', 'true');
         expect(screen.getByTestId('admin-invitations-panel-overview')).toBeVisible();
+        // Phase-2 add surfaces are reachable from the tab bar.
+        expect(screen.getByTestId('admin-invitations-tab-campaigns')).toBeVisible();
+        expect(screen.getByTestId('admin-invitations-tab-invite')).toBeVisible();
+    });
+
+    it('Campaigns tab exposes the New campaign button', async () => {
+        render(withQueryClient(<InvitationsView />));
+        await userEvent.click(screen.getByTestId('admin-invitations-tab-campaigns'));
+        await waitFor(() => expect(screen.getByTestId('admin-invitations-campaigns-new')).toBeVisible());
+    });
+
+    it('Invite tab exposes the Send invitation button', async () => {
+        render(withQueryClient(<InvitationsView />));
+        await userEvent.click(screen.getByTestId('admin-invitations-tab-invite'));
+        await waitFor(() => expect(screen.getByTestId('admin-invitations-invite-open')).toBeVisible());
     });
 
     it('hides the Advanced panel launcher when the package mount is OFF (R14/R43 — no dead 404 link)', () => {
