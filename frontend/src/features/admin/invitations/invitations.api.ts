@@ -28,6 +28,11 @@ export type RewardParty = 'referrer' | 'referee';
 export type WaitlistStatus = 'waiting' | 'invited' | 'converted' | 'removed';
 export type AbuseSeverity = 'info' | 'warn' | 'block';
 export type AbuseAction = 'none' | 'flag' | 'throttle' | 'block';
+export type ProjectRole = 'member' | 'admin' | 'owner';
+export type InviteChannel = 'email' | 'sms' | 'in_app' | 'link';
+
+export const CAMPAIGN_TYPES: CampaignType[] = ['single_use', 'multi_use', 'capacity', 'referral', 'waitlist_skip'];
+export const CAMPAIGN_STATUSES: CampaignStatus[] = ['draft', 'active', 'paused', 'ended'];
 
 // ── DTOs (exact shape of the package's JsonResource payloads) ───────────────
 export interface InviteMetrics {
@@ -44,6 +49,28 @@ export interface InviteMetrics {
     ttr_p90_seconds: number | null;
 }
 
+/**
+ * Provisioning grant applied to a redeemer on a fresh claim. `role` must be a
+ * real Spatie role and never `super-admin` (the package rejects it). `projects`
+ * are free-form KB project keys. `tenants` carries one OR MORE per-tenant
+ * grants so a single code provisions across several tenants at once.
+ */
+export interface CampaignTenantGrant {
+    tenant_id: string;
+    role?: string | null;
+    projects?: string[];
+    project_role?: ProjectRole | null;
+    scope_allowlist?: string[];
+}
+
+export interface CampaignGrant {
+    role?: string | null;
+    projects?: string[];
+    project_role?: ProjectRole | null;
+    scope_allowlist?: string[];
+    tenants?: CampaignTenantGrant[];
+}
+
 export interface Campaign {
     id: number;
     key: string;
@@ -55,8 +82,14 @@ export interface Campaign {
     per_user_limit?: number | null;
     starts_at?: string | null;
     ends_at?: string | null;
+    grant?: CampaignGrant | null;
     created_at?: string;
     updated_at?: string;
+}
+
+export interface Tenant {
+    id: string;
+    name: string;
 }
 
 export interface InviteCode {
@@ -160,6 +193,47 @@ export interface AbuseFilter {
     action?: AbuseAction | null;
 }
 
+export interface CreateCampaignPayload {
+    key: string;
+    name: string;
+    description?: string | null;
+    type: CampaignType;
+    status?: CampaignStatus | null;
+    max_redemptions_total?: number | null;
+    per_user_limit?: number | null;
+    starts_at?: string | null;
+    ends_at?: string | null;
+    grant?: CampaignGrant | null;
+}
+
+/** Update omits the immutable `key` + `type`. */
+export interface UpdateCampaignPayload {
+    name?: string;
+    description?: string | null;
+    status?: CampaignStatus;
+    max_redemptions_total?: number | null;
+    per_user_limit?: number | null;
+    starts_at?: string | null;
+    ends_at?: string | null;
+    grant?: CampaignGrant | null;
+}
+
+export interface SendInvitationPayload {
+    recipient: string;
+    channel?: InviteChannel | null;
+    context_ref?: string | null;
+    role?: string | null;
+    code_id?: number | null;
+}
+
+export interface SentInvitation {
+    id: number;
+    recipient: string;
+    status: string;
+    channel: string;
+    expires_at: string | null;
+}
+
 /** Build a `?a=b&c=d` query string, dropping null/undefined/empty values. */
 function qs(params: Record<string, string | number | null | undefined>): string {
     const search = new URLSearchParams();
@@ -183,6 +257,26 @@ export const invitationsApi = {
 
     async listCampaigns(): Promise<Campaign[]> {
         const { data } = await api.get<{ data: Campaign[] }>(`${BASE}/campaigns`);
+        return data.data;
+    },
+
+    async listTenants(): Promise<Tenant[]> {
+        const { data } = await api.get<{ data: Tenant[] }>(`${BASE}/tenants`);
+        return data.data;
+    },
+
+    async createCampaign(payload: CreateCampaignPayload): Promise<Campaign> {
+        const { data } = await api.post<{ data: Campaign }>(`${BASE}/campaigns`, payload);
+        return data.data;
+    },
+
+    async updateCampaign(id: number, payload: UpdateCampaignPayload): Promise<Campaign> {
+        const { data } = await api.patch<{ data: Campaign }>(`${BASE}/campaigns/${id}`, payload);
+        return data.data;
+    },
+
+    async sendInvitation(payload: SendInvitationPayload): Promise<SentInvitation> {
+        const { data } = await api.post<{ data: SentInvitation }>(`${BASE}/invitations`, payload);
         return data.data;
     },
 

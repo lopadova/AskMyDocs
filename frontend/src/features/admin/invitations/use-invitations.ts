@@ -3,10 +3,13 @@ import {
     invitationsApi,
     type AbuseFilter,
     type CodesFilter,
+    type CreateCampaignPayload,
     type GenerateCodesPayload,
     type MetricsFilter,
     type ReferralsFilter,
     type RewardsFilter,
+    type SendInvitationPayload,
+    type UpdateCampaignPayload,
     type WaitlistFilter,
 } from './invitations.api';
 
@@ -36,6 +39,14 @@ export function useCampaigns() {
     return useQuery({
         queryKey: [...INVITATIONS_KEY, 'campaigns'],
         queryFn: () => invitationsApi.listCampaigns(),
+        staleTime: STALE,
+    });
+}
+
+export function useTenants() {
+    return useQuery({
+        queryKey: [...INVITATIONS_KEY, 'tenants'],
+        queryFn: () => invitationsApi.listTenants(),
         staleTime: STALE,
     });
 }
@@ -92,6 +103,32 @@ export function useRevokeCode() {
     const qc = useQueryClient();
     return useMutation({
         mutationFn: (id: number) => invitationsApi.revokeCode(id),
+        onSuccess: () => qc.invalidateQueries({ queryKey: INVITATIONS_KEY }),
+    });
+}
+
+export function useCreateCampaign() {
+    const qc = useQueryClient();
+    return useMutation({
+        mutationFn: (payload: CreateCampaignPayload) => invitationsApi.createCampaign(payload),
+        onSuccess: () => qc.invalidateQueries({ queryKey: INVITATIONS_KEY }),
+    });
+}
+
+export function useUpdateCampaign() {
+    const qc = useQueryClient();
+    return useMutation({
+        mutationFn: ({ id, payload }: { id: number; payload: UpdateCampaignPayload }) =>
+            invitationsApi.updateCampaign(id, payload),
+        onSuccess: () => qc.invalidateQueries({ queryKey: INVITATIONS_KEY }),
+    });
+}
+
+export function useSendInvitation() {
+    const qc = useQueryClient();
+    return useMutation({
+        mutationFn: (payload: SendInvitationPayload) => invitationsApi.sendInvitation(payload),
+        // invites_sent moves the Overview funnel → refresh the partition.
         onSuccess: () => qc.invalidateQueries({ queryKey: INVITATIONS_KEY }),
     });
 }
