@@ -21,6 +21,26 @@ describe('GrantEditor helpers', () => {
             expect(buildGrant(draft)).toEqual({ projects: ['a', 'b'] });
         });
 
+        it('preserves an opaque scope_allowlist the editor does not render (no edit data loss)', () => {
+            // A grant created via the API/MCP can carry a scope_allowlist (list OR
+            // map). The native editor never shows it, but an edit must NOT strip
+            // it from the persisted grant — round-trip it untouched.
+            const serverGrant = {
+                role: 'editor',
+                scope_allowlist: { folder_globs: ['hr/*'] },
+                tenants: [{ tenant_id: 'acme', role: 'member', scope_allowlist: ['secret/*'] }],
+            };
+            const draft = grantToDraft(serverGrant);
+            const rebuilt = buildGrant(draft);
+            expect(rebuilt?.scope_allowlist).toEqual({ folder_globs: ['hr/*'] });
+            expect(rebuilt?.tenants?.[0].scope_allowlist).toEqual(['secret/*']);
+        });
+
+        it('emits a grant carrying ONLY a scope_allowlist (not treated as empty)', () => {
+            const draft = grantToDraft({ scope_allowlist: ['x'] });
+            expect(buildGrant(draft)).toEqual({ scope_allowlist: ['x'] });
+        });
+
         it('includes per-tenant grants and filters rows missing tenant_id', () => {
             const draft: GrantDraft = {
                 role: '',
@@ -48,6 +68,9 @@ describe('GrantEditor helpers', () => {
                     tenants: [{ tenant_id: 'acme', role: 'super-admin', projects: '', project_role: '' }],
                 }),
             ).toBe(true);
+        });
+        it('is case-insensitive (a Super-Admin variant is still blocked)', () => {
+            expect(grantHasSuperAdmin({ ...EMPTY_GRANT_DRAFT, role: 'Super-Admin' })).toBe(true);
         });
         it('is false for ordinary roles', () => {
             expect(grantHasSuperAdmin({ ...EMPTY_GRANT_DRAFT, role: 'member' })).toBe(false);

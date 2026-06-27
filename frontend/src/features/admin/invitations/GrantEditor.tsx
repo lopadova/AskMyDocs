@@ -21,12 +21,16 @@ export interface GrantRowDraft {
     role: string;
     projects: string;
     project_role: string;
+    // Opaque passthrough — the editor doesn't render scope_allowlist, but
+    // carries it so an edit doesn't strip it from the persisted grant.
+    scope_allowlist?: unknown;
 }
 
 export interface GrantDraft {
     role: string;
     projects: string;
     project_role: string;
+    scope_allowlist?: unknown;
     tenants: GrantRowDraft[];
 }
 
@@ -45,14 +49,18 @@ export function grantToDraft(grant: CampaignGrant | null | undefined): GrantDraf
         role: grant.role ?? '',
         projects: (grant.projects ?? []).join(', '),
         project_role: grant.project_role ?? '',
+        scope_allowlist: grant.scope_allowlist,
         tenants: (grant.tenants ?? []).map((t) => ({
             tenant_id: t.tenant_id,
             role: t.role ?? '',
             projects: (t.projects ?? []).join(', '),
             project_role: t.project_role ?? '',
+            scope_allowlist: t.scope_allowlist,
         })),
     };
 }
+
+const hasValue = (v: unknown): boolean => v !== undefined && v !== null;
 
 /**
  * Convert a draft to a `CampaignGrant`, or `undefined` when the admin left the
@@ -71,24 +79,32 @@ export function buildGrant(draft: GrantDraft): CampaignGrant | undefined {
             const tp = splitProjects(t.projects);
             if (tp.length) row.projects = tp;
             if (t.project_role.trim()) row.project_role = t.project_role.trim() as ProjectRole;
+            // Preserve the opaque allowlist the editor doesn't manage.
+            if (hasValue(t.scope_allowlist)) row.scope_allowlist = t.scope_allowlist;
             return row;
         });
 
-    const hasPrimary = role !== '' || projects.length > 0 || projectRole !== '';
+    const hasPrimary = role !== '' || projects.length > 0 || projectRole !== '' || hasValue(draft.scope_allowlist);
     if (!hasPrimary && tenants.length === 0) return undefined;
 
     const grant: CampaignGrant = {};
     if (role) grant.role = role;
     if (projects.length) grant.projects = projects;
     if (projectRole) grant.project_role = projectRole as ProjectRole;
+    if (hasValue(draft.scope_allowlist)) grant.scope_allowlist = draft.scope_allowlist;
     if (tenants.length) grant.tenants = tenants;
     return grant;
 }
 
-/** True if any role slot is the forbidden super-admin (package rejects it). */
+/**
+ * True if any role slot is the forbidden super-admin. Case-insensitive so a
+ * `Super-Admin` variant is blocked with the clear inline error rather than
+ * silently no-op'ing downstream (Spatie's exact-name lookup wouldn't grant it).
+ */
 export function grantHasSuperAdmin(draft: GrantDraft): boolean {
-    if (draft.role.trim() === 'super-admin') return true;
-    return draft.tenants.some((t) => t.role.trim() === 'super-admin');
+    const isSuper = (r: string): boolean => r.trim().toLowerCase() === 'super-admin';
+    if (isSuper(draft.role)) return true;
+    return draft.tenants.some((t) => isSuper(t.role));
 }
 
 export interface GrantEditorProps {

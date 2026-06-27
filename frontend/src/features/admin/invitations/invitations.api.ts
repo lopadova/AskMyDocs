@@ -59,15 +59,17 @@ export interface CampaignTenantGrant {
     tenant_id: string;
     role?: string | null;
     projects?: string[];
+    // Opaque (the package validates it as a nullable array — list OR map). The
+    // native editor doesn't edit it, but preserves it on update (no data loss).
     project_role?: ProjectRole | null;
-    scope_allowlist?: string[];
+    scope_allowlist?: unknown;
 }
 
 export interface CampaignGrant {
     role?: string | null;
     projects?: string[];
     project_role?: ProjectRole | null;
-    scope_allowlist?: string[];
+    scope_allowlist?: unknown;
     tenants?: CampaignTenantGrant[];
 }
 
