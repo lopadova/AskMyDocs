@@ -805,6 +805,11 @@ Config file: `config/kb.php`
 KB_EMBEDDINGS_DIMENSIONS=1536
 KB_MIN_SIMILARITY=0.30
 KB_DEFAULT_LIMIT=8
+# Timezone the chatbot presents as "now" in the RAG system prompt so it can
+# reason about time-relative questions ("documents from last month", "is this
+# deadline past?"). The app keeps running on UTC; this only sets the zone the
+# bot *displays* (ISO 8601). Must be a valid IANA timezone. Default Europe/Rome.
+KB_PROMPT_TIMEZONE=Europe/Rome
 
 # Chunking
 KB_CHUNK_TARGET_TOKENS=512

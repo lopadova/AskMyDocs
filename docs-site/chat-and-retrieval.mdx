@@ -63,6 +63,16 @@ blocks (⚠ rejected, 📎 related, primary `## Context`). The response carries:
 - `citations` — the exact chunks that grounded it;
 - `meta` — provider, model, latency, retrieved-chunk count, filters echoed back.
 
+The same template also injects an **authoritative current date/time** (ISO 8601)
+near the top, so the model has an unambiguous "now" for time-relative reasoning
+("documents from last month", "is this deadline past?", "what day is it?"). It is
+explicitly marked usable even though it is not part of the retrieved Context, so
+the [refusal contract](#the-refusal-contract) does not reject a plain "what time
+is it?". The app runs on UTC; the timezone the bot *presents* is set by
+`KB_PROMPT_TIMEZONE` (`config/kb.php` → `kb.prompt.timezone`, default
+`Europe/Rome`) — a single render point shared by every LLM surface (chat,
+conversation, streaming, agent, eval, benchmark).
+
 ## The citation document modal
 
 Citations are not just labels — clicking one opens an **in-chat document modal**
