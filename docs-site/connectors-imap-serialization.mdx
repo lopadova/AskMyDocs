@@ -108,11 +108,14 @@ its retry budget. Admin "sync now" dispatches the same serialized job.
 
 ## Configuration
 
-All knobs live under `connectors.imap` in `config/connectors.php`, env-overridable:
+The knobs below live in `config/connectors.php`, env-overridable. The **Config key**
+column is relative to `connectors.imap` **except where the row marks it top-level**
+(`fake_imap_ping` sits at `connectors.fake_imap_ping`, NOT `connectors.imap.*`):
 
 | Env var | Config key | Default | Meaning |
 |---|---|---|---|
 | `CONNECTOR_IMAP_SERIALIZE_CONNECTIONS` | `serialize_connections` | `true` | Master switch. When off, no wrapping at all (clean pass-through). |
+| `CONNECTOR_IMAP_FAKE_PING` | `fake_imap_ping` *(top-level)* | `false` | Offline/E2E seam. When on, serialization stands down (no real server to protect); the serialized job degrades to the vendor job. |
 | `CONNECTOR_IMAP_MAILBOX_LOCK_WAIT` | `mailbox_lock.wait_seconds` | `15` | How long a new connection blocks for the mailbox before `MailboxBusyException`. |
 | `CONNECTOR_IMAP_MAILBOX_LOCK_TTL` | `mailbox_lock.ttl_seconds` | `700` | Lock auto-expiry — set **&gt; the sync job timeout (600s)** so a dead process can never deadlock a mailbox. |
 | `CONNECTOR_IMAP_MAILBOX_REQUEUE_AFTER` | `mailbox_lock.requeue_after_seconds` | `60` | Delay before a busy-mailbox sync job re-queues. |
