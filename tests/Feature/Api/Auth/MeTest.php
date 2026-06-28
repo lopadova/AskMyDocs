@@ -262,7 +262,7 @@ public function test_me_exposes_invitations_admin_feature_flag_in_both_states():
     $user = $this->makeUser('flag@example.com');
     $this->actingAs($user);
 
-    $previous = (bool) config('invitations-admin.enabled', false);
+    $previous = config('invitations-admin.enabled', false);
 
     try {
         // OFF — the fresh-deploy state: the SPA must hide the Advanced launcher
