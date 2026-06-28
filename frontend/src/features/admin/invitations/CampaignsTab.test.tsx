@@ -8,14 +8,16 @@ import { api } from '../../../lib/api';
 
 const mockGet = vi.fn();
 const mockPost = vi.fn();
+const mockPatch = vi.fn();
 
 const CAMPAIGNS = [
-    { id: 1, key: 'beta', name: 'Beta wave', type: 'multi_use', status: 'active', max_redemptions_total: null, starts_at: null, ends_at: null, grant: null },
+    { id: 1, key: 'beta', name: 'Beta wave', type: 'multi_use', status: 'active', max_redemptions_total: null, per_user_limit: 5, starts_at: null, ends_at: null, grant: null },
 ];
 
 beforeEach(() => {
     mockGet.mockReset();
     mockPost.mockReset();
+    mockPatch.mockReset();
     mockGet.mockImplementation((url: string) => {
         if (url.endsWith('/campaigns')) return Promise.resolve({ data: { data: CAMPAIGNS } });
         if (url.endsWith('/tenants')) return Promise.resolve({ data: { data: [{ id: 'default', name: 'Default' }] } });
@@ -23,6 +25,7 @@ beforeEach(() => {
     });
     vi.spyOn(api, 'get').mockImplementation(mockGet);
     vi.spyOn(api, 'post').mockImplementation(mockPost);
+    vi.spyOn(api, 'patch').mockImplementation(mockPatch);
 });
 
 afterEach(() => {
@@ -100,6 +103,27 @@ describe('CampaignsTab', () => {
                 ends_at: null,
                 grant: null,
             });
+        });
+    });
+
+    it('clears an existing per-user limit on edit by PATCHing an explicit null (not omitting it)', async () => {
+        mockPatch.mockResolvedValue({ data: { data: { id: 1, key: 'beta', name: 'Beta wave', type: 'multi_use', status: 'active' } } });
+        render(withQueryClient(<CampaignsTab />));
+        await waitFor(() => expect(screen.getByTestId('admin-invitations-campaigns-row-1')).toBeVisible());
+        await userEvent.click(screen.getByTestId('admin-invitations-campaigns-row-1-edit'));
+
+        // The drawer pre-fills the existing limit; clearing it must round-trip as
+        // an explicit null so the server actually resets it (Copilot PR #385).
+        const perUser = screen.getByTestId('admin-invitations-campaign-per-user');
+        expect(perUser).toHaveValue(5);
+        fireEvent.change(perUser, { target: { value: '' } });
+        await userEvent.click(screen.getByTestId('admin-invitations-campaign-submit'));
+
+        await waitFor(() => {
+            expect(mockPatch).toHaveBeenCalledWith(
+                '/api/admin/invitations/campaigns/1',
+                expect.objectContaining({ per_user_limit: null }),
+            );
         });
     });
 });

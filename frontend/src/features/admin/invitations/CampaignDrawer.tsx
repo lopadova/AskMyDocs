@@ -91,7 +91,12 @@ export function CampaignDrawer({ campaign, tenants, onClose }: CampaignDrawerPro
                     description: description.trim() || null,
                     status,
                     max_redemptions_total: numOrNull(maxRedemptions),
-                    per_user_limit: numOrNull(perUserLimit) ?? undefined,
+                    // Send an explicit `null` (not `undefined`) when the field is
+                    // cleared, so the PATCH carries the reset instead of omitting
+                    // the key — otherwise an existing per-user limit can never be
+                    // cleared (the server keeps the previous value). Mirrors
+                    // max_redemptions_total above.
+                    per_user_limit: numOrNull(perUserLimit),
                     starts_at: startsAt || null,
                     ends_at: endsAt || null,
                     grant: grantValue ?? null,
