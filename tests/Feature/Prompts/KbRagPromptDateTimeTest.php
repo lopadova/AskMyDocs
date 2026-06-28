@@ -36,9 +36,9 @@ final class KbRagPromptDateTimeTest extends TestCase
 
     protected function tearDown(): void
     {
-        // Non-throwing reset; ordering vs parent::tearDown() is irrelevant
-        // (R41 only constrains throwing cleanup), but keep it before so the
-        // frozen clock never leaks into a sibling test.
+        // Non-throwing reset; keep it before parent::tearDown() so the frozen
+        // clock never leaks into a sibling test if teardown triggers other
+        // time-sensitive cleanup.
         Carbon::setTestNow();
 
         parent::tearDown();
