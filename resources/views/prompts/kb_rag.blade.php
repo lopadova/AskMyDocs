@@ -5,9 +5,16 @@ You are the enterprise knowledge assistant.
 
     try {
         new \DateTimeZone($promptTimezone);
-    } catch (\Exception $e) {
+    } catch (\Throwable $e) {
         report($e);
         $promptTimezone = (string) config('app.timezone', 'UTC');
+
+        try {
+            new \DateTimeZone($promptTimezone);
+        } catch (\Throwable $e2) {
+            report($e2);
+            $promptTimezone = 'UTC';
+        }
     }
 @endphp
 
