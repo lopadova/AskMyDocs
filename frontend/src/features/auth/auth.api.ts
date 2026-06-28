@@ -16,6 +16,20 @@ export async function login(email: string, password: string, remember: boolean):
     return data;
 }
 
+export type RegisterInput = {
+    name: string;
+    email: string;
+    password: string;
+    password_confirmation: string;
+    invite_code: string;
+};
+
+export async function register(input: RegisterInput): Promise<LoginResponse> {
+    await ensureCsrfCookie();
+    const { data } = await api.post<LoginResponse>('/api/auth/register', input);
+    return data;
+}
+
 export async function logout(): Promise<void> {
     await api.post('/api/auth/logout');
     resetCsrf();

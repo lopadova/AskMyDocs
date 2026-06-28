@@ -60,6 +60,7 @@ import { WidgetAdminView } from '../features/admin/widget/WidgetAdminView';
 import { AdminShell } from '../features/admin/shell/AdminShell';
 import { RequireRole } from './role-guard';
 import { LoginPage } from '../features/auth/LoginPage';
+import { RegisterPage } from '../features/auth/RegisterPage';
 import { ForgotPasswordPage } from '../features/auth/ForgotPasswordPage';
 import { ResetPasswordPage } from '../features/auth/ResetPasswordPage';
 import { RedirectIfAuth, RequireAuth, useAuthBootstrap } from './guards';
@@ -90,6 +91,7 @@ function LoginRoute() {
             <LoginPage
                 onSuccess={() => navigate({ to: '/app' })}
                 onNavigateForgot={() => navigate({ to: '/forgot-password' })}
+                onNavigateRegister={() => navigate({ to: '/register' })}
             />
         </RedirectIfAuth>
     );
@@ -99,6 +101,24 @@ const loginRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: '/login',
     component: LoginRoute,
+});
+
+function RegisterRoute() {
+    const navigate = useNavigate();
+    return (
+        <RedirectIfAuth>
+            <RegisterPage
+                onSuccess={() => navigate({ to: '/app' })}
+                onNavigateLogin={() => navigate({ to: '/login' })}
+            />
+        </RedirectIfAuth>
+    );
+}
+
+const registerRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/register',
+    component: RegisterRoute,
 });
 
 function ForgotRoute() {
@@ -1233,6 +1253,7 @@ const teamChildren = [
 const routeTree = rootRoute.addChildren([
     indexRoute,
     loginRoute,
+    registerRoute,
     forgotRoute,
     resetRoute,
     appRoute.addChildren([

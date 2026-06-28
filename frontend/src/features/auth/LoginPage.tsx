@@ -18,6 +18,7 @@ type FormValues = z.infer<typeof schema>;
 export type LoginPageProps = {
     onSuccess?: () => void;
     onNavigateForgot?: () => void;
+    onNavigateRegister?: () => void;
 };
 
 function extractAxiosErrors(err: unknown): { fieldErrors?: FieldErrors; message?: string } {
@@ -35,7 +36,7 @@ function extractAxiosErrors(err: unknown): { fieldErrors?: FieldErrors; message?
     return { message: data?.message ?? 'Login failed. Check your credentials and try again.' };
 }
 
-export function LoginPage({ onSuccess, onNavigateForgot }: LoginPageProps = {}) {
+export function LoginPage({ onSuccess, onNavigateForgot, onNavigateRegister }: LoginPageProps = {}) {
     const setMe = useAuthStore((s) => s.setMe);
     const [fieldErrors, setFieldErrors] = useState<FieldErrors | undefined>();
     const [formError, setFormError] = useState<string | undefined>();
@@ -74,23 +75,43 @@ export function LoginPage({ onSuccess, onNavigateForgot }: LoginPageProps = {}) 
             title="Sign in to your workspace"
             subtitle="Use your ACME email and password."
             footer={
-                <span>
-                    Trouble signing in?{' '}
-                    <button
-                        type="button"
-                        onClick={onNavigateForgot}
-                        style={{
-                            background: 'transparent',
-                            border: 0,
-                            color: 'var(--fg-1)',
-                            cursor: 'pointer',
-                            padding: 0,
-                            fontWeight: 500,
-                        }}
-                    >
-                        Reset your password
-                    </button>
-                </span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <span>
+                        Trouble signing in?{' '}
+                        <button
+                            type="button"
+                            onClick={onNavigateForgot}
+                            style={{
+                                background: 'transparent',
+                                border: 0,
+                                color: 'var(--fg-1)',
+                                cursor: 'pointer',
+                                padding: 0,
+                                fontWeight: 500,
+                            }}
+                        >
+                            Reset your password
+                        </button>
+                    </span>
+                    <span>
+                        Have an invite code?{' '}
+                        <button
+                            type="button"
+                            onClick={onNavigateRegister}
+                            data-testid="login-navigate-register"
+                            style={{
+                                background: 'transparent',
+                                border: 0,
+                                color: 'var(--fg-1)',
+                                cursor: 'pointer',
+                                padding: 0,
+                                fontWeight: 500,
+                            }}
+                        >
+                            Create an account
+                        </button>
+                    </span>
+                </div>
             }
         >
             <form
