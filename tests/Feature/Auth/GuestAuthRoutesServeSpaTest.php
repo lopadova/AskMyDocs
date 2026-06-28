@@ -41,6 +41,7 @@ class GuestAuthRoutesServeSpaTest extends TestCase
     {
         return [
             'login' => ['/login'],
+            'register' => ['/register'],
             'forgot-password' => ['/forgot-password'],
             // Query shape — token + email are search params, matching the SPA
             // resetRoute schema.
@@ -67,6 +68,14 @@ class GuestAuthRoutesServeSpaTest extends TestCase
         $this->assertNotNull($route, "Named route 'login' must exist (Authenticate redirects unauthenticated users to it).");
         $this->assertStringContainsString('SpaController', $route->getActionName());
         $this->assertStringNotContainsString('LoginController', $route->getActionName());
+    }
+
+    public function test_register_route_is_handled_by_the_spa_controller(): void
+    {
+        $route = Route::getRoutes()->getByName('register');
+
+        $this->assertNotNull($route, "Named route 'register' must exist (the invite-only sign-up screen).");
+        $this->assertStringContainsString('SpaController', $route->getActionName());
     }
 
     public function test_password_reset_route_is_query_shaped_and_served_by_the_spa(): void
