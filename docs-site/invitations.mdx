@@ -174,6 +174,37 @@ the user already owns at a higher role) changes nothing: GRANT-never-REVOKE.
 Read the funnel three ways (R44) — `GET /api/admin/invitations/metrics`, the
 `InviteMetricsTool` MCP tool, or `MetricsService::summary()` in PHP.
 
+## Admin UI — native, in-app
+
+The admin surface is a **native tabbed page** at `/app/{team}/admin/invitations`,
+inside the unified admin chrome and team switcher — not a new tab. Every tab
+reads the same `/api/admin/invitations/*` core that the MCP tools and PHP
+services use (R44 — one core, many surfaces), so the UI is a thin consumer with
+no parallel backend. The `X-Tenant-Id` header rides the shared SPA client, so
+every read is tenant-scoped automatically (R30).
+
+| Tab | What it shows / does | Core endpoint(s) |
+|---|---|---|
+| **Overview** | all 11 live funnel KPIs (k-factor, acceptance / conversion rate, time-to-redeem p50/p90, distinct referrers…) + a proportional acquisition funnel; campaign + window filters | `GET …/metrics` |
+| **Campaigns** | list + create/edit with the **multi-tenant grant editor** (a Spatie role + KB projects across one or more tenants); `key` + `type` are immutable on edit; `super-admin` is rejected client- and server-side | `GET/POST …/campaigns`, `PATCH …/campaigns/{id}`, `GET …/tenants` |
+| **Codes** | inventory + batch generation (count 1–1000, max-uses, length, expiry) with Copy-all + CSV export, and inline-confirm revoke | `GET/POST …/codes`, `POST …/codes/{id}/revoke` |
+| **Invite** | send a direct invitation (recipient / channel / role / context); session-scoped sent list, since the core API has no list endpoint | `POST …/invitations` |
+| **Referrals / Rewards / Waitlist / Anti-abuse** | filtered read tables; the waitlist email is masked and anti-abuse subjects stay server-hashed | `GET …/{referrals,rewards,waitlist,abuse-signals}` |
+
+Two deliberate honesties:
+
+- **Truncation is visible.** The core read surfaces cap at 500 rows with no
+  pagination; when a table hits the cap it shows a *"first 500 rows — refine the
+  filters"* notice rather than pretending the list is complete (R3/R14).
+- **The "Advanced" panel link is gated on a server-truthful flag.** The
+  standalone `padosoft/laravel-invitations-admin` panel (campaign builder +
+  multi-tenant grant editor — the parts not yet native) is offered as an
+  **"Advanced"** launcher *only when* `INVITATIONS_ADMIN_ENABLED=true`. The SPA
+  learns this from the additive `features.invitations_admin` field on
+  `/api/auth/me` (R27); when the mount is OFF the package route is unregistered
+  and the link is hidden, so it never dead-ends on the `/admin/invitations` 404
+  (R14/R43).
+
 ## Gotchas
 
 - **`manageInvitations` is super-admin + admin.** Issuing access-granting codes
@@ -191,7 +222,11 @@ Read the funnel three ways (R44) — `GET /api/admin/invitations/metrics`, the
 - **Flipping `INVITE_REQUIRED=true` is a product decision, not a deploy detail.**
   With it on, registration *requires* a valid code. Verify your invite-issuing
   flow is live before enabling it, or new signups are blocked.
-- **The admin React screens are a separate package.** Campaign builder / code
-  table / funnel dashboard ship in `padosoft/laravel-invitations-admin`; the
-  native AskMyDocs admin screens are a deferred follow-up. This release wires the
-  PHP + HTTP + MCP backend.
+- **Campaign creation writes a grant — mind super-admin + immutability.** The
+  campaign builder's grant editor provisions a Spatie role + KB projects across
+  one or more tenants on redemption; `super-admin` is rejected (client *and*
+  server) and a campaign's `key` + `type` are immutable after creation (the
+  update rules don't accept them). The standalone
+  `padosoft/laravel-invitations-admin` panel remains reachable via the gated
+  **"Advanced"** launcher (`INVITATIONS_ADMIN_ENABLED=true`) for parity, but the
+  native tabs now cover the full create/edit/send surface.

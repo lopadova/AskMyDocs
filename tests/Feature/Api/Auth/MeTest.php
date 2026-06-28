@@ -253,7 +253,33 @@ class MeTest extends TestCase
                 'projects',
                 'teams' => [['tenant_id', 'hash', 'name', 'projects']],
                 'preferences' => ['theme', 'density', 'language'],
+                'features' => ['invitations_admin'],
             ]);
+    }
+
+    public function test_me_exposes_invitations_admin_feature_flag_in_both_states(): void
+    {
+        $user = $this->makeUser('flag@example.com');
+        $this->actingAs($user);
+
+        $previous = config('invitations-admin.enabled', false);
+
+        try {
+            // OFF — the fresh-deploy state: the SPA must hide the Advanced launcher
+            // so it never links to the unregistered /admin/invitations 404 (R43 OFF).
+            config(['invitations-admin.enabled' => false]);
+            $this->getJson('/api/auth/me')
+                ->assertOk()
+                ->assertJsonPath('features.invitations_admin', false);
+
+            // ON — the package panel is mounted, so the launcher is offered (R43 ON).
+            config(['invitations-admin.enabled' => true]);
+            $this->getJson('/api/auth/me')
+                ->assertOk()
+                ->assertJsonPath('features.invitations_admin', true);
+        } finally {
+            config(['invitations-admin.enabled' => $previous]);
+        }
     }
 
     private function makeUser(string $email): User
