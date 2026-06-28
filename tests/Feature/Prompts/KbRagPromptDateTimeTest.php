@@ -76,4 +76,19 @@ final class KbRagPromptDateTimeTest extends TestCase
         $this->assertStringContainsString('(UTC)', $prompt);
         $this->assertStringNotContainsString('+02:00', $prompt);
     }
+
+    public function test_an_invalid_timezone_falls_back_gracefully_without_throwing(): void
+    {
+        config(['kb.prompt.timezone' => 'Not/A_Valid_Timezone']);
+
+        // The blade template catches the DateTimeZone constructor exception,
+        // reports it, and falls back to app.timezone / UTC — chat must stay alive.
+        $prompt = $this->renderPrompt();
+
+        // The timestamp must still be present (fallback rendered without crash).
+        $this->assertStringContainsString('Current date and time:', $prompt);
+
+        // The invalid zone string must NOT appear in the rendered output.
+        $this->assertStringNotContainsString('Not/A_Valid_Timezone', $prompt);
+    }
 }
