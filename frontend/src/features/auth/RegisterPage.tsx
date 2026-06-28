@@ -145,8 +145,11 @@ export function RegisterPage({ onSuccess, onNavigateLogin }: RegisterPageProps =
                         aria-label="Name"
                         {...register('name')}
                     />
-                    {errors.name && <FieldError errors={{ name: errors.name.message ?? '' }} name="name" />}
-                    <FieldError errors={fieldErrors} name="name" />
+                    {errors.name ? (
+                        <FieldError errors={{ name: errors.name.message ?? '' }} name="name" />
+                    ) : (
+                        <FieldError errors={fieldErrors} name="name" />
+                    )}
                 </div>
                 <div>
                     <label htmlFor="email" style={labelStyle}>
@@ -161,8 +164,11 @@ export function RegisterPage({ onSuccess, onNavigateLogin }: RegisterPageProps =
                         aria-label="Email"
                         {...register('email')}
                     />
-                    {errors.email && <FieldError errors={{ email: errors.email.message ?? '' }} name="email" />}
-                    <FieldError errors={fieldErrors} name="email" />
+                    {errors.email ? (
+                        <FieldError errors={{ email: errors.email.message ?? '' }} name="email" />
+                    ) : (
+                        <FieldError errors={fieldErrors} name="email" />
+                    )}
                 </div>
                 <div>
                     <label htmlFor="password" style={labelStyle}>
@@ -177,10 +183,11 @@ export function RegisterPage({ onSuccess, onNavigateLogin }: RegisterPageProps =
                         aria-label="Password"
                         {...register('password')}
                     />
-                    {errors.password && (
+                    {errors.password ? (
                         <FieldError errors={{ password: errors.password.message ?? '' }} name="password" />
+                    ) : (
+                        <FieldError errors={fieldErrors} name="password" />
                     )}
-                    <FieldError errors={fieldErrors} name="password" />
                 </div>
                 <div>
                     <label htmlFor="password_confirmation" style={labelStyle}>
@@ -215,10 +222,11 @@ export function RegisterPage({ onSuccess, onNavigateLogin }: RegisterPageProps =
                         aria-label="Invite code"
                         {...register('invite_code')}
                     />
-                    {errors.invite_code && (
+                    {errors.invite_code ? (
                         <FieldError errors={{ invite_code: errors.invite_code.message ?? '' }} name="invite_code" />
+                    ) : (
+                        <FieldError errors={fieldErrors} name="invite_code" />
                     )}
-                    <FieldError errors={fieldErrors} name="invite_code" />
                 </div>
                 <button
                     type="submit"
