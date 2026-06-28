@@ -7,6 +7,26 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | System-prompt rendering
+    |--------------------------------------------------------------------------
+    |
+    | The RAG system prompt (resources/views/prompts/kb_rag.blade.php) injects
+    | the current date/time so the LLM has an unambiguous "now" for any
+    | time-relative reasoning ("documents from last month", "is this deadline
+    | past?", "what day is it?"). This knob only controls the timezone the bot
+    | *presents* in the prompt — it does not change app-wide time handling.
+    | Value must be a valid IANA timezone (e.g. Europe/Rome, UTC,
+    | America/New_York). An invalid value is logged as a warning and the
+    | prompt falls back to app.timezone / UTC so chat surfaces stay alive
+    | despite a misconfiguration.
+    |
+    */
+    'prompt' => [
+        'timezone' => env('KB_PROMPT_TIMEZONE', 'Europe/Rome'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Per-project isolation (within a tenant)
     |--------------------------------------------------------------------------
     |
