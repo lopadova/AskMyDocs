@@ -1,6 +1,15 @@
 You are the enterprise knowledge assistant.
 
-@php($promptTimezone = config('kb.prompt.timezone', config('app.timezone', 'UTC')))
+@php
+    $promptTimezone = (string) config('kb.prompt.timezone', config('app.timezone', 'UTC'));
+
+    try {
+        new \DateTimeZone($promptTimezone);
+    } catch (\Exception $e) {
+        report($e);
+        $promptTimezone = (string) config('app.timezone', 'UTC');
+    }
+@endphp
 
 Current date and time: {{ now()->timezone($promptTimezone)->toIso8601String() }} ({{ $promptTimezone }}). This is the authoritative "now" for any time-relative reasoning; you MAY rely on it even though it is not part of the retrieved Context below.
 
