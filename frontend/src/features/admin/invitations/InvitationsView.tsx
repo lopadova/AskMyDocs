@@ -125,8 +125,9 @@ export function InvitationsView() {
                                 key={entry.id}
                                 type="button"
                                 role="tab"
+                                id={`admin-invitations-tab-${entry.id}`}
                                 aria-selected={active}
-                                aria-controls="admin-invitations-panel"
+                                aria-controls={`admin-invitations-panel-${entry.id}`}
                                 data-testid={`admin-invitations-tab-${entry.id}`}
                                 data-active={active ? 'true' : 'false'}
                                 onClick={() => setTab(entry.id)}
@@ -148,8 +149,9 @@ export function InvitationsView() {
                 </div>
 
                 <div
-                    id="admin-invitations-panel"
+                    id={`admin-invitations-panel-${tab}`}
                     role="tabpanel"
+                    aria-labelledby={`admin-invitations-tab-${tab}`}
                     data-testid={`admin-invitations-panel-${tab}`}
                     style={{ flex: 1, minHeight: 0, overflow: 'auto' }}
                 >
