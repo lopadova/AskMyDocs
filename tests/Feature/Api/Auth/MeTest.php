@@ -257,11 +257,14 @@ class MeTest extends TestCase
             ]);
     }
 
-    public function test_me_exposes_invitations_admin_feature_flag_in_both_states(): void
-    {
-        $user = $this->makeUser('flag@example.com');
-        $this->actingAs($user);
+public function test_me_exposes_invitations_admin_feature_flag_in_both_states(): void
+{
+    $user = $this->makeUser('flag@example.com');
+    $this->actingAs($user);
 
+    $previous = (bool) config('invitations-admin.enabled', false);
+
+    try {
         // OFF — the fresh-deploy state: the SPA must hide the Advanced launcher
         // so it never links to the unregistered /admin/invitations 404 (R43 OFF).
         config(['invitations-admin.enabled' => false]);
@@ -274,7 +277,10 @@ class MeTest extends TestCase
         $this->getJson('/api/auth/me')
             ->assertOk()
             ->assertJsonPath('features.invitations_admin', true);
+    } finally {
+        config(['invitations-admin.enabled' => $previous]);
     }
+}
 
     private function makeUser(string $email): User
     {
