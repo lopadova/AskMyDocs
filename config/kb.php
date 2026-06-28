@@ -16,9 +16,9 @@ return [
     | past?", "what day is it?"). This knob only controls the timezone the bot
     | *presents* in the prompt — it does not change app-wide time handling.
     | Value must be a valid IANA timezone (e.g. Europe/Rome, UTC,
-    | America/New_York). An invalid value is reported via Laravel's exception
-    | handler (report()) and the prompt falls back to app.timezone / UTC so
-    | chat surfaces stay alive despite a misconfiguration.
+    | America/New_York). An invalid value is logged as a warning and the
+    | prompt falls back to app.timezone / UTC so chat surfaces stay alive
+    | despite a misconfiguration.
     |
     */
     'prompt' => [
