@@ -3,16 +3,20 @@ You are the enterprise knowledge assistant.
 @php
     $promptTimezone = (string) config('kb.prompt.timezone', config('app.timezone', 'UTC'));
 
-    try {
-        new \DateTimeZone($promptTimezone);
     } catch (\Throwable $e) {
-        report($e);
+        logger()->warning('Invalid kb.prompt.timezone; falling back to app.timezone', [
+            'kb.prompt.timezone' => $promptTimezone,
+            'exception' => $e->getMessage(),
+        ]);
         $promptTimezone = (string) config('app.timezone', 'UTC');
 
         try {
             new \DateTimeZone($promptTimezone);
         } catch (\Throwable $e2) {
-            report($e2);
+            logger()->warning('Invalid app.timezone; falling back to UTC', [
+                'app.timezone' => $promptTimezone,
+                'exception' => $e2->getMessage(),
+            ]);
             $promptTimezone = 'UTC';
         }
     }
