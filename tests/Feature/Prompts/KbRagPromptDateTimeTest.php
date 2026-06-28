@@ -15,7 +15,7 @@ use Tests\TestCase;
  * Asserts the line is:
  *  - rendered in ISO 8601 (the format the product decision picked),
  *  - converted into the timezone configured by `kb.prompt.timezone`
- *    (NOT a hard-coded literal — R18: derive behaviour from config),
+ *    (NOT a hard-coded literal; driven by config),
  *  - present in addition to the existing prompt blocks.
  *
  * `now()` is frozen with Carbon::setTestNow so the assertion is
