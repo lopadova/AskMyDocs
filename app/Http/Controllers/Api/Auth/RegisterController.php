@@ -8,7 +8,6 @@ use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
 use Padosoft\Invitations\Contracts\TenantResolver;
@@ -27,21 +26,33 @@ use Padosoft\Invitations\Support\RedemptionError;
  *   1. Pre-validate the invite code against {@see CodeValidator} BEFORE
  *      creating the account, so an invalid / expired / exhausted code never
  *      mints an orphan user.
- *   2. Create the user + assign the baseline `viewer` role. The invite's own
- *      grant (Spatie role + project membership) is layered on by the tagged
- *      redemption provisioners, which are GRANT-never-revoke — so this floor is
- *      only ever raised.
- *   3. Authoritatively redeem the code via {@see RedemptionService} (re-checks
- *      atomically + runs the provisioners). On a race where the code was
- *      exhausted between the pre-check and the redeem, roll the brand-new
- *      account back so the invite-only invariant holds.
- *   4. Open the session (login + regenerate) and fire the standard `Registered`
- *      event.
+ *   2. Create the user (no role yet).
+ *   3. Authoritatively redeem the code via {@see RedemptionService} — an atomic
+ *      conditional UPDATE plus the tagged provisioners (Spatie role + project
+ *      membership from the invite grant). Redeem runs OUTSIDE any DB
+ *      transaction BY DESIGN: the package's compensation path issues follow-up
+ *      queries after catching a UNIQUE-violation QueryException, and a wrapping
+ *      transaction would poison those on PostgreSQL (a constraint violation
+ *      aborts the connection for the rest of the transaction). The package's
+ *      own RedemptionController calls redeem() with no surrounding transaction
+ *      for exactly this reason. On an exhausted-between-checks race the
+ *      brand-new account is force-deleted so the invite-only invariant holds
+ *      (no role/membership is provisioned on the failure path, and User has no
+ *      create-observer, so the row is the only artifact).
+ *   4. Floor the account at `viewer` (layered on any grant role the redeem
+ *      already provisioned — GRANT-never-revoke), then open the session
+ *      (login + regenerate) and fire the standard `Registered` event.
  *
  * Every invite-code failure is surfaced as a 422 field error on `invite_code`
  * (R14 — never 200-with-empty) so the SPA shows it under the code input; the
  * machine-readable RedemptionError stays English (R24), only the body is
  * human-facing.
+ *
+ * R44 — registration is intentionally HTTP-only: it mints a stateful browser
+ * session, which has no meaningful Artisan/MCP analogue. The invite core it
+ * drives ({@see CodeValidator} / {@see RedemptionService}) already exposes the
+ * PHP + MCP surfaces, and operator-side account creation lives on the admin
+ * user API.
  */
 class RegisterController extends Controller
 {
@@ -63,32 +74,32 @@ class RegisterController extends Controller
             throw $this->inviteCodeError($check->error);
         }
 
-        // 2. Create the account + baseline role, then 3. redeem. Wrapped so a
-        // redemption failure (exhausted-between-checks race) rolls the user
-        // back: the invite-only invariant must never leave an account that
-        // never actually consumed a valid code.
-        $user = DB::transaction(function () use ($data, $code, $request): User {
-            $user = User::create([
-                'name' => $data['name'],
-                'email' => $data['email'],
-                'password' => Hash::make($data['password']),
-            ]);
-            $user->assignRole('viewer');
+        // 2. Create the account (no role yet — see step 4).
+        $user = User::create([
+            'name' => $data['name'],
+            'email' => $data['email'],
+            'password' => Hash::make($data['password']),
+        ]);
 
-            $result = $this->redemption->redeem($code, $user, [
-                'ip' => $request->ip(),
-                'user_agent' => $request->userAgent(),
-            ]);
+        // 3. Authoritatively redeem, OUTSIDE any transaction (see class
+        // docblock). `already` is the idempotent-success branch, not a failure.
+        $result = $this->redemption->redeem($code, $user, [
+            'ip' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+        ]);
+        if (! $result->ok && ! $result->already) {
+            // Exhausted-between-checks race: drop the brand-new account so the
+            // invite-only invariant never leaves a user who consumed no code.
+            $user->forceDelete();
+            throw $this->inviteCodeError($result->error);
+        }
 
-            // `already` is the idempotent-success branch, not a failure.
-            if (! $result->ok && ! $result->already) {
-                throw $this->inviteCodeError($result->error);
-            }
+        // 4. Floor the account at 'viewer' (layered on any grant role redeem
+        // already provisioned — GRANT-never-revoke). Done post-redeem so the
+        // failure path above never has a role pivot to clean up.
+        $user->assignRole('viewer');
 
-            return $user;
-        });
-
-        // 4. Open the SPA session. Auth::login fires the Login event and the
+        // Open the SPA session. Auth::login fires the Login event and the
         // explicit Registered event fires the registration listeners; the
         // invitations CompletePendingRedemption listener is a safe no-op here
         // because we redeemed directly (no code was stashed → read-and-forget).

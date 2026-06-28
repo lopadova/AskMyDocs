@@ -126,4 +126,30 @@ class RegisterControllerTest extends TestCase
         $this->assertFalse(Auth::check());
         $this->assertDatabaseMissing('users', ['email' => 'new@example.com']);
     }
+
+    public function test_register_force_deletes_the_account_when_redeem_is_blocked_after_validation(): void
+    {
+        // Drive the post-create rollback deterministically WITHOUT mocking the
+        // final RedemptionService: the code is genuinely valid (CodeValidator
+        // pre-check passes → the account IS created), but redeem() runs the
+        // anti-abuse gate that validate() does NOT. A blocklisted email scores a
+        // hard BLOCK → redeem returns RateLimited, exactly the post-validation
+        // failure shape the rare exhausted-between-checks race would produce.
+        $code = $this->mintCode();
+        config()->set('invitations.anti_abuse.enabled', true);
+        config()->set('invitations.anti_abuse.blocklist.emails', ['racer@example.com']);
+
+        $response = $this->postJson('/api/auth/register', $this->payload([
+            'email' => 'racer@example.com',
+            'invite_code' => $code,
+        ]));
+
+        $response->assertStatus(422)->assertJsonValidationErrors(['invite_code']);
+        $this->assertFalse(Auth::check());
+        // The brand-new account must NOT survive a failed redeem — invite-only
+        // invariant: no account that consumed no code...
+        $this->assertDatabaseMissing('users', ['email' => 'racer@example.com']);
+        // ...and the seat was never claimed (block fires before claimSeat).
+        $this->assertDatabaseHas('invite_codes', ['code' => $code, 'current_uses' => 0]);
+    }
 }
