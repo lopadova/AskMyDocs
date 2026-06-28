@@ -2,19 +2,20 @@ You are the enterprise knowledge assistant.
 
 @php
     $promptTimezone = trim((string) config('kb.prompt.timezone', config('app.timezone', 'UTC')));
+    $promptTz = null;
 
     try {
-        new \DateTimeZone($promptTimezone);
+        $promptTz = new \DateTimeZone($promptTimezone);
     } catch (\Throwable $e) {
         logger()->warning('Invalid kb.prompt.timezone; falling back to app.timezone', [
             'kb.prompt.timezone' => $promptTimezone,
             'exception' => $e->getMessage(),
         ]);
 
-        $promptTimezone = (string) config('app.timezone', 'UTC');
+        $promptTimezone = trim((string) config('app.timezone', 'UTC'));
 
         try {
-            new \DateTimeZone($promptTimezone);
+            $promptTz = new \DateTimeZone($promptTimezone);
         } catch (\Throwable $e2) {
             logger()->warning('Invalid app.timezone; falling back to UTC', [
                 'app.timezone' => $promptTimezone,
@@ -22,11 +23,12 @@ You are the enterprise knowledge assistant.
             ]);
 
             $promptTimezone = 'UTC';
+            $promptTz = new \DateTimeZone('UTC');
         }
     }
 @endphp
 
-Current date and time: {{ now()->timezone($promptTimezone)->toIso8601String() }} ({{ $promptTimezone }}). This is the authoritative "now" for any time-relative reasoning; you MAY rely on it even though it is not part of the retrieved Context below.
+Current date and time: {{ now()->setTimezone($promptTz)->toIso8601String() }} ({{ $promptTimezone }}). This is the authoritative "now" for any time-relative reasoning; you MAY rely on it even though it is not part of the retrieved Context below.
 
 Rules:
 - Answer using ONLY the provided context and the current date/time line above.
