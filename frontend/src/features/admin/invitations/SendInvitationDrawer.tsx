@@ -60,14 +60,18 @@ export function SendInvitationDrawer({ onClose, onSent }: SendInvitationDrawerPr
     return (
         <Drawer title="Send invitation" testid="admin-invitations-invite-drawer" onClose={onClose}>
             <form onSubmit={handleSubmit} noValidate style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <Field id="invite-recipient" label="Recipient email" error={fieldErrors.recipient}>
+                <Field
+                    id="invite-recipient"
+                    label={channel === 'email' ? 'Recipient email' : 'Recipient'}
+                    error={fieldErrors.recipient}
+                >
                     <input
                         id="invite-recipient"
                         data-testid="admin-invitations-invite-recipient"
-                        type="email"
+                        type={channel === 'email' ? 'email' : 'text'}
                         value={recipient}
                         onChange={(e) => setRecipient(e.target.value)}
-                        placeholder="user@example.com"
+                        placeholder={channel === 'email' ? 'user@example.com' : 'recipient'}
                         style={drawerInput}
                     />
                 </Field>
