@@ -32,6 +32,7 @@ use App\Http\Controllers\Api\Admin\UserController;
 use App\Http\Controllers\Api\Admin\WorkflowController;
 use App\Http\Controllers\Api\Auth\AuthController;
 use App\Http\Controllers\Api\Auth\PasswordResetController as ApiPasswordResetController;
+use App\Http\Controllers\Api\Auth\RegisterController;
 use App\Http\Controllers\Api\Auth\TwoFactorController;
 use App\Http\Controllers\Api\ChatFilterPresetController;
 use App\Http\Controllers\Api\KbChatController;
@@ -70,6 +71,14 @@ Route::middleware('web')->prefix('auth')->group(function () {
     // double-counting and spurious 429s — hence intentionally omitted.
     Route::post('/login', [AuthController::class, 'login'])
         ->name('api.auth.login');
+
+    // Invite-only sign-up for the SPA. Throttled per-IP (throttle:register,
+    // defined in AppServiceProvider) so the endpoint can't be used to
+    // brute-force invite codes. Guest route — sits OUTSIDE the auth:sanctum
+    // group below.
+    Route::post('/register', [RegisterController::class, 'register'])
+        ->middleware('throttle:register')
+        ->name('api.auth.register');
 
     Route::post('/forgot-password', [ApiPasswordResetController::class, 'forgot'])
         ->middleware('throttle:forgot')

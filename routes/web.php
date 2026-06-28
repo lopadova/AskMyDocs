@@ -39,6 +39,11 @@ Route::middleware('guest')->group(function () {
     Route::get('/login', SpaController::class)->name('login');
     Route::post('/login', [LoginController::class, 'login']);
 
+    // Invite-only sign-up screen — also React (same SPA shell). The actual
+    // account creation + invite redemption runs over POST /api/auth/register
+    // (routes/api.php); this GET just hands the page to React.
+    Route::get('/register', SpaController::class)->name('register');
+
     Route::get('/forgot-password', SpaController::class)->name('password.request');
     Route::get('/reset-password', SpaController::class)->name('password.reset');
 });
