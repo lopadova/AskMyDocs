@@ -34,8 +34,12 @@ export function SendInvitationDrawer({ onClose, onSent }: SendInvitationDrawerPr
         setFieldErrors({});
         setFormError(null);
 
-        if (!/^\S+@\S+\.\S+$/.test(recipient.trim())) {
+        if (channel === 'email' && !/^\S+@\S+\.\S+$/.test(recipient.trim())) {
             setFieldErrors({ recipient: 'Enter a valid email address.' });
+            return;
+        }
+        if (channel !== 'email' && recipient.trim() === '') {
+            setFieldErrors({ recipient: 'Recipient is required.' });
             return;
         }
 
