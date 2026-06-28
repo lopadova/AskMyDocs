@@ -56,7 +56,8 @@ function syncTabUrl(tab: InvTab) {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
     params.set('tab', tab);
-    window.history.replaceState(null, '', `${window.location.pathname}?${params.toString()}`);
+    const hash = window.location.hash ?? '';
+    window.history.replaceState(null, '', `${window.location.pathname}?${params.toString()}${hash}`);
 }
 
 export function InvitationsView() {
