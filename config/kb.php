@@ -22,7 +22,7 @@ return [
     |
     */
     'prompt' => [
-        'timezone' => env('KB_PROMPT_TIMEZONE', 'Europe/Rome'),
+        'timezone' => env('KB_PROMPT_TIMEZONE') ?: 'Europe/Rome',
     ],
 
     /*
