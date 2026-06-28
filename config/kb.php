@@ -13,16 +13,15 @@ return [
     | The RAG system prompt (resources/views/prompts/kb_rag.blade.php) injects
     | the current date/time so the LLM has an unambiguous "now" for any
     | time-relative reasoning ("documents from last month", "is this deadline
-    | past?", "what day is it?"). The app itself runs on UTC
-    | (config('app.timezone')); this knob only controls the timezone the bot
+    | past?", "what day is it?"). This knob only controls the timezone the bot
     | *presents* in the prompt — it does not change app-wide time handling.
     | Value must be a valid IANA timezone (e.g. Europe/Rome, UTC,
-    | America/New_York); an invalid value makes Carbon throw, same as a bad
-    | app.timezone would.
+    | America/New_York). An invalid value will cause Carbon to throw when the
+    | prompt is rendered.
     |
     */
     'prompt' => [
-        'timezone' => env('KB_PROMPT_TIMEZONE') ?: 'Europe/Rome',
+        'timezone' => env('KB_PROMPT_TIMEZONE', 'Europe/Rome'),
     ],
 
     /*
