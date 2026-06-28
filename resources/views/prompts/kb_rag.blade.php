@@ -1,7 +1,7 @@
 You are the enterprise knowledge assistant.
 
 @php
-    $promptTimezone = (string) config('kb.prompt.timezone', config('app.timezone', 'UTC'));
+    $promptTimezone = trim((string) config('kb.prompt.timezone', config('app.timezone', 'UTC')));
 
     } catch (\Throwable $e) {
         logger()->warning('Invalid kb.prompt.timezone; falling back to app.timezone', [
