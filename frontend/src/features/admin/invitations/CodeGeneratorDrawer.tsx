@@ -86,8 +86,16 @@ export function CodeGeneratorDrawer({ campaigns, onClose }: CodeGeneratorDrawerP
 
     async function copyAll() {
         if (!generated) return;
-        await navigator.clipboard.writeText(generated.map((c) => c.code).join('\n'));
-        toast.success('Copied all codes to the clipboard.', 'toast-codes-copied');
+        // Guard the Clipboard API: absent in non-secure contexts, rejects on
+        // denied permission. Surface the failure (R14) and point the operator at
+        // the CSV export rather than throwing an unhandled rejection.
+        try {
+            if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable');
+            await navigator.clipboard.writeText(generated.map((c) => c.code).join('\n'));
+            toast.success('Copied all codes to the clipboard.', 'toast-codes-copied');
+        } catch {
+            toast.error('Copy failed — use the CSV export instead.', 'toast-codes-copy-error');
+        }
     }
 
     function downloadCsv() {

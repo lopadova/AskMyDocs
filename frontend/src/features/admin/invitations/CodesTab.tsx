@@ -47,8 +47,16 @@ export function CodesTab() {
     }
 
     async function copyCode(code: string) {
-        await navigator.clipboard.writeText(code);
-        toast.success('Code copied.', 'toast-code-copied');
+        // Guard the Clipboard API: it is absent in non-secure contexts and can
+        // reject on denied permissions. Surface the failure (R14) instead of
+        // throwing an unhandled rejection and pretending the copy succeeded.
+        try {
+            if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable');
+            await navigator.clipboard.writeText(code);
+            toast.success('Code copied.', 'toast-code-copied');
+        } catch {
+            toast.error('Copy failed — select the code and copy it manually.', 'toast-code-copy-error');
+        }
     }
 
     const columns: Column<InviteCode>[] = [
