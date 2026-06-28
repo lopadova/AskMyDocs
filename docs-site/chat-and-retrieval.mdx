@@ -65,13 +65,18 @@ blocks (⚠ rejected, 📎 related, primary `## Context`). The response carries:
 
 The same template also injects an **authoritative current date/time** (ISO 8601)
 near the top, so the model has an unambiguous "now" for time-relative reasoning
-("documents from last month", "is this deadline past?", "what day is it?"). It is
-explicitly marked usable even though it is not part of the retrieved Context, so
-the [refusal contract](#the-refusal-contract) does not reject a plain "what time
-is it?". The app runs on UTC; the timezone the bot *presents* is set by
-`KB_PROMPT_TIMEZONE` (`config/kb.php` → `kb.prompt.timezone`, default
-`Europe/Rome`) — a single render point shared by every LLM surface (chat,
-conversation, streaming, agent, eval, benchmark).
+("documents from last month", "is this deadline past?"). It is explicitly marked
+usable even though it is not part of the retrieved Context, so the prompt's own
+**refusal protocol** (`__NO_GROUNDED_ANSWER__`) does not treat the time as
+ungrounded — once a turn already has context, the model can satisfy a
+time-relative ask instead of self-refusing. This does **not** bypass the
+controller-level [refusal contract](#the-refusal-contract): a question that
+retrieves nothing relevant is still refused *before* the LLM is ever called, so
+the date line only matters once a turn has context. The app runs on UTC; the
+timezone the bot *presents* is set by `KB_PROMPT_TIMEZONE` (`config/kb.php` →
+`kb.prompt.timezone`, default `Europe/Rome`) — a single render point shared by
+every `kb_rag` surface (chat, conversation, streaming, agent, eval, benchmark; the
+embeddable KITT widget renders its own prompt).
 
 ## The citation document modal
 
