@@ -239,7 +239,7 @@ final class CreateCompanyCommandTest extends TestCase
         $this->artisan('company:create', [
             '--company' => 'Acme Corp',
         ])
-            ->expectsOutputToContain('--company, --email and --password are all required.')
+            ->expectsOutputToContain('--company and --email are required, and you must provide an admin password via --password or COMPANY_ADMIN_PASSWORD.')
             ->assertExitCode(1);
     }
 }
