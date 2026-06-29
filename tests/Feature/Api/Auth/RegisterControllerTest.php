@@ -152,4 +152,21 @@ class RegisterControllerTest extends TestCase
         // ...and the seat was never claimed (block fires before claimSeat).
         $this->assertDatabaseHas('invite_codes', ['code' => $code, 'current_uses' => 0]);
     }
+
+    public function test_register_is_throttled_after_six_attempts_per_ip(): void
+    {
+        $payload = [
+            'name' => 'New User',
+            'email' => 'new@example.com',
+            'password' => 'secret123',
+            'password_confirmation' => 'secret123',
+            'invite_code' => 'XXXXXXXX',
+        ];
+
+        foreach (range(1, 6) as $i) {
+            $this->postJson('/api/auth/register', $payload)->assertStatus(422);
+        }
+
+        $this->postJson('/api/auth/register', $payload)->assertStatus(429);
+    }
 }
