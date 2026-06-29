@@ -133,9 +133,12 @@ final class CreateCompanyCommandTest extends TestCase
 
     public function test_fails_when_company_slug_already_exists(): void
     {
+        if (! \Illuminate\Support\Facades\Schema::hasTable('tenants')) {
+            $this->markTestSkipped("'tenants' table absent (AI-Act package not migrated)");
+        }
+
         Role::findOrCreate('admin', 'web');
         \Padosoft\AiActCompliance\MultiTenancy\Models\Tenant::create(['slug' => 'acme', 'name' => 'Existing Acme']);
-
         $this->artisan('company:create', [
             '--company' => 'Acme Corp',
             '--email' => 'admin@acme.com',
