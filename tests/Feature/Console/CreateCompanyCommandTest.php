@@ -127,7 +127,7 @@ final class CreateCompanyCommandTest extends TestCase
 
         // No company was created (create-new semantics + nothing half-written).
         $this->assertDatabaseMissing('tenants', ['slug' => 'acme-corp']);
-        $this->assertDatabaseMissing('projects', ['project_key' => 'acme-corp']);
+        $this->assertDatabaseMissing('projects', ['tenant_id' => 'acme-corp', 'project_key' => 'acme-corp']);
         $this->assertSame(1, User::where('email', 'taken@acme.com')->count());
     }
 
