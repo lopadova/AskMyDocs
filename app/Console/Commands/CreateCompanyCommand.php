@@ -105,9 +105,9 @@ class CreateCompanyCommand extends Command
 
             return self::FAILURE;
         }
-        // User has a SoftDeletes global scope, so this matches only live rows —
-        // the same posture as the web sign-up's unique(...)->whereNull(deleted_at).
-        if (User::query()->where('email', $email)->exists()) {
+        // User has a SoftDeletes global scope, but the DB enforces UNIQUE on `users.email`
+        // regardless of deleted_at. Include trashed rows so we fail fast with a clear message.
+        if (User::withTrashed()->where('email', $email)->exists()) {
             $this->error("Email already in use: {$email}");
 
             return self::FAILURE;
