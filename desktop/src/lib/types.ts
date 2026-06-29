@@ -13,6 +13,16 @@ export interface TokenResponse {
   user: AuthUser;
 }
 
+// POST /api/auth/register-token — invite-only Bearer sign-up. `device_name` is
+// added by the client (api.ts), so the screen only collects these fields.
+export interface RegisterInput {
+  name: string;
+  email: string;
+  password: string;
+  password_confirmation: string;
+  invite_code: string;
+}
+
 // One project the user belongs to (within a team/tenant). `role` is the
 // per-project membership role (member | admin | owner).
 export interface TeamProject {
