@@ -106,7 +106,7 @@ class RegisterControllerTest extends TestCase
         User::create([
             'name' => 'Existing',
             'email' => 'new@example.com',
-            'password' => Hash::make('secret123'),
+            'password' => 'secret123',
         ]);
 
         $response = $this->postJson('/api/auth/register', $this->payload());
