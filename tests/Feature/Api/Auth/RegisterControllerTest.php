@@ -7,7 +7,6 @@ use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Hash;
 use Padosoft\Invitations\Services\CodeGenerator;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
