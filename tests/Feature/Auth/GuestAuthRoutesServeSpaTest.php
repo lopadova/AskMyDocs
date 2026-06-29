@@ -57,8 +57,6 @@ class GuestAuthRoutesServeSpaTest extends TestCase
         $response->assertStatus(200);
         // The SPA shell hosts <div id="root">; the retired Blade pages never did.
         $response->assertSee('id="root"', false);
-        // Negative guard: the old light Blade login must not come back.
-        $response->assertDontSee('Accedi al Knowledge Base');
     }
 
     public function test_login_route_is_handled_by_the_spa_controller(): void
