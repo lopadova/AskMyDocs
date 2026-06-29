@@ -2,10 +2,10 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import axios from 'axios';
 import { AuthLayout, FieldError, type FieldErrors } from './AuthLayout';
 import { register as registerAccount, me } from './auth.api';
 import { useAuthStore } from '../../lib/auth-store';
+import { extractAxiosErrors } from './auth-errors';
 
 const schema = z
     .object({
@@ -26,21 +26,6 @@ export type RegisterPageProps = {
     onSuccess?: () => void;
     onNavigateLogin?: () => void;
 };
-
-function extractAxiosErrors(err: unknown): { fieldErrors?: FieldErrors; message?: string } {
-    if (!axios.isAxiosError(err)) {
-        return { message: 'Something went wrong. Please try again.' };
-    }
-    const status = err.response?.status;
-    const data = err.response?.data as { message?: string; errors?: FieldErrors } | undefined;
-    if (status === 422 && data?.errors) {
-        return { fieldErrors: data.errors };
-    }
-    if (status === 429) {
-        return { message: data?.message ?? 'Too many attempts — please try again in a moment.' };
-    }
-    return { message: data?.message ?? 'Registration failed. Check your details and try again.' };
-}
 
 export function RegisterPage({ onSuccess, onNavigateLogin }: RegisterPageProps = {}) {
     const setMe = useAuthStore((s) => s.setMe);
@@ -74,7 +59,7 @@ export function RegisterPage({ onSuccess, onNavigateLogin }: RegisterPageProps =
             onSuccess?.();
             return;
         } catch (err) {
-            const { fieldErrors: fe, message } = extractAxiosErrors(err);
+            const { fieldErrors: fe, message } = extractAxiosErrors(err, 'Registration failed. Check your details and try again.');
             setFieldErrors(fe);
             setFormError(message);
         } finally {
