@@ -99,7 +99,9 @@ class RegisterController extends Controller
         if (! $result->ok && ! $result->already) {
             // Exhausted-between-checks race: drop the brand-new account so the
             // invite-only invariant never leaves a user who consumed no code.
-            $user->forceDelete();
+            if (! $user->forceDelete()) {
+                throw new \RuntimeException('Failed to clean up newly-created account after failed invite redemption.');
+            }
             throw $this->inviteCodeError($result->error);
         }
 
