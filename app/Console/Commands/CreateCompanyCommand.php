@@ -75,7 +75,7 @@ class CreateCompanyCommand extends Command
         //    bad value fails here with a clear message rather than mid-write.
         $slug = Str::lower(trim((string) $this->option('slug')) ?: Str::slug($company));
         if (! preg_match('/^[a-z0-9_-]{1,50}$/', $slug)) {
-            $this->error("Invalid tenant slug '{$slug}' — must match /^[a-z0-9_-]{1,50}\$/. Pass an explicit --slug.");
+            $this->error("Invalid tenant slug '{$slug}' — must match /^[a-z0-9_-]{1,50}$/. Pass an explicit --slug.");
 
             return self::FAILURE;
         }
