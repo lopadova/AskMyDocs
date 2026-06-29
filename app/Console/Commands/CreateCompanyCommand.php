@@ -58,8 +58,8 @@ class CreateCompanyCommand extends Command
     {
         $company = trim((string) $this->option('company'));
         $email = trim((string) $this->option('email'));
-        // Support a non-argv path (env var) so the password is not visible in shell history,
-        // CI logs, or the OS process list. Precedence: COMPANY_ADMIN_PASSWORD env var > --password option.
+        // Support a non-argv path (env var) so the password isn't passed as an argv flag (process list).
+        // Precedence: COMPANY_ADMIN_PASSWORD env var > --password option.
         $password = (string) (env('COMPANY_ADMIN_PASSWORD') ?: $this->option('password'));
         $role = trim((string) $this->option('role')) ?: 'admin';
 
