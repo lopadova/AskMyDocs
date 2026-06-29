@@ -115,7 +115,11 @@ class CreateCompanyCommand extends Command
 
         $name = trim((string) $this->option('name')) ?: Str::before($email, '@');
         $projectKey = trim((string) $this->option('project')) ?: $slug;
+        if ($projectKey === '' || mb_strlen($projectKey) > 120) {
+            $this->error('Invalid project key — must be a non-empty string up to 120 characters.');
 
+            return self::FAILURE;
+        }
         // 6) Make the new tenant the active one so BelongsToTenant auto-fills
         //    tenant_id on the writes below (we also pass it explicitly). set()
         //    re-validates the slug.
