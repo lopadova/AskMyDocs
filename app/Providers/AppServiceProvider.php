@@ -713,6 +713,9 @@ class AppServiceProvider extends ServiceProvider
             // correct order. Lives in app code (not tinker) so it runs in
             // production under `composer install --no-dev`.
             \App\Console\Commands\DemoSeedUserCommand::class,
+            // Operator bootstrap: create a real company (tenant) + its admin
+            // user in one shot (create-new semantics, fails if it exists).
+            \App\Console\Commands\CreateCompanyCommand::class,
             // PR13 / Phase H2 — admin audit + nonces rotations.
             PruneAdminCommandAuditCommand::class,
             PruneAdminCommandNoncesCommand::class,
