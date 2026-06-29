@@ -145,42 +145,49 @@ class CreateCompanyCommand extends Command
         }
 
         // 7) Atomic create — a failure anywhere rolls the whole company back.
-        $user = DB::transaction(function () use ($slug, $company, $projectKey, $name, $email, $password, $role, $tenantsTable): User {
-            if ($tenantsTable) {
-                Tenant::create([
-                    'slug' => $slug,
+        try {
+            $user = DB::transaction(function () use ($slug, $company, $projectKey, $name, $email, $password, $role, $tenantsTable): User {
+                if ($tenantsTable) {
+                    Tenant::create([
+                        'slug' => $slug,
+                        'name' => $company,
+                        'status' => 'active',
+                    ]);
+                }
+
+                Project::create([
+                    'tenant_id' => $slug,
+                    'project_key' => $projectKey,
                     'name' => $company,
-                    'status' => 'active',
+                    'description' => "{$company} knowledge base",
                 ]);
-            }
 
-            Project::create([
-                'tenant_id' => $slug,
-                'project_key' => $projectKey,
-                'name' => $company,
-                'description' => "{$company} knowledge base",
-            ]);
+                // The User model's 'hashed' cast hashes the plaintext on assignment.
+                $user = User::create([
+                    'name' => $name,
+                    'email' => $email,
+                    'password' => $password,
+                    'is_active' => true,
+                ]);
+                $user->assignRole($role);
 
-            // The User model's 'hashed' cast hashes the plaintext on assignment.
-            $user = User::create([
-                'name' => $name,
-                'email' => $email,
-                'password' => $password,
-                'is_active' => true,
-            ]);
-            $user->assignRole($role);
+                // The membership is what surfaces the tenant as a selectable team
+                // (UserTeamsResolver groups project_memberships by tenant_id).
+                ProjectMembership::create([
+                    'tenant_id' => $slug,
+                    'user_id' => $user->id,
+                    'project_key' => $projectKey,
+                    'role' => 'member',
+                ]);
 
-            // The membership is what surfaces the tenant as a selectable team
-            // (UserTeamsResolver groups project_memberships by tenant_id).
-            ProjectMembership::create([
-                'tenant_id' => $slug,
-                'user_id' => $user->id,
-                'project_key' => $projectKey,
-                'role' => 'member',
-            ]);
+                return $user;
+            });
+        } catch (\Throwable $e) {
+            report($e);
+            $this->error('Failed to create company due to an unexpected database error.');
 
-            return $user;
-        });
+            return self::FAILURE;
+        }
 
         if (! $tenantsTable) {
             $this->warn("'tenants' table absent (AI-Act package not migrated) — created the user + membership; the switcher will show the humanised slug.");
