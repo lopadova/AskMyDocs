@@ -37,8 +37,8 @@ use Spatie\Permission\Models\Role;
  *
  *   php artisan company:create --company="Acme Corp" --email=admin@acme.com --password=secret123
  *
- * To avoid the password appearing in shell history, CI logs, or the OS process
- * list, prefer the COMPANY_ADMIN_PASSWORD environment variable instead:
+ * To avoid the password appearing in the process list as an argv flag, prefer
+ * the COMPANY_ADMIN_PASSWORD environment variable instead (avoid typing secrets if your shell persists history):
  *   COMPANY_ADMIN_PASSWORD=secret123 php artisan company:create --company="Acme Corp" --email=admin@acme.com
  */
 class CreateCompanyCommand extends Command
