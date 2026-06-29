@@ -116,6 +116,13 @@ Route::prefix('auth')->group(function () {
     Route::post('/token', [AuthController::class, 'token'])
         ->name('api.auth.token');
 
+    // Invite-only Bearer sign-up for the Tauri desktop app — the stateless
+    // counterpart of POST /api/auth/register. Same per-IP throttle as the
+    // session sign-up so it can't brute-force invite codes.
+    Route::post('/register-token', [RegisterController::class, 'registerToken'])
+        ->middleware('throttle:register')
+        ->name('api.auth.register-token');
+
     Route::middleware('auth:sanctum')->group(function () {
         Route::post('/token/revoke', [AuthController::class, 'revokeToken'])
             ->name('api.auth.token.revoke');

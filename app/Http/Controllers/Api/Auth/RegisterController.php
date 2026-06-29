@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Auth;
 
 use App\Http\Requests\Auth\RegisterRequest;
 use App\Models\User;
+use App\Support\DesktopToken;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Routing\Controller;
@@ -16,13 +17,19 @@ use Padosoft\Invitations\Services\RedemptionService;
 use Padosoft\Invitations\Support\RedemptionError;
 
 /**
- * JSON-native, invite-only sign-up for the React SPA.
+ * JSON-native, invite-only sign-up. Two HTTP surfaces over ONE shared core
+ * (R44), differing only in how they hand the caller a credential:
  *
- * Paired with Sanctum stateful sessions (the route lives in the `web`
- * middleware group, see routes/api.php), so the SPA primes the XSRF-TOKEN
- * cookie via GET /sanctum/csrf-cookie before POSTing here.
+ *   - register()       — POST /api/auth/register (the React SPA). Sits in the
+ *                        `web` middleware group, so it opens a Sanctum stateful
+ *                        SESSION (the SPA primes XSRF-TOKEN via
+ *                        GET /sanctum/csrf-cookie first).
+ *   - registerToken()  — POST /api/auth/register-token (the Tauri desktop app).
+ *                        Stateless, NO session/CSRF — mints a least-privilege
+ *                        Bearer token instead, exactly like POST /api/auth/token
+ *                        is the Bearer counterpart of POST /api/auth/login.
  *
- * Flow (a thin HTTP adapter over the shared invite core — R44):
+ * Shared core — {@see provisionInvitedAccount()}:
  *   1. Pre-validate the invite code against {@see CodeValidator} BEFORE
  *      creating the account, so an invalid / expired / exhausted code never
  *      mints an orphan user.
@@ -40,19 +47,19 @@ use Padosoft\Invitations\Support\RedemptionError;
  *      (no role/membership is provisioned on the failure path, and User has no
  *      create-observer, so the row is the only artifact).
  *   4. Floor the account at `viewer` (layered on any grant role the redeem
- *      already provisioned — GRANT-never-revoke), then open the session
- *      (login + regenerate) and fire the standard `Registered` event.
+ *      already provisioned — GRANT-never-revoke) and fire the standard
+ *      `Registered` event.
  *
  * Every invite-code failure is surfaced as a 422 field error on `invite_code`
- * (R14 — never 200-with-empty) so the SPA shows it under the code input; the
+ * (R14 — never 200-with-empty) so the client shows it under the code input; the
  * machine-readable RedemptionError stays English (R24), only the body is
  * human-facing.
  *
- * R44 — registration is intentionally HTTP-only: it mints a stateful browser
- * session, which has no meaningful Artisan/MCP analogue. The invite core it
- * drives ({@see CodeValidator} / {@see RedemptionService}) already exposes the
- * PHP + MCP surfaces, and operator-side account creation lives on the admin
- * user API.
+ * R44 — registration ships PHP-callable core (the invite services) + the two
+ * HTTP surfaces above. There is deliberately no MCP/Artisan "register" tool:
+ * it mints an interactive end-user credential (session or Bearer), which has no
+ * meaningful agent/operator analogue (operator account creation lives on the
+ * admin user API).
  */
 class RegisterController extends Controller
 {
@@ -62,7 +69,59 @@ class RegisterController extends Controller
         private readonly TenantResolver $tenant,
     ) {}
 
+    /**
+     * SPA sign-up: provision the invited account, then open a stateful session.
+     */
     public function register(RegisterRequest $request): JsonResponse
+    {
+        $user = $this->provisionInvitedAccount($request);
+
+        // Auth::login fires the Login event (the invitations
+        // CompletePendingRedemption listener is a safe no-op — we redeemed
+        // directly, nothing was stashed).
+        Auth::guard('web')->login($user);
+        $request->session()->regenerate();
+
+        return response()->json([
+            'user' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+            ],
+            'abilities' => [],
+        ], 201);
+    }
+
+    /**
+     * Desktop (Tauri) sign-up: provision the invited account, then mint a
+     * least-privilege Bearer token. Stateless — no session is opened (the route
+     * sits OUTSIDE the `web` group), mirroring POST /api/auth/token.
+     */
+    public function registerToken(RegisterRequest $request): JsonResponse
+    {
+        $user = $this->provisionInvitedAccount($request);
+
+        $token = DesktopToken::mint($user, $request->deviceName())->plainTextToken;
+
+        return response()->json([
+            'token' => $token,
+            'token_type' => 'Bearer',
+            'user' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+            ],
+        ], 201);
+    }
+
+    /**
+     * Shared invite-only provisioning core for both sign-up surfaces (R44).
+     * Returns the freshly-created, role-floored user, or throws a 422
+     * ValidationException on any invite-code failure. See the class docblock for
+     * why redeem runs outside a transaction and why the account is force-deleted
+     * on a post-validation redeem failure.
+     */
+    private function provisionInvitedAccount(RegisterRequest $request): User
     {
         $data = $request->validated();
         $code = (string) $data['invite_code'];
@@ -107,25 +166,14 @@ class RegisterController extends Controller
 
         // 4. Floor the account at 'viewer' (layered on any grant role redeem
         // already provisioned — GRANT-never-revoke). Done post-redeem so the
-        // failure path above never has a role pivot to clean up.
+        // failure path above never has a role pivot to clean up. The Registered
+        // event fires the registration listeners; the invitations
+        // CompletePendingRedemption listener reads the session store in-memory
+        // and finds nothing stashed, so it is safe on the stateless path too.
         $user->assignRole('viewer');
-
-        // Open the SPA session. Auth::login fires the Login event and the
-        // explicit Registered event fires the registration listeners; the
-        // invitations CompletePendingRedemption listener is a safe no-op here
-        // because we redeemed directly (no code was stashed → read-and-forget).
-        Auth::guard('web')->login($user);
-        $request->session()->regenerate();
         event(new Registered($user));
 
-        return response()->json([
-            'user' => [
-                'id' => $user->id,
-                'name' => $user->name,
-                'email' => $user->email,
-            ],
-            'abilities' => [],
-        ], 201);
+        return $user;
     }
 
     /**
