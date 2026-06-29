@@ -46,7 +46,7 @@ class CreateCompanyCommand extends Command
     protected $signature = 'company:create
         {--company= : Company display name (required), e.g. "Acme Corp"}
         {--email= : Admin email (required)}
-        {--password= : Admin password (min 8); prefer the COMPANY_ADMIN_PASSWORD env var to avoid process-list / shell-history exposure}
+        {--password= : Admin password (min 8); prefer the COMPANY_ADMIN_PASSWORD env var to avoid argv exposure in the process list}
         {--slug= : Tenant slug (default: slug of --company; a-z0-9_- , max 50)}
         {--name= : Admin display name (default: the part before @ in --email)}
         {--project= : Initial project key (default: the tenant slug)}
