@@ -1,5 +1,5 @@
 import { test, expect, type APIRequestContext } from '@playwright/test';
-import { resetDb, seedDb } from './setup-helpers';
+import { resetDb, seedDb, E2E_BASE_URL } from './setup-helpers';
 
 /*
  * Invite-only registration — POST /api/auth/register + the React /register page.
