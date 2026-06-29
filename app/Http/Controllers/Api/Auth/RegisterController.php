@@ -80,6 +80,10 @@ class RegisterController extends Controller
             'email' => (string) $data['email'],
             'password' => Hash::make((string) $data['password']),
         ]);
+
+        // 3. Authoritatively redeem the invite code.
+        $result = $this->redemption->redeem($code, $user, [
+            'ip' => $request->ip(),
             'user_agent' => $request->userAgent(),
         ]);
         if (! $result->ok && ! $result->already) {
