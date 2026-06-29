@@ -204,11 +204,13 @@ export function RegisterPage({ onSuccess, onNavigateLogin }: RegisterPageProps =
                         aria-label="Confirm password"
                         {...register('password_confirmation')}
                     />
-                    {errors.password_confirmation && (
+                    {errors.password_confirmation ? (
                         <FieldError
                             errors={{ password_confirmation: errors.password_confirmation.message ?? '' }}
                             name="password_confirmation"
                         />
+                    ) : (
+                        <FieldError errors={fieldErrors} name="password_confirmation" />
                     )}
                 </div>
                 <div>
