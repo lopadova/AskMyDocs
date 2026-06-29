@@ -16,7 +16,7 @@ export function extractAxiosErrors(
     fallbackMessage = 'Something went wrong. Please try again.',
 ): { fieldErrors?: FieldErrors; message?: string } {
     if (!axios.isAxiosError(err)) {
-        return { message: 'Something went wrong. Please try again.' };
+        return { message: fallbackMessage };
     }
     const status = err.response?.status;
     const data = err.response?.data as { message?: string; errors?: FieldErrors } | undefined;
