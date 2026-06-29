@@ -75,11 +75,7 @@ class RegisterController extends Controller
         }
 
         // 2. Create the account (no role yet — see step 4).
-        $user = User::create([
-            'name' => $data['name'],
-            'email' => $data['email'],
-            'password' => Hash::make($data['password']),
-        ]);
+'password' => $data['password'],
 
         // 3. Authoritatively redeem, OUTSIDE any transaction (see class
         // docblock). `already` is the idempotent-success branch, not a failure.
