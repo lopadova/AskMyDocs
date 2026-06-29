@@ -36,13 +36,17 @@ use Spatie\Permission\Models\Role;
  * the HTTP surface.
  *
  *   php artisan company:create --company="Acme Corp" --email=admin@acme.com --password=secret123
+ *
+ * To avoid the password appearing in shell history, CI logs, or the OS process
+ * list, prefer the COMPANY_ADMIN_PASSWORD environment variable instead:
+ *   COMPANY_ADMIN_PASSWORD=secret123 php artisan company:create --company="Acme Corp" --email=admin@acme.com
  */
 class CreateCompanyCommand extends Command
 {
     protected $signature = 'company:create
         {--company= : Company display name (required), e.g. "Acme Corp"}
         {--email= : Admin email (required)}
-        {--password= : Admin password (required, min 8)}
+        {--password= : Admin password (min 8); prefer the COMPANY_ADMIN_PASSWORD env var to avoid process-list / shell-history exposure}
         {--slug= : Tenant slug (default: slug of --company; a-z0-9_- , max 50)}
         {--name= : Admin display name (default: the part before @ in --email)}
         {--project= : Initial project key (default: the tenant slug)}
@@ -54,7 +58,9 @@ class CreateCompanyCommand extends Command
     {
         $company = trim((string) $this->option('company'));
         $email = trim((string) $this->option('email'));
-        $password = (string) $this->option('password');
+        // Support a non-argv path (env var) so the password is not visible in shell history,
+        // CI logs, or the OS process list. Precedence: COMPANY_ADMIN_PASSWORD env var > --password option.
+        $password = (string) (env('COMPANY_ADMIN_PASSWORD') ?: $this->option('password'));
         $role = trim((string) $this->option('role')) ?: 'admin';
 
         // 1) Required inputs.

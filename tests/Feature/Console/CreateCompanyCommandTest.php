@@ -191,6 +191,29 @@ final class CreateCompanyCommandTest extends TestCase
         if (\Illuminate\Support\Facades\Schema::hasTable('tenants')) {
             $this->assertDatabaseMissing('tenants', ['slug' => 'acme-corp']);
         }
+    }
+
+    public function test_accepts_password_from_env_var(): void
+    {
+        Role::findOrCreate('admin', 'web');
+
+        putenv('COMPANY_ADMIN_PASSWORD=secret123');
+        try {
+            $this->artisan('company:create', [
+                '--company' => 'Acme Corp',
+                '--email'   => 'admin@acme.com',
+                // no --password passed — resolved via COMPANY_ADMIN_PASSWORD env var
+            ])
+                ->expectsOutputToContain("Company 'Acme Corp' created.")
+                ->assertExitCode(0);
+        } finally {
+            putenv('COMPANY_ADMIN_PASSWORD');
+        }
+
+        $this->assertDatabaseHas('projects', ['tenant_id' => 'acme-corp', 'project_key' => 'acme-corp']);
+        $user = User::where('email', 'admin@acme.com')->firstOrFail();
+        $this->assertTrue(\Illuminate\Support\Facades\Hash::check('secret123', $user->password));
+    }
 
     public function test_fails_when_password_is_too_short(): void
     {
