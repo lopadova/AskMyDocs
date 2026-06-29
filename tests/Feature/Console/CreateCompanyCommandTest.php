@@ -198,6 +198,8 @@ final class CreateCompanyCommandTest extends TestCase
         Role::findOrCreate('admin', 'web');
 
         putenv('COMPANY_ADMIN_PASSWORD=secret123');
+        $_ENV['COMPANY_ADMIN_PASSWORD'] = 'secret123';
+        $_SERVER['COMPANY_ADMIN_PASSWORD'] = 'secret123';
         try {
             $this->artisan('company:create', [
                 '--company' => 'Acme Corp',
@@ -208,6 +210,7 @@ final class CreateCompanyCommandTest extends TestCase
                 ->assertExitCode(0);
         } finally {
             putenv('COMPANY_ADMIN_PASSWORD');
+            unset($_ENV['COMPANY_ADMIN_PASSWORD'], $_SERVER['COMPANY_ADMIN_PASSWORD']);
         }
 
         $this->assertDatabaseHas('projects', ['tenant_id' => 'acme-corp', 'project_key' => 'acme-corp']);
