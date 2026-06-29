@@ -75,12 +75,11 @@ class RegisterController extends Controller
         }
 
         // 2. Create the account (no role yet — see step 4).
-'password' => $data['password'],
-
-        // 3. Authoritatively redeem, OUTSIDE any transaction (see class
-        // docblock). `already` is the idempotent-success branch, not a failure.
-        $result = $this->redemption->redeem($code, $user, [
-            'ip' => $request->ip(),
+        $user = User::create([
+            'name' => (string) $data['name'],
+            'email' => (string) $data['email'],
+            'password' => Hash::make((string) $data['password']),
+        ]);
             'user_agent' => $request->userAgent(),
         ]);
         if (! $result->ok && ! $result->already) {
