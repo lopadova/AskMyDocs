@@ -113,6 +113,8 @@ export function RegisterPage({ onSuccess, onNavigateLogin }: RegisterPageProps =
                 onSubmit={onSubmit}
                 noValidate
                 data-testid="register-form"
+                data-state={submitting ? 'loading' : formError || fieldErrors ? 'error' : 'ready'}
+                aria-busy={submitting}
                 aria-label="Create account"
                 style={{ display: 'flex', flexDirection: 'column', gap: 14 }}
             >
