@@ -88,7 +88,7 @@ class RegisterTokenTest extends TestCase
             ->assertJsonPath('user.id', $user->id);
     }
 
-    public function test_device_name_defaults_when_omitted(): void
+    public function test_device_name_defaults_when_null_is_sent(): void
     {
         $this->postJson('/api/auth/register-token', $this->payload(['device_name' => null]))
             ->assertCreated();
