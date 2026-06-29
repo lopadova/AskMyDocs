@@ -20,9 +20,12 @@ import { resetDb, seedDb } from './setup-helpers';
 /** Read the current XSRF-TOKEN from an APIRequestContext's own cookie jar. */
 async function readXsrf(request: APIRequestContext): Promise<string> {
     const { cookies } = await request.storageState();
-    const cookie = cookies.find((c) => c.name === 'XSRF-TOKEN');
+    const baseHost = new URL(process.env.E2E_BASE_URL ?? 'http://127.0.0.1:8000').hostname;
+    const cookie = cookies.find((c) => c.name === 'XSRF-TOKEN' && c.domain.replace(/^\./, '') === baseHost);
     if (!cookie) {
-        throw new Error('XSRF-TOKEN cookie missing — /sanctum/csrf-cookie must be primed first.');
+        throw new Error(
+            `XSRF-TOKEN cookie missing for host ${baseHost} — /sanctum/csrf-cookie must be primed first.`,
+        );
     }
     return decodeURIComponent(cookie.value);
 }
