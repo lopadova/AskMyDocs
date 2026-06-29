@@ -65,7 +65,7 @@ class CreateCompanyCommand extends Command
 
         // 1) Required inputs.
         if ($company === '' || $email === '' || $password === '') {
-            $this->error('--company, --email and --password are all required.');
+            $this->error('--company and --email are required, and you must provide an admin password via --password or COMPANY_ADMIN_PASSWORD.');
 
             return self::FAILURE;
         }
