@@ -113,8 +113,7 @@ class CreateCompanyCommand extends Command
         }
         // When the optional `tenants` table is absent, fall back to tenant-aware
         // domain tables to preserve create-new semantics.
-        if (Project::query()->where('tenant_id', $slug)->exists() || ProjectMembership::query()->where('tenant_id', $slug)->exists()) {
-            $this->error("Company '{$slug}' already exists.");
+        if (Project::query()->forTenant($slug)->exists() || ProjectMembership::query()->forTenant($slug)->exists()) {
 
             return self::FAILURE;
         }
