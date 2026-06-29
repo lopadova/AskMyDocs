@@ -198,6 +198,8 @@ final class CreateCompanyCommandTest extends TestCase
     {
         Role::findOrCreate('admin', 'web');
 
+        $previous = getenv('COMPANY_ADMIN_PASSWORD');
+
         putenv('COMPANY_ADMIN_PASSWORD=secret123');
         $_ENV['COMPANY_ADMIN_PASSWORD'] = 'secret123';
         $_SERVER['COMPANY_ADMIN_PASSWORD'] = 'secret123';
@@ -210,8 +212,14 @@ final class CreateCompanyCommandTest extends TestCase
                 ->expectsOutputToContain("Company 'Acme Corp' created.")
                 ->assertExitCode(0);
         } finally {
-            putenv('COMPANY_ADMIN_PASSWORD');
-            unset($_ENV['COMPANY_ADMIN_PASSWORD'], $_SERVER['COMPANY_ADMIN_PASSWORD']);
+            if ($previous === false) {
+                putenv('COMPANY_ADMIN_PASSWORD');
+                unset($_ENV['COMPANY_ADMIN_PASSWORD'], $_SERVER['COMPANY_ADMIN_PASSWORD']);
+            } else {
+                putenv("COMPANY_ADMIN_PASSWORD={$previous}");
+                $_ENV['COMPANY_ADMIN_PASSWORD'] = $previous;
+                $_SERVER['COMPANY_ADMIN_PASSWORD'] = $previous;
+            }
         }
 
         $this->assertDatabaseHas('projects', ['tenant_id' => 'acme-corp', 'project_key' => 'acme-corp']);
