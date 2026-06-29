@@ -11,7 +11,7 @@ use Illuminate\Foundation\Http\FormRequest;
  * the `invitations.invitation_required` flag (product decision). The code's
  * actual validity (active / not expired / not exhausted / eligible) is checked
  * against the invite engine in RegisterController — this layer only enforces
- * that a non-empty, well-formed value was supplied.
+ * that a non-empty value was supplied.
  */
 class RegisterRequest extends FormRequest
 {
