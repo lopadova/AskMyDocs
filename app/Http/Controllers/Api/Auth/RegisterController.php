@@ -145,12 +145,12 @@ class RegisterController extends Controller
     private function inviteCodeMessage(?RedemptionError $error): string
     {
         return match ($error) {
-            RedemptionError::Expired => 'This invite code has expired.',
-            RedemptionError::Exhausted => 'This invite code has already been fully used.',
-            RedemptionError::Revoked => 'This invite code has been revoked.',
-            RedemptionError::Ineligible => 'This invite code is not valid for this account.',
-            RedemptionError::RateLimited => 'Too many attempts with this invite code. Please try again later.',
-            default => 'Invalid invite code.',
+            RedemptionError::Expired => (string) __('register.invite_code.expired'),
+            RedemptionError::Exhausted => (string) __('register.invite_code.exhausted'),
+            RedemptionError::Revoked => (string) __('register.invite_code.revoked'),
+            RedemptionError::Ineligible => (string) __('register.invite_code.ineligible'),
+            RedemptionError::RateLimited => (string) __('register.invite_code.rate_limited'),
+            default => (string) __('register.invite_code.invalid'),
         };
     }
 }
