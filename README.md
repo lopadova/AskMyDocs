@@ -700,8 +700,9 @@ php artisan migrate
 ```
 
 ```env
-# Closed-beta signup gate. Default FALSE (R43 both-states): registration is
-# unchanged until you opt in; when true, signup requires a valid invite code.
+# Package-level closed-beta gate, read by padosoft/laravel-invitations (NOT by
+# the host SPA register endpoint, which is always invite-only — see below).
+# Default FALSE (R43 both-states).
 INVITE_REQUIRED=false
 
 # Dedicated HMAC secret for signed codes (falls back to APP_KEY-derived

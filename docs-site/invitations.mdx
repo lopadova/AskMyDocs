@@ -235,8 +235,11 @@ Every invite-code failure is mapped to a **422 field error on `invite_code`**
 (R14 — never a 200 with an empty body) with a localized message
 (`lang/{en,it}/register.php`; the machine-readable `RedemptionError` stays
 English, R24). `invite_code` is **always required** at this endpoint regardless of
-the `INVITE_REQUIRED` gate — the SPA sign-up screen is invite-only by product
-decision; `INVITE_REQUIRED` still governs the broader signup paths.
+the `INVITE_REQUIRED` gate — the host SPA sign-up endpoint is invite-only by
+product decision. The `INVITE_REQUIRED` / `invitations.invitation_required` flag is
+the **package-level** gate (read by `padosoft/laravel-invitations`, not by the host
+register endpoint), so flipping it does **not** open a non-invite registration path
+on AskMyDocs.
 
 ## Gotchas
 
