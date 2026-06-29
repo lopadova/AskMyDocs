@@ -31,6 +31,22 @@ class RegisterRequest extends FormRequest
             // `confirmed` pairs with `password_confirmation` from the form.
             'password' => ['required', 'confirmed', 'string', 'min:8'],
             'invite_code' => ['required', 'string', 'max:128'],
+            // Only the Bearer flow (POST /api/auth/register-token) sends this;
+            // the session flow ignores it. Optional label for the minted token.
+            'device_name' => ['sometimes', 'nullable', 'string', 'max:120'],
         ];
+    }
+
+    /**
+     * Human-readable label for the personal access token minted by the Bearer
+     * sign-up flow. Mirrors {@see \App\Http\Requests\Auth\TokenRequest::deviceName()}:
+     * a blank/absent value falls back to the server-side default in
+     * {@see \App\Support\DesktopToken}.
+     */
+    public function deviceName(): ?string
+    {
+        $name = trim((string) $this->input('device_name', ''));
+
+        return $name !== '' ? $name : null;
     }
 }

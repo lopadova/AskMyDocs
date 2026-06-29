@@ -4,11 +4,12 @@ import { saveSession, type Session } from "../lib/store";
 
 interface Props {
   onSuccess: (session: Session) => void;
+  onNavigateRegister: () => void;
 }
 
 type State = "idle" | "loading" | "error";
 
-export function LoginScreen({ onSuccess }: Props) {
+export function LoginScreen({ onSuccess, onNavigateRegister }: Props) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [state, setState] = useState<State>("idle");
@@ -86,6 +87,18 @@ export function LoginScreen({ onSuccess }: Props) {
         >
           {state === "loading" ? "Signing in…" : "Sign in"}
         </button>
+
+        <p className="auth-footer">
+          Have an invite code?{" "}
+          <button
+            type="button"
+            className="link"
+            onClick={onNavigateRegister}
+            data-testid="login-navigate-register"
+          >
+            Create an account
+          </button>
+        </p>
       </form>
     </div>
   );

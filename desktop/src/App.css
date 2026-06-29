@@ -152,6 +152,23 @@ body {
   outline: none;
   border-color: var(--accent);
 }
+.auth-footer {
+  margin: 4px 0 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+}
+.link {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 13px;
+}
+.link:hover {
+  text-decoration: underline;
+}
 
 /* ---------- shell ---------- */
 .shell {

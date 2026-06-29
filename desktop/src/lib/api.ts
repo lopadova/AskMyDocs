@@ -10,6 +10,7 @@ import type {
   DocSearchResult,
   DocumentPreview,
   MePayload,
+  RegisterInput,
   TokenResponse,
 } from "./types";
 
@@ -119,6 +120,28 @@ export async function requestToken(
   const body = await parseBody(res);
   if (!res.ok) {
     throw new ApiError(res.status, errorMessage(body, "Login failed"), body);
+  }
+  return body as TokenResponse;
+}
+
+/** Invite-only Bearer sign-up — the stateless counterpart of requestToken().
+ *  Creates the account, redeems the invite code server-side, and returns a
+ *  desktop token (same shape as login). A 422 carries field errors
+ *  ({errors:{invite_code|email|password|name}}); errorMessage() surfaces the
+ *  first as the screen's single error line. */
+export async function registerWithToken(
+  input: RegisterInput,
+): Promise<TokenResponse> {
+  const res = await http(`${API_BASE}/api/auth/register-token`, {
+    method: "POST",
+    headers: authHeaders(),
+    // Same client label as requestToken; the backend default applies only when
+    // device_name is omitted.
+    body: JSON.stringify({ ...input, device_name: "AskMyDocs Desktop" }),
+  });
+  const body = await parseBody(res);
+  if (!res.ok) {
+    throw new ApiError(res.status, errorMessage(body, "Registration failed"), body);
   }
   return body as TokenResponse;
 }

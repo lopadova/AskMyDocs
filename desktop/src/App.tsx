@@ -10,10 +10,12 @@ import {
 import type { MePayload, Team } from "./lib/types";
 import { ChatScreen } from "./screens/ChatScreen";
 import { LoginScreen } from "./screens/LoginScreen";
+import { RegisterScreen } from "./screens/RegisterScreen";
 import { SearchScreen } from "./screens/SearchScreen";
 import "./App.css";
 
 type Tab = "chat" | "search";
+type AuthView = "login" | "register";
 
 // Mirror the SPA's primary-role pick (highest-privilege wins) for the badge.
 const ROLE_RANK = ["super-admin", "admin", "dpo", "editor", "viewer"];
@@ -29,6 +31,7 @@ function primaryRole(roles: string[]): string {
 function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [booting, setBooting] = useState(true);
+  const [authView, setAuthView] = useState<AuthView>("login");
   const [tab, setTab] = useState<Tab>("chat");
   const [me, setMe] = useState<MePayload | null>(null);
   const [activeTenantId, setActiveTenantId] = useState<string | null>(null);
@@ -47,6 +50,12 @@ function App() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!session) {
+      setAuthView("login");
+    }
+  }, [session]);
 
   const handleLogout = useCallback(async () => {
     if (session) {
@@ -110,7 +119,17 @@ function App() {
   }
 
   if (!session) {
-    return <LoginScreen onSuccess={setSession} />;
+    return authView === "register" ? (
+      <RegisterScreen
+        onSuccess={setSession}
+        onNavigateLogin={() => setAuthView("login")}
+      />
+    ) : (
+      <LoginScreen
+        onSuccess={setSession}
+        onNavigateRegister={() => setAuthView("register")}
+      />
+    );
   }
 
   const activeTeam: Team | null =
