@@ -305,16 +305,17 @@ test.describe('Admin golden-path journey — Phase J', () => {
         });
         expect([200, 204]).toContain(logoutRes.status());
 
-        // Backend session is invalidated, but the SPA's auth store is
-        // still hydrated from the pre-logout state. /app/admin → /login
-        // bounce is racy. Direct goto('/login') hits the LEGACY Blade
-        // login (Laravel's web routes), not the SPA login — the Blade
-        // form has `login-email` / `login-password` / `login-submit`
-        // but NOT `login-form` (only the React LoginPage carries that).
-        // Assert on `login-email` instead — proves we landed on a
-        // login surface and the previous session is gone.
+        // Backend session is invalidated, but the SPA's auth store is still
+        // hydrated from the pre-logout state, so the /app/admin → /login bounce
+        // is racy. Clear the client cookies and hard-load /login instead: it
+        // now serves the React SPA login on a full page load too (the legacy
+        // Blade auth pages were removed). `login-form` is the React-only testid
+        // — the old Blade form never carried it — so asserting it both proves
+        // we landed on the auth surface with the previous session gone AND
+        // guards against a Blade login ever being reintroduced at /login.
         await page.context().clearCookies();
         await page.goto('/login');
-        await expect(page.getByTestId('login-email')).toBeVisible({ timeout: 10_000 });
+        await expect(page.getByTestId('login-form')).toBeVisible({ timeout: 10_000 });
+        await expect(page.getByTestId('login-email')).toBeVisible();
     });
 });

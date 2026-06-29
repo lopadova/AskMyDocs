@@ -943,9 +943,11 @@ class AppServiceProvider extends ServiceProvider
     /**
      * Register the named RateLimiter buckets used by the auth JSON API.
      *
-     * `login`  — 5/min per (email + IP). Clears on successful authentication.
-     * `forgot` — 3/min per IP. Protects the password-reset broker from
-     *            bulk email enumeration probes.
+     * `login`    — 5/min per (email + IP). Clears on successful authentication.
+     * `forgot`   — 3/min per IP. Protects the password-reset broker from
+     *              bulk email enumeration probes.
+     * `register` — 6/min per IP. Caps invite-only sign-up so the endpoint
+     *              can't be used to brute-force invite codes.
      */
     private function registerRateLimiters(): void
     {
@@ -957,6 +959,10 @@ class AppServiceProvider extends ServiceProvider
 
         RateLimiter::for('forgot', function (Request $request) {
             return Limit::perMinute(3)->by($request->ip());
+        });
+
+        RateLimiter::for('register', function (Request $request) {
+            return Limit::perMinute(6)->by($request->ip());
         });
     }
 }

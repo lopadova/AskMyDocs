@@ -1,7 +1,6 @@
 <?php
 
 use App\Http\Controllers\Auth\LoginController;
-use App\Http\Controllers\Auth\PasswordResetController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\SpaController;
 use App\Http\Controllers\TestingController;
@@ -19,13 +18,34 @@ use Illuminate\Support\Facades\Route;
 */
 
 Route::middleware('guest')->group(function () {
-    Route::get('/login', [LoginController::class, 'showForm'])->name('login');
+    // The auth UI (login / forgot-password / reset-password) IS the React SPA.
+    // These GET routes render the SPA shell (`view('app')` via SpaController)
+    // so React's own /login, /forgot-password and /reset-password routes own
+    // the screen on a HARD page load too — not only on in-app (soft)
+    // navigation. They previously served standalone Blade views with no @vite
+    // bundle, so a cache-cleared reload of /login showed a second, un-branded
+    // login page (the legacy pre-SPA UI) while an in-SPA navigation showed the
+    // React one. Serving the shell here collapses both paths onto the single
+    // React auth surface.
+    //
+    // Authentication itself runs over the stateful JSON `/api/auth/*` endpoints
+    // (Sanctum; see routes/api.php). `POST /login` stays as a session-login
+    // fallback and is exercised directly by LoginRedirectTest.
+    //
+    // `/reset-password` carries `?token=&email=` as QUERY params (matching the
+    // SPA resetRoute search schema). Dropping the old `/reset-password/{token}`
+    // path segment makes the framework's ResetPassword notification emit
+    // exactly that query-string URL (non-path route params become query args).
+    Route::get('/login', SpaController::class)->name('login');
     Route::post('/login', [LoginController::class, 'login']);
 
-    Route::get('/forgot-password', [PasswordResetController::class, 'showRequestForm'])->name('password.request');
-    Route::post('/forgot-password', [PasswordResetController::class, 'sendResetLink'])->name('password.email');
-    Route::get('/reset-password/{token}', [PasswordResetController::class, 'showResetForm'])->name('password.reset');
-    Route::post('/reset-password', [PasswordResetController::class, 'reset'])->name('password.update');
+    // Invite-only sign-up screen — also React (same SPA shell). The actual
+    // account creation + invite redemption runs over POST /api/auth/register
+    // (routes/api.php); this GET just hands the page to React.
+    Route::get('/register', SpaController::class)->name('register');
+
+    Route::get('/forgot-password', SpaController::class)->name('password.request');
+    Route::get('/reset-password', SpaController::class)->name('password.reset');
 });
 
 /*

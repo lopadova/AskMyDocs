@@ -7,15 +7,9 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\View\View;
 
 class LoginController extends Controller
 {
-    public function showForm(): View
-    {
-        return view('auth.login');
-    }
-
     public function login(LoginRequest $request): RedirectResponse
     {
         if (! Auth::attempt($request->credentials(), $request->boolean('remember'))) {

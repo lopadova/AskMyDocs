@@ -2,10 +2,10 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import axios from 'axios';
 import { AuthLayout, FieldError, type FieldErrors } from './AuthLayout';
 import { login, me } from './auth.api';
 import { useAuthStore } from '../../lib/auth-store';
+import { extractAxiosErrors } from './auth-errors';
 
 const schema = z.object({
     email: z.string().email('Please enter a valid email address'),
@@ -18,24 +18,10 @@ type FormValues = z.infer<typeof schema>;
 export type LoginPageProps = {
     onSuccess?: () => void;
     onNavigateForgot?: () => void;
+    onNavigateRegister?: () => void;
 };
 
-function extractAxiosErrors(err: unknown): { fieldErrors?: FieldErrors; message?: string } {
-    if (!axios.isAxiosError(err)) {
-        return { message: 'Something went wrong. Please try again.' };
-    }
-    const status = err.response?.status;
-    const data = err.response?.data as { message?: string; errors?: FieldErrors } | undefined;
-    if (status === 422 && data?.errors) {
-        return { fieldErrors: data.errors };
-    }
-    if (status === 429) {
-        return { message: data?.message ?? 'Too many attempts — please try again in a moment.' };
-    }
-    return { message: data?.message ?? 'Login failed. Check your credentials and try again.' };
-}
-
-export function LoginPage({ onSuccess, onNavigateForgot }: LoginPageProps = {}) {
+export function LoginPage({ onSuccess, onNavigateForgot, onNavigateRegister }: LoginPageProps = {}) {
     const setMe = useAuthStore((s) => s.setMe);
     const [fieldErrors, setFieldErrors] = useState<FieldErrors | undefined>();
     const [formError, setFormError] = useState<string | undefined>();
@@ -61,7 +47,7 @@ export function LoginPage({ onSuccess, onNavigateForgot }: LoginPageProps = {}) 
             onSuccess?.();
             return;
         } catch (err) {
-            const { fieldErrors: fe, message } = extractAxiosErrors(err);
+            const { fieldErrors: fe, message } = extractAxiosErrors(err, 'Login failed. Check your credentials and try again.');
             setFieldErrors(fe);
             setFormError(message);
         } finally {
@@ -74,23 +60,43 @@ export function LoginPage({ onSuccess, onNavigateForgot }: LoginPageProps = {}) 
             title="Sign in to your workspace"
             subtitle="Use your ACME email and password."
             footer={
-                <span>
-                    Trouble signing in?{' '}
-                    <button
-                        type="button"
-                        onClick={onNavigateForgot}
-                        style={{
-                            background: 'transparent',
-                            border: 0,
-                            color: 'var(--fg-1)',
-                            cursor: 'pointer',
-                            padding: 0,
-                            fontWeight: 500,
-                        }}
-                    >
-                        Reset your password
-                    </button>
-                </span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <span>
+                        Trouble signing in?{' '}
+                        <button
+                            type="button"
+                            onClick={onNavigateForgot}
+                            style={{
+                                background: 'transparent',
+                                border: 0,
+                                color: 'var(--fg-1)',
+                                cursor: 'pointer',
+                                padding: 0,
+                                fontWeight: 500,
+                            }}
+                        >
+                            Reset your password
+                        </button>
+                    </span>
+                    <span>
+                        Have an invite code?{' '}
+                        <button
+                            type="button"
+                            onClick={onNavigateRegister}
+                            data-testid="login-navigate-register"
+                            style={{
+                                background: 'transparent',
+                                border: 0,
+                                color: 'var(--fg-1)',
+                                cursor: 'pointer',
+                                padding: 0,
+                                fontWeight: 500,
+                            }}
+                        >
+                            Create an account
+                        </button>
+                    </span>
+                </div>
             }
         >
             <form
