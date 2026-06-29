@@ -76,9 +76,9 @@ class RegisterController extends Controller
     {
         $user = $this->provisionInvitedAccount($request);
 
-        // Auth::login fires the Login event (the invitations
-        // CompletePendingRedemption listener is a safe no-op — we redeemed
-        // directly, nothing was stashed).
+        // Open the stateful session. The invite was already redeemed directly
+        // inside the shared core, so the session carries no pending-redemption
+        // work.
         Auth::guard('web')->login($user);
         $request->session()->regenerate();
 
@@ -166,11 +166,16 @@ class RegisterController extends Controller
 
         // 4. Floor the account at 'viewer' (layered on any grant role redeem
         // already provisioned — GRANT-never-revoke). Done post-redeem so the
-        // failure path above never has a role pivot to clean up. The Registered
-        // event fires the registration listeners; the invitations
-        // CompletePendingRedemption listener reads the session store in-memory
-        // and finds nothing stashed, so it is safe on the stateless path too.
+        // failure path above never has a role pivot to clean up.
         $user->assignRole('viewer');
+
+        // Standard registration event. In this host the only Registered listener
+        // is SendEmailVerificationNotification, which no-ops because User does
+        // not implement MustVerifyEmail — so firing it is side-effect-free today
+        // and safe on the stateless (no-session) path. The invite-only invariant
+        // does NOT depend on any listener: the code was already redeemed
+        // directly above. We fire it so any future Registered listener
+        // (welcome mail, verification) works for both sign-up surfaces.
         event(new Registered($user));
 
         return $user;
