@@ -105,6 +105,13 @@ class CreateCompanyCommand extends Command
 
             return self::FAILURE;
         }
+        // When the optional `tenants` table is absent, fall back to tenant-aware
+        // domain tables to preserve create-new semantics.
+        if (Project::query()->where('tenant_id', $slug)->exists() || ProjectMembership::query()->where('tenant_id', $slug)->exists()) {
+            $this->error("Company '{$slug}' already exists.");
+
+            return self::FAILURE;
+        }
         // User has a SoftDeletes global scope, but the DB enforces UNIQUE on `users.email`
         // regardless of deleted_at. Include trashed rows so we fail fast with a clear message.
         if (User::withTrashed()->where('email', $email)->exists()) {
