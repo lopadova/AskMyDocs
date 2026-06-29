@@ -25,9 +25,9 @@ class RegisterRequest extends FormRequest
      */
     public function rules(): array
     {
-        return [
+return [
             'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', 'max:255', 'unique:users,email'],
+            'email' => ['required', 'email', 'max:255', \Illuminate\Validation\Rule::unique('users', 'email')->whereNull('deleted_at')],
             // `confirmed` pairs with `password_confirmation` from the form.
             'password' => ['required', 'confirmed', 'string', 'min:8'],
             'invite_code' => ['required', 'string', 'max:128'],
