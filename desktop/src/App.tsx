@@ -51,6 +51,12 @@ function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!session) {
+      setAuthView("login");
+    }
+  }, [session]);
+
   const handleLogout = useCallback(async () => {
     if (session) {
       await apiLogout(session.token);
