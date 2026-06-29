@@ -27,6 +27,7 @@ final class CreateCompanyCommandTest extends TestCase
     {
         parent::setUp();
         app(TenantContext::class)->set('default');
+        \Illuminate\Support\Facades\Cache::flush();
     }
 
     public function test_creates_tenant_project_admin_role_and_membership(): void
