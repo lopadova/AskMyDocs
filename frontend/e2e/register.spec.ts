@@ -20,7 +20,7 @@ import { resetDb, seedDb, E2E_BASE_URL } from './setup-helpers';
 /** Read the current XSRF-TOKEN from an APIRequestContext's own cookie jar. */
 async function readXsrf(request: APIRequestContext): Promise<string> {
     const { cookies } = await request.storageState();
-    const baseHost = new URL(process.env.E2E_BASE_URL ?? 'http://127.0.0.1:8000').hostname;
+    const baseHost = new URL(E2E_BASE_URL).hostname;
     const cookie = cookies.find((c) => c.name === 'XSRF-TOKEN' && c.domain.replace(/^\./, '') === baseHost);
     if (!cookie) {
         throw new Error(
