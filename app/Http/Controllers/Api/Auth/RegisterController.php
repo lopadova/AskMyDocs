@@ -75,11 +75,21 @@ class RegisterController extends Controller
         }
 
         // 2. Create the account (no role yet — see step 4).
-        $user = User::create([
-            'name' => (string) $data['name'],
-            'email' => (string) $data['email'],
-            'password' => Hash::make((string) $data['password']),
-        ]);
+        try {
+            $user = User::create([
+                'name' => (string) $data['name'],
+                'email' => (string) $data['email'],
+                'password' => Hash::make((string) $data['password']),
+            ]);
+        } catch (\Illuminate\Database\QueryException $e) {
+            // Concurrency guard: another request may create the same email between validation and insert.
+            if (User::where('email', (string) $data['email'])->exists()) {
+                throw ValidationException::withMessages([
+                    'email' => [__('validation.unique', ['attribute' => 'email'])],
+                ]);
+            }
+            throw $e;
+        }
 
         // 3. Authoritatively redeem the invite code.
         $result = $this->redemption->redeem($code, $user, [
