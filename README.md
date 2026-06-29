@@ -700,8 +700,9 @@ php artisan migrate
 ```
 
 ```env
-# Closed-beta signup gate. Default FALSE (R43 both-states): registration is
-# unchanged until you opt in; when true, signup requires a valid invite code.
+# Package-level closed-beta gate, read by padosoft/laravel-invitations (NOT by
+# the host SPA register endpoint, which is always invite-only — see below).
+# Default FALSE (R43 both-states).
 INVITE_REQUIRED=false
 
 # Dedicated HMAC secret for signed codes (falls back to APP_KEY-derived
@@ -713,6 +714,21 @@ INVITE_REQUIRED=false
 # INVITE_INVITATION_TTL_DAYS=7
 # INVITE_ANTI_ABUSE_ENABLED=true
 ```
+
+**Sign-up is invite-only and SPA-native.** The React `/register` screen posts to
+**`POST /api/auth/register`** — a guest route, throttled `6/min` per IP
+(`throttle:register`), sitting outside the `auth:sanctum` group. The controller
+**pre-validates** the code with the package `CodeValidator` *before* creating the
+account (so a bad code never mints an orphan user), then redeems it authoritatively
+via `RedemptionService` (atomic; run **outside** a DB transaction so the package's
+PostgreSQL compensation path is not poisoned); on an exhausted-between-checks race
+the brand-new account is **force-deleted** so the invite-only invariant holds. The
+account is floored at `viewer` (layered on any grant role — GRANT-never-revoke) and
+the SPA session is opened. Every invite-code failure surfaces as a localized
+**422 on the `invite_code` field** (`lang/{en,it}/register.php`, R24). Here
+`invite_code` is **always required**, regardless of the `INVITE_REQUIRED` gate. The
+whole auth surface — `/login`, `/register`, `/forgot-password`, `/reset-password` —
+is the React SPA on a hard reload too; the legacy Blade auth views were removed.
 
 The admin surface is a **native, in-app tabbed page** at
 `/app/{team}/admin/invitations` (Overview · Campaigns · Codes · Invite ·
@@ -1818,6 +1834,7 @@ For the full component map see [`CLAUDE.md`](CLAUDE.md) section 3.
 | **v8.23.0** | ✅ shipped 2026-06-25 | **PII-safe ingestion & reversible vault** (Ciclo 4 — the last of the connectors/observability/config/PII roadmap). The KB is **PII-safe by default**: detect→tokenise **before** embedding (only deterministic surrogates in the vector store), a **reversible per-tenant vault** (`pii_token_maps`, per-tenant salt, R30) outside the AI path, **JIT re-identification gated by role+scope** and fully audited, **right-to-erasure via crypto-shred** (GDPR Art.17) wired into the `laravel-ai-act-compliance` DSAR flow (Art.15 export + Art.17 delete), **re-embed on policy change** + the `rag-regression` recall gate guarding tokenisation drift, and **EU AI Act Art.50(1)** disclosure (`X-AI-Disclosure`) on every chat route. Per-(tenant, project) `kb_pii_settings` policy (`KbPiiPolicyResolver`, the `KbAnalysisSetting` pattern). Five sub-PRs (#368/#370/#371/#372/#373), each tri-surface (R44) over one core, default-OFF (R43); four MCP tools (roster **40 → 44**). [ADR 0020](docs/adr/0020-v823-pii-safe-ingestion-reversible-vault.md) + deep doc-site page ([PII & compliance](https://padosoft.mintlify.app/pii-and-compliance), R45). |
 | **v8.24.0** | ✅ shipped 2026-06-25 | **IMAP folder selection + dev/test email-ingest harness.** Operators now pick exactly which mailbox folders an IMAP account syncs into the KB, straight from **Admin → Connectors**. A post-install **"Folders"** action opens a connection-settings modal that lists the mailbox's **real** folders (live) and multi-selects the sync whitelist. Live discovery is **host-side by design** — `ImapFolderListingService` reuses the connector's PUBLIC seams (`ImapClientFactoryInterface` + `OAuthCredentialVault` + the stored `config_json.connection`) to open a client and return mailbox paths **verbatim** (case-sensitive, round-tripping 1:1 with the whitelist), so no package change was needed beyond `padosoft/askmydocs-connector-imap` **^1.4**. `GET /api/admin/connectors/{installationId}/folders` is tenant-scoped (R30 → 404 cross-tenant) and surfaces an unreachable server / rejected credentials as a distinct **503** (R14 — never a misleading empty 200; a genuinely empty mailbox is a valid `200 []`). `UpdateConnectorInstallationRequest` gains `folders.include` (≤200 EXACT paths, trimmed + deduped + `distinct`; **empty = sync all non-excluded folders**) and `date_window_days`, both additive (R27) and pre-filled by `ConnectorInstallationResource`; the write is a read-modify-write inside `lockForUpdate` (R21). React `FolderSettingsForm` (R11/R15/R29). Plus a dev/test **email-ingest harness** for repeatable end-to-end QA of the ingest→chat→isolation flow across tenants: seedable IMAP mailboxes (`MailSeedImapCommand`, `ImapMailboxSeeder`, `EmailMessageBuilder`, `WebklexMailboxAppender` + a `FakeImapClientFactory` test seam), multi-company case-study fixtures (`CaseStudyUsersSeeder`, `ConnectorInstallationsSeeder`, per-company email JSON) and console drivers (`ConnectorImapInstallCommand`, `DemoListCompaniesCommand`, `InitCaseStudiesCommand`). R32 matrix row for the folders endpoint; real-data Playwright (`connectors-folders-super-admin.spec.ts`) + role-access. Also ships the `ios-testflight-release` skill documenting the Tauri → TestFlight desktop release flow. [ADR 0021](docs/adr/0021-v824-imap-folder-selection.md) + doc-site ([credential connectors → folder picker](https://padosoft.mintlify.app/connectors-credential), R45). |
 | **v8.25.0** | ✅ shipped 2026-06-25 | **Schema-driven connector sync settings + first-class folder discovery.** Operators edit a connector account's **entire** safe sync surface — folders to **include AND exclude** as lists, the date window, body format, sender/recipient/subject filters, attachment policy, `only_unseen`/`reconcile_deletions`, `max_messages_per_sync` — from one **schema the connector advertises**, rendered + validated + persisted generically with **zero connector-specific host code** (R23). Two opt-in `padosoft/askmydocs-connector-base` **^1.4** interfaces: `SupportsConnectionSettings::connectionSettingsSchema()` (the editable field surface, each field a dotted `config_json` path) and `SupportsFolderDiscovery::listAvailableFolders()` (connector-owned live folder listing — **fixes XOAUTH2**, which the v8.24 host-side `ImapFolderListingService` could not do). Delivered **tri-surface over one core** (R44): `ConnectorSettingsService` + the HTTP resource/PATCH (dynamic per-field validation, unknown-key/typo → **422 not silent no-op** R14, null → clear-to-default), the **MCP** `ConnectorSettingsTool` (read, roster **44 → 45**) and the `connectors:configure` CLI — every surface enforcing the SAME constraints (R44 parity: bounds, list `distinct`/`min:1`/length, nullable-clear). A whitelisted folder that disappears upstream **never stops the sync** — `MailboxWalker::missingIncludedMailboxes()` records each missing one to `SyncResult.errors[]` + a `Log::warning` and ingests the rest (connector-imap **^1.4**). React `ConnectionSettingsForm` (schema-driven, `showIf`-aware, collision-safe testids, R11/R15/R29). [ADR 0022](docs/adr/0022-v825-schema-driven-connector-settings.md) + doc-site ([connector sync settings](https://padosoft.mintlify.app/connectors-sync-settings), R45). |
+| **v8.26.0** | ✅ shipped 2026-06-29 | **Invite-only SPA registration + native Invitations admin + IMAP connection serialization.** The auth UI is now **100% React**: `/login`, `/register`, `/forgot-password` and `/reset-password` all render the SPA shell on a HARD page load (the legacy Blade auth views + the web `PasswordResetController` are deleted), so a cache-cleared reload no longer drops to an un-branded pre-SPA login. A new **invite-only sign-up** screen (`RegisterPage`) posts to **`POST /api/auth/register`** — a thin HTTP adapter over the shared invite core (R44): it **pre-validates** the code (`CodeValidator`) before touching `users`, creates the account, then **authoritatively redeems** it (`RedemptionService` — the atomic conditional `UPDATE … WHERE current_uses < max_uses` + tagged Spatie-role / project-membership provisioners), run **outside** a DB transaction by design so the package's PostgreSQL compensation path is not poisoned, force-deleting the brand-new account on an exhausted-between-checks race so the invite-only invariant always holds. Every code failure is a **422 field error on `invite_code`** (R14, localized R24); the route is **throttled `6/min` per IP** (`throttle:register`) so it can't brute-force codes. The **Invitations admin** becomes a **native in-app tabbed page** (Overview · Campaigns · Codes · Invite · Referrals · Rewards · Waitlist · Anti-abuse) over the same `/api/admin/invitations/*` core inside the unified admin chrome — superseding the v8.22 cross-mount panel, which stays as an optional **"Advanced"** launcher shown only when `INVITATIONS_ADMIN_ENABLED=true` (the host learns it from the additive `features.invitations_admin` field on `/api/auth/me`, R27/R43). Plus **per-mailbox IMAP connection serialization** (at most one live connection per account host+port+username, cross-tenant + cross-surface, so a server never returns *"Too many simultaneous connections"*; busy sync jobs re-queue — `CONNECTOR_IMAP_SERIALIZE_CONNECTIONS`, default-on, needs an atomic lock store), a connector **test-fetch / enable** admin surface (preview one email without ingest; re-activate a disabled account), an SQS-safe widening of `connector_sync_runs.queue`, and a **timezone-aware RAG prompt** (`KB_PROMPT_TIMEZONE`, default `Europe/Rome`) so the chatbot can reason about time-relative questions while the app keeps running on UTC. PRs #381–#387. |
 | **Future** | ⏳ planned for v8.x or v9.0 | Auto-Wiki follow-ups: navigator→chat wiring + benchmark-gated default-ON, source-retention wiring (save the converted markdown artifact). Agentic Knowledge Reports follow-ups: SSE progressive-paint generate + the Glide canvas grid (deferred for per-cell testability/a11y). SSO / SCIM enterprise auth + content export/portability — surfaced by the v8.8 Affine gap audit; #1 Semantic Time Travel + #8 v2 (answer drift replay) — parked from v8.0 |
 
 For the strategic reasoning behind v4.5+ see
@@ -1966,6 +1983,59 @@ including commercial use.
 ---
 
 ## Changelog
+
+**v8.26.0 — Invite-only SPA registration + native Invitations admin + IMAP connection serialization (GA, shipped 2026-06-29).**
+The authentication UI is now **entirely React**. `/login`, `/register`,
+`/forgot-password` and `/reset-password` each render the SPA shell (`view('app')`
+via `SpaController`) on a HARD page load — not only on in-app navigation — so a
+cache-cleared reload of `/login` no longer drops to a second, un-branded Blade
+login page. The legacy Blade auth views (`login` / `forgot-password` /
+`reset-password`) and the web `PasswordResetController` are **removed**;
+`/reset-password` now carries `?token=&email=` as query params (matching the SPA
+reset route's search schema, so the framework's `ResetPassword` notification emits
+exactly that query-string URL). A new **invite-only sign-up** screen (`RegisterPage`
+— name, email, password + confirmation, invite code, with client-side validation
+and field-level 422 surfacing) posts to the new **`POST /api/auth/register`**
+endpoint. That endpoint is a thin HTTP adapter over the shared invite core (R44):
+it **pre-validates** the invite code (`CodeValidator`) before creating the account
+so a bad code never mints an orphan user, then **authoritatively redeems** it
+(`RedemptionService` — the atomic conditional `UPDATE … WHERE current_uses <
+max_uses` + the tagged Spatie-role / project-membership provisioners), run
+**outside** a DB transaction by design (the package's compensation path issues
+follow-up queries after a UNIQUE violation, which a wrapping transaction would
+poison on PostgreSQL). On an exhausted-between-checks race the brand-new account is
+**force-deleted** so the invite-only invariant always holds; the account is then
+floored at `viewer` (layered on any grant role — GRANT-never-revoke) and the SPA
+session is opened. Every invite-code failure is a **422 field error on
+`invite_code`** (R14 — never 200-with-empty; localized via
+`lang/{en,it}/register.php`, R24), and the route is **throttled `6/min` per IP**
+(`throttle:register`) so it can't be used to brute-force codes. Sign-up is
+**always** invite-only here — `invite_code` is required regardless of the
+`INVITE_REQUIRED` gate.
+
+The **Invitations admin** is now a **native, in-app tabbed page** at
+`/app/{team}/admin/invitations` (Overview · Campaigns · Codes · Invite ·
+Referrals · Rewards · Waitlist · Anti-abuse) over the same
+`/api/admin/invitations/*` core, inside the unified admin chrome — **superseding
+the v8.22 cross-mount panel**. That standalone `padosoft/laravel-invitations-admin`
+panel remains an optional **"Advanced"** launcher shown **only** when
+`INVITATIONS_ADMIN_ENABLED=true`, so it never links to the unregistered
+`/admin/invitations` 404; the host learns the flag from the additive
+**`features.invitations_admin`** field on `/api/auth/me` (R27/R43).
+
+Also in this release: **per-mailbox IMAP connection serialization** — at most one
+live IMAP connection per account (host+port+username), **cross-tenant** and across
+every surface, so a server never returns *"Too many simultaneous connections"*; a
+new connection waits for the mailbox to free and concurrent same-mailbox sync jobs
+**re-queue** instead of blocking a worker (`CONNECTOR_IMAP_SERIALIZE_CONNECTIONS`,
+default-on, needs an atomic lock store / Redis; `CONNECTOR_IMAP_MAILBOX_LOCK_*`
+tunables). A connector **test-fetch / enable** admin surface
+(`POST /api/admin/connectors/{id}/test-fetch` previews one email with no ingest;
+`…/enable` re-activates a disabled / errored account) with a `TestFetchResultModal`
+in **Admin → Connectors**. An SQS-safe widening of `connector_sync_runs.queue`.
+And a **timezone-aware RAG prompt** (`KB_PROMPT_TIMEZONE`, default `Europe/Rome`):
+the chatbot is told what "now" is in the system prompt so it can reason about
+time-relative questions while the app itself keeps running on UTC. PRs #381–#387.
 
 **v8.25.0 — Schema-driven connector sync settings + first-class folder discovery (GA, shipped 2026-06-25).**
 Operators edit a connector account's **full** sync surface — folders to **include

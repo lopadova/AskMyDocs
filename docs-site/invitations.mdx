@@ -205,6 +205,42 @@ Two deliberate honesties:
   and the link is hidden, so it never dead-ends on the `/admin/invitations` 404
   (R14/R43).
 
+## Invite-only sign-up (SPA registration)
+
+Since v8.26 the public auth UI is **entirely React**: `/login`, `/register`,
+`/forgot-password` and `/reset-password` all render the SPA shell (`view('app')`
+via `SpaController`) even on a hard page load, so a cache-cleared reload no longer
+falls back to the old Blade auth page (those views, and the web
+`PasswordResetController`, were removed).
+
+The `/register` screen posts to **`POST /api/auth/register`** — a guest route in
+the `web` middleware group, throttled `6/min` per IP (`throttle:register`, defined
+in `AppServiceProvider`) so it can't be used to brute-force invite codes. The
+controller is a thin HTTP adapter over the same invite core (R44) and follows a
+deliberate order so the invite-only invariant can never leak:
+
+1. **Pre-validate** the code with `CodeValidator` *before* touching `users` — an
+   invalid / expired / exhausted code never mints an orphan account.
+2. **Create** the account (no role yet).
+3. **Redeem authoritatively** with `RedemptionService` (the atomic conditional
+   `UPDATE … WHERE current_uses < max_uses` + the tagged Spatie-role / project
+   provisioners). Redeem runs **outside** any DB transaction by design: on
+   PostgreSQL a UNIQUE-violation aborts the connection for the rest of a
+   transaction, which would poison the package's compensation follow-ups. On an
+   exhausted-between-checks race the brand-new account is **force-deleted**.
+4. **Floor** the account at `viewer` (layered on any grant role redeem already
+   provisioned — GRANT-never-revoke), open the SPA session, fire `Registered`.
+
+Every invite-code failure is mapped to a **422 field error on `invite_code`**
+(R14 — never a 200 with an empty body) with a localized message
+(`lang/{en,it}/register.php`; the machine-readable `RedemptionError` stays
+English, R24). `invite_code` is **always required** at this endpoint regardless of
+the `INVITE_REQUIRED` gate — the host SPA sign-up endpoint is invite-only by
+product decision. The `INVITE_REQUIRED` / `invitations.invitation_required` flag is
+the **package-level** gate (read by `padosoft/laravel-invitations`, not by the host
+register endpoint), so flipping it does **not** open a non-invite registration path
+on AskMyDocs.
+
 ## Gotchas
 
 - **`manageInvitations` is super-admin + admin.** Issuing access-granting codes
