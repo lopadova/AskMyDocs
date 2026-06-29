@@ -1,10 +1,15 @@
 # AskMyDocs Desktop (demo)
 
-A small **Tauri v2 + React** desktop client for AskMyDocs. It demonstrates the
-three things a non-browser client needs against the Laravel backend:
+A small **Tauri v2 + React** desktop client for AskMyDocs. It demonstrates what
+a non-browser client needs against the Laravel backend:
 
 - **Login** — `POST /api/auth/token` issues a Sanctum **Bearer token** (no
   cookie/CSRF dance). The token is stored locally and survives restarts.
+- **Sign up** — `POST /api/auth/register-token` creates an **invite-only**
+  account (a valid invite code is required), redeems the code server-side, and
+  returns a Bearer token in the same shape as login. It's the stateless
+  counterpart of the web `POST /api/auth/register`; both flows mint the desktop
+  token through `App\Support\DesktopToken` so the scope/TTL never drift.
 - **Chat** — `POST /api/kb/chat` (stateless, grounded answers with citations
   and a confidence badge). Answers render as **markdown**, and each citation
   opens its source document in the viewer. Conversation threads are kept
@@ -147,6 +152,7 @@ desktop/
 │   ├── components/Markdown.tsx       # react-markdown + remark-gfm (links → opener)
 │   ├── components/DocumentModal.tsx  # fullpage MD viewer (GET …/preview)
 │   ├── screens/LoginScreen.tsx
+│   ├── screens/RegisterScreen.tsx    # invite-only Bearer sign-up
 │   ├── screens/ChatScreen.tsx
 │   └── screens/SearchScreen.tsx
 └── src-tauri/               # Rust shell (registers http + store plugins)
