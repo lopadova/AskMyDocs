@@ -46,8 +46,13 @@ final class CreateCompanyCommandTest extends TestCase
             $cmd->expectsOutputToContain("'tenants' table absent");
         }
 
+        // run() forces the queued command to execute NOW (and verify the exit
+        // code + output expectations). Without it, the PendingCommand in $cmd
+        // would only run at end-of-method destruction — AFTER the database
+        // assertions below — and they'd see an empty table (R16).
         $cmd->expectsOutputToContain("Company 'Acme Corp' created.")
-            ->assertExitCode(0);
+            ->assertExitCode(0)
+            ->run();
 
         // Tenant registry row, slug derived from the company name.
         if ($hasTenantsTable) {
