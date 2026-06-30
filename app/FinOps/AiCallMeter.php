@@ -142,14 +142,21 @@ class AiCallMeter
 
     /**
      * Providers fully migrated to the laravel/ai SDK — the finops metering hook
-     * already records them via the AgentPrompted / EmbeddingsGenerated lifecycle
-     * events, so re-recording here would DOUBLE-COUNT. As each provider moves off
-     * raw `Http::` (v8.16/W2) it joins this set. openai / openrouter are NOT here:
-     * their no-tools path is SDK-metered but their MCP with-tools turn stays on
-     * raw `Http::` and IS metered here — AiManager only invokes the bridge for
-     * that residual path (see docs/v4-platform/W2-sdk-migration-findings.md).
+     * already records EVERY call they make via the AgentPrompted /
+     * EmbeddingsGenerated lifecycle events, so re-recording here would
+     * DOUBLE-COUNT. regolo is fully SDK (no tool path), so it stays here
+     * unconditionally.
+     *
+     * openai / openrouter / anthropic / gemini are NOT here: they are HYBRID —
+     * their no-tools chat + embeddings are SDK-metered, but their MCP with-tools
+     * turn stays on raw `Http::` and IS metered here. AiManager only invokes the
+     * bridge for that residual raw-Http path (see
+     * {@see \App\Ai\AiManager::bridgeShouldMeterChat()} + the SDK_HYBRID_TOOL_PROVIDERS
+     * gate), so listing them here would silently UNDER-meter the with-tools turn
+     * (the SDK hook can't see a raw-Http call). The AiManager gate is the
+     * double-count authority for all four — not this exclusion list.
      */
-    private const SDK_METERED_PROVIDERS = ['regolo', 'anthropic', 'gemini'];
+    private const SDK_METERED_PROVIDERS = ['regolo'];
 
     /**
      * Whether a call from this provider should be metered HERE.

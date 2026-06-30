@@ -40,6 +40,7 @@ import { EvalHarnessView } from '../features/admin/eval-harness/EvalHarnessView'
 import { EvidenceRiskReviewView } from '../features/admin/evidence-risk-review/EvidenceRiskReviewView';
 import { ConnectorsView } from '../features/admin/connectors/ConnectorsView';
 import { ConnectorCallback } from '../features/admin/connectors/ConnectorCallback';
+import { ApiConnectorsView } from '../features/admin/api-connectors/ApiConnectorsView';
 import { IngestionView } from '../features/admin/ingestion/IngestionView';
 import { AppSettingsView } from '../features/admin/app-settings/AppSettingsView';
 import { AiActComplianceView } from '../features/admin/ai-act-compliance/AiActComplianceView';
@@ -901,6 +902,25 @@ const adminConnectorsRoute = createRoute({
     component: AdminConnectorsRoute,
 });
 
+// v8.27 — API Connector (Connettore API) admin route. Same flat-RBAC pattern as
+// the OAuth/credential connectors above: the BE Gate `manageConnectors` (admin +
+// super-admin) is the authoritative defence; the FE <RequireRole> guard short-
+// circuits to <AdminForbidden /> for unprivileged roles so a viewer hitting
+// /app/admin/api-connectors directly never triggers a 403 fetch storm.
+function AdminApiConnectorsRoute() {
+    return (
+        <RequireRole roles={['admin', 'super-admin']}>
+            <ApiConnectorsView />
+        </RequireRole>
+    );
+}
+
+const adminApiConnectorsRoute = createRoute({
+    getParentRoute: () => teamRoute,
+    path: 'admin/api-connectors',
+    component: AdminApiConnectorsRoute,
+});
+
 // v8.21 (Ciclo 2) — Ingestion & Sync observability. Same admin+super-admin gate
 // as connectors (the BE `manageConnectors` Gate is authoritative).
 function AdminIngestionRoute() {
@@ -1254,6 +1274,7 @@ const teamChildren = [
     adminAiActComplianceSplatRoute,
     adminConnectorsRoute,
     adminConnectorCallbackRoute,
+    adminApiConnectorsRoute,
     adminIngestionRoute,
     adminInvitationsRoute,
     adminAppSettingsRoute,

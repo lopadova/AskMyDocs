@@ -9,20 +9,32 @@ use App\Ai\AiResponse;
 use App\Mcp\Client\Registry\McpServerRegistry;
 use App\Models\McpServer;
 use App\Models\User;
+use App\Support\TenantContext;
+use Padosoft\AskMyDocsConnectorApi\Models\ApiRoute;
+use Padosoft\AskMyDocsConnectorApi\Services\ApiToolExecutor;
+use Padosoft\AskMyDocsConnectorApi\Services\ApiToolRegistry;
 
 final class McpToolCallingService
 {
     /**
      * Provider names that can execute OpenAI-style function/tool calling with
-     * the payload schema this service generates.
+     * the payload schema this service generates. openai + openrouter speak the
+     * shape natively over raw Http:: /chat/completions; anthropic + gemini have a
+     * raw-Http with-tools path that translates this OpenAI-shaped tools + history
+     * into their native Messages / generateContent APIs and back to the normalized
+     * tool-call shape (see {@see \App\Ai\Providers\AnthropicProvider} +
+     * {@see \App\Ai\Providers\GeminiProvider}).
      */
-    private const array TOOL_CAPABLE_PROVIDERS = ['openai', 'openrouter'];
+    private const array TOOL_CAPABLE_PROVIDERS = ['openai', 'openrouter', 'anthropic', 'gemini'];
 
     public function __construct(
         private readonly AiManager $ai,
         private readonly McpServerRegistry $registry,
         private readonly ToolInvoker $invoker,
         private readonly McpToolAuthorizer $authorizer,
+        private readonly ApiToolRegistry $apiToolRegistry,
+        private readonly ApiToolExecutor $apiToolExecutor,
+        private readonly TenantContext $tenantContext,
     ) {}
 
     public function canHandleToolCalling(?User $user): bool
@@ -52,7 +64,11 @@ final class McpToolCallingService
             return $this->ai->chatWithHistory($systemPrompt, $messages, $options);
         }
 
-        $toolIndex = $this->buildToolIndex($user);
+        $projectKey = isset($context['project_key']) && is_string($context['project_key'])
+            ? $context['project_key']
+            : null;
+
+        $toolIndex = $this->buildToolIndex($user, $projectKey);
         if ($toolIndex === []) {
             return $this->ai->chatWithHistory($systemPrompt, $messages, $options);
         }
@@ -96,21 +112,25 @@ final class McpToolCallingService
                     continue;
                 }
 
-                $toolCallsSummary[$toolCallSummaryIndex] = $this->appendInvokedToolCallMetadata(
-                    toolCall: $toolCall,
-                    server: $toolDefinition['server'],
-                );
-                $toolCall = $toolCallsSummary[$toolCallSummaryIndex];
+                $isApiTool = isset($toolDefinition['api_route_id']);
+                if (! $isApiTool) {
+                    $toolCallsSummary[$toolCallSummaryIndex] = $this->appendInvokedToolCallMetadata(
+                        toolCall: $toolCall,
+                        server: $toolDefinition['server'],
+                    );
+                    $toolCall = $toolCallsSummary[$toolCallSummaryIndex];
+                }
 
                 try {
-                    $server = $toolDefinition['server'];
-                    $toolResult = $this->invoker->invoke(
-                        user: $user,
-                        server: $server,
-                        toolName: $toolName,
-                        toolInput: $toolCall['arguments'],
-                        context: $context,
-                    );
+                    $toolResult = $isApiTool
+                        ? $this->invokeApiTool((int) $toolDefinition['api_route_id'], $toolCall['arguments'], $context)
+                        : $this->invoker->invoke(
+                            user: $user,
+                            server: $toolDefinition['server'],
+                            toolName: $toolName,
+                            toolInput: $toolCall['arguments'],
+                            context: $context,
+                        );
                     $chatHistory[] = $this->toolResultMessage($toolCall, $toolResult);
                     $toolCallsSummary[$toolCallSummaryIndex] = $this->attachToolResultMetadata(
                         $toolCall,
@@ -151,7 +171,12 @@ final class McpToolCallingService
             return false;
         }
 
-        if (! config('mcp.enabled', false)) {
+        // Tool calling is available when EITHER external MCP servers are enabled
+        // OR the API-connector live tools are enabled — the latter is an
+        // independent tool source and must not be gated behind MCP.
+        $mcpEnabled = (bool) config('mcp.enabled', false);
+        $apiToolsEnabled = (bool) config('connector-api.chat_tools.enabled', true);
+        if (! $mcpEnabled && ! $apiToolsEnabled) {
             return false;
         }
 
@@ -164,9 +189,9 @@ final class McpToolCallingService
     }
 
     /**
-     * @return array<string, array{server: McpServer, schema: array<int, array<string, mixed>>|array<string, mixed>}>
+     * @return array<string, array{server?: McpServer, api_route_id?: int, schema: array<int, array<string, mixed>>|array<string, mixed>}>
      */
-    private function buildToolIndex(User $user): array
+    private function buildToolIndex(User $user, ?string $projectKey = null): array
     {
         $toolIndex = [];
         $servers = $this->registry->activeServersForTenant();
@@ -215,7 +240,63 @@ final class McpToolCallingService
             }
         }
 
+        $this->mergeApiTools($toolIndex, $projectKey);
+
         return $toolIndex;
+    }
+
+    /**
+     * Merge the API-connector live tools (spec "Connettore API") into the index
+     * alongside the external MCP-server tools. Each API entry carries an
+     * `api_route_id` instead of a `server`; the dispatch loop routes it to the
+     * {@see ApiToolExecutor}. Config-gated (R43) and tenant-scoped (R30); an
+     * MCP tool already in the index wins a name collision (first-registered).
+     *
+     * @param  array<string, array<string, mixed>>  $toolIndex
+     */
+    private function mergeApiTools(array &$toolIndex, ?string $projectKey): void
+    {
+        if (! (bool) config('connector-api.chat_tools.enabled', true)) {
+            return;
+        }
+
+        $tenantId = $this->tenantContext->current();
+
+        foreach ($this->apiToolRegistry->activeToolsForTenant($tenantId, $projectKey) as $apiTool) {
+            $name = (string) ($apiTool['name'] ?? '');
+            if ($name === '' || array_key_exists($name, $toolIndex)) {
+                continue;
+            }
+
+            $toolIndex[$name] = [
+                'api_route_id' => (int) $apiTool['route_id'],
+                'schema' => $this->normalizeToolForProvider($apiTool['definition'], $name),
+            ];
+        }
+    }
+
+    /**
+     * Execute an API-connector tool call server-side via the package executor.
+     * The route is reloaded tenant-scoped (R30) — it may have been disabled
+     * between index build and invocation. Returns the sanitised tool_result
+     * (or a structured error the LLM can explain, never a throw — R14).
+     *
+     * @param  array<string, mixed>  $arguments
+     * @param  array<string, mixed>  $context
+     * @return array<string, mixed>
+     */
+    private function invokeApiTool(int $routeId, array $arguments, array $context): array
+    {
+        $route = ApiRoute::query()
+            ->forTenant($this->tenantContext->current())
+            ->with('parameters')
+            ->find($routeId);
+
+        if ($route === null) {
+            return ['error' => 'This API tool is no longer available.'];
+        }
+
+        return $this->apiToolExecutor->execute($route, $arguments, $context);
     }
 
     /**

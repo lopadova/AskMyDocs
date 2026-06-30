@@ -137,11 +137,12 @@ final class AiCallMeterTest extends TestCase
     /**
      * Providers fully migrated to the laravel/ai SDK are metered by the finops
      * lifecycle hook (AgentPrompted / EmbeddingsGenerated), so the host bridge
-     * MUST skip them to avoid double-counting. As of v8.16/W2 the bridge-skipped
-     * (fully-SDK) set is regolo + anthropic + gemini. openai + openrouter are
-     * HYBRID — their no-tools chat + embeddings are SDK-metered, but their MCP
-     * with-tools turn stays on raw Http:: and IS bridge-metered, so they are NOT
-     * listed here (the bridge meters them when AiManager invokes it on that turn).
+     * MUST skip them to avoid double-counting. regolo is the only FULLY-SDK
+     * provider (no tool path), so it is the only one the bridge skips
+     * unconditionally. openai + openrouter + anthropic + gemini are all HYBRID —
+     * their no-tools chat + embeddings are SDK-metered, but their MCP with-tools
+     * turn stays on raw Http:: and IS bridge-metered, so they are NOT skipped here
+     * (the bridge meters them when AiManager invokes it on that turn).
      */
     #[DataProvider('sdkMeteredProviders')]
     public function test_skips_providers_the_sdk_already_meters(string $provider, string $model): void
@@ -171,6 +172,52 @@ final class AiCallMeterTest extends TestCase
     {
         return [
             'regolo' => ['regolo', 'Llama-3.3-70B-Instruct'],
+        ];
+    }
+
+    /**
+     * The HYBRID providers' MCP with-tools turn runs over raw Http:: (the SDK
+     * cannot host AskMyDocs's external tool loop), so the bridge MUST record it
+     * when invoked — the SDK lifecycle hook can't see a raw-Http call. anthropic
+     * + gemini joined this set in the provider-extension step (a translated
+     * raw-Http Messages / generateContent with-tools path); openrouter has been
+     * HYBRID since v8.16/W2. AiManager is the double-count authority: it only
+     * invokes the bridge on a raw-Http turn (tools present / tool history).
+     */
+    #[DataProvider('bridgeMeteredHybridProviders')]
+    public function test_bridge_meters_hybrid_providers_with_tools_turn(string $provider, string $model): void
+    {
+        app(TenantContext::class)->set('acme');
+
+        app(AiCallMeter::class)->meterChat(new AiResponse(
+            content: 'tool-turn answer',
+            provider: $provider,
+            model: $model,
+            promptTokens: 30,
+            completionTokens: 12,
+            totalTokens: 42,
+        ));
+
+        $row = DB::table('ai_finops_usage_ledger')
+            ->where('tenant_id', app(TenantContext::class)->current())
+            ->latest('id')
+            ->first();
+
+        $this->assertNotNull($row, "[{$provider}] with-tools turn runs over raw Http:: and MUST be bridge-metered.");
+        $this->assertSame($provider, $row->provider);
+        $this->assertSame($model, $row->model);
+        $this->assertSame(30, (int) $row->tokens_input);
+        $this->assertSame(12, (int) $row->tokens_output);
+    }
+
+    /**
+     * @return array<string, array{0: string, 1: string}>
+     */
+    public static function bridgeMeteredHybridProviders(): array
+    {
+        return [
+            'openai' => ['openai', 'gpt-4o'],
+            'openrouter' => ['openrouter', 'openai/gpt-4o-mini'],
             'anthropic' => ['anthropic', 'claude-sonnet-4-20250514'],
             'gemini' => ['gemini', 'gemini-2.0-flash'],
         ];

@@ -145,6 +145,7 @@ class MessageController extends Controller
             context: [
                 'conversation_id' => $conversation->id,
                 'message_id' => $userMessage->id,
+                'project_key' => $projectKey,
             ],
         ));
         $toolCalls = $this->summarizeToolCallsForMetadata($aiResponse->toolCalls);

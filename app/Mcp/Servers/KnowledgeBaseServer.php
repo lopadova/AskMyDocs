@@ -4,6 +4,7 @@ namespace App\Mcp\Servers;
 
 use App\Mcp\Methods\ListCollectionResources;
 use App\Mcp\Methods\ReadCollectionResource;
+use App\Mcp\Tools\ApiConnectorsTool;
 use App\Mcp\Tools\FinOpsBudgetStatusTool;
 use App\Mcp\Tools\ConnectorInstallationsTool;
 use App\Mcp\Tools\ConnectorSettingsTool;
@@ -135,6 +136,14 @@ class KnowledgeBaseServer extends Server
         // folder list), tenant-scoped (R30), over the same core as the HTTP
         // resource + `connectors:configure` command.
         ConnectorSettingsTool::class,
+
+        // v8.27 — API connectors (Connettore API) read surface (R44 third
+        // surface): list this tenant's API connectors + routes (slug, method,
+        // status, mode, last test), tenant-scoped (R30), over the same core
+        // (ConnectorAdminService::listConnectors) as the HTTP index +
+        // `api-connector:list` command. The active+tool routes are the live
+        // chat tools.
+        ApiConnectorsTool::class,
 
         // v8.21 (Ciclo 2) — ingestion/sync observability read surface (R44):
         // queue depths + recent connector sync runs, tenant-scoped (R30).

@@ -118,6 +118,20 @@ abstract class TestCase extends OrchestraTestCase
         // ImapClientFactoryInterface → ImapClientFactory and merges the xoauth2
         // provider config, so the registry can instantiate ImapConnector.
         $app->register(\Padosoft\AskMyDocsConnectorImap\ImapServiceProvider::class);
+        // v8.27 — API connector (Connettore API). Turns configured HTTP
+        // endpoints into live LLM tools; the SP binds UrlGuard + the
+        // ToolDescriptionAssistant default + (host-overridable) admin routes,
+        // and its services are injected into McpToolCallingService so the chat
+        // tool loop can resolve in tests. Registered after the base SP.
+        $app->register(\Padosoft\AskMyDocsConnectorApi\ApiConnectorServiceProvider::class);
+        // R32 — Testbench does NOT load the host config/, so set the SECURE admin
+        // route middleware here (mirrors config/connector-api.php) so the
+        // authorization matrix verifies the locked-down config, not the
+        // package default (`['api']`, unauthenticated). manageConnectors =
+        // admin + super-admin; API connectors live in the Connettori section.
+        $app['config']->set('connector-api.routes.middleware', [
+            'api', 'auth:sanctum', 'tenant.authorize', 'can:manageConnectors',
+        ]);
         // v8.13/P11 — Evidence Risk Review core package. Registered so its HTTP
         // API mounts (api.enabled=true via the host config loaded in
         // getEnvironmentSetUp) and the AdminAuthorizationMatrix can verify the

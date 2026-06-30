@@ -9,6 +9,7 @@
         "laravel/framework": "^13.0",
         "laravel/sanctum": "^4.2",
         "league/flysystem-aws-s3-v3": "^3.34",
+        "padosoft/askmydocs-connector-api": "@dev",
         "padosoft/askmydocs-connector-base": "^1.4",
         "padosoft/askmydocs-connector-confluence": "^1.0",
         "padosoft/askmydocs-connector-evernote": "^1.0",
@@ -91,6 +92,12 @@
     "minimum-stability": "stable",
     "prefer-stable": true,
     "repositories": [
+        {
+            "type": "path",
+            "url": "/Users/marco/packages/askmydocs-connector-api",
+            "options": { "symlink": true },
+            "comment": "Local dev of the API connector before Packagist/VCS publish (test via symlink). Swap to a vcs+tag entry like the other connectors for release."
+        },
         {
             "type": "vcs",
             "url": "https://github.com/padosoft/laravel-pii-redactor",
