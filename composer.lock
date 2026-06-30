@@ -2912,6 +2912,84 @@
             "time": "2026-02-16T23:10:27+00:00"
         },
         {
+            "name": "padosoft/askmydocs-connector-api",
+            "version": "dev-main",
+            "dist": {
+                "type": "path",
+                "url": "/Users/marco/packages/askmydocs-connector-api",
+                "reference": "2135876de2c2e13b309882e8286f27905c0a88a4"
+            },
+            "require": {
+                "illuminate/contracts": "^12.0|^13.0",
+                "illuminate/database": "^12.0|^13.0",
+                "illuminate/http": "^12.0|^13.0",
+                "illuminate/support": "^12.0|^13.0",
+                "nesbot/carbon": "^2.0|^3.0",
+                "padosoft/askmydocs-connector-base": "^1.4",
+                "php": "^8.3"
+            },
+            "require-dev": {
+                "laravel/pint": "^1.18",
+                "mockery/mockery": "^1.6",
+                "orchestra/testbench": "^10.0|^11.0",
+                "phpstan/phpstan": "^2.0",
+                "phpunit/phpunit": "^11.0|^12.0"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "providers": [
+                        "Padosoft\\AskMyDocsConnectorApi\\ApiConnectorServiceProvider"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Padosoft\\AskMyDocsConnectorApi\\": "src/"
+                }
+            },
+            "autoload-dev": {
+                "psr-4": {
+                    "Padosoft\\AskMyDocsConnectorApi\\Tests\\": "tests/"
+                }
+            },
+            "scripts": {
+                "test": [
+                    "vendor/bin/phpunit"
+                ],
+                "format": [
+                    "vendor/bin/pint"
+                ],
+                "analyse": [
+                    "vendor/bin/phpstan analyse --memory-limit=512M"
+                ]
+            },
+            "license": [
+                "Apache-2.0"
+            ],
+            "authors": [
+                {
+                    "name": "Lorenzo Padovani",
+                    "email": "lorenzo.padovani@padosoft.com"
+                }
+            ],
+            "description": "API connector for AskMyDocs — turn any configured HTTP endpoint into a live LLM tool callable during chat (RAG + fresh data). Fase 1: live tools; Fase 2 (ingest) designed in.",
+            "keywords": [
+                "askmydocs",
+                "connectors",
+                "function-calling",
+                "laravel",
+                "llm",
+                "padosoft",
+                "rag",
+                "tool-calling"
+            ],
+            "transport-options": {
+                "symlink": true,
+                "relative": false
+            }
+        },
+        {
             "name": "padosoft/askmydocs-connector-base",
             "version": "v1.4.0",
             "source": {
@@ -11941,7 +12019,9 @@
     ],
     "aliases": [],
     "minimum-stability": "stable",
-    "stability-flags": {},
+    "stability-flags": {
+        "padosoft/askmydocs-connector-api": 20
+    },
     "prefer-stable": true,
     "prefer-lowest": false,
     "platform": {

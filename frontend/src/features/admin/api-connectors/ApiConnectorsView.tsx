@@ -1,0 +1,846 @@
+import { useEffect, useRef, useState } from 'react';
+import { AdminShell } from '../shell/AdminShell';
+import { ToastHost, useToast } from '../shared/Toast';
+import { toAdminError } from '../shared/errors';
+import type {
+    ApiAuthProfile,
+    ApiConnector,
+    ApiRoute,
+    ApiRouteSummary,
+    AuthProfilePayload,
+    ConnectorPayload,
+    RoutePayload,
+    TestRouteResponse,
+    ToolDefinition,
+} from './api-connectors.api';
+import { apiConnectorsApi } from './api-connectors.api';
+import {
+    useActivateRoute,
+    useApiConnectors,
+    useCreateAuthProfile,
+    useCreateConnector,
+    useCreateRoute,
+    useDeleteConnector,
+    useDeleteRoute,
+    useDisableRoute,
+    useProjectOptions,
+    useRegenerateDescription,
+    useTestRoute,
+    useTryRoute,
+    useUpdateAuthProfile,
+    useUpdateConnector,
+    useUpdateRoute,
+} from './api-connectors-hooks';
+import { routeStatusBadge } from './route-status';
+import { ConnectorForm } from './ConnectorForm';
+import { AuthProfileForm } from './AuthProfileForm';
+import { RouteForm } from './RouteForm';
+import { TestConnectionPanel } from './TestConnectionPanel';
+import { TryToolModal } from './TryToolModal';
+import { buttonStyle } from './styles';
+
+/*
+ * v8.27 — API Connector (Connettore API) admin landing.
+ *
+ * One card per connector; each card lists its routes (name, slug, method,
+ * status badge, mode) with per-route actions (Test → Activate / Disable, Try,
+ * Edit, Remove). "+ New API connector" creates a connector; each card can add
+ * auth profiles + routes.
+ *
+ * R14 — every mutation surfaces success/failure via a toast; loading/empty/error
+ * states are explicit. R11/R29 testids `api-connector*` / `api-route*`.
+ */
+
+type Modal =
+    | { kind: 'connector-create' }
+    | { kind: 'connector-edit'; connector: ApiConnector }
+    | { kind: 'auth-create'; connector: ApiConnector }
+    | { kind: 'auth-edit'; connector: ApiConnector; profile: ApiAuthProfile }
+    | { kind: 'route-create'; connector: ApiConnector }
+    | { kind: 'route-edit'; connector: ApiConnector; route: ApiRoute }
+    | { kind: 'route-test'; route: ApiRoute }
+    | { kind: 'route-try'; route: ApiRoute }
+    | null;
+
+export function ApiConnectorsView() {
+    const toast = useToast();
+    const connectorsQuery = useApiConnectors();
+    const projectsQuery = useProjectOptions();
+
+    const createConnector = useCreateConnector();
+    const updateConnector = useUpdateConnector();
+    const deleteConnector = useDeleteConnector();
+    const createAuthProfile = useCreateAuthProfile();
+    const updateAuthProfile = useUpdateAuthProfile();
+    const createRoute = useCreateRoute();
+    const updateRoute = useUpdateRoute();
+    const deleteRoute = useDeleteRoute();
+    const testRoute = useTestRoute();
+    const regenerateDescription = useRegenerateDescription();
+    const activateRoute = useActivateRoute();
+    const disableRoute = useDisableRoute();
+    const tryRoute = useTryRoute();
+
+    const [modal, setModal] = useState<Modal>(null);
+    const [modalError, setModalError] = useState<string | null>(null);
+    const [modalFieldErrors, setModalFieldErrors] = useState<Record<string, string>>({});
+    const modalRef = useRef<Modal>(null);
+    useEffect(() => {
+        modalRef.current = modal;
+    }, [modal]);
+
+    // The test panel owns its result + the running flag is the testRoute mutation.
+    const [testResult, setTestResult] = useState<TestRouteResponse | null>(null);
+    const [tryResult, setTryResult] = useState<unknown>(null);
+    const [tryHasResult, setTryHasResult] = useState(false);
+
+    const state: 'loading' | 'ready' | 'error' | 'empty' = connectorsQuery.isLoading
+        ? 'loading'
+        : connectorsQuery.isError
+          ? 'error'
+          : (connectorsQuery.data?.length ?? 0) === 0
+            ? 'empty'
+            : 'ready';
+
+    const connectors = connectorsQuery.data ?? [];
+    const projects = projectsQuery.data ?? [];
+
+    function openModalReset(next: Modal) {
+        setModalError(null);
+        setModalFieldErrors({});
+        setModal(next);
+    }
+
+    function closeModal() {
+        setModal(null);
+        setTestResult(null);
+        setTryResult(null);
+        setTryHasResult(false);
+    }
+
+    function applyError(e: unknown, guard: () => boolean) {
+        if (!guard()) return;
+        const { message, fieldErrors } = toAdminError(e);
+        setModalError(message);
+        setModalFieldErrors(fieldErrors);
+    }
+
+    // --- connector CRUD ---
+
+    async function handleConnectorSubmit(payload: ConnectorPayload) {
+        const current = modal;
+        if (current?.kind !== 'connector-create' && current?.kind !== 'connector-edit') return;
+        setModalError(null);
+        setModalFieldErrors({});
+        try {
+            if (current.kind === 'connector-edit') {
+                await updateConnector.mutateAsync({ id: current.connector.id, payload });
+                toast.success('Connector updated.', 'toast-api-connector-updated');
+            } else {
+                await createConnector.mutateAsync(payload);
+                toast.success('Connector created.', 'toast-api-connector-created');
+            }
+            closeModal();
+        } catch (e) {
+            applyError(e, () => {
+                const open = modalRef.current;
+                return open?.kind === 'connector-create' || open?.kind === 'connector-edit';
+            });
+        }
+    }
+
+    async function handleDeleteConnector(connector: ApiConnector) {
+        try {
+            await deleteConnector.mutateAsync(connector.id);
+            toast.success('Connector removed.', 'toast-api-connector-deleted');
+        } catch (e) {
+            toast.error(toAdminError(e).message, 'toast-api-connector-error');
+        }
+    }
+
+    // --- auth profile CRUD ---
+
+    async function handleAuthSubmit(payload: AuthProfilePayload) {
+        const current = modal;
+        if (current?.kind !== 'auth-create' && current?.kind !== 'auth-edit') return;
+        setModalError(null);
+        setModalFieldErrors({});
+        try {
+            if (current.kind === 'auth-edit') {
+                await updateAuthProfile.mutateAsync({ profileId: current.profile.id, payload });
+                toast.success('Auth profile updated.', 'toast-api-auth-updated');
+            } else {
+                await createAuthProfile.mutateAsync({ connectorId: current.connector.id, payload });
+                toast.success('Auth profile created.', 'toast-api-auth-created');
+            }
+            closeModal();
+        } catch (e) {
+            applyError(e, () => {
+                const open = modalRef.current;
+                return open?.kind === 'auth-create' || open?.kind === 'auth-edit';
+            });
+        }
+    }
+
+    // --- route CRUD ---
+
+    async function handleRouteSubmit(payload: RoutePayload) {
+        const current = modal;
+        if (current?.kind !== 'route-create' && current?.kind !== 'route-edit') return;
+        setModalError(null);
+        setModalFieldErrors({});
+        try {
+            if (current.kind === 'route-edit') {
+                await updateRoute.mutateAsync({ routeId: current.route.id, payload });
+                toast.success('Route updated.', 'toast-api-route-updated');
+            } else {
+                await createRoute.mutateAsync({ connectorId: current.connector.id, payload });
+                toast.success('Route created.', 'toast-api-route-created');
+            }
+            closeModal();
+        } catch (e) {
+            applyError(e, () => {
+                const open = modalRef.current;
+                return open?.kind === 'route-create' || open?.kind === 'route-edit';
+            });
+        }
+    }
+
+    async function handleDeleteRoute(routeSummary: ApiRouteSummary) {
+        try {
+            await deleteRoute.mutateAsync(routeSummary.id);
+            toast.success('Route removed.', 'toast-api-route-deleted');
+        } catch (e) {
+            toast.error(toAdminError(e).message, 'toast-api-route-error');
+        }
+    }
+
+    // Open the route editor / test / try — needs the FULL route (parameters,
+    // schemas), which the list summary does not carry. Fetch it on demand.
+    const [loadingRouteId, setLoadingRouteId] = useState<number | null>(null);
+
+    async function openRouteModal(
+        kind: 'route-edit' | 'route-test' | 'route-try',
+        connector: ApiConnector,
+        routeId: number,
+    ) {
+        setLoadingRouteId(routeId);
+        try {
+            const route = await apiConnectorsApi.showRoute(routeId);
+            if (kind === 'route-edit') {
+                openModalReset({ kind, connector, route });
+            } else {
+                openModalReset({ kind, route });
+            }
+        } catch (e) {
+            toast.error(toAdminError(e).message, 'toast-api-route-error');
+        } finally {
+            setLoadingRouteId(null);
+        }
+    }
+
+    // --- test / activate / disable / try ---
+
+    async function handleRunTest(exampleArgs: Record<string, unknown>) {
+        const current = modal;
+        if (current?.kind !== 'route-test') return;
+        setModalError(null);
+        try {
+            const result = await testRoute.mutateAsync({ routeId: current.route.id, exampleArgs });
+            setTestResult(result);
+        } catch (e) {
+            if (modalRef.current?.kind === 'route-test') {
+                setModalError(toAdminError(e).message);
+            }
+        }
+    }
+
+    async function handleSaveDefinition(definition: ToolDefinition) {
+        const current = modal;
+        if (current?.kind !== 'route-test') return;
+        setModalError(null);
+        try {
+            await updateRoute.mutateAsync({
+                routeId: current.route.id,
+                payload: { name: definition.name, description: definition.description },
+            });
+            toast.success('Tool definition saved.', 'toast-api-route-definition-saved');
+        } catch (e) {
+            if (modalRef.current?.kind === 'route-test') {
+                setModalError(toAdminError(e).message);
+            }
+        }
+    }
+
+    async function handleRegenerate(routeId: number) {
+        try {
+            await regenerateDescription.mutateAsync(routeId);
+            toast.success('Description regenerated.', 'toast-api-route-regenerated');
+        } catch (e) {
+            toast.error(toAdminError(e).message, 'toast-api-route-error');
+        }
+    }
+
+    async function handleActivate(routeId: number) {
+        try {
+            await activateRoute.mutateAsync(routeId);
+            toast.success('Route activated.', 'toast-api-route-activated');
+        } catch (e) {
+            toast.error(toAdminError(e).message, 'toast-api-route-error');
+        }
+    }
+
+    async function handleDisable(routeId: number) {
+        try {
+            await disableRoute.mutateAsync(routeId);
+            toast.success('Route disabled.', 'toast-api-route-disabled');
+        } catch (e) {
+            toast.error(toAdminError(e).message, 'toast-api-route-error');
+        }
+    }
+
+    async function handleRunTry(args: Record<string, unknown>) {
+        const current = modal;
+        if (current?.kind !== 'route-try') return;
+        setModalError(null);
+        try {
+            const result = await tryRoute.mutateAsync({ routeId: current.route.id, args });
+            setTryResult(result);
+            setTryHasResult(true);
+        } catch (e) {
+            if (modalRef.current?.kind === 'route-try') {
+                setTryHasResult(false);
+                setModalError(toAdminError(e).message);
+            }
+        }
+    }
+
+    return (
+        <AdminShell section="api-connectors">
+            <ToastHost />
+            <div
+                data-testid="api-connectors-view"
+                data-state={state}
+                style={{ display: 'flex', flexDirection: 'column', gap: 14 }}
+            >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                    <div>
+                        <h1
+                            style={{
+                                fontSize: 20,
+                                fontWeight: 600,
+                                margin: '0 0 2px',
+                                letterSpacing: '-0.02em',
+                                color: 'var(--fg-0)',
+                            }}
+                        >
+                            API Connectors
+                        </h1>
+                        <p style={{ fontSize: 12.5, color: 'var(--fg-3)', margin: 0 }}>
+                            Wrap any HTTP API as one or more LLM tools — define routes, test them live,
+                            then activate the ones the chat may call.
+                        </p>
+                    </div>
+                    <button
+                        type="button"
+                        data-testid="api-connector-create"
+                        onClick={() => openModalReset({ kind: 'connector-create' })}
+                        style={buttonStyle('primary', false)}
+                    >
+                        + New API connector
+                    </button>
+                </div>
+
+                {state === 'loading' && (
+                    <div
+                        data-testid="api-connectors-loading"
+                        role="status"
+                        aria-busy="true"
+                        style={emptyBlockStyle()}
+                    >
+                        Loading API connectors…
+                    </div>
+                )}
+
+                {state === 'error' && (
+                    <div
+                        data-testid="api-connectors-error"
+                        role="alert"
+                        style={{
+                            padding: 16,
+                            background: 'rgba(239, 68, 68, 0.08)',
+                            border: '1px solid rgba(239, 68, 68, 0.30)',
+                            borderRadius: 10,
+                            color: '#fca5a5',
+                            fontSize: 13,
+                        }}
+                    >
+                        Could not load API connectors.{' '}
+                        <button
+                            type="button"
+                            data-testid="api-connectors-retry"
+                            onClick={() => connectorsQuery.refetch()}
+                            style={{
+                                marginLeft: 8,
+                                padding: '4px 10px',
+                                fontSize: 12,
+                                background: 'transparent',
+                                color: '#fca5a5',
+                                border: '1px solid rgba(239, 68, 68, 0.45)',
+                                borderRadius: 6,
+                                cursor: 'pointer',
+                            }}
+                        >
+                            Retry
+                        </button>
+                    </div>
+                )}
+
+                {state === 'empty' && (
+                    <div data-testid="api-connectors-empty" role="status" style={emptyBlockStyle()}>
+                        No API connectors yet. Create one to expose an external API as chat tools.
+                    </div>
+                )}
+
+                {state === 'ready' && (
+                    <div
+                        data-testid="api-connectors-grid"
+                        style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
+                    >
+                        {connectors.map((connector) => (
+                            <ConnectorCard
+                                key={connector.id}
+                                connector={connector}
+                                loadingRouteId={loadingRouteId}
+                                onEditConnector={() => openModalReset({ kind: 'connector-edit', connector })}
+                                onDeleteConnector={() => handleDeleteConnector(connector)}
+                                onAddAuthProfile={() => openModalReset({ kind: 'auth-create', connector })}
+                                onEditAuthProfile={(profile) =>
+                                    openModalReset({ kind: 'auth-edit', connector, profile })
+                                }
+                                onAddRoute={() => openModalReset({ kind: 'route-create', connector })}
+                                onEditRoute={(routeId) => openRouteModal('route-edit', connector, routeId)}
+                                onTestRoute={(routeId) => openRouteModal('route-test', connector, routeId)}
+                                onTryRoute={(routeId) => openRouteModal('route-try', connector, routeId)}
+                                onDeleteRoute={handleDeleteRoute}
+                                onActivateRoute={handleActivate}
+                                onDisableRoute={handleDisable}
+                                onRegenerateRoute={handleRegenerate}
+                            />
+                        ))}
+                    </div>
+                )}
+            </div>
+
+            {(modal?.kind === 'connector-create' || modal?.kind === 'connector-edit') && (
+                <ConnectorForm
+                    key={modal.kind === 'connector-edit' ? `connector-edit-${modal.connector.id}` : 'connector-create'}
+                    connector={modal.kind === 'connector-edit' ? modal.connector : null}
+                    projects={projects}
+                    onSubmit={handleConnectorSubmit}
+                    onClose={closeModal}
+                    submitError={modalError}
+                    fieldErrors={modalFieldErrors}
+                    isSubmitting={createConnector.isPending || updateConnector.isPending}
+                />
+            )}
+
+            {(modal?.kind === 'auth-create' || modal?.kind === 'auth-edit') && (
+                <AuthProfileForm
+                    key={modal.kind === 'auth-edit' ? `auth-edit-${modal.profile.id}` : `auth-create-${modal.connector.id}`}
+                    profile={modal.kind === 'auth-edit' ? modal.profile : null}
+                    onSubmit={handleAuthSubmit}
+                    onClose={closeModal}
+                    submitError={modalError}
+                    fieldErrors={modalFieldErrors}
+                    isSubmitting={createAuthProfile.isPending || updateAuthProfile.isPending}
+                />
+            )}
+
+            {(modal?.kind === 'route-create' || modal?.kind === 'route-edit') && (
+                <RouteForm
+                    key={modal.kind === 'route-edit' ? `route-edit-${modal.route.id}` : `route-create-${modal.connector.id}`}
+                    route={modal.kind === 'route-edit' ? modal.route : null}
+                    authProfiles={modal.connector.auth_profiles ?? []}
+                    onSubmit={handleRouteSubmit}
+                    onClose={closeModal}
+                    submitError={modalError}
+                    fieldErrors={modalFieldErrors}
+                    isSubmitting={createRoute.isPending || updateRoute.isPending}
+                />
+            )}
+
+            {modal?.kind === 'route-test' && (
+                <TestConnectionPanel
+                    key={`route-test-${modal.route.id}`}
+                    route={modal.route}
+                    result={testResult}
+                    onTest={handleRunTest}
+                    onSaveDefinition={handleSaveDefinition}
+                    onClose={closeModal}
+                    isTesting={testRoute.isPending}
+                    isSavingDefinition={updateRoute.isPending}
+                    error={modalError}
+                />
+            )}
+
+            {modal?.kind === 'route-try' && (
+                <TryToolModal
+                    key={`route-try-${modal.route.id}`}
+                    route={modal.route}
+                    result={tryResult}
+                    hasResult={tryHasResult}
+                    onRun={handleRunTry}
+                    onClose={closeModal}
+                    isRunning={tryRoute.isPending}
+                    error={modalError}
+                />
+            )}
+        </AdminShell>
+    );
+}
+
+function emptyBlockStyle(): React.CSSProperties {
+    return {
+        padding: 28,
+        textAlign: 'center',
+        color: 'var(--fg-3)',
+        border: '1px dashed var(--hairline)',
+        borderRadius: 10,
+    };
+}
+
+// ---------------------------------------------------------------------------
+// Connector card (one per connector; lists routes + auth profiles)
+// ---------------------------------------------------------------------------
+
+interface ConnectorCardProps {
+    connector: ApiConnector;
+    loadingRouteId: number | null;
+    onEditConnector: () => void;
+    onDeleteConnector: () => void;
+    onAddAuthProfile: () => void;
+    onEditAuthProfile: (profile: ApiAuthProfile) => void;
+    onAddRoute: () => void;
+    onEditRoute: (routeId: number) => void;
+    onTestRoute: (routeId: number) => void;
+    onTryRoute: (routeId: number) => void;
+    onDeleteRoute: (route: ApiRouteSummary) => void;
+    onActivateRoute: (routeId: number) => void;
+    onDisableRoute: (routeId: number) => void;
+    onRegenerateRoute: (routeId: number) => void;
+}
+
+function ConnectorCard({
+    connector,
+    loadingRouteId,
+    onEditConnector,
+    onDeleteConnector,
+    onAddAuthProfile,
+    onEditAuthProfile,
+    onAddRoute,
+    onEditRoute,
+    onTestRoute,
+    onTryRoute,
+    onDeleteRoute,
+    onActivateRoute,
+    onDisableRoute,
+    onRegenerateRoute,
+}: ConnectorCardProps) {
+    const routes = connector.routes ?? [];
+    const authProfiles = connector.auth_profiles ?? [];
+
+    return (
+        <section
+            data-testid={`api-connector-${connector.id}-card`}
+            data-active={connector.is_active ? 'true' : 'false'}
+            style={{
+                border: '1px solid var(--panel-border, rgba(255,255,255,.12))',
+                borderRadius: 12,
+                background: 'var(--panel, rgba(255,255,255,.02))',
+                padding: 14,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 10,
+            }}
+        >
+            <header style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
+                <div>
+                    <h2 style={{ margin: 0, fontSize: 15, color: 'var(--fg-0)' }}>
+                        {connector.name}
+                        {!connector.is_active && (
+                            <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--fg-3)' }}>(inactive)</span>
+                        )}
+                    </h2>
+                    {connector.description && (
+                        <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--fg-3)' }}>
+                            {connector.description}
+                        </p>
+                    )}
+                    <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--fg-3)' }}>
+                        {connector.base_url ?? 'no base URL'} ·{' '}
+                        {connector.project_key ? `project ${connector.project_key}` : 'tenant default'}
+                    </p>
+                </div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                    <button
+                        type="button"
+                        data-testid={`api-connector-${connector.id}-edit`}
+                        onClick={onEditConnector}
+                        style={buttonStyle('secondary', false)}
+                    >
+                        Edit
+                    </button>
+                    <button
+                        type="button"
+                        data-testid={`api-connector-${connector.id}-delete`}
+                        onClick={onDeleteConnector}
+                        style={buttonStyle('danger', false)}
+                    >
+                        Remove
+                    </button>
+                </div>
+            </header>
+
+            {/* Auth profiles */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                <span style={{ fontSize: 11, color: 'var(--fg-3)' }}>Auth profiles:</span>
+                {authProfiles.length === 0 && (
+                    <span data-testid={`api-connector-${connector.id}-auth-empty`} style={{ fontSize: 11, color: 'var(--fg-3)' }}>
+                        none
+                    </span>
+                )}
+                {authProfiles.map((profile) => (
+                    <button
+                        key={profile.id}
+                        type="button"
+                        data-testid={`api-connector-${connector.id}-auth-${profile.id}`}
+                        onClick={() => onEditAuthProfile(profile)}
+                        title={profile.has_credentials ? 'Configured' : 'No credentials'}
+                        style={{
+                            fontSize: 11,
+                            padding: '2px 8px',
+                            borderRadius: 999,
+                            border: '1px solid var(--panel-border, rgba(255,255,255,.15))',
+                            background: 'transparent',
+                            color: 'var(--fg-1)',
+                            cursor: 'pointer',
+                        }}
+                    >
+                        {profile.type}
+                        {profile.id === connector.default_auth_profile_id ? ' (default)' : ''}
+                    </button>
+                ))}
+                <button
+                    type="button"
+                    data-testid={`api-connector-${connector.id}-auth-add`}
+                    onClick={onAddAuthProfile}
+                    style={{
+                        fontSize: 11,
+                        padding: '2px 8px',
+                        borderRadius: 999,
+                        border: '1px dashed var(--panel-border, rgba(255,255,255,.25))',
+                        background: 'transparent',
+                        color: 'var(--accent, #818cf8)',
+                        cursor: 'pointer',
+                    }}
+                >
+                    + Auth profile
+                </button>
+            </div>
+
+            {/* Routes */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-2)' }}>
+                    Routes ({routes.length})
+                </span>
+                <button
+                    type="button"
+                    data-testid={`api-connector-${connector.id}-route-add`}
+                    onClick={onAddRoute}
+                    style={buttonStyle('secondary', false)}
+                >
+                    + Add route
+                </button>
+            </div>
+
+            {routes.length === 0 && (
+                <p data-testid={`api-connector-${connector.id}-routes-empty`} style={{ margin: 0, fontSize: 12, color: 'var(--fg-3)' }}>
+                    No routes yet.
+                </p>
+            )}
+
+            {routes.map((route) => (
+                <RouteRow
+                    key={route.id}
+                    connectorId={connector.id}
+                    route={route}
+                    loading={loadingRouteId === route.id}
+                    onEdit={() => onEditRoute(route.id)}
+                    onTest={() => onTestRoute(route.id)}
+                    onTry={() => onTryRoute(route.id)}
+                    onDelete={() => onDeleteRoute(route)}
+                    onActivate={() => onActivateRoute(route.id)}
+                    onDisable={() => onDisableRoute(route.id)}
+                    onRegenerate={() => onRegenerateRoute(route.id)}
+                />
+            ))}
+        </section>
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Single route row
+// ---------------------------------------------------------------------------
+
+interface RouteRowProps {
+    connectorId: number;
+    route: ApiRouteSummary;
+    loading: boolean;
+    onEdit: () => void;
+    onTest: () => void;
+    onTry: () => void;
+    onDelete: () => void;
+    onActivate: () => void;
+    onDisable: () => void;
+    onRegenerate: () => void;
+}
+
+function RouteRow({
+    connectorId,
+    route,
+    loading,
+    onEdit,
+    onTest,
+    onTry,
+    onDelete,
+    onActivate,
+    onDisable,
+    onRegenerate,
+}: RouteRowProps) {
+    const badge = routeStatusBadge(route.status);
+    const base = `api-connector-${connectorId}-route-${route.id}`;
+    const canActivate = route.status === 'tested';
+    const canDisable = route.status === 'active';
+    const canTry = route.status === 'active' || route.status === 'tested';
+
+    return (
+        <div
+            data-testid={base}
+            style={{
+                border: '1px solid var(--hairline, rgba(255,255,255,.1))',
+                borderRadius: 8,
+                padding: 8,
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: 8,
+                alignItems: 'center',
+            }}
+        >
+            <span
+                style={{
+                    fontSize: 10.5,
+                    fontWeight: 700,
+                    padding: '1px 6px',
+                    borderRadius: 4,
+                    background: 'var(--bg-3, rgba(255,255,255,.06))',
+                    color: 'var(--fg-2)',
+                    fontFamily: 'var(--font-mono, monospace)',
+                }}
+            >
+                {route.http_method}
+            </span>
+            <span style={{ fontSize: 13, color: 'var(--fg-0)' }}>{route.name}</span>
+            <code style={{ fontSize: 11, color: 'var(--fg-3)' }}>{route.slug}</code>
+            <span
+                data-testid={`${base}-status`}
+                data-status={route.status}
+                role="status"
+                style={{
+                    fontSize: 10.5,
+                    fontWeight: 600,
+                    padding: '2px 8px',
+                    borderRadius: 999,
+                    background: badge.background,
+                    border: `1px solid ${badge.border}`,
+                    color: badge.color,
+                }}
+            >
+                {badge.label}
+            </span>
+            <span
+                data-testid={`${base}-mode`}
+                style={{ fontSize: 10.5, color: 'var(--fg-3)' }}
+            >
+                mode: {route.mode}
+            </span>
+
+            <div style={{ display: 'flex', gap: 6, marginLeft: 'auto', flexWrap: 'wrap' }}>
+                <button
+                    type="button"
+                    data-testid={`${base}-test`}
+                    onClick={onTest}
+                    disabled={loading}
+                    style={buttonStyle('secondary', loading)}
+                >
+                    {loading ? 'Loading…' : 'Test'}
+                </button>
+                <button
+                    type="button"
+                    data-testid={`${base}-try`}
+                    onClick={onTry}
+                    disabled={loading || !canTry}
+                    title={canTry ? undefined : 'Test the route first'}
+                    style={buttonStyle('secondary', loading || !canTry)}
+                >
+                    Try
+                </button>
+                <button
+                    type="button"
+                    data-testid={`${base}-regenerate`}
+                    onClick={onRegenerate}
+                    style={buttonStyle('secondary', false)}
+                >
+                    Regenerate
+                </button>
+                {canActivate && (
+                    <button
+                        type="button"
+                        data-testid={`${base}-activate`}
+                        onClick={onActivate}
+                        style={buttonStyle('primary', false)}
+                    >
+                        Activate
+                    </button>
+                )}
+                {canDisable && (
+                    <button
+                        type="button"
+                        data-testid={`${base}-disable`}
+                        onClick={onDisable}
+                        style={buttonStyle('secondary', false)}
+                    >
+                        Disable
+                    </button>
+                )}
+                <button
+                    type="button"
+                    data-testid={`${base}-edit`}
+                    onClick={onEdit}
+                    disabled={loading}
+                    style={buttonStyle('secondary', loading)}
+                >
+                    Edit
+                </button>
+                <button
+                    type="button"
+                    data-testid={`${base}-delete`}
+                    onClick={onDelete}
+                    style={buttonStyle('danger', false)}
+                >
+                    Remove
+                </button>
+            </div>
+        </div>
+    );
+}

@@ -39,20 +39,22 @@ class AiManager
     private const EMBEDDINGS_FALLBACK_ORDER = ['openai', 'openrouter', 'regolo', 'gemini'];
 
     /**
-     * Hybrid (tool-capable) providers MIGRATED to the laravel/ai SDK in v8.16/W2:
-     * their no-tools chat + embeddings flow through the SDK (metered by the finops
-     * AgentPrompted / EmbeddingsGenerated hooks), while their MCP with-tools chat
-     * turn stays on raw `Http::` (metered by the {@see AiCallMeter} bridge).
+     * Hybrid (tool-capable) providers: their no-tools chat + embeddings flow
+     * through the laravel/ai SDK (metered by the finops AgentPrompted /
+     * EmbeddingsGenerated hooks), while their MCP with-tools chat turn stays on
+     * raw `Http::` (metered by the {@see AiCallMeter} bridge).
      *
-     * The bridge therefore meters these providers ONLY on the with-tools call
-     * (`array_key_exists('tools', $options)`); a no-tools call or an embeddings
-     * call is already SDK-metered and bridging it would DOUBLE-COUNT. Mirrors
-     * `McpToolCallingService::TOOL_CAPABLE_PROVIDERS` — both openai + openrouter
-     * are now migrated. Any provider NOT listed here is bridged unconditionally
-     * and filtered by `AiCallMeter::shouldMeter()` (which skips the fully-SDK
-     * providers).
+     * The bridge therefore meters these providers ONLY on a raw-Http turn (tools
+     * present OR the history carries a tool turn — see {@see bridgeShouldMeterChat});
+     * a no-tools call or an embeddings call is already SDK-metered and bridging it
+     * would DOUBLE-COUNT. Mirrors `McpToolCallingService::TOOL_CAPABLE_PROVIDERS`.
+     * openai + openrouter were migrated to HYBRID in v8.16/W2; anthropic + gemini
+     * gained a raw-Http with-tools path in the provider-extension step and are now
+     * HYBRID too (no-tools chat + embeddings via SDK, with-tools via raw Http::).
+     * Any provider NOT listed here is bridged unconditionally and filtered by
+     * `AiCallMeter::shouldMeter()` (which skips the fully-SDK providers).
      */
-    private const SDK_HYBRID_TOOL_PROVIDERS = ['openai', 'openrouter'];
+    private const SDK_HYBRID_TOOL_PROVIDERS = ['openai', 'openrouter', 'anthropic', 'gemini'];
 
     /** @var array<string, AiProviderInterface> */
     private array $resolved = [];

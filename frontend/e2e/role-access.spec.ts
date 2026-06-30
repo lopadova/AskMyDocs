@@ -38,6 +38,9 @@ const ENDPOINTS: ReadonlyArray<{ uri: string; allowed: readonly string[] }> = [
     { uri: '/api/admin/kb/tree', allowed: ['admin', 'super-admin'] },
     // gate-based groups
     { uri: '/api/admin/connectors', allowed: ['admin', 'super-admin'] },
+    // v8.27 — API Connector (Connettore API) admin group (gate: manageConnectors;
+    // package routes mounted with the host's authenticated admin stack, R32)
+    { uri: '/api/admin/api-connectors', allowed: ['admin', 'super-admin'] },
     { uri: '/api/admin/mcp-servers', allowed: ['super-admin'] },
     { uri: '/api/admin/mcp-tool-call-audit', allowed: ['admin', 'super-admin'] },
     { uri: '/api/admin/pii/strategy', allowed: ['admin', 'dpo', 'super-admin'] },
