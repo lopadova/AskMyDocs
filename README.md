@@ -200,6 +200,15 @@ tells buyers to demand:
   never opens a second connection — instead of hard-failing the run and leaving the install stuck at
   *"Not synced yet"*. Auth failures are never retried. Tunable via `CONNECTOR_IMAP_RECONNECT_ON_DROP`
   (default on), `CONNECTOR_IMAP_RECONNECT_MAX_ATTEMPTS`, `CONNECTOR_IMAP_RECONNECT_RETRY_DELAY_MS`.
+- **API connector — endpoints as live LLM tools** (v8.27, `padosoft/askmydocs-connector-api`) — a
+  NEW paradigm: instead of ingesting, each configured HTTP **endpoint (Rotta)** becomes a **tool the
+  LLM can call live during chat**, so the model can pull **fresh** data (orders, stock, tracking…)
+  straight from the customer's APIs on top of the indexed knowledge. A "Test connessione" call
+  auto-infers the input/output schema and generates the tool definition; execution is **server-side
+  only** — the model supplies just the `llm` parameter values and never sees URLs/headers/secrets.
+   SSRF-guarded (`UrlGuard`), encrypted credentials, per-route timeout/retry/rate-limit/cache + output
+   cap; auth none/API-key/Bearer/Basic/custom/OAuth2-cc; works across OpenAI, OpenRouter, Anthropic and
+   Gemini. Configure under **Admin → API Connectors**.
   **Full-history imports are durable and bounded**: selected folders are divided into date windows,
   each UID batch checkpoints in SQL, and `kb-ingest` workers index independently. Configure the master
   switch, queue, batch/fetch sizes, stale-worker recovery and oldest accepted date with
@@ -2121,6 +2130,24 @@ exception mirroring `ProjectController` — team governance is not an agent
 capability). When the optional `tenants` table is absent the endpoints degrade to
 a clean **503** (R14/R43), never a 500. See the
 [doc-site](https://padosoft.mintlify.app/team-management).
+
+**v8.27.0 — API Connector ("Connettore API"): endpoints as live LLM tools (in progress).**
+A NEW kind of connector. Where the existing connectors *ingest* documents into the
+vector store, the **API connector** (`padosoft/askmydocs-connector-api`) turns each
+configured HTTP **endpoint (Rotta)** into a **live tool the LLM can call during chat** —
+so a question about orders can pull the **fresh** status straight from the customer's
+ERP, on top of the indexed knowledge (RAG + real-time API data in parallel). A "Test
+connessione" call auto-infers the input/output schema and generates the tool
+definition; execution is **100% server-side** (the model only supplies the `llm`
+parameter values and never sees URLs, headers or secrets). Security: SSRF `UrlGuard`
+(private/loopback/link-local + cloud-metadata block, https-only, optional domain
+allowlist), `encrypted:array` credentials, per-route timeout/retry/rate-limit/cache and
+an output byte-cap. Auth: none / API key / Bearer / Basic / custom headers / OAuth2
+client-credentials. The four hybrid providers (OpenAI, OpenRouter, Anthropic, Gemini)
+can all drive the tool loop. Tri-surface (R44): artisan `api-connector:list`/`:test`,
+HTTP `/api/admin/api-connectors/*` (admin-gated), and the MCP `ApiConnectorsTool`.
+Fase 2 (bulk ingest from the same routes) is designed into the schema (`mode`) but not
+yet implemented.
 
 **v8.26.1 — Microsoft 365 app-only IMAP (OAuth2 client credentials) (GA, shipped 2026-07-02).**
 The IMAP connector gains a third authentication mode — **`xoauth2_client_credentials`** —

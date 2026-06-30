@@ -162,6 +162,18 @@ export default defineConfig({
                   // ping is input-driven: host containing `invalid`/`fail` → 422,
                   // otherwise → ACTIVE. Default-OFF in production.
                   CONNECTOR_IMAP_FAKE_PING: 'true',
+                  // v8.27 — API Connector (Connettore API): the "Test connessione"
+                  // / "Prova tool" calls are made BY THE BACKEND over HTTP (like the
+                  // IMAP TCP dependency), so Playwright cannot page.route them.
+                  // Relax the SSRF guard for E2E so admin-api-connectors.spec.ts can
+                  // point a route at the app's OWN local /healthz endpoint and drive
+                  // the real create → test → activate flow end-to-end against a
+                  // deterministic 200 (no external network, no flake). Production
+                  // keeps the guard ON (https-only + loopback/private blocked) by
+                  // default; the guarded paths are covered by ApiToolExecutorTest +
+                  // the package's UrlGuard tests (phpunit), per R43 (both states).
+                  API_CONNECTOR_SSRF_ENABLED: 'false',
+                  API_CONNECTOR_HTTPS_ONLY: 'false',
                   // v8.18/W4 — gamification stays ON (default) so the badges +
                   // coaching surfaces render, but the AI NARRATION layer is forced
                   // OFF for E2E: the narrator resolves the named `openrouter`

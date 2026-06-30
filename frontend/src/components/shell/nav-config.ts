@@ -40,6 +40,7 @@ export type SidebarSection =
     | 'evidence-risk-review'
     | 'pii-redactor'
     | 'connectors'
+    | 'api-connectors'
     | 'ingestion'
     | 'invitations'
     | 'flows'
@@ -154,6 +155,7 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'Operations',
         items: [
             { id: 'connectors', label: 'Connectors', icon: 'Link', route: '/app/$teamHash/admin/connectors' },
+            { id: 'api-connectors', label: 'API Connectors', icon: 'Globe', route: '/app/$teamHash/admin/api-connectors' },
             { id: 'ingestion', label: 'Ingestion & Sync', icon: 'Activity', route: '/app/$teamHash/admin/ingestion' },
             { id: 'invitations', label: 'Invitations', icon: 'Users', route: '/app/$teamHash/admin/invitations' },
             { id: 'flows', label: 'Flows', icon: 'Bolt', route: '/app/$teamHash/admin/flows' },
