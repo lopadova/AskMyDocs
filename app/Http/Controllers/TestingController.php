@@ -236,9 +236,9 @@ class TestingController extends Controller
 
     /**
      * A database is safe to DROP-and-remigrate only when it is unmistakably a
-     * throwaway test DB: sqlite in-memory, a `.sqlite` file, or a name that
-     * contains "test" (the CI + local convention `askmydocs_test`). The dev DB
-     * `askmydoc` matches none of these and is therefore protected.
+     * throwaway test DB: sqlite in-memory, a `.sqlite` file, or a name with a
+     * delimited "test" segment (the CI + local convention `askmydocs_test`). Any
+     * other DB name is treated as non-disposable and protected.
      */
     private function looksLikeDisposableTestDatabase(string $database): bool
     {
