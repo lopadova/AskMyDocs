@@ -143,6 +143,7 @@ final class ConnectorConnectionTestService
 
             $target = (string) ($field['target'] ?? '');
 
+            if ($target === 'secret') {
                 if ($seenSecretField) {
                     throw new ConnectorConnectionTestException(
                         'Credential connector schema declares more than one secret field; only one is supported.',
