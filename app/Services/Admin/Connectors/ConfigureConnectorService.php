@@ -32,9 +32,13 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
  *   - **basic**: the host issues the connector's single-use OAuth state (via
  *     `initiateOAuth()`), then immediately drives `handleOAuthCallback()` with a
  *     synthetic request carrying `state` + the secret, so the connector pings the
- *     server and persists the credential. Success → ACTIVE; a
- *     {@see ConnectorAuthException} → the row stays PENDING with `error_json` and
- *     the exception propagates (the controller maps it to 422).
+ *     server (the connection test) and persists the credential. Success → the row
+ *     is kept ACTIVE; a {@see ConnectorAuthException} (or any failure during the
+ *     test) → the just-created pending row is ROLLED BACK (deleted) and the
+ *     exception propagates (the controller maps it to 422). Rolling back is what
+ *     lets a corrected retry with the SAME label go through: a lingering pending
+ *     row would trip the (tenant, connector, label) unique rule and leave the
+ *     operator stuck on "label already taken" on every re-submit.
  *   - **xoauth2**: the host persists the config PENDING and returns the provider
  *     authorize URL from `initiateOAuth()`; the browser redirects and the EXISTING
  *     `oauth/callback` route finishes the flow. No change to that route.
@@ -84,13 +88,31 @@ final class ConfigureConnectorService
         if ($authMode === 'xoauth2') {
             // Persist PENDING + hand the browser the provider authorize URL; the
             // existing oauth/callback route flips the row to ACTIVE on return.
+            // No synchronous connection test here — the browser round-trip IS the
+            // test, so the PENDING row legitimately waits for the callback.
             return new ConfigureConnectorResult(
                 installation: $installation,
                 redirectTo: $connector->initiateOAuth($installation->id),
             );
         }
 
-        $this->completeBasicAuth($connector, $installation, $secretField ?? 'password', $secret);
+        // basic: test the connection (ping) NOW and keep the row ONLY if the login
+        // succeeds. A failed test must leave NO trace — otherwise the orphaned
+        // pending row's label trips the (tenant, connector, label) unique rule and
+        // the operator can never retry after correcting a parameter (the "label
+        // already taken" dead-end). Rolling back also stops a save-per-attempt leak
+        // that would happen if that unique guard were ever relaxed.
+        try {
+            $this->completeBasicAuth($connector, $installation, $secretField ?? 'password', $secret);
+        } catch (\Throwable $e) {
+            // Hard delete (the model does not soft-delete) so the unique rule and
+            // index are fully cleared for the retry; the companion
+            // connector_credentials row cascades via its FK (R28) if the connector
+            // wrote a partial secret before failing.
+            $installation->delete();
+
+            throw $e;
+        }
 
         return new ConfigureConnectorResult($installation, redirectTo: null);
     }
@@ -218,44 +240,35 @@ final class ConfigureConnectorService
         // The connector issues a single-use state bound to this installation and
         // returns it embedded in its credential-form URL. We parse the state and
         // immediately replay it through handleOAuthCallback together with the
-        // secret, so the connector verifies the login (ping) before persisting.
-        // The secret is posted under its SCHEMA field name (the connector reads
-        // it by that name) — keeping the flow generic for any credential connector.
+        // secret, so the connector verifies the login (ping) before we keep the
+        // row. The secret is posted under its SCHEMA field name (the connector
+        // reads it by that name) — keeping the flow generic for any credential
+        // connector. Any failure propagates to configure(), which rolls the
+        // just-created pending row back so nothing is "saved" on a failed test.
         $url = $connector->initiateOAuth($installation->id);
         parse_str((string) parse_url($url, PHP_URL_QUERY), $query);
         $state = isset($query['state']) ? (string) $query['state'] : '';
 
-        try {
-            if ($state === '') {
-                // The connector must embed a single-use state in its credential-form
-                // URL; an empty one means a contract break. Throw inside the try so
-                // it records error_json like every other auth failure below.
-                throw new ConnectorAuthException(
-                    "Connector '{$installation->connector_name}' returned no credential state to replay.",
-                );
-            }
-
-            // Include the secret ONLY when one was actually submitted — fabricating
-            // an empty string for a null secret is observably different from
-            // "missing" and could persist an empty credential. When absent, the
-            // connector's own missing-secret handling fires (loud → 422).
-            $data = ['state' => $state];
-            if ($secret !== null) {
-                $data[$secretField] = $secret;
-            }
-
-            $connector->handleOAuthCallback($installation->id, Request::create('/', 'POST', $data));
-        } catch (ConnectorAuthException $e) {
-            $installation->forceFill([
-                'status' => ConnectorInstallation::STATUS_PENDING,
-                'error_json' => [
-                    'message' => $e->getMessage(),
-                    'recorded_at' => now()->toIso8601String(),
-                ],
-            ])->save();
-
-            throw $e;
+        if ($state === '') {
+            // The connector must embed a single-use state in its credential-form
+            // URL; an empty one means a contract break. A ConnectorAuthException
+            // makes configure() roll the pending row back like any other failed
+            // test (and the controller maps it to 422).
+            throw new ConnectorAuthException(
+                "Connector '{$installation->connector_name}' returned no credential state to replay.",
+            );
         }
+
+        // Include the secret ONLY when one was actually submitted — fabricating an
+        // empty string for a null secret is observably different from "missing"
+        // and could persist an empty credential. When absent, the connector's own
+        // missing-secret handling fires (loud → 422).
+        $data = ['state' => $state];
+        if ($secret !== null) {
+            $data[$secretField] = $secret;
+        }
+
+        $connector->handleOAuthCallback($installation->id, Request::create('/', 'POST', $data));
 
         $installation->forceFill([
             'status' => ConnectorInstallation::STATUS_ACTIVE,

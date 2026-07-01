@@ -212,10 +212,13 @@ final class ConnectorAdminController extends Controller
      * panel. Validates the dynamic schema-driven payload
      * ({@see ConfigureConnectorRequest}) and delegates the whole flow to
      * {@see ConfigureConnectorService}:
-     *   - basic  → the service pings + persists, row flips to ACTIVE; on a
-     *              credential failure a {@see ConnectorAuthException} surfaces as
-     *              **422** with the connector's message (row stays PENDING with
-     *              `error_json` — no 200-with-empty-body, R: surface-failures-loudly).
+     *   - basic  → the service tests the connection (ping) then persists; the row
+     *              flips to ACTIVE on success. On a credential failure a
+     *              {@see ConnectorAuthException} surfaces as **422** with the
+     *              connector's message and the just-created pending row is ROLLED
+     *              BACK (deleted) so a corrected retry with the same label is not
+     *              wrongly rejected as a duplicate — no 200-with-empty-body,
+     *              R: surface-failures-loudly.
      *   - xoauth2 → row stays PENDING, `redirect_to` carries the provider authorize
      *              URL; the browser finishes via the existing `oauth/callback`.
      *
