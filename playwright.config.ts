@@ -98,7 +98,7 @@ export default defineConfig({
                   // `/testing/reset` runs `migrate:fresh`, which DROPS every table — without this override a local
                   // `playwright test` would wipe the developer's data. Matches the
                   // CI test DB name so migrations behave identically. Create it once:
-                  // `createdb askmydocs_test` (see .env.example). The TestingController
+                  // `createdb askmydocs_test` (see .env.example). The TestingController guard enforces this too.
                   DB_DATABASE: 'askmydocs_test',
                   // drives the real /messages/stream SSE through the real
                   // @ai-sdk transport. The fake provider streams a canned
