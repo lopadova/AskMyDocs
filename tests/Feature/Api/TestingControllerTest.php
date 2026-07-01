@@ -19,6 +19,10 @@ class TestingControllerSpy extends TestingController
 {
     public static array $calls = [];
 
+    /** When set, overrides the connected DB name so the disposable-DB guard can
+     *  be exercised against a dev-like name without touching the real connection. */
+    public static ?string $databaseNameOverride = null;
+
     protected function runMigrateFresh(): void
     {
         self::$calls[] = ['migrate:fresh'];
@@ -27,6 +31,11 @@ class TestingControllerSpy extends TestingController
     protected function runDbSeed(string $seederClass): void
     {
         self::$calls[] = ['db:seed', $seederClass];
+    }
+
+    protected function currentDatabaseName(): string
+    {
+        return self::$databaseNameOverride ?? parent::currentDatabaseName();
     }
 }
 
@@ -41,6 +50,7 @@ class TestingControllerTest extends TestCase
         parent::setUp();
 
         TestingControllerSpy::$calls = [];
+        TestingControllerSpy::$databaseNameOverride = null;
         $this->originalEnv = app()->environment();
 
         // Register routes manually since they are conditional on APP_ENV
@@ -118,5 +128,39 @@ class TestingControllerTest extends TestCase
 
         $this->postJson('/testing/seed', ['seeder' => 'DemoSeeder'])
             ->assertStatus(403);
+    }
+
+    // ── disposable-database guard (never wipe the dev/prod DB) ──────────────────
+
+    public function test_reset_refused_when_database_is_not_disposable(): void
+    {
+        // The exact footgun: APP_ENV=testing but the connection points at the dev
+        // DB. reset() must REFUSE (403) and NEVER reach migrate:fresh.
+        TestingControllerSpy::$databaseNameOverride = 'askmydoc';
+
+        $this->postJson('/testing/reset')->assertStatus(403);
+
+        $this->assertSame([], TestingControllerSpy::$calls, 'migrate:fresh must NOT run against a non-test DB.');
+    }
+
+    public function test_seed_refused_when_database_is_not_disposable(): void
+    {
+        TestingControllerSpy::$databaseNameOverride = 'askmydoc';
+
+        $this->postJson('/testing/seed', ['seeder' => 'DemoSeeder'])->assertStatus(403);
+
+        $this->assertSame([], TestingControllerSpy::$calls, 'db:seed must NOT run against a non-test DB.');
+    }
+
+    public function test_reset_allowed_for_a_test_named_database(): void
+    {
+        // The OTHER state (R43): the CI/local test DB name is disposable → allowed.
+        TestingControllerSpy::$databaseNameOverride = 'askmydocs_test';
+
+        $this->postJson('/testing/reset')
+            ->assertOk()
+            ->assertJson(['reset' => true]);
+
+        $this->assertSame([['migrate:fresh']], TestingControllerSpy::$calls);
     }
 }

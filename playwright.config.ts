@@ -92,6 +92,16 @@ export default defineConfig({
               timeout: 120_000,
               env: {
                   APP_ENV: 'testing',
+                  // SAFETY (local-only — CI sets E2E_SKIP_WEBSERVER=1 and skips this
+                  // whole block): point the dev-spawned `php artisan serve` at a
+                  // DEDICATED test database, NEVER the dev DB from `.env`
+                  // (DB_DATABASE=askmydoc). `/testing/reset` runs `migrate:fresh`,
+                  // which DROPS every table — without this override a local
+                  // `playwright test` would wipe the developer's data. Matches the
+                  // CI test DB name so migrations behave identically. Create it once:
+                  // `createdb askmydocs_test` (see .env.example). The TestingController
+                  // DB guard is the structural backstop if this is ever missing.
+                  DB_DATABASE: process.env.DB_DATABASE ?? 'askmydocs_test',
                   // Deterministic OFFLINE AI for E2E — chat-stream-browser.spec.ts
                   // drives the real /messages/stream SSE through the real
                   // @ai-sdk transport. The fake provider streams a canned
