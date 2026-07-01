@@ -74,7 +74,7 @@ final class ConnectorConnectionTestService
             $authMode,
         );
 
-        if ((string) ($connection['host'] ?? '') === '' || $secret === null || $secret === '') {
+        if ((string) ($connection['host'] ?? '') === '' || (string) ($connection['username'] ?? '') === '' || $secret === null || $secret === '') {
             throw new ConnectorConnectionTestException(
                 'Enter the host, username and password before testing the connection.',
             );
