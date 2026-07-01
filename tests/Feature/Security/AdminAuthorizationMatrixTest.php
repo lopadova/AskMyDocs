@@ -416,28 +416,13 @@ final class AdminAuthorizationMatrixTest extends TestCase
     {
         $writeUri = '/api/admin/connectors/imap/test-connection';
 
-        $adminStatus = $this->actingAs($this->userWithRole('admin'))
-            ->postJson($writeUri, [])
-            ->getStatusCode();
-        $this->assertNotSame(
-            403,
-            $adminStatus,
-            "Role [admin] must pass the manageConnectors gate on [{$writeUri}] but got 403.",
-        );
+        $adminResponse = $this->actingAs($this->userWithRole('admin'))
+            ->postJson($writeUri, []);
+        $adminResponse->assertOk()->assertJson(['ok' => false]);
 
-        $superStatus = $this->actingAs($this->userWithRole('super-admin'))
-            ->postJson($writeUri, [])
-            ->getStatusCode();
-        $this->assertNotSame(
-            403,
-            $superStatus,
-            "Role [super-admin] must pass the manageConnectors gate on [{$writeUri}] but got 403.",
-        );
-        $this->assertNotSame(
-            404,
-            $superStatus,
-            "[{$writeUri}] must be MOUNTED (super-admin got 404 — route missing?).",
-        );
+        $superResponse = $this->actingAs($this->userWithRole('super-admin'))
+            ->postJson($writeUri, []);
+        $superResponse->assertOk()->assertJson(['ok' => false]);
     }
 
     /**
