@@ -109,7 +109,9 @@ final class ConfigureConnectorService
             // index are fully cleared for the retry; the companion
             // connector_credentials row cascades via its FK (R28) if the connector
             // wrote a partial secret before failing.
-            $installation->delete();
+            if (! $installation->delete()) {
+                throw new \RuntimeException('Failed to roll back the pending connector installation after a failed connection test.');
+            }
 
             throw $e;
         }
