@@ -228,6 +228,18 @@ export interface UpdateInstallationResponse {
  */
 export type ConfigureConnectorPayload = Record<string, string | number | boolean>;
 
+/**
+ * Pre-save connection-test verdict. The BE pings the submitted credentials
+ * WITHOUT persisting anything; `ok` is the boolean answer and `error` the reason
+ * when false (server refused / unreachable / missing fields / xoauth2 has no
+ * synchronous test). Top-level shape (no `data` envelope) — a diagnostic verdict,
+ * not a resource. Mirrors ConnectorAdminController::testConnection (R9).
+ */
+export interface TestConnectionResponse {
+    ok: boolean;
+    error?: string | null;
+}
+
 export const adminConnectorsApi = {
     async list(): Promise<ConnectorEntry[]> {
         const { data } = await api.get<ConnectorListResponse>('/api/admin/connectors');
@@ -243,6 +255,22 @@ export const adminConnectorsApi = {
             payload,
         );
         return data.data;
+    },
+
+    /**
+     * Pre-save connection test — ping the submitted credentials, persist nothing.
+     * Returns the { ok, error } verdict verbatim so the modal can gate Connect on
+     * a passing test.
+     */
+    async testConnection(
+        key: string,
+        payload: ConfigureConnectorPayload,
+    ): Promise<TestConnectionResponse> {
+        const { data } = await api.post<TestConnectionResponse>(
+            `/api/admin/connectors/${encodeURIComponent(key)}/test-connection`,
+            payload,
+        );
+        return data;
     },
 
     async startInstall(params: StartInstallParams): Promise<StartInstallResponse['data']> {
