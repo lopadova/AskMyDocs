@@ -209,9 +209,9 @@ class TestingController extends Controller
         // REAL database — e.g. `php artisan serve` (spawned by Playwright locally)
         // inheriting the dev `.env` database settings. `reset()` runs
         // `migrate:fresh`, which DROPS every table; refuse unless the connected DB
-        // is CLEARLY disposable, so this endpoint can never wipe dev/prod data even
-        // sqlite `:memory:` (phpunit) and `.sqlite` files all qualify; the dev DB
-        // `askmydoc` does not.
+        // is CLEARLY disposable, so this endpoint can never wipe dev/prod data.
+        // sqlite `:memory:` (phpunit) and `.sqlite` files all qualify; typical dev/prod
+        // databases do not.
         $database = $this->currentDatabaseName();
         abort_unless(
             $this->looksLikeDisposableTestDatabase($database),
