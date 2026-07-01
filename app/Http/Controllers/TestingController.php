@@ -242,9 +242,11 @@ class TestingController extends Controller
      */
     private function looksLikeDisposableTestDatabase(string $database): bool
     {
+        $lower = strtolower($database);
+
         return $database === ':memory:'
             || str_ends_with($database, '.sqlite')
             || str_ends_with($database, '.sqlite3')
-            || str_contains(strtolower($database), 'test');
+            || (bool) preg_match('/(^|[_-])test\\d*($|[_-])/', $lower);
     }
 }
