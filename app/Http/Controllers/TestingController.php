@@ -207,10 +207,9 @@ class TestingController extends Controller
 
         // Defense-in-depth against a mis-wired `APP_ENV=testing` that points at a
         // REAL database — e.g. `php artisan serve` (spawned by Playwright locally)
-        // inheriting the dev `.env` (DB_DATABASE=askmydoc). `reset()` runs
+        // inheriting the dev `.env` database settings. `reset()` runs
         // `migrate:fresh`, which DROPS every table; refuse unless the connected DB
         // is CLEARLY disposable, so this endpoint can never wipe dev/prod data even
-        // when the env guard passes. The CI + local test DBs (askmydocs_test),
         // sqlite `:memory:` (phpunit) and `.sqlite` files all qualify; the dev DB
         // `askmydoc` does not.
         $database = $this->currentDatabaseName();
