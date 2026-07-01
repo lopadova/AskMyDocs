@@ -34,7 +34,7 @@ async function loginAs(page: Page, email: string): Promise<void> {
     if (!res.ok()) throw new Error(`Login failed for ${email}: ${res.status()} ${await res.text()}`);
 }
 
-/** Fill + submit the IMAP credential form for one account. */
+/** Fill the IMAP credential form, run the (passing) connection test, and submit one account. */
 async function addImapAccount(
     page: Page,
     opts: { label: string; host?: string; project?: string },
@@ -55,6 +55,15 @@ async function addImapAccount(
     await page.getByTestId('connector-imap-form-host').fill(opts.host ?? 'imap.example.com');
     await page.getByTestId('connector-imap-form-username').fill('alice@example.com');
     await page.getByTestId('connector-imap-form-password').fill('app-password');
+    // v8.26 — Connect is gated behind a passing connection test: test first, then
+    // save. Every caller of this helper uses a reachable host, so the fake ping
+    // passes and Connect enables.
+    await page.getByTestId('connector-imap-form-test').click();
+    await expect(page.getByTestId('connector-imap-form-test-result')).toHaveAttribute(
+        'data-status',
+        'ok',
+        { timeout: 15_000 },
+    );
     await page.getByTestId('connector-imap-form-submit').click();
 }
 
@@ -87,13 +96,32 @@ baseTest.describe('Connectors — IMAP credential flow (super-admin)', () => {
         await expect(page.getByTestId('connector-imap-form-xoauth2_provider')).toHaveCount(0);
     });
 
-    baseTest('happy — fill credentials → ping succeeds → account becomes Active', async ({ page }) => {
+    baseTest('happy — test connection passes → Connect enables → account becomes Active', async ({ page }) => {
         await page.goto('/app/admin/connectors');
         await expect(page.getByTestId('admin-connectors')).toHaveAttribute('data-state', 'ready', {
             timeout: 15_000,
         });
 
-        await addImapAccount(page, { label: 'Support' });
+        await page.getByTestId('connector-imap-add-account').click();
+        await expect(page.getByTestId('connector-imap-form')).toBeVisible();
+        await page.getByTestId('connector-imap-form-label').fill('Support');
+        await page.getByTestId('connector-imap-form-host').fill('imap.example.com');
+        await page.getByTestId('connector-imap-form-username').fill('alice@example.com');
+        await page.getByTestId('connector-imap-form-password').fill('app-password');
+
+        // v8.26 — Connect is gated: disabled until the connection test passes.
+        await expect(page.getByTestId('connector-imap-form-submit')).toBeDisabled();
+
+        await page.getByTestId('connector-imap-form-test').click();
+        await expect(page.getByTestId('connector-imap-form-test-result')).toHaveAttribute(
+            'data-status',
+            'ok',
+            { timeout: 15_000 },
+        );
+
+        // Test OK → Connect enables → save.
+        await expect(page.getByTestId('connector-imap-form-submit')).toBeEnabled();
+        await page.getByTestId('connector-imap-form-submit').click();
 
         // The fake ping succeeds → BE vaults the secret + flips the row ACTIVE;
         // the mutation invalidates the list → the card shows one active account
@@ -104,18 +132,30 @@ baseTest.describe('Connectors — IMAP credential flow (super-admin)', () => {
         await expect(page.getByTestId('connector-imap-form')).toHaveCount(0);
     });
 
-    baseTest('failure — bad host → ping fails → 422 error shown, no active account', async ({ page }) => {
+    baseTest('failure — bad host → connection test fails → Connect stays disabled, no account', async ({ page }) => {
         await page.goto('/app/admin/connectors');
         await expect(page.getByTestId('admin-connectors')).toHaveAttribute('data-state', 'ready', {
             timeout: 15_000,
         });
 
-        // `invalid` in the host drives the fake ping to fail → BE returns 422.
-        await addImapAccount(page, { label: 'Support', host: 'invalid.example.com' });
+        await page.getByTestId('connector-imap-add-account').click();
+        await expect(page.getByTestId('connector-imap-form')).toBeVisible();
+        await page.getByTestId('connector-imap-form-label').fill('Support');
+        // `invalid` in the host drives the fake ping to fail.
+        await page.getByTestId('connector-imap-form-host').fill('invalid.example.com');
+        await page.getByTestId('connector-imap-form-username').fill('alice@example.com');
+        await page.getByTestId('connector-imap-form-password').fill('app-password');
 
-        // R14 — the failure is surfaced loudly, the modal stays open, and no
-        // account reaches active.
-        await expect(page.getByTestId('connector-imap-form-error')).toBeVisible({ timeout: 15_000 });
+        await page.getByTestId('connector-imap-form-test').click();
+
+        // R14 — the failed test is surfaced loudly; Connect STAYS disabled so
+        // nothing is saved, the modal stays open, and no account is created.
+        await expect(page.getByTestId('connector-imap-form-test-result')).toHaveAttribute(
+            'data-status',
+            'error',
+            { timeout: 15_000 },
+        );
+        await expect(page.getByTestId('connector-imap-form-submit')).toBeDisabled();
         await expect(page.getByTestId('connector-imap-form')).toBeVisible();
         await expect(
             page.getByTestId('connector-list-card-imap').locator('[data-account-status="active"]'),
