@@ -119,6 +119,7 @@ final class ConnectorConnectionTestService
     {
         $connection = [];
         $secret = null;
+        $seenSecretField = false;
 
         foreach ($schema as $field) {
             $fieldName = (string) ($field['name'] ?? '');
