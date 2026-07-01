@@ -405,6 +405,42 @@ final class AdminAuthorizationMatrixTest extends TestCase
     }
 
     /**
+     * The pre-save `POST /api/admin/connectors/{name}/test-connection` endpoint
+     * (the "Test connection" button). POST-only, same `admin/connectors` group
+     * gated by `can:manageConnectors` (admin + super-admin). An empty body yields
+     * 200 `{ ok:false }` (the service short-circuits on the missing host) — never
+     * 403 for an allowed role, and never 404 (route must be mounted). Guest → 401
+     * is covered for the whole group by test_guests_are_rejected_with_401.
+     */
+    public function test_test_connection_requires_the_manage_connectors_gate(): void
+    {
+        $writeUri = '/api/admin/connectors/imap/test-connection';
+
+        $adminStatus = $this->actingAs($this->userWithRole('admin'))
+            ->postJson($writeUri, [])
+            ->getStatusCode();
+        $this->assertNotSame(
+            403,
+            $adminStatus,
+            "Role [admin] must pass the manageConnectors gate on [{$writeUri}] but got 403.",
+        );
+
+        $superStatus = $this->actingAs($this->userWithRole('super-admin'))
+            ->postJson($writeUri, [])
+            ->getStatusCode();
+        $this->assertNotSame(
+            403,
+            $superStatus,
+            "Role [super-admin] must pass the manageConnectors gate on [{$writeUri}] but got 403.",
+        );
+        $this->assertNotSame(
+            404,
+            $superStatus,
+            "[{$writeUri}] must be MOUNTED (super-admin got 404 — route missing?).",
+        );
+    }
+
+    /**
      * v8.20 — the multi-account `PATCH /api/admin/connectors/{installationId}`
      * metadata edit. PATCH-only (can't ride the GET matrix), same
      * `can:manageConnectors` (admin + super-admin) gate as the rest of the group.

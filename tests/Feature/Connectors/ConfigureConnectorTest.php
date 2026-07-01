@@ -337,6 +337,70 @@ final class ConfigureConnectorTest extends TestCase
         $this->assertNull($installation->project_key);
     }
 
+    // ── Pre-save connection test (the "Test connection" button) ────────────────
+
+    public function test_test_connection_returns_ok_when_the_ping_succeeds_and_persists_nothing(): void
+    {
+        $this->bindImapFactory(pingSucceeds: true);
+
+        $this->actingAs($this->superAdmin())
+            ->postJson('/api/admin/connectors/imap/test-connection', $this->basicPayload())
+            ->assertOk()
+            ->assertExactJson(['ok' => true]);
+
+        // The whole point of the pre-save test: it verifies WITHOUT saving. No
+        // installation row, no vaulted secret — Connect is what persists.
+        $this->assertSame(
+            0,
+            ConnectorInstallation::query()->where('connector_name', 'imap')->count(),
+            'A connection test must never create an installation row.',
+        );
+    }
+
+    public function test_test_connection_returns_not_ok_when_the_ping_fails_and_persists_nothing(): void
+    {
+        $this->bindImapFactory(pingSucceeds: false);
+
+        $response = $this->actingAs($this->superAdmin())
+            ->postJson('/api/admin/connectors/imap/test-connection', $this->basicPayload())
+            ->assertOk();
+
+        // R14 — a failed test is an explicit negative result the FE reads, with a
+        // reason; NOT a silent success and NOT a persisted row.
+        $this->assertFalse($response->json('ok'));
+        $this->assertNotEmpty($response->json('error'));
+        $this->assertSame(0, ConnectorInstallation::query()->where('connector_name', 'imap')->count());
+    }
+
+    public function test_test_connection_reports_missing_fields_without_calling_the_server(): void
+    {
+        // No factory bound on purpose: with an empty payload the service must
+        // short-circuit on the missing host/password BEFORE it ever builds a
+        // client, so this proves the guard (and that it never 500s).
+        $response = $this->actingAs($this->superAdmin())
+            ->postJson('/api/admin/connectors/imap/test-connection', [])
+            ->assertOk();
+
+        $this->assertFalse($response->json('ok'));
+        $this->assertNotEmpty($response->json('error'));
+    }
+
+    public function test_test_connection_rejects_xoauth2_with_a_clear_message(): void
+    {
+        // xoauth2 has no synchronous pre-save ping — the endpoint says so plainly
+        // instead of pretending to test (R43 — the OTHER auth mode is handled).
+        $response = $this->actingAs($this->superAdmin())
+            ->postJson('/api/admin/connectors/imap/test-connection', [
+                'auth_mode' => 'xoauth2',
+                'xoauth2_provider' => 'google',
+                'username' => 'alice@gmail.com',
+            ])
+            ->assertOk();
+
+        $this->assertFalse($response->json('ok'));
+        $this->assertStringContainsString('password', strtolower((string) $response->json('error')));
+    }
+
     /**
      * @param  array<string,mixed>  $overrides
      * @return array<string,mixed>

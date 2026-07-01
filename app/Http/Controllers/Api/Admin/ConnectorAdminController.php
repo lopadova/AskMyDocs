@@ -10,6 +10,8 @@ use App\Http\Requests\Admin\StartConnectorInstallRequest;
 use App\Http\Requests\Admin\UpdateConnectorInstallationRequest;
 use App\Http\Resources\Admin\ConnectorInstallationResource;
 use App\Services\Admin\Connectors\ConfigureConnectorService;
+use App\Services\Admin\Connectors\ConnectorConnectionTestException;
+use App\Services\Admin\Connectors\ConnectorConnectionTestService;
 use App\Services\Admin\Connectors\ConnectorEmailProbeException;
 use App\Services\Admin\Connectors\ConnectorEmailProbeService;
 use App\Services\Admin\Connectors\ConnectorInstallationService;
@@ -265,6 +267,43 @@ final class ConnectorAdminController extends Controller
                 ['redirect_to' => $result->redirectTo],
             ),
         ]);
+    }
+
+    /**
+     * POST /api/admin/connectors/{name}/test-connection
+     *
+     * PRE-SAVE connection test for a credential connector (IMAP): pings the
+     * server with the SUBMITTED form values WITHOUT persisting anything (no
+     * installation row, no vault write), so the operator can confirm the
+     * credentials before clicking Connect. The FE gates the Connect button on a
+     * passing test — "Test OK → you can save".
+     *
+     * Contract: **200** `{ ok:true }` on a successful ping; **200**
+     * `{ ok:false, error }` when the server refuses / is unreachable / required
+     * fields are missing / the auth mode has no synchronous test. The caller
+     * reads `ok` — this is an explicit negative result, not a silent success
+     * (R14). An unknown / non-credential connector 404s. Never logs the payload
+     * (it carries the secret); the credential is only held for the ping.
+     */
+    public function testConnection(
+        Request $request,
+        string $name,
+        ConnectorConnectionTestService $tester,
+    ): JsonResponse {
+        if ($this->registry->get($name) === null) {
+            throw new NotFoundHttpException("Connector '{$name}' is not registered.");
+        }
+
+        try {
+            $tester->test($name, $request->all());
+        } catch (ConnectorConnectionTestException $e) {
+            // Reachability failure is the ANSWER, not an HTTP error: 200 with the
+            // reason so the modal shows why the test didn't pass and keeps Connect
+            // disabled. A non-credential connector still 404s (uncaught).
+            return response()->json(['ok' => false, 'error' => $e->getMessage()]);
+        }
+
+        return response()->json(['ok' => true]);
     }
 
     /**
