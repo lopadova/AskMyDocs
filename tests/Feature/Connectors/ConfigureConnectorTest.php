@@ -101,7 +101,7 @@ final class ConfigureConnectorTest extends TestCase
         $this->assertStringNotContainsString('s3cr3t-app-pw', $response->getContent());
     }
 
-    public function test_basic_auth_configure_with_bad_credentials_returns_422_and_stays_pending(): void
+    public function test_basic_auth_configure_with_bad_credentials_returns_422_and_rolls_back_the_row(): void
     {
         $this->bindImapFactory(pingSucceeds: false);
 
@@ -109,14 +109,49 @@ final class ConfigureConnectorTest extends TestCase
             ->postJson('/api/admin/connectors/imap/configure', $this->basicPayload())
             ->assertStatus(422);
 
+        // R14 — the failure is still surfaced loudly with the connector's message.
         $this->assertNotEmpty($response->json('error'));
 
-        $installation = ConnectorInstallation::query()
-            ->where('tenant_id', 'default')->where('connector_name', 'imap')->firstOrFail();
-        $this->assertSame(ConnectorInstallation::STATUS_PENDING, $installation->status);
-        $this->assertNotNull($installation->error_json);
-        // Failed login → password must NOT be persisted in the vault.
-        $this->assertNull(app(OAuthCredentialVault::class)->getAccessToken($installation->id));
+        // The connection test failed, so NOTHING is saved: the pending row created
+        // to drive the ping is rolled back. A lingering PENDING row is exactly what
+        // used to trip the (tenant, connector, label) unique on the next retry and
+        // dead-end the operator on "label already taken".
+        $this->assertSame(
+            0,
+            ConnectorInstallation::query()
+                ->where('tenant_id', 'default')->where('connector_name', 'imap')->count(),
+            'A failed connection test must leave no connector_installations row behind.',
+        );
+    }
+
+    public function test_configure_can_retry_the_same_label_after_a_failed_connection_test(): void
+    {
+        // The exact operator scenario from the bug report: a first attempt fails the
+        // IMAP login, the operator fixes a parameter and re-submits with the SAME
+        // label. The retry must succeed (the rolled-back first attempt left no row
+        // to collide with) and leave exactly ONE active account.
+        $admin = $this->superAdmin();
+
+        $this->bindImapFactory(pingSucceeds: false);
+        $this->actingAs($admin)
+            ->postJson('/api/admin/connectors/imap/configure', $this->basicPayload(['label' => 'Autry']))
+            ->assertStatus(422);
+
+        // Correct the credentials and retry with the identical label.
+        $this->bindImapFactory(pingSucceeds: true);
+        $response = $this->actingAs($admin)
+            ->postJson('/api/admin/connectors/imap/configure', $this->basicPayload(['label' => 'Autry']))
+            ->assertOk();
+
+        $this->assertSame('active', $response->json('data.status'));
+
+        $rows = ConnectorInstallation::query()
+            ->where('tenant_id', 'default')->where('connector_name', 'imap')->get();
+        $this->assertCount(1, $rows, 'The retry must not leak a second row.');
+        $this->assertSame('Autry', $rows->first()->label);
+        $this->assertSame(ConnectorInstallation::STATUS_ACTIVE, $rows->first()->status);
+        // The corrected password is now vaulted (the first, failed attempt never was).
+        $this->assertSame('s3cr3t-app-pw', app(OAuthCredentialVault::class)->getAccessToken($rows->first()->id));
     }
 
     public function test_basic_auth_configure_rejects_missing_required_fields(): void
