@@ -850,6 +850,11 @@ Route::middleware([
         // configure → ping/persist (basic) or redirect (xoauth2). Same gate group.
         Route::post('/{name}/configure', [ConnectorAdminController::class, 'configure'])
             ->name('api.admin.connectors.configure');
+        // Pre-save connection test (IMAP): ping the submitted credentials WITHOUT
+        // persisting anything, so the FE can gate Connect on a passing test.
+        // Same gate group ({name} string param, sibling of /configure).
+        Route::post('/{name}/test-connection', [ConnectorAdminController::class, 'testConnection'])
+            ->name('api.admin.connectors.test-connection');
         // v8.24 — live IMAP folder list for the connection-settings picker.
         Route::get('/{installationId}/folders', [ConnectorAdminController::class, 'folders'])
             ->whereNumber('installationId')

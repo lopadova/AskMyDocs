@@ -30,6 +30,14 @@ export interface CredentialConnectorFormProps {
     projects: AdminProject[];
     onSubmit: (payload: ConfigureConnectorPayload) => void;
     onClose: () => void;
+    /**
+     * v8.26 — pre-save connection test. When provided AND the effective auth mode
+     * is basic (a synchronous ping exists), a "Test connection" button appears and
+     * Connect stays DISABLED until the test passes ("Test OK → you can save").
+     * Changing any field invalidates a prior pass. Omitted (or xoauth2) → no gate,
+     * Connect submits directly as before. Returns the BE `{ ok, error }` verdict.
+     */
+    onTest?: (payload: ConfigureConnectorPayload) => Promise<{ ok: boolean; error?: string | null }>;
     /** Top-level error (e.g. the BE's "IMAP login failed" 422 message). */
     submitError?: string | null;
     /** Per-field validation errors keyed by field name (from a 422 response). */
@@ -60,6 +68,7 @@ export function CredentialConnectorForm({
     projects,
     onSubmit,
     onClose,
+    onTest,
     submitError,
     fieldErrors,
     isSubmitting,
@@ -70,6 +79,12 @@ export function CredentialConnectorForm({
     // schema fields; the host injects them into the configure payload.
     const [label, setLabel] = useState('');
     const [projectKey, setProjectKey] = useState('');
+
+    // v8.26 — pre-save connection-test state. 'passed' is the only state that
+    // lets Connect through (when the gate is active); any field edit resets to
+    // 'idle' so params that changed since the pass can't be saved untested.
+    const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'passed' | 'failed'>('idle');
+    const [testError, setTestError] = useState<string | null>(null);
 
     const [values, setValues] = useState<Record<string, FieldValue>>(() => {
         const seed: Record<string, FieldValue> = {};
@@ -108,16 +123,19 @@ export function CredentialConnectorForm({
     const isVisible = (field: CredentialFieldSchema): boolean =>
         field.showIf === null || values[field.showIf.field] === field.showIf.equals;
 
-    const setValue = (name: string, value: FieldValue) =>
+    const setValue = (name: string, value: FieldValue) => {
         setValues((prev) => ({ ...prev, [name]: value }));
+        // Any change to a connection parameter invalidates a prior successful
+        // test: reset the gate so Connect can't save params that differ from the
+        // ones that actually passed.
+        setTestStatus('idle');
+        setTestError(null);
+    };
 
-    const handleSubmit = (e: FormEvent) => {
-        e.preventDefault();
-        // Only submit the VISIBLE fields — the BE also honours showIf, but
-        // sending hidden defaults would pollute the payload. An emptied optional
-        // field is OMITTED (not sent as '' / null) so the BE applies the schema
-        // default (e.g. port 993) instead of overriding it. Required fields can't
-        // reach here empty — the browser's `required` blocks the submit first.
+    // The VISIBLE schema field values (an emptied optional is OMITTED, not sent as
+    // '' / null, so the BE applies the schema default e.g. port 993). Shared by
+    // both the connection test and the final submit so they use identical params.
+    const collectFieldValues = (): ConfigureConnectorPayload => {
         const payload: ConfigureConnectorPayload = {};
         for (const field of schema) {
             if (!isVisible(field)) continue;
@@ -125,6 +143,12 @@ export function CredentialConnectorForm({
             if (value === '') continue;
             payload[field.name] = value;
         }
+        return payload;
+    };
+
+    const handleSubmit = (e: FormEvent) => {
+        e.preventDefault();
+        const payload = collectFieldValues();
         // v8.20 — inject the account label (required) + optional project binding.
         // An empty project is OMITTED so the BE applies the tenant default.
         payload.label = label.trim();
@@ -132,6 +156,26 @@ export function CredentialConnectorForm({
             payload.project_key = projectKey;
         }
         onSubmit(payload);
+    };
+
+    const handleTest = async () => {
+        if (!onTest) return;
+        setTestStatus('testing');
+        setTestError(null);
+        try {
+            const result = await onTest(collectFieldValues());
+            if (result.ok) {
+                setTestStatus('passed');
+                return;
+            }
+            setTestStatus('failed');
+            setTestError(result.error ?? 'Connection test failed.');
+        } catch {
+            // Network / unexpected failure must NOT read as success (R14): show a
+            // failed test and keep Connect disabled.
+            setTestStatus('failed');
+            setTestError('Connection test failed. Please try again.');
+        }
     };
 
     // Group fields by their `group` heading, preserving declaration order.
@@ -149,6 +193,23 @@ export function CredentialConnectorForm({
     }, [schema]);
 
     const titleId = `connector-${entry.key}-form-title`;
+
+    // The gate applies only when a tester is wired AND the mode has a synchronous
+    // pre-save ping (basic). xoauth2 keeps the old flow (Connect → provider
+    // redirect), so no Test button and no gate there.
+    const effectiveAuthMode = String(values['auth_mode'] ?? 'basic');
+    const testGated = !!onTest && effectiveAuthMode === 'basic';
+    // Test needs the visible required fields (host/username/password) — the button
+    // is type=button, so native `required` doesn't guard it; gate it here instead.
+    const requiredFieldsFilled = schema
+        .filter(isVisible)
+        .filter((field) => field.required)
+        .every((field) => {
+            const v = values[field.name];
+            return v !== '' && v !== undefined && v !== null;
+        });
+    const canTest = testGated && requiredFieldsFilled && testStatus !== 'testing' && !isSubmitting;
+    const saveDisabled = !!isSubmitting || (testGated && testStatus !== 'passed');
 
     return (
         <div
@@ -297,24 +358,82 @@ export function CredentialConnectorForm({
                     </p>
                 )}
 
-                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
-                    <button
-                        type="button"
-                        data-testid={`connector-${entry.key}-form-cancel`}
-                        onClick={onClose}
-                        disabled={isSubmitting}
-                        style={buttonStyle('secondary', !!isSubmitting)}
+                {/* v8.26 — pre-save connection-test feedback (basic mode only). */}
+                {testGated && testStatus === 'passed' && (
+                    <p
+                        data-testid={`connector-${entry.key}-form-test-result`}
+                        data-status="ok"
+                        role="status"
+                        style={{ margin: 0, fontSize: 11.5, color: 'var(--ok, #4ade80)' }}
                     >
-                        Cancel
-                    </button>
-                    <button
-                        type="submit"
-                        data-testid={`connector-${entry.key}-form-submit`}
-                        disabled={isSubmitting}
-                        style={buttonStyle('primary', !!isSubmitting)}
+                        ✓ Connection OK — you can save now.
+                    </p>
+                )}
+                {testGated && testStatus === 'failed' && (
+                    <p
+                        data-testid={`connector-${entry.key}-form-test-result`}
+                        data-status="error"
+                        role="alert"
+                        style={{ margin: 0, fontSize: 11.5, color: 'var(--err, #fca5a5)' }}
                     >
-                        {isSubmitting ? 'Connecting…' : 'Connect'}
-                    </button>
+                        {testError}
+                    </p>
+                )}
+                {testGated && (testStatus === 'idle' || testStatus === 'testing') && (
+                    <p
+                        data-testid={`connector-${entry.key}-form-test-hint`}
+                        style={{ margin: 0, fontSize: 10.5, color: 'var(--fg-3)' }}
+                    >
+                        Test the connection to enable Connect.
+                    </p>
+                )}
+
+                <div
+                    style={{
+                        display: 'flex',
+                        gap: 8,
+                        justifyContent: testGated ? 'space-between' : 'flex-end',
+                        marginTop: 4,
+                    }}
+                >
+                    {testGated && (
+                        <button
+                            type="button"
+                            data-testid={`connector-${entry.key}-form-test`}
+                            onClick={handleTest}
+                            disabled={!canTest}
+                            aria-busy={testStatus === 'testing'}
+                            aria-label="Test connection"
+                            style={buttonStyle('secondary', !canTest)}
+                        >
+                            {testStatus === 'testing' ? 'Testing…' : 'Test connection'}
+                        </button>
+                    )}
+                    <div style={{ display: 'flex', gap: 8 }}>
+                        <button
+                            type="button"
+                            data-testid={`connector-${entry.key}-form-cancel`}
+                            onClick={onClose}
+                            disabled={isSubmitting}
+                            style={buttonStyle('secondary', !!isSubmitting)}
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="submit"
+                            data-testid={`connector-${entry.key}-form-submit`}
+                            disabled={saveDisabled}
+                            aria-disabled={saveDisabled}
+                            title={
+                                testGated && testStatus !== 'passed'
+                                    ? 'Test the connection first'
+                                    : undefined
+                            }
+                            style={buttonStyle('primary', saveDisabled)}
+                        >
+                            {isSubmitting ? 'Connecting…' : 'Connect'}
+                        </button>
+                    </div>
                 </div>
             </form>
         </div>

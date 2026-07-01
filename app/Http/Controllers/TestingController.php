@@ -6,6 +6,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -196,11 +197,55 @@ class TestingController extends Controller
     }
 
     /**
-     * Abort 403 the moment we're outside `testing`. The routes-level guard
-     * is a defense-in-depth backup; this is the primary check.
+     * Abort 403 the moment we're outside `testing`, OR when the connected
+     * database is not a disposable test DB. The routes-level guard is a
+     * defense-in-depth backup; this is the primary check.
      */
     private function guardEnvironment(): void
     {
         abort_unless(app()->environment('testing'), 403, 'Testing endpoints disabled.');
+
+        // Defense-in-depth against a mis-wired `APP_ENV=testing` that points at a
+        // REAL database — e.g. `php artisan serve` (spawned by Playwright locally)
+        // inheriting the dev `.env` database settings. `reset()` runs
+        // `migrate:fresh`, which DROPS every table; refuse unless the connected DB
+        // is CLEARLY disposable, so this endpoint can never wipe dev/prod data.
+        // sqlite `:memory:` (phpunit) and `.sqlite` files all qualify; typical dev/prod
+        // databases do not.
+        $database = $this->currentDatabaseName();
+        abort_unless(
+            $this->looksLikeDisposableTestDatabase($database),
+            403,
+            "Testing endpoints refused: database [{$database}] is not a disposable test database ".
+            '(expected an in-memory/sqlite DB or a name with a delimited "test" segment such as *_test). '.
+            'Point E2E at a dedicated test database — never the dev/prod DB.',
+        );
+    }
+
+    /**
+     * The connected database's name. Extracted as a seam so tests can assert the
+     * disposable-DB guard against a dev-like name without mocking the DB facade
+     * (which would fight RefreshDatabase's transaction — R41), mirroring the
+     * runMigrateFresh / runDbSeed seams above.
+     */
+    protected function currentDatabaseName(): string
+    {
+        return (string) DB::connection()->getDatabaseName();
+    }
+
+    /**
+     * A database is safe to DROP-and-remigrate only when it is unmistakably a
+     * throwaway test DB: sqlite in-memory, a `.sqlite` file, or a name with a
+     * delimited "test" segment (the CI + local convention `askmydocs_test`). Any
+     * other DB name is treated as non-disposable and protected.
+     */
+    private function looksLikeDisposableTestDatabase(string $database): bool
+    {
+        $lower = strtolower($database);
+
+        return $database === ':memory:'
+            || str_ends_with($database, '.sqlite')
+            || str_ends_with($database, '.sqlite3')
+            || (bool) preg_match('/(^|[_-])test\\d*($|[_-])/', $lower);
     }
 }

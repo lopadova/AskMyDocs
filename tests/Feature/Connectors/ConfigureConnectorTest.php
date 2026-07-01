@@ -101,7 +101,7 @@ final class ConfigureConnectorTest extends TestCase
         $this->assertStringNotContainsString('s3cr3t-app-pw', $response->getContent());
     }
 
-    public function test_basic_auth_configure_with_bad_credentials_returns_422_and_stays_pending(): void
+    public function test_basic_auth_configure_with_bad_credentials_returns_422_and_rolls_back_the_row(): void
     {
         $this->bindImapFactory(pingSucceeds: false);
 
@@ -109,14 +109,49 @@ final class ConfigureConnectorTest extends TestCase
             ->postJson('/api/admin/connectors/imap/configure', $this->basicPayload())
             ->assertStatus(422);
 
+        // R14 — the failure is still surfaced loudly with the connector's message.
         $this->assertNotEmpty($response->json('error'));
 
-        $installation = ConnectorInstallation::query()
-            ->where('tenant_id', 'default')->where('connector_name', 'imap')->firstOrFail();
-        $this->assertSame(ConnectorInstallation::STATUS_PENDING, $installation->status);
-        $this->assertNotNull($installation->error_json);
-        // Failed login → password must NOT be persisted in the vault.
-        $this->assertNull(app(OAuthCredentialVault::class)->getAccessToken($installation->id));
+        // The connection test failed, so NOTHING is saved: the pending row created
+        // to drive the ping is rolled back. A lingering PENDING row is exactly what
+        // used to trip the (tenant, connector, label) unique on the next retry and
+        // dead-end the operator on "label already taken".
+        $this->assertSame(
+            0,
+            ConnectorInstallation::query()
+                ->where('tenant_id', 'default')->where('connector_name', 'imap')->count(),
+            'A failed connection test must leave no connector_installations row behind.',
+        );
+    }
+
+    public function test_configure_can_retry_the_same_label_after_a_failed_connection_test(): void
+    {
+        // The exact operator scenario from the bug report: a first attempt fails the
+        // IMAP login, the operator fixes a parameter and re-submits with the SAME
+        // label. The retry must succeed (the rolled-back first attempt left no row
+        // to collide with) and leave exactly ONE active account.
+        $admin = $this->superAdmin();
+
+        $this->bindImapFactory(pingSucceeds: false);
+        $this->actingAs($admin)
+            ->postJson('/api/admin/connectors/imap/configure', $this->basicPayload(['label' => 'Autry']))
+            ->assertStatus(422);
+
+        // Correct the credentials and retry with the identical label.
+        $this->bindImapFactory(pingSucceeds: true);
+        $response = $this->actingAs($admin)
+            ->postJson('/api/admin/connectors/imap/configure', $this->basicPayload(['label' => 'Autry']))
+            ->assertOk();
+
+        $this->assertSame('active', $response->json('data.status'));
+
+        $rows = ConnectorInstallation::query()
+            ->where('tenant_id', 'default')->where('connector_name', 'imap')->get();
+        $this->assertCount(1, $rows, 'The retry must not leak a second row.');
+        $this->assertSame('Autry', $rows->first()->label);
+        $this->assertSame(ConnectorInstallation::STATUS_ACTIVE, $rows->first()->status);
+        // The corrected password is now vaulted (the first, failed attempt never was).
+        $this->assertSame('s3cr3t-app-pw', app(OAuthCredentialVault::class)->getAccessToken($rows->first()->id));
     }
 
     public function test_basic_auth_configure_rejects_missing_required_fields(): void
@@ -300,6 +335,86 @@ final class ConfigureConnectorTest extends TestCase
         $installation = ConnectorInstallation::query()
             ->where('tenant_id', 'default')->where('connector_name', 'imap')->firstOrFail();
         $this->assertNull($installation->project_key);
+    }
+
+    // ── Pre-save connection test (the "Test connection" button) ────────────────
+
+    public function test_test_connection_returns_ok_when_the_ping_succeeds_and_persists_nothing(): void
+    {
+        $this->bindImapFactory(pingSucceeds: true);
+
+        $this->actingAs($this->superAdmin())
+            ->postJson('/api/admin/connectors/imap/test-connection', $this->basicPayload())
+            ->assertOk()
+            ->assertExactJson(['ok' => true]);
+
+        // The whole point of the pre-save test: it verifies WITHOUT saving. No
+        // installation row, no vaulted secret — Connect is what persists.
+        $this->assertSame(
+            0,
+            ConnectorInstallation::query()->where('connector_name', 'imap')->count(),
+            'A connection test must never create an installation row.',
+        );
+    }
+
+    public function test_test_connection_returns_not_ok_when_the_ping_fails_and_persists_nothing(): void
+    {
+        $this->bindImapFactory(pingSucceeds: false);
+
+        $response = $this->actingAs($this->superAdmin())
+            ->postJson('/api/admin/connectors/imap/test-connection', $this->basicPayload())
+            ->assertOk();
+
+        // R14 — a failed test is an explicit negative result the FE reads, with a
+        // reason; NOT a silent success and NOT a persisted row.
+        $this->assertFalse($response->json('ok'));
+        $this->assertNotEmpty($response->json('error'));
+        $this->assertSame(0, ConnectorInstallation::query()->where('connector_name', 'imap')->count());
+    }
+
+    public function test_test_connection_reports_missing_fields_without_calling_the_server(): void
+    {
+        // No factory bound on purpose: with an empty payload the service must
+        // short-circuit on the missing host/password BEFORE it ever builds a
+        // client, so this proves the guard (and that it never 500s).
+        $response = $this->actingAs($this->superAdmin())
+            ->postJson('/api/admin/connectors/imap/test-connection', [])
+            ->assertOk();
+
+        $this->assertFalse($response->json('ok'));
+        $this->assertNotEmpty($response->json('error'));
+    }
+
+    public function test_test_connection_missing_username_hits_the_friendly_guard(): void
+    {
+        // The guard message promises host + username + password: a missing username
+        // must reach THIS friendly error, not fall through to a factory-level
+        // "Could not connect: …". No factory bound — the guard short-circuits first.
+        $payload = $this->basicPayload();
+        unset($payload['username']);
+
+        $response = $this->actingAs($this->superAdmin())
+            ->postJson('/api/admin/connectors/imap/test-connection', $payload)
+            ->assertOk();
+
+        $this->assertFalse($response->json('ok'));
+        $this->assertStringContainsString('username', strtolower((string) $response->json('error')));
+    }
+
+    public function test_test_connection_rejects_xoauth2_with_a_clear_message(): void
+    {
+        // xoauth2 has no synchronous pre-save ping — the endpoint says so plainly
+        // instead of pretending to test (R43 — the OTHER auth mode is handled).
+        $response = $this->actingAs($this->superAdmin())
+            ->postJson('/api/admin/connectors/imap/test-connection', [
+                'auth_mode' => 'xoauth2',
+                'xoauth2_provider' => 'google',
+                'username' => 'alice@gmail.com',
+            ])
+            ->assertOk();
+
+        $this->assertFalse($response->json('ok'));
+        $this->assertStringContainsString('password', strtolower((string) $response->json('error')));
     }
 
     /**
