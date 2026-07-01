@@ -100,9 +100,7 @@ export default defineConfig({
                   // `playwright test` would wipe the developer's data. Matches the
                   // CI test DB name so migrations behave identically. Create it once:
                   // `createdb askmydocs_test` (see .env.example). The TestingController
-                  // DB guard is the structural backstop if this is ever missing.
-                  DB_DATABASE: process.env.DB_DATABASE ?? 'askmydocs_test',
-                  // Deterministic OFFLINE AI for E2E — chat-stream-browser.spec.ts
+                  DB_DATABASE: 'askmydocs_test',
                   // drives the real /messages/stream SSE through the real
                   // @ai-sdk transport. The fake provider streams a canned
                   // answer + a constant embedding vector (so retrieval always
