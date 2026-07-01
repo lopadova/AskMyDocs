@@ -94,9 +94,8 @@ export default defineConfig({
                   APP_ENV: 'testing',
                   // SAFETY (local-only — CI sets E2E_SKIP_WEBSERVER=1 and skips this
                   // whole block): point the dev-spawned `php artisan serve` at a
-                  // DEDICATED test database, NEVER the dev DB from `.env`
-                  // (DB_DATABASE=askmydoc). `/testing/reset` runs `migrate:fresh`,
-                  // which DROPS every table — without this override a local
+                  // DEDICATED test database, NEVER the dev DB from `.env`.
+                  // `/testing/reset` runs `migrate:fresh`, which DROPS every table — without this override a local
                   // `playwright test` would wipe the developer's data. Matches the
                   // CI test DB name so migrations behave identically. Create it once:
                   // `createdb askmydocs_test` (see .env.example). The TestingController
