@@ -163,4 +163,17 @@ class TestingControllerTest extends TestCase
 
         $this->assertSame([['migrate:fresh']], TestingControllerSpy::$calls);
     }
+
+    public function test_reset_refused_when_name_merely_contains_test_substring(): void
+    {
+        // "test" must be a DELIMITED segment, not any substring: a real DB named
+        // "contest" / "testimonials" is NOT a throwaway and must be protected.
+        foreach (['contest', 'testimonials', 'attestato'] as $name) {
+            TestingControllerSpy::$calls = [];
+            TestingControllerSpy::$databaseNameOverride = $name;
+
+            $this->postJson('/testing/reset')->assertStatus(403);
+            $this->assertSame([], TestingControllerSpy::$calls, "migrate:fresh must NOT run against [{$name}].");
+        }
+    }
 }

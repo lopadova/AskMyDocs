@@ -385,6 +385,22 @@ final class ConfigureConnectorTest extends TestCase
         $this->assertNotEmpty($response->json('error'));
     }
 
+    public function test_test_connection_missing_username_hits_the_friendly_guard(): void
+    {
+        // The guard message promises host + username + password: a missing username
+        // must reach THIS friendly error, not fall through to a factory-level
+        // "Could not connect: …". No factory bound — the guard short-circuits first.
+        $payload = $this->basicPayload();
+        unset($payload['username']);
+
+        $response = $this->actingAs($this->superAdmin())
+            ->postJson('/api/admin/connectors/imap/test-connection', $payload)
+            ->assertOk();
+
+        $this->assertFalse($response->json('ok'));
+        $this->assertStringContainsString('username', strtolower((string) $response->json('error')));
+    }
+
     public function test_test_connection_rejects_xoauth2_with_a_clear_message(): void
     {
         // xoauth2 has no synchronous pre-save ping — the endpoint says so plainly
