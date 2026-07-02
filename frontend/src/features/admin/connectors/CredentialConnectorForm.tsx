@@ -158,12 +158,23 @@ export function CredentialConnectorForm({
         onSubmit(payload);
     };
 
-    const handleTest = async () => {
+const handleTest = async () => {
         if (!onTest) return;
+
+        const payload = collectFieldValues();
+        const payloadKey = JSON.stringify(payload);
+
         setTestStatus('testing');
         setTestError(null);
         try {
-            const result = await onTest(collectFieldValues());
+            const result = await onTest(payload);
+
+            // If params changed while the request was in-flight, ignore this result:
+            // setValue() already reset the gate back to idle.
+            if (JSON.stringify(collectFieldValues()) !== payloadKey) {
+                return;
+            }
+
             if (result.ok) {
                 setTestStatus('passed');
                 return;
@@ -171,6 +182,9 @@ export function CredentialConnectorForm({
             setTestStatus('failed');
             setTestError(result.error ?? 'Connection test failed.');
         } catch {
+            if (JSON.stringify(collectFieldValues()) !== payloadKey) {
+                return;
+            }
             // Network / unexpected failure must NOT read as success (R14): show a
             // failed test and keep Connect disabled.
             setTestStatus('failed');
