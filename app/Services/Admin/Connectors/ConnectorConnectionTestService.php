@@ -117,25 +117,29 @@ final class ConnectorConnectionTestService
      */
     private function extractConnectionAndSecret(array $schema, array $payload, string $authMode): array
     {
-        $connection = [];
-        $secret = null;
-        $seenSecretField = false;
-
-        foreach ($schema as $field) {
-            $fieldName = (string) ($field['name'] ?? '');
-            if ($fieldName === '') {
-                continue;
-            }
-
-            $showIf = $field['showIf'] ?? null;
-            if (is_array($showIf) && isset($showIf['field'], $showIf['equals'])) {
-                $controlling = $showIf['field'] === 'auth_mode'
-                    ? $authMode
-                    : ($payload[$showIf['field']] ?? null);
-                if ($controlling !== $showIf['equals']) {
-                    continue;
+            // Evaluate showIf against *effective* values (submitted value, else schema default),
+            // mirroring ConfigureConnectorRequest::prepareForValidation() / ConfigureConnectorService::splitPayload().
+            $effective = $payload;
+            $effective['auth_mode'] = $authMode;
+            foreach ($schema as $f) {
+                $n = (string) ($f['name'] ?? '');
+                if ($n !== '' && ! array_key_exists($n, $effective) && array_key_exists('default', $f)) {
+                    $effective[$n] = $f['default'];
                 }
             }
+
+            foreach ($schema as $field) {
+                $fieldName = (string) ($field['name'] ?? '');
+                if ($fieldName === '') {
+                    continue;
+                }
+
+                $showIf = $field['showIf'] ?? null;
+                if (is_array($showIf) && isset($showIf['field'], $showIf['equals'])
+                    && ($effective[$showIf['field']] ?? null) !== $showIf['equals']
+                ) {
+                    continue;
+                }
 
             $value = array_key_exists($fieldName, $payload)
                 ? $payload[$fieldName]
