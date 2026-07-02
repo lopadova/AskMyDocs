@@ -52,8 +52,11 @@ final class ConnectorConnectionTestService
      */
     public function test(string $name, array $payload): void
     {
-        $connector = $this->registry->get($name);
+        if ($name !== 'imap') {
+            throw new NotFoundHttpException("Connector '{$name}' does not support pre-save connection testing.");
+        }
 
+        $connector = $this->registry->get($name);
         if ($connector === null) {
             throw new NotFoundHttpException("Connector '{$name}' is not registered.");
         }
