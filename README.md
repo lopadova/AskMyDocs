@@ -2005,9 +2005,7 @@ generic, schema-driven credential framework (`SupportsCredentialForm` +
 `ConfigureConnectorService`) routes the new mode with **zero host code changes**.
 Sysadmin runbook (incl. the mandatory `New-ServicePrincipal` Exchange Online step)
 in the [connector-imap README](https://github.com/padosoft/askmydocs-connector-imap#microsoft-365--app-only-oauth2-client-credentials)
-and the [doc-site](https://padosoft.mintlify.app/connectors-credential). Also
-realigns the locked `padosoft/askmydocs-connector-base` to the already-declared
-**^1.4**.
+and the [doc-site](https://padosoft.mintlify.app/connectors-credential).
 
 **v8.26.0 — Invite-only SPA registration + native Invitations admin + IMAP connection serialization (GA, shipped 2026-06-29).**
 The authentication UI is now **entirely React**. `/login`, `/register`,
