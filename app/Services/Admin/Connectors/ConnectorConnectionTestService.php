@@ -145,7 +145,7 @@ final class ConnectorConnectionTestService
                     continue;
                 }
 
-                $target = (string) ($field['target'] ?? 'connection');
+                $target = (string) ($field['target'] ?? '');
                 $value = array_key_exists($fieldName, $payload)
                     ? $payload[$fieldName]
                     : ($field['default'] ?? null);
