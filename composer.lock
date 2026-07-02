@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "0cb3c974a6a1706558450d19bbd04710",
+    "content-hash": "53248a2494fb701a2e2e32772ac08c7a",
     "packages": [
         {
             "name": "aws/aws-crt-php",
@@ -3355,16 +3355,16 @@
         },
         {
             "name": "padosoft/askmydocs-connector-imap",
-            "version": "v1.4.2",
+            "version": "v1.5.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/padosoft/askmydocs-connector-imap.git",
-                "reference": "c235a101de852571a6aeba64d2a68381e86a4824"
+                "reference": "61ff50c6bc6836e0ade03c4a2240850c4872a1ba"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/padosoft/askmydocs-connector-imap/zipball/c235a101de852571a6aeba64d2a68381e86a4824",
-                "reference": "c235a101de852571a6aeba64d2a68381e86a4824",
+                "url": "https://api.github.com/repos/padosoft/askmydocs-connector-imap/zipball/61ff50c6bc6836e0ade03c4a2240850c4872a1ba",
+                "reference": "61ff50c6bc6836e0ade03c4a2240850c4872a1ba",
                 "shasum": ""
             },
             "require": {
@@ -3423,10 +3423,10 @@
             ],
             "description": "IMAP email connector for AskMyDocs — ingest mailboxes (body, headers, attachments) as RAG knowledge.",
             "support": {
-                "source": "https://github.com/padosoft/askmydocs-connector-imap/tree/v1.4.2",
+                "source": "https://github.com/padosoft/askmydocs-connector-imap/tree/v1.5.0",
                 "issues": "https://github.com/padosoft/askmydocs-connector-imap/issues"
             },
-            "time": "2026-06-25T07:33:23+00:00"
+            "time": "2026-07-02T19:57:49+00:00"
         },
         {
             "name": "padosoft/askmydocs-connector-jira",
