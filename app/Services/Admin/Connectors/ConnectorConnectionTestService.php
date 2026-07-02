@@ -27,8 +27,10 @@ use Throwable;
  * rebuilds the client from the connector's own {@see ImapClientFactoryInterface}
  * (already the per-mailbox serializing decorator, so it honours the one-live-
  * connection-per-mailbox guarantee and releases the lock via close()). Only
- * basic (password) auth has a synchronous pre-save ping; xoauth2 is verified by
- * the provider sign-in round-trip and is rejected here with a clear message.
+ * basic (password) auth has a synchronous pre-save ping here. Delegated xoauth2
+ * is verified by the provider sign-in round-trip; Microsoft 365 app-only
+ * (client-credentials) is verified on Connect (mint + ping + rollback). Both
+ * OAuth modes are rejected here with an accurate, mode-specific message.
  *
  * A failure raises {@see ConnectorConnectionTestException} (→ the controller's
  * 200 `{ ok:false, error }`), NEVER a persisted side effect. The secret is only
@@ -68,11 +70,17 @@ final class ConnectorConnectionTestService
         $authMode = (string) ($payload['auth_mode'] ?? 'basic');
 
         if ($authMode !== 'basic') {
-            // xoauth2 has no synchronous pre-save ping — the provider sign-in
-            // round-trip IS its test. Say so plainly instead of a misleading fail.
-            throw new ConnectorConnectionTestException(
-                'Connection testing is available only for password authentication; for OAuth, use the provider sign-in.',
-            );
+            // Neither OAuth mode has a synchronous pre-save ping here, but for
+            // different reasons — report accurately per mode instead of a single
+            // misleading message. Delegated xoauth2 is verified by the provider
+            // sign-in round-trip; Microsoft 365 app-only (client-credentials) has
+            // NO sign-in — it is verified when the operator clicks Connect, which
+            // mints the token, pings, and rolls back on failure.
+            $message = $authMode === 'xoauth2_client_credentials'
+                ? 'Microsoft 365 app-only credentials are verified automatically when you click Connect (no separate test needed).'
+                : 'Connection testing is available only for password authentication; for OAuth, use the provider sign-in.';
+
+            throw new ConnectorConnectionTestException($message);
         }
 
         [$connection, $secret] = $this->extractConnectionAndSecret(

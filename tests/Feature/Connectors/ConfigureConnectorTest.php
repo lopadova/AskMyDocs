@@ -417,6 +417,28 @@ final class ConfigureConnectorTest extends TestCase
         $this->assertStringContainsString('password', strtolower((string) $response->json('error')));
     }
 
+    public function test_test_connection_reports_app_only_is_verified_on_connect(): void
+    {
+        // Microsoft 365 app-only (client-credentials) has NO interactive provider
+        // sign-in — it is verified synchronously on Connect (mint + ping +
+        // rollback). The endpoint must say THAT, not the delegated-xoauth2
+        // "use the provider sign-in" message (R43 — this auth mode handled too).
+        $response = $this->actingAs($this->superAdmin())
+            ->postJson('/api/admin/connectors/imap/test-connection', [
+                'auth_mode' => 'xoauth2_client_credentials',
+                'ms_tenant_id' => '00000000-0000-0000-0000-000000000000',
+                'ms_client_id' => '11111111-1111-1111-1111-111111111111',
+                'username' => 'shared@contoso.com',
+            ])
+            ->assertOk();
+
+        $this->assertFalse($response->json('ok'));
+        $error = strtolower((string) $response->json('error'));
+        $this->assertStringContainsString('connect', $error);
+        // Must NOT reuse the delegated-OAuth "provider sign-in" wording.
+        $this->assertStringNotContainsString('sign-in', $error);
+    }
+
     /**
      * @param  array<string,mixed>  $overrides
      * @return array<string,mixed>

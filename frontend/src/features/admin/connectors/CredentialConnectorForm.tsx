@@ -81,8 +81,9 @@ export function CredentialConnectorForm({
     const [projectKey, setProjectKey] = useState('');
 
     // v8.26 — pre-save connection-test state. 'passed' is the only state that
-    // lets Connect through (when the gate is active); any CONNECTION field edit
-    // resets to 'idle' so params that changed since the pass can't be saved untested.
+    // lets Connect through (when the gate is active); editing any SCHEMA field
+    // (via setValue — NOT the injected label / project binding) resets to 'idle'
+    // so params that changed since the pass can't be saved untested.
     const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'passed' | 'failed'>('idle');
     const [testError, setTestError] = useState<string | null>(null);
 
