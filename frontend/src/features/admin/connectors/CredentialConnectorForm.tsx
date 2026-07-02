@@ -30,13 +30,13 @@ export interface CredentialConnectorFormProps {
     projects: AdminProject[];
     onSubmit: (payload: ConfigureConnectorPayload) => void;
     onClose: () => void;
-    /**
-     * v8.26 — pre-save connection test. When provided AND the effective auth mode
-     * is basic (a synchronous ping exists), a "Test connection" button appears and
-     * Connect stays DISABLED until the test passes ("Test OK → you can save").
-     * Changing any field invalidates a prior pass. Omitted (or xoauth2) → no gate,
-     * Connect submits directly as before. Returns the BE `{ ok, error }` verdict.
-     */
+     /**
+      * v8.26 — pre-save connection test. When provided AND the effective auth mode
+      * is basic (a synchronous ping exists), a "Test connection" button appears and
+      * Connect stays DISABLED until the test passes ("Test OK → you can save").
+      * Changing a connection field invalidates a prior pass (label/project changes do not).
+      * Omitted (or xoauth2) → no gate, Connect submits directly as before. Returns the BE `{ ok, error }` verdict.
+      */
     onTest?: (payload: ConfigureConnectorPayload) => Promise<{ ok: boolean; error?: string | null }>;
     /** Top-level error (e.g. the BE's "IMAP login failed" 422 message). */
     submitError?: string | null;
