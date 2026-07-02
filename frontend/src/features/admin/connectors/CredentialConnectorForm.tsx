@@ -158,7 +158,7 @@ export function CredentialConnectorForm({
         onSubmit(payload);
     };
 
-const handleTest = async () => {
+    const handleTest = async () => {
         if (!onTest) return;
 
         const payload = collectFieldValues();
