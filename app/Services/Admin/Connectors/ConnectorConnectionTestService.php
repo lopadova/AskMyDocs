@@ -54,7 +54,11 @@ final class ConnectorConnectionTestService
     {
         $connector = $this->registry->get($name);
 
-        if (! $connector instanceof SupportsCredentialForm) {
+        if ($connector === null) {
+            throw new NotFoundHttpException("Connector '{$name}' is not registered.");
+        }
+
+        if (! ($connector instanceof SupportsCredentialForm)) {
             throw new NotFoundHttpException("Connector '{$name}' does not support credential configuration.");
         }
 
