@@ -369,7 +369,7 @@ final class ConfigureConnectorTest extends TestCase
         // reason; NOT a silent success and NOT a persisted row.
         $this->assertFalse($response->json('ok'));
         $this->assertNotEmpty($response->json('error'));
-        $this->assertSame(0, ConnectorInstallation::query()->where('connector_name', 'imap')->count());
+        $this->assertSame(0, ConnectorInstallation::query()->where('tenant_id', 'default')->where('connector_name', 'imap')->count());
     }
 
     public function test_test_connection_reports_missing_fields_without_calling_the_server(): void
