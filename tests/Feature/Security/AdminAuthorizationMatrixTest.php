@@ -418,11 +418,11 @@ final class AdminAuthorizationMatrixTest extends TestCase
 
         $adminResponse = $this->actingAs($this->userWithRole('admin'))
             ->postJson($writeUri, []);
-        $adminResponse->assertOk()->assertJson(['ok' => false]);
+        $adminResponse->assertOk()->assertJson(['ok' => false])->assertJsonStructure(['ok', 'error']);
 
         $superResponse = $this->actingAs($this->userWithRole('super-admin'))
             ->postJson($writeUri, []);
-        $superResponse->assertOk()->assertJson(['ok' => false]);
+        $superResponse->assertOk()->assertJson(['ok' => false])->assertJsonStructure(['ok', 'error']);
     }
 
     /**
