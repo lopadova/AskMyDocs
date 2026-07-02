@@ -145,20 +145,22 @@ final class ConnectorConnectionTestService
                     continue;
                 }
 
-            $value = array_key_exists($fieldName, $payload)
-                ? $payload[$fieldName]
-                : ($field['default'] ?? null);
+                $target = (string) ($field['target'] ?? 'connection');
+                $value = array_key_exists($fieldName, $payload)
+                    ? $payload[$fieldName]
+                    : ($field['default'] ?? null);
 
-            if ($target === 'secret' || ($field['secret'] ?? false) === true) {
-                    throw new ConnectorConnectionTestException(
-                        'Credential connector schema declares more than one secret field; only one is supported.',
-                    );
+                if ($target === 'secret' || ($field['secret'] ?? false) === true) {
+                    if ($seenSecretField) {
+                        throw new ConnectorConnectionTestException(
+                            'Credential connector schema declares more than one secret field; only one is supported.',
+                        );
+                    }
+                    $seenSecretField = true;
+                    $secret = $value === null ? null : (string) $value;
+
+                    continue;
                 }
-                $seenSecretField = true;
-                $secret = $value === null ? null : (string) $value;
-
-                continue;
-            }
 
             if ($target === 'connection' && $value !== null) {
                 $connection[$fieldName] = $value;
