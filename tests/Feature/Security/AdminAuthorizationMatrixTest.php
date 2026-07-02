@@ -408,7 +408,7 @@ final class AdminAuthorizationMatrixTest extends TestCase
      * The pre-save `POST /api/admin/connectors/{name}/test-connection` endpoint
      * (the "Test connection" button). POST-only, same `admin/connectors` group
      * gated by `can:manageConnectors` (admin + super-admin). An empty body yields
-     * 200 `{ ok:false }` (the service short-circuits on the missing host) — never
+     * 200 `{ ok:false, error }` (the service short-circuits on the missing host) — never
      * 403 for an allowed role, and never 404 (route must be mounted). Guest → 401
      * is covered for the whole group by test_guests_are_rejected_with_401.
      */
