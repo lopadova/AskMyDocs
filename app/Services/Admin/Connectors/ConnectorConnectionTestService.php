@@ -147,27 +147,27 @@ final class ConnectorConnectionTestService
             }
         }
 
-            foreach ($schema as $field) {
-                $fieldName = (string) ($field['name'] ?? '');
-                if ($fieldName === '') {
-                    continue;
-                }
+        foreach ($schema as $field) {
+            $fieldName = (string) ($field['name'] ?? '');
+            if ($fieldName === '') {
+                continue;
+            }
 
-                $showIf = $field['showIf'] ?? null;
-                if (is_array($showIf) && isset($showIf['field'], $showIf['equals'])
-                    && ($effective[$showIf['field']] ?? null) !== $showIf['equals']
-                ) {
-                    continue;
-                }
+            $showIf = $field['showIf'] ?? null;
+            if (is_array($showIf) && isset($showIf['field'], $showIf['equals'])
+                && ($effective[$showIf['field']] ?? null) !== $showIf['equals']
+            ) {
+                continue;
+            }
 
-                $target = (string) ($field['target'] ?? '');
-                $value = array_key_exists($fieldName, $payload)
-                    ? $payload[$fieldName]
-                    : ($field['default'] ?? null);
+            $target = (string) ($field['target'] ?? '');
+            $value = array_key_exists($fieldName, $payload)
+                ? $payload[$fieldName]
+                : ($field['default'] ?? null);
 
-                if ($target === 'secret' || ($field['secret'] ?? false) === true) {
-                    if ($seenSecretField) {
-                        throw new ConnectorConnectionTestException(
+            if ($target === 'secret' || ($field['secret'] ?? false) === true) {
+                if ($seenSecretField) {
+                    throw new ConnectorConnectionTestException(
                         'Credential connector schema declares more than one secret field; only one is supported.',
                     );
                 }
