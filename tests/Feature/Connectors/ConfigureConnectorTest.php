@@ -352,7 +352,7 @@ final class ConfigureConnectorTest extends TestCase
         // installation row, no vaulted secret — Connect is what persists.
         $this->assertSame(
             0,
-            ConnectorInstallation::query()->where('connector_name', 'imap')->count(),
+            ConnectorInstallation::query()->where('tenant_id', 'default')->where('connector_name', 'imap')->count(),
             'A connection test must never create an installation row.',
         );
     }
