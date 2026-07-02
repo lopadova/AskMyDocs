@@ -117,16 +117,20 @@ final class ConnectorConnectionTestService
      */
     private function extractConnectionAndSecret(array $schema, array $payload, string $authMode): array
     {
-            // Evaluate showIf against *effective* values (submitted value, else schema default),
-            // mirroring ConfigureConnectorRequest::prepareForValidation() / ConfigureConnectorService::splitPayload().
-            $effective = $payload;
-            $effective['auth_mode'] = $authMode;
-            foreach ($schema as $f) {
-                $n = (string) ($f['name'] ?? '');
-                if ($n !== '' && ! array_key_exists($n, $effective) && array_key_exists('default', $f)) {
-                    $effective[$n] = $f['default'];
-                }
+        $connection = [];
+        $secret = null;
+        $seenSecretField = false;
+
+        // Evaluate showIf against *effective* values (submitted value, else schema default),
+        // mirroring ConfigureConnectorRequest::prepareForValidation() / ConfigureConnectorService::splitPayload().
+        $effective = $payload;
+        $effective['auth_mode'] = $authMode;
+        foreach ($schema as $f) {
+            $n = (string) ($f['name'] ?? '');
+            if ($n !== '' && ! array_key_exists($n, $effective) && array_key_exists('default', $f)) {
+                $effective[$n] = $f['default'];
             }
+        }
 
             foreach ($schema as $field) {
                 $fieldName = (string) ($field['name'] ?? '');
