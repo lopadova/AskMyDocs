@@ -216,8 +216,8 @@ class TestingController extends Controller
         abort_unless(
             $this->looksLikeDisposableTestDatabase($database),
             403,
-            "Testing endpoints refused: database [{$database}] is not a disposable test database ".
-            '(expected an in-memory/sqlite DB or a name with a delimited "test" segment such as *_test). '.
+            "Testing endpoints refused: database [{$database}] is not a disposable test database".
+            ' (expected an in-memory/sqlite DB or a name with a delimited "test" segment such as *_test). '.
             'Point E2E at a dedicated test database — never the dev/prod DB.',
         );
     }
