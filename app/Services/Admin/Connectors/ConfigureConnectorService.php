@@ -110,7 +110,10 @@ final class ConfigureConnectorService
             // connector_credentials row cascades via its FK (R28) if the connector
             // wrote a partial secret before failing.
             if (! $installation->delete()) {
-                throw new \RuntimeException('Failed to roll back the pending connector installation after a failed connection test.');
+                throw new \RuntimeException(
+                    'Failed to roll back the pending connector installation after a failed connection test.',
+                    previous: $e,
+                );
             }
 
             throw $e;
