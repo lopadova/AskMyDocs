@@ -199,10 +199,6 @@ Route::middleware(['auth', 'can:viewAiActCompliance'])->get('/admin/ai-act-compl
 if (app()->environment('testing')) {
     Route::post('/testing/reset', [TestingController::class, 'reset'])->name('testing.reset');
     Route::post('/testing/seed', [TestingController::class, 'seed'])->name('testing.seed');
-    // R38 — synchronously drain the async queue so a spec can force job-derived
-    // state (e.g. the canonical graph a source-edit re-index rebuilds) to be
-    // deterministic before it asserts. See TestingController::drainQueue.
-    Route::post('/testing/drain-queue', [TestingController::class, 'drainQueue'])->name('testing.drain-queue');
 }
 
 /*

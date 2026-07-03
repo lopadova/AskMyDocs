@@ -1,6 +1,6 @@
 import { expect } from '@playwright/test';
 import { test } from './fixtures';
-import { drainQueue, seedDb } from './setup-helpers';
+import { seedDb } from './setup-helpers';
 
 /*
  * PR15 — Phase J. Golden-path admin journey.
@@ -43,12 +43,6 @@ test.describe('Admin golden-path journey — Phase J', () => {
         page,
         request,
     }) => {
-        // This is a deliberately long multi-step golden-path walk (10 steps) plus
-        // a synchronous queue drain before the graph step (R38). The default 20 s
-        // per-test cap is too tight for the whole journey on a busy CI runner —
-        // give it real headroom so a slow-but-passing run isn't cut off.
-        test.setTimeout(90_000);
-
         // ─── Step 1: Login as admin → land on /app ──────────────────────
         //
         // The `seeded` auto-fixture already ran DemoSeeder so admin +
@@ -149,6 +143,25 @@ test.describe('Admin golden-path journey — Phase J', () => {
         await docNode.click();
         await expect(page.getByTestId('kb-detail')).toBeVisible({ timeout: 10_000 });
 
+        // ─── KB Graph tab → seeded node visible (checked BEFORE the edit) ──
+        //
+        // DemoSeeder seeds 3 kb_nodes + 1 kb_edge (remote-work-policy ↔
+        // pto-guidelines), so the Graph tab is deterministically `ready`. We
+        // assert it HERE, before the Source edit below, on purpose: saving a
+        // source edit re-ingests the doc, which VACATES its canonical kb_nodes
+        // and rebuilds them via the async IngestDocumentJob → CanonicalIndexerJob
+        // chain — so a POST-edit graph is transiently `empty` and races the
+        // background worker against its timeout (the recurring admin-journey
+        // flake). Reading the graph while the seeded node is intact removes the
+        // async dependency entirely.
+        await page.getByTestId('kb-tab-graph').click();
+        await expect(page.getByTestId('kb-graph')).toHaveAttribute('data-state', 'ready', {
+            timeout: 15_000,
+        });
+        await expect(page.getByTestId('kb-graph-node-remote-work-policy')).toBeVisible({
+            timeout: 10_000,
+        });
+
         // Switch to Source tab and make a trivial edit at end-of-buffer.
         await page.getByTestId('kb-tab-source').click();
         await expect(page.getByTestId('kb-source')).toHaveAttribute('data-state', 'ready', {
@@ -189,27 +202,9 @@ test.describe('Admin golden-path journey — Phase J', () => {
             updatedRow.first().or(page.getByTestId('kb-history').getByText('updated').first()),
         ).toBeVisible({ timeout: 15_000 });
 
-        // ─── Step 6: KB Graph tab → at least one node visible ────────────
-        //
-        // DemoSeeder was extended in G4 to seed 3 kb_nodes + 1
-        // kb_edges between remote-work-policy and pto-guidelines, so
-        // the Graph tab reaches ready with deterministic nodes.
-        //
-        // R38: the Step-5 source save re-ingests the doc, which VACATES its
-        // canonical kb_nodes and rebuilds them via the async IngestDocumentJob →
-        // CanonicalIndexerJob chain. Without draining, the Graph tab is
-        // transiently `empty` and this assertion races the background worker
-        // against its 15 s timeout (the recurring admin-journey flake). Drain the
-        // queue so the rebuild is COMPLETE before we open the tab.
-        await drainQueue(page);
-
-        await page.getByTestId('kb-tab-graph').click();
-        await expect(page.getByTestId('kb-graph')).toHaveAttribute('data-state', 'ready', {
-            timeout: 15_000,
-        });
-        await expect(page.getByTestId('kb-graph-node-remote-work-policy')).toBeVisible({
-            timeout: 10_000,
-        });
+        // (KB Graph was verified above, BEFORE the source edit — see the note
+        // there — so the seeded node is asserted deterministically rather than
+        // racing the post-edit async re-index.)
 
         // ─── Step 7: Logs → chat tab → filter by model → row count decreases
 
