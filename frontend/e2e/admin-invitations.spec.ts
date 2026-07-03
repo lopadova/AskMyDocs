@@ -111,8 +111,12 @@ seededTest.describe('Admin Invitations — native admin', () => {
         await page.getByTestId('admin-invitations-invite-submit').click();
 
         // Real POST /invitations → the session list shows the sent invitation.
-        await expect(page.getByTestId('admin-invitations-invites-table')).toBeVisible({ timeout: 15_000 });
-        await expect(page.getByText('e2e-invitee@example.com')).toBeVisible();
+        // Scope the recipient assertion to the TABLE: the success toast also
+        // contains the email ("Invitation sent to e2e-invitee@example.com"), so a
+        // bare getByText matches two elements and trips Playwright strict mode.
+        const invitesTable = page.getByTestId('admin-invitations-invites-table');
+        await expect(invitesTable).toBeVisible({ timeout: 15_000 });
+        await expect(invitesTable.getByText('e2e-invitee@example.com')).toBeVisible();
     });
 
     seededTest(
