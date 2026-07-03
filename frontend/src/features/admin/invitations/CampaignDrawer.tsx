@@ -111,7 +111,11 @@ export function CampaignDrawer({ campaign, tenants, onClose }: CampaignDrawerPro
                     type,
                     status,
                     max_redemptions_total: numOrNull(maxRedemptions),
-                    per_user_limit: numOrNull(perUserLimit),
+                    // `per_user_limit` is NOT NULL in the package schema
+                    // (`->default(1)`) — unlike `max_redemptions_total` (nullable =
+                    // unlimited). An empty field must send the default 1, not null,
+                    // or the create 500s on a NOT NULL constraint violation.
+                    per_user_limit: numOrNull(perUserLimit) ?? 1,
                     starts_at: startsAt || null,
                     ends_at: endsAt || null,
                     grant: grantValue ?? null,

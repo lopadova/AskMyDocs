@@ -98,7 +98,9 @@ describe('CampaignsTab', () => {
                 type: 'single_use',
                 status: 'draft',
                 max_redemptions_total: null,
-                per_user_limit: null,
+                // NOT NULL in the package schema (`->default(1)`) — an empty field
+                // sends the default 1, never null (null 500s on the create).
+                per_user_limit: 1,
                 starts_at: null,
                 ends_at: null,
                 grant: null,
