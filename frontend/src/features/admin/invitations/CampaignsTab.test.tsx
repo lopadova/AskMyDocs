@@ -98,9 +98,10 @@ describe('CampaignsTab', () => {
                 type: 'single_use',
                 status: 'draft',
                 max_redemptions_total: null,
-                // NOT NULL in the package schema (`->default(1)`) — an empty field
-                // sends the default 1, never null (null 500s on the create).
-                per_user_limit: 1,
+                // Optional/nullable (null = no per-user limit) — the package column
+                // is nullable since laravel-invitations v1.0.1, so an empty field
+                // sends null.
+                per_user_limit: null,
                 starts_at: null,
                 ends_at: null,
                 grant: null,
