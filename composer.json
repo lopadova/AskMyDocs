@@ -14,7 +14,7 @@
         "padosoft/askmydocs-connector-evernote": "^1.0",
         "padosoft/askmydocs-connector-fabric": "^1.0",
         "padosoft/askmydocs-connector-google-drive": "^1.0",
-        "padosoft/askmydocs-connector-imap": "^1.4",
+        "padosoft/askmydocs-connector-imap": "^1.5",
         "padosoft/askmydocs-connector-jira": "^1.0",
         "padosoft/askmydocs-connector-notion": "^1.0",
         "padosoft/askmydocs-connector-onedrive": "^1.0",

@@ -181,8 +181,10 @@ tells buyers to demand:
   per-turn cost** now lands on every chat log (replacing the old client-side guess), and 3 MCP read
   tools expose spend to agents. See the [doc-site](https://padosoft.mintlify.app/ai-finops).
 - **Credential-based connectors** (v8.17) — the connector framework gains its first **non-OAuth**
-  source: an **IMAP** mailbox (host/port/encryption/username/password **or** XOAUTH2) activatable
-  entirely from **Admin → Connectors**. The mechanism is **generic + schema-driven** (a connector
+  source: an **IMAP** mailbox (host/port/encryption/username/password, **delegated XOAUTH2**, or
+  **Microsoft 365 app-only** OAuth2 client-credentials via `IMAP.AccessAsApp` — unattended, no user
+  sign-in, `connector-imap` **^1.5**) activatable entirely from **Admin → Connectors**.
+  The mechanism is **generic + schema-driven** (a connector
   advertises `SupportsCredentialForm`; the host renders the form and routes the **secret straight to
   the encrypted vault, never `config_json`**) — any future credential connector works unchanged. See
   the [doc-site](https://padosoft.mintlify.app/connectors-credential).
@@ -1983,6 +1985,27 @@ including commercial use.
 ---
 
 ## Changelog
+
+**v8.26.1 — Microsoft 365 app-only IMAP (OAuth2 client credentials) (GA, shipped 2026-07-02).**
+The IMAP connector gains a third authentication mode — **`xoauth2_client_credentials`** —
+for **unattended, admin-consented Microsoft 365 / Exchange Online** access via the
+**`IMAP.AccessAsApp`** application permission: **no interactive user sign-in**
+(distinct from the existing delegated XOAUTH2 flow where a person signs into the
+mailbox). It is the modern replacement for M365 IMAP basic-auth and the right fit
+when a customer's IT provisions an Entra app registration and hands over static
+technical credentials. Each installation carries its **own** Entra Tenant ID,
+Client ID and Client Secret plus the mailbox; the secret is encrypted in the
+vault, never in `config_json`. The connector mints an app-only token
+(`grant_type=client_credentials`, scope `https://outlook.office365.com/.default`,
+tenant-specific endpoint), verifies it with a live SASL-XOAUTH2 login before
+storing anything, re-mints from the stored secret on expiry, and **forces** the
+Exchange Online host so a stale server can never receive a Microsoft bearer token.
+Delivered purely by bumping `padosoft/askmydocs-connector-imap` to **^1.5** — the
+generic, schema-driven credential framework (`SupportsCredentialForm` +
+`ConfigureConnectorService`) routes the new mode with **zero host code changes**.
+Sysadmin runbook (incl. the mandatory `New-ServicePrincipal` Exchange Online step)
+in the [connector-imap README](https://github.com/padosoft/askmydocs-connector-imap#microsoft-365--app-only-oauth2-client-credentials)
+and the [doc-site](https://padosoft.mintlify.app/connectors-credential).
 
 **v8.26.0 — Invite-only SPA registration + native Invitations admin + IMAP connection serialization (GA, shipped 2026-06-29).**
 The authentication UI is now **entirely React**. `/login`, `/register`,
