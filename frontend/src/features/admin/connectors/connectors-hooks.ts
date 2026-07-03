@@ -9,6 +9,7 @@ import {
     type DisableResponse,
     type EnableResponse,
     type StartInstallParams,
+    type TestConnectionResponse,
     type TestFetchResponse,
     type UpdateInstallationParams,
 } from './connectors.api';
@@ -109,6 +110,21 @@ export function useConfigureConnector() {
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: CONNECTORS_KEY });
         },
+    });
+}
+
+/**
+ * Pre-save connection test (the modal's "Test connection" button). Read-only —
+ * the BE persists nothing, so NO list invalidation; the caller reads the
+ * { ok, error } verdict to gate Connect. A passing test must precede save.
+ */
+export function useTestConnectorConnection() {
+    return useMutation<
+        TestConnectionResponse,
+        unknown,
+        { key: string; payload: ConfigureConnectorPayload }
+    >({
+        mutationFn: ({ key, payload }) => adminConnectorsApi.testConnection(key, payload),
     });
 }
 

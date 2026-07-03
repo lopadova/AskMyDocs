@@ -269,4 +269,128 @@ describe('CredentialConnectorForm', () => {
         fireEvent.click(screen.getByTestId('connector-imap-form-cancel'));
         expect(onClose).toHaveBeenCalledTimes(1);
     });
+
+    // ── v8.26 — "Test connection" gate ─────────────────────────────────────────
+
+    it('renders no Test button and leaves Connect enabled when onTest is absent', () => {
+        render(<CredentialConnectorForm entry={makeEntry()} {...NOOP} />);
+
+        expect(screen.queryByTestId('connector-imap-form-test')).toBeNull();
+        expect(screen.getByTestId('connector-imap-form-submit')).toBeEnabled();
+    });
+
+    it('gates Connect on a passing connection test (basic mode) and tests the visible values without the label', async () => {
+        const onTest = vi.fn().mockResolvedValue({ ok: true });
+        render(
+            <CredentialConnectorForm
+                entry={makeEntry()}
+                projects={PROJECTS}
+                onSubmit={vi.fn()}
+                onClose={vi.fn()}
+                onTest={onTest}
+            />,
+        );
+
+        // Before any test: Connect disabled, a hint explains why, Test disabled
+        // until the required fields are filled.
+        const connect = screen.getByTestId('connector-imap-form-submit');
+        expect(connect).toBeDisabled();
+        expect(screen.getByTestId('connector-imap-form-test-hint')).toBeInTheDocument();
+        const testBtn = screen.getByTestId('connector-imap-form-test');
+        expect(testBtn).toBeDisabled();
+
+        fireEvent.change(screen.getByTestId('connector-imap-form-host'), { target: { value: 'imap.example.com' } });
+        fireEvent.change(screen.getByTestId('connector-imap-form-username'), { target: { value: 'a@b.c' } });
+        fireEvent.change(screen.getByTestId('connector-imap-form-password'), { target: { value: 'pw' } });
+        expect(testBtn).toBeEnabled();
+
+        fireEvent.click(testBtn);
+        expect(onTest).toHaveBeenCalledTimes(1);
+        const sentPayload = onTest.mock.calls[0][0];
+        expect(sentPayload).toMatchObject({
+            auth_mode: 'basic',
+            host: 'imap.example.com',
+            username: 'a@b.c',
+            password: 'pw',
+        });
+        // A connection test carries the credentials only — never the account label.
+        expect(sentPayload).not.toHaveProperty('label');
+
+        // On pass: the verdict shows OK and Connect becomes enabled.
+        const result = await screen.findByTestId('connector-imap-form-test-result');
+        expect(result).toHaveAttribute('data-status', 'ok');
+        expect(connect).toBeEnabled();
+    });
+
+    it('re-disables Connect after a passing test when a connection field changes', async () => {
+        const onTest = vi.fn().mockResolvedValue({ ok: true });
+        render(
+            <CredentialConnectorForm
+                entry={makeEntry()}
+                projects={PROJECTS}
+                onSubmit={vi.fn()}
+                onClose={vi.fn()}
+                onTest={onTest}
+            />,
+        );
+
+        fireEvent.change(screen.getByTestId('connector-imap-form-host'), { target: { value: 'imap.example.com' } });
+        fireEvent.change(screen.getByTestId('connector-imap-form-username'), { target: { value: 'a@b.c' } });
+        fireEvent.change(screen.getByTestId('connector-imap-form-password'), { target: { value: 'pw' } });
+        fireEvent.click(screen.getByTestId('connector-imap-form-test'));
+        await screen.findByTestId('connector-imap-form-test-result');
+        expect(screen.getByTestId('connector-imap-form-submit')).toBeEnabled();
+
+        // Change a parameter → the prior pass is invalidated, Connect re-disables.
+        fireEvent.change(screen.getByTestId('connector-imap-form-host'), { target: { value: 'imap2.example.com' } });
+        expect(screen.getByTestId('connector-imap-form-submit')).toBeDisabled();
+        expect(screen.getByTestId('connector-imap-form-test-hint')).toBeInTheDocument();
+    });
+
+    it('surfaces a failed test inline and keeps Connect disabled', async () => {
+        const onTest = vi.fn().mockResolvedValue({
+            ok: false,
+            error: 'Connection refused — check the credentials and the server settings.',
+        });
+        render(
+            <CredentialConnectorForm
+                entry={makeEntry()}
+                projects={PROJECTS}
+                onSubmit={vi.fn()}
+                onClose={vi.fn()}
+                onTest={onTest}
+            />,
+        );
+
+        fireEvent.change(screen.getByTestId('connector-imap-form-host'), { target: { value: 'invalid.example.com' } });
+        fireEvent.change(screen.getByTestId('connector-imap-form-username'), { target: { value: 'a@b.c' } });
+        fireEvent.change(screen.getByTestId('connector-imap-form-password'), { target: { value: 'pw' } });
+        fireEvent.click(screen.getByTestId('connector-imap-form-test'));
+
+        const result = await screen.findByTestId('connector-imap-form-test-result');
+        expect(result).toHaveAttribute('data-status', 'error');
+        expect(result).toHaveTextContent('Connection refused');
+        expect(screen.getByTestId('connector-imap-form-submit')).toBeDisabled();
+    });
+
+    it('does not gate Connect in xoauth2 mode (no synchronous test)', () => {
+        const onTest = vi.fn();
+        render(
+            <CredentialConnectorForm
+                entry={makeEntry()}
+                projects={PROJECTS}
+                onSubmit={vi.fn()}
+                onClose={vi.fn()}
+                onTest={onTest}
+            />,
+        );
+
+        fireEvent.change(screen.getByTestId('connector-imap-form-auth_mode'), { target: { value: 'xoauth2' } });
+
+        // xoauth2 is verified by the provider round-trip → no Test button, Connect
+        // is not gated (the old flow), and no test hint is shown.
+        expect(screen.queryByTestId('connector-imap-form-test')).toBeNull();
+        expect(screen.queryByTestId('connector-imap-form-test-hint')).toBeNull();
+        expect(screen.getByTestId('connector-imap-form-submit')).toBeEnabled();
+    });
 });

@@ -191,7 +191,7 @@ final class ConnectorImapInstallCommandTest extends TestCase
         $this->assertSame(0, ConnectorInstallation::query()->count());
     }
 
-    public function test_bad_credentials_keep_installation_pending_and_fail(): void
+    public function test_bad_credentials_roll_back_the_installation_and_fail(): void
     {
         $this->setPassword('CONNECTOR_TEST_GMAIL_PASSWORD', 'pw');
         $this->makeUser();
@@ -200,18 +200,21 @@ final class ConnectorImapInstallCommandTest extends TestCase
         $this->artisan('connector:imap:install', ['--mailbox' => ['rotta-logistics-1']])
             ->assertExitCode(1);
 
-        // L'installazione PENDING vive nel tenant dell'azienda; ci si mette in quel
-        // contesto così l'assenza dal vault prova "login fallito → niente segreto"
-        // e non una semplice mancata corrispondenza di tenant (R16).
+        // Il test di connessione (ping IMAP) fallisce → configure() fa il rollback
+        // della riga pending: nessuna installazione resta nel tenant dell'azienda,
+        // così un re-run con la stessa label non sbatte contro la unique
+        // (tenant, connector, label). Ci si mette nel contesto azienda per provare
+        // l'assenza reale (non una mancata corrispondenza di tenant, R16).
         $this->setTenant('rotta-logistics');
 
-        $installation = ConnectorInstallation::query()
-            ->where('tenant_id', 'rotta-logistics')
-            ->where('connector_name', 'imap')
-            ->firstOrFail();
-        $this->assertSame(ConnectorInstallation::STATUS_PENDING, $installation->status);
-        // Login fallito → la password non deve essere vaultata.
-        $this->assertNull(app(OAuthCredentialVault::class)->getAccessToken($installation->id));
+        $this->assertSame(
+            0,
+            ConnectorInstallation::query()
+                ->where('tenant_id', 'rotta-logistics')
+                ->where('connector_name', 'imap')
+                ->count(),
+            'Un login fallito non deve lasciare alcuna installazione a metà.',
+        );
     }
 
     /**

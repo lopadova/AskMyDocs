@@ -22,6 +22,7 @@ import {
     useProjectOptions,
     useStartInstall,
     useSyncNow,
+    useTestConnectorConnection,
     useTestFetch,
     useUpdateInstallation,
 } from './connectors-hooks';
@@ -78,6 +79,7 @@ export function ConnectorsView() {
     const enableConnector = useEnableConnector();
     const destroyConnector = useDestroyConnector();
     const configureConnector = useConfigureConnector();
+    const testConnection = useTestConnectorConnection();
     const updateInstallation = useUpdateInstallation();
     const testFetch = useTestFetch();
 
@@ -169,6 +171,25 @@ export function ConnectorsView() {
             const { message, fieldErrors } = parseConfigureError(e);
             setModalError(message);
             setModalFieldErrors(fieldErrors);
+        }
+    }
+
+    // v8.26 — pre-save connection test for the "Test connection" button. The BE
+    // pings the submitted credentials WITHOUT persisting anything and returns the
+    // { ok, error } verdict; the form gates Connect on a passing test.
+    async function handleCredentialTest(
+        payload: ConfigureConnectorPayload,
+    ): Promise<{ ok: boolean; error?: string | null }> {
+        const current = modalRef.current;
+        if (current?.kind !== 'credential-add') return { ok: false, error: 'The form was closed.' };
+        try {
+            return await testConnection.mutateAsync({ key: current.entry.key, payload });
+        } catch (e) {
+            // A refused/unreachable server is a 200 { ok:false } from the BE, so
+            // only a transport/404 error reaches here — surface it as a failed
+            // test (never a silent pass, R14).
+            const { message } = parseConfigureError(e);
+            return { ok: false, error: message ?? 'Connection test failed. Please try again.' };
         }
     }
 
@@ -500,6 +521,7 @@ export function ConnectorsView() {
                     entry={modal.entry}
                     projects={projects}
                     onSubmit={handleCredentialSubmit}
+                    onTest={handleCredentialTest}
                     onClose={() => setModal(null)}
                     submitError={modalError}
                     fieldErrors={modalFieldErrors}
