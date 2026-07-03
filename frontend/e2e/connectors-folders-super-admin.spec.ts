@@ -36,6 +36,15 @@ async function addImapAccount(page: Page, label: string): Promise<void> {
     await page.getByTestId('connector-imap-form-host').fill('imap.example.com');
     await page.getByTestId('connector-imap-form-username').fill('alice@example.com');
     await page.getByTestId('connector-imap-form-password').fill('app-password');
+    // v8.26 — Connect is gated behind a passing connection test: test first, then
+    // save. The fake ping (CONNECTOR_IMAP_FAKE_PING) succeeds for this reachable
+    // host, so the test passes and Connect enables.
+    await page.getByTestId('connector-imap-form-test').click();
+    await expect(page.getByTestId('connector-imap-form-test-result')).toHaveAttribute(
+        'data-status',
+        'ok',
+        { timeout: 15_000 },
+    );
     await page.getByTestId('connector-imap-form-submit').click();
 }
 
