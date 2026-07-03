@@ -241,7 +241,13 @@ class TestingController extends Controller
      */
     protected function runQueueDrain(): void
     {
-        $exit = Artisan::call('queue:work', [
+        // NOTE: we do NOT treat a non-zero exit as failure. `queue:work` returns a
+        // non-zero "stopped due to a constraint" code when it stops on
+        // `--stop-when-empty-for` / `--max-time` (both are normal termination here),
+        // so the exit code is not a reliable success signal. The drain is
+        // best-effort — a genuine failure (missing command, DB unreachable) still
+        // throws out of Artisan::call and is caught by drainQueue() as a 500.
+        Artisan::call('queue:work', [
             'connection' => 'database',
             '--queue' => 'kb-ingest,default',
             // Stop after 3s of an idle queue (not the instant it first empties):
@@ -254,11 +260,6 @@ class TestingController extends Controller
             '--max-time' => 25,
             '--no-interaction' => true,
         ]);
-        if ($exit !== 0) {
-            throw new \RuntimeException(
-                'queue:work drain exited with code '.$exit.': '.Artisan::output(),
-            );
-        }
     }
 
     /**
