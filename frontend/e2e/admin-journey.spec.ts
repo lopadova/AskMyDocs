@@ -1,6 +1,6 @@
 import { expect } from '@playwright/test';
 import { test } from './fixtures';
-import { seedDb } from './setup-helpers';
+import { drainQueue, seedDb } from './setup-helpers';
 
 /*
  * PR15 — Phase J. Golden-path admin journey.
@@ -43,6 +43,12 @@ test.describe('Admin golden-path journey — Phase J', () => {
         page,
         request,
     }) => {
+        // This is a deliberately long multi-step golden-path walk (10 steps) plus
+        // a synchronous queue drain before the graph step (R38). The default 20 s
+        // per-test cap is too tight for the whole journey on a busy CI runner —
+        // give it real headroom so a slow-but-passing run isn't cut off.
+        test.setTimeout(90_000);
+
         // ─── Step 1: Login as admin → land on /app ──────────────────────
         //
         // The `seeded` auto-fixture already ran DemoSeeder so admin +
@@ -188,6 +194,14 @@ test.describe('Admin golden-path journey — Phase J', () => {
         // DemoSeeder was extended in G4 to seed 3 kb_nodes + 1
         // kb_edges between remote-work-policy and pto-guidelines, so
         // the Graph tab reaches ready with deterministic nodes.
+        //
+        // R38: the Step-5 source save re-ingests the doc, which VACATES its
+        // canonical kb_nodes and rebuilds them via the async IngestDocumentJob →
+        // CanonicalIndexerJob chain. Without draining, the Graph tab is
+        // transiently `empty` and this assertion races the background worker
+        // against its 15 s timeout (the recurring admin-journey flake). Drain the
+        // queue so the rebuild is COMPLETE before we open the tab.
+        await drainQueue(page);
 
         await page.getByTestId('kb-tab-graph').click();
         await expect(page.getByTestId('kb-graph')).toHaveAttribute('data-state', 'ready', {

@@ -239,6 +239,25 @@ export async function seedDb(
     }
 }
 
+/**
+ * R38 — synchronously drain the async queue. Call this AFTER an action that
+ * kicks off background work whose effect the test then asserts on — e.g. a KB
+ * source edit re-ingests the doc, which VACATES its canonical `kb_nodes` and
+ * rebuilds them via the async IngestDocumentJob → CanonicalIndexerJob chain, so
+ * the graph tab is transiently `empty` until that completes. Draining first
+ * makes the assertion deterministic instead of racing the background worker
+ * against a fixed 15 s timeout (the recurring admin-journey / admin-kb-edit
+ * flake). Never call `request.post('/testing/drain-queue')` directly — this
+ * helper keeps every call-site grepable and fails loudly on a non-2xx.
+ */
+export async function drainQueue(target: RequestTarget, options: RetryOptions = {}): Promise<void> {
+    const merged: RetryOptions = { maxAttempts: WARM_RETRY_ATTEMPTS, ...options };
+    const response = await postWithRetry(target, '/testing/drain-queue', undefined, merged);
+    if (!response.ok()) {
+        throw new Error(`/testing/drain-queue failed: ${response.status()} ${await response.text()}`);
+    }
+}
+
 export async function resetAndSeed(target: RequestTarget, seeder = 'DemoSeeder'): Promise<void> {
     // Setup-project boot path: pass the full BOOT_RETRY_ATTEMPTS budget
     // explicitly so the resetDb/seedDb defaults (which are sized for
