@@ -174,6 +174,10 @@ test.describe('Admin golden-path journey — Phase J', () => {
         await page.keyboard.press('Control+End');
         await page.keyboard.type('\n\n<!-- journey spec edit -->\n');
 
+        // Confirm the keystrokes landed in the CodeMirror buffer before relying on
+        // Save enabling — the contenteditable can lag typing under CI load.
+        await expect(content).toContainText('<!-- journey spec edit -->');
+
         const save = page.getByTestId('kb-editor-save');
         await expect(save).toBeEnabled({ timeout: 10_000 });
         // Wait for the PATCH /raw response before sampling the toast —

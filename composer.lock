@@ -4587,16 +4587,16 @@
         },
         {
             "name": "padosoft/laravel-invitations",
-            "version": "v1.0.0",
+            "version": "v1.0.1",
             "source": {
                 "type": "git",
                 "url": "https://github.com/padosoft/laravel-invitations.git",
-                "reference": "eedf73ab1d36009f4c42cbe853811c5d44ceb12d"
+                "reference": "d2400c41046a32dad34e7a4f255bd43b26c4624e"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/padosoft/laravel-invitations/zipball/eedf73ab1d36009f4c42cbe853811c5d44ceb12d",
-                "reference": "eedf73ab1d36009f4c42cbe853811c5d44ceb12d",
+                "url": "https://api.github.com/repos/padosoft/laravel-invitations/zipball/d2400c41046a32dad34e7a4f255bd43b26c4624e",
+                "reference": "d2400c41046a32dad34e7a4f255bd43b26c4624e",
                 "shasum": ""
             },
             "require": {
@@ -4659,9 +4659,9 @@
             ],
             "support": {
                 "issues": "https://github.com/padosoft/laravel-invitations/issues",
-                "source": "https://github.com/padosoft/laravel-invitations/tree/v1.0.0"
+                "source": "https://github.com/padosoft/laravel-invitations/tree/v1.0.1"
             },
-            "time": "2026-06-23T16:41:28+00:00"
+            "time": "2026-07-03T15:24:29+00:00"
         },
         {
             "name": "padosoft/laravel-invitations-admin",

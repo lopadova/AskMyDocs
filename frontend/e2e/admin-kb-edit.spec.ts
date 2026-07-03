@@ -46,6 +46,11 @@ test.describe('Admin KB Source Editor', () => {
         await page.keyboard.press('Control+End');
         await page.keyboard.type('\n\n<!-- edited by e2e -->\n');
 
+        // Confirm the keystrokes actually landed in the CodeMirror buffer before
+        // relying on Save enabling — the contenteditable can lag the typing under
+        // CI load, which otherwise flakes as a stuck-disabled Save.
+        await expect(content).toContainText('<!-- edited by e2e -->');
+
         // Save is enabled once the buffer diverges from the saved baseline.
         const save = page.getByTestId('kb-editor-save');
         await expect(save).toBeEnabled({ timeout: 10_000 });
