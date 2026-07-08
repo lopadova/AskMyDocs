@@ -8,6 +8,7 @@ import {
     modalBackdropStyle,
     modalPanelStyle,
 } from './styles';
+import { prettyJson } from './pretty-json';
 
 /**
  * "Prova tool" modal: enter the tool arguments (JSON object), run the route
@@ -28,14 +29,6 @@ export interface TryToolModalProps {
     onClose: () => void;
     isRunning?: boolean;
     error?: string | null;
-}
-
-function prettyJson(value: unknown): string {
-    try {
-        return JSON.stringify(value, null, 2);
-    } catch {
-        return String(value);
-    }
 }
 
 export function TryToolModal({
