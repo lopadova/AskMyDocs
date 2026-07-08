@@ -146,6 +146,15 @@ export interface TestRouteResponse {
     output_schema: Record<string, unknown> | null;
 }
 
+/**
+ * Ad-hoc probe outcome (ApiRouteController::probePayload) — the same classified
+ * TestResult shape + wall-clock timing. Returned RAW (no `{data}` wrapper); a
+ * failed/non-JSON upstream call is a valid HTTP 200 outcome with `ok:false`.
+ */
+export interface ProbeResult extends TestResult {
+    duration_ms: number | null;
+}
+
 // ---------------------------------------------------------------------------
 // Write payloads (mirror the FormRequest rules)
 // ---------------------------------------------------------------------------
@@ -192,6 +201,18 @@ export interface RoutePayload {
     rate_limit?: number | null;
     output_transform?: Record<string, unknown> | null;
     parameters?: RouteParameterInput[];
+}
+
+/**
+ * Ad-hoc free-endpoint probe (ProbeRequest): a raw, unauthenticated live call.
+ * No auth / connector / route — the modal fires it and reads the response.
+ */
+export interface ProbePayload {
+    http_method: HttpMethod;
+    url: string;
+    headers?: Record<string, string> | null;
+    query?: Record<string, string> | null;
+    body?: Record<string, unknown> | null;
 }
 
 const BASE = '/api/admin/api-connectors';
@@ -297,5 +318,15 @@ export const apiConnectorsApi = {
             arguments: args ?? {},
         });
         return data.result;
+    },
+
+    /**
+     * Ad-hoc "playground" probe of a FREE (no-auth) endpoint — persists nothing.
+     * Returned RAW (no `{data}` wrapper); a failed/non-JSON call is HTTP 200 with
+     * `ok:false` so the modal can read the outcome (R14).
+     */
+    async probe(payload: ProbePayload): Promise<ProbeResult> {
+        const { data } = await api.post<ProbeResult>(`${BASE}/probe`, payload);
+        return data;
     },
 };
