@@ -8,6 +8,7 @@ import {
     modalBackdropStyle,
     modalPanelStyle,
 } from './styles';
+import { prettyJson } from './pretty-json';
 
 /**
  * "Test connessione" modal: run a live test against the route's target, then
@@ -33,14 +34,6 @@ export interface TestConnectionPanelProps {
     isSavingDefinition?: boolean;
     /** Surface a test/save failure loudly (R14). */
     error?: string | null;
-}
-
-function prettyJson(value: unknown): string {
-    try {
-        return JSON.stringify(value, null, 2);
-    } catch {
-        return String(value);
-    }
 }
 
 export function TestConnectionPanel({
