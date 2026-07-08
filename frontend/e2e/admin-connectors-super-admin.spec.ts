@@ -146,4 +146,24 @@ baseTest.describe('Admin Connectors — super-admin', () => {
         const installRequest = await installRequestPromise;
         expect(new URL(installRequest.url()).searchParams.get('label')).toBe('CI-OAuth');
     });
+
+    // The API connector (padosoft/askmydocs-connector-api) is a different
+    // paradigm (no installable accounts), so in this gallery it is a launcher
+    // card that opens its dedicated page. R13: navigation is entirely internal.
+    baseTest('API Connector launcher card opens the API Connectors page', async ({ page }) => {
+        await page.goto('/app/admin/connectors');
+        await expect(page.getByTestId('admin-connectors')).toHaveAttribute('data-state', 'ready', {
+            timeout: 15_000,
+        });
+
+        const card = page.getByTestId('api-connector-launcher-card');
+        await expect(card).toBeVisible();
+        const open = page.getByTestId('api-connector-launcher-open');
+        await expect(open).toBeVisible();
+
+        await open.click();
+
+        await expect(page).toHaveURL(/\/admin\/api-connectors$/);
+        await expect(page.getByTestId('api-connectors-view')).toBeVisible({ timeout: 15_000 });
+    });
 });
