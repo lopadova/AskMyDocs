@@ -134,4 +134,42 @@ test.describe('Admin API Connectors', () => {
         await expect(page.getByTestId('api-route-form')).toBeVisible();
         await expect(page.getByTestId('toast-api-route-created')).toHaveCount(0);
     });
+
+    // Free-endpoint playground — the big probe modal. No persistence: it fires an
+    // ad-hoc live call and reads the response. Happy path points at the app's OWN
+    // /healthz (R13 — the same internal seam the route test uses; SSRF relaxed in
+    // playwright.config.ts). Failure path = client-side URL validation.
+    test('probe modal — method-conditional body + empty-URL validation', async ({ page }) => {
+        await page.getByTestId('api-connector-probe').click();
+        const panel = page.getByTestId('api-probe-panel');
+        await expect(panel).toBeVisible();
+
+        // Body is hidden for GET, shown for a body-bearing method.
+        await expect(page.getByTestId('api-probe-body')).toHaveCount(0);
+        await page.getByTestId('api-probe-method').selectOption('POST');
+        await expect(page.getByTestId('api-probe-body')).toBeVisible();
+        await page.getByTestId('api-probe-method').selectOption('GET');
+        await expect(page.getByTestId('api-probe-body')).toHaveCount(0);
+
+        // Failure path: sending an empty URL surfaces a validation error, no call.
+        await page.getByTestId('api-probe-send').click();
+        await expect(page.getByTestId('api-probe-url-error')).toBeVisible();
+        await expect(page.getByTestId('api-probe-response')).toHaveCount(0);
+
+        await page.getByTestId('api-probe-close').click();
+        await expect(panel).toHaveCount(0);
+    });
+
+    test('probe modal — live send against /healthz reads the response', async ({ page }) => {
+        await page.getByTestId('api-connector-probe').click();
+        await expect(page.getByTestId('api-probe-panel')).toBeVisible();
+
+        await page.getByTestId('api-probe-url').fill(HEALTHZ);
+        await page.getByTestId('api-probe-send').click();
+
+        const response = page.getByTestId('api-probe-response');
+        await expect(response).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByTestId('api-probe-response-status')).toContainText('HTTP 200');
+        await expect(page.getByTestId('api-probe-response-body')).toBeVisible();
+    });
 });
