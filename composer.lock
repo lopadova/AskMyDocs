@@ -2917,7 +2917,7 @@
             "dist": {
                 "type": "path",
                 "url": "/Users/marco/packages/askmydocs-connector-api",
-                "reference": "2135876de2c2e13b309882e8286f27905c0a88a4"
+                "reference": "a22b6dd05a52d4cb6f9a08cc365911f6092d5786"
             },
             "require": {
                 "illuminate/contracts": "^12.0|^13.0",
