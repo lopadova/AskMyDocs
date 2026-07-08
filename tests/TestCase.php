@@ -130,7 +130,12 @@ abstract class TestCase extends OrchestraTestCase
         // package default (`['api']`, unauthenticated). manageConnectors =
         // admin + super-admin; API connectors live in the Connettori section.
         $app['config']->set('connector-api.routes.middleware', [
-            'api', 'auth:sanctum', 'tenant.authorize', 'can:manageConnectors',
+            'api',
+            \Illuminate\Cookie\Middleware\EncryptCookies::class,
+            \Illuminate\Session\Middleware\StartSession::class,
+            'auth:sanctum',
+            'tenant.authorize',
+            'can:manageConnectors',
         ]);
         // v8.13/P11 — Evidence Risk Review core package. Registered so its HTTP
         // API mounts (api.enabled=true via the host config loaded in
