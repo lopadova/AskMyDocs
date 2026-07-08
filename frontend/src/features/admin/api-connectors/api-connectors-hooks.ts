@@ -7,6 +7,8 @@ import {
     type ApiRoute,
     type AuthProfilePayload,
     type ConnectorPayload,
+    type ProbePayload,
+    type ProbeResult,
     type RoutePayload,
     type TestRouteResponse,
     type ToolDefinition,
@@ -208,5 +210,16 @@ export function useDisableRoute() {
 export function useTryRoute() {
     return useMutation<unknown, unknown, { routeId: number; args?: Record<string, unknown> }>({
         mutationFn: ({ routeId, args }) => apiConnectorsApi.tryRoute(routeId, args),
+    });
+}
+
+/**
+ * Ad-hoc free-endpoint probe (the playground modal). Read-only — persists
+ * nothing and touches no list-visible state, so it does NOT invalidate the
+ * connectors query. The caller renders the returned `ProbeResult`.
+ */
+export function useProbeEndpoint() {
+    return useMutation<ProbeResult, unknown, ProbePayload>({
+        mutationFn: (payload) => apiConnectorsApi.probe(payload),
     });
 }
