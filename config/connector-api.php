@@ -24,11 +24,23 @@ return [
     'routes' => [
         'enabled' => (bool) env('API_CONNECTOR_ROUTES_ENABLED', true),
         'prefix' => env('API_CONNECTOR_ROUTES_PREFIX', 'api/admin/api-connectors'),
-        // Authenticated admin stack — mirrors the host connectors group.
-        // `api` brings the SPA stateful-Sanctum + throttle + bindings; the
-        // gate reuses `manageConnectors` (admin + super-admin) since API
-        // connectors live in the Connettori section. R32: this group has a
-        // matching row in AdminAuthorizationMatrixTest.
-        'middleware' => ['api', 'auth:sanctum', 'tenant.authorize', 'can:manageConnectors'],
+        // Authenticated admin stack — mirrors the host admin groups in
+        // routes/api.php EXACTLY. `EncryptCookies` + `StartSession` are
+        // MANDATORY: bootstrap/app.php sets up NO stateful-api group (it adds
+        // session/cookie middleware inline on each route group instead), so
+        // without them here `auth:sanctum` cannot read the SPA session and a
+        // cookie-authenticated browser request gets 401 — even though a Bearer
+        // token still works (the token guard needs no session). `api` adds
+        // throttle + bindings; the gate reuses `manageConnectors` (admin +
+        // super-admin). R32: this group has a matching row in
+        // AdminAuthorizationMatrixTest.
+        'middleware' => [
+            'api',
+            \Illuminate\Cookie\Middleware\EncryptCookies::class,
+            \Illuminate\Session\Middleware\StartSession::class,
+            'auth:sanctum',
+            'tenant.authorize',
+            'can:manageConnectors',
+        ],
     ],
 ];
