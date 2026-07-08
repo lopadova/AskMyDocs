@@ -9,6 +9,8 @@ import type {
     ApiRouteSummary,
     AuthProfilePayload,
     ConnectorPayload,
+    ProbePayload,
+    ProbeResult,
     RoutePayload,
     TestRouteResponse,
     ToolDefinition,
@@ -23,6 +25,7 @@ import {
     useDeleteConnector,
     useDeleteRoute,
     useDisableRoute,
+    useProbeEndpoint,
     useProjectOptions,
     useRegenerateDescription,
     useTestRoute,
@@ -37,6 +40,7 @@ import { AuthProfileForm } from './AuthProfileForm';
 import { RouteForm } from './RouteForm';
 import { TestConnectionPanel } from './TestConnectionPanel';
 import { TryToolModal } from './TryToolModal';
+import { FreeEndpointModal } from './FreeEndpointModal';
 import { buttonStyle } from './styles';
 
 /*
@@ -60,6 +64,7 @@ type Modal =
     | { kind: 'route-edit'; connector: ApiConnector; route: ApiRoute }
     | { kind: 'route-test'; route: ApiRoute }
     | { kind: 'route-try'; route: ApiRoute }
+    | { kind: 'probe' }
     | null;
 
 export function ApiConnectorsView() {
@@ -80,6 +85,7 @@ export function ApiConnectorsView() {
     const activateRoute = useActivateRoute();
     const disableRoute = useDisableRoute();
     const tryRoute = useTryRoute();
+    const probeEndpoint = useProbeEndpoint();
 
     const [modal, setModal] = useState<Modal>(null);
     const [modalError, setModalError] = useState<string | null>(null);
@@ -93,6 +99,8 @@ export function ApiConnectorsView() {
     const [testResult, setTestResult] = useState<TestRouteResponse | null>(null);
     const [tryResult, setTryResult] = useState<unknown>(null);
     const [tryHasResult, setTryHasResult] = useState(false);
+    const [probeResult, setProbeResult] = useState<ProbeResult | null>(null);
+    const [probeError, setProbeError] = useState<string | null>(null);
 
     const state: 'loading' | 'ready' | 'error' | 'empty' = connectorsQuery.isLoading
         ? 'loading'
@@ -116,6 +124,8 @@ export function ApiConnectorsView() {
         setTestResult(null);
         setTryResult(null);
         setTryHasResult(false);
+        setProbeResult(null);
+        setProbeError(null);
     }
 
     function applyError(e: unknown, guard: () => boolean) {
@@ -315,6 +325,30 @@ export function ApiConnectorsView() {
         }
     }
 
+    // Free-endpoint playground: fire an ad-hoc no-persist probe and read the
+    // outcome. A failed upstream call is a valid ProbeResult (ok:false) rendered
+    // by the viewer; only a request/transport failure sets probeError (R14).
+    async function handleProbe(payload: ProbePayload) {
+        setProbeError(null);
+        try {
+            const result = await probeEndpoint.mutateAsync(payload);
+            if (modalRef.current?.kind === 'probe') {
+                setProbeResult(result);
+            }
+        } catch (e) {
+            if (modalRef.current?.kind === 'probe') {
+                setProbeResult(null);
+                setProbeError(toAdminError(e).message);
+            }
+        }
+    }
+
+    function openProbe() {
+        setProbeResult(null);
+        setProbeError(null);
+        openModalReset({ kind: 'probe' });
+    }
+
     return (
         <AdminShell section="api-connectors">
             <ToastHost />
@@ -341,14 +375,24 @@ export function ApiConnectorsView() {
                             then activate the ones the chat may call.
                         </p>
                     </div>
-                    <button
-                        type="button"
-                        data-testid="api-connector-create"
-                        onClick={() => openModalReset({ kind: 'connector-create' })}
-                        style={buttonStyle('primary', false)}
-                    >
-                        + New API connector
-                    </button>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                        <button
+                            type="button"
+                            data-testid="api-connector-probe"
+                            onClick={openProbe}
+                            style={buttonStyle('secondary', false)}
+                        >
+                            Probe endpoint
+                        </button>
+                        <button
+                            type="button"
+                            data-testid="api-connector-create"
+                            onClick={() => openModalReset({ kind: 'connector-create' })}
+                            style={buttonStyle('primary', false)}
+                        >
+                            + New API connector
+                        </button>
+                    </div>
                 </div>
 
                 {state === 'loading' && (
@@ -494,6 +538,16 @@ export function ApiConnectorsView() {
                     onClose={closeModal}
                     isRunning={tryRoute.isPending}
                     error={modalError}
+                />
+            )}
+
+            {modal?.kind === 'probe' && (
+                <FreeEndpointModal
+                    onSend={handleProbe}
+                    result={probeResult}
+                    error={probeError}
+                    isSending={probeEndpoint.isPending}
+                    onClose={closeModal}
                 />
             )}
         </AdminShell>
