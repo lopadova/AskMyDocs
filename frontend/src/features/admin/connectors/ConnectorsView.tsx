@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
+import { useNavigate, useParams } from '@tanstack/react-router';
 import { AdminShell } from '../shell/AdminShell';
+import { useApiConnectors } from '../api-connectors/api-connectors-hooks';
+import { ApiConnectorLauncherCard } from './ApiConnectorLauncherCard';
 import { ToastHost, useToast } from '../shared/Toast';
 import { toAdminError } from '../shared/errors';
 import { AccountEditModal, type EditTab } from './AccountEditModal';
@@ -134,6 +137,14 @@ export function ConnectorsView() {
     const importConfig = useImportConnectorConfig();
     const testFetch = useTestFetch();
 
+    // API connector launcher — the API connector is a different paradigm (no
+    // installable accounts), so it appears in this gallery as a launcher card
+    // that summarises its configured state and opens the dedicated page. The
+    // status query shares the API Connectors page cache key (no duplicate fetch).
+    const navigate = useNavigate();
+    const { teamHash } = useParams({ strict: false }) as { teamHash?: string };
+    const apiConnectorsQuery = useApiConnectors();
+
     const [modal, setModal] = useState<Modal>(null);
     const [modalError, setModalError] = useState<string | null>(null);
     const [modalFieldErrors, setModalFieldErrors] = useState<Record<string, string>>({});
@@ -164,17 +175,36 @@ export function ConnectorsView() {
     const entries = connectorsQuery.data ?? [];
     const projects = projectsQuery.data ?? [];
 
-    const connections = useMemo(() => buildConnections(entries), [entries]);
-    const visible = useMemo(() => filterConnections(connections, query), [connections, query]);
-    // Re-derive the Sync-failed modal's connection from the fresh list each
-    // render, gated on it STILL being errored — so a background refetch that
-    // recovered the account (→ active) auto-dismisses the now-stale error modal
-    // instead of showing a hollow "Connector reported an error" (R17).
-    const errorVm: ConnectionVM | null =
-        errorId === null
-            ? null
-            : (connections.find((c) => c.id === errorId && c.status === 'errored') ?? null);
+const apiConnectors = apiConnectorsQuery.data ?? [];
+const apiActiveToolCount = apiConnectors.reduce(
+    (n, c) => n + (c.routes?.filter((r) => r.status === 'active').length ?? 0),
+    0,
+);
 
+function openApiConnectors() {
+    navigate({ to: '/app/$teamHash/admin/api-connectors', params: { teamHash: teamHash ?? '' } });
+}
+
+const apiLauncher = (
+    <ApiConnectorLauncherCard
+        connectorCount={apiConnectors.length}
+        activeToolCount={apiActiveToolCount}
+        isLoading={apiConnectorsQuery.isLoading}
+        isError={apiConnectorsQuery.isError}
+        onOpen={openApiConnectors}
+    />
+);
+
+const connections = useMemo(() => buildConnections(entries), [entries]);
+const visible = useMemo(() => filterConnections(connections, query), [connections, query]);
+// Re-derive the Sync-failed modal's connection from the fresh list each
+// render, gated on it STILL being errored — so a background refetch that
+// recovered the account (→ active) auto-dismisses the now-stale error modal
+// instead of showing a hollow "Connector reported an error" (R17).
+const errorVm: ConnectionVM | null =
+    errorId === null
+        ? null
+        : (connections.find((c) => c.id === errorId && c.status === 'errored') ?? null);
     function openModalReset(next: Modal) {
         setModalError(null);
         setModalFieldErrors({});
@@ -670,284 +700,67 @@ export function ConnectorsView() {
                 )}
 
                 {state === 'empty' && (
-                    <div
-                        data-testid="admin-connectors-empty"
-                        role="status"
-                        style={{
-                            padding: 28,
-                            textAlign: 'center',
-                            color: 'var(--fg-3)',
-                            border: '1px dashed var(--hairline)',
-                            borderRadius: 10,
-                        }}
-                    >
-                        No connectors are registered in this AskMyDocs build.
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                        <div
+                            data-testid="admin-connectors-grid"
+                            style={{
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+                                gap: 12,
+                            }}
+                        >
+                            {apiLauncher}
+                        </div>
+                        <div
+                            data-testid="admin-connectors-empty"
+                            role="status"
+                            style={{
+                                padding: 28,
+                                textAlign: 'center',
+                                color: 'var(--fg-3)',
+                                border: '1px dashed var(--hairline)',
+                                borderRadius: 10,
+                            }}
+                        >
+                            No source connectors are registered in this AskMyDocs build.
+                        </div>
                     </div>
                 )}
 
                 {state === 'ready' && (
-                    <>
-                        {/* ── Available sources ─────────────────────────────── */}
-                        <section aria-labelledby="connector-sources-heading">
-                            <div
-                                style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 10,
-                                    marginBottom: 14,
-                                }}
-                            >
-                                <h2 id="connector-sources-heading" style={sectionHeadingStyle}>
-                                    Available sources
-                                </h2>
-                                <div style={{ flex: 1, height: 1, background: 'var(--hairline)' }} />
-                            </div>
-                            <div
-                                data-testid="admin-connectors-sources"
-                                style={{
-                                    display: 'grid',
-                                    gridTemplateColumns: 'repeat(auto-fill, minmax(238px, 1fr))',
-                                    gap: 12,
-                                }}
-                            >
-                                {entries.map((entry) => (
-                                    <SourceTile
-                                        key={entry.key}
-                                        entry={entry}
-                                        connectionCount={entry.installations?.length ?? 0}
-                                        onAdd={handleAddAccount}
-                                        onImport={handleImportFile}
-                                        addPending={addPendingFor(entry.key)}
-                                    />
-                                ))}
-                            </div>
-                        </section>
-
-                        {/* ── Connections ──────────────────────────────────── */}
-                        <section aria-labelledby="connector-connections-heading">
-                            <div
-                                style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 12,
-                                    flexWrap: 'wrap',
-                                    marginBottom: 14,
-                                }}
-                            >
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                    <h2 id="connector-connections-heading" style={sectionHeadingStyle}>
-                                        Connections
-                                    </h2>
-                                    <span
-                                        data-testid="connector-connections-count"
-                                        style={{
-                                            fontSize: 11.5,
-                                            fontWeight: 600,
-                                            color: 'var(--fg-1)',
-                                            background: 'var(--bg-2)',
-                                            border: '1px solid var(--hairline)',
-                                            padding: '2px 8px',
-                                            borderRadius: 999,
-                                        }}
-                                    >
-                                        {visible.length}
-                                    </span>
-                                </div>
-                                <div style={{ flex: 1 }} />
-
-                                {/* Search */}
-                                <div
-                                    style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: 8,
-                                        background: 'var(--bg-1)',
-                                        border: '1px solid var(--hairline)',
-                                        borderRadius: 9,
-                                        padding: '7px 11px',
-                                        minWidth: 210,
-                                    }}
-                                >
-                                    <svg
-                                        width="15"
-                                        height="15"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="var(--fg-3)"
-                                        strokeWidth="2"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        aria-hidden="true"
-                                    >
-                                        <circle cx="11" cy="11" r="7" />
-                                        <path d="m21 21-4.3-4.3" />
-                                    </svg>
-                                    <input
-                                        data-testid="connector-connections-search"
-                                        aria-label="Search connections"
-                                        value={query}
-                                        onChange={(e) => {
-                                            setQuery(e.target.value);
-                                            // Close any open ⋮ menu — filtering can
-                                            // unmount its row, and a remount-open menu
-                                            // would steal focus from this input (R17).
-                                            setMenuId(null);
-                                        }}
-                                        placeholder="Search accounts…"
-                                        style={{
-                                            background: 'transparent',
-                                            border: 'none',
-                                            outline: 'none',
-                                            color: 'var(--fg-0)',
-                                            font: 'inherit',
-                                            fontSize: 13,
-                                            width: '100%',
-                                        }}
-                                    />
-                                </div>
-
-                                {/* Sync all */}
-                                <button
-                                    type="button"
-                                    data-testid="connector-connections-sync-all"
-                                    className="amd-cn-btn focus-ring"
-                                    disabled={!canSyncAll}
-                                    onClick={handleSyncAll}
-                                    style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: 7,
-                                        background: 'var(--bg-2)',
-                                        border: '1px solid var(--hairline)',
-                                        color: 'var(--fg-1)',
-                                        font: 'inherit',
-                                        fontSize: 13,
-                                        fontWeight: 600,
-                                        padding: '8px 13px',
-                                        borderRadius: 9,
-                                        cursor: 'pointer',
-                                    }}
-                                >
-                                    <svg
-                                        width="15"
-                                        height="15"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        strokeWidth="2"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        aria-hidden="true"
-                                    >
-                                        <path d="M21 12a9 9 0 1 1-3-6.7" />
-                                        <path d="M21 3v5h-5" />
-                                    </svg>
-                                    Sync all
-                                </button>
-
-                                {/* View toggle */}
-                                <div
-                                    role="group"
-                                    aria-label="Connections view"
-                                    style={{
-                                        display: 'flex',
-                                        background: 'var(--bg-1)',
-                                        border: '1px solid var(--hairline)',
-                                        borderRadius: 9,
-                                        padding: 3,
-                                        gap: 2,
-                                    }}
-                                >
-                                    <ViewTab
-                                        testid="connector-connections-view-table"
-                                        label="Table"
-                                        active={view === 'table'}
-                                        onClick={() => {
-                                            setView('table');
-                                            setMenuId(null);
-                                        }}
-                                        icon={
-                                            <svg
-                                                width="15"
-                                                height="15"
-                                                viewBox="0 0 24 24"
-                                                fill="none"
-                                                stroke="currentColor"
-                                                strokeWidth="2"
-                                                strokeLinecap="round"
-                                                strokeLinejoin="round"
-                                                aria-hidden="true"
-                                            >
-                                                <path d="M3 6h18" />
-                                                <path d="M3 12h18" />
-                                                <path d="M3 18h18" />
-                                            </svg>
-                                        }
-                                    />
-                                    <ViewTab
-                                        testid="connector-connections-view-cards"
-                                        label="Cards"
-                                        active={view === 'cards'}
-                                        onClick={() => {
-                                            setView('cards');
-                                            setMenuId(null);
-                                        }}
-                                        icon={
-                                            <svg
-                                                width="15"
-                                                height="15"
-                                                viewBox="0 0 24 24"
-                                                fill="none"
-                                                stroke="currentColor"
-                                                strokeWidth="2"
-                                                strokeLinecap="round"
-                                                strokeLinejoin="round"
-                                                aria-hidden="true"
-                                            >
-                                                <rect x="3" y="3" width="8" height="8" rx="1.5" />
-                                                <rect x="13" y="3" width="8" height="8" rx="1.5" />
-                                                <rect x="3" y="13" width="8" height="8" rx="1.5" />
-                                                <rect x="13" y="13" width="8" height="8" rx="1.5" />
-                                            </svg>
-                                        }
-                                    />
-                                </div>
-                            </div>
-
-                            {visible.length === 0 ? (
-                                <div
-                                    data-testid="connector-connections-empty"
-                                    role="status"
-                                    style={{
-                                        border: '1px dashed var(--hairline)',
-                                        borderRadius: 14,
-                                        padding: '48px 20px',
-                                        textAlign: 'center',
-                                        color: 'var(--fg-3)',
-                                        fontSize: 13.5,
-                                    }}
-                                >
-                                    {query.trim() !== ''
-                                        ? 'No connections match your search.'
-                                        : 'No connections yet — add one from the sources above.'}
-                                </div>
-                            ) : view === 'table' ? (
-                                <ConnectionsTable
-                                    rows={visible}
-                                    menuId={menuId}
-                                    actions={actions}
-                                    inflight={inflight}
-                                />
-                            ) : (
-                                <ConnectionsCards
-                                    rows={visible}
-                                    menuId={menuId}
-                                    actions={actions}
-                                    inflight={inflight}
-                                />
-                            )}
-                        </section>
-                    </>
+<div
+    data-testid="admin-connectors-grid"
+    style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+        gap: 12,
+    }}
+>
+    {apiLauncher}
+    {entries.map((entry) => (
+        <ConnectorCard
+            key={entry.key}
+            entry={entry}
+            onAddAccount={handleAddAccount}
+            onSync={handleSync}
+            onDisable={handleDisable}
+            onEnable={handleEnable}
+            onRemove={handleRemove}
+            onEdit={(installation) => handleEdit(entry, installation)}
+            onManageFolders={(installation) => handleManageFolders(entry, installation)}
+            onTestFetch={handleTestFetch}
+            onExport={handleExport}
+            onImport={handleImportFile}
+            onCancelInstall={handleRemove}
+            syncingIds={syncingIds}
+            busyIds={busyIds}
+            enablingIds={enablingIds}
+            probingIds={probingIds}
+            exportingIds={exportingIds}
+            addPending={addPendingFor(entry.key)}
+        />
+    ))}
+</div>
                 )}
             </div>
 
