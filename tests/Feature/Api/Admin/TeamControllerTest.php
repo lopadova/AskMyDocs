@@ -158,6 +158,19 @@ final class TeamControllerTest extends TestCase
             ->assertJsonPath('error', 'team_registry_unavailable');
     }
 
+    public function test_index_still_returns_200_when_the_registry_table_is_absent(): void
+    {
+        $admin = $this->makeUser('admin');
+
+        // R43 OFF-path for the LIST surface: with the tenants table absent the
+        // list must degrade to a clean 200 (humanised names), never a 500.
+        Schema::shouldReceive('hasTable')->andReturn(false);
+
+        $this->actingAs($admin)->getJson('/api/admin/teams')
+            ->assertOk()
+            ->assertJsonStructure(['data']);
+    }
+
     public function test_non_admin_gets_403(): void
     {
         $viewer = $this->makeUser('viewer');
