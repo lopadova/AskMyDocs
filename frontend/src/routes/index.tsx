@@ -17,6 +17,7 @@ import { DashboardView } from '../features/admin/dashboard/DashboardView';
 import { UsersView } from '../features/admin/users/UsersView';
 import { RolesView } from '../features/admin/roles/RolesView';
 import { ProjectsList } from '../features/admin/projects/ProjectsList';
+import { TeamsList } from '../features/admin/teams/TeamsList';
 import { KbView } from '../features/admin/kb/KbView';
 import { KbHealthView } from '../features/admin/kb-health/KbHealthView';
 import { TagsList } from '../features/admin/tags/TagsList';
@@ -450,6 +451,25 @@ const adminProjectsRoute = createRoute({
     getParentRoute: () => teamRoute,
     path: 'admin/projects',
     component: AdminProjectsRoute,
+});
+
+// v8.28 — Admin Teams (= tenants). Same flat-RBAC + RequireRole wrapping
+// pattern as AdminProjectsRoute; AdminShell wraps at the route level so
+// TeamsList stays Router-context-free for Vitest.
+function AdminTeamsRoute() {
+    return (
+        <RequireRole roles={['admin', 'super-admin']}>
+            <AdminShell section="teams">
+                <TeamsList />
+            </AdminShell>
+        </RequireRole>
+    );
+}
+
+const adminTeamsRoute = createRoute({
+    getParentRoute: () => teamRoute,
+    path: 'admin/teams',
+    component: AdminTeamsRoute,
 });
 
 // PR7 / Phase F2 — flat admin children. Same shape as `chatRoute`
@@ -1208,6 +1228,7 @@ const teamChildren = [
     maintenanceRoute,
     adminRoute,
     adminProjectsRoute,
+    adminTeamsRoute,
     adminUsersRoute,
     adminRolesRoute,
     adminKbRoute,
