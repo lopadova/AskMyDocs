@@ -471,6 +471,22 @@ Route::middleware([
                 'destroy' => 'api.admin.projects.destroy',
             ]);
 
+        // v8.28 — Admin team (= tenant) management: create a team + rename a
+        // team, over the vendor `tenants` registry. Bound by `slug` (the
+        // tenant_id) — index + store + update only (no show/destroy; teams
+        // are never hard-deleted from the switcher). Rename authorizes the
+        // TARGET team inside TeamRegistryService (membership OR
+        // tenant.cross-access), independent of the request's X-Tenant-Id.
+        // R32 — covered by the AdminAuthorizationMatrix (`/api/admin/teams`).
+        Route::apiResource('teams', \App\Http\Controllers\Api\Admin\TeamController::class)
+            ->parameters(['teams' => 'slug'])
+            ->only(['index', 'store', 'update'])
+            ->names([
+                'index' => 'api.admin.teams.index',
+                'store' => 'api.admin.teams.store',
+                'update' => 'api.admin.teams.update',
+            ]);
+
         // v8.9 — Admin drag-and-drop KB upload: stage → review → commit →
         // poll. Reuses the exact Artisan ingest pipeline (IngestDocumentJob)
         // on commit. R32 — covered by the AdminAuthorizationMatrix
