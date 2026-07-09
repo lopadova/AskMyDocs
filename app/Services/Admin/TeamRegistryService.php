@@ -52,6 +52,28 @@ final class TeamRegistryService
 {
     private const RESERVED_SLUG = 'default';
 
+    /**
+     * Tenant-aware tables whose presence of a `tenant_id` proves the slug is
+     * already an existing tenant (so a create must NOT claim it). Includes the
+     * data-bearing tables that ingest can populate with NO registry row, not
+     * just projects/memberships — see {@see self::assertUnique()} (R30).
+     *
+     * @var list<string>
+     */
+    private const TENANT_DATA_TABLES = [
+        'projects',
+        'project_memberships',
+        'knowledge_documents',
+        'knowledge_chunks',
+        'chat_logs',
+        'conversations',
+        'messages',
+        'kb_nodes',
+        'kb_edges',
+        'kb_canonical_audit',
+        'kb_tags',
+    ];
+
     public function __construct(
         private readonly TenantContext $tenantContext,
         private readonly UserTeamsResolver $teamsResolver,
@@ -82,7 +104,11 @@ final class TeamRegistryService
                 'hash' => $team['hash'],
                 'status' => $statuses[$slug] ?? ($slug === self::RESERVED_SLUG ? 'system' : 'active'),
                 'is_default' => $slug === self::RESERVED_SLUG,
-                'can_manage' => $this->canManage($user, $slug),
+                // Only offer Rename when a `tenants` registry row actually
+                // exists (statuses() is populated only for such slugs) — rename()
+                // 404s without one, so the list must not present a team as
+                // manageable that the write surface would then reject.
+                'can_manage' => $this->canManage($user, $slug) && array_key_exists($slug, $statuses),
                 'project_count' => (int) ($projectCounts[$slug] ?? 0),
                 'member_count' => (int) ($memberCounts[$slug] ?? 0),
             ];
@@ -103,9 +129,7 @@ final class TeamRegistryService
         $this->assertRegistryAvailable();
 
         $name = trim($name);
-        if ($name === '') {
-            throw ValidationException::withMessages(['name' => ['The team name is required.']]);
-        }
+        $this->assertValidName($name);
 
         $slug = $this->resolveSlug($slug, $name);
         $this->assertValidSlug($slug);
@@ -169,9 +193,7 @@ final class TeamRegistryService
         }
 
         $name = trim($name);
-        if ($name === '') {
-            throw ValidationException::withMessages(['name' => ['The team name is required.']]);
-        }
+        $this->assertValidName($name);
 
         $tenant = Tenant::query()->bySlug($slug)->first();
         if ($tenant === null) {
@@ -215,6 +237,23 @@ final class TeamRegistryService
         return Str::slug($name);
     }
 
+    private function assertValidName(string $name): void
+    {
+        if ($name === '') {
+            throw ValidationException::withMessages(['name' => ['The team name is required.']]);
+        }
+
+        // The vendor `tenants.name` column is varchar(200). Without this guard
+        // a >200-char name overflows on Postgres (SQLSTATE 22001) as an
+        // uncaught QueryException → a bare 500 with no field error; validate
+        // in the core so all surfaces answer a clean 422 instead (R14).
+        if (mb_strlen($name) > 200) {
+            throw ValidationException::withMessages([
+                'name' => ['The team name may not be greater than 200 characters.'],
+            ]);
+        }
+    }
+
     private function assertValidSlug(string $slug): void
     {
         if ($slug === self::RESERVED_SLUG) {
@@ -231,22 +270,35 @@ final class TeamRegistryService
     }
 
     /**
-     * "Create new" semantics: refuse to reuse a slug already claimed by a
-     * `tenants` row OR by any tenant-aware domain rows (projects /
-     * memberships) — mirrors CreateCompanyCommand so a rename can never
-     * masquerade as a create.
+     * "Create new" semantics: refuse to reuse a slug already claimed by ANY
+     * tenant — the `tenants` registry row OR any tenant-aware DATA table with
+     * a matching `tenant_id`. Checking only projects/memberships would be a
+     * cross-tenant escalation hole (R30): a tenant can hold ingested data
+     * (knowledge_documents/chunks, chat_logs, graph) with NO projects/
+     * memberships/tenants row — connector ingest writes documents WITHOUT a
+     * registry row — so claiming that slug here would mint the actor a
+     * membership in the victim tenant and grant it via AuthorizeTenantHeader.
+     * Each table is Schema::hasTable-guarded so an unmigrated optional table
+     * degrades cleanly.
      */
     private function assertUnique(string $slug): void
     {
-        $taken = Tenant::query()->where('slug', $slug)->exists()
-            || DB::table('projects')->where('tenant_id', $slug)->exists()
-            || DB::table('project_memberships')->where('tenant_id', $slug)->exists();
-
-        if ($taken) {
-            throw ValidationException::withMessages([
-                'slug' => ["A team with the slug '{$slug}' already exists."],
-            ]);
+        if (Tenant::query()->where('slug', $slug)->exists()) {
+            $this->rejectDuplicateSlug($slug);
         }
+
+        foreach (self::TENANT_DATA_TABLES as $table) {
+            if (Schema::hasTable($table) && DB::table($table)->where('tenant_id', $slug)->exists()) {
+                $this->rejectDuplicateSlug($slug);
+            }
+        }
+    }
+
+    private function rejectDuplicateSlug(string $slug): void
+    {
+        throw ValidationException::withMessages([
+            'slug' => ["A team with the slug '{$slug}' already exists."],
+        ]);
     }
 
     private function assertRegistryAvailable(): void
