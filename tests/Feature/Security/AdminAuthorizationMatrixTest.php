@@ -60,6 +60,8 @@ final class AdminAuthorizationMatrixTest extends TestCase
             '/api/admin/metrics/overview' => ['admin', 'super-admin'],
             '/api/admin/users' => ['admin', 'super-admin'],
             '/api/admin/projects' => ['admin', 'super-admin'],
+            // v8.28 — team (tenant) create + rename registry.
+            '/api/admin/teams' => ['admin', 'super-admin'],
             '/api/admin/logs/chat' => ['admin', 'super-admin'],
             '/api/admin/insights/latest' => ['admin', 'super-admin'],
             '/api/admin/kb/tree' => ['admin', 'super-admin'],
