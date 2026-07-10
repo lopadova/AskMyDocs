@@ -3355,16 +3355,16 @@
         },
         {
             "name": "padosoft/askmydocs-connector-imap",
-            "version": "v1.5.2",
+            "version": "v1.5.3",
             "source": {
                 "type": "git",
                 "url": "https://github.com/padosoft/askmydocs-connector-imap.git",
-                "reference": "80cd6169f3b3684b9cce6bb63f71783b6d5c5823"
+                "reference": "aa3a02244babb21a550bdbfbafbcaea307538546"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/padosoft/askmydocs-connector-imap/zipball/80cd6169f3b3684b9cce6bb63f71783b6d5c5823",
-                "reference": "80cd6169f3b3684b9cce6bb63f71783b6d5c5823",
+                "url": "https://api.github.com/repos/padosoft/askmydocs-connector-imap/zipball/aa3a02244babb21a550bdbfbafbcaea307538546",
+                "reference": "aa3a02244babb21a550bdbfbafbcaea307538546",
                 "shasum": ""
             },
             "require": {
@@ -3423,10 +3423,10 @@
             ],
             "description": "IMAP email connector for AskMyDocs — ingest mailboxes (body, headers, attachments) as RAG knowledge.",
             "support": {
-                "source": "https://github.com/padosoft/askmydocs-connector-imap/tree/v1.5.2",
+                "source": "https://github.com/padosoft/askmydocs-connector-imap/tree/v1.5.3",
                 "issues": "https://github.com/padosoft/askmydocs-connector-imap/issues"
             },
-            "time": "2026-07-09T22:16:16+00:00"
+            "time": "2026-07-10T14:33:31+00:00"
         },
         {
             "name": "padosoft/askmydocs-connector-jira",
