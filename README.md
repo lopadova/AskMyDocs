@@ -1986,6 +1986,30 @@ including commercial use.
 
 ## Changelog
 
+**v8.28.0 — In-app team (tenant) management: create a team + rename a team.**
+Operators can now **create a new team and rename a team from the admin UI**,
+not only via the `company:create` CLI. A "team" is a **tenant** (a `tenant_id`
+slug); its editable display **name** lives on the `tenants` registry row that the
+topbar **team switcher** already reads. A new **Teams** admin page
+(`/app/{team}/admin/teams`, `role:admin|super-admin`) lists the teams you may
+administer — your memberships plus every team when you hold `tenant.cross-access`,
+with the bootstrap **`default`** team read-only — and offers **Create** (name +
+auto-slugged, immutable id) and **Rename**. Everything runs over ONE shared core
+**`TeamRegistryService`** (R44): **create** writes the `tenants` row + an initial
+project + a membership for you (so the team is usable and shows in your switcher
+immediately — mirrors `company:create` minus minting a new user, atomic);
+**rename** updates `tenants.name` and authorizes the **target** team by
+membership-or-`tenant.cross-access` **independently of the request's tenant
+scope** (a cross-tenant registry op — an unmanageable team 404s, IDOR-safe). The
+same core backs the **`team:create` / `team:rename`** Artisan commands and
+`GET/POST /api/admin/teams` + `PATCH /api/admin/teams/{slug}`; after a create or
+rename the SPA refetches `/api/auth/me` so the switcher's list + label update
+without a reload. Deliberately **HTTP + CLI only, no MCP write tool** (R44
+exception mirroring `ProjectController` — team governance is not an agent
+capability). When the optional `tenants` table is absent the endpoints degrade to
+a clean **503** (R14/R43), never a 500. See the
+[doc-site](https://padosoft.mintlify.app/team-management).
+
 **v8.26.1 — Microsoft 365 app-only IMAP (OAuth2 client credentials) (GA, shipped 2026-07-02).**
 The IMAP connector gains a third authentication mode — **`xoauth2_client_credentials`** —
 for **unattended, admin-consented Microsoft 365 / Exchange Online** access via the

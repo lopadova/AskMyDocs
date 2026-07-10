@@ -16,6 +16,7 @@ export type SidebarSection =
     | 'dashboard'
     | 'insights'
     | 'projects'
+    | 'teams'
     | 'users'
     | 'roles'
     | 'kb'
@@ -83,6 +84,7 @@ export const NAV_GROUPS: NavGroup[] = [
             { id: 'engagement', label: 'Engagement', icon: 'Activity', route: '/app/$teamHash/admin/engagement' },
             { id: 'insights', label: 'AI Insights', icon: 'Sparkles', route: '/app/$teamHash/admin/insights' },
             { id: 'projects', label: 'Projects', icon: 'Cube', route: '/app/$teamHash/admin/projects' },
+            { id: 'teams', label: 'Teams', icon: 'Globe', route: '/app/$teamHash/admin/teams' },
             { id: 'users', label: 'Users', icon: 'Users', route: '/app/$teamHash/admin/users' },
             { id: 'roles', 'icon': 'Shield', label: 'Roles', route: '/app/$teamHash/admin/roles' },
         ],
