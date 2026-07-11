@@ -53,7 +53,7 @@ flowchart TD
     S --> V["HTTP: UpdateConnectorInstallationRequest<br/>derives a rule per field dynamically"]
     S --> M["MCP: ConnectorSettingsTool<br/>(read-only, tenant-scoped)"]
     S --> CLI["CLI: connectors:configure<br/>--show / --set name=value"]
-    S --> FORM["FE: ConnectionSettingsForm<br/>(schema-driven editor)"]
+    S --> FORM["FE: schema-driven editor<br/>(SyncSettingsForm tri-state for folder-shaped<br/>schemas · ConnectionSettingsForm generic fallback)"]
     FL --> FORM
     FL --> M
     V -- "mergeIntoConfig() writes ONLY<br/>schema-declared paths" --> DB[("config_json")]
@@ -146,11 +146,28 @@ value fails fast with a clear message — no silent coercion of `date_window_day
 to `0`, and `--set` against a connector with no settings is an error, not a no-op.
 </Tab>
 <Tab title="Admin UI">
-The connector account row opens a schema-driven `ConnectionSettingsForm`: a live
-folder multiselect (with a Retry on a discovery error), tag inputs for free-text
-filter lists, number/checkbox/select rows — all generated from
-`connection_settings_schema`, all pre-filled from `settings`. Adding a field to
-the connector's schema makes it appear here with no FE change.
+The connector account row opens a schema-driven editor: every control is generated
+from `connection_settings_schema` and pre-filled from `settings`, so adding a field
+to the connector's schema makes it appear with no FE change.
+
+Two presentations share the same schema + the same serialized `settings` payload:
+
+- **`SyncSettingsForm`** — the opinionated **Edit → Sync settings** tab for
+  folder-shaped connectors (IMAP). It renders the folder `include`/`exclude` pair
+  as a single **per-folder Auto / Sync / Skip** tri-state (Sync = include, Skip =
+  exclude, Auto = neither), the date window as a plain number, and the `Scope`
+  checkboxes as toggle switches — while still rendering every other schema group
+  (Content, Filtering, Attachments) generically, so nothing is lost.
+- **`ConnectionSettingsForm`** — the generic fallback (a live folder multiselect
+  with a Retry on discovery error, tag inputs, number/checkbox/select rows) used by
+  the standalone Folders picker and by any connector whose schema is *not*
+  folder-shaped.
+
+The Edit modal's **Details** tab also shows two at-a-glance stats — documents
+synced and last sync — from a lazy `GET /api/admin/connectors/{id}/stats`
+(`documents_synced` = live KB docs stamped with this account's `installation_id`,
+tenant-scoped; not folded into the list endpoint to avoid an N-per-installation
+metadata-path count).
 </Tab>
 </Tabs>
 
