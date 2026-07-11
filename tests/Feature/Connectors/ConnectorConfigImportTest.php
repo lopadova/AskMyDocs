@@ -166,7 +166,9 @@ final class ConnectorConfigImportTest extends TestCase
                 ->expectsQuestion("Enter 'password' (hidden)", 'typed-in-pw')
                 ->assertSuccessful();
         } finally {
-            @unlink($path);
+            if (is_file($path)) {
+                unlink($path);
+            }
         }
 
         $installation = ConnectorInstallation::query()
