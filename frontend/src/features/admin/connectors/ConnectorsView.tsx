@@ -982,6 +982,8 @@ export function ConnectorsView() {
                     key={`oauth-add-${modal.entry.key}`}
                     connectorKey={modal.entry.key}
                     title={`Add ${modal.entry.display_name} account`}
+                    source={{ displayName: modal.entry.display_name, iconUrl: modal.entry.icon_url }}
+                    subtitle={`Connect a new ${modal.entry.display_name} account to this source`}
                     submitLabel="Continue to provider"
                     projects={projects}
                     onSubmit={handleOAuthAddSubmit}

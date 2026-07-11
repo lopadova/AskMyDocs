@@ -143,6 +143,21 @@ export interface FolderListResponse {
     data: { folders: string[] };
 }
 
+/**
+ * v8.31 — per-account stats for the Edit → Details tab (redesigned modal):
+ * `documents_synced` counts the live KB documents this account ingested;
+ * `last_sync_at` mirrors the installation's last sync. Lazily fetched when the
+ * Details tab opens. Mirrors ConnectorAdminController::stats (R9).
+ */
+export interface InstallationStats {
+    documents_synced: number;
+    last_sync_at: string | null;
+}
+
+export interface InstallationStatsResponse {
+    data: InstallationStats;
+}
+
 export interface SyncNowResponse {
     data: {
         installation_id: number;
@@ -378,6 +393,17 @@ export const adminConnectorsApi = {
         const { data } = await api.patch<UpdateInstallationResponse>(
             `/api/admin/connectors/${params.installationId}`,
             body,
+        );
+        return data.data;
+    },
+
+    /**
+     * v8.31 — per-account stats (documents synced + last sync) for the Edit →
+     * Details tab. 404 for a cross-tenant / unknown id.
+     */
+    async stats(installationId: number): Promise<InstallationStats> {
+        const { data } = await api.get<InstallationStatsResponse>(
+            `/api/admin/connectors/${installationId}/stats`,
         );
         return data.data;
     },

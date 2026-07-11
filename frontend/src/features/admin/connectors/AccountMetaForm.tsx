@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import type { AdminProject } from '../projects/admin-projects.api';
+import { ModalSourceHeader } from './ModalSourceHeader';
 
 /**
  * v8.20 — modal for an account's METADATA: its `label` (account discriminator)
@@ -39,6 +40,20 @@ export interface AccountMetaFormProps {
     isSubmitting?: boolean;
     /** v8.29 — render as a plain panel (no backdrop / title) for the tabbed modal. */
     embedded?: boolean;
+    /**
+     * v8.29 — omit the form's own footer (Cancel/Save) + top-level error so the
+     * host modal (the redesigned tabbed AccountEditModal) owns ONE sticky footer.
+     * `formId` lets that external Save (`<button type="submit" form={formId}>`)
+     * submit this form.
+     */
+    footerless?: boolean;
+    formId?: string;
+    /**
+     * v8.31 — render the redesigned Add-account header (source avatar + subtitle +
+     * close) instead of a plain `<h2>` (standalone/non-embedded flows only).
+     */
+    source?: { displayName: string; iconUrl?: string | null };
+    subtitle?: string;
 }
 
 export function AccountMetaForm({
@@ -55,6 +70,10 @@ export function AccountMetaForm({
     fieldErrors,
     isSubmitting,
     embedded = false,
+    footerless = false,
+    formId,
+    source,
+    subtitle,
 }: AccountMetaFormProps): ReactNode {
     const [label, setLabel] = useState(initialLabel);
     const [projectKey, setProjectKey] = useState(initialProjectKey ?? '');
@@ -82,6 +101,7 @@ export function AccountMetaForm({
             aria-modal={embedded ? undefined : 'true'}
             aria-labelledby={embedded ? undefined : titleId}
             aria-busy={isSubmitting}
+            id={formId}
             data-testid={`connector-${connectorKey}-account-form`}
             data-state={isSubmitting ? 'loading' : 'idle'}
             onSubmit={handleSubmit}
@@ -102,7 +122,18 @@ export function AccountMetaForm({
                       }
             }
         >
-            {!embedded && (
+            {!embedded && source && (
+                <ModalSourceHeader
+                    titleId={titleId}
+                    connectorKey={connectorKey}
+                    displayName={source.displayName}
+                    iconUrl={source.iconUrl}
+                    title={title}
+                    subtitle={subtitle}
+                    onClose={onClose}
+                />
+            )}
+            {!embedded && !source && (
                 <h2 id={titleId} style={{ margin: 0, fontSize: 14, color: 'var(--fg-0)' }}>
                     {title}
                 </h2>
@@ -167,7 +198,7 @@ export function AccountMetaForm({
                 )}
             </label>
 
-            {submitError && (
+            {submitError && !footerless && (
                 <p
                     data-testid={`connector-${connectorKey}-account-form-error`}
                     role="alert"
@@ -177,25 +208,27 @@ export function AccountMetaForm({
                 </p>
             )}
 
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
-                <button
-                    type="button"
-                    data-testid={`connector-${connectorKey}-account-form-cancel`}
-                    onClick={onClose}
-                    disabled={isSubmitting}
-                    style={buttonStyle('secondary', !!isSubmitting)}
-                >
-                    Cancel
-                </button>
-                <button
-                    type="submit"
-                    data-testid={`connector-${connectorKey}-account-form-submit`}
-                    disabled={isSubmitting}
-                    style={buttonStyle('primary', !!isSubmitting)}
-                >
-                    {isSubmitting ? 'Saving…' : submitLabel}
-                </button>
-            </div>
+            {!footerless && (
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
+                    <button
+                        type="button"
+                        data-testid={`connector-${connectorKey}-account-form-cancel`}
+                        onClick={onClose}
+                        disabled={isSubmitting}
+                        style={buttonStyle('secondary', !!isSubmitting)}
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        type="submit"
+                        data-testid={`connector-${connectorKey}-account-form-submit`}
+                        disabled={isSubmitting}
+                        style={buttonStyle('primary', !!isSubmitting)}
+                    >
+                        {isSubmitting ? 'Saving…' : submitLabel}
+                    </button>
+                </div>
+            )}
         </form>
     );
 

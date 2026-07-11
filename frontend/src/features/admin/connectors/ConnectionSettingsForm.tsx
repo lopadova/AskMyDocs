@@ -1,27 +1,27 @@
-import {
-    useEffect,
-    useMemo,
-    useState,
-    type FormEvent,
-    type KeyboardEvent,
-    type ReactNode,
-} from 'react';
-import type { ConnectorInstallationDto, CredentialFieldSchema } from './connectors.api';
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import type { ConnectorInstallationDto } from './connectors.api';
 import { useInstallationFolders } from './connectors-hooks';
+import {
+    buildSettingsPayload,
+    FieldRow,
+    groupFields,
+    isFieldVisible,
+    seedValue,
+    slug,
+} from './settings-fields';
 
 /**
- * v8.25 — the SCHEMA-DRIVEN connection-settings editor for a connector account.
+ * v8.25 — the GENERIC schema-driven connection-settings editor for a connector
+ * account. Renders the connector's full `connection_settings_schema` (grouped by
+ * `group`) seeded from the account's current `settings`, and PATCHes a nested
+ * `settings` object keyed by each field's dotted name. NO connector-specific
+ * markup (R23) — every field is rendered by its `type` via the shared
+ * {@see FieldRow} (settings-fields.tsx).
  *
- * Renders the connector's full `connection_settings_schema` (grouped by `group`)
- * seeded from the account's current `settings` (a nested partial of config_json),
- * and PATCHes a nested `settings` object keyed by each field's dotted name. There
- * is NO connector-specific markup (R23): every field is rendered by its `type` —
- * `multiselect` (a live folder picker when `discovery === 'folders'`, else a fixed
- * option list), `tags` (an open chip list), `number`, `select`, `checkbox`, `text`.
- *
- * Supersedes the v8.24 folder-only picker: the same modal now exposes the WHOLE
- * editable surface (folder include/exclude, sync window, sender/recipient/subject
- * filters, body format, scope flags, attachments).
+ * v8.31 — the redesigned Edit modal (design handoff "Config Modals") renders the
+ * IMAP-shaped schema through the opinionated tri-state {@see SyncSettingsForm}
+ * instead; this generic form remains the FALLBACK for any credential connector
+ * whose schema is NOT folder-shaped (and the standalone folder-picker modal).
  *
  * R11/R29 testids `connector-{key}-settings-form*` + per-field
  * `connector-{key}-settings-{slug(name)}*`; R15 every control has a bound label,
@@ -41,76 +41,10 @@ export interface ConnectionSettingsFormProps {
     isSubmitting?: boolean;
     /** v8.29 — render as a plain panel (no backdrop / title) for the tabbed modal. */
     embedded?: boolean;
-}
-
-function slug(s: string): string {
-    return s.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'field';
-}
-
-/** Read a dotted path from a nested object. */
-function getPath(obj: unknown, path: string): unknown {
-    return path.split('.').reduce<unknown>((acc, key) => {
-        if (acc && typeof acc === 'object' && key in (acc as Record<string, unknown>)) {
-            return (acc as Record<string, unknown>)[key];
-        }
-        return undefined;
-    }, obj);
-}
-
-/** Write a dotted path into a nested object (mutating). */
-function setPath(obj: Record<string, unknown>, path: string, value: unknown): void {
-    const keys = path.split('.');
-    let cur = obj;
-    for (let i = 0; i < keys.length - 1; i++) {
-        const k = keys[i];
-        if (typeof cur[k] !== 'object' || cur[k] === null) cur[k] = {};
-        cur = cur[k] as Record<string, unknown>;
-    }
-    cur[keys[keys.length - 1]] = value;
-}
-
-function asStringList(v: unknown): string[] {
-    return Array.isArray(v) ? v.map((x) => String(x)) : [];
-}
-
-function seedValue(field: CredentialFieldSchema, settings: Record<string, unknown>): unknown {
-    const stored = getPath(settings, field.name);
-    const raw = stored !== undefined ? stored : field.default;
-    switch (field.type) {
-        case 'multiselect':
-        case 'tags':
-            return asStringList(raw);
-        case 'checkbox':
-            return Boolean(raw);
-        case 'number':
-            return raw == null ? '' : String(raw);
-        case 'select':
-            // Preserve null (don't stringify to '') so a nullable select seeds the
-            // empty option and round-trips a clear-to-default rather than submitting
-            // '' (which matches no option and would 422).
-            return raw == null ? null : String(raw);
-        default:
-            return raw == null ? '' : String(raw);
-    }
-}
-
-interface GroupedSchema {
-    group: string;
-    fields: CredentialFieldSchema[];
-}
-
-function groupFields(schema: CredentialFieldSchema[]): GroupedSchema[] {
-    const order: string[] = [];
-    const byGroup = new Map<string, CredentialFieldSchema[]>();
-    for (const f of schema) {
-        const g = f.group ?? 'Settings';
-        if (!byGroup.has(g)) {
-            byGroup.set(g, []);
-            order.push(g);
-        }
-        byGroup.get(g)!.push(f);
-    }
-    return order.map((group) => ({ group, fields: byGroup.get(group)! }));
+    /** v8.31 — omit the form's own footer so the host tabbed modal owns it;
+     *  `formId` lets the external Save submit this form. */
+    footerless?: boolean;
+    formId?: string;
 }
 
 export function ConnectionSettingsForm({
@@ -122,6 +56,8 @@ export function ConnectionSettingsForm({
     fieldErrors,
     isSubmitting,
     embedded = false,
+    footerless = false,
+    formId,
 }: ConnectionSettingsFormProps): ReactNode {
     const schema = account.connection_settings_schema ?? [];
     const needsFolders = schema.some((f) => f.discovery === 'folders');
@@ -152,18 +88,6 @@ export function ConnectionSettingsForm({
 
     const setValue = (name: string, v: unknown) => setValues((cur) => ({ ...cur, [name]: v }));
 
-    // A field with a `showIf` only applies when its controlling field holds the
-    // expected value (parity with CredentialConnectorForm). Hidden fields are
-    // neither rendered nor submitted, so a default-seeded but inapplicable setting
-    // never overwrites stored config_json.
-    const isVisible = (field: CredentialFieldSchema): boolean => {
-        if (field.showIf === null) return true;
-        // Compare by string form: `number` field values are stored as strings, so a
-        // strict === against a numeric/boolean `showIf.equals` (e.g. 90 vs '90',
-        // true vs 'true') would never match.
-        return String(values[field.showIf.field]) === String(field.showIf.equals);
-    };
-
     // Surface both field-level (`settings.<name>`) AND element-level
     // (`settings.<name>.0`) validation errors — Laravel keys list-item failures
     // to the element, so without the prefix scan a 422 on a multiselect/tags entry
@@ -181,28 +105,7 @@ export function ConnectionSettingsForm({
 
     const handleSubmit = (e: FormEvent) => {
         e.preventDefault();
-        const settings: Record<string, unknown> = {};
-        for (const f of schema) {
-            if (!isVisible(f)) continue;
-            const v = values[f.name];
-            if (f.type === 'number') {
-                const t = String(v ?? '').trim();
-                if (t === '') {
-                    // Empty → send null to CLEAR the override back to the connector
-                    // default (the BE unsets it); a number sets it.
-                    setPath(settings, f.name, null);
-                } else {
-                    const n = Number(t);
-                    // Finite → the number. Non-finite (e.g. "abc") → send the raw
-                    // string so the BE `integer` rule returns 422, rather than
-                    // silently dropping invalid input as if it were unchanged.
-                    setPath(settings, f.name, Number.isFinite(n) ? n : t);
-                }
-                continue;
-            }
-            setPath(settings, f.name, v);
-        }
-        onSubmit(settings);
+        onSubmit(buildSettingsPayload(schema, values));
     };
 
     const titleId = `connector-${connectorKey}-settings-form-title`;
@@ -214,6 +117,7 @@ export function ConnectionSettingsForm({
             aria-modal={embedded ? undefined : 'true'}
             aria-labelledby={embedded ? undefined : titleId}
             aria-busy={isSubmitting}
+            id={formId}
             data-testid={`connector-${connectorKey}-settings-form`}
             data-state={formState}
             onSubmit={handleSubmit}
@@ -226,16 +130,18 @@ export function ConnectionSettingsForm({
             )}
 
             <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14, paddingRight: 4 }}>
-                    {groups.map((g) => (
-                        <fieldset
-                            key={g.group}
-                            data-testid={`connector-${connectorKey}-settings-group-${slug(g.group)}`}
-                            style={{ border: 0, margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}
-                        >
-                            <legend style={{ color: 'var(--fg-2)', fontSize: 11, padding: 0, fontWeight: 600 }}>
-                                {g.group}
-                            </legend>
-                            {g.fields.filter(isVisible).map((field) => (
+                {groups.map((g) => (
+                    <fieldset
+                        key={g.group}
+                        data-testid={`connector-${connectorKey}-settings-group-${slug(g.group)}`}
+                        style={{ border: 0, margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}
+                    >
+                        <legend style={{ color: 'var(--fg-2)', fontSize: 11, padding: 0, fontWeight: 600 }}>
+                            {g.group}
+                        </legend>
+                        {g.fields
+                            .filter((f) => isFieldVisible(f, values))
+                            .map((field) => (
                                 <FieldRow
                                     key={field.name}
                                     connectorKey={connectorKey}
@@ -248,20 +154,21 @@ export function ConnectionSettingsForm({
                                     error={errorFor(field.name)}
                                 />
                             ))}
-                        </fieldset>
-                    ))}
-                </div>
+                    </fieldset>
+                ))}
+            </div>
 
-                {submitError && (
-                    <p
-                        data-testid={`connector-${connectorKey}-settings-form-error`}
-                        role="alert"
-                        style={{ margin: 0, fontSize: 11.5, color: 'var(--err, #fca5a5)' }}
-                    >
-                        {submitError}
-                    </p>
-                )}
+            {submitError && (
+                <p
+                    data-testid={`connector-${connectorKey}-settings-form-error`}
+                    role="alert"
+                    style={{ margin: 0, fontSize: 11.5, color: 'var(--err, #fca5a5)' }}
+                >
+                    {submitError}
+                </p>
+            )}
 
+            {!footerless && (
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
                     <button
                         type="button"
@@ -281,6 +188,7 @@ export function ConnectionSettingsForm({
                         {isSubmitting ? 'Saving…' : 'Save settings'}
                     </button>
                 </div>
+            )}
         </form>
     );
 
@@ -297,333 +205,6 @@ export function ConnectionSettingsForm({
             style={backdropStyle()}
         >
             {dialog}
-        </div>
-    );
-}
-
-interface FieldRowProps {
-    connectorKey: string;
-    field: CredentialFieldSchema;
-    value: unknown;
-    onChange: (v: unknown) => void;
-    liveFolders: string[];
-    fetchState: 'loading' | 'error' | 'ready';
-    onRetryFolders: () => void;
-    error?: string;
-}
-
-function FieldRow({
-    connectorKey,
-    field,
-    value,
-    onChange,
-    liveFolders,
-    fetchState,
-    onRetryFolders,
-    error,
-}: FieldRowProps): ReactNode {
-    const base = `connector-${connectorKey}-settings-${slug(field.name)}`;
-    const labelId = `${base}-label`;
-
-    const label = (
-        <span id={labelId} style={{ color: 'var(--fg-1)', fontSize: 11.5 }}>
-            {field.label}
-        </span>
-    );
-    const help = field.help ? (
-        <span style={{ color: 'var(--fg-3)', fontSize: 10 }}>{field.help}</span>
-    ) : null;
-    const errEl = error ? (
-        <span data-testid={`${base}-error`} role="alert" style={{ fontSize: 10.5, color: 'var(--err, #fca5a5)' }}>
-            {error}
-        </span>
-    ) : null;
-
-    if (field.type === 'checkbox') {
-        return (
-            <label htmlFor={base} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-                <input
-                    id={base}
-                    data-testid={base}
-                    type="checkbox"
-                    checked={Boolean(value)}
-                    onChange={(e) => onChange(e.target.checked)}
-                />
-                {label}
-                {help}
-                {errEl}
-            </label>
-        );
-    }
-
-    if (field.type === 'multiselect') {
-        return (
-            <div style={fieldCol()}>
-                {label}
-                {help}
-                <FolderOrOptionMultiselect
-                    base={base}
-                    field={field}
-                    selected={asStringList(value)}
-                    onChange={onChange}
-                    liveFolders={liveFolders}
-                    fetchState={fetchState}
-                    onRetryFolders={onRetryFolders}
-                />
-                {errEl}
-            </div>
-        );
-    }
-
-    if (field.type === 'tags') {
-        return (
-            <div style={fieldCol()}>
-                {label}
-                {help}
-                <TagInput base={base} ariaLabelledBy={labelId} values={asStringList(value)} onChange={onChange} />
-                {errEl}
-            </div>
-        );
-    }
-
-    if (field.type === 'select') {
-        // A non-required select can be cleared back to the connector default: it
-        // offers an explicit empty option and maps '' → null on change so the PATCH
-        // sends a real null (the BE select rule is nullable) rather than an empty
-        // string that matches no option.
-        const nullable = !field.required;
-        return (
-            <label htmlFor={base} style={fieldCol()}>
-                {label}
-                {help}
-                <select
-                    id={base}
-                    data-testid={base}
-                    value={String(value ?? '')}
-                    onChange={(e) => onChange(e.target.value === '' ? null : e.target.value)}
-                    style={inputStyle()}
-                >
-                    {nullable && <option value="">— connector default —</option>}
-                    {Object.entries(field.options).map(([val, lbl]) => (
-                        <option key={val} value={val}>
-                            {lbl}
-                        </option>
-                    ))}
-                </select>
-                {errEl}
-            </label>
-        );
-    }
-
-    // number | text
-    return (
-        <label htmlFor={base} style={fieldCol()}>
-            {label}
-            {help}
-            <input
-                id={base}
-                data-testid={base}
-                type={field.type === 'number' ? 'number' : 'text'}
-                value={String(value ?? '')}
-                onChange={(e) => onChange(e.target.value)}
-                style={inputStyle()}
-            />
-            {errEl}
-        </label>
-    );
-}
-
-interface MultiselectProps {
-    base: string;
-    field: CredentialFieldSchema;
-    selected: string[];
-    onChange: (v: string[]) => void;
-    liveFolders: string[];
-    fetchState: 'loading' | 'error' | 'ready';
-    onRetryFolders: () => void;
-}
-
-function FolderOrOptionMultiselect({
-    base,
-    field,
-    selected,
-    onChange,
-    liveFolders,
-    fetchState,
-    onRetryFolders,
-}: MultiselectProps): ReactNode {
-    const live = field.discovery === 'folders';
-    // Live folders: union of server folders + already-selected (so a saved-but-
-    // vanished folder stays visible, checked + flagged). Fixed: the schema options.
-    const options = useMemo(() => {
-        if (!live) return Object.keys(field.options);
-        return Array.from(new Set([...liveFolders, ...selected])).sort((a, b) => a.localeCompare(b));
-    }, [live, field.options, liveFolders, selected]);
-    const liveSet = useMemo(() => new Set(liveFolders), [liveFolders]);
-    const selectedSet = useMemo(() => new Set(selected), [selected]);
-    // Collision-safe per-option testids: the stable `${base}-opt-${slug}` for the
-    // common case (distinct slugs), suffixing `-${i}` ONLY when two option paths
-    // slug to the same value (e.g. "Foo Bar" vs "Foo-Bar"). This keeps existing
-    // Playwright selectors valid and guarantees a slug collision can never emit
-    // two identical testids (R11/R29).
-    const testids = useMemo(() => {
-        const seen = new Set<string>();
-        return options.map((opt, i) => {
-            const s = slug(opt);
-            const id = `${base}-opt-${s}`;
-            if (seen.has(s)) return `${id}-${i}`;
-            seen.add(s);
-            return id;
-        });
-    }, [options, base]);
-
-    const toggle = (path: string) => {
-        const next = new Set(selectedSet);
-        if (next.has(path)) next.delete(path);
-        else next.add(path);
-        onChange(options.filter((o) => next.has(o)).concat([...next].filter((o) => !options.includes(o))));
-    };
-
-    if (live && fetchState === 'loading') {
-        return (
-            <div data-testid={`${base}-loading`} role="status" aria-busy="true" style={boxStyle()}>
-                Loading folders…
-            </div>
-        );
-    }
-    if (live && fetchState === 'error') {
-        return (
-            <div data-testid={`${base}-fetch-error`} role="alert" style={{ ...boxStyle(), color: '#fca5a5' }}>
-                Could not reach the source to list folders.{' '}
-                <button type="button" data-testid={`${base}-retry`} onClick={onRetryFolders} style={ghostButton()}>
-                    Retry
-                </button>
-            </div>
-        );
-    }
-    if (options.length === 0) {
-        return (
-            <div data-testid={`${base}-empty`} role="status" style={boxStyle()}>
-                {live ? 'No folders found.' : 'No options.'}
-            </div>
-        );
-    }
-
-    return (
-        <ul data-testid={`${base}-list`} role="group" aria-labelledby={`${base}-label`} style={listStyle()}>
-            {options.map((opt, i) => {
-                // id is index-based so it is GUARANTEED unique — a duplicate id
-                // silently breaks label↔input association. The testid is the
-                // collision-safe slug computed above: readable + stable for the
-                // common case, disambiguated only when two paths slug-collide.
-                const optId = `${base}-opt-${i}`;
-                const testid = testids[i];
-                const missing = live && !liveSet.has(opt);
-                const display = live ? opt : (field.options[opt] ?? opt);
-                return (
-                    <li key={opt} style={{ display: 'flex' }}>
-                        <label htmlFor={optId} style={optionLabelStyle()}>
-                            <input
-                                id={optId}
-                                data-testid={testid}
-                                type="checkbox"
-                                checked={selectedSet.has(opt)}
-                                onChange={() => toggle(opt)}
-                            />
-                            <span style={{ fontFamily: live ? 'var(--font-mono)' : undefined }}>{display}</span>
-                            {missing && (
-                                <span data-testid={`${testid}-missing`} style={{ fontSize: 10, color: 'var(--fg-3)' }}>
-                                    (not found on server)
-                                </span>
-                            )}
-                        </label>
-                    </li>
-                );
-            })}
-        </ul>
-    );
-}
-
-interface TagInputProps {
-    base: string;
-    ariaLabelledBy: string;
-    values: string[];
-    onChange: (v: string[]) => void;
-}
-
-function TagInput({ base, ariaLabelledBy, values, onChange }: TagInputProps): ReactNode {
-    const [draft, setDraft] = useState('');
-
-    const add = () => {
-        const v = draft.trim();
-        if (v === '' || values.includes(v)) {
-            setDraft('');
-            return;
-        }
-        onChange([...values, v]);
-        setDraft('');
-    };
-    const remove = (v: string) => onChange(values.filter((x) => x !== v));
-    // Collision-safe chip testids: the stable slug for the common case, suffixed
-    // `-${i}` only when two distinct values slug-collide (e.g. "Foo Bar" vs
-    // "Foo-Bar"), so a collision can never emit two identical testids (R11/R29).
-    const chipIds = useMemo(() => {
-        const seen = new Set<string>();
-        return values.map((v, i) => {
-            const s = slug(v);
-            if (seen.has(s)) return `${s}-${i}`;
-            seen.add(s);
-            return s;
-        });
-    }, [values]);
-
-    const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-        if (e.key === 'Enter' || e.key === ',') {
-            e.preventDefault();
-            add();
-        } else if (e.key === 'Backspace' && draft === '' && values.length > 0) {
-            remove(values[values.length - 1]);
-        }
-    };
-
-    return (
-        <div data-testid={`${base}`} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {values.length > 0 && (
-                <ul data-testid={`${base}-chips`} style={{ ...listStyle(), maxHeight: 'none', flexDirection: 'row', flexWrap: 'wrap', padding: 4, gap: 4 }}>
-                    {values.map((v, i) => (
-                        // key includes the index so a stored duplicate value (legacy
-                        // data / manual edit) cannot collide and corrupt reconciliation.
-                        <li key={`${v}-${i}`} style={chipStyle()}>
-                            <span style={{ fontFamily: 'var(--font-mono)' }}>{v}</span>
-                            <button
-                                type="button"
-                                data-testid={`${base}-chip-${chipIds[i]}-remove`}
-                                aria-label={`Remove ${v}`}
-                                onClick={() => remove(v)}
-                                style={chipRemoveStyle()}
-                            >
-                                ×
-                            </button>
-                        </li>
-                    ))}
-                </ul>
-            )}
-            <div style={{ display: 'flex', gap: 6 }}>
-                <input
-                    data-testid={`${base}-input`}
-                    aria-labelledby={ariaLabelledBy}
-                    type="text"
-                    value={draft}
-                    onChange={(e) => setDraft(e.target.value)}
-                    onKeyDown={onKeyDown}
-                    onBlur={add}
-                    placeholder="Type and press Enter"
-                    style={{ ...inputStyle(), flex: 1 }}
-                />
-                <button type="button" data-testid={`${base}-add`} onClick={add} style={buttonStyle('secondary', false)}>
-                    Add
-                </button>
-            </div>
         </div>
     );
 }
@@ -658,107 +239,12 @@ function dialogStyle(): React.CSSProperties {
 }
 
 function embeddedDialogStyle(): React.CSSProperties {
-    // Panel variant for the tabbed AccountEditModal: no fixed size / overlay chrome
-    // (the shell owns those), just the vertical field stack the tab body scrolls.
     return {
         display: 'flex',
         flexDirection: 'column',
         gap: 12,
         width: '100%',
         overflow: 'hidden',
-    };
-}
-
-function fieldCol(): React.CSSProperties {
-    return { display: 'flex', flexDirection: 'column', gap: 4 };
-}
-
-function boxStyle(): React.CSSProperties {
-    return {
-        padding: 12,
-        textAlign: 'center',
-        color: 'var(--fg-3)',
-        fontSize: 12,
-        border: '1px dashed var(--hairline)',
-        borderRadius: 8,
-    };
-}
-
-function listStyle(): React.CSSProperties {
-    return {
-        listStyle: 'none',
-        margin: 0,
-        padding: 0,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 2,
-        overflowY: 'auto',
-        maxHeight: '28vh',
-        border: '1px solid var(--hairline)',
-        borderRadius: 8,
-    };
-}
-
-function optionLabelStyle(): React.CSSProperties {
-    return {
-        display: 'flex',
-        alignItems: 'center',
-        gap: 8,
-        padding: '5px 10px',
-        fontSize: 12,
-        color: 'var(--fg-1)',
-        width: '100%',
-        cursor: 'pointer',
-    };
-}
-
-function chipStyle(): React.CSSProperties {
-    return {
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 4,
-        padding: '2px 4px 2px 8px',
-        fontSize: 11,
-        color: 'var(--fg-1)',
-        background: 'var(--bg-3, rgba(255,255,255,.06))',
-        border: '1px solid var(--hairline)',
-        borderRadius: 6,
-    };
-}
-
-function chipRemoveStyle(): React.CSSProperties {
-    return {
-        background: 'transparent',
-        border: 0,
-        color: 'inherit',
-        cursor: 'pointer',
-        fontSize: 13,
-        lineHeight: 1,
-        padding: '0 2px',
-    };
-}
-
-function inputStyle(): React.CSSProperties {
-    return {
-        padding: '5px 8px',
-        borderRadius: 6,
-        border: '1px solid var(--panel-border, rgba(255,255,255,.15))',
-        background: 'var(--bg-3, rgba(255,255,255,.04))',
-        color: 'var(--fg-0)',
-        fontSize: 12,
-    };
-}
-
-function ghostButton(): React.CSSProperties {
-    return {
-        marginLeft: 8,
-        padding: '3px 10px',
-        fontSize: 11,
-        background: 'transparent',
-        color: 'inherit',
-        border: '1px solid currentColor',
-        borderRadius: 6,
-        cursor: 'pointer',
     };
 }
 
