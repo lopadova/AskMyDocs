@@ -24,7 +24,7 @@ use Padosoft\AskMyDocsConnectorApi\Services\ConnectorAdminService;
  * connectors. Read-only; never exposes auth credentials (secrets stay in the
  * encrypted profile). Degrades cleanly to an empty roster (R43).
  */
-#[Description('List this tenant\'s API connectors (Connettore API) and their routes. Each connector reports its routes — tool slug, HTTP method, endpoint type (list/detail/unknown), status (draft/tested/active/disabled), mode (tool/ingest/both) and last test status. Active+tool routes are the live LLM tools available in chat. Read-only; no secrets are returned.')]
+#[Description('List this tenant\'s API connectors (Connettore API) and their routes. Each connector reports its routes — tool slug, HTTP method, endpoint type (list/detail/unknown), status (draft/tested/active/disabled), mode (tool/ingest/both) and last test status — plus its list→detail relations (which list feeds which detail, and the field map). Active+tool routes are the live LLM tools available in chat; a relation means an item from the list tool can be drilled into the detail tool. Read-only; no secrets are returned.')]
 #[IsReadOnly]
 #[IsIdempotent]
 class ApiConnectorsTool extends Tool
@@ -72,12 +72,29 @@ class ApiConnectorsTool extends Tool
                 ];
             }
 
+            $relations = [];
+            foreach ($connector->relations as $relation) {
+                $relations[] = [
+                    'list' => $relation->listRoute?->slug,
+                    'detail' => $relation->detailRoute?->slug,
+                    'maps' => array_map(
+                        static fn (array $m): array => [
+                            'from' => $m['from'] ?? null,
+                            'to_param' => $m['to_param'] ?? null,
+                        ],
+                        $relation->field_map,
+                    ),
+                    'description' => $relation->description,
+                ];
+            }
+
             $connectors[] = [
                 'id' => $connector->id,
                 'name' => $connector->name,
                 'project_key' => $connector->project_key,
                 'is_active' => (bool) $connector->is_active,
                 'routes' => $routes,
+                'relations' => $relations,
             ];
         }
 
