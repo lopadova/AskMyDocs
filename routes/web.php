@@ -199,6 +199,23 @@ Route::middleware(['auth', 'can:viewAiActCompliance'])->get('/admin/ai-act-compl
 if (app()->environment('testing')) {
     Route::post('/testing/reset', [TestingController::class, 'reset'])->name('testing.reset');
     Route::post('/testing/seed', [TestingController::class, 'seed'])->name('testing.seed');
+
+    // Deterministic local API fixtures for the API-connector list→detail E2E
+    // (R13): the route test/drill call is issued BY THE BACKEND, so it needs a
+    // real local endpoint pair — a LIST (envelope `data` array-of-objects) and a
+    // DETAIL (single object at /{id}). SSRF is relaxed for E2E in playwright.config.
+    Route::get('/testing/api-fixture/users', fn () => response()->json([
+        'data' => [
+            ['id' => 1, 'name' => 'Ada Lovelace', 'email' => 'ada@example.dev'],
+            ['id' => 2, 'name' => 'Alan Turing', 'email' => 'alan@example.dev'],
+        ],
+    ]));
+    Route::get('/testing/api-fixture/users/{id}', fn (string $id) => response()->json([
+        'id' => (int) $id,
+        'name' => 'Ada Lovelace',
+        'email' => 'ada@example.dev',
+        'role' => 'admin',
+    ]))->whereNumber('id');
 }
 
 /*
