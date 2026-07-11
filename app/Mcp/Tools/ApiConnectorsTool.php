@@ -24,7 +24,7 @@ use Padosoft\AskMyDocsConnectorApi\Services\ConnectorAdminService;
  * connectors. Read-only; never exposes auth credentials (secrets stay in the
  * encrypted profile). Degrades cleanly to an empty roster (R43).
  */
-#[Description('List this tenant\'s API connectors (Connettore API) and their routes. Each connector reports its routes — tool slug, HTTP method, status (draft/tested/active/disabled), mode (tool/ingest/both) and last test status. Active+tool routes are the live LLM tools available in chat. Read-only; no secrets are returned.')]
+#[Description('List this tenant\'s API connectors (Connettore API) and their routes. Each connector reports its routes — tool slug, HTTP method, endpoint type (list/detail/unknown), status (draft/tested/active/disabled), mode (tool/ingest/both) and last test status. Active+tool routes are the live LLM tools available in chat. Read-only; no secrets are returned.')]
 #[IsReadOnly]
 #[IsIdempotent]
 class ApiConnectorsTool extends Tool
@@ -64,6 +64,7 @@ class ApiConnectorsTool extends Tool
                     'slug' => $route->slug,
                     'name' => $route->name,
                     'http_method' => $route->http_method->value,
+                    'endpoint_type' => $route->endpoint_type->value,
                     'status' => $route->status->value,
                     'mode' => $route->mode->value,
                     'last_test_status' => $route->last_test_status,
