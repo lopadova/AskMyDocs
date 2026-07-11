@@ -121,6 +121,33 @@ describe('ConnectionsTable', () => {
         expect(screen.getByTestId('connector-connection-42-sync')).toBeDisabled();
     });
 
+    it('leaves the sync button ENABLED while a read-only probe is in flight', () => {
+        // A test-fetch probe is read-only — it must NOT lock the write actions
+        // (rowFlags excludes `probing` from `writeLocked`). Guards the probe
+        // independence the old ConnectorCard '…leaving Sync usable' test asserted.
+        const rows = buildConnections(entries([installation(42, 'a', 'active')]));
+        render(
+            <ConnectionsTable
+                rows={rows}
+                menuId={null}
+                actions={noopActions()}
+                inflight={noInflight({ probingIds: new Set([42]) })}
+            />,
+        );
+        expect(screen.getByTestId('connector-connection-42-sync')).toBeEnabled();
+    });
+
+    it('announces each row with its account, source and status (R15)', () => {
+        const rows = buildConnections(entries([installation(1, 'team@acme.io', 'active')]));
+        render(
+            <ConnectionsTable rows={rows} menuId={null} actions={noopActions()} inflight={noInflight()} />,
+        );
+        expect(screen.getByTestId('connector-connection-1')).toHaveAttribute(
+            'aria-label',
+            'team@acme.io on Email (IMAP) — active',
+        );
+    });
+
     it('shows the Issue button only on an errored row and opens the error modal callback', async () => {
         const rows = buildConnections(
             entries([
@@ -148,11 +175,16 @@ describe('ConnectionsTable', () => {
         expect(actions.onToggleMenu).toHaveBeenCalledWith(9);
     });
 
-    it('renders the open menu panel for the row whose id matches menuId', () => {
-        const rows = buildConnections(entries([installation(9, 'a', 'active')]));
+    it('renders the open menu panel for ONLY the row whose id matches menuId', () => {
+        // Two rows, menuId targets id 9 → the id-8 panel must stay closed, so an
+        // implementation that renders every row's panel (ignoring menuId) fails.
+        const rows = buildConnections(
+            entries([installation(8, 'a', 'active'), installation(9, 'b', 'active')]),
+        );
         render(
             <ConnectionsTable rows={rows} menuId={9} actions={noopActions()} inflight={noInflight()} />,
         );
         expect(screen.getByTestId('connector-connection-9-menu-panel')).toBeVisible();
+        expect(screen.queryByTestId('connector-connection-8-menu-panel')).toBeNull();
     });
 });

@@ -24,13 +24,20 @@ export function SyncErrorModal({ vm, onClose, onRetry }: SyncErrorModalProps) {
         closeRef.current?.focus();
     }, []);
 
+    // Document-level Escape (like the sibling modals) so it closes regardless of
+    // which control holds focus — not only when focus is inside the backdrop.
+    useEffect(() => {
+        function onKey(e: KeyboardEvent) {
+            if (e.key === 'Escape') onClose();
+        }
+        document.addEventListener('keydown', onKey, true);
+        return () => document.removeEventListener('keydown', onKey, true);
+    }, [onClose]);
+
     return (
         <div
             data-testid="connector-sync-error-backdrop"
             onClick={onClose}
-            onKeyDown={(e) => {
-                if (e.key === 'Escape') onClose();
-            }}
             style={{
                 position: 'fixed',
                 inset: 0,
@@ -168,7 +175,11 @@ export function SyncErrorModal({ vm, onClose, onRetry }: SyncErrorModalProps) {
                             fontFamily: 'var(--font-mono)',
                             fontSize: 12.5,
                             lineHeight: 1.65,
-                            color: '#e5b3b3',
+                            // A token so the error text stays legible in BOTH themes
+                            // (the mockup's pale pink #e5b3b3 was unreadable on the
+                            // light-theme near-white --bg-0). The red accent lives on
+                            // the header icon + border instead.
+                            color: 'var(--fg-1)',
                             background: 'var(--bg-0)',
                             border: '1px solid var(--hairline)',
                             borderRadius: 10,
@@ -203,7 +214,7 @@ export function SyncErrorModal({ vm, onClose, onRetry }: SyncErrorModalProps) {
                             <circle cx="12" cy="12" r="9" />
                             <path d="M12 8v4l2.5 1.5" />
                         </svg>
-                        Last attempt {vm.lastSync ?? 'recently'}
+                        {vm.lastSync ? `Last sync ${vm.lastSync}` : 'Not synced yet'}
                     </div>
                 </div>
 

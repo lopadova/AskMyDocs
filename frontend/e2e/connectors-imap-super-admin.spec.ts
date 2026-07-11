@@ -271,6 +271,31 @@ baseTest.describe('Connectors — IMAP credential flow (super-admin)', () => {
         await expect(page.getByTestId('connector-connections-table')).toBeVisible();
     });
 
+    // ── v8.30 — "Sync all" toolbar action (R12 happy path) ───────────────────
+    baseTest('toolbar — Sync all queues every active connection with one summary toast', async ({
+        page,
+    }) => {
+        await page.goto('/app/admin/connectors');
+        await expect(page.getByTestId('admin-connectors')).toHaveAttribute('data-state', 'ready', {
+            timeout: 15_000,
+        });
+
+        await addImapAccount(page, { label: 'Support' });
+        await addImapAccount(page, { label: 'Sales' });
+        await expect(page.getByTestId('connector-source-imap')).toHaveAttribute(
+            'data-connection-count',
+            '2',
+            { timeout: 15_000 },
+        );
+
+        // Sync all fans out over the two active connections and reports ONE summary
+        // success toast (never two per-account ones) naming the count.
+        await page.getByTestId('connector-connections-sync-all').click();
+        const toast = page.getByTestId('toast-connector-synced');
+        await expect(toast).toBeVisible({ timeout: 10_000 });
+        await expect(toast).toContainText('2 connections');
+    });
+
     // ── v8.20 §8 — Edit flow (AccountMetaForm kind='edit') ───────────────────
     baseTest('edit happy — AccountMetaForm pre-fills from active account; label rename persists', async ({
         page,

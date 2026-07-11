@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { sourceAvatar } from './source-visuals';
 
 /*
@@ -32,6 +32,11 @@ export function SourceAvatar({
     testid,
 }: SourceAvatarProps) {
     const [broken, setBroken] = useState(false);
+    // Re-arm the image when the URL changes — a once-failed icon must not pin the
+    // letter-avatar fallback after the server starts returning a working URL (R17).
+    useEffect(() => {
+        setBroken(false);
+    }, [iconUrl]);
     const { letter, bg, fg } = sourceAvatar(connectorKey, displayName);
     const showImage = !!iconUrl && !broken;
 

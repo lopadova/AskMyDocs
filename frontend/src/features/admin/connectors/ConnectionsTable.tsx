@@ -133,7 +133,7 @@ function ConnectionRow({
                 <span
                     data-testid={`${base}-last-sync`}
                     style={{
-                        color: vm.status === 'errored' ? '#f87171' : 'var(--fg-3)',
+                        color: vm.status === 'errored' ? 'var(--err)' : 'var(--fg-3)',
                         whiteSpace: 'nowrap',
                     }}
                 >
