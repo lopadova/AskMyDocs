@@ -871,14 +871,30 @@ Route::middleware([
         // Same gate group ({name} string param, sibling of /configure).
         Route::post('/{name}/test-connection', [ConnectorAdminController::class, 'testConnection'])
             ->name('api.admin.connectors.test-connection');
+        // v8.29 — validate an uploaded config file into a SECRET-FREE prefill for a
+        // new account (writes nothing; the create still goes through /configure).
+        Route::post('/{name}/import/validate', [ConnectorAdminController::class, 'importValidate'])
+            ->name('api.admin.connectors.import.validate');
         // v8.24 — live IMAP folder list for the connection-settings picker.
         Route::get('/{installationId}/folders', [ConnectorAdminController::class, 'folders'])
             ->whereNumber('installationId')
             ->name('api.admin.connectors.folders');
+        // v8.29 — export an account's connection params + settings, SECRET-FREE
+        // (the vault is never read). Doubles as the Edit → Connection tab prefill
+        // source. Numeric {installationId} sibling of the id-keyed actions below.
+        Route::get('/{installationId}/export', [ConnectorAdminController::class, 'export'])
+            ->whereNumber('installationId')
+            ->name('api.admin.connectors.export');
         // v8.20 — edit an existing account's metadata (label / project binding).
         Route::patch('/{installationId}', [ConnectorAdminController::class, 'update'])
             ->whereNumber('installationId')
             ->name('api.admin.connectors.update');
+        // v8.29 — reconfigure an existing account's CONNECTION params (+ optional
+        // re-auth): verify-before-keep, rollback on failure. Distinct verb from the
+        // metadata PATCH above (that never touches connection/vault).
+        Route::post('/{installationId}/reconfigure', [ConnectorAdminController::class, 'reconfigure'])
+            ->whereNumber('installationId')
+            ->name('api.admin.connectors.reconfigure');
         // v8.21 (Ciclo 2) — per-account sync-run history (read-only).
         Route::get('/{installationId}/sync-runs', [\App\Http\Controllers\Api\Admin\IngestionController::class, 'syncRuns'])
             ->whereNumber('installationId')

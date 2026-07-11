@@ -2,16 +2,19 @@ import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 
 import { AdminShell } from '../shell/AdminShell';
 import { ToastHost, useToast } from '../shared/Toast';
 import { toAdminError } from '../shared/errors';
+import { AccountEditModal, type EditTab } from './AccountEditModal';
 import { AccountMetaForm, type AccountMetaFormValues } from './AccountMetaForm';
 import { ConnectorCard } from './ConnectorCard';
 import { CredentialConnectorForm } from './CredentialConnectorForm';
 import { ConnectionSettingsForm } from './ConnectionSettingsForm';
 import { TestFetchResultModal } from './TestFetchResultModal';
-import type {
-    ConfigureConnectorPayload,
-    ConnectorEntry,
-    ConnectorInstallationDto,
-    TestFetchResponse,
+import {
+    adminConnectorsApi,
+    type ConfigureConnectorPayload,
+    type ConnectorEntry,
+    type ConnectorInstallationDto,
+    type ImportPrefill,
+    type TestFetchResponse,
 } from './connectors.api';
 import {
     useConfigureConnector,
@@ -19,7 +22,9 @@ import {
     useDestroyConnector,
     useDisableConnector,
     useEnableConnector,
+    useImportConnectorConfig,
     useProjectOptions,
+    useReconfigureConnector,
     useStartInstall,
     useSyncNow,
     useTestConnectorConnection,
@@ -41,6 +46,25 @@ function parseConfigureError(e: unknown): { message: string; fieldErrors: Record
     };
 }
 
+/** Trigger a client-side download of a JSON payload (the connector-config export). */
+function downloadJson(data: unknown, filename: string): void {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+}
+
+/** A filesystem-safe export filename, e.g. `imap-Support.askmydocs-connector.json`. */
+function connectorFilename(key: string, label: string): string {
+    const safe = (s: string) => s.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'account';
+    return `${safe(key)}-${safe(label)}.askmydocs-connector.json`;
+}
+
 /*
  * v8.20 — Connector admin landing page (multi-account).
  *
@@ -56,9 +80,13 @@ function parseConfigureError(e: unknown): { message: string; fieldErrors: Record
  */
 
 type Modal =
-    | { kind: 'credential-add'; entry: ConnectorEntry }
+    // v8.29 — credential-add carries an optional prefill (from an imported file):
+    // non-secret params + label/project hints seed the create form; the secret is
+    // still typed by the operator.
+    | { kind: 'credential-add'; entry: ConnectorEntry; prefill?: ImportPrefill }
     | { kind: 'oauth-add'; entry: ConnectorEntry }
-    | { kind: 'edit'; entry: ConnectorEntry; account: ConnectorInstallationDto }
+    // v8.29 — the tabbed Edit modal (Details / Connection / Sync settings).
+    | { kind: 'edit'; entry: ConnectorEntry; account: ConnectorInstallationDto; tab?: EditTab }
     | { kind: 'folders'; entry: ConnectorEntry; account: ConnectorInstallationDto }
     | null;
 
@@ -81,6 +109,8 @@ export function ConnectorsView() {
     const configureConnector = useConfigureConnector();
     const testConnection = useTestConnectorConnection();
     const updateInstallation = useUpdateInstallation();
+    const reconfigureConnector = useReconfigureConnector();
+    const importConfig = useImportConnectorConfig();
     const testFetch = useTestFetch();
 
     const [modal, setModal] = useState<Modal>(null);
@@ -217,26 +247,85 @@ export function ConnectorsView() {
         }
     }
 
-    async function handleEditSubmit(values: AccountMetaFormValues) {
-        const current = modal;
-        if (current?.kind !== 'edit') return;
-        const target = current.account;
-        setModalError(null);
-        setModalFieldErrors({});
+    // v8.29 — the tabbed Edit modal owns its own submit/error state; the parent just
+    // provides async callbacks that resolve on success (toast) and REJECT on failure
+    // (the modal renders the error inline + keeps itself open). No shared modalError.
+    async function submitEditDetails(account: ConnectorInstallationDto, values: AccountMetaFormValues) {
+        await updateInstallation.mutateAsync({
+            installationId: account.id,
+            label: values.label,
+            project_key: values.projectKey, // '' clears → tenant default
+        });
+        toast.success('Account updated.', 'toast-connector-updated');
+    }
+
+    async function submitEditConnection(account: ConnectorInstallationDto, payload: ConfigureConnectorPayload) {
+        await reconfigureConnector.mutateAsync({ installationId: account.id, payload });
+        toast.success('Connection updated.', 'toast-connector-reconfigured');
+    }
+
+    async function testEditConnection(
+        entry: ConnectorEntry,
+        payload: ConfigureConnectorPayload,
+    ): Promise<{ ok: boolean; error?: string | null }> {
         try {
-            await updateInstallation.mutateAsync({
-                installationId: target.id,
-                label: values.label,
-                project_key: values.projectKey, // '' clears → tenant default
-            });
-            setModal((cur) => (cur?.kind === 'edit' && cur.account.id === target.id ? null : cur));
-            toast.success('Account updated.', 'toast-connector-updated');
+            return await testConnection.mutateAsync({ key: entry.key, payload });
         } catch (e) {
-            const open = modalRef.current;
-            if (open?.kind !== 'edit' || open.account.id !== target.id) return;
-            const { message, fieldErrors } = parseConfigureError(e);
-            setModalError(message);
-            setModalFieldErrors(fieldErrors);
+            return { ok: false, error: parseConfigureError(e).message };
+        }
+    }
+
+    async function submitEditSettings(account: ConnectorInstallationDto, settings: Record<string, unknown>) {
+        await updateInstallation.mutateAsync({ installationId: account.id, settings });
+        toast.success('Connection settings saved.', 'toast-connector-settings-saved');
+    }
+
+    // v8.29 — export an account's connection params (secret-free) as a download.
+    const [exportingIds, setExportingIds] = useState<ReadonlySet<number>>(() => new Set());
+    const exportInFlightRef = useRef<Set<number>>(new Set());
+
+    async function handleExport(account: ConnectorInstallationDto) {
+        const id = account.id;
+        if (exportInFlightRef.current.has(id)) return;
+        exportInFlightRef.current.add(id);
+        setExportingIds((s) => new Set(s).add(id));
+        try {
+            const cfg = await adminConnectorsApi.exportInstallation(id);
+            downloadJson(cfg, connectorFilename(cfg.connector, cfg.label ?? account.label));
+            toast.success('Parameters exported.', 'toast-connector-exported');
+        } catch (e) {
+            toast.error(toAdminError(e).message, 'toast-connector-error');
+        } finally {
+            exportInFlightRef.current.delete(id);
+            setExportingIds((s) => {
+                const next = new Set(s);
+                next.delete(id);
+                return next;
+            });
+        }
+    }
+
+    // v8.29 — import a config file → validate/sanitize on the BE → open the create
+    // form prefilled (the operator types the secret and Connects). Reading the file
+    // is client-side; the BE never sees a secret in the file.
+    async function handleImportFile(key: string, file: File) {
+        const entry = entries.find((c) => c.key === key);
+        if (!entry) return;
+
+        let blob: unknown;
+        try {
+            blob = JSON.parse(await file.text());
+        } catch {
+            toast.error('That file is not valid JSON.', 'toast-connector-error');
+            return;
+        }
+
+        try {
+            const prefill = await importConfig.mutateAsync({ key, blob });
+            openModalReset({ kind: 'credential-add', entry, prefill });
+            toast.success('Config loaded — enter the password to connect.', 'toast-connector-imported');
+        } catch (e) {
+            toast.error(parseConfigureError(e).message, 'toast-connector-error');
         }
     }
 
@@ -500,11 +589,14 @@ export function ConnectorsView() {
                                 onEdit={(installation) => handleEdit(entry, installation)}
                                 onManageFolders={(installation) => handleManageFolders(entry, installation)}
                                 onTestFetch={handleTestFetch}
+                                onExport={handleExport}
+                                onImport={handleImportFile}
                                 onCancelInstall={handleRemove}
                                 syncingIds={syncingIds}
                                 busyIds={busyIds}
                                 enablingIds={enablingIds}
                                 probingIds={probingIds}
+                                exportingIds={exportingIds}
                                 addPending={addPendingFor(entry.key)}
                             />
                         ))}
@@ -514,12 +606,18 @@ export function ConnectorsView() {
 
             {modal?.kind === 'credential-add' && (
                 <CredentialConnectorForm
-                    // key on the connector identity → React remounts (fresh
-                    // label/project/field state) if the modal is reused for a
-                    // different connector without closing first (R17).
-                    key={`credential-add-${modal.entry.key}`}
+                    // key on the connector identity + whether a prefill is present →
+                    // React remounts (fresh label/project/field state) if the modal
+                    // is reused for a different connector or an import prefill without
+                    // closing first (R17).
+                    key={`credential-add-${modal.entry.key}-${modal.prefill ? 'import' : 'new'}`}
                     entry={modal.entry}
                     projects={projects}
+                    // v8.29 — seed from an imported file when present (non-secret
+                    // params + label/project hints; the secret is still typed).
+                    initialValues={modal.prefill?.params}
+                    initialLabel={modal.prefill?.label ?? ''}
+                    initialProjectKey={modal.prefill?.project_key ?? null}
                     onSubmit={handleCredentialSubmit}
                     onTest={handleCredentialTest}
                     onClose={() => setModal(null)}
@@ -552,26 +650,19 @@ export function ConnectorsView() {
             )}
 
             {modal?.kind === 'edit' && (
-                <AccountMetaForm
+                <AccountEditModal
                     // key on the account identity → remount with the right
                     // pre-filled values when switching Edit between accounts (R17).
                     key={`edit-${modal.account.id}`}
-                    connectorKey={modal.entry.key}
-                    title={`Edit ${modal.entry.display_name} account`}
-                    submitLabel="Save changes"
+                    entry={modal.entry}
+                    account={modal.account}
                     projects={projects}
-                    initialLabel={modal.account.label}
-                    initialProjectKey={modal.account.project_key}
-                    onSubmit={handleEditSubmit}
+                    initialTab={modal.tab}
+                    onSubmitDetails={(values) => submitEditDetails(modal.account, values)}
+                    onSubmitConnection={(payload) => submitEditConnection(modal.account, payload)}
+                    onTestConnection={(payload) => testEditConnection(modal.entry, payload)}
+                    onSubmitSettings={(settings) => submitEditSettings(modal.account, settings)}
                     onClose={() => setModal(null)}
-                    submitError={modalError}
-                    fieldErrors={modalFieldErrors}
-                    // Scope to THIS account — editing another account while a
-                    // PATCH is in flight must not disable this modal.
-                    isSubmitting={
-                        updateInstallation.isPending &&
-                        updateInstallation.variables?.installationId === modal.account.id
-                    }
                 />
             )}
 

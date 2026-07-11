@@ -3,9 +3,10 @@ import type { AdminProject } from '../projects/admin-projects.api';
 
 /**
  * v8.20 — modal for an account's METADATA: its `label` (account discriminator)
- * and its optional KB `project` binding. Reused for two flows:
+ * and its optional KB `project` binding. Reused for three flows:
  *   - add-oauth : name a new OAuth account before the provider redirect.
  *   - edit      : rename / rebind an existing account (PATCH).
+ *   - v8.29     : the Details tab of the tabbed AccountEditModal (`embedded`).
  *
  * The project dropdown derives its options from the REAL project registry
  * (R18 — never a hard-coded subset) plus a "Global (tenant default)" sentinel
@@ -36,6 +37,8 @@ export interface AccountMetaFormProps {
     submitError?: string | null;
     fieldErrors?: Record<string, string>;
     isSubmitting?: boolean;
+    /** v8.29 — render as a plain panel (no backdrop / title) for the tabbed modal. */
+    embedded?: boolean;
 }
 
 export function AccountMetaForm({
@@ -51,6 +54,7 @@ export function AccountMetaForm({
     submitError,
     fieldErrors,
     isSubmitting,
+    embedded = false,
 }: AccountMetaFormProps): ReactNode {
     const [label, setLabel] = useState(initialLabel);
     const [projectKey, setProjectKey] = useState(initialProjectKey ?? '');
@@ -72,6 +76,133 @@ export function AccountMetaForm({
     const labelId = `connector-${connectorKey}-account-form-label`;
     const projectId = `connector-${connectorKey}-account-form-project`;
 
+    const dialog = (
+        <form
+            role={embedded ? undefined : 'dialog'}
+            aria-modal={embedded ? undefined : 'true'}
+            aria-labelledby={embedded ? undefined : titleId}
+            aria-busy={isSubmitting}
+            data-testid={`connector-${connectorKey}-account-form`}
+            data-state={isSubmitting ? 'loading' : 'idle'}
+            onSubmit={handleSubmit}
+            style={
+                embedded
+                    ? { display: 'flex', flexDirection: 'column', gap: 12, width: '100%' }
+                    : {
+                          background: 'var(--panel-solid, #1a1a22)',
+                          border: '1px solid var(--panel-border-strong, rgba(255,255,255,.12))',
+                          borderRadius: 12,
+                          boxShadow: 'var(--shadow, 0 8px 24px rgba(0,0,0,.4))',
+                          minWidth: 360,
+                          maxWidth: 440,
+                          padding: 16,
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: 12,
+                      }
+            }
+        >
+            {!embedded && (
+                <h2 id={titleId} style={{ margin: 0, fontSize: 14, color: 'var(--fg-0)' }}>
+                    {title}
+                </h2>
+            )}
+
+            <label htmlFor={labelId} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ color: 'var(--fg-2)', fontSize: 11 }}>
+                    Account label<span style={{ color: 'var(--err, #fca5a5)' }}> *</span>
+                </span>
+                <input
+                    id={labelId}
+                    data-testid={labelId}
+                    type="text"
+                    required
+                    // At least one non-whitespace char — native validation
+                    // matches the trimmed submission so a whitespace-only
+                    // label can't slip through to an avoidable 422. JS-string
+                    // expression so the DOM receives a literal `\S` regardless
+                    // of JSX string-escape interpretation.
+                    pattern={'.*\\S.*'}
+                    readOnly={labelReadOnly}
+                    value={label}
+                    onChange={(e) => setLabel(e.target.value)}
+                    placeholder="e.g. Support, Sales"
+                    style={inputStyle()}
+                />
+                {fieldErrors?.label && (
+                    <span
+                        data-testid={`${labelId}-error`}
+                        role="alert"
+                        style={{ fontSize: 10.5, color: 'var(--err, #fca5a5)' }}
+                    >
+                        {fieldErrors.label}
+                    </span>
+                )}
+            </label>
+
+            <label htmlFor={projectId} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ color: 'var(--fg-2)', fontSize: 11 }}>KB project binding</span>
+                <select
+                    id={projectId}
+                    data-testid={projectId}
+                    value={projectKey}
+                    onChange={(e) => setProjectKey(e.target.value)}
+                    style={inputStyle()}
+                >
+                    <option value="">Global (tenant default)</option>
+                    {projects.map((p) => (
+                        <option key={p.project_key} value={p.project_key}>
+                            {p.name} ({p.project_key})
+                        </option>
+                    ))}
+                </select>
+                {fieldErrors?.project_key && (
+                    <span
+                        data-testid={`${projectId}-error`}
+                        role="alert"
+                        style={{ fontSize: 10.5, color: 'var(--err, #fca5a5)' }}
+                    >
+                        {fieldErrors.project_key}
+                    </span>
+                )}
+            </label>
+
+            {submitError && (
+                <p
+                    data-testid={`connector-${connectorKey}-account-form-error`}
+                    role="alert"
+                    style={{ margin: 0, fontSize: 11.5, color: 'var(--err, #fca5a5)' }}
+                >
+                    {submitError}
+                </p>
+            )}
+
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
+                <button
+                    type="button"
+                    data-testid={`connector-${connectorKey}-account-form-cancel`}
+                    onClick={onClose}
+                    disabled={isSubmitting}
+                    style={buttonStyle('secondary', !!isSubmitting)}
+                >
+                    Cancel
+                </button>
+                <button
+                    type="submit"
+                    data-testid={`connector-${connectorKey}-account-form-submit`}
+                    disabled={isSubmitting}
+                    style={buttonStyle('primary', !!isSubmitting)}
+                >
+                    {isSubmitting ? 'Saving…' : submitLabel}
+                </button>
+            </div>
+        </form>
+    );
+
+    if (embedded) {
+        return dialog;
+    }
+
     return (
         <div
             data-testid={`connector-${connectorKey}-account-form-backdrop`}
@@ -88,120 +219,7 @@ export function AccountMetaForm({
                 zIndex: 100,
             }}
         >
-            <form
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby={titleId}
-                aria-busy={isSubmitting}
-                data-testid={`connector-${connectorKey}-account-form`}
-                data-state={isSubmitting ? 'loading' : 'idle'}
-                onSubmit={handleSubmit}
-                style={{
-                    background: 'var(--panel-solid, #1a1a22)',
-                    border: '1px solid var(--panel-border-strong, rgba(255,255,255,.12))',
-                    borderRadius: 12,
-                    boxShadow: 'var(--shadow, 0 8px 24px rgba(0,0,0,.4))',
-                    minWidth: 360,
-                    maxWidth: 440,
-                    padding: 16,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 12,
-                }}
-            >
-                <h2 id={titleId} style={{ margin: 0, fontSize: 14, color: 'var(--fg-0)' }}>
-                    {title}
-                </h2>
-
-                <label htmlFor={labelId} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <span style={{ color: 'var(--fg-2)', fontSize: 11 }}>
-                        Account label<span style={{ color: 'var(--err, #fca5a5)' }}> *</span>
-                    </span>
-                    <input
-                        id={labelId}
-                        data-testid={labelId}
-                        type="text"
-                        required
-                        // At least one non-whitespace char — native validation
-                        // matches the trimmed submission so a whitespace-only
-                        // label can't slip through to an avoidable 422. JS-string
-                        // expression so the DOM receives a literal `\S` regardless
-                        // of JSX string-escape interpretation.
-                        pattern={'.*\\S.*'}
-                        readOnly={labelReadOnly}
-                        value={label}
-                        onChange={(e) => setLabel(e.target.value)}
-                        placeholder="e.g. Support, Sales"
-                        style={inputStyle()}
-                    />
-                    {fieldErrors?.label && (
-                        <span
-                            data-testid={`${labelId}-error`}
-                            role="alert"
-                            style={{ fontSize: 10.5, color: 'var(--err, #fca5a5)' }}
-                        >
-                            {fieldErrors.label}
-                        </span>
-                    )}
-                </label>
-
-                <label htmlFor={projectId} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <span style={{ color: 'var(--fg-2)', fontSize: 11 }}>KB project binding</span>
-                    <select
-                        id={projectId}
-                        data-testid={projectId}
-                        value={projectKey}
-                        onChange={(e) => setProjectKey(e.target.value)}
-                        style={inputStyle()}
-                    >
-                        <option value="">Global (tenant default)</option>
-                        {projects.map((p) => (
-                            <option key={p.project_key} value={p.project_key}>
-                                {p.name} ({p.project_key})
-                            </option>
-                        ))}
-                    </select>
-                    {fieldErrors?.project_key && (
-                        <span
-                            data-testid={`${projectId}-error`}
-                            role="alert"
-                            style={{ fontSize: 10.5, color: 'var(--err, #fca5a5)' }}
-                        >
-                            {fieldErrors.project_key}
-                        </span>
-                    )}
-                </label>
-
-                {submitError && (
-                    <p
-                        data-testid={`connector-${connectorKey}-account-form-error`}
-                        role="alert"
-                        style={{ margin: 0, fontSize: 11.5, color: 'var(--err, #fca5a5)' }}
-                    >
-                        {submitError}
-                    </p>
-                )}
-
-                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
-                    <button
-                        type="button"
-                        data-testid={`connector-${connectorKey}-account-form-cancel`}
-                        onClick={onClose}
-                        disabled={isSubmitting}
-                        style={buttonStyle('secondary', !!isSubmitting)}
-                    >
-                        Cancel
-                    </button>
-                    <button
-                        type="submit"
-                        data-testid={`connector-${connectorKey}-account-form-submit`}
-                        disabled={isSubmitting}
-                        style={buttonStyle('primary', !!isSubmitting)}
-                    >
-                        {isSubmitting ? 'Saving…' : submitLabel}
-                    </button>
-                </div>
-            </form>
+            {dialog}
         </div>
     );
 }

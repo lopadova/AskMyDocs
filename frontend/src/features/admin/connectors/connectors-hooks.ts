@@ -8,6 +8,8 @@ import {
     type ConnectorInstallationDto,
     type DisableResponse,
     type EnableResponse,
+    type ExportedConnectorConfig,
+    type ImportPrefill,
     type StartInstallParams,
     type TestConnectionResponse,
     type TestFetchResponse,
@@ -73,6 +75,60 @@ export function useUpdateInstallation() {
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: CONNECTORS_KEY });
         },
+    });
+}
+
+/**
+ * v8.29 — an account's exported (secret-free) config, used to prefill the Edit →
+ * Connection tab (the listing shape hides connection host/username). Gated by
+ * `enabled` so it only fetches when that tab is open; `staleTime:0` so each open
+ * reflects the current stored params. `retry:false` so a 404/503 surfaces at once.
+ */
+export function useInstallationExport(installationId: number, enabled: boolean) {
+    return useQuery<ExportedConnectorConfig>({
+        queryKey: [...CONNECTORS_KEY, 'export', installationId],
+        queryFn: () => adminConnectorsApi.exportInstallation(installationId),
+        enabled,
+        staleTime: 0,
+        retry: false,
+        // This query backs a LIVE form (the Edit → Connection tab prefill). A
+        // background refetch WHILE the operator is typing would change the prefill
+        // and reset the form (data loss). `refetchOnWindowFocus` is already false
+        // globally, but `refetchOnReconnect` defaults to true — pin BOTH off here so
+        // the prefill only (re)loads on an explicit tab open / retry, never mid-edit.
+        refetchOnWindowFocus: false,
+        refetchOnReconnect: false,
+    });
+}
+
+/**
+ * v8.29 — reconfigure an existing account's connection params (Edit → Connection).
+ * On success the BE re-verified + persisted, so invalidate the list to reflect the
+ * (possibly) new status. A bad connection is a 422 the caller renders inline.
+ */
+export function useReconfigureConnector() {
+    const qc = useQueryClient();
+    return useMutation<
+        ConnectorInstallationDto,
+        unknown,
+        { installationId: number; payload: ConfigureConnectorPayload }
+    >({
+        mutationFn: ({ installationId, payload }) =>
+            adminConnectorsApi.reconfigure(installationId, payload),
+        onSuccess: () => {
+            qc.invalidateQueries({ queryKey: CONNECTORS_KEY });
+        },
+    });
+}
+
+/**
+ * v8.29 — validate an uploaded config file into a secret-free prefill. Read-only
+ * (the BE persists nothing), so NO list invalidation; the caller opens the create
+ * form seeded with the returned params.
+ */
+export function useImportConnectorConfig() {
+    return useMutation<ImportPrefill, unknown, { key: string; blob: unknown }>({
+        mutationFn: ({ key, blob }) => adminConnectorsApi.importValidate(key, blob),
     });
 }
 
