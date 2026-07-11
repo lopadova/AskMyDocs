@@ -125,6 +125,12 @@ final class ConnectorConfigExportService
         $params = [];
         $omitted = [];
 
+        // Resolve the connection sub-map ONCE, guarding a non-array `connection` in a
+        // legacy/corrupted config_json — subscripting it inline (`$config['connection'][$name]`)
+        // would throw a TypeError in PHP 8 and 500 the export instead of returning the
+        // fields that ARE present (R14).
+        $connection = is_array($config['connection'] ?? null) ? $config['connection'] : [];
+
         foreach ($schema as $field) {
             $name = (string) ($field['name'] ?? '');
             if ($name === '') {
@@ -140,7 +146,7 @@ final class ConnectorConfigExportService
             }
 
             $value = ((string) ($field['target'] ?? '')) === 'connection'
-                ? ($config['connection'][$name] ?? null)
+                ? ($connection[$name] ?? null)
                 : ($config[$name] ?? null);
 
             // Only export values that are actually present — an absent field stays

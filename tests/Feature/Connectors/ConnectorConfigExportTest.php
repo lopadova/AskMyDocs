@@ -97,6 +97,21 @@ final class ConnectorConfigExportTest extends TestCase
         $this->assertArrayNotHasKey('password', (array) $response->json('data.params'));
     }
 
+    public function test_export_survives_a_non_array_connection_in_config(): void
+    {
+        // A legacy/corrupted config_json whose `connection` is not an array must not
+        // 500 the export — it returns the fields that ARE present, secret-free.
+        $installation = $this->seedImapInstallation(configOverrides: ['connection' => 'corrupted']);
+
+        $response = $this->actingAs($this->superAdmin())
+            ->getJson("/api/admin/connectors/{$installation->id}/export")
+            ->assertOk();
+
+        // The connection-target fields are simply absent; the top-level ones remain.
+        $this->assertSame('basic', $response->json('data.params.auth_mode'));
+        $this->assertArrayNotHasKey('host', (array) $response->json('data.params'));
+    }
+
     public function test_export_is_scoped_to_the_active_tenant(): void
     {
         // An installation owned by a DIFFERENT tenant must not be exportable from
