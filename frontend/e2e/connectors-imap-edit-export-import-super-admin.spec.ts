@@ -61,11 +61,17 @@ baseTest.describe('Connectors — IMAP edit/export/import (super-admin)', () => 
         page,
     }) => {
         await addImapAccount(page, { label: 'Support' });
-        const card = page.getByTestId('connector-list-card-imap');
-        await expect(card).toHaveAttribute('data-account-count', '1', { timeout: 15_000 });
+        await expect(page.getByTestId('connector-source-imap')).toHaveAttribute(
+            'data-connection-count',
+            '1',
+            { timeout: 15_000 },
+        );
 
-        // Open the tabbed Edit modal (opens on Details); switch to Connection.
-        await card.locator('[data-testid$="-edit"]').first().click();
+        // v8.30 — Edit lives in the connection row's ⋮ menu. Open the tabbed Edit
+        // modal (opens on Details); switch to Connection.
+        const row = page.locator('[data-testid^="connector-connection-"][data-connection-status]');
+        await row.locator('[data-testid$="-menu"]').click();
+        await page.locator('[data-testid$="-edit"]').click();
         await expect(page.locator('[data-testid$="-edit-modal"]')).toBeVisible();
         await page.locator('[data-testid$="-edit-tab-connection"]').click();
 
@@ -84,7 +90,8 @@ baseTest.describe('Connectors — IMAP edit/export/import (super-admin)', () => 
         await expect(page.locator('[data-testid$="-edit-modal"]')).toHaveCount(0);
 
         // Re-open Edit → Connection: the new host round-tripped through /export.
-        await card.locator('[data-testid$="-edit"]').first().click();
+        await row.locator('[data-testid$="-menu"]').click();
+        await page.locator('[data-testid$="-edit"]').click();
         await page.locator('[data-testid$="-edit-tab-connection"]').click();
         await expect(page.getByTestId('connector-imap-form-host')).toHaveValue('imap.moved.example.com', {
             timeout: 15_000,
@@ -95,10 +102,15 @@ baseTest.describe('Connectors — IMAP edit/export/import (super-admin)', () => 
         page,
     }) => {
         await addImapAccount(page, { label: 'Support' });
-        const card = page.getByTestId('connector-list-card-imap');
-        await expect(card).toHaveAttribute('data-account-count', '1', { timeout: 15_000 });
+        await expect(page.getByTestId('connector-source-imap')).toHaveAttribute(
+            'data-connection-count',
+            '1',
+            { timeout: 15_000 },
+        );
 
-        await card.locator('[data-testid$="-edit"]').first().click();
+        const row = page.locator('[data-testid^="connector-connection-"][data-connection-status]');
+        await row.locator('[data-testid$="-menu"]').click();
+        await page.locator('[data-testid$="-edit"]').click();
         await page.locator('[data-testid$="-edit-tab-connection"]').click();
         await expect(page.getByTestId('connector-imap-form-host')).toHaveValue('imap.example.com', {
             timeout: 15_000,
@@ -115,12 +127,19 @@ baseTest.describe('Connectors — IMAP edit/export/import (super-admin)', () => 
 
     baseTest('export downloads a secret-free config file', async ({ page }) => {
         await addImapAccount(page, { label: 'Support' });
-        const card = page.getByTestId('connector-list-card-imap');
-        await expect(card).toHaveAttribute('data-account-count', '1', { timeout: 15_000 });
+        await expect(page.getByTestId('connector-source-imap')).toHaveAttribute(
+            'data-connection-count',
+            '1',
+            { timeout: 15_000 },
+        );
 
+        // Export lives in the connection row's ⋮ menu: open it first, then click
+        // the item while listening for the browser download.
+        const row = page.locator('[data-testid^="connector-connection-"][data-connection-status]');
+        await row.locator('[data-testid$="-menu"]').click();
         const [download] = await Promise.all([
             page.waitForEvent('download'),
-            card.locator('[data-testid$="-export"]').first().click(),
+            page.locator('[data-testid$="-export"]').click(),
         ]);
 
         expect(download.suggestedFilename()).toContain('imap');
@@ -140,8 +159,6 @@ baseTest.describe('Connectors — IMAP edit/export/import (super-admin)', () => 
     });
 
     baseTest('import prefills a new account from a file, then Connect creates it', async ({ page }) => {
-        const card = page.getByTestId('connector-list-card-imap');
-
         // A valid exported config (no secret) — imported to prefill a NEW account.
         const file = {
             name: 'imap-Imported.askmydocs-connector.json',
@@ -167,7 +184,8 @@ baseTest.describe('Connectors — IMAP edit/export/import (super-admin)', () => 
         };
 
         // The hidden file input drives the import (setInputFiles works on it).
-        await card.getByTestId('connector-imap-import-file').setInputFiles(file);
+        // v8.30 — it lives on the IMAP tile in the "Available sources" grid.
+        await page.getByTestId('connector-imap-import-file').setInputFiles(file);
 
         // The create form opens prefilled from the file (secret still blank).
         await expect(page.getByTestId('connector-imap-form')).toBeVisible({ timeout: 15_000 });
@@ -185,7 +203,15 @@ baseTest.describe('Connectors — IMAP edit/export/import (super-admin)', () => 
         });
         await page.getByTestId('connector-imap-form-submit').click();
 
-        await expect(card).toHaveAttribute('data-account-count', '1', { timeout: 15_000 });
-        await expect(card.getByText('Imported', { exact: true })).toBeVisible();
+        await expect(page.getByTestId('connector-source-imap')).toHaveAttribute(
+            'data-connection-count',
+            '1',
+            { timeout: 15_000 },
+        );
+        await expect(
+            page
+                .locator('[data-testid^="connector-connection-"][data-connection-status]')
+                .filter({ hasText: 'Imported' }),
+        ).toBeVisible();
     });
 });

@@ -36,15 +36,17 @@ baseTest.describe('Admin Connectors — super-admin', () => {
         await expect(view).toBeVisible({ timeout: 15_000 });
         await expect(view).toHaveAttribute('data-state', 'ready', { timeout: 15_000 });
 
-        await expect(page.getByTestId('connector-list-card-google-drive')).toBeVisible();
-        await expect(page.getByTestId('connector-list-card-notion')).toBeVisible();
+        // v8.30 redesign — the "Available sources" grid lists one tile per
+        // registered connector.
+        await expect(page.getByTestId('connector-source-google-drive')).toBeVisible();
+        await expect(page.getByTestId('connector-source-notion')).toBeVisible();
 
         // Both start with no accounts against the fresh seeded tenant state.
-        await expect(page.getByTestId('connector-list-card-google-drive')).toHaveAttribute(
-            'data-status',
-            'not_installed',
+        await expect(page.getByTestId('connector-source-google-drive')).toHaveAttribute(
+            'data-connection-count',
+            '0',
         );
-        // v8.20 — the per-connector CTA is now "Add account".
+        // The per-source CTA is the tile's Add (+) button.
         await expect(page.getByTestId('connector-google-drive-add-account')).toBeVisible();
         await expect(page.getByTestId('connector-notion-add-account')).toBeVisible();
     });
