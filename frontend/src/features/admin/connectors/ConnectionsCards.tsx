@@ -52,6 +52,7 @@ function ConnectionCard({
 
     return (
         <div
+            role="group"
             data-testid={base}
             data-connection-status={vm.status}
             aria-label={`${vm.account} on ${vm.sourceName} — ${vm.status}`}
@@ -133,7 +134,7 @@ function ConnectionCard({
                     gap: 8,
                     marginTop: 11,
                     fontSize: 12.5,
-                    color: vm.status === 'errored' ? '#f87171' : 'var(--fg-3)',
+                    color: vm.status === 'errored' ? 'var(--err)' : 'var(--fg-3)',
                 }}
             >
                 <svg

@@ -49,6 +49,13 @@ baseTest.describe('Admin Connectors — super-admin', () => {
         // The per-source CTA is the tile's Add (+) button.
         await expect(page.getByTestId('connector-google-drive-add-account')).toBeVisible();
         await expect(page.getByTestId('connector-notion-add-account')).toBeVisible();
+
+        // Fresh tenant → zero connections → the Connections section shows its
+        // observable empty state (R14 — not a blank panel).
+        const empty = page.getByTestId('connector-connections-empty');
+        await expect(empty).toBeVisible();
+        await expect(empty).toContainText('No connections yet');
+        await expect(page.getByTestId('connector-connections-count')).toHaveText('0');
     });
 
     baseTest('connect — BE returns redirect_to with OAuth scopes', async ({ page }) => {

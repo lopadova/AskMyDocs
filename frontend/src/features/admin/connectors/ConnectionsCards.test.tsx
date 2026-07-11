@@ -144,4 +144,16 @@ describe('ConnectionsCards', () => {
         expect(screen.queryByTestId('connector-connection-5-sync')).toBeNull();
         expect(screen.getByTestId('connector-connection-5-menu')).toBeVisible();
     });
+
+    it('announces each card as a group with account, source and status (R15)', () => {
+        // ARIA-name must sit on a role-bearing element — the card is role="group"
+        // so screen readers announce "{account} on {source} — {status}".
+        const rows = buildConnections(entries([installation(1, 'team@acme.io', 'active')]));
+        render(
+            <ConnectionsCards rows={rows} menuId={null} actions={noopActions()} inflight={noInflight()} />,
+        );
+        const card = screen.getByTestId('connector-connection-1');
+        expect(card).toHaveAttribute('role', 'group');
+        expect(card).toHaveAttribute('aria-label', 'team@acme.io on Email (IMAP) — active');
+    });
 });

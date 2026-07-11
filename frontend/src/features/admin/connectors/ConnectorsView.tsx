@@ -166,8 +166,14 @@ export function ConnectorsView() {
 
     const connections = useMemo(() => buildConnections(entries), [entries]);
     const visible = useMemo(() => filterConnections(connections, query), [connections, query]);
+    // Re-derive the Sync-failed modal's connection from the fresh list each
+    // render, gated on it STILL being errored — so a background refetch that
+    // recovered the account (→ active) auto-dismisses the now-stale error modal
+    // instead of showing a hollow "Connector reported an error" (R17).
     const errorVm: ConnectionVM | null =
-        errorId === null ? null : (connections.find((c) => c.id === errorId) ?? null);
+        errorId === null
+            ? null
+            : (connections.find((c) => c.id === errorId && c.status === 'errored') ?? null);
 
     function openModalReset(next: Modal) {
         setModalError(null);
@@ -780,7 +786,13 @@ export function ConnectorsView() {
                                         data-testid="connector-connections-search"
                                         aria-label="Search connections"
                                         value={query}
-                                        onChange={(e) => setQuery(e.target.value)}
+                                        onChange={(e) => {
+                                            setQuery(e.target.value);
+                                            // Close any open ⋮ menu — filtering can
+                                            // unmount its row, and a remount-open menu
+                                            // would steal focus from this input (R17).
+                                            setMenuId(null);
+                                        }}
                                         placeholder="Search accounts…"
                                         style={{
                                             background: 'transparent',

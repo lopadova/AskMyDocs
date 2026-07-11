@@ -2,9 +2,9 @@
  * Interaction styles for the redesigned Connectors page. Inline styles can't
  * express :hover / :focus-visible, so the hover-driven look of the design
  * handoff lives here as a single injected <style> string (the same pattern the
- * app uses for `.conv-row` in tokens.css and the `amd-spin` keyframes). Every
- * colour is a design token so the page follows the app's light + dark themes
- * (the mockup is dark-only; per the agreed brief we keep it theme-aware).
+ * app's global stylesheet uses for `.conv-row` in tokens.css). Every colour is a
+ * design token so the page follows the app's light + dark themes (the mockup is
+ * dark-only; per the agreed brief we keep it theme-aware).
  *
  * Class prefix `amd-cn-` (AskMyDocs ConNectors) avoids collisions with the
  * global utility classes.

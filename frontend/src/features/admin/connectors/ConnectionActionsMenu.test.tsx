@@ -103,10 +103,30 @@ describe('ConnectionActionsMenu', () => {
 
     it('offers ONLY Cancel install on a pending account and fires onCancelInstall', async () => {
         const { onCancelInstall } = renderMenu(vmFor('pending'));
+        // A pending account has no verified credentials yet — none of the
+        // active-account items (edit / remove / test-fetch / folders / export /
+        // disable) may appear (carries the old ConnectorCard.export-import
+        // 'does NOT render Export on a pending account' guard).
         expect(screen.queryByTestId('connector-connection-7-edit')).toBeNull();
         expect(screen.queryByTestId('connector-connection-7-remove')).toBeNull();
+        expect(screen.queryByTestId('connector-connection-7-test-fetch')).toBeNull();
+        expect(screen.queryByTestId('connector-connection-7-folders')).toBeNull();
+        expect(screen.queryByTestId('connector-connection-7-export')).toBeNull();
+        expect(screen.queryByTestId('connector-connection-7-disable')).toBeNull();
         await userEvent.click(screen.getByTestId('connector-connection-7-cancel-install'));
         expect(onCancelInstall).toHaveBeenCalledWith(7);
+    });
+
+    it('offers Test fetch + Remove (but NOT Disable) on an errored credential account', () => {
+        // The errored diagnostic menu (carries the old ConnectorCard 'offers Test
+        // fetch even on an errored credential account' guard). Disable is scoped
+        // to active accounts only; the inline icon offers "Retry sync".
+        renderMenu(vmFor('errored'));
+        expect(screen.getByTestId('connector-connection-7-test-fetch')).toBeVisible();
+        expect(screen.getByTestId('connector-connection-7-edit')).toBeVisible();
+        expect(screen.getByTestId('connector-connection-7-export')).toBeVisible();
+        expect(screen.getByTestId('connector-connection-7-remove')).toBeVisible();
+        expect(screen.queryByTestId('connector-connection-7-disable')).toBeNull();
     });
 
     it('requires the two-step confirm before firing onRemove', async () => {
