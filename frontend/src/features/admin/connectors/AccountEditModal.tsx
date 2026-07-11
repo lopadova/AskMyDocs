@@ -217,6 +217,9 @@ export function AccountEditModal({
                 <div
                     id={`connector-account-${account.id}-edit-panel`}
                     role="tabpanel"
+                    // Label the panel by its active tab so a screen reader announces
+                    // which section the content belongs to.
+                    aria-labelledby={`connector-account-${account.id}-edit-tab-${tab}`}
                     style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column' }}
                 >
                     {tab === 'details' && (

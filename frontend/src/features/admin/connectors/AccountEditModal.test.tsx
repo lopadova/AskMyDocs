@@ -93,6 +93,11 @@ describe('AccountEditModal', () => {
         expect(screen.getByTestId('connector-account-7-edit-tab-connection')).toBeInTheDocument();
         expect(screen.getByTestId('connector-account-7-edit-tab-settings')).toBeInTheDocument();
         expect(screen.getByTestId('connector-account-7-edit-modal')).toHaveAttribute('data-active-tab', 'details');
+        // The tabpanel is labelled by its active tab (a11y).
+        expect(screen.getByRole('tabpanel')).toHaveAttribute(
+            'aria-labelledby',
+            'connector-account-7-edit-tab-details',
+        );
         // Details tab body: the metadata form, pre-filled with the label.
         expect(screen.getByTestId('connector-imap-account-form-label')).toHaveValue('Date');
     });
