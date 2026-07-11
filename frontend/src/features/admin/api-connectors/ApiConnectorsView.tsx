@@ -34,7 +34,7 @@ import {
     useUpdateConnector,
     useUpdateRoute,
 } from './api-connectors-hooks';
-import { routeStatusBadge } from './route-status';
+import { endpointTypeBadge, routeStatusBadge } from './route-status';
 import { ConnectorForm } from './ConnectorForm';
 import { AuthProfileForm } from './AuthProfileForm';
 import { RouteForm } from './RouteForm';
@@ -773,6 +773,7 @@ function RouteRow({
     onRegenerate,
 }: RouteRowProps) {
     const badge = routeStatusBadge(route.status);
+    const typeBadge = endpointTypeBadge(route.endpoint_type);
     const base = `api-connector-${connectorId}-route-${route.id}`;
     const canActivate = route.status === 'tested';
     const canDisable = route.status === 'active';
@@ -821,6 +822,22 @@ function RouteRow({
                 }}
             >
                 {badge.label}
+            </span>
+            <span
+                data-testid={`${base}-endpoint-type`}
+                data-endpoint-type={route.endpoint_type}
+                title="Endpoint type (list / detail)"
+                style={{
+                    fontSize: 10.5,
+                    fontWeight: 600,
+                    padding: '2px 8px',
+                    borderRadius: 999,
+                    background: typeBadge.background,
+                    border: `1px solid ${typeBadge.border}`,
+                    color: typeBadge.color,
+                }}
+            >
+                {typeBadge.label}
             </span>
             <span
                 data-testid={`${base}-mode`}
