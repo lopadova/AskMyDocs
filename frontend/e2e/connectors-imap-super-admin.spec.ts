@@ -323,9 +323,9 @@ baseTest.describe('Connectors — IMAP credential flow (super-admin)', () => {
         const labelInput = page.getByTestId('connector-imap-account-form-label');
         await expect(labelInput).toHaveValue('Support');
 
-        // Rename and save.
+        // Rename and save via the modal's single sticky footer (v8.31).
         await labelInput.fill('Support v2');
-        await page.getByTestId('connector-imap-account-form-submit').click();
+        await page.locator('[data-testid$="-edit-save"]').click();
 
         // Form closes; success toast fires; the list reflects the updated label.
         await expect(editForm).toHaveCount(0, { timeout: 15_000 });
@@ -357,9 +357,9 @@ baseTest.describe('Connectors — IMAP credential flow (super-admin)', () => {
         await expect(editForm).toBeVisible();
         await expect(page.getByTestId('connector-imap-account-form-label')).toHaveValue('Sales');
 
-        // Rename to "Support" → duplicate → 422.
+        // Rename to "Support" → duplicate → 422 (save via the modal footer).
         await page.getByTestId('connector-imap-account-form-label').fill('Support');
-        await page.getByTestId('connector-imap-account-form-submit').click();
+        await page.locator('[data-testid$="-edit-save"]').click();
 
         // R14: label error surfaces inline; form stays open; count unchanged.
         await expect(

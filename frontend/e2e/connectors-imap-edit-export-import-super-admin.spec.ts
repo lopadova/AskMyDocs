@@ -79,12 +79,13 @@ baseTest.describe('Connectors — IMAP edit/export/import (super-admin)', () => 
         await expect(page.getByTestId('connector-imap-form-host')).toHaveValue('imap.example.com', {
             timeout: 15_000,
         });
-        // The password is optional here (blank = keep current) — Save is enabled.
-        await expect(page.getByTestId('connector-imap-form-submit')).toBeEnabled();
+        // v8.31 — Save lives in the modal's single sticky footer (password blank =
+        // keep current, so it's enabled once the prefill has loaded).
+        await expect(page.locator('[data-testid$="-edit-save"]')).toBeEnabled();
 
         // Change the host (still a reachable fake host) and save, keeping the password.
         await page.getByTestId('connector-imap-form-host').fill('imap.moved.example.com');
-        await page.getByTestId('connector-imap-form-submit').click();
+        await page.locator('[data-testid$="-edit-save"]').click();
 
         await expect(page.getByTestId('toast-connector-reconfigured')).toBeVisible({ timeout: 15_000 });
         await expect(page.locator('[data-testid$="-edit-modal"]')).toHaveCount(0);
@@ -118,9 +119,10 @@ baseTest.describe('Connectors — IMAP edit/export/import (super-admin)', () => 
 
         // `invalid` in the host drives the fake ping (health check) to fail.
         await page.getByTestId('connector-imap-form-host').fill('invalid.example.com');
-        await page.getByTestId('connector-imap-form-submit').click();
+        await page.locator('[data-testid$="-edit-save"]').click();
 
-        // R14 — the failure surfaces inline and the modal stays open (rolled back).
+        // R14 — the failure surfaces inline (kept in the tab body) and the modal
+        // stays open (rolled back).
         await expect(page.getByTestId('connector-imap-form-error')).toBeVisible({ timeout: 15_000 });
         await expect(page.locator('[data-testid$="-edit-modal"]')).toBeVisible();
     });
@@ -213,5 +215,79 @@ baseTest.describe('Connectors — IMAP edit/export/import (super-admin)', () => 
                 .locator('[data-testid^="connector-connection-"][data-connection-status]')
                 .filter({ hasText: 'Imported' }),
         ).toBeVisible();
+    });
+
+    // ── v8.31 — the redesigned "Config Modals" Edit surface ──────────────────
+    baseTest('edit → Details tab shows the stat cards (documents synced + last sync)', async ({
+        page,
+    }) => {
+        await addImapAccount(page, { label: 'Support' });
+        await expect(page.getByTestId('connector-source-imap')).toHaveAttribute(
+            'data-connection-count',
+            '1',
+            { timeout: 15_000 },
+        );
+
+        const row = page.locator('[data-testid^="connector-connection-"][data-connection-status]');
+        await row.locator('[data-testid$="-menu"]').click();
+        await page.locator('[data-testid$="-edit"]').click();
+
+        // The Edit modal opens on Details, which now carries two at-a-glance stats.
+        // A freshly-added account has ingested nothing yet → 0 docs, never synced.
+        const docs = page.locator('[data-testid$="-edit-stat-documents"]');
+        const lastSync = page.locator('[data-testid$="-edit-stat-last-sync"]');
+        await expect(docs).toBeVisible({ timeout: 15_000 });
+        await expect(docs).toContainText('0');
+        await expect(lastSync).toBeVisible();
+        await expect(lastSync).toContainText('Never');
+    });
+
+    baseTest('edit → Sync settings tri-state persists a folder rule + sync window', async ({
+        page,
+    }) => {
+        await addImapAccount(page, { label: 'Support' });
+        await expect(page.getByTestId('connector-source-imap')).toHaveAttribute(
+            'data-connection-count',
+            '1',
+            { timeout: 15_000 },
+        );
+
+        const row = page.locator('[data-testid^="connector-connection-"][data-connection-status]');
+        const openSyncTab = async () => {
+            await row.locator('[data-testid$="-menu"]').click();
+            await page.locator('[data-testid$="-edit"]').click();
+            await page.locator('[data-testid$="-edit-tab-settings"]').click();
+            // The live folder list resolves → data-state ready (R14 observable).
+            await expect(page.getByTestId('connector-imap-settings-form')).toHaveAttribute(
+                'data-state',
+                'ready',
+                { timeout: 15_000 },
+            );
+        };
+
+        await openSyncTab();
+        await expect(page.getByTestId('connector-imap-settings-folder-list')).toBeVisible();
+
+        // Flip INBOX to Skip via the tri-state segmented control + set the window.
+        await page.getByTestId('connector-imap-settings-folder-inbox-skip').click();
+        await expect(page.getByTestId('connector-imap-settings-folder-inbox')).toHaveAttribute(
+            'data-rule',
+            'skip',
+        );
+        const windowInput = page.getByTestId('connector-imap-settings-date-window-days');
+        await windowInput.fill('30');
+
+        // Save via the modal's single sticky footer.
+        await page.locator('[data-testid$="-edit-save"]').click();
+        await expect(page.getByTestId('toast-connector-settings-saved')).toBeVisible({ timeout: 10_000 });
+        await expect(page.locator('[data-testid$="-edit-modal"]')).toHaveCount(0);
+
+        // Reopen → the saved rule + window round-trip through the settings resource.
+        await openSyncTab();
+        await expect(page.getByTestId('connector-imap-settings-folder-inbox')).toHaveAttribute(
+            'data-rule',
+            'skip',
+        );
+        await expect(page.getByTestId('connector-imap-settings-date-window-days')).toHaveValue('30');
     });
 });
