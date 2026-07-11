@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Padosoft\AskMyDocsConnectorBase\ConnectorRegistry;
 use Padosoft\AskMyDocsConnectorBase\Contracts\SupportsCredentialForm;
 use Padosoft\AskMyDocsConnectorBase\Exceptions\ConnectorAuthException;
+use Padosoft\AskMyDocsConnectorBase\HealthStatus;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
@@ -54,6 +55,7 @@ final class ConfigureConnectorService
     public function __construct(
         private readonly ConnectorRegistry $registry,
         private readonly TenantContext $tenantContext,
+        private readonly ConnectorInstallationService $installations,
     ) {}
 
     /**
@@ -120,6 +122,109 @@ final class ConfigureConnectorService
         }
 
         return new ConfigureConnectorResult($installation, redirectTo: null);
+    }
+
+    /**
+     * v8.29 — RE-configure an EXISTING account's connection parameters + optional
+     * secret, in place (the "Edit → Connection" tab). This is the write path the
+     * pre-v8.29 design deliberately lacked: connection params were write-once and
+     * the only way to change host/port/username/password was delete + re-add.
+     *
+     * It is the mirror of {@see configure()} on an existing row, sharing the SAME
+     * schema-driven {@see splitPayload} routing and the SAME verify-before-keep
+     * safety — never a blind write that could brick a working account:
+     *
+     *   1. Merge the submitted credential-form values OVER the stored `config_json`
+     *      (the {@see ReconfigureConnectorRequest} pre-fills omitted non-secret
+     *      fields from the stored value, so unspecified connection fields keep their
+     *      current value — PATCH semantics). The post-install sync settings
+     *      (folders/window/filters — separate keys, edited via PATCH) are preserved.
+     *   2. Persist the new config FIRST (the connector's verify path reads
+     *      `config_json` for host/port/auth_mode), snapshotting the old config.
+     *   3. VERIFY:
+     *        - a NEW secret was submitted → replay the connector's own callback
+     *          (ping with new config + new secret, write the vault) — identical to
+     *          the create flow. The vault is written only AFTER a successful ping,
+     *          so a failure leaves the OLD secret intact.
+     *        - no secret (blank = keep) → prove the new connection params work with
+     *          the EXISTING vaulted credential via the connector's health() ping.
+     *   4. On ANY verify failure → roll `config_json` back to the last known-good
+     *      snapshot (the old secret still logs in with the old config, so the
+     *      account stays usable) and rethrow → the controller maps it to 422.
+     *
+     * R30 — the installation is resolved tenant-scoped ({@see ConnectorInstallationService::findOr404}).
+     * Security — the secret is only held for the ping, never persisted to
+     * `config_json`/logs/response.
+     *
+     * @param  array<string,mixed>  $validated  Validated credential-form payload (schema-keyed).
+     */
+    public function reconfigure(int $installationId, array $validated): ConfigureConnectorResult
+    {
+        // R30 — tenant-scoped; a cross-tenant / unknown id 404s here.
+        $installation = $this->installations->findOr404($installationId);
+
+        $connector = $this->registry->get($installation->connector_name);
+        if ($connector === null) {
+            throw new NotFoundHttpException("Connector '{$installation->connector_name}' is not registered.");
+        }
+        if (! $connector instanceof SupportsCredentialForm) {
+            throw new NotFoundHttpException(
+                "Connector '{$installation->connector_name}' does not support credential configuration.",
+            );
+        }
+
+        [$config, $secret, $secretField] = $this->splitPayload($connector->credentialFormSchema(), $validated);
+
+        // Shallow-merge the new credential-form keys over the stored config: the
+        // whole `connection` sub-map + top-level auth_mode/provider/config keys are
+        // overwritten, while the sync-settings keys (folders, date_window_days,
+        // senders, …) — which live at OTHER top-level paths — are preserved untouched.
+        $previousConfig = (array) ($installation->config_json ?? []);
+        $nextConfig = $previousConfig;
+        foreach ($config as $key => $value) {
+            $nextConfig[$key] = $value;
+        }
+
+        // Persist FIRST so the connector's verify path reads the NEW config.
+        $installation->forceFill(['config_json' => $nextConfig])->save();
+
+        $secretProvided = $secret !== null && $secret !== '';
+
+        try {
+            if ($secretProvided) {
+                // New secret: verify + persist via the connector's own callback (the
+                // same replay create uses). It pings with the new config + secret
+                // and writes the vault only on success.
+                $this->replaySecretCallback($connector, $installation, $secretField ?? 'password', $secret);
+            } else {
+                // Secret unchanged: prove the new connection params work with the
+                // EXISTING vaulted credential — no vault write.
+                $this->verifyWithExistingCredentials($connector, $installation);
+            }
+        } catch (\Throwable $e) {
+            // Roll the config back to the last known-good values so a failed edit
+            // never leaves the account pointing at an unreachable server it can no
+            // longer authenticate against (the old secret still matches the old
+            // config). The vault is untouched on failure (the callback writes it
+            // only after a successful ping).
+            $installation->forceFill(['config_json' => $previousConfig])->save();
+
+            throw $e;
+        }
+
+        // Verified — clear any stale error. Re-arm ACTIVE/ERRORED to ACTIVE (the
+        // params are now proven good), but NEVER silently re-enable a DISABLED
+        // account: disable() is a deliberate operator pause and only the explicit
+        // enable() should resume the scheduler (which syncs ACTIVE rows only). A
+        // connection edit must not become a back-door "enable".
+        $installation->forceFill([
+            'status' => $installation->status === ConnectorInstallation::STATUS_DISABLED
+                ? ConnectorInstallation::STATUS_DISABLED
+                : ConnectorInstallation::STATUS_ACTIVE,
+            'error_json' => null,
+        ])->save();
+
+        return new ConfigureConnectorResult($installation->refresh(), redirectTo: null);
     }
 
     /**
@@ -242,14 +347,37 @@ final class ConfigureConnectorService
         string $secretField,
         ?string $secret,
     ): void {
-        // The connector issues a single-use state bound to this installation and
-        // returns it embedded in its credential-form URL. We parse the state and
-        // immediately replay it through handleOAuthCallback together with the
-        // secret, so the connector verifies the login (ping) before we keep the
-        // row. The secret is posted under its SCHEMA field name (the connector
-        // reads it by that name) — keeping the flow generic for any credential
-        // connector. Any failure propagates to configure(), which rolls the
-        // just-created pending row back so nothing is "saved" on a failed test.
+        $this->replaySecretCallback($connector, $installation, $secretField, $secret);
+
+        $installation->forceFill([
+            'status' => ConnectorInstallation::STATUS_ACTIVE,
+            'error_json' => null,
+        ])->save();
+    }
+
+    /**
+     * Verify a submitted secret + persist it, by replaying the connector's own
+     * single-use OAuth-state callback. Shared by {@see completeBasicAuth} (create)
+     * and {@see reconfigure} (edit) so the "ping-then-vault" round-trip lives in
+     * ONE place.
+     *
+     * The connector issues a single-use state bound to this installation and
+     * returns it embedded in its credential-form URL. We parse the state and
+     * immediately replay it through `handleOAuthCallback` together with the secret,
+     * so the connector verifies the login (ping) BEFORE persisting the credential.
+     * The secret is posted under its SCHEMA field name (the connector reads it by
+     * that name) — keeping the flow generic for any credential connector. Any
+     * failure propagates to the caller, which rolls back (delete on create, config
+     * restore on reconfigure) so nothing is left half-written on a failed test. The
+     * connector writes the vault only on a successful ping, so a failure never
+     * overwrites an existing good secret.
+     */
+    private function replaySecretCallback(
+        SupportsCredentialForm $connector,
+        ConnectorInstallation $installation,
+        string $secretField,
+        ?string $secret,
+    ): void {
         $url = $connector->initiateOAuth($installation->id);
         parse_str((string) parse_url($url, PHP_URL_QUERY), $query);
         $state = isset($query['state']) ? (string) $query['state'] : '';
@@ -257,8 +385,7 @@ final class ConfigureConnectorService
         if ($state === '') {
             // The connector must embed a single-use state in its credential-form
             // URL; an empty one means a contract break. A ConnectorAuthException
-            // makes configure() roll the pending row back like any other failed
-            // test (and the controller maps it to 422).
+            // makes the caller roll back like any other failed test (→ 422).
             throw new ConnectorAuthException(
                 "Connector '{$installation->connector_name}' returned no credential state to replay.",
             );
@@ -274,10 +401,30 @@ final class ConfigureConnectorService
         }
 
         $connector->handleOAuthCallback($installation->id, Request::create('/', 'POST', $data));
+    }
 
-        $installation->forceFill([
-            'status' => ConnectorInstallation::STATUS_ACTIVE,
-            'error_json' => null,
-        ])->save();
+    /**
+     * Verify an account's (freshly-edited) connection params against the EXISTING
+     * vaulted credential — the reconfigure path when the operator left the secret
+     * blank ("keep current password"). Uses the connector's own health() ping,
+     * which reads the persisted config_json + the vaulted secret (refreshing an
+     * xoauth2 token if needed). A non-healthy result is the "couldn't reach the
+     * mailbox with these settings" answer → surfaced as
+     * {@see ConnectorConnectionTestException}, which the controller maps to 422 so
+     * the edit is rejected and rolled back (never a silent success — R14).
+     */
+    private function verifyWithExistingCredentials(
+        SupportsCredentialForm $connector,
+        ConnectorInstallation $installation,
+    ): void {
+        $status = $connector->health($installation->id);
+
+        if ($status->state !== HealthStatus::STATE_HEALTHY) {
+            throw new ConnectorConnectionTestException(
+                $status->message !== null && $status->message !== ''
+                    ? "Connection test failed with the current credentials: {$status->message}"
+                    : 'Connection test failed with the current credentials — re-enter the password if it changed.',
+            );
+        }
     }
 }

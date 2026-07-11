@@ -6,12 +6,16 @@ namespace App\Http\Controllers\Api\Admin;
 
 use App\Connectors\SerializedConnectorSyncJob;
 use App\Http\Requests\Admin\ConfigureConnectorRequest;
+use App\Http\Requests\Admin\ReconfigureConnectorRequest;
 use App\Http\Requests\Admin\StartConnectorInstallRequest;
 use App\Http\Requests\Admin\UpdateConnectorInstallationRequest;
 use App\Http\Resources\Admin\ConnectorInstallationResource;
 use App\Services\Admin\Connectors\ConfigureConnectorService;
+use App\Services\Admin\Connectors\ConnectorConfigExportService;
+use App\Services\Admin\Connectors\ConnectorConfigImportService;
 use App\Services\Admin\Connectors\ConnectorConnectionTestException;
 use App\Services\Admin\Connectors\ConnectorConnectionTestService;
+use App\Services\Admin\Connectors\ConnectorImportException;
 use App\Services\Admin\Connectors\ConnectorEmailProbeException;
 use App\Services\Admin\Connectors\ConnectorEmailProbeService;
 use App\Services\Admin\Connectors\ConnectorInstallationService;
@@ -93,6 +97,51 @@ final class ConnectorAdminController extends Controller
         }
 
         return response()->json(['data' => ['folders' => $list]]);
+    }
+
+    /**
+     * GET /api/admin/connectors/{installationId}/export
+     *
+     * v8.29 — export an account's connection parameters + sync settings as a
+     * portable, SECRET-FREE snapshot ({@see ConnectorConfigExportService}). The
+     * secret (password / tokens) is NEVER included — it lives only in the encrypted
+     * vault and the operator re-enters it on import. The FE turns the JSON into a
+     * downloadable file AND reuses it as the prefill source for the Edit →
+     * Connection tab (the listing shape deliberately hides connection values).
+     *
+     * R30 — a cross-tenant / unknown id, or a non-credential connector, 404s
+     * (NotFoundHttpException from the service).
+     */
+    public function export(int $installationId, ConnectorConfigExportService $exporter): JsonResponse
+    {
+        return response()->json(['data' => $exporter->export($installationId)]);
+    }
+
+    /**
+     * POST /api/admin/connectors/{name}/import/validate
+     *
+     * v8.29 — validate an uploaded connector-config file (a prior
+     * {@see export()} snapshot) into a SAFE prefill for a new account
+     * ({@see ConnectorConfigImportService}). Writes NOTHING: the FE opens the
+     * create form seeded with the returned `params`, the operator enters the
+     * secret, and the normal `configure` flow persists + verifies. A secret can
+     * never round-trip — the service drops every secret / unknown key.
+     *
+     * A bad envelope / connector mismatch surfaces as **422** with the reason
+     * ({@see ConnectorImportException}); an unknown / non-credential connector 404s.
+     */
+    public function importValidate(
+        Request $request,
+        string $name,
+        ConnectorConfigImportService $service,
+    ): JsonResponse {
+        try {
+            $result = $service->parse($name, $request->all());
+        } catch (ConnectorImportException $e) {
+            return response()->json(['error' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['data' => $result]);
     }
 
     /**
@@ -471,6 +520,40 @@ final class ConnectorAdminController extends Controller
 
         return response()->json([
             'data' => (new ConnectorInstallationResource($installation))->toArray($request),
+        ]);
+    }
+
+    /**
+     * POST /api/admin/connectors/{installationId}/reconfigure
+     *
+     * v8.29 — edit an EXISTING credential account's connection parameters
+     * (host/port/username/encryption) and optionally re-authenticate (a fresh
+     * password/secret). Delegates to {@see ConfigureConnectorService::reconfigure},
+     * which verifies the new settings BEFORE keeping them:
+     *   - a NEW secret pings with the new config + secret and rewrites the vault;
+     *   - a BLANK secret keeps the current password and verifies the new connection
+     *     params against it (health ping).
+     * On a verify failure the config is rolled back and a
+     * {@see ConnectorAuthException} / {@see ConnectorConnectionTestException}
+     * surfaces as **422** with the reason (R14 — never a silent success). Label /
+     * project binding are edited via {@see update()} (PATCH), not here.
+     *
+     * R30 — a cross-tenant / unknown id 404s (from the service). Never logs the
+     * payload (it carries the secret).
+     */
+    public function reconfigure(
+        ReconfigureConnectorRequest $request,
+        int $installationId,
+        ConfigureConnectorService $service,
+    ): JsonResponse {
+        try {
+            $result = $service->reconfigure($installationId, $request->validated());
+        } catch (ConnectorAuthException | ConnectorConnectionTestException $e) {
+            return response()->json(['error' => $e->getMessage()], 422);
+        }
+
+        return response()->json([
+            'data' => (new ConnectorInstallationResource($result->installation))->toArray($request),
         ]);
     }
 

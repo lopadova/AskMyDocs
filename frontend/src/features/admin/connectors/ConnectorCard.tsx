@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { ConnectorEntry, ConnectorInstallationDto } from './connectors.api';
 import { accountStatus, formatRelative, statusBadgeStyle } from './status-utils';
 
@@ -40,6 +40,10 @@ export interface ConnectorCardProps {
     onManageFolders?: (installation: ConnectorInstallationDto) => void;
     /** Diagnostic — download one recent email as a preview (credential connectors). */
     onTestFetch?: (installation: ConnectorInstallationDto) => void;
+    /** v8.29 — export an account's connection params (secret-free) as a download. */
+    onExport?: (installation: ConnectorInstallationDto) => void;
+    /** v8.29 — import a config file to prefill a new account (credential connectors). */
+    onImport?: (key: string, file: File) => void;
     onCancelInstall: (installationId: number) => void;
     /** installation ids whose sync is in flight. */
     syncingIds?: ReadonlySet<number>;
@@ -52,6 +56,8 @@ export interface ConnectorCardProps {
     /** installation ids whose test-fetch probe is in flight (tracked separately so
      *  a read-only probe neither blocks nor is blocked by the write actions). */
     probingIds?: ReadonlySet<number>;
+    /** installation ids whose export download is in flight. */
+    exportingIds?: ReadonlySet<number>;
     /** an add/connect for THIS connector is in flight. */
     addPending?: boolean;
     now?: Date;
@@ -67,11 +73,14 @@ export function ConnectorCard({
     onEdit,
     onManageFolders,
     onTestFetch,
+    onExport,
+    onImport,
     onCancelInstall,
     syncingIds,
     busyIds,
     enablingIds,
     probingIds,
+    exportingIds,
     addPending,
     now,
 }: ConnectorCardProps) {
@@ -79,6 +88,8 @@ export function ConnectorCard({
     // Folder selection / sync-window settings are IMAP-specific; surface the
     // action only for credential connectors (IMAP today).
     const isCredential = entry.auth_kind === 'credential';
+    // Hidden file input backing the header "Import" action (credential connectors).
+    const importInputRef = useRef<HTMLInputElement>(null);
 
     return (
         <div
@@ -136,6 +147,35 @@ export function ConnectorCard({
                         {entry.key}
                     </div>
                 </div>
+                {/* v8.29 — import a previously-exported config to prefill a new
+                    account (credential connectors only; the secret is re-entered). */}
+                {isCredential && onImport && (
+                    <>
+                        <input
+                            ref={importInputRef}
+                            type="file"
+                            accept="application/json,.json"
+                            data-testid={`connector-${entry.key}-import-file`}
+                            onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                // Reset first so re-selecting the SAME file still fires change.
+                                e.target.value = '';
+                                if (file) onImport(entry.key, file);
+                            }}
+                            style={{ display: 'none' }}
+                        />
+                        <button
+                            type="button"
+                            data-testid={`connector-${entry.key}-import-account`}
+                            className="focus-ring"
+                            disabled={addPending}
+                            onClick={() => importInputRef.current?.click()}
+                            style={ghostButton(!!addPending)}
+                        >
+                            Import
+                        </button>
+                    </>
+                )}
                 <button
                     type="button"
                     data-testid={`connector-${entry.key}-add-account`}
@@ -182,12 +222,14 @@ export function ConnectorCard({
                             onEdit={onEdit}
                             onManageFolders={onManageFolders}
                             onTestFetch={onTestFetch}
+                            onExport={onExport}
                             isCredential={isCredential}
                             onCancelInstall={onCancelInstall}
                             syncing={syncingIds?.has(acct.id) ?? false}
                             busy={busyIds?.has(acct.id) ?? false}
                             enabling={enablingIds?.has(acct.id) ?? false}
                             probing={probingIds?.has(acct.id) ?? false}
+                            exporting={exportingIds?.has(acct.id) ?? false}
                             now={now}
                         />
                     ))}
@@ -206,12 +248,14 @@ interface AccountRowProps {
     onEdit: (installation: ConnectorInstallationDto) => void;
     onManageFolders?: (installation: ConnectorInstallationDto) => void;
     onTestFetch?: (installation: ConnectorInstallationDto) => void;
+    onExport?: (installation: ConnectorInstallationDto) => void;
     isCredential: boolean;
     onCancelInstall: (id: number) => void;
     syncing: boolean;
     busy: boolean;
     enabling: boolean;
     probing: boolean;
+    exporting: boolean;
     now?: Date;
 }
 
@@ -224,12 +268,14 @@ function AccountRow({
     onEdit,
     onManageFolders,
     onTestFetch,
+    onExport,
     isCredential,
     onCancelInstall,
     syncing,
     busy,
     enabling,
     probing,
+    exporting,
     now,
 }: AccountRowProps) {
     const status = accountStatus(account);
@@ -385,6 +431,22 @@ function AccountRow({
                         style={ghostButton(locked)}
                     >
                         Edit
+                    </button>
+                )}
+
+                {/* v8.29 — export this account's connection params (secret-free) as a
+                    downloadable file. Credential connectors only; a read action, so
+                    tracked via `exporting` (not `locked`) — never blocks/blocked by writes. */}
+                {status !== 'pending' && isCredential && onExport && (
+                    <button
+                        type="button"
+                        data-testid={`connector-account-${account.id}-export`}
+                        className="focus-ring"
+                        disabled={exporting}
+                        onClick={() => onExport(account)}
+                        style={ghostButton(exporting)}
+                    >
+                        {exporting ? 'Exporting…' : 'Export'}
                     </button>
                 )}
 

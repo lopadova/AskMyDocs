@@ -240,6 +240,36 @@ export interface TestConnectionResponse {
     error?: string | null;
 }
 
+/**
+ * v8.29 — a portable, SECRET-FREE snapshot of an account's connection parameters +
+ * sync settings (the download). `params` is FLAT, keyed exactly like the credential
+ * form, so it re-seeds the create form on import. `secret_fields_omitted` names the
+ * secret(s) the operator must re-enter. Mirrors ConnectorConfigExportService (R9).
+ */
+export interface ExportedConnectorConfig {
+    _meta: { format: string; version: number; connector: string; tenant: string; exported_at: string };
+    connector: string;
+    label: string | null;
+    project_key: string | null;
+    params: Record<string, string | number | boolean>;
+    settings: Record<string, unknown>;
+    secret_fields_omitted: string[];
+}
+
+/**
+ * v8.29 — the sanitized prefill returned by import/validate: only known non-secret
+ * params survive, `secret_fields_required` lists the secret(s) to type on Connect,
+ * and `dropped_keys` reports what the file carried that was ignored (secret / unknown).
+ */
+export interface ImportPrefill {
+    connector: string;
+    label: string | null;
+    project_key: string | null;
+    params: Record<string, string | number | boolean>;
+    secret_fields_required: string[];
+    dropped_keys: string[];
+}
+
 export const adminConnectorsApi = {
     async list(): Promise<ConnectorEntry[]> {
         const { data } = await api.get<ConnectorListResponse>('/api/admin/connectors');
@@ -284,6 +314,45 @@ export const adminConnectorsApi = {
         const { data } = await api.get<StartInstallResponse>(
             `/api/admin/connectors/${encodeURIComponent(params.key)}/install`,
             { params: query },
+        );
+        return data.data;
+    },
+
+    /**
+     * v8.29 — export an account's connection params + settings (secret-free). Also
+     * the prefill source for the Edit → Connection tab (the listing hides those).
+     */
+    async exportInstallation(installationId: number): Promise<ExportedConnectorConfig> {
+        const { data } = await api.get<{ data: ExportedConnectorConfig }>(
+            `/api/admin/connectors/${installationId}/export`,
+        );
+        return data.data;
+    },
+
+    /**
+     * v8.29 — reconfigure an existing account's connection params (+ optional new
+     * secret; omit the secret field to keep the current password). Verify-before-keep
+     * on the BE — a bad connection 422s and rolls back. Returns the updated account.
+     */
+    async reconfigure(
+        installationId: number,
+        payload: ConfigureConnectorPayload,
+    ): Promise<ConnectorInstallationDto> {
+        const { data } = await api.post<UpdateInstallationResponse>(
+            `/api/admin/connectors/${installationId}/reconfigure`,
+            payload,
+        );
+        return data.data;
+    },
+
+    /**
+     * v8.29 — validate an uploaded config file into a SECRET-FREE prefill for a new
+     * account. Writes nothing; the create still goes through configure().
+     */
+    async importValidate(key: string, blob: unknown): Promise<ImportPrefill> {
+        const { data } = await api.post<{ data: ImportPrefill }>(
+            `/api/admin/connectors/${encodeURIComponent(key)}/import/validate`,
+            blob,
         );
         return data.data;
     },

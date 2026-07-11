@@ -39,6 +39,8 @@ export interface ConnectionSettingsFormProps {
     /** BE 422 field errors keyed by the dotted setting path (e.g. `settings.date_window_days`). */
     fieldErrors?: Record<string, string>;
     isSubmitting?: boolean;
+    /** v8.29 — render as a plain panel (no backdrop / title) for the tabbed modal. */
+    embedded?: boolean;
 }
 
 function slug(s: string): string {
@@ -119,6 +121,7 @@ export function ConnectionSettingsForm({
     submitError,
     fieldErrors,
     isSubmitting,
+    embedded = false,
 }: ConnectionSettingsFormProps): ReactNode {
     const schema = account.connection_settings_schema ?? [];
     const needsFolders = schema.some((f) => f.discovery === 'folders');
@@ -205,29 +208,24 @@ export function ConnectionSettingsForm({
     const titleId = `connector-${connectorKey}-settings-form-title`;
     const formState = needsFolders ? fetchState : 'ready';
 
-    return (
-        <div
-            data-testid={`connector-${connectorKey}-settings-form-backdrop`}
-            onClick={(e) => {
-                if (e.target === e.currentTarget) onClose();
-            }}
-            style={backdropStyle()}
+    const dialog = (
+        <form
+            role={embedded ? undefined : 'dialog'}
+            aria-modal={embedded ? undefined : 'true'}
+            aria-labelledby={embedded ? undefined : titleId}
+            aria-busy={isSubmitting}
+            data-testid={`connector-${connectorKey}-settings-form`}
+            data-state={formState}
+            onSubmit={handleSubmit}
+            style={embedded ? embeddedDialogStyle() : dialogStyle()}
         >
-            <form
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby={titleId}
-                aria-busy={isSubmitting}
-                data-testid={`connector-${connectorKey}-settings-form`}
-                data-state={formState}
-                onSubmit={handleSubmit}
-                style={dialogStyle()}
-            >
+            {!embedded && (
                 <h2 id={titleId} style={{ margin: 0, fontSize: 14, color: 'var(--fg-0)' }}>
                     Connection settings — {account.label}
                 </h2>
+            )}
 
-                <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14, paddingRight: 4 }}>
+            <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14, paddingRight: 4 }}>
                     {groups.map((g) => (
                         <fieldset
                             key={g.group}
@@ -283,7 +281,22 @@ export function ConnectionSettingsForm({
                         {isSubmitting ? 'Saving…' : 'Save settings'}
                     </button>
                 </div>
-            </form>
+        </form>
+    );
+
+    if (embedded) {
+        return dialog;
+    }
+
+    return (
+        <div
+            data-testid={`connector-${connectorKey}-settings-form-backdrop`}
+            onClick={(e) => {
+                if (e.target === e.currentTarget) onClose();
+            }}
+            style={backdropStyle()}
+        >
+            {dialog}
         </div>
     );
 }
@@ -640,6 +653,18 @@ function dialogStyle(): React.CSSProperties {
         display: 'flex',
         flexDirection: 'column',
         gap: 12,
+        overflow: 'hidden',
+    };
+}
+
+function embeddedDialogStyle(): React.CSSProperties {
+    // Panel variant for the tabbed AccountEditModal: no fixed size / overlay chrome
+    // (the shell owns those), just the vertical field stack the tab body scrolls.
+    return {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 12,
+        width: '100%',
         overflow: 'hidden',
     };
 }

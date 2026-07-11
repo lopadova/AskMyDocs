@@ -796,6 +796,15 @@ class AppServiceProvider extends ServiceProvider
             // v8.25 — post-install connector settings editor (R44 PHP surface),
             // over ConnectorInstallationService / ConnectorSettingsService.
             \App\Console\Commands\ConnectorConfigureCommand::class,
+            // v8.29 — export a connector account's params (secret-free) PHP surface
+            // (R44), over ConnectorConfigExportService.
+            \App\Console\Commands\ConnectorExportCommand::class,
+            // v8.29 — reconfigure an existing account's connection params (+ re-auth)
+            // PHP surface (R44), over ConfigureConnectorService::reconfigure.
+            \App\Console\Commands\ConnectorReconfigureCommand::class,
+            // v8.29 — import a config file as a new account (secret re-entered)
+            // PHP surface (R44), over ConnectorConfigImportService + configure.
+            \App\Console\Commands\ConnectorImportCommand::class,
             // v8.21/Ciclo 2 — ingestion/sync observability PHP surface (R44).
             \App\Console\Commands\IngestionStatusCommand::class,
             // v8.22/Ciclo 3 — runtime config governance PHP surface (R44).
