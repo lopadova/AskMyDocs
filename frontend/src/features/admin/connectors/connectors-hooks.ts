@@ -10,6 +10,7 @@ import {
     type EnableResponse,
     type ExportedConnectorConfig,
     type ImportPrefill,
+    type InstallationStats,
     type StartInstallParams,
     type TestConnectionResponse,
     type TestFetchResponse,
@@ -129,6 +130,22 @@ export function useReconfigureConnector() {
 export function useImportConnectorConfig() {
     return useMutation<ImportPrefill, unknown, { key: string; blob: unknown }>({
         mutationFn: ({ key, blob }) => adminConnectorsApi.importValidate(key, blob),
+    });
+}
+
+/**
+ * v8.31 — per-account stats (documents synced + last sync) for the Edit → Details
+ * tab. Gated by `enabled` so it only fetches when that tab is open; `staleTime:0`
+ * so each open reflects the current count. A read-only stat: `retry:false` so a
+ * 404/500 surfaces at once instead of spinning.
+ */
+export function useInstallationStats(installationId: number, enabled: boolean) {
+    return useQuery<InstallationStats>({
+        queryKey: [...CONNECTORS_KEY, 'stats', installationId],
+        queryFn: () => adminConnectorsApi.stats(installationId),
+        enabled,
+        staleTime: 0,
+        retry: false,
     });
 }
 

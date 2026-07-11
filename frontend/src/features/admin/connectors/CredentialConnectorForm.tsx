@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import type { AdminProject } from '../projects/admin-projects.api';
+import { ModalSourceHeader } from './ModalSourceHeader';
 import type {
     ConfigureConnectorPayload,
     ConnectorEntry,
@@ -70,6 +71,14 @@ export interface CredentialConnectorFormProps {
     initialProjectKey?: string | null;
     /** Override the submit button caption (default: mode-specific). */
     submitLabel?: string;
+    /**
+     * v8.31 — omit the form's own Cancel/Save (the Test-connection button + the
+     * connection error stay in the body) so the host tabbed modal owns ONE sticky
+     * footer; `formId` lets that external Save submit this form. Intended for the
+     * edit-mode Connection tab (not test-gated on save).
+     */
+    footerless?: boolean;
+    formId?: string;
 }
 
 type FieldValue = string | number | boolean;
@@ -114,6 +123,8 @@ export function CredentialConnectorForm({
     initialLabel = '',
     initialProjectKey = null,
     submitLabel,
+    footerless = false,
+    formId,
 }: CredentialConnectorFormProps): ReactNode {
     const schema = useMemo(() => entry.credential_form_schema ?? [], [entry.credential_form_schema]);
     const isEdit = mode === 'edit';
@@ -286,6 +297,7 @@ export function CredentialConnectorForm({
             aria-modal={embedded ? undefined : 'true'}
             aria-labelledby={embedded ? undefined : titleId}
             aria-busy={isSubmitting}
+            id={formId}
             data-testid={`connector-${entry.key}-form`}
             data-mode={mode}
             data-state={isSubmitting ? 'loading' : 'idle'}
@@ -310,9 +322,19 @@ export function CredentialConnectorForm({
             }
         >
             {!embedded && (
-                <h2 id={titleId} style={{ margin: 0, fontSize: 14, color: 'var(--fg-0)' }}>
-                    {isEdit ? `Edit ${entry.display_name} connection` : `Connect ${entry.display_name}`}
-                </h2>
+                <ModalSourceHeader
+                    titleId={titleId}
+                    connectorKey={entry.key}
+                    displayName={entry.display_name}
+                    iconUrl={entry.icon_url}
+                    title={isEdit ? `Edit ${entry.display_name} connection` : `Add ${entry.display_name} account`}
+                    subtitle={
+                        isEdit
+                            ? undefined
+                            : `Connect a new ${entry.display_name} account to this source`
+                    }
+                    onClose={onClose}
+                />
             )}
 
             {/* v8.20 — account label + project binding (injected, not schema).
@@ -469,7 +491,7 @@ export function CredentialConnectorForm({
                 style={{
                     display: 'flex',
                     gap: 8,
-                    justifyContent: testGated ? 'space-between' : 'flex-end',
+                    justifyContent: testGated || footerless ? 'flex-start' : 'flex-end',
                     marginTop: 4,
                 }}
             >
@@ -486,31 +508,35 @@ export function CredentialConnectorForm({
                         {testStatus === 'testing' ? 'Testing…' : 'Test connection'}
                     </button>
                 )}
-                <div style={{ display: 'flex', gap: 8 }}>
-                    <button
-                        type="button"
-                        data-testid={`connector-${entry.key}-form-cancel`}
-                        onClick={onClose}
-                        disabled={isSubmitting}
-                        style={buttonStyle('secondary', !!isSubmitting)}
-                    >
-                        Cancel
-                    </button>
-                    <button
-                        type="submit"
-                        data-testid={`connector-${entry.key}-form-submit`}
-                        disabled={saveDisabled}
-                        aria-disabled={saveDisabled}
-                        title={
-                            !isEdit && testGated && testStatus !== 'passed'
-                                ? 'Test the connection first'
-                                : undefined
-                        }
-                        style={buttonStyle('primary', saveDisabled)}
-                    >
-                        {isSubmitting ? busyLabel : resolvedSubmitLabel}
-                    </button>
-                </div>
+                {/* footerless: the host tabbed modal owns Cancel/Save; only the
+                    Test button stays here in the body (edit Connection tab). */}
+                {!footerless && (
+                    <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
+                        <button
+                            type="button"
+                            data-testid={`connector-${entry.key}-form-cancel`}
+                            onClick={onClose}
+                            disabled={isSubmitting}
+                            style={buttonStyle('secondary', !!isSubmitting)}
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="submit"
+                            data-testid={`connector-${entry.key}-form-submit`}
+                            disabled={saveDisabled}
+                            aria-disabled={saveDisabled}
+                            title={
+                                !isEdit && testGated && testStatus !== 'passed'
+                                    ? 'Test the connection first'
+                                    : undefined
+                            }
+                            style={buttonStyle('primary', saveDisabled)}
+                        >
+                            {isSubmitting ? busyLabel : resolvedSubmitLabel}
+                        </button>
+                    </div>
+                )}
             </div>
         </form>
     );

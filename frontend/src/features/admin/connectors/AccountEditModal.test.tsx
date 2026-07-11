@@ -13,8 +13,14 @@ import type { ConnectorEntry, ConnectorInstallationDto, CredentialFieldSchema } 
 const { mockExport } = vi.hoisted(() => ({ mockExport: vi.fn() }));
 vi.mock('./connectors-hooks', () => ({
     useInstallationExport: (...args: unknown[]) => mockExport(...args),
-    // ConnectionSettingsForm (the Sync tab) pulls the live folder list from here.
+    // The Sync tab (SyncSettingsForm) pulls the live folder list from here.
     useInstallationFolders: () => ({ data: [], isLoading: false, isError: false, refetch: vi.fn() }),
+    // v8.31 — the Details tab's stat cards.
+    useInstallationStats: () => ({
+        data: { documents_synced: 4182, last_sync_at: null },
+        isLoading: false,
+        isError: false,
+    }),
 }));
 
 function field(partial: Partial<CredentialFieldSchema>): CredentialFieldSchema {
@@ -100,6 +106,9 @@ describe('AccountEditModal', () => {
         );
         // Details tab body: the metadata form, pre-filled with the label.
         expect(screen.getByTestId('connector-imap-account-form-label')).toHaveValue('Date');
+        // v8.31 — the redesigned Details tab shows the two stat cards.
+        expect(screen.getByTestId('connector-account-7-edit-stat-documents')).toHaveTextContent('4,182');
+        expect(screen.getByTestId('connector-account-7-edit-stat-last-sync')).toHaveTextContent('Never');
     });
 
     it('switches to the Connection tab and prefills the fetched host', async () => {
@@ -135,28 +144,30 @@ describe('AccountEditModal', () => {
         expect(refetch).toHaveBeenCalled();
     });
 
-    it('saves Details and closes on success', async () => {
+    it('saves Details from the shared footer and closes on success', async () => {
+        // v8.31 — the redesigned modal owns ONE footer Save (submits the active
+        // tab's footerless form via the `form` attribute).
         const onSubmitDetails = vi.fn().mockResolvedValue(undefined);
         const onClose = vi.fn();
         renderModal({ onSubmitDetails, onClose });
 
-        await userEvent.click(screen.getByTestId('connector-imap-account-form-submit'));
+        await userEvent.click(screen.getByTestId('connector-account-7-edit-save'));
 
         await waitFor(() => expect(onSubmitDetails).toHaveBeenCalledTimes(1));
         expect(onSubmitDetails.mock.calls[0][0]).toMatchObject({ label: 'Date' });
         await waitFor(() => expect(onClose).toHaveBeenCalled());
     });
 
-    it('keeps the modal open and shows the error when a save fails', async () => {
+    it('keeps the modal open and shows the error in the footer when a save fails', async () => {
         // R16 failure path — the reject actually fires and the modal must NOT close.
         const onSubmitDetails = vi.fn().mockRejectedValue({ response: { data: { error: 'Label already taken' } } });
         const onClose = vi.fn();
         renderModal({ onSubmitDetails, onClose });
 
-        await userEvent.click(screen.getByTestId('connector-imap-account-form-submit'));
+        await userEvent.click(screen.getByTestId('connector-account-7-edit-save'));
 
         await waitFor(() =>
-            expect(screen.getByTestId('connector-imap-account-form-error')).toHaveTextContent('Label already taken'),
+            expect(screen.getByTestId('connector-account-7-edit-error')).toHaveTextContent('Label already taken'),
         );
         expect(onClose).not.toHaveBeenCalled();
     });
@@ -167,8 +178,9 @@ describe('AccountEditModal', () => {
         renderModal({ onSubmitConnection });
 
         await userEvent.click(screen.getByTestId('connector-account-7-edit-tab-connection'));
-        // In edit mode Save is NOT gated on a passing test (blank password = keep).
-        const save = screen.getByTestId('connector-imap-form-submit');
+        // In edit mode Save is NOT gated on a passing test (blank password = keep);
+        // the footer Save submits the Connection form.
+        const save = screen.getByTestId('connector-account-7-edit-save');
         expect(save).toBeEnabled();
         await userEvent.click(save);
 
@@ -178,5 +190,12 @@ describe('AccountEditModal', () => {
         // A blank password is omitted (keep current) and no account label is injected.
         expect(payload).not.toHaveProperty('password');
         expect(payload).not.toHaveProperty('label');
+    });
+
+    it('disables the footer Save while the Connection prefill is still loading', async () => {
+        mockExport.mockReturnValue({ data: undefined, isLoading: true, isError: false, refetch: vi.fn(), dataUpdatedAt: 0 });
+        renderModal();
+        await userEvent.click(screen.getByTestId('connector-account-7-edit-tab-connection'));
+        expect(screen.getByTestId('connector-account-7-edit-save')).toBeDisabled();
     });
 });
