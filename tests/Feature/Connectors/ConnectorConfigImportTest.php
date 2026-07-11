@@ -94,6 +94,20 @@ final class ConnectorConfigImportTest extends TestCase
             ->assertStatus(422);
     }
 
+    public function test_import_validate_rejects_a_malformed_meta_without_500(): void
+    {
+        // A hand-edited / corrupted file whose `_meta` is not an array must degrade
+        // to a clean 422, never a TypeError/500 from subscripting a non-array.
+        $this->actingAs($this->superAdmin())
+            ->postJson('/api/admin/connectors/imap/import/validate', [
+                '_meta' => 'not-an-array',
+                'connector' => 'imap',
+                'params' => ['host' => 'x'],
+            ])
+            ->assertStatus(422)
+            ->assertJsonStructure(['error']);
+    }
+
     public function test_import_validate_forbidden_for_a_viewer(): void
     {
         $viewer = User::create([

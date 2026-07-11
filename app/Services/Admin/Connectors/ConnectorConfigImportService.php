@@ -85,7 +85,7 @@ final class ConnectorConfigImportService
 
     private function assertRecognizedEnvelope(array $blob): void
     {
-        $format = $this->stringOrNull(($blob['_meta']['format'] ?? null));
+        $format = $this->stringOrNull($this->metaValue($blob, 'format'));
         if ($format !== ConnectorConfigExportService::FORMAT) {
             throw new ConnectorImportException(
                 'Unrecognized file — expected a connector-config export ('.ConnectorConfigExportService::FORMAT.').',
@@ -99,7 +99,7 @@ final class ConnectorConfigImportService
         // _meta). Importing an IMAP config into a different connector would prefill
         // fields that connector's schema doesn't have — reject rather than silently
         // drop everything.
-        $fileConnector = $this->stringOrNull($blob['connector'] ?? ($blob['_meta']['connector'] ?? null));
+        $fileConnector = $this->stringOrNull($blob['connector'] ?? $this->metaValue($blob, 'connector'));
         if ($fileConnector !== null && $fileConnector !== $name) {
             throw new ConnectorImportException(
                 "This file is a '{$fileConnector}' config; it cannot be imported into '{$name}'.",
@@ -205,6 +205,19 @@ final class ConnectorConfigImportService
     private function arrayValue(mixed $value): array
     {
         return is_array($value) ? $value : [];
+    }
+
+    /**
+     * Safely read `_meta.<key>` — ONLY when `_meta` is actually an array. A malformed
+     * file (e.g. `_meta: "x"`) must degrade to a clean 422 rejection, never a
+     * TypeError/500: `?? null` does NOT catch subscripting a non-array (`"x"['format']`
+     * throws in PHP 8). R14 — surface the failure as the intended import rejection.
+     */
+    private function metaValue(array $blob, string $key): mixed
+    {
+        $meta = $blob['_meta'] ?? null;
+
+        return is_array($meta) ? ($meta[$key] ?? null) : null;
     }
 
     private function stringOrNull(mixed $value): ?string

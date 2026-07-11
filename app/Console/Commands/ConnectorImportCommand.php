@@ -51,7 +51,12 @@ final class ConnectorImportCommand extends Command
             return self::FAILURE;
         }
 
-        $connectorName = $this->stringOr($blob['connector'] ?? ($blob['_meta']['connector'] ?? null));
+        // Guard the nested `_meta` read: a malformed file (`_meta: "x"`) must fail
+        // gracefully with the message below, never a TypeError from subscripting a
+        // non-array (`?? null` does not catch it in PHP 8).
+        $meta = $blob['_meta'] ?? null;
+        $metaConnector = is_array($meta) ? ($meta['connector'] ?? null) : null;
+        $connectorName = $this->stringOr($blob['connector'] ?? $metaConnector);
         if ($connectorName === null) {
             $this->error('The file does not record which connector it is for (missing "connector").');
 
