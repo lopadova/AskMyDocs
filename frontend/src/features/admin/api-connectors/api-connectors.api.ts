@@ -28,6 +28,10 @@ import { api } from '../../../lib/api';
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 export type RouteMode = 'tool' | 'ingest' | 'both';
 export type RouteStatus = 'draft' | 'tested' | 'active' | 'disabled';
+/** Persisted response-shape taxonomy (Support\EndpointType). */
+export type EndpointType = 'list' | 'detail' | 'unknown';
+/** Operator wire choice on write: 'auto' unlocks server-side detection. */
+export type EndpointTypeChoice = 'auto' | 'list' | 'detail';
 export type AuthType = 'none' | 'api_key' | 'bearer' | 'basic' | 'custom' | 'oauth2_cc';
 export type ParamLocation = 'path' | 'query' | 'header' | 'body';
 export type ParamSource = 'llm' | 'fixed' | 'secret';
@@ -55,6 +59,7 @@ export interface ApiRouteSummary {
     slug: string;
     status: RouteStatus;
     mode: RouteMode;
+    endpoint_type: EndpointType;
     http_method: HttpMethod;
     last_test_status: number | null;
 }
@@ -112,6 +117,9 @@ export interface ApiRoute {
     auth_profile_id: number | null;
     mode: RouteMode;
     status: RouteStatus;
+    endpoint_type: EndpointType;
+    endpoint_type_locked: boolean;
+    items_path: string | null;
     timeout_ms: number | null;
     cache_ttl_s: number | null;
     rate_limit: number | null;
@@ -144,6 +152,12 @@ export interface TestRouteResponse {
     tool_definition: ToolDefinition | null;
     input_schema: Record<string, unknown> | null;
     output_schema: Record<string, unknown> | null;
+    /** Auto-detected (or locked) taxonomy after this test call. */
+    endpoint_type: EndpointType;
+    /** Dot-path to the item array for a list ('' = top-level); null otherwise. */
+    items_path: string | null;
+    /** JSON schema of a single list item (output_schema walked to items_path). */
+    item_schema: Record<string, unknown> | null;
 }
 
 /**
@@ -196,6 +210,10 @@ export interface RoutePayload {
     url: string;
     auth_profile_id?: number | null;
     mode?: RouteMode;
+    /** 'auto' (server detects) | 'list' | 'detail' (explicit, locks the choice). */
+    endpoint_type?: EndpointTypeChoice;
+    /** Dot-path to the item array for a list route ('' = top-level array). */
+    items_path?: string | null;
     timeout_ms?: number | null;
     cache_ttl_s?: number | null;
     rate_limit?: number | null;

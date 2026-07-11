@@ -9,6 +9,7 @@ import {
     modalPanelStyle,
 } from './styles';
 import { prettyJson } from './pretty-json';
+import { endpointTypeBadge } from './route-status';
 
 /**
  * "Test connessione" modal: run a live test against the route's target, then
@@ -92,6 +93,9 @@ export function TestConnectionPanel({
     const test = result?.test ?? null;
     const inputSchema = result?.input_schema ?? route.input_schema;
     const outputSchema = result?.output_schema ?? route.output_schema;
+    const detectedType = result?.endpoint_type ?? route.endpoint_type;
+    const detectedItemsPath = result?.items_path ?? route.items_path;
+    const typeBadge = endpointTypeBadge(detectedType);
     const titleId = 'api-route-test-title';
 
     const state: 'idle' | 'loading' | 'ready' | 'error' = isTesting
@@ -192,6 +196,31 @@ export function TestConnectionPanel({
                                 {test.status != null && ` — HTTP ${test.status}`}
                                 {test.status_label && ` ${test.status_label}`}
                             </span>
+                            <span
+                                data-testid="api-route-test-endpoint-type"
+                                data-endpoint-type={detectedType}
+                                style={{
+                                    fontSize: 11,
+                                    fontWeight: 600,
+                                    padding: '2px 8px',
+                                    borderRadius: 999,
+                                    background: typeBadge.background,
+                                    border: `1px solid ${typeBadge.border}`,
+                                    color: typeBadge.color,
+                                }}
+                            >
+                                {typeBadge.label}
+                            </span>
+                            {detectedType === 'list' && (
+                                <span data-testid="api-route-test-items-path" style={fieldCaptionStyle()}>
+                                    items:{' '}
+                                    <code style={{ fontFamily: 'var(--font-mono, monospace)' }}>
+                                        {detectedItemsPath === '' || detectedItemsPath == null
+                                            ? '[ top-level ]'
+                                            : detectedItemsPath}
+                                    </code>
+                                </span>
+                            )}
                         </div>
 
                         {test.error && (
