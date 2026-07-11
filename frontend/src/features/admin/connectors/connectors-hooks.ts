@@ -91,6 +91,13 @@ export function useInstallationExport(installationId: number, enabled: boolean) 
         enabled,
         staleTime: 0,
         retry: false,
+        // This query backs a LIVE form (the Edit → Connection tab prefill). A
+        // background refetch WHILE the operator is typing would change the prefill
+        // and reset the form (data loss). `refetchOnWindowFocus` is already false
+        // globally, but `refetchOnReconnect` defaults to true — pin BOTH off here so
+        // the prefill only (re)loads on an explicit tab open / retry, never mid-edit.
+        refetchOnWindowFocus: false,
+        refetchOnReconnect: false,
     });
 }
 

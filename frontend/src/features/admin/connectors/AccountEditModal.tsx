@@ -247,9 +247,13 @@ export function AccountEditModal({
                             onRetry={() => exportQuery.refetch()}
                         >
                             <CredentialConnectorForm
-                                // Remount when the prefill arrives so the fields seed
-                                // from the fetched params (not empty defaults).
-                                key={`conn-${account.id}-${exportQuery.dataUpdatedAt}`}
+                                // Stable key: the form only mounts once the prefill is
+                                // ready (ConnectionTabBody gates on `loading`), so it
+                                // seeds from the fetched params on mount. Keying on
+                                // `dataUpdatedAt` would remount + wipe in-progress edits
+                                // on any later refetch — the prefill query now also
+                                // refuses to refetch while open (see useInstallationExport).
+                                key={`conn-${account.id}`}
                                 embedded
                                 mode="edit"
                                 entry={entry}
