@@ -86,6 +86,8 @@ export interface ApiConnector {
     routes?: ApiRouteSummary[];
     /** Present once the `authProfiles` relation is loaded (index + show). */
     auth_profiles?: ApiAuthProfile[];
+    /** Present once the `relations` relation is loaded (index + show). */
+    relations?: ApiRouteRelation[];
     created_at: string | null;
     updated_at: string | null;
 }
@@ -233,6 +235,53 @@ export interface ProbePayload {
     body?: Record<string, unknown> | null;
 }
 
+/** One field-map row of a relation: a list-item dot-path → a detail param. */
+export interface RelationFieldMap {
+    from: string;
+    to_param: string;
+    to_location?: ParamLocation;
+}
+
+/** Compact route stub embedded on a relation (ApiRouteRelationResource). */
+export interface RelationRouteStub {
+    id: number;
+    name: string;
+    slug: string;
+    endpoint_type: EndpointType;
+}
+
+/** A List → Detail relation (ApiRouteRelationResource). */
+export interface ApiRouteRelation {
+    id: number;
+    api_connector_id: number;
+    list_route_id: number;
+    detail_route_id: number;
+    name: string | null;
+    description: string | null;
+    field_map: RelationFieldMap[];
+    sort_order: number;
+    /** Present when the routes are eager-loaded (index / show). */
+    list_route?: RelationRouteStub;
+    detail_route?: RelationRouteStub;
+    created_at: string | null;
+    updated_at: string | null;
+}
+
+export interface RelationPayload {
+    list_route_id: number;
+    detail_route_id: number;
+    field_map: RelationFieldMap[];
+    name?: string | null;
+    description?: string | null;
+    sort_order?: number;
+}
+
+/** Drill-test outcome — the mapped arguments + the raw detail response (like a test). */
+export interface DrillResult {
+    arguments: Record<string, unknown>;
+    result: TestResult & { duration_ms: number | null };
+}
+
 const BASE = '/api/admin/api-connectors';
 
 export const apiConnectorsApi = {
@@ -345,6 +394,47 @@ export const apiConnectorsApi = {
      */
     async probe(payload: ProbePayload): Promise<ProbeResult> {
         const { data } = await api.post<ProbeResult>(`${BASE}/probe`, payload);
+        return data;
+    },
+
+    // --- relations (List → Detail) ---
+
+    async listRelations(connectorId: number): Promise<ApiRouteRelation[]> {
+        const { data } = await api.get<{ data: ApiRouteRelation[] }>(`${BASE}/${connectorId}/relations`);
+        return data.data;
+    },
+
+    async createRelation(connectorId: number, payload: RelationPayload): Promise<ApiRouteRelation> {
+        const { data } = await api.post<{ data: ApiRouteRelation }>(
+            `${BASE}/${connectorId}/relations`,
+            payload,
+        );
+        return data.data;
+    },
+
+    async updateRelation(relationId: number, payload: Partial<RelationPayload>): Promise<ApiRouteRelation> {
+        const { data } = await api.patch<{ data: ApiRouteRelation }>(
+            `${BASE}/relations/${relationId}`,
+            payload,
+        );
+        return data.data;
+    },
+
+    async destroyRelation(relationId: number): Promise<void> {
+        await api.delete(`${BASE}/relations/${relationId}`);
+    },
+
+    /**
+     * Drill-test a relation: apply its field_map to a chosen list item (explicit
+     * `list_item` OR `item_index` into the list route's last test payload) and
+     * fire the detail call. RAW (no `{data}` wrapper); a failed detail call is
+     * HTTP 200 with `result.ok:false`, an unbuildable mapping is 422 (R14).
+     */
+    async drillRelation(
+        relationId: number,
+        payload: { list_item?: Record<string, unknown>; item_index?: number },
+    ): Promise<DrillResult> {
+        const { data } = await api.post<DrillResult>(`${BASE}/relations/${relationId}/drill`, payload);
         return data;
     },
 };
