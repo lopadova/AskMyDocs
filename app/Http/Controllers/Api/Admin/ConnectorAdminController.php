@@ -19,6 +19,7 @@ use App\Services\Admin\Connectors\ConnectorImportException;
 use App\Services\Admin\Connectors\ConnectorEmailProbeException;
 use App\Services\Admin\Connectors\ConnectorEmailProbeService;
 use App\Services\Admin\Connectors\ConnectorInstallationService;
+use App\Services\Admin\Connectors\ConnectorInstallationStatsService;
 use App\Services\Admin\Connectors\ConnectorFolderListingException;
 use App\Services\Admin\Connectors\ConnectorFolderListingService;
 use App\Support\TenantContext;
@@ -115,6 +116,22 @@ final class ConnectorAdminController extends Controller
     public function export(int $installationId, ConnectorConfigExportService $exporter): JsonResponse
     {
         return response()->json(['data' => $exporter->export($installationId)]);
+    }
+
+    /**
+     * GET /api/admin/connectors/{installationId}/stats
+     *
+     * v8.31 — per-account "at a glance" stats for the Edit → Details tab of the
+     * redesigned connector modal: `documents_synced` (live KB docs this account
+     * ingested) + `last_sync_at`. Lazily fetched (only when the Details tab opens)
+     * so the connectors LIST endpoint stays free of an N-per-installation count.
+     *
+     * R30 — a cross-tenant / unknown id 404s (NotFoundHttpException from
+     * {@see ConnectorInstallationStatsService::forInstallation}).
+     */
+    public function stats(int $installationId, ConnectorInstallationStatsService $stats): JsonResponse
+    {
+        return response()->json(['data' => $stats->forInstallation($installationId)]);
     }
 
     /**

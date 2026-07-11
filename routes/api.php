@@ -885,6 +885,12 @@ Route::middleware([
         Route::get('/{installationId}/export', [ConnectorAdminController::class, 'export'])
             ->whereNumber('installationId')
             ->name('api.admin.connectors.export');
+        // v8.31 — per-account stats (documents synced + last sync) for the Edit →
+        // Details tab. Lazy read; numeric {installationId} sibling of the actions
+        // below. R32 — covered by the group's manageConnectors gate.
+        Route::get('/{installationId}/stats', [ConnectorAdminController::class, 'stats'])
+            ->whereNumber('installationId')
+            ->name('api.admin.connectors.stats');
         // v8.20 — edit an existing account's metadata (label / project binding).
         Route::patch('/{installationId}', [ConnectorAdminController::class, 'update'])
             ->whereNumber('installationId')
