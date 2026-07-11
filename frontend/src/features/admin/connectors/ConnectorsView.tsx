@@ -1,13 +1,24 @@
-import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
+import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { AdminShell } from '../shell/AdminShell';
 import { ToastHost, useToast } from '../shared/Toast';
 import { toAdminError } from '../shared/errors';
 import { AccountEditModal, type EditTab } from './AccountEditModal';
 import { AccountMetaForm, type AccountMetaFormValues } from './AccountMetaForm';
-import { ConnectorCard } from './ConnectorCard';
-import { CredentialConnectorForm } from './CredentialConnectorForm';
+import { ConnectionsCards } from './ConnectionsCards';
+import { ConnectionsTable } from './ConnectionsTable';
 import { ConnectionSettingsForm } from './ConnectionSettingsForm';
+import { CredentialConnectorForm } from './CredentialConnectorForm';
+import { SourceTile } from './SourceTile';
+import { SyncErrorModal } from './SyncErrorModal';
 import { TestFetchResultModal } from './TestFetchResultModal';
+import {
+    buildConnections,
+    filterConnections,
+    syncableIds,
+    type ConnectionVM,
+} from './connection-vm';
+import type { ConnectionActions, ConnectionInFlight } from './connections-shared';
+import { CONNECTORS_STYLES } from './connectors-styles';
 import {
     adminConnectorsApi,
     type ConfigureConnectorPayload,
@@ -66,14 +77,22 @@ function connectorFilename(key: string, label: string): string {
 }
 
 /*
- * v8.20 — Connector admin landing page (multi-account).
+ * v8.30 — Connector admin landing page, redesigned per the "Miglioramento
+ * usabilità card" handoff (Connectors.dc.html):
  *
- * One card per registered connector; each card lists the active tenant's
- * ACCOUNTS for that connector (multi-account) with per-account actions.
- * "Add account" opens either the schema-driven credential form (IMAP) or the
- * label+project metadata form (OAuth connectors); "Edit" rebinds an account's
- * label/project. Every account optionally binds to a real KB project (R18
- * dropdown from the project registry).
+ *   1. "Available sources" — one compact tile per registered connector with a
+ *      connection-count badge and an Add (+) / Import affordance.
+ *   2. "Connections" — a FLAT list of every connected account across all
+ *      sources (table view by default, cards view via the toolbar toggle),
+ *      with search, "Sync all", per-row inline Sync and a ⋮ actions menu.
+ *   3. A "Sync failed" detail modal for errored connections (full error text +
+ *      Retry sync), replacing the old inline truncated error block.
+ *
+ * The mockup is dark-only; per the agreed brief this implementation keeps the
+ * layout but drives every colour from the app's design tokens so light + dark
+ * themes both work. All account-level modals (credential form, OAuth meta form,
+ * tabbed Edit, Folders/settings, Test-fetch preview) are reused unchanged —
+ * this page only changes how they are reached.
  *
  * R14 — every mutation surfaces success/failure via a toast (deterministic
  * testid). No silent 200 paths.
@@ -92,10 +111,12 @@ type Modal =
 
 /**
  * Read-only test-fetch result lives in its OWN state (not the `Modal` union): it
- * is triggered from a card, not a form, and reusing `Modal` would route it through
+ * is triggered from a row, not a form, and reusing `Modal` would route it through
  * the project-binding modal machinery (e.g. the projects-load error effect).
  */
 type TestFetchModal = { account: ConnectorInstallationDto; result: TestFetchResponse['data'] } | null;
+
+type ConnectionsViewMode = 'table' | 'cards';
 
 export function ConnectorsView() {
     const toast = useToast();
@@ -123,6 +144,15 @@ export function ConnectorsView() {
         modalRef.current = modal;
     }, [modal]);
 
+    // ── Redesign state: view toggle, search, open ⋮ menu, sync-error modal ────
+    const [view, setView] = useState<ConnectionsViewMode>('table');
+    const [query, setQuery] = useState('');
+    const [menuId, setMenuId] = useState<number | null>(null);
+    // The errored connection whose "Sync failed" detail modal is open. Stored by
+    // id (not by VM) so a background refetch keeps the modal on fresh data, and
+    // the modal auto-dismisses if the row disappears (e.g. removed elsewhere).
+    const [errorId, setErrorId] = useState<number | null>(null);
+
     const state: 'loading' | 'ready' | 'error' | 'empty' = connectorsQuery.isLoading
         ? 'loading'
         : connectorsQuery.isError
@@ -133,6 +163,11 @@ export function ConnectorsView() {
 
     const entries = connectorsQuery.data ?? [];
     const projects = projectsQuery.data ?? [];
+
+    const connections = useMemo(() => buildConnections(entries), [entries]);
+    const visible = useMemo(() => filterConnections(connections, query), [connections, query]);
+    const errorVm: ConnectionVM | null =
+        errorId === null ? null : (connections.find((c) => c.id === errorId) ?? null);
 
     function openModalReset(next: Modal) {
         setModalError(null);
@@ -363,7 +398,7 @@ export function ConnectorsView() {
     // Enable is tracked apart from `busyIds` so only the Enable button shows
     // "Enabling…"; another write on the same disabled account (e.g. Remove) must
     // not relabel Enable. It still locks every write button via the shared
-    // in-flight guard + the row's `locked` (which folds in `enabling`).
+    // in-flight guard + the row's `writeLocked` (which folds in `enabling`).
     const [enablingIds, setEnablingIds] = useState<ReadonlySet<number>>(() => new Set());
     // Read-only test-fetch probe in-flight ids — tracked separately from the write
     // actions so the diagnostic neither blocks nor is blocked by sync/disable/etc.
@@ -407,6 +442,37 @@ export function ConnectorsView() {
                 toast.error(toAdminError(e).message, 'toast-connector-error');
             }
         });
+    }
+
+    // "Sync all" (toolbar) — queue a sync for every active/errored connection.
+    // Runs the whole sweep with per-id tracking (each row shows its own spinner)
+    // and reports ONE summary toast instead of N per-account ones.
+    async function handleSyncAll() {
+        const ids = syncableIds(connections).filter((id) => !inFlightRef.current.has(id));
+        if (ids.length === 0) return;
+        let failed = 0;
+        await Promise.all(
+            ids.map((id) =>
+                track(setSyncingIds, id, async () => {
+                    try {
+                        await syncNow.mutateAsync(id);
+                    } catch {
+                        failed += 1;
+                    }
+                }),
+            ),
+        );
+        if (failed === 0) {
+            toast.success(
+                `Sync queued for ${ids.length} connection${ids.length === 1 ? '' : 's'}.`,
+                'toast-connector-synced',
+            );
+            return;
+        }
+        toast.error(
+            `Sync could not be queued for ${failed} of ${ids.length} connection${ids.length === 1 ? '' : 's'}.`,
+            'toast-connector-error',
+        );
     }
 
     async function handleDisable(installationId: number) {
@@ -473,28 +539,73 @@ export function ConnectorsView() {
         );
     }
 
+    const actions: ConnectionActions = {
+        onSync: handleSync,
+        onTestFetch: (vm) => handleTestFetch(vm.installation),
+        onEdit: (vm) => handleEdit(vm.entry, vm.installation),
+        onFolders: (vm) => handleManageFolders(vm.entry, vm.installation),
+        onExport: (vm) => handleExport(vm.installation),
+        onDisable: handleDisable,
+        onEnable: handleEnable,
+        onRemove: handleRemove,
+        onCancelInstall: handleRemove,
+        onOpenError: (vm) => setErrorId(vm.id),
+        onToggleMenu: (id) => setMenuId((cur) => (cur === id ? null : id)),
+        onCloseMenu: () => setMenuId(null),
+    };
+
+    const inflight: ConnectionInFlight = {
+        syncingIds,
+        busyIds,
+        enablingIds,
+        probingIds,
+        exportingIds,
+    };
+
+    const canSyncAll = syncableIds(connections).length > 0;
+
     return (
         <AdminShell section="connectors">
             <ToastHost />
-            <style>{`@keyframes amd-spin { to { transform: rotate(360deg); } }`}</style>
+            <style>{CONNECTORS_STYLES}</style>
             <div
                 data-testid="admin-connectors"
                 data-state={state}
-                style={{ display: 'flex', flexDirection: 'column', gap: 14 }}
+                // Any click that bubbles up to the page closes the open ⋮ menu
+                // (the menu trigger + panel stop propagation on their own clicks).
+                onClick={() => {
+                    if (menuId !== null) setMenuId(null);
+                }}
+                style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 26,
+                    maxWidth: 1220,
+                    width: '100%',
+                    margin: '0 auto',
+                }}
             >
                 <div>
                     <h1
                         style={{
-                            fontSize: 20,
-                            fontWeight: 600,
-                            margin: '0 0 2px',
+                            fontSize: 22,
+                            fontWeight: 700,
+                            margin: 0,
                             letterSpacing: '-0.02em',
                             color: 'var(--fg-0)',
                         }}
                     >
                         Connectors
                     </h1>
-                    <p style={{ fontSize: 12.5, color: 'var(--fg-3)', margin: 0 }}>
+                    <p
+                        style={{
+                            fontSize: 13,
+                            color: 'var(--fg-3)',
+                            margin: '6px 0 0',
+                            lineHeight: 1.5,
+                            maxWidth: 640,
+                        }}
+                    >
                         Connect multiple accounts per source and bind each to a project (or the tenant
                         default), then sync their content into your knowledge base.
                     </p>
@@ -569,38 +680,262 @@ export function ConnectorsView() {
                 )}
 
                 {state === 'ready' && (
-                    <div
-                        data-testid="admin-connectors-grid"
-                        style={{
-                            display: 'grid',
-                            gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-                            gap: 12,
-                        }}
-                    >
-                        {entries.map((entry) => (
-                            <ConnectorCard
-                                key={entry.key}
-                                entry={entry}
-                                onAddAccount={handleAddAccount}
-                                onSync={handleSync}
-                                onDisable={handleDisable}
-                                onEnable={handleEnable}
-                                onRemove={handleRemove}
-                                onEdit={(installation) => handleEdit(entry, installation)}
-                                onManageFolders={(installation) => handleManageFolders(entry, installation)}
-                                onTestFetch={handleTestFetch}
-                                onExport={handleExport}
-                                onImport={handleImportFile}
-                                onCancelInstall={handleRemove}
-                                syncingIds={syncingIds}
-                                busyIds={busyIds}
-                                enablingIds={enablingIds}
-                                probingIds={probingIds}
-                                exportingIds={exportingIds}
-                                addPending={addPendingFor(entry.key)}
-                            />
-                        ))}
-                    </div>
+                    <>
+                        {/* ── Available sources ─────────────────────────────── */}
+                        <section aria-labelledby="connector-sources-heading">
+                            <div
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 10,
+                                    marginBottom: 14,
+                                }}
+                            >
+                                <h2 id="connector-sources-heading" style={sectionHeadingStyle}>
+                                    Available sources
+                                </h2>
+                                <div style={{ flex: 1, height: 1, background: 'var(--hairline)' }} />
+                            </div>
+                            <div
+                                data-testid="admin-connectors-sources"
+                                style={{
+                                    display: 'grid',
+                                    gridTemplateColumns: 'repeat(auto-fill, minmax(238px, 1fr))',
+                                    gap: 12,
+                                }}
+                            >
+                                {entries.map((entry) => (
+                                    <SourceTile
+                                        key={entry.key}
+                                        entry={entry}
+                                        connectionCount={entry.installations?.length ?? 0}
+                                        onAdd={handleAddAccount}
+                                        onImport={handleImportFile}
+                                        addPending={addPendingFor(entry.key)}
+                                    />
+                                ))}
+                            </div>
+                        </section>
+
+                        {/* ── Connections ──────────────────────────────────── */}
+                        <section aria-labelledby="connector-connections-heading">
+                            <div
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 12,
+                                    flexWrap: 'wrap',
+                                    marginBottom: 14,
+                                }}
+                            >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                    <h2 id="connector-connections-heading" style={sectionHeadingStyle}>
+                                        Connections
+                                    </h2>
+                                    <span
+                                        data-testid="connector-connections-count"
+                                        style={{
+                                            fontSize: 11.5,
+                                            fontWeight: 600,
+                                            color: 'var(--fg-1)',
+                                            background: 'var(--bg-2)',
+                                            border: '1px solid var(--hairline)',
+                                            padding: '2px 8px',
+                                            borderRadius: 999,
+                                        }}
+                                    >
+                                        {visible.length}
+                                    </span>
+                                </div>
+                                <div style={{ flex: 1 }} />
+
+                                {/* Search */}
+                                <div
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 8,
+                                        background: 'var(--bg-1)',
+                                        border: '1px solid var(--hairline)',
+                                        borderRadius: 9,
+                                        padding: '7px 11px',
+                                        minWidth: 210,
+                                    }}
+                                >
+                                    <svg
+                                        width="15"
+                                        height="15"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="var(--fg-3)"
+                                        strokeWidth="2"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        aria-hidden="true"
+                                    >
+                                        <circle cx="11" cy="11" r="7" />
+                                        <path d="m21 21-4.3-4.3" />
+                                    </svg>
+                                    <input
+                                        data-testid="connector-connections-search"
+                                        aria-label="Search connections"
+                                        value={query}
+                                        onChange={(e) => setQuery(e.target.value)}
+                                        placeholder="Search accounts…"
+                                        style={{
+                                            background: 'transparent',
+                                            border: 'none',
+                                            outline: 'none',
+                                            color: 'var(--fg-0)',
+                                            font: 'inherit',
+                                            fontSize: 13,
+                                            width: '100%',
+                                        }}
+                                    />
+                                </div>
+
+                                {/* Sync all */}
+                                <button
+                                    type="button"
+                                    data-testid="connector-connections-sync-all"
+                                    className="amd-cn-btn focus-ring"
+                                    disabled={!canSyncAll}
+                                    onClick={handleSyncAll}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 7,
+                                        background: 'var(--bg-2)',
+                                        border: '1px solid var(--hairline)',
+                                        color: 'var(--fg-1)',
+                                        font: 'inherit',
+                                        fontSize: 13,
+                                        fontWeight: 600,
+                                        padding: '8px 13px',
+                                        borderRadius: 9,
+                                        cursor: 'pointer',
+                                    }}
+                                >
+                                    <svg
+                                        width="15"
+                                        height="15"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="2"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        aria-hidden="true"
+                                    >
+                                        <path d="M21 12a9 9 0 1 1-3-6.7" />
+                                        <path d="M21 3v5h-5" />
+                                    </svg>
+                                    Sync all
+                                </button>
+
+                                {/* View toggle */}
+                                <div
+                                    role="group"
+                                    aria-label="Connections view"
+                                    style={{
+                                        display: 'flex',
+                                        background: 'var(--bg-1)',
+                                        border: '1px solid var(--hairline)',
+                                        borderRadius: 9,
+                                        padding: 3,
+                                        gap: 2,
+                                    }}
+                                >
+                                    <ViewTab
+                                        testid="connector-connections-view-table"
+                                        label="Table"
+                                        active={view === 'table'}
+                                        onClick={() => {
+                                            setView('table');
+                                            setMenuId(null);
+                                        }}
+                                        icon={
+                                            <svg
+                                                width="15"
+                                                height="15"
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                strokeWidth="2"
+                                                strokeLinecap="round"
+                                                strokeLinejoin="round"
+                                                aria-hidden="true"
+                                            >
+                                                <path d="M3 6h18" />
+                                                <path d="M3 12h18" />
+                                                <path d="M3 18h18" />
+                                            </svg>
+                                        }
+                                    />
+                                    <ViewTab
+                                        testid="connector-connections-view-cards"
+                                        label="Cards"
+                                        active={view === 'cards'}
+                                        onClick={() => {
+                                            setView('cards');
+                                            setMenuId(null);
+                                        }}
+                                        icon={
+                                            <svg
+                                                width="15"
+                                                height="15"
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                strokeWidth="2"
+                                                strokeLinecap="round"
+                                                strokeLinejoin="round"
+                                                aria-hidden="true"
+                                            >
+                                                <rect x="3" y="3" width="8" height="8" rx="1.5" />
+                                                <rect x="13" y="3" width="8" height="8" rx="1.5" />
+                                                <rect x="3" y="13" width="8" height="8" rx="1.5" />
+                                                <rect x="13" y="13" width="8" height="8" rx="1.5" />
+                                            </svg>
+                                        }
+                                    />
+                                </div>
+                            </div>
+
+                            {visible.length === 0 ? (
+                                <div
+                                    data-testid="connector-connections-empty"
+                                    role="status"
+                                    style={{
+                                        border: '1px dashed var(--hairline)',
+                                        borderRadius: 14,
+                                        padding: '48px 20px',
+                                        textAlign: 'center',
+                                        color: 'var(--fg-3)',
+                                        fontSize: 13.5,
+                                    }}
+                                >
+                                    {query.trim() !== ''
+                                        ? 'No connections match your search.'
+                                        : 'No connections yet — add one from the sources above.'}
+                                </div>
+                            ) : view === 'table' ? (
+                                <ConnectionsTable
+                                    rows={visible}
+                                    menuId={menuId}
+                                    actions={actions}
+                                    inflight={inflight}
+                                />
+                            ) : (
+                                <ConnectionsCards
+                                    rows={visible}
+                                    menuId={menuId}
+                                    actions={actions}
+                                    inflight={inflight}
+                                />
+                            )}
+                        </section>
+                    </>
                 )}
             </div>
 
@@ -692,6 +1027,65 @@ export function ConnectorsView() {
                     onClose={() => setTestFetchModal(null)}
                 />
             )}
+
+            {errorVm && (
+                <SyncErrorModal
+                    key={`sync-error-${errorVm.id}`}
+                    vm={errorVm}
+                    onClose={() => setErrorId(null)}
+                    onRetry={handleSync}
+                />
+            )}
         </AdminShell>
+    );
+}
+
+const sectionHeadingStyle: React.CSSProperties = {
+    margin: 0,
+    fontSize: 13,
+    fontWeight: 600,
+    textTransform: 'uppercase',
+    letterSpacing: '.06em',
+    color: 'var(--fg-3)',
+};
+
+function ViewTab({
+    testid,
+    label,
+    active,
+    onClick,
+    icon,
+}: {
+    testid: string;
+    label: string;
+    active: boolean;
+    onClick: () => void;
+    icon: React.ReactNode;
+}) {
+    return (
+        <button
+            type="button"
+            data-testid={testid}
+            className="amd-cn-tab focus-ring"
+            aria-pressed={active}
+            onClick={onClick}
+            style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                background: active ? 'var(--bg-3)' : 'transparent',
+                color: active ? 'var(--fg-0)' : 'var(--fg-3)',
+                border: 'none',
+                font: 'inherit',
+                fontSize: 12.5,
+                fontWeight: 600,
+                padding: '6px 12px',
+                borderRadius: 7,
+                cursor: 'pointer',
+            }}
+        >
+            {icon}
+            {label}
+        </button>
     );
 }
