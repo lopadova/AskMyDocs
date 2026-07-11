@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import type {
     ApiAuthProfile,
     ApiRoute,
+    EndpointTypeChoice,
     HttpMethod,
     ParamLocation,
     ParamSource,
@@ -45,7 +46,21 @@ const MODE_OPTIONS: { value: RouteMode; label: string; enabled: boolean }[] = [
     { value: 'both', label: 'Both', enabled: false },
 ];
 
+const ENDPOINT_TYPE_OPTIONS: { value: EndpointTypeChoice; label: string; hint: string }[] = [
+    { value: 'auto', label: 'Auto', hint: 'Detect from the test response' },
+    { value: 'list', label: 'List', hint: 'Returns a collection of items' },
+    { value: 'detail', label: 'Detail', hint: 'Returns a single resource' },
+];
+
 const FASE_2_TOOLTIP = 'Available in Fase 2';
+
+/** The form's endpoint-type choice: an explicit locked override, else 'auto'. */
+function initialEndpointChoice(route: ApiRoute | null | undefined): EndpointTypeChoice {
+    if (route?.endpoint_type_locked && route.endpoint_type !== 'unknown') {
+        return route.endpoint_type;
+    }
+    return 'auto';
+}
 
 interface ParamRow extends RouteParameterInput {
     /** Stable client-side key for React list reconciliation (R17). */
@@ -113,6 +128,8 @@ export function RouteForm({
         route?.auth_profile_id != null ? String(route.auth_profile_id) : '',
     );
     const [mode] = useState<RouteMode>(route?.mode ?? 'tool');
+    const [endpointType, setEndpointType] = useState<EndpointTypeChoice>(initialEndpointChoice(route));
+    const [itemsPath, setItemsPath] = useState<string>(route?.items_path ?? '');
     const [timeoutMs, setTimeoutMs] = useState<string>(
         route?.timeout_ms != null ? String(route.timeout_ms) : '',
     );
@@ -168,6 +185,10 @@ export function RouteForm({
             url: url.trim(),
             auth_profile_id: authProfileId === '' ? null : Number.parseInt(authProfileId, 10),
             mode,
+            endpoint_type: endpointType,
+            // Only meaningful for an explicit list ('' = top-level array). For
+            // 'auto' the detector owns items_path; for 'detail' it is cleared.
+            items_path: endpointType === 'list' ? itemsPath.trim() : endpointType === 'detail' ? null : undefined,
             timeout_ms: parseIntOrNull(timeoutMs),
             cache_ttl_s: parseIntOrNull(cacheTtlS),
             rate_limit: parseIntOrNull(rateLimit),
@@ -353,6 +374,73 @@ export function RouteForm({
                         );
                     })}
                 </fieldset>
+
+                {/* Endpoint taxonomy (Lista vs Dettaglio). Auto lets the server
+                    detect it from the test response; List/Detail lock an override. */}
+                <fieldset
+                    data-testid="api-route-form-endpoint_type"
+                    style={{
+                        border: '1px solid var(--hairline, rgba(255,255,255,.1))',
+                        borderRadius: 8,
+                        padding: '8px 10px',
+                        display: 'flex',
+                        gap: 14,
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                    }}
+                >
+                    <legend style={{ ...fieldCaptionStyle(), padding: '0 4px' }}>Endpoint type</legend>
+                    {ENDPOINT_TYPE_OPTIONS.map((opt) => {
+                        const id = `api-route-form-endpoint_type-${opt.value}`;
+                        return (
+                            <label
+                                key={opt.value}
+                                htmlFor={id}
+                                title={opt.hint}
+                                style={{ display: 'flex', gap: 5, alignItems: 'center', cursor: 'pointer' }}
+                            >
+                                <input
+                                    id={id}
+                                    data-testid={id}
+                                    type="radio"
+                                    name="api-route-form-endpoint_type-group"
+                                    value={opt.value}
+                                    checked={endpointType === opt.value}
+                                    onChange={() => setEndpointType(opt.value)}
+                                    aria-label={`${opt.label} — ${opt.hint}`}
+                                />
+                                <span style={fieldCaptionStyle()}>{opt.label}</span>
+                            </label>
+                        );
+                    })}
+                    {fieldErrors?.endpoint_type && (
+                        <span data-testid="api-route-form-endpoint_type-error" role="alert" style={errorTextStyle()}>
+                            {fieldErrors.endpoint_type}
+                        </span>
+                    )}
+                </fieldset>
+
+                {endpointType === 'list' && (
+                    <label htmlFor="api-route-form-items_path" style={fieldLabelStyle()}>
+                        <span style={fieldCaptionStyle()}>
+                            Items path (dot-path to the item array — leave blank for a top-level array)
+                        </span>
+                        <input
+                            id="api-route-form-items_path"
+                            data-testid="api-route-form-items_path"
+                            type="text"
+                            value={itemsPath}
+                            onChange={(e) => setItemsPath(e.target.value)}
+                            placeholder="e.g. data — or blank for [ … ]"
+                            style={{ ...inputStyle(), fontFamily: 'var(--font-mono, monospace)' }}
+                        />
+                        {fieldErrors?.items_path && (
+                            <span data-testid="api-route-form-items_path-error" role="alert" style={errorTextStyle()}>
+                                {fieldErrors.items_path}
+                            </span>
+                        )}
+                    </label>
+                )}
 
                 <label htmlFor="api-route-form-auth_profile_id" style={fieldLabelStyle()}>
                     <span style={fieldCaptionStyle()}>Auth profile</span>
