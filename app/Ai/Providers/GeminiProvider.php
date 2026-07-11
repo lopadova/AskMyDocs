@@ -257,7 +257,40 @@ final class GeminiProvider implements AiProviderInterface
             $contents[] = ['role' => 'user', 'parts' => [['text' => $text]]];
         }
 
-        return $contents;
+        return $this->coalesceConsecutiveSameRole($contents);
+    }
+
+    /**
+     * Merge adjacent same-role `contents` by concatenating their `parts`.
+     *
+     * A PARALLEL tool-call turn (the model returns ≥2 `functionCall` parts) is
+     * replayed by `McpToolCallingService` as one `model` message followed by N
+     * separate `role:'tool'` results — each of which {@see translateContents}
+     * turns into its own `user` content with a single `functionResponse` part.
+     * Gemini expects the responses for a parallel call to arrive as one `user`
+     * turn carrying every `functionResponse` part; coalescing produces exactly
+     * that and keeps the user/model turns alternating.
+     *
+     * @param  list<array{role: string, parts: list<array<string, mixed>>}>  $contents
+     * @return list<array{role: string, parts: list<array<string, mixed>>}>
+     */
+    private function coalesceConsecutiveSameRole(array $contents): array
+    {
+        $merged = [];
+        foreach ($contents as $content) {
+            $lastIndex = count($merged) - 1;
+            if ($lastIndex >= 0 && $merged[$lastIndex]['role'] === $content['role']) {
+                $merged[$lastIndex]['parts'] = array_merge(
+                    $merged[$lastIndex]['parts'],
+                    $content['parts'],
+                );
+                continue;
+            }
+
+            $merged[] = $content;
+        }
+
+        return $merged;
     }
 
     /**

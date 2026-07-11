@@ -258,7 +258,41 @@ final class AnthropicProvider implements AiProviderInterface
             ];
         }
 
-        return $translated;
+        return $this->coalesceConsecutiveSameRole($translated);
+    }
+
+    /**
+     * Merge adjacent same-role messages by concatenating their content blocks.
+     *
+     * The Anthropic Messages API requires strictly alternating user/assistant
+     * turns. A PARALLEL tool-call turn (the model returns ≥2 `tool_use` blocks)
+     * is replayed by `McpToolCallingService` as one assistant message followed by
+     * N separate `role:'tool'` results — each of which {@see translateMessages}
+     * turns into its own `user` message. Left as-is that is N consecutive `user`
+     * turns, which the API rejects (`roles must alternate`). Coalescing collapses
+     * them into a single `user` turn carrying every `tool_result` block, which is
+     * exactly the shape Anthropic expects for parallel tool results.
+     *
+     * @param  list<array{role: string, content: list<array<string, mixed>>}>  $messages
+     * @return list<array{role: string, content: list<array<string, mixed>>}>
+     */
+    private function coalesceConsecutiveSameRole(array $messages): array
+    {
+        $merged = [];
+        foreach ($messages as $message) {
+            $lastIndex = count($merged) - 1;
+            if ($lastIndex >= 0 && $merged[$lastIndex]['role'] === $message['role']) {
+                $merged[$lastIndex]['content'] = array_merge(
+                    $merged[$lastIndex]['content'],
+                    $message['content'],
+                );
+                continue;
+            }
+
+            $merged[] = $message;
+        }
+
+        return $merged;
     }
 
     /**
