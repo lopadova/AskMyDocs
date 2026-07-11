@@ -46,6 +46,13 @@ final class ConnectorInstallationStatsService
         $documentsSynced = KnowledgeDocument::query()
             ->where('tenant_id', $this->tenantContext->current())
             ->where('metadata->installation_id', $installationId)
+            // Count only LIVE docs — exclude superseded prior versions (which the
+            // re-ingest upsert flips to status='archived' but keeps the same
+            // metadata->installation_id and does NOT soft-delete). This matches the
+            // app-wide retrieval convention (KbSearchService `status != 'archived'`)
+            // so the figure equals the count of documents actually in the KB, not
+            // one-per-version.
+            ->where('status', '!=', 'archived')
             ->count();
 
         return [

@@ -198,7 +198,7 @@ export function AccountMetaForm({
                 )}
             </label>
 
-            {submitError && !footerless && (
+            {submitError && (
                 <p
                     data-testid={`connector-${connectorKey}-account-form-error`}
                     role="alert"

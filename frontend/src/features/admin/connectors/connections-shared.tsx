@@ -92,12 +92,18 @@ export function SyncGlyph({ spinning, size = 15 }: { spinning: boolean; size?: n
     );
 }
 
-/** The status pill (coloured dot + label), theme-aware via statusBadgeStyle. */
-export function StatusBadge({ vm }: { vm: ConnectionVM }) {
+/**
+ * The status pill (coloured dot + label), theme-aware via statusBadgeStyle.
+ * `testid` overrides the default `connector-connection-{id}-status` — callers that
+ * render this badge OUTSIDE a list row (e.g. the Edit-modal header, which stays
+ * mounted alongside the list) MUST pass a distinct id so the testid stays unique
+ * (R29).
+ */
+export function StatusBadge({ vm, testid }: { vm: ConnectionVM; testid?: string }) {
     const badge = statusBadgeStyle(vm.status);
     return (
         <span
-            data-testid={`connector-connection-${vm.id}-status`}
+            data-testid={testid ?? `connector-connection-${vm.id}-status`}
             data-status-value={vm.status}
             style={{
                 display: 'inline-flex',

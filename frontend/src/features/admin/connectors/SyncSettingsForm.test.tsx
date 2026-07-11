@@ -67,6 +67,24 @@ describe('SyncSettingsForm (tri-state)', () => {
         expect(screen.getByTestId('connector-imap-settings-folder-summary')).toHaveTextContent('1 sync · 1 skip · 1 auto');
     });
 
+    it('warns that Sync activates an exclusive whitelist (no note until a Sync exists)', async () => {
+        // The IMAP backend treats folders.include as an EXCLUSIVE whitelist, so the
+        // moment ANY folder is Sync'd the "Auto" ones stop importing — the UI must
+        // say so (R14, no silent data loss).
+        readyFolders(['INBOX', 'Archive']);
+        renderForm();
+        expect(screen.queryByTestId('connector-imap-settings-folder-whitelist-note')).toBeNull();
+
+        await userEvent.click(screen.getByTestId('connector-imap-settings-folder-inbox-sync'));
+        const note = screen.getByTestId('connector-imap-settings-folder-whitelist-note');
+        expect(note).toBeVisible();
+        expect(note).toHaveTextContent('Whitelist active');
+
+        // Clearing the last Sync mark removes the warning.
+        await userEvent.click(screen.getByTestId('connector-imap-settings-folder-inbox-auto'));
+        expect(screen.queryByTestId('connector-imap-settings-folder-whitelist-note')).toBeNull();
+    });
+
     it('flips a folder Auto→Skip and serializes it into folders.exclude', async () => {
         readyFolders(['INBOX', 'Archive']);
         const onSubmit = renderForm();

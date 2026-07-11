@@ -189,7 +189,10 @@ export function AccountEditModal({
                                 </span>
                             </div>
                         </div>
-                        <StatusBadge vm={buildConnections([{ ...entry, installations: [account] }])[0]} />
+                        <StatusBadge
+                            vm={buildConnections([{ ...entry, installations: [account] }])[0]}
+                            testid={`${idBase}-status`}
+                        />
                         <button
                             type="button"
                             data-testid={`${idBase}-close`}
@@ -272,6 +275,7 @@ export function AccountEditModal({
                                 initialProjectKey={account.project_key}
                                 onSubmit={(values) => runSubmit(() => onSubmitDetails(values))}
                                 onClose={onClose}
+                                submitError={error}
                                 fieldErrors={fieldErrors}
                                 isSubmitting={submitting}
                             />
@@ -348,16 +352,10 @@ export function AccountEditModal({
                         background: 'var(--bg-1)',
                     }}
                 >
+                    {/* The save-failure message renders IN the active tab body
+                        (next to the fields it belongs to) — one error surface, not
+                        a duplicate footer copy. */}
                     <span style={{ flex: 1, fontSize: 12, color: 'var(--fg-3)' }}>Changes apply on next sync.</span>
-                    {error && (
-                        <span
-                            data-testid={`${idBase}-error`}
-                            role="alert"
-                            style={{ fontSize: 12, color: 'var(--err, #fca5a5)', maxWidth: 260, textAlign: 'right' }}
-                        >
-                            {error}
-                        </span>
-                    )}
                     <button
                         type="button"
                         data-testid={`${idBase}-cancel`}

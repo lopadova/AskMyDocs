@@ -158,8 +158,10 @@ describe('AccountEditModal', () => {
         await waitFor(() => expect(onClose).toHaveBeenCalled());
     });
 
-    it('keeps the modal open and shows the error in the footer when a save fails', async () => {
+    it('keeps the modal open and shows the error in the tab body when a save fails', async () => {
         // R16 failure path — the reject actually fires and the modal must NOT close.
+        // ONE error surface: the message renders in the active tab body (Details =
+        // the metadata form), never duplicated in the footer.
         const onSubmitDetails = vi.fn().mockRejectedValue({ response: { data: { error: 'Label already taken' } } });
         const onClose = vi.fn();
         renderModal({ onSubmitDetails, onClose });
@@ -167,8 +169,10 @@ describe('AccountEditModal', () => {
         await userEvent.click(screen.getByTestId('connector-account-7-edit-save'));
 
         await waitFor(() =>
-            expect(screen.getByTestId('connector-account-7-edit-error')).toHaveTextContent('Label already taken'),
+            expect(screen.getByTestId('connector-imap-account-form-error')).toHaveTextContent('Label already taken'),
         );
+        // No duplicate footer error copy.
+        expect(screen.queryByTestId('connector-account-7-edit-error')).toBeNull();
         expect(onClose).not.toHaveBeenCalled();
     });
 

@@ -145,6 +145,11 @@ export function SyncSettingsForm({
     const nSkip = exclude.length;
     const nAuto = Math.max(0, allFolders.length - nSync - nSkip);
     const folderSummary = `${nSync} sync · ${nSkip} skip · ${nAuto} auto`;
+    // The IMAP backend treats folders.include as an EXCLUSIVE whitelist: the moment
+    // ANY folder is set to "Sync", ONLY those folders are imported and every "Auto"
+    // folder is skipped (folders.exclude is ignored). Surface that loudly so a
+    // single "Sync" click never silently stops ingesting the rest (R14).
+    const whitelistActive = nSync > 0;
 
     const fq = folderQuery.trim().toLowerCase();
     const shownFolders = fq ? allFolders.filter((f) => f.toLowerCase().includes(fq)) : allFolders;
@@ -195,9 +200,40 @@ export function SyncSettingsForm({
                 </div>
                 <p style={{ margin: '0 0 12px', fontSize: 12.5, color: 'var(--fg-3)', lineHeight: 1.5 }}>
                     Choose per folder whether to sync it.{' '}
-                    <b style={{ color: 'var(--fg-2)' }}>Auto</b> follows the source default (sync
-                    everything except system folders).
+                    <b style={{ color: 'var(--fg-2)' }}>Auto</b> follows the source default — sync
+                    everything except the folders you <b style={{ color: 'var(--fg-2)' }}>Skip</b>.
                 </p>
+
+                {whitelistActive && (
+                    <div
+                        data-testid={`connector-${connectorKey}-settings-folder-whitelist-note`}
+                        role="status"
+                        style={{
+                            display: 'flex',
+                            gap: 8,
+                            alignItems: 'flex-start',
+                            margin: '0 0 12px',
+                            padding: '9px 11px',
+                            fontSize: 12,
+                            lineHeight: 1.5,
+                            color: '#eab308',
+                            background: 'rgba(234,179,8,.1)',
+                            border: '1px solid rgba(234,179,8,.28)',
+                            borderRadius: 9,
+                        }}
+                    >
+                        <svg style={{ flex: 'none', marginTop: 1 }} width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                            <path d="M12 9v4" />
+                            <path d="M12 17h.01" />
+                        </svg>
+                        <span>
+                            Whitelist active — only the {nSync} folder{nSync === 1 ? '' : 's'} set to{' '}
+                            <b>Sync</b> {nSync === 1 ? 'is' : 'are'} imported. Folders left on{' '}
+                            <b>Auto</b> are skipped until you clear every Sync mark.
+                        </span>
+                    </div>
+                )}
 
                 <div
                     style={{
