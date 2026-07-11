@@ -156,6 +156,29 @@ final class ConnectorReconfigureTest extends TestCase
         $this->assertSame(120, $installation->config_json['date_window_days']);
     }
 
+    public function test_reconfigure_survives_a_non_array_stored_connection(): void
+    {
+        // A legacy/corrupted row whose config_json.connection is not an array must not
+        // 500 during the request's prefill: omitted connection fields fall back to
+        // schema defaults instead of subscripting a non-array.
+        $installation = $this->seedActiveImap(vaultPassword: 'old-pw', configOverrides: ['connection' => 'corrupted']);
+        $this->bindImapFactory(pingSucceeds: true);
+
+        $this->actingAs($this->superAdmin())
+            ->postJson("/api/admin/connectors/{$installation->id}/reconfigure", [
+                'auth_mode' => 'basic',
+                'host' => 'imap.example.com',
+                'username' => 'alice@example.com',
+                // port / encryption / validate_cert omitted → the prefill reads the
+                // (corrupted) stored connection, which must be guarded.
+            ])
+            ->assertOk();
+
+        $installation->refresh();
+        // The corrupted connection was replaced by a proper array on save.
+        $this->assertSame('imap.example.com', $installation->config_json['connection']['host']);
+    }
+
     public function test_reconfigure_is_scoped_to_the_active_tenant(): void
     {
         $foreign = ConnectorInstallation::create([

@@ -93,6 +93,11 @@ final class ReconfigureConnectorRequest extends FormRequest
         }
 
         $config = (array) ($installation->config_json ?? []);
+        // Resolve the connection sub-map once behind an is_array guard: a
+        // legacy/corrupted row whose `connection` is not an array would otherwise
+        // TypeError on the `$connection[$name]` read below and 500 (PHP 8), instead
+        // of cleanly falling back to schema defaults / stored top-level values.
+        $connection = is_array($config['connection'] ?? null) ? $config['connection'] : [];
         $defaults = [];
         $secretFields = [];
 
@@ -114,7 +119,7 @@ final class ReconfigureConnectorRequest extends FormRequest
             // keep current), then the schema default.
             if ($this->input($name) === null) {
                 $stored = ((string) ($field['target'] ?? '')) === 'connection'
-                    ? ($config['connection'][$name] ?? null)
+                    ? ($connection[$name] ?? null)
                     : ($config[$name] ?? null);
                 $value = $stored ?? ($field['default'] ?? null);
                 if ($value !== null) {
