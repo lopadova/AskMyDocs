@@ -261,6 +261,54 @@ class GeminiProviderTest extends TestCase
         });
     }
 
+    public function test_parallel_tool_results_coalesce_into_one_user_content(): void
+    {
+        // Two tools called in one turn → the MCP loop replays one model message
+        // (two functionCall parts) then TWO separate role:'tool' results. Gemini
+        // expects the responses for a parallel call as ONE user turn carrying both
+        // functionResponse parts, keeping user/model turns alternating.
+        $this->setupConfig();
+        Http::fake([
+            'generativelanguage.googleapis.com/*' => Http::response([
+                'candidates' => [[
+                    'content' => ['role' => 'model', 'parts' => [['text' => 'done']]],
+                    'finishReason' => 'STOP',
+                ]],
+                'usageMetadata' => ['promptTokenCount' => 60, 'candidatesTokenCount' => 4, 'totalTokenCount' => 64],
+                'modelVersion' => 'gemini-2.0-flash',
+            ], 200),
+        ]);
+
+        $res = $this->provider()->chatWithHistory('sys', [
+            ['role' => 'user', 'content' => 'compare x and y'],
+            ['role' => 'assistant', 'content' => '', 'tool_calls' => [
+                ['id' => 'c1', 'type' => 'function', 'function' => ['name' => 'kb_search', 'arguments' => '{"q":"x"}']],
+                ['id' => 'c2', 'type' => 'function', 'function' => ['name' => 'kb_lookup', 'arguments' => '{"q":"y"}']],
+            ]],
+            ['role' => 'tool', 'content' => '{"hits":1}', 'tool_call_id' => 'c1', 'name' => 'kb_search'],
+            ['role' => 'tool', 'content' => '{"hits":2}', 'tool_call_id' => 'c2', 'name' => 'kb_lookup'],
+        ], []);
+
+        $this->assertSame('done', $res->content);
+
+        Http::assertSent(function (Request $req) {
+            $body = $req->data();
+            $contents = $body['contents'];
+
+            // [0] user text, [1] model with 2 functionCall, [2] ONE user with 2
+            // functionResponse parts — NOT [2] + [3] two consecutive user turns.
+            return count($contents) === 3
+                && $contents[1]['role'] === 'model'
+                && count($contents[1]['parts']) === 2
+                && $contents[2]['role'] === 'user'
+                && count($contents[2]['parts']) === 2
+                && ($contents[2]['parts'][0]['functionResponse']['name'] ?? null) === 'kb_search'
+                && ($contents[2]['parts'][0]['functionResponse']['response'] ?? null) === ['hits' => 1]
+                && ($contents[2]['parts'][1]['functionResponse']['name'] ?? null) === 'kb_lookup'
+                && ($contents[2]['parts'][1]['functionResponse']['response'] ?? null) === ['hits' => 2];
+        });
+    }
+
     public function test_mcp_final_turn_with_tool_history_and_no_tools_routes_to_http_not_sdk(): void
     {
         // No `tools` in options, but assistant tool_calls + role:'tool' history

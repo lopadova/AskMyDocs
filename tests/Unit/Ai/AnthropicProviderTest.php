@@ -354,6 +354,57 @@ class AnthropicProviderTest extends TestCase
         });
     }
 
+    public function test_parallel_tool_results_coalesce_into_one_user_message(): void
+    {
+        // When the model calls TWO tools in one turn, the MCP loop replays one
+        // assistant message (two tool_calls) followed by TWO separate role:'tool'
+        // results. Anthropic requires alternating roles — the two tool_result
+        // blocks MUST land in a SINGLE user message, not two consecutive ones
+        // (which the API rejects with "roles must alternate").
+        $this->setupConfig();
+        Http::fake([
+            'api.anthropic.com/*' => Http::response([
+                'model' => 'claude-sonnet-4-20250514',
+                'content' => [['type' => 'text', 'text' => 'done']],
+                'usage' => ['input_tokens' => 70, 'output_tokens' => 4],
+                'stop_reason' => 'end_turn',
+            ], 200),
+        ]);
+
+        $res = $this->provider()->chatWithHistory('sys', [
+            ['role' => 'user', 'content' => 'compare x and y'],
+            ['role' => 'assistant', 'content' => '', 'tool_calls' => [
+                ['id' => 'toolu_1', 'type' => 'function', 'function' => ['name' => 'kb_search', 'arguments' => '{"q":"x"}']],
+                ['id' => 'toolu_2', 'type' => 'function', 'function' => ['name' => 'kb_search', 'arguments' => '{"q":"y"}']],
+            ]],
+            ['role' => 'tool', 'content' => '{"hits":1}', 'tool_call_id' => 'toolu_1', 'name' => 'kb_search'],
+            ['role' => 'tool', 'content' => '{"hits":2}', 'tool_call_id' => 'toolu_2', 'name' => 'kb_search'],
+        ], []);
+
+        $this->assertSame('done', $res->content);
+
+        Http::assertSent(function (Request $req) {
+            $body = $req->data();
+            $msgs = $body['messages'];
+
+            // [0] user text, [1] assistant with 2 tool_use, [2] ONE user with 2
+            // tool_result blocks — NOT [2] + [3] two consecutive user turns.
+            return count($msgs) === 3
+                && $msgs[1]['role'] === 'assistant'
+                && count($msgs[1]['content']) === 2
+                && $msgs[1]['content'][0]['type'] === 'tool_use'
+                && $msgs[1]['content'][1]['type'] === 'tool_use'
+                && $msgs[2]['role'] === 'user'
+                && count($msgs[2]['content']) === 2
+                && $msgs[2]['content'][0]['type'] === 'tool_result'
+                && $msgs[2]['content'][0]['tool_use_id'] === 'toolu_1'
+                && $msgs[2]['content'][0]['content'] === '{"hits":1}'
+                && $msgs[2]['content'][1]['type'] === 'tool_result'
+                && $msgs[2]['content'][1]['tool_use_id'] === 'toolu_2'
+                && $msgs[2]['content'][1]['content'] === '{"hits":2}';
+        });
+    }
+
     public function test_mcp_final_turn_with_tool_history_and_no_tools_routes_to_http_not_sdk(): void
     {
         // No `tools` in options, but assistant tool_calls + role:'tool' history
