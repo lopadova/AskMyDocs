@@ -5,10 +5,13 @@ import {
     type ApiAuthProfile,
     type ApiConnector,
     type ApiRoute,
+    type ApiRouteRelation,
     type AuthProfilePayload,
     type ConnectorPayload,
+    type DrillResult,
     type ProbePayload,
     type ProbeResult,
+    type RelationPayload,
     type RoutePayload,
     type TestRouteResponse,
     type ToolDefinition,
@@ -221,5 +224,64 @@ export function useTryRoute() {
 export function useProbeEndpoint() {
     return useMutation<ProbeResult, unknown, ProbePayload>({
         mutationFn: (payload) => apiConnectorsApi.probe(payload),
+    });
+}
+
+// --- relations (List → Detail) ---
+
+/**
+ * A connector's list→detail relations. Gated by `enabled` so it only fires while
+ * the connector's Relations section is expanded / a relation editor is open.
+ */
+export function useRelations(connectorId: number | null, enabled: boolean) {
+    return useQuery<ApiRouteRelation[]>({
+        queryKey: [...API_CONNECTORS_KEY, 'relations', connectorId],
+        queryFn: () => apiConnectorsApi.listRelations(connectorId as number),
+        enabled: enabled && connectorId !== null,
+        staleTime: 0,
+    });
+}
+
+export function useCreateRelation() {
+    const qc = useQueryClient();
+    return useMutation<ApiRouteRelation, unknown, { connectorId: number; payload: RelationPayload }>({
+        mutationFn: ({ connectorId, payload }) => apiConnectorsApi.createRelation(connectorId, payload),
+        onSuccess: () => {
+            qc.invalidateQueries({ queryKey: API_CONNECTORS_KEY });
+        },
+    });
+}
+
+export function useUpdateRelation() {
+    const qc = useQueryClient();
+    return useMutation<ApiRouteRelation, unknown, { relationId: number; payload: Partial<RelationPayload> }>({
+        mutationFn: ({ relationId, payload }) => apiConnectorsApi.updateRelation(relationId, payload),
+        onSuccess: () => {
+            qc.invalidateQueries({ queryKey: API_CONNECTORS_KEY });
+        },
+    });
+}
+
+export function useDeleteRelation() {
+    const qc = useQueryClient();
+    return useMutation<void, unknown, number>({
+        mutationFn: (relationId) => apiConnectorsApi.destroyRelation(relationId),
+        onSuccess: () => {
+            qc.invalidateQueries({ queryKey: API_CONNECTORS_KEY });
+        },
+    });
+}
+
+/**
+ * Drill-test a relation. Read-only w.r.t. the list — no invalidation; the caller
+ * renders the returned mapped arguments + raw detail result.
+ */
+export function useDrillRelation() {
+    return useMutation<
+        DrillResult,
+        unknown,
+        { relationId: number; payload: { list_item?: Record<string, unknown>; item_index?: number } }
+    >({
+        mutationFn: ({ relationId, payload }) => apiConnectorsApi.drillRelation(relationId, payload),
     });
 }

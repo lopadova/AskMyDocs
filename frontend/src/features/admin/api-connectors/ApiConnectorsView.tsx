@@ -6,11 +6,14 @@ import type {
     ApiAuthProfile,
     ApiConnector,
     ApiRoute,
+    ApiRouteRelation,
     ApiRouteSummary,
     AuthProfilePayload,
     ConnectorPayload,
+    DrillResult,
     ProbePayload,
     ProbeResult,
+    RelationPayload,
     RoutePayload,
     TestRouteResponse,
     ToolDefinition,
@@ -21,10 +24,13 @@ import {
     useApiConnectors,
     useCreateAuthProfile,
     useCreateConnector,
+    useCreateRelation,
     useCreateRoute,
     useDeleteConnector,
+    useDeleteRelation,
     useDeleteRoute,
     useDisableRoute,
+    useDrillRelation,
     useProbeEndpoint,
     useProjectOptions,
     useRegenerateDescription,
@@ -32,6 +38,7 @@ import {
     useTryRoute,
     useUpdateAuthProfile,
     useUpdateConnector,
+    useUpdateRelation,
     useUpdateRoute,
 } from './api-connectors-hooks';
 import { endpointTypeBadge, routeStatusBadge } from './route-status';
@@ -41,6 +48,8 @@ import { RouteForm } from './RouteForm';
 import { TestConnectionPanel } from './TestConnectionPanel';
 import { TryToolModal } from './TryToolModal';
 import { FreeEndpointModal } from './FreeEndpointModal';
+import { RelationEditor } from './RelationEditor';
+import { DrillTestPanel } from './DrillTestPanel';
 import { buttonStyle } from './styles';
 
 /*
@@ -64,6 +73,9 @@ type Modal =
     | { kind: 'route-edit'; connector: ApiConnector; route: ApiRoute }
     | { kind: 'route-test'; route: ApiRoute }
     | { kind: 'route-try'; route: ApiRoute }
+    | { kind: 'relation-create'; connector: ApiConnector }
+    | { kind: 'relation-edit'; connector: ApiConnector; relation: ApiRouteRelation }
+    | { kind: 'relation-drill'; relation: ApiRouteRelation }
     | { kind: 'probe' }
     | null;
 
@@ -86,6 +98,10 @@ export function ApiConnectorsView() {
     const disableRoute = useDisableRoute();
     const tryRoute = useTryRoute();
     const probeEndpoint = useProbeEndpoint();
+    const createRelation = useCreateRelation();
+    const updateRelation = useUpdateRelation();
+    const deleteRelation = useDeleteRelation();
+    const drillRelation = useDrillRelation();
 
     const [modal, setModal] = useState<Modal>(null);
     const [modalError, setModalError] = useState<string | null>(null);
@@ -101,6 +117,10 @@ export function ApiConnectorsView() {
     const [tryHasResult, setTryHasResult] = useState(false);
     const [probeResult, setProbeResult] = useState<ProbeResult | null>(null);
     const [probeError, setProbeError] = useState<string | null>(null);
+    // Relation editor: full routes fetched on select to power the field pickers.
+    const [relationListRoute, setRelationListRoute] = useState<ApiRoute | null>(null);
+    const [relationDetailRoute, setRelationDetailRoute] = useState<ApiRoute | null>(null);
+    const [drillResult, setDrillResult] = useState<DrillResult | null>(null);
 
     const state: 'loading' | 'ready' | 'error' | 'empty' = connectorsQuery.isLoading
         ? 'loading'
@@ -349,6 +369,89 @@ export function ApiConnectorsView() {
         openModalReset({ kind: 'probe' });
     }
 
+    // --- relations (List → Detail) ---
+
+    function openRelationEditor(connector: ApiConnector, relation: ApiRouteRelation | null) {
+        setRelationListRoute(null);
+        setRelationDetailRoute(null);
+        if (relation) {
+            openModalReset({ kind: 'relation-edit', connector, relation });
+            // Pre-fetch both sides so the field pickers are populated on open.
+            void selectRelationRoute('list', relation.list_route_id);
+            void selectRelationRoute('detail', relation.detail_route_id);
+        } else {
+            openModalReset({ kind: 'relation-create', connector });
+        }
+    }
+
+    async function selectRelationRoute(side: 'list' | 'detail', routeId: number | null) {
+        if (routeId === null) {
+            if (side === 'list') setRelationListRoute(null);
+            else setRelationDetailRoute(null);
+            return;
+        }
+        try {
+            const route = await apiConnectorsApi.showRoute(routeId);
+            if (side === 'list') setRelationListRoute(route);
+            else setRelationDetailRoute(route);
+        } catch {
+            // Suggestions are a nice-to-have; a fetch failure just means no datalist.
+            if (side === 'list') setRelationListRoute(null);
+            else setRelationDetailRoute(null);
+        }
+    }
+
+    async function handleRelationSubmit(payload: RelationPayload) {
+        const current = modal;
+        if (current?.kind !== 'relation-create' && current?.kind !== 'relation-edit') return;
+        setModalError(null);
+        try {
+            if (current.kind === 'relation-edit') {
+                await updateRelation.mutateAsync({ relationId: current.relation.id, payload });
+                toast.success('Relation saved.', 'toast-api-relation-saved');
+            } else {
+                await createRelation.mutateAsync({ connectorId: current.connector.id, payload });
+                toast.success('Relation created.', 'toast-api-relation-created');
+            }
+            closeModal();
+        } catch (e) {
+            if (modalRef.current?.kind === 'relation-create' || modalRef.current?.kind === 'relation-edit') {
+                setModalError(toAdminError(e).message);
+            }
+        }
+    }
+
+    async function handleDeleteRelation(relationId: number) {
+        try {
+            await deleteRelation.mutateAsync(relationId);
+            toast.success('Relation removed.', 'toast-api-relation-deleted');
+        } catch (e) {
+            toast.error(toAdminError(e).message, 'toast-api-relation-error');
+        }
+    }
+
+    function openRelationDrill(relation: ApiRouteRelation) {
+        setDrillResult(null);
+        openModalReset({ kind: 'relation-drill', relation });
+    }
+
+    async function handleDrill(payload: { list_item?: Record<string, unknown>; item_index?: number }) {
+        const current = modal;
+        if (current?.kind !== 'relation-drill') return;
+        setModalError(null);
+        try {
+            const result = await drillRelation.mutateAsync({ relationId: current.relation.id, payload });
+            if (modalRef.current?.kind === 'relation-drill') {
+                setDrillResult(result);
+            }
+        } catch (e) {
+            if (modalRef.current?.kind === 'relation-drill') {
+                setDrillResult(null);
+                setModalError(toAdminError(e).message);
+            }
+        }
+    }
+
     return (
         <AdminShell section="api-connectors">
             <ToastHost />
@@ -470,6 +573,10 @@ export function ApiConnectorsView() {
                                 onActivateRoute={handleActivate}
                                 onDisableRoute={handleDisable}
                                 onRegenerateRoute={handleRegenerate}
+                                onAddRelation={() => openRelationEditor(connector, null)}
+                                onEditRelation={(relation) => openRelationEditor(connector, relation)}
+                                onDrillRelation={openRelationDrill}
+                                onDeleteRelation={handleDeleteRelation}
                             />
                         ))}
                     </div>
@@ -550,6 +657,34 @@ export function ApiConnectorsView() {
                     onClose={closeModal}
                 />
             )}
+
+            {(modal?.kind === 'relation-create' || modal?.kind === 'relation-edit') && (
+                <RelationEditor
+                    key={modal.kind === 'relation-edit' ? `relation-edit-${modal.relation.id}` : `relation-create-${modal.connector.id}`}
+                    routes={modal.connector.routes ?? []}
+                    relation={modal.kind === 'relation-edit' ? modal.relation : null}
+                    listRouteFull={relationListRoute}
+                    detailRouteFull={relationDetailRoute}
+                    onSelectListRoute={(id) => void selectRelationRoute('list', id)}
+                    onSelectDetailRoute={(id) => void selectRelationRoute('detail', id)}
+                    onSubmit={handleRelationSubmit}
+                    onClose={closeModal}
+                    submitError={modalError}
+                    isSubmitting={createRelation.isPending || updateRelation.isPending}
+                />
+            )}
+
+            {modal?.kind === 'relation-drill' && (
+                <DrillTestPanel
+                    key={`relation-drill-${modal.relation.id}`}
+                    relation={modal.relation}
+                    result={drillResult}
+                    onDrill={handleDrill}
+                    onClose={closeModal}
+                    isDrilling={drillRelation.isPending}
+                    error={modalError}
+                />
+            )}
         </AdminShell>
     );
 }
@@ -583,6 +718,10 @@ interface ConnectorCardProps {
     onActivateRoute: (routeId: number) => void;
     onDisableRoute: (routeId: number) => void;
     onRegenerateRoute: (routeId: number) => void;
+    onAddRelation: () => void;
+    onEditRelation: (relation: ApiRouteRelation) => void;
+    onDrillRelation: (relation: ApiRouteRelation) => void;
+    onDeleteRelation: (relationId: number) => void;
 }
 
 function ConnectorCard({
@@ -600,9 +739,14 @@ function ConnectorCard({
     onActivateRoute,
     onDisableRoute,
     onRegenerateRoute,
+    onAddRelation,
+    onEditRelation,
+    onDrillRelation,
+    onDeleteRelation,
 }: ConnectorCardProps) {
     const routes = connector.routes ?? [];
     const authProfiles = connector.auth_profiles ?? [];
+    const relations = connector.relations ?? [];
 
     return (
         <section
@@ -738,6 +882,78 @@ function ConnectorCard({
                     onDisable={() => onDisableRoute(route.id)}
                     onRegenerate={() => onRegenerateRoute(route.id)}
                 />
+            ))}
+
+            {/* Relations (List → Detail) */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-2)' }}>
+                    Relations ({relations.length})
+                </span>
+                <button
+                    type="button"
+                    data-testid={`api-connector-${connector.id}-relation-add`}
+                    onClick={onAddRelation}
+                    style={buttonStyle('secondary', false)}
+                >
+                    + Add relation
+                </button>
+            </div>
+
+            {relations.length === 0 && (
+                <p data-testid={`api-connector-${connector.id}-relations-empty`} style={{ margin: 0, fontSize: 12, color: 'var(--fg-3)' }}>
+                    No list → detail relations yet.
+                </p>
+            )}
+
+            {relations.map((relation) => (
+                <div
+                    key={relation.id}
+                    data-testid={`api-connector-${connector.id}-relation-${relation.id}`}
+                    style={{
+                        border: '1px solid var(--hairline, rgba(255,255,255,.1))',
+                        borderRadius: 8,
+                        padding: 8,
+                        display: 'flex',
+                        gap: 8,
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                    }}
+                >
+                    <code style={{ fontSize: 11.5, color: 'var(--fg-1)' }}>
+                        {relation.list_route?.slug ?? `#${relation.list_route_id}`}
+                        <span aria-hidden style={{ color: 'var(--fg-3)' }}> → </span>
+                        {relation.detail_route?.slug ?? `#${relation.detail_route_id}`}
+                    </code>
+                    <span style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>
+                        {relation.field_map.length} map{relation.field_map.length === 1 ? '' : 's'}
+                    </span>
+                    <div style={{ display: 'flex', gap: 6, marginLeft: 'auto' }}>
+                        <button
+                            type="button"
+                            data-testid={`api-connector-${connector.id}-relation-${relation.id}-drill`}
+                            onClick={() => onDrillRelation(relation)}
+                            style={buttonStyle('secondary', false)}
+                        >
+                            Drill-test
+                        </button>
+                        <button
+                            type="button"
+                            data-testid={`api-connector-${connector.id}-relation-${relation.id}-edit`}
+                            onClick={() => onEditRelation(relation)}
+                            style={buttonStyle('secondary', false)}
+                        >
+                            Edit
+                        </button>
+                        <button
+                            type="button"
+                            data-testid={`api-connector-${connector.id}-relation-${relation.id}-remove`}
+                            onClick={() => onDeleteRelation(relation.id)}
+                            style={buttonStyle('danger', false)}
+                        >
+                            Remove
+                        </button>
+                    </div>
+                </div>
             ))}
         </section>
     );
