@@ -49,6 +49,9 @@ final class ConnectorInstallationStatsTest extends TestCase
         $this->makeDoc('default', $installation->id, 'b');
         // A soft-deleted doc for this installation — must NOT be counted.
         $this->makeDoc('default', $installation->id, 'c')->delete();
+        // A superseded prior VERSION (status=archived, not soft-deleted, same
+        // installation) — must NOT be counted (would over-count one-per-version).
+        $this->makeDoc('default', $installation->id, 'f')->update(['status' => 'archived']);
         // Another installation's doc — must NOT be counted.
         $this->makeDoc('default', $other->id, 'd');
         // Another tenant's doc for this same installation id — must NOT be counted (R30).
