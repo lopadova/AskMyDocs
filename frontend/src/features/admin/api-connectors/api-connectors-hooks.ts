@@ -13,6 +13,7 @@ import {
     type ProbeResult,
     type RelationPayload,
     type RoutePayload,
+    type AnalyzeResponse,
     type TestRouteResponse,
     type ToolDefinition,
 } from './api-connectors.api';
@@ -213,6 +214,16 @@ export function useDisableRoute() {
 export function useTryRoute() {
     return useMutation<unknown, unknown, { routeId: number; args?: Record<string, unknown> }>({
         mutationFn: ({ routeId, args }) => apiConnectorsApi.tryRoute(routeId, args),
+    });
+}
+
+/**
+ * Workbench "Analisi" — read-only diagnostic (non-persisting dryRun on the BE),
+ * so it does NOT invalidate the connectors cache (mirrors useTryRoute).
+ */
+export function useAnalyzeRoute() {
+    return useMutation<AnalyzeResponse, unknown, { routeId: number; exampleArgs?: Record<string, unknown> }>({
+        mutationFn: ({ routeId, exampleArgs }) => apiConnectorsApi.analyzeRoute(routeId, exampleArgs),
     });
 }
 
