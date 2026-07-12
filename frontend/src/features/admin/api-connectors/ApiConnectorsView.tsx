@@ -30,6 +30,7 @@ import {
     useProbeEndpoint,
     useProjectOptions,
     useRegenerateDescription,
+    useTestRoute,
     useTryRoute,
     useUpdateAuthProfile,
     useUpdateConnector,
@@ -82,6 +83,7 @@ export function ApiConnectorsView() {
     const updateAuthProfile = useUpdateAuthProfile();
     const deleteRoute = useDeleteRoute();
     const regenerateDescription = useRegenerateDescription();
+    const testRoute = useTestRoute();
     const activateRoute = useActivateRoute();
     const disableRoute = useDisableRoute();
     const tryRoute = useTryRoute();
@@ -243,7 +245,23 @@ export function ApiConnectorsView() {
         }
     }
 
-    // --- regenerate / activate / disable / try ---
+    // --- test / regenerate / activate / disable / try ---
+
+    // The row "Test connessione": a real call that promotes draft→tested and
+    // generates the input/output schema + tool definition (unlike the config
+    // modal's dry-run "Testa"). This is the step that makes a route activatable.
+    async function handleTestRoute(routeId: number) {
+        try {
+            const res = await testRoute.mutateAsync({ routeId });
+            if (res.test.ok) {
+                toast.success('Test OK — la rotta è pronta per l\'attivazione.', 'toast-api-route-tested');
+            } else {
+                toast.error(`Test fallito: HTTP ${res.test.status ?? '—'} ${res.test.status_label ?? ''}`.trim(), 'toast-api-route-test-failed');
+            }
+        } catch (e) {
+            toast.error(toAdminError(e).message, 'toast-api-route-error');
+        }
+    }
 
     async function handleRegenerate(routeId: number) {
         try {
@@ -510,7 +528,7 @@ export function ApiConnectorsView() {
                                 }
                                 onAddRoute={() => openRouteConfig(connector, null)}
                                 onEditRoute={(routeId) => openRouteConfig(connector, routeId)}
-                                onTestRoute={(routeId) => openRouteConfig(connector, routeId)}
+                                onTestRoute={(routeId) => handleTestRoute(routeId)}
                                 onTryRoute={(routeId) => openRouteTry(routeId)}
                                 onDeleteRoute={handleDeleteRoute}
                                 onActivateRoute={handleActivate}
