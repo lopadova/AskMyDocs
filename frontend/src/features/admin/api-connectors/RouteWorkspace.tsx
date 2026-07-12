@@ -101,6 +101,10 @@ export function RouteWorkspace({ connector, route, onClose, onSaved }: RouteWork
         const u = route?.url ?? '';
         return base && u.startsWith(base) ? u.slice(base.length) : u;
     });
+    const [authProfileId, setAuthProfileId] = useState<string>(() => {
+        const id = route ? route.auth_profile_id : connector.default_auth_profile_id;
+        return id != null ? String(id) : '';
+    });
     const [endpointType, setEndpointType] = useState<EndpointTypeChoice>(initialEndpointChoice(route));
     const [itemsPath, setItemsPath] = useState(route?.items_path ?? '');
     const [pagination, setPagination] = useState<PaginationConfig | null>(route?.pagination ?? null);
@@ -212,6 +216,7 @@ export function RouteWorkspace({ connector, route, onClose, onSaved }: RouteWork
             description: description.trim() === '' ? null : description.trim(),
             http_method: method,
             url: fullUrl.trim(),
+            auth_profile_id: authProfileId === '' ? null : Number.parseInt(authProfileId, 10),
             mode: 'tool',
             endpoint_type: endpointType,
             items_path: endpointType === 'list' ? itemsPath.trim() : endpointType === 'detail' ? null : undefined,
@@ -434,6 +439,17 @@ export function RouteWorkspace({ connector, route, onClose, onSaved }: RouteWork
                                     </div>
                                 </Field>
                             </div>
+                            <Field label="Auth profile" note="— come autenticare la chiamata">
+                                <div style={{ position: 'relative' }}>
+                                    <select data-testid="api-route-form-auth_profile_id" value={authProfileId} onChange={(e) => { setAuthProfileId(e.target.value); markDirty(); }} style={selectStyleT}>
+                                        <option value="">Nessuno (chiamata anonima)</option>
+                                        {(connector.auth_profiles ?? []).map((p) => (
+                                            <option key={p.id} value={p.id}>{p.type} (#{p.id}){p.has_credentials ? '' : ' — no credenziali'}</option>
+                                        ))}
+                                    </select>
+                                    <span style={caretWrap}>{caret}</span>
+                                </div>
+                            </Field>
                         </Section>
 
                         <Section title="Mappatura risposta">
