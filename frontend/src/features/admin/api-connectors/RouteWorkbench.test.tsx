@@ -158,12 +158,16 @@ describe('RouteWorkbench', () => {
             },
             final_test: testResult().test,
             pagination_test: { pages: [], distinct: true, note: 'ok' },
+            source: 'response',
         };
         render(<RouteWorkbench route={route} onClose={vi.fn()} />);
 
         fireEvent.click(screen.getByTestId('api-route-wb-tab-analysis'));
         fireEvent.click(screen.getByTestId('api-route-wb-ai-configure-run'));
-        expect(applyAiMutate).toHaveBeenCalledWith({ routeId: 5, exampleArgs: {} }, expect.anything());
+        expect(applyAiMutate).toHaveBeenCalledWith(
+            { routeId: 5, exampleArgs: {}, openApiUrl: undefined },
+            expect.anything(),
+        );
 
         // No review/apply step — the applied config + final test show at once.
         const applied = screen.getByTestId('api-route-wb-ai-applied');
@@ -173,6 +177,34 @@ describe('RouteWorkbench', () => {
         expect(screen.getByTestId('api-route-wb-ai-pagination-verdict')).toHaveTextContent('distinte');
         // The old two-step "apply" button is gone.
         expect(screen.queryByTestId('api-route-wb-ai-configure-apply')).not.toBeInTheDocument();
+    });
+
+    it('passes the optional OpenAPI URL and shows the "da OpenAPI" source', () => {
+        applyAiState.data = {
+            applied: {
+                endpoint_type: 'list',
+                items_path: 'data',
+                pagination: null,
+                tool_name: 'list_catalog',
+                tool_description: null,
+                parameters: [],
+            },
+            final_test: testResult().test,
+            pagination_test: null,
+            source: 'openapi',
+        };
+        render(<RouteWorkbench route={route} onClose={vi.fn()} />);
+
+        fireEvent.click(screen.getByTestId('api-route-wb-tab-analysis'));
+        fireEvent.change(screen.getByTestId('api-route-wb-openapi-url'), {
+            target: { value: 'https://api.example.com/openapi.json' },
+        });
+        fireEvent.click(screen.getByTestId('api-route-wb-ai-configure-run'));
+        expect(applyAiMutate).toHaveBeenCalledWith(
+            { routeId: 5, exampleArgs: {}, openApiUrl: 'https://api.example.com/openapi.json' },
+            expect.anything(),
+        );
+        expect(screen.getByTestId('api-route-wb-ai-source')).toHaveTextContent('da OpenAPI');
     });
 
     it('explains a non-JSON call instead of blaming the AI', () => {

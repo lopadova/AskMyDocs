@@ -58,6 +58,7 @@ export function RouteWorkbench({ route, onClose }: RouteWorkbenchProps) {
     const toast = useToast();
     const [pagination, setPagination] = useState<PaginationConfig | null>(route.pagination ?? null);
     const [searchValues, setSearchValues] = useState<Record<string, string>>({});
+    const [openApiUrl, setOpenApiUrl] = useState('');
 
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
@@ -99,7 +100,7 @@ export function RouteWorkbench({ route, onClose }: RouteWorkbenchProps) {
         const args = parseArgs();
         if (!args) return;
         applyAiMutation.mutate(
-            { routeId: route.id, exampleArgs: args },
+            { routeId: route.id, exampleArgs: args, openApiUrl: openApiUrl.trim() || undefined },
             {
                 onSuccess: (res) =>
                     res.applied &&
@@ -326,6 +327,21 @@ export function RouteWorkbench({ route, onClose }: RouteWorkbenchProps) {
                             <p style={{ margin: 0, fontSize: 12.5, color: 'var(--fg-2)' }}>
                                 <strong>Configura con AI</strong> — un click: rileva tipo, items_path, paginazione, nome/descrizione e parametri, <strong>applica tutto</strong> e fa il <strong>test finale</strong>.
                             </p>
+                            <label htmlFor="api-route-wb-openapi-url" style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                                <span style={{ fontSize: 11.5, color: 'var(--fg-3)' }}>
+                                    Link OpenAPI (opzionale) — se lo dai, legge tutto dal contratto (anche se l'endpoint richiede auth)
+                                </span>
+                                <input
+                                    id="api-route-wb-openapi-url"
+                                    data-testid="api-route-wb-openapi-url"
+                                    type="url"
+                                    value={openApiUrl}
+                                    onChange={(e) => setOpenApiUrl(e.target.value)}
+                                    placeholder="https://api.example.com/openapi.json"
+                                    spellCheck={false}
+                                    style={{ fontSize: 12, padding: '6px 8px', borderRadius: 7, border: '1px solid var(--hairline)', background: 'var(--bg-1)', color: 'var(--fg-0)' }}
+                                />
+                            </label>
                             <button type="button" data-testid="api-route-wb-ai-configure-run" className="focus-ring" disabled={applyAiMutation.isPending} onClick={runAiConfigure} style={primaryBtn(applyAiMutation.isPending)}>
                                 {applyAiMutation.isPending ? 'Configuro + testo…' : 'Configura con AI'}
                             </button>
@@ -355,6 +371,9 @@ export function RouteWorkbench({ route, onClose }: RouteWorkbenchProps) {
                                             </li>
                                         </ul>
                                         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                            <span data-testid="api-route-wb-ai-source" style={pillStyle(true)}>
+                                                {applyAi.source === 'openapi' ? 'da OpenAPI' : 'da risposta'}
+                                            </span>
                                             <span data-testid="api-route-wb-ai-final-test" style={pillStyle(applyAi.final_test.ok)}>
                                                 Test finale: {applyAi.final_test.ok ? 'OK' : 'Fallito'} — HTTP {applyAi.final_test.status ?? '—'}
                                             </span>

@@ -231,6 +231,8 @@ export interface ApplyAiConfigureResponse {
     applied: AiConfigureSuggestion | null;
     final_test: TestResult;
     pagination_test: TestPaginationResponse | null;
+    /** 'openapi' when read from a spec URL, 'response' when inferred from the live call. */
+    source: 'openapi' | 'response';
 }
 
 /**
@@ -469,10 +471,15 @@ export const apiConnectorsApi = {
         return data;
     },
 
-    /** One-shot "Configura con AI": detect + apply + final test. PERSISTS the config. */
-    async applyAiConfigure(routeId: number, exampleArgs?: Record<string, unknown>): Promise<ApplyAiConfigureResponse> {
+    /** One-shot "Configura con AI": detect + apply + final test. PERSISTS. Reads from `openApiUrl` when given. */
+    async applyAiConfigure(
+        routeId: number,
+        exampleArgs?: Record<string, unknown>,
+        openApiUrl?: string,
+    ): Promise<ApplyAiConfigureResponse> {
         const { data } = await api.post<ApplyAiConfigureResponse>(`${BASE}/routes/${routeId}/ai-configure-apply`, {
             example_args: exampleArgs ?? {},
+            openapi_url: openApiUrl || undefined,
         });
         return data;
     },
