@@ -6,16 +6,19 @@ type MutationStub = { mutate: ReturnType<typeof vi.fn>; isPending: boolean; isEr
 
 const createMutate = vi.fn();
 const updateMutate = vi.fn();
+const testRouteMutate = vi.fn();
 const testMutate = vi.fn();
 const produceMutate = vi.fn();
 let createState: MutationStub;
 let updateState: MutationStub;
+let testRouteState: MutationStub;
 let testState: MutationStub;
 let produceState: MutationStub;
 
 vi.mock('./api-connectors-hooks', () => ({
     useCreateRoute: () => createState,
     useUpdateRoute: () => updateState,
+    useTestRoute: () => testRouteState,
     useTestConfig: () => testState,
     useProduceConfig: () => produceState,
 }));
@@ -45,9 +48,10 @@ function testResult(over = {}) {
 
 describe('RouteConfigModal', () => {
     beforeEach(() => {
-        [createMutate, updateMutate, testMutate, produceMutate].forEach((m) => m.mockClear());
+        [createMutate, updateMutate, testRouteMutate, testMutate, produceMutate].forEach((m) => m.mockClear());
         createState = stub(createMutate);
         updateState = stub(updateMutate);
+        testRouteState = stub(testRouteMutate);
         testState = stub(testMutate);
         produceState = stub(produceMutate);
     });
