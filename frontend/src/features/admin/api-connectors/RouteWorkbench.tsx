@@ -19,11 +19,12 @@ import { toAdminError } from '../shared/errors';
  * focusable tab buttons + Esc-to-close; R14 every failure surfaces in the DOM.
  */
 
-type Tab = 'test' | 'data';
+type Tab = 'test' | 'data' | 'analysis';
 
 const TABS: { id: Tab; label: string }[] = [
     { id: 'test', label: 'Test' },
     { id: 'data', label: 'Dati' },
+    { id: 'analysis', label: 'Analisi' },
 ];
 
 export interface RouteWorkbenchProps {
@@ -215,6 +216,43 @@ export function RouteWorkbench({ route, onClose }: RouteWorkbenchProps) {
                                 </pre>
                             </>
                         )}
+                    </div>
+                )}
+
+                {tab === 'analysis' && (
+                    <div role="tabpanel" data-testid="api-route-wb-panel-analysis" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        <p style={{ margin: 0, fontSize: 12, color: 'var(--fg-3)' }}>
+                            Analisi AI della struttura (eseguita sulla versione ridotta). Richiede un provider AI configurato.
+                        </p>
+                        <button type="button" data-testid="api-route-wb-analyze-ai-run" className="focus-ring" disabled={analyzeMutation.isPending} onClick={runAnalyze} style={primaryBtn(analyzeMutation.isPending)}>
+                            {analyzeMutation.isPending ? 'Analisi…' : 'Analizza'}
+                        </button>
+                        {analyzeError && (
+                            <div data-testid="api-route-wb-analysis-error" role="alert" style={alertStyle()}>
+                                {analyzeError}
+                            </div>
+                        )}
+                        {analyze &&
+                            (analyze.analysis ? (
+                                <div
+                                    data-testid="api-route-wb-analysis"
+                                    style={{
+                                        fontSize: 13,
+                                        lineHeight: 1.55,
+                                        color: 'var(--fg-1)',
+                                        background: 'var(--bg-2)',
+                                        borderRadius: 8,
+                                        padding: 12,
+                                        whiteSpace: 'pre-wrap',
+                                    }}
+                                >
+                                    {analyze.analysis}
+                                </div>
+                            ) : (
+                                <p data-testid="api-route-wb-analysis-empty" style={{ margin: 0, fontSize: 12.5, color: 'var(--fg-3)' }}>
+                                    Nessuna analisi AI (provider non configurato o llm_assist disattivo). La struttura ridotta è nel tab “Dati”.
+                                </p>
+                            ))}
                     </div>
                 )}
 
