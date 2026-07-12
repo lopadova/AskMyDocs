@@ -24,6 +24,7 @@ import type { Page } from '@playwright/test';
 const HEALTHZ = 'http://127.0.0.1:8000/healthz';
 const LIST_FIXTURE = 'http://127.0.0.1:8000/testing/api-fixture/users';
 const DETAIL_FIXTURE = 'http://127.0.0.1:8000/testing/api-fixture/users/{id}';
+const PAGED_FIXTURE = 'http://127.0.0.1:8000/testing/api-fixture/paged';
 
 async function createConnector(page: Page, name: string): Promise<void> {
     await page.getByTestId('api-connector-create').click();
@@ -293,5 +294,71 @@ test.describe('Admin API Connectors', () => {
         // …and the raw detail response came back.
         await expect(page.getByTestId('api-route-drill-body')).toContainText('Ada Lovelace');
         await page.getByTestId('api-route-drill-close').click();
+    });
+
+    // Route workbench (spec items 1-6): open "Test & esplora" from the editor and
+    // drive Test → Dati (reduced) → Paginazione (detect cursor → save → test) →
+    // Cerca, all against the local paged fixture (R13; SSRF relaxed).
+    test('route workbench — test, reduce, paginate and search from the editor', async ({ page }) => {
+        await createConnector(page, 'E2E Workbench API');
+        await expect(page.getByTestId('api-connectors-view')).toHaveAttribute('data-state', 'ready', { timeout: 15_000 });
+        const connectorId = await connectorIdFromCard(page);
+
+        // A route at the paged fixture with a `q` query (llm) param for the search tab.
+        await page.getByTestId(`api-connector-${connectorId}-route-add`).click();
+        await expect(page.getByTestId('api-route-form')).toBeVisible();
+        await page.getByTestId('api-route-form-name').fill('Paged catalog');
+        await page.getByTestId('api-route-form-http_method').selectOption('GET');
+        await page.getByTestId('api-route-form-url').fill(PAGED_FIXTURE);
+        await page.getByTestId('api-route-form-param-add').click();
+        await page.getByTestId('api-route-form-param-0-name').fill('q');
+        await page.getByTestId('api-route-form-param-0-location').selectOption('query');
+        await page.getByTestId('api-route-form-param-0-source').selectOption('llm');
+        await page.getByTestId('api-route-form-param-0-type').selectOption('string');
+        await page.getByTestId('api-route-form-submit').click();
+        await expect(page.getByTestId('toast-api-route-created')).toBeVisible({ timeout: 15_000 });
+
+        // Open the editor → the workbench.
+        const statusLoc = page
+            .locator(`[data-testid^="api-connector-${connectorId}-route-"][data-testid$="-status"]`)
+            .last();
+        const base = (await statusLoc.getAttribute('data-testid'))!.replace('-status', '');
+        await page.getByTestId(`${base}-edit`).click();
+        await expect(page.getByTestId('api-route-form')).toBeVisible();
+        await page.getByTestId('api-route-form-open-workbench').click();
+        await expect(page.getByTestId('api-route-wb')).toBeVisible({ timeout: 15_000 });
+
+        // Test tab.
+        await page.getByTestId('api-route-wb-test-run').click();
+        const wbTest = page.getByTestId('api-route-wb-test-result');
+        await expect(wbTest).toBeVisible({ timeout: 20_000 });
+        await expect(wbTest).toHaveAttribute('data-ok', 'true');
+
+        // Dati tab — reduced structure.
+        await page.getByTestId('api-route-wb-tab-data').click();
+        await page.getByTestId('api-route-wb-analyze-run').click();
+        await expect(page.getByTestId('api-route-wb-reduced')).toBeVisible({ timeout: 20_000 });
+
+        // Paginazione tab — the fixture's meta.next_cursor → cursor detection.
+        await page.getByTestId('api-route-wb-tab-pagination').click();
+        await page.getByTestId('api-route-wb-pagination-detect').click();
+        await expect(page.getByTestId('api-route-wb-pagination-source')).toBeVisible({ timeout: 20_000 });
+        await expect(page.getByTestId('api-route-wb-pagination-type')).toHaveValue('cursor');
+        await expect(page.getByTestId('api-route-wb-pagination-next_cursor_path')).toHaveValue('meta.next_cursor');
+        await page.getByTestId('api-route-wb-pagination-save').click();
+        await expect(page.getByTestId('toast-api-route-pagination-saved')).toBeVisible({ timeout: 15_000 });
+        await page.getByTestId('api-route-wb-pagination-test').click();
+        await expect(page.getByTestId('api-route-wb-pagination-result')).toHaveAttribute('data-distinct', 'true', {
+            timeout: 20_000,
+        });
+
+        // Cerca tab — search by the q param.
+        await page.getByTestId('api-route-wb-tab-search').click();
+        await page.getByTestId('api-route-wb-search-q').fill('boot');
+        await page.getByTestId('api-route-wb-search-run').click();
+        const wbSearch = page.getByTestId('api-route-wb-search-result');
+        await expect(wbSearch).toBeVisible({ timeout: 20_000 });
+        await expect(wbSearch).toHaveAttribute('data-ok', 'true');
+        await expect(page.getByTestId('api-route-wb-search-body')).toContainText('match boot');
     });
 });

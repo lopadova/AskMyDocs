@@ -438,6 +438,14 @@ export const apiConnectorsApi = {
         return data;
     },
 
+    /** Workbench "Cerca": fire the route with the given search parameters. Non-persisting. */
+    async testSearch(routeId: number, searchArgs: Record<string, unknown>): Promise<{ test: TestResult }> {
+        const { data } = await api.post<{ test: TestResult }>(`${BASE}/routes/${routeId}/test-search`, {
+            example_args: searchArgs,
+        });
+        return data;
+    },
+
     /** Re-derive the tool name/description from the inferred schema. */
     async regenerateDescription(routeId: number): Promise<ToolDefinition | null> {
         const { data } = await api.post<{ tool_definition: ToolDefinition | null }>(

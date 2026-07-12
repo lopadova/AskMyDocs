@@ -5,6 +5,7 @@ import {
     useDetectPagination,
     useTestPagination,
     useTestRoute,
+    useTestSearch,
     useUpdateRoute,
 } from './api-connectors-hooks';
 import { modalBackdropStyle, modalPanelStyle } from './styles';
@@ -26,13 +27,14 @@ import { useToast } from '../shared/Toast';
  * focusable tab buttons + Esc-to-close; R14 every failure surfaces in the DOM.
  */
 
-type Tab = 'test' | 'data' | 'analysis' | 'pagination';
+type Tab = 'test' | 'data' | 'analysis' | 'pagination' | 'search';
 
 const TABS: { id: Tab; label: string }[] = [
     { id: 'test', label: 'Test' },
     { id: 'data', label: 'Dati' },
     { id: 'analysis', label: 'Analisi' },
     { id: 'pagination', label: 'Paginazione' },
+    { id: 'search', label: 'Cerca' },
 ];
 
 export interface RouteWorkbenchProps {
@@ -50,8 +52,10 @@ export function RouteWorkbench({ route, onClose }: RouteWorkbenchProps) {
     const detectMutation = useDetectPagination();
     const testPaginationMutation = useTestPagination();
     const updateRoute = useUpdateRoute();
+    const searchMutation = useTestSearch();
     const toast = useToast();
     const [pagination, setPagination] = useState<PaginationConfig | null>(route.pagination ?? null);
+    const [searchValues, setSearchValues] = useState<Record<string, string>>({});
 
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
@@ -120,6 +124,11 @@ export function RouteWorkbench({ route, onClose }: RouteWorkbenchProps) {
         setPagination((p) => ({ ...(p ?? { type: 'none' }), [key]: value === '' ? undefined : value }));
     }
 
+    function runSearch() {
+        const args = Object.fromEntries(Object.entries(searchValues).filter(([, v]) => v !== ''));
+        searchMutation.mutate({ routeId: route.id, searchArgs: args });
+    }
+
     const test = testMutation.data ?? null;
     const testError = testMutation.isError ? toAdminError(testMutation.error).message : null;
     const analyze = analyzeMutation.data ?? null;
@@ -128,6 +137,9 @@ export function RouteWorkbench({ route, onClose }: RouteWorkbenchProps) {
     const detectError = detectMutation.isError ? toAdminError(detectMutation.error).message : null;
     const pageTest = testPaginationMutation.data ?? null;
     const pageTestError = testPaginationMutation.isError ? toAdminError(testPaginationMutation.error).message : null;
+    const search = searchMutation.data ?? null;
+    const searchError = searchMutation.isError ? toAdminError(searchMutation.error).message : null;
+    const llmParams = (route.parameters ?? []).filter((p) => p.source === 'llm');
 
     const state: 'idle' | 'loading' | 'ready' | 'error' = testMutation.isPending
         ? 'loading'
@@ -408,6 +420,59 @@ export function RouteWorkbench({ route, onClose }: RouteWorkbenchProps) {
                                         </li>
                                     ))}
                                 </ul>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {tab === 'search' && (
+                    <div role="tabpanel" data-testid="api-route-wb-panel-search" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        {llmParams.length === 0 ? (
+                            <p data-testid="api-route-wb-search-empty" style={{ margin: 0, fontSize: 12.5, color: 'var(--fg-3)' }}>
+                                Questa rotta non ha parametri llm da cercare. Usa gli example args nel tab “Test”.
+                            </p>
+                        ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                {llmParams.map((p) => (
+                                    <label key={p.id} htmlFor={`api-route-wb-search-${p.name}`} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                                        <span style={{ fontSize: 11.5, color: 'var(--fg-2)' }}>
+                                            {p.name}
+                                            {p.required ? ' *' : ''} <em style={{ color: 'var(--fg-3)' }}>({p.location})</em>
+                                        </span>
+                                        <input
+                                            id={`api-route-wb-search-${p.name}`}
+                                            data-testid={`api-route-wb-search-${p.name}`}
+                                            value={searchValues[p.name] ?? ''}
+                                            onChange={(e) => setSearchValues((v) => ({ ...v, [p.name]: e.target.value }))}
+                                            placeholder={p.description ?? ''}
+                                            spellCheck={false}
+                                            style={{ fontSize: 12.5, padding: '6px 8px', borderRadius: 7, border: '1px solid var(--hairline)', background: 'var(--bg-1)', color: 'var(--fg-0)' }}
+                                        />
+                                    </label>
+                                ))}
+                            </div>
+                        )}
+                        <button type="button" data-testid="api-route-wb-search-run" className="focus-ring" disabled={searchMutation.isPending} onClick={runSearch} style={primaryBtn(searchMutation.isPending)}>
+                            {searchMutation.isPending ? 'Cerca…' : 'Cerca'}
+                        </button>
+                        {searchError && (
+                            <div data-testid="api-route-wb-search-error" role="alert" style={alertStyle()}>
+                                {searchError}
+                            </div>
+                        )}
+                        {search && (
+                            <div data-testid="api-route-wb-search-result" data-ok={search.test.ok} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                <span data-testid="api-route-wb-search-status" style={pillStyle(search.test.ok)}>
+                                    {search.test.ok ? 'OK' : 'Failed'} — HTTP {search.test.status ?? '—'} {search.test.status_label}
+                                </span>
+                                {search.test.error && (
+                                    <div data-testid="api-route-wb-search-result-error" style={alertStyle()}>
+                                        {search.test.error}
+                                    </div>
+                                )}
+                                <pre data-testid="api-route-wb-search-body" style={preStyle()}>
+                                    {prettyJson(search.test.body)}
+                                </pre>
                             </div>
                         )}
                     </div>
