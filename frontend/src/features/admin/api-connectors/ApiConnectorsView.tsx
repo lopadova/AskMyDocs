@@ -45,6 +45,7 @@ import { endpointTypeBadge, routeStatusBadge } from './route-status';
 import { ConnectorForm } from './ConnectorForm';
 import { AuthProfileForm } from './AuthProfileForm';
 import { RouteForm } from './RouteForm';
+import { RouteWorkbench } from './RouteWorkbench';
 import { TestConnectionPanel } from './TestConnectionPanel';
 import { TryToolModal } from './TryToolModal';
 import { FreeEndpointModal } from './FreeEndpointModal';
@@ -72,6 +73,7 @@ type Modal =
     | { kind: 'route-create'; connector: ApiConnector }
     | { kind: 'route-edit'; connector: ApiConnector; route: ApiRoute }
     | { kind: 'route-test'; route: ApiRoute }
+    | { kind: 'route-workbench'; route: ApiRoute }
     | { kind: 'route-try'; route: ApiRoute }
     | { kind: 'relation-create'; connector: ApiConnector }
     | { kind: 'relation-edit'; connector: ApiConnector; relation: ApiRouteRelation }
@@ -618,7 +620,16 @@ export function ApiConnectorsView() {
                     submitError={modalError}
                     fieldErrors={modalFieldErrors}
                     isSubmitting={createRoute.isPending || updateRoute.isPending}
+                    onOpenWorkbench={
+                        modal.kind === 'route-edit'
+                            ? () => openModalReset({ kind: 'route-workbench', route: modal.route })
+                            : undefined
+                    }
                 />
+            )}
+
+            {modal?.kind === 'route-workbench' && (
+                <RouteWorkbench key={`route-workbench-${modal.route.id}`} route={modal.route} onClose={closeModal} />
             )}
 
             {modal?.kind === 'route-test' && (
