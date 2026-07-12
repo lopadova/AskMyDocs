@@ -1,9 +1,16 @@
 import { useEffect, useState, type CSSProperties } from 'react';
-import type { ApiRoute } from './api-connectors.api';
-import { useAnalyzeRoute, useTestRoute } from './api-connectors-hooks';
+import type { ApiRoute, PaginationConfig } from './api-connectors.api';
+import {
+    useAnalyzeRoute,
+    useDetectPagination,
+    useTestPagination,
+    useTestRoute,
+    useUpdateRoute,
+} from './api-connectors-hooks';
 import { modalBackdropStyle, modalPanelStyle } from './styles';
 import { prettyJson } from './pretty-json';
 import { toAdminError } from '../shared/errors';
+import { useToast } from '../shared/Toast';
 
 /**
  * "Test & esplora" — the route workbench (spec items 1-6). A tabbed modal opened
@@ -19,12 +26,13 @@ import { toAdminError } from '../shared/errors';
  * focusable tab buttons + Esc-to-close; R14 every failure surfaces in the DOM.
  */
 
-type Tab = 'test' | 'data' | 'analysis';
+type Tab = 'test' | 'data' | 'analysis' | 'pagination';
 
 const TABS: { id: Tab; label: string }[] = [
     { id: 'test', label: 'Test' },
     { id: 'data', label: 'Dati' },
     { id: 'analysis', label: 'Analisi' },
+    { id: 'pagination', label: 'Paginazione' },
 ];
 
 export interface RouteWorkbenchProps {
@@ -39,6 +47,11 @@ export function RouteWorkbench({ route, onClose }: RouteWorkbenchProps) {
 
     const testMutation = useTestRoute();
     const analyzeMutation = useAnalyzeRoute();
+    const detectMutation = useDetectPagination();
+    const testPaginationMutation = useTestPagination();
+    const updateRoute = useUpdateRoute();
+    const toast = useToast();
+    const [pagination, setPagination] = useState<PaginationConfig | null>(route.pagination ?? null);
 
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
@@ -76,10 +89,45 @@ export function RouteWorkbench({ route, onClose }: RouteWorkbenchProps) {
         analyzeMutation.mutate({ routeId: route.id, exampleArgs: args });
     }
 
+    function runDetect() {
+        const args = parseArgs();
+        if (!args) return;
+        detectMutation.mutate(
+            { routeId: route.id, exampleArgs: args },
+            { onSuccess: (res) => res.config && setPagination(res.config) },
+        );
+    }
+
+    function savePagination() {
+        updateRoute.mutate(
+            { routeId: route.id, payload: { pagination: pagination ?? null } },
+            { onSuccess: () => toast.success('Paginazione salvata.', 'toast-api-route-pagination-saved') },
+        );
+    }
+
+    function runTestPagination() {
+        if (!pagination) return;
+        const args = parseArgs();
+        if (!args) return;
+        testPaginationMutation.mutate({ routeId: route.id, pagination, exampleArgs: args });
+    }
+
+    function setPaginationType(type: PaginationConfig['type']) {
+        setPagination((p) => ({ ...(p ?? {}), type }));
+    }
+
+    function setPaginationField(key: keyof PaginationConfig, value: string) {
+        setPagination((p) => ({ ...(p ?? { type: 'none' }), [key]: value === '' ? undefined : value }));
+    }
+
     const test = testMutation.data ?? null;
     const testError = testMutation.isError ? toAdminError(testMutation.error).message : null;
     const analyze = analyzeMutation.data ?? null;
     const analyzeError = analyzeMutation.isError ? toAdminError(analyzeMutation.error).message : null;
+    const detect = detectMutation.data ?? null;
+    const detectError = detectMutation.isError ? toAdminError(detectMutation.error).message : null;
+    const pageTest = testPaginationMutation.data ?? null;
+    const pageTestError = testPaginationMutation.isError ? toAdminError(testPaginationMutation.error).message : null;
 
     const state: 'idle' | 'loading' | 'ready' | 'error' = testMutation.isPending
         ? 'loading'
@@ -88,6 +136,29 @@ export function RouteWorkbench({ route, onClose }: RouteWorkbenchProps) {
           : test.test.ok
             ? 'ready'
             : 'error';
+
+    const paginationField = (key: keyof PaginationConfig, label: string, placeholder: string) => (
+        <label htmlFor={`api-route-wb-pagination-${key}`} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <span style={{ fontSize: 11.5, color: 'var(--fg-2)' }}>{label}</span>
+            <input
+                id={`api-route-wb-pagination-${key}`}
+                data-testid={`api-route-wb-pagination-${key}`}
+                value={(pagination?.[key] as string | undefined) ?? ''}
+                onChange={(e) => setPaginationField(key, e.target.value)}
+                placeholder={placeholder}
+                spellCheck={false}
+                style={{
+                    fontFamily: 'var(--mono, monospace)',
+                    fontSize: 12,
+                    padding: '5px 8px',
+                    borderRadius: 7,
+                    border: '1px solid var(--hairline)',
+                    background: 'var(--bg-1)',
+                    color: 'var(--fg-0)',
+                }}
+            />
+        </label>
+    );
 
     return (
         <div
@@ -253,6 +324,92 @@ export function RouteWorkbench({ route, onClose }: RouteWorkbenchProps) {
                                     Nessuna analisi AI (provider non configurato o llm_assist disattivo). La struttura ridotta è nel tab “Dati”.
                                 </p>
                             ))}
+                    </div>
+                )}
+
+                {tab === 'pagination' && (
+                    <div role="tabpanel" data-testid="api-route-wb-panel-pagination" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                            <button type="button" data-testid="api-route-wb-pagination-detect" className="focus-ring" disabled={detectMutation.isPending} onClick={runDetect} style={primaryBtn(detectMutation.isPending)}>
+                                {detectMutation.isPending ? 'Rilevo…' : 'Rileva paginazione'}
+                            </button>
+                            {detect && (
+                                <span data-testid="api-route-wb-pagination-source" data-source={detect.source} style={pillStyle(detect.source !== 'none')}>
+                                    {detect.source === 'none' ? 'non rilevata' : detect.source === 'ai' ? 'rilevata (AI)' : 'rilevata (euristica)'}
+                                </span>
+                            )}
+                        </div>
+                        {detectError && (
+                            <div data-testid="api-route-wb-pagination-detect-error" role="alert" style={alertStyle()}>
+                                {detectError}
+                            </div>
+                        )}
+
+                        <label htmlFor="api-route-wb-pagination-type" style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                            <span style={{ fontSize: 11.5, color: 'var(--fg-2)' }}>Tipo</span>
+                            <select
+                                id="api-route-wb-pagination-type"
+                                data-testid="api-route-wb-pagination-type"
+                                value={pagination?.type ?? 'none'}
+                                onChange={(e) => setPaginationType(e.target.value as PaginationConfig['type'])}
+                                style={{ fontSize: 12.5, padding: '6px 8px', borderRadius: 7, border: '1px solid var(--hairline)', background: 'var(--bg-1)', color: 'var(--fg-0)' }}
+                            >
+                                <option value="none">Nessuna</option>
+                                <option value="page">Pagina (page number)</option>
+                                <option value="cursor">Cursore / token</option>
+                            </select>
+                        </label>
+
+                        {pagination?.type === 'page' && (
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                                {paginationField('page_param', 'Param pagina', 'page')}
+                                {paginationField('size_param', 'Param dimensione (opz.)', 'per_page')}
+                            </div>
+                        )}
+                        {pagination?.type === 'cursor' && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                {paginationField('cursor_param', 'Param cursore', 'cursor')}
+                                {paginationField('next_cursor_path', 'Path del next-cursor nel body', 'meta.next_cursor')}
+                                {paginationField('next_url_path', 'Path del next-URL (opz.)', 'links.next')}
+                            </div>
+                        )}
+                        {(pagination?.type === 'page' || pagination?.type === 'cursor') && paginationField('items_path', 'Items path', 'data')}
+
+                        <div style={{ display: 'flex', gap: 8 }}>
+                            <button type="button" data-testid="api-route-wb-pagination-save" className="focus-ring" disabled={updateRoute.isPending} onClick={savePagination} style={primaryBtn(updateRoute.isPending)}>
+                                {updateRoute.isPending ? 'Salvo…' : 'Salva'}
+                            </button>
+                            <button
+                                type="button"
+                                data-testid="api-route-wb-pagination-test"
+                                className="focus-ring"
+                                disabled={testPaginationMutation.isPending || !pagination || pagination.type === 'none'}
+                                onClick={runTestPagination}
+                                style={secondaryBtn()}
+                            >
+                                {testPaginationMutation.isPending ? 'Test…' : 'Testa paginazione'}
+                            </button>
+                        </div>
+                        {pageTestError && (
+                            <div data-testid="api-route-wb-pagination-test-error" role="alert" style={alertStyle()}>
+                                {pageTestError}
+                            </div>
+                        )}
+                        {pageTest && (
+                            <div data-testid="api-route-wb-pagination-result" data-distinct={pageTest.distinct} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                <span data-testid="api-route-wb-pagination-verdict" style={pillStyle(pageTest.distinct)}>
+                                    {pageTest.distinct ? 'Pagine distinte ✓' : 'Pagina 2 non avanza'}
+                                </span>
+                                <p style={{ margin: 0, fontSize: 12.5, color: 'var(--fg-2)' }}>{pageTest.note}</p>
+                                <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12.5, color: 'var(--fg-3)' }}>
+                                    {pageTest.pages.map((pg, i) => (
+                                        <li key={i}>
+                                            Pagina {i + 1}: HTTP {pg.status ?? '—'} — {pg.item_count} item
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
                     </div>
                 )}
 
