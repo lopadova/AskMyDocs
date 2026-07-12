@@ -12,8 +12,8 @@ type MutationStub = {
 
 const testMutate = vi.fn();
 const analyzeMutate = vi.fn();
-const aiConfigMutate = vi.fn();
-let aiConfigState: MutationStub;
+const applyAiMutate = vi.fn();
+let applyAiState: MutationStub;
 const detectMutate = vi.fn();
 const testPaginationMutate = vi.fn();
 const updateMutate = vi.fn();
@@ -28,7 +28,7 @@ let searchState: MutationStub;
 vi.mock('./api-connectors-hooks', () => ({
     useTestRoute: () => testState,
     useAnalyzeRoute: () => analyzeState,
-    useAiConfigure: () => aiConfigState,
+    useApplyAiConfigure: () => applyAiState,
     useDetectPagination: () => detectState,
     useTestPagination: () => pageTestState,
     useUpdateRoute: () => updateState,
@@ -66,9 +66,9 @@ describe('RouteWorkbench', () => {
         pageTestState = { mutate: testPaginationMutate, isPending: false, isError: false, error: null, data: null };
         updateState = { mutate: updateMutate, isPending: false, isError: false, error: null, data: null };
         searchState = { mutate: searchMutate, isPending: false, isError: false, error: null, data: null };
-        aiConfigState = { mutate: aiConfigMutate, isPending: false, isError: false, error: null, data: null };
+        applyAiState = { mutate: applyAiMutate, isPending: false, isError: false, error: null, data: null };
         searchMutate.mockClear();
-        aiConfigMutate.mockClear();
+        applyAiMutate.mockClear();
     });
 
     it('shows the Test tab by default and switches to Dati', () => {
@@ -146,10 +146,9 @@ describe('RouteWorkbench', () => {
         expect(screen.getByTestId('api-route-wb-analysis-empty')).toBeInTheDocument();
     });
 
-    it('proposes a full config with "Configura con AI" and applies it', () => {
-        aiConfigState.data = {
-            test: testResult().test,
-            suggestion: {
+    it('configures everything and shows the final test in one "Configura con AI" click', () => {
+        applyAiState.data = {
+            applied: {
                 endpoint_type: 'list',
                 items_path: 'data',
                 pagination: { type: 'cursor', next_cursor_path: 'meta.next' },
@@ -157,32 +156,23 @@ describe('RouteWorkbench', () => {
                 tool_description: 'List the catalog.',
                 parameters: [{ name: 'q', location: 'query', source: 'llm', type: 'string', required: false }],
             },
+            final_test: testResult().test,
+            pagination_test: { pages: [], distinct: true, note: 'ok' },
         };
         render(<RouteWorkbench route={route} onClose={vi.fn()} />);
 
         fireEvent.click(screen.getByTestId('api-route-wb-tab-analysis'));
         fireEvent.click(screen.getByTestId('api-route-wb-ai-configure-run'));
-        expect(aiConfigMutate).toHaveBeenCalledWith({ routeId: 5, exampleArgs: {} });
+        expect(applyAiMutate).toHaveBeenCalledWith({ routeId: 5, exampleArgs: {} }, expect.anything());
 
-        const suggestion = screen.getByTestId('api-route-wb-ai-suggestion');
-        expect(suggestion).toHaveTextContent('list_catalog');
-        expect(suggestion).toHaveTextContent('q');
-
-        fireEvent.click(screen.getByTestId('api-route-wb-ai-configure-apply'));
-        expect(updateMutate).toHaveBeenCalledWith(
-            {
-                routeId: 5,
-                payload: {
-                    endpoint_type: 'list',
-                    items_path: 'data',
-                    pagination: { type: 'cursor', next_cursor_path: 'meta.next' },
-                    slug: 'list_catalog',
-                    description: 'List the catalog.',
-                    parameters: [{ name: 'q', location: 'query', source: 'llm', type: 'string', required: false }],
-                },
-            },
-            expect.anything(),
-        );
+        // No review/apply step — the applied config + final test show at once.
+        const applied = screen.getByTestId('api-route-wb-ai-applied');
+        expect(applied).toHaveTextContent('list_catalog');
+        expect(applied).toHaveTextContent('q');
+        expect(screen.getByTestId('api-route-wb-ai-final-test')).toHaveTextContent('OK');
+        expect(screen.getByTestId('api-route-wb-ai-pagination-verdict')).toHaveTextContent('distinte');
+        // The old two-step "apply" button is gone.
+        expect(screen.queryByTestId('api-route-wb-ai-configure-apply')).not.toBeInTheDocument();
     });
 
     it('explains a non-JSON call instead of blaming the AI', () => {
