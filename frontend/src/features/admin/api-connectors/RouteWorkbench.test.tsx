@@ -12,13 +12,23 @@ type MutationStub = {
 
 const testMutate = vi.fn();
 const analyzeMutate = vi.fn();
+const detectMutate = vi.fn();
+const testPaginationMutate = vi.fn();
+const updateMutate = vi.fn();
 let testState: MutationStub;
 let analyzeState: MutationStub;
+let detectState: MutationStub;
+let pageTestState: MutationStub;
+let updateState: MutationStub;
 
 vi.mock('./api-connectors-hooks', () => ({
     useTestRoute: () => testState,
     useAnalyzeRoute: () => analyzeState,
+    useDetectPagination: () => detectState,
+    useTestPagination: () => pageTestState,
+    useUpdateRoute: () => updateState,
 }));
+vi.mock('../shared/Toast', () => ({ useToast: () => ({ success: vi.fn(), error: vi.fn() }) }));
 
 // Imported AFTER the mock is declared.
 const { RouteWorkbench } = await import('./RouteWorkbench');
@@ -41,8 +51,14 @@ describe('RouteWorkbench', () => {
     beforeEach(() => {
         testMutate.mockClear();
         analyzeMutate.mockClear();
+        detectMutate.mockClear();
+        testPaginationMutate.mockClear();
+        updateMutate.mockClear();
         testState = { mutate: testMutate, isPending: false, isError: false, error: null, data: null };
         analyzeState = { mutate: analyzeMutate, isPending: false, isError: false, error: null, data: null };
+        detectState = { mutate: detectMutate, isPending: false, isError: false, error: null, data: null };
+        pageTestState = { mutate: testPaginationMutate, isPending: false, isError: false, error: null, data: null };
+        updateState = { mutate: updateMutate, isPending: false, isError: false, error: null, data: null };
     });
 
     it('shows the Test tab by default and switches to Dati', () => {
@@ -118,5 +134,36 @@ describe('RouteWorkbench', () => {
         fireEvent.click(screen.getByTestId('api-route-wb-tab-analysis'));
         expect(screen.queryByTestId('api-route-wb-analysis')).not.toBeInTheDocument();
         expect(screen.getByTestId('api-route-wb-analysis-empty')).toBeInTheDocument();
+    });
+
+    it('prefills, saves and tests the pagination config', () => {
+        const pagedRoute = { ...route, pagination: { type: 'page', page_param: 'page' } } as ApiRoute;
+        pageTestState.data = {
+            pages: [
+                { ok: true, status: 200, item_count: 2 },
+                { ok: true, status: 200, item_count: 2 },
+            ],
+            distinct: true,
+            note: 'Le due pagine restituiscono item diversi.',
+        };
+        render(<RouteWorkbench route={pagedRoute} onClose={vi.fn()} />);
+
+        fireEvent.click(screen.getByTestId('api-route-wb-tab-pagination'));
+        // Prefilled from route.pagination.
+        expect(screen.getByTestId('api-route-wb-pagination-type')).toHaveValue('page');
+        expect(screen.getByTestId('api-route-wb-pagination-page_param')).toHaveValue('page');
+
+        fireEvent.click(screen.getByTestId('api-route-wb-pagination-detect'));
+        expect(detectMutate).toHaveBeenCalled();
+
+        fireEvent.click(screen.getByTestId('api-route-wb-pagination-save'));
+        expect(updateMutate).toHaveBeenCalledWith(
+            { routeId: 5, payload: { pagination: { type: 'page', page_param: 'page' } } },
+            expect.anything(),
+        );
+
+        fireEvent.click(screen.getByTestId('api-route-wb-pagination-test'));
+        expect(testPaginationMutate).toHaveBeenCalled();
+        expect(screen.getByTestId('api-route-wb-pagination-verdict')).toHaveTextContent('distinte');
     });
 });
