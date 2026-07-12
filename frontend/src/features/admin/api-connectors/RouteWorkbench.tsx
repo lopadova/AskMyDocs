@@ -1,6 +1,7 @@
 import { useEffect, useState, type CSSProperties } from 'react';
 import type { ApiRoute, PaginationConfig } from './api-connectors.api';
 import {
+    useAiConfigure,
     useAnalyzeRoute,
     useDetectPagination,
     useTestPagination,
@@ -49,6 +50,7 @@ export function RouteWorkbench({ route, onClose }: RouteWorkbenchProps) {
 
     const testMutation = useTestRoute();
     const analyzeMutation = useAnalyzeRoute();
+    const aiConfigMutation = useAiConfigure();
     const detectMutation = useDetectPagination();
     const testPaginationMutation = useTestPagination();
     const updateRoute = useUpdateRoute();
@@ -93,6 +95,31 @@ export function RouteWorkbench({ route, onClose }: RouteWorkbenchProps) {
         analyzeMutation.mutate({ routeId: route.id, exampleArgs: args });
     }
 
+    function runAiConfigure() {
+        const args = parseArgs();
+        if (!args) return;
+        aiConfigMutation.mutate({ routeId: route.id, exampleArgs: args });
+    }
+
+    function applyConfiguration() {
+        const s = aiConfigMutation.data?.suggestion;
+        if (!s) return;
+        updateRoute.mutate(
+            {
+                routeId: route.id,
+                payload: {
+                    endpoint_type: s.endpoint_type === 'unknown' ? undefined : s.endpoint_type,
+                    items_path: s.items_path,
+                    pagination: s.pagination,
+                    slug: s.tool_name ?? undefined,
+                    description: s.tool_description ?? undefined,
+                    parameters: s.parameters,
+                },
+            },
+            { onSuccess: () => toast.success('Configurazione applicata alla rotta.', 'toast-api-route-ai-configured') },
+        );
+    }
+
     function runDetect() {
         const args = parseArgs();
         if (!args) return;
@@ -133,6 +160,8 @@ export function RouteWorkbench({ route, onClose }: RouteWorkbenchProps) {
     const testError = testMutation.isError ? toAdminError(testMutation.error).message : null;
     const analyze = analyzeMutation.data ?? null;
     const analyzeError = analyzeMutation.isError ? toAdminError(analyzeMutation.error).message : null;
+    const aiConfig = aiConfigMutation.data ?? null;
+    const aiConfigError = aiConfigMutation.isError ? toAdminError(aiConfigMutation.error).message : null;
     const detect = detectMutation.data ?? null;
     const detectError = detectMutation.isError ? toAdminError(detectMutation.error).message : null;
     const pageTest = testPaginationMutation.data ?? null;
@@ -303,39 +332,77 @@ export function RouteWorkbench({ route, onClose }: RouteWorkbenchProps) {
                 )}
 
                 {tab === 'analysis' && (
-                    <div role="tabpanel" data-testid="api-route-wb-panel-analysis" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                        <p style={{ margin: 0, fontSize: 12, color: 'var(--fg-3)' }}>
-                            Analisi AI della struttura (eseguita sulla versione ridotta). Richiede un provider AI configurato.
-                        </p>
-                        <button type="button" data-testid="api-route-wb-analyze-ai-run" className="focus-ring" disabled={analyzeMutation.isPending} onClick={runAnalyze} style={primaryBtn(analyzeMutation.isPending)}>
-                            {analyzeMutation.isPending ? 'Analisi…' : 'Analizza'}
-                        </button>
-                        {analyzeError && (
-                            <div data-testid="api-route-wb-analysis-error" role="alert" style={alertStyle()}>
-                                {analyzeError}
-                            </div>
-                        )}
-                        {analyze &&
-                            (analyze.analysis ? (
-                                <div
-                                    data-testid="api-route-wb-analysis"
-                                    style={{
-                                        fontSize: 13,
-                                        lineHeight: 1.55,
-                                        color: 'var(--fg-1)',
-                                        background: 'var(--bg-2)',
-                                        borderRadius: 8,
-                                        padding: 12,
-                                        whiteSpace: 'pre-wrap',
-                                    }}
-                                >
-                                    {analyze.analysis}
+                    <div role="tabpanel" data-testid="api-route-wb-panel-analysis" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                        {/* Configura con AI — the agent proposes the whole config, apply in one click. */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, border: '1px solid var(--hairline)', borderRadius: 10, padding: 12 }}>
+                            <p style={{ margin: 0, fontSize: 12.5, color: 'var(--fg-2)' }}>
+                                <strong>Configura con AI</strong> — analizza la risposta e propone tipo, items_path, paginazione, nome/descrizione del tool e i parametri. Poi applichi in un click.
+                            </p>
+                            <button type="button" data-testid="api-route-wb-ai-configure-run" className="focus-ring" disabled={aiConfigMutation.isPending} onClick={runAiConfigure} style={primaryBtn(aiConfigMutation.isPending)}>
+                                {aiConfigMutation.isPending ? 'Configuro…' : 'Configura con AI'}
+                            </button>
+                            {aiConfigError && (
+                                <div data-testid="api-route-wb-ai-configure-error" role="alert" style={alertStyle()}>
+                                    {aiConfigError}
                                 </div>
-                            ) : (
-                                <p data-testid="api-route-wb-analysis-empty" style={{ margin: 0, fontSize: 12.5, color: 'var(--fg-3)' }}>
-                                    Nessuna analisi AI (provider non configurato o llm_assist disattivo). La struttura ridotta è nel tab “Dati”.
-                                </p>
-                            ))}
+                            )}
+                            {aiConfig &&
+                                (aiConfig.suggestion ? (
+                                    <div data-testid="api-route-wb-ai-suggestion" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                        <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12.5, color: 'var(--fg-1)', lineHeight: 1.6 }}>
+                                            <li>
+                                                Tipo: <strong>{aiConfig.suggestion.endpoint_type}</strong>
+                                                {aiConfig.suggestion.items_path != null &&
+                                                    ` · items: ${aiConfig.suggestion.items_path === '' ? '(root)' : aiConfig.suggestion.items_path}`}
+                                            </li>
+                                            <li>Paginazione: {aiConfig.suggestion.pagination ? aiConfig.suggestion.pagination.type : '—'}</li>
+                                            <li>
+                                                Tool: <code>{aiConfig.suggestion.tool_name ?? '—'}</code>
+                                                {aiConfig.suggestion.tool_description ? ` — ${aiConfig.suggestion.tool_description}` : ''}
+                                            </li>
+                                            <li>
+                                                Parametri: {aiConfig.suggestion.parameters.length}
+                                                {aiConfig.suggestion.parameters.length > 0 &&
+                                                    ` (${aiConfig.suggestion.parameters.map((p) => p.name).join(', ')})`}
+                                            </li>
+                                        </ul>
+                                        <button type="button" data-testid="api-route-wb-ai-configure-apply" className="focus-ring" disabled={updateRoute.isPending} onClick={applyConfiguration} style={primaryBtn(updateRoute.isPending)}>
+                                            {updateRoute.isPending ? 'Applico…' : 'Applica configurazione'}
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <p data-testid="api-route-wb-ai-suggestion-empty" style={{ margin: 0, fontSize: 12.5, color: 'var(--fg-3)' }}>
+                                        La chiamata non ha restituito JSON — configura metodo/auth/parametri nel tab “Test”, poi riprova.
+                                    </p>
+                                ))}
+                        </div>
+
+                        {/* Just narrate the structure (no apply). */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            <button type="button" data-testid="api-route-wb-analyze-ai-run" className="focus-ring" disabled={analyzeMutation.isPending} onClick={runAnalyze} style={secondaryBtn()}>
+                                {analyzeMutation.isPending ? 'Analisi…' : 'Solo descrivi la struttura'}
+                            </button>
+                            {analyzeError && (
+                                <div data-testid="api-route-wb-analysis-error" role="alert" style={alertStyle()}>
+                                    {analyzeError}
+                                </div>
+                            )}
+                            {analyze &&
+                                (analyze.analysis ? (
+                                    <div
+                                        data-testid="api-route-wb-analysis"
+                                        style={{ fontSize: 13, lineHeight: 1.55, color: 'var(--fg-1)', background: 'var(--bg-2)', borderRadius: 8, padding: 12, whiteSpace: 'pre-wrap' }}
+                                    >
+                                        {analyze.analysis}
+                                    </div>
+                                ) : (
+                                    <p data-testid="api-route-wb-analysis-empty" style={{ margin: 0, fontSize: 12.5, color: 'var(--fg-3)' }}>
+                                        {analyze.reduced == null
+                                            ? 'La chiamata non ha restituito JSON da analizzare — configura la chiamata nel tab “Test”.'
+                                            : 'AI non disponibile (provider non configurato o llm_assist disattivo).'}
+                                    </p>
+                                ))}
+                        </div>
                     </div>
                 )}
 
