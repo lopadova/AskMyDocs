@@ -33,9 +33,13 @@ use Padosoft\AskMyDocsMcpPack\Contracts\McpHostBridgeContract;
 use Padosoft\AskMyDocsMcpPack\Contracts\McpServerRegistryContract;
 use Padosoft\AskMyDocsMcpPack\Contracts\McpToolAuthorizerContract;
 use App\Support\TenantContext;
+use App\ApiConnectors\AiResponseAnalyst;
+use App\ApiConnectors\AiToolDescriptionAssistant;
 use App\Evidence\AiManagerEvidenceReviewer;
 use Padosoft\AskMyDocsConnectorBase\Contracts\ConnectorIngestionContract;
 use Padosoft\AskMyDocsConnectorBase\Support\TenantContext as PackageTenantContext;
+use Padosoft\AskMyDocsConnectorApi\Contracts\ResponseAnalyst;
+use Padosoft\AskMyDocsConnectorApi\Contracts\ToolDescriptionAssistant;
 use Padosoft\EvidenceRiskReview\Contracts\EvidenceReviewerLlmContract;
 use Padosoft\EvidenceRiskReview\Contracts\TenantResolver as EvidenceTenantResolver;
 use App\Invitations\ProjectMembershipProvisioner;
@@ -549,6 +553,12 @@ class AppServiceProvider extends ServiceProvider
         // Optional LLM semantic-review pass over AiManager — only invoked when
         // evidence-risk-review.llm.enabled is true (default-OFF, R43).
         $this->app->singleton(EvidenceReviewerLlmContract::class, AiManagerEvidenceReviewer::class);
+
+        // API-connector workbench + tool descriptions over AiManager. Both are
+        // gated by connector-api.llm_assist.enabled and best-effort (a provider
+        // error degrades to the deterministic reduced view / field-derived draft).
+        $this->app->singleton(ResponseAnalyst::class, AiResponseAnalyst::class);
+        $this->app->singleton(ToolDescriptionAssistant::class, AiToolDescriptionAssistant::class);
     }
 
     /**
