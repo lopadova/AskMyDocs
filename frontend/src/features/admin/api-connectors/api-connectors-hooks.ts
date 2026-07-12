@@ -13,6 +13,7 @@ import {
     type ProbeResult,
     type RelationPayload,
     type RoutePayload,
+    type AiConfigureResponse,
     type AnalyzeResponse,
     type DetectPaginationResponse,
     type PaginationConfig,
@@ -247,6 +248,13 @@ export function useTestPagination() {
     >({
         mutationFn: ({ routeId, pagination, exampleArgs }) =>
             apiConnectorsApi.testPagination(routeId, pagination, exampleArgs),
+    });
+}
+
+/** Workbench "Configura con AI" — read-only diagnostic (suggests, doesn't persist). */
+export function useAiConfigure() {
+    return useMutation<AiConfigureResponse, unknown, { routeId: number; exampleArgs?: Record<string, unknown> }>({
+        mutationFn: ({ routeId, exampleArgs }) => apiConnectorsApi.aiConfigure(routeId, exampleArgs),
     });
 }
 

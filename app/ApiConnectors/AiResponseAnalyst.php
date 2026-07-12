@@ -54,4 +54,123 @@ final readonly class AiResponseAnalyst implements ResponseAnalyst
 
         return $text === '' ? null : $text;
     }
+
+    public function detectPagination(array $context): ?array
+    {
+        $reduced = json_encode(
+            $context['reduced'] ?? null,
+            JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE,
+        );
+        if (! is_string($reduced) || $reduced === '' || $reduced === 'null') {
+            return null;
+        }
+
+        $method = is_string($context['method'] ?? null) ? $context['method'] : '';
+        $url = is_string($context['url'] ?? null) ? $context['url'] : '';
+
+        try {
+            $response = $this->ai->chat(
+                'You identify how an HTTP endpoint paginates from its response + URL. Respond ONLY with a JSON '
+                    .'object. For page-number: {"type":"page","page_param":"page","size_param":"per_page"}. For '
+                    .'cursor/token: {"type":"cursor","cursor_param":"cursor","next_cursor_path":"meta.next_cursor"} or '
+                    .'{"type":"cursor","next_url_path":"links.next"}. If it is NOT paginated, respond {"type":"none"}. '
+                    .'Use dot-paths for body locations. Do NOT invent params/paths that are not implied by the data.',
+                "Endpoint: {$method} {$url}\n\nReduced response:\n{$reduced}",
+                ['max_tokens' => 200],
+            );
+        } catch (Throwable) {
+            return null;
+        }
+
+        $decoded = json_decode(trim($response->content), true);
+        if (! is_array($decoded)) {
+            return null;
+        }
+
+        $type = is_string($decoded['type'] ?? null) ? $decoded['type'] : null;
+        if ($type !== 'page' && $type !== 'cursor') {
+            return null; // 'none' / unclear → let the operator configure manually
+        }
+
+        return $decoded;
+    }
+
+    public function suggestConfiguration(array $context): ?array
+    {
+        $reduced = json_encode(
+            $context['reduced'] ?? null,
+            JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE,
+        );
+        if (! is_string($reduced) || $reduced === '' || $reduced === 'null') {
+            return null;
+        }
+
+        $method = is_string($context['method'] ?? null) ? $context['method'] : '';
+        $url = is_string($context['url'] ?? null) ? $context['url'] : '';
+
+        try {
+            $response = $this->ai->chat(
+                'You configure an HTTP endpoint as an LLM tool. Respond ONLY with a JSON object: '
+                    .'{"tool_name":"snake_case","tool_description":"one sentence","parameters":[{"name":"q",'
+                    .'"location":"query|path|header|body","source":"llm|fixed|secret","type":"string|integer|number|boolean|array|object",'
+                    .'"required":true,"description":"…"}],"pagination":{"type":"page|cursor","page_param":"page"}}. '
+                    .'Infer parameters ONLY from the URL query string / path template and the response — do NOT invent '
+                    .'unsupported params. `source` is llm for anything the caller supplies, secret for API keys/tokens. '
+                    .'Omit `pagination` if not evident.',
+                "Endpoint: {$method} {$url}\n\nReduced response:\n{$reduced}",
+                ['max_tokens' => 600],
+            );
+        } catch (Throwable) {
+            return null;
+        }
+
+        $decoded = json_decode(trim($response->content), true);
+        if (! is_array($decoded)) {
+            return null;
+        }
+
+        return $this->sanitizeSuggestion($decoded);
+    }
+
+    /**
+     * @param  array<string,mixed>  $decoded
+     * @return array{tool_name?: string, tool_description?: string, parameters?: list<array<string,mixed>>, pagination?: array<string,mixed>}
+     */
+    private function sanitizeSuggestion(array $decoded): array
+    {
+        $out = [];
+        if (is_string($decoded['tool_name'] ?? null) && $decoded['tool_name'] !== '') {
+            $out['tool_name'] = $decoded['tool_name'];
+        }
+        if (is_string($decoded['tool_description'] ?? null) && $decoded['tool_description'] !== '') {
+            $out['tool_description'] = $decoded['tool_description'];
+        }
+
+        $locations = ['path', 'query', 'header', 'body'];
+        $sources = ['llm', 'fixed', 'secret'];
+        $types = ['string', 'integer', 'number', 'boolean', 'array', 'object'];
+        $params = [];
+        foreach (is_array($decoded['parameters'] ?? null) ? $decoded['parameters'] : [] as $param) {
+            if (! is_array($param) || ! is_string($param['name'] ?? null) || $param['name'] === '') {
+                continue;
+            }
+            $params[] = [
+                'name' => $param['name'],
+                'location' => in_array($param['location'] ?? null, $locations, true) ? $param['location'] : 'query',
+                'source' => in_array($param['source'] ?? null, $sources, true) ? $param['source'] : 'llm',
+                'type' => in_array($param['type'] ?? null, $types, true) ? $param['type'] : 'string',
+                'required' => (bool) ($param['required'] ?? false),
+                'description' => is_string($param['description'] ?? null) ? $param['description'] : null,
+            ];
+        }
+        if ($params !== []) {
+            $out['parameters'] = $params;
+        }
+
+        if (is_array($decoded['pagination'] ?? null) && in_array($decoded['pagination']['type'] ?? null, ['page', 'cursor'], true)) {
+            $out['pagination'] = $decoded['pagination'];
+        }
+
+        return $out;
+    }
 }

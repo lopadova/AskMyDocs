@@ -210,6 +210,22 @@ export interface TestPaginationResponse {
     note: string;
 }
 
+/** A full route-configuration suggestion (workbench "Configura con AI"). */
+export interface AiConfigureSuggestion {
+    endpoint_type: EndpointType;
+    items_path: string | null;
+    pagination: PaginationConfig | null;
+    tool_name: string | null;
+    tool_description: string | null;
+    parameters: RouteParameterInput[];
+}
+
+export interface AiConfigureResponse {
+    test: TestResult;
+    /** Null when the call returned no JSON to analyze. */
+    suggestion: AiConfigureSuggestion | null;
+}
+
 /**
  * Ad-hoc probe outcome (ApiRouteController::probePayload) — the same classified
  * TestResult shape + wall-clock timing. Returned RAW (no `{data}` wrapper); a
@@ -433,6 +449,14 @@ export const apiConnectorsApi = {
     ): Promise<TestPaginationResponse> {
         const { data } = await api.post<TestPaginationResponse>(`${BASE}/routes/${routeId}/test-pagination`, {
             pagination,
+            example_args: exampleArgs ?? {},
+        });
+        return data;
+    },
+
+    /** Workbench "Configura con AI": propose the full route config from a test call. Non-persisting. */
+    async aiConfigure(routeId: number, exampleArgs?: Record<string, unknown>): Promise<AiConfigureResponse> {
+        const { data } = await api.post<AiConfigureResponse>(`${BASE}/routes/${routeId}/ai-configure`, {
             example_args: exampleArgs ?? {},
         });
         return data;
