@@ -13,6 +13,7 @@ use Laravel\Mcp\Server\Tool;
 use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 use Padosoft\AskMyDocsConnectorApi\Services\ConnectorAdminService;
+use Padosoft\AskMyDocsConnectorApi\Support\RouteConfig;
 
 /**
  * v8.27 — MCP read surface (R44) for the API connectors (Connettore API).
@@ -35,12 +36,16 @@ class ApiConnectorsTool extends Tool
             'only_active' => $schema->boolean()
                 ->description('When true, list only routes that are live tools (status=active, mode=tool|both). Default false (all routes).')
                 ->default(false),
+            'with_config' => $schema->boolean()
+                ->description('When true, include each route\'s canonical config JSON (identity/request/response/options) — the same object the admin editor uses. Read-only; no secrets (secret params carry only their key name). Default false.')
+                ->default(false),
         ];
     }
 
     public function handle(Request $request, ConnectorAdminService $service, TenantContext $tenants): Response
     {
         $onlyActive = (bool) ($request->get('only_active') ?? false);
+        $withConfig = (bool) ($request->get('with_config') ?? false);
 
         $connectors = [];
         $liveTools = 0;
@@ -60,7 +65,7 @@ class ApiConnectorsTool extends Tool
                     continue;
                 }
 
-                $routes[] = [
+                $row = [
                     'slug' => $route->slug,
                     'name' => $route->name,
                     'http_method' => $route->http_method->value,
@@ -70,6 +75,13 @@ class ApiConnectorsTool extends Tool
                     'last_test_status' => $route->last_test_status,
                     'is_live_tool' => $isLive,
                 ];
+
+                if ($withConfig) {
+                    $route->loadMissing('parameters');
+                    $row['config'] = RouteConfig::fromRoute($route);
+                }
+
+                $routes[] = $row;
             }
 
             $relations = [];
