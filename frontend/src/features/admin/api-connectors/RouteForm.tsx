@@ -107,6 +107,8 @@ export interface RouteFormProps {
     submitError?: string | null;
     fieldErrors?: Record<string, string>;
     isSubmitting?: boolean;
+    /** Present on edit — opens the Test & explore workbench for the saved route. */
+    onOpenWorkbench?: () => void;
 }
 
 export function RouteForm({
@@ -117,6 +119,7 @@ export function RouteForm({
     submitError,
     fieldErrors,
     isSubmitting,
+    onOpenWorkbench,
 }: RouteFormProps): ReactNode {
     const isEdit = !!route;
     const [name, setName] = useState(route?.name ?? '');
@@ -697,7 +700,21 @@ export function RouteForm({
                     </p>
                 )}
 
-                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+                    {isEdit && onOpenWorkbench ? (
+                        <button
+                            type="button"
+                            data-testid="api-route-form-open-workbench"
+                            onClick={onOpenWorkbench}
+                            disabled={isSubmitting}
+                            style={buttonStyle('secondary', !!isSubmitting)}
+                        >
+                            Test &amp; esplora →
+                        </button>
+                    ) : (
+                        <span />
+                    )}
+                    <div style={{ display: 'flex', gap: 8 }}>
                     <button
                         type="button"
                         data-testid="api-route-form-cancel"
@@ -715,6 +732,7 @@ export function RouteForm({
                     >
                         {isSubmitting ? 'Saving…' : isEdit ? 'Save changes' : 'Create route'}
                     </button>
+                    </div>
                 </div>
             </form>
         </div>

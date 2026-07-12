@@ -162,6 +162,28 @@ export interface TestRouteResponse {
     item_schema: Record<string, unknown> | null;
 }
 
+/** One reduction the {@link StructureReducer} applied, biggest omitted group first. */
+export interface ReductionNote {
+    path: string;
+    total: number;
+    kept: number;
+    omitted: number;
+}
+
+/**
+ * Workbench "Analisi" outcome (ApiRouteController::analyze) — the classified test
+ * result + a deterministically REDUCED body (arrays truncated so the shape reads
+ * start-to-end) + reduction notes + an optional AI narration. Returned RAW; a
+ * failed/non-JSON call is a valid 200 with `reduced: null`.
+ */
+export interface AnalyzeResponse {
+    test: TestResult;
+    reduced: unknown;
+    notes: ReductionNote[];
+    /** AI narration of the structure; null when AI is off / not yet wired (P2). */
+    analysis: string | null;
+}
+
 /**
  * Ad-hoc probe outcome (ApiRouteController::probePayload) — the same classified
  * TestResult shape + wall-clock timing. Returned RAW (no `{data}` wrapper); a
@@ -355,6 +377,14 @@ export const apiConnectorsApi = {
     /** Run the route against the live target (no ingest). HTTP 200 even on a failed call (ok:false). */
     async testRoute(routeId: number, exampleArgs?: Record<string, unknown>): Promise<TestRouteResponse> {
         const { data } = await api.post<TestRouteResponse>(`${BASE}/routes/${routeId}/test`, {
+            example_args: exampleArgs ?? {},
+        });
+        return data;
+    },
+
+    /** Workbench "Analisi": fire the route + return a reduced structure (+notes, +AI). Non-persisting; 200 even on failure. */
+    async analyzeRoute(routeId: number, exampleArgs?: Record<string, unknown>): Promise<AnalyzeResponse> {
+        const { data } = await api.post<AnalyzeResponse>(`${BASE}/routes/${routeId}/analyze`, {
             example_args: exampleArgs ?? {},
         });
         return data;
