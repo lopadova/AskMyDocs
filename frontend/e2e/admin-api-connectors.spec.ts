@@ -44,9 +44,10 @@ async function connectorIdFromCard(page: Page): Promise<string> {
 }
 
 /**
- * Create a route via the workspace's left config pane, then reopen the workspace
- * and test it against its local fixture from the right "Prova & esplora" console.
- * Returns the route-row base testid. Asserts the auto-detected endpoint type.
+ * Add a route via the config modal, dry-run it against its local fixture BEFORE
+ * saving (the config-modal "Testa" works in create mode), then Save — which
+ * persists the config + runs the final test that promotes it and detects the
+ * endpoint type. Returns the route-row base testid.
  * `withIdParam` adds an `id` (path/llm) parameter for a detail route.
  */
 async function addRouteAndTest(
@@ -66,34 +67,30 @@ async function addRouteAndTest(
         await page.getByTestId('api-route-form-param-0-source').selectOption('llm');
         await page.getByTestId('api-route-form-param-0-type').selectOption('integer');
     }
+    if (opts.exampleArgs) {
+        await page.getByTestId('api-route-form-example-args').fill(opts.exampleArgs);
+    }
+
+    // Testa BEFORE saving — a real dry-run of the in-memory config (create mode).
+    await page.getByTestId('api-route-form-test').click();
+    const result = page.getByTestId('api-route-form-test-result');
+    await expect(result).toBeVisible({ timeout: 20_000 });
+    await expect(result).toHaveAttribute('data-ok', 'true');
+    await expect(page.getByTestId('api-route-form-test-endpoint-type')).toHaveAttribute(
+        'data-endpoint-type',
+        opts.expectedType,
+        { timeout: 15_000 },
+    );
+
+    // Save persists the config + runs the final test (promotes it, detects type).
     await page.getByTestId('api-route-form-submit').click();
     await expect(page.getByTestId('toast-api-route-created')).toBeVisible({ timeout: 15_000 });
 
     const statusLoc = page
         .locator(`[data-testid^="api-connector-${connectorId}-route-"][data-testid$="-status"]`)
         .last();
-    const statusId = (await statusLoc.getAttribute('data-testid'))!;
-    const base = statusId.replace('-status', '');
-
-    // Reopen the workspace (the row's Test action) and run the call from the
-    // right-hand console — same modal as the editor now.
-    await page.getByTestId(`${base}-test`).click();
-    await expect(page.getByTestId('api-route-wb')).toBeVisible({ timeout: 15_000 });
-    if (opts.exampleArgs) {
-        await page.getByTestId('api-route-wb-example-args').fill(opts.exampleArgs);
-    }
-    await page.getByTestId('api-route-wb-test-run').click();
-    const result = page.getByTestId('api-route-wb-test-result');
-    await expect(result).toBeVisible({ timeout: 20_000 });
-    await expect(result).toHaveAttribute('data-ok', 'true');
-    // The auto-detected endpoint type is shown in the console.
-    await expect(page.getByTestId('api-route-wb-test-endpoint-type')).toHaveAttribute(
-        'data-endpoint-type',
-        opts.expectedType,
-        { timeout: 15_000 },
-    );
-    await page.getByTestId('api-route-form-cancel').click();
-    // …and as a chip on the route row.
+    const base = (await statusLoc.getAttribute('data-testid'))!.replace('-status', '');
+    // The auto-detected endpoint type shows as a chip on the route row.
     await expect(page.getByTestId(`${base}-endpoint-type`)).toHaveAttribute('data-endpoint-type', opts.expectedType, {
         timeout: 15_000,
     });
@@ -137,32 +134,28 @@ test.describe('Admin API Connectors', () => {
         const mode = page.getByTestId('api-route-form-mode');
         await expect(mode).toBeDisabled();
         await expect(mode).toHaveValue('tool');
+
+        // Testa the config BEFORE saving (dry-run against /healthz), then Save —
+        // which persists + runs the final test that promotes draft→tested.
+        await page.getByTestId('api-route-form-test').click();
+        const result = page.getByTestId('api-route-form-test-result');
+        await expect(result).toBeVisible({ timeout: 20_000 });
+        await expect(result).toHaveAttribute('data-ok', 'true');
         await page.getByTestId('api-route-form-submit').click();
         await expect(page.getByTestId('toast-api-route-created')).toBeVisible({ timeout: 15_000 });
 
-        // The route row renders in draft.
+        // The route row is now `tested` (the Save-time final test promoted it).
         const routeRow = page
             .locator(`[data-testid^="api-connector-${connectorId}-route-"][data-testid$="-status"]`)
             .first();
         await expect(routeRow).toBeVisible();
-        await expect(routeRow).toHaveAttribute('data-status', 'draft');
         const statusId = (await routeRow.getAttribute('data-testid'))!; // api-connector-{c}-route-{r}-status
         const base = statusId.replace('-status', ''); // api-connector-{c}-route-{r}
-
-        // Reopen the workspace + run the real backend test from the console.
-        await page.getByTestId(`${base}-test`).click();
-        await expect(page.getByTestId('api-route-wb')).toBeVisible({ timeout: 15_000 });
-        await page.getByTestId('api-route-wb-test-run').click();
-
-        const result = page.getByTestId('api-route-wb-test-result');
-        await expect(result).toBeVisible({ timeout: 20_000 });
-        await expect(result).toHaveAttribute('data-ok', 'true');
-        await page.getByTestId('api-route-form-cancel').click();
-
-        // The route is now `tested` — activate it.
         await expect(page.getByTestId(`${base}-status`)).toHaveAttribute('data-status', 'tested', {
             timeout: 15_000,
         });
+
+        // Activate it.
         await page.getByTestId(`${base}-activate`).click();
         await expect(page.getByTestId('toast-api-route-activated')).toBeVisible({ timeout: 15_000 });
         await expect(page.getByTestId(`${base}-status`)).toHaveAttribute('data-status', 'active', {
@@ -269,8 +262,12 @@ test.describe('Admin API Connectors', () => {
         // Relate them: map the list item's `id` onto the detail's `id` param.
         await page.getByTestId(`api-connector-${connectorId}-relation-add`).click();
         await expect(page.getByTestId('api-route-relation-form')).toBeVisible();
-        await page.getByTestId('api-route-relation-form-list_route').selectOption({ label: /List users/ });
-        await page.getByTestId('api-route-relation-form-detail_route').selectOption({ label: /User detail/ });
+        // Options render as "{name} ({slug})"; Playwright's selectOption label is an
+        // exact string (no regex), so select by the value read from the matching option.
+        const listRoute = page.getByTestId('api-route-relation-form-list_route');
+        await listRoute.selectOption((await listRoute.locator('option', { hasText: 'List users' }).getAttribute('value'))!);
+        const detailRoute = page.getByTestId('api-route-relation-form-detail_route');
+        await detailRoute.selectOption((await detailRoute.locator('option', { hasText: 'User detail' }).getAttribute('value'))!);
         await page.getByTestId('api-route-relation-form-map-0-from').fill('id');
         await page.getByTestId('api-route-relation-form-map-0-to_param').fill('id');
         await page.getByTestId('api-route-relation-form-submit').click();
@@ -298,14 +295,14 @@ test.describe('Admin API Connectors', () => {
         await page.getByTestId('api-route-drill-close').click();
     });
 
-    // Route Workspace console (spec items 1-6): open the workspace from the row,
-    // run a real call against the paged fixture, inspect the JSON + filter it, and
-    // detect the cursor pagination deterministically into the left card, then
-    // persist it. All against the local paged fixture (R13; SSRF relaxed). The
-    // AI-driven "Configura con AI" path is intentionally NOT exercised here — it
-    // would hit the external provider (R13) — its no-AI detect is covered instead.
-    test('route workspace — test, inspect, filter and detect pagination', async ({ page }) => {
-        await createConnector(page, 'E2E Workspace API');
+    // Config modal (spec items 1-6): configure a paged route, dry-run it against
+    // the local fixture (create mode, no save-first), read the response, and
+    // detect the cursor pagination deterministically into the config, then save.
+    // All against the local paged fixture (R13; SSRF relaxed). The AI-driven
+    // "Configura con AI" is intentionally NOT clicked (external provider, R13);
+    // its no-AI "Rileva" detect is covered instead.
+    test('config modal — test, read response and detect pagination in create mode', async ({ page }) => {
+        await createConnector(page, 'E2E Config API');
         await expect(page.getByTestId('api-connectors-view')).toHaveAttribute('data-state', 'ready', { timeout: 15_000 });
         const connectorId = await connectorIdFromCard(page);
 
@@ -320,40 +317,25 @@ test.describe('Admin API Connectors', () => {
         await page.getByTestId('api-route-form-param-0-location').selectOption('query');
         await page.getByTestId('api-route-form-param-0-source').selectOption('llm');
         await page.getByTestId('api-route-form-param-0-type').selectOption('string');
-        await page.getByTestId('api-route-form-submit').click();
-        await expect(page.getByTestId('toast-api-route-created')).toBeVisible({ timeout: 15_000 });
 
-        // Reopen the workspace from the row.
-        const statusLoc = page
-            .locator(`[data-testid^="api-connector-${connectorId}-route-"][data-testid$="-status"]`)
-            .last();
-        const base = (await statusLoc.getAttribute('data-testid'))!.replace('-status', '');
-        await page.getByTestId(`${base}-edit`).click();
-        await expect(page.getByTestId('api-route-wb')).toBeVisible({ timeout: 15_000 });
+        // Testa the in-memory config BEFORE saving — `q` flavours the fixture names.
+        await page.getByTestId('api-route-form-example-args').fill('{"q":"boot"}');
+        await page.getByTestId('api-route-form-test').click();
+        const testRes = page.getByTestId('api-route-form-test-result');
+        await expect(testRes).toBeVisible({ timeout: 20_000 });
+        await expect(testRes).toHaveAttribute('data-ok', 'true');
+        await expect(page.getByTestId('api-route-form-test-endpoint-type')).toHaveAttribute('data-endpoint-type', 'list');
+        // The response body is shown; it carries the searched flavour.
+        await expect(page.getByTestId('api-route-form-response')).toContainText('match boot');
 
-        // Testa chiamata — real backend call, `q` flavours the fixture names.
-        await page.getByTestId('api-route-wb-example-args').fill('{"q":"boot"}');
-        await page.getByTestId('api-route-wb-test-run').click();
-        const wbTest = page.getByTestId('api-route-wb-test-result');
-        await expect(wbTest).toBeVisible({ timeout: 20_000 });
-        await expect(wbTest).toHaveAttribute('data-ok', 'true');
-        await expect(page.getByTestId('api-route-wb-test-endpoint-type')).toHaveAttribute('data-endpoint-type', 'list');
-
-        // JSON view shows the raw body; Cerca filters it to the matching lines.
-        await page.getByTestId('api-route-wb-tab-raw').click();
-        await expect(page.getByTestId('api-route-wb-response')).toContainText('match boot');
-        await page.getByTestId('api-route-wb-tab-search').click();
-        await page.getByTestId('api-route-wb-search').fill('boot');
-        await expect(page.getByTestId('api-route-wb-response')).toContainText('match boot');
-
-        // Left pane — deterministic cursor detection from meta.next_cursor.
+        // Deterministic cursor detection from meta.next_cursor → into the config.
         await page.getByTestId('api-route-form-pagination-detect').click();
         await expect(page.getByTestId('api-route-form-pagination-source')).toBeVisible({ timeout: 20_000 });
         await expect(page.getByTestId('api-route-form-pagination-type')).toHaveValue('cursor');
         await expect(page.getByTestId('api-route-form-pagination-next_cursor_path')).toHaveValue('meta.next_cursor');
 
-        // Persist the whole config (incl. the detected pagination).
+        // Save the whole config (incl. the detected pagination) → created + final test.
         await page.getByTestId('api-route-form-submit').click();
-        await expect(page.getByTestId('toast-api-route-updated')).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByTestId('toast-api-route-created')).toBeVisible({ timeout: 15_000 });
     });
 });
