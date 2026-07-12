@@ -262,8 +262,13 @@ export function useAiConfigure() {
 /** One-shot "Configura con AI" — PERSISTS the config, so it invalidates the list. */
 export function useApplyAiConfigure() {
     const qc = useQueryClient();
-    return useMutation<ApplyAiConfigureResponse, unknown, { routeId: number; exampleArgs?: Record<string, unknown> }>({
-        mutationFn: ({ routeId, exampleArgs }) => apiConnectorsApi.applyAiConfigure(routeId, exampleArgs),
+    return useMutation<
+        ApplyAiConfigureResponse,
+        unknown,
+        { routeId: number; exampleArgs?: Record<string, unknown>; openApiUrl?: string }
+    >({
+        mutationFn: ({ routeId, exampleArgs, openApiUrl }) =>
+            apiConnectorsApi.applyAiConfigure(routeId, exampleArgs, openApiUrl),
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: API_CONNECTORS_KEY });
         },
