@@ -14,9 +14,6 @@ import type {
     ProbePayload,
     ProbeResult,
     RelationPayload,
-    RoutePayload,
-    TestRouteResponse,
-    ToolDefinition,
 } from './api-connectors.api';
 import { apiConnectorsApi } from './api-connectors.api';
 import {
@@ -25,7 +22,6 @@ import {
     useCreateAuthProfile,
     useCreateConnector,
     useCreateRelation,
-    useCreateRoute,
     useDeleteConnector,
     useDeleteRelation,
     useDeleteRoute,
@@ -34,19 +30,15 @@ import {
     useProbeEndpoint,
     useProjectOptions,
     useRegenerateDescription,
-    useTestRoute,
     useTryRoute,
     useUpdateAuthProfile,
     useUpdateConnector,
     useUpdateRelation,
-    useUpdateRoute,
 } from './api-connectors-hooks';
 import { endpointTypeBadge, routeStatusBadge } from './route-status';
 import { ConnectorForm } from './ConnectorForm';
 import { AuthProfileForm } from './AuthProfileForm';
-import { RouteForm } from './RouteForm';
-import { RouteWorkbench } from './RouteWorkbench';
-import { TestConnectionPanel } from './TestConnectionPanel';
+import { RouteWorkspace } from './RouteWorkspace';
 import { TryToolModal } from './TryToolModal';
 import { FreeEndpointModal } from './FreeEndpointModal';
 import { RelationEditor } from './RelationEditor';
@@ -70,10 +62,7 @@ type Modal =
     | { kind: 'connector-edit'; connector: ApiConnector }
     | { kind: 'auth-create'; connector: ApiConnector }
     | { kind: 'auth-edit'; connector: ApiConnector; profile: ApiAuthProfile }
-    | { kind: 'route-create'; connector: ApiConnector }
-    | { kind: 'route-edit'; connector: ApiConnector; route: ApiRoute }
-    | { kind: 'route-test'; route: ApiRoute }
-    | { kind: 'route-workbench'; route: ApiRoute }
+    | { kind: 'route-workspace'; connector: ApiConnector; route: ApiRoute | null }
     | { kind: 'route-try'; route: ApiRoute }
     | { kind: 'relation-create'; connector: ApiConnector }
     | { kind: 'relation-edit'; connector: ApiConnector; relation: ApiRouteRelation }
@@ -91,10 +80,7 @@ export function ApiConnectorsView() {
     const deleteConnector = useDeleteConnector();
     const createAuthProfile = useCreateAuthProfile();
     const updateAuthProfile = useUpdateAuthProfile();
-    const createRoute = useCreateRoute();
-    const updateRoute = useUpdateRoute();
     const deleteRoute = useDeleteRoute();
-    const testRoute = useTestRoute();
     const regenerateDescription = useRegenerateDescription();
     const activateRoute = useActivateRoute();
     const disableRoute = useDisableRoute();
@@ -113,8 +99,6 @@ export function ApiConnectorsView() {
         modalRef.current = modal;
     }, [modal]);
 
-    // The test panel owns its result + the running flag is the testRoute mutation.
-    const [testResult, setTestResult] = useState<TestRouteResponse | null>(null);
     const [tryResult, setTryResult] = useState<unknown>(null);
     const [tryHasResult, setTryHasResult] = useState(false);
     const [probeResult, setProbeResult] = useState<ProbeResult | null>(null);
@@ -143,7 +127,6 @@ export function ApiConnectorsView() {
 
     function closeModal() {
         setModal(null);
-        setTestResult(null);
         setTryResult(null);
         setTryHasResult(false);
         setProbeResult(null);
@@ -216,28 +199,6 @@ export function ApiConnectorsView() {
 
     // --- route CRUD ---
 
-    async function handleRouteSubmit(payload: RoutePayload) {
-        const current = modal;
-        if (current?.kind !== 'route-create' && current?.kind !== 'route-edit') return;
-        setModalError(null);
-        setModalFieldErrors({});
-        try {
-            if (current.kind === 'route-edit') {
-                await updateRoute.mutateAsync({ routeId: current.route.id, payload });
-                toast.success('Route updated.', 'toast-api-route-updated');
-            } else {
-                await createRoute.mutateAsync({ connectorId: current.connector.id, payload });
-                toast.success('Route created.', 'toast-api-route-created');
-            }
-            closeModal();
-        } catch (e) {
-            applyError(e, () => {
-                const open = modalRef.current;
-                return open?.kind === 'route-create' || open?.kind === 'route-edit';
-            });
-        }
-    }
-
     async function handleDeleteRoute(routeSummary: ApiRouteSummary) {
         try {
             await deleteRoute.mutateAsync(routeSummary.id);
@@ -247,23 +208,15 @@ export function ApiConnectorsView() {
         }
     }
 
-    // Open the route editor / test / try — needs the FULL route (parameters,
+    // Open the "Prova tool" playground — needs the FULL route (parameters,
     // schemas), which the list summary does not carry. Fetch it on demand.
     const [loadingRouteId, setLoadingRouteId] = useState<number | null>(null);
 
-    async function openRouteModal(
-        kind: 'route-edit' | 'route-test' | 'route-try',
-        connector: ApiConnector,
-        routeId: number,
-    ) {
+    async function openRouteTry(routeId: number) {
         setLoadingRouteId(routeId);
         try {
             const route = await apiConnectorsApi.showRoute(routeId);
-            if (kind === 'route-edit') {
-                openModalReset({ kind, connector, route });
-            } else {
-                openModalReset({ kind, route });
-            }
+            openModalReset({ kind: 'route-try', route });
         } catch (e) {
             toast.error(toAdminError(e).message, 'toast-api-route-error');
         } finally {
@@ -271,38 +224,26 @@ export function ApiConnectorsView() {
         }
     }
 
-    // --- test / activate / disable / try ---
-
-    async function handleRunTest(exampleArgs: Record<string, unknown>) {
-        const current = modal;
-        if (current?.kind !== 'route-test') return;
-        setModalError(null);
+    // Open the unified Route Workspace (config + "Prova & esplora" console). For
+    // an existing route we fetch the FULL row (parameters, schemas); for a new
+    // route we open with `route: null`.
+    async function openRouteWorkspace(connector: ApiConnector, routeId: number | null) {
+        if (routeId === null) {
+            openModalReset({ kind: 'route-workspace', connector, route: null });
+            return;
+        }
+        setLoadingRouteId(routeId);
         try {
-            const result = await testRoute.mutateAsync({ routeId: current.route.id, exampleArgs });
-            setTestResult(result);
+            const route = await apiConnectorsApi.showRoute(routeId);
+            openModalReset({ kind: 'route-workspace', connector, route });
         } catch (e) {
-            if (modalRef.current?.kind === 'route-test') {
-                setModalError(toAdminError(e).message);
-            }
+            toast.error(toAdminError(e).message, 'toast-api-route-error');
+        } finally {
+            setLoadingRouteId(null);
         }
     }
 
-    async function handleSaveDefinition(definition: ToolDefinition) {
-        const current = modal;
-        if (current?.kind !== 'route-test') return;
-        setModalError(null);
-        try {
-            await updateRoute.mutateAsync({
-                routeId: current.route.id,
-                payload: { name: definition.name, description: definition.description },
-            });
-            toast.success('Tool definition saved.', 'toast-api-route-definition-saved');
-        } catch (e) {
-            if (modalRef.current?.kind === 'route-test') {
-                setModalError(toAdminError(e).message);
-            }
-        }
-    }
+    // --- regenerate / activate / disable / try ---
 
     async function handleRegenerate(routeId: number) {
         try {
@@ -567,10 +508,10 @@ export function ApiConnectorsView() {
                                 onEditAuthProfile={(profile) =>
                                     openModalReset({ kind: 'auth-edit', connector, profile })
                                 }
-                                onAddRoute={() => openModalReset({ kind: 'route-create', connector })}
-                                onEditRoute={(routeId) => openRouteModal('route-edit', connector, routeId)}
-                                onTestRoute={(routeId) => openRouteModal('route-test', connector, routeId)}
-                                onTryRoute={(routeId) => openRouteModal('route-try', connector, routeId)}
+                                onAddRoute={() => openRouteWorkspace(connector, null)}
+                                onEditRoute={(routeId) => openRouteWorkspace(connector, routeId)}
+                                onTestRoute={(routeId) => openRouteWorkspace(connector, routeId)}
+                                onTryRoute={(routeId) => openRouteTry(routeId)}
                                 onDeleteRoute={handleDeleteRoute}
                                 onActivateRoute={handleActivate}
                                 onDisableRoute={handleDisable}
@@ -610,39 +551,13 @@ export function ApiConnectorsView() {
                 />
             )}
 
-            {(modal?.kind === 'route-create' || modal?.kind === 'route-edit') && (
-                <RouteForm
-                    key={modal.kind === 'route-edit' ? `route-edit-${modal.route.id}` : `route-create-${modal.connector.id}`}
-                    route={modal.kind === 'route-edit' ? modal.route : null}
-                    authProfiles={modal.connector.auth_profiles ?? []}
-                    onSubmit={handleRouteSubmit}
-                    onClose={closeModal}
-                    submitError={modalError}
-                    fieldErrors={modalFieldErrors}
-                    isSubmitting={createRoute.isPending || updateRoute.isPending}
-                    onOpenWorkbench={
-                        modal.kind === 'route-edit'
-                            ? () => openModalReset({ kind: 'route-workbench', route: modal.route })
-                            : undefined
-                    }
-                />
-            )}
-
-            {modal?.kind === 'route-workbench' && (
-                <RouteWorkbench key={`route-workbench-${modal.route.id}`} route={modal.route} onClose={closeModal} />
-            )}
-
-            {modal?.kind === 'route-test' && (
-                <TestConnectionPanel
-                    key={`route-test-${modal.route.id}`}
+            {modal?.kind === 'route-workspace' && (
+                <RouteWorkspace
+                    key={modal.route ? `route-workspace-${modal.route.id}` : `route-workspace-new-${modal.connector.id}`}
+                    connector={modal.connector}
                     route={modal.route}
-                    result={testResult}
-                    onTest={handleRunTest}
-                    onSaveDefinition={handleSaveDefinition}
                     onClose={closeModal}
-                    isTesting={testRoute.isPending}
-                    isSavingDefinition={updateRoute.isPending}
-                    error={modalError}
+                    onSaved={closeModal}
                 />
             )}
 
