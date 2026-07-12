@@ -38,7 +38,7 @@ import {
 import { endpointTypeBadge, routeStatusBadge } from './route-status';
 import { ConnectorForm } from './ConnectorForm';
 import { AuthProfileForm } from './AuthProfileForm';
-import { RouteWorkspace } from './RouteWorkspace';
+import { RouteConfigModal } from './RouteConfigModal';
 import { TryToolModal } from './TryToolModal';
 import { FreeEndpointModal } from './FreeEndpointModal';
 import { RelationEditor } from './RelationEditor';
@@ -62,7 +62,7 @@ type Modal =
     | { kind: 'connector-edit'; connector: ApiConnector }
     | { kind: 'auth-create'; connector: ApiConnector }
     | { kind: 'auth-edit'; connector: ApiConnector; profile: ApiAuthProfile }
-    | { kind: 'route-workspace'; connector: ApiConnector; route: ApiRoute | null }
+    | { kind: 'route-config'; connector: ApiConnector; route: ApiRoute | null }
     | { kind: 'route-try'; route: ApiRoute }
     | { kind: 'relation-create'; connector: ApiConnector }
     | { kind: 'relation-edit'; connector: ApiConnector; relation: ApiRouteRelation }
@@ -227,15 +227,15 @@ export function ApiConnectorsView() {
     // Open the unified Route Workspace (config + "Prova & esplora" console). For
     // an existing route we fetch the FULL row (parameters, schemas); for a new
     // route we open with `route: null`.
-    async function openRouteWorkspace(connector: ApiConnector, routeId: number | null) {
+    async function openRouteConfig(connector: ApiConnector, routeId: number | null) {
         if (routeId === null) {
-            openModalReset({ kind: 'route-workspace', connector, route: null });
+            openModalReset({ kind: 'route-config', connector, route: null });
             return;
         }
         setLoadingRouteId(routeId);
         try {
             const route = await apiConnectorsApi.showRoute(routeId);
-            openModalReset({ kind: 'route-workspace', connector, route });
+            openModalReset({ kind: 'route-config', connector, route });
         } catch (e) {
             toast.error(toAdminError(e).message, 'toast-api-route-error');
         } finally {
@@ -508,9 +508,9 @@ export function ApiConnectorsView() {
                                 onEditAuthProfile={(profile) =>
                                     openModalReset({ kind: 'auth-edit', connector, profile })
                                 }
-                                onAddRoute={() => openRouteWorkspace(connector, null)}
-                                onEditRoute={(routeId) => openRouteWorkspace(connector, routeId)}
-                                onTestRoute={(routeId) => openRouteWorkspace(connector, routeId)}
+                                onAddRoute={() => openRouteConfig(connector, null)}
+                                onEditRoute={(routeId) => openRouteConfig(connector, routeId)}
+                                onTestRoute={(routeId) => openRouteConfig(connector, routeId)}
                                 onTryRoute={(routeId) => openRouteTry(routeId)}
                                 onDeleteRoute={handleDeleteRoute}
                                 onActivateRoute={handleActivate}
@@ -551,9 +551,9 @@ export function ApiConnectorsView() {
                 />
             )}
 
-            {modal?.kind === 'route-workspace' && (
-                <RouteWorkspace
-                    key={modal.route ? `route-workspace-${modal.route.id}` : `route-workspace-new-${modal.connector.id}`}
+            {modal?.kind === 'route-config' && (
+                <RouteConfigModal
+                    key={modal.route ? `route-config-${modal.route.id}` : `route-config-new-${modal.connector.id}`}
                     connector={modal.connector}
                     route={modal.route}
                     onClose={closeModal}
