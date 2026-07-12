@@ -15,13 +15,6 @@ import {
     type RouteConfig,
     type TestConfigResponse,
     type ProduceConfigResponse,
-    type AiConfigureResponse,
-    type AnalyzeResponse,
-    type ApplyAiConfigureResponse,
-    type DetectPaginationResponse,
-    type PaginationConfig,
-    type TestPaginationResponse,
-    type TestResult,
     type TestRouteResponse,
     type ToolDefinition,
 } from './api-connectors.api';
@@ -249,65 +242,6 @@ export function useDisableRoute() {
 export function useTryRoute() {
     return useMutation<unknown, unknown, { routeId: number; args?: Record<string, unknown> }>({
         mutationFn: ({ routeId, args }) => apiConnectorsApi.tryRoute(routeId, args),
-    });
-}
-
-/**
- * Workbench "Analisi" — read-only diagnostic (non-persisting dryRun on the BE),
- * so it does NOT invalidate the connectors cache (mirrors useTryRoute).
- */
-export function useAnalyzeRoute() {
-    return useMutation<AnalyzeResponse, unknown, { routeId: number; exampleArgs?: Record<string, unknown> }>({
-        mutationFn: ({ routeId, exampleArgs }) => apiConnectorsApi.analyzeRoute(routeId, exampleArgs),
-    });
-}
-
-/** Workbench "Paginazione" detect — read-only diagnostic, no cache invalidation. */
-export function useDetectPagination() {
-    return useMutation<DetectPaginationResponse, unknown, { routeId: number; exampleArgs?: Record<string, unknown> }>({
-        mutationFn: ({ routeId, exampleArgs }) => apiConnectorsApi.detectPagination(routeId, exampleArgs),
-    });
-}
-
-/** Workbench "Paginazione" test — read-only diagnostic, no cache invalidation. */
-export function useTestPagination() {
-    return useMutation<
-        TestPaginationResponse,
-        unknown,
-        { routeId: number; pagination: PaginationConfig; exampleArgs?: Record<string, unknown> }
-    >({
-        mutationFn: ({ routeId, pagination, exampleArgs }) =>
-            apiConnectorsApi.testPagination(routeId, pagination, exampleArgs),
-    });
-}
-
-/** Workbench "Configura con AI" — read-only diagnostic (suggests, doesn't persist). */
-export function useAiConfigure() {
-    return useMutation<AiConfigureResponse, unknown, { routeId: number; exampleArgs?: Record<string, unknown> }>({
-        mutationFn: ({ routeId, exampleArgs }) => apiConnectorsApi.aiConfigure(routeId, exampleArgs),
-    });
-}
-
-/** One-shot "Configura con AI" — PERSISTS the config, so it invalidates the list. */
-export function useApplyAiConfigure() {
-    const qc = useQueryClient();
-    return useMutation<
-        ApplyAiConfigureResponse,
-        unknown,
-        { routeId: number; exampleArgs?: Record<string, unknown>; openApiUrl?: string }
-    >({
-        mutationFn: ({ routeId, exampleArgs, openApiUrl }) =>
-            apiConnectorsApi.applyAiConfigure(routeId, exampleArgs, openApiUrl),
-        onSuccess: () => {
-            qc.invalidateQueries({ queryKey: API_CONNECTORS_KEY });
-        },
-    });
-}
-
-/** Workbench "Cerca" — read-only diagnostic, no cache invalidation. */
-export function useTestSearch() {
-    return useMutation<{ test: TestResult }, unknown, { routeId: number; searchArgs: Record<string, unknown> }>({
-        mutationFn: ({ routeId, searchArgs }) => apiConnectorsApi.testSearch(routeId, searchArgs),
     });
 }
 
