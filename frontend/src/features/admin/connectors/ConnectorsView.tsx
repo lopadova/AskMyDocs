@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
-import { useNavigate, useParams } from '@tanstack/react-router';
 import { AdminShell } from '../shell/AdminShell';
-import { useApiConnectors } from '../api-connectors/api-connectors-hooks';
-import { ApiConnectorLauncherCard } from './ApiConnectorLauncherCard';
+import { ApiConnectionsSection } from './ApiConnectionsSection';
 import { ToastHost, useToast } from '../shared/Toast';
 import { toAdminError } from '../shared/errors';
 import { AccountEditModal, type EditTab } from './AccountEditModal';
@@ -137,14 +135,6 @@ export function ConnectorsView() {
     const importConfig = useImportConnectorConfig();
     const testFetch = useTestFetch();
 
-    // API connector launcher — the API connector is a different paradigm (no
-    // installable accounts), so it appears in this gallery as a launcher card
-    // that summarises its configured state and opens the dedicated page. The
-    // status query shares the API Connectors page cache key (no duplicate fetch).
-    const navigate = useNavigate();
-    const { teamHash } = useParams({ strict: false }) as { teamHash?: string };
-    const apiConnectorsQuery = useApiConnectors();
-
     const [modal, setModal] = useState<Modal>(null);
     const [modalError, setModalError] = useState<string | null>(null);
     const [modalFieldErrors, setModalFieldErrors] = useState<Record<string, string>>({});
@@ -174,26 +164,6 @@ export function ConnectorsView() {
 
     const entries = connectorsQuery.data ?? [];
     const projects = projectsQuery.data ?? [];
-
-const apiConnectors = apiConnectorsQuery.data ?? [];
-const apiActiveToolCount = apiConnectors.reduce(
-    (n, c) => n + (c.routes?.filter((r) => r.status === 'active').length ?? 0),
-    0,
-);
-
-function openApiConnectors() {
-    navigate({ to: '/app/$teamHash/admin/api-connectors', params: { teamHash: teamHash ?? '' } });
-}
-
-const apiLauncher = (
-    <ApiConnectorLauncherCard
-        connectorCount={apiConnectors.length}
-        activeToolCount={apiActiveToolCount}
-        isLoading={apiConnectorsQuery.isLoading}
-        isError={apiConnectorsQuery.isError}
-        onOpen={openApiConnectors}
-    />
-);
 
 const connections = useMemo(() => buildConnections(entries), [entries]);
 const visible = useMemo(() => filterConnections(connections, query), [connections, query]);
@@ -700,30 +670,18 @@ const errorVm: ConnectionVM | null =
                 )}
 
                 {state === 'empty' && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                        <div
-                            data-testid="admin-connectors-grid"
-                            style={{
-                                display: 'grid',
-                                gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-                                gap: 12,
-                            }}
-                        >
-                            {apiLauncher}
-                        </div>
-                        <div
-                            data-testid="admin-connectors-empty"
-                            role="status"
-                            style={{
-                                padding: 28,
-                                textAlign: 'center',
-                                color: 'var(--fg-3)',
-                                border: '1px dashed var(--hairline)',
-                                borderRadius: 10,
-                            }}
-                        >
-                            No source connectors are registered in this AskMyDocs build.
-                        </div>
+                    <div
+                        data-testid="admin-connectors-empty"
+                        role="status"
+                        style={{
+                            padding: 28,
+                            textAlign: 'center',
+                            color: 'var(--fg-3)',
+                            border: '1px dashed var(--hairline)',
+                            borderRadius: 10,
+                        }}
+                    >
+                        No source connectors are registered in this AskMyDocs build.
                     </div>
                 )}
 
@@ -740,7 +698,6 @@ const errorVm: ConnectionVM | null =
                                     gap: 12,
                                 }}
                             >
-                                {apiLauncher}
                                 {entries.map((entry) => (
                                     <SourceTile
                                         key={entry.key}
@@ -874,6 +831,11 @@ const errorVm: ConnectionVM | null =
                         </section>
                     </div>
                 )}
+
+                {/* API connections — a distinct paradigm (endpoints → live chat
+                    tools). Created + listed here; deep route/auth/relation/test
+                    management drills into the dedicated page via "Manage". */}
+                <ApiConnectionsSection />
             </div>
 
             {modal?.kind === 'credential-add' && (
