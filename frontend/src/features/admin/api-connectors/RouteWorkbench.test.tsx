@@ -15,11 +15,13 @@ const analyzeMutate = vi.fn();
 const detectMutate = vi.fn();
 const testPaginationMutate = vi.fn();
 const updateMutate = vi.fn();
+const searchMutate = vi.fn();
 let testState: MutationStub;
 let analyzeState: MutationStub;
 let detectState: MutationStub;
 let pageTestState: MutationStub;
 let updateState: MutationStub;
+let searchState: MutationStub;
 
 vi.mock('./api-connectors-hooks', () => ({
     useTestRoute: () => testState,
@@ -27,6 +29,7 @@ vi.mock('./api-connectors-hooks', () => ({
     useDetectPagination: () => detectState,
     useTestPagination: () => pageTestState,
     useUpdateRoute: () => updateState,
+    useTestSearch: () => searchState,
 }));
 vi.mock('../shared/Toast', () => ({ useToast: () => ({ success: vi.fn(), error: vi.fn() }) }));
 
@@ -59,6 +62,8 @@ describe('RouteWorkbench', () => {
         detectState = { mutate: detectMutate, isPending: false, isError: false, error: null, data: null };
         pageTestState = { mutate: testPaginationMutate, isPending: false, isError: false, error: null, data: null };
         updateState = { mutate: updateMutate, isPending: false, isError: false, error: null, data: null };
+        searchState = { mutate: searchMutate, isPending: false, isError: false, error: null, data: null };
+        searchMutate.mockClear();
     });
 
     it('shows the Test tab by default and switches to Dati', () => {
@@ -165,5 +170,27 @@ describe('RouteWorkbench', () => {
         fireEvent.click(screen.getByTestId('api-route-wb-pagination-test'));
         expect(testPaginationMutate).toHaveBeenCalled();
         expect(screen.getByTestId('api-route-wb-pagination-verdict')).toHaveTextContent('distinte');
+    });
+
+    it('renders an input per llm param in the Cerca tab and fires the search', () => {
+        const searchRoute = {
+            ...route,
+            parameters: [
+                { id: 1, name: 'q', location: 'query', source: 'llm', type: 'string', required: true, value: null, secret_ref: null, description: null, sort_order: 0 },
+                { id: 2, name: 'api_key', location: 'query', source: 'secret', type: 'string', required: false, value: null, secret_ref: 'key', description: null, sort_order: 1 },
+            ],
+        } as ApiRoute;
+        searchState.data = { test: testResult().test };
+        render(<RouteWorkbench route={searchRoute} onClose={vi.fn()} />);
+
+        fireEvent.click(screen.getByTestId('api-route-wb-tab-search'));
+        // Only the llm param gets an input; the secret one does not.
+        expect(screen.getByTestId('api-route-wb-search-q')).toBeInTheDocument();
+        expect(screen.queryByTestId('api-route-wb-search-api_key')).not.toBeInTheDocument();
+
+        fireEvent.change(screen.getByTestId('api-route-wb-search-q'), { target: { value: 'shoes' } });
+        fireEvent.click(screen.getByTestId('api-route-wb-search-run'));
+        expect(searchMutate).toHaveBeenCalledWith({ routeId: 5, searchArgs: { q: 'shoes' } });
+        expect(screen.getByTestId('api-route-wb-search-result')).toHaveAttribute('data-ok', 'true');
     });
 });

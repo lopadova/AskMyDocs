@@ -17,6 +17,7 @@ import {
     type DetectPaginationResponse,
     type PaginationConfig,
     type TestPaginationResponse,
+    type TestResult,
     type TestRouteResponse,
     type ToolDefinition,
 } from './api-connectors.api';
@@ -246,6 +247,13 @@ export function useTestPagination() {
     >({
         mutationFn: ({ routeId, pagination, exampleArgs }) =>
             apiConnectorsApi.testPagination(routeId, pagination, exampleArgs),
+    });
+}
+
+/** Workbench "Cerca" — read-only diagnostic, no cache invalidation. */
+export function useTestSearch() {
+    return useMutation<{ test: TestResult }, unknown, { routeId: number; searchArgs: Record<string, unknown> }>({
+        mutationFn: ({ routeId, searchArgs }) => apiConnectorsApi.testSearch(routeId, searchArgs),
     });
 }
 
