@@ -728,39 +728,151 @@ const errorVm: ConnectionVM | null =
                 )}
 
                 {state === 'ready' && (
-<div
-    data-testid="admin-connectors-grid"
-    style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-        gap: 12,
-    }}
->
-    {apiLauncher}
-    {entries.map((entry) => (
-        <ConnectorCard
-            key={entry.key}
-            entry={entry}
-            onAddAccount={handleAddAccount}
-            onSync={handleSync}
-            onDisable={handleDisable}
-            onEnable={handleEnable}
-            onRemove={handleRemove}
-            onEdit={(installation) => handleEdit(entry, installation)}
-            onManageFolders={(installation) => handleManageFolders(entry, installation)}
-            onTestFetch={handleTestFetch}
-            onExport={handleExport}
-            onImport={handleImportFile}
-            onCancelInstall={handleRemove}
-            syncingIds={syncingIds}
-            busyIds={busyIds}
-            enablingIds={enablingIds}
-            probingIds={probingIds}
-            exportingIds={exportingIds}
-            addPending={addPendingFor(entry.key)}
-        />
-    ))}
-</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
+                        {/* Available sources — one add/import tile per registered source. */}
+                        <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                            <h2 style={sectionHeadingStyle}>Available sources</h2>
+                            <div
+                                data-testid="admin-connectors-grid"
+                                style={{
+                                    display: 'grid',
+                                    gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+                                    gap: 12,
+                                }}
+                            >
+                                {apiLauncher}
+                                {entries.map((entry) => (
+                                    <SourceTile
+                                        key={entry.key}
+                                        entry={entry}
+                                        connectionCount={entry.installations?.length ?? 0}
+                                        onAdd={handleAddAccount}
+                                        onImport={handleImportFile}
+                                        addPending={addPendingFor(entry.key)}
+                                    />
+                                ))}
+                            </div>
+                        </section>
+
+                        {/* Connections — flat list of every connected account, table/cards. */}
+                        <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                                <h2 style={sectionHeadingStyle}>Connections</h2>
+                                <span
+                                    data-testid="connector-connections-count"
+                                    style={{
+                                        fontSize: 12,
+                                        fontWeight: 600,
+                                        color: 'var(--fg-2)',
+                                        background: 'var(--bg-2)',
+                                        borderRadius: 999,
+                                        padding: '1px 8px',
+                                    }}
+                                >
+                                    {visible.length}
+                                </span>
+                                <div style={{ flex: 1, minWidth: 12 }} />
+                                <input
+                                    data-testid="connector-connections-search"
+                                    type="search"
+                                    aria-label="Search connections"
+                                    placeholder="Search connections…"
+                                    value={query}
+                                    onChange={(e) => setQuery(e.target.value)}
+                                    className="focus-ring"
+                                    style={{
+                                        fontSize: 13,
+                                        padding: '6px 10px',
+                                        borderRadius: 8,
+                                        border: '1px solid var(--hairline)',
+                                        background: 'var(--bg-1)',
+                                        color: 'var(--fg-0)',
+                                        minWidth: 180,
+                                    }}
+                                />
+                                <div
+                                    role="group"
+                                    aria-label="Connections view mode"
+                                    style={{
+                                        display: 'flex',
+                                        gap: 4,
+                                        background: 'var(--bg-2)',
+                                        borderRadius: 9,
+                                        padding: 3,
+                                    }}
+                                >
+                                    <ViewTab
+                                        testid="connector-connections-view-table"
+                                        label="Table"
+                                        active={view === 'table'}
+                                        onClick={() => setView('table')}
+                                        icon={
+                                            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                                                <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" stroke="currentColor" />
+                                                <path d="M1.5 6.5h13M6 6.5v7" stroke="currentColor" />
+                                            </svg>
+                                        }
+                                    />
+                                    <ViewTab
+                                        testid="connector-connections-view-cards"
+                                        label="Cards"
+                                        active={view === 'cards'}
+                                        onClick={() => setView('cards')}
+                                        icon={
+                                            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                                                <rect x="1.5" y="1.5" width="6" height="6" rx="1" stroke="currentColor" />
+                                                <rect x="8.5" y="1.5" width="6" height="6" rx="1" stroke="currentColor" />
+                                                <rect x="1.5" y="8.5" width="6" height="6" rx="1" stroke="currentColor" />
+                                                <rect x="8.5" y="8.5" width="6" height="6" rx="1" stroke="currentColor" />
+                                            </svg>
+                                        }
+                                    />
+                                </div>
+                                <button
+                                    type="button"
+                                    data-testid="connector-connections-sync-all"
+                                    className="focus-ring"
+                                    disabled={!canSyncAll}
+                                    onClick={handleSyncAll}
+                                    style={{
+                                        fontSize: 12.5,
+                                        fontWeight: 600,
+                                        padding: '7px 12px',
+                                        borderRadius: 8,
+                                        border: '1px solid var(--hairline)',
+                                        background: 'var(--bg-1)',
+                                        color: canSyncAll ? 'var(--fg-0)' : 'var(--fg-3)',
+                                        cursor: canSyncAll ? 'pointer' : 'not-allowed',
+                                    }}
+                                >
+                                    Sync all
+                                </button>
+                            </div>
+
+                            {visible.length === 0 ? (
+                                <div
+                                    data-testid="connector-connections-empty"
+                                    role="status"
+                                    style={{
+                                        padding: 24,
+                                        textAlign: 'center',
+                                        color: 'var(--fg-3)',
+                                        border: '1px dashed var(--hairline)',
+                                        borderRadius: 10,
+                                        fontSize: 13,
+                                    }}
+                                >
+                                    {connections.length === 0
+                                        ? 'No connections yet — add an account from a source above.'
+                                        : 'No connections match your search.'}
+                                </div>
+                            ) : view === 'table' ? (
+                                <ConnectionsTable rows={visible} menuId={menuId} actions={actions} inflight={inflight} />
+                            ) : (
+                                <ConnectionsCards rows={visible} menuId={menuId} actions={actions} inflight={inflight} />
+                            )}
+                        </section>
+                    </div>
                 )}
             </div>
 
