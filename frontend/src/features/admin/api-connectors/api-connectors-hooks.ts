@@ -175,7 +175,7 @@ export function useDeleteRoute() {
  * Run a live test. The BE flips the route status draft→tested + writes the
  * inferred schema as a side effect, so we DO invalidate the list afterwards so
  * the status badge reflects the new state. The returned preview is consumed by
- * the caller (TestConnectionPanel); a failed call is HTTP 200 with `ok:false`.
+ * the caller (the Route Workspace console); a failed call is HTTP 200 with `ok:false`.
  */
 export function useTestRoute() {
     const qc = useQueryClient();
