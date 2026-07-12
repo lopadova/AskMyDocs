@@ -12,7 +12,9 @@ import {
     type ProbePayload,
     type ProbeResult,
     type RelationPayload,
-    type RoutePayload,
+    type RouteConfig,
+    type TestConfigResponse,
+    type ProduceConfigResponse,
     type AiConfigureResponse,
     type AnalyzeResponse,
     type ApplyAiConfigureResponse,
@@ -143,8 +145,8 @@ export function useDeleteAuthProfile() {
 
 export function useCreateRoute() {
     const qc = useQueryClient();
-    return useMutation<ApiRoute, unknown, { connectorId: number; payload: RoutePayload }>({
-        mutationFn: ({ connectorId, payload }) => apiConnectorsApi.createRoute(connectorId, payload),
+    return useMutation<ApiRoute, unknown, { connectorId: number; config: RouteConfig }>({
+        mutationFn: ({ connectorId, config }) => apiConnectorsApi.createRoute(connectorId, config),
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: API_CONNECTORS_KEY });
         },
@@ -153,11 +155,38 @@ export function useCreateRoute() {
 
 export function useUpdateRoute() {
     const qc = useQueryClient();
-    return useMutation<ApiRoute, unknown, { routeId: number; payload: Partial<RoutePayload> }>({
-        mutationFn: ({ routeId, payload }) => apiConnectorsApi.updateRoute(routeId, payload),
+    return useMutation<ApiRoute, unknown, { routeId: number; config: RouteConfig }>({
+        mutationFn: ({ routeId, config }) => apiConnectorsApi.updateRoute(routeId, config),
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: API_CONNECTORS_KEY });
         },
+    });
+}
+
+/**
+ * "Testa" — dry-run an UNSAVED config against its endpoint (works in create
+ * mode). Read-only w.r.t. the list, so no invalidation; the caller renders the
+ * returned outcome. A failed/non-JSON call is a valid 200 with `ok:false`.
+ */
+export function useTestConfig() {
+    return useMutation<TestConfigResponse, unknown, { connectorId: number; config: RouteConfig; exampleArgs?: Record<string, unknown> }>({
+        mutationFn: ({ connectorId, config, exampleArgs }) => apiConnectorsApi.testConfig(connectorId, config, exampleArgs),
+    });
+}
+
+/**
+ * "Configura con AI" — the single AI pass. Returns the produced config + its
+ * final dry-run; does NOT persist (the operator reviews + saves), so no
+ * invalidation.
+ */
+export function useProduceConfig() {
+    return useMutation<
+        ProduceConfigResponse,
+        unknown,
+        { connectorId: number; config: RouteConfig; exampleArgs?: Record<string, unknown>; openApiUrl?: string }
+    >({
+        mutationFn: ({ connectorId, config, exampleArgs, openApiUrl }) =>
+            apiConnectorsApi.produceConfig(connectorId, config, exampleArgs, openApiUrl),
     });
 }
 
