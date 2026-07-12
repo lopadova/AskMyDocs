@@ -216,6 +216,28 @@ if (app()->environment('testing')) {
         'email' => 'ada@example.dev',
         'role' => 'admin',
     ]))->whereNumber('id');
+
+    // Paginated list fixture for the workbench E2E: `?page=N` shifts the item ids
+    // (so page 2 differs from page 1), a `meta.next_cursor` supports cursor
+    // detection, and `?q=` flavours the first item's name for the search test.
+    Route::get('/testing/api-fixture/paged', function (\Illuminate\Http\Request $request) {
+        // Advance by page number OR by the cursor token from meta.next_cursor
+        // (`cN` → page N), so both detection paths test as "distinct".
+        $cursor = (string) $request->query('cursor', '');
+        $page = $cursor !== '' && preg_match('/^c(\d+)$/', $cursor, $m) === 1
+            ? (int) $m[1]
+            : max(1, (int) $request->query('page', 1));
+        $q = trim((string) $request->query('q', ''));
+        $base = ($page - 1) * 2;
+
+        return response()->json([
+            'data' => [
+                ['id' => $base + 1, 'name' => ($q !== '' ? "match {$q} " : '').'item '.($base + 1)],
+                ['id' => $base + 2, 'name' => 'item '.($base + 2)],
+            ],
+            'meta' => ['page' => $page, 'next_cursor' => 'c'.($page + 1)],
+        ]);
+    });
 }
 
 /*
