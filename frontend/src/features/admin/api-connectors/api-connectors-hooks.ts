@@ -15,6 +15,7 @@ import {
     type RoutePayload,
     type AiConfigureResponse,
     type AnalyzeResponse,
+    type ApplyAiConfigureResponse,
     type DetectPaginationResponse,
     type PaginationConfig,
     type TestPaginationResponse,
@@ -255,6 +256,17 @@ export function useTestPagination() {
 export function useAiConfigure() {
     return useMutation<AiConfigureResponse, unknown, { routeId: number; exampleArgs?: Record<string, unknown> }>({
         mutationFn: ({ routeId, exampleArgs }) => apiConnectorsApi.aiConfigure(routeId, exampleArgs),
+    });
+}
+
+/** One-shot "Configura con AI" — PERSISTS the config, so it invalidates the list. */
+export function useApplyAiConfigure() {
+    const qc = useQueryClient();
+    return useMutation<ApplyAiConfigureResponse, unknown, { routeId: number; exampleArgs?: Record<string, unknown> }>({
+        mutationFn: ({ routeId, exampleArgs }) => apiConnectorsApi.applyAiConfigure(routeId, exampleArgs),
+        onSuccess: () => {
+            qc.invalidateQueries({ queryKey: API_CONNECTORS_KEY });
+        },
     });
 }
 

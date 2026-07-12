@@ -226,6 +226,13 @@ export interface AiConfigureResponse {
     suggestion: AiConfigureSuggestion | null;
 }
 
+/** One-shot "Configura con AI": what was applied + the final verification. */
+export interface ApplyAiConfigureResponse {
+    applied: AiConfigureSuggestion | null;
+    final_test: TestResult;
+    pagination_test: TestPaginationResponse | null;
+}
+
 /**
  * Ad-hoc probe outcome (ApiRouteController::probePayload) — the same classified
  * TestResult shape + wall-clock timing. Returned RAW (no `{data}` wrapper); a
@@ -457,6 +464,14 @@ export const apiConnectorsApi = {
     /** Workbench "Configura con AI": propose the full route config from a test call. Non-persisting. */
     async aiConfigure(routeId: number, exampleArgs?: Record<string, unknown>): Promise<AiConfigureResponse> {
         const { data } = await api.post<AiConfigureResponse>(`${BASE}/routes/${routeId}/ai-configure`, {
+            example_args: exampleArgs ?? {},
+        });
+        return data;
+    },
+
+    /** One-shot "Configura con AI": detect + apply + final test. PERSISTS the config. */
+    async applyAiConfigure(routeId: number, exampleArgs?: Record<string, unknown>): Promise<ApplyAiConfigureResponse> {
+        const { data } = await api.post<ApplyAiConfigureResponse>(`${BASE}/routes/${routeId}/ai-configure-apply`, {
             example_args: exampleArgs ?? {},
         });
         return data;
