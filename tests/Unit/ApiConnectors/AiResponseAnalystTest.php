@@ -59,6 +59,29 @@ final class AiResponseAnalystTest extends TestCase
         $this->assertNull($out);
     }
 
+    public function test_suggest_configuration_parses_and_sanitizes_the_ai_json(): void
+    {
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chat')->once()->andReturn(new AiResponse(
+            content: '{"tool_name":"list_users","tool_description":"List users.",'
+                .'"parameters":[{"name":"q","location":"bogus","source":"llm","type":"string","required":true},'
+                .'{"name":"","location":"query"}],"pagination":{"type":"page","page_param":"page"}}',
+            provider: 'fake',
+            model: 'x',
+        ));
+
+        $out = (new AiResponseAnalyst($ai))->suggestConfiguration([
+            'method' => 'GET', 'url' => 'https://x', 'reduced' => ['a' => 1],
+        ]);
+
+        $this->assertSame('list_users', $out['tool_name']);
+        // Blank-name param dropped; invalid location coerced to 'query'.
+        $this->assertCount(1, $out['parameters']);
+        $this->assertSame('query', $out['parameters'][0]['location']);
+        $this->assertTrue($out['parameters'][0]['required']);
+        $this->assertSame('page', $out['pagination']['type']);
+    }
+
     public function test_the_container_binds_the_ai_backed_analyst(): void
     {
         $this->assertInstanceOf(AiResponseAnalyst::class, app(ResponseAnalyst::class));

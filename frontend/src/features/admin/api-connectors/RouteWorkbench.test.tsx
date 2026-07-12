@@ -12,6 +12,8 @@ type MutationStub = {
 
 const testMutate = vi.fn();
 const analyzeMutate = vi.fn();
+const aiConfigMutate = vi.fn();
+let aiConfigState: MutationStub;
 const detectMutate = vi.fn();
 const testPaginationMutate = vi.fn();
 const updateMutate = vi.fn();
@@ -26,6 +28,7 @@ let searchState: MutationStub;
 vi.mock('./api-connectors-hooks', () => ({
     useTestRoute: () => testState,
     useAnalyzeRoute: () => analyzeState,
+    useAiConfigure: () => aiConfigState,
     useDetectPagination: () => detectState,
     useTestPagination: () => pageTestState,
     useUpdateRoute: () => updateState,
@@ -63,7 +66,9 @@ describe('RouteWorkbench', () => {
         pageTestState = { mutate: testPaginationMutate, isPending: false, isError: false, error: null, data: null };
         updateState = { mutate: updateMutate, isPending: false, isError: false, error: null, data: null };
         searchState = { mutate: searchMutate, isPending: false, isError: false, error: null, data: null };
+        aiConfigState = { mutate: aiConfigMutate, isPending: false, isError: false, error: null, data: null };
         searchMutate.mockClear();
+        aiConfigMutate.mockClear();
     });
 
     it('shows the Test tab by default and switches to Dati', () => {
@@ -139,6 +144,56 @@ describe('RouteWorkbench', () => {
         fireEvent.click(screen.getByTestId('api-route-wb-tab-analysis'));
         expect(screen.queryByTestId('api-route-wb-analysis')).not.toBeInTheDocument();
         expect(screen.getByTestId('api-route-wb-analysis-empty')).toBeInTheDocument();
+    });
+
+    it('proposes a full config with "Configura con AI" and applies it', () => {
+        aiConfigState.data = {
+            test: testResult().test,
+            suggestion: {
+                endpoint_type: 'list',
+                items_path: 'data',
+                pagination: { type: 'cursor', next_cursor_path: 'meta.next' },
+                tool_name: 'list_catalog',
+                tool_description: 'List the catalog.',
+                parameters: [{ name: 'q', location: 'query', source: 'llm', type: 'string', required: false }],
+            },
+        };
+        render(<RouteWorkbench route={route} onClose={vi.fn()} />);
+
+        fireEvent.click(screen.getByTestId('api-route-wb-tab-analysis'));
+        fireEvent.click(screen.getByTestId('api-route-wb-ai-configure-run'));
+        expect(aiConfigMutate).toHaveBeenCalledWith({ routeId: 5, exampleArgs: {} });
+
+        const suggestion = screen.getByTestId('api-route-wb-ai-suggestion');
+        expect(suggestion).toHaveTextContent('list_catalog');
+        expect(suggestion).toHaveTextContent('q');
+
+        fireEvent.click(screen.getByTestId('api-route-wb-ai-configure-apply'));
+        expect(updateMutate).toHaveBeenCalledWith(
+            {
+                routeId: 5,
+                payload: {
+                    endpoint_type: 'list',
+                    items_path: 'data',
+                    pagination: { type: 'cursor', next_cursor_path: 'meta.next' },
+                    slug: 'list_catalog',
+                    description: 'List the catalog.',
+                    parameters: [{ name: 'q', location: 'query', source: 'llm', type: 'string', required: false }],
+                },
+            },
+            expect.anything(),
+        );
+    });
+
+    it('explains a non-JSON call instead of blaming the AI', () => {
+        // reduced === null means the endpoint returned no JSON — the message must
+        // point at the call, not the AI provider.
+        analyzeState.data = { test: testResult({ is_json: false, body: '<html/>' }).test, reduced: null, notes: [], analysis: null };
+        render(<RouteWorkbench route={route} onClose={vi.fn()} />);
+
+        fireEvent.click(screen.getByTestId('api-route-wb-tab-analysis'));
+        fireEvent.click(screen.getByTestId('api-route-wb-analyze-ai-run'));
+        expect(screen.getByTestId('api-route-wb-analysis-empty')).toHaveTextContent('non ha restituito JSON');
     });
 
     it('prefills, saves and tests the pagination config', () => {
