@@ -14,6 +14,9 @@ import {
     type RelationPayload,
     type RoutePayload,
     type AnalyzeResponse,
+    type DetectPaginationResponse,
+    type PaginationConfig,
+    type TestPaginationResponse,
     type TestRouteResponse,
     type ToolDefinition,
 } from './api-connectors.api';
@@ -224,6 +227,25 @@ export function useTryRoute() {
 export function useAnalyzeRoute() {
     return useMutation<AnalyzeResponse, unknown, { routeId: number; exampleArgs?: Record<string, unknown> }>({
         mutationFn: ({ routeId, exampleArgs }) => apiConnectorsApi.analyzeRoute(routeId, exampleArgs),
+    });
+}
+
+/** Workbench "Paginazione" detect — read-only diagnostic, no cache invalidation. */
+export function useDetectPagination() {
+    return useMutation<DetectPaginationResponse, unknown, { routeId: number; exampleArgs?: Record<string, unknown> }>({
+        mutationFn: ({ routeId, exampleArgs }) => apiConnectorsApi.detectPagination(routeId, exampleArgs),
+    });
+}
+
+/** Workbench "Paginazione" test — read-only diagnostic, no cache invalidation. */
+export function useTestPagination() {
+    return useMutation<
+        TestPaginationResponse,
+        unknown,
+        { routeId: number; pagination: PaginationConfig; exampleArgs?: Record<string, unknown> }
+    >({
+        mutationFn: ({ routeId, pagination, exampleArgs }) =>
+            apiConnectorsApi.testPagination(routeId, pagination, exampleArgs),
     });
 }
 

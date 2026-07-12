@@ -130,6 +130,7 @@ export interface ApiRoute {
     param_mapping: Record<string, unknown> | null;
     tool_definition: ToolDefinition | null;
     output_transform: Record<string, unknown> | null;
+    pagination: PaginationConfig | null;
     last_test_at: string | null;
     last_test_status: number | null;
     last_test_payload: Record<string, unknown> | null;
@@ -182,6 +183,31 @@ export interface AnalyzeResponse {
     notes: ReductionNote[];
     /** AI narration of the structure; null when AI is off / not yet wired (P2). */
     analysis: string | null;
+}
+
+/** How an endpoint paginates (spec items 4-5). Persisted on the route. */
+export interface PaginationConfig {
+    type: 'page' | 'cursor' | 'none';
+    page_param?: string;
+    size_param?: string;
+    start_page?: number;
+    cursor_param?: string;
+    next_cursor_path?: string;
+    next_url_path?: string;
+    items_path?: string;
+}
+
+export interface DetectPaginationResponse {
+    config: PaginationConfig | null;
+    /** Where the guess came from: heuristic, ai (fallback), or none. */
+    source: 'heuristic' | 'ai' | 'none';
+}
+
+export interface TestPaginationResponse {
+    pages: { ok: boolean; status: number | null; item_count: number }[];
+    /** Did page 2 actually return different items than page 1? */
+    distinct: boolean;
+    note: string;
 }
 
 /**
@@ -242,6 +268,7 @@ export interface RoutePayload {
     cache_ttl_s?: number | null;
     rate_limit?: number | null;
     output_transform?: Record<string, unknown> | null;
+    pagination?: PaginationConfig | null;
     parameters?: RouteParameterInput[];
 }
 
@@ -385,6 +412,27 @@ export const apiConnectorsApi = {
     /** Workbench "Analisi": fire the route + return a reduced structure (+notes, +AI). Non-persisting; 200 even on failure. */
     async analyzeRoute(routeId: number, exampleArgs?: Record<string, unknown>): Promise<AnalyzeResponse> {
         const { data } = await api.post<AnalyzeResponse>(`${BASE}/routes/${routeId}/analyze`, {
+            example_args: exampleArgs ?? {},
+        });
+        return data;
+    },
+
+    /** Workbench "Paginazione": guess the pagination scheme (heuristic + AI fallback). Non-persisting. */
+    async detectPagination(routeId: number, exampleArgs?: Record<string, unknown>): Promise<DetectPaginationResponse> {
+        const { data } = await api.post<DetectPaginationResponse>(`${BASE}/routes/${routeId}/detect-pagination`, {
+            example_args: exampleArgs ?? {},
+        });
+        return data;
+    },
+
+    /** Workbench "Paginazione": fire two pages with the config and report whether page 2 advances. Non-persisting. */
+    async testPagination(
+        routeId: number,
+        pagination: PaginationConfig,
+        exampleArgs?: Record<string, unknown>,
+    ): Promise<TestPaginationResponse> {
+        const { data } = await api.post<TestPaginationResponse>(`${BASE}/routes/${routeId}/test-pagination`, {
+            pagination,
             example_args: exampleArgs ?? {},
         });
         return data;

@@ -26,6 +26,7 @@ function route(overrides: Partial<ApiRoute>): ApiRoute {
         param_mapping: null,
         tool_definition: null,
         output_transform: null,
+        pagination: null,
         last_test_at: null,
         last_test_status: null,
         last_test_payload: null,
