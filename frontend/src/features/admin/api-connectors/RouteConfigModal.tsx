@@ -12,7 +12,7 @@ import type {
     RouteConfigParam,
     TestResult,
 } from './api-connectors.api';
-import { useCreateRoute, useProduceConfig, useTestConfig, useUpdateRoute } from './api-connectors-hooks';
+import { useCreateRoute, useProduceConfig, useTestConfig, useTestRoute, useUpdateRoute } from './api-connectors-hooks';
 import { blankParam, diffGroups, emptyConfig, joinUrl, mapConfigErrors, routeToConfig, splitUrl } from './route-config';
 import { modalBackdropStyle } from './styles';
 import { prettyJson } from './pretty-json';
@@ -70,6 +70,7 @@ export function RouteConfigModal({ connector, route, onClose, onSaved }: RouteCo
 
     const createRoute = useCreateRoute();
     const updateRoute = useUpdateRoute();
+    const testRoute = useTestRoute();
     const testConfig = useTestConfig();
     const produceConfig = useProduceConfig();
 
@@ -172,6 +173,16 @@ export function RouteConfigModal({ connector, route, onClose, onSaved }: RouteCo
         );
     }
 
+    /** Best-effort: JSON args or {} (Save's final test tolerates bad args). */
+    function safeArgs(): Record<string, unknown> {
+        try {
+            const parsed: unknown = JSON.parse(exampleArgs.trim() || '{}');
+            return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
+        } catch {
+            return {};
+        }
+    }
+
     function handleSave() {
         setSubmitError(null);
         setFieldErrors({});
@@ -180,11 +191,21 @@ export function RouteConfigModal({ connector, route, onClose, onSaved }: RouteCo
             setSubmitError(message);
             setFieldErrors(mapConfigErrors(fe));
         };
-        const done = (msg: string, id: string) => { toast.success(msg, id); onSaved?.(); onClose(); };
+        // Persist the config, then run a REAL final test that promotes draft→tested
+        // and generates the input/output schema + tool definition (the config
+        // modal's own "Testa" is only a dry-run). The test is best-effort — the
+        // config is saved regardless; a failed test just leaves the route in draft.
+        const created = !route;
+        const afterSave = (saved: ApiRoute) => {
+            testRoute.mutate(
+                { routeId: saved.id, exampleArgs: safeArgs() },
+                { onSettled: () => { toast.success(created ? 'Rotta creata.' : 'Rotta salvata.', created ? 'toast-api-route-created' : 'toast-api-route-updated'); onSaved?.(); onClose(); } },
+            );
+        };
         if (route) {
-            updateRoute.mutate({ routeId: route.id, config }, { onSuccess: () => done('Rotta salvata.', 'toast-api-route-updated'), onError });
+            updateRoute.mutate({ routeId: route.id, config }, { onSuccess: afterSave, onError });
         } else {
-            createRoute.mutate({ connectorId: connector.id, config }, { onSuccess: () => done('Rotta creata.', 'toast-api-route-created'), onError });
+            createRoute.mutate({ connectorId: connector.id, config }, { onSuccess: afterSave, onError });
         }
     }
 
@@ -195,7 +216,7 @@ export function RouteConfigModal({ connector, route, onClose, onSaved }: RouteCo
         (produceConfig.isError && toAdminError(produceConfig.error).message) ||
         null;
     const responseBody = useMemo(() => (testResult ? prettyJson(testResult.test.body) : ''), [testResult]);
-    const saving = createRoute.isPending || updateRoute.isPending;
+    const saving = createRoute.isPending || updateRoute.isPending || testRoute.isPending;
     const aiRunning = produceConfig.isPending;
     const testing = testConfig.isPending;
 
