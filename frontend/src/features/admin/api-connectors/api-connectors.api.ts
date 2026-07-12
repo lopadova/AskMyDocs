@@ -229,28 +229,6 @@ export interface TestRouteResponse {
     item_schema: Record<string, unknown> | null;
 }
 
-/** One reduction the {@link StructureReducer} applied, biggest omitted group first. */
-export interface ReductionNote {
-    path: string;
-    total: number;
-    kept: number;
-    omitted: number;
-}
-
-/**
- * Workbench "Analisi" outcome (ApiRouteController::analyze) — the classified test
- * result + a deterministically REDUCED body (arrays truncated so the shape reads
- * start-to-end) + reduction notes + an optional AI narration. Returned RAW; a
- * failed/non-JSON call is a valid 200 with `reduced: null`.
- */
-export interface AnalyzeResponse {
-    test: TestResult;
-    reduced: unknown;
-    notes: ReductionNote[];
-    /** AI narration of the structure; null when AI is off / not yet wired (P2). */
-    analysis: string | null;
-}
-
 /** How an endpoint paginates (spec items 4-5). Persisted on the route. */
 export interface PaginationConfig {
     type: 'page' | 'cursor' | 'none';
@@ -261,44 +239,6 @@ export interface PaginationConfig {
     next_cursor_path?: string;
     next_url_path?: string;
     items_path?: string;
-}
-
-export interface DetectPaginationResponse {
-    config: PaginationConfig | null;
-    /** Where the guess came from: heuristic, ai (fallback), or none. */
-    source: 'heuristic' | 'ai' | 'none';
-}
-
-export interface TestPaginationResponse {
-    pages: { ok: boolean; status: number | null; item_count: number }[];
-    /** Did page 2 actually return different items than page 1? */
-    distinct: boolean;
-    note: string;
-}
-
-/** A full route-configuration suggestion (workbench "Configura con AI"). */
-export interface AiConfigureSuggestion {
-    endpoint_type: EndpointType;
-    items_path: string | null;
-    pagination: PaginationConfig | null;
-    tool_name: string | null;
-    tool_description: string | null;
-    parameters: RouteParameterInput[];
-}
-
-export interface AiConfigureResponse {
-    test: TestResult;
-    /** Null when the call returned no JSON to analyze. */
-    suggestion: AiConfigureSuggestion | null;
-}
-
-/** One-shot "Configura con AI": what was applied + the final verification. */
-export interface ApplyAiConfigureResponse {
-    applied: AiConfigureSuggestion | null;
-    final_test: TestResult;
-    pagination_test: TestPaginationResponse | null;
-    /** 'openapi' when read from a spec URL, 'response' when inferred from the live call. */
-    source: 'openapi' | 'response';
 }
 
 /**
@@ -328,39 +268,6 @@ export interface AuthProfilePayload {
     /** Write-only — never echoed back. Omit / blank = keep existing on update. */
     credentials?: Record<string, string>;
     config?: Record<string, unknown>;
-}
-
-/** One row of the route's parameters editor (StoreRouteRequest `parameters.*`). */
-export interface RouteParameterInput {
-    name: string;
-    location: ParamLocation;
-    source: ParamSource;
-    type?: ParamType;
-    required?: boolean;
-    value?: string | null;
-    secret_ref?: string | null;
-    description?: string | null;
-    sort_order?: number;
-}
-
-export interface RoutePayload {
-    name: string;
-    slug?: string | null;
-    description?: string | null;
-    http_method: HttpMethod;
-    url: string;
-    auth_profile_id?: number | null;
-    mode?: RouteMode;
-    /** 'auto' (server detects) | 'list' | 'detail' (explicit, locks the choice). */
-    endpoint_type?: EndpointTypeChoice;
-    /** Dot-path to the item array for a list route ('' = top-level array). */
-    items_path?: string | null;
-    timeout_ms?: number | null;
-    cache_ttl_s?: number | null;
-    rate_limit?: number | null;
-    output_transform?: Record<string, unknown> | null;
-    pagination?: PaginationConfig | null;
-    parameters?: RouteParameterInput[];
 }
 
 /**
@@ -522,64 +429,6 @@ export const apiConnectorsApi = {
     async testRoute(routeId: number, exampleArgs?: Record<string, unknown>): Promise<TestRouteResponse> {
         const { data } = await api.post<TestRouteResponse>(`${BASE}/routes/${routeId}/test`, {
             example_args: exampleArgs ?? {},
-        });
-        return data;
-    },
-
-    /** Workbench "Analisi": fire the route + return a reduced structure (+notes, +AI). Non-persisting; 200 even on failure. */
-    async analyzeRoute(routeId: number, exampleArgs?: Record<string, unknown>): Promise<AnalyzeResponse> {
-        const { data } = await api.post<AnalyzeResponse>(`${BASE}/routes/${routeId}/analyze`, {
-            example_args: exampleArgs ?? {},
-        });
-        return data;
-    },
-
-    /** Workbench "Paginazione": guess the pagination scheme (heuristic + AI fallback). Non-persisting. */
-    async detectPagination(routeId: number, exampleArgs?: Record<string, unknown>): Promise<DetectPaginationResponse> {
-        const { data } = await api.post<DetectPaginationResponse>(`${BASE}/routes/${routeId}/detect-pagination`, {
-            example_args: exampleArgs ?? {},
-        });
-        return data;
-    },
-
-    /** Workbench "Paginazione": fire two pages with the config and report whether page 2 advances. Non-persisting. */
-    async testPagination(
-        routeId: number,
-        pagination: PaginationConfig,
-        exampleArgs?: Record<string, unknown>,
-    ): Promise<TestPaginationResponse> {
-        const { data } = await api.post<TestPaginationResponse>(`${BASE}/routes/${routeId}/test-pagination`, {
-            pagination,
-            example_args: exampleArgs ?? {},
-        });
-        return data;
-    },
-
-    /** Workbench "Configura con AI": propose the full route config from a test call. Non-persisting. */
-    async aiConfigure(routeId: number, exampleArgs?: Record<string, unknown>): Promise<AiConfigureResponse> {
-        const { data } = await api.post<AiConfigureResponse>(`${BASE}/routes/${routeId}/ai-configure`, {
-            example_args: exampleArgs ?? {},
-        });
-        return data;
-    },
-
-    /** One-shot "Configura con AI": detect + apply + final test. PERSISTS. Reads from `openApiUrl` when given. */
-    async applyAiConfigure(
-        routeId: number,
-        exampleArgs?: Record<string, unknown>,
-        openApiUrl?: string,
-    ): Promise<ApplyAiConfigureResponse> {
-        const { data } = await api.post<ApplyAiConfigureResponse>(`${BASE}/routes/${routeId}/ai-configure-apply`, {
-            example_args: exampleArgs ?? {},
-            openapi_url: openApiUrl || undefined,
-        });
-        return data;
-    },
-
-    /** Workbench "Cerca": fire the route with the given search parameters. Non-persisting. */
-    async testSearch(routeId: number, searchArgs: Record<string, unknown>): Promise<{ test: TestResult }> {
-        const { data } = await api.post<{ test: TestResult }>(`${BASE}/routes/${routeId}/test-search`, {
-            example_args: searchArgs,
         });
         return data;
     },
