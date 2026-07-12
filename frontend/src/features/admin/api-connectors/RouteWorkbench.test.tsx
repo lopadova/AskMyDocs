@@ -97,4 +97,26 @@ describe('RouteWorkbench', () => {
         expect(screen.getByTestId('api-route-wb-data-notes')).toHaveTextContent('97 omessi su 100');
         expect(screen.getByTestId('api-route-wb-reduced')).toHaveTextContent('+97 more');
     });
+
+    it('shows the AI narration in the Analisi tab, or an empty hint without it', () => {
+        analyzeState.data = {
+            test: testResult().test,
+            reduced: { data: [{ id: 1 }] },
+            notes: [],
+            analysis: 'A list of products under `data`, each with id + name.',
+        } satisfies AnalyzeResponse;
+        const { rerender } = render(<RouteWorkbench route={route} onClose={vi.fn()} />);
+
+        fireEvent.click(screen.getByTestId('api-route-wb-tab-analysis'));
+        fireEvent.click(screen.getByTestId('api-route-wb-analyze-ai-run'));
+        expect(analyzeMutate).toHaveBeenCalledWith({ routeId: 5, exampleArgs: {} });
+        expect(screen.getByTestId('api-route-wb-analysis')).toHaveTextContent('under `data`');
+
+        // No AI narration (provider off) → the empty hint, not the prose block.
+        analyzeState = { mutate: analyzeMutate, isPending: false, isError: false, error: null, data: { test: testResult().test, reduced: {}, notes: [], analysis: null } };
+        rerender(<RouteWorkbench route={route} onClose={vi.fn()} />);
+        fireEvent.click(screen.getByTestId('api-route-wb-tab-analysis'));
+        expect(screen.queryByTestId('api-route-wb-analysis')).not.toBeInTheDocument();
+        expect(screen.getByTestId('api-route-wb-analysis-empty')).toBeInTheDocument();
+    });
 });
