@@ -437,8 +437,9 @@ export function RouteWorkspace({ connector, route, onClose, onSaved }: RouteWork
                         </Section>
 
                         <Section title="Mappatura risposta">
-                            <Field label="Endpoint type" flash={applied.type}>
-                                <div role="radiogroup" data-testid="api-route-form-endpoint_type" style={segmentWrap}>
+                            <div style={applied.type ? flashBox : undefined}>
+                                <div id="api-route-form-endpoint_type-caption" style={labelStyle}>Endpoint type</div>
+                                <div role="radiogroup" aria-labelledby="api-route-form-endpoint_type-caption" data-testid="api-route-form-endpoint_type" style={segmentWrap}>
                                     {ENDPOINT_TYPE_OPTIONS.map((o) => (
                                         <button
                                             key={o.value}
@@ -454,7 +455,7 @@ export function RouteWorkspace({ connector, route, onClose, onSaved }: RouteWork
                                     ))}
                                 </div>
                                 <div style={hintStyle}>{(ENDPOINT_TYPE_OPTIONS.find((o) => o.value === endpointType) ?? ENDPOINT_TYPE_OPTIONS[0]).hint}</div>
-                            </Field>
+                            </div>
 
                             {(endpointType === 'list' || endpointType === 'auto') && (
                                 <>
@@ -486,11 +487,11 @@ export function RouteWorkspace({ connector, route, onClose, onSaved }: RouteWork
                                 <div style={{ border: '1px solid var(--hairline)', borderRadius: 11, overflow: 'hidden', background: 'var(--bg-2)' }}>
                                     {params.map((p, i) => (
                                         <div key={p._key} style={paramRow}>
-                                            <input data-testid={`api-route-form-param-${i}-name`} value={p.name} onChange={(e) => updateParam(p._key, { name: e.target.value })} placeholder="name" style={{ ...monoInputSm, flex: 1 }} />
-                                            <CompactSelect testid={`api-route-form-param-${i}-location`} value={p.location} onChange={(v) => updateParam(p._key, { location: v as ParamLocation })} options={PARAM_LOCATIONS} />
-                                            <CompactSelect testid={`api-route-form-param-${i}-source`} value={p.source} onChange={(v) => updateParam(p._key, { source: v as ParamSource })} options={PARAM_SOURCES} />
-                                            <CompactSelect testid={`api-route-form-param-${i}-type`} value={p.type ?? 'string'} onChange={(v) => updateParam(p._key, { type: v as ParamType })} options={PARAM_TYPES} />
-                                            <button type="button" aria-label="Remove" data-testid={`api-route-form-param-${i}-remove`} onClick={() => removeParam(p._key)} style={removeBtn}>{closeIconSm}</button>
+                                            <input aria-label={`Parameter ${i + 1} name`} data-testid={`api-route-form-param-${i}-name`} value={p.name} onChange={(e) => updateParam(p._key, { name: e.target.value })} placeholder="name" style={{ ...monoInputSm, flex: 1 }} />
+                                            <CompactSelect ariaLabel={`Parameter ${i + 1} location`} testid={`api-route-form-param-${i}-location`} value={p.location} onChange={(v) => updateParam(p._key, { location: v as ParamLocation })} options={PARAM_LOCATIONS} />
+                                            <CompactSelect ariaLabel={`Parameter ${i + 1} source`} testid={`api-route-form-param-${i}-source`} value={p.source} onChange={(v) => updateParam(p._key, { source: v as ParamSource })} options={PARAM_SOURCES} />
+                                            <CompactSelect ariaLabel={`Parameter ${i + 1} type`} testid={`api-route-form-param-${i}-type`} value={p.type ?? 'string'} onChange={(v) => updateParam(p._key, { type: v as ParamType })} options={PARAM_TYPES} />
+                                            <button type="button" aria-label={`Remove parameter ${i + 1}`} data-testid={`api-route-form-param-${i}-remove`} onClick={() => removeParam(p._key)} style={removeBtn}>{closeIconSm}</button>
                                         </div>
                                     ))}
                                 </div>
@@ -588,7 +589,7 @@ export function RouteWorkspace({ connector, route, onClose, onSaved }: RouteWork
                                 </div>
                                 <div style={{ flex: 1 }} />
                                 {view === 'search' && (
-                                    <input data-testid="api-route-wb-search" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Filtra il JSON…" style={{ ...inputStyleT, width: 200, fontSize: 12.5 }} />
+                                    <input aria-label="Filtra il JSON" data-testid="api-route-wb-search" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Filtra il JSON…" style={{ ...inputStyleT, width: 200, fontSize: 12.5 }} />
                                 )}
                             </div>
                             {hasResponse ? (
@@ -645,14 +646,18 @@ function Field({
     errorTestId?: string;
     children: ReactNode;
 }) {
+    // The <label> wraps its single control, so the visible caption is
+    // programmatically associated with it (R15) without threading ids.
     return (
         <div style={flash ? flashBox : undefined}>
-            <label style={labelStyle}>
-                {label}
-                {required && <span style={{ color: 'var(--err, #f87171)' }}> *</span>}
-                {note && <span style={{ color: 'var(--fg-3)', fontWeight: 400 }}> {note}</span>}
+            <label style={{ display: 'block' }}>
+                <span style={labelStyle}>
+                    {label}
+                    {required && <span style={{ color: 'var(--err, #f87171)' }}> *</span>}
+                    {note && <span style={{ color: 'var(--fg-3)', fontWeight: 400 }}> {note}</span>}
+                </span>
+                {children}
             </label>
-            {children}
             {error && (
                 <span data-testid={errorTestId} role="alert" style={{ display: 'block', marginTop: 5, fontSize: 12, color: 'var(--err, #fca5a5)' }}>
                     {error}
@@ -662,10 +667,10 @@ function Field({
     );
 }
 
-function CompactSelect({ testid, value, onChange, options }: { testid: string; value: string; onChange: (v: string) => void; options: string[] }) {
+function CompactSelect({ testid, ariaLabel, value, onChange, options }: { testid: string; ariaLabel: string; value: string; onChange: (v: string) => void; options: string[] }) {
     return (
         <div style={{ position: 'relative', flex: 'none' }}>
-            <select data-testid={testid} value={value} onChange={(e) => onChange(e.target.value)} style={compactSelect}>
+            <select aria-label={ariaLabel} data-testid={testid} value={value} onChange={(e) => onChange(e.target.value)} style={compactSelect}>
                 {options.map((o) => <option key={o} value={o}>{o}</option>)}
             </select>
             <span style={caretWrapSm}>{caretSm}</span>
@@ -712,8 +717,8 @@ function PaginationCard({
             )}
             {on && pagination && (
                 <div style={{ padding: '2px 13px 14px', display: 'flex', flexDirection: 'column', gap: 12, borderTop: '1px solid var(--hairline)' }}>
-                    <div style={{ marginTop: 12 }}>
-                        <label style={labelSm}>Tipo</label>
+                    <label style={{ display: 'block', marginTop: 12 }}>
+                        <span style={labelSm}>Tipo</span>
                         <div style={{ position: 'relative' }}>
                             <select data-testid="api-route-form-pagination-type" value={pagination.type} onChange={(e) => set({ type: e.target.value as PaginationConfig['type'] })} style={selectStyleT}>
                                 <option value="cursor">Cursore / token</option>
@@ -721,19 +726,19 @@ function PaginationCard({
                             </select>
                             <span style={caretWrap}>{caret}</span>
                         </div>
-                    </div>
+                    </label>
                     {pagination.type === 'cursor' ? (
                         <>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                                <div><label style={labelSm}>Param cursore</label><input data-testid="api-route-form-pagination-cursor_param" value={pagination.cursor_param ?? ''} onChange={(e) => set({ cursor_param: e.target.value })} placeholder="cursor" style={monoInputSm} /></div>
-                                <div><label style={labelSm}>Next-cursor path</label><input data-testid="api-route-form-pagination-next_cursor_path" value={pagination.next_cursor_path ?? ''} onChange={(e) => set({ next_cursor_path: e.target.value })} placeholder="meta.next_cursor" style={monoInputSm} /></div>
+                                <label style={{ display: 'block' }}><span style={labelSm}>Param cursore</span><input data-testid="api-route-form-pagination-cursor_param" value={pagination.cursor_param ?? ''} onChange={(e) => set({ cursor_param: e.target.value })} placeholder="cursor" style={monoInputSm} /></label>
+                                <label style={{ display: 'block' }}><span style={labelSm}>Next-cursor path</span><input data-testid="api-route-form-pagination-next_cursor_path" value={pagination.next_cursor_path ?? ''} onChange={(e) => set({ next_cursor_path: e.target.value })} placeholder="meta.next_cursor" style={monoInputSm} /></label>
                             </div>
-                            <div><label style={labelSm}>Next-URL path <span style={{ color: 'var(--fg-3)', fontWeight: 400 }}>— opz.</span></label><input data-testid="api-route-form-pagination-next_url_path" value={pagination.next_url_path ?? ''} onChange={(e) => set({ next_url_path: e.target.value })} placeholder="links.next" style={monoInputSm} /></div>
+                            <label style={{ display: 'block' }}><span style={labelSm}>Next-URL path <span style={{ color: 'var(--fg-3)', fontWeight: 400 }}>— opz.</span></span><input data-testid="api-route-form-pagination-next_url_path" value={pagination.next_url_path ?? ''} onChange={(e) => set({ next_url_path: e.target.value })} placeholder="links.next" style={monoInputSm} /></label>
                         </>
                     ) : (
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                            <div><label style={labelSm}>Param pagina</label><input data-testid="api-route-form-pagination-page_param" value={pagination.page_param ?? ''} onChange={(e) => set({ page_param: e.target.value })} placeholder="page" style={monoInputSm} /></div>
-                            <div><label style={labelSm}>Param dimensione</label><input data-testid="api-route-form-pagination-size_param" value={pagination.size_param ?? ''} onChange={(e) => set({ size_param: e.target.value })} placeholder="per_page" style={monoInputSm} /></div>
+                            <label style={{ display: 'block' }}><span style={labelSm}>Param pagina</span><input data-testid="api-route-form-pagination-page_param" value={pagination.page_param ?? ''} onChange={(e) => set({ page_param: e.target.value })} placeholder="page" style={monoInputSm} /></label>
+                            <label style={{ display: 'block' }}><span style={labelSm}>Param dimensione</span><input data-testid="api-route-form-pagination-size_param" value={pagination.size_param ?? ''} onChange={(e) => set({ size_param: e.target.value })} placeholder="per_page" style={monoInputSm} /></label>
                         </div>
                     )}
                 </div>
