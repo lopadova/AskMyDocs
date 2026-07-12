@@ -135,8 +135,74 @@ export interface ApiRoute {
     last_test_status: number | null;
     last_test_payload: Record<string, unknown> | null;
     parameters?: ApiRouteParameter[];
+    /** The canonical config JSON — the FE modal's form model. Present when the
+     *  parameters relation is loaded (show/store/update/test responses). */
+    config?: RouteConfig;
     created_at: string | null;
     updated_at: string | null;
+}
+
+/**
+ * The canonical config JSON — the single object the AI produces, the modal binds
+ * to, and the codec persists. Grouped identity·request·response·options; mirrors
+ * the BE `Padosoft\AskMyDocsConnectorApi\Support\RouteConfig` exactly (R9). The
+ * JSON is internal — the user only ever sees the form built over it.
+ */
+export interface RouteConfigParam {
+    name: string;
+    location: ParamLocation;
+    source: ParamSource;
+    type: ParamType;
+    required: boolean;
+    description: string | null;
+    sort_order: number;
+    /** Present only when source === 'fixed'. */
+    value?: string | null;
+    /** A credential KEY name (never a secret) — present only when source === 'secret'. */
+    secret_ref?: string | null;
+}
+
+export interface RouteConfig {
+    identity: {
+        name: string;
+        slug: string | null;
+        description: string | null;
+        mode: RouteMode;
+    };
+    request: {
+        http_method: HttpMethod;
+        /** FULL canonical URL (the base/path split is display-only in the modal). */
+        url: string;
+        auth_profile_id: number | null;
+        params: RouteConfigParam[];
+    };
+    response: {
+        endpoint_type: EndpointTypeChoice;
+        items_path: string | null;
+        transform: { include: string[]; exclude: string[] } | null;
+        pagination: PaginationConfig | null;
+    };
+    options: {
+        timeout_ms: number | null;
+        cache_ttl_s: number | null;
+        rate_limit: number | null;
+    };
+}
+
+/** "Testa" outcome (ApiRouteController::testConfig) — a dry-run of an unsaved config. */
+export interface TestConfigResponse {
+    test: TestResult;
+    endpoint_type: EndpointType;
+    items_path: string | null;
+    detected_pagination: PaginationConfig | null;
+    item_count: number | null;
+}
+
+/** "Configura con AI" outcome (ApiRouteController::produceConfig) — the filled config + its final dry-run. */
+export interface ProduceConfigResponse {
+    config: RouteConfig | null;
+    final_test: TestResult;
+    source: 'openapi' | 'response' | 'none';
 }
 
 /** Test outcome (ApiRouteController::testPayload). A failed test is HTTP 200 with `ok:false`. */
@@ -412,18 +478,44 @@ export const apiConnectorsApi = {
         return data.data;
     },
 
-    async createRoute(connectorId: number, payload: RoutePayload): Promise<ApiRoute> {
-        const { data } = await api.post<{ data: ApiRoute }>(`${BASE}/${connectorId}/routes`, payload);
+    /** Create a route from the canonical config JSON (the BE codec un-groups it). */
+    async createRoute(connectorId: number, config: RouteConfig): Promise<ApiRoute> {
+        const { data } = await api.post<{ data: ApiRoute }>(`${BASE}/${connectorId}/routes`, { config });
         return data.data;
     },
 
-    async updateRoute(routeId: number, payload: Partial<RoutePayload>): Promise<ApiRoute> {
-        const { data } = await api.patch<{ data: ApiRoute }>(`${BASE}/routes/${routeId}`, payload);
+    /** Update a route from the canonical config JSON (a full replace). */
+    async updateRoute(routeId: number, config: RouteConfig): Promise<ApiRoute> {
+        const { data } = await api.patch<{ data: ApiRoute }>(`${BASE}/routes/${routeId}`, { config });
         return data.data;
     },
 
     async destroyRoute(routeId: number): Promise<void> {
         await api.delete(`${BASE}/routes/${routeId}`);
+    },
+
+    /** "Testa": dry-run an UNSAVED config against its endpoint (works in create mode). Non-persisting; 200 even on failure. */
+    async testConfig(connectorId: number, config: RouteConfig, exampleArgs?: Record<string, unknown>): Promise<TestConfigResponse> {
+        const { data } = await api.post<TestConfigResponse>(`${BASE}/${connectorId}/routes/test-config`, {
+            config,
+            example_args: exampleArgs ?? {},
+        });
+        return data;
+    },
+
+    /** "Configura con AI": the single AI pass → the filled config + a final dry-run. Non-persisting. */
+    async produceConfig(
+        connectorId: number,
+        config: RouteConfig,
+        exampleArgs?: Record<string, unknown>,
+        openApiUrl?: string,
+    ): Promise<ProduceConfigResponse> {
+        const { data } = await api.post<ProduceConfigResponse>(`${BASE}/${connectorId}/routes/produce-config`, {
+            config,
+            example_args: exampleArgs ?? {},
+            openapi_url: openApiUrl || undefined,
+        });
+        return data;
     },
 
     /** Run the route against the live target (no ingest). HTTP 200 even on a failed call (ok:false). */
