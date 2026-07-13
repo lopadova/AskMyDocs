@@ -60,16 +60,18 @@ baseTest.describe('Connectors — IMAP connection settings (super-admin)', () =>
             timeout: 15_000,
         });
         await addImapAccount(page, 'Support');
-        await expect(page.getByTestId('connector-list-card-imap')).toHaveAttribute(
-            'data-account-count',
+        await expect(page.getByTestId('connector-source-imap')).toHaveAttribute(
+            'data-connection-count',
             '1',
             { timeout: 15_000 },
         );
     });
 
     baseTest('happy — edits folders + window + a sender filter and persists them', async ({ page }) => {
-        const card = page.getByTestId('connector-list-card-imap');
-        await card.locator('[data-testid$="-folders"]').first().click();
+        // v8.30 — Folders lives in the connection row's ⋮ menu.
+        const row = page.locator('[data-testid^="connector-connection-"][data-connection-status]');
+        await row.locator('[data-testid$="-menu"]').click();
+        await page.locator('[data-testid$="-folders"]').click();
 
         const form = page.getByTestId('connector-imap-settings-form');
         await expect(form).toBeVisible();
@@ -89,7 +91,8 @@ baseTest.describe('Connectors — IMAP connection settings (super-admin)', () =>
         await expect(form).toHaveCount(0);
 
         // Reopen → the saved values round-trip (INBOX checked, window 90, tag chip present).
-        await card.locator('[data-testid$="-folders"]').first().click();
+        await row.locator('[data-testid$="-menu"]').click();
+        await page.locator('[data-testid$="-folders"]').click();
         await expect(page.getByTestId('connector-imap-settings-form')).toHaveAttribute('data-state', 'ready', {
             timeout: 15_000,
         });
@@ -110,8 +113,9 @@ baseTest.describe('Connectors — IMAP connection settings (super-admin)', () =>
             }),
         );
 
-        const card = page.getByTestId('connector-list-card-imap');
-        await card.locator('[data-testid$="-folders"]').first().click();
+        const row = page.locator('[data-testid^="connector-connection-"][data-connection-status]');
+        await row.locator('[data-testid$="-menu"]').click();
+        await page.locator('[data-testid$="-folders"]').click();
 
         const form = page.getByTestId('connector-imap-settings-form');
         await expect(form).toBeVisible();

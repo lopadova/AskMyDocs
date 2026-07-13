@@ -42,7 +42,7 @@ So multi-account is **primarily a data-model change in the
 
 ```mermaid
 flowchart TD
-    UI["Admin SPA<br/>accounts-per-connector card"] -->|"label + project_key"| API
+    UI["Admin SPA<br/>sources grid + flat connections list"] -->|"label + project_key"| API
     CLI["connectors:install / connectors:list"] --> CORE
     MCP["ConnectorInstallationsTool"] --> CORE
     API["ConnectorAdminController<br/>(list / install / configure / PATCH / delete)"] --> CORE

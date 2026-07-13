@@ -66,39 +66,44 @@ baseTest.describe('Connectors — Enable + Test fetch (super-admin)', () => {
             timeout: 15_000,
         });
         await addImapAccount(page, 'Support');
-        await expect(page.getByTestId('connector-list-card-imap')).toHaveAttribute(
-            'data-account-count',
+        await expect(page.getByTestId('connector-source-imap')).toHaveAttribute(
+            'data-connection-count',
             '1',
             { timeout: 15_000 },
         );
     });
 
     baseTest('happy — disable then re-enable re-arms the account to active', async ({ page }) => {
-        const card = page.getByTestId('connector-list-card-imap');
-        const account = card.locator('[data-testid^="connector-account-"][data-account-status]').first();
-        await expect(account).toHaveAttribute('data-account-status', 'active');
+        // v8.30 — the single flat connection row; state actions live in its ⋮ menu.
+        const row = page.locator('[data-testid^="connector-connection-"][data-connection-status]');
+        const menu = row.locator('[data-testid$="-menu"]');
+        await expect(row).toHaveAttribute('data-connection-status', 'active');
 
-        // Pause it: the account flips to DISABLED and exposes the Enable action.
-        await card.locator('[data-testid$="-disable"]').first().click();
+        // Pause it: the account flips to DISABLED and the menu offers Enable.
+        await menu.click();
+        await page.locator('[data-testid$="-disable"]').click();
         await expect(page.getByTestId('toast-connector-disabled')).toBeVisible({ timeout: 10_000 });
-        await expect(account).toHaveAttribute('data-account-status', 'disabled', { timeout: 10_000 });
-        await expect(card.locator('[data-testid$="-enable"]').first()).toBeVisible();
+        await expect(row).toHaveAttribute('data-connection-status', 'disabled', { timeout: 10_000 });
 
         // Re-enable: back to ACTIVE without a re-install (credentials kept).
-        await card.locator('[data-testid$="-enable"]').first().click();
+        await menu.click();
+        await expect(page.locator('[data-testid$="-enable"]')).toBeVisible();
+        await page.locator('[data-testid$="-enable"]').click();
         await expect(page.getByTestId('toast-connector-enabled')).toBeVisible({ timeout: 10_000 });
-        await expect(account).toHaveAttribute('data-account-status', 'active', { timeout: 10_000 });
-        // The Enable button is gone once active; Disable is back.
-        await expect(card.locator('[data-testid$="-enable"]')).toHaveCount(0);
-        await expect(card.locator('[data-testid$="-disable"]').first()).toBeVisible();
+        await expect(row).toHaveAttribute('data-connection-status', 'active', { timeout: 10_000 });
+
+        // Once active the menu no longer offers Enable; Disable is back.
+        await menu.click();
+        await expect(page.locator('[data-testid$="-enable"]')).toHaveCount(0);
+        await expect(page.locator('[data-testid$="-disable"]')).toBeVisible();
     });
 
     baseTest('happy — test fetch opens the read-only preview (empty-folder state)', async ({ page }) => {
-        const card = page.getByTestId('connector-list-card-imap');
-
         // Real-data probe through the backend: the fake INBOX is reachable but
         // empty → a valid 200 with message:null (R43 the OTHER state).
-        await card.locator('[data-testid$="-test-fetch"]').first().click();
+        const row = page.locator('[data-testid^="connector-connection-"][data-connection-status]');
+        await row.locator('[data-testid$="-menu"]').click();
+        await page.locator('[data-testid$="-test-fetch"]').click();
 
         const result = page.getByTestId('connector-test-fetch-result');
         await expect(result).toBeVisible({ timeout: 15_000 });
@@ -124,8 +129,9 @@ baseTest.describe('Connectors — Enable + Test fetch (super-admin)', () => {
             }),
         );
 
-        const card = page.getByTestId('connector-list-card-imap');
-        await card.locator('[data-testid$="-test-fetch"]').first().click();
+        const row = page.locator('[data-testid^="connector-connection-"][data-connection-status]');
+        await row.locator('[data-testid$="-menu"]').click();
+        await page.locator('[data-testid$="-test-fetch"]').click();
 
         await expect(page.getByTestId('toast-connector-error')).toBeVisible({ timeout: 10_000 });
         // The probe failed — the read-only result modal must NOT open.
