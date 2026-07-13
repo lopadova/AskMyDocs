@@ -31,12 +31,13 @@ final class ConnectorInstallationStatsTest extends TestCase
         $router->middleware('api')->prefix('api')->group(__DIR__.'/../../../routes/api.php');
     }
 
-    protected function setUp(): void
-    {
-        parent::setUp();
-        $this->seed(RbacSeeder::class);
-        app(TenantContext::class)->set('default');
-    }
+protected function setUp(): void
+{
+    parent::setUp();
+    $this->seed(RbacSeeder::class);
+    \Illuminate\Support\Facades\Cache::flush();
+    app(TenantContext::class)->set('default');
+}
 
     public function test_counts_only_this_installations_live_tenant_documents(): void
     {
