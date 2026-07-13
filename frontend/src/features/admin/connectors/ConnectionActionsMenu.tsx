@@ -148,16 +148,16 @@ export function ConnectionActionsMenu({
                 closeAndRefocus();
             }
         }
-        function onPointer(e: MouseEvent) {
-            const target = e.target as Node;
-            if (triggerRef.current?.contains(target) || panelRef.current?.contains(target)) {
-                return; // clicks on the trigger/panel are handled locally
-            }
-            onClose();
-        }
-        function onScrollOrResize() {
-            onClose();
-        }
+function onPointer(e: MouseEvent) {
+    const target = e.target as Node;
+    if (triggerRef.current?.contains(target) || panelRef.current?.contains(target)) {
+        return; // clicks on the trigger/panel are handled locally
+    }
+    closeAndRefocus();
+}
+function onScrollOrResize() {
+    closeAndRefocus();
+}
         document.addEventListener('keydown', onKey, true);
         document.addEventListener('mousedown', onPointer, true);
         window.addEventListener('scroll', onScrollOrResize, true);
