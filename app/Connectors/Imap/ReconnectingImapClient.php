@@ -174,8 +174,12 @@ final class ReconnectingImapClient implements ImapClientInterface
             // Socket already gone — the next call reconnects regardless.
         }
 
-        if ($this->retryDelayMs > 0) {
-            usleep($this->retryDelayMs * 1000);
+        // Clamp to >= 0 explicitly: retryDelayMs is env/config-sourced, and
+        // usleep() throws a ValueError on a negative argument in PHP 8+ — a negative
+        // delay must degrade to "no pause", never turn a recoverable drop fatal.
+        $delayMs = max(0, $this->retryDelayMs);
+        if ($delayMs > 0) {
+            usleep($delayMs * 1000);
         }
     }
 
