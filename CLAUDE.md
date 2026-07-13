@@ -351,6 +351,19 @@ rotation. `kb:rebuild-graph` is a no-op when no canonical docs exist.
   `SerializedSyncScheduler`, swapped in `bootstrap/app.php`) re-queues sync JOBS
   per mailbox via `WithoutOverlapping` so concurrent same-mailbox syncs never
   block a worker or flap to ERRORED. Needs an atomic lock store (Redis in prod).
+  **Reconnect-on-drop** (`App\Connectors\Imap\SerializingImapClient` wraps
+  `App\Connectors\Imap\ReconnectingImapClient` wraps the raw client — the host
+  `$app->extend` chain in `AppServiceProvider` registers reconnect BEFORE the
+  serializer so the retry runs INSIDE the held lock, same mailbox, no second
+  connection): a TRANSIENT transport drop (`fwrite(): SSL: Broken pipe` /
+  connection-reset / idle drop) on ANY op is absorbed by dropping the dead socket
+  and retrying once on a fresh connection, instead of hard-failing the run. The
+  vendored `ImapConnector::runSync()` only guards drops around the per-folder
+  scan — the initial `listMailboxes()`, the reconcile `searchUids()`, and the
+  per-message fetch cascade are unguarded, so without this a single drop leaves
+  the install stuck "Not synced yet". Auth failures (`ConnectorAuthException`) and
+  `\Error`s are never retried. Gated by `connectors.imap.reconnect.enabled`
+  (default on), skips the fake seam.
 
 ---
 
