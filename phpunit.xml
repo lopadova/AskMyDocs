@@ -46,6 +46,11 @@
              exercise the decorator class directly (both flag states). Production
              defaults it ON (Redis lock). -->
         <env name="CONNECTOR_IMAP_SERIALIZE_CONNECTIONS" value="false"/>
+        <!-- IMAP reconnect-on-drop OFF across the suite so the resolved factory
+             stays the raw package factory for the fake/serializer wiring tests; the
+             dedicated ReconnectingImapClient tests exercise the decorator directly
+             and ImapReconnectWiringTest flips it ON. Production defaults it ON. -->
+        <env name="CONNECTOR_IMAP_RECONNECT_ON_DROP" value="false"/>
         <!-- v8.16 — FinOps metering OFF across the suite: the pricing path
              lazily HTTPs on a cache miss (LiteLLM / OpenRouter feeds), which must
              never fire in unit/feature tests. Production defaults metering ON;

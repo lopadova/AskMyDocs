@@ -177,6 +177,20 @@ return [
             // SerializedConnectorSyncJob::retryUntil).
             'requeue_window_minutes' => (int) env('CONNECTOR_IMAP_MAILBOX_REQUEUE_WINDOW_MIN', 30),
         ],
+
+        // Reconnect-on-drop (host ReconnectingImapClient decorator). Gmail/Exchange
+        // routinely close a live IMAP session mid-flight ("fwrite(): SSL: Broken
+        // pipe" / "connection reset" / idle drop). When `enabled` (default) the host
+        // wraps every client so such a TRANSIENT drop is absorbed by one
+        // close-and-retry on a fresh connection instead of hard-failing the sync run.
+        //   - max_attempts  : total tries per operation (1 = no retry; 2 = one retry).
+        //   - retry_delay_ms: pause between the drop and the reconnect (server breather).
+        // Auth failures are never retried; only transient transport drops are.
+        'reconnect' => [
+            'enabled' => (bool) env('CONNECTOR_IMAP_RECONNECT_ON_DROP', true),
+            'max_attempts' => (int) env('CONNECTOR_IMAP_RECONNECT_MAX_ATTEMPTS', 2),
+            'retry_delay_ms' => (int) env('CONNECTOR_IMAP_RECONNECT_RETRY_DELAY_MS', 500),
+        ],
     ],
 
     /*

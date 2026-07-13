@@ -200,6 +200,7 @@ class AppServiceProvider extends ServiceProvider
         $this->registerFinOpsGates();
         $this->registerGuardrailsGates();
         $this->registerFakeImapFactory();
+        $this->registerImapReconnect();
         $this->registerImapConnectionSerializer();
         $this->registerInvitationsIntegration();
         $this->registerInvitationsGates();
@@ -339,6 +340,49 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(
             \Padosoft\AskMyDocsConnectorImap\Imap\ImapClientFactoryInterface::class,
             \App\Connectors\Testing\FakeImapClientFactory::class,
+        );
+    }
+
+    /**
+     * Absorb transient IMAP transport drops (the classic "fwrite(): SSL: Broken pipe"
+     * / connection-reset / idle drop) with one close-and-retry, so a server closing a
+     * live session mid-flight no longer hard-fails the sync run. DECORATES whatever
+     * factory is currently bound via `$app->extend`, registered BEFORE the serializer
+     * so the resulting client is `SerializingImapClient(ReconnectingImapClient(real))`
+     * — the reconnect happens INSIDE the per-mailbox lock (same mailbox, no second
+     * simultaneous connection, lock never released between drop and retry).
+     *
+     * Skips the fake seam (nothing transient to recover) and degrades to a no-op when
+     * disabled via `connectors.imap.reconnect.enabled` — never crashes boot.
+     */
+    private function registerImapReconnect(): void
+    {
+        if (config('connectors.imap.reconnect.enabled', true) !== true) {
+            return;
+        }
+
+        // No real server to recover a drop from when the IMAP is faked (E2E/local
+        // offline seam) — leave the fake factory pristine, same as the serializer.
+        if (config('connectors.fake_imap_ping', false) === true) {
+            return;
+        }
+
+        if (! interface_exists(\Padosoft\AskMyDocsConnectorImap\Imap\ImapClientFactoryInterface::class)) {
+            return;
+        }
+
+        $maxAttempts = (int) config('connectors.imap.reconnect.max_attempts', 2);
+        $retryDelayMs = (int) config('connectors.imap.reconnect.retry_delay_ms', 500);
+
+        $this->app->extend(
+            \Padosoft\AskMyDocsConnectorImap\Imap\ImapClientFactoryInterface::class,
+            static function ($factory) use ($maxAttempts, $retryDelayMs): \App\Connectors\Imap\ReconnectingImapClientFactory {
+                return new \App\Connectors\Imap\ReconnectingImapClientFactory(
+                    $factory,
+                    $maxAttempts,
+                    $retryDelayMs,
+                );
+            },
         );
     }
 
