@@ -184,6 +184,8 @@ return [
         // wraps every client so such a TRANSIENT drop is absorbed by one
         // close-and-retry on a fresh connection instead of hard-failing the sync run.
         //   - max_attempts  : total tries per operation (1 = no retry; 2 = one retry).
+        //                     Hard-capped at 10 in code — the retry holds the
+        //                     per-mailbox lock, so it must never outlive its TTL.
         //   - retry_delay_ms: pause between the drop and the reconnect (server breather).
         // Auth failures are never retried; only transient transport drops are.
         'reconnect' => [

@@ -67,6 +67,14 @@ final class ReconnectingImapClient implements ImapClientInterface
         'eof',
     ];
 
+    /**
+     * Hard ceiling on the per-operation attempt budget, regardless of config. The
+     * reconnect runs inside the cross-tenant per-mailbox lock, so an unbounded budget
+     * must never let a misconfiguration hold that lock past its TTL. 10 attempts ×
+     * a sane retry delay stays well under CONNECTOR_IMAP_MAILBOX_LOCK_TTL (700s).
+     */
+    private const MAX_ATTEMPTS_CEILING = 10;
+
     public function __construct(
         private readonly ImapClientInterface $inner,
         private readonly int $maxAttempts,
@@ -121,7 +129,14 @@ final class ReconnectingImapClient implements ImapClientInterface
      */
     private function attempt(string $label, callable $operation): mixed
     {
-        $maxAttempts = max(1, $this->maxAttempts);
+        // Clamp BOTH ends: a 0/negative budget would never run (floor at 1 = try
+        // once, no retry), and — because the retry runs INSIDE the held per-mailbox
+        // lock — an unbounded budget from a misconfiguration could hold that
+        // cross-tenant lock for `(budget − 1) × retry_delay_ms`, potentially past the
+        // lock TTL, at which point a waiting tenant could open a second connection to
+        // the same mailbox (the very thing serialization prevents). A small ceiling
+        // keeps the worst case negligible against CONNECTOR_IMAP_MAILBOX_LOCK_TTL.
+        $maxAttempts = min(self::MAX_ATTEMPTS_CEILING, max(1, $this->maxAttempts));
         $attempt = 0;
 
         while (true) {
