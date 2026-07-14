@@ -4,13 +4,17 @@ declare(strict_types=1);
 
 namespace App\Connectors;
 
+use App\Connectors\Imap\MailboxBusyException;
 use App\Connectors\Imap\MailboxLockKey;
 use DateTimeInterface;
 use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
+use Padosoft\AskMyDocsConnectorBase\ConnectorRegistry;
 use Padosoft\AskMyDocsConnectorBase\ConnectorSyncJob;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
+use Padosoft\AskMyDocsConnectorBase\Support\TenantContext;
 
 /**
  * Host replacement for {@see ConnectorSyncJob} that adds per-mailbox re-queue: two
@@ -166,5 +170,71 @@ final class SerializedConnectorSyncJob extends ConnectorSyncJob
         $minutes = (int) config('connectors.imap.mailbox_lock.requeue_window_minutes', 30);
 
         return now()->addMinutes(max(1, $minutes));
+    }
+
+    /**
+     * A {@see MailboxBusyException} is NOT a sync failure — it means another
+     * connection to this account is live RIGHT NOW (an operator action: folder
+     * picker / test-fetch / the pre-save connection test, or a stale Layer-1 lock
+     * left by a killed worker until its TTL). Layer 2's WithoutOverlapping only
+     * serializes sync JOBS against each other; it can't see those non-job holders,
+     * so the sync can still race into the Layer-1 lock and get "busy".
+     *
+     * Left alone, the vendor parent catches it, flips the row to ERRORED + writes
+     * error_json, and re-throws — surfacing a red "Sync failed" that STOPS auto-sync
+     * until a manual reinstall (the scheduler skips non-ACTIVE rows). That is wrong
+     * for a transient condition. Here we intercept it: undo the ERRORED state the
+     * parent just wrote and RE-QUEUE (like the WithoutOverlapping re-queue — a
+     * release, not a failure, so no JobFailed → no FAILED run row), so the sync
+     * transparently retries once the mailbox frees. `retryUntil()` still bounds the
+     * re-queues, so a mailbox that stays busy past the window ultimately fails loudly.
+     */
+    public function handle(ConnectorRegistry $registry, TenantContext $tenantContext): void
+    {
+        try {
+            parent::handle($registry, $tenantContext);
+        } catch (MailboxBusyException $e) {
+            $this->recoverFromMailboxBusy();
+
+            $delay = max(1, (int) config('connectors.imap.mailbox_lock.requeue_after_seconds', 60));
+            $this->release($delay);
+        }
+    }
+
+    /**
+     * Undo the ERRORED state the vendor parent's recordFailure() just wrote for a
+     * transient busy, so the re-queued attempt (and the scheduler) still sees an
+     * ACTIVE row to sync. Guarded: only reverts a row that is CURRENTLY errored with
+     * exactly this busy signature, so it can never clobber a status another process
+     * legitimately set in the meantime.
+     */
+    private function recoverFromMailboxBusy(): void
+    {
+        $installation = ConnectorInstallation::query()
+            ->where('id', $this->installationId)
+            ->where('tenant_id', $this->tenantId)
+            ->first();
+
+        if ($installation === null) {
+            return;
+        }
+
+        if ($installation->status !== ConnectorInstallation::STATUS_ERRORED) {
+            return;
+        }
+
+        if (($installation->error_json['class'] ?? null) !== MailboxBusyException::class) {
+            return;
+        }
+
+        $installation->forceFill([
+            'status' => ConnectorInstallation::STATUS_ACTIVE,
+            'error_json' => null,
+        ])->save();
+
+        Log::info('[connector-imap] mailbox busy — re-queuing sync instead of failing', [
+            'installation_id' => $this->installationId,
+            'tenant_id' => $this->tenantId,
+        ]);
     }
 }
