@@ -194,6 +194,12 @@ tells buyers to demand:
   Tunable via `CONNECTOR_IMAP_SERIALIZE_CONNECTIONS` (default on; needs an atomic lock store / Redis)
   + `CONNECTOR_IMAP_MAILBOX_LOCK_*`. See the
   [doc-site](https://padosoft.mintlify.app/connectors-imap-serialization).
+  A **transient transport drop** on a live session (the classic *"fwrite(): SSL: Broken pipe"* /
+  connection-reset / idle drop Gmail & Exchange trigger mid-sync) is **absorbed by one
+  close-and-retry on a fresh connection** — nested **inside** the per-mailbox lock, so the retry
+  never opens a second connection — instead of hard-failing the run and leaving the install stuck at
+  *"Not synced yet"*. Auth failures are never retried. Tunable via `CONNECTOR_IMAP_RECONNECT_ON_DROP`
+  (default on), `CONNECTOR_IMAP_RECONNECT_MAX_ATTEMPTS`, `CONNECTOR_IMAP_RECONNECT_RETRY_DELAY_MS`.
 - **AI Guardrails on the live chat path** (v8.19) — every chat turn is **screened on input** (a
   malicious / policy-violating prompt becomes a localized refusal — never a 500 — with an append-only
   audit row) and **sanitized on output** (exfil links defanged before the answer reaches the client),
