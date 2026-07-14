@@ -351,6 +351,15 @@ rotation. `kb:rebuild-graph` is a no-op when no canonical docs exist.
   `SerializedSyncScheduler`, swapped in `bootstrap/app.php`) re-queues sync JOBS
   per mailbox via `WithoutOverlapping` so concurrent same-mailbox syncs never
   block a worker or flap to ERRORED. Needs an atomic lock store (Redis in prod).
+  `WithoutOverlapping` only serializes sync JOBS against each other, so a sync can
+  still race a NON-job holder of the Layer-1 lock (an operator folder-picker /
+  test-fetch / pre-save connection test, or a stale lock left by a killed worker
+  until its TTL) and hit `MailboxBusyException`. `SerializedConnectorSyncJob::handle()`
+  intercepts that: it undoes the vendor parent's ERRORED write (guarded to exactly
+  that busy signature) and `release()`s to re-queue — a busy is transient, never a
+  red "Sync failed" that stops auto-sync; `retryUntil()` still bounds the re-queues so
+  a mailbox busy past the window ultimately fails loudly, and a NON-busy error still
+  propagates and stays ERRORED.
   **Reconnect-on-drop** (`App\Connectors\Imap\SerializingImapClient` wraps
   `App\Connectors\Imap\ReconnectingImapClient` wraps the raw client — the host
   `$app->extend` chain in `AppServiceProvider` registers reconnect BEFORE the
