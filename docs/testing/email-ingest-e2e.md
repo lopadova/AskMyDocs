@@ -1,288 +1,485 @@
-# Test end-to-end: ingest di e-mail reali via IMAP
+# Dataset email case-study: generazione, delivery e ingest
 
-Runbook operativo per verificare **tutto** il percorso
-`e-mail vere → casella IMAP → connettore → ingest → chat` su aziende già
-presenti nel sistema. Non si seedano righe finte nel DB: si inviano messaggi
-**veri** dentro caselle IMAP **vere** (Gmail di test), poi si fa l'ingest da
-quelle caselle, esattamente come in produzione.
+Runbook operativo per il percorso:
 
-> Harness di **dev/test**. Niente di tutto questo va abilitato in produzione
-> (le credenziali `CONNECTOR_TEST_*` restano vuote sui deploy reali). È tooling
-> CLI: per scelta non ha UI né endpoint HTTP dedicati (R44 — eccezione motivata).
-
----
-
-## 0. Panoramica del flusso
-
-```mermaid
-flowchart LR
-    F[TestEmailFixtures<br/>account + e-mail] -->|mail:seed-imap<br/>IMAP APPEND| M[(Gmail unico<br/>6 label)]
-    M -->|connector:imap:install --sync<br/>ConnectorSyncJob| I[IngestDocumentJob<br/>parse→chunk→embed→persist]
-    I --> KB[(knowledge_documents<br/>+ knowledge_chunks<br/>project_key = azienda)]
-    KB -->|membership esistente| C[Chat per account<br/>risposta grounded + citazione]
+```text
+cataloghi versionati
+  → generatore deterministico
+  → manifest + shard JSONL
+  → APPEND IMAP streaming e riprendibile
+  → sync a tranche
+  → ingest non canonico
+  → verifica chat e isolamento
 ```
 
-Tre comandi compongono l'harness (tutti idempotenti, tenant `default`):
+È un harness esclusivamente `local`/`testing`. Le credenziali
+`CONNECTOR_TEST_*` devono restare vuote in produzione.
 
-| Comando | Ruolo |
-|---|---|
-| `demo:list-companies` | Discovery read-only: quali aziende esistono, con quanti documenti/membri/connettori. |
-| `mail:seed-imap` | Consegna (APPEND) le e-mail di test dentro le caselle IMAP. |
-| `connector:imap:install` | Installa il connettore IMAP per azienda e (con `--sync`) avvia l'ingest. |
+**Stato:** generazione, quality gate e hardening host sono completi offline.
+Le sezioni IMAP, PostgreSQL/pgvector, retrieval, costo e performance descrivono
+la certificazione live ancora da eseguire, non risultati già ottenuti.
 
-La sorgente dati unica è
-[`database/seeders/TestEmailFixtures.php`](../../database/seeders/TestEmailFixtures.php):
-caselle IMAP (`MAILBOXES`, 2 per azienda). Le **e-mail** di ogni casella (≥100,
-di vario tipo + thread **domanda/risposta**) vivono in
-`database/seeders/emails/<mailbox_key>.json` (generate via multi-agente,
-versionate) e sono caricate da `TestEmailFixtures::emailsForMailbox()`. Ogni e-mail porta un
-**"fatto-esca"** unico (un codice/nome/numero, es. `RL-2024-0815`, `Protocollo
-Fenice-7`, `ClubPasso Aero`) che **non deve** comparire nelle risposte di
-un'altra azienda: è il rilevatore di contaminazione del test di isolamento.
+## Contratto e profili
 
----
+Le 751 email curate in `database/seeders/emails/*.json` restano il livello
+`gold`. I cataloghi correnti sono immutabili sotto
+`database/seeders/email-dataset/catalogs/v1/`; i profili sono in
+`database/seeders/email-dataset/profiles/`. Gli output generati vanno in
+`storage/app/demo-email-datasets/` e non vengono versionati nel repository.
 
-## 1. Prerequisiti
+| Profilo | Per mailbox | Per azienda | Totale | Uso |
+|---|---:|---:|---:|---|
+| `gold` | 119–136 | 242–262 | 751 | Regressione sul corpus curato |
+| `demo` | 500 | 1.000 | 3.000 | Demo locale |
+| `large` | 1.000 | 2.000 | 6.000 | Dataset completo consigliato |
+| `stress` | 5.000 | 10.000 | 30.000 | Capacity test su IMAP locale |
 
-### 1.1 Aziende già presenti
-Le fixtures coprono le 3 aziende del `CaseStudyUsersSeeder` (tenant `default`),
-ognuna con **2 caselle logiche** (6 totali). Google limita gli account per
-numero di telefono, quindi le 6 caselle sono **6 etichette (label) di UN UNICO
-account Gmail** (campo `folder` nel fixture). Entrambe le label di un'azienda
-confluiscono nello **stesso** `project_key`, quindi la sua KB raccoglie le e-mail
-di tutte e due.
+Con seed `20260723`, catalogo `v1` e revisione generatore `g1`, gli artefatti
+offline verificati sono:
 
-| project_key | Azienda | Caselle = label Gmail (mailbox_key) | Utente chat (pwd `password`) |
-|---|---|---|---|
-| `rotta-logistics` | Rotta Sicura Logistics | `rotta-logistics-1`, `rotta-logistics-2` | `rotta@case-study.local` |
-| `prometeo-antincendio` | Prometeo Sicurezza Antincendio | `prometeo-antincendio-1`, `prometeo-antincendio-2` | `prometeo@case-study.local` |
-| `passolibero-calzature` | PassoLibero Calzature | `passolibero-calzature-1`, `passolibero-calzature-2` | `passolibero@case-study.local` |
+| Profilo | Dataset version | Shard dati | SHA-256 aggregato dati |
+|---|---|---:|---|
+| `gold` | `case-study-email-v2-g1-gold-s20260723-catalogv1-snapede2f4abda9f7009` | 71 | `68cc51d53aa07f5f0c97f735bbf18a7b95b5696b3df5e0b9e3962b28fbeb1770` |
+| `demo` | `case-study-email-v2-g1-demo-s20260723-catalogv1-snapa951e9cb2e6563c9` | 179 | `3455311d9e111070fc433990a98c9ef75ebe56d10c35a349819efbfc91ebb256` |
+| `large` | `case-study-email-v2-g1-large-s20260723-catalogv1-snapa48c0f4751b501df` | 180 | `e4b3dc57d8a772d85523a86405f61d3bd600cc116b55814faea247669f7940d6` |
+| `stress` | `case-study-email-v2-g1-stress-s20260723-catalogv1-snapfa1d1a0f4517df7c` | 180 | `cfa80dbad498353a243dec450519ab965e4f1a3aa08c1f10b7a439fb464ce677` |
 
-Assicurati che esistano (e abbiano già la documentazione markdown):
+| Profilo | Fingerprint snapshot completo | Shard indice | SHA-256 aggregato indice |
+|---|---|---:|---|
+| `gold` | `ede2f4abda9f700963d1a073439287e774165d2a9d3218299b2c10127953858c` | 240 | `526571bd589c36f9e6b91b591c7660615ad198136cc687621185f0952c0d90eb` |
+| `demo` | `a951e9cb2e6563c9a5d364e159c73a28cdb52b97403a706ec70dc839300b0c19` | 256 | `aefc71efbb6ae456576eaac9d081fdc3c8934941a072b901098fb0f7af265b07` |
+| `large` | `a48c0f4751b501dfc5e8e197daab04dc39cc358f994461b6295ef915d4d24ee9` | 256 | `c8a7a1a8b9b687dd6e664acb224f3da3c6a1c5efc9d4c0ce4c4dcf16664d1730` |
+| `stress` | `fa1d1a0f4517df7c3c66f6464206a95edb33d003da1b75f61bd05938b5fd6169` | 256 | `6e9644437d66310874564c7eac9645dc4168569d727323152c189c35ad33b105` |
+
+Il fingerprint è un content commitment SHA-256 su revisione generatore e
+checksum, ordinati per path logico, di profilo, schema, indice catalogo,
+registri aziendali e fixture gold selezionate. Le prime 16 cifre entrano nella
+dataset version, il valore completo resta nel manifest. Gli shard e l’indice
+fixture hanno checksum aggregati distinti.
+
+## Aziende, tenant e mailbox
+
+Ogni azienda è un tenant separato; `tenant_id` e `project_key` coincidono:
+
+| Azienda | Tenant / progetto | Mailbox logiche |
+|---|---|---|
+| Rotta Sicura Logistics | `rotta-logistics` | `rotta-logistics-1`, `rotta-logistics-2` |
+| Prometeo Sicurezza Antincendio | `prometeo-antincendio` | `prometeo-antincendio-1`, `prometeo-antincendio-2` |
+| PassoLibero Calzature | `passolibero-calzature` | `passolibero-calzature-1`, `passolibero-calzature-2` |
+
+Le sei mailbox possono essere sei label dello stesso account Gmail di test. Il
+serializer usa l’identità fisica `host + port + username`, senza `tenant_id`,
+quindi le connessioni allo stesso account vengono correttamente serializzate
+anche tra tenant diversi.
+
+## Prerequisiti
+
+Per generare, validare e fare il preflight non servono rete, password o LLM.
+
+Per la delivery IMAP servono:
+
+- un account IMAP di test; per Gmail: 2FA, App Password e IMAP attivo;
+- `CONNECTOR_TEST_GMAIL_PASSWORD` nel `.env`;
+- nessuna config cache, perché le fixture dev/test leggono la password con
+  `env()`;
+- un server IMAP locale usa-e-getta per `stress`; non usare l’account Gmail
+  condiviso per 30.000 messaggi.
+
+Per il passaggio IMAP → KB servono inoltre:
+
+- `KB_DISK_THROW=true`: il bridge rifiuta di avanzare il checkpoint UID se il
+  disco KB non lancia errori sulle write fallite;
+- `CASE_STUDY_EMAIL_DATASET_ROOT=storage/app/demo-email-datasets`, raggiungibile
+  anche dai worker;
+- `CASE_STUDY_EMAIL_REQUIRE_FIXTURE_INDEX=true` (default), così i metadata
+  semantici vengono risolti dall'indice immutabile.
+
+Per l’ingest servono inoltre:
+
+- un worker di coda, oppure `QUEUE_CONNECTION=sync`;
+- `AI_EMBEDDINGS_PROVIDER` e relativa chiave;
+- PostgreSQL/pgvector per una certificazione realistica.
+
+La timeline v2 va dal 2024-01-01 al 2026-06-30. Il fixture usa
+`CONNECTOR_TEST_IMAP_DATE_WINDOW_DAYS=0` per non scartare gli shard storici.
+
+## 1. Generazione
+
+Genera il profilo `large`:
+
+```bash
+php artisan demo:generate-case-study-emails --profile=large --stats
+```
+
+Se la stessa versione esiste già, il comando si ferma. `--force` non autorizza
+mai a cambiare i byte di una versione immutabile: rigenera in temporanea,
+confronta SHA-256 di tutti i file e accetta soltanto un rerun byte-identico
+(la temporanea viene scartata e l’artefatto pubblicato resta invariato):
+
+```bash
+php artisan demo:generate-case-study-emails --profile=large --force --stats
+```
+
+È possibile cambiare seed/catalogo o generare un subset:
+
+```bash
+php artisan demo:generate-case-study-emails \
+  --profile=demo \
+  --seed=20260723 \
+  --catalog-version=v1 \
+  --company=rotta-logistics \
+  --mailbox=rotta-logistics-1 \
+  --stats
+```
+
+Un subset riceve una dataset version distinta. Un cambiamento di input produce
+un nuovo fingerprint/versione; un cambiamento del codice generativo richiede il
+bump di `GENERATOR_REVISION` (oppure una nuova versione di catalogo). Il
+generatore rilegge gli input dopo il commitment e ricalcola il fingerprint
+prima del publish: se cambiano durante il run, scarta la temporanea. Non usa LLM
+né rete e pubblica solo dopo schema, checksum e quality gate.
+
+## 2. Determinismo e quality gate
+
+Verifica che gli stessi input rigenerino esattamente gli stessi byte:
+
+```bash
+php artisan demo:generate-case-study-emails --profile=large --check --stats
+```
+
+Valida un artefatto già pubblicato senza rigenerarlo:
+
+```bash
+php artisan demo:validate-case-study-emails --profile=large
+```
+
+Oppure usa una versione esplicita:
+
+```bash
+php artisan demo:validate-case-study-emails \
+  --dataset-version=case-study-email-v2-g1-large-s20260723-catalogv1-snapa48c0f4751b501df
+```
+
+La validazione è strict per default e controlla:
+
+- checksum di ogni shard e checksum aggregato;
+- schema v2 e campi supportati;
+- indirizzi esclusivamente su domini riservati;
+- unicità di `fixture_id`, `Message-ID` e contenuto generato;
+- thread di 2/3/4/5/8 messaggi con catena `In-Reply-To`/`References`
+  contigua e date crescenti;
+- correzioni da `incorrect` a `corrected`;
+- assenza di header di thread sui messaggi standalone;
+- proprietà degli ID-canary e assenza letterale di frasi-canary delle altre
+  aziende, anche quando il record non dichiara l'ID;
+- coerenza di mailbox, scenario, mittente, fatti e fonti canoniche con
+  `catalogs/v1`;
+- contratto degli eventuali attachment.
+
+Le identità e i thread corpus-sized sono indicizzati in un SQLite temporaneo:
+la memoria PHP resta bounded al thread/counter mentre la parte `O(corpus)` è su
+disco. Il catalogo `v1` genera solo text/plain e `attachments=[]`; il validator
+non è uno scanner semantico di PII e non calcola similarità near-duplicate.
+
+## 3. Preflight senza rete
+
+Prima di ogni delivery:
+
+```bash
+php artisan mail:seed-imap \
+  --all \
+  --profile=large \
+  --summary-only \
+  --estimate-cost
+```
+
+Il preflight legge e valida tutti i 6.000 record e stampa il numero di documenti
+parent attesi. Non invia messaggi e non legge la password. Nonostante il nome
+storico dell'opzione, non calcola un prezzo: token, costo embedding, spazio DB e
+durata devono essere misurati durante la certificazione live.
+
+Per le fixture generate:
+
+- generazione e delivery: zero chiamate LLM;
+- `AnalyzeDocumentChangeJob` e `AutoWikiCompilerJob`: zero, perché solo il
+  namespace Message-ID riservato
+  `@fixtures.askmydocs.invalid` imposta `metadata.generated_fixture=true`;
+- embedding: dipendono dal provider e dal numero finale di chunk.
+
+Le fixture legacy usano un dominio Message-ID separato e continuano a seguire
+la pipeline AI normale. Un header o metadata spoofato non può attivare il gate.
+
+## 4. Delivery IMAP streaming
+
+Primo caricamento o reinstallazione pulita della sola versione `large`:
+
+```bash
+php artisan mail:seed-imap \
+  --all \
+  --profile=large \
+  --purge-dataset \
+  --summary-only
+```
+
+Selezioni supportate:
+
+```bash
+php artisan mail:seed-imap --project=rotta-logistics --profile=large --purge-dataset
+php artisan mail:seed-imap --mailbox=rotta-logistics-1 --profile=large --purge-dataset
+```
+
+La delivery:
+
+- legge un record JSONL e costruisce un RFC822 alla volta;
+- acquisisce il lock della mailbox fisica, condiviso con le altre superfici
+  IMAP, lo rinnova in modo owner-safe e usa una sola connessione;
+- conserva Message-ID, header `Date` storico e thread reali;
+- usa l'ora corrente come INTERNALDATE remoto, perché un sync incrementale
+  deve vedere anche una fixture dalla timeline narrativa 2024–2026;
+- invia text/plain per il catalogo `v1` (HTML e attachment sono supportati dal
+  contratto ma non sono generati);
+- salva un checkpoint atomico ogni `--batch-size` messaggi, default 100;
+- su drop ambiguo cerca il singolo `Message-ID` prima di ritentare;
+- fa purge server-side a blocchi di 100.
+
+Con `CONNECTOR_IMAP_SERIALIZE_CONNECTIONS=true`, il runtime CLI deve offrire
+PCNTL/SIGALRM. La lease viene rinnovata prima di ogni APPEND/purge e dopo ogni
+ACK; `CONNECTOR_IMAP_SEED_LOCK_TTL` vale 14.400 secondi per default e
+`CONNECTOR_IMAP_SEED_LOCK_SAFETY_MARGIN` 30 secondi (minimo 2). Una guardia
+wall-clock interrompe I/O bloccante prima del margine e ripristina sempre
+handler e alarm precedenti. Se refresh/ownership falliscono, nessun nuovo
+APPEND parte e l’ACK ambiguo non avanza il checkpoint. Il purge usa la stessa
+guardia e il checkpoint viene cancellato solo dopo una nuova verifica owner-safe.
+
+`--purge-dataset` elimina solo i messaggi con
+`X-AskMyDocs-Dataset-Version=<versione>`, azzera il checkpoint corrispondente e
+poi riappende il dataset. Aggiungere `--purge-only` per eseguire soltanto la
+rimozione senza riappendere.
+`--purge-all-seeded` e il suo alias legacy `--purge` cancellano invece tutte le
+fixture della mailbox: usarli solo quando si vuole davvero rimuovere anche
+gold e altre versioni.
+
+Prima della cancellazione remota viene scritto atomicamente, nella directory
+dei checkpoint, un marker
+`<physical_mailbox_hash>.purge-intent.json` (SHA-256 di host, porta, account e
+folder). Se il processo cade dopo
+il purge ma prima del reset locale, il successivo run mutante — anche un plain
+`--resume` senza ripetere il flag purge — recupera il marker sotto lease,
+riesegue lo stesso purge idempotente, elimina il checkpoint mirato (o tutti per
+il purge ampio) e solo allora rimuove il marker. Un checkpoint completo stale
+non può quindi trasformare il resume in un falso no-op.
+
+## 5. Stop e resume
+
+Per fermare in sicurezza, interrompere il comando e non cancellare la directory
+dataset né `storage/app/email-seed-checkpoints/`: contiene sia i checkpoint sia
+gli eventuali purge-intent necessari al recovery. Poi ripartire con lo stesso
+manifest:
+
+```bash
+php artisan mail:seed-imap \
+  --all \
+  --profile=large \
+  --resume \
+  --summary-only
+```
+
+Il resume rifiuta un manifest con checksum diverso. Dopo un arresto duro
+ricontrolla al massimo l’ultimo intervallo di checkpoint per `Message-ID`, così
+un APPEND già accettato non viene duplicato. Un checkpoint completo rende i
+run successivi no-op.
+
+Una scadenza/perdita del lock è un errore esplicito e riprendibile: non alzare
+il TTL come rimedio. Correggere il lock store/PCNTL o la connettività e usare
+`--resume`; il checkpoint resta fermo all’ultimo ACK confermato sotto ownership.
+
+Se si vuole ricominciare da zero usare `--purge-dataset`, non cancellare a mano
+il solo checkpoint lasciando i messaggi remoti. Se invece si vuole soltanto
+rimuovere la versione, usare insieme `--purge-dataset --purge-only`.
+
+## 6. Installazione connettori e sync
+
+Prima inizializzazione:
 
 ```bash
 php artisan db:seed --class=Database\\Seeders\\RbacSeeder
-php artisan db:seed --class=Database\\Seeders\\CaseStudyUsersSeeder   # esegui PER ULTIMO
-php artisan demo:list-companies
-```
-
-**Account per azienda** (3 ruoli ciascuna, password `password`). Il `viewer` è
-isolato (membership solo sulla sua azienda); `admin`/`super-admin` per ruolo
-vedono anche oltre. *Admin → Connessioni* (gate `manageConnectors`) è accessibile
-ad **admin + super-admin**:
-
-| Azienda | viewer | admin | super-admin |
-|---|---|---|---|
-| `rotta-logistics` | `rotta@case-study.local` | `rotta.admin@case-study.local` | `rotta.super@case-study.local` |
-| `prometeo-antincendio` | `prometeo@case-study.local` | `prometeo.admin@case-study.local` | `prometeo.super@case-study.local` |
-| `passolibero-calzature` | `passolibero@case-study.local` | `passolibero.admin@case-study.local` | `passolibero.super@case-study.local` |
-
-> Nota: `CaseStudyUsersSeeder` va eseguito **dopo** `RbacSeeder` — quel seeder fa
-> un backfill che dà a ogni utente esistente la membership su tutti i progetti
-> con documenti; il case-study seeder ripristina poi l'isolamento (azzera le
-> membership estranee dei suoi account).
-
-> Puntando il connettore al **project_key esistente** dell'azienda, l'utente
-> case-study (già membro) vede subito le e-mail ingerite — nessun wiring extra.
-> Se invece usi un project_key nuovo, ricordati la membership (vedi §6).
-
-### 1.2 Account Gmail di test (uno solo)
-Serve **UN solo account Gmail** (`TestEmailFixtures::ACCOUNT_EMAIL`, default
-`rotta.test1.askmydocs@gmail.com`). Le 6 caselle sono **etichette** create
-automaticamente da `mail:seed-imap` (IMAP CREATE) al primo invio — NON servono 6
-account. Su quell'account:
-1. Attiva la verifica in due passaggi.
-2. Crea una **App Password** (Google Account → Sicurezza → Password per le app).
-   La password normale **non** funziona con IMAP.
-3. Abilita **IMAP** (Gmail → Impostazioni → Inoltro e POP/IMAP → IMAP attivo).
-
-> Nota Gmail: un messaggio appeso a una label NON entra in INBOX (sta nella label
-> + "Tutti i messaggi"); il connettore sincronizza SOLO la label inclusa → niente
-> doppioni tra aziende.
-
-### 1.3 `.env`
-I parametri di connessione + le label stanno nel fixture
-[`TestEmailFixtures`](../../database/seeders/TestEmailFixtures.php) — in `.env`
-serve SOLO la App Password dell'account condiviso (segreto, mai committato):
-
-```dotenv
-CONNECTOR_TEST_GMAIL_PASSWORD=<app-password-account-condiviso>
-```
-
-Override globale opzionale (raro): `CONNECTOR_TEST_IMAP_HOST` / `_PORT` /
-`_ENCRYPTION` / `_DATE_WINDOW_DAYS` sovrascrivono i valori del fixture (es. per
-puntare a un altro server IMAP invece di Gmail).
-
-### 1.4 Coda + provider AI (per l'ingest reale)
-L'ingest è asincrono e genera embedding → richiede:
-
-- **Coda attiva**: o `QUEUE_CONNECTION=sync` (ingest inline, più semplice per il
-  test) **oppure** un worker in parallelo: `php artisan queue:work`.
-- **Provider AI** configurati: `AI_EMBEDDINGS_PROVIDER` (+ relativa API key) per
-  generare gli embedding in ingest, e `AI_PROVIDER` (+ key) per la chat finale.
-
----
-
-## 2. Discovery — cosa c'è già
-
-```bash
-php artisan demo:list-companies            # tutte le aziende/progetti
-php artisan demo:list-companies --tenant=default
-```
-
-Mostra per ogni `project_key`: nome, #documenti, #chunk, membri (chi può
-chattare) e se c'è un connettore. Evidenzia anche i **project_key orfani**
-(documenti ma nessuna riga `projects`/membership): è lo stato "la chat non trova
-niente". Usalo prima e dopo l'ingest per misurare la differenza.
-
----
-
-## 3. Anteprima delle e-mail (dry-run, senza credenziali)
-
-```bash
-php artisan mail:seed-imap --all --dry-run
-```
-
-Costruisce e mostra ogni messaggio senza inviare nulla né leggere le password.
-Utile per controllare contenuti/oggetti prima della consegna reale.
-
----
-
-## 4. Consegna delle e-mail nelle caselle (APPEND)
-
-```bash
-# tutte le caselle (6)
-php artisan mail:seed-imap --all
-
-# tutte le caselle di un'azienda (espande ai 2 mailbox_key)
-php artisan mail:seed-imap --project=rotta-logistics
-
-# una singola casella
-php artisan mail:seed-imap --mailbox=rotta-logistics-2
-
-# re-run pulito: prima rimuove i messaggi di test già presenti (DISTRUTTIVO,
-# tocca SOLO i messaggi con header X-AskMyDocs-Seed di quella casella)
-php artisan mail:seed-imap --all --purge
-```
-
-Dettagli:
-- I messaggi di una casella vengono **APPESI** nella sua **label** (creata se
-  manca) in un **unico batch** (una connessione per casella — robusto con 100+
-  e-mail) via webklex;
-  la data di consegna (INTERNALDATE) è `now()`, così le e-mail (datate 2024 nelle
-  fixtures) restano dentro la finestra `date_window_days` del connettore.
-- Su errori di **connessione transitori** il client ritenta automaticamente
-  (R42); su errori di **autenticazione** si ferma subito con messaggio chiaro
-  (R14). Nessun fallimento silenzioso.
-- Verifica anche da web: apri la casella Gmail e controlla che le e-mail siano
-  in arrivo.
-
----
-
-## 5. Installazione connettore + ingest
-
-> **Multi-account (v8.20).** `connector_installations` è unico su
-> `(tenant_id, connector_name, label)`: ogni casella è una **installazione a sé**
-> con `label` = mailbox_key e `project_key` = azienda (entrambe COLONNE, non più
-> in `config_json`). Le 6 caselle coesistono; ciascuna sincronizza solo la propria
-> label e ingerisce nel proprio project_key. Le 2 caselle di un'azienda confluiscono
-> nello stesso project_key.
-
-```bash
-# tutte le caselle (6 installazioni, una per label) + sync di ciascuna
+php artisan db:seed --class=Database\\Seeders\\CaseStudyUsersSeeder
 php artisan connector:imap:install --all --sync
-
-# tutte le caselle di un'azienda (2 installazioni)
-php artisan connector:imap:install --project=prometeo-antincendio --sync
-
-# una singola casella
-php artisan connector:imap:install --mailbox=rotta-logistics-1 --sync
 ```
 
-Cosa fa per ogni casella:
-- Riusa `ConfigureConnectorService` → **verifica davvero** le credenziali
-  (ping IMAP) prima di portare l'installazione ad `ACTIVE`.
-- Crea l'installazione con le COLONNE `label = <mailbox_key>` e
-  `project_key = <azienda>`, e `config_json` con `connection.*`,
-  `folders.include = ["<label>"]` (solo la label della casella: evita i doppioni
-  di INBOX/"Tutti i messaggi") e `date_window_days`. La password va nel **vault
-  cifrato**, mai in `config_json`.
-- Idempotente: ri-eseguire rimuove e ricrea la riga di quella label (le
-  credenziali nel vault cascadano via FK) — niente duplicati.
-- Con `--sync` accoda un `ConnectorSyncJob` per ogni installazione (le installazioni
-  sono indipendenti: nessuna serializzazione). Assicurati che la coda giri
-  (`QUEUE_CONNECTION=sync` o un worker, §1.4); senza `--sync` l'ingest parte dallo
-  scheduler (ogni 15 min).
+Ogni mailbox diventa un’installazione nel tenant della propria azienda. Un rerun
+riconfigura la riga in place e conserva `installation_id`, config e secret
+precedenti se il nuovo ping fallisce.
 
----
+Le sei installazioni possono condividere lo stesso account fisico. Il layer di
+connessione mantiene una sola sessione IMAP per account; i job concorrenti
+vengono riaccodati senza marcare l’installazione come errored.
 
-## 6. Membership (solo se usi un project_key nuovo)
+Il connettore upstream limita un run a 5.000 messaggi. Il job host salva il
+prefisso UID contiguo già consegnato all’ingest e, quando il run è troncato,
+mantiene il vecchio `last_sync_at`. Il run successivo riprende dopo l’ultimo UID
+sicuro invece di saltare le email storiche. Un attachment fallito blocca il
+watermark prima del relativo UID.
 
-L'ingest da connettore **non** crea automaticamente `projects` né
-`project_memberships`. Se hai puntato il connettore a un `project_key` che non
-ha membri, la chat non troverà nulla. Sblocca con i comandi esistenti:
+`--sync` accoda i job ma non attende il drenaggio. Tenere attivi i worker e
+controllare `connector_sync_runs`, code e failed jobs.
+
+## 7. Orchestratore one-shot
+
+Generazione, preflight, delivery, installazione e sync:
 
 ```bash
-php artisan auth:grant rotta@case-study.local viewer --project=<nuovo-project_key>
-# oppure, per creare anche la riga projects + utente:
-php artisan demo:seed-user --email=rotta@case-study.local --project=<key> --role=viewer
+php artisan demo:init-case-studies \
+  --profile=large \
+  --generate-email-dataset \
+  --ingest-emails
 ```
 
-Con le 3 aziende case-study e il connettore puntato al loro project_key
-esistente, **questo passo non serve**.
+Ripresa dopo un’interruzione:
 
----
+```bash
+php artisan demo:init-case-studies \
+  --profile=large \
+  --resume \
+  --ingest-emails
+```
 
-## 7. Verifica ingest
+Senza `--profile`/`--dataset-version` resta disponibile il comportamento legacy
+sulle 751 fixture curate. Ogni sotto-comando propaga il proprio exit code; il
+comando non dichiara completato l’ingest, ma avvisa che i sync sono in coda.
+
+## 8. Verifica ingest e isolamento
+
+Controlla tenant, progetti, documenti, chunk e connettori:
 
 ```bash
 php artisan demo:list-companies
 ```
 
-Il conteggio `docs`/`chunks` dell'azienda deve essere aumentato delle e-mail
-ingerite. In alternativa controlla dall'admin (KB tree) o via DB.
+Per ogni documento email v2 sono attesi:
 
----
+- `tenant_id` uguale all’azienda;
+- `project_key` uguale all’azienda;
+- `metadata.generated_fixture === true`;
+- `metadata.dataset_version` e `metadata.fixture_id` derivati dal Message-ID;
+- `company_key`, `mailbox_key`, `scenario_type`, `topic`, `message_type`,
+  `thread_id`, `fact_ids`, `canonical_sources`, `truth_state` e `canary_ids`
+  risolti dall'indice fixture checksum-verificato;
+- documento non canonico;
+- nessun job Auto-Wiki o change-analysis.
 
-## 8. Test di chat per account (incl. isolamento)
+Il source parent non resta legato all'UID remoto. Il bridge lo pubblica su:
 
-Per ogni azienda, **login come l'utente dell'azienda** e fai una domanda la cui
-risposta sta in una e-mail ingerita; verifica la risposta grounded + citazione.
+```text
+<project>/connectors/imap/installation-<id>/<folder>/
+datasets/<dataset_version>/<fixture_id>.md
+```
 
-Esempi (usa il "fatto-esca" come sonda):
+Un purge/re-APPEND che assegna nuovi UID mantiene quindi la stessa famiglia
+documentale. Se il rollback aveva soft-deleted quella proiezione esatta, una
+riconsegna della stessa versione la ripristina prima dell'ingest idempotente.
 
-| Azienda / utente | Domanda | Deve contenere | Non deve mai contenere |
-|---|---|---|---|
-| `rotta@case-study.local` | «Qual è il codice della spedizione Consegna Lampo 24h?» | `RL-2024-0815`, `VeloxCorriere` | `Protocollo Fenice-7`, `ClubPasso` |
-| `prometeo@case-study.local` | «Qual è il protocollo del rinnovo CPI dell'edificio B-MI-07?» | `Protocollo Fenice-7`, `CPI` | `RL-2024-0815`, `ClubPasso` |
-| `passolibero@case-study.local` | «Qual è il modello recensito 5 stelle e l'ordine collegato?» | `ClubPasso Aero`, `#CLB-5521` | `Protocollo Fenice-7`, `VeloxCorriere` |
+Poi esegui la matrice di isolamento in ciascun tenant:
 
-**Test di isolamento (cross-tenant/cross-project)**: ponendo a un account la
-domanda di un'altra azienda, la risposta deve essere un rifiuto "nessun
-contesto" — mai il fatto-esca dell'altra azienda. Se trapela, c'è una falla di
-isolamento (R30) da investigare.
+```bash
+php artisan case-study:verify-isolation \
+  --tenant=rotta-logistics \
+  --project=rotta-logistics
+php artisan case-study:verify-isolation \
+  --tenant=prometeo-antincendio \
+  --project=prometeo-antincendio
+php artisan case-study:verify-isolation \
+  --tenant=passolibero-calzature \
+  --project=passolibero-calzature
+```
 
----
+I canarini di riferimento restano:
 
-## 9. Troubleshooting
+- Rotta: `RL-2024-0815`, `VeloxCorriere`;
+- Prometeo: `Protocollo Fenice-7`;
+- PassoLibero: `ClubPasso Aero`, `#CLB-5521`.
 
-| Sintomo | Causa probabile | Rimedio |
+Una query nel tenant sbagliato deve rifiutare o rispondere senza canarini,
+documenti o citazioni dell’altra azienda.
+
+## 9. Rollback per dataset version
+
+Prima fermare nuovi sync e lasciare terminare i job già in esecuzione. Poi:
+
+1. annotare la dataset version e i conteggi dal manifest;
+2. rimuovere da IMAP soltanto quella versione:
+
+   ```bash
+   php artisan mail:seed-imap \
+     --all \
+     --dataset-version=case-study-email-v2-g1-large-s20260723-catalogv1-snapa48c0f4751b501df \
+     --purge-dataset \
+     --purge-only \
+     --summary-only
+   ```
+
+3. soft-delete, tenant per tenant, solo i documenti con
+   `metadata.dataset_version` esattamente uguale:
+
+   ```bash
+   docs/case-studies/teardown.sh \
+     --tenant=rotta-logistics \
+     --project=rotta-logistics \
+     --dataset-version=case-study-email-v2-g1-large-s20260723-catalogv1-snapa48c0f4751b501df
+   ```
+
+   Ripetere con la coppia tenant/progetto di Prometeo e PassoLibero. Lo script
+   usa `DocumentDeleter::delete(force: false)` e `chunkById(100)`;
+4. verificare che le 751 fixture gold, i documenti canonici e gli altri tenant
+   siano invariati;
+5. conservare il manifest per audit e riproducibilità.
+
+Non usare wildcard, tenant `default`, hard delete o `--purge-all-seeded` per un
+rollback di versione.
+
+## Troubleshooting
+
+| Sintomo | Causa | Azione |
 |---|---|---|
-| `mail:seed-imap` → "Env var ... non impostata" | App Password mancante in `.env` | Compila `CONNECTOR_TEST_GMAIL_PASSWORD`. |
-| "Env var ... non impostata" anche con password presente nel `.env` | Config cache attiva: il fixture legge `env()` e sotto `config:cache` ritorna `null` | `php artisan config:clear` prima di lanciare l'harness (l'harness è dev/test: non usare la config cache). |
-| APPEND fallisce con auth error | Password normale invece dell'App Password, o IMAP off | Usa l'App Password; abilita IMAP. |
-| Le e-mail non vengono ingerite | Fuori finestra temporale | L'APPEND usa INTERNALDATE=now(); se hai forzato date vecchie alza `CONNECTOR_TEST_IMAP_DATE_WINDOW_DAYS`. |
-| Doppioni di e-mail | Più `mail:seed-imap` senza `--purge` | Usa `--purge`; ogni casella è una label isolata e il connettore include solo quella label. |
-| Ingest non parte | Coda non attiva | `QUEUE_CONNECTION=sync` o `php artisan queue:work`. |
-| La chat non trova le e-mail | project_key senza membership (orfano) | Punta il connettore al project_key dell'azienda, o §6. |
-| Embedding error in ingest | Provider AI non configurato | Imposta `AI_EMBEDDINGS_PROVIDER` + API key. |
+| `Dataset already exists` | stessa versione già pubblicata | `--check` per verificare; `--force` accetta soltanto byte identici, mai una sostituzione diversa |
+| `Checksum mismatch` | shard modificato/corrotto | non consegnare; rigenerare dalla stessa tripletta profilo/seed/catalogo |
+| `manifest ... è cambiato` in resume | versione riusata con byte diversi | ripristinare il manifest originale o usare una nuova dataset version |
+| password assente nonostante `.env` | config cache attiva | `php artisan config:clear` |
+| auth IMAP fallita | password normale/IMAP disattivo | usare App Password e abilitare IMAP |
+| checkpoint presente | run precedente esistente | `--resume` oppure `--purge-dataset` per pulire e riappendere |
+| `.purge-intent.json` presente | crash durante purge/clear checkpoint | non cancellarlo; rilanciare `--resume`, che ripete il purge idempotente e completa il recovery |
+| PCNTL/SIGALRM assente o lease persa | il seed serializzato non può garantire che I/O finisca sotto lock | usare PHP CLI con PCNTL e lock atomico; poi `--resume`, senza cancellare il checkpoint |
+| devo solo rimuovere una versione | `--purge-dataset` da solo riappenderebbe | aggiungere `--purge-only` |
+| `IMAP ingestion requires ... throw=true` | disco KB non fail-fast | impostare `KB_DISK_THROW=true` e svuotare la config cache |
+| indice fixture assente/corrotto | artefatto generato da un contratto vecchio o modificato | rigenerare con il codice corrente; non disabilitare il gate in produzione |
+| email storiche mancanti | finestra temporale diversa da zero | impostare `CONNECTOR_TEST_IMAP_DATE_WINDOW_DAYS=0` e riconfigurare |
+| sync fermo a 5.000 | worker non ha eseguito la tranche successiva | mantenere attivi i worker e controllare progress/errori |
+| ingest non parte | coda ferma | avviare `php artisan queue:work` |
+| embedding fallisce | provider/chiave assenti | configurare `AI_EMBEDDINGS_PROVIDER` |
 
----
+## Test automatici rilevanti
 
-## 10. Estendere ad altre aziende
+```bash
+php artisan test \
+  tests/Unit/Services/Demo/EmailDataset \
+  tests/Unit/Services/Demo/EmailSeedCheckpointStoreTest.php \
+  tests/Unit/Services/Demo/EmailSeedLockLeaseTest.php \
+  tests/Unit/Services/Demo/EmailMessageBuilderTest.php \
+  tests/Feature/Console/GenerateCaseStudyEmailsCommandTest.php \
+  tests/Feature/Console/ValidateCaseStudyEmailsCommandTest.php \
+  tests/Feature/Console/MailSeedImapCommandTest.php \
+  tests/Feature/Console/InitCaseStudiesCommandTest.php \
+  tests/Feature/Console/ConnectorImapInstallCommandTest.php \
+  tests/Feature/Connectors/ImapSyncProgressTest.php \
+  tests/Feature/Connectors/HostIngestionBridgeTest.php \
+  tests/Feature/Jobs/IngestDocumentJobTest.php
+```
 
-Vedi il prompt agnostico
-[`email-ingest-prompt.md`](email-ingest-prompt.md): individua le aziende
-presenti con `demo:list-companies`, aggiunge l'account + le e-mail (con
-fatto-esca) in `TestEmailFixtures`, le App Password in `.env`, e rigira i
-comandi §3–§8.
+I test automatici coprono determinismo, indice fixture, corruzione,
+resume/fault injection con cap ridotto, recovery da crash post-purge tramite
+intent durevole, reinstallazione in place, path KB stabile, restore soft-delete,
+isolamento tenant del checkpoint e gate AI. Non
+coprono un E2E IMAP reale da 5.001+, scanner PII, near-duplicate, costi misurati
+o retrieval sul corpus `large`. La certificazione su IMAP, Gmail,
+PostgreSQL/pgvector e provider di embedding rimane manuale perché richiede
+infrastruttura e credenziali esterne.
