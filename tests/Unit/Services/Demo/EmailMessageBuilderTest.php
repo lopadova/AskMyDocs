@@ -126,6 +126,11 @@ final class EmailMessageBuilderTest extends TestCase
             $first->internalDate->format(DATE_ATOM),
             'IMAP arrival time must be current even when the narrative fixture date is historical.',
         );
+        $this->assertSame(
+            '23-Jul-2026 12:34:56 +0000',
+            $first->imapInternalDate(),
+            'Webklex must receive an RFC 2060 string instead of DateTimeImmutable.',
+        );
         $this->assertStringContainsString('Message-ID: <large-v1.'.$fixtureId.'@fixtures.askmydocs.invalid>', $first->raw);
         $this->assertStringContainsString('In-Reply-To: '.$parentId, $first->raw);
         $this->assertStringContainsString('References: '.$parentId, $first->raw);

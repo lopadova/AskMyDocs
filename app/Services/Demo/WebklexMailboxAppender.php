@@ -93,7 +93,7 @@ final class WebklexMailboxAppender implements MailboxAppender
                     // cache implementation renews only for the current owner.
                     $lease?->refresh();
                     $this->applyLeaseTimeout($client, $lease);
-                    $folder->appendMessage($message->raw, null, $message->internalDate);
+                    $folder->appendMessage($message->raw, null, $message->imapInternalDate());
                     $lease?->refresh();
                     $appended++;
                     if ($onStored !== null) {
@@ -127,7 +127,7 @@ final class WebklexMailboxAppender implements MailboxAppender
 
                     $lease?->refresh();
                     $this->applyLeaseTimeout($client, $lease);
-                    $folder->appendMessage($message->raw, null, $message->internalDate);
+                    $folder->appendMessage($message->raw, null, $message->imapInternalDate());
                     $lease?->refresh();
                     $appended++;
                     if ($onStored !== null) {

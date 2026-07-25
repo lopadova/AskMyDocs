@@ -25,4 +25,13 @@ final readonly class PreparedEmailMessage
         public string $datasetVersion,
         public bool $verifyBeforeAppend = false,
     ) {}
+
+    /**
+     * Webklex accepts an IMAP RFC 2060 date string (or mutable Carbon), while
+     * the dataset pipeline deliberately keeps an immutable date internally.
+     */
+    public function imapInternalDate(): string
+    {
+        return $this->internalDate->format('d-M-Y H:i:s O');
+    }
 }
