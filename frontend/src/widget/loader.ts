@@ -88,6 +88,7 @@ export function resolveConfig(script: HTMLScriptElement | null): Partial<WidgetC
     assign(ds.launcherLabel, (v) => (merged.launcherLabel = v));
     assign(ds.hostManifestUrl, (v) => (merged.hostManifestUrl = v));
     assign(ds.hostExecUrl, (v) => (merged.hostExecUrl = v));
+    assign(ds.userToken, (v) => (merged.userToken = v));
     if (ds.autoOpen === 'true' || ds.autoOpen === '') {
         merged.autoOpen = true;
     }

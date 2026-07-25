@@ -51,6 +51,11 @@ export interface BridgeEvents {
     onClearOverlay: () => void;
 }
 
+export interface RestoredMessage {
+    role: 'user' | 'assistant';
+    content: string;
+}
+
 const MAX_AUTO_STEPS = 12;
 
 /**
@@ -99,6 +104,45 @@ export class Bridge {
             return await this.transport.setup(this.skill);
         } catch {
             return null;
+        }
+    }
+
+    /**
+     * Restore the newest still-open session for an authenticated host user.
+     * The server scopes both list and replay to the identity in the signed token.
+     */
+    async restoreAuthenticatedSession(): Promise<RestoredMessage[]> {
+        if (!this.cfg.userToken) {
+            return [];
+        }
+        try {
+            const history = await this.transport.listSessions();
+            const current = history.data.find((row) =>
+                ['active', 'waiting_user', 'waiting_tool'].includes(row.status),
+            );
+            if (!current) {
+                return [];
+            }
+            const replay = await this.transport.replay(current.id);
+            this.sessionId = current.id;
+
+            return replay.steps.flatMap((step): RestoredMessage[] => {
+                const content = step.args_json?.content;
+                if (typeof content !== 'string' || content === '') {
+                    return [];
+                }
+                if (step.kind === 'user_message') {
+                    return [{ role: 'user', content }];
+                }
+                if (step.kind === 'bot_message') {
+                    return [{ role: 'assistant', content }];
+                }
+
+                return [];
+            });
+        } catch {
+            // Expired tokens or no history must not break anonymous-compatible UI.
+            return [];
         }
     }
 

@@ -23,6 +23,7 @@ export class WidgetError extends Error {
 export class Transport {
     private readonly base: string;
     private readonly key: string;
+    private readonly userToken: string | null;
     /** M5.2: session token (wt_…); when set, sent as Authorization: Bearer
      *  instead of X-Widget-Key. Consumed after one use (single-shot). */
     private sessionToken: string | null = null;
@@ -30,6 +31,7 @@ export class Transport {
     constructor(cfg: WidgetConfig) {
         this.base = (cfg.apiBase ?? '').replace(/\/+$/, '');
         this.key = cfg.key;
+        this.userToken = cfg.userToken?.startsWith('wu_') ? cfg.userToken : null;
     }
 
     /** M5.2: mint a session token via POST /api/widget/session-token.
@@ -94,6 +96,29 @@ export class Transport {
             method: 'POST',
             headers: this.headers(),
         });
+    }
+
+    async listSessions(page = 1): Promise<{
+        data: Array<{ id: string; status: string; summary: string | null; page_url: string | null; created_at: string; updated_at: string }>;
+        meta: { current_page: number; last_page: number; per_page: number; total: number };
+    }> {
+        const res = await this.fetchWithTimeout(this.url(`/sessions?page=${page}`), {
+            method: 'GET',
+            headers: this.headers(),
+        });
+
+        return this.parse(res);
+    }
+
+    async replay(sessionId: string): Promise<{
+        steps: Array<{ step_index: number; kind: string; tool: string | null; args_json: Record<string, unknown> | null }>;
+    }> {
+        const res = await this.fetchWithTimeout(
+            this.url(`/sessions/${encodeURIComponent(sessionId)}/replay`),
+            { method: 'GET', headers: this.headers() },
+        );
+
+        return this.parse(res);
     }
 
     /** M4: chiama POST /sessions/{id}/exec-tool per i tool BE. */
@@ -252,6 +277,13 @@ export class Transport {
     /** M5.2: headers with session token (Authorization: Bearer wt_…) when available,
      *  falling back to X-Widget-Key (pk_…) in pk mode. Token is consumed after use. */
     private headers(): Record<string, string> {
+        if (this.userToken) {
+            return {
+                'Content-Type': 'application/json',
+                Accept: 'application/json',
+                Authorization: `Bearer ${this.userToken}`,
+            };
+        }
         if (this.sessionToken) {
             const token = this.sessionToken;
             this.sessionToken = null; // consume after one request (single-shot)

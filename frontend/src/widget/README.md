@@ -180,6 +180,42 @@ Response: { "token": "wt_...", "expires_at": "..." }
 |------|--------|-------|--------------|-------------|
 | A (browser) | `X-Widget-Key: pk_…` | Public key | Required | Standard |
 | A + session token | `Authorization: Bearer *** | Session token (`wt_…`) | Origin-bound | Enhanced |
+
+## Authenticated host users and cross-device history
+
+Per-key user authentication is opt-in under **Widget → Keys**. Enabling it
+creates a separate `ik_…` server credential, shown once and rotatable. Keep it
+on the host backend; never expose the credential or the host subject in HTML.
+
+The authenticated host backend exchanges its own stable opaque subject:
+
+```http
+POST /api/widget/user-token
+X-Widget-Key: pk_…
+Authorization: Bearer ik_…
+Content-Type: application/json
+
+{"subject":"host-internal-stable-subject","origin":"https://portal.example"}
+```
+
+AskMyDocs stores only a keyed hash of that subject and returns a short-lived,
+origin-bound `wu_…` token. Render only that token into the widget:
+
+```html
+<script>
+  window.AskMyDocsWidget = {
+    key: 'pk_…',
+    userToken: 'wu_…'
+  };
+</script>
+```
+
+With a valid user token the runtime lists the user's sessions, restores the
+newest open conversation, and replays its visible messages. `GET
+/api/widget/sessions` is paginated; replay remains
+`GET /api/widget/sessions/{uuid}/replay`. Both are scoped to tenant, widget key,
+project and pseudonymous identity. Anonymous keys and sessions retain their
+existing behavior.
 | B (proxy) | `Authorization: Bearer ***` | Secret hash (`sk_…`) | None | High (server-to-server) |
 
 ---

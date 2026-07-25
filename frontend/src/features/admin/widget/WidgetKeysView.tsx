@@ -36,6 +36,7 @@ interface WidgetKeyRow {
     skill: string;
     /** Operational switch: the host app may provide tools to the widget (HTP). */
     host_tools_enabled: boolean;
+    user_auth_enabled: boolean;
     is_active: boolean;
     last_used_at: string | null;
     sessions_count: number;
@@ -53,6 +54,7 @@ interface CreateKeyResponse {
     data: WidgetKeyRow;
     plain_secret: string;
     public_key: string;
+    identity_plain_secret?: string | null;
 }
 
 type RotateKeyResponse = CreateKeyResponse;
@@ -149,6 +151,8 @@ export function WidgetKeysView() {
     const [newRateLimit, setNewRateLimit] = useState('');
     const [newSkill, setNewSkill] = useState('');
     const [newHostTools, setNewHostTools] = useState(false);
+    const [newUserAuth, setNewUserAuth] = useState(false);
+    const [identitySecret, setIdentitySecret] = useState<string | null>(null);
     const [rotatedCreds, setRotatedCreds] = useState<RotateKeyResponse | null>(null);
     const [createdCreds, setCreatedCreds] = useState<CreateKeyResponse | null>(null);
     const [embedTarget, setEmbedTarget] = useState<EmbedTarget | null>(null);
@@ -171,6 +175,7 @@ export function WidgetKeysView() {
         setNewRateLimit('');
         setNewSkill('');
         setNewHostTools(false);
+        setNewUserAuth(false);
     };
 
     const createKey = useMutation({
@@ -185,6 +190,7 @@ export function WidgetKeysView() {
                 project_key: newProjectKey.trim(),
                 allowed_origins: origins,
                 host_tools_enabled: newHostTools,
+                user_auth_enabled: newUserAuth,
             };
             const rate = Number.parseInt(newRateLimit, 10);
             if (newRateLimit.trim() !== '' && Number.isFinite(rate)) {
@@ -207,6 +213,7 @@ export function WidgetKeysView() {
         },
         onSuccess: async (payload) => {
             setCreatedCreds(payload);
+            setIdentitySecret(payload.identity_plain_secret ?? null);
             resetCreateForm();
             setShowCreate(false);
             await qc.invalidateQueries({ queryKey: ['admin-widget-keys'] });
@@ -255,6 +262,34 @@ export function WidgetKeysView() {
         onSuccess: async () => {
             await qc.invalidateQueries({ queryKey: ['admin-widget-keys'] });
         },
+    });
+
+    const toggleUserAuth = useMutation({
+        mutationFn: async (vars: { id: number; enabled: boolean }) => {
+            const { data } = await api.patch<{ identity_plain_secret?: string | null }>(
+                `/api/admin/widget-keys/${vars.id}`,
+                {
+                user_auth_enabled: vars.enabled,
+                },
+            );
+            return data.identity_plain_secret ?? null;
+        },
+        onSuccess: async (secret) => {
+            if (secret) {
+                setIdentitySecret(secret);
+            }
+            await qc.invalidateQueries({ queryKey: ['admin-widget-keys'] });
+        },
+    });
+
+    const rotateIdentitySecret = useMutation({
+        mutationFn: async (id: number) => {
+            const { data } = await api.post<{ identity_plain_secret: string }>(
+                `/api/admin/widget-keys/${id}/rotate-identity-secret`,
+            );
+            return data.identity_plain_secret;
+        },
+        onSuccess: (secret) => setIdentitySecret(secret),
     });
 
     const canSubmit =
@@ -342,6 +377,23 @@ export function WidgetKeysView() {
                             <p className="text-muted-foreground text-xs">
                                 {MODE_OPTIONS.find((o) => o.value === newMode)?.hint}
                                 {' '}You can change this later under <em>Appearance</em>.
+                            </p>
+                        </div>
+
+                        <div className="grid gap-1.5">
+                            <label className="flex items-center gap-2 text-sm font-medium">
+                                <input
+                                    type="checkbox"
+                                    data-testid="admin-widget-keys-user-auth-toggle"
+                                    checked={newUserAuth}
+                                    onChange={(e) => setNewUserAuth(e.target.checked)}
+                                />
+                                Enable authenticated host users and cross-device history
+                            </label>
+                            <p className="text-muted-foreground text-xs">
+                                Creates a server-only identity credential. Your backend exchanges
+                                an opaque subject for a short-lived <code>wu_…</code> token; never
+                                put the subject, email, or this credential in browser code.
                             </p>
                         </div>
 
@@ -513,6 +565,29 @@ export function WidgetKeysView() {
                 />
             )}
 
+            {identitySecret && (
+                <Alert variant="info" data-testid="admin-widget-identity-secret">
+                    <KeyRound aria-hidden />
+                    <AlertTitle>Identity credential — copy it now</AlertTitle>
+                    <AlertDescription>
+                        <p>
+                            Send this only from the host backend as bearer auth to{' '}
+                            <code>/api/widget/user-token</code>, with
+                            <code>{' { subject, origin }'}</code> and
+                            <code>X-Widget-Key</code>. The returned <code>wu_…</code> token is the
+                            only identity value passed to <code>window.AskMyDocsWidget.userToken</code>.
+                        </p>
+                        <div className="mt-2 flex items-center gap-2">
+                            <code className="font-mono">{identitySecret}</code>
+                            <CopyButton
+                                value={identitySecret}
+                                testId="admin-widget-identity-secret-copy"
+                            />
+                        </div>
+                    </AlertDescription>
+                </Alert>
+            )}
+
             {/* Rotated credentials — show ONCE */}
             {rotatedCreds && (
                 <CredentialsCard
@@ -602,6 +677,7 @@ export function WidgetKeysView() {
                                 <th>Origins</th>
                                 <th>Rate</th>
                                 <th>Host tools</th>
+                                <th>User auth</th>
                                 <th>Status</th>
                                 <th>Sessions</th>
                                 <th>Last Used</th>
@@ -625,6 +701,25 @@ export function WidgetKeysView() {
                                         >
                                             {key.theme?.mode === 'inline' ? 'Inline' : 'Helper'}
                                         </Badge>
+                                    </td>
+                                    <td>
+                                        <label className="flex items-center gap-2">
+                                            <input
+                                                type="checkbox"
+                                                data-testid={`admin-widget-keys-${key.id}-user-auth-toggle`}
+                                                checked={key.user_auth_enabled ?? false}
+                                                disabled={toggleUserAuth.isPending}
+                                                onChange={(e) =>
+                                                    toggleUserAuth.mutate({
+                                                        id: key.id,
+                                                        enabled: e.target.checked,
+                                                    })
+                                                }
+                                            />
+                                            <span className="text-muted-foreground text-xs">
+                                                {key.user_auth_enabled ? 'On' : 'Off'}
+                                            </span>
+                                        </label>
                                     </td>
                                     <td className="max-w-[180px] truncate">
                                         {key.allowed_origins.length === 0 ? (
@@ -674,6 +769,19 @@ export function WidgetKeysView() {
                                     </td>
                                     <td>
                                         <div className="flex flex-wrap justify-end gap-1.5">
+                                            {key.user_auth_enabled && (
+                                                <Button
+                                                    type="button"
+                                                    size="sm"
+                                                    variant="outline"
+                                                    data-testid={`admin-widget-keys-${key.id}-rotate-identity`}
+                                                    disabled={rotateIdentitySecret.isPending}
+                                                    onClick={() => rotateIdentitySecret.mutate(key.id)}
+                                                >
+                                                    <KeyRound aria-hidden />
+                                                    Identity secret
+                                                </Button>
+                                            )}
                                             <Button
                                                 type="button"
                                                 size="sm"

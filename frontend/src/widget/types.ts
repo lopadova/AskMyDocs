@@ -8,6 +8,11 @@
 export interface WidgetConfig {
     /** Chiave pubblica (pk_...). Obbligatoria. */
     key: string;
+    /**
+     * Short-lived authenticated user token (`wu_…`) minted server-to-server by
+     * the host application. Never place the host subject/email/internal id here.
+     */
+    userToken?: string;
     /** Base URL dell'istanza AskMyDocs. Default: stessa origine ('' ). In
      *  modalità proxy (B) punta al backend del sito ospite. */
     apiBase?: string;

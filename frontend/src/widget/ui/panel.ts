@@ -133,6 +133,12 @@ export class WidgetPanel {
             this.serverTheme = serverTheme as Partial<WidgetTheme>;
             this.applyTheme();
         }
+        const restored = await this.bridge.restoreAuthenticatedSession();
+        for (const message of restored) {
+            message.role === 'user'
+                ? this.appendUser(message.content)
+                : this.appendAssistant(message.content, []);
+        }
     }
 
     /**
