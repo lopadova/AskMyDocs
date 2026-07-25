@@ -171,6 +171,14 @@ return [
         'mailbox_lock' => [
             'wait_seconds' => (int) env('CONNECTOR_IMAP_MAILBOX_LOCK_WAIT', 15),
             'ttl_seconds' => (int) env('CONNECTOR_IMAP_MAILBOX_LOCK_TTL', 700),
+            // A bulk seed holds the same physical-mailbox lock across purge,
+            // checkpoint and the complete APPEND stream, so it needs a longer
+            // crash-expiry window than one connector sync job. The seeder
+            // refreshes it owner-safely before APPEND/purge and after every ACK.
+            // A PCNTL hard deadline fires before the safety boundary so blocking
+            // IMAP I/O cannot outlive ownership (margin must be >= 2 seconds).
+            'seed_ttl_seconds' => (int) env('CONNECTOR_IMAP_SEED_LOCK_TTL', 14400),
+            'seed_safety_margin_seconds' => (int) env('CONNECTOR_IMAP_SEED_LOCK_SAFETY_MARGIN', 30),
             'requeue_after_seconds' => (int) env('CONNECTOR_IMAP_MAILBOX_REQUEUE_AFTER', 60),
             // Wall-clock window a sync job keeps re-queuing on a busy mailbox before
             // giving up — decoupled from the failure-retry count (see

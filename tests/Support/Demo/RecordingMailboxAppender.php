@@ -5,8 +5,13 @@ declare(strict_types=1);
 namespace Tests\Support\Demo;
 
 use App\Services\Demo\Contracts\MailboxAppender;
+use App\Services\Demo\EmailSeedLockLease;
+use App\Services\Demo\MailboxAppendResult;
 use App\Services\Demo\MailboxTarget;
+use App\Services\Demo\PreparedEmailMessage;
+use Closure;
 use DateTimeInterface;
+use RuntimeException;
 
 /**
  * Fake offline {@see MailboxAppender} per i test del comando `mail:seed-imap`:
@@ -15,11 +20,17 @@ use DateTimeInterface;
  * avvengano (happy path) sia che NON avvengano (dry-run), e di osservare
  * l'ORDINE relativo purge↔append (timeline condivisa $events).
  *
- * @phpstan-type AppendRecord array{target: MailboxTarget, raw: string, internalDate: DateTimeInterface}
+ * @phpstan-type AppendRecord array{
+ *     target: MailboxTarget,
+ *     raw: string,
+ *     internalDate: DateTimeInterface,
+ *     sequence: int,
+ *     verifyBeforeAppend: bool
+ * }
  */
 final class RecordingMailboxAppender implements MailboxAppender
 {
-    /** @var list<array{target: MailboxTarget, raw: string, internalDate: DateTimeInterface}> */
+    /** @var list<array{target: MailboxTarget, raw: string, internalDate: DateTimeInterface, sequence: int, verifyBeforeAppend: bool}> */
     public array $appends = [];
 
     /** @var list<array{target: MailboxTarget, header: string, value: string}> */
@@ -34,24 +45,106 @@ final class RecordingMailboxAppender implements MailboxAppender
      */
     public array $events = [];
 
-    public function __construct(private readonly int $purgeReturns = 0) {}
+    /**
+     * @param  list<int>  $alreadyPresentSequences
+     * @param  Closure(PreparedEmailMessage): void|null  $afterMessageStored
+     * @param  Closure(): void|null  $afterPurge
+     */
+    public function __construct(
+        private readonly int $purgeReturns = 0,
+        private readonly array $alreadyPresentSequences = [],
+        private readonly ?int $failAfterStored = null,
+        private readonly ?Closure $afterMessageStored = null,
+        private readonly ?Closure $afterPurge = null,
+    ) {}
 
-    public function appendBatch(MailboxTarget $target, array $rfc822Messages, DateTimeInterface $internalDate): int
-    {
-        foreach ($rfc822Messages as $raw) {
-            $this->appends[] = ['target' => $target, 'raw' => $raw, 'internalDate' => $internalDate];
-        }
-        $this->events[] = ['op' => 'append', 'mailbox' => $target->mailboxKey, 'count' => count($rfc822Messages)];
+    public function appendStream(
+        MailboxTarget $target,
+        iterable $messages,
+        ?Closure $onStored = null,
+        ?EmailSeedLockLease $lease = null,
+    ): MailboxAppendResult {
+        $operation = fn (): MailboxAppendResult => $this->appendStreamUnlocked(
+            $target,
+            $messages,
+            $onStored,
+            $lease,
+        );
 
-        return count($rfc822Messages);
+        return $lease === null ? $operation() : $lease->runGuarded($operation);
     }
 
-    public function purgeSeeded(MailboxTarget $target, string $headerName, string $value): int
-    {
-        $this->purges[] = ['target' => $target, 'header' => $headerName, 'value' => $value];
-        $this->events[] = ['op' => 'purge', 'mailbox' => $target->mailboxKey];
+    private function appendStreamUnlocked(
+        MailboxTarget $target,
+        iterable $messages,
+        ?Closure $onStored,
+        ?EmailSeedLockLease $lease,
+    ): MailboxAppendResult {
+        $appended = 0;
+        $alreadyPresent = 0;
+        $processed = 0;
 
-        return $this->purgeReturns;
+        foreach ($messages as $message) {
+            if (! $message instanceof PreparedEmailMessage) {
+                throw new \InvalidArgumentException('Expected PreparedEmailMessage.');
+            }
+
+            $lease?->refresh();
+            $exists = $message->verifyBeforeAppend
+                && in_array($message->sequence, $this->alreadyPresentSequences, true);
+            if ($exists) {
+                $alreadyPresent++;
+            } else {
+                $this->appends[] = [
+                    'target' => $target,
+                    'raw' => $message->raw,
+                    'internalDate' => $message->internalDate,
+                    'sequence' => $message->sequence,
+                    'verifyBeforeAppend' => $message->verifyBeforeAppend,
+                ];
+                $appended++;
+            }
+
+            if ($this->afterMessageStored !== null) {
+                ($this->afterMessageStored)($message);
+            }
+
+            // Mirrors the real appender: an ambiguous remote ACK after lease
+            // loss must never reach the checkpoint callback.
+            $lease?->refresh();
+            if ($onStored !== null) {
+                $onStored($message, $exists);
+            }
+
+            $processed++;
+            if ($this->failAfterStored !== null && $processed >= $this->failAfterStored) {
+                throw new RuntimeException('Injected APPEND interruption.');
+            }
+        }
+        $this->events[] = ['op' => 'append', 'mailbox' => $target->mailboxKey, 'count' => $appended];
+
+        return new MailboxAppendResult($appended, $alreadyPresent);
+    }
+
+    public function purgeSeeded(
+        MailboxTarget $target,
+        string $headerName,
+        string $value,
+        ?EmailSeedLockLease $lease = null,
+    ): int {
+        $operation = function () use ($target, $headerName, $value, $lease): int {
+            $lease?->refresh();
+            $this->purges[] = ['target' => $target, 'header' => $headerName, 'value' => $value];
+            $this->events[] = ['op' => 'purge', 'mailbox' => $target->mailboxKey];
+            if ($this->afterPurge !== null) {
+                ($this->afterPurge)();
+            }
+            $lease?->refresh();
+
+            return $this->purgeReturns;
+        };
+
+        return $lease === null ? $operation() : $lease->runGuarded($operation);
     }
 
     /**
