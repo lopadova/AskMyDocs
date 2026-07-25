@@ -48,6 +48,7 @@ use App\Http\Controllers\Api\KbResolveWikilinkController;
 use App\Http\Controllers\Api\Widget\WidgetSessionController;
 use App\Http\Controllers\Api\Widget\WidgetSessionTokenController;
 use App\Http\Controllers\Api\Widget\WidgetSetupController;
+use App\Http\Controllers\Api\Widget\WidgetUserTokenController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -1080,6 +1081,9 @@ Route::middleware([
         Route::post('/{id}/revoke', [WidgetKeyAdminController::class, 'revoke'])
             ->whereNumber('id')
             ->name('api.admin.widget-keys.revoke');
+        Route::post('/{id}/rotate-identity-secret', [WidgetKeyAdminController::class, 'rotateIdentitySecret'])
+            ->whereNumber('id')
+            ->name('api.admin.widget-keys.rotate-identity-secret');
     });
 
 /*
@@ -1409,6 +1413,8 @@ Route::middleware(['throttle:120,1', 'widget.key'])
         // dentro il controller (anti-IDOR, R30). /exec-tool + /replay in M4.
         Route::post('/sessions/start', [WidgetSessionController::class, 'start'])
             ->name('api.widget.sessions.start');
+        Route::get('/sessions', [WidgetSessionController::class, 'index'])
+            ->name('api.widget.sessions.index');
         Route::post('/sessions/{session}/step', [WidgetSessionController::class, 'step'])
             ->name('api.widget.sessions.step');
         // M4 — esecuzione BE AiTool. Il FE chiama questo quando l'orchestratore
@@ -1421,3 +1427,8 @@ Route::middleware(['throttle:120,1', 'widget.key'])
         Route::get('/sessions/{session}/replay', [WidgetSessionController::class, 'replay'])
             ->name('api.widget.sessions.replay');
     });
+
+// Server-to-server only: authenticates with the per-widget identity secret.
+Route::post('/widget/user-token', WidgetUserTokenController::class)
+    ->middleware('throttle:60,1')
+    ->name('api.widget.user-token');

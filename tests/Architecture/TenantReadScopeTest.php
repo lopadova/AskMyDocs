@@ -42,7 +42,7 @@ final class TenantReadScopeTest extends TestCase
         'NotificationEvent', 'NotificationPreference', 'NotificationTenantDefault',
         'AppSetting', 'ConnectorSyncRun',
         'Project', 'ProjectMembership', 'TabularCell', 'TabularReview',
-        'TenantSchedulerOverride', 'WidgetKey', 'WidgetSession',
+        'TenantSchedulerOverride', 'WidgetIdentity', 'WidgetKey', 'WidgetSession',
         'WidgetSessionStep', 'WidgetSessionToken', 'Workflow',
     ];
 
@@ -88,6 +88,8 @@ final class TenantReadScopeTest extends TestCase
         // from TenantContext. This is the same posture as the HTTP ResolveWidgetKey
         // middleware which does WidgetKey::query()->where('public_key', …).
         'app/Console/Commands/WidgetEmitSecretCommand.php' => 'Looks up WidgetKey by globally-unique public_key; no tenant context in CLI.',
+        'app/Http/Controllers/Api/Widget/WidgetUserTokenController.php' => 'Server exchange resolves the globally unique public_key, then derives tenant/project exclusively from that key.',
+        'app/Services/Widget/WidgetUserTokenService.php' => 'Validates an encrypted token by globally unique widget-key id, then scopes identity reads to the tenant derived from that key.',
     ];
 
     public function test_tenant_aware_reads_are_scoped(): void

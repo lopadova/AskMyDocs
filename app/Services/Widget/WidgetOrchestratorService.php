@@ -58,11 +58,12 @@ final class WidgetOrchestratorService
      * @param  array<string, mixed>  $snapshot
      * @return array<string, mixed>
      */
-    public function start(WidgetKey $key, array $snapshot, ?string $userMessage, ?string $pageUrl, ?string $origin): array
+    public function start(WidgetKey $key, array $snapshot, ?string $userMessage, ?string $pageUrl, ?string $origin, ?\App\Models\WidgetIdentity $identity = null): array
     {
         $session = WidgetSession::create([
             // tenant_id auto-fill via BelongsToTenant (= tenant della key, R30).
             'widget_key_id' => $key->id,
+            'widget_identity_id' => $identity?->id,
             'project_key' => $key->project_key,
             'public_session_id' => (string) Str::uuid(),
             'status' => WidgetSession::STATUS_ACTIVE,

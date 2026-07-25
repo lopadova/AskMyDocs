@@ -68,9 +68,13 @@ final class WidgetKeyAdminController extends Controller
             // farebbe risolvere zero tool → degrado/errore a runtime.
             'skill' => ['nullable', 'string', 'max:100', 'regex:/^[a-z0-9][a-z0-9-]*@[0-9]+$/'],
             'host_tools_enabled' => ['nullable', 'boolean'],
+            'user_auth_enabled' => ['nullable', 'boolean'],
         ] + $this->theme->rules('theme'));
 
         $plainSecret = 'sk_'.Str::random(40);
+        $identitySecret = ($validated['user_auth_enabled'] ?? false)
+            ? 'ik_'.Str::random(48)
+            : null;
         $publicKey = 'pk_'.Str::random(32);
 
         $row = WidgetKey::query()->create([
@@ -82,11 +86,13 @@ final class WidgetKeyAdminController extends Controller
             // Hash::check, quindi un operatore con HASH_DRIVER=argon non deve
             // ritrovarsi hash misti nella stessa colonna.
             'secret_hash' => Hash::make($plainSecret),
+            'identity_secret_hash' => $identitySecret !== null ? Hash::make($identitySecret) : null,
             'label' => $validated['label'],
             'allowed_origins' => $validated['allowed_origins'] ?? [],
             'rate_limit' => $validated['rate_limit'] ?? 60,
             'skill' => $validated['skill'] ?? 'askmydocs-assistant@1',
             'host_tools_enabled' => $validated['host_tools_enabled'] ?? false,
+            'user_auth_enabled' => $validated['user_auth_enabled'] ?? false,
             'is_active' => true,
             // Tema esplicito solo se fornito; altrimenti null → il widget
             // risolve i default (snippet di create resta minimale).
@@ -100,6 +106,7 @@ final class WidgetKeyAdminController extends Controller
             'data' => $this->serialize($row),
             'plain_secret' => $plainSecret,
             'public_key' => $publicKey,
+            'identity_plain_secret' => $identitySecret,
         ], 201);
     }
 
@@ -107,6 +114,7 @@ final class WidgetKeyAdminController extends Controller
     public function update(Request $request, int $id): JsonResponse
     {
         $row = $this->findForTenant($id);
+        $wasUserAuthEnabled = (bool) $row->user_auth_enabled;
         $tenantId = $this->tenantContext->current();
 
         $validated = $request->validate([
@@ -127,6 +135,7 @@ final class WidgetKeyAdminController extends Controller
             // #15 — formato skill del registry.
             'skill' => ['nullable', 'string', 'max:100', 'regex:/^[a-z0-9][a-z0-9-]*@[0-9]+$/'],
             'host_tools_enabled' => ['nullable', 'boolean'],
+            'user_auth_enabled' => ['nullable', 'boolean'],
         ] + $this->theme->rules('theme'));
 
         // Il tema vive sulla colonna `theme_config` (nome diverso dalla chiave
@@ -138,10 +147,16 @@ final class WidgetKeyAdminController extends Controller
         if ($themeProvided) {
             $row->theme_config = $this->theme->sanitize($request->input('theme', []));
         }
+        $identitySecret = null;
+        if (! $wasUserAuthEnabled && ($validated['user_auth_enabled'] ?? false)) {
+            $identitySecret = 'ik_'.Str::random(48);
+            $row->identity_secret_hash = Hash::make($identitySecret);
+        }
         $row->save();
 
         return response()->json([
             'data' => $this->serialize($row->fresh()),
+            'identity_plain_secret' => $identitySecret,
         ]);
     }
 
@@ -191,6 +206,26 @@ final class WidgetKeyAdminController extends Controller
         ]);
     }
 
+    /** Rotate the server-to-server identity credential; plaintext is returned once. */
+    public function rotateIdentitySecret(int $id): JsonResponse
+    {
+        $row = $this->findForTenant($id);
+        if (! $row->user_auth_enabled) {
+            return response()->json([
+                'error' => 'user_auth_disabled',
+                'message' => 'Enable authenticated users for this widget first.',
+            ], 409);
+        }
+
+        $plain = 'ik_'.Str::random(48);
+        $row->forceFill(['identity_secret_hash' => Hash::make($plain)])->save();
+
+        return response()->json([
+            'data' => $this->serialize($row->fresh()),
+            'identity_plain_secret' => $plain,
+        ]);
+    }
+
     /** Find a WidgetKey scoped to the current tenant or 404. */
     private function findForTenant(int $id): WidgetKey
     {
@@ -219,6 +254,7 @@ final class WidgetKeyAdminController extends Controller
             'rate_limit' => $row->rate_limit,
             'skill' => $row->skill,
             'host_tools_enabled' => $row->host_tools_enabled,
+            'user_auth_enabled' => $row->user_auth_enabled,
             'is_active' => $row->is_active,
             'last_used_at' => $row->last_used_at?->toIso8601String(),
             // #3 — usa l'attributo withCount quando presente (index()); fallback

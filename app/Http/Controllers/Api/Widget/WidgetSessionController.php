@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Api\Widget;
 
 use App\Http\Middleware\ResolveWidgetKey;
 use App\Models\WidgetKey;
+use App\Models\WidgetIdentity;
 use App\Models\WidgetSession;
 use App\Models\WidgetSessionStep;
 use App\Services\Widget\WidgetAiToolRegistry;
@@ -70,6 +71,7 @@ final class WidgetSessionController extends Controller
             userMessage: $this->nullableString($data['message'] ?? null),
             pageUrl: $this->nullableString($data['page_url'] ?? null) ?? $this->nullableString(data_get($snapshot, 'page.url')),
             origin: $this->nullableString($request->header('Origin')),
+            identity: $this->identity($request),
         );
 
         return response()->json($payload);
@@ -297,6 +299,43 @@ final class WidgetSessionController extends Controller
         return response()->json(['steps' => $masked]);
     }
 
+    /** Paginated history is available only to an authenticated host identity. */
+    public function index(Request $request): JsonResponse
+    {
+        $identity = $this->identity($request);
+        if ($identity === null) {
+            return response()->json([
+                'error' => 'user_auth_required',
+                'message' => 'An authenticated widget user token is required.',
+            ], 401);
+        }
+
+        $perPage = min(max((int) $request->input('per_page', 20), 1), 100);
+        $rows = WidgetSession::query()
+            ->forTenant($this->tenants->current())
+            ->where('widget_key_id', $this->key($request)->id)
+            ->where('widget_identity_id', $identity->id)
+            ->orderByDesc('created_at')
+            ->paginate($perPage);
+
+        return response()->json([
+            'data' => collect($rows->items())->map(fn (WidgetSession $session): array => [
+                'id' => $session->public_session_id,
+                'status' => $session->status,
+                'summary' => $session->summary,
+                'page_url' => $session->page_url,
+                'created_at' => $session->created_at->toIso8601String(),
+                'updated_at' => $session->updated_at->toIso8601String(),
+            ])->values(),
+            'meta' => [
+                'current_page' => $rows->currentPage(),
+                'last_page' => $rows->lastPage(),
+                'per_page' => $rows->perPage(),
+                'total' => $rows->total(),
+            ],
+        ]);
+    }
+
     /**
      * Risolve la sessione SOLO se appartiene alla key chiamante (anti-IDOR, R30).
      */
@@ -306,11 +345,17 @@ final class WidgetSessionController extends Controller
         // ResolveWidgetKey) AND to the calling key. forTenant() is the
         // primary tenant boundary; widget_key_id is the anti-IDOR guard so
         // one key can't drive another key's session within the same tenant.
-        return WidgetSession::query()
+        $query = WidgetSession::query()
             ->forTenant($this->tenants->current())
             ->where('public_session_id', $publicId)
-            ->where('widget_key_id', $this->key($request)->id)
-            ->firstOrFail();
+            ->where('widget_key_id', $this->key($request)->id);
+
+        $identity = $this->identity($request);
+        $identity === null
+            ? $query->whereNull('widget_identity_id')
+            : $query->where('widget_identity_id', $identity->id);
+
+        return $query->firstOrFail();
     }
 
     private function key(Request $request): WidgetKey
@@ -319,6 +364,13 @@ final class WidgetSessionController extends Controller
         $key = $request->attributes->get(ResolveWidgetKey::ATTR_KEY);
 
         return $key;
+    }
+
+    private function identity(Request $request): ?WidgetIdentity
+    {
+        $identity = $request->attributes->get(ResolveWidgetKey::ATTR_IDENTITY);
+
+        return $identity instanceof WidgetIdentity ? $identity : null;
     }
 
     /**

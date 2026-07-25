@@ -863,4 +863,31 @@ final class WidgetAdminControllerTest extends TestCase
         // Only sessions for key1 should be returned
         $this->assertCount(1, $response->json('data'));
     }
+
+    public function test_authenticated_user_credential_is_shown_once_and_rotatable(): void
+    {
+        $user = $this->superAdmin();
+        $created = $this->actingAs($user)->postJson('/api/admin/widget-keys', [
+            'label' => 'Authenticated portal',
+            'project_key' => 'portal',
+            'allowed_origins' => ['https://portal.example'],
+            'user_auth_enabled' => true,
+        ])->assertCreated();
+
+        $this->assertStringStartsWith('ik_', $created->json('identity_plain_secret'));
+        $id = (int) $created->json('data.id');
+
+        $index = $this->actingAs($user)->getJson('/api/admin/widget-keys')->assertOk();
+        $this->assertNull($index->json('data.0.identity_plain_secret'));
+        $this->assertTrue($index->json('data.0.user_auth_enabled'));
+
+        $rotated = $this->actingAs($user)
+            ->postJson("/api/admin/widget-keys/{$id}/rotate-identity-secret")
+            ->assertOk();
+        $this->assertStringStartsWith('ik_', $rotated->json('identity_plain_secret'));
+        $this->assertNotSame(
+            $created->json('identity_plain_secret'),
+            $rotated->json('identity_plain_secret'),
+        );
+    }
 }
