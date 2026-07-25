@@ -23,14 +23,16 @@ use RuntimeException;
  *      viewer/admin/super-admin, membership isolata).
  *   2. Documenti         → copia docs/case-studies/data/<key>/ sul disco kb e
  *      `kb:ingest-folder case-studies/<key> --project=<key> --recursive --sync`.
- *   3. E-mail + connettori → `mail:seed-imap --all --purge` (crea le label,
- *      ripulisce e ri-appende le ~751 e-mail) e `connector:imap:install --all`
- *      (una installazione connettore per casella — i connettori NON sono nei
- *      seeder, servono ping IMAP reale + vault). Con `--ingest-emails` aggiunge
- *      `--sync` per ingerire subito le e-mail in KB.
+ *   3. E-mail + connettori → fixture gold legacy oppure dataset generato
+ *      (`--profile` / `--dataset-version`). Per i dataset v2 esegue sempre un
+ *      preflight dal manifest, quindi APPEND scoped alla versione con purge o
+ *      resume. `connector:imap:install --all` aggiorna le installazioni in
+ *      place; con `--ingest-emails` aggiunge `--sync`.
  *
  *   php artisan demo:init-case-studies
  *   php artisan demo:init-case-studies --fresh --ingest-emails
+ *   php artisan demo:init-case-studies --profile=large --generate-email-dataset
+ *   php artisan demo:init-case-studies --profile=large --resume --ingest-emails
  *   php artisan demo:init-case-studies --skip-emails        # solo aziende+doc
  *
  * Prerequisiti per i passi reali: disco kb locale (o remoto), provider AI per gli
@@ -48,21 +50,32 @@ class InitCaseStudiesCommand extends Command
         {--fresh : Esegue migrate:fresh PRIMA di tutto (DISTRUTTIVO)}
         {--skip-docs : Salta l\'ingest dei documenti markdown}
         {--skip-emails : Salta purge + APPEND delle e-mail su IMAP}
+        {--profile= : Profilo email generato: gold, demo, large o stress}
+        {--dataset-version= : Versione email generata specifica}
+        {--dataset-root=storage/app/demo-email-datasets : Directory radice dei dataset generati}
+        {--generate-email-dataset : Genera atomicamente il profilo prima del preflight}
+        {--resume : Riprende i checkpoint email invece di purgare la dataset version}
         {--ingest-emails : Dopo l\'APPEND installa il connettore e ingerisce le e-mail in KB}';
 
-    protected $description = 'Inizializza l\'ambiente case-study: aziende, utenti, documenti e e-mail (purge+load).';
+    protected $description = 'Inizializza aziende, utenti, documenti e dataset email case-study con preflight e resume.';
 
     public function handle(TenantContext $tenant): int
     {
         $tenantId = (string) $this->option('tenant');
         $tenant->set($tenantId);
 
+        $emailOptionsError = $this->validateEmailOptions();
+        if ($emailOptionsError !== null) {
+            $this->error($emailOptionsError);
+
+            return self::INVALID;
+        }
+
         if ((bool) $this->option('fresh')) {
             $this->warn('migrate:fresh (DISTRUTTIVO) — azzero il database…');
-            if ($this->call('migrate:fresh', ['--force' => true]) !== self::SUCCESS) {
-                $this->error('migrate:fresh fallito — interrompo.');
-
-                return self::FAILURE;
+            $exitCode = $this->callChecked('migrate:fresh', ['--force' => true]);
+            if ($exitCode !== self::SUCCESS) {
+                return $exitCode;
             }
         }
 
@@ -70,43 +83,118 @@ class InitCaseStudiesCommand extends Command
         //    case-study seeder che crea i 3 account/azienda e ripristina
         //    l'isolamento delle membership.
         $this->components->info('1/4 — Aziende + utenti');
-        $this->call('db:seed', ['--class' => RbacSeeder::class, '--force' => true]);
-        $this->call('db:seed', ['--class' => CaseStudyUsersSeeder::class, '--force' => true]);
+        $exitCode = $this->callChecked('db:seed', ['--class' => RbacSeeder::class, '--force' => true]);
+        if ($exitCode !== self::SUCCESS) {
+            return $exitCode;
+        }
+        $exitCode = $this->callChecked('db:seed', ['--class' => CaseStudyUsersSeeder::class, '--force' => true]);
+        if ($exitCode !== self::SUCCESS) {
+            return $exitCode;
+        }
 
         // 2) DOCUMENTI
         if (! (bool) $this->option('skip-docs')) {
             $this->components->info('2/4 — Documenti (copia su disco kb + ingest, un tenant per azienda)');
-            $this->ingestDocuments();
+            $exitCode = $this->ingestDocuments();
+            if ($exitCode !== self::SUCCESS) {
+                return $exitCode;
+            }
         } else {
             $this->components->warn('2/4 — Documenti: saltato (--skip-docs)');
         }
 
-        // 3) E-MAIL: APPEND su IMAP + installazione dei CONNETTORI per azienda.
+        // 3) E-MAIL: generazione/preflight, APPEND su IMAP e installazione dei
+        //    CONNETTORI per azienda.
         //    I connettori NON sono nei seeder puri (servono ping IMAP reale +
         //    segreto nel vault, impossibili in un seeder/test senza credenziali):
         //    si creano qui, una installazione per casella (label/project_key).
         //    `--sync` (con --ingest-emails) avvia anche l'ingest in KB.
         if (! (bool) $this->option('skip-emails')) {
-            $this->components->info('3/4 — E-mail: APPEND su IMAP + connettori');
-            if ($this->emailPasswordPresent()) {
-                $this->call('mail:seed-imap', ['--all' => true, '--purge' => true]);
+            $this->components->info('3/4 — E-mail: dataset, APPEND su IMAP + connettori');
+            $datasetArgs = $this->generatedDatasetArguments();
 
+            if ((bool) $this->option('generate-email-dataset')) {
+                $this->line('  Generazione deterministica del dataset email…');
+                $exitCode = $this->callChecked('demo:generate-case-study-emails', [
+                    '--profile' => (string) $this->option('profile'),
+                    '--output' => (string) $this->option('dataset-root'),
+                    '--force' => true,
+                    '--stats' => true,
+                ]);
+                if ($exitCode !== self::SUCCESS) {
+                    return $exitCode;
+                }
+            }
+
+            if ($datasetArgs !== []) {
+                $this->line('  Preflight manifest, volumi e costo potenziale…');
+                $exitCode = $this->callChecked('mail:seed-imap', [
+                    '--all' => true,
+                    ...$datasetArgs,
+                    '--summary-only' => true,
+                    '--estimate-cost' => true,
+                ]);
+                if ($exitCode !== self::SUCCESS) {
+                    return $exitCode;
+                }
+            }
+
+            if ($this->emailPasswordPresent()) {
+                $this->line('  Delivery IMAP…');
+                $seedArgs = ['--all' => true];
+                if ($datasetArgs === []) {
+                    $seedArgs['--purge'] = true;
+                } else {
+                    $seedArgs = [
+                        ...$seedArgs,
+                        ...$datasetArgs,
+                        '--summary-only' => true,
+                    ];
+                    $seedArgs[(bool) $this->option('resume') ? '--resume' : '--purge-dataset'] = true;
+                }
+
+                $exitCode = $this->callChecked('mail:seed-imap', $seedArgs);
+                if ($exitCode !== self::SUCCESS) {
+                    return $exitCode;
+                }
+
+                $this->line('  Installazione/aggiornamento connettori IMAP…');
                 $installArgs = ['--all' => true];
                 if ((bool) $this->option('ingest-emails')) {
                     $installArgs['--sync'] = true;
                 }
-                $this->call('connector:imap:install', $installArgs);
+                $exitCode = $this->callChecked('connector:imap:install', $installArgs);
+                if ($exitCode !== self::SUCCESS) {
+                    return $exitCode;
+                }
+
+                if ((bool) $this->option('ingest-emails')) {
+                    $this->components->warn(
+                        'I sync email sono stati accodati: il comando non attende il drenaggio dei worker.',
+                    );
+                }
             } else {
-                $this->components->warn('E-mail/connettori saltati: CONNECTOR_TEST_GMAIL_PASSWORD non impostata in .env.');
+                $this->components->warn(
+                    'Delivery IMAP e connettori saltati: CONNECTOR_TEST_GMAIL_PASSWORD non impostata in .env.',
+                );
             }
         } else {
             $this->components->warn('3/4 — E-mail + connettori: saltato (--skip-emails)');
         }
 
         $this->newLine();
-        $this->components->info('Fatto. Riepilogo (tutti i tenant):');
+        $this->components->info('Riepilogo (tutti i tenant):');
         // Un tenant per azienda → niente filtro: mostra tutte le aziende.
-        $this->call('demo:list-companies');
+        $exitCode = $this->callChecked('demo:list-companies');
+        if ($exitCode !== self::SUCCESS) {
+            return $exitCode;
+        }
+
+        $this->components->info(
+            (bool) $this->option('ingest-emails') && ! (bool) $this->option('skip-emails')
+                ? 'Inizializzazione completata; verifica il drenaggio dei sync email accodati.'
+                : 'Inizializzazione completata.',
+        );
 
         return self::SUCCESS;
     }
@@ -116,7 +204,7 @@ class InitCaseStudiesCommand extends Command
      * cartella. Le cartelle in docs/case-studies/data/ sono la fonte di verità
      * dei project_key (gating: tests/Unit/CaseStudies/CaseStudyDatasetTest).
      */
-    private function ingestDocuments(): void
+    private function ingestDocuments(): int
     {
         $disk = (string) config('kb.sources.disk', 'kb');
         $prefix = trim((string) config('kb.sources.path_prefix', ''), '/');
@@ -126,7 +214,7 @@ class InitCaseStudiesCommand extends Command
         if ($dirs === []) {
             $this->components->warn("Nessun dataset in {$base} — niente documenti da ingerire.");
 
-            return;
+            return self::SUCCESS;
         }
 
         foreach ($dirs as $dir) {
@@ -137,14 +225,42 @@ class InitCaseStudiesCommand extends Command
 
             $this->line(sprintf('  [%s] %d documenti → ingest (tenant %s)', $projectKey, count($files), $projectKey));
             // Un tenant per azienda: ingest nel tenant dell'azienda (= project_key).
-            $this->call('kb:ingest-folder', [
+            $exitCode = $this->callChecked('kb:ingest-folder', [
                 'path' => self::KB_SUBDIR.'/'.$projectKey,
                 '--project' => $projectKey,
                 '--tenant' => $projectKey,
                 '--recursive' => true,
                 '--sync' => true,
             ]);
+            if ($exitCode !== self::SUCCESS) {
+                return $exitCode;
+            }
         }
+
+        return self::SUCCESS;
+    }
+
+    /**
+     * Esegue un sotto-comando e rende il suo exit code parte del contratto
+     * dell'orchestratore. Un fallimento interrompe la pipeline nel chiamante e
+     * viene propagato senza normalizzarlo a 1, così CI e operatori conservano la
+     * causa originale.
+     *
+     * @param  array<string,mixed>  $arguments
+     */
+    private function callChecked(string $command, array $arguments = []): int
+    {
+        $exitCode = $this->call($command, $arguments);
+
+        if ($exitCode !== self::SUCCESS) {
+            $this->error(sprintf(
+                "Comando '%s' fallito con exit code %d — interrompo.",
+                $command,
+                $exitCode,
+            ));
+        }
+
+        return $exitCode;
     }
 
     /**
@@ -209,5 +325,83 @@ class InitCaseStudiesCommand extends Command
         $password = env(TestEmailFixtures::ACCOUNT_PASSWORD_ENV);
 
         return is_string($password) && $password !== '';
+    }
+
+    private function validateEmailOptions(): ?string
+    {
+        $profile = trim((string) $this->option('profile'));
+        $datasetVersion = trim((string) $this->option('dataset-version'));
+        $usesGeneratedDataset = $profile !== '' || $datasetVersion !== '';
+
+        if ((bool) $this->option('generate-email-dataset') && $profile === '') {
+            return '--generate-email-dataset richiede --profile.';
+        }
+
+        if ((bool) $this->option('generate-email-dataset') && $datasetVersion !== '') {
+            return '--generate-email-dataset non può essere combinato con --dataset-version.';
+        }
+
+        if ((bool) $this->option('resume') && ! $usesGeneratedDataset) {
+            return '--resume richiede --profile o --dataset-version.';
+        }
+
+        if ($usesGeneratedDataset && trim((string) $this->option('dataset-root')) === '') {
+            return '--dataset-root non può essere vuoto.';
+        }
+
+        if ($usesGeneratedDataset && (bool) $this->option('ingest-emails')) {
+            if (config('connectors.case_study_email_dataset.require_fixture_index', true) !== true) {
+                return '--ingest-emails con un dataset v2 richiede CASE_STUDY_EMAIL_REQUIRE_FIXTURE_INDEX=true.';
+            }
+
+            $deliveryRoot = $this->absoluteDatasetRoot((string) $this->option('dataset-root'));
+            $workerRoot = $this->absoluteDatasetRoot((string) config(
+                'connectors.case_study_email_dataset.root',
+                storage_path('app/demo-email-datasets'),
+            ));
+            if ($deliveryRoot !== $workerRoot) {
+                return 'Il --dataset-root del delivery deve coincidere con '
+                    .'CASE_STUDY_EMAIL_DATASET_ROOT per i queue worker.';
+            }
+        }
+
+        return null;
+    }
+
+    private function absoluteDatasetRoot(string $root): string
+    {
+        $root = rtrim(trim($root), DIRECTORY_SEPARATOR);
+
+        return str_starts_with($root, DIRECTORY_SEPARATOR)
+            ? $root
+            : base_path($root);
+    }
+
+    /**
+     * Opzioni condivise tra preflight e delivery. Un array vuoto seleziona il
+     * corpus gold legacy; i dataset v2 vengono sempre identificati
+     * esplicitamente e quindi possono essere purgati senza wildcard.
+     *
+     * @return array<string, string>
+     */
+    private function generatedDatasetArguments(): array
+    {
+        $profile = trim((string) $this->option('profile'));
+        $datasetVersion = trim((string) $this->option('dataset-version'));
+        if ($profile === '' && $datasetVersion === '') {
+            return [];
+        }
+
+        $arguments = [
+            '--dataset-root' => (string) $this->option('dataset-root'),
+        ];
+        if ($profile !== '') {
+            $arguments['--profile'] = $profile;
+        }
+        if ($datasetVersion !== '') {
+            $arguments['--dataset-version'] = $datasetVersion;
+        }
+
+        return $arguments;
     }
 }
