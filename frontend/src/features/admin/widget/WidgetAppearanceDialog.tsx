@@ -51,6 +51,11 @@ const MODE_OPTIONS: { value: WidgetMode; label: string; hint: string }[] = [
         label: 'Inline chat — full block',
         hint: 'The chat fills 100% of a container on the host page (no launcher). For a chat bound to a page.',
     },
+    {
+        value: 'fullscreen',
+        label: 'Fullscreen chat — entire viewport',
+        hint: 'A dedicated, always-open chat surface that fills the browser viewport.',
+    },
 ];
 const FONT_OPTIONS: { value: WidgetFontKey; label: string }[] = [
     { value: 'system', label: 'System' },
@@ -190,13 +195,13 @@ export function WidgetAppearanceDialog({
                         </TabsList>
 
                         <TabsContent value="launcher" className="mt-3 grid gap-3">
-                            {theme.mode === 'inline' && (
+                            {theme.mode !== 'helper' && (
                                 <p
                                     className="text-muted-foreground rounded-md border border-dashed border-border p-2 text-xs"
                                     data-testid="admin-widget-appearance-launcher-inline-note"
                                 >
-                                    Inline chat has no launcher — these settings apply only when the
-                                    widget type is <strong>Helper</strong>.
+                                    This chat mode has no launcher — these settings apply only when
+                                    the widget type is <strong>Helper</strong>.
                                 </p>
                             )}
                             <SelectField

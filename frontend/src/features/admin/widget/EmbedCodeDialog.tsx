@@ -111,8 +111,11 @@ export function EmbedCodeDialog({
     const [containerId, setContainerId] = useState('askmydocs-chat');
     const [height, setHeight] = useState('600');
 
-    // Layout the key was created with — drives helper vs inline snippet.
-    const mode = theme?.mode === 'inline' ? 'inline' : 'helper';
+    // Layout the key was created with — drives helper/inline/fullscreen snippet.
+    const mode =
+        theme?.mode === 'inline' || theme?.mode === 'fullscreen'
+            ? theme.mode
+            : 'helper';
 
     const resolvedBase = trimTrailingSlash(base.trim());
     const scriptSrc = `${resolvedBase}/widget/askmydocs-widget.js`;
@@ -160,6 +163,8 @@ export function EmbedCodeDialog({
             // Inline chat mounts into a host container; both lines are required.
             cfg.push("    mode: 'inline',");
             cfg.push(`    mount: '${jsString(mountSelector)}',`);
+        } else if (mode === 'fullscreen') {
+            cfg.push("    mode: 'fullscreen',");
         }
         if (title.trim()) {
             cfg.push(`    title: '${jsString(title.trim())}',`);
@@ -265,6 +270,14 @@ export function EmbedCodeDialog({
                                 inline chat
                             </Badge>
                         )}
+                        {mode === 'fullscreen' && (
+                            <Badge
+                                variant="muted"
+                                data-testid="admin-widget-embed-mode-fullscreen"
+                            >
+                                fullscreen chat
+                            </Badge>
+                        )}
                     </DialogTitle>
                     <DialogDescription>
                         Paste the snippet into the host site, just before the closing{' '}
@@ -320,7 +333,9 @@ export function EmbedCodeDialog({
                             <AlertTitle>
                                 {mode === 'inline'
                                     ? 'A container + two tags'
-                                    : 'Two tags, nothing else'}
+                                    : mode === 'fullscreen'
+                                      ? 'Two tags for a full-page chat'
+                                      : 'Two tags, nothing else'}
                             </AlertTitle>
                             <AlertDescription>
                                 {mode === 'inline' ? (

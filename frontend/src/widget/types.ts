@@ -45,7 +45,8 @@ export interface WidgetConfig {
     /**
      * Modalità di resa del widget (precedenza sul `theme.mode` server):
      *   - `helper` (default) launcher flottante → pannello a comparsa;
-     *   - `inline`           blocco chat che riempie {@link WidgetConfig.mount}.
+     *   - `inline`           blocco chat che riempie {@link WidgetConfig.mount};
+     *   - `fullscreen`       esperienza chat che occupa l'intera viewport.
      * L'embed snippet la "congela" inline perché il mount è specifico del sito.
      */
     mode?: WidgetMode;
@@ -98,7 +99,7 @@ export interface HostExecResponse {
  * comparsa (kitt). `inline` = blocco chat che riempie il container ospite (chat
  * legata a una pagina). Mirror di WidgetThemeService::MODES (PHP).
  */
-export type WidgetMode = 'helper' | 'inline';
+export type WidgetMode = 'helper' | 'inline' | 'fullscreen';
 
 /** Chiave di font ammessa (mappa su uno stack sicuro — vedi FONT_STACKS). */
 export type WidgetFontKey = 'system' | 'inter' | 'roboto' | 'georgia' | 'mono';

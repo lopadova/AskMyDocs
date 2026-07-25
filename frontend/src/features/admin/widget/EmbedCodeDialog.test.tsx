@@ -147,6 +147,16 @@ describe('EmbedCodeDialog', () => {
         expect(code).not.toContain('<div id=');
     });
 
+    it('builds a fullscreen snippet without a mount container', () => {
+        renderDialog({ theme: { ...DEFAULT_THEME, mode: 'fullscreen' } });
+
+        const code = screen.getByTestId('admin-widget-embed-snippet').textContent ?? '';
+        expect(code).toContain("mode: 'fullscreen'");
+        expect(code).not.toContain('mount:');
+        expect(code).not.toContain('<div id=');
+        expect(screen.getByTestId('admin-widget-embed-mode-fullscreen')).toBeDefined();
+    });
+
     it('derives the div id and mount selector from the container id input', async () => {
         const user = userEvent.setup();
         renderDialog({ theme: { ...DEFAULT_THEME, mode: 'inline' } });

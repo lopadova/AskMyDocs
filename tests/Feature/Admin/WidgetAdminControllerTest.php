@@ -537,6 +537,22 @@ final class WidgetAdminControllerTest extends TestCase
         $this->assertSame('inline', $row->theme_config['mode']);
     }
 
+    public function test_store_persists_fullscreen_widget_mode_via_theme(): void
+    {
+        $user = $this->superAdmin();
+
+        $this->actingAs($user)->postJson('/api/admin/widget-keys', [
+            'label' => 'Fullscreen portal',
+            'project_key' => 'portal',
+            'theme' => ['mode' => 'fullscreen'],
+        ])->assertCreated()->assertJsonPath('data.theme.mode', 'fullscreen');
+
+        $this->assertSame(
+            'fullscreen',
+            WidgetKey::query()->where('label', 'Fullscreen portal')->sole()->theme_config['mode'],
+        );
+    }
+
     public function test_default_key_resolves_helper_mode(): void
     {
         $user = $this->superAdmin();

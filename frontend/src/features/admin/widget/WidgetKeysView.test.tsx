@@ -333,6 +333,50 @@ describe('WidgetKeysView', () => {
         });
     });
 
+    it('includes theme.mode=fullscreen in the create payload', async () => {
+        mockedApi.get.mockResolvedValue({ data: { data: [] } });
+        mockedApi.post.mockResolvedValueOnce({
+            data: {
+                data: {
+                    id: 11,
+                    label: 'Fullscreen',
+                    public_key: 'pk_fullscreen',
+                    project_key: 'main',
+                    allowed_origins: [],
+                    rate_limit: 60,
+                    skill: 'askmydocs-assistant@1',
+                    is_active: true,
+                    sessions_count: 0,
+                    theme: { mode: 'fullscreen' },
+                    created_at: '2026-05-30T00:00:00Z',
+                    updated_at: '2026-05-30T00:00:00Z',
+                },
+                plain_secret: 'sk_x',
+                public_key: 'pk_fullscreen',
+            },
+        });
+
+        renderWithQuery(<WidgetKeysView />);
+        fireEvent.click(screen.getByTestId('admin-widget-keys-create-btn'));
+        fireEvent.change(await screen.findByTestId('admin-widget-keys-label'), {
+            target: { value: 'Fullscreen' },
+        });
+        fireEvent.change(screen.getByTestId('admin-widget-keys-project'), {
+            target: { value: 'main' },
+        });
+        fireEvent.change(screen.getByTestId('admin-widget-keys-mode'), {
+            target: { value: 'fullscreen' },
+        });
+        fireEvent.click(screen.getByTestId('admin-widget-keys-create-submit'));
+
+        await waitFor(() => {
+            expect(mockedApi.post).toHaveBeenCalledWith(
+                '/api/admin/widget-keys',
+                expect.objectContaining({ theme: { mode: 'fullscreen' } }),
+            );
+        });
+    });
+
     it('omits the theme block from the create payload for a plain helper key', async () => {
         mockedApi.get.mockResolvedValue({ data: { data: [] } });
         mockedApi.post.mockResolvedValueOnce({

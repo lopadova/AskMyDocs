@@ -7,9 +7,9 @@ RAG engine and can both **read** and **act on** the host page's DOM
 
 ---
 
-## Layout modes — Helper launcher vs Inline chat
+## Layout modes — Helper, Inline, and Fullscreen
 
-The widget renders in one of two layouts, chosen per key (admin **Widget → Keys**,
+The widget renders in one of three layouts, chosen per key (admin **Widget → Keys**,
 field *Widget type*, also editable under **Appearance**) and baked into the snippet
 by the **Embed** dialog. This is **independent** from the authentication mode
 (A browser / B proxy, below).
@@ -19,6 +19,9 @@ by the **Embed** dialog. This is **independent** from the authentication mode
 - **`inline`** — the chat is a full block that fills a container you place on the
   page (100% of the mount element's width and height), with **no launcher**. Use it
   for a chat bound to a page.
+- **`fullscreen`** — an always-open chat surface that fills the browser viewport,
+  with no launcher or mount container. Use it for a dedicated assistant page and
+  authenticated multi-device history.
 
 ### Helper (default)
 
@@ -42,6 +45,19 @@ the size; the chat fills it:
     apiBase: 'https://kb.example.com',
     mode: 'inline',
     mount: '#askmydocs-chat',
+  };
+</script>
+<script src="https://kb.example.com/widget/askmydocs-widget.js" defer></script>
+```
+
+### Fullscreen chat
+
+```html
+<script>
+  window.AskMyDocsWidget = {
+    key: 'pk_live_abc123',
+    apiBase: 'https://kb.example.com',
+    mode: 'fullscreen',
   };
 </script>
 <script src="https://kb.example.com/widget/askmydocs-widget.js" defer></script>

@@ -64,7 +64,7 @@ export const DEFAULT_THEME: WidgetTheme = {
 
 const FONT_KEYS = Object.keys(FONT_STACKS) as WidgetFontKey[];
 /** Mirror di WidgetThemeService::MODES (PHP). */
-export const WIDGET_MODES: WidgetMode[] = ['helper', 'inline'];
+export const WIDGET_MODES: WidgetMode[] = ['helper', 'inline', 'fullscreen'];
 const LAUNCHER_SIDES: LauncherSide[] = ['right', 'left'];
 const LAUNCHER_SHAPES: LauncherShape[] = ['pill', 'rounded', 'circle'];
 const LAUNCHER_ICONS: LauncherIcon[] = ['chat', 'sparkles', 'help', 'none'];
@@ -156,6 +156,20 @@ export const BASE_WIDGET_CSS = `
     flex: 1 1 auto; box-shadow: none;
 }
 .amd-root.amd-mode-inline .amd-close { display: none; }
+
+/* ── Modalità fullscreen: chat sempre visibile sull'intera viewport ── */
+.amd-root.amd-mode-fullscreen {
+    position: fixed; inset: 0; width: 100vw; height: 100dvh;
+    display: flex; background: var(--amd-bg); z-index: 2147483000;
+}
+.amd-root.amd-mode-fullscreen .amd-launcher { display: none; }
+.amd-root.amd-mode-fullscreen .amd-panel {
+    position: static; display: flex; flex: 1 1 auto;
+    right: auto; left: auto; bottom: auto;
+    width: 100%; max-width: none; height: 100%; max-height: none;
+    border: 0; border-radius: 0; box-shadow: none;
+}
+.amd-root.amd-mode-fullscreen .amd-close { display: none; }
 `;
 
 /** Alias retro-compat: il loader storico iniettava `WIDGET_CSS`. */

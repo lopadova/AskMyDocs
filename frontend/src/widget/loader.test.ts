@@ -66,6 +66,11 @@ describe('resolveConfig', () => {
         expect(cfg.autoOpen).toBe(true);
     });
 
+    it('accepts fullscreen mode from the embed data attribute', () => {
+        const cfg = resolveConfig(embedScript({ 'public-key': 'pk', mode: 'fullscreen' }));
+        expect(cfg.mode).toBe('fullscreen');
+    });
+
     it('reads the CSRF token from <meta name="csrf-token"> into the config', () => {
         const meta = document.createElement('meta');
         meta.setAttribute('name', 'csrf-token');

@@ -127,6 +127,11 @@ const MODE_OPTIONS: { value: WidgetMode; label: string; hint: string }[] = [
         label: 'Inline chat — full block',
         hint: 'The whole chat is embedded at 100% of a container you place on the page. For a chat bound to a page.',
     },
+    {
+        value: 'fullscreen',
+        label: 'Fullscreen chat — entire viewport',
+        hint: 'A dedicated chat experience that fills the browser viewport, ready for authenticated history.',
+    },
 ];
 
 /** shadcn-styled control class shared by the native <select> here. */
@@ -699,7 +704,11 @@ export function WidgetKeysView() {
                                             variant="muted"
                                             data-testid={`admin-widget-keys-mode-${key.id}`}
                                         >
-                                            {key.theme?.mode === 'inline' ? 'Inline' : 'Helper'}
+                                            {key.theme?.mode === 'inline'
+                                                ? 'Inline'
+                                                : key.theme?.mode === 'fullscreen'
+                                                  ? 'Fullscreen'
+                                                  : 'Helper'}
                                         </Badge>
                                     </td>
                                     <td>

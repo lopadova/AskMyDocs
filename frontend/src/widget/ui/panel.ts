@@ -112,12 +112,14 @@ export class WidgetPanel {
         this.applyTheme();
         void this.init();
 
-        if (this.mode === 'inline') {
+        if (this.mode === 'inline' || this.mode === 'fullscreen') {
             // Blocco chat a pagina: sempre aperto, statico, senza launcher/close
             // (nascosti via CSS .amd-mode-inline). role=region anziché dialog: è
             // una sezione inline, non un overlay modale (R15). Niente focus forzato
             // al boot → non scrolla la pagina verso il widget.
-            this.root.classList.add('amd-mode-inline');
+            this.root.classList.add(
+                this.mode === 'inline' ? 'amd-mode-inline' : 'amd-mode-fullscreen',
+            );
             this.panel.setAttribute('role', 'region');
             this.panel.dataset.open = 'true';
         } else if (cfg.autoOpen) {
