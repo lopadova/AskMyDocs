@@ -1,0 +1,9 @@
+{
+    "key": "gold",
+    "description": "Corpus curato storico, normalizzato al contratto v2 senza aggiunte sintetiche.",
+    "mailbox_target": null,
+    "include_gold": true,
+    "thread_ratio": 0.0,
+    "timeline_start": "2024-01-01",
+    "timeline_end": "2024-12-31"
+}

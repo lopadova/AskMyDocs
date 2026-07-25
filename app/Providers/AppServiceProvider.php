@@ -831,6 +831,8 @@ class AppServiceProvider extends ServiceProvider
             \App\Console\Commands\ConnectorImapInstallCommand::class,
             \App\Console\Commands\DemoListCompaniesCommand::class,
             \App\Console\Commands\InitCaseStudiesCommand::class,
+            \App\Console\Commands\GenerateCaseStudyEmailsCommand::class,
+            \App\Console\Commands\ValidateCaseStudyEmailsCommand::class,
 
             // v8.20 — multi-account connectors PHP surface (R44): read roster +
             // interactive credential install, over ConnectorInstallationService /

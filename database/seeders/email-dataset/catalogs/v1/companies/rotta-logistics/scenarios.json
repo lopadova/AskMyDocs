@@ -1,0 +1,162 @@
+{
+    "company_key": "rotta-logistics",
+    "company_name": "Rotta Sicura Logistics",
+    "mailboxes": {
+        "rotta-logistics-1": {
+            "to_email": "operations@rotta-logistics.example",
+            "category_matrix_large": {
+                "spedizioni-tracking": 420,
+                "customer-care": 100,
+                "commerciale-sla": 30,
+                "hub-magazzino": 200,
+                "dogana-adr": 150,
+                "fatture": 20,
+                "orbita-incidenti": 60,
+                "formazione": 10,
+                "correzioni-rumore": 10
+            }
+        },
+        "rotta-logistics-2": {
+            "to_email": "backoffice@rotta-logistics.example",
+            "category_matrix_large": {
+                "spedizioni-tracking": 80,
+                "customer-care": 200,
+                "commerciale-sla": 250,
+                "hub-magazzino": 40,
+                "dogana-adr": 50,
+                "fatture": 140,
+                "orbita-incidenti": 80,
+                "formazione": 90,
+                "correzioni-rumore": 70
+            }
+        }
+    },
+    "scenarios": {
+        "spedizioni-tracking": {
+            "topic": "spedizioni, tracking e consegna",
+            "keywords": ["spedizione", "tracking", "consegna", "ritiro", "corriere"],
+            "persona_ids": ["rotta.orbita", "rotta.operations"],
+            "fact_ids": ["rotta.servizi.tracking"],
+            "subject_templates": [
+                "Aggiornamento spedizione {reference}: stato {status}",
+                "Consegna {reference} - verifica operativa #{sequence}"
+            ],
+            "body_templates": [
+                "Buongiorno {recipient},\n\nla spedizione sintetica {reference} è ora nello stato {status} presso {location}. {fact}\n\nSequenza di collaudo: {sequence}. Nessun dato reale è contenuto nel messaggio.\n\nRotta Sicura Logistics",
+                "Ciao team,\n\naggiornamento sul tracking {reference}: passaggio registrato a {location}. {fact}\n\nValore di prova associato: {amount} EUR. Riferimento evento {sequence}.\n\nCentrale Operativa"
+            ]
+        },
+        "customer-care": {
+            "topic": "reclami, resi e rimborsi",
+            "keywords": ["reclamo", "rimborso", "reso", "danneggiato", "gesticlaim"],
+            "persona_ids": ["rotta.customercare", "rotta.commerciale"],
+            "fact_ids": ["rotta.resi.gesticlaim"],
+            "subject_templates": [
+                "Pratica reclamo {reference}: richiesta integrazione",
+                "Esito provvisorio rimborso {reference}"
+            ],
+            "body_templates": [
+                "Gentile {recipient},\n\nla pratica sintetica {reference} è stata aggiornata a {status}. {fact}\n\nImporto di collaudo: {amount} EUR. Risponda a questo thread per la verifica conclusiva.\n\nCustomer Care Rotta",
+                "Buongiorno,\n\nabbiamo preso in carico la segnalazione {reference} relativa a un collo di test. {fact}\n\nLa lavorazione prosegue presso {location}; evento {sequence}.\n\nCustomer Care"
+            ]
+        },
+        "commerciale-sla": {
+            "topic": "contratti, SLA e tariffe",
+            "keywords": ["sla", "contratto", "tariffa", "preventivo", "penale"],
+            "persona_ids": ["rotta.commerciale", "rotta.amministrazione"],
+            "fact_ids": ["rotta.sla.penali"],
+            "subject_templates": [
+                "Revisione SLA contratto {reference}",
+                "Proposta tariffaria sintetica {reference}"
+            ],
+            "body_templates": [
+                "Buongiorno {recipient},\n\nper il contratto {reference} proponiamo lo stato {status}. {fact}\n\nValore simulato: {amount} EUR; validazione richiesta entro il prossimo incontro.\n\nUfficio Commerciale",
+                "Gentile cliente,\n\nil report di prova {reference} riassume SLA e penali per {location}. {fact}\n\nDato di collaudo #{sequence}; non costituisce offerta reale.\n\nRotta Sicura Logistics"
+            ]
+        },
+        "hub-magazzino": {
+            "topic": "hub, magazzino, giacenze e corrieri",
+            "keywords": ["hub", "magazzino", "giacenza", "scorte", "saturazione"],
+            "persona_ids": ["rotta.operations", "rotta.orbita"],
+            "fact_ids": ["rotta.hub.rete"],
+            "subject_templates": [
+                "Giacenza {reference} presso {location}",
+                "Capacità hub {location}: evento {sequence}"
+            ],
+            "body_templates": [
+                "Team,\n\nla giacenza sintetica {reference} richiede verifica presso {location}. {fact}\n\nStato corrente: {status}; soglia economica simulata {amount} EUR.\n\nOperations",
+                "Buongiorno,\n\nOrbitaWMS ha registrato l'evento {sequence} nel nodo {location}. {fact}\n\nRiferimento {reference}; avviare il runbook previsto.\n\nSistema OrbitaWMS"
+            ]
+        },
+        "dogana-adr": {
+            "topic": "dogana e merci ADR",
+            "keywords": ["dogana", "adr", "pericolose", "documenti", "codice hs"],
+            "persona_ids": ["rotta.dogana", "rotta.operations"],
+            "fact_ids": ["rotta.adr.procedura"],
+            "subject_templates": [
+                "Verifica ADR pratica {reference}",
+                "Documenti doganali {reference}: stato {status}"
+            ],
+            "body_templates": [
+                "Buongiorno {recipient},\n\nla pratica sintetica {reference} è in verifica a {location}. {fact}\n\nStato: {status}; controllo numero {sequence}.\n\nUfficio Dogana",
+                "Attenzione,\n\nper il collo test {reference} serve confermare la documentazione ADR. {fact}\n\nCosto simulato di giacenza: {amount} EUR.\n\nDogana Rotta"
+            ]
+        },
+        "fatture": {
+            "topic": "fatture, insoluti e note di credito",
+            "keywords": ["fattura", "insoluto", "credito", "pagamento", "amministrazione"],
+            "persona_ids": ["rotta.amministrazione", "rotta.commerciale"],
+            "fact_ids": ["rotta.fatture.controllo"],
+            "subject_templates": [
+                "Riconciliazione fattura {reference}",
+                "Nota di credito sintetica {reference}"
+            ],
+            "body_templates": [
+                "Gentile {recipient},\n\nil documento contabile di prova {reference} presenta stato {status}. {fact}\n\nTotale simulato: {amount} EUR; evento {sequence}.\n\nAmministrazione Rotta",
+                "Buongiorno,\n\nrichiediamo verifica della fattura {reference} collegata a {location}. {fact}\n\nI dati sono interamente sintetici.\n\nUfficio Amministrazione"
+            ]
+        },
+        "orbita-incidenti": {
+            "topic": "OrbitaWMS, incidenti IT e report",
+            "keywords": ["orbitawms", "blackout", "incidente", "sistema", "report"],
+            "persona_ids": ["rotta.orbita", "rotta.operations"],
+            "fact_ids": ["rotta.orbita.integrazione"],
+            "subject_templates": [
+                "Incidente OrbitaWMS {reference}",
+                "Report tecnico {reference}: ripristino {status}"
+            ],
+            "body_templates": [
+                "Team IT,\n\nl'incidente sintetico {reference} interessa {location}. {fact}\n\nStato: {status}; correlazione {sequence}. Applicare il runbook senza usare credenziali reali.\n\nOperations",
+                "Aggiornamento,\n\nil monitoraggio OrbitaWMS per {reference} riporta {status}. {fact}\n\nImpatto economico simulato: {amount} EUR.\n\nSistema OrbitaWMS"
+            ]
+        },
+        "formazione": {
+            "topic": "formazione e comunicazioni interne",
+            "keywords": ["formazione", "corso", "turno", "procedura", "comunicazione"],
+            "persona_ids": ["rotta.operations", "rotta.commerciale"],
+            "fact_ids": ["rotta.formazione.runbook"],
+            "subject_templates": [
+                "Sessione operativa {reference}",
+                "Aggiornamento procedura interna #{sequence}"
+            ],
+            "body_templates": [
+                "Colleghe e colleghi,\n\nla sessione sintetica {reference} si terrà presso {location}. {fact}\n\nStato iscrizione: {status}. Materiale esclusivamente dimostrativo.\n\nPeople Operations",
+                "Buongiorno,\n\ncondividiamo l'aggiornamento di prova {reference}. {fact}\n\nConfermare lettura indicando la sequenza {sequence}.\n\nRotta Sicura Logistics"
+            ]
+        },
+        "correzioni-rumore": {
+            "topic": "correzioni e rumore controllato",
+            "keywords": ["correzione", "rettifica", "errato", "newsletter", "test"],
+            "persona_ids": ["rotta.operations", "rotta.amministrazione"],
+            "fact_ids": ["rotta.qualita.correzioni"],
+            "subject_templates": [
+                "Rettifica dato {reference}",
+                "Correzione comunicazione #{sequence}"
+            ],
+            "body_templates": [
+                "Rettifica,\n\nil valore precedente per {reference} era provvisorio. Il nuovo stato sintetico è {status}. {fact}\n\nValore corretto di test: {amount} EUR.\n\nQuality Rotta",
+                "Buongiorno,\n\nquesta comunicazione di prova corregge l'evento {sequence} presso {location}. {fact}\n\nNon utilizzare il messaggio come dato reale.\n\nOperations"
+            ]
+        }
+    }
+}

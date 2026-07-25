@@ -1,0 +1,25 @@
+{
+    "company_key": "passolibero-calzature",
+    "canaries": [
+        {
+            "canary_id": "passolibero.canary.aeromesh-lilla",
+            "phrase": "codice sintetico AEROMESH-LILLA-46",
+            "scenario_types": ["fornitori-qualita"]
+        },
+        {
+            "canary_id": "passolibero.canary.zr20-timo",
+            "phrase": "marcatore sintetico ZR20-TIMO-73",
+            "scenario_types": ["richiami-frodi"]
+        },
+        {
+            "canary_id": "passolibero.canary.clubpasso-luna",
+            "phrase": "riferimento sintetico CLUBPASSO-LUNA-25",
+            "scenario_types": ["clubpasso-campagne"]
+        },
+        {
+            "canary_id": "passolibero.canary.taglia-onda",
+            "phrase": "segnale sintetico TAGLIA-ONDA-61",
+            "scenario_types": ["prodotto-taglie"]
+        }
+    ]
+}
