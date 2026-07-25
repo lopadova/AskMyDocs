@@ -114,7 +114,10 @@ final class EmailSeedMailboxLock
                 ownsLock: static fn (): bool => $lock->isOwnedByCurrentProcess() === true,
             );
 
-            return $operation($lease);
+            return $this->runWithInterruptGuard(
+                $target->mailboxKey,
+                static fn (): mixed => $operation($lease),
+            );
         } catch (Throwable $exception) {
             $operationError = $exception;
 
@@ -155,5 +158,97 @@ final class EmailSeedMailboxLock
         }
 
         return (float) $now;
+    }
+
+    /**
+     * Convert SIGINT/SIGTERM into a normal exception while the acquired lock is
+     * owned. This lets the outer finally release it instead of leaving a
+     * four-hour stale Redis lock after Ctrl-C or process termination.
+     *
+     * @template T
+     * @param  Closure(): T  $operation
+     * @return T
+     */
+    private function runWithInterruptGuard(string $mailboxKey, Closure $operation): mixed
+    {
+        foreach ([
+            'pcntl_async_signals',
+            'pcntl_signal',
+            'pcntl_signal_get_handler',
+        ] as $function) {
+            if (! function_exists($function)) {
+                throw new RuntimeException(
+                    "Il seeding IMAP serializzato richiede PCNTL ({$function} assente).",
+                );
+            }
+        }
+        if (! defined('SIGINT') || ! defined('SIGTERM')) {
+            throw new RuntimeException(
+                'Il seeding IMAP serializzato richiede i segnali SIGINT e SIGTERM.',
+            );
+        }
+
+        $previousAsync = pcntl_async_signals();
+        $previousHandlers = [
+            SIGINT => pcntl_signal_get_handler(SIGINT),
+            SIGTERM => pcntl_signal_get_handler(SIGTERM),
+        ];
+        $installedSignals = [];
+        $operationError = null;
+        $result = null;
+
+        try {
+            pcntl_async_signals(true);
+
+            foreach ([SIGINT, SIGTERM] as $signal) {
+                $installed = pcntl_signal(
+                    $signal,
+                    static function (int $receivedSignal) use ($mailboxKey): void {
+                        $signalName = $receivedSignal === SIGINT ? 'SIGINT' : 'SIGTERM';
+
+                        throw new RuntimeException(
+                            "Seeding IMAP interrotto da {$signalName} per {$mailboxKey}; "
+                            .'lock in rilascio, riprendi con --resume.',
+                        );
+                    },
+                );
+                if (! $installed) {
+                    throw new RuntimeException(
+                        "Installazione handler del segnale {$signal} fallita.",
+                    );
+                }
+
+                $installedSignals[] = $signal;
+            }
+
+            $result = $operation();
+        } catch (Throwable $exception) {
+            $operationError = $exception;
+        } finally {
+            $restoreError = null;
+
+            foreach (array_reverse($installedSignals) as $signal) {
+                if (! pcntl_signal($signal, $previousHandlers[$signal])) {
+                    $restoreError ??= new RuntimeException(
+                        "Ripristino handler del segnale {$signal} fallito.",
+                    );
+                }
+            }
+
+            pcntl_async_signals($previousAsync);
+
+            if ($restoreError !== null) {
+                throw new RuntimeException(
+                    $restoreError->getMessage(),
+                    previous: $operationError ?? $restoreError,
+                );
+            }
+        }
+
+        if ($operationError !== null) {
+            throw $operationError;
+        }
+
+        return $result;
     }
 }

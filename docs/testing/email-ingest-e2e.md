@@ -276,6 +276,11 @@ dataset né `storage/app/email-seed-checkpoints/`: contiene sia i checkpoint sia
 gli eventuali purge-intent necessari al recovery. Poi ripartire con lo stesso
 manifest:
 
+`SIGINT` (`Ctrl-C`) e `SIGTERM` vengono convertiti in un arresto gestito: gli
+handler precedenti sono ripristinati e il lock fisico viene rilasciato dal
+`finally`. Solo un `SIGKILL`, un crash runtime o lo spegnimento della macchina
+possono lasciare il lock fino alla scadenza del TTL.
+
 ```bash
 php artisan mail:seed-imap \
   --all \
