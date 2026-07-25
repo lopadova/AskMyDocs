@@ -139,6 +139,28 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Generated case-study email provenance
+    |--------------------------------------------------------------------------
+    |
+    | IMAP only transports the stable dataset-version + fixture-id identity.
+    | The host resolves the remaining scenario/fact/truth metadata from the
+    | deterministic sharded index in this directory before it queues ingestion.
+    | Queue workers must see the same immutable artifact used for APPEND.
+    |
+    */
+    'case_study_email_dataset' => [
+        'root' => env(
+            'CASE_STUDY_EMAIL_DATASET_ROOT',
+            storage_path('app/demo-email-datasets'),
+        ),
+        'require_fixture_index' => (bool) env(
+            'CASE_STUDY_EMAIL_REQUIRE_FIXTURE_INDEX',
+            true,
+        ),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | IMAP connection serialization (per-mailbox mutex)
     |--------------------------------------------------------------------------
     |

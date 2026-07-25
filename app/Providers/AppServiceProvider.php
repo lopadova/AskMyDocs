@@ -133,6 +133,7 @@ class AppServiceProvider extends ServiceProvider
             ConnectorIngestionContract::class,
             HostIngestionBridge::class,
         );
+        $this->app->singleton(\App\Connectors\Imap\ImapSyncProgressContext::class);
 
         // v8.21 (Ciclo 2) — process-scoped holder for the in-flight connector
         // sync run; the bridge bumps its discovered-doc counter and the recorder
@@ -201,6 +202,7 @@ class AppServiceProvider extends ServiceProvider
         $this->registerGuardrailsGates();
         $this->registerFakeImapFactory();
         $this->registerImapReconnect();
+        $this->registerImapSyncProgressTracking();
         $this->registerImapConnectionSerializer();
         $this->registerInvitationsIntegration();
         $this->registerInvitationsGates();
@@ -381,6 +383,33 @@ class AppServiceProvider extends ServiceProvider
                     $factory,
                     $maxAttempts,
                     $retryDelayMs,
+                );
+            },
+        );
+    }
+
+    /**
+     * Track a contiguous, successfully dispatched UID prefix during IMAP syncs.
+     *
+     * The offline fake remains the directly-resolved test seam. Real factories
+     * are wrapped and return the inner client unchanged unless
+     * SerializedConnectorSyncJob activated a progress session.
+     */
+    private function registerImapSyncProgressTracking(): void
+    {
+        if (
+            ! interface_exists(\Padosoft\AskMyDocsConnectorImap\Imap\ImapClientFactoryInterface::class)
+            || config('connectors.fake_imap_ping', false) === true
+        ) {
+            return;
+        }
+
+        $this->app->extend(
+            \Padosoft\AskMyDocsConnectorImap\Imap\ImapClientFactoryInterface::class,
+            static function ($factory, $app): \App\Connectors\Imap\ProgressTrackingImapClientFactory {
+                return new \App\Connectors\Imap\ProgressTrackingImapClientFactory(
+                    $factory,
+                    $app->make(\App\Connectors\Imap\ImapSyncProgressContext::class),
                 );
             },
         );

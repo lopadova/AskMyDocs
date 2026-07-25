@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Console;
 
+use App\Connectors\SerializedConnectorSyncJob;
 use App\Models\User;
 use App\Support\TenantContext;
 use Carbon\Carbon;
@@ -12,7 +13,6 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
 use Padosoft\AskMyDocsConnectorBase\Auth\OAuthCredentialVault;
 use Padosoft\AskMyDocsConnectorBase\ConnectorRegistry;
-use Padosoft\AskMyDocsConnectorBase\ConnectorSyncJob;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
 use Padosoft\AskMyDocsConnectorBase\Support\TenantContext as PackageTenantContext;
 use Padosoft\AskMyDocsConnectorImap\Imap\ImapClientFactoryInterface;
@@ -31,8 +31,8 @@ use Tests\TestCase;
  * project_key = azienda come COLONNE; config_json porta connection +
  * folders.include=[label] + date_window_days (NON project_key); la password è nel
  * vault (anch'esso tenant-scoped → si legge nel contesto dell'azienda); --sync
- * accoda un ConnectorSyncJob; --all crea un'installazione per casella; actor
- * inesistente o credenziali errate falliscono (R14).
+ * accoda il job host con progress tracking; --all crea un'installazione per
+ * casella; actor inesistente o credenziali errate falliscono (R14).
  */
 final class ConnectorImapInstallCommandTest extends TestCase
 {
@@ -88,9 +88,10 @@ final class ConnectorImapInstallCommandTest extends TestCase
         $config = (array) $installation->config_json;
         $this->assertSame('basic', $config['auth_mode']);
         $this->assertSame('rotta.test1.askmydocs@gmail.com', $config['connection']['username']);
-        // folders.include = la LABEL della casella; date_window_days presente.
+        // folders.include = la LABEL della casella; 0 disattiva la finestra
+        // mobile, così la timeline deterministica 2024–2026 è ingerita intera.
         $this->assertSame(['rotta-logistics-1'], $config['folders']['include']);
-        $this->assertIsInt($config['date_window_days']);
+        $this->assertSame(0, $config['date_window_days']);
         // project_key e password NON stanno in config_json.
         $this->assertArrayNotHasKey('project_key', $config);
         $this->assertArrayNotHasKey('password', $config);
@@ -141,20 +142,99 @@ final class ConnectorImapInstallCommandTest extends TestCase
         );
     }
 
-    public function test_reinstall_same_label_is_idempotent(): void
+    public function test_reinstall_same_label_updates_in_place_and_preserves_installation_id(): void
     {
         $this->setPassword('CONNECTOR_TEST_GMAIL_PASSWORD', 'pw');
         $this->makeUser();
         $this->bindImapFactory(pingSucceeds: true);
 
         $this->artisan('connector:imap:install', ['--mailbox' => ['rotta-logistics-1']])->assertExitCode(0);
+        $this->setTenant('rotta-logistics');
+        $originalId = ConnectorInstallation::query()
+            ->where('tenant_id', 'rotta-logistics')
+            ->where('connector_name', 'imap')
+            ->where('label', 'rotta-logistics-1')
+            ->value('id');
+
         $this->artisan('connector:imap:install', ['--mailbox' => ['rotta-logistics-1']])->assertExitCode(0);
 
-        // Nessun duplicato: la label viene rimossa e ricreata.
+        // L'id resta stabile: i source_path derivati dall'installation id non
+        // cambiano e la stessa e-mail non viene reingerita come documento nuovo.
         $this->assertSame(
             1,
-            ConnectorInstallation::query()->where('connector_name', 'imap')->where('label', 'rotta-logistics-1')->count(),
+            ConnectorInstallation::query()
+                ->where('tenant_id', 'rotta-logistics')
+                ->where('connector_name', 'imap')
+                ->where('label', 'rotta-logistics-1')
+                ->count(),
         );
+        $this->assertSame(
+            $originalId,
+            ConnectorInstallation::query()
+                ->where('tenant_id', 'rotta-logistics')
+                ->where('connector_name', 'imap')
+                ->where('label', 'rotta-logistics-1')
+                ->value('id'),
+        );
+    }
+
+    public function test_failed_reinstall_keeps_the_previous_valid_installation_and_secret(): void
+    {
+        $this->setPassword('CONNECTOR_TEST_GMAIL_PASSWORD', 'known-good-password');
+        $this->makeUser();
+        $this->bindImapFactory(pingSucceeds: true);
+
+        $this->artisan('connector:imap:install', ['--mailbox' => ['rotta-logistics-1']])
+            ->assertExitCode(0);
+
+        $this->setTenant('rotta-logistics');
+        $before = ConnectorInstallation::query()
+            ->where('tenant_id', 'rotta-logistics')
+            ->where('connector_name', 'imap')
+            ->where('label', 'rotta-logistics-1')
+            ->firstOrFail();
+        $beforeId = $before->id;
+        $beforeConfig = $before->config_json;
+
+        // Prova davvero la failure path: una password nuova passa al callback,
+        // ma il fake IMAP respinge il ping. reconfigure() deve ripristinare la
+        // config e non sovrascrivere il segreto già verificato.
+        $this->setPassword('CONNECTOR_TEST_GMAIL_PASSWORD', 'bad-new-password');
+        $this->bindImapFactory(pingSucceeds: false);
+
+        $this->artisan('connector:imap:install', ['--mailbox' => ['rotta-logistics-1']])
+            ->assertExitCode(1);
+
+        $this->setTenant('rotta-logistics');
+        $after = ConnectorInstallation::query()
+            ->where('tenant_id', 'rotta-logistics')
+            ->where('connector_name', 'imap')
+            ->where('label', 'rotta-logistics-1')
+            ->firstOrFail();
+
+        $this->assertSame($beforeId, $after->id);
+        $this->assertSame(ConnectorInstallation::STATUS_ACTIVE, $after->status);
+        $this->assertSame($beforeConfig, $after->config_json);
+        $this->assertSame(
+            'known-good-password',
+            app(OAuthCredentialVault::class)->getAccessToken($after->id),
+        );
+    }
+
+    public function test_restores_host_and_package_tenant_contexts_after_install(): void
+    {
+        $this->setPassword('CONNECTOR_TEST_GMAIL_PASSWORD', 'pw');
+        $this->makeUser();
+        $this->bindImapFactory(pingSucceeds: true);
+
+        app(TenantContext::class)->set('host-before');
+        app(PackageTenantContext::class)->set('package-before');
+
+        $this->artisan('connector:imap:install', ['--mailbox' => ['rotta-logistics-1']])
+            ->assertExitCode(0);
+
+        $this->assertSame('host-before', app(TenantContext::class)->current());
+        $this->assertSame('package-before', app(PackageTenantContext::class)->current());
     }
 
     public function test_sync_flag_dispatches_a_connector_sync_job(): void
@@ -170,10 +250,10 @@ final class ConnectorImapInstallCommandTest extends TestCase
         ])->assertExitCode(0);
 
         // Il job va accodato nel tenant dell'azienda, non in 'default' (R30): è
-        // il tenant che ConnectorSyncJob::handle() ripristina prima del sync.
+        // il tenant che il job ripristina prima del sync.
         Queue::assertPushed(
-            ConnectorSyncJob::class,
-            fn (ConnectorSyncJob $job): bool => $job->tenantId === 'rotta-logistics',
+            SerializedConnectorSyncJob::class,
+            fn (SerializedConnectorSyncJob $job): bool => $job->tenantId === 'rotta-logistics',
         );
     }
 

@@ -51,7 +51,10 @@ return [
         'kb' => [
             'driver' => env('KB_DISK_DRIVER', 'local'),
             'root' => env('KB_DISK_ROOT', storage_path('app/kb')),
-            'throw' => false,
+            // Connector packages write the source before dispatching the host
+            // ingest job. This disk is strict so a failed write can never be
+            // mistaken for a successfully checkpointed connector item.
+            'throw' => env('KB_DISK_THROW', true),
         ],
 
         /*
@@ -78,7 +81,7 @@ return [
             'url' => env('AWS_URL'),
             'endpoint' => env('AWS_ENDPOINT'),
             'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
-            'throw' => false,
+            'throw' => env('KB_DISK_THROW', true),
         ],
 
         /*

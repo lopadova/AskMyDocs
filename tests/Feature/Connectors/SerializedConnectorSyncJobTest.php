@@ -4,14 +4,20 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Connectors;
 
+use App\Connectors\Imap\ImapSyncProgressContext;
 use App\Connectors\Imap\MailboxLockKey;
 use App\Connectors\SerializedConnectorSyncJob;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Support\Facades\Queue;
+use Mockery;
+use Padosoft\AskMyDocsConnectorBase\Auth\OAuthCredentialVault;
+use Padosoft\AskMyDocsConnectorBase\ConnectorRegistry;
 use Padosoft\AskMyDocsConnectorBase\ConnectorSyncJob;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
+use Padosoft\AskMyDocsConnectorBase\Support\TenantContext;
 use ReflectionProperty;
+use RuntimeException;
 use Tests\TestCase;
 
 /**
@@ -156,11 +162,10 @@ final class SerializedConnectorSyncJobTest extends TestCase
         $this->assertSame([], (new SerializedConnectorSyncJob($installation->id, 'default'))->middleware());
     }
 
-    public function test_dispatch_for_routes_to_the_vendor_job_when_serialization_cannot_run(): void
+    public function test_dispatch_for_keeps_progress_job_when_serialization_cannot_run(): void
     {
-        // dispatchFor must degrade to the vendor ConnectorSyncJob (never enqueue a
-        // serialized job that would later crash on Cache::lock()) when the IMAP is
-        // faked — mirroring the middleware no-op above at dispatch time.
+        // The mutex remains a no-op when IMAP is faked, but the host job also owns
+        // resumable UID progress, so every IMAP install still uses it.
         Queue::fake();
         config()->set('connectors.fake_imap_ping', true);
 
@@ -172,21 +177,36 @@ final class SerializedConnectorSyncJobTest extends TestCase
 
         SerializedConnectorSyncJob::dispatchFor($installation);
 
-        Queue::assertPushed(ConnectorSyncJob::class, 1);
-        Queue::assertNotPushed(SerializedConnectorSyncJob::class);
+        Queue::assertPushed(SerializedConnectorSyncJob::class, 1);
     }
 
-    public function test_dispatch_for_routes_an_unkeyable_imap_install_to_the_vendor_job(): void
+    public function test_dispatch_for_keeps_progress_job_for_an_unkeyable_imap_install(): void
     {
-        // An IMAP row with no resolvable mailbox key gets no WithoutOverlapping either
-        // way, so the serialized envelope (tries=0 + retryUntil) buys nothing — route
-        // it to the vendor job so it keeps the standard retry semantics.
+        // No mailbox key means no WithoutOverlapping, but it must not bypass the
+        // progress/checkpoint envelope.
         Queue::fake();
 
         $installation = ConnectorInstallation::create([
             'tenant_id' => 'default', 'connector_name' => 'imap', 'label' => 'broken',
             'config_json' => ['connection' => []],
             'status' => ConnectorInstallation::STATUS_ACTIVE, 'created_by' => 1,
+        ]);
+
+        SerializedConnectorSyncJob::dispatchFor($installation);
+
+        Queue::assertPushed(SerializedConnectorSyncJob::class, 1);
+    }
+
+    public function test_dispatch_for_keeps_vendor_job_for_non_imap_connectors(): void
+    {
+        Queue::fake();
+
+        $installation = ConnectorInstallation::create([
+            'tenant_id' => 'default',
+            'connector_name' => 'google-drive',
+            'label' => 'drive',
+            'status' => ConnectorInstallation::STATUS_ACTIVE,
+            'created_by' => 1,
         ]);
 
         SerializedConnectorSyncJob::dispatchFor($installation);
@@ -204,5 +224,51 @@ final class SerializedConnectorSyncJobTest extends TestCase
 
         $this->assertGreaterThan($now->copy()->addMinutes(29)->getTimestamp(), $until->getTimestamp());
         $this->assertLessThanOrEqual($now->copy()->addMinutes(31)->getTimestamp(), $until->getTimestamp());
+    }
+
+    public function test_handle_restores_the_worker_tenant_when_progress_begin_fails(): void
+    {
+        $tenantContext = $this->app->make(TenantContext::class);
+        $tenantContext->set('operator-tenant');
+        $installation = ConnectorInstallation::create([
+            'tenant_id' => 'tenant-a',
+            'connector_name' => 'imap',
+            'label' => 'begin-failure',
+            'config_json' => [
+                'connection' => [
+                    'host' => 'imap.example.test',
+                    'username' => 'begin-failure@example.test',
+                ],
+            ],
+            'status' => ConnectorInstallation::STATUS_ACTIVE,
+            'created_by' => 1,
+        ]);
+        $throwingVault = new class($tenantContext) extends OAuthCredentialVault
+        {
+            public function getExtra(int $installationId): array
+            {
+                throw new RuntimeException('Injected progress begin failure.');
+            }
+        };
+        $progress = new ImapSyncProgressContext($throwingVault, $tenantContext);
+        $registry = Mockery::mock(ConnectorRegistry::class);
+
+        try {
+            (new SerializedConnectorSyncJob($installation->id, 'tenant-a'))->handle(
+                $registry,
+                $tenantContext,
+                $progress,
+            );
+            $this->fail('The injected progress begin failure must propagate.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('Injected progress begin failure.', $exception->getMessage());
+        }
+
+        $this->assertSame(
+            'operator-tenant',
+            $tenantContext->current(),
+            'the queue worker tenant must be restored even when progress cannot start',
+        );
+        $this->assertFalse($progress->isActive());
     }
 }

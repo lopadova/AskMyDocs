@@ -314,10 +314,10 @@ final class ConnectorAdminControllerTest extends TestCase
         Queue::assertNotPushed(SerializedConnectorSyncJob::class);
     }
 
-    public function test_sync_now_dispatches_the_vendor_job_when_imap_serialization_is_disabled(): void
+    public function test_sync_now_keeps_the_progress_job_when_imap_serialization_is_disabled(): void
     {
-        // R43 OFF path — with the master switch off, even an IMAP account keeps the
-        // vendor ConnectorSyncJob (no altered retry envelope, no overlap middleware).
+        // R43 OFF path — the mutex is disabled, but resumable UID checkpointing is
+        // independent from serialization, so IMAP keeps the host progress job.
         Queue::fake();
         config()->set('connectors.imap.serialize_connections', false);
         $admin = $this->makeSuperAdmin();
@@ -334,10 +334,9 @@ final class ConnectorAdminControllerTest extends TestCase
             ->postJson("/api/admin/connectors/{$installation->id}/sync-now")
             ->assertStatus(202);
 
-        Queue::assertPushed(ConnectorSyncJob::class, function (ConnectorSyncJob $job) use ($installation) {
+        Queue::assertPushed(SerializedConnectorSyncJob::class, function (SerializedConnectorSyncJob $job) use ($installation) {
             return $job->installationId === $installation->id && $job->tenantId === 'default';
         });
-        Queue::assertNotPushed(SerializedConnectorSyncJob::class);
     }
 
     public function test_sync_now_rearms_an_errored_account_then_dispatches(): void
