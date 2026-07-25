@@ -227,10 +227,16 @@ final class SerializedConnectorSyncJob extends ConnectorSyncJob
             return;
         }
 
-        $installation->forceFill([
+        $saved = $installation->forceFill([
             'status' => ConnectorInstallation::STATUS_ACTIVE,
             'error_json' => null,
         ])->save();
+
+        if (! $saved) {
+            throw new \RuntimeException(
+                "Unable to restore busy IMAP installation {$this->installationId} to active.",
+            );
+        }
 
         Log::info('[connector-imap] mailbox busy — re-queuing sync instead of failing', [
             'installation_id' => $this->installationId,

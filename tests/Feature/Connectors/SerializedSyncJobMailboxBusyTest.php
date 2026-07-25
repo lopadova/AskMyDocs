@@ -99,6 +99,40 @@ final class SerializedSyncJobMailboxBusyTest extends TestCase
         );
     }
 
+    public function test_a_failed_busy_state_recovery_fails_loudly_instead_of_requeueing(): void
+    {
+        $installation = $this->imapInstallation();
+
+        $connector = Mockery::mock(ConnectorInterface::class);
+        $connector->shouldReceive('syncIncremental')
+            ->once()
+            ->andThrow(new MailboxBusyException('Mailbox busy: lock held.'));
+
+        $registry = Mockery::mock(ConnectorRegistry::class);
+        $registry->shouldReceive('get')->with('imap')->andReturn($connector);
+
+        $queueJob = Mockery::mock(QueueJobContract::class);
+        $queueJob->shouldNotReceive('release');
+
+        ConnectorInstallation::saving(
+            static fn (ConnectorInstallation $candidate): bool => ! (
+                $candidate->getKey() === $installation->getKey()
+                && $candidate->status === ConnectorInstallation::STATUS_ACTIVE
+                && $candidate->error_json === null
+            ),
+        );
+
+        $job = new SerializedConnectorSyncJob($installation->id, 'default');
+        $job->setJob($queueJob);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage(
+            "Unable to restore busy IMAP installation {$installation->id} to active.",
+        );
+
+        $job->handle($registry, app(TenantContext::class));
+    }
+
     private function imapInstallation(): ConnectorInstallation
     {
         return ConnectorInstallation::create([
