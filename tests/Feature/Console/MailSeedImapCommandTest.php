@@ -10,10 +10,12 @@ use App\Services\Demo\EmailMessageBuilder;
 use App\Services\Demo\EmailSeedCheckpoint;
 use App\Services\Demo\EmailSeedCheckpointStore;
 use App\Services\Demo\EmailSeedMailboxLock;
+use App\Services\Demo\EmailSeedPurgeIntent;
 use App\Services\Demo\MailboxTarget;
 use App\Services\Demo\PreparedEmailMessage;
 use Database\Seeders\TestEmailFixtures;
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Tests\Support\Demo\RecordingMailboxAppender;
 use Tests\TestCase;
@@ -537,6 +539,46 @@ final class MailSeedImapCommandTest extends TestCase
         $this->assertSame($expected, $completed->lastSequence);
     }
 
+    public function test_each_distinct_purge_phase_reports_its_own_periodic_progress(): void
+    {
+        $this->setPassword('CONNECTOR_TEST_GMAIL_PASSWORD', 'pw');
+        $datasetRoot = $this->temporaryDirectory('two-purge-progress-dataset');
+        $checkpointRoot = $this->temporaryDirectory('two-purge-progress-checkpoints');
+        $datasetVersion = $this->generateDataset(
+            $datasetRoot,
+            ['rotta-logistics-1'],
+            seed: 40,
+        );
+        $store = new EmailSeedCheckpointStore($checkpointRoot);
+        $this->app->instance(EmailSeedCheckpointStore::class, $store);
+        $target = $this->mailboxTarget('rotta-logistics-1');
+        $store->beginPurge(
+            $target,
+            EmailSeedPurgeIntent::allSeeded($target->mailboxKey),
+        );
+        $appender = $this->bindRecorder(purgeReturns: 7);
+
+        $exitCode = Artisan::call('mail:seed-imap', [
+            '--mailbox' => ['rotta-logistics-1'],
+            '--dataset-version' => $datasetVersion,
+            '--dataset-root' => $datasetRoot,
+            '--purge-dataset' => true,
+            '--purge-only' => true,
+            '--progress-every' => '5',
+            '--summary-only' => true,
+        ]);
+
+        $this->assertSame(0, $exitCode);
+        $this->assertCount(2, $appender->purges);
+        $this->assertSame(
+            2,
+            substr_count(
+                Artisan::output(),
+                '[rotta-logistics-1] purge: 7 e-mail eliminate.',
+            ),
+        );
+    }
+
     public function test_purge_only_removes_the_selected_dataset_without_reappending(): void
     {
         $this->setPassword('CONNECTOR_TEST_GMAIL_PASSWORD', 'pw');
@@ -565,6 +607,110 @@ final class MailSeedImapCommandTest extends TestCase
             [['op' => 'purge', 'mailbox' => 'rotta-logistics-1']],
             $appender->events,
         );
+    }
+
+    public function test_generated_dataset_reports_live_purge_and_confirmed_append_progress(): void
+    {
+        $this->setPassword('CONNECTOR_TEST_GMAIL_PASSWORD', 'pw');
+        $datasetRoot = $this->temporaryDirectory('observable-delivery-dataset');
+        $datasetVersion = $this->generateDataset(
+            $datasetRoot,
+            ['rotta-logistics-1'],
+            seed: 36,
+        );
+        $this->bindRecorder(purgeReturns: 7);
+
+        $this->artisan('mail:seed-imap', [
+            '--mailbox' => ['rotta-logistics-1'],
+            '--dataset-version' => $datasetVersion,
+            '--dataset-root' => $datasetRoot,
+            '--purge-dataset' => true,
+            '--progress-every' => '50',
+            '--summary-only' => true,
+        ])
+            ->expectsOutputToContain('[rotta-logistics-1] attesa lock IMAP')
+            ->expectsOutputToContain('[rotta-logistics-1] lock IMAP acquisito')
+            ->expectsOutputToContain('[rotta-logistics-1] purge selettivo in corso')
+            ->expectsOutputToContain('[rotta-logistics-1] purge completato: 7 e-mail eliminate')
+            ->expectsOutputToContain('[rotta-logistics-1] APPEND avviato: 0/')
+            ->expectsOutputToContain('[rotta-logistics-1] APPEND confermati: 50/')
+            ->expectsOutputToContain('e-mail/s')
+            ->assertExitCode(0);
+    }
+
+    public function test_remote_stress_profile_warns_before_mutating_imap(): void
+    {
+        $this->setPassword('CONNECTOR_TEST_GMAIL_PASSWORD', 'pw');
+        $datasetRoot = $this->temporaryDirectory('remote-stress-warning-dataset');
+        $checkpointRoot = $this->temporaryDirectory('remote-stress-warning-checkpoints');
+        $this->app->instance(
+            EmailSeedCheckpointStore::class,
+            new EmailSeedCheckpointStore($checkpointRoot),
+        );
+        $datasetVersion = $this->generateDataset(
+            $datasetRoot,
+            ['rotta-logistics-1'],
+            seed: 37,
+        );
+        $manifestPath = "{$datasetRoot}/{$datasetVersion}/manifest.json";
+        $manifestContents = file_get_contents($manifestPath);
+        $this->assertNotFalse($manifestContents);
+        $manifest = json_decode($manifestContents, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertIsArray($manifest);
+        $manifest['profile'] = 'stress';
+        $updatedManifest = json_encode(
+            $manifest,
+            JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES,
+        ).PHP_EOL;
+        $this->assertSame(
+            strlen($updatedManifest),
+            file_put_contents($manifestPath, $updatedManifest, LOCK_EX),
+        );
+        $this->bindRecorder();
+
+        $this->artisan('mail:seed-imap', [
+            '--mailbox' => ['rotta-logistics-1'],
+            '--dataset-version' => $datasetVersion,
+            '--dataset-root' => $datasetRoot,
+        ])
+            ->expectsOutputToContain('STRESS SU IMAP REMOTO:')
+            ->assertExitCode(0);
+    }
+
+    public function test_remote_stress_profile_does_not_warn_about_append_when_purging_only(): void
+    {
+        $this->setPassword('CONNECTOR_TEST_GMAIL_PASSWORD', 'pw');
+        $datasetRoot = $this->temporaryDirectory('remote-stress-purge-only-dataset');
+        $datasetVersion = $this->generateDataset(
+            $datasetRoot,
+            ['rotta-logistics-1'],
+            seed: 39,
+        );
+        $manifestPath = "{$datasetRoot}/{$datasetVersion}/manifest.json";
+        $manifestContents = file_get_contents($manifestPath);
+        $this->assertNotFalse($manifestContents);
+        $manifest = json_decode($manifestContents, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertIsArray($manifest);
+        $manifest['profile'] = 'stress';
+        $updatedManifest = json_encode(
+            $manifest,
+            JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES,
+        ).PHP_EOL;
+        $this->assertSame(
+            strlen($updatedManifest),
+            file_put_contents($manifestPath, $updatedManifest, LOCK_EX),
+        );
+        $this->bindRecorder();
+
+        $this->artisan('mail:seed-imap', [
+            '--mailbox' => ['rotta-logistics-1'],
+            '--dataset-version' => $datasetVersion,
+            '--dataset-root' => $datasetRoot,
+            '--purge-dataset' => true,
+            '--purge-only' => true,
+        ])
+            ->doesntExpectOutputToContain('STRESS SU IMAP REMOTO:')
+            ->assertExitCode(0);
     }
 
     private function temporaryDirectory(string $label): string

@@ -27,6 +27,22 @@ use RuntimeException;
  */
 final class ImapMailboxSeeder
 {
+    public const PROGRESS_WAITING_LOCK = 'waiting_lock';
+
+    public const PROGRESS_LOCK_ACQUIRED = 'lock_acquired';
+
+    public const PROGRESS_PURGE_RECOVERY_STARTED = 'purge_recovery_started';
+
+    public const PROGRESS_PURGE_STARTED = 'purge_started';
+
+    public const PROGRESS_PURGE_DELETED = 'purge_deleted';
+
+    public const PROGRESS_PURGE_COMPLETED = 'purge_completed';
+
+    public const PROGRESS_APPEND_STARTED = 'append_started';
+
+    public const PROGRESS_APPEND_STORED = 'append_stored';
+
     public function __construct(
         private readonly MailboxAppender $appender,
         private readonly EmailMessageBuilder $builder,
@@ -38,6 +54,7 @@ final class ImapMailboxSeeder
     /**
      * @param  list<string>  $mailboxKeys  caselle da popolare (devono esistere nelle fixtures)
      * @param  Closure(string, int, string): void|null  $onMessage  callback (mailboxKey, index, subject)
+     * @param  Closure(string, string, int, int|null): void|null  $onProgress
      * @return list<SeedOutcome>
      */
     public function seed(
@@ -45,11 +62,18 @@ final class ImapMailboxSeeder
         bool $dryRun = false,
         bool $purge = false,
         ?Closure $onMessage = null,
+        ?Closure $onProgress = null,
     ): array {
         $outcomes = [];
 
         foreach ($mailboxKeys as $mailboxKey) {
-            $outcomes[] = $this->seedOne($mailboxKey, $dryRun, $purge, $onMessage);
+            $outcomes[] = $this->seedOne(
+                $mailboxKey,
+                $dryRun,
+                $purge,
+                $onMessage,
+                $onProgress,
+            );
         }
 
         return $outcomes;
@@ -59,11 +83,13 @@ final class ImapMailboxSeeder
      * Streams a generated schema-v2 dataset into the selected mailboxes.
      *
      * @param  Closure(string, int, string): void|null  $onMessage
+     * @param  Closure(string, string, int, int|null): void|null  $onProgress
      * @return list<SeedOutcome>
      */
     public function seedDataset(
         EmailDatasetSeedRequest $request,
         ?Closure $onMessage = null,
+        ?Closure $onProgress = null,
     ): array {
         if ($request->checkpointEvery < 1) {
             throw new InvalidArgumentException('checkpointEvery deve essere almeno 1.');
@@ -112,6 +138,7 @@ final class ImapMailboxSeeder
                 datasetVersion: $datasetVersion,
                 manifestChecksum: $manifestChecksum,
                 onMessage: $onMessage,
+                onProgress: $onProgress,
             );
         }
 
@@ -123,6 +150,7 @@ final class ImapMailboxSeeder
         bool $dryRun,
         bool $purge,
         ?Closure $onMessage,
+        ?Closure $onProgress,
     ): SeedOutcome {
         if (! in_array($mailboxKey, TestEmailFixtures::mailboxKeys(), true)) {
             throw new InvalidArgumentException(
@@ -192,6 +220,14 @@ final class ImapMailboxSeeder
         }
 
         // Opzionale purge (idempotenza re-run), poi APPEND in un solo batch.
+        $this->reportProgress(
+            $onProgress,
+            $mailboxKey,
+            self::PROGRESS_WAITING_LOCK,
+            0,
+            count($emails),
+        );
+
         return $this->mailboxLock->run(
             $target,
             function (EmailSeedLockLease $lease) use (
@@ -200,24 +236,60 @@ final class ImapMailboxSeeder
                 $messages,
                 $mailboxKey,
                 $emails,
+                $onProgress,
             ): SeedOutcome {
-                $purged = $this->recoverPendingPurge($target, $lease);
+                $this->reportProgress(
+                    $onProgress,
+                    $mailboxKey,
+                    self::PROGRESS_LOCK_ACQUIRED,
+                    0,
+                    count($emails),
+                );
+
+                $purged = $this->recoverPendingPurge(
+                    $target,
+                    $lease,
+                    $onProgress,
+                );
                 if ($purge) {
                     $purged += $this->executeNewPurge(
                         $target,
                         EmailSeedPurgeIntent::allSeeded($target->mailboxKey),
                         $lease,
+                        $onProgress,
                     );
                 }
 
+                $this->reportProgress(
+                    $onProgress,
+                    $mailboxKey,
+                    self::PROGRESS_APPEND_STARTED,
+                    0,
+                    count($emails),
+                );
+                $stored = 0;
                 $result = $this->appender->appendStream(
                     $target,
                     $messages($lease),
-                    static function (
+                    function (
                         PreparedEmailMessage $_message,
                         bool $_alreadyPresent,
-                    ) use ($lease): void {
+                    ) use (
+                        &$stored,
+                        $emails,
+                        $lease,
+                        $mailboxKey,
+                        $onProgress,
+                    ): void {
                         $lease->refresh();
+                        $stored++;
+                        $this->reportProgress(
+                            $onProgress,
+                            $mailboxKey,
+                            self::PROGRESS_APPEND_STORED,
+                            $stored,
+                            count($emails),
+                        );
                     },
                     $lease,
                 );
@@ -245,6 +317,7 @@ final class ImapMailboxSeeder
         string $datasetVersion,
         string $manifestChecksum,
         ?Closure $onMessage,
+        ?Closure $onProgress,
     ): SeedOutcome {
         if ($request->dryRun) {
             $validated = 0;
@@ -275,6 +348,14 @@ final class ImapMailboxSeeder
             );
         }
 
+        $this->reportProgress(
+            $onProgress,
+            $mailboxKey,
+            self::PROGRESS_WAITING_LOCK,
+            0,
+            $expected,
+        );
+
         return $this->mailboxLock->run(
             $target,
             fn (EmailSeedLockLease $lease): SeedOutcome => $this->seedDatasetMailboxLocked(
@@ -285,6 +366,7 @@ final class ImapMailboxSeeder
                 datasetVersion: $datasetVersion,
                 manifestChecksum: $manifestChecksum,
                 onMessage: $onMessage,
+                onProgress: $onProgress,
                 lease: $lease,
             ),
         );
@@ -298,12 +380,25 @@ final class ImapMailboxSeeder
         string $datasetVersion,
         string $manifestChecksum,
         ?Closure $onMessage,
+        ?Closure $onProgress,
         EmailSeedLockLease $lease,
     ): SeedOutcome {
+        $this->reportProgress(
+            $onProgress,
+            $mailboxKey,
+            self::PROGRESS_LOCK_ACQUIRED,
+            0,
+            $expected,
+        );
+
         // A persisted intent makes every prior checkpoint untrustworthy until
         // the same remote purge is replayed and its local cleanup completes.
         // Recover before honoring a new purge request or reading a checkpoint.
-        $purged = $this->recoverPendingPurge($target, $lease);
+        $purged = $this->recoverPendingPurge(
+            $target,
+            $lease,
+            $onProgress,
+        );
         if ($request->purgeAllSeeded) {
             $purged += $this->executeNewPurge(
                 $target,
@@ -313,6 +408,7 @@ final class ImapMailboxSeeder
                     manifestChecksum: $manifestChecksum,
                 ),
                 $lease,
+                $onProgress,
             );
         } elseif ($request->purgeDataset) {
             $purged += $this->executeNewPurge(
@@ -323,6 +419,7 @@ final class ImapMailboxSeeder
                     manifestChecksum: $manifestChecksum,
                 ),
                 $lease,
+                $onProgress,
             );
         }
 
@@ -373,6 +470,13 @@ final class ImapMailboxSeeder
 
         $lastSavedSequence = $checkpoint->lastSequence;
         $uncertainUntil = $resumed + $request->checkpointEvery;
+        $this->reportProgress(
+            $onProgress,
+            $mailboxKey,
+            self::PROGRESS_APPEND_STARTED,
+            $resumed,
+            $expected,
+        );
         $messages = function () use (
             $request,
             $target,
@@ -420,12 +524,22 @@ final class ImapMailboxSeeder
                     $target,
                     $request,
                     $lease,
+                    $mailboxKey,
+                    $onProgress,
+                    $expected,
                 ): void {
                     // Refresh first: a remote ACK received after ownership loss
                     // is intentionally left outside the contiguous checkpoint.
                     // Resume verifies its deterministic Message-ID.
                     $lease->refresh();
                     $checkpoint = $checkpoint->advance($message, $alreadyPresent);
+                    $this->reportProgress(
+                        $onProgress,
+                        $mailboxKey,
+                        self::PROGRESS_APPEND_STORED,
+                        $checkpoint->lastSequence,
+                        $expected,
+                    );
 
                     if (
                         $checkpoint->lastSequence - $lastSavedSequence
@@ -484,6 +598,7 @@ final class ImapMailboxSeeder
     private function recoverPendingPurge(
         MailboxTarget $target,
         EmailSeedLockLease $lease,
+        ?Closure $onProgress,
     ): int {
         $intent = $lease->runGuarded(function () use ($lease, $target): ?EmailSeedPurgeIntent {
             $lease->refresh();
@@ -497,13 +612,22 @@ final class ImapMailboxSeeder
             return 0;
         }
 
-        return $this->executePersistedPurge($target, $intent, $lease);
+        $this->reportProgress(
+            $onProgress,
+            $target->mailboxKey,
+            self::PROGRESS_PURGE_RECOVERY_STARTED,
+            0,
+            null,
+        );
+
+        return $this->executePersistedPurge($target, $intent, $lease, $onProgress);
     }
 
     private function executeNewPurge(
         MailboxTarget $target,
         EmailSeedPurgeIntent $intent,
         EmailSeedLockLease $lease,
+        ?Closure $onProgress,
     ): int {
         $lease->runGuarded(function () use ($intent, $lease, $target): void {
             $lease->refresh();
@@ -512,19 +636,37 @@ final class ImapMailboxSeeder
             $lease->assertCanPersistCheckpoint();
         });
 
-        return $this->executePersistedPurge($target, $intent, $lease);
+        $this->reportProgress(
+            $onProgress,
+            $target->mailboxKey,
+            self::PROGRESS_PURGE_STARTED,
+            0,
+            null,
+        );
+
+        return $this->executePersistedPurge($target, $intent, $lease, $onProgress);
     }
 
     private function executePersistedPurge(
         MailboxTarget $target,
         EmailSeedPurgeIntent $intent,
         EmailSeedLockLease $lease,
+        ?Closure $onProgress,
     ): int {
         $purged = $this->appender->purgeSeeded(
             $target,
             $intent->headerName,
             $intent->headerValue,
             $lease,
+            function (int $deleted) use ($onProgress, $target): void {
+                $this->reportProgress(
+                    $onProgress,
+                    $target->mailboxKey,
+                    self::PROGRESS_PURGE_DELETED,
+                    $deleted,
+                    null,
+                );
+            },
         );
 
         $lease->runGuarded(function () use ($intent, $lease, $target): void {
@@ -546,7 +688,30 @@ final class ImapMailboxSeeder
             $lease->assertCanPersistCheckpoint();
         });
 
+        $this->reportProgress(
+            $onProgress,
+            $target->mailboxKey,
+            self::PROGRESS_PURGE_COMPLETED,
+            $purged,
+            null,
+        );
+
         return $purged;
+    }
+
+    /**
+     * @param  Closure(string, string, int, int|null): void|null  $onProgress
+     */
+    private function reportProgress(
+        ?Closure $onProgress,
+        string $mailboxKey,
+        string $phase,
+        int $current,
+        ?int $total,
+    ): void {
+        if ($onProgress !== null) {
+            $onProgress($mailboxKey, $phase, $current, $total);
+        }
     }
 
     private function datasetMailboxCount(string $datasetDirectory, string $mailboxKey): int
