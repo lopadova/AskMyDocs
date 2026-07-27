@@ -11,8 +11,18 @@ export interface WidgetConfig {
     /**
      * Short-lived authenticated user token (`wu_…`) minted server-to-server by
      * the host application. Never place the host subject/email/internal id here.
+     * Backward-compatible static mode: the token stays in memory until it
+     * expires, but cannot be renewed automatically without `userTokenUrl`.
      */
     userToken?: string;
+    /**
+     * Same-origin host endpoint that returns `{ token: "wu_…", expires_at }`.
+     * The widget calls it with the host session cookie (`credentials:
+     * "same-origin"`) at boot and whenever the short-lived token needs renewal.
+     * The endpoint must authenticate the current host user server-side; never
+     * expose the identity secret or the host subject/email to the browser.
+     */
+    userTokenUrl?: string;
     /** Base URL dell'istanza AskMyDocs. Default: stessa origine ('' ). In
      *  modalità proxy (B) punta al backend del sito ospite. */
     apiBase?: string;

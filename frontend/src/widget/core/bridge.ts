@@ -94,15 +94,36 @@ export class Bridge {
     }
 
     /**
+     * Acquires authenticated-user credentials before setup/history calls.
+     * Kept explicit so the panel can block its composer until identity restore
+     * has completed; Transport also enforces this gate on every API request.
+     */
+    async prepareUserAuthentication(): Promise<void> {
+        await this.transport.prepareUserAuthentication();
+    }
+
+    /**
      * Carica il manifest da GET /api/widget/setup (skill, tool, e — nuovo — il
      * `theme` server). Resiliente (R14 lato widget): un fallimento NON rompe la
      * chat, il widget resta sul tema inline+default. Ritorna l'oggetto setup o
      * null se la chiamata fallisce.
      */
     async loadSetup(): Promise<Record<string, unknown> | null> {
+        await this.prepareUserAuthentication();
         try {
             return await this.transport.setup(this.skill);
-        } catch {
+        } catch (error) {
+            if (
+                this.transport.isUserAuthenticationConfigured() &&
+                error instanceof WidgetError &&
+                (error.code === 'user_token_invalid' ||
+                    error.code === 'user_token_config_invalid' ||
+                    error.code === 'user_token_response_invalid' ||
+                    error.code === 'user_token_url_cross_origin')
+            ) {
+                throw error;
+            }
+
             return null;
         }
     }
@@ -112,38 +133,35 @@ export class Bridge {
      * The server scopes both list and replay to the identity in the signed token.
      */
     async restoreAuthenticatedSession(): Promise<RestoredMessage[]> {
-        if (!this.cfg.userToken) {
+        if (!this.transport.isUserAuthenticationConfigured()) {
             return [];
         }
-        try {
-            const history = await this.transport.listSessions();
-            const current = history.data.find((row) =>
-                ['active', 'waiting_user', 'waiting_tool'].includes(row.status),
-            );
-            if (!current) {
+        await this.prepareUserAuthentication();
+
+        const history = await this.transport.listSessions();
+        const current = history.data.find((row) =>
+            ['active', 'waiting_user', 'waiting_tool'].includes(row.status),
+        );
+        if (!current) {
+            return [];
+        }
+        const replay = await this.transport.replay(current.id);
+        this.sessionId = current.id;
+
+        return replay.steps.flatMap((step): RestoredMessage[] => {
+            const content = step.args_json?.content;
+            if (typeof content !== 'string' || content === '') {
                 return [];
             }
-            const replay = await this.transport.replay(current.id);
-            this.sessionId = current.id;
+            if (step.kind === 'user_message') {
+                return [{ role: 'user', content }];
+            }
+            if (step.kind === 'bot_message') {
+                return [{ role: 'assistant', content }];
+            }
 
-            return replay.steps.flatMap((step): RestoredMessage[] => {
-                const content = step.args_json?.content;
-                if (typeof content !== 'string' || content === '') {
-                    return [];
-                }
-                if (step.kind === 'user_message') {
-                    return [{ role: 'user', content }];
-                }
-                if (step.kind === 'bot_message') {
-                    return [{ role: 'assistant', content }];
-                }
-
-                return [];
-            });
-        } catch {
-            // Expired tokens or no history must not break anonymous-compatible UI.
             return [];
-        }
+        });
     }
 
     async sendUserMessage(message: string): Promise<void> {

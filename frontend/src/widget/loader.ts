@@ -90,6 +90,7 @@ export function resolveConfig(script: HTMLScriptElement | null): Partial<WidgetC
     assign(ds.hostManifestUrl, (v) => (merged.hostManifestUrl = v));
     assign(ds.hostExecUrl, (v) => (merged.hostExecUrl = v));
     assign(ds.userToken, (v) => (merged.userToken = v));
+    assign(ds.userTokenUrl, (v) => (merged.userTokenUrl = v));
     if (ds.mode === 'helper' || ds.mode === 'inline' || ds.mode === 'fullscreen') {
         merged.mode = ds.mode;
     }

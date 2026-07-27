@@ -32,6 +32,7 @@ describe('resolveConfig', () => {
             skill: 'gescat-assistant@1',
             'host-manifest-url': '/admin/ai/tools-manifest',
             'host-exec-url': '/admin/ai/tools-exec',
+            'user-token-url': '/api/askmydocs/widget-user-token',
         });
 
         const cfg = resolveConfig(script);
@@ -41,17 +42,27 @@ describe('resolveConfig', () => {
         expect(cfg.skill).toBe('gescat-assistant@1');
         expect(cfg.hostManifestUrl).toBe('/admin/ai/tools-manifest');
         expect(cfg.hostExecUrl).toBe('/admin/ai/tools-exec');
+        expect(cfg.userTokenUrl).toBe('/api/askmydocs/widget-user-token');
     });
 
     it('lets data-attributes override the global window.AskMyDocsWidget object', () => {
-        window.AskMyDocsWidget = { key: 'pk_global', apiBase: 'https://global' };
-        const script = embedScript({ 'public-key': 'pk_data', 'host-exec-url': '/exec' });
+        window.AskMyDocsWidget = {
+            key: 'pk_global',
+            apiBase: 'https://global',
+            userTokenUrl: '/global-user-token',
+        };
+        const script = embedScript({
+            'public-key': 'pk_data',
+            'host-exec-url': '/exec',
+            'user-token-url': '/data-user-token',
+        });
 
         const cfg = resolveConfig(script);
 
         expect(cfg.key).toBe('pk_data'); // data-* prevale
         expect(cfg.apiBase).toBe('https://global'); // non sovrascritto → resta dal globale
         expect(cfg.hostExecUrl).toBe('/exec');
+        expect(cfg.userTokenUrl).toBe('/data-user-token');
     });
 
     it('remains backward-compatible with the window-object-only embed (no script attrs)', () => {

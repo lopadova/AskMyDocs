@@ -23,7 +23,14 @@ export class WidgetError extends Error {
 export class Transport {
     private readonly base: string;
     private readonly key: string;
-    private readonly userToken: string | null;
+    /** Authenticated-user token: memory-only and intentionally mutable so a
+     *  short-lived `wu_…` can be renewed without rebuilding the widget. */
+    private userToken: string | null;
+    private readonly userTokenUrl: string | null;
+    private readonly userAuthenticationConfigured: boolean;
+    private userTokenExpiresAt: number | null = null;
+    private userAuthenticationPrepared = false;
+    private userTokenRefresh: Promise<void> | null = null;
     /** M5.2: session token (wt_…); when set, sent as Authorization: Bearer
      *  instead of X-Widget-Key. Consumed after one use (single-shot). */
     private sessionToken: string | null = null;
@@ -31,15 +38,34 @@ export class Transport {
     constructor(cfg: WidgetConfig) {
         this.base = (cfg.apiBase ?? '').replace(/\/+$/, '');
         this.key = cfg.key;
-        this.userToken = cfg.userToken?.startsWith('wu_') ? cfg.userToken : null;
+        this.userToken = typeof cfg.userToken === 'string' && cfg.userToken.trim() !== ''
+            ? cfg.userToken.trim()
+            : null;
+        this.userTokenUrl = typeof cfg.userTokenUrl === 'string' && cfg.userTokenUrl.trim() !== ''
+            ? cfg.userTokenUrl.trim()
+            : null;
+        this.userAuthenticationConfigured = this.userToken !== null || this.userTokenUrl !== null;
+    }
+
+    /**
+     * Resolve authenticated-user credentials before the first AskMyDocs call.
+     * A configured URL is authoritative and is always fetched at boot; a
+     * static token remains supported for existing embeds but has no refresh
+     * channel. Invalid auth config fails closed instead of silently using pk.
+     */
+    async prepareUserAuthentication(): Promise<void> {
+        await this.ensureUserAuthentication();
+    }
+
+    isUserAuthenticationConfigured(): boolean {
+        return this.userAuthenticationConfigured;
     }
 
     /** M5.2: mint a session token via POST /api/widget/session-token.
      *  The token replaces X-Widget-Key on subsequent requests until consumed. */
     async mintSessionToken(sessionId?: string): Promise<{ token: string; expires_at: string }> {
-        const res = await this.fetchWithTimeout(this.url('/session-token'), {
+        const res = await this.request('/session-token', {
             method: 'POST',
-            headers: this.pkHeaders(),
             body: JSON.stringify(sessionId ? { session_id: sessionId } : {}),
         });
 
@@ -61,15 +87,14 @@ export class Transport {
 
     async setup(skill?: string): Promise<Record<string, unknown>> {
         const query = skill ? `?skill=${encodeURIComponent(skill)}` : '';
-        const res = await this.fetchWithTimeout(this.url(`/setup${query}`), { method: 'GET', headers: this.headers() });
+        const res = await this.request(`/setup${query}`, { method: 'GET' });
 
         return this.parse<Record<string, unknown>>(res);
     }
 
     async start(snapshot: Snapshot, message: string | null): Promise<TurnResponse> {
-        const res = await this.fetchWithTimeout(this.url('/sessions/start'), {
+        const res = await this.request('/sessions/start', {
             method: 'POST',
-            headers: this.headers(),
             body: JSON.stringify({ snapshot, message, page_url: location.href }),
         });
 
@@ -82,9 +107,8 @@ export class Transport {
         message: string | null,
         toolResult: ToolResult | HostToolResult | null,
     ): Promise<TurnResponse> {
-        const res = await this.fetchWithTimeout(this.url(`/sessions/${encodeURIComponent(sessionId)}/step`), {
+        const res = await this.request(`/sessions/${encodeURIComponent(sessionId)}/step`, {
             method: 'POST',
-            headers: this.headers(),
             body: JSON.stringify({ snapshot, message, tool_result: toolResult }),
         });
 
@@ -92,9 +116,8 @@ export class Transport {
     }
 
     async cancel(sessionId: string): Promise<void> {
-        await this.fetchWithTimeout(this.url(`/sessions/${encodeURIComponent(sessionId)}/cancel`), {
+        await this.request(`/sessions/${encodeURIComponent(sessionId)}/cancel`, {
             method: 'POST',
-            headers: this.headers(),
         });
     }
 
@@ -102,9 +125,8 @@ export class Transport {
         data: Array<{ id: string; status: string; summary: string | null; page_url: string | null; created_at: string; updated_at: string }>;
         meta: { current_page: number; last_page: number; per_page: number; total: number };
     }> {
-        const res = await this.fetchWithTimeout(this.url(`/sessions?page=${page}`), {
+        const res = await this.request(`/sessions?page=${page}`, {
             method: 'GET',
-            headers: this.headers(),
         });
 
         return this.parse(res);
@@ -113,10 +135,7 @@ export class Transport {
     async replay(sessionId: string): Promise<{
         steps: Array<{ step_index: number; kind: string; tool: string | null; args_json: Record<string, unknown> | null }>;
     }> {
-        const res = await this.fetchWithTimeout(
-            this.url(`/sessions/${encodeURIComponent(sessionId)}/replay`),
-            { method: 'GET', headers: this.headers() },
-        );
+        const res = await this.request(`/sessions/${encodeURIComponent(sessionId)}/replay`, { method: 'GET' });
 
         return this.parse(res);
     }
@@ -127,9 +146,8 @@ export class Transport {
         tool: string,
         args: Record<string, unknown>,
     ): Promise<ExecToolResponse> {
-        const res = await this.fetchWithTimeout(this.url(`/sessions/${encodeURIComponent(sessionId)}/exec-tool`), {
+        const res = await this.request(`/sessions/${encodeURIComponent(sessionId)}/exec-tool`, {
             method: 'POST',
-            headers: this.headers(),
             body: JSON.stringify({ tool, args }),
         });
 
@@ -245,8 +263,185 @@ export class Transport {
         return { ok: true, ...(data as Record<string, unknown>) } as unknown as HostExecResponse;
     }
 
+    /**
+     * AskMyDocs request with authenticated-user lifecycle management.
+     *
+     * - obtains/renews `wu_…` before building headers;
+     * - retries exactly once only for the canonical 401
+     *   `user_token_invalid`, and only when a refresh URL exists;
+     * - never falls back to `X-Widget-Key` when user auth was configured.
+     */
+    private async request(path: string, init: RequestInit): Promise<Response> {
+        await this.ensureUserAuthentication();
+
+        let response = await this.fetchWithTimeout(this.url(path), {
+            ...init,
+            headers: this.headers(),
+        });
+
+        if (
+            this.userTokenUrl !== null &&
+            this.userToken !== null &&
+            await this.isInvalidUserTokenResponse(response)
+        ) {
+            await this.refreshUserToken();
+            response = await this.fetchWithTimeout(this.url(path), {
+                ...init,
+                headers: this.headers(),
+            });
+        }
+
+        return response;
+    }
+
+    /**
+     * Initial acquisition + just-in-time early renewal. The 30-second margin
+     * avoids starting a request with a token that expires while in flight.
+     */
+    private async ensureUserAuthentication(): Promise<void> {
+        if (!this.userAuthenticationConfigured) {
+            return;
+        }
+
+        if (!this.userAuthenticationPrepared) {
+            if (this.userTokenUrl !== null) {
+                await this.refreshUserToken();
+            } else {
+                this.assertValidUserToken(this.userToken);
+            }
+            this.userAuthenticationPrepared = true;
+
+            return;
+        }
+
+        if (
+            this.userTokenUrl !== null &&
+            this.userTokenExpiresAt !== null &&
+            this.userTokenExpiresAt <= Date.now() + Transport.USER_TOKEN_REFRESH_MARGIN_MS
+        ) {
+            await this.refreshUserToken();
+        }
+
+        // Defence in depth: authenticated mode must never degrade to pk mode.
+        this.assertValidUserToken(this.userToken);
+    }
+
+    private async refreshUserToken(): Promise<void> {
+        if (this.userTokenUrl === null) {
+            throw new WidgetError(
+                'Il token utente è scaduto e non è configurato alcun userTokenUrl per rinnovarlo.',
+                401,
+                'user_token_refresh_unavailable',
+            );
+        }
+        if (this.userTokenRefresh !== null) {
+            return this.userTokenRefresh;
+        }
+
+        this.userTokenRefresh = this.fetchUserToken();
+        try {
+            await this.userTokenRefresh;
+        } finally {
+            this.userTokenRefresh = null;
+        }
+    }
+
+    private async fetchUserToken(): Promise<void> {
+        const tokenUrl = this.resolveSameOriginUserTokenUrl(this.userTokenUrl as string);
+        const response = await this.fetchWithTimeout(tokenUrl, {
+            method: 'GET',
+            credentials: 'same-origin',
+            cache: 'no-store',
+            headers: { Accept: 'application/json' },
+        });
+        const data = await this.readJsonObject(response);
+
+        if (!response.ok) {
+            const message =
+                (typeof data.message === 'string' && data.message) ||
+                (typeof data.error === 'string' && data.error) ||
+                `Impossibile ottenere il token utente (${response.status}).`;
+            throw new WidgetError(
+                message,
+                response.status,
+                typeof data.error === 'string' ? data.error : 'user_token_fetch_failed',
+            );
+        }
+
+        const token = typeof data.token === 'string' ? data.token.trim() : '';
+        const expiresAt = typeof data.expires_at === 'string' ? Date.parse(data.expires_at) : Number.NaN;
+        if (!token.startsWith('wu_') || !Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+            throw new WidgetError(
+                'userTokenUrl ha restituito una risposta non valida: sono richiesti token wu_ ed expires_at futuro.',
+                response.status,
+                'user_token_response_invalid',
+            );
+        }
+
+        this.userToken = token;
+        this.userTokenExpiresAt = expiresAt;
+    }
+
+    private resolveSameOriginUserTokenUrl(configuredUrl: string): string {
+        let resolved: URL;
+        try {
+            resolved = new URL(configuredUrl, window.location.href);
+        } catch {
+            throw new WidgetError(
+                'userTokenUrl non è un URL valido.',
+                0,
+                'user_token_url_invalid',
+            );
+        }
+        if (resolved.origin !== window.location.origin) {
+            throw new WidgetError(
+                'userTokenUrl deve appartenere alla stessa origine della pagina ospite.',
+                0,
+                'user_token_url_cross_origin',
+            );
+        }
+
+        return resolved.toString();
+    }
+
+    private assertValidUserToken(token: string | null): void {
+        if (token === null || !token.startsWith('wu_')) {
+            throw new WidgetError(
+                'Autenticazione utente configurata senza un token wu_ valido.',
+                0,
+                'user_token_config_invalid',
+            );
+        }
+    }
+
+    private async isInvalidUserTokenResponse(response: Response): Promise<boolean> {
+        if (response.status !== 401) {
+            return false;
+        }
+        const data = await this.readJsonObject(response.clone());
+
+        return data.error === 'user_token_invalid';
+    }
+
+    private async readJsonObject(response: Response): Promise<Record<string, unknown>> {
+        const text = await response.text();
+        if (text === '') {
+            return {};
+        }
+        try {
+            const parsed = JSON.parse(text) as unknown;
+
+            return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
+                ? parsed as Record<string, unknown>
+                : {};
+        } catch {
+            return {};
+        }
+    }
+
     /** Timeout di rete per OGNI richiesta widget (ms). */
     private static readonly TIMEOUT_MS = 30_000;
+    private static readonly USER_TOKEN_REFRESH_MARGIN_MS = 30_000;
 
     /**
      * #17 — fetch con AbortController + timeout. Senza, una risposta stallata
@@ -274,16 +469,11 @@ export class Transport {
         return `${this.base}/api/widget${path}`;
     }
 
-    /** M5.2: headers with session token (Authorization: Bearer wt_…) when available,
-     *  falling back to X-Widget-Key (pk_…) in pk mode. Token is consumed after use. */
+    /** A deliberately minted single-use session token (`wt_`) has precedence
+     *  for exactly the next request. The reusable authenticated-user token
+     *  (`wu_`) resumes afterwards; only an unauthenticated embed falls back
+     *  to public-key mode. */
     private headers(): Record<string, string> {
-        if (this.userToken) {
-            return {
-                'Content-Type': 'application/json',
-                Accept: 'application/json',
-                Authorization: `Bearer ${this.userToken}`,
-            };
-        }
         if (this.sessionToken) {
             const token = this.sessionToken;
             this.sessionToken = null; // consume after one request (single-shot)
@@ -292,6 +482,20 @@ export class Transport {
                 Accept: 'application/json',
                 Authorization: `Bearer ${token}`,
             };
+        }
+        if (this.userToken) {
+            return {
+                'Content-Type': 'application/json',
+                Accept: 'application/json',
+                Authorization: `Bearer ${this.userToken}`,
+            };
+        }
+        if (this.userAuthenticationConfigured) {
+            throw new WidgetError(
+                'Il widget autenticato non dispone di un token utente valido.',
+                401,
+                'user_token_missing',
+            );
         }
 
         return this.pkHeaders();
