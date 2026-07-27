@@ -246,18 +246,24 @@ final class ImapMailboxSeeder
                     count($emails),
                 );
 
-                $purged = $this->recoverPendingPurge(
+                [$purged, $recoveredPurge] = $this->recoverPendingPurge(
                     $target,
                     $lease,
                     $onProgress,
                 );
                 if ($purge) {
-                    $purged += $this->executeNewPurge(
-                        $target,
-                        EmailSeedPurgeIntent::allSeeded($target->mailboxKey),
-                        $lease,
-                        $onProgress,
-                    );
+                    $requestedPurge = EmailSeedPurgeIntent::allSeeded($target->mailboxKey);
+                    if (
+                        $recoveredPurge === null
+                        || ! $recoveredPurge->isSameRequest($requestedPurge)
+                    ) {
+                        $purged += $this->executeNewPurge(
+                            $target,
+                            $requestedPurge,
+                            $lease,
+                            $onProgress,
+                        );
+                    }
                 }
 
                 $this->reportProgress(
@@ -394,30 +400,35 @@ final class ImapMailboxSeeder
         // A persisted intent makes every prior checkpoint untrustworthy until
         // the same remote purge is replayed and its local cleanup completes.
         // Recover before honoring a new purge request or reading a checkpoint.
-        $purged = $this->recoverPendingPurge(
+        [$purged, $recoveredPurge] = $this->recoverPendingPurge(
             $target,
             $lease,
             $onProgress,
         );
+        $requestedPurge = null;
         if ($request->purgeAllSeeded) {
-            $purged += $this->executeNewPurge(
-                $target,
-                EmailSeedPurgeIntent::allSeeded(
-                    mailboxKey: $target->mailboxKey,
-                    datasetVersion: $datasetVersion,
-                    manifestChecksum: $manifestChecksum,
-                ),
-                $lease,
-                $onProgress,
+            $requestedPurge = EmailSeedPurgeIntent::allSeeded(
+                mailboxKey: $target->mailboxKey,
+                datasetVersion: $datasetVersion,
+                manifestChecksum: $manifestChecksum,
             );
         } elseif ($request->purgeDataset) {
+            $requestedPurge = EmailSeedPurgeIntent::dataset(
+                mailboxKey: $target->mailboxKey,
+                datasetVersion: $datasetVersion,
+                manifestChecksum: $manifestChecksum,
+            );
+        }
+        if (
+            $requestedPurge !== null
+            && (
+                $recoveredPurge === null
+                || ! $recoveredPurge->isSameRequest($requestedPurge)
+            )
+        ) {
             $purged += $this->executeNewPurge(
                 $target,
-                EmailSeedPurgeIntent::dataset(
-                    mailboxKey: $target->mailboxKey,
-                    datasetVersion: $datasetVersion,
-                    manifestChecksum: $manifestChecksum,
-                ),
+                $requestedPurge,
                 $lease,
                 $onProgress,
             );
@@ -595,11 +606,14 @@ final class ImapMailboxSeeder
         );
     }
 
+    /**
+     * @return array{int, EmailSeedPurgeIntent|null}
+     */
     private function recoverPendingPurge(
         MailboxTarget $target,
         EmailSeedLockLease $lease,
         ?Closure $onProgress,
-    ): int {
+    ): array {
         $intent = $lease->runGuarded(function () use ($lease, $target): ?EmailSeedPurgeIntent {
             $lease->refresh();
             $intent = $this->checkpoints->pendingPurge($target);
@@ -609,7 +623,7 @@ final class ImapMailboxSeeder
         });
 
         if ($intent === null) {
-            return 0;
+            return [0, null];
         }
 
         $this->reportProgress(
@@ -620,7 +634,10 @@ final class ImapMailboxSeeder
             null,
         );
 
-        return $this->executePersistedPurge($target, $intent, $lease, $onProgress);
+        return [
+            $this->executePersistedPurge($target, $intent, $lease, $onProgress),
+            $intent,
+        ];
     }
 
     private function executeNewPurge(

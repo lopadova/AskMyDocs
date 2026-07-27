@@ -539,6 +539,52 @@ final class MailSeedImapCommandTest extends TestCase
         $this->assertSame($expected, $completed->lastSequence);
     }
 
+    public function test_repeated_purge_flag_does_not_repeat_an_equivalent_recovered_purge(): void
+    {
+        $this->setPassword('CONNECTOR_TEST_GMAIL_PASSWORD', 'pw');
+        $datasetRoot = $this->temporaryDirectory('deduplicated-purge-dataset');
+        $checkpointRoot = $this->temporaryDirectory('deduplicated-purge-checkpoints');
+        $datasetVersion = $this->generateDataset(
+            $datasetRoot,
+            ['rotta-logistics-1'],
+            seed: 38,
+        );
+        $manifestChecksum = hash_file(
+            'sha256',
+            $datasetRoot.'/'.$datasetVersion.'/manifest.json',
+        );
+        $this->assertIsString($manifestChecksum);
+
+        $store = new EmailSeedCheckpointStore($checkpointRoot);
+        $this->app->instance(EmailSeedCheckpointStore::class, $store);
+        $target = $this->mailboxTarget('rotta-logistics-1');
+        $store->beginPurge(
+            $target,
+            EmailSeedPurgeIntent::dataset(
+                mailboxKey: $target->mailboxKey,
+                datasetVersion: $datasetVersion,
+                manifestChecksum: $manifestChecksum,
+            ),
+        );
+        $appender = $this->bindRecorder(purgeReturns: 4);
+
+        $this->artisan('mail:seed-imap', [
+            '--mailbox' => ['rotta-logistics-1'],
+            '--dataset-version' => $datasetVersion,
+            '--dataset-root' => $datasetRoot,
+            '--purge-dataset' => true,
+            '--purge-only' => true,
+            '--summary-only' => true,
+        ])->assertExitCode(0);
+
+        $this->assertCount(
+            1,
+            $appender->purges,
+            'Il purge recuperato soddisfa la stessa richiesta CLI senza una seconda SEARCH.',
+        );
+        $this->assertNull($store->pendingPurge($target));
+    }
+
     public function test_each_distinct_purge_phase_reports_its_own_periodic_progress(): void
     {
         $this->setPassword('CONNECTOR_TEST_GMAIL_PASSWORD', 'pw');

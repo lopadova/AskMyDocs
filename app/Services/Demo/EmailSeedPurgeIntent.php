@@ -115,4 +115,19 @@ final readonly class EmailSeedPurgeIntent
     {
         return $this->operation === self::PURGE_ALL_SEEDED;
     }
+
+    /**
+     * A recovered intent can satisfy a repeated CLI purge request only when
+     * both the remote selector and the local checkpoint-cleanup contract are
+     * identical.
+     */
+    public function isSameRequest(self $other): bool
+    {
+        return $this->mailboxKey === $other->mailboxKey
+            && $this->operation === $other->operation
+            && $this->headerName === $other->headerName
+            && $this->headerValue === $other->headerValue
+            && $this->datasetVersion === $other->datasetVersion
+            && $this->manifestChecksum === $other->manifestChecksum;
+    }
 }
