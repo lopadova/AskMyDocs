@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Admin;
 
+use App\Models\User;
 use App\Support\RoleAssignmentGuard;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
@@ -12,12 +13,19 @@ use Illuminate\Validation\Rules\Password;
  * POST /api/admin/users — admin creates a user.
  *
  * Authorisation is enforced at the route layer (role:admin|super-admin);
- * this form only validates. Email uniqueness is checked across the live
- * + trashed set to prevent a soft-deleted ghost from blocking re-creation
- * while still catching genuine duplicates on the active table.
+ * this form only validates. Email uniqueness is checked case-insensitively
+ * across the live + trashed set: a deleted identity must be restored, never
+ * silently replaced by a second account carrying the same address.
  */
 class UserStoreRequest extends FormRequest
 {
+    protected function prepareForValidation(): void
+    {
+        if ($this->has('email')) {
+            $this->merge(['email' => User::normalizeEmail((string) $this->input('email'))]);
+        }
+    }
+
     public function authorize(): bool
     {
         return true;
@@ -27,7 +35,7 @@ class UserStoreRequest extends FormRequest
     {
         return [
             'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->whereNull('deleted_at')],
+            'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email_normalized')],
             'password' => ['required', 'string', Password::defaults()],
             'is_active' => ['nullable', 'boolean'],
             'roles' => ['nullable', 'array'],

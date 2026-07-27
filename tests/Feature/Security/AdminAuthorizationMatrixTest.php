@@ -118,6 +118,9 @@ final class AdminAuthorizationMatrixTest extends TestCase
 
             // ── Role-middleware groups — `role:` middleware, not a Gate ──
             '/api/admin/app-settings' => ['super-admin'],               // role:super-admin (v8.22 Ciclo 3)
+            // Global tenant control plane — exact super-admin role, no
+            // active-tenant scope.
+            '/api/super-admin/tenants' => ['super-admin'],
 
             // ── Widget admin (M6) — Gate::define() in AppServiceProvider ──
             '/api/admin/widget-keys' => ['super-admin'],                     // manageWidgetKeys

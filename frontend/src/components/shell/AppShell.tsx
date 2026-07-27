@@ -159,6 +159,7 @@ export function AppShell() {
                 setFont={setFont}
                 section={section ?? 'chat'}
                 setSection={onNav}
+                userRole={sidebarUser.role}
             />
         </div>
     );

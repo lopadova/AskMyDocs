@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Admin;
 
+use App\Models\User;
 use App\Support\RoleAssignmentGuard;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
@@ -12,12 +13,19 @@ use Illuminate\Validation\Rules\Password;
  * PATCH /api/admin/users/{user} — partial update.
  *
  * Every field is `sometimes` so consumers can PATCH a subset. Email
- * uniqueness excludes the current row AND any soft-deleted rows (so a
- * previously-deleted ghost doesn't block email reassignment for the
- * live user).
+ * uniqueness excludes the current row but includes soft-deleted accounts;
+ * identity is global and case-insensitive, so deleted accounts must be
+ * restored rather than replaced.
  */
 class UserUpdateRequest extends FormRequest
 {
+    protected function prepareForValidation(): void
+    {
+        if ($this->has('email')) {
+            $this->merge(['email' => User::normalizeEmail((string) $this->input('email'))]);
+        }
+    }
+
     public function authorize(): bool
     {
         return true;
@@ -31,7 +39,7 @@ class UserUpdateRequest extends FormRequest
             'name' => ['sometimes', 'required', 'string', 'max:255'],
             'email' => [
                 'sometimes', 'required', 'email', 'max:255',
-                Rule::unique('users', 'email')->ignore($userId)->whereNull('deleted_at'),
+                Rule::unique('users', 'email_normalized')->ignore($userId),
             ],
             'password' => ['sometimes', 'nullable', 'string', Password::defaults()],
             'is_active' => ['sometimes', 'boolean'],

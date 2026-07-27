@@ -1,6 +1,6 @@
 ---
-title: "Team management"
-description: "Create a team and rename a team from the admin UI — over the tenant registry that feeds the switcher, with a cross-tenant-safe authorization model and a graceful degrade when the registry table is absent."
+title: "Team and tenant management"
+description: "Manage tenant-local teams plus the super-admin global tenant control plane: paginated registry, user access, lifecycle status and atomic tenant + account provisioning."
 icon: "building"
 ---
 
@@ -9,19 +9,19 @@ icon: "building"
 A [team is a tenant](/multi-tenant-isolation): a `tenant_id` slug that scopes
 every Eloquent query (R30/R31). The [team switcher](/team-switcher) lets a user
 *move between* the teams they already belong to, and reads each team's display
-**name** from the `tenants` registry row. But two operator questions were, until
-now, answerable only from the CLI:
+**name** from the `tenants` registry row. There are now two deliberately
+different administration surfaces:
 
-- **How do I create a new team from the app?** The only path was
-  `php artisan company:create`, which also mints a brand-new admin user and is
-  deliberately off the HTTP surface.
-- **How do I rename a team?** The only HTTP path lived *inside* the AI-Act
-  compliance package (`PATCH /api/admin/ai-act-compliance/tenants/{slug}`), gated
-  by that package's `viewAiActCompliance` — the wrong home for general team
-  governance.
+- **Administration → Teams** is tenant-local and available to `admin` and
+  `super-admin`. It creates a team for the acting administrator and renames teams
+  they may administer.
+- **Administration → Tenant control** is system-wide and visible only to
+  `super-admin`. It lists every registry tenant (including suspended/archived),
+  expands the users and effective access of one tenant, updates lifecycle state,
+  and provisions a tenant + initial project + new/existing user in one operation.
 
-**Team management** closes both gaps with a first-class, native **Teams** admin
-page (create + rename) and its CLI + HTTP surfaces, all over one shared core.
+This split keeps ordinary tenant administrators inside their own boundary while
+giving platform operators the fast SaaS onboarding path they need.
 
 ## What a "team" is here
 
@@ -42,13 +42,21 @@ flowchart TD
     subgraph Surfaces [Thin adapters — R44]
       H["HTTP: TeamController<br/>GET/POST /api/admin/teams<br/>PATCH /api/admin/teams/{slug}"]
       C["CLI: team:create / team:rename"]
+      P["HTTP: TenantControlController<br/>/api/super-admin/tenants"]
+      CC["CLI: company:create"]
     end
     H --> S[TeamRegistryService]
     C --> S
+    P --> PS[TenantProvisioningService]
+    CC --> PS
+    PS --> S
+    P --> CS[SuperAdminTenantService]
     S -->|create| T1["assert registry available (Schema::hasTable)"]
     T1 --> T2["validate slug shape + reserved 'default' + global uniqueness"]
     T2 --> T3["DB::transaction, TenantContext set to slug"]
-    T3 --> T4["Tenant row + Project + ProjectMembership(actor)"]
+    T3 --> T4["Tenant row + Project + ProjectMembership(target user)"]
+    PS --> U["normalize email + create/attach User + grant role"]
+    U --> T3
     S -->|rename| R1["authorize TARGET team:<br/>membership OR tenant.cross-access"]
     R1 -->|denied| R2["404 (IDOR-safe)"]
     R1 -->|allowed| R3["update tenants.name"]
@@ -61,10 +69,16 @@ flowchart TD
 | Piece | Path | Responsibility |
 |---|---|---|
 | `TeamRegistryService` | `app/Services/Admin/TeamRegistryService.php` | The single shared core: `manageableTeams`, `create`, `rename` — all validation, authorization and write ordering |
+| `TenantProvisioningService` | `app/Services/Admin/TenantProvisioningService.php` | Atomic company onboarding shared by HTTP and `company:create`; preflight, normalized-email identity, create/attach, role and initial membership |
+| `SuperAdminTenantService` | `app/Services/Admin/SuperAdminTenantService.php` | Global paginated registry, tenant detail with user access and lifecycle updates |
 | `TeamController` | `app/Http/Controllers/Api/Admin/TeamController.php` | Thin HTTP adapter; maps the unavailable-registry exception to 503 |
+| `TenantControlController` | `app/Http/Controllers/Api/SuperAdmin/TenantControlController.php` | Super-admin-only global HTTP adapter |
 | Routes | `routes/api.php` | `apiResource('teams')` (index/store/update) in the `role:admin\|super-admin` admin group, bound by `slug` |
+| Global routes | `routes/api.php` | `/api/super-admin/tenants` under the exact `role:super-admin` middleware; intentionally independent of `X-Tenant-Id` |
 | `team:create` / `team:rename` | `app/Console/Commands/{CreateTeamCommand,RenameTeamCommand}.php` | CLI adapters over the same core |
+| `company:create` | `app/Console/Commands/CreateCompanyCommand.php` | Operator adapter over `TenantProvisioningService`, preserving the registry-less bootstrap path |
 | `TeamsList` + `TeamFormDialog` | `frontend/src/features/admin/teams/*` | The admin page + create/rename modal; re-syncs the switcher after a mutation |
+| `TenantControlView` + provisioning dialog | `frontend/src/features/super-admin/tenants/*` | Global tenant table, access detail, status editor and one-submit onboarding |
 | `TeamRegistryUnavailableException` | `app/Services/Admin/Exceptions/…` | Typed exception → HTTP 503 when the `tenants` table is absent |
 
 ## Data model
@@ -81,6 +95,66 @@ Creating a team also writes a `projects` row (`tenant_id`=slug, an initial
 `project_key`) and a `project_memberships` row for the acting user — the same
 ordering `company:create` uses, so the new team is immediately usable and appears
 in the creator's switcher.
+
+Account identity remains global rather than tenant-scoped. `users.email` is
+stored lower-cased and mirrored into the database-unique `email_normalized`
+column, including soft-deleted accounts. This makes `Owner@Acme.it` and
+`owner@acme.it` the same identity under PostgreSQL as well as SQLite/MySQL and
+closes the concurrent duplicate-creation race.
+
+## Super-admin tenant control
+
+Open **Administration → Tenant control** while signed in with the
+`super-admin` role. The navigation item is absent for every other role and the
+API repeats the exact role check server-side.
+
+### Registry and detail
+
+`GET /api/super-admin/tenants` is paginated (`page`, `per_page`, maximum 100)
+and supports `search` plus `status=active|suspended|archived`. Each row includes
+project and distinct-user counts. Selecting a tenant calls
+`GET /api/super-admin/tenants/{slug}` and returns a paginated user list with:
+
+- global Spatie roles and all effective permissions;
+- active, inactive or soft-deleted account state;
+- whether the user has all-project access under the current isolation mode;
+- every membership in the selected tenant, with project key, membership role
+  and scope allowlist.
+
+The global endpoint deliberately ignores the active team header: the registry is
+the resource being administered. The browser therefore never sends
+`X-Tenant-Id` to `/api/super-admin/*`; every join into projects/memberships is
+instead constrained explicitly by the target tenant slug.
+
+### One-step provisioning
+
+The **Provision tenant** dialog performs a debounced preflight against
+`GET /api/super-admin/tenants/availability` as soon as company, slug and email
+are valid:
+
+1. a taken slug disables submission;
+2. a new email reveals name + generated temporary password;
+3. an existing active email switches automatically to **associate existing**,
+   hides the password field and promises not to change the current password;
+4. inactive and soft-deleted identities are blocked with an instruction to
+   activate/restore them first.
+
+One `POST /api/super-admin/tenants` then commits the tenant row, initial project,
+identity (when new), selected global role and target-tenant membership in a
+single transaction. The supported quick-provision roles are `admin`, `editor`
+and `viewer`; `super-admin` cannot be minted accidentally from this form.
+After a new-account success the UI keeps the temporary password visible and can
+copy the complete handoff package. Passwords are never returned by the API or
+written to logs.
+
+### Lifecycle
+
+`PATCH /api/super-admin/tenants/{slug}` changes the display name and/or lifecycle
+status. `suspended` returns HTTP 423 and `archived` returns HTTP 410 on
+tenant-scoped requests even when a stale membership or cross-access grant still
+exists. Both states disappear from the team switcher. Because the global
+control plane is not tenant-scoped, a super-admin can always return the tenant
+to `active`.
 
 ## Decision rationale (ADR-style)
 
@@ -131,6 +205,7 @@ Equivalently from the CLI:
 ```bash
 php artisan team:create --name="Globex Corp"        # attaches the first super-admin
 php artisan team:rename globex-corp "Globex Corporation"
+COMPANY_ADMIN_PASSWORD='temporary-secret' php artisan company:create --company="Contoso" --email="owner@contoso.test"
 ```
 
 ## Gotchas
@@ -146,5 +221,11 @@ php artisan team:rename globex-corp "Globex Corporation"
 - **A normal admin only sees their own teams.** Cross-team visibility requires
   `tenant.cross-access` (super-admin). This is why **create** attaches the acting
   user as a member — otherwise an admin could create a team they then couldn't see.
+- **Inactive users cannot authenticate.** Both session login and bearer-token
+  issuance require `users.is_active=true`; disabling an account is now an
+  effective access-control action rather than a display-only flag.
+- **Soft-deleted emails remain reserved.** Restore the account instead of
+  creating a second identity. This matches the database uniqueness contract and
+  prevents hidden duplicate owners.
 
 See also: [The team switcher](/team-switcher), [The project registry](/projects-registry), [Multi-tenant isolation](/multi-tenant-isolation).

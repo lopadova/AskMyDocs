@@ -18,6 +18,7 @@ import { UsersView } from '../features/admin/users/UsersView';
 import { RolesView } from '../features/admin/roles/RolesView';
 import { ProjectsList } from '../features/admin/projects/ProjectsList';
 import { TeamsList } from '../features/admin/teams/TeamsList';
+import { TenantControlView } from '../features/super-admin/tenants/TenantControlView';
 import { KbView } from '../features/admin/kb/KbView';
 import { KbHealthView } from '../features/admin/kb-health/KbHealthView';
 import { TagsList } from '../features/admin/tags/TagsList';
@@ -470,6 +471,22 @@ const adminTeamsRoute = createRoute({
     getParentRoute: () => teamRoute,
     path: 'admin/teams',
     component: AdminTeamsRoute,
+});
+
+function SuperAdminTenantControlRoute() {
+    return (
+        <RequireRole roles={['super-admin']}>
+            <AdminShell section="tenant-control">
+                <TenantControlView />
+            </AdminShell>
+        </RequireRole>
+    );
+}
+
+const superAdminTenantControlRoute = createRoute({
+    getParentRoute: () => teamRoute,
+    path: 'super-admin/tenants',
+    component: SuperAdminTenantControlRoute,
 });
 
 // PR7 / Phase F2 — flat admin children. Same shape as `chatRoute`
@@ -1229,6 +1246,7 @@ const teamChildren = [
     adminRoute,
     adminProjectsRoute,
     adminTeamsRoute,
+    superAdminTenantControlRoute,
     adminUsersRoute,
     adminRolesRoute,
     adminKbRoute,

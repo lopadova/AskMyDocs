@@ -44,13 +44,15 @@ export function RequireRole({ roles, children, fallback }: RequireRoleProps) {
 
     const allowed = userRoles.some((r) => roles.includes(r));
     if (!allowed) {
-        return <>{fallback ?? <AdminForbidden />}</>;
+        return <>{fallback ?? <AdminForbidden requiredRoles={roles} />}</>;
     }
 
     return <>{children}</>;
 }
 
-export function AdminForbidden() {
+export function AdminForbidden({ requiredRoles = ['admin', 'super-admin'] }: { requiredRoles?: string[] }) {
+    const superAdminOnly = requiredRoles.length === 1 && requiredRoles[0] === 'super-admin';
+
     return (
         <div
             data-testid="admin-forbidden"
@@ -97,7 +99,7 @@ export function AdminForbidden() {
                         letterSpacing: '-0.01em',
                     }}
                 >
-                    Admin access required
+                    {superAdminOnly ? 'Super-admin access required' : 'Admin access required'}
                 </h2>
                 <p
                     style={{
@@ -107,8 +109,9 @@ export function AdminForbidden() {
                         lineHeight: 1.55,
                     }}
                 >
-                    Your account does not have the admin or super-admin role. Ask a
-                    workspace owner to grant you access if this looks wrong.
+                    {superAdminOnly
+                        ? 'This is a system-wide control plane reserved for super-admin accounts.'
+                        : 'Your account does not have an allowed admin role. Ask a workspace owner to grant you access if this looks wrong.'}
                 </p>
             </div>
         </div>

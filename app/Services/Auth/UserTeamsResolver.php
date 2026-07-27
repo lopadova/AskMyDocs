@@ -54,6 +54,8 @@ final class UserTeamsResolver
         }
 
         $tenantIds = array_keys($projectsByTenant);
+        $tenantIds = $this->activeOrUnregisteredTenantSlugs($tenantIds);
+        $projectsByTenant = array_intersect_key($projectsByTenant, array_flip($tenantIds));
 
         if ($user->can(AuthorizeTenantHeader::CROSS_ACCESS_PERMISSION)) {
             $tenantIds = array_merge($tenantIds, $this->allActiveTenantSlugs());
@@ -106,6 +108,29 @@ final class UserTeamsResolver
         }
 
         return Tenant::query()->active()->pluck('slug')->all();
+    }
+
+    /**
+     * Memberships may outlive a tenant's active lifecycle. Keep legacy slugs
+     * with no registry row, but hide suspended/archived registry tenants so
+     * the switcher never offers a destination the authorization middleware
+     * will reject.
+     *
+     * @param list<string> $tenantIds
+     * @return list<string>
+     */
+    private function activeOrUnregisteredTenantSlugs(array $tenantIds): array
+    {
+        if ($tenantIds === [] || ! Schema::hasTable('tenants')) {
+            return $tenantIds;
+        }
+
+        $statuses = Tenant::query()->whereIn('slug', $tenantIds)->pluck('status', 'slug');
+
+        return array_values(array_filter(
+            $tenantIds,
+            static fn (string $slug): bool => ! $statuses->has($slug) || $statuses->get($slug) === 'active',
+        ));
     }
 
     /**

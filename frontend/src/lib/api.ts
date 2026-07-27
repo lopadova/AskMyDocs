@@ -29,9 +29,11 @@ export const api: AxiosInstance = axios.create({
  * - `/api/auth/*` + `/sanctum/*`: a stale persisted team would otherwise
  *   403 the bootstrap `me()` call and lock the user out before the team
  *   list can re-sync.
+ * - `/api/super-admin/*`: the global control plane administers the tenant
+ *   registry itself; target scoping is explicit in its service queries.
  * - `/testing/*`: E2E reset/seed endpoints operate deployment-wide.
  */
-const TENANT_EXEMPT_PREFIXES = ['/api/auth/', '/sanctum/', '/testing/'];
+const TENANT_EXEMPT_PREFIXES = ['/api/auth/', '/api/super-admin/', '/sanctum/', '/testing/'];
 
 /*
  * The `default` tenant is the host's "no multi-tenancy" sentinel

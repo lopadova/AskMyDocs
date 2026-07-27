@@ -21,12 +21,13 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 /**
  * TeamRegistryService — the single shared core (R44) behind team
- * (= tenant) create + rename, over the vendor `tenants` registry
+ * (= tenant) create + rename and the tenant/project/membership primitive used
+ * by full company provisioning, over the vendor `tenants` registry
  * (`Padosoft\AiActCompliance\MultiTenancy\Models\Tenant`: `slug`, `name`,
  * `status`). The HTTP {@see \App\Http\Controllers\Api\Admin\TeamController}
  * and the `team:create` / `team:rename` Artisan commands are thin adapters
- * over this class — all validation, authorization and the write ordering
- * live here so the two surfaces can never drift.
+ * over this class. TenantProvisioningService also delegates its tenant bundle
+ * here, so HTTP and `company:create` cannot drift on slug or write ordering.
  *
  * A "team" is a `tenant_id`/`slug` string; its editable display NAME lives
  * on the `tenants` row. That table is optional (it ships with the AI-Act
@@ -126,14 +127,71 @@ final class TeamRegistryService
      */
     public function create(?string $slug, string $name, User $actor): array
     {
-        $this->assertRegistryAvailable();
+        return $this->createForMember($slug, $name, $actor);
+    }
+
+    /**
+     * Validate and inspect a prospective tenant without writing anything.
+     *
+     * @return array{slug: string, available: bool}
+     */
+    public function newTeamAvailability(
+        ?string $slug,
+        string $name,
+        bool $requireRegistry = true,
+    ): array {
+        if ($requireRegistry) {
+            $this->assertRegistryAvailable();
+        }
 
         $name = trim($name);
         $this->assertValidName($name);
 
         $slug = $this->resolveSlug($slug, $name);
         $this->assertValidSlug($slug);
-        $this->assertUnique($slug);
+
+        try {
+            $this->assertUnique($slug);
+        } catch (ValidationException) {
+            return ['slug' => $slug, 'available' => false];
+        }
+
+        return ['slug' => $slug, 'available' => true];
+    }
+
+    /**
+     * Create a new tenant, its initial project and the target user's
+     * membership. This is the shared atomic primitive used by the regular
+     * Team UI, the super-admin provisioning flow and `company:create`.
+     *
+     * @return array{slug: string, name: string, hash: string, status: string, is_default: bool, can_manage: bool, project_count: int, member_count: int}
+     */
+    public function createForMember(
+        ?string $slug,
+        string $name,
+        User $member,
+        ?string $projectKey = null,
+        string $membershipRole = 'admin',
+        bool $requireRegistry = true,
+    ): array {
+        $availability = $this->newTeamAvailability($slug, $name, $requireRegistry);
+        $slug = $availability['slug'];
+        if (! $availability['available']) {
+            $this->rejectDuplicateSlug($slug);
+        }
+
+        $name = trim($name);
+        $projectKey = trim((string) $projectKey) ?: $slug;
+        if (! preg_match('/^[a-z0-9]+(?:[-_][a-z0-9]+)*$/', $projectKey) || mb_strlen($projectKey) > 120) {
+            throw ValidationException::withMessages([
+                'project_key' => ['The initial project key must use lowercase words separated by hyphens or underscores (maximum 120 characters).'],
+            ]);
+        }
+        if (! in_array($membershipRole, ['member', 'admin', 'owner'], true)) {
+            throw ValidationException::withMessages([
+                'membership_role' => ['The membership role must be member, admin, or owner.'],
+            ]);
+        }
 
         // Make the new team active so BelongsToTenant auto-fills tenant_id on
         // the writes below (we also pass it explicitly). Restore afterwards so
@@ -142,34 +200,36 @@ final class TeamRegistryService
         try {
             $this->tenantContext->set($slug);
 
-            DB::transaction(function () use ($slug, $name, $actor): void {
-                Tenant::create([
-                    'slug' => $slug,
-                    'name' => $name,
-                    'status' => 'active',
-                ]);
+            DB::transaction(function () use ($slug, $name, $member, $projectKey, $membershipRole): void {
+                if (Schema::hasTable('tenants')) {
+                    Tenant::create([
+                        'slug' => $slug,
+                        'name' => $name,
+                        'status' => 'active',
+                    ]);
+                }
 
                 Project::create([
                     'tenant_id' => $slug,
-                    'project_key' => $slug,
+                    'project_key' => $projectKey,
                     'name' => $name,
                     'description' => "{$name} knowledge base",
                 ]);
 
-                // The membership is what surfaces the team in the actor's
+                // The membership is what surfaces the team in the member's
                 // switcher (UserTeamsResolver groups memberships by tenant_id).
                 ProjectMembership::create([
                     'tenant_id' => $slug,
-                    'user_id' => $actor->id,
-                    'project_key' => $slug,
-                    'role' => 'admin',
+                    'user_id' => $member->id,
+                    'project_key' => $projectKey,
+                    'role' => $membershipRole,
                 ]);
             });
         } finally {
             $this->tenantContext->set($previous);
         }
 
-        return $this->teamPayload($slug, $actor);
+        return $this->teamPayload($slug, $member);
     }
 
     /**
@@ -283,7 +343,7 @@ final class TeamRegistryService
      */
     private function assertUnique(string $slug): void
     {
-        if (Tenant::query()->where('slug', $slug)->exists()) {
+        if (Schema::hasTable('tenants') && Tenant::query()->where('slug', $slug)->exists()) {
             $this->rejectDuplicateSlug($slug);
         }
 

@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Auth;
 
+use App\Models\User;
 use Illuminate\Foundation\Http\FormRequest;
 
 /**
@@ -11,6 +12,11 @@ use Illuminate\Foundation\Http\FormRequest;
  */
 class LoginRequest extends FormRequest
 {
+    protected function prepareForValidation(): void
+    {
+        $this->merge(['email' => User::normalizeEmail((string) $this->input('email'))]);
+    }
+
     public function authorize(): bool
     {
         return true;
@@ -28,13 +34,14 @@ class LoginRequest extends FormRequest
     /**
      * Credentials subset passed to Auth::attempt().
      *
-     * @return array{email: string, password: string}
+     * @return array{email: string, password: string, is_active: bool}
      */
     public function credentials(): array
     {
         return [
             'email' => (string) $this->input('email'),
             'password' => (string) $this->input('password'),
+            'is_active' => true,
         ];
     }
 

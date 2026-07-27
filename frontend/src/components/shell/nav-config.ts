@@ -1,4 +1,5 @@
 import type { IconName } from '../Icons';
+import type { SeedUser } from '../../lib/seed';
 
 /**
  * Single source of truth for the unified admin navigation.
@@ -17,6 +18,7 @@ export type SidebarSection =
     | 'insights'
     | 'projects'
     | 'teams'
+    | 'tenant-control'
     | 'users'
     | 'roles'
     | 'kb'
@@ -56,6 +58,8 @@ export interface NavItem {
     icon: IconName;
     /** Absolute SPA route this entry navigates to / highlights for. */
     route: string;
+    /** Omitted means visible to every authenticated role. */
+    roles?: SeedUser['role'][];
 }
 
 export interface NavGroup {
@@ -80,6 +84,13 @@ export const NAV_GROUPS: NavGroup[] = [
         id: 'administration',
         label: 'Administration',
         items: [
+            {
+                id: 'tenant-control',
+                label: 'Tenant control',
+                icon: 'Globe',
+                route: '/app/$teamHash/super-admin/tenants',
+                roles: ['super-admin'],
+            },
             { id: 'dashboard', label: 'Dashboard', icon: 'Grid', route: '/app/$teamHash/admin' },
             { id: 'engagement', label: 'Engagement', icon: 'Activity', route: '/app/$teamHash/admin/engagement' },
             { id: 'insights', label: 'AI Insights', icon: 'Sparkles', route: '/app/$teamHash/admin/insights' },

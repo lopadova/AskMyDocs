@@ -10,6 +10,7 @@ describe('Sidebar (unified rail)', () => {
         // Core + formerly-duplicated + formerly-rail-only sections all live here now.
         for (const id of [
             'chat',
+            'tenant-control',
             'dashboard',
             'insights',
             'users',
@@ -36,6 +37,19 @@ describe('Sidebar (unified rail)', () => {
         ]) {
             expect(screen.getByTestId(`sidebar-nav-${id}`)).toBeInTheDocument();
         }
+    });
+
+    it('hides the global tenant control entry from non-super-admin users', () => {
+        render(
+            <Sidebar
+                active="chat"
+                onNav={() => undefined}
+                user={{ ...USERS[0], role: 'admin' }}
+                projectCount={4}
+            />,
+        );
+
+        expect(screen.queryByTestId('sidebar-nav-tenant-control')).not.toBeInTheDocument();
     });
 
     it('fires onNav with the section id when an entry is clicked', async () => {

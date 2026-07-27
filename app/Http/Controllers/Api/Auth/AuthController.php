@@ -88,7 +88,10 @@ class AuthController extends Controller
             ])->status(429);
         }
 
-        $user = User::where('email', (string) $request->validated('email'))->first();
+        $user = User::query()
+            ->where('email_normalized', (string) $request->validated('email'))
+            ->where('is_active', true)
+            ->first();
 
         if ($user === null || ! Hash::check((string) $request->validated('password'), $user->password)) {
             RateLimiter::hit($key);

@@ -23,7 +23,13 @@ export type SidebarProps = {
  * section is always forced open so the current page is never hidden.
  */
 export function Sidebar({ active, onNav, collapsed = false, user, projectCount }: SidebarProps) {
-    const activeGroupId = NAV_GROUPS.find((g) => g.items.some((i) => i.id === active))?.id;
+    const visibleGroups = NAV_GROUPS
+        .map((group) => ({
+            ...group,
+            items: group.items.filter((item) => item.roles === undefined || item.roles.includes(user.role)),
+        }))
+        .filter((group) => group.items.length > 0);
+    const activeGroupId = visibleGroups.find((g) => g.items.some((i) => i.id === active))?.id;
     const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
 
     // The active group is force-open (so the current page is never hidden), so
@@ -102,7 +108,7 @@ export function Sidebar({ active, onNav, collapsed = false, user, projectCount }
                 </button>
             </div>
             <nav style={{ flex: 1, overflow: 'auto', padding: '4px 10px 10px' }}>
-                {NAV_GROUPS.map((group) => {
+                {visibleGroups.map((group) => {
                     // The active section's group is always shown; user toggle wins
                     // otherwise. In icon-collapsed mode there are no group headers
                     // to re-expand with, so force every group open — a group can

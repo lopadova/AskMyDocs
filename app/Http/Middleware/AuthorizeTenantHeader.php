@@ -8,6 +8,8 @@ use App\Models\ProjectMembership;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
+use Padosoft\AiActCompliance\MultiTenancy\Models\Tenant;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -56,6 +58,26 @@ final class AuthorizeTenantHeader
         $user = $request->user();
         if ($user === null) {
             return $next($request);
+        }
+
+        // A registry lifecycle state is authoritative even when the caller
+        // still has a stale membership or cross-access permission. The global
+        // super-admin control plane carries no tenant header, so operators can
+        // always reactivate a tenant from there.
+        if (Schema::hasTable('tenants')) {
+            $status = Tenant::query()->where('slug', $header)->value('status');
+            if ($status === 'suspended') {
+                return response()->json([
+                    'error' => 'tenant_suspended',
+                    'message' => 'This tenant is suspended.',
+                ], Response::HTTP_LOCKED);
+            }
+            if ($status === 'archived') {
+                return response()->json([
+                    'error' => 'tenant_archived',
+                    'message' => 'This tenant is archived.',
+                ], Response::HTTP_GONE);
+            }
         }
 
         $ownTenant = $user->getAttribute('tenant_id');

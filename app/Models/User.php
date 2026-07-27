@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Laravel\Sanctum\HasApiTokens;
 use Padosoft\Invitations\Concerns\InteractsWithInvitations;
 use Padosoft\Invitations\Contracts\InvitedAccount;
@@ -64,7 +65,33 @@ class User extends Authenticatable implements InvitedAccount
     protected $hidden = [
         'password',
         'remember_token',
+        'email_normalized',
     ];
+
+    protected static function booted(): void
+    {
+        static::saving(function (User $user): void {
+            if (! $user->isDirty('email')) {
+                return;
+            }
+
+            $normalized = self::normalizeEmail((string) $user->email);
+            $user->email = $normalized;
+
+            // Deployment-safe during rolling releases: the application can
+            // boot before the additive migration has run. Once the column is
+            // present it becomes the case-insensitive uniqueness key used by
+            // every account-creation surface.
+            if (Schema::hasColumn('users', 'email_normalized')) {
+                $user->setAttribute('email_normalized', $normalized);
+            }
+        });
+    }
+
+    public static function normalizeEmail(string $email): string
+    {
+        return mb_strtolower(trim($email));
+    }
 
     protected function casts(): array
     {

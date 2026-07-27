@@ -31,6 +31,8 @@ const ENDPOINTS: ReadonlyArray<{ uri: string; allowed: readonly string[] }> = [
     { uri: '/api/admin/users', allowed: ['admin', 'super-admin'] },
     { uri: '/api/admin/projects', allowed: ['admin', 'super-admin'] },
     { uri: '/api/admin/teams', allowed: ['admin', 'super-admin'] },
+    // global control plane — exact super-admin role
+    { uri: '/api/super-admin/tenants', allowed: ['super-admin'] },
     { uri: '/api/admin/logs/chat', allowed: ['admin', 'super-admin'] },
     { uri: '/api/admin/kb/tree', allowed: ['admin', 'super-admin'] },
     // gate-based groups

@@ -175,6 +175,19 @@ class TokenTest extends TestCase
         $this->assertDatabaseCount('personal_access_tokens', 0);
     }
 
+    public function test_inactive_account_cannot_mint_a_token(): void
+    {
+        $user = $this->makeUser();
+        $user->update(['is_active' => false]);
+
+        $this->postJson('/api/auth/token', [
+            'email' => 'TEST@EXAMPLE.COM',
+            'password' => 'secret123',
+        ])->assertStatus(422)->assertJsonValidationErrors(['email']);
+
+        $this->assertDatabaseCount('personal_access_tokens', 0);
+    }
+
     public function test_unknown_email_returns_422_and_mints_no_token(): void
     {
         $this->postJson('/api/auth/token', [

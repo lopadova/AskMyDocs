@@ -67,6 +67,19 @@ class LoginTest extends TestCase
         $this->assertFalse(Auth::check());
     }
 
+    public function test_inactive_account_cannot_log_in(): void
+    {
+        $user = $this->makeUser();
+        $user->update(['is_active' => false]);
+
+        $this->postJson('/api/auth/login', [
+            'email' => 'TEST@EXAMPLE.COM',
+            'password' => 'secret123',
+        ])->assertStatus(422)->assertJsonValidationErrors(['email']);
+
+        $this->assertFalse(Auth::check());
+    }
+
     public function test_login_with_unknown_email_returns_422(): void
     {
         $response = $this->postJson('/api/auth/login', [

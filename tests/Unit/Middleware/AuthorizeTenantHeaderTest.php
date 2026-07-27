@@ -10,6 +10,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Padosoft\AiActCompliance\MultiTenancy\Models\Tenant;
 use Symfony\Component\HttpFoundation\Response;
 use Tests\TestCase;
 
@@ -111,6 +112,23 @@ final class AuthorizeTenantHeaderTest extends TestCase
         $response = $this->dispatch($this->request(header: 'acme', user: $outsider));
 
         $this->assertSame(Response::HTTP_FORBIDDEN, $response->getStatusCode());
+    }
+
+    public function test_suspended_tenant_is_blocked_even_with_a_membership(): void
+    {
+        Tenant::create(['slug' => 'acme', 'name' => 'Acme', 'status' => 'suspended']);
+        $user = $this->realUser('suspended-member@example.com');
+        ProjectMembership::create([
+            'tenant_id' => 'acme',
+            'user_id' => $user->id,
+            'project_key' => 'acme-kb',
+            'role' => 'admin',
+        ]);
+
+        $response = $this->dispatch($this->request(header: 'acme', user: $user));
+
+        $this->assertSame(Response::HTTP_LOCKED, $response->getStatusCode());
+        $this->assertStringContainsString('tenant_suspended', (string) $response->getContent());
     }
 
     // -----------------------------------------------------------------

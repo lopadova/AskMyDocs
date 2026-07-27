@@ -762,6 +762,37 @@ Route::middleware([
 
 /*
 |--------------------------------------------------------------------------
+| Super-admin — global tenant control plane
+|--------------------------------------------------------------------------
+|
+| Deliberately NOT tenant-scoped: the registry and its memberships are the
+| objects being administered. Authentication + the exact super-admin role are
+| mandatory; every tenant-aware query inside the service carries its explicit
+| target tenant id. R32: represented in AdminAuthorizationMatrixTest.
+|
+*/
+Route::middleware([
+    \Illuminate\Cookie\Middleware\EncryptCookies::class,
+    \Illuminate\Session\Middleware\StartSession::class,
+    'auth:sanctum',
+    'role:super-admin',
+])
+    ->prefix('super-admin/tenants')
+    ->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\SuperAdmin\TenantControlController::class, 'index'])
+            ->name('api.super-admin.tenants.index');
+        Route::get('/availability', [\App\Http\Controllers\Api\SuperAdmin\TenantControlController::class, 'availability'])
+            ->name('api.super-admin.tenants.availability');
+        Route::post('/', [\App\Http\Controllers\Api\SuperAdmin\TenantControlController::class, 'store'])
+            ->name('api.super-admin.tenants.store');
+        Route::get('/{slug}', [\App\Http\Controllers\Api\SuperAdmin\TenantControlController::class, 'show'])
+            ->name('api.super-admin.tenants.show');
+        Route::patch('/{slug}', [\App\Http\Controllers\Api\SuperAdmin\TenantControlController::class, 'update'])
+            ->name('api.super-admin.tenants.update');
+    });
+
+/*
+|--------------------------------------------------------------------------
 | Admin — PII redactor strategy (gate-protected, role-permissive)
 |--------------------------------------------------------------------------
 |
