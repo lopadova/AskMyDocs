@@ -311,9 +311,11 @@ final class WidgetSessionController extends Controller
         }
 
         $perPage = min(max((int) $request->input('per_page', 20), 1), 100);
+        $key = $this->key($request);
         $rows = WidgetSession::query()
             ->forTenant($this->tenants->current())
-            ->where('widget_key_id', $this->key($request)->id)
+            ->where('widget_key_id', $key->id)
+            ->where('project_key', $key->project_key)
             ->where('widget_identity_id', $identity->id)
             ->orderByDesc('created_at')
             ->paginate($perPage);
@@ -345,10 +347,12 @@ final class WidgetSessionController extends Controller
         // ResolveWidgetKey) AND to the calling key. forTenant() is the
         // primary tenant boundary; widget_key_id is the anti-IDOR guard so
         // one key can't drive another key's session within the same tenant.
+        $key = $this->key($request);
         $query = WidgetSession::query()
             ->forTenant($this->tenants->current())
             ->where('public_session_id', $publicId)
-            ->where('widget_key_id', $this->key($request)->id);
+            ->where('widget_key_id', $key->id)
+            ->where('project_key', $key->project_key);
 
         $identity = $this->identity($request);
         $identity === null

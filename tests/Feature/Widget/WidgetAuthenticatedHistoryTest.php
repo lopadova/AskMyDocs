@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Widget;
 
+use App\Models\WidgetIdentity;
 use App\Models\WidgetKey;
 use App\Models\WidgetSession;
 use App\Models\WidgetSessionStep;
@@ -44,10 +45,10 @@ final class WidgetAuthenticatedHistoryTest extends TestCase
     public function test_authenticated_history_and_replay_are_scoped_to_identity(): void
     {
         $key = $this->key('pk_history', 'ik_history');
-        $alice = $this->token($key, 'alice');
-        $bob = $this->token($key, 'bob');
-        $aliceIdentity = \App\Models\WidgetIdentity::query()->orderBy('id')->firstOrFail();
-        $bobIdentity = \App\Models\WidgetIdentity::query()->orderByDesc('id')->firstOrFail();
+        $alice = $this->token($key, 'alice', 'ik_history');
+        $bob = $this->token($key, 'bob', 'ik_history');
+        $aliceIdentity = WidgetIdentity::query()->orderBy('id')->firstOrFail();
+        $bobIdentity = WidgetIdentity::query()->orderByDesc('id')->firstOrFail();
 
         $aliceSession = $this->makeWidgetSession($key, $aliceIdentity->id);
         $this->makeWidgetSession($key, $bobIdentity->id);
@@ -73,10 +74,41 @@ final class WidgetAuthenticatedHistoryTest extends TestCase
         )->assertNotFound();
     }
 
+    public function test_authenticated_history_and_replay_are_also_scoped_to_the_keys_project(): void
+    {
+        $key = $this->key('pk_project_scope', 'ik_project_scope');
+        $token = $this->token($key, 'alice', 'ik_project_scope');
+        $identity = WidgetIdentity::query()->firstOrFail();
+        $ownedSession = $this->makeWidgetSession($key, $identity->id);
+        $foreignProjectSession = WidgetSession::query()->create([
+            'tenant_id' => $key->tenant_id,
+            'widget_key_id' => $key->id,
+            'widget_identity_id' => $identity->id,
+            'project_key' => 'different-project',
+            'public_session_id' => (string) Str::uuid(),
+            'status' => WidgetSession::STATUS_ACTIVE,
+            'skill' => $key->skill,
+        ]);
+        $headers = [
+            'Origin' => 'https://host.example',
+            'Authorization' => 'Bearer '.$token,
+        ];
+
+        $this->getJson('/api/widget/sessions', $headers)
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $ownedSession->public_session_id);
+
+        $this->getJson(
+            '/api/widget/sessions/'.$foreignProjectSession->public_session_id.'/replay',
+            $headers,
+        )->assertNotFound();
+    }
+
     public function test_user_token_rejects_a_different_origin_and_anonymous_list_is_denied(): void
     {
         $key = $this->key('pk_origin', 'ik_origin');
-        $token = $this->token($key, 'alice');
+        $token = $this->token($key, 'alice', 'ik_origin');
 
         $this->getJson('/api/widget/sessions', [
             'Origin' => 'https://evil.example',
@@ -87,6 +119,177 @@ final class WidgetAuthenticatedHistoryTest extends TestCase
             'Origin' => 'https://host.example',
             'X-Widget-Key' => $key->public_key,
         ])->assertUnauthorized()->assertJsonPath('error', 'user_auth_required');
+    }
+
+    public function test_removing_an_origin_immediately_invalidates_previously_issued_user_tokens(): void
+    {
+        $key = $this->key('pk_origin_revoked', 'ik_origin_revoked');
+        $token = $this->token($key, 'alice', 'ik_origin_revoked');
+
+        // Revoca operativa dell'host: il claim cifrato conserva la vecchia
+        // origin, ma la policy corrente della key non la ammette più.
+        $key->forceFill(['allowed_origins' => ['https://replacement.example']])->save();
+
+        $this->getJson('/api/widget/setup', [
+            'Origin' => 'https://host.example',
+            'Authorization' => 'Bearer '.$token,
+        ])->assertUnauthorized()->assertJsonPath('error', 'user_token_invalid');
+    }
+
+    public function test_expired_and_tampered_user_tokens_fail_closed(): void
+    {
+        config()->set('widget.user_token_ttl_minutes', 1);
+        $key = $this->key('pk_invalid_user_token', 'ik_invalid_user_token');
+        $token = $this->token($key, 'alice', 'ik_invalid_user_token');
+
+        $this->getJson('/api/widget/setup', [
+            'Origin' => 'https://host.example',
+            'Authorization' => 'Bearer '.$token.'tampered',
+        ])->assertUnauthorized()->assertJsonPath('error', 'user_token_invalid');
+
+        try {
+            $this->travel(2)->minutes();
+
+            $this->getJson('/api/widget/setup', [
+                'Origin' => 'https://host.example',
+                'Authorization' => 'Bearer '.$token,
+            ])->assertUnauthorized()->assertJsonPath('error', 'user_token_invalid');
+        } finally {
+            $this->travelBack();
+        }
+    }
+
+    public function test_disabling_user_auth_revokes_existing_user_and_identity_session_tokens(): void
+    {
+        $key = $this->key('pk_user_auth_revoked', 'ik_user_auth_revoked');
+        $userToken = $this->token($key, 'alice', 'ik_user_auth_revoked');
+        $identity = WidgetIdentity::query()->firstOrFail();
+        $session = $this->makeWidgetSession($key, $identity->id);
+
+        $mint = $this->postJson('/api/widget/session-token', [
+            'session_id' => $session->public_session_id,
+        ], [
+            'Origin' => 'https://host.example',
+            'Authorization' => 'Bearer '.$userToken,
+        ])->assertCreated();
+        $sessionToken = (string) $mint->json('token');
+
+        $key->forceFill(['user_auth_enabled' => false])->save();
+
+        $this->getJson('/api/widget/setup', [
+            'Origin' => 'https://host.example',
+            'Authorization' => 'Bearer '.$userToken,
+        ])->assertUnauthorized()->assertJsonPath('error', 'user_token_invalid');
+
+        $this->getJson('/api/widget/sessions/'.$session->public_session_id.'/replay', [
+            'Origin' => 'https://host.example',
+            'Authorization' => 'Bearer '.$sessionToken,
+        ])->assertUnauthorized()->assertJsonPath('error', 'session_token_invalid');
+
+        $this->assertDatabaseHas('widget_session_tokens', [
+            'token' => hash('sha256', $sessionToken),
+            'consumed_at' => null,
+        ]);
+    }
+
+    public function test_anonymous_and_different_identity_callers_cannot_mint_a_token_for_an_authenticated_session(): void
+    {
+        $key = $this->key('pk_session_hijack', 'ik_session_hijack');
+        $aliceToken = $this->token($key, 'alice', 'ik_session_hijack');
+        $aliceIdentity = WidgetIdentity::query()->firstOrFail();
+        $bobToken = $this->token($key, 'bob', 'ik_session_hijack');
+        $aliceSession = $this->makeWidgetSession($key, $aliceIdentity->id);
+
+        // Attacco reale: il caller conosce l'UUID pubblico di Alice ma possiede
+        // soltanto pk_. Prima del fix riceveva un wt_ collegato alla sua identità.
+        $this->postJson('/api/widget/session-token', [
+            'session_id' => $aliceSession->public_session_id,
+        ], [
+            'Origin' => 'https://host.example',
+            'X-Widget-Key' => $key->public_key,
+        ])->assertNotFound()->assertJsonPath('error', 'widget_session_not_found');
+
+        // Anche un wu_ valido ma appartenente a Bob non può trasferire
+        // l'identità di Alice nel token single-use.
+        $this->postJson('/api/widget/session-token', [
+            'session_id' => $aliceSession->public_session_id,
+        ], [
+            'Origin' => 'https://host.example',
+            'Authorization' => 'Bearer '.$bobToken,
+        ])->assertNotFound()->assertJsonPath('error', 'widget_session_not_found');
+
+        $this->assertDatabaseCount('widget_session_tokens', 0);
+
+        // Il token Alice iniziale è stato davvero coniato e usato come caller;
+        // evita che la regressione passi senza aver allestito le credenziali.
+        $this->assertStringStartsWith('wu_', $aliceToken);
+    }
+
+    public function test_matching_identity_can_mint_and_use_a_token_for_its_authenticated_session(): void
+    {
+        $key = $this->key('pk_session_owner', 'ik_session_owner');
+        $aliceToken = $this->token($key, 'alice', 'ik_session_owner');
+        $aliceIdentity = WidgetIdentity::query()->firstOrFail();
+        $aliceSession = $this->makeWidgetSession($key, $aliceIdentity->id);
+        $aliceSession->steps()->create([
+            'step_index' => 0,
+            'kind' => WidgetSessionStep::KIND_USER_MESSAGE,
+            'args_json' => ['content' => 'owner-only history'],
+        ]);
+
+        $mint = $this->postJson('/api/widget/session-token', [
+            'session_id' => $aliceSession->public_session_id,
+        ], [
+            'Origin' => 'https://host.example',
+            'Authorization' => 'Bearer '.$aliceToken,
+        ])->assertCreated();
+
+        $sessionToken = (string) $mint->json('token');
+        $this->assertStringStartsWith('wt_', $sessionToken);
+        $this->assertDatabaseHas('widget_session_tokens', [
+            'token' => hash('sha256', $sessionToken),
+            'widget_key_id' => $key->id,
+            'widget_session_id' => $aliceSession->id,
+        ]);
+
+        // Il token viene consumato sul percorso reale del middleware e ottiene
+        // esclusivamente la sessione/identità che il caller possedeva al mint.
+        $this->getJson('/api/widget/sessions/'.$aliceSession->public_session_id.'/replay', [
+            'Origin' => 'https://host.example',
+            'Authorization' => 'Bearer '.$sessionToken,
+        ])->assertOk()->assertJsonPath('steps.0.args_json.content', 'owner-only history');
+    }
+
+    public function test_anonymous_session_token_mint_remains_compatible_for_public_key_callers(): void
+    {
+        $key = $this->key('pk_anonymous_session', 'ik_anonymous_session');
+        $session = WidgetSession::query()->create([
+            'tenant_id' => 'default',
+            'widget_key_id' => $key->id,
+            'widget_identity_id' => null,
+            'project_key' => $key->project_key,
+            'public_session_id' => (string) Str::uuid(),
+            'status' => WidgetSession::STATUS_ACTIVE,
+            'skill' => $key->skill,
+        ]);
+
+        $mint = $this->postJson('/api/widget/session-token', [
+            'session_id' => $session->public_session_id,
+        ], [
+            'Origin' => 'https://host.example',
+            'X-Widget-Key' => $key->public_key,
+        ])->assertCreated();
+
+        $sessionToken = (string) $mint->json('token');
+        $this->assertDatabaseHas('widget_session_tokens', [
+            'token' => hash('sha256', $sessionToken),
+            'widget_session_id' => $session->id,
+        ]);
+
+        $this->getJson('/api/widget/sessions/'.$session->public_session_id.'/replay', [
+            'Origin' => 'https://host.example',
+            'Authorization' => 'Bearer '.$sessionToken,
+        ])->assertOk()->assertJsonPath('steps', []);
     }
 
     private function key(string $publicKey, string $identitySecret): WidgetKey
@@ -106,14 +309,14 @@ final class WidgetAuthenticatedHistoryTest extends TestCase
         ]);
     }
 
-    private function token(WidgetKey $key, string $subject): string
+    private function token(WidgetKey $key, string $subject, string $identitySecret): string
     {
         return (string) $this->postJson('/api/widget/user-token', [
             'subject' => $subject,
             'origin' => 'https://host.example',
         ], [
             'X-Widget-Key' => $key->public_key,
-            'Authorization' => 'Bearer '.($key->public_key === 'pk_history' ? 'ik_history' : 'ik_origin'),
+            'Authorization' => 'Bearer '.$identitySecret,
         ])->assertCreated()->json('token');
     }
 

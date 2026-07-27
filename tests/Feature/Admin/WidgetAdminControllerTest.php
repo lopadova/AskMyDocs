@@ -905,5 +905,21 @@ final class WidgetAdminControllerTest extends TestCase
             $created->json('identity_plain_secret'),
             $rotated->json('identity_plain_secret'),
         );
+
+        $exchangePayload = [
+            'subject' => 'host-user-42',
+            'origin' => 'https://portal.example',
+        ];
+        $publicKey = (string) $created->json('public_key');
+
+        $this->postJson('/api/widget/user-token', $exchangePayload, [
+            'X-Widget-Key' => $publicKey,
+            'Authorization' => 'Bearer '.$created->json('identity_plain_secret'),
+        ])->assertUnauthorized()->assertJsonPath('error', 'identity_credentials_invalid');
+
+        $this->postJson('/api/widget/user-token', $exchangePayload, [
+            'X-Widget-Key' => $publicKey,
+            'Authorization' => 'Bearer '.$rotated->json('identity_plain_secret'),
+        ])->assertCreated();
     }
 }

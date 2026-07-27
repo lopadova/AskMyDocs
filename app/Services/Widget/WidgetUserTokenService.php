@@ -83,6 +83,7 @@ final class WidgetUserTokenService
                 ->find($claims['iid'] ?? 0);
         if ($key === null || $identity === null
             || ! $key->is_active || ! $key->user_auth_enabled
+            || ! $key->originAllowed($origin)
             || $identity->widget_key_id !== $key->id
             || $identity->project_key !== $key->project_key
             || ($claims['pid'] ?? null) !== $key->project_key) {
