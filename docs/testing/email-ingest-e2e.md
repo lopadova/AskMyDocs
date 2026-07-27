@@ -198,6 +198,12 @@ parent attesi. Non invia messaggi e non legge la password. Nonostante il nome
 storico dell'opzione, non calcola un prezzo: token, costo embedding, spazio DB e
 durata devono essere misurati durante la certificazione live.
 
+Il profilo `stress` contiene 30.000 messaggi ed è riservato a un server IMAP
+locale usa-e-getta. Non usarlo sull'account Gmail condiviso: gli APPEND sono
+seriali sul singolo account fisico, possono richiedere molte ore e subire
+throttling. Il comando stampa un warning esplicito quando rileva `stress` su un
+host remoto; per la certificazione Gmail usare `large`.
+
 Per le fixture generate:
 
 - generazione e delivery: zero chiamate LLM;
@@ -240,7 +246,12 @@ La delivery:
   contratto ma non sono generati);
 - salva un checkpoint atomico ogni `--batch-size` messaggi, default 100;
 - su drop ambiguo cerca il singolo `Message-ID` prima di ritentare;
-- fa purge server-side a blocchi di 100.
+- fa purge server-side a blocchi di 100, marcando l'intero blocco prima di un
+  solo `UID EXPUNGE` selettivo; il server deve dichiarare `UIDPLUS`, altrimenti
+  il comando fallisce prima di marcare messaggi come `\Deleted`;
+- stampa attesa/acquisizione lock, inizio/fine purge e APPEND confermati con
+  throughput ed ETA; `-v` aggiunge il subject di ogni messaggio preparato,
+  mentre `--progress-every=N` regola i riepiloghi degli ACK.
 
 Con `CONNECTOR_IMAP_SERIALIZE_CONNECTIONS=true`, il runtime CLI deve offrire
 PCNTL/SIGALRM. La lease viene rinnovata prima di ogni APPEND/purge e dopo ogni

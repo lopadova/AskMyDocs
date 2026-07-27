@@ -2171,6 +2171,11 @@ temporary SQLite database rather than PHP arrays.
 `mail:seed-imap --profile=large` streams one RFC822 at a time with atomic
 checkpoints, a physical-mailbox lock and `--resume`; `--purge-dataset` cleans
 then re-appends, while `--purge-dataset --purge-only` only removes. Generated
+delivery reports lock/purge phases plus confirmed APPEND throughput and ETA;
+purge expunges bounded UIDPLUS batches instead of one message per round-trip. The
+30,000-message `stress` profile is for a disposable local IMAP server, not the
+shared Gmail account.
+
 Message-IDs are the trusted marker that skips Auto-Wiki/change-analysis. Before
 dispatch, the host requires `KB_DISK_THROW=true`, verifies the source and moves
 the parent from its UID path to a stable
