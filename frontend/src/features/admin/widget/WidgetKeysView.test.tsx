@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { WidgetKeysView } from './WidgetKeysView';
 
@@ -71,6 +71,75 @@ describe('WidgetKeysView', () => {
         });
         expect(screen.getByText('Production')).toBeDefined();
         expect(screen.getByText('pk_abc123')).toBeDefined();
+    });
+
+    it('keeps origins, rate, host tools and user auth under the matching columns', async () => {
+        mockedApi.get.mockResolvedValueOnce({
+            data: {
+                data: [
+                    {
+                        id: 31,
+                        label: 'Authenticated',
+                        public_key: 'pk_auth',
+                        project_key: 'main',
+                        allowed_origins: ['https://portal.example'],
+                        rate_limit: 75,
+                        skill: 'askmydocs-assistant@1',
+                        host_tools_enabled: false,
+                        user_auth_enabled: true,
+                        is_active: true,
+                        last_used_at: null,
+                        sessions_count: 2,
+                        created_at: '2026-05-30T00:00:00Z',
+                        updated_at: '2026-05-30T00:00:00Z',
+                    },
+                ],
+            },
+        });
+
+        renderWithQuery(<WidgetKeysView />);
+        const row = await screen.findByTestId('admin-widget-keys-row-31');
+        const cells = within(row).getAllByRole('cell');
+
+        expect(cells[4]).toHaveTextContent('https://portal.example');
+        expect(cells[5]).toHaveTextContent('75/min');
+        expect(cells[6]).toHaveTextContent('Off');
+        expect(cells[7]).toHaveTextContent('On');
+        expect(
+            within(row).getByRole('checkbox', {
+                name: 'Authenticated users for Authenticated',
+            }),
+        ).toBeDefined();
+    });
+
+    it('states that an empty allowlist permits no browser origins', async () => {
+        mockedApi.get.mockResolvedValueOnce({
+            data: {
+                data: [
+                    {
+                        id: 32,
+                        label: 'Locked',
+                        public_key: 'pk_locked',
+                        project_key: 'main',
+                        allowed_origins: [],
+                        rate_limit: 60,
+                        host_tools_enabled: false,
+                        user_auth_enabled: false,
+                        is_active: true,
+                        last_used_at: null,
+                        sessions_count: 0,
+                        created_at: '2026-05-30T00:00:00Z',
+                        updated_at: '2026-05-30T00:00:00Z',
+                    },
+                ],
+            },
+        });
+
+        renderWithQuery(<WidgetKeysView />);
+
+        expect(
+            await screen.findByTestId('admin-widget-keys-origins-empty-32'),
+        ).toHaveTextContent('none configured');
     });
 
     it('opens create form on button click', async () => {
@@ -286,6 +355,203 @@ describe('WidgetKeysView', () => {
         const snippet = await screen.findByTestId('admin-widget-embed-snippet');
         expect(snippet.textContent).toContain('pk_embed_one');
         expect(snippet.textContent).toContain('window.AskMyDocsWidget');
+    });
+
+    it('opens the authenticated-user integration tab for an enabled key', async () => {
+        mockedApi.get.mockResolvedValueOnce({
+            data: {
+                data: [
+                    {
+                        id: 33,
+                        label: 'Private portal',
+                        public_key: 'pk_private',
+                        project_key: 'main',
+                        allowed_origins: ['https://portal.example'],
+                        rate_limit: 60,
+                        skill: 'askmydocs-assistant@1',
+                        host_tools_enabled: false,
+                        user_auth_enabled: true,
+                        is_active: true,
+                        last_used_at: null,
+                        sessions_count: 0,
+                        created_at: '2026-05-30T00:00:00Z',
+                        updated_at: '2026-05-30T00:00:00Z',
+                    },
+                ],
+            },
+        });
+
+        renderWithQuery(<WidgetKeysView />);
+        fireEvent.click(await screen.findByTestId('admin-widget-keys-embed-33'));
+
+        const authTab = await screen.findByTestId('admin-widget-embed-tab-authenticated');
+        fireEvent.click(authTab);
+        expect(await screen.findByTestId('admin-widget-auth-guide')).toBeDefined();
+    });
+
+    it('requires confirmation before rotating the identity credential', async () => {
+        mockedApi.get.mockResolvedValue({
+            data: {
+                data: [
+                    {
+                        id: 43,
+                        label: 'Protected portal',
+                        public_key: 'pk_protected',
+                        project_key: 'main',
+                        allowed_origins: ['https://portal.example'],
+                        rate_limit: 60,
+                        skill: 'askmydocs-assistant@1',
+                        host_tools_enabled: false,
+                        user_auth_enabled: true,
+                        is_active: true,
+                        last_used_at: null,
+                        sessions_count: 0,
+                        created_at: '2026-05-30T00:00:00Z',
+                        updated_at: '2026-05-30T00:00:00Z',
+                    },
+                ],
+            },
+        });
+        mockedApi.post.mockResolvedValueOnce({
+            data: { identity_plain_secret: 'ik_rotated_after_confirmation' },
+        });
+        const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+
+        renderWithQuery(<WidgetKeysView />);
+        const rotate = await screen.findByTestId(
+            'admin-widget-keys-43-rotate-identity',
+        );
+
+        fireEvent.click(rotate);
+        expect(mockedApi.post).not.toHaveBeenCalled();
+
+        confirmSpy.mockReturnValue(true);
+        fireEvent.click(rotate);
+
+        await waitFor(() => {
+            expect(mockedApi.post).toHaveBeenCalledWith(
+                '/api/admin/widget-keys/43/rotate-identity-secret',
+            );
+        });
+        expect(confirmSpy).toHaveBeenCalledWith(
+            expect.stringContaining('current ik_ will stop minting new user tokens'),
+        );
+        confirmSpy.mockRestore();
+    });
+
+    it('associates a newly-issued identity credential with its widget key', async () => {
+        mockedApi.get.mockResolvedValue({ data: { data: [] } });
+        mockedApi.post.mockResolvedValueOnce({
+            data: {
+                data: {
+                    id: 34,
+                    label: 'Customer portal',
+                    public_key: 'pk_customer',
+                    project_key: 'main',
+                    allowed_origins: ['https://customer.example'],
+                    rate_limit: 60,
+                    host_tools_enabled: false,
+                    user_auth_enabled: true,
+                    is_active: true,
+                    last_used_at: null,
+                    sessions_count: 0,
+                    created_at: '2026-05-30T00:00:00Z',
+                    updated_at: '2026-05-30T00:00:00Z',
+                },
+                plain_secret: 'sk_customer',
+                public_key: 'pk_customer',
+                identity_plain_secret: 'ik_customer',
+            },
+        });
+
+        renderWithQuery(<WidgetKeysView />);
+        fireEvent.click(screen.getByTestId('admin-widget-keys-create-btn'));
+        fireEvent.change(await screen.findByTestId('admin-widget-keys-label'), {
+            target: { value: 'Customer portal' },
+        });
+        fireEvent.change(screen.getByTestId('admin-widget-keys-project'), {
+            target: { value: 'main' },
+        });
+        fireEvent.click(screen.getByTestId('admin-widget-keys-user-auth-toggle'));
+        fireEvent.click(screen.getByTestId('admin-widget-keys-create-submit'));
+
+        const alert = await screen.findByTestId('admin-widget-identity-secret');
+        expect(alert).toHaveTextContent('Customer portal');
+        expect(alert).toHaveTextContent('pk_customer');
+        expect(alert).toHaveTextContent('ik_customer');
+
+        fireEvent.click(screen.getByTestId('admin-widget-identity-secret-setup'));
+        expect(await screen.findByTestId('admin-widget-auth-guide')).toBeVisible();
+        expect(screen.getByTestId('admin-widget-embed-tab-authenticated')).toHaveAttribute(
+            'data-state',
+            'active',
+        );
+    });
+
+    it('keeps a one-time identity credential when another key disables user auth', async () => {
+        const keys = [
+            {
+                id: 41,
+                label: 'Portal A',
+                public_key: 'pk_portal_a',
+                project_key: 'main',
+                allowed_origins: ['https://a.example'],
+                rate_limit: 60,
+                skill: 'askmydocs-assistant@1',
+                host_tools_enabled: false,
+                user_auth_enabled: true,
+                is_active: true,
+                last_used_at: null,
+                sessions_count: 0,
+                created_at: '2026-05-30T00:00:00Z',
+                updated_at: '2026-05-30T00:00:00Z',
+            },
+            {
+                id: 42,
+                label: 'Portal B',
+                public_key: 'pk_portal_b',
+                project_key: 'main',
+                allowed_origins: ['https://b.example'],
+                rate_limit: 60,
+                skill: 'askmydocs-assistant@1',
+                host_tools_enabled: false,
+                user_auth_enabled: true,
+                is_active: true,
+                last_used_at: null,
+                sessions_count: 0,
+                created_at: '2026-05-30T00:00:00Z',
+                updated_at: '2026-05-30T00:00:00Z',
+            },
+        ];
+        mockedApi.get.mockResolvedValue({ data: { data: keys } });
+        mockedApi.post.mockResolvedValueOnce({
+            data: { identity_plain_secret: 'ik_portal_a_once' },
+        });
+        mockedApi.patch.mockResolvedValueOnce({
+            data: { identity_plain_secret: null },
+        });
+        const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+        renderWithQuery(<WidgetKeysView />);
+        fireEvent.click(
+            await screen.findByTestId('admin-widget-keys-41-rotate-identity'),
+        );
+
+        expect(await screen.findByTestId('admin-widget-identity-secret')).toHaveTextContent(
+            'ik_portal_a_once',
+        );
+
+        fireEvent.click(screen.getByTestId('admin-widget-keys-42-user-auth-toggle'));
+        await waitFor(() => {
+            expect(mockedApi.patch).toHaveBeenCalledWith('/api/admin/widget-keys/42', {
+                user_auth_enabled: false,
+            });
+        });
+
+        expect(screen.getByTestId('admin-widget-identity-secret')).toHaveTextContent(
+            'ik_portal_a_once',
+        );
+        confirmSpy.mockRestore();
     });
 
     it('includes theme.mode=inline in the create payload when inline is selected', async () => {
@@ -647,6 +913,80 @@ describe('WidgetKeysView', () => {
 
         const err = await screen.findByTestId('admin-widget-keys-host-tools-error');
         expect(err.textContent).toContain('Host tools update failed.');
+    });
+
+    it('surfaces a user-auth PATCH error in the DOM instead of implying success', async () => {
+        mockedApi.get.mockResolvedValue({
+            data: {
+                data: [
+                    {
+                        id: 12,
+                        label: 'Private portal',
+                        public_key: 'pk_private_error',
+                        project_key: 'main',
+                        allowed_origins: ['https://portal.example'],
+                        rate_limit: 60,
+                        skill: 'askmydocs-assistant@1',
+                        host_tools_enabled: false,
+                        user_auth_enabled: false,
+                        is_active: true,
+                        last_used_at: null,
+                        sessions_count: 0,
+                        created_at: '2026-05-30T00:00:00Z',
+                        updated_at: '2026-05-30T00:00:00Z',
+                    },
+                ],
+            },
+        });
+        mockedApi.patch.mockRejectedValueOnce({
+            response: { data: { message: 'User authentication update failed.' } },
+        });
+
+        renderWithQuery(<WidgetKeysView />);
+        fireEvent.click(
+            await screen.findByTestId('admin-widget-keys-12-user-auth-toggle'),
+        );
+
+        const err = await screen.findByTestId('admin-widget-keys-user-auth-error');
+        expect(err.textContent).toContain('User authentication update failed.');
+    });
+
+    it('surfaces an identity-secret rotation error in the DOM', async () => {
+        mockedApi.get.mockResolvedValue({
+            data: {
+                data: [
+                    {
+                        id: 13,
+                        label: 'Private portal',
+                        public_key: 'pk_rotation_error',
+                        project_key: 'main',
+                        allowed_origins: ['https://portal.example'],
+                        rate_limit: 60,
+                        skill: 'askmydocs-assistant@1',
+                        host_tools_enabled: false,
+                        user_auth_enabled: true,
+                        is_active: true,
+                        last_used_at: null,
+                        sessions_count: 0,
+                        created_at: '2026-05-30T00:00:00Z',
+                        updated_at: '2026-05-30T00:00:00Z',
+                    },
+                ],
+            },
+        });
+        mockedApi.post.mockRejectedValueOnce({
+            response: { data: { message: 'Identity credential rotation failed.' } },
+        });
+        const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+        renderWithQuery(<WidgetKeysView />);
+        fireEvent.click(
+            await screen.findByTestId('admin-widget-keys-13-rotate-identity'),
+        );
+
+        const err = await screen.findByTestId('admin-widget-keys-user-auth-error');
+        expect(err.textContent).toContain('Identity credential rotation failed.');
+        confirmSpy.mockRestore();
     });
 
     it('opens the origins editor from a table row, prefilled with the current origins', async () => {

@@ -150,12 +150,11 @@ instance directly:
 
 ---
 
-## Session Tokens (M5.2) — Avoiding Repeated `pk_` in the Browser
+## Session Tokens (M5.2) — Optional One-Request Bearers
 
 For additional security in Mode A, the widget can **mint a session token**
-(`wt_…`) from the backend and use it as a Bearer token for subsequent
-requests instead of sending the public key on every call.  Session tokens
-are:
+(`wt_…`) and use it as a Bearer token for exactly the next request. Session
+tokens are:
 
 - **Origin-bound** — only valid from the `Origin` that minted them.
 - **Single-shot** — consumed after one request (R21: atomic consumption
@@ -169,11 +168,10 @@ are:
 // The Transport class handles this automatically:
 const transport = new Transport({ key: 'pk_live_abc123', apiBase: 'https://kb.example.com' });
 
-// Mint a session token (uses X-Widget-Key once)
+// Mint with the current credential: wu_ for an authenticated user, otherwise pk_.
 const { token, expires_at } = await transport.mintSessionToken();
 
-// All subsequent requests use Authorization: Bearer *** instead of X-Widget-Key
-// The token is consumed after the first request and the Transport falls back to pk mode.
+// The next request uses wt_. It is then consumed and Transport resumes wu_ or pk_.
 await transport.start(snapshot, 'Hello');
 ```
 
@@ -195,7 +193,9 @@ Response: { "token": "wt_...", "expires_at": "..." }
 | Mode | Header | Token | Origin check | Trust level |
 |------|--------|-------|--------------|-------------|
 | A (browser) | `X-Widget-Key: pk_…` | Public key | Required | Standard |
-| A + session token | `Authorization: Bearer *** | Session token (`wt_…`) | Origin-bound | Enhanced |
+| A + session token | `Authorization: Bearer wt_…` | Single-use session token | Origin-bound | Enhanced |
+| Authenticated host user | `Authorization: Bearer wu_…` | Short-lived user token | Origin-bound | Host-authenticated identity |
+| B (proxy) | `Authorization: Bearer sk_…` | Server secret | None | High (server-to-server) |
 
 ## Authenticated host users and cross-device history
 
@@ -203,7 +203,9 @@ Per-key user authentication is opt-in under **Widget → Keys**. Enabling it
 creates a separate `ik_…` server credential, shown once and rotatable. Keep it
 on the host backend; never expose the credential or the host subject in HTML.
 
-The authenticated host backend exchanges its own stable opaque subject:
+The host application remains responsible for authenticating the user. Its
+backend exchanges a stable opaque subject (prefer a user UUID or an HMAC of an
+internal id; do not use a mutable email):
 
 ```http
 POST /api/widget/user-token
@@ -215,24 +217,68 @@ Content-Type: application/json
 ```
 
 AskMyDocs stores only a keyed hash of that subject and returns a short-lived,
-origin-bound `wu_…` token. Render only that token into the widget:
+origin-bound `wu_…` token:
+
+```json
+{"token":"wu_…","expires_at":"2026-07-27T14:30:00+00:00"}
+```
+
+There is deliberately no AskMyDocs refresh token in the browser. The
+recommended integration exposes a session-protected, same-origin endpoint on
+the host application. The widget calls it with the host's normal cookie,
+obtains `wu_…` in memory, renews it shortly before expiry, and retries once if
+AskMyDocs reports `user_token_invalid`.
+
+```php
+// Host application: routes/web.php
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Route;
+
+Route::get('/api/askmydocs/widget-user-token', function (Request $request) {
+    $response = Http::acceptJson()
+        ->withHeaders([
+            'X-Widget-Key' => config('services.askmydocs.widget_public_key'),
+        ])
+        ->withToken(config('services.askmydocs.widget_identity_secret'))
+        ->post(rtrim(config('services.askmydocs.url'), '/').'/api/widget/user-token', [
+            // Prefer an immutable UUID; never accept subject from request input.
+            'subject' => (string) $request->user()->getAuthIdentifier(),
+            'origin' => config('services.askmydocs.widget_origin'),
+        ])
+        ->throw();
+
+    return response()->json($response->only(['token', 'expires_at']))
+        ->header('Cache-Control', 'no-store');
+})->middleware('auth');
+```
+
+Point the widget at that host endpoint:
 
 ```html
 <script>
   window.AskMyDocsWidget = {
     key: 'pk_…',
-    userToken: 'wu_…'
+    apiBase: 'https://kb.example.com',
+    userTokenUrl: '/api/askmydocs/widget-user-token'
   };
 </script>
 ```
 
+`userTokenUrl` must resolve to the same origin as the host page and return
+exactly `{ token: "wu_…", expires_at: "ISO-8601" }`. The loader also accepts
+`data-user-token-url`. A static `userToken: "wu_…"` remains supported for
+server-rendered, short-lived pages, but it cannot be renewed after it expires.
+The runtime requests the endpoint with `cache: "no-store"`; the host endpoint
+should also return `Cache-Control: no-store`.
+
 With a valid user token the runtime lists the user's sessions, restores the
 newest open conversation, and replays its visible messages. `GET
-/api/widget/sessions` is paginated; replay remains
-`GET /api/widget/sessions/{uuid}/replay`. Both are scoped to tenant, widget key,
-project and pseudonymous identity. Anonymous keys and sessions retain their
-existing behavior.
-| B (proxy) | `Authorization: Bearer ***` | Secret hash (`sk_…`) | None | High (server-to-server) |
+/api/widget/sessions` is paginated; replay remains `GET
+/api/widget/sessions/{uuid}/replay`. Both are scoped to tenant, widget key,
+project and pseudonymous identity. If authenticated mode is configured but the
+host endpoint fails, the widget fails closed instead of silently creating an
+anonymous conversation.
 
 ---
 
@@ -432,8 +478,8 @@ window.addEventListener('amd:message', (e) => {
    masked (tokenised) before storage. Re-detokenisation requires
    `detokenisePiiRedactor` gate.
 4. **Rate limiting**: per (key + IP), configurable per key (default 60/min).
-5. **Session token rotation** (M5.2): single-shot `wt_…` tokens prevent
-   credential reuse in browser mode.
+5. **Session-token replay protection** (M5.2): single-shot `wt_…` tokens are
+   accepted for one request only.
 6. **Auto-purge**: old sessions are pruned by `widget:prune-sessions`
    (configurable retention, see `config/widget.php`).
 7. **RBAC**: admin management (create/rotate/revoke keys) requires

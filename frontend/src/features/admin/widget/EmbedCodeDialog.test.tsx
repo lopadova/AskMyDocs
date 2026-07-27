@@ -126,6 +126,73 @@ describe('EmbedCodeDialog', () => {
         expect(server.textContent ?? '').toContain('Bearer sk_…');
     });
 
+    it('keeps authenticated-user setup hidden for a public-only key', () => {
+        renderDialog({ userAuthEnabled: false });
+
+        expect(screen.queryByTestId('admin-widget-embed-tab-authenticated')).toBeNull();
+        expect(screen.getByTestId('admin-widget-embed-snippet').textContent).not.toContain(
+            'userTokenUrl',
+        );
+    });
+
+    it('generates the host exchange and same-origin token bootstrap for authenticated users', async () => {
+        const user = userEvent.setup();
+        renderDialog({
+            userAuthEnabled: true,
+            identitySecret: 'ik_once_only',
+            allowedOrigins: ['https://portal.example'],
+        });
+
+        expect(screen.getByTestId('admin-widget-embed-snippet').textContent).toContain(
+            "userTokenUrl: '/api/askmydocs/widget-user-token'",
+        );
+        expect(screen.getByText('Host token endpoint + embed tags')).toBeVisible();
+
+        await user.click(screen.getByTestId('admin-widget-embed-tab-authenticated'));
+
+        expect(await screen.findByTestId('admin-widget-auth-guide')).toBeDefined();
+        expect(screen.getByTestId('admin-widget-embed-auth-env').textContent).toContain(
+            'ASKMYDOCS_WIDGET_IDENTITY_SECRET=ik_once_only',
+        );
+        const server = screen.getByTestId('admin-widget-embed-auth-server').textContent ?? '';
+        expect(server).toContain("->middleware('auth')");
+        expect(server).toContain("'subject' => (string) $request->user()->getAuthIdentifier()");
+        expect(server).toContain("->header('Cache-Control', 'no-store')");
+        expect(server).not.toContain('email');
+        expect(screen.getByTestId('admin-widget-embed-auth-browser').textContent).toContain(
+            "userTokenUrl: '/api/askmydocs/widget-user-token'",
+        );
+    });
+
+    it('updates all authenticated snippets when the host token endpoint changes', async () => {
+        const user = userEvent.setup();
+        renderDialog({ userAuthEnabled: true });
+        await user.click(screen.getByTestId('admin-widget-embed-tab-authenticated'));
+
+        const input = await screen.findByTestId('admin-widget-embed-user-token-url');
+        await user.clear(input);
+        await user.type(input, '/api/private/widget-token');
+
+        await waitFor(() => {
+            expect(screen.getByTestId('admin-widget-embed-auth-server').textContent).toContain(
+                "Route::get('/api/private/widget-token'",
+            );
+            expect(screen.getByTestId('admin-widget-embed-auth-browser').textContent).toContain(
+                "userTokenUrl: '/api/private/widget-token'",
+            );
+        });
+    });
+
+    it('explains how to rotate the one-time identity credential when it is unavailable', async () => {
+        const user = userEvent.setup();
+        renderDialog({ userAuthEnabled: true, identitySecret: null });
+        await user.click(screen.getByTestId('admin-widget-embed-tab-authenticated'));
+
+        expect(
+            await screen.findByTestId('admin-widget-embed-auth-secret-missing'),
+        ).toHaveTextContent('shown only once');
+    });
+
     it('builds an inline snippet with a container div, mode and mount', () => {
         renderDialog({ theme: { ...DEFAULT_THEME, mode: 'inline' } });
 
