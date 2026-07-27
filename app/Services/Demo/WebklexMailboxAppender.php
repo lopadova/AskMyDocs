@@ -11,14 +11,16 @@ use RuntimeException;
 use Throwable;
 use Webklex\PHPIMAP\Client;
 use Webklex\PHPIMAP\ClientManager;
+use Webklex\PHPIMAP\Connection\Protocols\ImapProtocol;
+use Webklex\PHPIMAP\Connection\Protocols\ProtocolInterface;
 use Webklex\PHPIMAP\Folder;
 
 /**
  * Implementazione reale di {@see MailboxAppender} sopra webklex/php-imap.
  *
- * Esercitata solo nei run live (dev/local con caselle Gmail vere): i test del
- * comando bindano un fake. Apre UNA connessione per casella e consuma lo stream
- * dei messaggi (no login-per-messaggio e niente array RFC822 completo in memoria).
+ * Nei test il protocollo Webklex è sostituito da double stateful, mentre i test
+ * del comando bindano un fake. Apre UNA connessione per casella e consuma lo
+ * stream dei messaggi (no login-per-messaggio e niente array RFC822 completo in memoria).
  * Niente fallimenti silenziosi — ogni problema
  * (auth, folder assente, append) solleva un'eccezione; gli errori di connessione
  * TRANSITORI fanno retry, quelli di autenticazione fermano subito (R42).
@@ -27,15 +29,20 @@ use Webklex\PHPIMAP\Folder;
  * riconnessione, ricerca del Message-ID deterministico, append solo se assente.
  * Non viene mai ritentato l'intero stream.
  *
- * NOTA R13: questi due metodi colpiscono un server IMAP reale e NON hanno test
- * automatici (solo il fake è esercitato). In particolare `purgeSeeded` è
- * DISTRUTTIVO e il match dell'header custom è verificato solo nei run live.
+ * NOTA R13: i test automatici coprono l'orchestrazione e i comandi protocollo,
+ * ma non aprono una socket IMAP reale. In particolare `purgeSeeded` è
+ * DISTRUTTIVO e il match dell'header custom resta verificabile solo nei run live.
  */
 final class WebklexMailboxAppender implements MailboxAppender
 {
     private const CONNECT_ATTEMPTS = 3;
 
     private const CONNECT_RETRY_DELAY = 5;
+
+    public function __construct(
+        private readonly ClientManager $clients,
+        private readonly ImapUidBatchPurger $uidBatchPurger,
+    ) {}
 
     public function appendStream(
         MailboxTarget $target,
@@ -68,6 +75,7 @@ final class WebklexMailboxAppender implements MailboxAppender
             // Crea la label/cartella se non esiste (Gmail: un IMAP CREATE crea la
             // label) — su un account-unico-con-label la cartella nasce qui.
             $folder = $this->ensureFolder($client, $target->folder);
+            $connection = $client->getConnection();
 
             foreach ($messages as $message) {
                 if (! $message instanceof PreparedEmailMessage) {
@@ -76,24 +84,28 @@ final class WebklexMailboxAppender implements MailboxAppender
                     );
                 }
 
-                $lease?->refresh();
-                $this->applyLeaseTimeout($client, $lease);
-                if ($message->verifyBeforeAppend && $this->messageExists($folder, $message->messageId)) {
+                if ($message->verifyBeforeAppend) {
                     $lease?->refresh();
-                    $alreadyPresent++;
-                    if ($onStored !== null) {
-                        $onStored($message, true);
-                    }
+                    $exists = $this->messageExists($folder, $message->messageId);
+                    // A recovery query may have made Webklex reconnect. Refresh
+                    // the cached protocol before either continuing or APPEND.
+                    $connection = $client->getConnection();
+                    $lease?->refresh();
+                    if ($exists) {
+                        $alreadyPresent++;
+                        if ($onStored !== null) {
+                            $onStored($message, true);
+                        }
 
-                    continue;
+                        continue;
+                    }
                 }
 
                 try {
                     // Refresh immediately before every physical APPEND. The
                     // cache implementation renews only for the current owner.
                     $lease?->refresh();
-                    $this->applyLeaseTimeout($client, $lease);
-                    $folder->appendMessage($message->raw, null, $message->imapInternalDate());
+                    $this->appendMessage($connection, $folder, $message);
                     $lease?->refresh();
                     $appended++;
                     if ($onStored !== null) {
@@ -114,8 +126,12 @@ final class WebklexMailboxAppender implements MailboxAppender
                     $folder = $this->ensureFolder($client, $target->folder);
 
                     $lease?->refresh();
-                    $this->applyLeaseTimeout($client, $lease);
-                    if ($this->messageExists($folder, $message->messageId)) {
+                    $exists = $this->messageExists($folder, $message->messageId);
+                    // The recovery query can reconnect as well: never carry the
+                    // dead pre-drop protocol into the next stream item.
+                    $connection = $client->getConnection();
+                    $lease?->refresh();
+                    if ($exists) {
                         $lease?->refresh();
                         $alreadyPresent++;
                         if ($onStored !== null) {
@@ -126,8 +142,7 @@ final class WebklexMailboxAppender implements MailboxAppender
                     }
 
                     $lease?->refresh();
-                    $this->applyLeaseTimeout($client, $lease);
-                    $folder->appendMessage($message->raw, null, $message->imapInternalDate());
+                    $this->appendMessage($connection, $folder, $message);
                     $lease?->refresh();
                     $appended++;
                     if ($onStored !== null) {
@@ -147,12 +162,14 @@ final class WebklexMailboxAppender implements MailboxAppender
         string $headerName,
         string $value,
         ?EmailSeedLockLease $lease = null,
+        ?Closure $onPurged = null,
     ): int {
         $operation = fn (): int => $this->purgeSeededUnlocked(
             $target,
             $headerName,
             $value,
             $lease,
+            $onPurged,
         );
 
         return $lease === null ? $operation() : $lease->runGuarded($operation);
@@ -163,6 +180,7 @@ final class WebklexMailboxAppender implements MailboxAppender
         string $headerName,
         string $value,
         ?EmailSeedLockLease $lease,
+        ?Closure $onPurged,
     ): int {
         if (preg_match('/^[A-Za-z0-9-]+$/', $headerName) !== 1) {
             throw new InvalidArgumentException("Nome header IMAP non valido: '{$headerName}'.");
@@ -177,7 +195,6 @@ final class WebklexMailboxAppender implements MailboxAppender
 
         try {
             // Label assente = niente da purgare (primo run): non è un errore.
-            $this->applyLeaseTimeout($client, $lease);
             $folder = $client->getFolderByPath($target->folder, false, true);
             if ($folder === null) {
                 return 0;
@@ -192,11 +209,14 @@ final class WebklexMailboxAppender implements MailboxAppender
                 ->chunked(function ($messages) use (
                     &$deleted,
                     $client,
+                    $folder,
                     $headerName,
+                    $onPurged,
                     $value,
                     $lease,
                 ): void {
                     $needle = strtolower($headerName);
+                    $uids = [];
 
                     foreach ($messages as $message) {
                         $header = $message->getHeader();
@@ -204,23 +224,68 @@ final class WebklexMailboxAppender implements MailboxAppender
                             continue;
                         }
 
-                        $lease?->refresh();
-                        $this->applyLeaseTimeout($client, $lease);
-                        if (! $message->delete(true)) {
+                        $uid = (int) $message->getUid();
+                        if ($uid < 1) {
                             throw new RuntimeException(
-                                "Eliminazione IMAP fallita per header {$headerName}={$value}.",
+                                "UID IMAP non valido durante il purge {$headerName}={$value}.",
                             );
                         }
-
-                        $lease?->refresh();
-                        $deleted++;
+                        $uids[] = $uid;
                     }
+
+                    // One UID STORE per contiguous range, then one EXPUNGE for
+                    // the bounded page. Calling Message::delete(true) would do
+                    // NOOP + STORE + EXPUNGE for every individual e-mail.
+                    $connection = $client->getConnection();
+                    if (! $connection instanceof ImapProtocol) {
+                        throw new RuntimeException(
+                            'Il purge selettivo richiede il protocollo IMAP nativo con UID EXPUNGE.',
+                        );
+                    }
+                    $this->uidBatchPurger->purge(
+                        $connection,
+                        $folder->path,
+                        $uids,
+                        $lease,
+                        function (int $pageDeleted) use (
+                            &$deleted,
+                            $onPurged,
+                        ): void {
+                            $deleted += $pageDeleted;
+                            if ($onPurged !== null) {
+                                $onPurged($deleted);
+                            }
+                        },
+                    );
                 }, 100);
         } finally {
             $this->disconnectSilently($client);
         }
 
         return $deleted;
+    }
+
+    /**
+     * Use the already-authenticated protocol directly. Folder::appendMessage()
+     * calls Client::getConnection(), whose live-connection check sends a NOOP
+     * before every message. Client::setTimeout() is also deliberately absent:
+     * Webklex implements it by logging out and reconnecting. The socket timeout
+     * is fixed when the client is created, while the lease's SIGALRM guard
+     * provides the process-wide hard deadline.
+     */
+    private function appendMessage(
+        ProtocolInterface $connection,
+        Folder $folder,
+        PreparedEmailMessage $message,
+    ): void {
+        $connection
+            ->appendMessage(
+                $folder->path,
+                $message->raw,
+                null,
+                $message->imapInternalDate(),
+            )
+            ->validatedData();
     }
 
     /**
@@ -271,7 +336,7 @@ final class WebklexMailboxAppender implements MailboxAppender
         while (true) {
             try {
                 $lease?->refresh();
-                $client = (new ClientManager)->make([
+                $client = $this->clients->make([
                     'host' => $target->host,
                     'port' => $target->port,
                     'encryption' => $target->encryption,
@@ -300,15 +365,6 @@ final class WebklexMailboxAppender implements MailboxAppender
                 $lease?->refresh();
                 sleep(self::CONNECT_RETRY_DELAY);
             }
-        }
-    }
-
-    private function applyLeaseTimeout(
-        Client $client,
-        ?EmailSeedLockLease $lease,
-    ): void {
-        if ($lease !== null) {
-            $client->setTimeout($lease->ioTimeoutSeconds());
         }
     }
 

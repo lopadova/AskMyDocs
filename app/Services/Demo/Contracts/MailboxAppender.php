@@ -43,11 +43,17 @@ interface MailboxAppender
     /**
      * Elimina i messaggi della cartella target che portano l'header di seeding
      * uguale a $value. Ritorna il numero di messaggi rimossi.
+     *
+     * Il callback riceve il totale cumulativo solo dopo che il relativo batch
+     * è stato espunto con successo dal server.
+     *
+     * @param  Closure(int): void|null  $onPurged
      */
     public function purgeSeeded(
         MailboxTarget $target,
         string $headerName,
         string $value,
         ?EmailSeedLockLease $lease = null,
+        ?Closure $onPurged = null,
     ): int;
 }

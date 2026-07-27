@@ -131,11 +131,21 @@ final class RecordingMailboxAppender implements MailboxAppender
         string $headerName,
         string $value,
         ?EmailSeedLockLease $lease = null,
+        ?Closure $onPurged = null,
     ): int {
-        $operation = function () use ($target, $headerName, $value, $lease): int {
+        $operation = function () use (
+            $target,
+            $headerName,
+            $value,
+            $lease,
+            $onPurged,
+        ): int {
             $lease?->refresh();
             $this->purges[] = ['target' => $target, 'header' => $headerName, 'value' => $value];
             $this->events[] = ['op' => 'purge', 'mailbox' => $target->mailboxKey];
+            if ($onPurged !== null && $this->purgeReturns > 0) {
+                $onPurged($this->purgeReturns);
+            }
             if ($this->afterPurge !== null) {
                 ($this->afterPurge)();
             }
