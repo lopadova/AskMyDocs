@@ -162,7 +162,7 @@ final class TeamRegistryService
     /**
      * Create a new tenant, its initial project and the target user's
      * membership. This is the shared atomic primitive used by the regular
-     * Team UI, the super-admin provisioning flow and `company:create`.
+     * Team UI, the system-admin provisioning flow and `company:create`.
      *
      * @return array{slug: string, name: string, hash: string, status: string, is_default: bool, can_manage: bool, project_count: int, member_count: int}
      */

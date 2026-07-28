@@ -156,12 +156,12 @@ final class TeamRegistryServiceTest extends TestCase
         }
     }
 
-    public function test_rename_allows_a_super_admin_via_cross_access(): void
+    public function test_rename_allows_a_system_admin_via_cross_access(): void
     {
-        $super = $this->userWithRole('super-admin');
+        $system = $this->userWithRole('system-admin');
         Tenant::create(['slug' => 'other', 'name' => 'Other Co', 'status' => 'active']);
 
-        $team = $this->service()->rename('other', 'Other Company', $super);
+        $team = $this->service()->rename('other', 'Other Company', $system);
 
         $this->assertSame('Other Company', $team['name']);
         $this->assertDatabaseHas('tenants', ['slug' => 'other', 'name' => 'Other Company']);
@@ -338,7 +338,7 @@ final class TeamRegistryServiceTest extends TestCase
             'email' => $role.'-'.uniqid().'@demo.local',
             'password' => Hash::make('secret-password'),
         ]);
-        $user->assignRole($role);
+        $user->assignRole($role === 'system-admin' ? ['system-admin', 'super-admin'] : $role);
 
         return $user;
     }
