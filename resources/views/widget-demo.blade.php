@@ -64,13 +64,18 @@
     <script>
         window.AskMyDocsWidget = {
             key: @json($publicKey),
-            apiBase: '',
+            apiBase: @json($apiBase),
+@if ($userTokenUrl)
+            userTokenUrl: @json($userTokenUrl),
+@endif
 @if ($mode === 'inline')
             mode: 'inline',
             mount: '#askmydocs-chat',
+@elseif ($mode === 'fullscreen')
+            mode: 'fullscreen',
 @endif
             title: 'Assistente Demo',
-@if ($mode !== 'inline')
+@if ($mode === 'helper')
             launcherLabel: 'Chiedi',
             autoOpen: false,
 @endif
