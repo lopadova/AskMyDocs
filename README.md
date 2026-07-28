@@ -300,7 +300,7 @@ that perceives and acts on the host page. A customer pastes a snippet; the
 widget captures a structured snapshot of the current page (regions, fields,
 actions, messages, outline) and reasons about what's actually on screen.
 
-- **Embed in one snippet** — `<script>window.AskMyDocsWidget = { key: 'pk_…', apiBase: '…' }</script>` + the async loader. Two layouts: a floating `helper` launcher or an `inline` mounted block. Theme, title, skill all configurable via `window.AskMyDocsWidget` or `data-*` attrs.
+- **Embed in one snippet** — `<script>window.AskMyDocsWidget = { key: 'pk_…', apiBase: '…' }</script>` + the async loader. Three layouts: a floating `helper` launcher, an `inline` mounted block, or an always-open `fullscreen` viewport. Theme, title, skill all configurable via `window.AskMyDocsWidget` or `data-*` attrs.
 - **Grounded + cited, never a generic bot** — the widget runs the first-party `KbSearchService` + reranker + refusal gate, scoped to the key's tenant + project. The browser **never** names a tenant — tenant/project are resolved server-side from the key (R30); cross-key/cross-tenant session access is `404` (anti-IDOR).
 - **Agentic by design** — the LLM emits tool calls executed in the page DOM (`click` / `type` / `select` / `navigate_to` / `submit_form` / `wait_for` + ~15 more), or server-side via `/exec-tool` (`search_knowledge_base`), in a bounded loop with per-session step + consecutive-error caps. **Skills** (JSON manifests under `resources/widget/skills/*`) declare which tools, what auto-annotation rules, and the run policies.
 - **Host-Tools Protocol (HTP)** — your app can expose its *own* tools to the agent ("create order", "set rate"), **double-gated** (per key *and* per skill) and **off by default**. The page is annotated with stable, verb-based `data-kitt-*` attributes (`region` / `field` / `action` / `message` / `locale` / `skip`); `data-kitt-sensitive` and `type=password`/`hidden` values are force-nulled server-side so secrets never reach the LLM or the step log.
@@ -311,7 +311,8 @@ actions, messages, outline) and reasons about what's actually on screen.
 `project_key` + your site's origin), copy the **Embed code** snippet into
 your page, and reload. Locally, set `WIDGET_DEMO_ENABLED=true` and open
 `/widget-demo` for a self-contained annotated demo page (add `?mode=inline`
-for the inline layout). Full developer guide:
+or `?mode=fullscreen`; add `&user_auth=1` to exercise authenticated history).
+Full developer guide:
 [`docs/kitt/INTEGRATION.md`](docs/kitt/INTEGRATION.md).
 
 > **Security & embedding.** KITT is a cross-origin embeddable *and* an

@@ -95,7 +95,7 @@ All key management is **super-admin** only, tenant-scoped (`manageWidgetKeys` ga
 |---|---|
 | List keys | `GET /api/admin/widget-keys` |
 | Create | `POST /api/admin/widget-keys` |
-| Update (origins / rate limit / theme / skill / host-tools) | `PATCH /api/admin/widget-keys/{id}` |
+| Update (origins / rate limit / theme / skill / host-tools / user auth) | `PATCH /api/admin/widget-keys/{id}` |
 | Delete | `DELETE /api/admin/widget-keys/{id}` |
 | Rotate `pk_`+`sk_` (returns secret once) | `POST /api/admin/widget-keys/{id}/rotate` |
 | Rotate the server-only identity credential `ik_` | `POST /api/admin/widget-keys/{id}/rotate-identity-secret` |
@@ -113,6 +113,13 @@ All key management is **super-admin** only, tenant-scoped (`manageWidgetKeys` ga
 | `host_tools_enabled` | – | Boolean, default `false`. Operator switch for HTP (see §9). |
 | `user_auth_enabled` | – | Boolean, default `false`. Creates a one-time `ik_` credential used by the host backend to mint short-lived user tokens. |
 | `theme` | – | Theme object; validated + sanitised server-side (colours `#rgb`/`#rrggbb`/`#rrggbbaa`, allowlisted font stacks, `https://` logo URLs). |
+
+Changing `user_auth_enabled` and rotating `ik_` require the current
+`identity_credential_version`. A stale request returns `409
+identity_credential_conflict`. The shared lifecycle service applies tenant
+scope, a row lock, the hash/version update and allowlisted
+`admin_command_audit` rows in one transaction. Neither plaintext nor hashes are
+audited.
 
 ---
 
@@ -232,6 +239,19 @@ one failed AskMyDocs request after renewal. The host should also return
 `Cache-Control: no-store`. If acquisition fails, authenticated mode fails
 closed rather than creating anonymous history.
 
+At boot, the widget calls `GET /api/widget/sessions/current`. The server scopes
+the query to tenant + key + project + pseudonymous identity, filters
+`active|waiting_user|waiting_tool`, and orders by `updated_at DESC, id DESC`.
+It returns one session or `204`; paginated history is never searched during
+restore.
+
+Rotation and disable have deliberately different semantics:
+
+- rotate `ik_`: old-secret minting stops immediately, but existing `wu_` tokens
+  remain valid until their TTL;
+- disable user auth: existing `wu_` and identity-bound `wt_` tokens are rejected
+  immediately because validators check the live key on each request.
+
 **Errors:** `401` (key missing/invalid), `403` (inactive key / origin not allowed),
 `429` (rate limit).
 
@@ -250,6 +270,7 @@ validates its dedicated `ik_` credential. CORS is handled by
 | `POST` | `/api/widget/user-token` | Server-to-server exchange of `pk_` + `ik_` + stable subject for a short-lived `wu_`. |
 | `POST` | `/api/widget/session-token` | Mint a single-use, origin-bound session token. |
 | `GET` | `/api/widget/sessions` | Paginated session history for the identity in a valid `wu_`. |
+| `GET` | `/api/widget/sessions/current` | Newest open session for the identity, or `204`; independent from pagination. |
 | `POST` | `/api/widget/sessions/start` | Open a session and run the first turn. |
 | `POST` | `/api/widget/sessions/{session}/step` | Run the next turn (snapshot + optional `tool_result` + optional `message`). |
 | `POST` | `/api/widget/sessions/{session}/exec-tool` | Execute a backend (BE) tool for the session. |
@@ -375,7 +396,7 @@ Under `/app/admin/widget` (React, `frontend/src/features/admin/widget/*`):
 | Allowed origins | super-admin | Manage `allowed_origins`. |
 | Appearance / theme | super-admin | Theme designer (validated + sanitised). |
 | Host-tools toggle | super-admin | Per-key `host_tools_enabled`. |
-| Authenticated-user toggle + identity rotation | super-admin | Enable `user_auth_enabled`; reveal/rotate the server-only `ik_` credential. |
+| Authenticated-user toggle + identity rotation | super-admin | Enable `user_auth_enabled`; reveal/rotate the server-only `ik_` credential with optimistic version protection. |
 | Embed code | super-admin | Copy-to-clipboard snippet plus authenticated-host-user setup when enabled. |
 | Sessions browser + detail | admin + super-admin (`viewWidgetSessions`) | Read-only session list + step replay (PII-masked). |
 
@@ -385,11 +406,11 @@ Under `/app/admin/widget` (React, `frontend/src/features/admin/widget/*`):
 
 | Table | Key columns |
 |---|---|
-| `widget_keys` | `tenant_id`, `project_key`, `public_key` (unique), `secret_hash` (nullable, hashed), `identity_secret_hash` (nullable, hashed), `user_auth_enabled`, `allowed_origins` (json), `rate_limit`, `skill`, `host_tools_enabled`, `theme_config` (json), `is_active`, `label`, `last_used_at`. Unique `(tenant_id, project_key, label)`. |
+| `widget_keys` | `tenant_id`, `project_key`, `public_key` (unique), `secret_hash` (nullable, hashed), `identity_secret_hash` (nullable, hashed), `identity_credential_version`, `identity_access_epoch`, `user_auth_enabled`, `allowed_origins` (json), `rate_limit`, `skill`, `host_tools_enabled`, `theme_config` (json), `is_active`, `label`, `last_used_at`. Unique `(tenant_id, project_key, label)`. |
 | `widget_identities` | `tenant_id`, `widget_key_id` (FK cascade), `project_key`, `subject_hash` (HMAC), `last_seen_at`. Unique `(widget_key_id, subject_hash)`. The raw host subject is never persisted. |
 | `widget_sessions` | `tenant_id`, `widget_key_id` (FK cascade), `widget_identity_id` (nullable FK), `project_key`, `public_session_id` (uuid, unique), `status`, `skill`, `page_url`, `origin`, `summary`, `blocked_reason`, `meta` (json). Indexed `(tenant_id, created_at)`. |
 | `widget_session_steps` | `tenant_id`, `widget_session_id` (FK cascade), `step_index`, `kind` (`snapshot`/`tool_call`/`tool_result`/`user_message`/`bot_message`), `tool`, `args_json` / `diagnostic_json` / `snapshot_in_json` (PII-masked), `tokens_in` / `tokens_out` / `latency_ms`. |
-| `widget_session_tokens` | `tenant_id`, `token` (unique, **sha-256 hash** of `wt_…`), `widget_key_id` (FK cascade), `widget_session_id` (FK cascade, nullable), `origin`, `expires_at`, `consumed_at`. |
+| `widget_session_tokens` | `tenant_id`, `token` (unique, **sha-256 hash** of `wt_…`), `widget_key_id` (FK cascade), `widget_session_id` (FK cascade, nullable), `identity_access_epoch` (identity-bound tokens), `origin`, `expires_at`, `consumed_at`. |
 
 Sessions + steps are pruned by `widget:prune-sessions` (daily) after
 `WIDGET_SESSION_RETENTION_DAYS`; expired tokens are pruned in the same command.
@@ -422,8 +443,9 @@ Sessions + steps are pruned by `widget:prune-sessions` (daily) after
 the widget) for local development. It is gated to **testing**, or **local** with
 `WIDGET_DEMO_ENABLED=true` — so a stray `APP_ENV=local` box never exposes a working
 credential to anonymous visitors. It auto-creates/reuses a permissive demo key
-(`pk_demo_local`, project `docs-v3`, localhost origins). Add `?mode=inline` for the
-inline layout.
+(`pk_demo_local`, project `docs-v3`, localhost origins). Add `?mode=inline` or
+`?mode=fullscreen`; local/testing can also exercise the real host-user boundary
+with `?mode=fullscreen&user_auth=1&subject=demo-user`.
 
 ---
 

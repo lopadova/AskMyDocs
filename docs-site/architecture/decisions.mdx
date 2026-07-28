@@ -65,6 +65,10 @@ the host *uses* them, never the reverse.
   multi-channel notification layer (mail / webhook / Slack / Teams / Discord).
 - **[ADR 0013](https://github.com/lopadova/AskMyDocs/blob/main/docs/adr/0013-v88-kb-lifecycle-intelligence-plus.md) — KB lifecycle intelligence.** Content-gap
   analytics, obsolescence-impact analysis, and search-failure rollups.
+- **[ADR 0023](https://github.com/lopadova/AskMyDocs/blob/main/docs/adr/0023-v830-widget-identity-and-current-session.md) — Widget identity credentials and current-session restore.**
+  One tenant-scoped, audited credential core; an explicit identity-scoped
+  current-session query; and the security-motivated exception that keeps
+  one-time `ik_` secrets out of MCP transcripts.
 
 ## The autonomy arc: self-compiling knowledge, safely
 

@@ -272,13 +272,26 @@ server-rendered, short-lived pages, but it cannot be renewed after it expires.
 The runtime requests the endpoint with `cache: "no-store"`; the host endpoint
 should also return `Cache-Control: no-store`.
 
-With a valid user token the runtime lists the user's sessions, restores the
-newest open conversation, and replays its visible messages. `GET
-/api/widget/sessions` is paginated; replay remains `GET
-/api/widget/sessions/{uuid}/replay`. Both are scoped to tenant, widget key,
-project and pseudonymous identity. If authenticated mode is configured but the
-host endpoint fails, the widget fails closed instead of silently creating an
-anonymous conversation.
+With a valid user token the runtime calls `GET
+/api/widget/sessions/current`, restores the newest open conversation, and
+replays its visible messages. The current-session endpoint filters
+`active|waiting_user|waiting_tool`, orders by `updated_at DESC, id DESC`, and
+returns `{ data: session }` or an empty `204`; it is deliberately independent
+from paginated `GET /api/widget/sessions`. Replay remains `GET
+/api/widget/sessions/{uuid}/replay`. Every endpoint is scoped to tenant, widget
+key, project and pseudonymous identity. If authenticated mode is configured but
+the host endpoint or history restore fails, the widget exposes an error and
+keeps the composer disabled instead of silently creating an anonymous
+conversation.
+
+Identity credential lifecycle is explicit:
+
+- **rotate `ik_`:** the old secret stops minting immediately; already-issued
+  `wu_` tokens remain valid until `WIDGET_USER_TOKEN_TTL`;
+- **disable user auth:** existing `wu_` and identity-bound `wt_` tokens are
+  rejected immediately because validators check the live key on every request;
+- **logout:** stop serving `userTokenUrl`, remove/reload the widget, and let the
+  in-memory `wu_` disappear. AskMyDocs stores no browser refresh token.
 
 ---
 
@@ -506,6 +519,14 @@ Widget keys and sessions are managed via the admin SPA at
 | DELETE | `/api/admin/widget-keys/{id}` | Hard delete (cascading) |
 | POST | `/api/admin/widget-keys/{id}/rotate` | Regenerate pk_ + sk_ (returns new credentials once) |
 | POST | `/api/admin/widget-keys/{id}/revoke` | Set `is_active=false` (preserves data) |
+| POST | `/api/admin/widget-keys/{id}/rotate-identity-secret` | Rotate `ik_` once; requires `identity_credential_version` |
+
+Enabling/disabling user auth through `PATCH` also requires the current
+`identity_credential_version`; stale writes return `409
+identity_credential_conflict`. Every identity mutation is tenant-scoped,
+transactional and written to `admin_command_audit` without plaintext or hashes.
+There is deliberately no MCP mutation: a one-time `ik_` must not enter an agent
+transcript.
 
 **Session inspection** (`viewWidgetSessions` gate — admin + super-admin):
 
@@ -522,4 +543,9 @@ php artisan widget:prune-sessions
 
 # Issue a new secret for an existing key
 php artisan widget:emit-secret <public_key>
+
+# Inspect first, then mutate with optimistic version protection
+php artisan widget:identity-credential status 42 --tenant=acme
+php artisan widget:identity-credential rotate 42 --tenant=acme \
+  --expected-version=3 --force
 ```
