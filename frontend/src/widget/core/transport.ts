@@ -20,6 +20,15 @@ export class WidgetError extends Error {
     }
 }
 
+export interface WidgetSessionSummary {
+    id: string;
+    status: string;
+    summary: string | null;
+    page_url: string | null;
+    created_at: string;
+    updated_at: string;
+}
+
 export class Transport {
     private readonly base: string;
     private readonly key: string;
@@ -122,7 +131,7 @@ export class Transport {
     }
 
     async listSessions(page = 1): Promise<{
-        data: Array<{ id: string; status: string; summary: string | null; page_url: string | null; created_at: string; updated_at: string }>;
+        data: WidgetSessionSummary[];
         meta: { current_page: number; last_page: number; per_page: number; total: number };
     }> {
         const res = await this.request(`/sessions?page=${page}`, {
@@ -130,6 +139,20 @@ export class Transport {
         });
 
         return this.parse(res);
+    }
+
+    /**
+     * Explicit restore contract. A 204 means the authenticated identity has no
+     * open session; it is distinct from a network/auth failure.
+     */
+    async currentSession(): Promise<WidgetSessionSummary | null> {
+        const res = await this.request('/sessions/current', { method: 'GET' });
+        if (res.status === 204) {
+            return null;
+        }
+        const payload = await this.parse<{ data: WidgetSessionSummary }>(res);
+
+        return payload.data;
     }
 
     async replay(sessionId: string): Promise<{

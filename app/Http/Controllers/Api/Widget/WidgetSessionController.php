@@ -321,20 +321,56 @@ final class WidgetSessionController extends Controller
             ->paginate($perPage);
 
         return response()->json([
-            'data' => collect($rows->items())->map(fn (WidgetSession $session): array => [
-                'id' => $session->public_session_id,
-                'status' => $session->status,
-                'summary' => $session->summary,
-                'page_url' => $session->page_url,
-                'created_at' => $session->created_at->toIso8601String(),
-                'updated_at' => $session->updated_at->toIso8601String(),
-            ])->values(),
+            'data' => collect($rows->items())
+                ->map(fn (WidgetSession $session): array => $this->serializeSession($session))
+                ->values(),
             'meta' => [
                 'current_page' => $rows->currentPage(),
                 'last_page' => $rows->lastPage(),
                 'per_page' => $rows->perPage(),
                 'total' => $rows->total(),
             ],
+        ]);
+    }
+
+    /**
+     * Return the newest open session for the authenticated host identity.
+     *
+     * This is intentionally independent from paginated history: a long list of
+     * newer closed sessions must not hide an older conversation that can still
+     * accept turns. No current session is represented by an empty 204 response.
+     */
+    public function current(Request $request): JsonResponse
+    {
+        $identity = $this->identity($request);
+        if ($identity === null) {
+            return response()->json([
+                'error' => 'user_auth_required',
+                'message' => 'An authenticated widget user token is required.',
+            ], 401);
+        }
+
+        $key = $this->key($request);
+        $session = WidgetSession::query()
+            ->forTenant($this->tenants->current())
+            ->where('widget_key_id', $key->id)
+            ->where('project_key', $key->project_key)
+            ->where('widget_identity_id', $identity->id)
+            ->whereIn('status', [
+                WidgetSession::STATUS_ACTIVE,
+                WidgetSession::STATUS_WAITING_USER,
+                WidgetSession::STATUS_WAITING_TOOL,
+            ])
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
+            ->first();
+
+        if ($session === null) {
+            return response()->json([], 204);
+        }
+
+        return response()->json([
+            'data' => $this->serializeSession($session),
         ]);
     }
 
@@ -375,6 +411,28 @@ final class WidgetSessionController extends Controller
         $identity = $request->attributes->get(ResolveWidgetKey::ATTR_IDENTITY);
 
         return $identity instanceof WidgetIdentity ? $identity : null;
+    }
+
+    /**
+     * @return array{
+     *     id: string,
+     *     status: string,
+     *     summary: string|null,
+     *     page_url: string|null,
+     *     created_at: string,
+     *     updated_at: string
+     * }
+     */
+    private function serializeSession(WidgetSession $session): array
+    {
+        return [
+            'id' => $session->public_session_id,
+            'status' => $session->status,
+            'summary' => $session->summary,
+            'page_url' => $session->page_url,
+            'created_at' => $session->created_at->toIso8601String(),
+            'updated_at' => $session->updated_at->toIso8601String(),
+        ];
     }
 
     /**

@@ -86,6 +86,37 @@ describe('Transport', () => {
         }
     });
 
+    it('loads the explicit current session contract and does not paginate history', async () => {
+        fetchMock = mockFetch(200, {
+            data: {
+                id: 'session-current',
+                status: 'waiting_user',
+                summary: null,
+                page_url: null,
+                created_at: '2026-07-28T10:00:00Z',
+                updated_at: '2026-07-28T11:00:00Z',
+            },
+        });
+        globalThis.fetch = fetchMock;
+
+        const current = await new Transport(baseConfig).currentSession();
+
+        expect(current?.id).toBe('session-current');
+        expect(lastCall(fetchMock).url).toBe(
+            'https://kb.example.com/api/widget/sessions/current',
+        );
+    });
+
+    it('maps a 204 current-session response to an empty history state', async () => {
+        fetchMock = Object.assign(
+            vi.fn(async () => new Response(null, { status: 204 })),
+            { originalFetch },
+        ) as unknown as ReturnType<typeof mockFetch>;
+        globalThis.fetch = fetchMock;
+
+        await expect(new Transport(baseConfig).currentSession()).resolves.toBeNull();
+    });
+
     // --- (b) token mode: Authorization: Bearer wt_… when session token is set ---
 
     it('sends Authorization: Bearer wt_… when session token is set', async () => {

@@ -50,7 +50,7 @@ describe('WidgetPanel authenticated-user bootstrap', () => {
             if (url.endsWith('/api/widget/setup')) {
                 return json({});
             }
-            if (url.includes('/api/widget/sessions?page=')) {
+            if (url.endsWith('/api/widget/sessions/current')) {
                 return pendingHistory;
             }
             if (url.endsWith('/sessions/ses_restored/replay')) {
@@ -82,7 +82,7 @@ describe('WidgetPanel authenticated-user bootstrap', () => {
         const form = input.closest('form')!;
 
         await vi.waitFor(() => {
-            expect(calls.some((call) => call.url.includes('/api/widget/sessions?page='))).toBe(true);
+            expect(calls.some((call) => call.url.endsWith('/api/widget/sessions/current'))).toBe(true);
         });
         expect(panel.dataset.state).toBe('loading');
         expect(panel.getAttribute('aria-busy')).toBe('true');
@@ -95,15 +95,14 @@ describe('WidgetPanel authenticated-user bootstrap', () => {
         expect(calls.some((call) => call.url.endsWith('/step'))).toBe(false);
 
         releaseHistory(json({
-            data: [{
+            data: {
                 id: 'ses_restored',
                 status: 'active',
                 summary: null,
                 page_url: null,
                 created_at: '2026-07-27T08:00:00Z',
                 updated_at: '2026-07-27T09:00:00Z',
-            }],
-            meta: { current_page: 1, last_page: 1, per_page: 20, total: 1 },
+            },
         }));
 
         await vi.waitFor(() => {

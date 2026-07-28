@@ -1415,6 +1415,8 @@ Route::middleware(['throttle:120,1', 'widget.key'])
             ->name('api.widget.sessions.start');
         Route::get('/sessions', [WidgetSessionController::class, 'index'])
             ->name('api.widget.sessions.index');
+        Route::get('/sessions/current', [WidgetSessionController::class, 'current'])
+            ->name('api.widget.sessions.current');
         Route::post('/sessions/{session}/step', [WidgetSessionController::class, 'step'])
             ->name('api.widget.sessions.step');
         // M4 — esecuzione BE AiTool. Il FE chiama questo quando l'orchestratore

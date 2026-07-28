@@ -8,6 +8,7 @@ use App\Models\WidgetIdentity;
 use App\Models\WidgetKey;
 use App\Models\WidgetSession;
 use App\Models\WidgetSessionStep;
+use App\Services\Widget\WidgetIdentityCredentialService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -63,6 +64,9 @@ final class WidgetAuthenticatedHistoryTest extends TestCase
             ->assertOk()
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.id', $aliceSession->public_session_id);
+        $this->getJson('/api/widget/sessions/current', $headers)
+            ->assertOk()
+            ->assertJsonPath('data.id', $aliceSession->public_session_id);
 
         $this->getJson('/api/widget/sessions/'.$aliceSession->public_session_id.'/replay', $headers)
             ->assertOk()
@@ -72,6 +76,10 @@ final class WidgetAuthenticatedHistoryTest extends TestCase
             '/api/widget/sessions/'.$aliceSession->public_session_id.'/replay',
             ['Origin' => 'https://host.example', 'Authorization' => 'Bearer '.$bob],
         )->assertNotFound();
+        $this->getJson('/api/widget/sessions/current', [
+            'Origin' => 'https://host.example',
+            'Authorization' => 'Bearer '.$bob,
+        ])->assertOk()->assertJsonMissing(['data' => ['id' => $aliceSession->public_session_id]]);
     }
 
     public function test_authenticated_history_and_replay_are_also_scoped_to_the_keys_project(): void
@@ -116,6 +124,11 @@ final class WidgetAuthenticatedHistoryTest extends TestCase
         ])->assertUnauthorized()->assertJsonPath('error', 'user_token_invalid');
 
         $this->getJson('/api/widget/sessions', [
+            'Origin' => 'https://host.example',
+            'X-Widget-Key' => $key->public_key,
+        ])->assertUnauthorized()->assertJsonPath('error', 'user_auth_required');
+
+        $this->getJson('/api/widget/sessions/current', [
             'Origin' => 'https://host.example',
             'X-Widget-Key' => $key->public_key,
         ])->assertUnauthorized()->assertJsonPath('error', 'user_auth_required');
@@ -174,7 +187,13 @@ final class WidgetAuthenticatedHistoryTest extends TestCase
         ])->assertCreated();
         $sessionToken = (string) $mint->json('token');
 
-        $key->forceFill(['user_auth_enabled' => false])->save();
+        app(WidgetIdentityCredentialService::class)->disable(
+            $key->id,
+            'default',
+            0,
+            null,
+            WidgetIdentityCredentialService::SURFACE_CLI,
+        );
 
         $this->getJson('/api/widget/setup', [
             'Origin' => 'https://host.example',
@@ -190,6 +209,135 @@ final class WidgetAuthenticatedHistoryTest extends TestCase
             'token' => hash('sha256', $sessionToken),
             'consumed_at' => null,
         ]);
+
+        $reenabled = app(WidgetIdentityCredentialService::class)->enable(
+            $key->id,
+            'default',
+            1,
+            null,
+            WidgetIdentityCredentialService::SURFACE_CLI,
+        );
+        $this->assertSame(2, $reenabled->key->identity_credential_version);
+        $this->assertSame(1, $reenabled->key->identity_access_epoch);
+
+        // Disable advances the access epoch. Re-enabling must not resurrect a
+        // previously issued bearer that has not reached its wall-clock TTL.
+        $this->getJson('/api/widget/setup', [
+            'Origin' => 'https://host.example',
+            'Authorization' => 'Bearer '.$userToken,
+        ])->assertUnauthorized()->assertJsonPath('error', 'user_token_invalid');
+        $this->getJson('/api/widget/sessions/'.$session->public_session_id.'/replay', [
+            'Origin' => 'https://host.example',
+            'Authorization' => 'Bearer '.$sessionToken,
+        ])->assertUnauthorized()->assertJsonPath('error', 'session_token_invalid');
+
+        $this->postJson('/api/widget/user-token', [
+            'subject' => 'alice',
+            'origin' => 'https://host.example',
+        ], [
+            'X-Widget-Key' => $key->public_key,
+            'Authorization' => 'Bearer '.$reenabled->plainSecret,
+        ])->assertCreated();
+    }
+
+    public function test_rotating_identity_secret_rejects_old_minting_but_preserves_issued_user_tokens_until_ttl(): void
+    {
+        $key = $this->key('pk_identity_rotation', 'ik_before_rotation');
+        $issuedUserToken = $this->token($key, 'alice', 'ik_before_rotation');
+
+        $rotated = app(WidgetIdentityCredentialService::class)->rotate(
+            $key->id,
+            'default',
+            0,
+            null,
+            WidgetIdentityCredentialService::SURFACE_CLI,
+        );
+
+        $this->postJson('/api/widget/user-token', [
+            'subject' => 'bob',
+            'origin' => 'https://host.example',
+        ], [
+            'X-Widget-Key' => $key->public_key,
+            'Authorization' => 'Bearer ik_before_rotation',
+        ])->assertUnauthorized()->assertJsonPath('error', 'identity_credentials_invalid');
+
+        $this->getJson('/api/widget/setup', [
+            'Origin' => 'https://host.example',
+            'Authorization' => 'Bearer '.$issuedUserToken,
+        ])->assertOk();
+
+        $this->postJson('/api/widget/user-token', [
+            'subject' => 'bob',
+            'origin' => 'https://host.example',
+        ], [
+            'X-Widget-Key' => $key->public_key,
+            'Authorization' => 'Bearer '.$rotated->plainSecret,
+        ])->assertCreated();
+    }
+
+    public function test_current_session_is_found_beyond_the_first_history_page(): void
+    {
+        $key = $this->key('pk_current_beyond_page', 'ik_current_beyond_page');
+        $token = $this->token($key, 'alice', 'ik_current_beyond_page');
+        $identity = WidgetIdentity::query()->firstOrFail();
+        $open = $this->makeWidgetSession($key, $identity->id);
+        $open->forceFill([
+            'created_at' => now()->subDays(2),
+            'updated_at' => now()->subDays(2),
+        ])->save();
+
+        foreach (range(1, 25) as $offset) {
+            $closed = $this->makeWidgetSession($key, $identity->id);
+            $closed->forceFill([
+                'status' => WidgetSession::STATUS_COMPLETED,
+                'created_at' => now()->subMinutes($offset),
+                'updated_at' => now()->subMinutes($offset),
+            ])->save();
+        }
+
+        $headers = [
+            'Origin' => 'https://host.example',
+            'Authorization' => 'Bearer '.$token,
+        ];
+        $this->getJson('/api/widget/sessions?per_page=20', $headers)
+            ->assertOk()
+            ->assertJsonCount(20, 'data')
+            ->assertJsonMissing(['id' => $open->public_session_id]);
+
+        $this->getJson('/api/widget/sessions/current', $headers)
+            ->assertOk()
+            ->assertJsonPath('data.id', $open->public_session_id);
+    }
+
+    public function test_current_session_uses_updated_at_then_id_and_returns_204_when_empty(): void
+    {
+        $key = $this->key('pk_current_order', 'ik_current_order');
+        $token = $this->token($key, 'alice', 'ik_current_order');
+        $identity = WidgetIdentity::query()->firstOrFail();
+        $first = $this->makeWidgetSession($key, $identity->id);
+        $second = $this->makeWidgetSession($key, $identity->id);
+        $sameTime = now()->subMinute()->startOfSecond();
+        $first->forceFill([
+            'status' => WidgetSession::STATUS_WAITING_USER,
+            'updated_at' => $sameTime,
+        ])->save();
+        $second->forceFill([
+            'status' => WidgetSession::STATUS_WAITING_TOOL,
+            'updated_at' => $sameTime,
+        ])->save();
+        $headers = [
+            'Origin' => 'https://host.example',
+            'Authorization' => 'Bearer '.$token,
+        ];
+
+        $this->getJson('/api/widget/sessions/current', $headers)
+            ->assertOk()
+            ->assertJsonPath('data.id', $second->public_session_id);
+
+        WidgetSession::query()->update(['status' => WidgetSession::STATUS_COMPLETED]);
+
+        $this->getJson('/api/widget/sessions/current', $headers)
+            ->assertNoContent();
     }
 
     public function test_anonymous_and_different_identity_callers_cannot_mint_a_token_for_an_authenticated_session(): void

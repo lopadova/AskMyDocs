@@ -138,10 +138,7 @@ export class Bridge {
         }
         await this.prepareUserAuthentication();
 
-        const history = await this.transport.listSessions();
-        const current = history.data.find((row) =>
-            ['active', 'waiting_user', 'waiting_tool'].includes(row.status),
-        );
+        const current = await this.transport.currentSession();
         if (!current) {
             return [];
         }
