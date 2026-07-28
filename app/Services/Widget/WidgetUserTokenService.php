@@ -39,6 +39,7 @@ final class WidgetUserTokenService
             'wid' => $key->id,
             'pid' => $key->project_key,
             'iid' => $identity->id,
+            'iep' => (int) $key->identity_access_epoch,
             'org' => $this->normalizeOrigin($origin),
             'exp' => $expiresAt->timestamp,
         ];
@@ -70,6 +71,7 @@ final class WidgetUserTokenService
         if (! is_array($claims)
             || ($claims['v'] ?? null) !== 1
             || ! is_int($claims['exp'] ?? null)
+            || ! is_int($claims['iep'] ?? null)
             || $claims['exp'] <= now()->timestamp
             || ! hash_equals((string) ($claims['org'] ?? ''), $this->normalizeOrigin($origin))) {
             return null;
@@ -83,6 +85,7 @@ final class WidgetUserTokenService
                 ->find($claims['iid'] ?? 0);
         if ($key === null || $identity === null
             || ! $key->is_active || ! $key->user_auth_enabled
+            || $claims['iep'] !== (int) $key->identity_access_epoch
             || ! $key->originAllowed($origin)
             || $identity->widget_key_id !== $key->id
             || $identity->project_key !== $key->project_key

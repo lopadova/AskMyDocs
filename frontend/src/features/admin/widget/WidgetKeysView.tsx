@@ -37,6 +37,7 @@ interface WidgetKeyRow {
     /** Operational switch: the host app may provide tools to the widget (HTP). */
     host_tools_enabled: boolean;
     user_auth_enabled: boolean;
+    identity_credential_version: number;
     is_active: boolean;
     last_used_at: string | null;
     sessions_count: number;
@@ -297,11 +298,12 @@ export function WidgetKeysView() {
     });
 
     const toggleUserAuth = useMutation({
-        mutationFn: async (vars: { id: number; enabled: boolean }) => {
+        mutationFn: async (vars: { id: number; enabled: boolean; version: number }) => {
             const { data } = await api.patch<{ identity_plain_secret?: string | null }>(
                 `/api/admin/widget-keys/${vars.id}`,
                 {
                     user_auth_enabled: vars.enabled,
+                    identity_credential_version: vars.version,
                 },
             );
             return data.identity_plain_secret ?? null;
@@ -330,14 +332,15 @@ export function WidgetKeysView() {
     });
 
     const rotateIdentitySecret = useMutation({
-        mutationFn: async (id: number) => {
+        mutationFn: async (vars: { id: number; version: number }) => {
             const { data } = await api.post<{ identity_plain_secret: string }>(
-                `/api/admin/widget-keys/${id}/rotate-identity-secret`,
+                `/api/admin/widget-keys/${vars.id}/rotate-identity-secret`,
+                { identity_credential_version: vars.version },
             );
             return data.identity_plain_secret;
         },
-        onSuccess: (secret, id) => {
-            const key = keys.data?.find((row) => row.id === id);
+        onSuccess: (secret, vars) => {
+            const key = keys.data?.find((row) => row.id === vars.id);
             if (key) {
                 setIdentityCredential({
                     keyId: key.id,
@@ -866,6 +869,7 @@ export function WidgetKeysView() {
                                                     toggleUserAuth.mutate({
                                                         id: key.id,
                                                         enabled: e.target.checked,
+                                                        version: key.identity_credential_version,
                                                     })
                                                 }
                                             />
@@ -903,7 +907,11 @@ export function WidgetKeysView() {
                                                                 'Rotate the identity credential? The current ik_ will stop minting new user tokens immediately; existing wu_ tokens remain valid until expiry.',
                                                             )
                                                         ) {
-                                                            rotateIdentitySecret.mutate(key.id);
+                                                            rotateIdentitySecret.mutate({
+                                                                id: key.id,
+                                                                version:
+                                                                    key.identity_credential_version,
+                                                            });
                                                         }
                                                     }}
                                                     aria-label={`Rotate identity credential for ${key.label}`}

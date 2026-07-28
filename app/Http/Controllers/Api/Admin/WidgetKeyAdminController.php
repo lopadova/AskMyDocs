@@ -4,12 +4,19 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\Admin;
 
+use App\Models\User;
 use App\Models\WidgetKey;
+use App\Services\Widget\Exceptions\WidgetIdentityCredentialConflict;
+use App\Services\Widget\Exceptions\WidgetIdentityCredentialDisabled;
+use App\Services\Widget\Exceptions\WidgetIdentityCredentialNotFound;
+use App\Services\Widget\Exceptions\WidgetIdentityCredentialUnauthorized;
+use App\Services\Widget\WidgetIdentityCredentialService;
 use App\Services\Widget\WidgetThemeService;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -27,6 +34,7 @@ final class WidgetKeyAdminController extends Controller
     public function __construct(
         private readonly TenantContext $tenantContext,
         private readonly WidgetThemeService $theme,
+        private readonly WidgetIdentityCredentialService $identityCredentials,
     ) {}
 
     /** List all widget keys for the current tenant. */
@@ -72,34 +80,50 @@ final class WidgetKeyAdminController extends Controller
         ] + $this->theme->rules('theme'));
 
         $plainSecret = 'sk_'.Str::random(40);
-        $identitySecret = ($validated['user_auth_enabled'] ?? false)
-            ? 'ik_'.Str::random(48)
-            : null;
         $publicKey = 'pk_'.Str::random(32);
 
-        $row = WidgetKey::query()->create([
-            'tenant_id' => $tenantId,
-            'project_key' => $validated['project_key'],
-            'public_key' => $publicKey,
-            // #4 — Hash::make() rispetta config('hashing.driver'); bcrypt() lo
-            // bypassa e hardcoda l'algoritmo. WidgetKey::matchesSecret usa
-            // Hash::check, quindi un operatore con HASH_DRIVER=argon non deve
-            // ritrovarsi hash misti nella stessa colonna.
-            'secret_hash' => Hash::make($plainSecret),
-            'identity_secret_hash' => $identitySecret !== null ? Hash::make($identitySecret) : null,
-            'label' => $validated['label'],
-            'allowed_origins' => $validated['allowed_origins'] ?? [],
-            'rate_limit' => $validated['rate_limit'] ?? 60,
-            'skill' => $validated['skill'] ?? 'askmydocs-assistant@1',
-            'host_tools_enabled' => $validated['host_tools_enabled'] ?? false,
-            'user_auth_enabled' => $validated['user_auth_enabled'] ?? false,
-            'is_active' => true,
-            // Tema esplicito solo se fornito; altrimenti null → il widget
-            // risolve i default (snippet di create resta minimale).
-            'theme_config' => array_key_exists('theme', $validated)
-                ? $this->theme->sanitize($validated['theme'])
-                : null,
-        ]);
+        [$row, $identitySecret] = DB::transaction(function () use (
+            $tenantId,
+            $validated,
+            $publicKey,
+            $plainSecret,
+            $request,
+        ): array {
+            // Identity auth starts disabled: the shared service below is the
+            // only writer for user_auth_enabled, its hash and its version.
+            $row = WidgetKey::query()->create([
+                'tenant_id' => $tenantId,
+                'project_key' => $validated['project_key'],
+                'public_key' => $publicKey,
+                // #4 — Hash::make() respects config('hashing.driver').
+                'secret_hash' => Hash::make($plainSecret),
+                'label' => $validated['label'],
+                'allowed_origins' => $validated['allowed_origins'] ?? [],
+                'rate_limit' => $validated['rate_limit'] ?? 60,
+                'skill' => $validated['skill'] ?? 'askmydocs-assistant@1',
+                'host_tools_enabled' => $validated['host_tools_enabled'] ?? false,
+                'is_active' => true,
+                // Tema esplicito solo se fornito; altrimenti null → il widget
+                // risolve i default (snippet di create resta minimale).
+                'theme_config' => array_key_exists('theme', $validated)
+                    ? $this->theme->sanitize($validated['theme'])
+                    : null,
+            ]);
+
+            if (! ($validated['user_auth_enabled'] ?? false)) {
+                return [$row, null];
+            }
+
+            $result = $this->identityCredentials->enable(
+                keyId: (int) $row->id,
+                tenantId: $tenantId,
+                expectedVersion: 0,
+                actor: $this->actor($request),
+                surface: WidgetIdentityCredentialService::SURFACE_HTTP,
+            );
+
+            return [$result->key, $result->plainSecret];
+        });
 
         // Return the secret ONCE — never again available after this response.
         return response()->json([
@@ -114,7 +138,6 @@ final class WidgetKeyAdminController extends Controller
     public function update(Request $request, int $id): JsonResponse
     {
         $row = $this->findForTenant($id);
-        $wasUserAuthEnabled = (bool) $row->user_auth_enabled;
         $tenantId = $this->tenantContext->current();
 
         $validated = $request->validate([
@@ -136,26 +159,76 @@ final class WidgetKeyAdminController extends Controller
             'skill' => ['nullable', 'string', 'max:100', 'regex:/^[a-z0-9][a-z0-9-]*@[0-9]+$/'],
             'host_tools_enabled' => ['nullable', 'boolean'],
             'user_auth_enabled' => ['nullable', 'boolean'],
+            'identity_credential_version' => [
+                'required_with:user_auth_enabled',
+                'integer',
+                'min:0',
+            ],
         ] + $this->theme->rules('theme'));
 
         // Il tema vive sulla colonna `theme_config` (nome diverso dalla chiave
         // FE `theme`): gestito a parte, mai via fill().
         $themeProvided = array_key_exists('theme', $validated);
         unset($validated['theme']);
+        $userAuthProvided = array_key_exists('user_auth_enabled', $validated);
+        $userAuthEnabled = (bool) ($validated['user_auth_enabled'] ?? false);
+        $identityVersion = (int) ($validated['identity_credential_version'] ?? 0);
+        unset($validated['user_auth_enabled'], $validated['identity_credential_version']);
 
-        $row->fill(array_filter($validated, fn ($v) => $v !== null));
-        if ($themeProvided) {
-            $row->theme_config = $this->theme->sanitize($request->input('theme', []));
+        try {
+            [$row, $identitySecret] = DB::transaction(function () use (
+                $row,
+                $validated,
+                $themeProvided,
+                $request,
+                $userAuthProvided,
+                $userAuthEnabled,
+                $identityVersion,
+                $tenantId,
+            ): array {
+                $row->fill(array_filter($validated, fn ($value) => $value !== null));
+                if ($themeProvided) {
+                    $row->theme_config = $this->theme->sanitize($request->input('theme', []));
+                }
+                $row->save();
+
+                if (! $userAuthProvided) {
+                    return [$row->fresh(), null];
+                }
+
+                $result = $userAuthEnabled
+                    ? $this->identityCredentials->enable(
+                        keyId: (int) $row->id,
+                        tenantId: $tenantId,
+                        expectedVersion: $identityVersion,
+                        actor: $this->actor($request),
+                        surface: WidgetIdentityCredentialService::SURFACE_HTTP,
+                    )
+                    : $this->identityCredentials->disable(
+                        keyId: (int) $row->id,
+                        tenantId: $tenantId,
+                        expectedVersion: $identityVersion,
+                        actor: $this->actor($request),
+                        surface: WidgetIdentityCredentialService::SURFACE_HTTP,
+                    );
+
+                return [$result->key, $result->plainSecret];
+            });
+        } catch (WidgetIdentityCredentialNotFound $e) {
+            return $this->identityCredentialError('widget_key_not_found', $e, 404);
+        } catch (WidgetIdentityCredentialConflict $e) {
+            return response()->json([
+                'error' => 'identity_credential_conflict',
+                'message' => $e->getMessage(),
+                'expected_version' => $e->expectedVersion,
+                'current_version' => $e->actualVersion,
+            ], 409);
+        } catch (WidgetIdentityCredentialUnauthorized $e) {
+            return $this->identityCredentialError('forbidden', $e, 403);
         }
-        $identitySecret = null;
-        if (! $wasUserAuthEnabled && ($validated['user_auth_enabled'] ?? false)) {
-            $identitySecret = 'ik_'.Str::random(48);
-            $row->identity_secret_hash = Hash::make($identitySecret);
-        }
-        $row->save();
 
         return response()->json([
-            'data' => $this->serialize($row->fresh()),
+            'data' => $this->serialize($row),
             'identity_plain_secret' => $identitySecret,
         ]);
     }
@@ -207,22 +280,38 @@ final class WidgetKeyAdminController extends Controller
     }
 
     /** Rotate the server-to-server identity credential; plaintext is returned once. */
-    public function rotateIdentitySecret(int $id): JsonResponse
+    public function rotateIdentitySecret(Request $request, int $id): JsonResponse
     {
-        $row = $this->findForTenant($id);
-        if (! $row->user_auth_enabled) {
+        $validated = $request->validate([
+            'identity_credential_version' => ['required', 'integer', 'min:0'],
+        ]);
+
+        try {
+            $result = $this->identityCredentials->rotate(
+                keyId: $id,
+                tenantId: $this->tenantContext->current(),
+                expectedVersion: (int) $validated['identity_credential_version'],
+                actor: $this->actor($request),
+                surface: WidgetIdentityCredentialService::SURFACE_HTTP,
+            );
+        } catch (WidgetIdentityCredentialNotFound $e) {
+            return $this->identityCredentialError('widget_key_not_found', $e, 404);
+        } catch (WidgetIdentityCredentialDisabled $e) {
+            return $this->identityCredentialError('user_auth_disabled', $e, 409);
+        } catch (WidgetIdentityCredentialConflict $e) {
             return response()->json([
-                'error' => 'user_auth_disabled',
-                'message' => 'Enable authenticated users for this widget first.',
+                'error' => 'identity_credential_conflict',
+                'message' => $e->getMessage(),
+                'expected_version' => $e->expectedVersion,
+                'current_version' => $e->actualVersion,
             ], 409);
+        } catch (WidgetIdentityCredentialUnauthorized $e) {
+            return $this->identityCredentialError('forbidden', $e, 403);
         }
 
-        $plain = 'ik_'.Str::random(48);
-        $row->forceFill(['identity_secret_hash' => Hash::make($plain)])->save();
-
         return response()->json([
-            'data' => $this->serialize($row->fresh()),
-            'identity_plain_secret' => $plain,
+            'data' => $this->serialize($result->key),
+            'identity_plain_secret' => $result->plainSecret,
         ]);
     }
 
@@ -255,6 +344,7 @@ final class WidgetKeyAdminController extends Controller
             'skill' => $row->skill,
             'host_tools_enabled' => $row->host_tools_enabled,
             'user_auth_enabled' => $row->user_auth_enabled,
+            'identity_credential_version' => $row->identity_credential_version,
             'is_active' => $row->is_active,
             'last_used_at' => $row->last_used_at?->toIso8601String(),
             // #3 — usa l'attributo withCount quando presente (index()); fallback
@@ -266,5 +356,23 @@ final class WidgetKeyAdminController extends Controller
             'created_at' => $row->created_at->toIso8601String(),
             'updated_at' => $row->updated_at->toIso8601String(),
         ];
+    }
+
+    private function actor(Request $request): ?User
+    {
+        $actor = $request->user();
+
+        return $actor instanceof User ? $actor : null;
+    }
+
+    private function identityCredentialError(
+        string $error,
+        \RuntimeException $exception,
+        int $status,
+    ): JsonResponse {
+        return response()->json([
+            'error' => $error,
+            'message' => $exception->getMessage(),
+        ], $status);
     }
 }

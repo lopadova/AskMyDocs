@@ -87,6 +87,7 @@ describe('WidgetKeysView', () => {
                         skill: 'askmydocs-assistant@1',
                         host_tools_enabled: false,
                         user_auth_enabled: true,
+                        identity_credential_version: 1,
                         is_active: true,
                         last_used_at: null,
                         sessions_count: 2,
@@ -125,6 +126,7 @@ describe('WidgetKeysView', () => {
                         rate_limit: 60,
                         host_tools_enabled: false,
                         user_auth_enabled: false,
+                        identity_credential_version: 0,
                         is_active: true,
                         last_used_at: null,
                         sessions_count: 0,
@@ -371,6 +373,7 @@ describe('WidgetKeysView', () => {
                         skill: 'askmydocs-assistant@1',
                         host_tools_enabled: false,
                         user_auth_enabled: true,
+                        identity_credential_version: 1,
                         is_active: true,
                         last_used_at: null,
                         sessions_count: 0,
@@ -403,6 +406,7 @@ describe('WidgetKeysView', () => {
                         skill: 'askmydocs-assistant@1',
                         host_tools_enabled: false,
                         user_auth_enabled: true,
+                        identity_credential_version: 1,
                         is_active: true,
                         last_used_at: null,
                         sessions_count: 0,
@@ -431,6 +435,7 @@ describe('WidgetKeysView', () => {
         await waitFor(() => {
             expect(mockedApi.post).toHaveBeenCalledWith(
                 '/api/admin/widget-keys/43/rotate-identity-secret',
+                { identity_credential_version: 1 },
             );
         });
         expect(confirmSpy).toHaveBeenCalledWith(
@@ -452,6 +457,7 @@ describe('WidgetKeysView', () => {
                     rate_limit: 60,
                     host_tools_enabled: false,
                     user_auth_enabled: true,
+                    identity_credential_version: 1,
                     is_active: true,
                     last_used_at: null,
                     sessions_count: 0,
@@ -500,6 +506,7 @@ describe('WidgetKeysView', () => {
                 skill: 'askmydocs-assistant@1',
                 host_tools_enabled: false,
                 user_auth_enabled: true,
+                identity_credential_version: 1,
                 is_active: true,
                 last_used_at: null,
                 sessions_count: 0,
@@ -516,6 +523,7 @@ describe('WidgetKeysView', () => {
                 skill: 'askmydocs-assistant@1',
                 host_tools_enabled: false,
                 user_auth_enabled: true,
+                identity_credential_version: 1,
                 is_active: true,
                 last_used_at: null,
                 sessions_count: 0,
@@ -545,6 +553,7 @@ describe('WidgetKeysView', () => {
         await waitFor(() => {
             expect(mockedApi.patch).toHaveBeenCalledWith('/api/admin/widget-keys/42', {
                 user_auth_enabled: false,
+                identity_credential_version: 1,
             });
         });
 
@@ -929,6 +938,7 @@ describe('WidgetKeysView', () => {
                         skill: 'askmydocs-assistant@1',
                         host_tools_enabled: false,
                         user_auth_enabled: false,
+                        identity_credential_version: 0,
                         is_active: true,
                         last_used_at: null,
                         sessions_count: 0,
@@ -965,6 +975,7 @@ describe('WidgetKeysView', () => {
                         skill: 'askmydocs-assistant@1',
                         host_tools_enabled: false,
                         user_auth_enabled: true,
+                        identity_credential_version: 1,
                         is_active: true,
                         last_used_at: null,
                         sessions_count: 0,

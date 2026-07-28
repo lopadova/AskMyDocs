@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Admin;
 
 use App\Models\User;
+use App\Models\AdminCommandAudit;
 use App\Models\WidgetKey;
 use App\Models\WidgetSession;
 use App\Models\WidgetSessionStep;
@@ -896,9 +897,12 @@ final class WidgetAdminControllerTest extends TestCase
         $index = $this->actingAs($user)->getJson('/api/admin/widget-keys')->assertOk();
         $this->assertNull($index->json('data.0.identity_plain_secret'));
         $this->assertTrue($index->json('data.0.user_auth_enabled'));
+        $this->assertSame(1, $index->json('data.0.identity_credential_version'));
 
         $rotated = $this->actingAs($user)
-            ->postJson("/api/admin/widget-keys/{$id}/rotate-identity-secret")
+            ->postJson("/api/admin/widget-keys/{$id}/rotate-identity-secret", [
+                'identity_credential_version' => 1,
+            ])
             ->assertOk();
         $this->assertStringStartsWith('ik_', $rotated->json('identity_plain_secret'));
         $this->assertNotSame(
@@ -921,5 +925,13 @@ final class WidgetAdminControllerTest extends TestCase
             'X-Widget-Key' => $publicKey,
             'Authorization' => 'Bearer '.$rotated->json('identity_plain_secret'),
         ])->assertCreated();
+
+        $auditPayload = AdminCommandAudit::query()
+            ->where('command', 'widget.identity-credential')
+            ->get()
+            ->pluck('args_json')
+            ->toJson();
+        $this->assertStringNotContainsString((string) $created->json('identity_plain_secret'), $auditPayload);
+        $this->assertStringNotContainsString((string) $rotated->json('identity_plain_secret'), $auditPayload);
     }
 }

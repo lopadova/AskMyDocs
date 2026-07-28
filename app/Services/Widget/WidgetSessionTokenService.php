@@ -58,6 +58,9 @@ final class WidgetSessionTokenService
                 'token' => $this->hash($plain),
                 'widget_key_id' => $key->id,
                 'widget_session_id' => $authorizedSession?->id,
+                'identity_access_epoch' => $authorizedSession?->widget_identity_id !== null
+                    ? (int) $key->identity_access_epoch
+                    : null,
                 'origin' => $origin,
                 'expires_at' => $expiresAt,
             ]);
@@ -154,8 +157,11 @@ final class WidgetSessionTokenService
                 // Disabling authenticated-user history is an immediate
                 // revocation boundary. A previously minted wt_ must not keep
                 // transferring an identity after user auth has been disabled.
-                if ($session->widget_identity_id !== null && ! $key->user_auth_enabled) {
-                    return null;
+                if ($session->widget_identity_id !== null) {
+                    if (! $key->user_auth_enabled
+                        || $row->identity_access_epoch !== (int) $key->identity_access_epoch) {
+                        return null;
+                    }
                 }
             }
 
