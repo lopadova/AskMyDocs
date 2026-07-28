@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toAdminError } from '../../admin/shared/errors';
 import {
@@ -24,37 +24,71 @@ function slugify(value: string): string {
 function generatePassword(): string {
     const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%';
     const bytes = new Uint8Array(18);
-    if (globalThis.crypto?.getRandomValues) {
-        globalThis.crypto.getRandomValues(bytes);
-    } else {
-        for (let i = 0; i < bytes.length; i += 1) bytes[i] = Math.floor(Math.random() * 256);
+    if (!globalThis.crypto?.getRandomValues) {
+        throw new Error('Secure password generation is unavailable in this browser.');
     }
+    globalThis.crypto.getRandomValues(bytes);
     return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join('');
+}
+
+function initialPassword(): { value: string; error: string | null } {
+    try {
+        return { value: generatePassword(), error: null };
+    } catch (error) {
+        return {
+            value: '',
+            error: error instanceof Error ? error.message : 'Secure password generation is unavailable.',
+        };
+    }
 }
 
 export function TenantProvisionDialog({
     onClose,
     onProvisioned,
 }: TenantProvisionDialogProps): ReactNode {
+    const dialogRef = useRef<HTMLFormElement>(null);
+    const previousFocusRef = useRef<HTMLElement | null>(null);
     const [tenantName, setTenantName] = useState('');
     const [tenantSlug, setTenantSlug] = useState('');
     const [slugTouched, setSlugTouched] = useState(false);
     const [email, setEmail] = useState('');
     const [userName, setUserName] = useState('');
     const [nameTouched, setNameTouched] = useState(false);
-    const [password, setPassword] = useState(() => generatePassword());
+    const [initialPasswordState] = useState(initialPassword);
+    const [password, setPassword] = useState(initialPasswordState.value);
+    const [passwordGenerationError, setPasswordGenerationError] = useState<string | null>(initialPasswordState.error);
     const [showPassword, setShowPassword] = useState(false);
-    const [role, setRole] = useState<'admin' | 'editor' | 'viewer'>('admin');
-    const [debouncedCheck, setDebouncedCheck] = useState({ tenantName: '', tenantSlug: '', email: '' });
+    const [role, setRole] = useState<'super-admin' | 'admin' | 'editor' | 'viewer'>('admin');
+    const [debouncedCheck, setDebouncedCheck] = useState({ tenantName: '', tenantSlug: '', email: '', role: 'admin' as typeof role });
     const [result, setResult] = useState<ProvisionTenantResult | null>(null);
     const [copied, setCopied] = useState(false);
 
     useEffect(() => {
         const onKey = (event: KeyboardEvent) => {
             if (event.key === 'Escape') onClose();
+            if (event.key !== 'Tab' || dialogRef.current === null) return;
+
+            const focusable = Array.from(dialogRef.current.querySelectorAll<HTMLElement>(
+                'button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+            ));
+            if (focusable.length === 0) return;
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+            }
         };
+        previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
         document.addEventListener('keydown', onKey);
-        return () => document.removeEventListener('keydown', onKey);
+        window.setTimeout(() => dialogRef.current?.querySelector<HTMLElement>('input, button')?.focus(), 0);
+        return () => {
+            document.removeEventListener('keydown', onKey);
+            previousFocusRef.current?.focus();
+        };
     }, [onClose]);
 
     useEffect(() => {
@@ -63,10 +97,11 @@ export function TenantProvisionDialog({
                 tenantName: tenantName.trim(),
                 tenantSlug: tenantSlug.trim(),
                 email: email.trim().toLowerCase(),
+                role,
             });
         }, 350);
         return () => window.clearTimeout(handle);
-    }, [tenantName, tenantSlug, email]);
+    }, [tenantName, tenantSlug, email, role]);
 
     const checkReady = useMemo(
         () =>
@@ -83,6 +118,7 @@ export function TenantProvisionDialog({
                 tenant_name: debouncedCheck.tenantName,
                 tenant_slug: debouncedCheck.tenantSlug,
                 user_email: debouncedCheck.email,
+                role: debouncedCheck.role,
             }),
         enabled: checkReady && result === null,
         retry: false,
@@ -161,10 +197,13 @@ export function TenantProvisionDialog({
             style={backdropStyle}
         >
             <form
+                ref={dialogRef}
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="tenant-control-provision-title"
                 data-testid="tenant-control-provision-dialog"
+                data-state={mutation.isPending ? 'loading' : result ? 'ready' : error ? 'error' : 'idle'}
+                aria-busy={mutation.isPending || availabilityQuery.isFetching}
                 onSubmit={submit}
                 style={dialogStyle}
             >
@@ -241,7 +280,7 @@ export function TenantProvisionDialog({
                                     onChange={(event) => setCompany(event.target.value)}
                                     style={inputStyle}
                                 />
-                                {error?.fieldErrors.tenant_name && <FieldError text={error.fieldErrors.tenant_name} />}
+                                {error?.fieldErrors.tenant_name && <FieldError field="tenant-name" text={error.fieldErrors.tenant_name} />}
                             </label>
                             <label htmlFor="tenant-control-company-slug" style={labelStyle}>
                                 <span>Tenant slug</span>
@@ -259,7 +298,7 @@ export function TenantProvisionDialog({
                                     }}
                                     style={inputStyle}
                                 />
-                                {error?.fieldErrors.tenant_slug && <FieldError text={error.fieldErrors.tenant_slug} />}
+                                {error?.fieldErrors.tenant_slug && <FieldError field="tenant-slug" text={error.fieldErrors.tenant_slug} />}
                             </label>
                         </section>
 
@@ -278,7 +317,7 @@ export function TenantProvisionDialog({
                                     onChange={(event) => setUserEmail(event.target.value)}
                                     style={inputStyle}
                                 />
-                                {error?.fieldErrors.user_email && <FieldError text={error.fieldErrors.user_email} />}
+                                {error?.fieldErrors.user_email && <FieldError field="user-email" text={error.fieldErrors.user_email} />}
                             </label>
 
                             <AvailabilityState
@@ -303,7 +342,7 @@ export function TenantProvisionDialog({
                                             }}
                                             style={inputStyle}
                                         />
-                                        {error?.fieldErrors.user_name && <FieldError text={error.fieldErrors.user_name} />}
+                                        {error?.fieldErrors.user_name && <FieldError field="user-name" text={error.fieldErrors.user_name} />}
                                     </label>
                                     <label htmlFor="tenant-control-user-password" style={labelStyle}>
                                         <span>Temporary password</span>
@@ -329,13 +368,26 @@ export function TenantProvisionDialog({
                                             <button
                                                 type="button"
                                                 data-testid="tenant-control-provision-password-generate"
-                                                onClick={() => setPassword(generatePassword())}
+                                                onClick={() => {
+                                                    try {
+                                                        setPassword(generatePassword());
+                                                        setPasswordGenerationError(null);
+                                                    } catch (generationError) {
+                                                        setPassword('');
+                                                        setPasswordGenerationError(
+                                                            generationError instanceof Error
+                                                                ? generationError.message
+                                                                : 'Secure password generation is unavailable.',
+                                                        );
+                                                    }
+                                                }}
                                                 style={quietButton}
                                             >
                                                 Regenerate
                                             </button>
                                         </div>
-                                        {error?.fieldErrors.password && <FieldError text={error.fieldErrors.password} />}
+                                        {passwordGenerationError && <FieldError field="password-generation" text={passwordGenerationError} />}
+                                        {error?.fieldErrors.password && <FieldError field="password" text={error.fieldErrors.password} />}
                                     </label>
                                 </>
                             )}
@@ -350,10 +402,16 @@ export function TenantProvisionDialog({
                                         onChange={(event) => setRole(event.target.value as typeof role)}
                                         style={inputStyle}
                                     >
+                                        <option value="super-admin">Super admin · maximum tenant privilege (membership still required)</option>
                                         <option value="admin">Admin · tenant management + all projects</option>
                                         <option value="editor">Editor · content editing</option>
                                         <option value="viewer">Viewer · read access</option>
                                     </select>
+                                    <span style={hintStyle}>
+                                        This application role is shared across every tenant associated with the account.
+                                        Existing accounts are never promoted by this workflow.
+                                    </span>
+                                    {error?.fieldErrors.role && <FieldError field="role" text={error.fieldErrors.role} />}
                                 </label>
                             )}
                         </section>
@@ -413,6 +471,14 @@ function AvailabilityState({
         return <p data-testid="tenant-control-availability-tenant-taken" role="alert" style={{ ...hintStyle, color: 'var(--err)' }}>Tenant slug already in use.</p>;
     }
     if (availability.user.status === 'existing') {
+        if (!availability.user.role_compatible) {
+            return (
+                <p data-testid="tenant-control-availability-role-mismatch" role="alert" style={{ ...hintStyle, color: 'var(--err)' }}>
+                    Existing account role {availability.user.effective_role ?? 'none'} is lower than the requested role.
+                    Change the account globally in the dedicated user workflow or request a lower role.
+                </p>
+            );
+        }
         return (
             <p data-testid="tenant-control-availability-existing-user" style={{ ...hintStyle, color: '#6ee7b7' }}>
                 Existing active account found: {availability.user.name} ({availability.user.roles.join(', ') || 'no role'}). It will be associated without changing its password.
@@ -429,8 +495,8 @@ function AvailabilityState({
     return <p data-testid="tenant-control-availability-new-user" style={{ ...hintStyle, color: '#6ee7b7' }}>Email available. A new account will be created.</p>;
 }
 
-function FieldError({ text }: { text: string }): ReactNode {
-    return <span role="alert" style={{ color: 'var(--err)', fontSize: 10.5 }}>{text}</span>;
+function FieldError({ field, text }: { field: string; text: string }): ReactNode {
+    return <span data-testid={`${field}-error`} role="alert" style={{ color: 'var(--err)', fontSize: 10.5 }}>{text}</span>;
 }
 
 const backdropStyle: React.CSSProperties = {

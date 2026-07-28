@@ -1,5 +1,6 @@
 import type { IconName } from '../Icons';
 import type { SeedUser } from '../../lib/seed';
+import type { AuthFeatures } from '../../lib/auth-store';
 
 /**
  * Single source of truth for the unified admin navigation.
@@ -60,6 +61,8 @@ export interface NavItem {
     route: string;
     /** Omitted means visible to every authenticated role. */
     roles?: SeedUser['role'][];
+    /** Optional server-delivered capability required to render this entry. */
+    feature?: keyof AuthFeatures;
 }
 
 export interface NavGroup {
@@ -88,8 +91,8 @@ export const NAV_GROUPS: NavGroup[] = [
                 id: 'tenant-control',
                 label: 'Tenant control',
                 icon: 'Globe',
-                route: '/app/$teamHash/super-admin/tenants',
-                roles: ['super-admin'],
+                route: '/app/system/tenants',
+                feature: 'system_admin',
             },
             { id: 'dashboard', label: 'Dashboard', icon: 'Grid', route: '/app/$teamHash/admin' },
             { id: 'engagement', label: 'Engagement', icon: 'Activity', route: '/app/$teamHash/admin/engagement' },

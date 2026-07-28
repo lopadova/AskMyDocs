@@ -50,8 +50,37 @@ export function RequireRole({ roles, children, fallback }: RequireRoleProps) {
     return <>{children}</>;
 }
 
-export function AdminForbidden({ requiredRoles = ['admin', 'super-admin'] }: { requiredRoles?: string[] }) {
+export function RequirePermission({
+    permission,
+    children,
+    fallback,
+}: {
+    permission: string;
+    children: ReactNode;
+    fallback?: ReactNode;
+}) {
+    const permissions = useAuthStore((s) => s.permissions);
+    const loading = useAuthStore((s) => s.loading);
+
+    if (loading) {
+        return <div data-testid="admin-loading">Checking access…</div>;
+    }
+    if (!permissions.includes(permission)) {
+        return <>{fallback ?? <AdminForbidden requiredPermission={permission} />}</>;
+    }
+
+    return <>{children}</>;
+}
+
+export function AdminForbidden({
+    requiredRoles = ['admin', 'super-admin'],
+    requiredPermission,
+}: {
+    requiredRoles?: string[];
+    requiredPermission?: string;
+}) {
     const superAdminOnly = requiredRoles.length === 1 && requiredRoles[0] === 'super-admin';
+    const platformOnly = requiredPermission === 'platform.admin';
 
     return (
         <div
@@ -99,7 +128,7 @@ export function AdminForbidden({ requiredRoles = ['admin', 'super-admin'] }: { r
                         letterSpacing: '-0.01em',
                     }}
                 >
-                    {superAdminOnly ? 'Super-admin access required' : 'Admin access required'}
+                    {platformOnly ? 'System administration access required' : superAdminOnly ? 'Super-admin access required' : 'Admin access required'}
                 </h2>
                 <p
                     style={{
@@ -109,8 +138,10 @@ export function AdminForbidden({ requiredRoles = ['admin', 'super-admin'] }: { r
                         lineHeight: 1.55,
                     }}
                 >
-                    {superAdminOnly
-                        ? 'This is a system-wide control plane reserved for super-admin accounts.'
+                    {platformOnly
+                        ? 'This global control plane requires the platform.admin capability.'
+                        : superAdminOnly
+                        ? 'This is a system-wide control plane reserved for system administrators.'
                         : 'Your account does not have an allowed admin role. Ask a workspace owner to grant you access if this looks wrong.'}
                 </p>
             </div>

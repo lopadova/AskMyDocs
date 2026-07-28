@@ -49,7 +49,7 @@ describe('api X-Tenant-Id request interceptor', () => {
         expect(captured[0]?.headers?.['X-Tenant-Id']).toBe('acme');
     });
 
-    it.each(['/api/auth/me', '/sanctum/csrf-cookie', '/testing/reset'])(
+    it.each(['/api/auth/me', '/api/system-admin/tenants', '/sanctum/csrf-cookie', '/testing/reset'])(
         'leaves %s tenant-free so a stale team can never lock the bootstrap out',
         async (url) => {
             await api.get(url).catch(() => undefined);

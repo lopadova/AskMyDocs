@@ -23,7 +23,7 @@ import { loginAsProjectUser, resetDb, seedDb } from './setup-helpers';
  *      fixture's cookie jar.
  *
  * Step 3 is non-obvious but load-bearing. The setup projects
- * (auth.setup / viewer.setup / super-admin.setup) save a session
+ * (auth.setup / viewer.setup / super-admin.setup / system-admin.setup) save a session
  * cookie to the project's storageState. That cookie contains a
  * `password_<id>` key Laravel uses to detect "the user changed their
  * password — log them out". When migrate:fresh drops + recreates the

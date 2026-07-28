@@ -100,6 +100,13 @@ export default defineConfig({
                   // CI test DB name so migrations behave identically. Create it once:
                   // `createdb askmydocs_test` (see .env.example). The TestingController guard enforces this too.
                   DB_DATABASE: 'askmydocs_test',
+                  // Local E2E has no long-running queue worker. Pin the
+                  // connection explicitly instead of inheriting a developer
+                  // `.env` value such as `database`, otherwise KB ingest jobs
+                  // remain queued forever and the upload progress gate stalls.
+                  // CI skips this webServer block and keeps its dedicated
+                  // database worker (see .github/workflows/tests.yml).
+                  QUEUE_CONNECTION: 'sync',
                   // drives the real /messages/stream SSE through the real
                   // @ai-sdk transport. The fake provider streams a canned
                   // answer + a constant embedding vector (so retrieval always
@@ -197,6 +204,11 @@ export default defineConfig({
             dependencies: ['viewer-setup'],
         },
         {
+            name: 'system-admin-setup',
+            testMatch: /system-admin\.setup\.ts/,
+            dependencies: ['super-admin-setup'],
+        },
+        {
             name: 'chromium',
             use: {
                 ...devices['Desktop Chrome'],
@@ -207,7 +219,13 @@ export default defineConfig({
             // state; every *-super-admin.spec.ts under the super-admin
             // one. Keep the ignore list a single regex so new RBAC
             // denial / elevation specs don't need this config touched.
-            testIgnore: [/.*\.setup\.ts/, /.*-viewer\.spec\.ts/, /.*-super-admin\.spec\.ts/, /role-access\.spec\.ts/],
+            testIgnore: [
+                /.*\.setup\.ts/,
+                /.*-viewer\.spec\.ts/,
+                /.*-super-admin\.spec\.ts/,
+                /.*-system-admin\.spec\.ts/,
+                /role-access\.spec\.ts/,
+            ],
         },
         {
             // Non-admin project — runs ONLY the *-viewer scenarios.
@@ -234,9 +252,18 @@ export default defineConfig({
             testMatch: /.*-super-admin\.spec\.ts/,
         },
         {
+            name: 'chromium-system-admin',
+            use: {
+                ...devices['Desktop Chrome'],
+                storageState: 'playwright/.auth/system-admin.json',
+            },
+            dependencies: ['system-admin-setup'],
+            testMatch: /.*-system-admin\.spec\.ts/,
+        },
+        {
             // R32 — per-role access-control gate. Runs role-access.spec.ts in a
             // CLEAN (unauthenticated) context: the spec logs in as each of the
-            // five roles inline + asserts the API allow-set, plus a guest case.
+            // six roles inline + asserts the API allow-set, plus a guest case.
             // No pre-auth storage state may leak in. Depends on `setup` only to
             // serialise the boot-time DB migrate; the spec's own beforeEach
             // reseeds via resetAndSeed.

@@ -6,7 +6,7 @@ import { USERS } from '../../lib/seed';
 
 describe('Sidebar (unified rail)', () => {
     it('renders every admin section in the single rail — including the ones that used to live only in the AdminShell rail', () => {
-        render(<Sidebar active="chat" onNav={() => undefined} user={USERS[0]} projectCount={4} />);
+        render(<Sidebar active="chat" onNav={() => undefined} user={USERS[0]} projectCount={4} features={{ system_admin: true }} />);
         // Core + formerly-duplicated + formerly-rail-only sections all live here now.
         for (const id of [
             'chat',
@@ -39,17 +39,32 @@ describe('Sidebar (unified rail)', () => {
         }
     });
 
-    it('hides the global tenant control entry from non-super-admin users', () => {
+    it('hides the global tenant control entry without the platform capability', () => {
         render(
             <Sidebar
                 active="chat"
                 onNav={() => undefined}
                 user={{ ...USERS[0], role: 'admin' }}
                 projectCount={4}
+                features={{ system_admin: false }}
             />,
         );
 
         expect(screen.queryByTestId('sidebar-nav-tenant-control')).not.toBeInTheDocument();
+    });
+
+    it('shows global tenant control from the server capability rather than the primary role label', () => {
+        render(
+            <Sidebar
+                active="chat"
+                onNav={() => undefined}
+                user={{ ...USERS[0], role: 'admin' }}
+                projectCount={4}
+                features={{ system_admin: true }}
+            />,
+        );
+
+        expect(screen.getByTestId('sidebar-nav-tenant-control')).toBeInTheDocument();
     });
 
     it('fires onNav with the section id when an entry is clicked', async () => {

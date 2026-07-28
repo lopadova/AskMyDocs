@@ -16,10 +16,7 @@ test.describe('Tenant control — regular admin', () => {
         await expect(page.getByTestId('appshell-root')).toBeVisible({ timeout: 15_000 });
         await expect(page.getByTestId('sidebar-nav-tenant-control')).toHaveCount(0);
 
-        const match = page.url().match(/\/app\/([^/]+)/);
-        if (!match) throw new Error(`Unable to resolve active team hash from ${page.url()}`);
-
-        await page.goto(`/app/${match[1]}/super-admin/tenants`);
+        await page.goto('/app/system/tenants');
         await expect(page.getByTestId('admin-forbidden')).toBeVisible({ timeout: 15_000 });
     });
 });

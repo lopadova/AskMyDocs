@@ -49,7 +49,7 @@ export function TenantControlView(): ReactNode {
                 <div>
                     <h1 style={{ margin: 0, fontSize: 19, color: 'var(--fg-0)' }}>Tenant control</h1>
                     <p style={{ margin: '5px 0 0', color: 'var(--fg-3)', fontSize: 11.5 }}>
-                        System-wide registry, user access and one-step onboarding. Super-admin only.
+                        System administration across every tenant. Platform permission required.
                     </p>
                 </div>
                 <span style={{ flex: 1 }} />
@@ -264,27 +264,57 @@ function TenantDetailContent({
 }): ReactNode {
     const [name, setName] = useState(detail.tenant.name);
     const [status, setStatus] = useState<TenantStatus>(detail.tenant.status);
+    const [preview, setPreview] = useState<Awaited<ReturnType<typeof tenantControlApi.lifecyclePreview>> | null>(null);
 
     useEffect(() => {
         setName(detail.tenant.name);
         setStatus(detail.tenant.status);
+        setPreview(null);
     }, [detail.tenant.name, detail.tenant.status, detail.tenant.slug]);
 
     const mutation = useMutation({
-        mutationFn: () => tenantControlApi.update(detail.tenant.slug, { name: name.trim(), status }),
-        onSuccess: onUpdated,
+        mutationFn: (confirmToken?: string) => tenantControlApi.update(detail.tenant.slug, {
+            name: name.trim(),
+            status,
+            confirm_token: confirmToken,
+        }),
+        onSuccess: () => {
+            setPreview(null);
+            onUpdated();
+        },
     });
-    const updateError = mutation.isError ? toAdminError(mutation.error) : null;
+    const previewMutation = useMutation({
+        mutationFn: () => tenantControlApi.lifecyclePreview(detail.tenant.slug, status),
+        onSuccess: setPreview,
+    });
+    const updateError = mutation.isError
+        ? toAdminError(mutation.error)
+        : previewMutation.isError
+          ? toAdminError(previewMutation.error)
+          : null;
+    const busy = mutation.isPending || previewMutation.isPending;
+    const save = () => {
+        if (status !== detail.tenant.status) {
+            previewMutation.mutate();
+        } else {
+            mutation.mutate(undefined);
+        }
+    };
 
     return (
-        <section data-testid="tenant-control-detail" style={{ ...panelStyle, padding: 14 }}>
+        <section
+            data-testid="tenant-control-detail"
+            data-state={updateError ? 'error' : busy ? 'loading' : 'ready'}
+            aria-busy={busy}
+            style={{ ...panelStyle, padding: 14 }}
+        >
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
                 <div>
                     <h2 style={{ margin: 0, color: 'var(--fg-0)', fontSize: 15 }}>{detail.tenant.name}</h2>
                     <span style={{ color: 'var(--fg-3)', fontFamily: 'var(--font-mono)', fontSize: 10.5 }}>{detail.tenant.slug}</span>
                 </div>
                 <span style={{ flex: 1 }} />
-                <StatusPill status={detail.tenant.status} />
+                <StatusPill status={detail.tenant.status} testId="tenant-control-detail-current-status" />
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px auto', gap: 7, marginTop: 14 }}>
@@ -316,17 +346,53 @@ function TenantDetailContent({
                 <button
                     type="button"
                     data-testid="tenant-control-detail-save"
-                    disabled={mutation.isPending || name.trim() === ''}
-                    onClick={() => mutation.mutate()}
+                    disabled={busy || name.trim() === ''}
+                    onClick={save}
                     style={{ ...secondaryButton, alignSelf: 'end' }}
                 >
-                    {mutation.isPending ? 'Saving…' : 'Save'}
+                    {busy ? 'Saving…' : 'Save'}
                 </button>
             </div>
             <p style={{ margin: '7px 0 0', color: 'var(--fg-3)', fontSize: 10.5, lineHeight: 1.4 }}>
                 Suspended and archived tenants disappear from team switching and their tenant-scoped requests are blocked.
             </p>
             {updateError && <p role="alert" style={{ color: 'var(--err)', fontSize: 11 }}>{updateError.message}</p>}
+
+            {preview && (
+                <div
+                    role="alertdialog"
+                    aria-labelledby="tenant-lifecycle-confirm-title"
+                    aria-describedby="tenant-lifecycle-confirm-description"
+                    data-testid="tenant-control-lifecycle-confirm"
+                    style={{ ...userCardStyle, marginTop: 10, borderColor: 'rgba(245,158,11,.5)' }}
+                >
+                    <strong id="tenant-lifecycle-confirm-title" style={{ color: 'var(--fg-0)' }}>
+                        Confirm {preview.transition.from} → {preview.transition.to}
+                    </strong>
+                    <p id="tenant-lifecycle-confirm-description" style={{ color: 'var(--fg-2)', fontSize: 11 }}>
+                        This changes access for {preview.tenant.member_count} users across {preview.tenant.project_count} projects.
+                        The confirmation is single-use and expires shortly.
+                    </p>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                        <button
+                            type="button"
+                            data-testid="tenant-control-lifecycle-cancel"
+                            onClick={() => setPreview(null)}
+                            style={secondaryButton}
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="button"
+                            data-testid="tenant-control-lifecycle-confirm-submit"
+                            onClick={() => mutation.mutate(preview.confirm_token)}
+                            style={primaryButton}
+                        >
+                            Confirm lifecycle change
+                        </button>
+                    </div>
+                </div>
+            )}
 
             <div style={{ display: 'flex', gap: 8, margin: '16px 0 8px', color: 'var(--fg-2)', fontSize: 11 }}>
                 <span>{detail.tenant.project_count} projects</span>
@@ -402,9 +468,9 @@ function UserAccessCard({ user }: { user: TenantUserAccess }): ReactNode {
     );
 }
 
-function StatusPill({ status }: { status: TenantStatus }): ReactNode {
+function StatusPill({ status, testId }: { status: TenantStatus; testId?: string }): ReactNode {
     const color = status === 'active' ? '#6ee7b7' : status === 'suspended' ? '#fbbf24' : '#fca5a5';
-    return <span style={{ ...miniPill, color }}>{status}</span>;
+    return <span data-testid={testId} style={{ ...miniPill, color }}>{status}</span>;
 }
 
 function Pagination({
@@ -447,8 +513,15 @@ function Pagination({
 }
 
 function PanelState({ testId, text, error = false }: { testId: string; text: string; error?: boolean }): ReactNode {
+    const state = error ? 'error' : testId.endsWith('-loading') ? 'loading' : testId.endsWith('-empty') ? 'empty' : 'idle';
     return (
-        <section data-testid={testId} role={error ? 'alert' : undefined} style={{ ...panelStyle, padding: 24, color: error ? 'var(--err)' : 'var(--fg-3)', fontSize: 12 }}>
+        <section
+            data-testid={testId}
+            data-state={state}
+            aria-busy={state === 'loading'}
+            role={error ? 'alert' : undefined}
+            style={{ ...panelStyle, padding: 24, color: error ? 'var(--err)' : 'var(--fg-3)', fontSize: 12 }}
+        >
             {text}
         </section>
     );

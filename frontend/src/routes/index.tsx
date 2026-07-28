@@ -18,7 +18,7 @@ import { UsersView } from '../features/admin/users/UsersView';
 import { RolesView } from '../features/admin/roles/RolesView';
 import { ProjectsList } from '../features/admin/projects/ProjectsList';
 import { TeamsList } from '../features/admin/teams/TeamsList';
-import { TenantControlView } from '../features/super-admin/tenants/TenantControlView';
+import { TenantControlView } from '../features/system-admin/tenants/TenantControlView';
 import { KbView } from '../features/admin/kb/KbView';
 import { KbHealthView } from '../features/admin/kb-health/KbHealthView';
 import { TagsList } from '../features/admin/tags/TagsList';
@@ -60,7 +60,7 @@ import { GamificationInsightsPanel } from '../features/admin/engagement/Gamifica
 import { AdminNotificationDefaultsGrid } from '../features/notifications/AdminNotificationDefaultsGrid';
 import { WidgetAdminView } from '../features/admin/widget/WidgetAdminView';
 import { AdminShell } from '../features/admin/shell/AdminShell';
-import { RequireRole } from './role-guard';
+import { RequirePermission, RequireRole } from './role-guard';
 import { LoginPage } from '../features/auth/LoginPage';
 import { RegisterPage } from '../features/auth/RegisterPage';
 import { ForgotPasswordPage } from '../features/auth/ForgotPasswordPage';
@@ -473,20 +473,22 @@ const adminTeamsRoute = createRoute({
     component: AdminTeamsRoute,
 });
 
-function SuperAdminTenantControlRoute() {
+function SystemAdminTenantControlRoute() {
     return (
-        <RequireRole roles={['super-admin']}>
-            <AdminShell section="tenant-control">
-                <TenantControlView />
-            </AdminShell>
-        </RequireRole>
+        <AppShell tenantScoped={false}>
+            <RequirePermission permission="platform.admin">
+                <AdminShell section="tenant-control">
+                    <TenantControlView />
+                </AdminShell>
+            </RequirePermission>
+        </AppShell>
     );
 }
 
-const superAdminTenantControlRoute = createRoute({
-    getParentRoute: () => teamRoute,
-    path: 'super-admin/tenants',
-    component: SuperAdminTenantControlRoute,
+const systemAdminTenantControlRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'system/tenants',
+    component: SystemAdminTenantControlRoute,
 });
 
 // PR7 / Phase F2 — flat admin children. Same shape as `chatRoute`
@@ -1246,7 +1248,6 @@ const teamChildren = [
     adminRoute,
     adminProjectsRoute,
     adminTeamsRoute,
-    superAdminTenantControlRoute,
     adminUsersRoute,
     adminRolesRoute,
     adminKbRoute,
@@ -1297,6 +1298,7 @@ const routeTree = rootRoute.addChildren([
     resetRoute,
     appRoute.addChildren([
         appIndexRoute,
+        systemAdminTenantControlRoute,
         teamRoute.addChildren(teamChildren),
         digestRoute,
         meDashboardRoute,

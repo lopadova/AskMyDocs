@@ -3,6 +3,7 @@ import { Icon } from '../Icons';
 import { Avatar } from './Avatar';
 import { NAV_GROUPS, type SidebarSection } from './nav-config';
 import type { SeedUser } from '../../lib/seed';
+import type { AuthFeatures } from '../../lib/auth-store';
 
 export type { SidebarSection } from './nav-config';
 
@@ -14,6 +15,7 @@ export type SidebarProps = {
     collapsed?: boolean;
     user: SeedUser;
     projectCount: number;
+    features?: AuthFeatures;
 };
 
 /*
@@ -22,11 +24,14 @@ export type SidebarProps = {
  * appears twice. Groups default to expanded; the group that owns the active
  * section is always forced open so the current page is never hidden.
  */
-export function Sidebar({ active, onNav, collapsed = false, user, projectCount }: SidebarProps) {
+export function Sidebar({ active, onNav, collapsed = false, user, projectCount, features = {} }: SidebarProps) {
     const visibleGroups = NAV_GROUPS
         .map((group) => ({
             ...group,
-            items: group.items.filter((item) => item.roles === undefined || item.roles.includes(user.role)),
+            items: group.items.filter((item) =>
+                (item.roles === undefined || item.roles.includes(user.role))
+                && (item.feature === undefined || features[item.feature] === true),
+            ),
         }))
         .filter((group) => group.items.length > 0);
     const activeGroupId = visibleGroups.find((g) => g.items.some((i) => i.id === active))?.id;

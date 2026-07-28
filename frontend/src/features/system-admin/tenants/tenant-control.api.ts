@@ -58,6 +58,8 @@ export interface TenantAvailability {
         id: number | null;
         name: string | null;
         roles: string[];
+        effective_role: 'super-admin' | 'admin' | 'editor' | 'viewer' | null;
+        role_compatible: boolean;
     };
     can_provision: boolean;
 }
@@ -68,7 +70,7 @@ export interface ProvisionTenantPayload {
     user_email: string;
     user_name?: string;
     password?: string;
-    role: 'admin' | 'editor' | 'viewer';
+    role: 'super-admin' | 'admin' | 'editor' | 'viewer';
     attach_existing: boolean;
     project_key?: string;
 }
@@ -99,7 +101,7 @@ export const tenantControlApi = {
         per_page?: number;
     }): Promise<{ data: PlatformTenant[]; meta: PageMeta }> {
         const { data } = await api.get<{ data: PlatformTenant[]; meta: PageMeta }>(
-            '/api/super-admin/tenants',
+            '/api/system-admin/tenants',
             { params },
         );
         return data;
@@ -109,17 +111,18 @@ export const tenantControlApi = {
         tenant_name: string;
         tenant_slug?: string;
         user_email: string;
+        role: ProvisionTenantPayload['role'];
     }): Promise<TenantAvailability> {
-        const { data } = await api.get<{ data: TenantAvailability }>(
-            '/api/super-admin/tenants/availability',
-            { params },
+        const { data } = await api.post<{ data: TenantAvailability }>(
+            '/api/system-admin/tenants/availability',
+            params,
         );
         return data.data;
     },
 
     async provision(payload: ProvisionTenantPayload): Promise<ProvisionTenantResult> {
         const { data } = await api.post<{ data: ProvisionTenantResult }>(
-            '/api/super-admin/tenants',
+            '/api/system-admin/tenants',
             payload,
         );
         return data.data;
@@ -127,7 +130,7 @@ export const tenantControlApi = {
 
     async detail(slug: string, page = 1): Promise<TenantDetail> {
         const { data } = await api.get<{ data: TenantDetail }>(
-            `/api/super-admin/tenants/${encodeURIComponent(slug)}`,
+            `/api/system-admin/tenants/${encodeURIComponent(slug)}`,
             { params: { page, per_page: 25 } },
         );
         return data.data;
@@ -135,11 +138,34 @@ export const tenantControlApi = {
 
     async update(
         slug: string,
-        payload: { name?: string; status?: TenantStatus },
+        payload: { name?: string; status?: TenantStatus; confirm_token?: string },
     ): Promise<PlatformTenant> {
         const { data } = await api.patch<{ data: PlatformTenant }>(
-            `/api/super-admin/tenants/${encodeURIComponent(slug)}`,
+            `/api/system-admin/tenants/${encodeURIComponent(slug)}`,
             payload,
+        );
+        return data.data;
+    },
+
+    async lifecyclePreview(
+        slug: string,
+        status: TenantStatus,
+    ): Promise<{
+        tenant: { slug: string; name: string; project_count: number; member_count: number };
+        transition: { from: TenantStatus; to: TenantStatus };
+        confirm_token: string;
+        confirm_token_expires_at: string;
+    }> {
+        const { data } = await api.post<{
+            data: {
+                tenant: { slug: string; name: string; project_count: number; member_count: number };
+                transition: { from: TenantStatus; to: TenantStatus };
+                confirm_token: string;
+                confirm_token_expires_at: string;
+            };
+        }>(
+            `/api/system-admin/tenants/${encodeURIComponent(slug)}/lifecycle-preview`,
+            { status },
         );
         return data.data;
     },
