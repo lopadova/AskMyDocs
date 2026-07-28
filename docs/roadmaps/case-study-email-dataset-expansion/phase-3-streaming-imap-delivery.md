@@ -80,8 +80,16 @@ php artisan mail:seed-imap \
   --dataset-version=<versione> \
   --purge-dataset \
   --purge-only \
-  --summary-only
+  --summary-only \
+  --actor=operator:rollback \
+  --preview-purge
 ```
+
+Copiare il token e ripetere gli stessi argomenti sostituendo
+`--preview-purge` con `--confirm-token=<token>`. Il token è DB-backed,
+monouso, hash-only e legato a operazione, checksum, selezione normalizzata,
+tenant, attore e argomenti. Viene consumato atomicamente dopo il preflight e
+prima del primo delete remoto.
 
 `--purge-all-seeded` e l'alias legacy `--purge` sono più ampi: eliminano tutte
 le fixture seedate della mailbox. Non usarli per il rollback di una singola
@@ -128,7 +136,14 @@ php artisan mail:seed-imap \
 | `--purge-only` | con `--purge-dataset`, solo rimozione |
 | `--purge-all-seeded` | purge ampio |
 | `--purge` | alias legacy ampio |
+| `--preview-purge` | emette un token monouso senza rete |
+| `--confirm-token=` | autorizza lo scope esatto del preview |
+| `--actor=` | lega operazione e audit all'operatore |
 | `--dry-run` | build/validazione senza invio |
+
+APPEND e purge reali sono rifiutati fuori da `APP_ENV=local/testing`; non
+esiste override. Dry-run, estimate e preview restano offline in ogni ambiente.
+Ogni mailbox reale apre un audit tenant-scoped prima della mutazione.
 
 `--purge-only` richiede `--purge-dataset` e non è combinabile con
 `--dry-run`, `--estimate-cost` o `--resume`.

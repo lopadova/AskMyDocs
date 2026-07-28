@@ -1,6 +1,6 @@
 # Stato implementazione — dataset email case-study
 
-Data di verifica: 2026-07-23.
+Data di verifica: 2026-07-28.
 
 ## Esito
 
@@ -86,6 +86,8 @@ Le parole “completa” non includono la certificazione su servizi esterni.
 - pubblicazione atomica e fallimento rumoroso; `--force` accetta solo un rerun
   byte-identico e non sostituisce mai una versione con contenuto diverso;
 - reader streaming con verifica checksum;
+- writer con budget LRU di 64 handle condiviso fra shard dati e indice;
+- regressione byte-identica con eviction forzata a due handle;
 - quality index SQLite temporaneo: memoria PHP bounded al thread/counter;
 - controlli su domini riservati, identità, cataloghi, thread, duplicati esatti
   generati e frasi-canary cross-company;
@@ -93,6 +95,11 @@ Le parole “completa” non includono la certificazione su servizi esterni.
   deadline PCNTL, checkpoint atomico e recupero dell'APPEND ambiguo tramite
   Message-ID;
 - `--purge-dataset --purge-only` per rimuovere senza riappendere;
+- APPEND/purge reali rifiutati fuori da `local/testing`, senza override;
+- token purge DB-backed monouso, hash-only e scope-bound, consumato con
+  `lockForUpdate` dopo il preflight;
+- audit `started/completed/failed/rejected` per mailbox e tenant, con argomenti
+  allowlisted;
 - purge-intent atomico per mailbox fisica: un crash dopo la cancellazione
   remota viene recuperato da un plain `--resume` prima di leggere checkpoint
   potenzialmente stale;
@@ -133,6 +140,11 @@ versione/fingerprint e, se cambia l’algoritmo, una nuova revisione generatore.
 costo dipendono dal provider e devono essere misurati durante la certificazione.
 
 ## Certificazione esterna ancora richiesta
+
+Stato e prerequisiti riproducibili:
+[`CERTIFICATION-2026-07-28.md`](CERTIFICATION-2026-07-28.md). Lo stato è
+esplicitamente `BLOCCATA`; nessun test fake viene presentato come risultato
+live.
 
 - APPEND/resume/purge su IMAP reale;
 - ingest completo dei 6.000 parent su PostgreSQL/pgvector;

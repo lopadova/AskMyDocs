@@ -91,10 +91,14 @@ php artisan mail:seed-imap \
   --dataset-version=<versione> \
   --purge-dataset \
   --purge-only \
-  --summary-only
+  --summary-only \
+  --actor=operator:rollback \
+  --preview-purge
 ```
 
-`--purge-dataset` senza `--purge-only` elimina e poi riappende la versione.
+Copiare il token e ripetere gli stessi argomenti sostituendo
+`--preview-purge` con `--confirm-token=<token>`. `--purge-dataset` senza
+`--purge-only` elimina e poi riappende la versione.
 
 ### B0.6 — Chiamate AI
 

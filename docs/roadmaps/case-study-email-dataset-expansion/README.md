@@ -1,7 +1,7 @@
 # Espansione del dataset email dei case study
 
-- **Stato:** core offline completo; certificazione live ancora richiesta
-- **Data:** 2026-07-23
+- **Stato:** core offline e hardening sicurezza completi; certificazione live bloccata
+- **Data:** 2026-07-28
 - **ready_for_implementation:** `true`
 - **Ambito:** Rotta Sicura Logistics, Prometeo Sicurezza Antincendio,
   PassoLibero Calzature
@@ -39,13 +39,18 @@ completo degli input; versioni e checksum verificati sono riportati in
 4. `demo:validate-case-study-emails` verifica checksum, contratto, identità,
    cataloghi, thread e canarini. Le identità e i thread corpus-sized sono
    indicizzati in un SQLite temporaneo, così la memoria PHP resta bounded.
-5. `mail:seed-imap` esegue APPEND one-by-one sotto una lease rinnovabile,
-   owner-safe e condivisa con il sync. Una guardia PCNTL interrompe I/O prima
-   del TTL; checkpoint e `--resume` riconciliano gli ACK ambigui.
-6. Il connettore conserva un watermark UID contiguo. Le fixture generate
+5. Il writer usa un budget LRU condiviso di 64 file descriptor per shard dati
+   e indice, senza cambiare i byte. `mail:seed-imap` esegue APPEND one-by-one
+   sotto una lease rinnovabile, owner-safe e condivisa con il sync. Una guardia
+   PCNTL interrompe I/O prima del TTL; checkpoint e `--resume` riconciliano gli
+   ACK ambigui.
+6. APPEND e purge reali sono ammessi soltanto in `local/testing`. Ogni purge
+   richiede preview e token DB monouso legato a scope/checksum/attore; ogni
+   mailbox apre un audit tenant-scoped prima dell'I/O remoto.
+7. Il connettore conserva un watermark UID contiguo. Le fixture generate
    arrivano in KB come documenti non canonici; il Message-ID riservato è il
    marker necessario per escludere Auto-Wiki e change analysis.
-7. Il bridge host verifica la persistenza sul disco KB, richiede
+8. Il bridge host verifica la persistenza sul disco KB, richiede
    `KB_DISK_THROW=true`, sposta il parent su un path stabile che include
    `dataset_version + fixture_id` e ripristina la stessa proiezione se era stata
    soft-deleted.
@@ -113,7 +118,8 @@ Il dettaglio verificato è in
 - Un rerun con la stessa installazione e versione non crea una nuova famiglia
   documentale al variare dell'UID IMAP.
 - Il quality gate e la delivery usano memoria bounded; i dati globali del
-  validator vivono su SQLite temporaneo.
+  validator vivono su SQLite temporaneo e il writer non supera 64 handle
+  condivisi fra dati e indice.
 - Gli indirizzi usano domini riservati e `sensitivity=synthetic_non_real`.
 - Il validator blocca frasi-canary di un'altra azienda anche se il record non
   dichiara il relativo `canary_id`.
@@ -121,6 +127,10 @@ Il dettaglio verificato è in
   `--purge-dataset --purge-only` esegue soltanto la rimozione.
 - Un purge scrive prima un intent atomico per mailbox fisica; un run successivo
   lo recupera sotto lease prima di usare checkpoint eventualmente stale.
+- Il token di purge è monouso, hash-only e consumato con lock DB dopo il
+  preflight deterministico ma prima del primo delete remoto.
+- Audit APPEND/purge e rifiuti sono separati per mailbox e tenant, senza
+  credenziali o contenuto e-mail.
 
 ## Limiti dichiarati
 
@@ -133,9 +143,11 @@ Il quality gate non è un rilevatore semantico di PII e non calcola similarità
 near-duplicate. Verifica invece domini riservati, campo sensitivity, duplicati
 esatti dei record generati e isolamento dei canarini.
 
-Non sono ancora disponibili un run report persistente dedicato al dataset,
-costi embedding misurati, benchmark live da 5.001+ messaggi nella stessa
-mailbox o metriche retrieval/performance sul corpus `large`.
+È disponibile il lifecycle forense in `admin_command_audit`, ma non un report
+aggregato unico per rollout. Costi embedding misurati, benchmark live da 5.001+
+messaggi nella stessa mailbox e metriche retrieval/performance sul corpus
+`large` restano bloccati. Vedi
+[`CERTIFICATION-2026-07-28.md`](CERTIFICATION-2026-07-28.md).
 
 ## Definition of Done
 
@@ -151,6 +163,8 @@ mailbox o metriche retrieval/performance sul corpus `large`.
 - path KB stabile e restore della proiezione soft-deleted;
 - gate Auto-Wiki/change-analysis autenticato dal Message-ID;
 - quality gate bounded e isolamento statico dei canarini;
+- writer verificato byte-identico con budget di 2 e 64 handle;
+- environment gate senza override, token purge monouso e audit per mailbox;
 - runbook con stop, resume, purge-only e rollback tenant-scoped.
 
 ### Certificazione esterna — pending

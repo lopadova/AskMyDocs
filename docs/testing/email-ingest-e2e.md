@@ -181,6 +181,10 @@ la memoria PHP resta bounded al thread/counter mentre la parte `O(corpus)` è su
 disco. Il catalogo `v1` genera solo text/plain e `attachments=[]`; il validator
 non è uno scanner semantico di PII e non calcola similarità near-duplicate.
 
+Anche i file descriptor sono bounded: shard dati e indice condividono un pool
+LRU di 64 handle. Un test forza eviction continua con due handle e confronta
+l'intero albero SHA-256 con l'output standard.
+
 ## 3. Preflight senza rete
 
 Prima di ogni delivery:
@@ -217,22 +221,42 @@ la pipeline AI normale. Un header o metadata spoofato non può attivare il gate.
 
 ## 4. Delivery IMAP streaming
 
-Primo caricamento o reinstallazione pulita della sola versione `large`:
+Primo caricamento o reinstallazione pulita della sola versione `large`.
+Prima emettere un token senza rete:
 
 ```bash
 php artisan mail:seed-imap \
   --all \
   --profile=large \
   --purge-dataset \
-  --summary-only
+  --summary-only \
+  --actor=operator:large-rollout \
+  --preview-purge
+```
+
+Poi ripetere lo stesso scope con il token stampato:
+
+```bash
+php artisan mail:seed-imap \
+  --all \
+  --profile=large \
+  --purge-dataset \
+  --summary-only \
+  --actor=operator:large-rollout \
+  --confirm-token=<token>
 ```
 
 Selezioni supportate:
 
 ```bash
-php artisan mail:seed-imap --project=rotta-logistics --profile=large --purge-dataset
-php artisan mail:seed-imap --mailbox=rotta-logistics-1 --profile=large --purge-dataset
+php artisan mail:seed-imap --project=rotta-logistics --profile=large --purge-dataset --actor=operator:subset --preview-purge
+php artisan mail:seed-imap --mailbox=rotta-logistics-1 --profile=large --purge-dataset --actor=operator:subset --preview-purge
 ```
+
+Il secondo comando mutante deve mantenere identici attore, selezione, dataset e
+opzioni. Il token è DB-backed, monouso e legato anche al checksum; il DB conserva
+soltanto SHA-256(token). Il preflight deterministico termina prima del consumo,
+che avviene con lock transazionale prima del primo delete remoto.
 
 La delivery:
 
@@ -269,6 +293,12 @@ rimozione senza riappendere.
 `--purge-all-seeded` e il suo alias legacy `--purge` cancellano invece tutte le
 fixture della mailbox: usarli solo quando si vuole davvero rimuovere anche
 gold e altre versioni.
+
+Qualunque APPEND/purge reale è rifiutato fuori da `APP_ENV=local/testing`; non
+esiste override. Dry-run, estimate e preview non toccano la rete in nessun
+ambiente. Ogni operazione reale apre un `admin_command_audit` separato per
+mailbox e tenant prima dell'I/O remoto; argomenti e audit escludono password,
+token, indirizzi e contenuto.
 
 Prima della cancellazione remota viene scritto atomicamente, nella directory
 dei checkpoint, un marker
@@ -342,12 +372,14 @@ controllare `connector_sync_runs`, code e failed jobs.
 
 ## 7. Orchestratore one-shot
 
-Generazione, preflight, delivery, installazione e sync:
+L'orchestratore propaga token e attore, ma non auto-conferma un purge. Generare
+prima il dataset, eseguire il preview con gli stessi argomenti `--all`, quindi:
 
 ```bash
 php artisan demo:init-case-studies \
   --profile=large \
-  --generate-email-dataset \
+  --email-actor=operator:large-rollout \
+  --email-confirm-token=<token> \
   --ingest-emails
 ```
 
@@ -431,10 +463,14 @@ Prima fermare nuovi sync e lasciare terminare i job già in esecuzione. Poi:
      --dataset-version=case-study-email-v2-g1-large-s20260723-catalogv1-snapa48c0f4751b501df \
      --purge-dataset \
      --purge-only \
-     --summary-only
+     --summary-only \
+     --actor=operator:rollback \
+     --preview-purge
    ```
 
-3. soft-delete, tenant per tenant, solo i documenti con
+3. ripetere lo stesso comando sostituendo `--preview-purge` con
+   `--confirm-token=<token>`;
+4. soft-delete, tenant per tenant, solo i documenti con
    `metadata.dataset_version` esattamente uguale:
 
    ```bash
@@ -446,9 +482,9 @@ Prima fermare nuovi sync e lasciare terminare i job già in esecuzione. Poi:
 
    Ripetere con la coppia tenant/progetto di Prometeo e PassoLibero. Lo script
    usa `DocumentDeleter::delete(force: false)` e `chunkById(100)`;
-4. verificare che le 751 fixture gold, i documenti canonici e gli altri tenant
+5. verificare che le 751 fixture gold, i documenti canonici e gli altri tenant
    siano invariati;
-5. conservare il manifest per audit e riproducibilità.
+6. conservare manifest e audit ID per riproducibilità.
 
 Non usare wildcard, tenant `default`, hard delete o `--purge-all-seeded` per un
 rollback di versione.
