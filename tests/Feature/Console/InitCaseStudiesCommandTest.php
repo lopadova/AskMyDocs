@@ -105,6 +105,8 @@ final class InitCaseStudiesCommandTest extends TestCase
             '--skip-docs' => true,
             '--profile' => 'large',
             '--generate-email-dataset' => true,
+            '--email-confirm-token' => 'confirmed-token',
+            '--email-actor' => 'operator:init',
         ]);
 
         $this->assertSame(0, $exitCode);
@@ -139,6 +141,8 @@ final class InitCaseStudiesCommandTest extends TestCase
             '--profile' => 'large',
             '--summary-only' => true,
             '--purge-dataset' => true,
+            '--confirm-token' => 'confirmed-token',
+            '--actor' => 'operator:init',
         ], $command->calls[4]['arguments']);
     }
 

@@ -55,6 +55,8 @@ class InitCaseStudiesCommand extends Command
         {--dataset-root=storage/app/demo-email-datasets : Directory radice dei dataset generati}
         {--generate-email-dataset : Genera atomicamente il profilo prima del preflight}
         {--resume : Riprende i checkpoint email invece di purgare la dataset version}
+        {--email-confirm-token= : Token monouso ottenuto dal preview di mail:seed-imap}
+        {--email-actor= : Identità operatore usata nel preview e nell’audit email}
         {--ingest-emails : Dopo l\'APPEND installa il connettore e ingerisce le e-mail in KB}';
 
     protected $description = 'Inizializza aziende, utenti, documenti e dataset email case-study con preflight e resume.';
@@ -151,6 +153,14 @@ class InitCaseStudiesCommand extends Command
                         '--summary-only' => true,
                     ];
                     $seedArgs[(bool) $this->option('resume') ? '--resume' : '--purge-dataset'] = true;
+                }
+                $confirmToken = trim((string) $this->option('email-confirm-token'));
+                if ($confirmToken !== '') {
+                    $seedArgs['--confirm-token'] = $confirmToken;
+                }
+                $actor = trim((string) $this->option('email-actor'));
+                if ($actor !== '') {
+                    $seedArgs['--actor'] = $actor;
                 }
 
                 $exitCode = $this->callChecked('mail:seed-imap', $seedArgs);

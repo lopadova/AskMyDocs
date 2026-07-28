@@ -4,12 +4,17 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
-use App\Services\Demo\EmailDataset\EmailDatasetReader;
 use App\Services\Demo\EmailDataset\DatasetVersion;
+use App\Services\Demo\EmailDataset\EmailDatasetReader;
+use App\Services\Demo\EmailDatasetConfirmationException;
+use App\Services\Demo\EmailDatasetEnvironmentGuard;
+use App\Services\Demo\EmailDatasetOperationAudit;
+use App\Services\Demo\EmailDatasetOperationConfirmation;
+use App\Services\Demo\EmailDatasetOperationContext;
 use App\Services\Demo\EmailDatasetSeedRequest;
 use App\Services\Demo\ImapMailboxSeeder;
 use App\Services\Demo\MailboxSelection;
-use App\Support\TenantContext;
+use App\Services\Demo\SeedOutcome;
 use Database\Seeders\TestEmailFixtures;
 use Illuminate\Console\Command;
 use Throwable;
@@ -43,6 +48,9 @@ class MailSeedImapCommand extends Command
         {--purge-only : Esegue soltanto --purge-dataset, senza riappendere}
         {--purge-all-seeded : Elimina prima tutte le fixture della mailbox — DISTRUTTIVO}
         {--purge : Alias legacy di --purge-all-seeded — DISTRUTTIVO}
+        {--preview-purge : Emette un confirm token monouso senza toccare la rete}
+        {--confirm-token= : Token DB-backed emesso da --preview-purge}
+        {--actor= : Identità operatore legata al token e all’audit}
         {--dry-run : Costruisce e valida i messaggi senza inviare nulla (non serve la password)}';
 
     protected $description = 'Inietta via IMAP APPEND le e-mail di test nelle caselle delle aziende (per l\'ingest reale).';
@@ -50,12 +58,10 @@ class MailSeedImapCommand extends Command
     public function handle(
         ImapMailboxSeeder $seeder,
         EmailDatasetReader $datasetReader,
-        TenantContext $tenant,
+        EmailDatasetEnvironmentGuard $environmentGuard,
+        EmailDatasetOperationConfirmation $confirmation,
+        EmailDatasetOperationAudit $audit,
     ): int {
-        // Le installazioni connettore vivono nel tenant 'default' come le aziende
-        // di test (R30/R31): allinea il contesto anche se qui non si scrive a DB.
-        $tenant->set('default');
-
         $mailboxKeys = $this->resolveMailboxKeys();
         if ($mailboxKeys === []) {
             $this->error('Nessuna casella selezionata. Usa --all, --mailbox=<key> o --project=<key>.');
@@ -71,6 +77,17 @@ class MailSeedImapCommand extends Command
         $purgeAll = (bool) $this->option('purge') || (bool) $this->option('purge-all-seeded');
         $purgeDataset = (bool) $this->option('purge-dataset');
         $purgeOnly = (bool) $this->option('purge-only');
+        $previewPurge = (bool) $this->option('preview-purge');
+        $destructive = $purgeAll || $purgeDataset;
+        $actor = trim((string) $this->option('actor'));
+        if ($actor === '') {
+            $actor = 'cli:'.(get_current_user() ?: 'unknown');
+        }
+        if (mb_strlen($actor) > 120) {
+            $this->error('--actor non può superare 120 caratteri.');
+
+            return self::INVALID;
+        }
 
         $batchSize = $this->positiveIntegerOption('batch-size');
         $progressEvery = $this->positiveIntegerOption('progress-every');
@@ -102,6 +119,11 @@ class MailSeedImapCommand extends Command
 
             return self::INVALID;
         }
+        if ($previewPurge && (! $destructive || $dryRun)) {
+            $this->error('--preview-purge richiede un purge esplicito e non si combina con dry-run/estimate-cost.');
+
+            return self::INVALID;
+        }
 
         if ($dryRun) {
             $this->warn('DRY-RUN: nessun messaggio verrà inviato.');
@@ -113,7 +135,77 @@ class MailSeedImapCommand extends Command
             $this->warn('PURGE DATASET: verrà eliminata solo la dataset version selezionata.');
         }
 
+        $operationContext = null;
+        $auditHandles = [];
         try {
+            $datasetDirectory = null;
+            $manifest = null;
+            if ($usesDataset) {
+                $datasetVersion = $this->resolveDatasetVersion($datasetVersion, $profile);
+                $datasetRoot = $this->resolveDatasetRoot();
+                $datasetDirectory = $datasetReader->datasetDirectory($datasetRoot, $datasetVersion);
+                $manifest = $datasetReader->manifestForVersion($datasetRoot, $datasetVersion);
+
+                if ($profile !== '' && ($manifest['profile'] ?? null) !== $profile) {
+                    throw new \RuntimeException(
+                        "Il manifest {$datasetVersion} appartiene al profilo "
+                        .(string) ($manifest['profile'] ?? 'sconosciuto').", non {$profile}.",
+                    );
+                }
+            }
+
+            $operationContext = $this->operationContext(
+                mailboxKeys: $mailboxKeys,
+                actor: $actor,
+                usesDataset: $usesDataset,
+                datasetVersion: $datasetVersion,
+                datasetDirectory: $datasetDirectory,
+                purgeDataset: $purgeDataset,
+                purgeAll: $purgeAll,
+                purgeOnly: $purgeOnly,
+                dryRun: $dryRun,
+                batchSize: $batchSize,
+            );
+
+            if ($previewPurge) {
+                $issued = $confirmation->issue($operationContext);
+                $this->info('Confirm token: '.$issued['token']);
+                $this->line('Scade: '.$issued['expires_at']);
+                $this->warn('Il token è monouso e valido soltanto per questa selezione e questi argomenti.');
+
+                return self::SUCCESS;
+            }
+
+            if (! $dryRun) {
+                $environmentGuard->assertRemoteMutationAllowed();
+                $seeder->assertRemotePreflight($mailboxKeys, $datasetDirectory);
+                if ($destructive) {
+                    $confirmation->consume(
+                        $operationContext,
+                        trim((string) $this->option('confirm-token')),
+                    );
+                }
+                $auditHandles = $audit->begin($operationContext);
+            }
+            $onOutcome = $auditHandles === []
+                ? null
+                : function (SeedOutcome $outcome) use (&$auditHandles, $audit): void {
+                    $handle = $auditHandles[$outcome->mailboxKey] ?? null;
+                    if ($handle === null) {
+                        throw new \RuntimeException(
+                            "Audit handle mancante per {$outcome->mailboxKey}.",
+                        );
+                    }
+                    $audit->complete(
+                        [$outcome->mailboxKey => $handle],
+                        [$outcome->mailboxKey => [
+                            'appended' => $outcome->appended,
+                            'purged' => $outcome->purged,
+                        ]],
+                    );
+                    unset($auditHandles[$outcome->mailboxKey]);
+                };
+
             $summaryOnly = (bool) $this->option('summary-only');
             $onMessage = $summaryOnly
                 ? null
@@ -228,20 +320,9 @@ class MailSeedImapCommand extends Command
             };
 
             if ($usesDataset) {
-                $datasetVersion = $this->resolveDatasetVersion($datasetVersion, $profile);
-                $datasetRoot = $this->resolveDatasetRoot();
-                $datasetDirectory = $datasetReader->datasetDirectory($datasetRoot, $datasetVersion);
-                $manifest = $datasetReader->manifestForVersion($datasetRoot, $datasetVersion);
-
-                if ($profile !== '' && ($manifest['profile'] ?? null) !== $profile) {
-                    throw new \RuntimeException(
-                        "Il manifest {$datasetVersion} appartiene al profilo "
-                        .(string) ($manifest['profile'] ?? 'sconosciuto').", non {$profile}.",
-                    );
-                }
                 $this->warnIfRemoteStress(
                     $mailboxKeys,
-                    $manifest,
+                    (array) $manifest,
                     $dryRun,
                     $purgeOnly,
                 );
@@ -249,7 +330,7 @@ class MailSeedImapCommand extends Command
                 $outcomes = $seeder->seedDataset(
                     new EmailDatasetSeedRequest(
                         mailboxKeys: $mailboxKeys,
-                        datasetDirectory: $datasetDirectory,
+                        datasetDirectory: (string) $datasetDirectory,
                         dryRun: $dryRun,
                         resume: (bool) $this->option('resume'),
                         purgeDataset: $purgeDataset && ! $dryRun,
@@ -259,6 +340,7 @@ class MailSeedImapCommand extends Command
                     ),
                     $onMessage,
                     $onProgress,
+                    $onOutcome,
                 );
             } else {
                 $outcomes = $seeder->seed(
@@ -267,9 +349,27 @@ class MailSeedImapCommand extends Command
                     purge: $purgeAll,
                     onMessage: $onMessage,
                     onProgress: $onProgress,
+                    onOutcome: $onOutcome,
                 );
             }
         } catch (Throwable $e) {
+            if ($auditHandles !== []) {
+                try {
+                    $audit->fail($auditHandles, $e);
+                } catch (Throwable $auditException) {
+                    $this->error('Audit fallito: '.$auditException->getMessage());
+                }
+            } elseif ($operationContext !== null && ! $dryRun) {
+                try {
+                    $reason = $e instanceof EmailDatasetConfirmationException
+                        ? 'confirmation_'.$e->reason
+                        : 'environment_or_preflight_rejected';
+                    $audit->reject($operationContext, $reason);
+                } catch (Throwable $auditException) {
+                    $this->error('Audit del rifiuto fallito: '.$auditException->getMessage());
+                }
+            }
+
             // R14/R4 — fallimento rumoroso: credenziali mancanti, casella non
             // raggiungibile, mailbox sconosciuta, append fallito.
             $this->error('Seeding fallito: '.$e->getMessage());
@@ -424,6 +524,82 @@ class MailSeedImapCommand extends Command
         }
 
         return str_starts_with($root, DIRECTORY_SEPARATOR) ? $root : base_path($root);
+    }
+
+    /**
+     * @param  list<string>  $mailboxKeys
+     */
+    private function operationContext(
+        array $mailboxKeys,
+        string $actor,
+        bool $usesDataset,
+        string $datasetVersion,
+        ?string $datasetDirectory,
+        bool $purgeDataset,
+        bool $purgeAll,
+        bool $purgeOnly,
+        bool $dryRun,
+        int $batchSize,
+    ): EmailDatasetOperationContext {
+        $tenantByMailbox = [];
+        foreach ($mailboxKeys as $mailboxKey) {
+            $tenantByMailbox[$mailboxKey] = TestEmailFixtures::tenantFor($mailboxKey);
+        }
+
+        if ($usesDataset) {
+            $manifestPath = rtrim((string) $datasetDirectory, DIRECTORY_SEPARATOR).'/manifest.json';
+            $manifestChecksum = hash_file('sha256', $manifestPath);
+            if ($manifestChecksum === false) {
+                throw new \RuntimeException("Impossibile calcolare il checksum del manifest {$manifestPath}.");
+            }
+        } else {
+            $datasetVersion = 'legacy-curated-v1';
+            $parts = [];
+            foreach ($mailboxKeys as $mailboxKey) {
+                $checksum = hash_file('sha256', TestEmailFixtures::emailsPath($mailboxKey));
+                if ($checksum === false) {
+                    throw new \RuntimeException("Impossibile calcolare il checksum fixture {$mailboxKey}.");
+                }
+                $parts[$mailboxKey] = $checksum;
+            }
+            ksort($parts, SORT_STRING);
+            $manifestChecksum = hash(
+                'sha256',
+                implode("\n", array_map(
+                    static fn (string $key, string $checksum): string => "{$key} {$checksum}",
+                    array_keys($parts),
+                    $parts,
+                ))."\n",
+            );
+        }
+
+        $operation = match (true) {
+            $purgeDataset && $purgeOnly => 'purge_dataset_only',
+            $purgeDataset => 'purge_dataset_and_append',
+            $purgeAll && (bool) $this->option('purge') => 'purge_all_seeded_alias_and_append',
+            $purgeAll => 'purge_all_seeded_and_append',
+            $dryRun && (bool) $this->option('estimate-cost') => 'estimate_only',
+            $dryRun => 'validate_only',
+            $usesDataset && (bool) $this->option('resume') => 'resume_dataset',
+            $usesDataset => 'append_dataset',
+            default => 'append_legacy',
+        };
+
+        return new EmailDatasetOperationContext(
+            operation: $operation,
+            actor: $actor,
+            datasetVersion: $datasetVersion,
+            manifestChecksum: $manifestChecksum,
+            mailboxes: $mailboxKeys,
+            tenantByMailbox: $tenantByMailbox,
+            parameters: [
+                'batch_size' => $batchSize,
+                'purge_all_seeded' => $purgeAll,
+                'purge_dataset' => $purgeDataset,
+                'purge_only' => $purgeOnly,
+                'resume' => (bool) $this->option('resume'),
+            ],
+        );
     }
 
     private function positiveIntegerOption(string $name): ?int

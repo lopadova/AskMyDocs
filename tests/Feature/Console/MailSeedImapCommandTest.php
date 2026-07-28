@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Tests\Feature\Console;
 
 use App\Connectors\Imap\MailboxLockKey;
+use App\Models\AdminCommandAudit;
+use App\Models\EmailDatasetOperationNonce;
 use App\Services\Demo\Contracts\MailboxAppender;
 use App\Services\Demo\EmailMessageBuilder;
 use App\Services\Demo\EmailSeedCheckpoint;
@@ -73,6 +75,34 @@ final class MailSeedImapCommandTest extends TestCase
         return $appender;
     }
 
+    /**
+     * @param  array<string, mixed>  $arguments
+     * @return array<string, mixed>
+     */
+    private function confirmedPurgeArguments(array $arguments): array
+    {
+        return $arguments + ['--confirm-token' => $this->previewPurgeToken($arguments)];
+    }
+
+    /**
+     * @param  array<string, mixed>  $arguments
+     */
+    private function previewPurgeToken(array $arguments): string
+    {
+        $exitCode = Artisan::call('mail:seed-imap', $arguments + [
+            '--preview-purge' => true,
+        ]);
+        $output = Artisan::output();
+        $this->assertSame(0, $exitCode, $output);
+        $prefix = 'Confirm token: ';
+        $start = strpos($output, $prefix);
+        $this->assertNotFalse($start, $output);
+        $token = substr($output, $start + strlen($prefix), 64);
+        $this->assertMatchesRegularExpression('/^[a-f0-9]{64}$/D', $token);
+
+        return $token;
+    }
+
     public function test_every_mailbox_has_at_least_100_emails(): void
     {
         // Requisito: ≥100 e-mail di vario tipo per casella (guard puro sul fixture,
@@ -122,6 +152,32 @@ final class MailSeedImapCommandTest extends TestCase
 
         $this->assertSame([], $appender->appends, 'dry-run non deve inviare alcun messaggio');
         $this->assertSame([], $appender->purges);
+    }
+
+    public function test_remote_mutation_is_rejected_outside_local_and_testing_but_dry_run_remains_offline(): void
+    {
+        $appender = $this->bindRecorder();
+        $this->app['env'] = 'production';
+
+        try {
+            $this->artisan('mail:seed-imap', [
+                '--mailbox' => ['rotta-logistics-1'],
+                '--dry-run' => true,
+            ])->assertExitCode(0);
+            $this->artisan('mail:seed-imap', [
+                '--mailbox' => ['rotta-logistics-1'],
+            ])->assertExitCode(1);
+        } finally {
+            $this->app['env'] = 'testing';
+        }
+
+        $this->assertSame([], $appender->appends);
+        $this->assertSame([], $appender->purges);
+        $this->assertDatabaseHas('admin_command_audit', [
+            'tenant_id' => 'rotta-logistics',
+            'command' => 'mail.seed-imap.append_legacy',
+            'status' => AdminCommandAudit::STATUS_REJECTED,
+        ]);
     }
 
     public function test_dry_run_never_waits_for_the_physical_mailbox_lock(): void
@@ -202,10 +258,10 @@ final class MailSeedImapCommandTest extends TestCase
         $this->setPassword('CONNECTOR_TEST_GMAIL_PASSWORD', 'pw');
         $appender = $this->bindRecorder(purgeReturns: 2);
 
-        $this->artisan('mail:seed-imap', [
+        $this->artisan('mail:seed-imap', $this->confirmedPurgeArguments([
             '--mailbox' => ['rotta-logistics-1'],
             '--purge' => true,
-        ])->assertExitCode(0);
+        ]))->assertExitCode(0);
 
         $this->assertCount(1, $appender->purges);
         $this->assertSame('rotta-logistics-1', $appender->purges[0]['value']);
@@ -229,6 +285,92 @@ final class MailSeedImapCommandTest extends TestCase
         $this->assertGreaterThan(0, $appendIndex, 'il purge (indice 0) precede il primo append');
     }
 
+    public function test_destructive_token_is_hashed_single_use_and_scope_bound(): void
+    {
+        $this->setPassword('CONNECTOR_TEST_GMAIL_PASSWORD', 'pw');
+        $appender = $this->bindRecorder();
+        $arguments = [
+            '--mailbox' => ['rotta-logistics-1'],
+            '--purge-all-seeded' => true,
+            '--actor' => 'operator:test',
+        ];
+
+        $this->artisan('mail:seed-imap', $arguments)->assertExitCode(1);
+        $this->assertSame([], $appender->purges);
+        $this->assertSame([], $appender->appends);
+
+        $token = $this->previewPurgeToken($arguments);
+
+        $this->assertDatabaseHas('email_dataset_operation_nonces', [
+            'tenant_id' => 'rotta-logistics',
+            'token_hash' => hash('sha256', $token),
+            'actor' => 'operator:test',
+            'consumed_at' => null,
+        ]);
+        $this->assertSame(
+            0,
+            EmailDatasetOperationNonce::query()
+                ->where('token_hash', $token)
+                ->count(),
+            'Il token plaintext non deve essere persistito.',
+        );
+
+        $this->artisan('mail:seed-imap', $arguments + [
+            '--confirm-token' => $token,
+        ])->assertExitCode(0);
+        $purgesAfterFirstRun = count($appender->purges);
+        $appendsAfterFirstRun = count($appender->appends);
+
+        $this->artisan('mail:seed-imap', $arguments + [
+            '--confirm-token' => $token,
+        ])->assertExitCode(1);
+
+        $this->assertSame($purgesAfterFirstRun, count($appender->purges));
+        $this->assertSame($appendsAfterFirstRun, count($appender->appends));
+        $this->assertNotNull(
+            EmailDatasetOperationNonce::query()
+                ->where('token_hash', hash('sha256', $token))
+                ->value('consumed_at'),
+        );
+
+        $driftToken = $this->previewPurgeToken($arguments);
+        $this->artisan('mail:seed-imap', [
+            ...$arguments,
+            '--mailbox' => ['rotta-logistics-2'],
+            '--confirm-token' => $driftToken,
+        ])->assertExitCode(1);
+        $this->assertSame($purgesAfterFirstRun, count($appender->purges));
+        $this->assertSame($appendsAfterFirstRun, count($appender->appends));
+    }
+
+    public function test_real_append_writes_one_completed_tenant_audit_per_mailbox_without_secrets(): void
+    {
+        $this->setPassword('CONNECTOR_TEST_GMAIL_PASSWORD', 'do-not-audit-this');
+        $this->bindRecorder();
+
+        $this->artisan('mail:seed-imap', [
+            '--project' => ['rotta-logistics'],
+            '--actor' => 'operator:audit',
+            '--summary-only' => true,
+        ])->assertExitCode(0);
+
+        $audits = AdminCommandAudit::query()
+            ->forTenant('rotta-logistics')
+            ->where('command', 'mail.seed-imap.append_legacy')
+            ->orderBy('id')
+            ->get();
+        $this->assertCount(2, $audits);
+        foreach ($audits as $audit) {
+            $this->assertSame(AdminCommandAudit::STATUS_COMPLETED, $audit->status);
+            $this->assertSame('operator:audit', $audit->args_json['actor']);
+            $this->assertArrayNotHasKey('secret', $audit->args_json);
+            $this->assertStringNotContainsString(
+                'do-not-audit-this',
+                json_encode($audit->args_json, JSON_THROW_ON_ERROR),
+            );
+        }
+    }
+
     public function test_legacy_purge_clears_checkpoints_for_every_dataset_version(): void
     {
         $this->setPassword('CONNECTOR_TEST_GMAIL_PASSWORD', 'pw');
@@ -244,10 +386,10 @@ final class MailSeedImapCommandTest extends TestCase
         );
         $this->app->instance(MailboxAppender::class, $appender);
 
-        $this->artisan('mail:seed-imap', [
+        $this->artisan('mail:seed-imap', $this->confirmedPurgeArguments([
             '--mailbox' => ['rotta-logistics-1'],
             '--purge' => true,
-        ])->assertExitCode(1);
+        ]))->assertExitCode(1);
 
         // La consegna fallisce subito dopo il purge: i checkpoint devono essere
         // già spariti, altrimenti il prossimo run riprenderebbe uno stato remoto
@@ -415,13 +557,13 @@ final class MailSeedImapCommandTest extends TestCase
         );
         $appender = $this->bindRecorder(purgeReturns: 4);
 
-        $this->artisan('mail:seed-imap', [
+        $this->artisan('mail:seed-imap', $this->confirmedPurgeArguments([
             '--mailbox' => ['rotta-logistics-1', 'rotta-logistics-2'],
             '--dataset-version' => $datasetVersion,
             '--dataset-root' => $datasetRoot,
             '--purge-dataset' => true,
             '--summary-only' => true,
-        ])->assertExitCode(1);
+        ]))->assertExitCode(1);
 
         $this->assertSame(
             [],
@@ -449,13 +591,13 @@ final class MailSeedImapCommandTest extends TestCase
         $this->saveCheckpoint($store, $target, 'obsolete-v2');
         $appender = $this->bindRecorder(purgeReturns: 9);
 
-        $this->artisan('mail:seed-imap', [
+        $this->artisan('mail:seed-imap', $this->confirmedPurgeArguments([
             '--mailbox' => ['rotta-logistics-1'],
             '--dataset-version' => $datasetVersion,
             '--dataset-root' => $datasetRoot,
             '--purge-all-seeded' => true,
             '--summary-only' => true,
-        ])->assertExitCode(0);
+        ]))->assertExitCode(0);
 
         $this->assertFalse($store->exists($target, 'obsolete-v1'));
         $this->assertFalse($store->exists($target, 'obsolete-v2'));
@@ -505,7 +647,10 @@ final class MailSeedImapCommandTest extends TestCase
             },
         );
         $this->app->instance(MailboxAppender::class, $interrupted);
-        $this->artisan('mail:seed-imap', $arguments + ['--purge-dataset' => true])
+        $this->artisan(
+            'mail:seed-imap',
+            $this->confirmedPurgeArguments($arguments + ['--purge-dataset' => true]),
+        )
             ->assertExitCode(1);
 
         $this->assertCount(1, $interrupted->purges);
@@ -568,14 +713,14 @@ final class MailSeedImapCommandTest extends TestCase
         );
         $appender = $this->bindRecorder(purgeReturns: 4);
 
-        $this->artisan('mail:seed-imap', [
+        $this->artisan('mail:seed-imap', $this->confirmedPurgeArguments([
             '--mailbox' => ['rotta-logistics-1'],
             '--dataset-version' => $datasetVersion,
             '--dataset-root' => $datasetRoot,
             '--purge-dataset' => true,
             '--purge-only' => true,
             '--summary-only' => true,
-        ])->assertExitCode(0);
+        ]))->assertExitCode(0);
 
         $this->assertCount(
             1,
@@ -604,7 +749,7 @@ final class MailSeedImapCommandTest extends TestCase
         );
         $appender = $this->bindRecorder(purgeReturns: 7);
 
-        $exitCode = Artisan::call('mail:seed-imap', [
+        $exitCode = Artisan::call('mail:seed-imap', $this->confirmedPurgeArguments([
             '--mailbox' => ['rotta-logistics-1'],
             '--dataset-version' => $datasetVersion,
             '--dataset-root' => $datasetRoot,
@@ -612,7 +757,7 @@ final class MailSeedImapCommandTest extends TestCase
             '--purge-only' => true,
             '--progress-every' => '5',
             '--summary-only' => true,
-        ]);
+        ]));
 
         $this->assertSame(0, $exitCode);
         $this->assertCount(2, $appender->purges);
@@ -636,14 +781,14 @@ final class MailSeedImapCommandTest extends TestCase
         );
         $appender = $this->bindRecorder(purgeReturns: 7);
 
-        $this->artisan('mail:seed-imap', [
+        $this->artisan('mail:seed-imap', $this->confirmedPurgeArguments([
             '--mailbox' => ['rotta-logistics-1'],
             '--dataset-version' => $datasetVersion,
             '--dataset-root' => $datasetRoot,
             '--purge-dataset' => true,
             '--purge-only' => true,
             '--summary-only' => true,
-        ])->assertExitCode(0);
+        ]))->assertExitCode(0);
 
         $this->assertSame([], $appender->appends);
         $this->assertCount(1, $appender->purges);
@@ -666,14 +811,14 @@ final class MailSeedImapCommandTest extends TestCase
         );
         $this->bindRecorder(purgeReturns: 7);
 
-        $this->artisan('mail:seed-imap', [
+        $this->artisan('mail:seed-imap', $this->confirmedPurgeArguments([
             '--mailbox' => ['rotta-logistics-1'],
             '--dataset-version' => $datasetVersion,
             '--dataset-root' => $datasetRoot,
             '--purge-dataset' => true,
             '--progress-every' => '50',
             '--summary-only' => true,
-        ])
+        ]))
             ->expectsOutputToContain('[rotta-logistics-1] attesa lock IMAP')
             ->expectsOutputToContain('[rotta-logistics-1] lock IMAP acquisito')
             ->expectsOutputToContain('[rotta-logistics-1] purge selettivo in corso')
@@ -748,13 +893,13 @@ final class MailSeedImapCommandTest extends TestCase
         );
         $this->bindRecorder();
 
-        $this->artisan('mail:seed-imap', [
+        $this->artisan('mail:seed-imap', $this->confirmedPurgeArguments([
             '--mailbox' => ['rotta-logistics-1'],
             '--dataset-version' => $datasetVersion,
             '--dataset-root' => $datasetRoot,
             '--purge-dataset' => true,
             '--purge-only' => true,
-        ])
+        ]))
             ->doesntExpectOutputToContain('STRESS SU IMAP REMOTO:')
             ->assertExitCode(0);
     }

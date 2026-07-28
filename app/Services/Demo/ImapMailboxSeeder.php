@@ -55,6 +55,7 @@ final class ImapMailboxSeeder
      * @param  list<string>  $mailboxKeys  caselle da popolare (devono esistere nelle fixtures)
      * @param  Closure(string, int, string): void|null  $onMessage  callback (mailboxKey, index, subject)
      * @param  Closure(string, string, int, int|null): void|null  $onProgress
+     * @param  Closure(SeedOutcome): void|null  $onOutcome
      * @return list<SeedOutcome>
      */
     public function seed(
@@ -63,17 +64,20 @@ final class ImapMailboxSeeder
         bool $purge = false,
         ?Closure $onMessage = null,
         ?Closure $onProgress = null,
+        ?Closure $onOutcome = null,
     ): array {
         $outcomes = [];
 
         foreach ($mailboxKeys as $mailboxKey) {
-            $outcomes[] = $this->seedOne(
+            $outcome = $this->seedOne(
                 $mailboxKey,
                 $dryRun,
                 $purge,
                 $onMessage,
                 $onProgress,
             );
+            $outcomes[] = $outcome;
+            $onOutcome?->__invoke($outcome);
         }
 
         return $outcomes;
@@ -84,12 +88,14 @@ final class ImapMailboxSeeder
      *
      * @param  Closure(string, int, string): void|null  $onMessage
      * @param  Closure(string, string, int, int|null): void|null  $onProgress
+     * @param  Closure(SeedOutcome): void|null  $onOutcome
      * @return list<SeedOutcome>
      */
     public function seedDataset(
         EmailDatasetSeedRequest $request,
         ?Closure $onMessage = null,
         ?Closure $onProgress = null,
+        ?Closure $onOutcome = null,
     ): array {
         if ($request->checkpointEvery < 1) {
             throw new InvalidArgumentException('checkpointEvery deve essere almeno 1.');
@@ -130,7 +136,7 @@ final class ImapMailboxSeeder
 
         $outcomes = [];
         foreach ($mailboxes as $mailbox) {
-            $outcomes[] = $this->seedDatasetMailbox(
+            $outcome = $this->seedDatasetMailbox(
                 request: $request,
                 mailboxKey: $mailbox['key'],
                 target: $mailbox['target'],
@@ -140,9 +146,30 @@ final class ImapMailboxSeeder
                 onMessage: $onMessage,
                 onProgress: $onProgress,
             );
+            $outcomes[] = $outcome;
+            $onOutcome?->__invoke($outcome);
         }
 
         return $outcomes;
+    }
+
+    /**
+     * Resolves every selected fixture, credential and generated-dataset
+     * coverage without opening a network connection. Destructive confirmation
+     * is consumed only after this deterministic preflight succeeds.
+     *
+     * @param  list<string>  $mailboxKeys
+     */
+    public function assertRemotePreflight(
+        array $mailboxKeys,
+        ?string $datasetDirectory = null,
+    ): void {
+        foreach (array_values(array_unique($mailboxKeys)) as $mailboxKey) {
+            $this->target($mailboxKey, false);
+            if ($datasetDirectory !== null) {
+                $this->datasetMailboxCount($datasetDirectory, $mailboxKey);
+            }
+        }
     }
 
     private function seedOne(
