@@ -41,8 +41,10 @@ that behind two contracts and a tag:
   a concrete user class.
 - **`Provisioner`** (tagged `invitations.provisioners`) — `provision(Model
   $account, TenantGrant $grant): void`. The package ships
-  `SpatiePermissionProvisioner` (grants the role); a host adds more under the
-  same tag. Two invariants the contract mandates: **GRANT-never-REVOKE** (only
+  `SpatiePermissionProvisioner` (grants ordinary roles); AskMyDocs replaces its
+  service binding with `ProtectedRoleProvisioner` so neither `super-admin` nor
+  `system-admin` can be minted by redemption, and adds more provisioners under
+  the same tag. Two invariants the contract mandates: **GRANT-never-REVOKE** (only
   ever raise access) and **best-effort** (a fault is swallowed + logged, never
   thrown — the redemption is *already committed* when provisioning runs).
 
@@ -56,7 +58,7 @@ flowchart TD
     Redeem["POST /api/invitations/redeem<br/>(authenticated user)"] --> RS["RedemptionService<br/>(atomic claim)"]
     RS -->|"UPDATE … WHERE current_uses < max_uses<br/>+ UNIQUE(code_id, redeemer_id)"| DB[("invite_codes / invite_redemptions<br/>(tenant_id on every row)")]
     RS --> APS["AccountProvisioningService<br/>(fan-out per tenant grant)"]
-    APS --> P1["SpatiePermissionProvisioner<br/>(package — grants the role)"]
+    APS --> P1["ProtectedRoleProvisioner<br/>(host — ordinary roles only)"]
     APS --> P2["ProjectMembershipProvisioner<br/>(host — project_memberships, GRANT-never-REVOKE)"]
     TR["App\\Support\\TenantContext"] -.->|"bound to TenantResolver"| RS
     TR -.-> P2
@@ -76,12 +78,17 @@ adapters):
    single-tenant default with `bindIf()`; an explicit `bind()` in `boot()`
    overrides it definitively. Result: every invite read/write is scoped to the
    tenant the request resolved (R30).
-2. **`App\Invitations\ProjectMembershipProvisioner` → the
-   `invitations.provisioners` tag.** Appended to the tag alongside the package's
-   `SpatiePermissionProvisioner`. The package's contextual
+2. **Protected role binding + `ProjectMembershipProvisioner`.** The package's
+   `SpatiePermissionProvisioner` service key resolves to
+   `App\Invitations\ProtectedRoleProvisioner`, which preserves
+   grant-never-revoke for ordinary roles while rejecting both protected admin
+   boundaries. `App\Invitations\ProjectMembershipProvisioner` is added to the
+   `invitations.provisioners` tag alongside the replaced package provisioner
+   service key. The package's contextual
    `giveTagged('invitations.provisioners')` for `AccountProvisioningService`
    resolves the tag lazily at redemption time, so both provisioners run: the
-   Spatie one raises the global role, ours raises per-project access.
+   protected adapter raises an ordinary application role, while the membership
+   adapter raises per-project access.
 3. **`manageInvitations` gate + `config/invitations.php`.** The package routes
    carry no internal authorization — admin gating is entirely the host
    `admin_middleware` config (R32). AskMyDocs sets it to its standard admin stack
@@ -186,7 +193,7 @@ every read is tenant-scoped automatically (R30).
 | Tab | What it shows / does | Core endpoint(s) |
 |---|---|---|
 | **Overview** | all 11 live funnel KPIs (k-factor, acceptance / conversion rate, time-to-redeem p50/p90, distinct referrers…) + a proportional acquisition funnel; campaign + window filters | `GET …/metrics` |
-| **Campaigns** | list + create/edit with the **multi-tenant grant editor** (a Spatie role + KB projects across one or more tenants); `key` + `type` are immutable on edit; `super-admin` is rejected client- and server-side | `GET/POST …/campaigns`, `PATCH …/campaigns/{id}`, `GET …/tenants` |
+| **Campaigns** | list + create/edit with the **multi-tenant grant editor** (a Spatie role + KB projects across one or more tenants); `key` + `type` are immutable on edit; `super-admin` and `system-admin` are rejected client- and server-side/host-boundary | `GET/POST …/campaigns`, `PATCH …/campaigns/{id}`, `GET …/tenants` |
 | **Codes** | inventory + batch generation (count 1–1000, max-uses, length, expiry) with Copy-all + CSV export, and inline-confirm revoke | `GET/POST …/codes`, `POST …/codes/{id}/revoke` |
 | **Invite** | send a direct invitation (recipient / channel / role / context); session-scoped sent list, since the core API has no list endpoint | `POST …/invitations` |
 | **Referrals / Rewards / Waitlist / Anti-abuse** | filtered read tables; the waitlist email is masked and anti-abuse subjects stay server-hashed | `GET …/{referrals,rewards,waitlist,abuse-signals}` |
@@ -258,10 +265,10 @@ on AskMyDocs.
 - **Flipping `INVITE_REQUIRED=true` is a product decision, not a deploy detail.**
   With it on, registration *requires* a valid code. Verify your invite-issuing
   flow is live before enabling it, or new signups are blocked.
-- **Campaign creation writes a grant — mind super-admin + immutability.** The
+- **Campaign creation writes a grant — protected admins stay out.** The
   campaign builder's grant editor provisions a Spatie role + KB projects across
-  one or more tenants on redemption; `super-admin` is rejected (client *and*
-  server) and a campaign's `key` + `type` are immutable after creation (the
+  one or more tenants on redemption; `super-admin` and `system-admin` are
+  rejected and a campaign's `key` + `type` are immutable after creation (the
   update rules don't accept them). The standalone
   `padosoft/laravel-invitations-admin` panel remains reachable via the gated
   **"Advanced"** launcher (`INVITATIONS_ADMIN_ENABLED=true`) for parity, but the

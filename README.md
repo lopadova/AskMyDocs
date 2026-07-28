@@ -1191,7 +1191,7 @@ and the ADR set under [`docs/adr/`](docs/adr/)).
 | Team switcher membership gate | `AuthorizeTenantHeader` validates `X-Tenant-Id` after `auth:sanctum`: accepts the caller's own tenant, a cross-access permission, **or** a `project_membership` in the requested tenant — scoped to **both** the tenant *and* the user, so a membership in another tenant or another user's membership never widens access; else `403 tenant_forbidden`. `TeamHash` is a non-secret routing namespace (auth never keys on it). The SPA omits the `X-Tenant-Id` header for the `default` sentinel so sister-package mounts fall back instead of 404ing | team switcher cycle |
 | Automated isolation verification | Executable `IsolationMatrix` shared by a live E2E (`LiveRagIsolationTest`, opt-in `LIVE_RAG=1` + real pgvector/embeddings), the `case-study:verify-isolation [--strict]` CLI, and the CI membership-axis `CaseStudyProjectIsolationTest`; separates HARD breaches (real leak → fail) from SOFT refusal-ideal misses (warning unless `--strict`); `KB_PROJECT_ISOLATION_ENABLED` tested in both states (R43) | team switcher cycle |
 | `ResolveTenant` middleware + 4 resolvers | Header (`X-Tenant-ID`), domain regex, authenticated user column, or `'default'` (v3 backward compat); per-request singleton; queue workers re-bind tenant via try/finally restore | v4.0 |
-| Spatie RBAC (5 roles) | `super-admin` / `admin` / `editor` / `viewer` / `dpo` (DPO added in v4.2 for PII admin); permission matrix grouped by dotted-prefix domain; gates wired at controller + route + middleware layer | v3.0 |
+| Spatie RBAC (6 roles, two admin boundaries) | `system-admin` is the global platform operator (`platform.admin` + `tenant.cross-access`); `super-admin` is the maximum tenant role and still requires a membership; `admin` / `editor` / `viewer` / `dpo` retain their scoped responsibilities. Every system-admin carries companion `super-admin` for tenant-route compatibility, but the protected global role is assignable only through audited `system-admin:grant|revoke` commands | v3.0 · v8.30 |
 | Sanctum stateful SPA + Bearer tokens | Two transports feed the same guard: cookie-based SPA (`/sanctum/csrf-cookie` + `X-XSRF-TOKEN`) and personal access tokens for API clients / MCP / GitHub Action; `AuthenticateForSse` middleware emits JSON 401 (not HTML redirect) on streaming endpoints | v3.0 |
 | Stateless token-auth for non-browser clients | `POST /api/auth/token` verifies credentials with **no session / no CSRF** and mints a Sanctum PAT scoped to least-privilege `kb:read` + `kb:chat` with a **finite 30-day expiry** (never `['*']`, never immortal); `POST /api/auth/token/revoke` is the stateless sign-out (`204`); `EnforceTokenAbility` (`token.ability:<ability>`) gate constrains **only** PATs (`403 token_ability_forbidden`) on the dual-auth `/api/kb/chat` + `/api/kb/documents/search` + `/api/kb/documents/{documentId}/preview` routes and is a no-op for the cookie SPA | desktop client |
 | Tauri desktop + iOS client (`desktop/`) | Self-contained Tauri v2 + React (Vite) demo client: login, grounded chat with clickable markdown citations, document search, full-page source viewer; conversation threads persist **locally** (the Bearer client can't reach the session-guarded `/conversations`); all calls route through the Tauri HTTP plugin (no CORS change); same codebase targets iOS via Tauri v2 mobile; outside Laravel CI | desktop client |
@@ -1460,8 +1460,8 @@ php artisan key:generate
 
 # 3. Migrate + seed
 php artisan migrate
-php artisan db:seed --class=RbacSeeder      # 5 roles + permission matrix
-php artisan db:seed --class=DemoSeeder      # 3 demo accounts + canonical KB
+php artisan db:seed --class=RbacSeeder      # 6 roles + permission matrix
+php artisan db:seed --class=DemoSeeder      # per-role demo accounts + canonical KB
 
 # 4. Run
 php artisan serve
@@ -1471,6 +1471,14 @@ Open `http://localhost:8000` and log in as `super@demo.local` /
 `password` (DemoSeeder creates the account with the `super-admin` role).
 The SPA redirects to `/app/chat`; click **Dashboard** in the sidebar
 to land on `/app/admin`.
+
+For the global tenant control plane, use `system@demo.local` / `password`
+in development. In a real installation, grant the protected role only from
+the host console:
+
+```bash
+php artisan system-admin:grant ops@example.com --yes
+```
 
 ### Full configuration reference
 
@@ -1985,6 +1993,24 @@ including commercial use.
 ---
 
 ## Changelog
+
+**v8.30.0 — System administrator boundary and global tenant control.**
+The former overloaded `super-admin` concept is split in two. A tenant
+`super-admin` is now the strongest application administrator only inside
+tenants where the account has membership; only `system-admin` owns
+`platform.admin` and `tenant.cross-access`. The global control plane lives at
+`/app/system/tenants` and `/api/system-admin/tenants`, outside the active-team
+route/header context, with audited atomic provisioning and DB-backed single-use
+lifecycle confirmations. Existing super-admin assignments are conservatively
+copied to `system-admin` during the migration so deploys do not lose operators;
+review and revoke excess global accounts afterward. New global grants/revokes
+are possible only through `system-admin:grant|revoke {email} --yes`: Users CRUD,
+generic role commands, invitations and tenant provisioning reject the protected
+role. Existing-account provisioning never promotes a global Spatie role
+silently, and the normalized-email backfill now runs in bounded chunks. See
+[system administration](https://padosoft.mintlify.app/system-administration),
+[ADR 0023](docs/adr/0023-v830-system-admin-boundary.md), and the
+[recovery runbook](docs/runbooks/system-admin-recovery.md).
 
 **v8.28.0 — In-app team (tenant) management: create a team + rename a team.**
 Operators can now **create a new team and rename a team from the admin UI**,

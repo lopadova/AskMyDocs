@@ -171,21 +171,22 @@ group is pinned in the [authorization matrix](/architecture/security-and-threat-
 | Workflows | `/api/admin/workflows/*` | `can:viewWorkflows` |
 | PII strategy | `/api/admin/pii/strategy` | `can:viewPiiRedactorAdmin` |
 
-## Super-admin tenant control — `/api/super-admin/tenants`
+## System-admin tenant control — `/api/system-admin/tenants`
 
-These endpoints require the exact `super-admin` role and are intentionally
-global (no active-tenant header):
+These endpoints require `can:platform.admin` and are intentionally global (no
+active-tenant header). A tenant `super-admin` does not satisfy this capability:
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/api/super-admin/tenants` | Paginated registry; `search`, `status`, `page`, `per_page` |
-| `GET` | `/api/super-admin/tenants/availability` | Non-mutating slug + account preflight |
-| `POST` | `/api/super-admin/tenants` | Atomic tenant + project + create/attach user + role + membership |
-| `GET` | `/api/super-admin/tenants/{slug}` | Tenant metadata plus paginated users, roles, permissions and project access |
-| `PATCH` | `/api/super-admin/tenants/{slug}` | Change display name and/or `active\|suspended\|archived` lifecycle |
+| `GET` | `/api/system-admin/tenants` | Paginated registry; `search`, `status`, `page`, `per_page` |
+| `POST` | `/api/system-admin/tenants/availability` | Non-mutating slug + account + requested-role preflight |
+| `POST` | `/api/system-admin/tenants` | Atomic tenant + project + create/attach user + role + membership |
+| `GET` | `/api/system-admin/tenants/{slug}` | Tenant metadata plus paginated users, roles, permissions and project access |
+| `POST` | `/api/system-admin/tenants/{slug}/lifecycle-preview` | Single-use confirmation bound to the exact status transition |
+| `PATCH` | `/api/system-admin/tenants/{slug}` | Change display name and/or confirmed `active\|suspended\|archived` lifecycle |
 
-See [Team and tenant management](/team-management) for request behavior,
-duplicate handling and lifecycle enforcement.
+See [System administration](/system-administration) for bootstrap, request
+behavior, duplicate handling and lifecycle enforcement.
 
 ## Embeddable widget — `/api/widget`
 

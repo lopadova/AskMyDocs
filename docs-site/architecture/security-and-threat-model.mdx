@@ -1,6 +1,6 @@
 ---
 title: "Security & threat model"
-description: "The security architecture — multi-tenant isolation via explicit forTenant scoping, RBAC with five roles, atomic single-use confirm tokens for destructive commands, immutable audit trails, and the feature-flag discipline that keeps both states safe."
+description: "The security architecture — multi-tenant isolation via explicit forTenant scoping, RBAC with separate system and tenant administrators, atomic single-use confirm tokens, immutable audit trails, and safe feature flags."
 icon: "shield-halved"
 ---
 
@@ -72,12 +72,13 @@ table, is the application-layer `forTenant()` scope.
 
 ### RBAC (R32)
 
-Authorization uses Spatie roles with five roles:
+Authorization uses six Spatie roles across two administration boundaries:
 
 | Role | Scope |
 |---|---|
-| `super-admin` | everything, including `commands.destructive` |
-| `admin` | system admin + `commands.run`, **not** destructive |
+| `system-admin` | global platform control (`platform.admin`, `tenant.cross-access`) plus companion `super-admin` |
+| `super-admin` | maximum tenant privilege, including `commands.destructive`; membership still required |
+| `admin` | ordinary tenant administration + `commands.run`, **not** destructive |
 | `dpo` | privacy / PII tooling + AI Act, no system admin |
 | `editor` | KB content (edit / promote / eval), no admin shell |
 | `viewer` | read-only KB + chat |
@@ -88,6 +89,12 @@ the allow-set → exactly `403`; role in set → anything-but-403; guest → `40
 Package-registered admin routes are gated by overriding the host config's
 `routes.middleware` with the authenticated admin stack — the matrix's first run
 caught an AI-Act compliance route group mounted unauthenticated.
+
+Only `system-admin` receives `tenant.cross-access`. A tenant `super-admin`
+therefore sees and enters only tenants represented by its memberships. The
+global registry is separately gated by `platform.admin`; see
+[System administration](/system-administration) and
+[ADR 0023](https://github.com/lopadova/AskMyDocs/blob/main/docs/adr/0023-v830-system-admin-boundary.md).
 
 When `KB_PROJECT_ISOLATION_ENABLED=true`, blanket `kb.read.any` narrows to
 `kb.read.all_projects` (admin + super-admin only); other users are constrained to
