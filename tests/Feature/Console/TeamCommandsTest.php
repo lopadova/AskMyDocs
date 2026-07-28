@@ -32,9 +32,9 @@ final class TeamCommandsTest extends TestCase
         Cache::flush();
     }
 
-    public function test_team_create_makes_tenant_project_and_membership_for_the_first_super_admin(): void
+    public function test_team_create_makes_tenant_project_and_membership_for_the_first_system_admin(): void
     {
-        $super = $this->userWithRole('super-admin');
+        $system = $this->userWithRole('system-admin');
 
         $this->artisan('team:create', ['--name' => 'Acme Corp'])
             ->expectsOutputToContain("Team 'Acme Corp' created.")
@@ -45,14 +45,14 @@ final class TeamCommandsTest extends TestCase
         $this->assertDatabaseHas('projects', ['tenant_id' => 'acme-corp', 'project_key' => 'acme-corp']);
         $this->assertDatabaseHas('project_memberships', [
             'tenant_id' => 'acme-corp',
-            'user_id' => $super->id,
+            'user_id' => $system->id,
             'project_key' => 'acme-corp',
         ]);
     }
 
     public function test_team_create_attaches_an_explicit_actor(): void
     {
-        $this->userWithRole('super-admin');
+        $this->userWithRole('system-admin');
         $bob = User::create(['name' => 'Bob', 'email' => 'bob@acme.com', 'password' => Hash::make('secret-password')]);
         $bob->assignRole('admin');
 
@@ -64,7 +64,7 @@ final class TeamCommandsTest extends TestCase
 
     public function test_team_create_fails_without_a_name(): void
     {
-        $this->userWithRole('super-admin');
+        $this->userWithRole('system-admin');
 
         $this->artisan('team:create', [])
             ->expectsOutputToContain('--name is required.')
@@ -73,7 +73,7 @@ final class TeamCommandsTest extends TestCase
 
     public function test_team_create_fails_on_a_duplicate_slug_without_partial_writes(): void
     {
-        $this->userWithRole('super-admin');
+        $this->userWithRole('system-admin');
         Tenant::create(['slug' => 'acme', 'name' => 'Existing']);
 
         $this->artisan('team:create', ['--name' => 'Acme Corp', '--slug' => 'acme'])
@@ -83,11 +83,11 @@ final class TeamCommandsTest extends TestCase
         $this->assertDatabaseMissing('projects', ['tenant_id' => 'acme', 'project_key' => 'acme']);
     }
 
-    public function test_team_create_fails_when_no_super_admin_and_no_actor(): void
+    public function test_team_create_fails_when_no_system_admin_and_no_actor(): void
     {
-        // No super-admin seeded and no --actor → the actor cannot resolve.
+        // No system-admin seeded and no --actor → the actor cannot resolve.
         $this->artisan('team:create', ['--name' => 'Acme Corp'])
-            ->expectsOutputToContain('No super-admin found')
+            ->expectsOutputToContain('No system-admin found')
             ->assertExitCode(1);
 
         $this->assertDatabaseMissing('tenants', ['slug' => 'acme-corp']);
@@ -95,7 +95,7 @@ final class TeamCommandsTest extends TestCase
 
     public function test_team_rename_updates_the_display_name(): void
     {
-        $this->userWithRole('super-admin');
+        $this->userWithRole('system-admin');
         Tenant::create(['slug' => 'acme', 'name' => 'Acme Corp', 'status' => 'active']);
 
         $this->artisan('team:rename', ['slug' => 'acme', 'name' => 'Acme Corporation'])
@@ -126,7 +126,7 @@ final class TeamCommandsTest extends TestCase
             'email' => $role.'-'.uniqid().'@demo.local',
             'password' => Hash::make('secret-password'),
         ]);
-        $user->assignRole($role);
+        $user->assignRole($role === 'system-admin' ? ['system-admin', 'super-admin'] : $role);
 
         return $user;
     }

@@ -50,6 +50,7 @@ return [
             'auth:sanctum',
             'tenant.authorize',
             'can:manageInvitations',
+            \App\Http\Middleware\RejectProtectedInvitationRole::class,
         ],
     ],
 

@@ -7,6 +7,7 @@ namespace App\Console\Commands;
 use App\Models\User;
 use App\Services\Admin\Exceptions\TeamRegistryUnavailableException;
 use App\Services\Admin\TeamRegistryService;
+use App\Support\PlatformAccess;
 use Illuminate\Console\Command;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
@@ -17,7 +18,7 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
  * `PATCH /api/admin/teams/{slug}` uses. `slug` is the immutable tenant_id.
  *
  * Authorization runs through the service against the ACTOR (membership OR
- * tenant.cross-access); the default actor is the first super-admin (who has
+ * tenant.cross-access); the default actor is the first system-admin (who has
  * cross-access), so an operator can rename any team. A team the actor may
  * not administer fails as "not found".
  *
@@ -29,7 +30,7 @@ class RenameTeamCommand extends Command
     protected $signature = 'team:rename
         {slug : The team slug (tenant_id) to rename}
         {name : The new display name}
-        {--actor= : Email or id of the operator (default: first super-admin)}';
+        {--actor= : Email or id of the operator (default: first system-admin)}';
 
     protected $description = 'Rename a team (tenant): update its display name in the tenants registry.';
 
@@ -81,9 +82,9 @@ class RenameTeamCommand extends Command
             return $user;
         }
 
-        $user = User::role('super-admin', 'web')->first();
+        $user = User::role(PlatformAccess::SYSTEM_ADMIN_ROLE, 'web')->first();
         if ($user === null) {
-            $this->error('No super-admin found — pass --actor=<email|id>.');
+            $this->error('No system-admin found — pass --actor=<email|id>.');
         }
 
         return $user;

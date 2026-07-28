@@ -16,7 +16,8 @@ use Tests\TestCase;
  *
  * One data-driven matrix asserting that EVERY protected admin surface is
  * reachable by EXACTLY the roles that should reach it — no more, no less —
- * across all five roles (super-admin / admin / dpo / editor / viewer) plus
+ * across all six roles (system-admin / super-admin / admin / dpo / editor /
+ * viewer) plus
  * the unauthenticated guest.
  *
  * Why a single matrix and not only per-controller tests: per-endpoint tests
@@ -42,7 +43,7 @@ final class AdminAuthorizationMatrixTest extends TestCase
     use RefreshDatabase;
 
     /** Every role the RBAC system defines. Keep in sync with RbacSeeder::ROLES. */
-    private const ALL_ROLES = ['super-admin', 'admin', 'dpo', 'editor', 'viewer'];
+    private const ALL_ROLES = ['system-admin', 'super-admin', 'admin', 'dpo', 'editor', 'viewer'];
 
     /**
      * The authorization contract: representative protected endpoint → the
@@ -55,7 +56,7 @@ final class AdminAuthorizationMatrixTest extends TestCase
      */
     private function matrix(): array
     {
-        return [
+        $matrix = [
             // ── Core admin API group — middleware role:admin|super-admin ──
             '/api/admin/metrics/overview' => ['admin', 'super-admin'],
             '/api/admin/users' => ['admin', 'super-admin'],
@@ -118,14 +119,24 @@ final class AdminAuthorizationMatrixTest extends TestCase
 
             // ── Role-middleware groups — `role:` middleware, not a Gate ──
             '/api/admin/app-settings' => ['super-admin'],               // role:super-admin (v8.22 Ciclo 3)
-            // Global tenant control plane — exact super-admin role, no
+            // Global tenant control plane — platform permission only, no
             // active-tenant scope.
-            '/api/super-admin/tenants' => ['super-admin'],
+            '/api/system-admin/tenants' => ['system-admin'],
 
             // ── Widget admin (M6) — Gate::define() in AppServiceProvider ──
             '/api/admin/widget-keys' => ['super-admin'],                     // manageWidgetKeys
             '/api/admin/widget-sessions' => ['admin', 'super-admin'],        // viewWidgetSessions
         ];
+
+        // A system administrator always carries the companion super-admin
+        // role, so it passes every tenant surface a super-admin can pass.
+        foreach ($matrix as $uri => $allowed) {
+            if (in_array('super-admin', $allowed, true) && ! in_array('system-admin', $allowed, true)) {
+                $matrix[$uri][] = 'system-admin';
+            }
+        }
+
+        return $matrix;
     }
 
     /**
@@ -540,7 +551,11 @@ final class AdminAuthorizationMatrixTest extends TestCase
             'email' => $role.'-'.uniqid().'@demo.local',
             'password' => Hash::make('secret-password'),
         ]);
-        $user->assignRole($role);
+        $user->assignRole(
+            $role === 'system-admin'
+                ? ['system-admin', 'super-admin']
+                : $role,
+        );
 
         return $user;
     }

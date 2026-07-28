@@ -8,6 +8,7 @@ use App\Http\Resources\Admin\UserResource;
 use App\Models\User;
 use App\Notifications\NotificationPreferencesInitializer;
 use App\Support\LikeEscaper;
+use App\Support\PlatformAccess;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -39,6 +40,13 @@ class UserController extends Controller
     public function index(Request $request): AnonymousResourceCollection
     {
         $query = User::query();
+
+        if (! $request->user()?->can(PlatformAccess::PLATFORM_ADMIN_PERMISSION)) {
+            $query->whereDoesntHave(
+                'roles',
+                fn ($roles) => $roles->where('name', PlatformAccess::SYSTEM_ADMIN_ROLE),
+            );
+        }
 
         if ($request->boolean('with_trashed')) {
             $query->withTrashed();
@@ -78,8 +86,10 @@ class UserController extends Controller
         return UserResource::collection($users);
     }
 
-    public function show(User $user): UserResource
+    public function show(Request $request, User $user): UserResource
     {
+        $this->abortIfHiddenSystemAdmin($request, $user);
+
         $user->loadMissing('roles', 'permissions');
 
         return new UserResource($user);
@@ -122,6 +132,10 @@ class UserController extends Controller
 
     public function update(UserUpdateRequest $request, User $user): JsonResponse
     {
+        if ($user->hasRole(PlatformAccess::SYSTEM_ADMIN_ROLE, 'web')) {
+            return $this->protectedSystemAdminResponse();
+        }
+
         $data = $request->validated();
 
         // M2 (R21) — the last-super-admin guard + the role mutation run in
@@ -154,6 +168,10 @@ class UserController extends Controller
 
     public function destroy(Request $request, User $user): JsonResponse
     {
+        if ($user->hasRole(PlatformAccess::SYSTEM_ADMIN_ROLE, 'web')) {
+            return $this->protectedSystemAdminResponse();
+        }
+
         if ($request->user() !== null && $request->user()->id === $user->id) {
             return response()->json(
                 ['message' => 'You cannot delete your own account.'],
@@ -183,16 +201,25 @@ class UserController extends Controller
         return response()->json(null, Response::HTTP_NO_CONTENT);
     }
 
-    public function restore(int $id): JsonResponse
+    public function restore(Request $request, int $id): JsonResponse
     {
         $user = User::onlyTrashed()->findOrFail($id);
+        $this->abortIfHiddenSystemAdmin($request, $user);
+        if ($user->hasRole(PlatformAccess::SYSTEM_ADMIN_ROLE, 'web')) {
+            return $this->protectedSystemAdminResponse();
+        }
+
         $user->restore();
 
         return (new UserResource($user->fresh(['roles'])))->response();
     }
 
-    public function toggleActive(Request $request, User $user): UserResource
+    public function toggleActive(Request $request, User $user): UserResource|JsonResponse
     {
+        if ($user->hasRole(PlatformAccess::SYSTEM_ADMIN_ROLE, 'web')) {
+            return $this->protectedSystemAdminResponse();
+        }
+
         $next = $request->has('is_active')
             ? $request->boolean('is_active')
             : ! $user->is_active;
@@ -257,5 +284,22 @@ class UserController extends Controller
         }
 
         return $role->users()->where('users.id', '!=', $user->id)->count() === 0;
+    }
+
+    private function abortIfHiddenSystemAdmin(Request $request, User $user): void
+    {
+        abort_if(
+            $user->hasRole(PlatformAccess::SYSTEM_ADMIN_ROLE, 'web')
+                && ! $request->user()?->can(PlatformAccess::PLATFORM_ADMIN_PERMISSION),
+            Response::HTTP_NOT_FOUND,
+        );
+    }
+
+    private function protectedSystemAdminResponse(): JsonResponse
+    {
+        return response()->json(
+            ['message' => 'System administrator accounts are managed only through the platform access workflow.'],
+            Response::HTTP_CONFLICT,
+        );
     }
 }

@@ -186,6 +186,7 @@ class AuthController extends Controller
             // 404 route when the package mount is OFF (R14/R43).
             'features' => [
                 'invitations_admin' => (bool) config('invitations-admin.enabled', false),
+                'system_admin' => $user->can(\App\Support\PlatformAccess::PLATFORM_ADMIN_PERMISSION),
             ],
         ], 200);
     }

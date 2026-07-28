@@ -253,7 +253,7 @@ class MeTest extends TestCase
                 'projects',
                 'teams' => [['tenant_id', 'hash', 'name', 'projects']],
                 'preferences' => ['theme', 'density', 'language'],
-                'features' => ['invitations_admin'],
+                'features' => ['invitations_admin', 'system_admin'],
             ]);
     }
 
@@ -280,6 +280,23 @@ class MeTest extends TestCase
         } finally {
             config(['invitations-admin.enabled' => $previous]);
         }
+    }
+
+    public function test_me_exposes_system_admin_capability_from_platform_permission(): void
+    {
+        Permission::findOrCreate('platform.admin', 'web');
+        $user = $this->makeUser('platform@example.com');
+        $this->actingAs($user);
+
+        $this->getJson('/api/auth/me')
+            ->assertOk()
+            ->assertJsonPath('features.system_admin', false);
+
+        $user->givePermissionTo('platform.admin');
+
+        $this->getJson('/api/auth/me')
+            ->assertOk()
+            ->assertJsonPath('features.system_admin', true);
     }
 
     private function makeUser(string $email): User

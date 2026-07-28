@@ -410,6 +410,52 @@ class UserControllerTest extends TestCase
             ->assertJsonPath('data.roles', ['super-admin']);
     }
 
+    public function test_system_admin_role_cannot_be_assigned_or_mutated_through_users_crud(): void
+    {
+        $system = User::create([
+            'name' => 'System operator',
+            'email' => 'system-operator@demo.local',
+            'password' => Hash::make('secret123'),
+        ]);
+        $system->assignRole(['system-admin', 'super-admin']);
+
+        $this->actingAs($system)
+            ->postJson('/api/admin/users', [
+                'name' => 'Forbidden operator',
+                'email' => 'forbidden-operator@demo.local',
+                'password' => 'Super$tr0ngP@ss1',
+                'roles' => ['system-admin'],
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['roles']);
+
+        $this->actingAs($system)
+            ->patchJson("/api/admin/users/{$system->id}", ['name' => 'Renamed'])
+            ->assertConflict();
+        $this->actingAs($system)
+            ->patchJson("/api/admin/users/{$system->id}/active", ['is_active' => false])
+            ->assertConflict();
+
+        $system->refresh();
+        $this->assertSame('System operator', $system->name);
+        $this->assertTrue($system->is_active);
+    }
+
+    public function test_tenant_admin_cannot_list_or_show_system_admin_accounts(): void
+    {
+        $admin = $this->makeAdmin();
+        $system = User::create([
+            'name' => 'Hidden operator',
+            'email' => 'hidden-system@demo.local',
+            'password' => Hash::make('secret123'),
+        ]);
+        $system->assignRole(['system-admin', 'super-admin']);
+
+        $data = $this->actingAs($admin)->getJson('/api/admin/users')->assertOk()->json('data');
+        $this->assertNotContains($system->id, array_column($data, 'id'));
+        $this->actingAs($admin)->getJson("/api/admin/users/{$system->id}")->assertNotFound();
+    }
+
     // ------------------------------------------------------------------
     // RBAC — non-admin / guest
     // ------------------------------------------------------------------

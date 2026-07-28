@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Middleware;
 
 use App\Models\ProjectMembership;
+use App\Support\PlatformAccess;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -46,7 +47,7 @@ use Symfony\Component\HttpFoundation\Response;
  */
 final class AuthorizeTenantHeader
 {
-    public const CROSS_ACCESS_PERMISSION = 'tenant.cross-access';
+    public const CROSS_ACCESS_PERMISSION = PlatformAccess::CROSS_TENANT_PERMISSION;
 
     public function handle(Request $request, Closure $next): Response
     {

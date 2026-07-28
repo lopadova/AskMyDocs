@@ -45,6 +45,7 @@ class RoleControllerTest extends TestCase
         $this->assertContains('admin', $names);
         $this->assertContains('editor', $names);
         $this->assertContains('viewer', $names);
+        $this->assertNotContains('system-admin', $names);
     }
 
     public function test_store_creates_role_with_permissions(): void
@@ -113,6 +114,31 @@ class RoleControllerTest extends TestCase
             ->assertStatus(409);
 
         $this->assertDatabaseHas('roles', ['id' => $adminRole->id]);
+    }
+
+    public function test_platform_role_is_immutable_and_global_permissions_are_not_role_assignable(): void
+    {
+        $system = User::create([
+            'name' => 'System',
+            'email' => 'system@demo.local',
+            'password' => Hash::make('secret123'),
+        ]);
+        $system->assignRole(['system-admin', 'super-admin']);
+        $systemRole = Role::findByName('system-admin', 'web');
+
+        $this->actingAs($system)
+            ->patchJson("/api/admin/roles/{$systemRole->id}", [
+                'permissions' => ['logs.view'],
+            ])
+            ->assertConflict();
+
+        $this->actingAs($system)
+            ->postJson('/api/admin/roles', [
+                'name' => 'platform-clone',
+                'permissions' => ['platform.admin', 'tenant.cross-access'],
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['permissions.0', 'permissions.1']);
     }
 
     public function test_destroy_deletes_custom_role(): void

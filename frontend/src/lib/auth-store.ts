@@ -22,6 +22,7 @@ export type AuthProject = {
  */
 export type AuthFeatures = {
     invitations_admin?: boolean;
+    system_admin?: boolean;
 };
 
 export type AuthMePayload = {

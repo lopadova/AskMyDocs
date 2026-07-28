@@ -39,6 +39,7 @@ use Padosoft\AskMyDocsConnectorBase\Support\TenantContext as PackageTenantContex
 use Padosoft\EvidenceRiskReview\Contracts\EvidenceReviewerLlmContract;
 use Padosoft\EvidenceRiskReview\Contracts\TenantResolver as EvidenceTenantResolver;
 use App\Invitations\ProjectMembershipProvisioner;
+use App\Invitations\ProtectedRoleProvisioner;
 use Padosoft\Invitations\Contracts\TenantResolver as InvitationsTenantResolver;
 use Padosoft\Invitations\Services\AccountProvisioningService;
 use App\Policies\KnowledgeDocumentPolicy;
@@ -254,6 +255,15 @@ class AppServiceProvider extends ServiceProvider
      */
     private function registerInvitationsIntegration(): void
     {
+        // Replace the package's role provisioner binding with the host-aware
+        // adapter. The package tag keeps the vendor class as its service key,
+        // so overriding that key changes the resolved implementation without
+        // mutating vendor code.
+        $this->app->bind(
+            \Padosoft\Invitations\Provisioning\SpatiePermissionProvisioner::class,
+            ProtectedRoleProvisioner::class,
+        );
+
         $this->app->bind(InvitationsTenantResolver::class, function ($app): InvitationsTenantResolver {
             $ctx = $app->make(TenantContext::class);
 
@@ -753,6 +763,10 @@ class AppServiceProvider extends ServiceProvider
             \App\Console\Commands\KbReembedProjectCommand::class,
             // PR3 — RBAC
             AuthGrantCommand::class,
+            // Platform control plane — the ONLY supported workflow for
+            // granting/revoking the global system-admin role.
+            \App\Console\Commands\GrantSystemAdminCommand::class,
+            \App\Console\Commands\RevokeSystemAdminCommand::class,
             // Operator helper: seed a demo user inside a tenant in the
             // correct order. Lives in app code (not tinker) so it runs in
             // production under `composer install --no-dev`.

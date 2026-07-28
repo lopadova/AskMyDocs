@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Admin;
 
+use App\Support\PlatformAccess;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Routing\Controller;
 use Spatie\Permission\Models\Permission;
@@ -18,6 +19,10 @@ class PermissionController extends Controller
     public function index(): JsonResponse
     {
         $permissions = Permission::query()
+            ->whereNotIn('name', [
+                PlatformAccess::PLATFORM_ADMIN_PERMISSION,
+                PlatformAccess::CROSS_TENANT_PERMISSION,
+            ])
             ->orderBy('name')
             ->get(['id', 'name', 'guard_name']);
 

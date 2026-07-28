@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Admin;
 
+use App\Support\PlatformAccess;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -24,7 +25,14 @@ class RoleStoreRequest extends FormRequest
         return [
             'name' => ['required', 'string', 'max:120', Rule::unique('roles', 'name')],
             'permissions' => ['nullable', 'array'],
-            'permissions.*' => ['string', Rule::exists('permissions', 'name')],
+            'permissions.*' => [
+                'string',
+                Rule::exists('permissions', 'name'),
+                Rule::notIn([
+                    PlatformAccess::PLATFORM_ADMIN_PERMISSION,
+                    PlatformAccess::CROSS_TENANT_PERMISSION,
+                ]),
+            ],
         ];
     }
 }

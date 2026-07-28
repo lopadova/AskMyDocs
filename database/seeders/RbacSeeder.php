@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use App\Models\KnowledgeDocument;
 use App\Models\ProjectMembership;
 use App\Models\User;
+use App\Support\PlatformAccess;
 use Illuminate\Database\Seeder;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
@@ -13,17 +14,20 @@ use Spatie\Permission\PermissionRegistrar;
 /**
  * Idempotent RBAC seeder.
  *
- *  - 5 roles: super-admin, admin, dpo, editor, viewer (guard: web).
+ *  - 6 roles: system-admin, super-admin, admin, dpo, editor, viewer
+ *    (guard: web). `system-admin` is the global platform operator;
+ *    `super-admin` is the highest tenant role and still requires tenant
+ *    membership.
  *    `dpo` is the Data Protection Officer role added in v4.2/W4 sub-PR 5
  *    so the PII Redactor Admin Gates have a non-super-admin role they
  *    can grant detokenise + admin-view access to without escalating to
  *    full system admin. DPOs see PII tooling but NOT command runner
  *    or destructive admin commands.
- *  - 15 permissions (kb.* for content incl. kb.read.all_projects for the
+ *  - 17 permissions (kb.* for content incl. kb.read.all_projects for the
  *    per-project isolation "see all projects" capability, users/roles/
  *    permissions for admin, commands/logs/insights/admin.access for ops
- *    panel, pii.detokenize for PII reverse lookup, tenant.cross-access for
- *    the X-Tenant-Id override).
+ *    panel, pii.detokenize for PII reverse lookup, plus platform.admin and
+ *    tenant.cross-access for the system control plane).
  *  - Backfill: assign `viewer` to every existing user and create a
  *    viewer-role membership against every existing project_key so PR3
  *    deploy does not lock out the userbase.
@@ -40,7 +44,8 @@ class RbacSeeder extends Seeder
      * @var array<int,string>
      */
     private const ROLES = [
-        'super-admin',
+        PlatformAccess::SYSTEM_ADMIN_ROLE,
+        PlatformAccess::TENANT_SUPER_ADMIN_ROLE,
         'admin',
         'dpo',
         'editor',
@@ -88,11 +93,12 @@ class RbacSeeder extends Seeder
         // destructive than detokenise, so granted to dpo + super-admin only
         // (the data-protection owners). Checked via `$user->can('pii.erase')`.
         'pii.erase',
-        // C1 (R30) — explicit cross-tenant override capability. Lets a
-        // holder send an `X-Tenant-Id` header pointing at a tenant other
-        // than their own without being rejected by AuthorizeTenantHeader.
-        // Granted to super-admin only (super-admin syncs Permission::all()).
-        'tenant.cross-access',
+        // Global control-plane capability. This is deliberately separate
+        // from the tenant `super-admin` role.
+        PlatformAccess::PLATFORM_ADMIN_PERMISSION,
+        // C1 (R30) — explicit cross-tenant override capability. Only a
+        // system administrator may bypass membership checks.
+        PlatformAccess::CROSS_TENANT_PERMISSION,
     ];
 
     public function run(): void
@@ -123,19 +129,46 @@ class RbacSeeder extends Seeder
 
     private function syncRolePermissions(): void
     {
-        $superAdmin = Role::findByName('super-admin', self::GUARD);
+        $systemAdmin = Role::findByName(PlatformAccess::SYSTEM_ADMIN_ROLE, self::GUARD);
+        $superAdmin = Role::findByName(PlatformAccess::TENANT_SUPER_ADMIN_ROLE, self::GUARD);
         $admin = Role::findByName('admin', self::GUARD);
         $dpo = Role::findByName('dpo', self::GUARD);
         $editor = Role::findByName('editor', self::GUARD);
         $viewer = Role::findByName('viewer', self::GUARD);
 
-        $superAdmin->syncPermissions(Permission::all());
+        // A system administrator is the only global operator. The dedicated
+        // grant command also gives this account the companion `super-admin`
+        // role because many tenant routes intentionally use role middleware.
+        $systemAdmin->syncPermissions([
+            PlatformAccess::PLATFORM_ADMIN_PERMISSION,
+            PlatformAccess::CROSS_TENANT_PERMISSION,
+        ]);
+
+        // Highest tenant role: every tenant-level capability, but no platform
+        // control-plane permission and no cross-tenant membership bypass.
+        $superAdmin->syncPermissions([
+            'users.manage',
+            'roles.manage',
+            'permissions.view',
+            'kb.read.any',
+            'kb.read.all_projects',
+            'kb.edit.any',
+            'kb.delete.any',
+            'kb.promote.any',
+            'commands.run',
+            'commands.destructive',
+            'logs.view',
+            'insights.view',
+            'admin.access',
+            'pii.detokenize',
+            'pii.erase',
+        ]);
 
         $admin->syncPermissions([
             'users.manage',
             'kb.read.any',
             // admin sees all projects even when per-project isolation is ON
-            // (super-admin gets this via Permission::all()).
+            // (super-admin receives it in its explicit tenant grant set).
             'kb.read.all_projects',
             'kb.edit.any',
             'kb.delete.any',

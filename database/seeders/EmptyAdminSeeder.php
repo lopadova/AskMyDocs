@@ -21,7 +21,8 @@ class EmptyAdminSeeder extends Seeder
 {
     public function run(): void
     {
-        if (Role::query()->count() === 0) {
+        $canonicalRoles = ['system-admin', 'super-admin', 'admin', 'dpo', 'editor', 'viewer'];
+        if (Role::query()->whereIn('name', $canonicalRoles)->count() !== count($canonicalRoles)) {
             $this->call(RbacSeeder::class);
         }
 

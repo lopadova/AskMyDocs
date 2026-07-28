@@ -251,8 +251,8 @@ final class EvidenceRiskReviewIntegrationTest extends TestCase
     }
 
     /**
-     * A super-admin operator. super-admin syncs Permission::all(), which
-     * includes `tenant.cross-access`, so AuthorizeTenantHeader lets it act
+     * A system-admin operator. Its dedicated global permission
+     * `tenant.cross-access` lets AuthorizeTenantHeader act
      * under any `X-Tenant-Id` header (R30). The active tenant for each request
      * is therefore driven entirely by the header, and the bound TenantResolver
      * scopes the review log to it — which is exactly the isolation under test.
@@ -264,7 +264,7 @@ final class EvidenceRiskReviewIntegrationTest extends TestCase
             'email' => 'super-admin-'.$tenant.'-'.uniqid().'@demo.local',
             'password' => Hash::make('secret-password'),
         ]);
-        $user->assignRole('super-admin');
+        $user->assignRole(['system-admin', 'super-admin']);
 
         return $user;
     }

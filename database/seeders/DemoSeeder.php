@@ -41,8 +41,12 @@ class DemoSeeder extends Seeder
 {
     public function run(): void
     {
-        // Guarantee roles/permissions exist before we assign them.
-        if (Role::query()->count() === 0) {
+        // Guarantee the complete canonical set exists before assignment.
+        // The system-admin data migration intentionally creates its protected
+        // role on a fresh database, so a plain `Role::count() > 0` no longer
+        // proves the tenant roles have been seeded.
+        $canonicalRoles = ['system-admin', 'super-admin', 'admin', 'dpo', 'editor', 'viewer'];
+        if (Role::query()->whereIn('name', $canonicalRoles)->count() !== count($canonicalRoles)) {
             $this->call(RbacSeeder::class);
         }
 
@@ -87,10 +91,9 @@ class DemoSeeder extends Seeder
         // the `commands.destructive` permission — a super-admin-only
         // permission per config/admin.php.
         //
-        // Note: `admin@demo.local` already has super-admin above, but
-        // we seed a DEDICATED account here so the Playwright storage
-        // state for super-admin scenarios is distinct from the
-        // admin/viewer ones. Keeps the RBAC isolation clean.
+        // Keep this tenant-level operator distinct from admin/viewer and from
+        // the system administrator below so the E2E matrix proves all three
+        // boundaries independently.
         $super = User::firstOrCreate(
             ['email' => 'super@demo.local'],
             [
@@ -102,7 +105,19 @@ class DemoSeeder extends Seeder
             $super->assignRole('super-admin');
         }
 
-        // R32 — the dpo + editor accounts complete the five-role set so the
+        // Dedicated platform operator. Keep it distinct from the tenant
+        // super-admin so E2E proves the global boundary rather than relying on
+        // a conflated account.
+        $system = User::firstOrCreate(
+            ['email' => 'system@demo.local'],
+            [
+                'name' => 'Demo System Administrator',
+                'password' => Hash::make('password'),
+            ],
+        );
+        $system->assignRole(['system-admin', 'super-admin']);
+
+        // R32 — the dpo + editor accounts complete the six-role set so the
         // per-role access-control E2E (role-access.spec.ts) and the
         // AdminAuthorizationMatrixTest can exercise every distinct allow-set.
         // dpo = privacy role (PII tooling + AI Act, no system admin);
