@@ -5,12 +5,18 @@ declare(strict_types=1);
 namespace App\Services\Demo\EmailDataset;
 
 use JsonException;
+use InvalidArgumentException;
 use RuntimeException;
 
 final class JsonlDatasetWriter
 {
-    /** @var array<string, resource> */
+    /** @var array<string, array{handle: resource, touched_at: int}> */
     private array $handles = [];
+
+    /** @var array<string, true> */
+    private array $createdPaths = [];
+
+    private int $handleClock = 0;
 
     /** @var array<string, array{path: string, company: string, mailbox: string, month: string, records: int}> */
     private array $shards = [];
@@ -56,7 +62,12 @@ final class JsonlDatasetWriter
     public function __construct(
         private readonly string $directory,
         private readonly EmailRecordValidator $validator,
+        private readonly int $maxOpenHandles = 64,
     ) {
+        if ($maxOpenHandles < 1) {
+            throw new InvalidArgumentException('maxOpenHandles must be at least 1.');
+        }
+
         $this->makeDirectory($directory);
     }
 
@@ -270,17 +281,7 @@ final class JsonlDatasetWriter
 
     public function abort(): void
     {
-        $failed = [];
-        foreach ($this->handles as $path => $handle) {
-            if (! fclose($handle)) {
-                $failed[] = $path;
-            }
-        }
-        $this->handles = [];
-
-        if ($failed !== []) {
-            throw new RuntimeException('Unable to close aborted dataset shards: '.implode(', ', $failed));
-        }
+        $this->closeHandles('aborted dataset shards');
     }
 
     /**
@@ -289,17 +290,28 @@ final class JsonlDatasetWriter
     private function handleFor(string $relativePath)
     {
         if (isset($this->handles[$relativePath])) {
-            return $this->handles[$relativePath];
+            $this->handles[$relativePath]['touched_at'] = ++$this->handleClock;
+
+            return $this->handles[$relativePath]['handle'];
         }
 
         $path = $this->directory.'/'.$relativePath;
         $this->makeDirectory(dirname($path));
-        $handle = fopen($path, 'xb');
-        if ($handle === false) {
-            throw new RuntimeException("Unable to create generated shard {$path}.");
+        if (count($this->handles) >= $this->maxOpenHandles) {
+            $this->evictLeastRecentlyUsedHandle();
         }
 
-        $this->handles[$relativePath] = $handle;
+        $mode = isset($this->createdPaths[$relativePath]) ? 'ab' : 'xb';
+        $handle = fopen($path, $mode);
+        if ($handle === false) {
+            throw new RuntimeException("Unable to open generated shard {$path} in {$mode} mode.");
+        }
+
+        $this->createdPaths[$relativePath] = true;
+        $this->handles[$relativePath] = [
+            'handle' => $handle,
+            'touched_at' => ++$this->handleClock,
+        ];
 
         return $handle;
     }
@@ -320,17 +332,69 @@ final class JsonlDatasetWriter
         }
     }
 
-    private function closeHandles(): void
+    private function closeHandles(string $label = 'generated shards'): void
     {
-        foreach ($this->handles as $path => $handle) {
-            if (! fflush($handle)) {
-                throw new RuntimeException("Unable to flush generated shard {$path}.");
-            }
-            if (! fclose($handle)) {
-                throw new RuntimeException("Unable to close generated shard {$path}.");
+        $failures = [];
+        foreach (array_keys($this->handles) as $path) {
+            $failures = [
+                ...$failures,
+                ...$this->flushAndClose($path),
+            ];
+        }
+
+        if ($failures !== []) {
+            throw new RuntimeException(
+                "Unable to close {$label}: ".implode('; ', $failures),
+            );
+        }
+    }
+
+    private function evictLeastRecentlyUsedHandle(): void
+    {
+        $path = null;
+        $oldest = PHP_INT_MAX;
+        foreach ($this->handles as $candidate => $entry) {
+            if ($entry['touched_at'] < $oldest) {
+                $path = $candidate;
+                $oldest = $entry['touched_at'];
             }
         }
-        $this->handles = [];
+
+        if ($path === null) {
+            throw new RuntimeException('Unable to select a generated dataset handle for eviction.');
+        }
+
+        $failures = $this->flushAndClose($path);
+        if ($failures !== []) {
+            throw new RuntimeException(
+                'Unable to evict generated shard: '.implode('; ', $failures),
+            );
+        }
+    }
+
+    /**
+     * The handle is always removed from the live pool. Both operations are
+     * attempted so one failed flush cannot leak every later descriptor.
+     *
+     * @return list<string>
+     */
+    private function flushAndClose(string $path): array
+    {
+        $entry = $this->handles[$path] ?? null;
+        if ($entry === null) {
+            return [];
+        }
+
+        unset($this->handles[$path]);
+        $failures = [];
+        if (! fflush($entry['handle'])) {
+            $failures[] = "flush failed for {$path}";
+        }
+        if (! fclose($entry['handle'])) {
+            $failures[] = "close failed for {$path}";
+        }
+
+        return $failures;
     }
 
     private function finalizeActiveThread(): void

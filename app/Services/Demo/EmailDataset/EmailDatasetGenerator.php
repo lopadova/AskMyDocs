@@ -20,6 +20,7 @@ final readonly class EmailDatasetGenerator
         private DatasetPublisher $publisher,
         private EmailDatasetQualityValidator $qualityValidator,
         private ?Closure $snapshotFingerprintResolver = null,
+        private int $maxOpenWriterHandles = 64,
     ) {}
 
     public function generate(DatasetGenerationRequest $request): DatasetGenerationResult
@@ -66,7 +67,11 @@ final readonly class EmailDatasetGenerator
         $destination = $this->publisher->destination($request->outputDirectory, $datasetVersion);
         $this->publisher->assertCanGenerate($destination, $request->force, $request->check);
         $temporary = $this->publisher->createTemporaryDirectory($request->outputDirectory, $datasetVersion);
-        $writer = new JsonlDatasetWriter($temporary, $this->recordValidator);
+        $writer = new JsonlDatasetWriter(
+            $temporary,
+            $this->recordValidator,
+            $this->maxOpenWriterHandles,
+        );
         $random = new DeterministicRandom($request->seed);
         $factory = new EmailRecordFactory($random);
         $goldSources = [];

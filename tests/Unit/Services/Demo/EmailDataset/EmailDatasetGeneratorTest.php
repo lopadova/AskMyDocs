@@ -177,6 +177,28 @@ final class EmailDatasetGeneratorTest extends TestCase
         $this->assertSame($this->hashTree($first->directory), $this->hashTree($second->directory));
     }
 
+    public function test_bounded_writer_preserves_byte_identical_output_across_evictions(): void
+    {
+        $request = static fn (string $root): DatasetGenerationRequest => new DatasetGenerationRequest(
+            profile: 'gold',
+            seed: 42019,
+            catalogVersion: 'v1',
+            outputDirectory: $root,
+            mailboxes: ['rotta-logistics-1'],
+        );
+
+        $bounded = $this->generator(maxOpenWriterHandles: 2)
+            ->generate($request($this->temporaryDirectory()));
+        $reference = $this->generator(maxOpenWriterHandles: 64)
+            ->generate($request($this->temporaryDirectory()));
+
+        $this->assertSame($reference->aggregateChecksum, $bounded->aggregateChecksum);
+        $this->assertSame(
+            $this->hashTree($reference->directory),
+            $this->hashTree($bounded->directory),
+        );
+    }
+
     public function test_generation_discards_the_artifact_when_input_snapshot_changes(): void
     {
         $outputDirectory = $this->temporaryDirectory();
@@ -698,6 +720,7 @@ final class EmailDatasetGeneratorTest extends TestCase
     private function generator(
         ?CatalogLoader $catalogs = null,
         ?Closure $snapshotFingerprintResolver = null,
+        int $maxOpenWriterHandles = 64,
     ): EmailDatasetGenerator
     {
         $catalogs ??= new CatalogLoader;
@@ -713,6 +736,7 @@ final class EmailDatasetGeneratorTest extends TestCase
                 $catalogs,
             ),
             $snapshotFingerprintResolver,
+            $maxOpenWriterHandles,
         );
     }
 
