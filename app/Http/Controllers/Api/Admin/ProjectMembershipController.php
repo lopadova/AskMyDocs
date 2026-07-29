@@ -29,6 +29,8 @@ class ProjectMembershipController extends Controller
 {
     public function index(User $user): AnonymousResourceCollection
     {
+        $this->assertUserInActiveTenant($user);
+
         // R30 — list ONLY the active team's memberships. Without the scope
         // the Users screen showed (and let admins edit) rows belonging to
         // every tenant the target user is a member of.
@@ -42,6 +44,8 @@ class ProjectMembershipController extends Controller
 
     public function store(MembershipStoreRequest $request, User $user): JsonResponse
     {
+        $this->assertUserInActiveTenant($user);
+
         $data = $request->validated();
 
         // R30/R31 — the upsert match keys MUST include tenant_id; otherwise
@@ -105,6 +109,24 @@ class ProjectMembershipController extends Controller
     {
         abort_unless(
             $membership->tenant_id === app(TenantContext::class)->current(),
+            Response::HTTP_NOT_FOUND,
+        );
+    }
+
+    /**
+     * Nested membership routes receive a globally bound User model. Require an
+     * existing membership in the active tenant before exposing or mutating the
+     * target, matching UserController's IDOR-safe identity boundary.
+     */
+    private function assertUserInActiveTenant(User $user): void
+    {
+        $tenantId = app(TenantContext::class)->current();
+
+        abort_unless(
+            ProjectMembership::query()
+                ->forTenant($tenantId)
+                ->where('user_id', $user->id)
+                ->exists(),
             Response::HTTP_NOT_FOUND,
         );
     }
