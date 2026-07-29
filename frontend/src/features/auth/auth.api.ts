@@ -40,6 +40,38 @@ export async function me(): Promise<AuthMePayload> {
     return data;
 }
 
+export type CompanyOnboardingInput = {
+    company_name: string;
+    tenant_slug?: string;
+    project_key?: string;
+};
+
+export type CompanyOnboardingResponse = {
+    data: {
+        tenant: {
+            slug: string;
+            name: string;
+            hash: string;
+        };
+        project: {
+            project_key: string;
+            name: string;
+            membership_role: 'owner';
+        };
+        onboarding_required: false;
+    };
+};
+
+export async function completeCompanyOnboarding(
+    input: CompanyOnboardingInput,
+): Promise<CompanyOnboardingResponse> {
+    const { data } = await api.post<CompanyOnboardingResponse>(
+        '/api/auth/onboarding/company',
+        input,
+    );
+    return data;
+}
+
 export async function forgot(email: string): Promise<void> {
     await ensureCsrfCookie();
     await api.post('/api/auth/forgot-password', { email });

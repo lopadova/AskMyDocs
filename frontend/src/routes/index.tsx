@@ -21,6 +21,7 @@ import { TeamsList } from '../features/admin/teams/TeamsList';
 import { TenantControlView } from '../features/system-admin/tenants/TenantControlView';
 import { SuperAdminsView } from '../features/system-admin/super-admins/SuperAdminsView';
 import { NoTenantAssignedView } from '../features/tenant/NoTenantAssignedView';
+import { CompanyOnboardingView } from '../features/tenant/CompanyOnboardingView';
 import { KbView } from '../features/admin/kb/KbView';
 import { KbHealthView } from '../features/admin/kb-health/KbHealthView';
 import { TagsList } from '../features/admin/tags/TagsList';
@@ -199,16 +200,19 @@ function TeamRootRedirect() {
     const navigate = useNavigate();
     const hash = useTeamStore(selectCurrentHash);
     const isSystemAdmin = useAuthStore((state) => state.features.system_admin === true);
+    const onboardingRequired = useAuthStore((state) => state.onboarding.required);
 
     useEffect(() => {
         if (hash !== null) {
             navigate({ to: '/app/$teamHash/chat', params: { teamHash: hash }, replace: true });
         } else if (isSystemAdmin) {
             navigate({ to: '/app/system/tenants', replace: true });
+        } else if (onboardingRequired) {
+            navigate({ to: '/app/onboarding', replace: true });
         } else {
             navigate({ to: '/app/no-tenant', replace: true });
         }
-    }, [hash, isSystemAdmin, navigate]);
+    }, [hash, isSystemAdmin, onboardingRequired, navigate]);
 
     return null;
 }
@@ -236,6 +240,7 @@ function TeamGate() {
     const currentTeam = useTeamStore((s) => s.currentTeam);
     const switchTeam = useTeamStore((s) => s.switchTeam);
     const isSystemAdmin = useAuthStore((state) => state.features.system_admin === true);
+    const onboardingRequired = useAuthStore((state) => state.onboarding.required);
     const navigate = useNavigate();
 
     const team = teams.find((t) => t.hash === teamHash);
@@ -250,7 +255,11 @@ function TeamGate() {
         const active = teams.find((t) => t.tenant_id === currentTeam) ?? teams[0];
         if (!active) {
             navigate({
-                to: isSystemAdmin ? '/app/system/tenants' : '/app/no-tenant',
+                to: isSystemAdmin
+                    ? '/app/system/tenants'
+                    : onboardingRequired
+                        ? '/app/onboarding'
+                        : '/app/no-tenant',
                 replace: true,
             });
             return;
@@ -261,7 +270,7 @@ function TeamGate() {
             search: true,
             replace: true,
         });
-    }, [team, teams, currentTeam, switchTeam, navigate, isSystemAdmin]);
+    }, [team, teams, currentTeam, switchTeam, navigate, isSystemAdmin, onboardingRequired]);
 
     if (!team || team.tenant_id !== currentTeam) {
         return null; // redirecting (legacy URL) or syncing (deep link)
@@ -533,6 +542,29 @@ const noTenantAssignedRoute = createRoute({
     getParentRoute: () => appRoute,
     path: 'no-tenant',
     component: NoTenantAssignedRoute,
+});
+
+function CompanyOnboardingRoute() {
+    const navigate = useNavigate();
+    const onboardingRequired = useAuthStore((state) => state.onboarding.required);
+
+    if (!onboardingRequired) {
+        return <Navigate to="/app" replace />;
+    }
+
+    return (
+        <AppShell tenantScoped={false}>
+            <CompanyOnboardingView
+                onSuccess={() => navigate({ to: '/app', replace: true })}
+            />
+        </AppShell>
+    );
+}
+
+const companyOnboardingRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'onboarding',
+    component: CompanyOnboardingRoute,
 });
 
 // PR7 / Phase F2 — flat admin children. Same shape as `chatRoute`
@@ -1344,6 +1376,7 @@ const routeTree = rootRoute.addChildren([
         appIndexRoute,
         systemAdminTenantControlRoute,
         systemAdminSuperAdminsRoute,
+        companyOnboardingRoute,
         noTenantAssignedRoute,
         teamRoute.addChildren(teamChildren),
         digestRoute,
