@@ -43,7 +43,7 @@ final class AuthorizeTenantHeaderTest extends TestCase
         $this->assertPassesThrough($this->request(header: 'acme', user: null));
     }
 
-    public function test_rejects_without_header_even_when_legacy_default_membership_exists(): void
+    public function test_allows_without_header_when_legacy_default_membership_exists(): void
     {
         $user = $this->realUser('default-member@example.com');
         ProjectMembership::create([
@@ -53,10 +53,7 @@ final class AuthorizeTenantHeaderTest extends TestCase
             'role' => 'member',
         ]);
 
-        $response = $this->dispatch($this->request(header: null, user: $user));
-
-        $this->assertSame(Response::HTTP_FORBIDDEN, $response->getStatusCode());
-        $this->assertStringContainsString('tenant_forbidden', (string) $response->getContent());
+        $this->assertPassesThrough($this->request(header: null, user: $user));
     }
 
     public function test_rejects_without_header_when_default_membership_is_missing(): void

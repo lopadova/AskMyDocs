@@ -55,7 +55,9 @@ final class UserTeamsResolver
         $tenantIds = array_keys($projectsByTenant);
         $tenantIds = array_values(array_filter(
             $tenantIds,
-            static fn (string $slug): bool => ! SystemTenantRegistry::isReserved($slug),
+            // `default` remains an operational legacy slug only when backed
+            // by a real membership. System namespaces are never operational.
+            static fn (string $slug): bool => ! SystemTenantRegistry::isSystem($slug),
         ));
         $tenantIds = $this->activeOrUnregisteredTenantSlugs($tenantIds);
         $projectsByTenant = array_intersect_key($projectsByTenant, array_flip($tenantIds));
