@@ -6,11 +6,14 @@ use Orchestra\Testbench\TestCase as OrchestraTestCase;
 
 abstract class TestCase extends OrchestraTestCase
 {
+    private const FALLBACK_TEST_TENANT = 'test-tenant';
+
     /**
-     * Existing feature tests model identities from the pre-v8.30 default
-     * tenant installation. Production materialises that legacy implicit
-     * access during deployment, so mirror the same explicit membership when
-     * a test authenticates a freshly-created user.
+     * Most feature tests exercise an operational route rather than the
+     * no-membership boundary itself. Give those synthetic users an explicit
+     * membership in the active operational test tenant. If the context still
+     * points at a reserved namespace, move it to a dedicated test tenant;
+     * never manufacture access to `default`.
      *
      * Boundary tests that intentionally need an account with zero
      * memberships use actingAsWithoutTenant().
@@ -24,10 +27,16 @@ abstract class TestCase extends OrchestraTestCase
                 ->where('user_id', $user->getAuthIdentifier())
                 ->exists()
         ) {
+            $tenantId = app(\App\Support\TenantContext::class)->current();
+            if (\App\Support\SystemTenantRegistry::isReserved($tenantId)) {
+                $tenantId = self::FALLBACK_TEST_TENANT;
+                app(\App\Support\TenantContext::class)->set($tenantId);
+            }
+
             \Illuminate\Support\Facades\DB::table('project_memberships')->insertOrIgnore([
-                'tenant_id' => 'default',
+                'tenant_id' => $tenantId,
                 'user_id' => $user->getAuthIdentifier(),
-                'project_key' => 'default',
+                'project_key' => 'test-project',
                 'role' => 'member',
                 'scope_allowlist' => null,
                 'created_at' => now(),

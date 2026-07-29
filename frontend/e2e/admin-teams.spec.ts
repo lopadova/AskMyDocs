@@ -7,9 +7,9 @@ import { test } from './fixtures';
  * R13: every API surface is INTERNAL and seeded by DemoSeeder + the test's
  * own steps. ZERO route stubs — real Laravel app end-to-end.
  *
- * DemoSeeder seeds two tenants: `default` (the bootstrap team, read-only)
- * and `acme` ("Acme Corp"); admin@demo.local is a member of BOTH, so the
- * Teams page lists both — `acme` is manageable (Rename), `default` is not.
+ * DemoSeeder seeds two operational tenants: `a-demo` ("Demo Company") and
+ * `acme` ("Acme Corp"); admin@demo.local is a member of BOTH, so the
+ * Teams page lists both and both are manageable.
  * The create attaches the acting admin as a member, so a fresh team appears
  * both in the table AND in the topbar team switcher.
  */
@@ -24,12 +24,12 @@ test.describe('Admin Teams create + rename', () => {
 
         await expect(page.getByTestId('admin-teams-table')).toBeVisible({ timeout: 15_000 });
         await expect(page.getByTestId('admin-team-row-acme')).toBeVisible();
-        await expect(page.getByTestId('admin-team-row-default')).toBeVisible();
+        await expect(page.getByTestId('admin-team-row-a-demo')).toBeVisible();
 
-        // `acme` is manageable (member) → has a Rename action; `default` is
-        // the reserved bootstrap team → read-only, no Rename.
+        // Both rows represent real memberships, so both expose Rename.
         await expect(page.getByTestId('admin-team-row-acme-edit')).toBeVisible();
-        await expect(page.getByTestId('admin-team-row-default-edit')).toHaveCount(0);
+        await expect(page.getByTestId('admin-team-row-a-demo-edit')).toBeVisible();
+        await expect(page.getByTestId('admin-team-row-default')).toHaveCount(0);
     });
 
     test('the create dialog auto-slugs the slug from the name', async ({ page }) => {
@@ -126,10 +126,10 @@ test.describe('Admin Teams create + rename', () => {
     test('filter input narrows the visible teams by free-text match', async ({ page }) => {
         await page.goto('/app/admin/teams');
         await expect(page.getByTestId('admin-team-row-acme')).toBeVisible({ timeout: 15_000 });
-        await expect(page.getByTestId('admin-team-row-default')).toBeVisible();
+        await expect(page.getByTestId('admin-team-row-a-demo')).toBeVisible();
 
         await page.getByTestId('admin-teams-filter').fill('acme');
         await expect(page.getByTestId('admin-team-row-acme')).toBeVisible();
-        await expect(page.getByTestId('admin-team-row-default')).toHaveCount(0);
+        await expect(page.getByTestId('admin-team-row-a-demo')).toHaveCount(0);
     });
 });

@@ -5,7 +5,7 @@ import { test } from './fixtures';
  * Team switcher (= tenant switcher) E2E — admin project.
  *
  * DemoSeeder seeds TWO tenants:
- *   - `default`: 3 docs, 5 chat logs (hr-portal + engineering)
+ *   - `a-demo`: 3 docs, 5 chat logs (hr-portal + engineering)
  *   - `acme`   : 2 docs, 2 chat logs (acme-kb), label "Acme Corp",
  *                membership for admin@demo.local only
  *
@@ -23,7 +23,7 @@ import { test } from './fixtures';
  * REAL request the middleware rejects, not an injected response.
  */
 
-const DEFAULT_HASH = '37a8eec1ce19';
+const DEMO_HASH = '8d083090b062';
 const ACME_HASH = '822b33ad87c1';
 
 test.describe('Team switcher', () => {
@@ -32,7 +32,7 @@ test.describe('Team switcher', () => {
         // TeamGate re-prefixes it with the bootstrap team's hash.
         await page.goto('/app/admin/kb');
         await expect(page.getByTestId('kb-view')).toBeVisible({ timeout: 15_000 });
-        await expect(page).toHaveURL(new RegExp(`/app/${DEFAULT_HASH}/admin/kb`));
+        await expect(page).toHaveURL(new RegExp(`/app/${DEMO_HASH}/admin/kb`));
     });
 
     test('switching team re-scopes the dashboard KPIs and rewrites the URL hash', async ({
@@ -43,11 +43,11 @@ test.describe('Team switcher', () => {
         const kpiStrip = page.getByTestId('kpi-strip');
         await expect(kpiStrip).toHaveAttribute('data-state', 'ready', { timeout: 15_000 });
 
-        // Bootstrap team is `default` (first in /api/auth/me ordering); its
+        // Bootstrap team is `a-demo` (first in /api/auth/me ordering); its
         // hash is in the URL.
         const trigger = page.getByTestId('team-switcher-trigger');
-        await expect(trigger).toHaveText(/Default/);
-        await expect(page).toHaveURL(new RegExp(`/app/${DEFAULT_HASH}/admin`));
+        await expect(trigger).toHaveText(/Demo Company/);
+        await expect(page).toHaveURL(new RegExp(`/app/${DEMO_HASH}/admin`));
         await expect(page.getByTestId('kpi-card-chats')).toContainText('5');
         await expect(page.getByTestId('kpi-card-docs')).toContainText('3');
 
@@ -55,7 +55,7 @@ test.describe('Team switcher', () => {
         await trigger.click();
         const menu = page.getByTestId('team-switcher-menu');
         await expect(menu).toBeVisible();
-        await expect(page.getByTestId('team-switcher-item-default')).toHaveAttribute(
+        await expect(page.getByTestId('team-switcher-item-a-demo')).toHaveAttribute(
             'aria-checked',
             'true',
         );
@@ -86,7 +86,7 @@ test.describe('Team switcher', () => {
         await page.goto('/app/admin');
 
         const trigger = page.getByTestId('team-switcher-trigger');
-        await expect(trigger).toHaveText(/Default/);
+        await expect(trigger).toHaveText(/Demo Company/);
         await trigger.click();
         await page.getByTestId('team-switcher-item-acme').click();
         await expect(trigger).toHaveText(/Acme Corp/);
@@ -106,7 +106,7 @@ test.describe('Team switcher', () => {
         // KB explorer under acme's hash: the project picker derives its
         // options from the tenant-scoped GET /api/admin/kb/projects (R18)
         // — under acme it must offer ONLY acme-kb (hr-portal / engineering
-        // live in `default`).
+        // live in `a-demo`).
         await page.goto(`/app/${ACME_HASH}/admin/kb`);
         await expect(page.getByTestId('team-switcher-trigger')).toHaveText(/Acme Corp/, {
             timeout: 15_000,
@@ -118,7 +118,7 @@ test.describe('Team switcher', () => {
         });
 
         // Logs → Chat Logs tab: exactly the 2 seeded acme rows; the 5
-        // default-tenant rows must not surface. Query string survives the
+        // primary-tenant rows must not surface. Query string survives the
         // team-hash routing.
         await page.goto(`/app/${ACME_HASH}/admin/logs?tab=chat`);
         await expect(page.getByTestId('chat-logs-table')).toBeVisible({ timeout: 15_000 });
@@ -136,7 +136,7 @@ test.describe('Team switcher', () => {
         page,
     }) => {
         // Real request, real middleware: admin@demo.local has memberships
-        // in `default` + `acme` but NOT in `umbrella`. No role bypasses
+        // in `a-demo` + `acme` but NOT in `umbrella`. No role bypasses
         // membership, so AuthorizeTenantHeader must
         // answer tenant_forbidden — distinct from a role-based 403.
         await page.goto('/app/admin');

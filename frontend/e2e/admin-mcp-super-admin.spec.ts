@@ -47,7 +47,7 @@ test.describe('Admin MCP — super-admin', () => {
         expect(verifyProbe.status()).toBe(404);
 
         const credentials = await request.post('/api/mcp/credentials', {
-            data: { tenant_id: 'default', mcp_server_id: id },
+            data: { tenant_id: 'a-demo', mcp_server_id: id },
         });
         expect(credentials.status()).toBe(404);
 

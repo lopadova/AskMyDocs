@@ -34,7 +34,7 @@ final class E2eStreamSeeder extends Seeder
     {
         // Match the tenant the DemoSeeder users belong to so the chat
         // turn (authenticated as admin@demo.local) retrieves this doc.
-        app(TenantContext::class)->set('default');
+        app(TenantContext::class)->set(DemoSeeder::PRIMARY_TENANT);
 
         app(DocumentIngestor::class)->ingest(
             'hr-portal',

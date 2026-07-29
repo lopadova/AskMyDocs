@@ -22,7 +22,7 @@ final class WikiIndicesSeeder extends Seeder
     public function run(): void
     {
         KnowledgeDocument::updateOrCreate(
-            ['tenant_id' => 'default', 'project_key' => 'eng', 'source_path' => 'decisions/dec-cache.md', 'version_hash' => 'wikiidx-v1'],
+            ['tenant_id' => DemoSeeder::PRIMARY_TENANT, 'project_key' => 'eng', 'source_path' => 'decisions/dec-cache.md', 'version_hash' => 'wikiidx-v1'],
             [
                 'source_type' => 'markdown', 'title' => 'Cache decision', 'mime_type' => 'text/markdown',
                 'status' => 'active', 'document_hash' => str_repeat('b', 64), 'is_canonical' => true,
@@ -32,7 +32,7 @@ final class WikiIndicesSeeder extends Seeder
         );
 
         KnowledgeDocument::updateOrCreate(
-            ['tenant_id' => 'default', 'project_key' => 'eng', 'source_path' => 'domain-concepts/caching.md', 'version_hash' => 'wikiidx-v1'],
+            ['tenant_id' => DemoSeeder::PRIMARY_TENANT, 'project_key' => 'eng', 'source_path' => 'domain-concepts/caching.md', 'version_hash' => 'wikiidx-v1'],
             [
                 'source_type' => 'markdown', 'title' => 'Caching', 'mime_type' => 'text/markdown',
                 'status' => 'active', 'document_hash' => str_repeat('c', 64), 'is_canonical' => true,

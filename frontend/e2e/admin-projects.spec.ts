@@ -7,7 +7,7 @@ import { test } from './fixtures';
  * R13: every API surface is INTERNAL and seeded by DemoSeeder + the
  * test's own steps. ZERO route stubs — real Laravel app end-to-end.
  *
- * DemoSeeder seeds two default-tenant projects (hr-portal, engineering);
+ * DemoSeeder seeds two primary-tenant projects (hr-portal, engineering);
  * hr-portal carries documents, so it cannot be deleted (delete-in-use
  * 422). The admin user has the `admin` role; viewer denial lives in
  * admin-projects-viewer.spec.ts under the chromium-viewer project.
