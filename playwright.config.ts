@@ -100,6 +100,14 @@ export default defineConfig({
                   // CI test DB name so migrations behave identically. Create it once:
                   // `createdb askmydocs_test` (see .env.example). The TestingController guard enforces this too.
                   DB_DATABASE: 'askmydocs_test',
+                  // Never inherit the local Valet/Herd cookie domain
+                  // (`askmydocs.test`) while the Playwright server runs on
+                  // 127.0.0.1. A mismatched Domain silently discards both the
+                  // XSRF and session cookies, making successful registration
+                  // look unauthenticated on the immediately-following /me.
+                  SESSION_DOMAIN: '127.0.0.1',
+                  SESSION_DRIVER: 'database',
+                  SANCTUM_STATEFUL_DOMAINS: '127.0.0.1,127.0.0.1:8000,localhost,localhost:8000',
                   // Local E2E has no long-running queue worker. Pin the
                   // connection explicitly instead of inheriting a developer
                   // `.env` value such as `database`, otherwise KB ingest jobs
