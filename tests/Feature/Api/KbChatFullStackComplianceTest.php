@@ -71,6 +71,7 @@ final class KbChatFullStackComplianceTest extends TestCase
         config()->set('kb.reranking.enabled', false);
         config()->set('kb.graph.expansion_enabled', false);
         config()->set('kb.rejected.injection_enabled', false);
+        config()->set('kb.counterfactual.enabled', false);
 
         app(TenantContext::class)->set('default');
 
