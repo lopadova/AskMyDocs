@@ -774,6 +774,10 @@ class AppServiceProvider extends ServiceProvider
             // Operator bootstrap: create a real company (tenant) + its admin
             // user in one shot (create-new semantics, fails if it exists).
             \App\Console\Commands\CreateCompanyCommand::class,
+            // Invite-only registration bootstrap. Codes without --tenant
+            // create an account that must complete company onboarding; codes
+            // with --tenant carry one explicit operational grant.
+            \App\Console\Commands\CreateRegistrationInviteCommand::class,
             // v8.28 — team (tenant) management PHP surface (R44), thin over
             // TeamRegistryService: create a team (registry + project +
             // membership, no new user) and rename a team.
