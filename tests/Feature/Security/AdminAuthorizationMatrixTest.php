@@ -6,10 +6,12 @@ namespace Tests\Feature\Security;
 
 use App\Models\ProjectMembership;
 use App\Models\User;
+use App\Support\TenantContext;
 use Database\Seeders\RbacSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
+use Padosoft\AiActCompliance\MultiTenancy\Models\Tenant;
 use Tests\TestCase;
 
 /**
@@ -42,6 +44,8 @@ use Tests\TestCase;
 final class AdminAuthorizationMatrixTest extends TestCase
 {
     use RefreshDatabase;
+
+    private const OPERATIONAL_TENANT = 'matrix-tenant';
 
     /** Every role the RBAC system defines. Keep in sync with RbacSeeder::ROLES. */
     private const ALL_ROLES = ['system-admin', 'super-admin', 'admin', 'dpo', 'editor', 'viewer'];
@@ -155,6 +159,18 @@ final class AdminAuthorizationMatrixTest extends TestCase
         parent::setUp();
         $this->seed(RbacSeeder::class);
         Cache::flush();
+        Tenant::query()->updateOrCreate(
+            ['slug' => self::OPERATIONAL_TENANT],
+            ['name' => 'Authorization Matrix', 'status' => 'active', 'is_system' => false],
+        );
+
+        // The matrix isolates role/gate authorization, so every operational
+        // request carries one valid tenant context and every synthetic user
+        // receives a matching membership below. Global /api/system-admin/*
+        // routes ignore this header by contract; their no-header behaviour is
+        // covered by the dedicated SystemAdmin controller tests.
+        $this->withHeader('X-Tenant-Id', self::OPERATIONAL_TENANT);
+        app(TenantContext::class)->set(self::OPERATIONAL_TENANT);
     }
 
     public function test_roles_not_in_the_allow_set_are_denied_with_403(): void
@@ -177,9 +193,9 @@ final class AdminAuthorizationMatrixTest extends TestCase
     {
         foreach ($this->matrix() as $uri => $allowed) {
             foreach ($allowed as $role) {
-                $status = $this->actingAs($this->userWithRole($role))
-                    ->getJson($uri)
-                    ->getStatusCode();
+                $response = $this->actingAs($this->userWithRole($role))
+                    ->getJson($uri);
+                $status = $response->getStatusCode();
 
                 // Authorization passed: the gate let the role through. The
                 // controller may answer 200/404/422/500 on data — none of
@@ -187,7 +203,7 @@ final class AdminAuthorizationMatrixTest extends TestCase
                 $this->assertNotSame(
                     403,
                     $status,
-                    "Role [{$role}] should pass the gate for [{$uri}] but got 403.",
+                    "Role [{$role}] should pass the gate for [{$uri}] but got 403: ".$response->getContent(),
                 );
             }
         }
@@ -559,7 +575,7 @@ final class AdminAuthorizationMatrixTest extends TestCase
                 : $role,
         );
         ProjectMembership::create([
-            'tenant_id' => 'default',
+            'tenant_id' => self::OPERATIONAL_TENANT,
             'user_id' => $user->id,
             'project_key' => 'matrix',
             'role' => 'member',
