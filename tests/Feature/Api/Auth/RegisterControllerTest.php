@@ -2,12 +2,13 @@
 
 namespace Tests\Feature\Api\Auth;
 
+use App\Invitations\RegistrationInvitationIssuer;
+use App\Models\Project;
 use App\Models\User;
-use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
-use Padosoft\Invitations\Services\CodeGenerator;
+use Padosoft\AiActCompliance\MultiTenancy\Models\Tenant;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
@@ -32,9 +33,6 @@ class RegisterControllerTest extends TestCase
     {
         parent::setUp();
 
-        // Deterministic tenant: codes are minted in — and validated against —
-        // the same active tenant.
-        app(TenantContext::class)->set('default');
         // Reset rate-limiter + Spatie permission caches between tests.
         Cache::flush();
         // The controller floors every new account at 'viewer'; the role must
@@ -44,7 +42,9 @@ class RegisterControllerTest extends TestCase
 
     private function mintCode(): string
     {
-        return app(CodeGenerator::class)->generateRandom(['max_uses' => 5])->code;
+        return app(RegistrationInvitationIssuer::class)
+            ->issueCompanyBootstrap(maxUses: 5)
+            ->code;
     }
 
     private function payload(array $overrides = []): array
@@ -65,19 +65,60 @@ class RegisterControllerTest extends TestCase
         $response = $this->postJson('/api/auth/register', $this->payload(['invite_code' => $code]));
 
         $response->assertStatus(201)
-            ->assertJsonStructure(['user' => ['id', 'name', 'email'], 'abilities'])
-            ->assertJsonPath('user.email', 'new@example.com');
+            ->assertJsonStructure(['user' => ['id', 'name', 'email'], 'abilities', 'registration'])
+            ->assertJsonPath('user.email', 'new@example.com')
+            ->assertJsonPath('registration.intent', 'company_bootstrap')
+            ->assertJsonPath('registration.onboarding_required', true);
 
         $this->assertTrue(Auth::check(), 'A successful registration opens the session.');
         $this->assertDatabaseHas('users', ['email' => 'new@example.com']);
 
         $user = User::where('email', 'new@example.com')->firstOrFail();
         $this->assertTrue($user->hasRole('viewer'), 'New accounts are floored at the viewer role.');
+        $this->assertDatabaseMissing('project_memberships', ['user_id' => $user->id]);
 
         // The code was actually consumed (redemption ran), not merely validated.
         $this->assertDatabaseHas('invite_codes', [
             'code' => $code,
             'current_uses' => 1,
+        ]);
+    }
+
+    public function test_tenant_linked_code_provisions_membership_and_skips_onboarding(): void
+    {
+        Tenant::create([
+            'slug' => 'acme',
+            'name' => 'Acme',
+            'status' => 'active',
+            'is_system' => false,
+        ]);
+        Project::create([
+            'tenant_id' => 'acme',
+            'project_key' => 'acme-kb',
+            'name' => 'Acme KB',
+        ]);
+        $code = app(RegistrationInvitationIssuer::class)->issueTenantJoin(
+            'acme',
+            ['acme-kb'],
+            'viewer',
+            'member',
+        )->code;
+
+        $response = $this->postJson('/api/auth/register', $this->payload([
+            'invite_code' => $code,
+        ]));
+
+        $response->assertCreated()
+            ->assertJsonPath('registration.intent', 'tenant_join')
+            ->assertJsonPath('registration.target_tenant', 'acme')
+            ->assertJsonPath('registration.onboarding_required', false);
+
+        $user = User::query()->where('email', 'new@example.com')->firstOrFail();
+        $this->assertDatabaseHas('project_memberships', [
+            'tenant_id' => 'acme',
+            'user_id' => $user->id,
+            'project_key' => 'acme-kb',
+            'role' => 'member',
         ]);
     }
 

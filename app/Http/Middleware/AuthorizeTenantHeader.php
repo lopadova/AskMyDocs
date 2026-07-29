@@ -57,7 +57,7 @@ final class AuthorizeTenantHeader
         // System namespaces are storage/control-plane implementation details,
         // never operational destinations — even an accidentally-created
         // membership must not turn one into a selectable tenant.
-        if (SystemTenantRegistry::isSystem($tenantId)) {
+        if (SystemTenantRegistry::isReserved($tenantId)) {
             return response()->json([
                 'error' => 'tenant_forbidden',
                 'message' => 'You are not authorised to act on behalf of the requested tenant.',

@@ -66,6 +66,20 @@ final class RegistrationCodeResolver
             return RegistrationCodeResolution::invalid(RedemptionError::Ineligible);
         }
 
+        $grant = InviteGrant::resolve($code->grant, $code->campaign?->grant);
+        $tenantGrants = $grant->effectiveTenantGrants($redemptionTenant);
+        if (count($tenantGrants) !== 1) {
+            return RegistrationCodeResolution::invalid(RedemptionError::Ineligible);
+        }
+        $tenantGrant = $tenantGrants[0];
+        if (
+            $tenantGrant->tenantId !== $redemptionTenant
+            || $tenantGrant->projects === []
+            || ! $this->projectsBelongToTenant($redemptionTenant, $tenantGrant->projects)
+        ) {
+            return RegistrationCodeResolution::invalid(RedemptionError::Ineligible);
+        }
+
         return RegistrationCodeResolution::valid(
             $code,
             $redemptionTenant,

@@ -104,10 +104,19 @@ final class CreateRegistrationInviteCommandTest extends TestCase
     public function test_resolver_accepts_a_legacy_tenant_local_code_but_rejects_default(): void
     {
         $this->makeTenant('acme', 'Acme');
+        Project::create([
+            'tenant_id' => 'acme',
+            'project_key' => 'acme-kb',
+            'name' => 'Acme KB',
+        ]);
 
         $legacy = app(CodeGenerator::class)->generateRandom([
             'tenant_id' => 'acme',
-            'grant' => [],
+            'grant' => [
+                'role' => 'viewer',
+                'projects' => ['acme-kb'],
+                'project_role' => 'member',
+            ],
         ]);
         $accepted = app(RegistrationCodeResolver::class)->resolve($legacy->code);
         $this->assertTrue($accepted->ok);

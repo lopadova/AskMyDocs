@@ -2,13 +2,12 @@
 
 namespace Tests\Feature\Api\Auth;
 
+use App\Invitations\RegistrationInvitationIssuer;
 use App\Models\User;
-use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Laravel\Sanctum\PersonalAccessToken;
-use Padosoft\Invitations\Services\CodeGenerator;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
@@ -34,14 +33,15 @@ class RegisterTokenTest extends TestCase
     {
         parent::setUp();
 
-        app(TenantContext::class)->set('default');
         Cache::flush();
         Role::findOrCreate('viewer', 'web');
     }
 
     private function mintCode(): string
     {
-        return app(CodeGenerator::class)->generateRandom(['max_uses' => 5])->code;
+        return app(RegistrationInvitationIssuer::class)
+            ->issueCompanyBootstrap(maxUses: 5)
+            ->code;
     }
 
     private function payload(array $overrides = []): array
@@ -63,9 +63,10 @@ class RegisterTokenTest extends TestCase
         $response = $this->postJson('/api/auth/register-token', $this->payload(['invite_code' => $code]));
 
         $response->assertCreated()
-            ->assertJsonStructure(['token', 'token_type', 'user' => ['id', 'name', 'email']])
+            ->assertJsonStructure(['token', 'token_type', 'user' => ['id', 'name', 'email'], 'registration'])
             ->assertJsonPath('token_type', 'Bearer')
-            ->assertJsonPath('user.email', 'desktop@example.com');
+            ->assertJsonPath('user.email', 'desktop@example.com')
+            ->assertJsonPath('registration.onboarding_required', true);
 
         // Stateless — no web session is opened by this endpoint.
         $this->assertFalse(Auth::check());

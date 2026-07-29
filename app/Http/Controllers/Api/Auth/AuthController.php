@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Auth;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Requests\Auth\TokenRequest;
 use App\Models\User;
+use App\Services\Auth\CompanyOnboardingEligibility;
 use App\Services\Auth\UserTeamsResolver;
 use App\Support\DesktopToken;
 use Illuminate\Http\JsonResponse;
@@ -142,7 +143,11 @@ class AuthController extends Controller
         return response()->noContent();
     }
 
-    public function me(Request $request, UserTeamsResolver $teams): JsonResponse
+    public function me(
+        Request $request,
+        UserTeamsResolver $teams,
+        CompanyOnboardingEligibility $onboarding,
+    ): JsonResponse
     {
         $user = $request->user();
 
@@ -159,6 +164,9 @@ class AuthController extends Controller
             ])
             ->values();
 
+        $resolvedTeams = $teams->resolve($user);
+        $onboardingRequired = $onboarding->required($user);
+
         return response()->json([
             'user' => [
                 'id' => $user->id,
@@ -172,7 +180,11 @@ class AuthController extends Controller
             // R27 — additive: the legacy flattened `projects` list above
             // stays untouched; `teams` groups the same explicit memberships
             // per active tenant for the SPA team switcher.
-            'teams' => $teams->resolve($user),
+            'teams' => $resolvedTeams,
+            'onboarding' => [
+                'required' => $onboardingRequired,
+                'can_create_company' => $onboardingRequired,
+            ],
             'preferences' => [
                 'theme' => 'dark',
                 'density' => 'balanced',

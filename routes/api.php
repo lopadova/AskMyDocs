@@ -31,6 +31,7 @@ use App\Http\Controllers\Api\Admin\TabularReviewStreamController;
 use App\Http\Controllers\Api\Admin\UserController;
 use App\Http\Controllers\Api\Admin\WorkflowController;
 use App\Http\Controllers\Api\Auth\AuthController;
+use App\Http\Controllers\Api\Auth\CompanyOnboardingController;
 use App\Http\Controllers\Api\Auth\PasswordResetController as ApiPasswordResetController;
 use App\Http\Controllers\Api\Auth\RegisterController;
 use App\Http\Controllers\Api\Auth\TwoFactorController;
@@ -93,6 +94,12 @@ Route::middleware('web')->prefix('auth')->group(function () {
 
         Route::get('/me', [AuthController::class, 'me'])
             ->name('api.auth.me');
+
+        // Resumable registration completion for a normal account with no
+        // operational memberships. Deliberately outside tenant.authorize:
+        // there is no tenant to authorize until this request creates one.
+        Route::post('/onboarding/company', CompanyOnboardingController::class)
+            ->name('api.auth.onboarding.company');
 
         Route::prefix('2fa')->group(function () {
             Route::post('/enable', [TwoFactorController::class, 'enable'])
