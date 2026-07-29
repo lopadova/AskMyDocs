@@ -136,7 +136,7 @@ class MeTest extends TestCase
         $this->assertSame($hashes, $again);
     }
 
-    public function test_me_teams_groups_operational_memberships_and_hides_default(): void
+    public function test_me_teams_groups_operational_memberships_and_keeps_explicit_legacy_default(): void
     {
         $user = $this->makeUser('multi@example.com');
 
@@ -173,14 +173,16 @@ class MeTest extends TestCase
 
         $response = $this->getJson('/api/auth/me')->assertOk();
 
-        $response->assertJsonPath('teams.0.tenant_id', 'acme')
-            ->assertJsonPath('teams.1.tenant_id', 'zeta-corp')
-            ->assertJsonCount(2, 'teams')
-            ->assertJsonCount(2, 'teams.0.projects')
-            ->assertJsonPath('teams.0.projects.0.project_key', 'acme-kb')
-            ->assertJsonPath('teams.0.projects.0.role', 'admin')
-            ->assertJsonPath('teams.0.projects.0.scope.folder_globs.0', 'docs/*')
-            ->assertJsonPath('teams.1.projects.0.project_key', 'zeta-kb')
+        $response->assertJsonPath('teams.0.tenant_id', 'default')
+            ->assertJsonPath('teams.1.tenant_id', 'acme')
+            ->assertJsonPath('teams.2.tenant_id', 'zeta-corp')
+            ->assertJsonCount(3, 'teams')
+            ->assertJsonPath('teams.0.projects.0.project_key', 'legacy-kb')
+            ->assertJsonCount(2, 'teams.1.projects')
+            ->assertJsonPath('teams.1.projects.0.project_key', 'acme-kb')
+            ->assertJsonPath('teams.1.projects.0.role', 'admin')
+            ->assertJsonPath('teams.1.projects.0.scope.folder_globs.0', 'docs/*')
+            ->assertJsonPath('teams.2.projects.0.project_key', 'zeta-kb')
             ->assertJsonPath('onboarding.required', false);
     }
 
