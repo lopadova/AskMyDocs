@@ -5,10 +5,12 @@ namespace Tests\Feature\Api\Admin;
 use App\Models\Project;
 use App\Models\ProjectMembership;
 use App\Models\User;
+use App\Support\TenantContext;
 use Database\Seeders\RbacSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
+use Padosoft\AiActCompliance\MultiTenancy\Models\Tenant;
 use Tests\TestCase;
 
 /**
@@ -23,6 +25,10 @@ class UserControllerTest extends TestCase
 {
     use RefreshDatabase;
 
+    private const TENANT = 'users-test';
+
+    private const PROJECT = 'users-project';
+
     protected function defineRoutes($router): void
     {
         $router->middleware('api')->prefix('api')->group(__DIR__.'/../../../../routes/api.php');
@@ -32,9 +38,15 @@ class UserControllerTest extends TestCase
     {
         parent::setUp();
         $this->seed(RbacSeeder::class);
+        Tenant::query()->updateOrCreate(
+            ['slug' => self::TENANT],
+            ['name' => 'Users Test', 'status' => 'active', 'is_system' => false],
+        );
+        app(TenantContext::class)->set(self::TENANT);
+        $this->withHeader('X-Tenant-Id', self::TENANT);
         Project::firstOrCreate(
-            ['tenant_id' => 'default', 'project_key' => 'default'],
-            ['name' => 'Default', 'description' => 'Test project'],
+            ['tenant_id' => self::TENANT, 'project_key' => self::PROJECT],
+            ['name' => 'Users Project', 'description' => 'Test project'],
         );
         Cache::flush();
     }
@@ -194,7 +206,7 @@ class UserControllerTest extends TestCase
                 'name' => 'New Person',
                 'email' => 'new-person@demo.local',
                 'password' => 'Super$tr0ngP@ss1',
-                'initial_project_key' => 'default',
+                'initial_project_key' => self::PROJECT,
                 'membership_role' => 'member',
             ])
             ->assertStatus(201)
@@ -204,9 +216,9 @@ class UserControllerTest extends TestCase
         $this->assertDatabaseHas('users', ['email' => 'new-person@demo.local']);
         $createdId = (int) User::query()->where('email', 'new-person@demo.local')->value('id');
         $this->assertDatabaseHas('project_memberships', [
-            'tenant_id' => 'default',
+            'tenant_id' => self::TENANT,
             'user_id' => $createdId,
-            'project_key' => 'default',
+            'project_key' => self::PROJECT,
             'role' => 'member',
         ]);
     }
@@ -347,7 +359,7 @@ class UserControllerTest extends TestCase
             'password' => Hash::make('secret123'),
         ]);
         $superAdmin->assignRole('super-admin');
-        $this->grantDefaultMembership($superAdmin);
+        $this->grantTenantMembership($superAdmin);
 
         $this->actingAs($admin)
             ->deleteJson("/api/admin/users/{$superAdmin->id}")
@@ -456,7 +468,7 @@ class UserControllerTest extends TestCase
                 'email' => 'editor-person@demo.local',
                 'password' => 'Super$tr0ngP@ss1',
                 'roles' => ['editor', 'viewer'],
-                'initial_project_key' => 'default',
+                'initial_project_key' => self::PROJECT,
                 'membership_role' => 'member',
             ])
             ->assertStatus(201)
@@ -471,7 +483,7 @@ class UserControllerTest extends TestCase
             'password' => Hash::make('secret123'),
         ]);
         $superAdmin->assignRole('super-admin');
-        $this->grantDefaultMembership($superAdmin);
+        $this->grantTenantMembership($superAdmin);
 
         $this->actingAs($superAdmin)
             ->postJson('/api/admin/users', [
@@ -479,7 +491,7 @@ class UserControllerTest extends TestCase
                 'email' => 'second-root@demo.local',
                 'password' => 'Super$tr0ngP@ss1',
                 'roles' => ['super-admin'],
-                'initial_project_key' => 'default',
+                'initial_project_key' => self::PROJECT,
                 'membership_role' => 'admin',
             ])
             ->assertStatus(201)
@@ -494,7 +506,7 @@ class UserControllerTest extends TestCase
             'password' => Hash::make('secret123'),
         ]);
         $system->assignRole(['system-admin', 'super-admin']);
-        $this->grantDefaultMembership($system);
+        $this->grantTenantMembership($system);
 
         $this->actingAs($system)
             ->postJson('/api/admin/users', [
@@ -527,7 +539,7 @@ class UserControllerTest extends TestCase
             'password' => Hash::make('secret123'),
         ]);
         $system->assignRole(['system-admin', 'super-admin']);
-        $this->grantDefaultMembership($system);
+        $this->grantTenantMembership($system);
 
         $data = $this->actingAs($admin)->getJson('/api/admin/users')->assertOk()->json('data');
         $this->assertNotContains($system->id, array_column($data, 'id'));
@@ -568,7 +580,7 @@ class UserControllerTest extends TestCase
             'password' => Hash::make('secret123'),
         ]);
         $admin->assignRole('admin');
-        $this->grantDefaultMembership($admin);
+        $this->grantTenantMembership($admin);
 
         return $admin;
     }
@@ -581,17 +593,17 @@ class UserControllerTest extends TestCase
             'password' => Hash::make('secret123'),
         ]);
         $user->assignRole('viewer');
-        $this->grantDefaultMembership($user);
+        $this->grantTenantMembership($user);
 
         return $user;
     }
 
-    private function grantDefaultMembership(User $user): void
+    private function grantTenantMembership(User $user): void
     {
         ProjectMembership::firstOrCreate([
-            'tenant_id' => 'default',
+            'tenant_id' => self::TENANT,
             'user_id' => $user->id,
-            'project_key' => 'default',
+            'project_key' => self::PROJECT,
         ], [
             'role' => 'member',
         ]);
