@@ -16,6 +16,7 @@ export type SidebarProps = {
     user: SeedUser;
     projectCount: number;
     features?: AuthFeatures;
+    hasTenants?: boolean;
 };
 
 /*
@@ -24,13 +25,22 @@ export type SidebarProps = {
  * appears twice. Groups default to expanded; the group that owns the active
  * section is always forced open so the current page is never hidden.
  */
-export function Sidebar({ active, onNav, collapsed = false, user, projectCount, features = {} }: SidebarProps) {
+export function Sidebar({
+    active,
+    onNav,
+    collapsed = false,
+    user,
+    projectCount,
+    features = {},
+    hasTenants = true,
+}: SidebarProps) {
     const visibleGroups = NAV_GROUPS
         .map((group) => ({
             ...group,
             items: group.items.filter((item) =>
                 (item.roles === undefined || item.roles.includes(user.role))
-                && (item.feature === undefined || features[item.feature] === true),
+                && (item.feature === undefined || features[item.feature] === true)
+                && (hasTenants || item.scope === 'system'),
             ),
         }))
         .filter((group) => group.items.length > 0);

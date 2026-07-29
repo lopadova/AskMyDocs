@@ -53,9 +53,9 @@ describe('useTeamStore.syncFromMe', () => {
         expect(useTeamStore.getState().currentTeam).toBe('default');
     });
 
-    it('falls back to literal default when the BE sends no teams at all', () => {
+    it('keeps a real null selection when the BE sends no teams at all', () => {
         useTeamStore.getState().syncFromMe([], 1);
-        expect(useTeamStore.getState().currentTeam).toBe('default');
+        expect(useTeamStore.getState().currentTeam).toBeNull();
     });
 });
 
@@ -100,5 +100,11 @@ describe('useTeamStore.resetToFirstTeam', () => {
         useTeamStore.getState().resetToFirstTeam();
         expect(useTeamStore.getState().currentTeam).toBe('default');
         expect(clear).toHaveBeenCalled();
+    });
+
+    it('clears the selection when no team remains available', () => {
+        useTeamStore.getState().syncFromMe(TEAMS, 1);
+        useTeamStore.getState().syncFromMe([], 1);
+        expect(useTeamStore.getState().currentTeam).toBeNull();
     });
 });

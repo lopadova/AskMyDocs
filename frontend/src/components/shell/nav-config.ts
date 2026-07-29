@@ -20,6 +20,7 @@ export type SidebarSection =
     | 'projects'
     | 'teams'
     | 'tenant-control'
+    | 'super-admins'
     | 'users'
     | 'roles'
     | 'kb'
@@ -63,6 +64,8 @@ export interface NavItem {
     roles?: SeedUser['role'][];
     /** Optional server-delivered capability required to render this entry. */
     feature?: keyof AuthFeatures;
+    /** System entries remain available without an operational tenant. */
+    scope?: 'tenant' | 'system';
 }
 
 export interface NavGroup {
@@ -84,16 +87,31 @@ export const NAV_GROUPS: NavGroup[] = [
         ],
     },
     {
-        id: 'administration',
-        label: 'Administration',
+        id: 'system-administration',
+        label: 'System administration',
         items: [
             {
                 id: 'tenant-control',
-                label: 'Tenant control',
+                label: 'Tenants',
                 icon: 'Globe',
                 route: '/app/system/tenants',
                 feature: 'system_admin',
+                scope: 'system',
             },
+            {
+                id: 'super-admins',
+                label: 'Super Admins',
+                icon: 'Shield',
+                route: '/app/system/super-admins',
+                feature: 'system_admin',
+                scope: 'system',
+            },
+        ],
+    },
+    {
+        id: 'tenant-administration',
+        label: 'Tenant administration',
+        items: [
             { id: 'dashboard', label: 'Dashboard', icon: 'Grid', route: '/app/$teamHash/admin' },
             { id: 'engagement', label: 'Engagement', icon: 'Activity', route: '/app/$teamHash/admin/engagement' },
             { id: 'insights', label: 'AI Insights', icon: 'Sparkles', route: '/app/$teamHash/admin/insights' },

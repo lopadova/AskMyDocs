@@ -36,10 +36,11 @@ export const api: AxiosInstance = axios.create({
 const TENANT_EXEMPT_PREFIXES = ['/api/auth/', '/api/system-admin/', '/sanctum/', '/testing/'];
 
 /*
- * The `default` tenant is the host's "no multi-tenancy" sentinel
- * (App\Support\TenantContext::isDefault()): ResolveTenant resolves the
- * SAME context whether the header is `default` or absent, so omitting it
- * for `default` keeps first-party R30 scoping identical. Crucially, it
+ * `default` is a legacy tenant slug, never an implicit grant:
+ * AuthorizeTenantHeader still requires a real membership. ResolveTenant
+ * resolves the SAME context whether the header is `default` or absent, so
+ * omitting it for a selected, explicitly-member `default` team keeps
+ * first-party R30 scoping identical. Crucially, it
  * also keeps the SPA compatible with sister-package mounts whose own
  * tenant-context middleware 404s on an unknown tenant: the AI Act package
  * (`ai-act.tenant-context`) deliberately never promotes `default` into a

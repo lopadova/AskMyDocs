@@ -136,8 +136,8 @@ test.describe('Team switcher', () => {
         page,
     }) => {
         // Real request, real middleware: admin@demo.local has memberships
-        // in `default` + `acme` but NOT in `umbrella`, and no
-        // tenant.cross-access permission. AuthorizeTenantHeader must
+        // in `default` + `acme` but NOT in `umbrella`. No role bypasses
+        // membership, so AuthorizeTenantHeader must
         // answer tenant_forbidden — distinct from a role-based 403.
         await page.goto('/app/admin');
         await expect(page.getByTestId('admin-shell')).toBeVisible({ timeout: 15_000 });

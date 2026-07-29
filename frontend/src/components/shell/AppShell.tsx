@@ -8,7 +8,7 @@ import { TweaksPanel } from './TweaksPanel';
 import { useDensity, useFontPair, useTheme } from './hooks';
 import { USERS, type SeedUser } from '../../lib/seed';
 import { useAuthStore } from '../../lib/auth-store';
-import { useTeamStore, type Team } from '../../lib/team-store';
+import { useTeamStore } from '../../lib/team-store';
 
 // Active-section detection is centralised in nav-config.deriveSection, which
 // resolves the LONGEST route prefix (so `/app/admin/kb/synonyms` → `synonyms`,
@@ -82,28 +82,26 @@ export function AppShell({ children, tenantScoped = true }: { children?: ReactNo
           }
         : USERS[0];
 
-    // Active team object for the Topbar switcher. Before the first
-    // `/api/auth/me` sync (or for a guest preview) the store is empty —
-    // fall back to a synthetic `default` team so the shell never crashes
-    // on an undefined team. (In practice TeamGate only mounts AppShell
-    // once the URL hash resolved to a real team.)
-    const activeTeam: Team = teams.find((t) => t.tenant_id === currentTeam) ?? {
-        tenant_id: currentTeam ?? 'default',
-        hash: '',
-        name: 'Default',
-        projects: [],
-    };
+    // No synthetic fallback: zero memberships is a real state, and global
+    // control-plane pages must remain usable without inventing `default`.
+    const activeTeam = teams.find((t) => t.tenant_id === currentTeam) ?? null;
 
     // Sidebar badge: projects the user can access INSIDE the active team
     // (the switcher shows the same number per team — kept in lockstep by
     // deriving both from the same Team record).
-    const projectCount = activeTeam.projects.length;
+    const projectCount = activeTeam?.projects.length ?? 0;
 
     const onNav = useCallback(
         (id: SidebarSection) => {
-            navigate({ to: SECTION_ROUTES[id], params: { teamHash: activeTeam.hash } });
+            const route = SECTION_ROUTES[id];
+            if (route.includes('$teamHash')) {
+                if (activeTeam === null) return;
+                navigate({ to: route, params: { teamHash: activeTeam.hash } });
+                return;
+            }
+            navigate({ to: route });
         },
-        [navigate, activeTeam.hash],
+        [navigate, activeTeam],
     );
 
     return (
@@ -125,6 +123,7 @@ export function AppShell({ children, tenantScoped = true }: { children?: ReactNo
                 user={sidebarUser}
                 projectCount={projectCount}
                 features={features}
+                hasTenants={teams.length > 0}
             />
             <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                 <Topbar
@@ -154,7 +153,7 @@ export function AppShell({ children, tenantScoped = true }: { children?: ReactNo
                   * pickers, tree selections, free-text filters) that
                   * would otherwise leak across tenants. Pairs with the
                   * queryClient.clear() in team-store.switchTeam. */}
-                <div key={tenantScoped ? activeTeam.tenant_id : 'system'} style={{ flex: 1, overflow: 'auto', display: 'flex' }}>
+                <div key={tenantScoped ? (activeTeam?.tenant_id ?? 'no-tenant') : 'system'} style={{ flex: 1, overflow: 'auto', display: 'flex' }}>
                     {children ?? <Outlet />}
                 </div>
             </main>

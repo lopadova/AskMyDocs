@@ -33,6 +33,7 @@ const ENDPOINTS: ReadonlyArray<{ uri: string; allowed: readonly string[] }> = [
     { uri: '/api/admin/teams', allowed: ['admin', 'super-admin'] },
     // global control plane — exact platform capability
     { uri: '/api/system-admin/tenants', allowed: ['system-admin'] },
+    { uri: '/api/system-admin/super-admins', allowed: ['system-admin'] },
     { uri: '/api/admin/logs/chat', allowed: ['admin', 'super-admin'] },
     { uri: '/api/admin/kb/tree', allowed: ['admin', 'super-admin'] },
     // gate-based groups
@@ -95,8 +96,7 @@ test.describe('R32 per-role admin API access control', () => {
 
             for (const { uri, allowed } of ENDPOINTS) {
                 const status = (await page.request.get(uri)).status();
-                const shouldPass = allowed.includes(role)
-                    || (role === 'system-admin' && allowed.includes('super-admin'));
+                const shouldPass = allowed.includes(role);
                 if (shouldPass) {
                     expect(
                         status,

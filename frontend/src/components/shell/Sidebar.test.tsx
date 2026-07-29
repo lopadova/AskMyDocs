@@ -11,6 +11,7 @@ describe('Sidebar (unified rail)', () => {
         for (const id of [
             'chat',
             'tenant-control',
+            'super-admins',
             'dashboard',
             'insights',
             'users',
@@ -51,6 +52,7 @@ describe('Sidebar (unified rail)', () => {
         );
 
         expect(screen.queryByTestId('sidebar-nav-tenant-control')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('sidebar-nav-super-admins')).not.toBeInTheDocument();
     });
 
     it('shows global tenant control from the server capability rather than the primary role label', () => {
@@ -65,6 +67,25 @@ describe('Sidebar (unified rail)', () => {
         );
 
         expect(screen.getByTestId('sidebar-nav-tenant-control')).toBeInTheDocument();
+        expect(screen.getByTestId('sidebar-nav-super-admins')).toBeInTheDocument();
+    });
+
+    it('hides tenant operations but keeps system administration when no tenant is assigned', () => {
+        render(
+            <Sidebar
+                active="tenant-control"
+                onNav={() => undefined}
+                user={USERS[0]}
+                projectCount={0}
+                features={{ system_admin: true }}
+                hasTenants={false}
+            />,
+        );
+
+        expect(screen.getByTestId('sidebar-nav-tenant-control')).toBeInTheDocument();
+        expect(screen.getByTestId('sidebar-nav-super-admins')).toBeInTheDocument();
+        expect(screen.queryByTestId('sidebar-nav-chat')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('sidebar-nav-users')).not.toBeInTheDocument();
     });
 
     it('fires onNav with the section id when an entry is clicked', async () => {
