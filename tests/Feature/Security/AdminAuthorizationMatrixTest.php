@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Security;
 
+use App\Models\ProjectMembership;
 use App\Models\User;
 use Database\Seeders\RbacSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -122,6 +123,7 @@ final class AdminAuthorizationMatrixTest extends TestCase
             // Global tenant control plane — platform permission only, no
             // active-tenant scope.
             '/api/system-admin/tenants' => ['system-admin'],
+            '/api/system-admin/super-admins' => ['system-admin'],
 
             // ── Widget admin (M6) — Gate::define() in AppServiceProvider ──
             '/api/admin/widget-keys' => ['super-admin'],                     // manageWidgetKeys
@@ -556,6 +558,12 @@ final class AdminAuthorizationMatrixTest extends TestCase
                 ? ['system-admin', 'super-admin']
                 : $role,
         );
+        ProjectMembership::create([
+            'tenant_id' => 'default',
+            'user_id' => $user->id,
+            'project_key' => 'matrix',
+            'role' => 'member',
+        ]);
 
         return $user;
     }

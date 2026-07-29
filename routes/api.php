@@ -475,8 +475,8 @@ Route::middleware([
         // team, over the vendor `tenants` registry. Bound by `slug` (the
         // tenant_id) — index + store + update only (no show/destroy; teams
         // are never hard-deleted from the switcher). Rename authorizes the
-        // TARGET team inside TeamRegistryService (membership OR
-        // tenant.cross-access), independent of the request's X-Tenant-Id.
+        // TARGET team inside TeamRegistryService (membership required),
+        // independent of the request's X-Tenant-Id.
         // R32 — covered by the AdminAuthorizationMatrix (`/api/admin/teams`).
         Route::apiResource('teams', \App\Http\Controllers\Api\Admin\TeamController::class)
             ->parameters(['teams' => 'slug'])
@@ -777,20 +777,28 @@ Route::middleware([
     'auth:sanctum',
     'can:platform.admin',
 ])
-    ->prefix('system-admin/tenants')
+    ->prefix('system-admin')
     ->group(function () {
-        Route::get('/', [\App\Http\Controllers\Api\SystemAdmin\TenantControlController::class, 'index'])
-            ->name('api.system-admin.tenants.index');
-        Route::post('/availability', [\App\Http\Controllers\Api\SystemAdmin\TenantControlController::class, 'availability'])
-            ->name('api.system-admin.tenants.availability');
-        Route::post('/', [\App\Http\Controllers\Api\SystemAdmin\TenantControlController::class, 'store'])
-            ->name('api.system-admin.tenants.store');
-        Route::get('/{slug}', [\App\Http\Controllers\Api\SystemAdmin\TenantControlController::class, 'show'])
-            ->name('api.system-admin.tenants.show');
-        Route::post('/{slug}/lifecycle-preview', [\App\Http\Controllers\Api\SystemAdmin\TenantControlController::class, 'lifecyclePreview'])
-            ->name('api.system-admin.tenants.lifecycle-preview');
-        Route::patch('/{slug}', [\App\Http\Controllers\Api\SystemAdmin\TenantControlController::class, 'update'])
-            ->name('api.system-admin.tenants.update');
+        Route::prefix('tenants')->group(function () {
+            Route::get('/', [\App\Http\Controllers\Api\SystemAdmin\TenantControlController::class, 'index'])
+                ->name('api.system-admin.tenants.index');
+            Route::post('/availability', [\App\Http\Controllers\Api\SystemAdmin\TenantControlController::class, 'availability'])
+                ->name('api.system-admin.tenants.availability');
+            Route::post('/', [\App\Http\Controllers\Api\SystemAdmin\TenantControlController::class, 'store'])
+                ->name('api.system-admin.tenants.store');
+            Route::get('/{slug}', [\App\Http\Controllers\Api\SystemAdmin\TenantControlController::class, 'show'])
+                ->name('api.system-admin.tenants.show');
+            Route::post('/{slug}/lifecycle-preview', [\App\Http\Controllers\Api\SystemAdmin\TenantControlController::class, 'lifecyclePreview'])
+                ->name('api.system-admin.tenants.lifecycle-preview');
+            Route::patch('/{slug}', [\App\Http\Controllers\Api\SystemAdmin\TenantControlController::class, 'update'])
+                ->name('api.system-admin.tenants.update');
+        });
+
+        Route::get('/super-admins', [\App\Http\Controllers\Api\SystemAdmin\SuperAdminController::class, 'index'])
+            ->name('api.system-admin.super-admins.index');
+        Route::get('/super-admins/{user}/tenants', [\App\Http\Controllers\Api\SystemAdmin\SuperAdminController::class, 'tenants'])
+            ->whereNumber('user')
+            ->name('api.system-admin.super-admins.tenants');
     });
 
 /*
