@@ -4,8 +4,8 @@ import { api } from './api';
 import { useTeamStore, type Team } from './team-store';
 
 const TEAMS: Team[] = [
-    { tenant_id: 'default', hash: 'def0def0def0', name: 'Default', projects: [] },
     { tenant_id: 'acme', hash: 'acme00acme00', name: 'Acme', projects: [] },
+    { tenant_id: 'globex', hash: '910b4b835f63', name: 'Globex', projects: [] },
 ];
 
 /*
@@ -63,21 +63,6 @@ describe('api X-Tenant-Id request interceptor', () => {
         expect(captured[0]?.headers?.['X-Tenant-Id']).toBeUndefined();
     });
 
-    it('omits the header on the `default` tenant so package mounts (AI Act) fall back instead of 404ing', async () => {
-        // `default` is the host's no-multi-tenancy sentinel: ResolveTenant
-        // resolves the same context with or without the header, but the AI Act
-        // package middleware 404s on `default` (never a `tenants` row). Omitting
-        // the header lets that mount take its documented "no header" fallback.
-        useTeamStore.setState({ teams: TEAMS, currentTeam: 'default', userId: 1 });
-        await api.get('/api/admin/ai-act-compliance/risk-register');
-        expect(captured[0]?.headers?.['X-Tenant-Id']).toBeUndefined();
-
-        // A first-party admin call on `default` is likewise header-free — host
-        // R30 scoping still resolves to `default` via ResolveTenant's fallback.
-        captured = [];
-        await api.get('/api/admin/metrics/overview');
-        expect(captured[0]?.headers?.['X-Tenant-Id']).toBeUndefined();
-    });
 });
 
 describe('api tenant_forbidden response interceptor', () => {
@@ -106,7 +91,7 @@ describe('api tenant_forbidden response interceptor', () => {
         respondWith = { status: 403, data: { error: 'tenant_forbidden' } };
 
         await expect(api.get('/api/admin/kb/tags')).rejects.toThrow();
-        expect(useTeamStore.getState().currentTeam).toBe('default');
+        expect(useTeamStore.getState().currentTeam).toBe('acme');
         expect(assignSpy).toHaveBeenCalledWith('/app');
     });
 

@@ -43,8 +43,9 @@ membership and grants the tenant `super-admin` role. `platform.admin` identities
 are not eligible because their zero-tenant destination is the global control
 plane.
 
-The literal `default` is a reserved legacy slug. It is neither a public
-registration namespace nor an implicit membership.
+The literal `default` is a reserved, non-operational legacy fallback. It is
+neither a public registration namespace nor a valid company membership; stale
+rows for it never suppress onboarding or appear in tenant switchers.
 
 ## Consequences
 

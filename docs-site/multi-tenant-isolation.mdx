@@ -26,7 +26,7 @@ build when any controller or service reads a tenant-aware table without scoping.
 ```mermaid
 flowchart TD
     REQ[HTTP request] --> RT[ResolveTenant middleware]
-    RT -->|X-Tenant-Id / user tenant / legacy default| TC[TenantContext singleton]
+    RT -->|X-Tenant-Id / user tenant / internal fallback| TC[TenantContext singleton]
     AUTH[auth:sanctum] --> ATH[AuthorizeTenantHeader<br/>resolved tenant requires membership]
     TC --> DEV[developer]
     DEV -->|explicit: forTenant / where tenant_id| Q[Eloquent query]
@@ -38,8 +38,8 @@ flowchart TD
 
 - **`ResolveTenant`** (middleware, runs early) sets the active tenant on the
   request-scoped **`TenantContext`** singleton — from the `X-Tenant-Id` header,
-  the authenticated user's legacy `tenant_id`, or the legacy `default` storage
-  slug.
+  the authenticated user's legacy `tenant_id`, or an internal reserved fallback
+  that cannot authorize an operational route.
 - **`AuthorizeTenantHeader`** (after `auth:sanctum`) closes the escalation hole:
   the resolved tenant always requires an explicit `project_memberships` row,
   even when the header is absent. Missing membership returns

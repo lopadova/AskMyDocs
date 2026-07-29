@@ -27,7 +27,7 @@ use Symfony\Component\HttpFoundation\Response;
  * This middleware is mounted AFTER `auth:sanctum` on every operational
  * route group, so the user is resolved by the time it runs. It validates
  * the tenant already resolved into TenantContext whether it came from an
- * explicit header or from the legacy `default` fallback.
+ * explicit header or from the internal no-tenant fallback.
  *
  * Policy (R30, decision 2026-05-26; membership extension 2026-06-10 for
  * the SPA team switcher):
@@ -54,10 +54,11 @@ final class AuthorizeTenantHeader
 
         $tenantId = $this->tenants->current();
 
-        // System namespaces are storage/control-plane implementation details,
+        // Reserved namespaces are storage/control-plane implementation details,
         // never operational destinations — even an accidentally-created
-        // membership must not turn one into a selectable tenant.
-        if (SystemTenantRegistry::isSystem($tenantId)) {
+        // membership must not turn one into a selectable tenant. This includes
+        // the legacy literal `default`: it is not an operational company.
+        if (SystemTenantRegistry::isReserved($tenantId)) {
             return response()->json([
                 'error' => 'tenant_forbidden',
                 'message' => 'You are not authorised to act on behalf of the requested tenant.',

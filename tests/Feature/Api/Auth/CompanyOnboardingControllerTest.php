@@ -153,7 +153,7 @@ final class CompanyOnboardingControllerTest extends TestCase
             ->assertConflict();
     }
 
-    public function test_explicit_legacy_default_membership_disables_onboarding(): void
+    public function test_stale_default_membership_does_not_suppress_onboarding(): void
     {
         $user = $this->user('legacy-member@example.com');
         ProjectMembership::create([
@@ -166,8 +166,8 @@ final class CompanyOnboardingControllerTest extends TestCase
         $this->actingAsWithoutTenant($user)
             ->getJson('/api/auth/me')
             ->assertOk()
-            ->assertJsonPath('onboarding.required', false)
-            ->assertJsonPath('teams.0.tenant_id', 'default');
+            ->assertJsonPath('onboarding.required', true)
+            ->assertJsonCount(0, 'teams');
     }
 
     private function user(string $email): User

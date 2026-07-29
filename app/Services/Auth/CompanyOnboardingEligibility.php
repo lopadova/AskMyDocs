@@ -26,10 +26,10 @@ final class CompanyOnboardingEligibility
 
         return ! ProjectMembership::query()
             ->where('user_id', $user->id)
-            // A legacy `default` membership is still a real company
-            // association. Only implementation-only system namespaces are
-            // excluded from the operational membership check.
-            ->whereNotIn('tenant_id', SystemTenantRegistry::systemSlugs())
+            // Reserved implementation namespaces are never companies. A stale
+            // `default` membership must not suppress the resumable onboarding
+            // flow or turn the legacy fallback into operational access.
+            ->whereNotIn('tenant_id', SystemTenantRegistry::reservedSlugs())
             ->exists();
     }
 }

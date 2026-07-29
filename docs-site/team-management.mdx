@@ -33,10 +33,10 @@ There is **no host `Team` model and no host `teams` table**. A team is the
 That is the very table [`UserTeamsResolver`](/team-switcher) reads for switcher
 labels, so team management writes to exactly the source the switcher displays.
 
-The `default` slug is retained for legacy data compatibility. It is **not** an
-implicit tenant: it appears in the switcher and tenant-local administration
-only when the identity has an explicit `project_memberships` row for it. It
-remains reserved — never creatable and never renamable.
+The `default` slug is retained only as a reserved legacy storage fallback. It
+is not a company and never appears in the switcher or tenant-local
+administration, even if stale `project_memberships` rows reference it. It is
+never creatable or renamable.
 
 The separately reserved `system-registration` slug is a technical invitation
 namespace (`tenants.is_system=true`), not a company. It cannot be selected,
@@ -210,9 +210,9 @@ lifecycle token. Successful provisioning and updates commit their
   usable as a stored legacy slug without a registry row, and a global *write*
   tool conflicts with the propose-only MCP posture. It ships **HTTP + CLI** only;
   the omission is documented in the controller and here rather than left implicit.
-- **`default` is reserved, not implicit.** It may have legacy data without a
-  registry row, but an identity still needs an explicit membership. Renaming or
-  re-creating it is rejected.
+- **`default` is reserved and non-operational.** It may remain in legacy stored
+  rows, but it never authorizes a dashboard or suppresses company onboarding.
+  Renaming or re-creating it is rejected.
 
 ## Worked example
 

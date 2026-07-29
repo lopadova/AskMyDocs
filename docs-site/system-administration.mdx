@@ -166,8 +166,8 @@ target email rather than storing it in the audit payload.
   `X-Tenant-Id` and from the global API.
 - A `system-admin` without membership can use the global API but receives
   `403 tenant_forbidden` from operational tenant routes.
-- `/api/auth/me.teams` contains active membership tenants only; `default` is
-  not implicit.
+- `/api/auth/me.teams` contains active, non-reserved membership tenants only;
+  the legacy literal `default` is never operational or selectable.
 - The reserved `system-registration` row is technical infrastructure for public
   invite lookup. It is hidden from the global operational registry as well as
   tenant switchers.

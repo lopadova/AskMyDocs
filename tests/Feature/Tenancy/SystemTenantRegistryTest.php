@@ -78,16 +78,11 @@ final class SystemTenantRegistryTest extends TestCase
         $this->assertSame([], app(UserTeamsResolver::class)->resolve($user));
     }
 
-    public function test_legacy_default_is_exposed_only_with_an_explicit_membership(): void
+    public function test_legacy_default_is_never_exposed_as_an_operational_team(): void
     {
         $member = User::create([
             'name' => 'Legacy Member',
             'email' => 'legacy-member@example.com',
-            'password' => 'secret123',
-        ]);
-        $outsider = User::create([
-            'name' => 'Legacy Outsider',
-            'email' => 'legacy-outsider@example.com',
             'password' => 'secret123',
         ]);
         ProjectMembership::create([
@@ -97,11 +92,7 @@ final class SystemTenantRegistryTest extends TestCase
             'role' => 'owner',
         ]);
 
-        $this->assertSame(
-            [SystemTenantRegistry::LEGACY_DEFAULT],
-            array_column(app(UserTeamsResolver::class)->resolve($member), 'tenant_id'),
-        );
-        $this->assertSame([], app(UserTeamsResolver::class)->resolve($outsider));
+        $this->assertSame([], app(UserTeamsResolver::class)->resolve($member));
     }
 
     public function test_system_namespace_cannot_be_claimed_as_a_team(): void

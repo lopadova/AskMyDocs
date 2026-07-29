@@ -23,8 +23,8 @@ use Padosoft\AiActCompliance\MultiTenancy\Models\Tenant;
  *  - a `project_memberships` row in an active tenant T → T is a team
  *  - no membership                                     → no teams
  *
- * `default` is a legacy tenant slug, not an implicit grant. It appears only
- * when the user has an explicit membership in it.
+ * Reserved namespaces (`default` and `system-registration`) never appear,
+ * even if stale data contains an explicit membership for one of them.
  *
  * The membership query is deliberately NOT `forTenant()`-scoped: this
  * is the one read that needs the cross-tenant view, because its whole
@@ -55,9 +55,7 @@ final class UserTeamsResolver
         $tenantIds = array_keys($projectsByTenant);
         $tenantIds = array_values(array_filter(
             $tenantIds,
-            // `default` remains an operational legacy slug only when backed
-            // by a real membership. System namespaces are never operational.
-            static fn (string $slug): bool => ! SystemTenantRegistry::isSystem($slug),
+            static fn (string $slug): bool => ! SystemTenantRegistry::isReserved($slug),
         ));
         $tenantIds = $this->activeOrUnregisteredTenantSlugs($tenantIds);
         $projectsByTenant = array_intersect_key($projectsByTenant, array_flip($tenantIds));
@@ -73,18 +71,7 @@ final class UserTeamsResolver
             'projects' => $projectsByTenant[$tenantId] ?? [],
         ], $tenantIds);
 
-        // Keep a real default membership first for backwards-compatible
-        // onboarding, then sort the remaining tenant slugs alphabetically.
-        usort($teams, static function (array $a, array $b): int {
-            if ($a['tenant_id'] === 'default') {
-                return -1;
-            }
-            if ($b['tenant_id'] === 'default') {
-                return 1;
-            }
-
-            return strcmp($a['tenant_id'], $b['tenant_id']);
-        });
+        usort($teams, static fn (array $a, array $b): int => strcmp($a['tenant_id'], $b['tenant_id']));
 
         return $teams;
     }
