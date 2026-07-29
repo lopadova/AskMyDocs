@@ -38,6 +38,11 @@ implicit tenant: it appears in the switcher and tenant-local administration
 only when the identity has an explicit `project_memberships` row for it. It
 remains reserved — never creatable and never renamable.
 
+The separately reserved `system-registration` slug is a technical invitation
+namespace (`tenants.is_system=true`), not a company. It cannot be selected,
+created or renamed from tenant administration and is excluded from the global
+operational tenant inventory.
+
 ## Design
 
 ```mermaid
@@ -55,7 +60,7 @@ flowchart TD
     PS --> S
     P --> CS[SystemAdminTenantService]
     S -->|create| T1["assert registry available (Schema::hasTable)"]
-    T1 --> T2["validate slug shape + reserved 'default' + global uniqueness"]
+    T1 --> T2["validate slug shape + all reserved system slugs + global uniqueness"]
     T2 --> T3["DB::transaction, TenantContext set to slug"]
     T3 --> T4["Tenant row + Project + ProjectMembership(target user)"]
     PS --> U["normalize email + create/attach User + grant role"]
@@ -93,6 +98,7 @@ The team's editable name is the `name` column of the vendor `tenants` table:
 | `slug` | `varchar(50)`, globally UNIQUE — **is** the `tenant_id`; immutable |
 | `name` | `varchar(200)` — the editable display name the switcher shows |
 | `status` | `active \| suspended \| archived` (create sets `active`) |
+| `is_system` | boolean, default `false`; technical namespaces are never operational teams |
 
 Creating a team also writes a `projects` row (`tenant_id`=slug, an initial
 `project_key`) and a `project_memberships` row for the acting user — the same

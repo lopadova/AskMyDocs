@@ -88,7 +88,7 @@ old `/api/super-admin/tenants` namespace does not exist.
 
 | Method | Path | Contract |
 |---|---|---|
-| `GET` | `/api/system-admin/tenants` | Paginated registry; `search`, `status`, `page`, `per_page` |
+| `GET` | `/api/system-admin/tenants` | Paginated operational registry; `search`, `status`, `page`, `per_page` |
 | `POST` | `/api/system-admin/tenants/availability` | Read-only slug, identity and requested-role preflight; email stays in JSON body |
 | `POST` | `/api/system-admin/tenants` | Atomic tenant, initial project, identity/attach and membership |
 | `GET` | `/api/system-admin/tenants/{slug}` | Tenant detail plus paginated membership users and effective access |
@@ -168,6 +168,9 @@ target email rather than storing it in the audit payload.
   `403 tenant_forbidden` from operational tenant routes.
 - `/api/auth/me.teams` contains active membership tenants only; `default` is
   not implicit.
+- The reserved `system-registration` row is technical infrastructure for public
+  invite lookup. It is hidden from the global operational registry as well as
+  tenant switchers.
 - Suspended/archived tenants disappear from normal switchers but remain in the
   system registry.
 - Generate a new lifecycle preview after any status change; old tokens are

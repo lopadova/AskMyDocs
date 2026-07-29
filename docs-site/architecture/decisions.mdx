@@ -70,6 +70,14 @@ the host *uses* them, never the reverse.
   tenant privilege (`super-admin`), with a conservative legacy migration,
   protected CLI bootstrap and no MCP global write surface. See
   [system administration](/system-administration).
+- **[ADR 0024](https://github.com/lopadova/AskMyDocs/blob/main/docs/adr/0024-v830-membership-required-operational-tenants.md) — Membership-required operational access.**
+  Global authority never implies customer-data access: every tenant route
+  requires a real membership, while `/api/system-admin/*` remains the separate
+  platform control plane.
+- **[ADR 0025](https://github.com/lopadova/AskMyDocs/blob/main/docs/adr/0025-v830-registration-invite-onboarding.md) — Registration intent and company onboarding.**
+  Public codes distinguish joining one existing tenant from creating a new
+  company, using a reserved string namespace rather than a numeric-ID range or
+  a second invite table. See [invitations](/invitations).
 
 ## The autonomy arc: self-compiling knowledge, safely
 
@@ -90,7 +98,8 @@ flowchart LR
     A0004 --> A0011[0011 AI-Act]
     A0010[0010 tabular + workflows]
     A0013[0013 lifecycle intel] --> A0014
-    A0023[0023 system-admin boundary]
+    A0023[0023 system-admin boundary] --> A0024[0024 membership required]
+    A0024 --> A0025[0025 registration onboarding]
 ```
 
 ## Decision rationale (meta)

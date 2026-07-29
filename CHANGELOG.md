@@ -29,6 +29,15 @@ moats and roadmap, see [README.md](README.md).
   mutations with `409 cross_tenant_identity`.
 - The SPA now supports `currentTeam = null`, a no-tenant landing page, and
   distinct **System administration** and **Tenant administration** navigation.
+- Public registration codes now have explicit `company_bootstrap` and
+  `tenant_join` intents, issued by `registration-invite:create`. They live in
+  the seeded non-operational `system-registration` namespace; `default` is
+  never a registration fallback.
+- A normal account without memberships is held on resumable company onboarding.
+  `POST /api/auth/onboarding/company` atomically creates its tenant, initial
+  project and owner membership and makes the creator tenant `super-admin`.
+  Tenant-linked invitations provision the existing company and skip onboarding;
+  platform administrators without memberships remain in the global control plane.
 
 ---
 

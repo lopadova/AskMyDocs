@@ -720,17 +720,53 @@ INVITE_REQUIRED=false
 **Sign-up is invite-only and SPA-native.** The React `/register` screen posts to
 **`POST /api/auth/register`** — a guest route, throttled `6/min` per IP
 (`throttle:register`), sitting outside the `auth:sanctum` group. The controller
-**pre-validates** the code with the package `CodeValidator` *before* creating the
-account (so a bad code never mints an orphan user), then redeems it authoritatively
-via `RedemptionService` (atomic; run **outside** a DB transaction so the package's
-PostgreSQL compensation path is not poisoned); on an exhausted-between-checks race
-the brand-new account is **force-deleted** so the invite-only invariant holds. The
-account is floored at `viewer` (layered on any grant role — GRANT-never-revoke) and
-the SPA session is opened. Every invite-code failure surfaces as a localized
+resolves the globally unique opaque code with `RegistrationCodeResolver`, then
+validates it through the package `CodeValidator` *before* creating the account
+(so a bad code never mints an orphan user). It redeems authoritatively via
+`RedemptionService` (atomic; run **outside** a DB transaction so the package's
+PostgreSQL compensation path is not poisoned); on an exhausted-between-checks
+race the brand-new account is **force-deleted** so the invite-only invariant
+holds. The account is floored at `viewer` (layered on any grant role —
+GRANT-never-revoke) and the SPA session is opened. Every invite-code failure
+surfaces as a localized
 **422 on the `invite_code` field** (`lang/{en,it}/register.php`, R24). Here
 `invite_code` is **always required**, regardless of the `INVITE_REQUIRED` gate. The
 whole auth surface — `/login`, `/register`, `/forgot-password`, `/reset-password` —
 is the React SPA on a hard reload too; the legacy Blade auth views were removed.
+
+Public registration codes have two explicit intents and are issued from the
+global control plane with one Artisan command:
+
+```bash
+# Register a new account, then force company onboarding.
+php artisan registration-invite:create --uses=1
+
+# Join an existing operational tenant and project; onboarding is skipped.
+php artisan registration-invite:create \
+  --tenant=acme \
+  --project=acme-kb \
+  --role=viewer \
+  --membership-role=member \
+  --uses=1
+```
+
+Both forms are stored under the reserved `system-registration` tenant namespace,
+which is seeded idempotently and marked `tenants.is_system=true`; it is a
+technical partition, never an operational company and never appears in
+`/api/auth/me.teams`. A code without `--tenant` carries the
+`company_bootstrap` intent and creates **no** membership during registration.
+The authenticated account is routed to `/app/onboarding` and cannot enter a
+tenant dashboard until `POST /api/auth/onboarding/company` atomically creates
+the company tenant, initial project and owner membership; the creator receives
+the tenant `super-admin` role. The gate is resumable on the next login and also
+applies whenever a normal account has no operational membership. A
+`platform.admin` account remains in the global system control plane instead.
+
+A code created with `--tenant` carries one explicit `tenant_join` grant. Its
+target must be an active, non-system tenant and every `--project` must already
+belong to it; redemption provisions those memberships and enters the company
+directly. Neither flow falls back to the legacy slug `default`, which is
+reserved and confers no implicit access.
 
 The admin surface is a **native, in-app tabbed page** at
 `/app/{team}/admin/invitations` (Overview · Campaigns · Codes · Invite ·
