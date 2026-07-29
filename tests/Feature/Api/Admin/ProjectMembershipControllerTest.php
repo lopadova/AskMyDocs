@@ -220,6 +220,72 @@ class ProjectMembershipControllerTest extends TestCase
         $this->assertDatabaseMissing('project_memberships', ['id' => $m->id]);
     }
 
+    public function test_destroy_blocks_the_last_membership_of_the_last_tenant_super_admin(): void
+    {
+        $admin = $this->makeAdmin();
+        $superAdmin = $this->makeViewer('last-super');
+        $superAdmin->syncRoles(['super-admin']);
+        $membership = $superAdmin->projectMemberships()
+            ->forTenant(self::TENANT)
+            ->firstOrFail();
+
+        $this->actingAs($admin)
+            ->deleteJson("/api/admin/memberships/{$membership->id}")
+            ->assertStatus(409)
+            ->assertJsonPath(
+                'message',
+                'Cannot remove the last super-admin membership for this tenant.',
+            );
+
+        $this->assertDatabaseHas('project_memberships', ['id' => $membership->id]);
+    }
+
+    public function test_destroy_allows_one_of_multiple_memberships_for_the_same_super_admin(): void
+    {
+        $admin = $this->makeAdmin();
+        $superAdmin = $this->makeViewer('multi-project-super');
+        $superAdmin->syncRoles(['super-admin']);
+        $membership = ProjectMembership::create([
+            'tenant_id' => self::TENANT,
+            'user_id' => $superAdmin->id,
+            'project_key' => 'hr-portal',
+            'role' => 'owner',
+        ]);
+
+        $this->actingAs($admin)
+            ->deleteJson("/api/admin/memberships/{$membership->id}")
+            ->assertNoContent();
+
+        $this->assertDatabaseMissing('project_memberships', ['id' => $membership->id]);
+        $this->assertDatabaseHas('project_memberships', [
+            'tenant_id' => self::TENANT,
+            'user_id' => $superAdmin->id,
+            'project_key' => self::ANCHOR_PROJECT,
+        ]);
+    }
+
+    public function test_destroy_allows_membership_removal_when_another_super_admin_remains(): void
+    {
+        $admin = $this->makeAdmin();
+        $first = $this->makeViewer('first-super');
+        $first->syncRoles(['super-admin']);
+        $second = $this->makeViewer('second-super');
+        $second->syncRoles(['super-admin']);
+        $membership = $first->projectMemberships()
+            ->forTenant(self::TENANT)
+            ->firstOrFail();
+
+        $this->actingAs($admin)
+            ->deleteJson("/api/admin/memberships/{$membership->id}")
+            ->assertNoContent();
+
+        $this->assertDatabaseMissing('project_memberships', ['id' => $membership->id]);
+        $this->assertDatabaseHas('project_memberships', [
+            'tenant_id' => self::TENANT,
+            'user_id' => $second->id,
+        ]);
+    }
+
     public function test_index_hides_memberships_of_other_tenants(): void
     {
         // R30 — the Users screen lists memberships of the ACTIVE team only.
