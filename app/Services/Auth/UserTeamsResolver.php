@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Auth;
 
 use App\Models\User;
+use App\Support\SystemTenantRegistry;
 use App\Support\TeamHash;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -52,6 +53,10 @@ final class UserTeamsResolver
         }
 
         $tenantIds = array_keys($projectsByTenant);
+        $tenantIds = array_values(array_filter(
+            $tenantIds,
+            static fn (string $slug): bool => ! SystemTenantRegistry::isSystem($slug),
+        ));
         $tenantIds = $this->activeOrUnregisteredTenantSlugs($tenantIds);
         $projectsByTenant = array_intersect_key($projectsByTenant, array_flip($tenantIds));
 
@@ -97,11 +102,20 @@ final class UserTeamsResolver
             return $tenantIds;
         }
 
-        $statuses = Tenant::query()->whereIn('slug', $tenantIds)->pluck('status', 'slug');
+        $columns = ['slug', 'status'];
+        if (Schema::hasColumn('tenants', 'is_system')) {
+            $columns[] = 'is_system';
+        }
+        $registry = Tenant::query()->whereIn('slug', $tenantIds)->get($columns)->keyBy('slug');
 
         return array_values(array_filter(
             $tenantIds,
-            static fn (string $slug): bool => ! $statuses->has($slug) || $statuses->get($slug) === 'active',
+            static function (string $slug) use ($registry): bool {
+                $tenant = $registry->get($slug);
+
+                return $tenant === null
+                    || ($tenant->status === 'active' && ! (bool) $tenant->getAttribute('is_system'));
+            },
         ));
     }
 

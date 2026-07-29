@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Middleware;
 
 use App\Models\ProjectMembership;
+use App\Support\SystemTenantRegistry;
 use App\Support\TenantContext;
 use Closure;
 use Illuminate\Http\Request;
@@ -52,6 +53,16 @@ final class AuthorizeTenantHeader
         }
 
         $tenantId = $this->tenants->current();
+
+        // System namespaces are storage/control-plane implementation details,
+        // never operational destinations — even an accidentally-created
+        // membership must not turn one into a selectable tenant.
+        if (SystemTenantRegistry::isSystem($tenantId)) {
+            return response()->json([
+                'error' => 'tenant_forbidden',
+                'message' => 'You are not authorised to act on behalf of the requested tenant.',
+            ], Response::HTTP_FORBIDDEN);
+        }
 
         // Check membership before lifecycle so a forged tenant slug never
         // reveals whether that tenant is active, suspended, or archived.

@@ -9,6 +9,7 @@ use App\Models\ProjectMembership;
 use App\Models\User;
 use App\Services\Admin\Exceptions\TeamRegistryUnavailableException;
 use App\Services\Auth\UserTeamsResolver;
+use App\Support\SystemTenantRegistry;
 use App\Support\TeamHash;
 use App\Support\TenantContext;
 use Illuminate\Support\Facades\DB;
@@ -49,8 +50,6 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
  */
 final class TeamRegistryService
 {
-    private const RESERVED_SLUG = 'default';
-
     /**
      * Tenant-aware tables whose presence of a `tenant_id` proves the slug is
      * already an existing tenant (so a create must NOT claim it). Includes the
@@ -101,8 +100,8 @@ final class TeamRegistryService
                 'slug' => $slug,
                 'name' => $team['name'],
                 'hash' => $team['hash'],
-                'status' => $statuses[$slug] ?? ($slug === self::RESERVED_SLUG ? 'system' : 'active'),
-                'is_default' => $slug === self::RESERVED_SLUG,
+                'status' => $statuses[$slug] ?? ($slug === SystemTenantRegistry::LEGACY_DEFAULT ? 'system' : 'active'),
+                'is_default' => $slug === SystemTenantRegistry::LEGACY_DEFAULT,
                 // Only offer Rename when a `tenants` registry row actually
                 // exists (statuses() is populated only for such slugs) — rename()
                 // 404s without one, so the list must not present a team as
@@ -269,7 +268,7 @@ final class TeamRegistryService
      */
     private function canManage(User $user, string $slug): bool
     {
-        if ($slug === '' || $slug === self::RESERVED_SLUG) {
+        if ($slug === '' || SystemTenantRegistry::isReserved($slug)) {
             return false;
         }
 
@@ -308,9 +307,9 @@ final class TeamRegistryService
 
     private function assertValidSlug(string $slug): void
     {
-        if ($slug === self::RESERVED_SLUG) {
+        if (SystemTenantRegistry::isReserved($slug)) {
             throw ValidationException::withMessages([
-                'slug' => ["'default' is reserved for the bootstrap team and cannot be used."],
+                'slug' => ["'{$slug}' is reserved for platform workflows and cannot be used."],
             ]);
         }
 
@@ -425,8 +424,8 @@ final class TeamRegistryService
             'slug' => $slug,
             'name' => $tenant?->name ?? Str::headline($slug),
             'hash' => TeamHash::for($slug),
-            'status' => $tenant?->status ?? ($slug === self::RESERVED_SLUG ? 'system' : 'active'),
-            'is_default' => $slug === self::RESERVED_SLUG,
+            'status' => $tenant?->status ?? ($slug === SystemTenantRegistry::LEGACY_DEFAULT ? 'system' : 'active'),
+            'is_default' => $slug === SystemTenantRegistry::LEGACY_DEFAULT,
             'can_manage' => $this->canManage($user, $slug),
             'project_count' => (int) DB::table('projects')->where('tenant_id', $slug)->count(),
             'member_count' => (int) DB::table('project_memberships')->where('tenant_id', $slug)->distinct()->count('user_id'),

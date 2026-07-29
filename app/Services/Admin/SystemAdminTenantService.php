@@ -61,6 +61,9 @@ final class SystemAdminTenantService
                     ->whereColumn('project_memberships.tenant_id', 'tenants.slug'),
                 'member_count',
             );
+        if (Schema::hasColumn('tenants', 'is_system')) {
+            $query->where('tenants.is_system', false);
+        }
 
         $search = Str::lower(trim($search));
         if ($search !== '') {
@@ -362,7 +365,11 @@ final class SystemAdminTenantService
 
     private function tenantOrFail(string $slug): Tenant
     {
-        $tenant = Tenant::query()->where('slug', Str::lower(trim($slug)))->first();
+        $query = Tenant::query()->where('slug', Str::lower(trim($slug)));
+        if (Schema::hasColumn('tenants', 'is_system')) {
+            $query->where('is_system', false);
+        }
+        $tenant = $query->first();
         if ($tenant === null) {
             throw new NotFoundHttpException('Tenant not found.');
         }
