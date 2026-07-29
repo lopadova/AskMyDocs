@@ -8,6 +8,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Padosoft\AiActCompliance\MultiTenancy\Models\Tenant;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
@@ -82,6 +83,7 @@ class RegisterControllerTest extends TestCase
             'code' => $code,
             'current_uses' => 1,
         ]);
+        $this->assertNotNull($user->fresh()->registration_completed_at);
     }
 
     public function test_tenant_linked_code_provisions_membership_and_skips_onboarding(): void
@@ -119,6 +121,87 @@ class RegisterControllerTest extends TestCase
             'user_id' => $user->id,
             'project_key' => 'acme-kb',
             'role' => 'member',
+        ]);
+        $this->assertNotNull($user->fresh()->registration_completed_at);
+    }
+
+    public function test_login_recovers_a_consumed_tenant_invite_after_membership_provisioning_failed(): void
+    {
+        Tenant::create([
+            'slug' => 'acme',
+            'name' => 'Acme',
+            'status' => 'active',
+            'is_system' => false,
+        ]);
+        Project::create([
+            'tenant_id' => 'acme',
+            'project_key' => 'acme-kb',
+            'name' => 'Acme KB',
+        ]);
+        $code = app(RegistrationInvitationIssuer::class)->issueTenantJoin(
+            'acme',
+            ['acme-kb'],
+            'viewer',
+            'member',
+        )->code;
+
+        // The package provisioner is best-effort, so force both it and the
+        // host's strict completion layer through a real database failure.
+        DB::statement(<<<'SQL'
+            CREATE TRIGGER fail_registration_membership
+            BEFORE INSERT ON project_memberships
+            WHEN NEW.tenant_id = 'acme'
+            BEGIN
+                SELECT RAISE(ABORT, 'forced membership provisioning failure');
+            END
+        SQL);
+
+        $this->postJson('/api/auth/register', $this->payload([
+            'invite_code' => $code,
+        ]))
+            ->assertStatus(503)
+            ->assertJsonPath('error', 'registration_provisioning_pending');
+
+        $user = User::query()->where('email', 'new@example.com')->firstOrFail();
+        $this->assertFalse(Auth::check(), 'Incomplete registration must not open a session.');
+        $this->assertNull($user->registration_completed_at);
+        $this->assertDatabaseHas('invite_codes', ['code' => $code, 'current_uses' => 1]);
+        $this->assertDatabaseMissing('project_memberships', [
+            'tenant_id' => 'acme',
+            'user_id' => $user->id,
+        ]);
+
+        DB::statement('DROP TRIGGER fail_registration_membership');
+
+        // The consumed redemption is the durable recovery anchor: no second
+        // code is needed and the next valid login completes the same grant.
+        $this->postJson('/api/auth/login', [
+            'email' => 'new@example.com',
+            'password' => 'secret123',
+        ])->assertOk();
+
+        $this->assertTrue(Auth::check());
+        $this->assertDatabaseHas('project_memberships', [
+            'tenant_id' => 'acme',
+            'user_id' => $user->id,
+            'project_key' => 'acme-kb',
+            'role' => 'member',
+        ]);
+        $this->assertNotNull($user->fresh()->registration_completed_at);
+
+        // Once completion is marked, a later deliberate removal is not
+        // mistaken for an interrupted registration and is never auto-revoked.
+        $user->projectMemberships()->delete();
+        Auth::guard('web')->logout();
+
+        $this->postJson('/api/auth/login', [
+            'email' => 'new@example.com',
+            'password' => 'secret123',
+        ])->assertOk();
+
+        $this->assertDatabaseMissing('project_memberships', [
+            'tenant_id' => 'acme',
+            'user_id' => $user->id,
         ]);
     }
 

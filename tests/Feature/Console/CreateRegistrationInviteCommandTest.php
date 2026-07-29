@@ -129,6 +129,29 @@ final class CreateRegistrationInviteCommandTest extends TestCase
         $this->assertFalse(app(RegistrationCodeResolver::class)->resolve($default->code)->ok);
     }
 
+    public function test_resolver_rejects_a_legacy_registration_code_with_a_protected_role(): void
+    {
+        $this->makeTenant('acme', 'Acme');
+        Project::create([
+            'tenant_id' => 'acme',
+            'project_key' => 'acme-kb',
+            'name' => 'Acme KB',
+        ]);
+
+        $code = app(CodeGenerator::class)->generateRandom([
+            'tenant_id' => 'acme',
+            'grant' => [
+                'role' => 'super-admin',
+                'projects' => ['acme-kb'],
+                'project_role' => 'owner',
+            ],
+        ]);
+
+        $resolution = app(RegistrationCodeResolver::class)->resolve($code->code);
+
+        $this->assertFalse($resolution->ok);
+    }
+
     public function test_invite_code_is_globally_unique_across_tenant_namespaces(): void
     {
         $context = app(TenantContext::class);

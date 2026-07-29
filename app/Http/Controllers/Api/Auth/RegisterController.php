@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Auth;
 
 use App\Http\Requests\Auth\RegisterRequest;
+use App\Invitations\RegistrationAccountCompletionService;
 use App\Invitations\RegistrationCodeResolution;
 use App\Invitations\RegistrationCodeResolver;
 use App\Models\User;
@@ -48,9 +49,11 @@ use Padosoft\Invitations\Support\RedemptionError;
  *      brand-new account is force-deleted so the invite-only invariant holds
  *      (no role/membership is provisioned on the failure path, and User has no
  *      create-observer, so the row is the only artifact).
- *   4. Floor the account at `viewer` (layered on any grant role the redeem
- *      already provisioned — GRANT-never-revoke) and fire the standard
- *      `Registered` event.
+ *   4. Strictly verify the promised tenant grant, floor the account at
+ *      `viewer`, and persist a completion marker. If best-effort vendor
+ *      provisioning failed after redemption, return 503 and let the next
+ *      login resume from the immutable redemption.
+ *   5. Fire the standard `Registered` event.
  *
  * Every invite-code failure is surfaced as a 422 field error on `invite_code`
  * (R14 — never 200-with-empty) so the client shows it under the code input; the
@@ -70,6 +73,7 @@ class RegisterController extends Controller
         private readonly RedemptionService $redemption,
         private readonly TenantContext $tenants,
         private readonly CompanyOnboardingEligibility $onboarding,
+        private readonly RegistrationAccountCompletionService $completion,
     ) {}
 
     /**
@@ -180,12 +184,13 @@ class RegisterController extends Controller
             throw $this->inviteCodeError($result->error);
         }
 
-        // 4. Floor the account at 'viewer' (layered on any grant role redeem
-        // already provisioned — GRANT-never-revoke). Done post-redeem so the
-        // failure path above never has a role pivot to clean up.
-        $user->assignRole('viewer');
+        // 4. Strictly verify the access promised by a tenant-linked code and
+        // persist the registration completion marker. The vendor provisioners
+        // are intentionally best-effort; this host layer is retryable from a
+        // later login if their first attempt failed after the code was claimed.
+        $this->completion->complete($user, $resolution);
 
-        // Standard registration event. In this host the only Registered listener
+        // 5. Standard registration event. In this host the only Registered listener
         // is SendEmailVerificationNotification, which no-ops because User does
         // not implement MustVerifyEmail — so firing it is side-effect-free today
         // and safe on the stateless (no-session) path. The invite-only invariant

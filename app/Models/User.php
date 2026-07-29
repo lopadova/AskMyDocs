@@ -46,6 +46,7 @@ class User extends Authenticatable implements InvitedAccount
         'email',
         'password',
         'is_active',
+        'registration_completed_at',
         // v8.0.1 / deep-review F5 — chat-level preferences (e.g.
         // `counterfactual_enabled`) persisted per user. Cross-tenant
         // by design — the same identity carries the same chat
@@ -97,6 +98,7 @@ class User extends Authenticatable implements InvitedAccount
     {
         return [
             'email_verified_at' => 'datetime',
+            'registration_completed_at' => 'datetime',
             'password' => 'hashed',
             'is_active' => 'boolean',
             'chat_preferences' => 'array',

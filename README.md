@@ -765,8 +765,16 @@ applies whenever a normal account has no operational membership. A
 A code created with `--tenant` carries one explicit `tenant_join` grant. Its
 target must be an active, non-system tenant and every `--project` must already
 belong to it; redemption provisions those memberships and enters the company
-directly. Neither flow falls back to the legacy slug `default`, which is
-reserved and confers no implicit access.
+directly. Registration adds a strict completion layer over the invitation
+package's best-effort provisioners: the promised role and memberships are
+verified transactionally before a session or token is returned, then
+`users.registration_completed_at` is persisted. If the code was consumed but a
+database fault prevented provisioning, registration returns
+`503 registration_provisioning_pending`; the next valid login resumes from the
+immutable redemption. Once completion is marked, removing the user from every
+company is treated as an intentional revocation and never restores the old
+grant. Neither flow falls back to the legacy slug `default`, which is reserved
+and confers no implicit access.
 
 The admin surface is a **native, in-app tabbed page** at
 `/app/{team}/admin/invitations` (Overview · Campaigns · Codes · Invite ·

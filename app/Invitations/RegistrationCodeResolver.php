@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Invitations;
 
 use App\Models\Project;
+use App\Support\PlatformAccess;
 use App\Support\SystemTenantRegistry;
 use Illuminate\Support\Facades\Schema;
 use Padosoft\AiActCompliance\MultiTenancy\Models\Tenant;
@@ -13,6 +14,8 @@ use Padosoft\Invitations\Services\CodeNormalizer;
 use Padosoft\Invitations\Services\CodeValidator;
 use Padosoft\Invitations\Support\InviteGrant;
 use Padosoft\Invitations\Support\RedemptionError;
+use Padosoft\Invitations\Support\TenantGrant;
+use Spatie\Permission\Models\Role;
 
 /**
  * Resolve the tenant namespace of a code entered on the public registration
@@ -53,6 +56,23 @@ final class RegistrationCodeResolver
             return RegistrationCodeResolution::invalid($validation->error);
         }
 
+        return $this->resolveClaimedCode($validation->code ?? $code);
+    }
+
+    /**
+     * Resolve a code that has already been redeemed.
+     *
+     * This deliberately skips expiry/state/capacity validation: a successful
+     * redemption can make a one-use code exhausted, but its immutable
+     * redemption still has to be usable to finish an interrupted account
+     * provisioning attempt. The tenant, project and role grant are validated
+     * again before any access is restored.
+     */
+    public function resolveClaimedCode(InviteCode $code): RegistrationCodeResolution
+    {
+        $code->loadMissing('campaign');
+        $redemptionTenant = (string) $code->tenant_id;
+
         if (SystemTenantRegistry::isSystem($redemptionTenant)) {
             return $this->resolveSystemCode($code);
         }
@@ -75,6 +95,7 @@ final class RegistrationCodeResolver
         if (
             $tenantGrant->tenantId !== $redemptionTenant
             || $tenantGrant->projects === []
+            || ! $this->isAllowedRegistrationGrant($tenantGrant)
             || ! $this->projectsBelongToTenant($redemptionTenant, $tenantGrant->projects)
         ) {
             return RegistrationCodeResolution::invalid(RedemptionError::Ineligible);
@@ -123,6 +144,7 @@ final class RegistrationCodeResolver
         if (
             SystemTenantRegistry::isReserved($targetTenant)
             || $tenantGrant->projects === []
+            || ! $this->isAllowedRegistrationGrant($tenantGrant)
             || ! $this->isActiveOperationalTenant($targetTenant)
             || ! $this->projectsBelongToTenant($targetTenant, $tenantGrant->projects)
         ) {
@@ -155,8 +177,9 @@ final class RegistrationCodeResolver
 
         $tenant = Tenant::query()->where('slug', $slug)->first($columns);
 
-        return $tenant === null
-            || ($tenant->status === 'active' && ! (bool) $tenant->getAttribute('is_system'));
+        return $tenant !== null
+            && $tenant->status === 'active'
+            && ! (bool) $tenant->getAttribute('is_system');
     }
 
     /**
@@ -170,5 +193,28 @@ final class RegistrationCodeResolver
             ->forTenant($tenantId)
             ->whereIn('project_key', $unique)
             ->count() === count($unique);
+    }
+
+    private function isAllowedRegistrationGrant(TenantGrant $grant): bool
+    {
+        if (! in_array($grant->projectRole, ['member', 'admin', 'owner'], true)) {
+            return false;
+        }
+
+        if ($grant->role === null) {
+            return true;
+        }
+
+        if (in_array($grant->role, [
+            PlatformAccess::SYSTEM_ADMIN_ROLE,
+            PlatformAccess::TENANT_SUPER_ADMIN_ROLE,
+        ], true)) {
+            return false;
+        }
+
+        return Role::query()
+            ->where('name', $grant->role)
+            ->where('guard_name', 'web')
+            ->exists();
     }
 }

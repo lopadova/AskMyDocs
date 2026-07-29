@@ -30,7 +30,9 @@ Each public code carries exactly one registration intent:
   account session, then requires resumable company onboarding.
 - `tenant_join`: exactly one explicit tenant grant, targeting an active
   non-system tenant and one or more projects that already belong to it.
-  Redemption provisions the membership and onboarding is not required.
+  Redemption provisions the membership and onboarding is not required. A
+  strict host completion layer verifies the role and memberships before
+  returning a session or token.
 
 `registration-invite:create` is the trusted issuer. Omitting `--tenant` creates
 a bootstrap code; supplying `--tenant` and one or more `--project` values
@@ -47,11 +49,20 @@ The literal `default` is a reserved, non-operational legacy fallback. It is
 neither a public registration namespace nor a valid company membership; stale
 rows for it never suppress onboarding or appear in tenant switchers.
 
+The invitation package keeps redemption atomic and provisioning best-effort.
+Public registration therefore persists `users.registration_completed_at` only
+after the expected grant has been verified transactionally. A consumed
+redemption with a null marker is recoverable at the next login; it is not
+reclassified as a company-bootstrap account. Once the marker exists, later
+membership removal is intentional and is never reversed from the historical
+redemption.
+
 ## Consequences
 
 - No new invitation table or numeric-ID remapping is required.
-- A registration interrupted after account creation resumes onboarding on the
-  next login; no dashboard is reachable while the membership list is empty.
+- A bootstrap registration interrupted after account creation resumes
+  onboarding; an interrupted tenant-join registration first resumes its
+  original grant. Neither path reaches a tenant dashboard without membership.
 - Removing a normal user from every company intentionally makes the account
   eligible to create a new company on its next login.
 - The technical system tenant never appears in tenant switchers, operational

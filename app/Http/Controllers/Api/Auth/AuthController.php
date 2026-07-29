@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Auth;
 
 use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Requests\Auth\TokenRequest;
+use App\Invitations\RegistrationAccountCompletionService;
 use App\Models\User;
 use App\Services\Auth\CompanyOnboardingEligibility;
 use App\Services\Auth\UserTeamsResolver;
@@ -28,6 +29,10 @@ use Laravel\Sanctum\PersonalAccessToken;
  */
 class AuthController extends Controller
 {
+    public function __construct(
+        private readonly RegistrationAccountCompletionService $registration,
+    ) {}
+
     public function login(LoginRequest $request): JsonResponse
     {
         $key = $request->throttleKey();
@@ -48,10 +53,16 @@ class AuthController extends Controller
             ]);
         }
 
+        $user = $request->user();
+        try {
+            $this->registration->reconcile($user);
+        } catch (\Throwable $e) {
+            Auth::guard('web')->logout();
+            throw $e;
+        }
+
         RateLimiter::clear($key);
         $request->session()->regenerate();
-
-        $user = $request->user();
 
         return response()->json([
             'user' => [
@@ -102,8 +113,9 @@ class AuthController extends Controller
             ]);
         }
 
-        RateLimiter::clear($key);
+        $this->registration->reconcile($user);
 
+        RateLimiter::clear($key);
         $token = DesktopToken::mint($user, $request->deviceName())->plainTextToken;
 
         return response()->json([
@@ -154,6 +166,8 @@ class AuthController extends Controller
         if ($user === null) {
             return response()->json(['message' => 'Unauthenticated.'], 401);
         }
+
+        $this->registration->reconcile($user);
 
         $projects = $user->projectMemberships()
             ->get(['project_key', 'role', 'scope_allowlist'])
