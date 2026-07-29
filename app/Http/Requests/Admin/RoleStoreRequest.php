@@ -30,7 +30,6 @@ class RoleStoreRequest extends FormRequest
                 Rule::exists('permissions', 'name'),
                 Rule::notIn([
                     PlatformAccess::PLATFORM_ADMIN_PERMISSION,
-                    PlatformAccess::CROSS_TENANT_PERMISSION,
                 ]),
             ],
         ];

@@ -6,6 +6,7 @@ namespace Tests\Feature\Seeders;
 
 use App\Models\Conversation;
 use App\Models\KnowledgeDocument;
+use App\Models\ProjectMembership;
 use App\Models\User;
 use App\Support\TenantContext;
 use Database\Seeders\KbCitationDocumentSeeder;
@@ -31,6 +32,12 @@ final class KbCitationDocumentSeederTest extends TestCase
         parent::setUp();
         app(TenantContext::class)->set('default');
         $this->admin = User::create(['name' => 'Admin', 'email' => 'admin@demo.local', 'password' => Hash::make('x')]);
+        ProjectMembership::create([
+            'tenant_id' => 'default',
+            'user_id' => $this->admin->id,
+            'project_key' => 'hr-portal',
+            'role' => 'admin',
+        ]);
 
         config()->set('rbac.enforced', false);
     }

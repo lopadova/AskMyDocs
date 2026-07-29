@@ -11,9 +11,8 @@ namespace App\Support;
  * tenant: the user still needs a project membership in that tenant.
  *
  * `system-admin` is the platform control-plane role. It is granted only by
- * the dedicated CLI workflow and is always paired with `super-admin` so the
- * operator can also use tenant administration surfaces after selecting a
- * tenant.
+ * the dedicated CLI workflow and is paired with `super-admin` for role
+ * compatibility, but tenant routes still require a real membership.
  */
 final class PlatformAccess
 {
@@ -22,8 +21,6 @@ final class PlatformAccess
     public const TENANT_SUPER_ADMIN_ROLE = 'super-admin';
 
     public const PLATFORM_ADMIN_PERMISSION = 'platform.admin';
-
-    public const CROSS_TENANT_PERMISSION = 'tenant.cross-access';
 
     private function __construct() {}
 }

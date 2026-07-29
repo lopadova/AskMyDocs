@@ -169,9 +169,9 @@ class AuthController extends Controller
             'roles' => $user->getRoleNames(),
             'permissions' => $user->getAllPermissions()->pluck('name'),
             'projects' => $projects,
-            // R27 — additive: the legacy cross-tenant `projects` list above
-            // stays untouched; `teams` groups the same memberships per
-            // tenant for the SPA team switcher.
+            // R27 — additive: the legacy flattened `projects` list above
+            // stays untouched; `teams` groups the same explicit memberships
+            // per active tenant for the SPA team switcher.
             'teams' => $teams->resolve($user),
             'preferences' => [
                 'theme' => 'dark',

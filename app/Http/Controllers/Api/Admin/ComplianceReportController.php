@@ -59,7 +59,7 @@ final class ComplianceReportController
         // C4 (R30) — the report is always generated for the active tenant.
         // A `tenant_id` in the payload is ignored; cross-tenant generation
         // is only possible by switching the active tenant via X-Tenant-Id,
-        // which AuthorizeTenantHeader gates on the tenant.cross-access perm.
+        // which AuthorizeTenantHeader gates on tenant membership.
         $report = $generator->generate(
             $tenant->current(),
             (string) $validated['period_start'],

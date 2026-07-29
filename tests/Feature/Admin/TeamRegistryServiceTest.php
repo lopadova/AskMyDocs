@@ -26,7 +26,7 @@ use Tests\TestCase;
  * v8.28 — the shared core behind team (= tenant) create + rename. Covers the
  * create chain (tenant → project → membership) and its end-to-end outcome
  * (the actor "sees" the new team via UserTeamsResolver — the switcher's own
- * source), the cross-tenant rename authorization boundary, the reserved
+ * source), the membership-only rename authorization boundary, the reserved
  * `default` sentinel, and the R43 OFF-path (tenants table absent → 503-mapped
  * exception, never a silent success).
  */
@@ -138,10 +138,10 @@ final class TeamRegistryServiceTest extends TestCase
         $this->assertDatabaseHas('tenants', ['slug' => 'acme', 'name' => 'Acme Corporation']);
     }
 
-    public function test_rename_denies_a_non_member_without_cross_access(): void
+    public function test_rename_denies_a_non_member(): void
     {
         // The team exists with a membership for SOMEONE ELSE; the actor is not
-        // a member and lacks cross-access → 404 (IDOR-safe), no write.
+        // a member → 404 (IDOR-safe), no write.
         Tenant::create(['slug' => 'foreign', 'name' => 'Foreign Co']);
         $other = $this->userWithRole('admin');
         ProjectMembership::create(['tenant_id' => 'foreign', 'user_id' => $other->id, 'project_key' => 'foreign', 'role' => 'admin']);
@@ -156,15 +156,17 @@ final class TeamRegistryServiceTest extends TestCase
         }
     }
 
-    public function test_rename_allows_a_system_admin_via_cross_access(): void
+    public function test_rename_denies_a_system_admin_without_membership(): void
     {
         $system = $this->userWithRole('system-admin');
         Tenant::create(['slug' => 'other', 'name' => 'Other Co', 'status' => 'active']);
 
-        $team = $this->service()->rename('other', 'Other Company', $system);
-
-        $this->assertSame('Other Company', $team['name']);
-        $this->assertDatabaseHas('tenants', ['slug' => 'other', 'name' => 'Other Company']);
+        $this->expectException(NotFoundHttpException::class);
+        try {
+            $this->service()->rename('other', 'Other Company', $system);
+        } finally {
+            $this->assertDatabaseHas('tenants', ['slug' => 'other', 'name' => 'Other Co']);
+        }
     }
 
     public function test_rename_rejects_the_default_team(): void
@@ -175,7 +177,7 @@ final class TeamRegistryServiceTest extends TestCase
         $this->service()->rename('default', 'Renamed Default', $super);
     }
 
-    public function test_manageable_teams_lists_memberships_and_read_only_default(): void
+    public function test_manageable_teams_lists_only_real_memberships(): void
     {
         $actor = $this->userWithRole('admin');
         $this->service()->create('acme', 'Acme Corp', $actor);
@@ -190,9 +192,7 @@ final class TeamRegistryServiceTest extends TestCase
         $this->assertSame(1, $acme['member_count']);
 
         $default = $teams->firstWhere('slug', 'default');
-        $this->assertNotNull($default);
-        $this->assertTrue($default['is_default']);
-        $this->assertFalse($default['can_manage']);
+        $this->assertNull($default);
     }
 
     public function test_create_throws_when_the_registry_table_is_absent(): void
@@ -221,8 +221,8 @@ final class TeamRegistryServiceTest extends TestCase
         // R30 security: a tenant can hold ingested documents with NO
         // tenants/projects/membership row (connector ingest writes documents
         // only). Claiming that slug here would mint the actor a membership in
-        // the victim tenant and grant it cross-tenant access via
-        // AuthorizeTenantHeader — so create() must refuse it.
+        // the victim tenant and grant it operational access — so create()
+        // must refuse it.
         $actor = $this->userWithRole('admin');
         $this->seedDocInTenant('victim');
 

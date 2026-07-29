@@ -8,6 +8,7 @@ use App\Models\User;
 use Database\Seeders\RbacSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
@@ -24,6 +25,7 @@ final class SystemAdminMigrationTest extends TestCase
 
         // Recreate the pre-split state, then re-run the idempotent production
         // migration against real data.
+        Permission::findOrCreate('tenant.cross-access', 'web');
         Role::findByName('super-admin', 'web')->givePermissionTo('tenant.cross-access');
         $migration = require dirname(__DIR__, 3).'/database/migrations/2026_07_28_000001_split_system_admin_role.php';
         $migration->up();
@@ -32,7 +34,11 @@ final class SystemAdminMigrationTest extends TestCase
         $this->assertTrue($legacy->hasRole('system-admin'));
         $this->assertTrue($legacy->hasRole('super-admin'));
         $this->assertTrue($legacy->can('platform.admin'));
-        $this->assertTrue($legacy->can('tenant.cross-access'));
+        $this->assertFalse($legacy->can('tenant.cross-access'));
+        $this->assertDatabaseMissing('permissions', [
+            'name' => 'tenant.cross-access',
+            'guard_name' => 'web',
+        ]);
         $this->assertDatabaseHas('admin_command_audit', [
             'user_id' => $legacy->id,
             'command' => 'system-admin:migrate-legacy',
@@ -44,7 +50,6 @@ final class SystemAdminMigrationTest extends TestCase
 
         $this->assertFalse($future->hasRole('system-admin'));
         $this->assertFalse($future->can('platform.admin'));
-        $this->assertFalse($future->can('tenant.cross-access'));
     }
 
     private function user(string $email): User

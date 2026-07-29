@@ -318,7 +318,7 @@ final class TenantControlControllerTest extends TestCase
         ]);
     }
 
-    public function test_tenant_super_admin_only_sees_membership_tenants_while_system_admin_sees_all_active_tenants(): void
+    public function test_super_and_system_admin_switchers_both_list_only_membership_tenants(): void
     {
         $system = $this->userWithRole('system-admin', 'system@example.com');
         $super = $this->userWithRole('super-admin', 'super@example.com');
@@ -330,13 +330,25 @@ final class TenantControlControllerTest extends TestCase
             'project_key' => 'acme',
             'role' => 'admin',
         ]);
+        ProjectMembership::create([
+            'tenant_id' => 'acme',
+            'user_id' => $system->id,
+            'project_key' => 'acme',
+            'role' => 'admin',
+        ]);
+        ProjectMembership::create([
+            'tenant_id' => 'globex',
+            'user_id' => $system->id,
+            'project_key' => 'globex',
+            'role' => 'admin',
+        ]);
 
         $this->assertSame(
-            ['default', 'acme'],
+            ['acme'],
             array_column(app(UserTeamsResolver::class)->resolve($super), 'tenant_id'),
         );
         $this->assertSame(
-            ['default', 'acme', 'globex'],
+            ['acme', 'globex'],
             array_column(app(UserTeamsResolver::class)->resolve($system), 'tenant_id'),
         );
     }

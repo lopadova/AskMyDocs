@@ -5,10 +5,9 @@ declare(strict_types=1);
 namespace App\Http\Middleware;
 
 use App\Models\ProjectMembership;
-use App\Support\PlatformAccess;
+use App\Support\TenantContext;
 use Closure;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Padosoft\AiActCompliance\MultiTenancy\Models\Tenant;
 use Symfony\Component\HttpFoundation\Response;
@@ -24,49 +23,51 @@ use Symfony\Component\HttpFoundation\Response;
  * yet). Without this guard, any authenticated client could send
  * `X-Tenant-Id: victim` and operate inside another tenant.
  *
- * This middleware is mounted AFTER `auth:sanctum` on every authenticated
- * route group, so the user is resolved by the time it runs. It only acts
- * when an explicit `X-Tenant-Id` override is present — normal SPA traffic
- * sends no such header (the tenant is derived from the user / default), so
- * this is a no-op for the common path.
+ * This middleware is mounted AFTER `auth:sanctum` on every operational
+ * route group, so the user is resolved by the time it runs. It validates
+ * the tenant already resolved into TenantContext whether it came from an
+ * explicit header or from the legacy `default` fallback.
  *
  * Policy (R30, decision 2026-05-26; membership extension 2026-06-10 for
  * the SPA team switcher):
- *   - No header                 → pass through (no override attempted).
- *   - Header == own tenant      → pass through.
- *   - Header != own tenant
- *       + holds `tenant.cross-access` permission → pass through (audited).
- *       + has ≥1 `project_memberships` row in the requested tenant
- *         → pass through (this is what lets a regular user operate in
- *         the teams the switcher offers; users carry no tenant_id
- *         column, so every non-default team flows through here).
- *       + otherwise                              → 403 tenant_forbidden.
+ *   - Membership in the resolved tenant → pass through.
+ *   - No membership                     → 403 tenant_forbidden.
  *   - Unauthenticated           → pass through (no protected data is
  *     reachable on an unauthenticated request; the route's own auth gate
  *     handles rejection).
+ *
+ * `/api/auth/*` and `/api/system-admin/*` deliberately do not mount this
+ * middleware, so authentication and the global control plane remain usable
+ * by a system administrator with zero operational memberships.
  */
 final class AuthorizeTenantHeader
 {
-    public const CROSS_ACCESS_PERMISSION = PlatformAccess::CROSS_TENANT_PERMISSION;
+    public function __construct(private readonly TenantContext $tenants) {}
 
     public function handle(Request $request, Closure $next): Response
     {
-        $header = $request->header('X-Tenant-Id');
-        if (! is_string($header) || $header === '') {
-            return $next($request);
-        }
-
         $user = $request->user();
         if ($user === null) {
             return $next($request);
         }
 
+        $tenantId = $this->tenants->current();
+
+        // Check membership before lifecycle so a forged tenant slug never
+        // reveals whether that tenant is active, suspended, or archived.
+        if (! $this->hasMembershipInTenant($user, $tenantId)) {
+            return response()->json([
+                'error' => 'tenant_forbidden',
+                'message' => 'You are not authorised to act on behalf of the requested tenant.',
+            ], Response::HTTP_FORBIDDEN);
+        }
+
         // A registry lifecycle state is authoritative even when the caller
-        // still has a stale membership or cross-access permission. The global
+        // still has a stale membership. The global
         // super-admin control plane carries no tenant header, so operators can
         // always reactivate a tenant from there.
         if (Schema::hasTable('tenants')) {
-            $status = Tenant::query()->where('slug', $header)->value('status');
+            $status = Tenant::query()->where('slug', $tenantId)->value('status');
             if ($status === 'suspended') {
                 return response()->json([
                     'error' => 'tenant_suspended',
@@ -81,36 +82,7 @@ final class AuthorizeTenantHeader
             }
         }
 
-        $ownTenant = $user->getAttribute('tenant_id');
-        $ownTenant = is_string($ownTenant) && $ownTenant !== '' ? $ownTenant : 'default';
-
-        if ($header === $ownTenant) {
-            return $next($request);
-        }
-
-        if ($this->canAccessForeignTenant($user)) {
-            Log::info('Cross-tenant access granted via X-Tenant-Id header.', [
-                'user_id' => $user->getAuthIdentifier(),
-                'own_tenant' => $ownTenant,
-                'requested_tenant' => $header,
-                'path' => $request->path(),
-            ]);
-
-            return $next($request);
-        }
-
-        // Team-switcher path: a membership in the requested tenant is the
-        // proof the user belongs to that team. Single indexed EXISTS per
-        // request; this is the COMMON path for every request the SPA sends
-        // while operating in a non-default team.
-        if ($this->hasMembershipInTenant($user, $header)) {
-            return $next($request);
-        }
-
-        return response()->json([
-            'error' => 'tenant_forbidden',
-            'message' => 'You are not authorised to act on behalf of the requested tenant.',
-        ], Response::HTTP_FORBIDDEN);
+        return $next($request);
     }
 
     private function hasMembershipInTenant(mixed $user, string $tenantId): bool
@@ -123,12 +95,5 @@ final class AuthorizeTenantHeader
             ->forTenant($tenantId)
             ->where('user_id', $user->getAuthIdentifier())
             ->exists();
-    }
-
-    private function canAccessForeignTenant(mixed $user): bool
-    {
-        return is_object($user)
-            && method_exists($user, 'can')
-            && $user->can(self::CROSS_ACCESS_PERMISSION);
     }
 }

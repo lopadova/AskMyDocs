@@ -204,15 +204,11 @@ final class KbChunkFeedbackApiTest extends TestCase
      *   - Chunk + doc seeded in active tenant under `project=shared`
      *   - User membership stored under `tenant_id=other-tenant`, same
      *     `project=shared` and same user
-     * The cross-tenant membership must never grant write access. Since
-     * `User::allowedProjects()` is now tenant-scoped (R30), AccessScopeScope
-     * (Layer 1) already excludes the foreign-tenant membership: the
-     * eager-loaded document resolves to null and the controller answers
-     * 404 — the existence-hiding response it documents "by design" for a
-     * doc the user has no in-tenant project membership for. (Previously the
-     * unscoped membership slipped past Layer 1 and was caught one layer
-     * later at 403; 404 is the stricter, non-leaking outcome.) Either way
-     * the write is refused — asserted below by assertDatabaseMissing.
+     * The cross-tenant membership must never grant write access. The
+     * operational tenant middleware now rejects the resolved `default`
+     * context before resource lookup because the user has no membership
+     * there, returning the canonical `403 tenant_forbidden`. The write is
+     * still proved absent below.
      */
     public function test_membership_in_other_tenant_with_same_project_key_is_rejected(): void
     {
@@ -231,7 +227,8 @@ final class KbChunkFeedbackApiTest extends TestCase
         $this->actingAs($user)->postJson('/api/kb/feedback', [
             'chunk_id' => $chunk->id,
             'signal' => KbChunkFeedback::SIGNAL_NOT_RELEVANT,
-        ])->assertNotFound();
+        ])->assertForbidden()
+            ->assertJsonPath('error', 'tenant_forbidden');
 
         $this->assertDatabaseMissing('kb_chunk_feedback', [
             'user_id' => $user->id,

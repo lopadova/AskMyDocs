@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Services\Auth;
 
-use App\Http\Middleware\AuthorizeTenantHeader;
 use App\Models\User;
 use App\Support\TeamHash;
 use Illuminate\Support\Facades\Schema;
@@ -16,16 +15,15 @@ use Padosoft\AiActCompliance\MultiTenancy\Models\Tenant;
  * user can operate in, with the projects they can access inside each.
  *
  * Feeds the additive `teams` key of `GET /api/auth/me` (R27) that the
- * SPA team switcher consumes. The policy MUST mirror what
- * {@see AuthorizeTenantHeader} will actually allow at request time,
+ * SPA team switcher consumes. The policy MUST mirror what the tenant
+ * authorization middleware will actually allow at request time,
  * or the switcher would offer teams whose requests then 403:
  *
- *  - a `project_memberships` row in tenant T          → T is a team
- *  - `tenant.cross-access` permission                 → every active
- *    row of the package `tenants` table is a team
- *  - everyone                                         → `default`
- *    (users carry no tenant_id column, so ResolveTenant treats
- *    `default` as every user's own tenant)
+ *  - a `project_memberships` row in an active tenant T → T is a team
+ *  - no membership                                     → no teams
+ *
+ * `default` is a legacy tenant slug, not an implicit grant. It appears only
+ * when the user has an explicit membership in it.
  *
  * The membership query is deliberately NOT `forTenant()`-scoped: this
  * is the one read that needs the cross-tenant view, because its whole
@@ -57,16 +55,6 @@ final class UserTeamsResolver
         $tenantIds = $this->activeOrUnregisteredTenantSlugs($tenantIds);
         $projectsByTenant = array_intersect_key($projectsByTenant, array_flip($tenantIds));
 
-        if ($user->can(AuthorizeTenantHeader::CROSS_ACCESS_PERMISSION)) {
-            $tenantIds = array_merge($tenantIds, $this->allActiveTenantSlugs());
-        }
-
-        // Every authenticated user can operate in `default` (it is the
-        // own-tenant pass-through of AuthorizeTenantHeader), so the list
-        // is never empty and there is always a team to bootstrap into.
-        $tenantIds[] = 'default';
-        $tenantIds = array_values(array_unique($tenantIds));
-
         $labels = $this->labels($tenantIds);
 
         $teams = array_map(static fn (string $tenantId): array => [
@@ -78,8 +66,8 @@ final class UserTeamsResolver
             'projects' => $projectsByTenant[$tenantId] ?? [],
         ], $tenantIds);
 
-        // `default` first (the bootstrap team, keeps single-tenant
-        // deployments looking exactly like v3), then alphabetical.
+        // Keep a real default membership first for backwards-compatible
+        // onboarding, then sort the remaining tenant slugs alphabetically.
         usort($teams, static function (array $a, array $b): int {
             if ($a['tenant_id'] === 'default') {
                 return -1;
@@ -92,22 +80,6 @@ final class UserTeamsResolver
         });
 
         return $teams;
-    }
-
-    /**
-     * Slugs of every active row in the package `tenants` table. Guarded
-     * by Schema::hasTable so deployments that never migrated the AI Act
-     * compliance package degrade to membership-derived teams only.
-     *
-     * @return list<string>
-     */
-    private function allActiveTenantSlugs(): array
-    {
-        if (! Schema::hasTable('tenants')) {
-            return [];
-        }
-
-        return Tenant::query()->active()->pluck('slug')->all();
     }
 
     /**

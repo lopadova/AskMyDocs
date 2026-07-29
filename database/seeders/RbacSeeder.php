@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use App\Models\KnowledgeDocument;
+use App\Models\Project;
 use App\Models\ProjectMembership;
 use App\Models\User;
 use App\Support\PlatformAccess;
@@ -23,11 +24,11 @@ use Spatie\Permission\PermissionRegistrar;
  *    can grant detokenise + admin-view access to without escalating to
  *    full system admin. DPOs see PII tooling but NOT command runner
  *    or destructive admin commands.
- *  - 17 permissions (kb.* for content incl. kb.read.all_projects for the
+ *  - 16 permissions (kb.* for content incl. kb.read.all_projects for the
  *    per-project isolation "see all projects" capability, users/roles/
  *    permissions for admin, commands/logs/insights/admin.access for ops
- *    panel, pii.detokenize for PII reverse lookup, plus platform.admin and
- *    tenant.cross-access for the system control plane).
+ *    panel, pii.detokenize for PII reverse lookup, plus platform.admin for
+ *    the system control plane).
  *  - Backfill: assign `viewer` to every existing user and create a
  *    viewer-role membership against every existing project_key so PR3
  *    deploy does not lock out the userbase.
@@ -96,9 +97,6 @@ class RbacSeeder extends Seeder
         // Global control-plane capability. This is deliberately separate
         // from the tenant `super-admin` role.
         PlatformAccess::PLATFORM_ADMIN_PERMISSION,
-        // C1 (R30) — explicit cross-tenant override capability. Only a
-        // system administrator may bypass membership checks.
-        PlatformAccess::CROSS_TENANT_PERMISSION,
     ];
 
     public function run(): void
@@ -141,7 +139,6 @@ class RbacSeeder extends Seeder
         // role because many tenant routes intentionally use role middleware.
         $systemAdmin->syncPermissions([
             PlatformAccess::PLATFORM_ADMIN_PERMISSION,
-            PlatformAccess::CROSS_TENANT_PERMISSION,
         ]);
 
         // Highest tenant role: every tenant-level capability, but no platform
@@ -219,18 +216,28 @@ class RbacSeeder extends Seeder
 
     /**
      * Assign `viewer` role to every existing user AND create a viewer
-     * project_memberships row for each (user, project_key) pair so the
-     * global scope doesn't lock anyone out after the flag flips on.
+     * project_memberships row for each legacy DEFAULT-tenant project so the
+     * global scope doesn't lock anyone out after the flag flips on. Projects
+     * belonging to other tenants are never granted by this compatibility
+     * path.
      *
      * Uses chunkById to stay memory-safe on larger userbases (R3).
      */
     private function backfillExistingUsers(): void
     {
-        $projectKeys = KnowledgeDocument::withTrashed()
-            ->whereNotNull('project_key')
-            ->distinct()
-            ->pluck('project_key')
-            ->all();
+        $projectKeys = array_values(array_unique(array_merge(
+            Project::query()
+                ->forTenant('default')
+                ->distinct()
+                ->pluck('project_key')
+                ->all(),
+            KnowledgeDocument::withTrashed()
+                ->forTenant('default')
+                ->whereNotNull('project_key')
+                ->distinct()
+                ->pluck('project_key')
+                ->all(),
+        )));
 
         User::query()->chunkById(100, function ($users) use ($projectKeys) {
             foreach ($users as $user) {
@@ -250,7 +257,7 @@ class RbacSeeder extends Seeder
 
         foreach ($projectKeys as $projectKey) {
             ProjectMembership::firstOrCreate(
-                ['user_id' => $user->id, 'project_key' => $projectKey],
+                ['tenant_id' => 'default', 'user_id' => $user->id, 'project_key' => $projectKey],
                 ['role' => 'member', 'scope_allowlist' => null],
             );
         }

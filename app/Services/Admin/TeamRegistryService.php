@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Services\Admin;
 
-use App\Http\Middleware\AuthorizeTenantHeader;
 use App\Models\Project;
 use App\Models\ProjectMembership;
 use App\Models\User;
@@ -35,15 +34,14 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
  * degrade to {@see TeamRegistryUnavailableException} (HTTP 503) rather than
  * a 500 when it is absent (R14/R43).
  *
- * Authorization is cross-tenant by nature (you administer OTHER teams from
- * within your active one), so it is NOT the request's `X-Tenant-Id` scope:
+ * Authorization follows operational tenant membership:
  *   - anyone with the admin/super-admin route gate may CREATE a new team;
- *   - RENAME a team T requires a `project_memberships` row in T OR the
- *     `tenant.cross-access` permission — the exact rule
- *     {@see AuthorizeTenantHeader} enforces on the switcher path. A miss is
- *     a 404 (IDOR-safe — the team's existence stays hidden).
- * `default` is the reserved bootstrap sentinel (no `tenants` row): it is
- * never creatable and never renamable.
+ *   - RENAME a team T requires a `project_memberships` row in T.
+ *     A miss is a 404 (IDOR-safe — the team's existence stays hidden).
+ * System administrators manage unassociated tenants only through the global
+ * `/api/system-admin/tenants` control plane.
+ * `default` is a reserved legacy slug (normally without a `tenants` row): it
+ * is never creatable or renamable and is visible only through membership.
  *
  * Team visibility for the list is delegated verbatim to
  * {@see UserTeamsResolver} — the same source the topbar switcher reads — so
@@ -88,7 +86,7 @@ final class TeamRegistryService
     public function manageableTeams(User $user): array
     {
         // Visibility + name + hash come straight from the switcher resolver
-        // (membership ∪ cross-access ∪ default) so the two never diverge.
+        // (real memberships only) so the two never diverge.
         $teams = $this->teamsResolver->resolve($user);
         $slugs = array_map(static fn (array $t): string => $t['tenant_id'], $teams);
 
@@ -246,7 +244,7 @@ final class TeamRegistryService
         $slug = Str::lower(trim($slug));
 
         // canManage() rejects the reserved `default` and any team the actor
-        // is neither a member of nor has cross-access to. 404, not 403, so a
+        // is not a member of. 404, not 403, so a
         // guessed slug never confirms a team's existence.
         if (! $this->canManage($actor, $slug)) {
             throw new NotFoundHttpException('Team not found.');
@@ -267,18 +265,12 @@ final class TeamRegistryService
 
     /**
      * True when the actor may administer (rename) the given team: never the
-     * reserved `default`, otherwise a membership in the team OR the
-     * `tenant.cross-access` permission — the same rule AuthorizeTenantHeader
-     * enforces for switching into a team.
+     * reserved `default`, otherwise a membership in the team.
      */
     private function canManage(User $user, string $slug): bool
     {
         if ($slug === '' || $slug === self::RESERVED_SLUG) {
             return false;
-        }
-
-        if ($user->can(AuthorizeTenantHeader::CROSS_ACCESS_PERMISSION)) {
-            return true;
         }
 
         return DB::table('project_memberships')
@@ -337,7 +329,7 @@ final class TeamRegistryService
      * (knowledge_documents/chunks, chat_logs, graph) with NO projects/
      * memberships/tenants row — connector ingest writes documents WITHOUT a
      * registry row — so claiming that slug here would mint the actor a
-     * membership in the victim tenant and grant it via AuthorizeTenantHeader.
+     * membership in the victim tenant and grant operational access.
      * Each table is Schema::hasTable-guarded so an unmigrated optional table
      * degrades cleanly.
      */

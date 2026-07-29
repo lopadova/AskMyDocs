@@ -21,7 +21,6 @@ class PermissionController extends Controller
         $permissions = Permission::query()
             ->whereNotIn('name', [
                 PlatformAccess::PLATFORM_ADMIN_PERMISSION,
-                PlatformAccess::CROSS_TENANT_PERMISSION,
             ])
             ->orderBy('name')
             ->get(['id', 'name', 'guard_name']);

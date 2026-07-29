@@ -28,7 +28,9 @@ final class TeamControllerTest extends TestCase
 
     protected function defineRoutes($router): void
     {
-        $router->middleware('api')->prefix('api')->group(__DIR__.'/../../../../routes/api.php');
+        $router->middleware(['api', \App\Http\Middleware\ResolveTenant::class])
+            ->prefix('api')
+            ->group(__DIR__.'/../../../../routes/api.php');
     }
 
     protected function setUp(): void
@@ -38,22 +40,22 @@ final class TeamControllerTest extends TestCase
         Cache::flush();
     }
 
-    public function test_index_lists_manageable_teams_including_read_only_default(): void
+    public function test_index_lists_only_real_membership_teams(): void
     {
         $admin = $this->makeUser('admin');
         app(TeamRegistryService::class)->create('acme', 'Acme Corp', $admin);
 
-        $resp = $this->actingAs($admin)->getJson('/api/admin/teams')->assertOk();
+        $resp = $this->actingAs($admin)
+            ->withHeader('X-Tenant-Id', 'acme')
+            ->getJson('/api/admin/teams')
+            ->assertOk();
 
         $slugs = array_column($resp->json('data'), 'slug');
         $this->assertContains('acme', $slugs);
-        $this->assertContains('default', $slugs);
+        $this->assertNotContains('default', $slugs);
 
         $acme = collect($resp->json('data'))->firstWhere('slug', 'acme');
         $this->assertTrue($acme['can_manage']);
-        $default = collect($resp->json('data'))->firstWhere('slug', 'default');
-        $this->assertFalse($default['can_manage']);
-        $this->assertTrue($default['is_default']);
     }
 
     public function test_store_creates_a_team_and_returns_201(): void
@@ -112,7 +114,9 @@ final class TeamControllerTest extends TestCase
         $admin = $this->makeUser('admin');
         app(TeamRegistryService::class)->create('acme', 'Acme Corp', $admin);
 
-        $this->actingAs($admin)->patchJson('/api/admin/teams/acme', ['name' => 'Acme Corporation'])
+        $this->actingAs($admin)
+            ->withHeader('X-Tenant-Id', 'acme')
+            ->patchJson('/api/admin/teams/acme', ['name' => 'Acme Corporation'])
             ->assertOk()
             ->assertJsonPath('data.name', 'Acme Corporation');
 
@@ -121,8 +125,8 @@ final class TeamControllerTest extends TestCase
 
     public function test_update_404s_on_a_team_the_actor_cannot_manage(): void
     {
-        // Team exists but belongs to another user; the admin (no cross-access,
-        // no membership) must not be able to rename it.
+        // Team exists but belongs to another user; the admin has no membership
+        // and must not be able to rename it.
         Tenant::create(['slug' => 'foreign', 'name' => 'Foreign Co']);
         $other = $this->makeUser('admin');
         ProjectMembership::create(['tenant_id' => 'foreign', 'user_id' => $other->id, 'project_key' => 'foreign', 'role' => 'admin']);
@@ -140,13 +144,16 @@ final class TeamControllerTest extends TestCase
         $admin = $this->makeUser('admin');
         app(TeamRegistryService::class)->create('acme', 'Acme Corp', $admin);
 
-        $this->actingAs($admin)->patchJson('/api/admin/teams/acme', ['name' => ''])
+        $this->actingAs($admin)
+            ->withHeader('X-Tenant-Id', 'acme')
+            ->patchJson('/api/admin/teams/acme', ['name' => ''])
             ->assertStatus(422)->assertJsonValidationErrors('name');
     }
 
     public function test_store_maps_registry_unavailable_to_503(): void
     {
         $admin = $this->makeUser('admin');
+        $this->grantDefaultMembership($admin);
 
         // Simulate a deployment that never migrated the AI-Act package: the
         // service throws TeamRegistryUnavailableException, which the controller
@@ -161,6 +168,7 @@ final class TeamControllerTest extends TestCase
     public function test_index_still_returns_200_when_the_registry_table_is_absent(): void
     {
         $admin = $this->makeUser('admin');
+        $this->grantDefaultMembership($admin);
 
         // R43 OFF-path for the LIST surface: with the tenants table absent the
         // list must degrade to a clean 200 (humanised names), never a 500.
@@ -194,5 +202,15 @@ final class TeamControllerTest extends TestCase
         $user->assignRole($role);
 
         return $user;
+    }
+
+    private function grantDefaultMembership(User $user): void
+    {
+        ProjectMembership::create([
+            'tenant_id' => 'default',
+            'user_id' => $user->id,
+            'project_key' => 'default',
+            'role' => 'admin',
+        ]);
     }
 }

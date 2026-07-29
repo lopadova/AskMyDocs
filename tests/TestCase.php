@@ -6,6 +6,45 @@ use Orchestra\Testbench\TestCase as OrchestraTestCase;
 
 abstract class TestCase extends OrchestraTestCase
 {
+    /**
+     * Existing feature tests model identities from the pre-v8.30 default
+     * tenant installation. Production materialises that legacy implicit
+     * access during deployment, so mirror the same explicit membership when
+     * a test authenticates a freshly-created user.
+     *
+     * Boundary tests that intentionally need an account with zero
+     * memberships use actingAsWithoutTenant().
+     */
+    public function actingAs(\Illuminate\Contracts\Auth\Authenticatable $user, $driver = null)
+    {
+        if (
+            $this->app !== null
+            && \Illuminate\Support\Facades\Schema::hasTable('project_memberships')
+            && ! \Illuminate\Support\Facades\DB::table('project_memberships')
+                ->where('user_id', $user->getAuthIdentifier())
+                ->exists()
+        ) {
+            \Illuminate\Support\Facades\DB::table('project_memberships')->insertOrIgnore([
+                'tenant_id' => 'default',
+                'user_id' => $user->getAuthIdentifier(),
+                'project_key' => 'default',
+                'role' => 'member',
+                'scope_allowlist' => null,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        return parent::actingAs($user, $driver);
+    }
+
+    protected function actingAsWithoutTenant(
+        \Illuminate\Contracts\Auth\Authenticatable $user,
+        $driver = null,
+    ) {
+        return parent::actingAs($user, $driver);
+    }
+
     protected function getEnvironmentSetUp($app): void
     {
         // Manual registration (instead of getPackageProviders) avoids

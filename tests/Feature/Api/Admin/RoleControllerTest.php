@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Api\Admin;
 
+use App\Models\ProjectMembership;
 use App\Models\User;
 use Database\Seeders\RbacSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -124,6 +125,7 @@ class RoleControllerTest extends TestCase
             'password' => Hash::make('secret123'),
         ]);
         $system->assignRole(['system-admin', 'super-admin']);
+        $this->grantDefaultMembership($system);
         $systemRole = Role::findByName('system-admin', 'web');
 
         $this->actingAs($system)
@@ -135,10 +137,10 @@ class RoleControllerTest extends TestCase
         $this->actingAs($system)
             ->postJson('/api/admin/roles', [
                 'name' => 'platform-clone',
-                'permissions' => ['platform.admin', 'tenant.cross-access'],
+                'permissions' => ['platform.admin'],
             ])
             ->assertUnprocessable()
-            ->assertJsonValidationErrors(['permissions.0', 'permissions.1']);
+            ->assertJsonValidationErrors(['permissions.0']);
     }
 
     public function test_destroy_deletes_custom_role(): void
@@ -179,6 +181,7 @@ class RoleControllerTest extends TestCase
             'password' => Hash::make('secret123'),
         ]);
         $admin->assignRole('admin');
+        $this->grantDefaultMembership($admin);
 
         return $admin;
     }
@@ -191,7 +194,18 @@ class RoleControllerTest extends TestCase
             'password' => Hash::make('secret123'),
         ]);
         $user->assignRole('viewer');
+        $this->grantDefaultMembership($user);
 
         return $user;
+    }
+
+    private function grantDefaultMembership(User $user): void
+    {
+        ProjectMembership::create([
+            'tenant_id' => 'default',
+            'user_id' => $user->id,
+            'project_key' => 'roles-test',
+            'role' => 'member',
+        ]);
     }
 }

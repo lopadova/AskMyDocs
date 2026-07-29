@@ -4,6 +4,7 @@ namespace Tests\Feature\Api\Admin;
 
 use App\Models\ChatLog;
 use App\Models\KnowledgeDocument;
+use App\Models\ProjectMembership;
 use App\Models\User;
 use Database\Seeders\RbacSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -197,6 +198,14 @@ class DashboardMetricsControllerTest extends TestCase
             'password' => Hash::make('secret123'),
         ]);
         $system->assignRole(['system-admin', 'super-admin']);
+        foreach (['default', 'acme'] as $tenantId) {
+            ProjectMembership::create([
+                'tenant_id' => $tenantId,
+                'user_id' => $system->id,
+                'project_key' => $tenantId === 'default' ? 'default' : 'acme-kb',
+                'role' => 'admin',
+            ]);
+        }
 
         // R16 — strictly differentiating fixture: 1 chat in 'default',
         // 2 in 'acme', so a leaked cache CANNOT produce the expected

@@ -11,7 +11,7 @@ use Spatie\Permission\PermissionRegistrar;
 
 /**
  * Split the legacy global `super-admin` into:
- *  - `system-admin`: platform-wide control plane + cross-tenant access;
+ *  - `system-admin`: platform-wide control plane;
  *  - `super-admin`: highest tenant role, constrained by tenant membership.
  *
  * Existing super-admins are copied to the new system role so a deployment
@@ -22,6 +22,8 @@ use Spatie\Permission\PermissionRegistrar;
 return new class extends Migration
 {
     private const GUARD = 'web';
+
+    private const LEGACY_CROSS_TENANT_PERMISSION = 'tenant.cross-access';
 
     public function up(): void
     {
@@ -34,28 +36,46 @@ return new class extends Migration
             $systemRoleId = $this->roleId(PlatformAccess::SYSTEM_ADMIN_ROLE, $now);
             $superRoleId = $this->roleId(PlatformAccess::TENANT_SUPER_ADMIN_ROLE, $now);
             $platformPermissionId = $this->permissionId(PlatformAccess::PLATFORM_ADMIN_PERMISSION, $now);
-            $crossTenantPermissionId = $this->permissionId(PlatformAccess::CROSS_TENANT_PERMISSION, $now);
+            $crossTenantPermissionId = DB::table('permissions')
+                ->where('name', self::LEGACY_CROSS_TENANT_PERMISSION)
+                ->where('guard_name', self::GUARD)
+                ->value('id');
 
             // The global role carries only global permissions. Existing
             // operators retain the companion super-admin role for all tenant
             // permissions.
-            foreach ([$platformPermissionId, $crossTenantPermissionId] as $permissionId) {
-                DB::table('role_has_permissions')->insertOrIgnore([
-                    'permission_id' => $permissionId,
-                    'role_id' => $systemRoleId,
-                ]);
-            }
+            DB::table('role_has_permissions')->insertOrIgnore([
+                'permission_id' => $platformPermissionId,
+                'role_id' => $systemRoleId,
+            ]);
 
             DB::table('role_has_permissions')
                 ->where('role_id', $systemRoleId)
-                ->whereNotIn('permission_id', [$platformPermissionId, $crossTenantPermissionId])
+                ->where('permission_id', '!=', $platformPermissionId)
                 ->delete();
 
-            // The tenant super-admin must never retain either global bypass.
+            // The tenant super-admin must never retain the global capability.
             DB::table('role_has_permissions')
                 ->where('role_id', $superRoleId)
-                ->whereIn('permission_id', [$platformPermissionId, $crossTenantPermissionId])
+                ->where('permission_id', $platformPermissionId)
                 ->delete();
+
+            // Remove the legacy bypass from roles, direct grants, and the
+            // permission catalogue. Operational tenant access is now proved
+            // exclusively by project_memberships.
+            if ($crossTenantPermissionId !== null) {
+                DB::table('role_has_permissions')
+                    ->where('permission_id', $crossTenantPermissionId)
+                    ->delete();
+
+                if (Schema::hasTable('model_has_permissions')) {
+                    DB::table('model_has_permissions')
+                        ->where('permission_id', $crossTenantPermissionId)
+                        ->delete();
+                }
+
+                DB::table('permissions')->where('id', $crossTenantPermissionId)->delete();
+            }
 
             DB::table('users')
                 ->join('model_has_roles', function ($join) use ($superRoleId): void {
@@ -96,12 +116,12 @@ return new class extends Migration
                 ->where('name', PlatformAccess::TENANT_SUPER_ADMIN_ROLE)
                 ->where('guard_name', self::GUARD)
                 ->value('id');
-            $crossTenantPermissionId = DB::table('permissions')
-                ->where('name', PlatformAccess::CROSS_TENANT_PERMISSION)
-                ->where('guard_name', self::GUARD)
-                ->value('id');
+            $crossTenantPermissionId = $this->permissionId(
+                self::LEGACY_CROSS_TENANT_PERMISSION,
+                now(),
+            );
 
-            if ($superRoleId !== null && $crossTenantPermissionId !== null) {
+            if ($superRoleId !== null) {
                 DB::table('role_has_permissions')->insertOrIgnore([
                     'permission_id' => $crossTenantPermissionId,
                     'role_id' => $superRoleId,

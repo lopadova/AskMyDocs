@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Api\Auth;
 
+use App\Models\ProjectMembership;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
@@ -29,11 +30,20 @@ class TokenTest extends TestCase
 
     private function makeUser(string $password = 'secret123'): User
     {
-        return User::create([
+        $user = User::create([
             'name' => 'Test User',
             'email' => 'test@example.com',
             'password' => Hash::make($password),
         ]);
+
+        ProjectMembership::create([
+            'tenant_id' => 'default',
+            'user_id' => $user->id,
+            'project_key' => 'default',
+            'role' => 'member',
+        ]);
+
+        return $user;
     }
 
     public function test_valid_credentials_return_201_with_a_usable_bearer_token(): void

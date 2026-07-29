@@ -95,8 +95,14 @@ final class TeamCommandsTest extends TestCase
 
     public function test_team_rename_updates_the_display_name(): void
     {
-        $this->userWithRole('system-admin');
+        $system = $this->userWithRole('system-admin');
         Tenant::create(['slug' => 'acme', 'name' => 'Acme Corp', 'status' => 'active']);
+        ProjectMembership::create([
+            'tenant_id' => 'acme',
+            'user_id' => $system->id,
+            'project_key' => 'acme',
+            'role' => 'admin',
+        ]);
 
         $this->artisan('team:rename', ['slug' => 'acme', 'name' => 'Acme Corporation'])
             ->expectsOutputToContain("renamed to 'Acme Corporation'")
@@ -108,7 +114,7 @@ final class TeamCommandsTest extends TestCase
 
     public function test_team_rename_fails_for_an_unmanageable_team(): void
     {
-        // A plain editor (no cross-access) who is not a member of 'foreign'.
+        // A plain editor who is not a member of 'foreign'.
         $editor = $this->userWithRole('editor');
         Tenant::create(['slug' => 'foreign', 'name' => 'Foreign Co']);
 

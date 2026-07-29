@@ -51,9 +51,6 @@ class RbacSeederTest extends TestCase
             'pii.erase',
             'platform.admin',
             'roles.manage',
-            // v8.0.3 security hotfix (C1) — cross-tenant override capability
-            // for the AuthorizeTenantHeader middleware. super-admin only.
-            'tenant.cross-access',
             'users.manage',
         ];
 
@@ -63,14 +60,12 @@ class RbacSeederTest extends TestCase
         );
 
         $systemAdmin = Role::findByName('system-admin', 'web');
-        $this->assertCount(2, $systemAdmin->permissions);
+        $this->assertCount(1, $systemAdmin->permissions);
         $this->assertTrue($systemAdmin->hasPermissionTo('platform.admin'));
-        $this->assertTrue($systemAdmin->hasPermissionTo('tenant.cross-access'));
 
         $superAdmin = Role::findByName('super-admin', 'web');
         $this->assertTrue($superAdmin->hasPermissionTo('commands.destructive'));
         $this->assertFalse($superAdmin->hasPermissionTo('platform.admin'));
-        $this->assertFalse($superAdmin->hasPermissionTo('tenant.cross-access'));
 
         $viewer = Role::findByName('viewer', 'web');
         $this->assertTrue($viewer->hasPermissionTo('kb.read.any'));
@@ -94,9 +89,9 @@ class RbacSeederTest extends TestCase
 
         $this->assertSame(6, Role::count());
         // 11 pre-H2 + `commands.destructive` (H2) + `pii.detokenize` (W4)
-        // + `tenant.cross-access` (v8.0.3 C1) + `kb.read.all_projects`
-        // (per-project isolation) + `pii.erase` (v8.23 Ciclo 4) = 16.
-        $this->assertSame(17, Permission::count());
+        // + `kb.read.all_projects` (per-project isolation) + `pii.erase`
+        // (v8.23 Ciclo 4) + `platform.admin` = 16.
+        $this->assertSame(16, Permission::count());
     }
 
     public function test_seeder_backfills_existing_users_with_viewer_role_and_project_membership(): void
