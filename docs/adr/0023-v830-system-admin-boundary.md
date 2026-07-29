@@ -1,6 +1,6 @@
 # ADR 0023 — Separate system administration from tenant super-administration
 
-- Status: Accepted
+- Status: Superseded in part by ADR 0024
 - Date: 2026-07-28
 - Release: v8.30
 
@@ -24,11 +24,15 @@ determines what that identity may do in each of those tenants.
 
 ## Decision
 
-Introduce a protected `system-admin` role with only:
+Introduce a protected `system-admin` role with:
 
 - `platform.admin`, which gates the global control plane;
 - `tenant.cross-access`, which bypasses membership for emergency/platform
   operation.
+
+The membership-bypass part of this decision was subsequently removed by
+[ADR 0024](0024-v830-membership-required-operational-tenants.md). The global
+`platform.admin` boundary and companion-role design remain in force.
 
 `super-admin` remains the strongest tenant role but receives neither global
 permission. Every `system-admin` also receives companion `super-admin`, allowing

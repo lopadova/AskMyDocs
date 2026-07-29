@@ -33,8 +33,10 @@ There is **no host `Team` model and no host `teams` table**. A team is the
 That is the very table [`UserTeamsResolver`](/team-switcher) reads for switcher
 labels, so team management writes to exactly the source the switcher displays.
 
-The `default` team is the host's "no multi-tenancy" **sentinel**: it has no
-`tenants` row and is **reserved** — never creatable, never renamable.
+The `default` slug is retained for legacy data compatibility. It is **not** an
+implicit tenant: it appears in the switcher and tenant-local administration
+only when the identity has an explicit `project_memberships` row for it. It
+remains reserved — never creatable and never renamable.
 
 ## Design
 
@@ -58,7 +60,7 @@ flowchart TD
     T3 --> T4["Tenant row + Project + ProjectMembership(target user)"]
     PS --> U["normalize email + create/attach User + grant role"]
     U --> T3
-    S -->|rename| R1["authorize TARGET team:<br/>membership OR tenant.cross-access"]
+    S -->|rename| R1["authorize TARGET team:<br/>explicit membership"]
     R1 -->|denied| R2["404 (IDOR-safe)"]
     R1 -->|allowed| R3["update tenants.name"]
     T4 --> M["/api/auth/me → useAuthStore.setMe → switcher re-syncs"]
@@ -160,8 +162,8 @@ necessary because Spatie roles apply to the identity across all memberships.
 
 `PATCH /api/system-admin/tenants/{slug}` changes the display name and/or lifecycle
 status. `suspended` returns HTTP 423 and `archived` returns HTTP 410 on
-tenant-scoped requests even when a stale membership or cross-access grant still
-exists. Both states disappear from the team switcher. Because the global
+tenant-scoped requests even when a stale membership still exists. Both states
+disappear from the team switcher. Because the global
 control plane is not tenant-scoped, a system administrator can always return
 the tenant to `active`.
 
@@ -175,10 +177,11 @@ lifecycle token. Successful provisioning and updates commit their
 
 ## Decision rationale (ADR-style)
 
-- **Separate platform scope from tenant privilege.** `system-admin` owns
-  `platform.admin` + `tenant.cross-access`; `super-admin` owns the maximum
-  tenant permission set but needs membership. A system administrator also holds
-  companion `super-admin` so existing tenant route allowlists remain stable.
+- **Separate platform scope from tenant privilege.** `system-admin` owns only
+  `platform.admin`; `super-admin` owns the maximum tenant permission set, and
+  both roles need membership before they may use tenant routes. A system
+  administrator also holds companion `super-admin` so existing tenant route
+  allowlists remain stable once a membership exists.
   [ADR 0023](https://github.com/lopadova/AskMyDocs/blob/main/docs/adr/0023-v830-system-admin-boundary.md)
   records the migration and rejected alternatives.
 - **Build over the vendor registry, not a new host table.** The switcher already
@@ -188,30 +191,31 @@ lifecycle token. Successful provisioning and updates commit their
   `User` — it is intentionally **not** tenant-aware and is excluded from
   `TenantIdMandatoryTest` (R30/R31), because its `slug` *is* the tenant id every
   other table references.
-- **Rename authorizes the *target* team, not the request scope.** Team
-  management is cross-tenant by nature (you administer *other* teams from within
-  your active one), so the request's `X-Tenant-Id` does **not** authorize a
-  rename. The service independently requires a membership in the target team **or**
-  the `tenant.cross-access` permission (system administrators only) — the exact rule
-  [`AuthorizeTenantHeader`](/team-switcher) enforces on the switcher path — and a
-  team you may not administer returns **404** (IDOR-safe: existence stays hidden).
+- **Rename authorizes the *target* team by membership.** The request's active
+  tenant does not prove access to another target. The service independently
+  requires a membership in the target team, matching the rule
+  [`AuthorizeTenantHeader`](/team-switcher) enforces on every tenant route. A
+  team you may not administer returns **404** (IDOR-safe: existence stays
+  hidden). System administrators manage non-member tenants only through the
+  global control plane.
 - **No MCP write tool — a deliberate R44 exception.** Like the
   [project registry](/projects-registry), team management is an admin
   **governance** affordance, not an agent capability: a `tenant_id` is already
-  usable across every surface without a registry row, and a cross-tenant *write*
+  usable as a stored legacy slug without a registry row, and a global *write*
   tool conflicts with the propose-only MCP posture. It ships **HTTP + CLI** only;
   the omission is documented in the controller and here rather than left implicit.
-- **`default` is reserved.** It has no `tenants` row and is the host fallback
-  scope; renaming or re-creating it would be meaningless (and would collide with
-  the switcher's `default`-sentinel handling), so both are rejected.
+- **`default` is reserved, not implicit.** It may have legacy data without a
+  registry row, but an identity still needs an explicit membership. Renaming or
+  re-creating it is rejected.
 
 ## Worked example
 
 An `admin` who is a member of `acme` opens **Administration → Teams**:
 
-1. `GET /api/admin/teams` returns `acme` (manageable) and the read-only
-   `default`. A system administrator additionally sees every active team via
-   `tenant.cross-access`; a tenant super-admin sees only memberships.
+1. `GET /api/admin/teams` returns only active teams represented by the
+   identity's memberships. `default` appears only when such a membership
+   exists. System administrators also see only their operational memberships
+   here; the global tenant roster lives under `/api/system-admin/tenants`.
 2. **Create** → name `Globex Corp`. The slug auto-fills to `globex-corp`
    (editable, immutable after). `POST /api/admin/teams` writes the `tenants` row +
    an initial `globex-corp` project + a membership for the admin, atomically.
@@ -220,8 +224,8 @@ An `admin` who is a member of `acme` opens **Administration → Teams**:
 4. **Rename** `Globex Corp` → `Globex Corporation`: `PATCH
    /api/admin/teams/globex-corp` updates `tenants.name`; the switcher label
    updates without a reload.
-5. A rename of a team the admin neither belongs to nor has cross-access for → the
-   API answers **404**, and the row exposes no Rename action in the first place.
+5. A rename of a team the admin does not belong to → the API answers **404**,
+   and the row exposes no Rename action in the first place.
 
 Equivalently from the CLI:
 
@@ -241,10 +245,10 @@ COMPANY_ADMIN_PASSWORD='temporary-secret' php artisan company:create --company="
 - **The slug is immutable.** It is the `tenant_id` every document, chunk,
   membership and chat log joins to — renaming changes only the display `name`.
   To "rename the id", create a new team and migrate content.
-- **Every tenant administrator sees only membership teams.** Cross-team
-  visibility requires `tenant.cross-access` (system-admin only). This is why
-  **create** attaches the acting user as a member — otherwise an admin could
-  create a team they then couldn't see.
+- **Every identity sees only membership teams on tenant surfaces.** This
+  includes system administrators. **Create** therefore attaches the acting user
+  as a member; global non-member administration belongs exclusively to the
+  system control plane.
 - **Inactive users cannot authenticate.** Both session login and bearer-token
   issuance require `users.is_active=true`; disabling an account is now an
   effective access-control action rather than a display-only flag.

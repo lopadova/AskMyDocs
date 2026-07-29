@@ -26,8 +26,8 @@ build when any controller or service reads a tenant-aware table without scoping.
 ```mermaid
 flowchart TD
     REQ[HTTP request] --> RT[ResolveTenant middleware]
-    RT -->|X-Tenant-Id / user / 'default'| TC[TenantContext singleton]
-    AUTH[auth:sanctum] --> ATH[AuthorizeTenantHeader<br/>header == own tenant OR cross-access perm]
+    RT -->|X-Tenant-Id / user tenant / legacy default| TC[TenantContext singleton]
+    AUTH[auth:sanctum] --> ATH[AuthorizeTenantHeader<br/>resolved tenant requires membership]
     TC --> DEV[developer]
     DEV -->|explicit: forTenant / where tenant_id| Q[Eloquent query]
     BT[BelongsToTenant trait] -->|creating: auto-stamp tenant_id| INS[(insert)]
@@ -37,11 +37,14 @@ flowchart TD
 ```
 
 - **`ResolveTenant`** (middleware, runs early) sets the active tenant on the
-  request-scoped **`TenantContext`** singleton — from the `X-Tenant-Id` header, the
-  authenticated user's `tenant_id`, or `'default'` (v3 backward-compat).
+  request-scoped **`TenantContext`** singleton — from the `X-Tenant-Id` header,
+  the authenticated user's legacy `tenant_id`, or the legacy `default` storage
+  slug.
 - **`AuthorizeTenantHeader`** (after `auth:sanctum`) closes the escalation hole:
-  a header that differs from the user's own tenant is rejected `403` unless the
-  user holds the `tenant.cross-access` permission (audited).
+  the resolved tenant always requires an explicit `project_memberships` row,
+  even when the header is absent. Missing membership returns
+  `403 tenant_forbidden`. Global `/api/auth/*` and `/api/system-admin/*` routes
+  deliberately sit outside this middleware.
 - **`BelongsToTenant`** trait: a `creating` hook auto-stamps `tenant_id` on every
   insert; it also exposes `scopeForTenant(string $tenantId)` for explicit
   query scoping. **There is no global read scope** — every read query must call
@@ -101,8 +104,10 @@ $docs = KnowledgeDocument::query()->forTenant($tenantId)->get();  // safe
 // FK rejects a to_node_uid that does not exist in that project.
 ```
 
-A request carrying `X-Tenant-Id: victim` from a user whose own tenant is `acme`
-is rejected `403 tenant_forbidden` unless that user holds `tenant.cross-access`.
+A request carrying `X-Tenant-Id: victim` is rejected
+`403 tenant_forbidden` unless the identity has a membership in `victim`.
+`system-admin` does not bypass this boundary; it reaches non-member tenants only
+through the separate global control plane.
 
 ## Gotchas & operations
 

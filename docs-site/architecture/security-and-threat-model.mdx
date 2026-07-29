@@ -76,7 +76,7 @@ Authorization uses six Spatie roles across two administration boundaries:
 
 | Role | Scope |
 |---|---|
-| `system-admin` | global platform control (`platform.admin`, `tenant.cross-access`) plus companion `super-admin` |
+| `system-admin` | global platform control (`platform.admin`) plus companion `super-admin`; tenant membership is still required |
 | `super-admin` | maximum tenant privilege, including `commands.destructive`; membership still required |
 | `admin` | ordinary tenant administration + `commands.run`, **not** destructive |
 | `dpo` | privacy / PII tooling + AI Act, no system admin |
@@ -90,9 +90,10 @@ Package-registered admin routes are gated by overriding the host config's
 `routes.middleware` with the authenticated admin stack — the matrix's first run
 caught an AI-Act compliance route group mounted unauthenticated.
 
-Only `system-admin` receives `tenant.cross-access`. A tenant `super-admin`
-therefore sees and enters only tenants represented by its memberships. The
-global registry is separately gated by `platform.admin`; see
+No role bypasses tenant membership. Both a `system-admin` and a tenant
+`super-admin` see and enter only tenants represented by their memberships on
+operational routes. The global registry is separately gated by
+`platform.admin`; see
 [System administration](/system-administration) and
 [ADR 0023](https://github.com/lopadova/AskMyDocs/blob/main/docs/adr/0023-v830-system-admin-boundary.md).
 

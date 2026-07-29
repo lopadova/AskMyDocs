@@ -16,7 +16,7 @@ AskMyDocs models those identities separately:
 
 | Role | Scope | How scope is obtained |
 |---|---|---|
-| `system-admin` | Entire installation | Protected operator grant; owns `platform.admin` and `tenant.cross-access` |
+| `system-admin` | Global control plane | Protected operator grant; owns `platform.admin` |
 | `super-admin` | Maximum application privilege inside membership tenants | Project membership plus the tenant role |
 | `admin`, `dpo`, `editor`, `viewer` | Existing scoped responsibilities | Project membership |
 
@@ -33,9 +33,9 @@ flowchart TD
     C --> AS["SystemAdminAccessService"]
     AS --> R["system-admin + companion super-admin"]
     R --> P["platform.admin"]
-    R --> X["tenant.cross-access"]
-    P --> UI["/app/system/tenants"]
-    UI --> API["/api/system-admin/tenants"]
+    R --> M["Tenant routes still require membership"]
+    P --> UI["/app/system/tenants + super-admins"]
+    UI --> API["/api/system-admin/*"]
     API --> TS["SystemAdminTenantService"]
     API --> PS["TenantProvisioningService"]
     TS --> REG["Global tenants registry"]
@@ -48,7 +48,8 @@ flowchart TD
 The browser route is not nested under `/app/{teamHash}`. The API interceptor
 does not send `X-Tenant-Id` to `/api/system-admin/*`; services instead constrain
 every projects/memberships join with the explicit target slug. This is what
-keeps the control plane usable when a tenant is suspended or archived.
+keeps the control plane usable when a tenant is suspended or archived, and
+when the System Admin has no operational membership at all.
 
 ## Bootstrap and protected role lifecycle
 
@@ -93,6 +94,8 @@ old `/api/super-admin/tenants` namespace does not exist.
 | `GET` | `/api/system-admin/tenants/{slug}` | Tenant detail plus paginated membership users and effective access |
 | `POST` | `/api/system-admin/tenants/{slug}/lifecycle-preview` | One-time token for one exact status transition |
 | `PATCH` | `/api/system-admin/tenants/{slug}` | Rename and/or confirmed lifecycle change |
+| `GET` | `/api/system-admin/super-admins` | Read-only paginated/filterable global roster |
+| `GET` | `/api/system-admin/super-admins/{user}/tenants` | Paginated tenant associations for one Super Admin |
 
 The optional tenant registry missing path is a clean
 `503 tenant_registry_unavailable`, never a partial response.
@@ -161,6 +164,10 @@ target email rather than storing it in the audit payload.
   conservative to avoid accidental lockout.
 - A tenant `super-admin` without membership receives 403 from a foreign
   `X-Tenant-Id` and from the global API.
+- A `system-admin` without membership can use the global API but receives
+  `403 tenant_forbidden` from operational tenant routes.
+- `/api/auth/me.teams` contains active membership tenants only; `default` is
+  not implicit.
 - Suspended/archived tenants disappear from normal switchers but remain in the
   system registry.
 - Generate a new lifecycle preview after any status change; old tokens are

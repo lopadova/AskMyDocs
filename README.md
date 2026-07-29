@@ -1045,8 +1045,8 @@ The front-end half of multi-tenancy. A user who belongs to more than one team ge
 a **topbar team switcher** and a tenant that is always visible in the URL.
 
 - **`/api/auth/me` returns a `teams` array** (`UserTeamsResolver`) grouping the
-  caller's memberships by tenant + any cross-access tenants — the switcher only ever
-  offers teams whose requests would actually be authorised.
+  caller's memberships by active tenant. Zero memberships returns `teams: []`;
+  `default` is never synthesized and appears only with a real membership.
 - **Per-team URLs** — every authenticated screen lives under `/app/{teamHash}/…`
   (`TeamHash` is a BE-computed, non-secret routing namespace; authorization stays on
   the server-validated header). Legacy hash-less bookmarks redirect into the active
@@ -1059,10 +1059,13 @@ a **topbar team switcher** and a tenant that is always visible in the URL.
 - **Cache isolation on switch** — switching team `clear()`s the whole TanStack Query
   cache and remounts the route outlet (`key=tenant_id`), so no tenant's data ever
   renders under another; a revoked membership self-heals on the next bootstrap.
-- **Membership-aware gate** — `AuthorizeTenantHeader` accepts the requested tenant for
-  the caller's own tenant, a cross-access permission, **or** a `project_membership` in
-  that tenant (scoped to both the tenant *and* the user — no escalation); anything else
-  is `403 tenant_forbidden`, which the SPA turns into a snap-back to the first valid team.
+- **Membership-required gate** — `AuthorizeTenantHeader` validates the resolved tenant
+  on every operational request, even when the header is absent. A
+  `project_membership` in that tenant is required; anything else is
+  `403 tenant_forbidden`.
+- **No-tenant state** — `/app` opens the last/first valid membership, sends a
+  tenant-less System Admin to `/app/system/tenants`, and shows “Nessun tenant
+  assegnato” to any other tenant-less identity.
 
 → Deep dive: [padosoft.mintlify.app/team-switcher](https://padosoft.mintlify.app/team-switcher).
 
@@ -1188,10 +1191,10 @@ and the ADR set under [`docs/adr/`](docs/adr/)).
 | Evidence & Risk Review firewall | `padosoft/laravel-evidence-risk-review` v1.1 wired tri-surface (PHP command + MCP tools + HTTP API + native FE admin at `/app/admin/evidence-risk-review`): a budget-bounded sweep labels source evidence tiers and scores per-claim risk verdicts (keep / soften / flag / remove) into a tenant-scoped review log. Host `TenantResolver` binding forces R30 isolation (a client `tenant` filter cannot widen scope); opt-in via `EVIDENCE_RISK_REVIEW_ADMIN_ENABLED` + optional LLM pass over `AiManager` via `EVIDENCE_RISK_REVIEW_LLM_ENABLED` (both default-OFF, R43) | v8.13 |
 | PII redaction at 11 persistence boundaries | `padosoft/laravel-pii-redactor` v1.2 wired at: (1) chat-message middleware, (2) embedding-cache pre-redact, (3) AI-insights snippet sanitiser, (4) operator detokenize endpoint, (5) Monolog log channel processor, (6) failed-jobs sanitiser via `JobFailed` listener with deterministic UUID match, (7) `Conversation`+`Message` `saving` observers, (8) `ChatLog::creating` observer, (9) `AdminCommandAudit::creating` observer, (10) `AdminInsightsSnapshot::creating` observer (6 JSON columns), (11) Flow `CurrentPayloadRedactorProvider` contract binding (covers run input + step results + audit + webhook outbox + approvals in one wire). All 5 v4.3 env knobs default OFF | v4.3 |
 | Multi-tenant isolation (R30 + R31) | The tenant-aware models (authoritative list in `tests/Architecture/TenantIdMandatoryTest::TENANT_AWARE_MODELS` — incl. `Project` + the `KbIngestBatch`/`KbIngestBatchItem` upload-tracking pair added with the team switcher) carry `tenant_id`; `BelongsToTenant` auto-fills from `TenantContext` on `creating`; the `kb_edges` composite FK is **project-scoped** (`(project_key, node_uid)`, intra-project integrity) while cross-**tenant** isolation is the application-layer R30 `forTenant()` scope (the trait adds **no** global read scope); architecture tests `TenantIdMandatoryTest` + `TenantReadScopeTest` gate new models | v4.0 |
-| Team switcher membership gate | `AuthorizeTenantHeader` validates `X-Tenant-Id` after `auth:sanctum`: accepts the caller's own tenant, a cross-access permission, **or** a `project_membership` in the requested tenant — scoped to **both** the tenant *and* the user, so a membership in another tenant or another user's membership never widens access; else `403 tenant_forbidden`. `TeamHash` is a non-secret routing namespace (auth never keys on it). The SPA omits the `X-Tenant-Id` header for the `default` sentinel so sister-package mounts fall back instead of 404ing | team switcher cycle |
+| Team switcher membership gate | `AuthorizeTenantHeader` runs after `auth:sanctum` and requires a `project_membership` in the resolved tenant on every operational route, with or without `X-Tenant-Id`; another tenant's or user's membership never widens access. `default` is a normal legacy slug and is offered only with membership. Global `/api/system-admin/*` and identity `/api/auth/*` routes intentionally sit outside this gate | team switcher cycle |
 | Automated isolation verification | Executable `IsolationMatrix` shared by a live E2E (`LiveRagIsolationTest`, opt-in `LIVE_RAG=1` + real pgvector/embeddings), the `case-study:verify-isolation [--strict]` CLI, and the CI membership-axis `CaseStudyProjectIsolationTest`; separates HARD breaches (real leak → fail) from SOFT refusal-ideal misses (warning unless `--strict`); `KB_PROJECT_ISOLATION_ENABLED` tested in both states (R43) | team switcher cycle |
 | `ResolveTenant` middleware + 4 resolvers | Header (`X-Tenant-ID`), domain regex, authenticated user column, or `'default'` (v3 backward compat); per-request singleton; queue workers re-bind tenant via try/finally restore | v4.0 |
-| Spatie RBAC (6 roles, two admin boundaries) | `system-admin` is the global platform operator (`platform.admin` + `tenant.cross-access`); `super-admin` is the maximum tenant role and still requires a membership; `admin` / `editor` / `viewer` / `dpo` retain their scoped responsibilities. Every system-admin carries companion `super-admin` for tenant-route compatibility, but the protected global role is assignable only through audited `system-admin:grant|revoke` commands | v3.0 · v8.30 |
+| Spatie RBAC (6 roles, two admin boundaries) | `system-admin` is the global platform operator and owns only `platform.admin`; `super-admin` is the maximum tenant role and tenant access always requires membership. Every system-admin carries companion `super-admin` for route-role compatibility, never as a membership bypass. The protected global role is assignable only through audited `system-admin:grant|revoke` commands | v3.0 · v8.30 |
 | Sanctum stateful SPA + Bearer tokens | Two transports feed the same guard: cookie-based SPA (`/sanctum/csrf-cookie` + `X-XSRF-TOKEN`) and personal access tokens for API clients / MCP / GitHub Action; `AuthenticateForSse` middleware emits JSON 401 (not HTML redirect) on streaming endpoints | v3.0 |
 | Stateless token-auth for non-browser clients | `POST /api/auth/token` verifies credentials with **no session / no CSRF** and mints a Sanctum PAT scoped to least-privilege `kb:read` + `kb:chat` with a **finite 30-day expiry** (never `['*']`, never immortal); `POST /api/auth/token/revoke` is the stateless sign-out (`204`); `EnforceTokenAbility` (`token.ability:<ability>`) gate constrains **only** PATs (`403 token_ability_forbidden`) on the dual-auth `/api/kb/chat` + `/api/kb/documents/search` + `/api/kb/documents/{documentId}/preview` routes and is a no-op for the cookie SPA | desktop client |
 | Tauri desktop + iOS client (`desktop/`) | Self-contained Tauri v2 + React (Vite) demo client: login, grounded chat with clickable markdown citations, document search, full-page source viewer; conversation threads persist **locally** (the Bearer client can't reach the session-guarded `/conversations`); all calls route through the Tauri HTTP plugin (no CORS change); same codebase targets iOS via Tauri v2 mobile; outside Laravel CI | desktop client |
@@ -1998,10 +2001,13 @@ including commercial use.
 The former overloaded `super-admin` concept is split in two. A tenant
 `super-admin` is now the strongest application administrator only inside
 tenants where the account has membership; only `system-admin` owns
-`platform.admin` and `tenant.cross-access`. The global control plane lives at
-`/app/system/tenants` and `/api/system-admin/tenants`, outside the active-team
+`platform.admin`. The global control plane lives at `/app/system/tenants`,
+`/app/system/super-admins` and `/api/system-admin/*`, outside the active-team
 route/header context, with audited atomic provisioning and DB-backed single-use
-lifecycle confirmations. Existing super-admin assignments are conservatively
+lifecycle confirmations. The control plane includes a read-only, paginated
+Super Admin roster and paginated tenant associations. Operational routes now
+require membership for every role; accounts with none retain a real zero-tenant
+state instead of receiving synthetic `default` access. Existing super-admin assignments are conservatively
 copied to `system-admin` during the migration so deploys do not lose operators;
 review and revoke excess global accounts afterward. New global grants/revokes
 are possible only through `system-admin:grant|revoke {email} --yes`: Users CRUD,
@@ -2009,7 +2015,8 @@ generic role commands, invitations and tenant provisioning reject the protected
 role. Existing-account provisioning never promotes a global Spatie role
 silently, and the normalized-email backfill now runs in bounded chunks. See
 [system administration](https://padosoft.mintlify.app/system-administration),
-[ADR 0023](docs/adr/0023-v830-system-admin-boundary.md), and the
+[ADR 0023](docs/adr/0023-v830-system-admin-boundary.md),
+[ADR 0024](docs/adr/0024-v830-membership-required-operational-tenants.md), and the
 [recovery runbook](docs/runbooks/system-admin-recovery.md).
 
 **v8.28.0 — In-app team (tenant) management: create a team + rename a team.**
@@ -2018,15 +2025,16 @@ not only via the `company:create` CLI. A "team" is a **tenant** (a `tenant_id`
 slug); its editable display **name** lives on the `tenants` registry row that the
 topbar **team switcher** already reads. A new **Teams** admin page
 (`/app/{team}/admin/teams`, `role:admin|super-admin`) lists the teams you may
-administer — your memberships plus every team when you hold `tenant.cross-access`,
-with the bootstrap **`default`** team read-only — and offers **Create** (name +
+administer from your real memberships, with the legacy **`default`** slug
+read-only when assigned — and offers **Create** (name +
 auto-slugged, immutable id) and **Rename**. Everything runs over ONE shared core
 **`TeamRegistryService`** (R44): **create** writes the `tenants` row + an initial
 project + a membership for you (so the team is usable and shows in your switcher
 immediately — mirrors `company:create` minus minting a new user, atomic);
 **rename** updates `tenants.name` and authorizes the **target** team by
-membership-or-`tenant.cross-access` **independently of the request's tenant
-scope** (a cross-tenant registry op — an unmanageable team 404s, IDOR-safe). The
+membership **independently of the request's tenant scope** (an unmanageable
+team 404s, IDOR-safe). Unassociated tenants are managed only through the
+global control plane. The
 same core backs the **`team:create` / `team:rename`** Artisan commands and
 `GET/POST /api/admin/teams` + `PATCH /api/admin/teams/{slug}`; after a create or
 rename the SPA refetches `/api/auth/me` so the switcher's list + label update
