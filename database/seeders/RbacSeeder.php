@@ -2,9 +2,6 @@
 
 namespace Database\Seeders;
 
-use App\Models\KnowledgeDocument;
-use App\Models\Project;
-use App\Models\ProjectMembership;
 use App\Models\User;
 use App\Support\PlatformAccess;
 use Illuminate\Database\Seeder;
@@ -29,13 +26,13 @@ use Spatie\Permission\PermissionRegistrar;
  *    permissions for admin, commands/logs/insights/admin.access for ops
  *    panel, pii.detokenize for PII reverse lookup, plus platform.admin for
  *    the system control plane).
- *  - Backfill: assign `viewer` to every existing user and create a
- *    viewer-role membership against every existing project_key so PR3
- *    deploy does not lock out the userbase.
+ *  - Backfill: assign `viewer` to every existing user. Tenant membership is
+ *    never inferred from legacy content: access requires an explicit
+ *    project_memberships row created by onboarding, an invitation, or an
+ *    administrator.
  *
  * Safe to run multiple times: firstOrCreate + syncPermissions for each
- * role, assignRole no-ops when the role is already present, upsert
- * semantics on project_memberships keyed by (user_id, project_key).
+ * role, and assignRole no-ops when the role is already present.
  */
 class RbacSeeder extends Seeder
 {
@@ -215,51 +212,18 @@ class RbacSeeder extends Seeder
     }
 
     /**
-     * Assign `viewer` role to every existing user AND create a viewer
-     * project_memberships row for each legacy DEFAULT-tenant project so the
-     * global scope doesn't lock anyone out after the flag flips on. Projects
-     * belonging to other tenants are never granted by this compatibility
-     * path.
+     * Assign `viewer` to every existing user without inventing tenant access.
      *
      * Uses chunkById to stay memory-safe on larger userbases (R3).
      */
     private function backfillExistingUsers(): void
     {
-        $projectKeys = array_values(array_unique(array_merge(
-            Project::query()
-                ->forTenant('default')
-                ->distinct()
-                ->pluck('project_key')
-                ->all(),
-            KnowledgeDocument::withTrashed()
-                ->forTenant('default')
-                ->whereNotNull('project_key')
-                ->distinct()
-                ->pluck('project_key')
-                ->all(),
-        )));
-
-        User::query()->chunkById(100, function ($users) use ($projectKeys) {
+        User::query()->chunkById(100, function ($users): void {
             foreach ($users as $user) {
-                $this->backfillUser($user, $projectKeys);
+                if (! $user->hasRole('viewer', self::GUARD)) {
+                    $user->assignRole('viewer');
+                }
             }
         });
-    }
-
-    /**
-     * @param  array<int,string>  $projectKeys
-     */
-    private function backfillUser(User $user, array $projectKeys): void
-    {
-        if (! $user->hasRole('viewer', self::GUARD)) {
-            $user->assignRole('viewer');
-        }
-
-        foreach ($projectKeys as $projectKey) {
-            ProjectMembership::firstOrCreate(
-                ['tenant_id' => 'default', 'user_id' => $user->id, 'project_key' => $projectKey],
-                ['role' => 'member', 'scope_allowlist' => null],
-            );
-        }
     }
 }

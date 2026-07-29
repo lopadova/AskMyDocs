@@ -4,10 +4,12 @@ namespace Tests\Feature\Api\Auth;
 
 use App\Models\ProjectMembership;
 use App\Models\User;
+use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
 use Laravel\Sanctum\PersonalAccessToken;
+use Padosoft\AiActCompliance\MultiTenancy\Models\Tenant;
 use Tests\TestCase;
 
 /**
@@ -19,6 +21,8 @@ class TokenTest extends TestCase
 {
     use RefreshDatabase;
 
+    private const OPERATIONAL_TENANT = 'acme';
+
     private const THROTTLE_KEY = 'token|test@example.com|127.0.0.1';
 
     protected function setUp(): void
@@ -26,6 +30,11 @@ class TokenTest extends TestCase
         parent::setUp();
 
         RateLimiter::clear(self::THROTTLE_KEY);
+        Tenant::query()->updateOrCreate(
+            ['slug' => self::OPERATIONAL_TENANT],
+            ['name' => 'Acme', 'status' => 'active', 'is_system' => false],
+        );
+        app(TenantContext::class)->set(self::OPERATIONAL_TENANT);
     }
 
     private function makeUser(string $password = 'secret123'): User
@@ -37,9 +46,9 @@ class TokenTest extends TestCase
         ]);
 
         ProjectMembership::create([
-            'tenant_id' => 'default',
+            'tenant_id' => self::OPERATIONAL_TENANT,
             'user_id' => $user->id,
-            'project_key' => 'default',
+            'project_key' => 'acme-kb',
             'role' => 'member',
         ]);
 
@@ -127,7 +136,9 @@ class TokenTest extends TestCase
         $token = $user->createToken('scopeless', [])->plainTextToken;
 
         $this->withToken($token)
-            ->getJson('/api/kb/documents/search?q=hello')
+            ->getJson('/api/kb/documents/search?q=hello', [
+                'X-Tenant-Id' => self::OPERATIONAL_TENANT,
+            ])
             ->assertStatus(403)
             ->assertJsonPath('error', 'token_ability_forbidden');
     }
@@ -143,7 +154,9 @@ class TokenTest extends TestCase
         ])->json('token');
 
         $this->withToken($token)
-            ->getJson('/api/kb/documents/search?q=hello')
+            ->getJson('/api/kb/documents/search?q=hello', [
+                'X-Tenant-Id' => self::OPERATIONAL_TENANT,
+            ])
             ->assertOk()
             ->assertExactJson(['data' => []]);
     }
@@ -156,7 +169,9 @@ class TokenTest extends TestCase
         $user = $this->makeUser();
 
         $this->actingAs($user, 'web')
-            ->getJson('/api/kb/documents/search?q=hello')
+            ->getJson('/api/kb/documents/search?q=hello', [
+                'X-Tenant-Id' => self::OPERATIONAL_TENANT,
+            ])
             ->assertOk()
             ->assertExactJson(['data' => []]);
     }

@@ -2,8 +2,6 @@
 
 namespace Tests\Feature\Rbac;
 
-use App\Models\KnowledgeDocument;
-use App\Models\ProjectMembership;
 use App\Models\User;
 use Database\Seeders\RbacSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -94,7 +92,7 @@ class RbacSeederTest extends TestCase
         $this->assertSame(16, Permission::count());
     }
 
-    public function test_seeder_backfills_existing_users_with_viewer_role_and_project_membership(): void
+    public function test_seeder_backfills_existing_users_with_viewer_role_without_tenant_membership(): void
     {
         $user = User::create([
             'name' => 'Existing',
@@ -102,27 +100,14 @@ class RbacSeederTest extends TestCase
             'password' => Hash::make('secret123'),
         ]);
 
-        KnowledgeDocument::create([
-            'project_key' => 'hr-portal',
-            'source_type' => 'markdown',
-            'title' => 'Policy',
-            'source_path' => 'hr/policy.md',
-            'document_hash' => hash('sha256', 'x'),
-            'version_hash' => hash('sha256', 'x:v1'),
-            'status' => 'indexed',
-        ]);
-
         $this->seed(RbacSeeder::class);
 
         $user->refresh();
         $this->assertTrue($user->hasRole('viewer'));
-        $this->assertDatabaseHas('project_memberships', [
-            'user_id' => $user->id,
-            'project_key' => 'hr-portal',
-        ]);
+        $this->assertDatabaseMissing('project_memberships', ['user_id' => $user->id]);
     }
 
-    public function test_seeder_backfill_does_not_duplicate_memberships_on_rerun(): void
+    public function test_seeder_backfill_is_idempotent_without_creating_memberships(): void
     {
         $user = User::create([
             'name' => 'Repeat',
@@ -130,22 +115,11 @@ class RbacSeederTest extends TestCase
             'password' => Hash::make('secret123'),
         ]);
 
-        KnowledgeDocument::create([
-            'project_key' => 'hr-portal',
-            'source_type' => 'markdown',
-            'title' => 'Policy',
-            'source_path' => 'hr/policy.md',
-            'document_hash' => hash('sha256', 'x'),
-            'version_hash' => hash('sha256', 'x:v1'),
-            'status' => 'indexed',
-        ]);
-
         $this->seed(RbacSeeder::class);
         $this->seed(RbacSeeder::class);
 
-        $this->assertSame(
-            1,
-            ProjectMembership::where('user_id', $user->id)->count(),
-        );
+        $user->refresh();
+        $this->assertTrue($user->hasRole('viewer'));
+        $this->assertDatabaseMissing('project_memberships', ['user_id' => $user->id]);
     }
 }

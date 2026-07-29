@@ -1037,7 +1037,7 @@ The polymorphic entry point is `DocumentIngestor::ingest(string $projectKey, Sou
 
 ### Multi-tenant deployment (v4.0)
 
-The v4.0 cycle adds a **per-request tenant context** that scopes every Eloquent query against tenant-aware tables (R30/R31). Existing v3.x deployments are backward-compatible — every row gets `tenant_id = 'default'` and the resolver returns `'default'` unless explicitly configured otherwise.
+The v4.0 cycle adds a **per-request tenant context** that scopes every Eloquent query against tenant-aware tables (R30/R31). Historical v3.x rows may still carry the storage value `tenant_id = 'default'`, but `default` is now a reserved, non-operational slug: it is never exposed as a team and never grants access. Every operational request requires an explicit membership in an active, non-system tenant.
 
 **The plumbing**
 
