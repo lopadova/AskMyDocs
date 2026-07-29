@@ -4,6 +4,7 @@ namespace App\Http\Requests\Admin;
 
 use App\Models\User;
 use App\Support\RoleAssignmentGuard;
+use App\Support\TenantContext;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -40,6 +41,18 @@ class UserStoreRequest extends FormRequest
             'is_active' => ['nullable', 'boolean'],
             'roles' => ['nullable', 'array'],
             'roles.*' => ['string', Rule::exists('roles', 'name')],
+            'initial_project_key' => [
+                'required',
+                'string',
+                'max:120',
+                Rule::exists('projects', 'project_key')->where(
+                    fn ($query) => $query->where(
+                        'tenant_id',
+                        app(TenantContext::class)->current(),
+                    ),
+                ),
+            ],
+            'membership_role' => ['required', 'string', Rule::in(['member', 'admin', 'owner'])],
         ];
     }
 

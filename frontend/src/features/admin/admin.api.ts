@@ -165,6 +165,8 @@ export interface AdminUserInput {
     password?: string | null;
     is_active?: boolean;
     roles?: string[];
+    initial_project_key?: string;
+    membership_role?: 'member' | 'admin' | 'owner';
 }
 
 export interface AdminRole {

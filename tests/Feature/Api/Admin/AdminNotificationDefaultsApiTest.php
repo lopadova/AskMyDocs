@@ -7,6 +7,7 @@ namespace Tests\Feature\Api\Admin;
 use App\Models\NotificationEvent;
 use App\Models\NotificationPreference;
 use App\Models\NotificationTenantDefault;
+use App\Models\Project;
 use App\Models\User;
 use App\Support\TenantContext;
 use Database\Seeders\RbacSeeder;
@@ -47,6 +48,10 @@ class AdminNotificationDefaultsApiTest extends TestCase
         $this->seed(RbacSeeder::class);
         Cache::flush();
         app(TenantContext::class)->set('default');
+        Project::firstOrCreate(
+            ['tenant_id' => 'default', 'project_key' => 'default'],
+            ['name' => 'Default'],
+        );
     }
 
     public function test_index_returns_shape_with_event_types_channels_and_defaults(): void
@@ -284,6 +289,8 @@ class AdminNotificationDefaultsApiTest extends TestCase
             'password' => 'secret123',
             'password_confirmation' => 'secret123',
             'roles' => ['viewer'],
+            'initial_project_key' => 'default',
+            'membership_role' => 'member',
         ];
 
         $resp = $this->actingAs($admin)
@@ -321,6 +328,8 @@ class AdminNotificationDefaultsApiTest extends TestCase
             'password' => 'secret123',
             'password_confirmation' => 'secret123',
             'roles' => ['viewer'],
+            'initial_project_key' => 'default',
+            'membership_role' => 'member',
         ];
 
         $resp = $this->actingAs($admin)

@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Api\Admin;
 
+use App\Models\Project;
+use App\Models\ProjectMembership;
 use App\Models\User;
 use Database\Seeders\RbacSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -30,6 +32,10 @@ class UserControllerTest extends TestCase
     {
         parent::setUp();
         $this->seed(RbacSeeder::class);
+        Project::firstOrCreate(
+            ['tenant_id' => 'default', 'project_key' => 'default'],
+            ['name' => 'Default', 'description' => 'Test project'],
+        );
         Cache::flush();
     }
 
@@ -145,6 +151,36 @@ class UserControllerTest extends TestCase
             ->assertJsonStructure(['data' => ['roles', 'permissions']]);
     }
 
+    public function test_index_and_show_exclude_identities_outside_the_current_tenant(): void
+    {
+        $admin = $this->makeAdmin();
+        $local = $this->makeViewer('local');
+        $foreign = User::create([
+            'name' => 'Foreign',
+            'email' => 'foreign@demo.local',
+            'password' => Hash::make('secret123'),
+        ]);
+        $foreign->assignRole('viewer');
+        ProjectMembership::create([
+            'tenant_id' => 'foreign',
+            'user_id' => $foreign->id,
+            'project_key' => 'foreign',
+            'role' => 'member',
+        ]);
+
+        $data = $this->actingAs($admin)
+            ->getJson('/api/admin/users')
+            ->assertOk()
+            ->json('data');
+
+        $ids = array_column($data, 'id');
+        $this->assertContains($local->id, $ids);
+        $this->assertNotContains($foreign->id, $ids);
+        $this->actingAs($admin)
+            ->getJson("/api/admin/users/{$foreign->id}")
+            ->assertNotFound();
+    }
+
     // ------------------------------------------------------------------
     // Store
     // ------------------------------------------------------------------
@@ -158,12 +194,21 @@ class UserControllerTest extends TestCase
                 'name' => 'New Person',
                 'email' => 'new-person@demo.local',
                 'password' => 'Super$tr0ngP@ss1',
+                'initial_project_key' => 'default',
+                'membership_role' => 'member',
             ])
             ->assertStatus(201)
             ->assertJsonPath('data.email', 'new-person@demo.local')
             ->assertJsonPath('data.roles', ['viewer']);
 
         $this->assertDatabaseHas('users', ['email' => 'new-person@demo.local']);
+        $createdId = (int) User::query()->where('email', 'new-person@demo.local')->value('id');
+        $this->assertDatabaseHas('project_memberships', [
+            'tenant_id' => 'default',
+            'user_id' => $createdId,
+            'project_key' => 'default',
+            'role' => 'member',
+        ]);
     }
 
     public function test_store_rejects_duplicate_email_with_422(): void
@@ -188,7 +233,13 @@ class UserControllerTest extends TestCase
         $this->actingAs($admin)
             ->postJson('/api/admin/users', [])
             ->assertStatus(422)
-            ->assertJsonValidationErrors(['name', 'email', 'password']);
+            ->assertJsonValidationErrors([
+                'name',
+                'email',
+                'password',
+                'initial_project_key',
+                'membership_role',
+            ]);
     }
 
     // ------------------------------------------------------------------
@@ -227,6 +278,25 @@ class UserControllerTest extends TestCase
 
         $user->refresh();
         $this->assertNotSame($originalHash, $user->password);
+    }
+
+    public function test_tenant_surface_rejects_global_identity_mutation_when_another_tenant_depends_on_it(): void
+    {
+        $admin = $this->makeAdmin();
+        $user = $this->makeViewer('shared');
+        ProjectMembership::create([
+            'tenant_id' => 'other-tenant',
+            'user_id' => $user->id,
+            'project_key' => 'other-project',
+            'role' => 'member',
+        ]);
+
+        $this->actingAs($admin)
+            ->patchJson("/api/admin/users/{$user->id}", ['name' => 'Changed'])
+            ->assertConflict()
+            ->assertJsonPath('error', 'cross_tenant_identity');
+
+        $this->assertSame('shared', $user->fresh()->name);
     }
 
     // ------------------------------------------------------------------
@@ -277,6 +347,7 @@ class UserControllerTest extends TestCase
             'password' => Hash::make('secret123'),
         ]);
         $superAdmin->assignRole('super-admin');
+        $this->grantDefaultMembership($superAdmin);
 
         $this->actingAs($admin)
             ->deleteJson("/api/admin/users/{$superAdmin->id}")
@@ -385,6 +456,8 @@ class UserControllerTest extends TestCase
                 'email' => 'editor-person@demo.local',
                 'password' => 'Super$tr0ngP@ss1',
                 'roles' => ['editor', 'viewer'],
+                'initial_project_key' => 'default',
+                'membership_role' => 'member',
             ])
             ->assertStatus(201)
             ->assertJsonPath('data.roles', ['editor', 'viewer']);
@@ -398,6 +471,7 @@ class UserControllerTest extends TestCase
             'password' => Hash::make('secret123'),
         ]);
         $superAdmin->assignRole('super-admin');
+        $this->grantDefaultMembership($superAdmin);
 
         $this->actingAs($superAdmin)
             ->postJson('/api/admin/users', [
@@ -405,6 +479,8 @@ class UserControllerTest extends TestCase
                 'email' => 'second-root@demo.local',
                 'password' => 'Super$tr0ngP@ss1',
                 'roles' => ['super-admin'],
+                'initial_project_key' => 'default',
+                'membership_role' => 'admin',
             ])
             ->assertStatus(201)
             ->assertJsonPath('data.roles', ['super-admin']);
@@ -418,6 +494,7 @@ class UserControllerTest extends TestCase
             'password' => Hash::make('secret123'),
         ]);
         $system->assignRole(['system-admin', 'super-admin']);
+        $this->grantDefaultMembership($system);
 
         $this->actingAs($system)
             ->postJson('/api/admin/users', [
@@ -450,6 +527,7 @@ class UserControllerTest extends TestCase
             'password' => Hash::make('secret123'),
         ]);
         $system->assignRole(['system-admin', 'super-admin']);
+        $this->grantDefaultMembership($system);
 
         $data = $this->actingAs($admin)->getJson('/api/admin/users')->assertOk()->json('data');
         $this->assertNotContains($system->id, array_column($data, 'id'));
@@ -490,6 +568,7 @@ class UserControllerTest extends TestCase
             'password' => Hash::make('secret123'),
         ]);
         $admin->assignRole('admin');
+        $this->grantDefaultMembership($admin);
 
         return $admin;
     }
@@ -502,7 +581,19 @@ class UserControllerTest extends TestCase
             'password' => Hash::make('secret123'),
         ]);
         $user->assignRole('viewer');
+        $this->grantDefaultMembership($user);
 
         return $user;
+    }
+
+    private function grantDefaultMembership(User $user): void
+    {
+        ProjectMembership::firstOrCreate([
+            'tenant_id' => 'default',
+            'user_id' => $user->id,
+            'project_key' => 'default',
+        ], [
+            'role' => 'member',
+        ]);
     }
 }
