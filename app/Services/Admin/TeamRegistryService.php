@@ -41,8 +41,8 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
  *     A miss is a 404 (IDOR-safe — the team's existence stays hidden).
  * System administrators manage unassociated tenants only through the global
  * `/api/system-admin/tenants` control plane.
- * `default` is a reserved legacy slug (normally without a `tenants` row): it
- * is never creatable or renamable and is visible only through membership.
+ * `default` is a reserved, non-operational legacy fallback: it is never
+ * creatable, renamable or visible through membership.
  *
  * Team visibility for the list is delegated verbatim to
  * {@see UserTeamsResolver} — the same source the topbar switcher reads — so
@@ -51,26 +51,11 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 final class TeamRegistryService
 {
     /**
-     * Tenant-aware tables whose presence of a `tenant_id` proves the slug is
-     * already an existing tenant (so a create must NOT claim it). Includes the
-     * data-bearing tables that ingest can populate with NO registry row, not
-     * just projects/memberships — see {@see self::assertUnique()} (R30).
+     * Memoised list of every live schema table carrying `tenant_id`.
      *
-     * @var list<string>
+     * @var list<string>|null
      */
-    private const TENANT_DATA_TABLES = [
-        'projects',
-        'project_memberships',
-        'knowledge_documents',
-        'knowledge_chunks',
-        'chat_logs',
-        'conversations',
-        'messages',
-        'kb_nodes',
-        'kb_edges',
-        'kb_canonical_audit',
-        'kb_tags',
-    ];
+    private ?array $tenantScopedTables = null;
 
     public function __construct(
         private readonly TenantContext $tenantContext,
@@ -329,8 +314,11 @@ final class TeamRegistryService
      * memberships/tenants row — connector ingest writes documents WITHOUT a
      * registry row — so claiming that slug here would mint the actor a
      * membership in the victim tenant and grant operational access.
-     * Each table is Schema::hasTable-guarded so an unmigrated optional table
-     * degrades cleanly.
+     *
+     * The scan set is derived from the live schema, not a literal list. Host
+     * and vendor packages continuously add tenant-aware tables (connectors,
+     * invitations, notifications, widgets); omitting any one of them reopens
+     * the same escalation hole.
      */
     private function assertUnique(string $slug): void
     {
@@ -338,11 +326,39 @@ final class TeamRegistryService
             $this->rejectDuplicateSlug($slug);
         }
 
-        foreach (self::TENANT_DATA_TABLES as $table) {
-            if (Schema::hasTable($table) && DB::table($table)->where('tenant_id', $slug)->exists()) {
+        foreach ($this->tenantScopedTables() as $table) {
+            if (DB::table($table)->where('tenant_id', $slug)->exists()) {
                 $this->rejectDuplicateSlug($slug);
             }
         }
+    }
+
+    /**
+     * Every live table for which a bare tenant-id existence check is valid.
+     * Transitively-scoped children without their own `tenant_id` are correctly
+     * excluded because their parent row is present in a table that is scanned.
+     * The `tenants` registry uses `slug`, so {@see self::assertUnique()} handles
+     * it separately.
+     *
+     * @return list<string>
+     */
+    private function tenantScopedTables(): array
+    {
+        if ($this->tenantScopedTables !== null) {
+            return $this->tenantScopedTables;
+        }
+
+        $tables = [];
+        foreach (Schema::getTableListing() as $table) {
+            // PostgreSQL may return schema-qualified names while hasColumn()
+            // expects the table name in the active search path.
+            $name = str_contains($table, '.') ? Str::afterLast($table, '.') : $table;
+            if (Schema::hasColumn($name, 'tenant_id')) {
+                $tables[] = $name;
+            }
+        }
+
+        return $this->tenantScopedTables = array_values(array_unique($tables));
     }
 
     private function rejectDuplicateSlug(string $slug): void

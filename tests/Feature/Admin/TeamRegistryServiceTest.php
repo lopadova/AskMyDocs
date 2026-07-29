@@ -15,6 +15,7 @@ use App\Support\TenantContext;
 use Database\Seeders\RbacSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
@@ -255,6 +256,32 @@ final class TeamRegistryServiceTest extends TestCase
 
         $this->expectException(ValidationException::class);
         $this->service()->create('m-only', 'M Only', $actor);
+    }
+
+    public function test_create_refuses_a_slug_taken_by_a_vendor_tenant_table(): void
+    {
+        // connector_installations ships in a vendor package and was outside
+        // the old literal scan set. The row deliberately has no registry,
+        // project, membership or document companion: only schema discovery can
+        // prevent the onboarding flow from claiming its tenant namespace.
+        $actor = $this->userWithRole('admin');
+        DB::table('connector_installations')->insert([
+            'tenant_id' => 'ghost-connector',
+            'connector_name' => 'imap',
+        ]);
+
+        try {
+            $this->service()->create('ghost-connector', 'Ghost Connector', $actor);
+            $this->fail('Expected a ValidationException for the occupied tenant namespace.');
+        } catch (ValidationException $e) {
+            $this->assertArrayHasKey('slug', $e->errors());
+        }
+
+        $this->assertDatabaseMissing('tenants', ['slug' => 'ghost-connector']);
+        $this->assertDatabaseMissing('project_memberships', [
+            'tenant_id' => 'ghost-connector',
+            'user_id' => $actor->id,
+        ]);
     }
 
     public function test_create_rejects_a_name_over_200_characters(): void

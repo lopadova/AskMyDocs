@@ -8,6 +8,7 @@ use App\Models\AdminCommandAudit;
 use App\Models\User;
 use App\Services\Admin\Exceptions\ExistingUserRoleMismatchException;
 use App\Support\PlatformAccess;
+use App\Support\SystemTenantRegistry;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -175,7 +176,12 @@ final class TenantProvisioningService
             ?: ($role === 'admin' || $role === 'super-admin' ? 'admin' : 'member');
 
         $audit = AdminCommandAudit::create([
-            'tenant_id' => $slug,
+            // The target slug is not a tenant yet. Keep the in-flight audit in
+            // the reserved control-plane namespace so the schema-driven slug
+            // hijack guard does not mistake this attempt for pre-existing
+            // customer data. Successful provisioning moves it to the new tenant
+            // in the same transaction as the tenant bundle.
+            'tenant_id' => SystemTenantRegistry::REGISTRATION,
             'user_id' => $actor?->id,
             'command' => 'system-admin:tenant-provision',
             'args_json' => [
@@ -234,7 +240,7 @@ final class TenantProvisioningService
                 // Provisioning and a completed audit record commit together.
                 // A failed audit write rolls the tenant, identity, role and
                 // membership mutation back as one unit.
-                $this->finishAudit($audit, AdminCommandAudit::STATUS_COMPLETED, 0);
+                $this->finishAudit($audit, AdminCommandAudit::STATUS_COMPLETED, 0, tenantId: $slug);
 
                 return ['user' => $user->fresh(), 'tenant' => $tenant];
             });
@@ -358,19 +364,29 @@ final class TenantProvisioningService
         string $status,
         int $exitCode,
         ?string $error = null,
+        ?string $tenantId = null,
     ): void {
+        // A transaction may have mutated this model instance and then rolled
+        // back. Re-read the durable row before deciding whether it is terminal.
+        $audit->refresh();
+
         // Do not overwrite a terminal audit row when a known QueryException
         // was converted and then caught by the outer Throwable handler.
         if ($audit->status !== AdminCommandAudit::STATUS_STARTED) {
             return;
         }
 
-        $audit->forceFill([
+        $attributes = [
             'status' => $status,
             'exit_code' => $exitCode,
             'error_message' => $error === null ? null : mb_substr($error, 0, 1000),
             'completed_at' => now(),
-        ])->save();
+        ];
+        if ($tenantId !== null) {
+            $attributes['tenant_id'] = $tenantId;
+        }
+
+        $audit->forceFill($attributes)->save();
     }
 
     private function correlationId(): ?string
