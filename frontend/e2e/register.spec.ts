@@ -76,6 +76,17 @@ test.describe('Invite-only registration', () => {
         await page.getByTestId('register-invite-code').fill('J01NACME');
         await page.getByTestId('register-submit').click();
 
+        await expect(page).toHaveURL(/\/app\/welcome\/[^/]+$/, { timeout: 15_000 });
+        await expect(page.getByTestId('tenant-welcome-view')).toHaveAttribute('data-state', 'ready');
+        await expect(
+            page.getByRole('heading', { name: 'Benvenuto in Invited Company' }),
+        ).toBeVisible();
+
+        // The handoff is URL-backed, not an ephemeral component flag.
+        await page.reload();
+        await expect(page.getByTestId('tenant-welcome-view')).toHaveAttribute('data-state', 'ready');
+        await page.getByTestId('tenant-welcome-continue').click();
+
         await expect(page).toHaveURL(/\/app\/[^/]+\/chat$/, { timeout: 15_000 });
         await expect(page.getByTestId('appshell-root')).toBeVisible({ timeout: 15_000 });
         await expect(page.getByTestId('company-onboarding-view')).toHaveCount(0);

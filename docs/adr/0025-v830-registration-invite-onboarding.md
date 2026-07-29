@@ -38,6 +38,11 @@ Each public code carries exactly one registration intent:
 a bootstrap code; supplying `--tenant` and one or more `--project` values
 creates a tenant-linked code.
 
+The SPA preserves the registration intent. A completed `tenant_join` opens the
+authenticated `/app/welcome/{teamHash}` handoff, names the assigned company and
+requires an explicit continue action before entering chat. A
+`company_bootstrap` continues to `/app/onboarding`.
+
 `POST /api/auth/onboarding/company` is authenticated but deliberately outside
 tenant authorization. It rechecks that the identity has no operational
 membership, then atomically creates the tenant, initial project and owner

@@ -22,6 +22,7 @@ import { TenantControlView } from '../features/system-admin/tenants/TenantContro
 import { SuperAdminsView } from '../features/system-admin/super-admins/SuperAdminsView';
 import { NoTenantAssignedView } from '../features/tenant/NoTenantAssignedView';
 import { CompanyOnboardingView } from '../features/tenant/CompanyOnboardingView';
+import { TenantWelcomeView } from '../features/tenant/TenantWelcomeView';
 import { KbView } from '../features/admin/kb/KbView';
 import { KbHealthView } from '../features/admin/kb-health/KbHealthView';
 import { TagsList } from '../features/admin/tags/TagsList';
@@ -71,7 +72,7 @@ import { ResetPasswordPage } from '../features/auth/ResetPasswordPage';
 import { RedirectIfAuth, RequireAuth, useAuthBootstrap } from './guards';
 import { useAuthStore } from '../lib/auth-store';
 import { selectCurrentHash, useTeamStore } from '../lib/team-store';
-import { useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 
 function RootLayout() {
     useAuthBootstrap();
@@ -110,10 +111,40 @@ const loginRoute = createRoute({
 
 function RegisterRoute() {
     const navigate = useNavigate();
+    const welcomeTeamHash = useRef<string | null>(null);
+    const redirectAuthenticated = useCallback(() => {
+        if (welcomeTeamHash.current !== null) {
+            navigate({
+                to: '/app/welcome/$teamHash',
+                params: { teamHash: welcomeTeamHash.current },
+            });
+            return;
+        }
+
+        navigate({ to: '/app' });
+    }, [navigate]);
+
     return (
-        <RedirectIfAuth>
+        <RedirectIfAuth onAuthenticated={redirectAuthenticated}>
             <RegisterPage
-                onSuccess={() => navigate({ to: '/app' })}
+                onSuccess={({ registration, me }) => {
+                    const team = registration.target_tenant === null
+                        ? undefined
+                        : me.teams?.find(
+                            (candidate) => candidate.tenant_id === registration.target_tenant,
+                        );
+
+                    if (registration.intent === 'tenant_join' && team) {
+                        // RedirectIfAuth wakes as soon as RegisterPage stores
+                        // `/me`. Record the intent-specific destination first
+                        // so its authenticated redirect cannot race us to the
+                        // generic bare `/app` route.
+                        welcomeTeamHash.current = team.hash;
+                        return;
+                    }
+
+                    welcomeTeamHash.current = null;
+                }}
                 onNavigateLogin={() => navigate({ to: '/login' })}
             />
         </RedirectIfAuth>
@@ -565,6 +596,35 @@ const companyOnboardingRoute = createRoute({
     getParentRoute: () => appRoute,
     path: 'onboarding',
     component: CompanyOnboardingRoute,
+});
+
+function TenantWelcomeRoute() {
+    const { teamHash } = tenantWelcomeRoute.useParams();
+    const team = useTeamStore((state) => state.teams.find(
+        (candidate) => candidate.hash === teamHash,
+    ));
+    const navigate = useNavigate();
+
+    if (!team) {
+        return <Navigate to="/app" replace />;
+    }
+
+    return (
+        <TenantWelcomeView
+            teamName={team.name}
+            onContinue={() => navigate({
+                to: '/app/$teamHash/chat',
+                params: { teamHash: team.hash },
+                replace: true,
+            })}
+        />
+    );
+}
+
+const tenantWelcomeRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'welcome/$teamHash',
+    component: TenantWelcomeRoute,
 });
 
 // PR7 / Phase F2 — flat admin children. Same shape as `chatRoute`
@@ -1377,6 +1437,7 @@ const routeTree = rootRoute.addChildren([
         systemAdminTenantControlRoute,
         systemAdminSuperAdminsRoute,
         companyOnboardingRoute,
+        tenantWelcomeRoute,
         noTenantAssignedRoute,
         teamRoute.addChildren(teamChildren),
         digestRoute,

@@ -24,9 +24,19 @@ export type RegisterInput = {
     invite_code: string;
 };
 
-export async function register(input: RegisterInput): Promise<LoginResponse> {
+export type RegistrationResult = {
+    intent: 'company_bootstrap' | 'tenant_join';
+    target_tenant: string | null;
+    onboarding_required: boolean;
+};
+
+export type RegisterResponse = LoginResponse & {
+    registration: RegistrationResult;
+};
+
+export async function register(input: RegisterInput): Promise<RegisterResponse> {
     await ensureCsrfCookie();
-    const { data } = await api.post<LoginResponse>('/api/auth/register', input);
+    const { data } = await api.post<RegisterResponse>('/api/auth/register', input);
     return data;
 }
 

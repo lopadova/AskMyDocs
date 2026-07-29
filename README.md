@@ -774,7 +774,10 @@ database fault prevented provisioning, registration returns
 immutable redemption. Once completion is marked, removing the user from every
 company is treated as an intentional revocation and never restores the old
 grant. Neither flow falls back to the legacy slug `default`, which is reserved
-and confers no implicit access.
+and confers no implicit access. After a successful tenant-linked registration,
+the SPA opens `/app/welcome/{teamHash}` and names the assigned company before
+the user explicitly enters its chat; bootstrap registrations continue directly
+to `/app/onboarding`.
 
 The admin surface is a **native, in-app tabbed page** at
 `/app/{team}/admin/invitations` (Overview · Campaigns · Codes · Invite ·
