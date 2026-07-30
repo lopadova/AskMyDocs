@@ -53,6 +53,9 @@ final class FlowServiceProvider extends ServiceProvider
             static fn (FlowStore $store, $app): FlowStore => new TenantAwareFlowStore(
                 $store,
                 $app->make(TenantContext::class),
+                is_string($app['config']->get('laravel-flow.default_storage'))
+                    ? $app['config']->get('laravel-flow.default_storage')
+                    : null,
             ),
         );
     }

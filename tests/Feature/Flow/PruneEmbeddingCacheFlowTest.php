@@ -34,10 +34,10 @@ final class PruneEmbeddingCacheFlowTest extends TestCase
         $run = Flow::execute(
             PruneEmbeddingCacheFlow::NAME,
             [
-                'tenant_id' => 'default',
+                'tenant_id' => 'test-tenant',
                 'cutoff_iso' => CarbonImmutable::now()->subDays(30)->toIso8601String(),
             ],
-            FlowExecutionOptions::make(correlationId: 'default'),
+            FlowExecutionOptions::make(correlationId: 'test-tenant'),
         );
 
         $this->assertSame(FlowRun::STATUS_SUCCEEDED, $run->status);
@@ -57,10 +57,10 @@ final class PruneEmbeddingCacheFlowTest extends TestCase
         $run = Flow::execute(
             PruneEmbeddingCacheFlow::NAME,
             [
-                'tenant_id' => 'default',
+                'tenant_id' => 'test-tenant',
                 'cutoff_iso' => CarbonImmutable::now()->subDays(30)->toIso8601String(),
             ],
-            FlowExecutionOptions::make(correlationId: 'default'),
+            FlowExecutionOptions::make(correlationId: 'test-tenant'),
         );
 
         $this->assertSame(FlowRun::STATUS_PAUSED, $run->status);
@@ -80,10 +80,10 @@ final class PruneEmbeddingCacheFlowTest extends TestCase
         $run = Flow::dryRun(
             PruneEmbeddingCacheFlow::NAME,
             [
-                'tenant_id' => 'default',
+                'tenant_id' => 'test-tenant',
                 'cutoff_iso' => CarbonImmutable::now()->subDays(30)->toIso8601String(),
             ],
-            FlowExecutionOptions::make(correlationId: 'default'),
+            FlowExecutionOptions::make(correlationId: 'test-tenant'),
         );
 
         $this->assertSame(FlowRun::STATUS_SUCCEEDED, $run->status);

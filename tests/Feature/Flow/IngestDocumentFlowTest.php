@@ -153,7 +153,7 @@ final class IngestDocumentFlowTest extends TestCase
             IngestDocumentFlow::NAME,
             $this->buildInput('tenant-a', 'demo', 'docs/intro.md'),
             FlowExecutionOptions::make(
-                idempotencyKey: 'tenant-a:demo:docs/intro.md',
+                idempotencyKey: 'shared-ingest-key',
                 correlationId: 'tenant-a',
             ),
         );
@@ -167,7 +167,7 @@ final class IngestDocumentFlowTest extends TestCase
             IngestDocumentFlow::NAME,
             $this->buildInput('tenant-b', 'demo', 'docs/intro.md'),
             FlowExecutionOptions::make(
-                idempotencyKey: 'tenant-b:demo:docs/intro.md',
+                idempotencyKey: 'shared-ingest-key',
                 correlationId: 'tenant-b',
             ),
         );

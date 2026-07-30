@@ -20,11 +20,16 @@ final readonly class TenantAwareFlowStore implements FlowStore, RedactorAwareFlo
     public function __construct(
         private FlowStore $inner,
         private TenantContext $tenants,
+        private ?string $connection,
     ) {}
 
     public function runs(): RunRepository
     {
-        return $this->inner->runs();
+        return new TenantAwareRunRepository(
+            $this->inner->runs(),
+            $this->tenants,
+            $this->connection,
+        );
     }
 
     public function steps(): StepRunRepository
@@ -43,7 +48,11 @@ final readonly class TenantAwareFlowStore implements FlowStore, RedactorAwareFlo
             return $this;
         }
 
-        return new self($this->inner->withPayloadRedactor($redactor), $this->tenants);
+        return new self(
+            $this->inner->withPayloadRedactor($redactor),
+            $this->tenants,
+            $this->connection,
+        );
     }
 
     public function transaction(callable $callback): mixed
