@@ -41,7 +41,7 @@ final class ImapFolderListingTest extends TestCase
     {
         parent::setUp();
         $this->seed(RbacSeeder::class);
-        app(TenantContext::class)->set('default');
+        app(TenantContext::class)->set('test-tenant');
         Cache::flush();
     }
 
@@ -49,7 +49,7 @@ final class ImapFolderListingTest extends TestCase
     {
         $admin = $this->makeSuperAdmin();
         $this->bindImapFactory(folders: ['INBOX', '[Gmail]/Sent Mail', 'rotta-logistics-1']);
-        $installation = $this->makeImapInstallation('default');
+        $installation = $this->makeImapInstallation('test-tenant');
 
         $resp = $this->actingAs($admin)->getJson("/api/admin/connectors/{$installation->id}/folders");
 
@@ -64,7 +64,7 @@ final class ImapFolderListingTest extends TestCase
     {
         $admin = $this->makeSuperAdmin();
         $this->bindImapFactory(folders: []);
-        $installation = $this->makeImapInstallation('default');
+        $installation = $this->makeImapInstallation('test-tenant');
 
         $resp = $this->actingAs($admin)->getJson("/api/admin/connectors/{$installation->id}/folders");
 
@@ -76,7 +76,7 @@ final class ImapFolderListingTest extends TestCase
     {
         $admin = $this->makeSuperAdmin();
         $this->bindImapFactory(throw: true);
-        $installation = $this->makeImapInstallation('default');
+        $installation = $this->makeImapInstallation('test-tenant');
 
         $resp = $this->actingAs($admin)->getJson("/api/admin/connectors/{$installation->id}/folders");
 
@@ -101,7 +101,7 @@ final class ImapFolderListingTest extends TestCase
     {
         $viewer = $this->makeViewer();
         $this->bindImapFactory(folders: ['INBOX']);
-        $installation = $this->makeImapInstallation('default');
+        $installation = $this->makeImapInstallation('test-tenant');
 
         $this->actingAs($viewer)
             ->getJson("/api/admin/connectors/{$installation->id}/folders")
@@ -110,7 +110,7 @@ final class ImapFolderListingTest extends TestCase
 
     public function test_guest_is_unauthorized(): void
     {
-        $installation = $this->makeImapInstallation('default');
+        $installation = $this->makeImapInstallation('test-tenant');
 
         $this->getJson("/api/admin/connectors/{$installation->id}/folders")
             ->assertStatus(401);

@@ -44,7 +44,7 @@ final class GamificationTest extends TestCase
     {
         for ($i = 0; $i < $n; $i++) {
             KbContributionEvent::create([
-                'tenant_id' => 'default', 'user_id' => $userId, 'document_id' => $docId,
+                'tenant_id' => 'test-tenant', 'user_id' => $userId, 'document_id' => $docId,
                 'project_key' => 'eng', 'event' => $event,
                 'weight' => KbContributionEvent::WEIGHTS[$event] ?? 1, 'created_at' => now(),
             ]);
@@ -99,7 +99,7 @@ final class GamificationTest extends TestCase
         $u = $this->user();
         $this->events($u->id, 'created', 1);
 
-        $this->artisan('gamification:recompute', ['--tenant' => 'default'])->assertExitCode(0);
+        $this->artisan('gamification:recompute', ['--tenant' => 'test-tenant'])->assertExitCode(0);
         $this->assertDatabaseHas('kb_user_badges', ['user_id' => $u->id, 'badge_key' => 'first_contribution']);
     }
 

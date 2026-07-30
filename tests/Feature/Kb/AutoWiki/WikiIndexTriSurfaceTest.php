@@ -26,7 +26,7 @@ final class WikiIndexTriSurfaceTest extends TestCase
     {
         parent::setUp();
         $this->seed(RbacSeeder::class);
-        app(TenantContext::class)->set('default');
+        app(TenantContext::class)->set('test-tenant');
     }
 
     private function doc(): KnowledgeDocument
@@ -35,7 +35,7 @@ final class WikiIndexTriSurfaceTest extends TestCase
         $n++;
 
         return KnowledgeDocument::create([
-            'tenant_id' => 'default', 'project_key' => 'docs-v3', 'source_type' => 'markdown',
+            'tenant_id' => 'test-tenant', 'project_key' => 'docs-v3', 'source_type' => 'markdown',
             'title' => "Doc {$n}", 'source_path' => "docs/i-{$n}.md", 'mime_type' => 'text/markdown',
             'status' => 'active', 'document_hash' => str_repeat('a', 64), 'version_hash' => 'v'.$n,
             'is_canonical' => true, 'slug' => "dec-{$n}", 'canonical_type' => 'decision', 'generation_source' => 'human',
@@ -64,7 +64,7 @@ final class WikiIndexTriSurfaceTest extends TestCase
     {
         $this->doc();
 
-        $this->artisan('kb:wiki-index')
+        $this->artisan('kb:wiki-index', ['--tenant' => 'test-tenant'])
             ->expectsOutputToContain('Rebuilt 1 project')
             ->assertSuccessful();
 

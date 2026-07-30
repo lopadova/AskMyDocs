@@ -28,7 +28,7 @@ final class WikiLinkTriSurfaceTest extends TestCase
     {
         parent::setUp();
         $this->seed(RbacSeeder::class);
-        app(TenantContext::class)->set('default');
+        app(TenantContext::class)->set('test-tenant');
     }
 
     /** @param array<string,mixed> $overrides */
@@ -38,7 +38,7 @@ final class WikiLinkTriSurfaceTest extends TestCase
         $n++;
 
         $doc = KnowledgeDocument::create(array_merge([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'docs-v3',
             'source_type' => 'markdown',
             'title' => "Doc {$n}",
@@ -78,7 +78,7 @@ final class WikiLinkTriSurfaceTest extends TestCase
     {
         $doc = $this->doc(['title' => 'Linkable Doc']);
 
-        $this->artisan('kb:wiki-link', ['document' => $doc->id])
+        $this->artisan('kb:wiki-link', ['document' => $doc->id, '--tenant' => 'test-tenant'])
             ->expectsOutputToContain('Linked auto-linkable-doc')
             ->assertSuccessful();
 
@@ -87,7 +87,10 @@ final class WikiLinkTriSurfaceTest extends TestCase
 
     public function test_command_fails_for_missing_doc(): void
     {
-        $this->artisan('kb:wiki-link', ['document' => 999999])->assertFailed();
+        $this->artisan('kb:wiki-link', [
+            'document' => 999999,
+            '--tenant' => 'test-tenant',
+        ])->assertFailed();
     }
 
     // ── HTTP — admin API ───────────────────────────────────────────────

@@ -55,7 +55,7 @@ final class EngagementControllerTest extends TestCase
     private function recordEvent(string $event, ?int $userId, array $extra = []): void
     {
         KbContributionEvent::create(array_merge([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'user_id' => $userId,
             'document_id' => 1,
             'project_key' => 'eng',
@@ -92,9 +92,9 @@ final class EngagementControllerTest extends TestCase
         $this->recordEvent('promoted', 7);
         $this->recordEvent('created', 8);
 
-        $this->artisan('engagement:compute', ['--tenant' => 'default'])->assertExitCode(0);
+        $this->artisan('engagement:compute', ['--tenant' => 'test-tenant'])->assertExitCode(0);
 
-        $snapshot = KbEngagementSnapshot::query()->forTenant('default')->first();
+        $snapshot = KbEngagementSnapshot::query()->forTenant('test-tenant')->first();
         $this->assertNotNull($snapshot);
         $metrics = $snapshot->metrics;
         $this->assertSame(2, $metrics['new_docs']);
@@ -114,7 +114,7 @@ final class EngagementControllerTest extends TestCase
         $live->assertOk()->assertJsonPath('source', 'live');
 
         // After compute → snapshot source.
-        $this->artisan('engagement:compute', ['--tenant' => 'default'])->assertExitCode(0);
+        $this->artisan('engagement:compute', ['--tenant' => 'test-tenant'])->assertExitCode(0);
         $snap = $this->actingAs($admin)->getJson('/api/admin/engagement/summary');
         $snap->assertOk()->assertJsonPath('source', 'snapshot');
     }
@@ -127,7 +127,7 @@ final class EngagementControllerTest extends TestCase
         // A partial-compute snapshot with null metrics must NOT be served as
         // source=snapshot with an empty body — it falls back to live (R14).
         KbEngagementSnapshot::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'snapshot_date' => now()->toDateString(),
             'metrics' => null,
             'computed_at' => now(),
@@ -223,7 +223,7 @@ final class EngagementControllerTest extends TestCase
         // A 'promoted' audit row carries doc_id/slug, not the numeric id; the
         // hook must resolve it so `authored` counts the promotion (R16).
         \App\Models\KbCanonicalAudit::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'eng',
             'doc_id' => 'dec-x',
             'slug' => 'dec-x',

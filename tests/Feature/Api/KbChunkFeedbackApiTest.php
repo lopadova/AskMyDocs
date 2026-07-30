@@ -23,12 +23,11 @@ final class KbChunkFeedbackApiTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        // Reset TenantContext to the canonical default before each
+        // Reset TenantContext to the operational test tenant before each
         // test — other test classes in the suite mutate it via
         // ->set('foo'), and TenantContext is a singleton that can
-        // leak between tests under Testbench. Pinning to 'default'
-        // here keeps the chunk/doc fixtures (which hard-code
-        // tenant_id='default') and the controller (which reads
+        // leak between tests under Testbench. The test TenantContext reset
+        // value keeps the chunk/doc fixtures and the controller (which reads
         // TenantContext::current()) in agreement.
         app(TenantContext::class)->reset();
         $this->seed(RbacSeeder::class);
@@ -65,13 +64,13 @@ final class KbChunkFeedbackApiTest extends TestCase
         ]);
 
         $this->assertDatabaseHas('kb_chunk_feedback', [
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'user_id' => $alice->id,
             'knowledge_chunk_id' => $chunk->id,
             'signal' => KbChunkFeedback::SIGNAL_SHOULD_HAVE_CITED,
         ]);
         $this->assertDatabaseHas('kb_chunk_feedback', [
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'user_id' => $bob->id,
             'knowledge_chunk_id' => $chunk->id,
             'signal' => KbChunkFeedback::SIGNAL_NOT_RELEVANT,
@@ -120,7 +119,7 @@ final class KbChunkFeedbackApiTest extends TestCase
 
         $userA = $this->makeViewer('user-a');
         ProjectMembership::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'user_id' => $userA->id,
             'project_key' => 'project-a',
             'role' => 'member',
@@ -200,13 +199,13 @@ final class KbChunkFeedbackApiTest extends TestCase
      * tenant scoping explicitly on this WRITE path.
      *
      * Simulated by:
-     *   - Active tenant = 'default'
+     *   - Active tenant = 'test-tenant'
      *   - Chunk + doc seeded in active tenant under `project=shared`
      *   - User membership stored under `tenant_id=other-tenant`, same
      *     `project=shared` and same user
      * The cross-tenant membership must never grant write access. The
-     * operational tenant middleware now rejects the resolved `default`
-     * context before resource lookup because the user has no membership
+     * operational tenant middleware rejects the resolved tenant context
+     * before resource lookup because the user has no membership
      * there, returning the canonical `403 tenant_forbidden`. The write is
      * still proved absent below.
      */
@@ -274,7 +273,7 @@ final class KbChunkFeedbackApiTest extends TestCase
     private function seedChunk(string $projectKey, string $source = 'demo'): array
     {
         $doc = KnowledgeDocument::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => $projectKey,
             'source_type' => 'markdown',
             'title' => "Doc {$source}",
@@ -289,7 +288,7 @@ final class KbChunkFeedbackApiTest extends TestCase
         ]);
 
         $chunk = KnowledgeChunk::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'knowledge_document_id' => $doc->id,
             'project_key' => $projectKey,
             'chunk_order' => 0,

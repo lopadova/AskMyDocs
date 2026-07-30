@@ -28,7 +28,7 @@ final class ConceptSynthesisTriSurfaceTest extends TestCase
     {
         parent::setUp();
         $this->seed(RbacSeeder::class);
-        app(TenantContext::class)->set('default');
+        app(TenantContext::class)->set('test-tenant');
     }
 
     private function bindSynthesizer(): \Mockery\MockInterface
@@ -61,10 +61,14 @@ final class ConceptSynthesisTriSurfaceTest extends TestCase
     {
         $mock = $this->bindSynthesizer();
         $mock->shouldReceive('synthesize')->once()
-            ->with('default', 'docs-v3', 2)
+            ->with('test-tenant', 'docs-v3', 2)
             ->andReturn(['ran' => true, 'candidates' => 3, 'created' => ['auto-cache'], 'skipped' => []]);
 
-        $this->artisan('kb:synthesize-concepts', ['project' => 'docs-v3', '--limit' => '2'])
+        $this->artisan('kb:synthesize-concepts', [
+            'project' => 'docs-v3',
+            '--limit' => '2',
+            '--tenant' => 'test-tenant',
+        ])
             ->expectsOutputToContain('created 1 page(s)')
             ->assertSuccessful();
     }
@@ -74,7 +78,10 @@ final class ConceptSynthesisTriSurfaceTest extends TestCase
         $mock = $this->bindSynthesizer();
         $mock->shouldReceive('synthesize')->once()->andReturn(['ran' => false, 'reason' => 'disabled']);
 
-        $this->artisan('kb:synthesize-concepts', ['project' => 'docs-v3'])
+        $this->artisan('kb:synthesize-concepts', [
+            'project' => 'docs-v3',
+            '--tenant' => 'test-tenant',
+        ])
             ->expectsOutputToContain('Did not run: disabled')
             ->assertSuccessful();
     }
@@ -85,7 +92,7 @@ final class ConceptSynthesisTriSurfaceTest extends TestCase
     {
         $mock = $this->bindSynthesizer();
         $mock->shouldReceive('synthesize')->once()
-            ->with('default', 'docs-v3', null)
+            ->with('test-tenant', 'docs-v3', null)
             ->andReturn(['ran' => true, 'candidates' => 2, 'created' => ['auto-cache'], 'skipped' => []]);
 
         $this->actingAs($this->admin())

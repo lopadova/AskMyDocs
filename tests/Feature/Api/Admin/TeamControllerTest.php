@@ -153,7 +153,7 @@ final class TeamControllerTest extends TestCase
     public function test_store_maps_registry_unavailable_to_503(): void
     {
         $admin = $this->makeUser('admin');
-        $this->grantDefaultMembership($admin);
+        $this->grantOperationalMembership($admin);
 
         // Simulate a deployment that never migrated the AI-Act package: the
         // service throws TeamRegistryUnavailableException, which the controller
@@ -168,7 +168,7 @@ final class TeamControllerTest extends TestCase
     public function test_index_still_returns_200_when_the_registry_table_is_absent(): void
     {
         $admin = $this->makeUser('admin');
-        $this->grantDefaultMembership($admin);
+        $this->grantOperationalMembership($admin);
 
         // R43 OFF-path for the LIST surface: with the tenants table absent the
         // list must degrade to a clean 200 (humanised names), never a 500.
@@ -204,12 +204,12 @@ final class TeamControllerTest extends TestCase
         return $user;
     }
 
-    private function grantDefaultMembership(User $user): void
+    private function grantOperationalMembership(User $user): void
     {
         ProjectMembership::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'user_id' => $user->id,
-            'project_key' => 'default',
+            'project_key' => 'test-project',
             'role' => 'admin',
         ]);
     }
