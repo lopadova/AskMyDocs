@@ -94,6 +94,11 @@ class User extends Authenticatable implements InvitedAccount
         return once(static fn (): bool => Schema::hasColumn('users', 'email_normalized'));
     }
 
+    public static function emailIdentityColumn(): string
+    {
+        return self::hasNormalizedEmailColumn() ? 'email_normalized' : 'email';
+    }
+
     public static function normalizeEmail(string $email): string
     {
         return mb_strtolower(trim($email));

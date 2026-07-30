@@ -34,7 +34,7 @@ class RegisterRequest extends FormRequest
     {
         return [
             'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email_normalized')],
+            'email' => ['required', 'email', 'max:255', Rule::unique('users', User::emailIdentityColumn())],
             // `confirmed` pairs with `password_confirmation` from the form.
             'password' => ['required', 'confirmed', 'string', 'min:8'],
             'invite_code' => ['required', 'string', 'max:128'],

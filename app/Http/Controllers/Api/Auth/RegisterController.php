@@ -152,7 +152,9 @@ class RegisterController extends Controller
             ]);
         } catch (\Illuminate\Database\QueryException $e) {
             // Concurrency guard: another request may create the same email between validation and insert.
-            if (User::withTrashed()->where('email_normalized', (string) $data['email'])->exists()) {
+            if (User::withTrashed()
+                ->where(User::emailIdentityColumn(), (string) $data['email'])
+                ->exists()) {
                 throw ValidationException::withMessages([
                     'email' => [__('validation.unique', ['attribute' => 'email'])],
                 ]);

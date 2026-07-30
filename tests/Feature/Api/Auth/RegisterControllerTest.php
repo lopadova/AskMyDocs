@@ -9,6 +9,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Once;
 use Padosoft\AiActCompliance\MultiTenancy\Models\Tenant;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
@@ -233,6 +234,35 @@ class RegisterControllerTest extends TestCase
         ]);
 
         $response = $this->postJson('/api/auth/register', $this->payload());
+
+        $response->assertStatus(422)->assertJsonValidationErrors(['email']);
+        $this->assertFalse(Auth::check());
+    }
+
+    public function test_register_uses_legacy_email_identity_before_normalized_column_migration(): void
+    {
+        $code = $this->mintCode();
+        $migration = require dirname(__DIR__, 4).'/database/migrations/2026_07_27_000001_add_email_normalized_to_users_table.php';
+        $migration->down();
+        Once::flush();
+
+        try {
+            DB::table('users')->insert([
+                'name' => 'Existing',
+                'email' => 'new@example.com',
+                'password' => 'not-used',
+                'is_active' => true,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            $response = $this->postJson('/api/auth/register', $this->payload([
+                'invite_code' => $code,
+            ]));
+        } finally {
+            $migration->up();
+            Once::flush();
+        }
 
         $response->assertStatus(422)->assertJsonValidationErrors(['email']);
         $this->assertFalse(Auth::check());
