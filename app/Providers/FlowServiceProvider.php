@@ -13,14 +13,18 @@ use App\Flow\Definitions\PruneChatLogsFlow;
 use App\Flow\Definitions\PruneDeletedFlow;
 use App\Flow\Definitions\PruneEmbeddingCacheFlow;
 use App\Flow\Definitions\RebuildGraphFlow;
+use App\Flow\Persistence\TenantAwareFlowStore;
 use App\Models\KbCanonicalAudit;
 use App\Support\TenantContext;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\ServiceProvider;
+use Padosoft\LaravelFlow\Contracts\FlowStore;
 use Padosoft\LaravelFlow\FlowEngine;
+use Padosoft\LaravelFlow\Models\FlowApprovalRecord;
 use Padosoft\LaravelFlow\Models\FlowAuditRecord;
 use Padosoft\LaravelFlow\Models\FlowRunRecord;
 use Padosoft\LaravelFlow\Models\FlowStepRecord;
+use Padosoft\LaravelFlow\Models\FlowWebhookOutboxRecord;
 
 /**
  * Registers every AskMyDocs FlowDefinition with the FlowEngine and wires
@@ -42,6 +46,17 @@ use Padosoft\LaravelFlow\Models\FlowStepRecord;
  */
 final class FlowServiceProvider extends ServiceProvider
 {
+    public function register(): void
+    {
+        $this->app->extend(
+            FlowStore::class,
+            static fn (FlowStore $store, $app): FlowStore => new TenantAwareFlowStore(
+                $store,
+                $app->make(TenantContext::class),
+            ),
+        );
+    }
+
     public function boot(): void
     {
         $this->stampTenantIdOnFlowRecords();
@@ -259,6 +274,8 @@ final class FlowServiceProvider extends ServiceProvider
 
         FlowRunRecord::creating($stamp);
         FlowStepRecord::creating($stamp);
+        FlowApprovalRecord::creating($stamp);
+        FlowWebhookOutboxRecord::creating($stamp);
         FlowAuditRecord::creating($stamp);
     }
 
