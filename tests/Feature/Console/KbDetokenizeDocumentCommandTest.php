@@ -61,7 +61,7 @@ final class KbDetokenizeDocumentCommandTest extends TestCase
         $email = 'mario.rossi@example.com';
         $doc = $this->tokenisedDoc($email);
 
-        $this->artisan('kb:detokenize-document', ['id' => $doc->id, '--tenant' => 'default'])
+        $this->artisan('kb:detokenize-document', ['id' => $doc->id, '--tenant' => 'test-tenant'])
             ->expectsOutputToContain($email)
             ->assertSuccessful();
 
@@ -82,7 +82,7 @@ final class KbDetokenizeDocumentCommandTest extends TestCase
 
     public function test_it_fails_when_the_document_is_missing(): void
     {
-        $this->artisan('kb:detokenize-document', ['id' => 99999, '--tenant' => 'default'])
+        $this->artisan('kb:detokenize-document', ['id' => 99999, '--tenant' => 'test-tenant'])
             ->assertFailed();
     }
 }

@@ -99,11 +99,11 @@ final class TenantIsolationTest extends TestCase
             ->assertJsonPath('error', 'tenant_forbidden');
     }
 
-    public function test_regular_admin_without_header_operates_in_default_tenant(): void
+    public function test_regular_admin_without_header_operates_in_active_test_tenant(): void
     {
         $admin = $this->makeUser('admin');
-        $this->grant($admin, 'default', 'default');
-        $this->seedTag('default', 'hr', 'policy');
+        $this->grant($admin, 'test-tenant', 'test-project');
+        $this->seedTag('test-tenant', 'hr', 'policy');
 
         $resp = $this->actingAs($admin)->getJson('/api/admin/kb/tags')->assertOk();
 

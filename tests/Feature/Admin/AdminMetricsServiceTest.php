@@ -192,6 +192,7 @@ class AdminMetricsServiceTest extends TestCase
         $this->seedChatLog(userId: $user->id, projectKey: 'hr-portal', at: Carbon::now());
 
         DB::table('kb_canonical_audit')->insert([
+            'tenant_id' => 'test-tenant',
             'project_key' => 'hr-portal',
             'event_type' => 'promoted',
             'actor' => 'system',
@@ -387,7 +388,7 @@ class AdminMetricsServiceTest extends TestCase
 
         $svc = $this->service();
 
-        // Active tenant is 'default' again: only the default rows surface.
+        // Active tenant is 'test-tenant' again: only its rows surface.
         $overview = $svc->kpiOverview(null, 7);
         $this->assertSame(1, $overview['total_docs']);
         $this->assertSame(1, $overview['total_chunks']);

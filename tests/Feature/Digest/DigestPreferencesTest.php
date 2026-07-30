@@ -46,11 +46,11 @@ final class DigestPreferencesTest extends TestCase
     {
         $u = $this->makeUser();
         NotificationPreference::create([
-            'tenant_id' => 'default', 'user_id' => $u->id,
+            'tenant_id' => 'test-tenant', 'user_id' => $u->id,
             'event_type' => 'kb_doc_created', 'channel' => NotificationPreference::CHANNEL_EMAIL, 'enabled' => true,
         ]);
         if ($frequency !== null) {
-            DigestPreference::create(['tenant_id' => 'default', 'user_id' => $u->id, 'frequency' => $frequency, 'sections' => null]);
+            DigestPreference::create(['tenant_id' => 'test-tenant', 'user_id' => $u->id, 'frequency' => $frequency, 'sections' => null]);
         }
 
         return $u;
@@ -118,7 +118,7 @@ final class DigestPreferencesTest extends TestCase
         $this->emailUser('monthly');   // monthly: excluded from weekly run
         $this->emailUser('off');       // off: excluded
 
-        $this->artisan('digest:send', ['--tenant' => 'default', '--channel' => 'email'])->assertExitCode(0);
+        $this->artisan('digest:send', ['--tenant' => 'test-tenant', '--channel' => 'email'])->assertExitCode(0);
 
         Mail::assertQueued(DigestMail::class, 2);
     }
@@ -129,7 +129,7 @@ final class DigestPreferencesTest extends TestCase
         $this->emailUser(null);        // default weekly: excluded from monthly run
         $this->emailUser('monthly');   // included
 
-        $this->artisan('digest:send', ['--tenant' => 'default', '--channel' => 'email', '--frequency' => 'monthly'])->assertExitCode(0);
+        $this->artisan('digest:send', ['--tenant' => 'test-tenant', '--channel' => 'email', '--frequency' => 'monthly'])->assertExitCode(0);
 
         Mail::assertQueued(DigestMail::class, 1);
     }
@@ -138,7 +138,7 @@ final class DigestPreferencesTest extends TestCase
     {
         Mail::fake();
         config()->set('kb.digest.ai_narrative_enabled', false);
-        $this->artisan('digest:send', ['--tenant' => 'default', '--channel' => 'email'])->assertExitCode(0);
+        $this->artisan('digest:send', ['--tenant' => 'test-tenant', '--channel' => 'email'])->assertExitCode(0);
 
         $this->assertDatabaseCount('engagement_digest_feed', 1);
 
@@ -152,12 +152,12 @@ final class DigestPreferencesTest extends TestCase
     public function test_prune_feed_drops_entries_past_retention(): void
     {
         EngagementDigestFeedEntry::create([
-            'tenant_id' => 'default', 'frequency' => 'weekly',
+            'tenant_id' => 'test-tenant', 'frequency' => 'weekly',
             'period_start' => now()->subDays(200)->toDateString(), 'period_end' => now()->subDays(193)->toDateString(),
             'payload' => ['metrics' => []], 'created_at' => now()->subDays(190),
         ]);
         EngagementDigestFeedEntry::create([
-            'tenant_id' => 'default', 'frequency' => 'weekly',
+            'tenant_id' => 'test-tenant', 'frequency' => 'weekly',
             'period_start' => now()->subDays(7)->toDateString(), 'period_end' => now()->toDateString(),
             'payload' => ['metrics' => []], 'created_at' => now(),
         ]);
@@ -175,7 +175,7 @@ final class DigestPreferencesTest extends TestCase
             'payload' => ['metrics' => [], 'new_docs' => [], 'top_gaps' => []], 'created_at' => now(),
         ]);
 
-        // A user in the default tenant must NOT see tenant-a's digest.
+        // A user in the active test tenant must NOT see tenant-a's digest.
         $user = $this->makeUser();
         $this->actingAs($user)->getJson('/api/me/digest/latest')
             ->assertOk()

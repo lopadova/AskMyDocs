@@ -19,7 +19,7 @@ class CanonicalIndexerJobTest extends TestCase
     {
         $doc = $this->seedCanonicalDoc('acme', 'dec-cache-v2', 'decision', 'Cache invalidation v2');
 
-        (new CanonicalIndexerJob($doc->id))->handle();
+        (new CanonicalIndexerJob($doc->id, 'test-tenant'))->handle();
 
         $this->assertDatabaseHas('kb_nodes', [
             'node_uid' => 'dec-cache-v2',
@@ -36,7 +36,7 @@ class CanonicalIndexerJobTest extends TestCase
             '_derived' => ['related_slugs' => ['module-cache', 'runbook-purge'], 'supersedes_slugs' => [], 'superseded_by_slugs' => []],
         ]);
 
-        (new CanonicalIndexerJob($doc->id))->handle();
+        (new CanonicalIndexerJob($doc->id, 'test-tenant'))->handle();
 
         $this->assertDatabaseHas('kb_edges', [
             'from_node_uid' => 'dec-cache-v2',
@@ -59,7 +59,7 @@ class CanonicalIndexerJobTest extends TestCase
         $this->seedChunk($doc, 0, 'See [[module-a]].', ['module-a']);
         $this->seedChunk($doc, 1, 'Also [[module-b]] and [[module-c]].', ['module-b', 'module-c']);
 
-        (new CanonicalIndexerJob($doc->id))->handle();
+        (new CanonicalIndexerJob($doc->id, 'test-tenant'))->handle();
 
         foreach (['module-a', 'module-b', 'module-c'] as $target) {
             $this->assertDatabaseHas('kb_edges', [
@@ -77,7 +77,7 @@ class CanonicalIndexerJobTest extends TestCase
             '_derived' => ['related_slugs' => ['not-yet-canonicalized'], 'supersedes_slugs' => [], 'superseded_by_slugs' => []],
         ]);
 
-        (new CanonicalIndexerJob($doc->id))->handle();
+        (new CanonicalIndexerJob($doc->id, 'test-tenant'))->handle();
 
         $target = KbNode::where('node_uid', 'not-yet-canonicalized')->where('project_key', 'acme')->first();
         $this->assertNotNull($target);
@@ -101,7 +101,7 @@ class CanonicalIndexerJobTest extends TestCase
             '_derived' => ['related_slugs' => ['module-cache'], 'supersedes_slugs' => [], 'superseded_by_slugs' => []],
         ]);
 
-        (new CanonicalIndexerJob($doc->id))->handle();
+        (new CanonicalIndexerJob($doc->id, 'test-tenant'))->handle();
 
         $existing = KbNode::where('node_uid', 'module-cache')->first();
         $this->assertSame('Existing module', $existing->label);
@@ -115,7 +115,7 @@ class CanonicalIndexerJobTest extends TestCase
         $doc = $this->seedCanonicalDoc('acme', 'dec-x', 'decision', 'X', [
             '_derived' => ['related_slugs' => ['a', 'b'], 'supersedes_slugs' => [], 'superseded_by_slugs' => []],
         ]);
-        (new CanonicalIndexerJob($doc->id))->handle();
+        (new CanonicalIndexerJob($doc->id, 'test-tenant'))->handle();
         $this->assertSame(2, KbEdge::where('from_node_uid', 'dec-x')->count());
 
         // E.2 — the job dispatches with idempotencyKey
@@ -139,8 +139,8 @@ class CanonicalIndexerJobTest extends TestCase
 
         \Padosoft\LaravelFlow\Facades\Flow::execute(
             \App\Flow\Definitions\CanonicalIndexFlow::NAME,
-            ['tenant_id' => 'default', 'document_id' => $doc->id],
-            \Padosoft\LaravelFlow\FlowExecutionOptions::make(correlationId: 'default'),
+            ['tenant_id' => 'test-tenant', 'document_id' => $doc->id],
+            \Padosoft\LaravelFlow\FlowExecutionOptions::make(correlationId: 'test-tenant'),
         );
 
         $targets = KbEdge::where('from_node_uid', 'dec-x')->pluck('to_node_uid')->all();
@@ -160,14 +160,14 @@ class CanonicalIndexerJobTest extends TestCase
             '_derived' => ['related_slugs' => ['target-1'], 'supersedes_slugs' => [], 'superseded_by_slugs' => []],
         ]);
 
-        (new CanonicalIndexerJob($doc->id))->handle();
+        (new CanonicalIndexerJob($doc->id, 'test-tenant'))->handle();
         $auditCount1 = KbCanonicalAudit::where('slug', 'dec-y')->count();
         $this->assertSame(1, $auditCount1);
 
         // Second dispatch under same (tenant, document_id): engine should
         // return the existing FlowRun without re-executing the saga; the
         // graph_rebuild audit row count must stay at 1.
-        (new CanonicalIndexerJob($doc->id))->handle();
+        (new CanonicalIndexerJob($doc->id, 'test-tenant'))->handle();
         $auditCount2 = KbCanonicalAudit::where('slug', 'dec-y')->count();
         $this->assertSame(1, $auditCount2, 'idempotencyKey must dedupe re-dispatches; audit row should not double');
     }
@@ -178,7 +178,7 @@ class CanonicalIndexerJobTest extends TestCase
             '_derived' => ['related_slugs' => [], 'supersedes_slugs' => ['dec-v1'], 'superseded_by_slugs' => []],
         ]);
 
-        (new CanonicalIndexerJob($doc->id))->handle();
+        (new CanonicalIndexerJob($doc->id, 'test-tenant'))->handle();
 
         $this->assertDatabaseHas('kb_edges', [
             'from_node_uid' => 'dec-v2',
@@ -194,7 +194,7 @@ class CanonicalIndexerJobTest extends TestCase
         // and the authoritative audit event for a (re)indexing pass is
         // `graph_rebuild` (was the misnamed `promoted` in the legacy job).
         $doc = $this->seedCanonicalDoc('acme', 'dec-x', 'decision', 'X');
-        (new CanonicalIndexerJob($doc->id))->handle();
+        (new CanonicalIndexerJob($doc->id, 'test-tenant'))->handle();
 
         $this->assertDatabaseHas('kb_canonical_audit', [
             'project_key' => 'acme',
@@ -213,7 +213,7 @@ class CanonicalIndexerJobTest extends TestCase
         ]);
         $doc->update(['status' => 'archived']);
 
-        (new CanonicalIndexerJob($doc->id))->handle();
+        (new CanonicalIndexerJob($doc->id, 'test-tenant'))->handle();
 
         $this->assertSame(0, KbNode::count());
         $this->assertSame(0, KbEdge::count());
@@ -232,8 +232,8 @@ class CanonicalIndexerJobTest extends TestCase
             '_derived' => ['related_slugs' => ['shared-target'], 'supersedes_slugs' => [], 'superseded_by_slugs' => []],
         ]);
 
-        (new CanonicalIndexerJob($docA->id))->handle();
-        (new CanonicalIndexerJob($docB->id))->handle();
+        (new CanonicalIndexerJob($docA->id, 'test-tenant'))->handle();
+        (new CanonicalIndexerJob($docB->id, 'test-tenant'))->handle();
 
         $this->assertSame(1, KbNode::where('node_uid', 'shared-target')->count());
         // Both edges reach the same target.
@@ -255,7 +255,7 @@ class CanonicalIndexerJobTest extends TestCase
             'is_canonical' => false,
         ]);
 
-        (new CanonicalIndexerJob($doc->id))->handle();
+        (new CanonicalIndexerJob($doc->id, 'test-tenant'))->handle();
 
         $this->assertSame(0, KbNode::count());
         $this->assertSame(0, KbEdge::count());
@@ -269,8 +269,8 @@ class CanonicalIndexerJobTest extends TestCase
         // makes the regular ingest path safe under concurrent re-dispatch.
         $doc = $this->seedCanonicalDoc('acme', 'dec-key-1', 'decision', 'K1');
 
-        $jobA = new CanonicalIndexerJob($doc->id);
-        $jobB = new CanonicalIndexerJob($doc->id);
+        $jobA = new CanonicalIndexerJob($doc->id, 'test-tenant');
+        $jobB = new CanonicalIndexerJob($doc->id, 'test-tenant');
 
         $this->assertSame($jobA->buildIdempotencyKey(), $jobB->buildIdempotencyKey());
         $this->assertStringContainsString((string) $doc->id, $jobA->buildIdempotencyKey());
@@ -285,12 +285,12 @@ class CanonicalIndexerJobTest extends TestCase
         // updates. With version_hash in the key, a new version => a new
         // key => natural re-execution.
         $doc = $this->seedCanonicalDoc('acme', 'dec-key-2', 'decision', 'K2');
-        $keyV1 = (new CanonicalIndexerJob($doc->id))->buildIdempotencyKey();
+        $keyV1 = (new CanonicalIndexerJob($doc->id, 'test-tenant'))->buildIdempotencyKey();
 
         // Mutate version_hash (simulates content re-ingest landing as a
         // new version on the same row id).
         $doc->update(['version_hash' => str_repeat('e', 64)]);
-        $keyV2 = (new CanonicalIndexerJob($doc->id))->buildIdempotencyKey();
+        $keyV2 = (new CanonicalIndexerJob($doc->id, 'test-tenant'))->buildIdempotencyKey();
 
         $this->assertNotSame($keyV1, $keyV2, 'Different version_hash MUST yield different idempotency keys');
     }
@@ -305,10 +305,10 @@ class CanonicalIndexerJobTest extends TestCase
         // produce DIFFERENT keys — proving the engine cannot dedup them.
         $doc = $this->seedCanonicalDoc('acme', 'dec-key-3', 'decision', 'K3');
 
-        $base = (new CanonicalIndexerJob($doc->id, 'default', false))->buildIdempotencyKey();
-        $forced1 = (new CanonicalIndexerJob($doc->id, 'default', true))->buildIdempotencyKey();
+        $base = (new CanonicalIndexerJob($doc->id, 'test-tenant', false))->buildIdempotencyKey();
+        $forced1 = (new CanonicalIndexerJob($doc->id, 'test-tenant', true))->buildIdempotencyKey();
         // hrtime() returns monotonic nanoseconds; even back-to-back calls produce a fresh value.
-        $forced2 = (new CanonicalIndexerJob($doc->id, 'default', true))->buildIdempotencyKey();
+        $forced2 = (new CanonicalIndexerJob($doc->id, 'test-tenant', true))->buildIdempotencyKey();
 
         $this->assertNotSame($base, $forced1, 'forceReindex key MUST differ from default key');
         $this->assertNotSame($forced1, $forced2, 'two forced rebuilds MUST produce distinct keys');
@@ -328,7 +328,7 @@ class CanonicalIndexerJobTest extends TestCase
         ]);
 
         // First indexer run populates the graph.
-        (new CanonicalIndexerJob($doc->id))->handle();
+        (new CanonicalIndexerJob($doc->id, 'test-tenant'))->handle();
         $this->assertSame(2, KbEdge::where('from_node_uid', 'dec-rebuild-x')->count());
 
         // Operator-driven truncate (mirrors what kb:rebuild-graph does).
@@ -339,7 +339,7 @@ class CanonicalIndexerJobTest extends TestCase
         // A NON-forced re-dispatch would short-circuit (engine cache
         // returns the prior FlowRun). The forced re-dispatch MUST
         // re-execute and re-populate the graph.
-        (new CanonicalIndexerJob($doc->id, 'default', true))->handle();
+        (new CanonicalIndexerJob($doc->id, 'test-tenant', true))->handle();
 
         $targets = KbEdge::where('from_node_uid', 'dec-rebuild-x')->pluck('to_node_uid')->all();
         sort($targets);
@@ -356,8 +356,8 @@ class CanonicalIndexerJobTest extends TestCase
             '_derived' => ['related_slugs' => ['mod-b'], 'supersedes_slugs' => [], 'superseded_by_slugs' => []],
         ]);
 
-        (new CanonicalIndexerJob($docA->id))->handle();
-        (new CanonicalIndexerJob($docB->id))->handle();
+        (new CanonicalIndexerJob($docA->id, 'test-tenant'))->handle();
+        (new CanonicalIndexerJob($docB->id, 'test-tenant'))->handle();
 
         // Self nodes coexist in both projects.
         $this->assertSame(2, KbNode::where('node_uid', 'dec-x')->count());

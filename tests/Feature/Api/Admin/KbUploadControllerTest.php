@@ -64,7 +64,7 @@ final class KbUploadControllerTest extends TestCase
             ->assertJsonCount(2, 'items');
 
         $batchId = $resp->json('batch.id');
-        $this->assertDatabaseHas('kb_ingest_batches', ['id' => $batchId, 'tenant_id' => 'default']);
+        $this->assertDatabaseHas('kb_ingest_batches', ['id' => $batchId, 'tenant_id' => 'test-tenant']);
 
         $items = KbIngestBatchItem::query()->where('batch_id', $batchId)->get();
         $this->assertCount(2, $items);
@@ -210,11 +210,11 @@ final class KbUploadControllerTest extends TestCase
     {
         $admin = $this->makeAdmin();
 
-        // Create a batch owned by tenant 'acme' (request runs under 'default').
+        // Create a batch owned by tenant 'acme' (request runs under 'test-tenant').
         $tenant = app(TenantContext::class);
         $tenant->set('acme');
         $foreign = KbIngestBatch::create(['project_key' => 'x', 'status' => KbIngestBatch::STATUS_STAGED]);
-        $tenant->set('default');
+        $tenant->set('test-tenant');
 
         $this->actingAs($admin)->getJson("/api/admin/kb/uploads/{$foreign->id}")->assertStatus(404);
         $this->actingAs($admin)->postJson("/api/admin/kb/uploads/{$foreign->id}/commit")->assertStatus(404);

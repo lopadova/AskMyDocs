@@ -223,7 +223,7 @@ final class KbChunkFeedbackApiTest extends TestCase
             'scope_allowlist' => [],
         ]);
 
-        $this->actingAs($user)->postJson('/api/kb/feedback', [
+        $this->actingAsWithoutTenant($user)->postJson('/api/kb/feedback', [
             'chunk_id' => $chunk->id,
             'signal' => KbChunkFeedback::SIGNAL_NOT_RELEVANT,
         ])->assertForbidden()

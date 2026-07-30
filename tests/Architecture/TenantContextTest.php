@@ -26,7 +26,7 @@ final class TenantContextTest extends TestCase
 {
     public function test_default_tenant_is_default(): void
     {
-        $ctx = $this->app->make(TenantContext::class);
+        $ctx = new TenantContext();
         $ctx->reset();
         $this->assertSame('default', $ctx->current());
         $this->assertTrue($ctx->isDefault());
