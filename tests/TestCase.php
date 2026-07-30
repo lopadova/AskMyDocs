@@ -32,7 +32,7 @@ abstract class TestCase extends OrchestraTestCase
 
             if (
                 ! \App\Support\SystemTenantRegistry::isReserved($tenantId)
-                && ! $memberships->exists()
+                && ! (clone $memberships)->where('tenant_id', $tenantId)->exists()
             ) {
                 \Illuminate\Support\Facades\DB::table('project_memberships')->insertOrIgnore([
                     'tenant_id' => $tenantId,
