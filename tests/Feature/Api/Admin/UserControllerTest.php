@@ -10,6 +10,7 @@ use Database\Seeders\RbacSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Once;
 use Padosoft\AiActCompliance\MultiTenancy\Models\Tenant;
 use Tests\TestCase;
 
@@ -238,6 +239,25 @@ class UserControllerTest extends TestCase
             ->assertJsonValidationErrors(['email']);
     }
 
+    public function test_store_uses_legacy_email_identity_before_normalized_column_migration(): void
+    {
+        $admin = $this->makeAdmin();
+        $this->makeViewer('dup', 'dup@demo.local');
+
+        $response = $this->withLegacyEmailSchema(
+            fn () => $this->actingAs($admin)
+                ->postJson('/api/admin/users', [
+                    'name' => 'Dup',
+                    'email' => 'dup@demo.local',
+                    'password' => 'Super$tr0ngP@ss1',
+                    'initial_project_key' => self::PROJECT,
+                    'membership_role' => 'member',
+                ]),
+        );
+
+        $response->assertStatus(422)->assertJsonValidationErrors(['email']);
+    }
+
     public function test_store_rejects_missing_required_fields(): void
     {
         $admin = $this->makeAdmin();
@@ -290,6 +310,23 @@ class UserControllerTest extends TestCase
 
         $user->refresh();
         $this->assertNotSame($originalHash, $user->password);
+    }
+
+    public function test_update_uses_legacy_email_identity_before_normalized_column_migration(): void
+    {
+        $admin = $this->makeAdmin();
+        $target = $this->makeViewer('target');
+        $this->makeViewer('existing', 'existing@demo.local');
+
+        $response = $this->withLegacyEmailSchema(
+            fn () => $this->actingAs($admin)
+                ->patchJson("/api/admin/users/{$target->id}", [
+                    'email' => 'existing@demo.local',
+                ]),
+        );
+
+        $response->assertStatus(422)->assertJsonValidationErrors(['email']);
+        $this->assertSame('target@demo.local', $target->fresh()->email);
     }
 
     public function test_tenant_surface_rejects_global_identity_mutation_when_another_tenant_depends_on_it(): void
@@ -607,5 +644,19 @@ class UserControllerTest extends TestCase
         ], [
             'role' => 'member',
         ]);
+    }
+
+    private function withLegacyEmailSchema(callable $callback): mixed
+    {
+        $migration = require dirname(__DIR__, 4).'/database/migrations/2026_07_27_000001_add_email_normalized_to_users_table.php';
+        $migration->down();
+        Once::flush();
+
+        try {
+            return $callback();
+        } finally {
+            $migration->up();
+            Once::flush();
+        }
     }
 }

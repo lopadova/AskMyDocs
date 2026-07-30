@@ -39,7 +39,7 @@ class UserUpdateRequest extends FormRequest
             'name' => ['sometimes', 'required', 'string', 'max:255'],
             'email' => [
                 'sometimes', 'required', 'email', 'max:255',
-                Rule::unique('users', 'email_normalized')->ignore($userId),
+                Rule::unique('users', User::emailIdentityColumn())->ignore($userId),
             ],
             'password' => ['sometimes', 'nullable', 'string', Password::defaults()],
             'is_active' => ['sometimes', 'boolean'],
