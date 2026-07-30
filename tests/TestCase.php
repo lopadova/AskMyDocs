@@ -48,13 +48,12 @@ abstract class TestCase extends OrchestraTestCase
             if (
                 ! \App\Support\SystemTenantRegistry::isReserved($tenantId)
                 && (clone $memberships)->where('tenant_id', $tenantId)->exists()
-                && method_exists($user, 'setAttribute')
             ) {
                 // ResolveTenant runs before the authenticated request reaches
-                // tenant.authorize. Give legacy no-header feature tests the
-                // same explicit operational context their SPA request would
-                // normally carry in X-Tenant-Id.
-                $user->setAttribute('tenant_id', $tenantId);
+                // tenant.authorize. Give no-header feature tests the same
+                // explicit operational context their SPA request would carry
+                // without mutating the User model with a non-schema attribute.
+                $this->withHeader('X-Tenant-Id', $tenantId);
             }
         }
 
