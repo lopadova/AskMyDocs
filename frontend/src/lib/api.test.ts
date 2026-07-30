@@ -89,6 +89,7 @@ describe('api tenant_forbidden response interceptor', () => {
 
     it('snaps back to the first team, navigates to /app, and still rejects (R14: caller sees the error)', async () => {
         respondWith = { status: 403, data: { error: 'tenant_forbidden' } };
+        useTeamStore.setState({ currentTeam: 'globex' });
 
         await expect(api.get('/api/admin/kb/tags')).rejects.toThrow();
         expect(useTeamStore.getState().currentTeam).toBe('acme');
