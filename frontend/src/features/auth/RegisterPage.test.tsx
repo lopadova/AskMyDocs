@@ -6,7 +6,14 @@ import { RegisterPage } from './RegisterPage';
 import { useAuthStore } from '../../lib/auth-store';
 
 vi.mock('./auth.api', () => ({
-    register: vi.fn(async () => ({ user: { id: 7, name: 'Mara', email: 'mara@acme.io' } })),
+    register: vi.fn(async () => ({
+        user: { id: 7, name: 'Mara', email: 'mara@acme.io' },
+        registration: {
+            intent: 'company_bootstrap',
+            target_tenant: null,
+            onboarding_required: true,
+        },
+    })),
     me: vi.fn(async () => ({
         user: { id: 7, name: 'Mara', email: 'mara@acme.io' },
         roles: ['viewer'],
@@ -88,6 +95,49 @@ describe('RegisterPage', () => {
             expect(onSuccess).toHaveBeenCalled();
         });
         expect(useAuthStore.getState().user?.email).toBe('mara@acme.io');
+    });
+
+    it('preserves the tenant registration result for the welcome route', async () => {
+        const user = userEvent.setup();
+        const { register, me } = await import('./auth.api');
+        const mePayload = {
+            user: { id: 7, name: 'Mara', email: 'mara@acme.io' },
+            roles: ['viewer'],
+            permissions: [],
+            projects: [{ project_key: 'acme-kb', role: 'member', scope: [] }],
+            teams: [{
+                tenant_id: 'acme',
+                hash: 'abc123def456',
+                name: 'Acme Corporation',
+                projects: [{ project_key: 'acme-kb', role: 'member', scope: [] }],
+            }],
+            onboarding: { required: false, can_create_company: false },
+        };
+        vi.mocked(register).mockResolvedValueOnce({
+            user: mePayload.user,
+            registration: {
+                intent: 'tenant_join',
+                target_tenant: 'acme',
+                onboarding_required: false,
+            },
+        });
+        vi.mocked(me).mockResolvedValueOnce(mePayload);
+        const onSuccess = vi.fn();
+        render(<RegisterPage onSuccess={onSuccess} />);
+
+        await fillValidForm(user);
+        await user.click(screen.getByRole('button', { name: /create account/i }));
+
+        await vi.waitFor(() => {
+            expect(onSuccess).toHaveBeenCalledWith({
+                registration: {
+                    intent: 'tenant_join',
+                    target_tenant: 'acme',
+                    onboarding_required: false,
+                },
+                me: mePayload,
+            });
+        });
     });
 
     it('surfaces a server 422 invite-code error in the DOM', async () => {

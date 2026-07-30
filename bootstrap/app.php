@@ -38,11 +38,10 @@ return Application::configure(basePath: dirname(__DIR__))
             'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
             'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
             'tenant.resolve' => \App\Http\Middleware\ResolveTenant::class,
-            // C1 (R30) — post-auth guard that rejects an X-Tenant-Id header
-            // pointing at a tenant the authenticated user does not own
-            // (unless they hold `tenant.cross-access`). Mounted after
-            // `auth:sanctum` on every authenticated route group; ResolveTenant
-            // runs too early (pre-auth) to validate the header itself.
+            // C1 (R30) — post-auth guard that requires a membership in the
+            // resolved tenant, with or without X-Tenant-Id. Mounted after
+            // `auth:sanctum` on operational route groups; ResolveTenant runs
+            // too early (pre-auth) to validate membership itself.
             'tenant.authorize' => \App\Http\Middleware\AuthorizeTenantHeader::class,
             // Canale pubblico del widget KITT embeddabile. Risolve la
             // WidgetKey dall'header X-Widget-Key (modalità A browser

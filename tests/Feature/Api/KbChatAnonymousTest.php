@@ -166,8 +166,8 @@ final class KbChatAnonymousTest extends TestCase
             'anonymous' => true,
         ])->assertOk()->assertJsonPath('answer', 'Grounded answer');
 
-        $this->assertSame(0, Conversation::query()->forTenant('default')->count());
-        $this->assertSame(0, Message::query()->forTenant('default')->count());
+        $this->assertSame(0, Conversation::query()->forTenant('test-tenant')->count());
+        $this->assertSame(0, Message::query()->forTenant('test-tenant')->count());
     }
 
     public function test_anonymous_turn_masks_pii_before_it_reaches_the_provider(): void
@@ -206,7 +206,7 @@ final class KbChatAnonymousTest extends TestCase
             'anonymous' => true,
         ], ['X-Session-Id' => 'client-stable-session-123'])->assertOk();
 
-        $row = ChatLog::query()->forTenant('default')->sole();
+        $row = ChatLog::query()->forTenant('test-tenant')->sole();
         $this->assertSame('', $row->question);
         $this->assertSame('', $row->answer);
         $this->assertNull($row->user_id);
@@ -237,7 +237,7 @@ final class KbChatAnonymousTest extends TestCase
             'anonymous' => true,
         ])->assertOk();
 
-        $this->assertSame(0, ChatLog::query()->forTenant('default')->count());
+        $this->assertSame(0, ChatLog::query()->forTenant('test-tenant')->count());
     }
 
     public function test_anonymous_refusal_records_redacted_content_gap_without_llm(): void
@@ -255,7 +255,7 @@ final class KbChatAnonymousTest extends TestCase
             'anonymous' => true,
         ])->assertOk()->assertJsonPath('refusal_reason', 'no_relevant_context');
 
-        $gap = KbSearchFailure::query()->forTenant('default')->sole();
+        $gap = KbSearchFailure::query()->forTenant('test-tenant')->sole();
         $this->assertStringNotContainsString('secret@vault.example', $gap->query_text);
         $this->assertStringContainsString('[REDACTED]', $gap->query_text);
     }
@@ -277,7 +277,7 @@ final class KbChatAnonymousTest extends TestCase
             'anonymous' => true,
         ])->assertOk()->assertJsonPath('refusal_reason', 'no_relevant_context');
 
-        $row = ChatLog::query()->forTenant('default')->sole();
+        $row = ChatLog::query()->forTenant('test-tenant')->sole();
         $this->assertSame('no_relevant_context', $row->extra['refusal_reason'] ?? null);
         $this->assertSame(0, $row->extra['primary_count'] ?? null);
         $this->assertTrue((bool) ($row->extra['anonymous'] ?? false));
@@ -302,7 +302,7 @@ final class KbChatAnonymousTest extends TestCase
             'project_key' => 'test',
         ])->assertOk()->assertJsonPath('answer', 'Grounded answer');
 
-        $row = ChatLog::query()->forTenant('default')->sole();
+        $row = ChatLog::query()->forTenant('test-tenant')->sole();
         // Full logging — the question is preserved on a normal turn.
         $this->assertSame('Plain question, no flag', $row->question);
         $this->assertFalse((bool) ($row->extra['anonymous'] ?? false));

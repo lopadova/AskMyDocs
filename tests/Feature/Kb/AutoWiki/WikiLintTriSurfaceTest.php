@@ -26,13 +26,13 @@ final class WikiLintTriSurfaceTest extends TestCase
     {
         parent::setUp();
         $this->seed(RbacSeeder::class);
-        app(TenantContext::class)->set('default');
+        app(TenantContext::class)->set('test-tenant');
     }
 
     private function danglingNode(string $uid): KbNode
     {
         return KbNode::create([
-            'tenant_id' => 'default', 'project_key' => 'docs-v3', 'node_uid' => $uid,
+            'tenant_id' => 'test-tenant', 'project_key' => 'docs-v3', 'node_uid' => $uid,
             'node_type' => 'unknown', 'label' => $uid, 'payload_json' => ['dangling' => true],
         ]);
     }
@@ -59,7 +59,11 @@ final class WikiLintTriSurfaceTest extends TestCase
     {
         $this->danglingNode('leftover');
 
-        $this->artisan('kb:wiki-lint', ['--project' => 'docs-v3', '--fix' => true])
+        $this->artisan('kb:wiki-lint', [
+            '--project' => 'docs-v3',
+            '--fix' => true,
+            '--tenant' => 'test-tenant',
+        ])
             ->expectsOutputToContain('dangling 1')
             ->expectsOutputToContain('pruned 1')
             ->assertSuccessful();

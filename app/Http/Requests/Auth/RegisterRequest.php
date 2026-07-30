@@ -2,6 +2,8 @@
 
 namespace App\Http\Requests\Auth;
 
+use App\Models\User;
+use App\Rules\UniqueUserEmailIdentity;
 use Illuminate\Foundation\Http\FormRequest;
 
 /**
@@ -15,6 +17,11 @@ use Illuminate\Foundation\Http\FormRequest;
  */
 class RegisterRequest extends FormRequest
 {
+    protected function prepareForValidation(): void
+    {
+        $this->merge(['email' => User::normalizeEmail((string) $this->input('email'))]);
+    }
+
     public function authorize(): bool
     {
         return true;
@@ -27,7 +34,7 @@ class RegisterRequest extends FormRequest
     {
         return [
             'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', 'max:255', \Illuminate\Validation\Rule::unique('users', 'email')],
+            'email' => ['required', 'email', 'max:255', new UniqueUserEmailIdentity],
             // `confirmed` pairs with `password_confirmation` from the form.
             'password' => ['required', 'confirmed', 'string', 'min:8'],
             'invite_code' => ['required', 'string', 'max:128'],

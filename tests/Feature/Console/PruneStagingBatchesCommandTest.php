@@ -34,11 +34,11 @@ final class PruneStagingBatchesCommandTest extends TestCase
         // Stale batch + its items + its staged dir are gone.
         $this->assertDatabaseMissing('kb_ingest_batches', ['id' => $stale->id]);
         $this->assertDatabaseMissing('kb_ingest_batch_items', ['batch_id' => $stale->id]);
-        $this->assertFalse(Storage::disk('kb-staging')->exists("default/{$stale->id}"));
+        $this->assertFalse(Storage::disk('kb-staging')->exists("test-tenant/{$stale->id}"));
 
         // Fresh batch survives.
         $this->assertDatabaseHas('kb_ingest_batches', ['id' => $fresh->id]);
-        $this->assertTrue(Storage::disk('kb-staging')->exists("default/{$fresh->id}"));
+        $this->assertTrue(Storage::disk('kb-staging')->exists("test-tenant/{$fresh->id}"));
     }
 
     public function test_hours_override_widens_the_window(): void
@@ -64,7 +64,7 @@ final class PruneStagingBatchesCommandTest extends TestCase
 
         // Stale batch survives.
         $this->assertDatabaseHas('kb_ingest_batches', ['id' => $batch->id]);
-        $this->assertTrue(Storage::disk('kb-staging')->exists("default/{$batch->id}"));
+        $this->assertTrue(Storage::disk('kb-staging')->exists("test-tenant/{$batch->id}"));
     }
 
     private function makeBatch(string $filename, int $staleHours): KbIngestBatch
@@ -74,11 +74,11 @@ final class PruneStagingBatchesCommandTest extends TestCase
             'status' => KbIngestBatch::STATUS_STAGED,
         ]);
 
-        $stagingPath = "default/{$batch->id}/{$filename}";
+        $stagingPath = "test-tenant/{$batch->id}/{$filename}";
         Storage::disk('kb-staging')->put($stagingPath, '# x');
 
         $item = new KbIngestBatchItem([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'batch_id' => $batch->id,
             'original_filename' => $filename,
             'staging_path' => $stagingPath,

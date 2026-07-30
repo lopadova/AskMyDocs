@@ -4,6 +4,7 @@ namespace Tests\Feature\Api\Admin;
 
 use App\Models\ChatLog;
 use App\Models\KnowledgeDocument;
+use App\Models\ProjectMembership;
 use App\Models\User;
 use Database\Seeders\RbacSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -191,12 +192,20 @@ class DashboardMetricsControllerTest extends TestCase
         // R30 — the cache key MUST include the tenant: the same
         // (project, days) tuple requested from two tenants within the
         // 30s TTL would otherwise serve tenant A's numbers to tenant B.
-        $super = User::create([
-            'name' => 'Super',
-            'email' => 'super-'.uniqid().'@demo.local',
+        $system = User::create([
+            'name' => 'System',
+            'email' => 'system-'.uniqid().'@demo.local',
             'password' => Hash::make('secret123'),
         ]);
-        $super->assignRole('super-admin');
+        $system->assignRole(['system-admin', 'super-admin']);
+        foreach (['default', 'acme'] as $tenantId) {
+            ProjectMembership::create([
+                'tenant_id' => $tenantId,
+                'user_id' => $system->id,
+                'project_key' => $tenantId === 'default' ? 'default' : 'acme-kb',
+                'role' => 'admin',
+            ]);
+        }
 
         // R16 — strictly differentiating fixture: 1 chat in 'default',
         // 2 in 'acme', so a leaked cache CANNOT produce the expected
@@ -222,7 +231,7 @@ class DashboardMetricsControllerTest extends TestCase
         }
 
         // Prime the cache from the default tenant...
-        $defaultChats = $this->actingAs($super)
+        $defaultChats = $this->actingAs($system)
             ->getJson('/api/admin/metrics/overview?days=7')
             ->assertOk()
             ->json('overview.total_chats');
@@ -230,14 +239,14 @@ class DashboardMetricsControllerTest extends TestCase
 
         // ...then the SAME request from 'acme' within the TTL must
         // aggregate acme's data, not replay the cached default payload.
-        $acmeChats = $this->actingAs($super)
+        $acmeChats = $this->actingAs($system)
             ->withHeader('X-Tenant-Id', 'acme')
             ->getJson('/api/admin/metrics/overview?days=7')
             ->assertOk()
             ->json('overview.total_chats');
         $this->assertSame(2, $acmeChats);
 
-        $acmeDocs = $this->actingAs($super)
+        $acmeDocs = $this->actingAs($system)
             ->withHeader('X-Tenant-Id', 'acme')
             ->getJson('/api/admin/metrics/overview?days=7')
             ->assertOk()

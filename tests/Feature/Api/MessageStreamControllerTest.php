@@ -308,7 +308,7 @@ final class MessageStreamControllerTest extends TestCase
         // v8.8/W4 — the STREAMING refusal is recorded as a content gap (the SPA
         // uses /messages/stream, so this is the path that must record).
         $gap = \App\Models\KbSearchFailure::query()
-            ->forTenant('default')
+            ->forTenant('test-tenant')
             ->where('reason', \App\Models\KbSearchFailure::REASON_NO_CONTEXT)
             ->first();
         $this->assertNotNull($gap, 'a streaming refusal must record a content gap');

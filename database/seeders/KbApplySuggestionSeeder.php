@@ -23,7 +23,7 @@ final class KbApplySuggestionSeeder extends Seeder
     public function run(): void
     {
         $doc = KnowledgeDocument::updateOrCreate(
-            ['tenant_id' => 'default', 'project_key' => 'eng', 'source_path' => 'decisions/dec-cache.md', 'version_hash' => 'apply-v1'],
+            ['tenant_id' => DemoSeeder::PRIMARY_TENANT, 'project_key' => 'eng', 'source_path' => 'decisions/dec-cache.md', 'version_hash' => 'apply-v1'],
             [
                 'source_type' => 'markdown', 'title' => 'Cache decision', 'mime_type' => 'text/markdown',
                 'status' => 'active', 'document_hash' => str_repeat('f', 64), 'is_canonical' => true,
@@ -33,7 +33,7 @@ final class KbApplySuggestionSeeder extends Seeder
         );
 
         KbDocAnalysis::updateOrCreate(
-            ['tenant_id' => 'default', 'knowledge_document_id' => $doc->id, 'trigger' => KbDocAnalysis::TRIGGER_MODIFIED],
+            ['tenant_id' => DemoSeeder::PRIMARY_TENANT, 'knowledge_document_id' => $doc->id, 'trigger' => KbDocAnalysis::TRIGGER_MODIFIED],
             [
                 'project_key' => 'eng',
                 'doc_slug' => 'dec-cache',

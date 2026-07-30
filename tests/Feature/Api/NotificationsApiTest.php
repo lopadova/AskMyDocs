@@ -30,7 +30,7 @@ final class NotificationsApiTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        app(TenantContext::class)->set('default');
+        app(TenantContext::class)->set('test-tenant');
     }
 
     public function test_index_returns_only_unread_by_default(): void

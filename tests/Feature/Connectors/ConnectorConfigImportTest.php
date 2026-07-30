@@ -125,7 +125,7 @@ final class ConnectorConfigImportTest extends TestCase
         // Create a real account, export it, then feed the exported blob straight
         // back into import/validate — the prefill must reproduce the params.
         $installation = ConnectorInstallation::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'connector_name' => 'imap',
             'label' => 'Roundtrip',
             'project_key' => 'support-mailbox',
@@ -162,7 +162,7 @@ final class ConnectorConfigImportTest extends TestCase
         file_put_contents($path, json_encode($this->validBlob(['label' => 'CliImported'])));
 
         try {
-            $this->artisan('connectors:import', ['file' => $path, '--tenant' => 'default'])
+            $this->artisan('connectors:import', ['file' => $path, '--tenant' => 'test-tenant'])
                 ->expectsQuestion("Enter 'password' (hidden)", 'typed-in-pw')
                 ->assertSuccessful();
         } finally {
@@ -172,7 +172,7 @@ final class ConnectorConfigImportTest extends TestCase
         }
 
         $installation = ConnectorInstallation::query()
-            ->where('tenant_id', 'default')->where('connector_name', 'imap')->where('label', 'CliImported')->first();
+            ->where('tenant_id', 'test-tenant')->where('connector_name', 'imap')->where('label', 'CliImported')->first();
         $this->assertNotNull($installation);
         $this->assertSame('imap.example.com', $installation->config_json['connection']['host']);
         // The operator-entered secret was vaulted (never from the file).
@@ -181,7 +181,7 @@ final class ConnectorConfigImportTest extends TestCase
 
     public function test_import_cli_fails_on_a_missing_file(): void
     {
-        $this->artisan('connectors:import', ['file' => '/no/such/file.json', '--tenant' => 'default'])
+        $this->artisan('connectors:import', ['file' => '/no/such/file.json', '--tenant' => 'test-tenant'])
             ->assertFailed();
     }
 

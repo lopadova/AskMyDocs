@@ -48,12 +48,12 @@ final class PruneDeletedFlowTest extends TestCase
     public function test_dry_run_records_plan_without_deleting(): void
     {
         $cutoff = CarbonImmutable::now()->subDays(30);
-        $doc = $this->seedSoftDeleted('default', 'p', 'old.md', daysAgo: 60);
+        $doc = $this->seedSoftDeleted('test-tenant', 'p', 'old.md', daysAgo: 60);
 
         $run = Flow::dryRun(
             PruneDeletedFlow::NAME,
-            ['tenant_id' => 'default', 'cutoff_iso' => $cutoff->toIso8601String()],
-            FlowExecutionOptions::make(correlationId: 'default'),
+            ['tenant_id' => 'test-tenant', 'cutoff_iso' => $cutoff->toIso8601String()],
+            FlowExecutionOptions::make(correlationId: 'test-tenant'),
         );
 
         $this->assertSame(FlowRun::STATUS_SUCCEEDED, $run->status);
@@ -64,13 +64,13 @@ final class PruneDeletedFlowTest extends TestCase
 
     public function test_skips_rows_within_retention(): void
     {
-        $fresh = $this->seedSoftDeleted('default', 'p', 'fresh.md', daysAgo: 5);
+        $fresh = $this->seedSoftDeleted('test-tenant', 'p', 'fresh.md', daysAgo: 5);
         $cutoff = CarbonImmutable::now()->subDays(30);
 
         $run = Flow::execute(
             PruneDeletedFlow::NAME,
-            ['tenant_id' => 'default', 'cutoff_iso' => $cutoff->toIso8601String()],
-            FlowExecutionOptions::make(correlationId: 'default'),
+            ['tenant_id' => 'test-tenant', 'cutoff_iso' => $cutoff->toIso8601String()],
+            FlowExecutionOptions::make(correlationId: 'test-tenant'),
         );
 
         $this->assertSame(FlowRun::STATUS_SUCCEEDED, $run->status);

@@ -4,10 +4,10 @@ import { test } from './fixtures';
 /*
  * Team switcher — viewer project (failure path, R12).
  *
- * viewer@demo.local has memberships ONLY in the `default` tenant
+ * viewer@demo.local has memberships ONLY in the `a-demo` tenant
  * (DemoSeeder deliberately gives the acme membership to the admin
  * account alone). The switcher must therefore:
- *   - show the single `Default` team,
+ *   - show the single `Demo Company` team,
  *   - render DISABLED (visible but inert — no menu to open),
  *   - never offer `acme`.
  *
@@ -22,7 +22,7 @@ test.describe('Team switcher (viewer)', () => {
 
         const trigger = page.getByTestId('team-switcher-trigger');
         await expect(trigger).toBeVisible({ timeout: 15_000 });
-        await expect(trigger).toHaveText(/Default/);
+        await expect(trigger).toHaveText(/Demo Company/);
         await expect(trigger).toBeDisabled();
 
         // Clicking a disabled trigger opens nothing — and acme is
@@ -30,5 +30,6 @@ test.describe('Team switcher (viewer)', () => {
         await trigger.click({ force: true });
         await expect(page.getByTestId('team-switcher-menu')).not.toBeVisible();
         await expect(page.getByTestId('team-switcher-item-acme')).toHaveCount(0);
+        await expect(page.getByTestId('team-switcher-item-default')).toHaveCount(0);
     });
 });

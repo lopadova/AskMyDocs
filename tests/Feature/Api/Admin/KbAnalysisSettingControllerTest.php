@@ -102,7 +102,7 @@ final class KbAnalysisSettingControllerTest extends TestCase
         $resp->assertOk()->assertJsonPath('ok', true);
         $this->assertFalse($resp->json('setting.effective.enabled'));
         $this->assertDatabaseHas('kb_analysis_settings', [
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'eng',
             'enabled' => false,
         ]);
@@ -111,7 +111,7 @@ final class KbAnalysisSettingControllerTest extends TestCase
     public function test_upsert_clears_a_field_to_inherit(): void
     {
         $admin = $this->makeAdmin();
-        KbAnalysisSetting::create(['tenant_id' => 'default', 'project_key' => 'eng', 'enabled' => false]);
+        KbAnalysisSetting::create(['tenant_id' => 'test-tenant', 'project_key' => 'eng', 'enabled' => false]);
 
         // Re-upsert with enabled omitted/null → clears the override → inherits config true.
         $resp = $this->actingAs($admin)->putJson('/api/admin/kb/analysis-settings', [
@@ -128,7 +128,7 @@ final class KbAnalysisSettingControllerTest extends TestCase
     {
         $admin = $this->makeAdmin();
         KbAnalysisSetting::create([
-            'tenant_id' => 'default', 'project_key' => 'eng',
+            'tenant_id' => 'test-tenant', 'project_key' => 'eng',
             'enabled' => true, 'non_canonical' => true,
         ]);
 
@@ -175,7 +175,7 @@ final class KbAnalysisSettingControllerTest extends TestCase
     public function test_settings_are_tenant_scoped(): void
     {
         $admin = $this->makeAdmin();
-        // An override owned by ANOTHER tenant must not surface for 'default'.
+        // An override owned by ANOTHER tenant must not surface for 'test-tenant'.
         KbAnalysisSetting::create(['tenant_id' => 'other', 'project_key' => 'eng', 'enabled' => false]);
         $this->seedDoc('eng');
 

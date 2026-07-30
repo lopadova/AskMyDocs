@@ -79,7 +79,7 @@ final class LoadDocumentForDeleteStepTest extends TestCase
         return new FlowContext(
             flowRunId: 'delete-load-test',
             definitionName: 'kb.delete',
-            input: array_merge(['tenant_id' => 'default'], $input),
+            input: array_merge(['tenant_id' => 'test-tenant'], $input),
             stepOutputs: [],
             dryRun: false,
         );

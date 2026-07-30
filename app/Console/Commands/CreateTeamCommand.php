@@ -7,6 +7,7 @@ namespace App\Console\Commands;
 use App\Models\User;
 use App\Services\Admin\Exceptions\TeamRegistryUnavailableException;
 use App\Services\Admin\TeamRegistryService;
+use App\Support\PlatformAccess;
 use Illuminate\Console\Command;
 use Illuminate\Validation\ValidationException;
 
@@ -25,7 +26,7 @@ class CreateTeamCommand extends Command
     protected $signature = 'team:create
         {--name= : Team display name (required), e.g. "Acme Corp"}
         {--slug= : Team slug / tenant_id (default: slug of --name; a-z0-9_- , max 50)}
-        {--actor= : Email or id of the user attached as the first member (default: first super-admin)}';
+        {--actor= : Email or id of the user attached as the first member (default: first system-admin)}';
 
     protected $description = 'Create a new team (tenant): tenants row + initial project + membership, non-interactive.';
 
@@ -87,9 +88,9 @@ class CreateTeamCommand extends Command
             return $user;
         }
 
-        $user = User::role('super-admin', 'web')->first();
+        $user = User::role(PlatformAccess::SYSTEM_ADMIN_ROLE, 'web')->first();
         if ($user === null) {
-            $this->error('No super-admin found to attach — pass --actor=<email|id>.');
+            $this->error('No system-admin found to attach — pass --actor=<email|id>.');
         }
 
         return $user;

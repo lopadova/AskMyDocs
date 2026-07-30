@@ -7,6 +7,7 @@ namespace Tests\Feature\Api\Admin;
 use App\Models\NotificationEvent;
 use App\Models\NotificationPreference;
 use App\Models\NotificationTenantDefault;
+use App\Models\Project;
 use App\Models\User;
 use App\Support\TenantContext;
 use Database\Seeders\RbacSeeder;
@@ -46,7 +47,11 @@ class AdminNotificationDefaultsApiTest extends TestCase
         parent::setUp();
         $this->seed(RbacSeeder::class);
         Cache::flush();
-        app(TenantContext::class)->set('default');
+        app(TenantContext::class)->set('test-tenant');
+        Project::firstOrCreate(
+            ['tenant_id' => 'test-tenant', 'project_key' => 'default'],
+            ['name' => 'Default'],
+        );
     }
 
     public function test_index_returns_shape_with_event_types_channels_and_defaults(): void
@@ -102,7 +107,7 @@ class AdminNotificationDefaultsApiTest extends TestCase
 
         $this->assertCount(2, $resp['defaults']);
         $this->assertDatabaseHas('notification_tenant_defaults', [
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'event_type' => 'kb_doc_created',
             'channel' => 'email',
             'enabled' => true,
@@ -186,7 +191,7 @@ class AdminNotificationDefaultsApiTest extends TestCase
             ->assertOk();
 
         $this->assertDatabaseHas('notification_tenant_defaults', [
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'event_type' => 'kb_doc_created',
             'channel' => 'email',
             'enabled' => false,
@@ -194,7 +199,7 @@ class AdminNotificationDefaultsApiTest extends TestCase
         $this->assertSame(
             1,
             NotificationTenantDefault::query()
-                ->where('tenant_id', 'default')
+                ->where('tenant_id', 'test-tenant')
                 ->where('event_type', 'kb_doc_created')
                 ->where('channel', 'email')
                 ->count(),
@@ -216,7 +221,7 @@ class AdminNotificationDefaultsApiTest extends TestCase
         $this->assertSame(
             1,
             NotificationTenantDefault::query()
-                ->where('tenant_id', 'default')
+                ->where('tenant_id', 'test-tenant')
                 ->where('event_type', 'kb_doc_modified')
                 ->where('channel', 'slack')
                 ->count(),
@@ -249,7 +254,7 @@ class AdminNotificationDefaultsApiTest extends TestCase
             'enabled' => true,
         ]);
         $this->assertDatabaseHas('notification_tenant_defaults', [
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'event_type' => 'kb_doc_created',
             'channel' => 'email',
             'enabled' => false,
@@ -271,7 +276,7 @@ class AdminNotificationDefaultsApiTest extends TestCase
         // Super-admin pre-seeds tenant defaults: enable email for
         // kb_doc_created, disable everything else.
         NotificationTenantDefault::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'event_type' => 'kb_doc_created',
             'channel' => 'email',
             'enabled' => true,
@@ -284,6 +289,8 @@ class AdminNotificationDefaultsApiTest extends TestCase
             'password' => 'secret123',
             'password_confirmation' => 'secret123',
             'roles' => ['viewer'],
+            'initial_project_key' => 'default',
+            'membership_role' => 'member',
         ];
 
         $resp = $this->actingAs($admin)
@@ -292,7 +299,7 @@ class AdminNotificationDefaultsApiTest extends TestCase
 
         $newUserId = $resp->json('data.id');
         $this->assertDatabaseHas('notification_preferences', [
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'user_id' => $newUserId,
             'event_type' => 'kb_doc_created',
             'channel' => 'email',
@@ -301,7 +308,7 @@ class AdminNotificationDefaultsApiTest extends TestCase
         // No override for slack — falls back to platform default
         // (config defines slack=false), so the row is created disabled.
         $this->assertDatabaseHas('notification_preferences', [
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'user_id' => $newUserId,
             'event_type' => 'kb_doc_created',
             'channel' => 'slack',
@@ -321,6 +328,8 @@ class AdminNotificationDefaultsApiTest extends TestCase
             'password' => 'secret123',
             'password_confirmation' => 'secret123',
             'roles' => ['viewer'],
+            'initial_project_key' => 'default',
+            'membership_role' => 'member',
         ];
 
         $resp = $this->actingAs($admin)
@@ -329,14 +338,14 @@ class AdminNotificationDefaultsApiTest extends TestCase
 
         $newUserId = $resp->json('data.id');
         $this->assertDatabaseHas('notification_preferences', [
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'user_id' => $newUserId,
             'event_type' => 'kb_doc_created',
             'channel' => 'in_app',
             'enabled' => true,
         ]);
         $this->assertDatabaseHas('notification_preferences', [
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'user_id' => $newUserId,
             'event_type' => 'kb_doc_created',
             'channel' => 'email',

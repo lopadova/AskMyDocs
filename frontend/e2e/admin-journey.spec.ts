@@ -13,7 +13,7 @@ import { seedDb } from './setup-helpers';
  *
  * Scope: R13-compliant — no request interception against internal
  * routes. DemoSeeder + AdminInsightsSeeder populate every page.
- * `admin@demo.local` holds the `admin` role (DemoSeeder default) so
+ * `admin@demo.local` holds the `admin` role (DemoSeeder baseline) so
  * the non-destructive `kb:validate-canonical` Artisan path is
  * reachable without super-admin; no destructive commands are
  * exercised here — the `admin-maintenance-super-admin.spec.ts`

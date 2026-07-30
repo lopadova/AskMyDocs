@@ -77,7 +77,7 @@ final class WidgetAdminControllerTest extends TestCase
         $user = $this->superAdmin();
 
         WidgetKey::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'test-project',
             'public_key' => 'pk_test_abc123',
             'secret_hash' => bcrypt('sk_test_secret'),
@@ -108,7 +108,7 @@ final class WidgetAdminControllerTest extends TestCase
         $user = $this->superAdmin();
 
         $withSessions = WidgetKey::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'p-count',
             'public_key' => 'pk_count_2',
             'secret_hash' => Hash::make('sk_count_2'),
@@ -120,7 +120,7 @@ final class WidgetAdminControllerTest extends TestCase
         ]);
         for ($i = 0; $i < 2; $i++) {
             WidgetSession::query()->create([
-                'tenant_id' => 'default',
+                'tenant_id' => 'test-tenant',
                 'widget_key_id' => $withSessions->id,
                 'project_key' => 'p-count',
                 'public_session_id' => \Illuminate\Support\Str::uuid(),
@@ -130,7 +130,7 @@ final class WidgetAdminControllerTest extends TestCase
         }
 
         $withoutSessions = WidgetKey::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'p-count',
             'public_key' => 'pk_count_0',
             'secret_hash' => Hash::make('sk_count_0'),
@@ -190,7 +190,7 @@ final class WidgetAdminControllerTest extends TestCase
         $this->assertDatabaseHas('widget_keys', [
             'label' => 'New Key',
             'project_key' => 'my-project',
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
         ]);
     }
 
@@ -285,7 +285,7 @@ final class WidgetAdminControllerTest extends TestCase
     {
         $user = $this->superAdmin();
         $key = WidgetKey::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'gescat',
             'public_key' => 'pk_host_tools',
             'secret_hash' => bcrypt('sk_host_tools'),
@@ -318,7 +318,7 @@ final class WidgetAdminControllerTest extends TestCase
     {
         $user = $this->superAdmin();
         $key = WidgetKey::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'test-project',
             'public_key' => 'pk_test_update',
             'secret_hash' => bcrypt('sk_test_secret'),
@@ -344,7 +344,7 @@ final class WidgetAdminControllerTest extends TestCase
     {
         $user = $this->superAdmin();
         $key = WidgetKey::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'test-project',
             'public_key' => 'pk_test_origins',
             'secret_hash' => bcrypt('sk_test_secret'),
@@ -376,7 +376,7 @@ final class WidgetAdminControllerTest extends TestCase
     {
         $user = $this->superAdmin();
         $key = WidgetKey::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'test-project',
             'public_key' => 'pk_test_clear_origins',
             'secret_hash' => bcrypt('sk_test_secret'),
@@ -402,7 +402,7 @@ final class WidgetAdminControllerTest extends TestCase
     {
         $user = $this->superAdmin();
         $key = WidgetKey::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'test-project',
             'public_key' => 'pk_test_long_origin',
             'secret_hash' => bcrypt('sk_test_secret'),
@@ -425,7 +425,7 @@ final class WidgetAdminControllerTest extends TestCase
     {
         $user = $this->superAdmin();
         $key = WidgetKey::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'p',
             'public_key' => 'pk_theme_default',
             'label' => 'No theme',
@@ -473,7 +473,7 @@ final class WidgetAdminControllerTest extends TestCase
     {
         $user = $this->superAdmin();
         $key = WidgetKey::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'p',
             'public_key' => 'pk_theme_update',
             'label' => 'L',
@@ -541,7 +541,7 @@ final class WidgetAdminControllerTest extends TestCase
     {
         $user = $this->superAdmin();
         WidgetKey::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'p',
             'public_key' => 'pk_mode_default',
             'label' => 'No mode',
@@ -573,7 +573,7 @@ final class WidgetAdminControllerTest extends TestCase
     {
         $user = $this->superAdmin();
         $key = WidgetKey::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'test-project',
             'public_key' => 'pk_test_old',
             'secret_hash' => bcrypt('sk_test_old'),
@@ -604,7 +604,7 @@ final class WidgetAdminControllerTest extends TestCase
     {
         $user = $this->superAdmin();
         $key = WidgetKey::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'test-project',
             'public_key' => 'pk_test_revoke',
             'secret_hash' => bcrypt('sk_test_revoke'),
@@ -626,7 +626,7 @@ final class WidgetAdminControllerTest extends TestCase
     {
         $user = $this->superAdmin();
         $key = WidgetKey::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'test-project',
             'public_key' => 'pk_test_destroy',
             'secret_hash' => bcrypt('sk_test_destroy'),
@@ -649,7 +649,7 @@ final class WidgetAdminControllerTest extends TestCase
 
         // Key in default tenant
         WidgetKey::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'default-project',
             'public_key' => 'pk_visible',
             'secret_hash' => bcrypt('sk_visible'),
@@ -698,7 +698,7 @@ final class WidgetAdminControllerTest extends TestCase
         $user = $this->adminUser(); // admin can view sessions
 
         $key = WidgetKey::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'test-project',
             'public_key' => 'pk_sess_test',
             'secret_hash' => bcrypt('sk_sess_test'),
@@ -710,7 +710,7 @@ final class WidgetAdminControllerTest extends TestCase
         ]);
 
         $session = WidgetSession::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'widget_key_id' => $key->id,
             'project_key' => 'test-project',
             'public_session_id' => \Illuminate\Support\Str::uuid(),
@@ -731,7 +731,7 @@ final class WidgetAdminControllerTest extends TestCase
         $user = $this->adminUser();
 
         $key = WidgetKey::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'test-project',
             'public_key' => 'pk_sess_27',
             'secret_hash' => bcrypt('sk_sess_27'),
@@ -743,7 +743,7 @@ final class WidgetAdminControllerTest extends TestCase
         ]);
 
         $session = WidgetSession::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'widget_key_id' => $key->id,
             'project_key' => 'test-project',
             'public_session_id' => \Illuminate\Support\Str::uuid(),
@@ -767,7 +767,7 @@ final class WidgetAdminControllerTest extends TestCase
         $user = $this->adminUser();
 
         $key = WidgetKey::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'test-project',
             'public_key' => 'pk_detail_test',
             'secret_hash' => bcrypt('sk_detail_test'),
@@ -779,7 +779,7 @@ final class WidgetAdminControllerTest extends TestCase
         ]);
 
         $session = WidgetSession::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'widget_key_id' => $key->id,
             'project_key' => 'test-project',
             'public_session_id' => \Illuminate\Support\Str::uuid(),
@@ -788,7 +788,7 @@ final class WidgetAdminControllerTest extends TestCase
         ]);
 
         WidgetSessionStep::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'widget_session_id' => $session->id,
             'step_index' => 0,
             'kind' => 'user_message',
@@ -815,7 +815,7 @@ final class WidgetAdminControllerTest extends TestCase
         $user = $this->adminUser();
 
         $key1 = WidgetKey::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'project-1',
             'public_key' => 'pk_filter_1',
             'secret_hash' => bcrypt('sk_filter_1'),
@@ -827,7 +827,7 @@ final class WidgetAdminControllerTest extends TestCase
         ]);
 
         $key2 = WidgetKey::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'project-2',
             'public_key' => 'pk_filter_2',
             'secret_hash' => bcrypt('sk_filter_2'),
@@ -840,7 +840,7 @@ final class WidgetAdminControllerTest extends TestCase
 
         // Session on key1
         WidgetSession::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'widget_key_id' => $key1->id,
             'project_key' => 'project-1',
             'public_session_id' => \Illuminate\Support\Str::uuid(),
@@ -849,7 +849,7 @@ final class WidgetAdminControllerTest extends TestCase
 
         // Session on key2
         WidgetSession::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'widget_key_id' => $key2->id,
             'project_key' => 'project-2',
             'public_session_id' => \Illuminate\Support\Str::uuid(),

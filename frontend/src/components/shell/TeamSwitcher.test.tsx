@@ -5,7 +5,7 @@ import { TeamSwitcher } from './TeamSwitcher';
 import type { Team } from '../../lib/team-store';
 
 const TEAMS: Team[] = [
-    { tenant_id: 'default', hash: 'def0def0def0', name: 'Default', projects: [] },
+    { tenant_id: 'a-demo', hash: '8d083090b062', name: 'Demo Company', projects: [] },
     {
         tenant_id: 'acme',
         hash: 'acme00acme00',
@@ -23,7 +23,7 @@ describe('TeamSwitcher', () => {
         render(<TeamSwitcher team={TEAMS[0]} teams={TEAMS} onChange={() => undefined} />);
 
         const trigger = screen.getByTestId('team-switcher-trigger');
-        expect(trigger).toHaveTextContent('Default');
+        expect(trigger).toHaveTextContent('Demo Company');
         expect(trigger).toHaveAttribute('aria-expanded', 'false');
 
         await user.click(trigger);
@@ -32,7 +32,7 @@ describe('TeamSwitcher', () => {
         const menu = screen.getByTestId('team-switcher-menu');
         expect(menu).toHaveAttribute('role', 'menu');
         expect(screen.getByTestId('team-switcher-item-acme')).toHaveTextContent('2 projects');
-        expect(screen.getByTestId('team-switcher-item-default')).toHaveAttribute(
+        expect(screen.getByTestId('team-switcher-item-a-demo')).toHaveAttribute(
             'aria-checked',
             'true',
         );
@@ -71,7 +71,7 @@ describe('TeamSwitcher', () => {
         const trigger = screen.getByTestId('team-switcher-trigger');
         expect(trigger).toBeDisabled();
         expect(trigger).toHaveAttribute('aria-disabled', 'true');
-        expect(trigger).toHaveTextContent('Default');
+        expect(trigger).toHaveTextContent('Demo Company');
 
         await user.click(trigger);
         expect(screen.queryByTestId('team-switcher-menu')).not.toBeInTheDocument();

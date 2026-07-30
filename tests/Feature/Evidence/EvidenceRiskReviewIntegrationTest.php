@@ -7,6 +7,7 @@ namespace Tests\Feature\Evidence;
 use App\Ai\AiManager;
 use App\Ai\AiResponse;
 use App\Evidence\AiManagerEvidenceReviewer;
+use App\Models\ProjectMembership;
 use App\Models\User;
 use Database\Seeders\RbacSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -251,11 +252,9 @@ final class EvidenceRiskReviewIntegrationTest extends TestCase
     }
 
     /**
-     * A super-admin operator. super-admin syncs Permission::all(), which
-     * includes `tenant.cross-access`, so AuthorizeTenantHeader lets it act
-     * under any `X-Tenant-Id` header (R30). The active tenant for each request
-     * is therefore driven entirely by the header, and the bound TenantResolver
-     * scopes the review log to it — which is exactly the isolation under test.
+     * A tenant super-admin with an explicit membership. The request header
+     * selects that real membership and the bound TenantResolver scopes the
+     * review log to it — exactly the isolation under test.
      */
     private function operatorFor(string $tenant): User
     {
@@ -265,6 +264,13 @@ final class EvidenceRiskReviewIntegrationTest extends TestCase
             'password' => Hash::make('secret-password'),
         ]);
         $user->assignRole('super-admin');
+        ProjectMembership::create([
+            'tenant_id' => $tenant,
+            'user_id' => $user->id,
+            'project_key' => 'evidence',
+            'role' => 'admin',
+            'scope_allowlist' => null,
+        ]);
 
         return $user;
     }

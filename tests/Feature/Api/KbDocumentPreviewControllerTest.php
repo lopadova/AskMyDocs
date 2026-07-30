@@ -110,7 +110,7 @@ final class KbDocumentPreviewControllerTest extends TestCase
     public function test_cross_tenant_document_is_invisible(): void
     {
         // R30 — a document in another tenant must never be reachable, even by
-        // its numeric id. The active tenant in tests is 'default'.
+        // its numeric id. The active tenant in tests is 'test-tenant'.
         $foreign = KnowledgeDocument::create([
             'tenant_id' => 'other-tenant',
             'project_key' => 'hr-portal',
@@ -124,7 +124,7 @@ final class KbDocumentPreviewControllerTest extends TestCase
             'version_hash' => str_repeat('9', 64),
         ]);
 
-        $this->assertSame('default', app(TenantContext::class)->current());
+        $this->assertSame('test-tenant', app(TenantContext::class)->current());
 
         $this->getJson("/api/kb/documents/{$foreign->id}/preview")
             ->assertStatus(404);

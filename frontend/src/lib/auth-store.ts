@@ -22,6 +22,7 @@ export type AuthProject = {
  */
 export type AuthFeatures = {
     invitations_admin?: boolean;
+    system_admin?: boolean;
 };
 
 export type AuthMePayload = {
@@ -31,6 +32,10 @@ export type AuthMePayload = {
     projects: AuthProject[];
     /** Optional for BE compat: teams (= tenants) the user can switch into. */
     teams?: Team[];
+    onboarding?: {
+        required: boolean;
+        can_create_company: boolean;
+    };
     preferences?: Record<string, string>;
     features?: AuthFeatures;
 };
@@ -41,6 +46,10 @@ type AuthState = {
     permissions: string[];
     projects: AuthProject[];
     features: AuthFeatures;
+    onboarding: {
+        required: boolean;
+        can_create_company: boolean;
+    };
     loading: boolean;
     setMe: (me: AuthMePayload) => void;
     clear: () => void;
@@ -60,6 +69,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     permissions: [],
     projects: [],
     features: {},
+    onboarding: { required: false, can_create_company: false },
     loading: true,
     setMe: (me) => {
         // Single sync point for the team store: covers both the bootstrap
@@ -73,12 +83,21 @@ export const useAuthStore = create<AuthState>((set) => ({
             permissions: me.permissions,
             projects: me.projects,
             features: me.features ?? {},
+            onboarding: me.onboarding ?? { required: false, can_create_company: false },
             loading: false,
         });
     },
     clear: () => {
         useTeamStore.getState().clear();
-        set({ user: null, roles: [], permissions: [], projects: [], features: {}, loading: false });
+        set({
+            user: null,
+            roles: [],
+            permissions: [],
+            projects: [],
+            features: {},
+            onboarding: { required: false, can_create_company: false },
+            loading: false,
+        });
     },
     setLoading: (loading) => set({ loading }),
 }));

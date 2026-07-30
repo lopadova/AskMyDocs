@@ -5,10 +5,12 @@ namespace Tests\Feature\Api\Admin;
 use App\Models\KnowledgeDocument;
 use App\Models\ProjectMembership;
 use App\Models\User;
+use App\Support\TenantContext;
 use Database\Seeders\RbacSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
+use Padosoft\AiActCompliance\MultiTenancy\Models\Tenant;
 use Tests\TestCase;
 
 /**
@@ -21,6 +23,10 @@ class ProjectMembershipControllerTest extends TestCase
 {
     use RefreshDatabase;
 
+    private const TENANT = 'membership-test';
+
+    private const ANCHOR_PROJECT = 'tenant-anchor';
+
     protected function defineRoutes($router): void
     {
         $router->middleware('api')->prefix('api')->group(__DIR__.'/../../../../routes/api.php');
@@ -31,6 +37,13 @@ class ProjectMembershipControllerTest extends TestCase
         parent::setUp();
         $this->seed(RbacSeeder::class);
         Cache::flush();
+        Tenant::query()->updateOrCreate(
+            ['slug' => self::TENANT],
+            ['name' => 'Membership Test', 'status' => 'active', 'is_system' => false],
+        );
+        app(TenantContext::class)->set(self::TENANT);
+        $this->withHeader('X-Tenant-Id', self::TENANT);
+        $this->seedProjectKey(self::ANCHOR_PROJECT);
         $this->seedProjectKey('hr-portal');
         $this->seedProjectKey('engineering');
     }
@@ -96,7 +109,14 @@ class ProjectMembershipControllerTest extends TestCase
             ->assertStatus(200)
             ->assertJsonPath('data.role', 'owner');
 
-        $this->assertSame(1, ProjectMembership::query()->where('user_id', $user->id)->count());
+        $this->assertSame(
+            1,
+            ProjectMembership::query()
+                ->forTenant(self::TENANT)
+                ->where('user_id', $user->id)
+                ->where('project_key', 'hr-portal')
+                ->count(),
+        );
     }
 
     public function test_store_rejects_unknown_project_key_with_422(): void
@@ -200,6 +220,72 @@ class ProjectMembershipControllerTest extends TestCase
         $this->assertDatabaseMissing('project_memberships', ['id' => $m->id]);
     }
 
+    public function test_destroy_blocks_the_last_membership_of_the_last_tenant_super_admin(): void
+    {
+        $admin = $this->makeAdmin();
+        $superAdmin = $this->makeViewer('last-super');
+        $superAdmin->syncRoles(['super-admin']);
+        $membership = $superAdmin->projectMemberships()
+            ->forTenant(self::TENANT)
+            ->firstOrFail();
+
+        $this->actingAs($admin)
+            ->deleteJson("/api/admin/memberships/{$membership->id}")
+            ->assertStatus(409)
+            ->assertJsonPath(
+                'message',
+                'Cannot remove the last super-admin membership for this tenant.',
+            );
+
+        $this->assertDatabaseHas('project_memberships', ['id' => $membership->id]);
+    }
+
+    public function test_destroy_allows_one_of_multiple_memberships_for_the_same_super_admin(): void
+    {
+        $admin = $this->makeAdmin();
+        $superAdmin = $this->makeViewer('multi-project-super');
+        $superAdmin->syncRoles(['super-admin']);
+        $membership = ProjectMembership::create([
+            'tenant_id' => self::TENANT,
+            'user_id' => $superAdmin->id,
+            'project_key' => 'hr-portal',
+            'role' => 'owner',
+        ]);
+
+        $this->actingAs($admin)
+            ->deleteJson("/api/admin/memberships/{$membership->id}")
+            ->assertNoContent();
+
+        $this->assertDatabaseMissing('project_memberships', ['id' => $membership->id]);
+        $this->assertDatabaseHas('project_memberships', [
+            'tenant_id' => self::TENANT,
+            'user_id' => $superAdmin->id,
+            'project_key' => self::ANCHOR_PROJECT,
+        ]);
+    }
+
+    public function test_destroy_allows_membership_removal_when_another_super_admin_remains(): void
+    {
+        $admin = $this->makeAdmin();
+        $first = $this->makeViewer('first-super');
+        $first->syncRoles(['super-admin']);
+        $second = $this->makeViewer('second-super');
+        $second->syncRoles(['super-admin']);
+        $membership = $first->projectMemberships()
+            ->forTenant(self::TENANT)
+            ->firstOrFail();
+
+        $this->actingAs($admin)
+            ->deleteJson("/api/admin/memberships/{$membership->id}")
+            ->assertNoContent();
+
+        $this->assertDatabaseMissing('project_memberships', ['id' => $membership->id]);
+        $this->assertDatabaseHas('project_memberships', [
+            'tenant_id' => self::TENANT,
+            'user_id' => $second->id,
+        ]);
+    }
+
     public function test_index_hides_memberships_of_other_tenants(): void
     {
         // R30 — the Users screen lists memberships of the ACTIVE team only.
@@ -223,7 +309,7 @@ class ProjectMembershipControllerTest extends TestCase
             ->assertOk();
 
         $keys = array_column($response->json('data'), 'project_key');
-        $this->assertSame(['hr-portal'], $keys);
+        $this->assertSame(['hr-portal', self::ANCHOR_PROJECT], $keys);
     }
 
     public function test_store_writes_membership_into_the_active_tenant(): void
@@ -241,7 +327,40 @@ class ProjectMembershipControllerTest extends TestCase
         $this->assertDatabaseHas('project_memberships', [
             'user_id' => $user->id,
             'project_key' => 'hr-portal',
-            'tenant_id' => 'default',
+            'tenant_id' => self::TENANT,
+        ]);
+    }
+
+    public function test_index_and_store_hide_user_from_another_tenant(): void
+    {
+        $admin = $this->makeAdmin();
+        $foreign = User::create([
+            'name' => 'Foreign',
+            'email' => 'foreign-'.uniqid().'@demo.local',
+            'password' => Hash::make('secret123'),
+        ]);
+        $foreign->assignRole('viewer');
+        ProjectMembership::create([
+            'tenant_id' => 'other-tenant',
+            'user_id' => $foreign->id,
+            'project_key' => 'other-project',
+            'role' => 'member',
+        ]);
+
+        $this->actingAs($admin)
+            ->getJson("/api/admin/users/{$foreign->id}/memberships")
+            ->assertNotFound();
+        $this->actingAs($admin)
+            ->postJson("/api/admin/users/{$foreign->id}/memberships", [
+                'project_key' => 'hr-portal',
+                'role' => 'member',
+            ])
+            ->assertNotFound();
+
+        $this->assertDatabaseMissing('project_memberships', [
+            'tenant_id' => self::TENANT,
+            'user_id' => $foreign->id,
+            'project_key' => 'hr-portal',
         ]);
     }
 
@@ -310,6 +429,7 @@ class ProjectMembershipControllerTest extends TestCase
             'password' => Hash::make('secret123'),
         ]);
         $admin->assignRole('admin');
+        $this->grantTenantMembership($admin);
 
         return $admin;
     }
@@ -322,7 +442,19 @@ class ProjectMembershipControllerTest extends TestCase
             'password' => Hash::make('secret123'),
         ]);
         $user->assignRole('viewer');
+        $this->grantTenantMembership($user);
 
         return $user;
+    }
+
+    private function grantTenantMembership(User $user): void
+    {
+        ProjectMembership::firstOrCreate([
+            'tenant_id' => self::TENANT,
+            'user_id' => $user->id,
+            'project_key' => self::ANCHOR_PROJECT,
+        ], [
+            'role' => 'member',
+        ]);
     }
 }

@@ -1,0 +1,76 @@
+# ADR 0025 — Separate registration intent from operational tenant membership
+
+- Status: Accepted
+- Date: 2026-07-29
+- Release: v8.30
+
+## Context
+
+Public registration requires an invitation code. Historically validation
+depended on a tenant context and could fall back to the literal `default`.
+That cannot distinguish two legitimate flows:
+
+1. invite a person into an existing company with a predefined access grant;
+2. authorize a person to register a new company, whose tenant does not exist yet.
+
+Reserving numeric tenant IDs would not solve the boundary cleanly because the
+application's tenant identity and every tenant-aware foreign key use the string
+slug, not the numeric primary key of the optional `tenants` registry.
+
+## Decision
+
+The existing invitation tables remain the sole source of invite state. Public
+registration codes are globally unique and are stored in the reserved
+`system-registration` namespace, represented by an idempotently seeded
+`tenants` row with `is_system=true`.
+
+Each public code carries exactly one registration intent:
+
+- `company_bootstrap`: no grant and no membership. Registration opens the
+  account session, then requires resumable company onboarding.
+- `tenant_join`: exactly one explicit tenant grant, targeting an active
+  non-system tenant and one or more projects that already belong to it.
+  Redemption provisions the membership and onboarding is not required. A
+  strict host completion layer verifies the role and memberships before
+  returning a session or token.
+
+`registration-invite:create` is the trusted issuer. Omitting `--tenant` creates
+a bootstrap code; supplying `--tenant` and one or more `--project` values
+creates a tenant-linked code.
+
+The SPA preserves the registration intent. A completed `tenant_join` opens the
+authenticated `/app/welcome/{teamHash}` handoff, names the assigned company and
+requires an explicit continue action before entering chat. A
+`company_bootstrap` continues to `/app/onboarding`.
+
+`POST /api/auth/onboarding/company` is authenticated but deliberately outside
+tenant authorization. It rechecks that the identity has no operational
+membership, then atomically creates the tenant, initial project and owner
+membership and grants the tenant `super-admin` role. `platform.admin` identities
+are not eligible because their zero-tenant destination is the global control
+plane.
+
+The literal `default` is a reserved, non-operational legacy fallback. It is
+neither a public registration namespace nor a valid company membership; stale
+rows for it never suppress onboarding or appear in tenant switchers.
+
+The invitation package keeps redemption atomic and provisioning best-effort.
+Public registration therefore persists `users.registration_completed_at` only
+after the expected grant has been verified transactionally. A consumed
+redemption with a null marker is recoverable at the next login; it is not
+reclassified as a company-bootstrap account. Once the marker exists, later
+membership removal is intentional and is never reversed from the historical
+redemption.
+
+## Consequences
+
+- No new invitation table or numeric-ID remapping is required.
+- A bootstrap registration interrupted after account creation resumes
+  onboarding; an interrupted tenant-join registration first resumes its
+  original grant. Neither path reaches a tenant dashboard without membership.
+- Removing a normal user from every company intentionally makes the account
+  eligible to create a new company on its next login.
+- The technical system tenant never appears in tenant switchers, operational
+  middleware, tenant administration lists or global tenant inventory.
+- Public code lookup is safe only while `invite_codes.code` remains globally
+  unique; the database unique index is therefore part of this contract.

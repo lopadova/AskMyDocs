@@ -11,6 +11,36 @@ moats and roadmap, see [README.md](README.md).
 
 ---
 
+### v8.30.0 — 2026-07-29 (System administration and operational membership)
+
+- `system-admin` now owns only the global `platform.admin` capability. No role
+  bypasses tenant membership on operational APIs; the legacy
+  `tenant.cross-access` permission is removed.
+- `/api/auth/me.teams`, tenant middleware and team management derive from real
+  memberships. `default` remains a legacy slug but is never an implicit grant;
+  zero-membership accounts retain an explicit no-tenant state.
+- Existing implicit `default` access is materialized by an idempotent, audited
+  compatibility migration without granting any non-default tenant.
+- The global control plane gains a read-only paginated Super Admin roster and
+  separately paginated tenant associations at
+  `/api/system-admin/super-admins*` and `/app/system/super-admins`.
+- Tenant Users CRUD is membership-scoped, creates the initial membership
+  atomically, returns 404 for foreign identities and refuses shared-identity
+  mutations with `409 cross_tenant_identity`.
+- The SPA now supports `currentTeam = null`, a no-tenant landing page, and
+  distinct **System administration** and **Tenant administration** navigation.
+- Public registration codes now have explicit `company_bootstrap` and
+  `tenant_join` intents, issued by `registration-invite:create`. They live in
+  the seeded non-operational `system-registration` namespace; `default` is
+  never a registration fallback.
+- A normal account without memberships is held on resumable company onboarding.
+  `POST /api/auth/onboarding/company` atomically creates its tenant, initial
+  project and owner membership and makes the creator tenant `super-admin`.
+  Tenant-linked invitations provision the existing company and skip onboarding;
+  platform administrators without memberships remain in the global control plane.
+
+---
+
 ### v8.9.0 — 2026-06-10 (Tenant & Project Isolation Hardening)
 
 Security-review release. Deep audit of every content-surfacing path

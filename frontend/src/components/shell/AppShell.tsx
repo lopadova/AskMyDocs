@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useState, type ReactNode } from 'react';
 import { Outlet, useMatchRoute, useNavigate } from '@tanstack/react-router';
 import { Sidebar } from './Sidebar';
 import { NAV_ITEMS, SECTION_ROUTES, deriveSection, type SidebarSection } from './nav-config';
@@ -8,7 +8,7 @@ import { TweaksPanel } from './TweaksPanel';
 import { useDensity, useFontPair, useTheme } from './hooks';
 import { USERS, type SeedUser } from '../../lib/seed';
 import { useAuthStore } from '../../lib/auth-store';
-import { useTeamStore, type Team } from '../../lib/team-store';
+import { useTeamStore } from '../../lib/team-store';
 
 // Active-section detection is centralised in nav-config.deriveSection, which
 // resolves the LONGEST route prefix (so `/app/admin/kb/synonyms` → `synonyms`,
@@ -36,7 +36,7 @@ function deriveSectionFromMatch(match: ReturnType<typeof useMatchRoute>): Sideba
 // falls back to the least-privileged `viewer`; we deliberately do NOT surface
 // an unknown raw role string, which is what the old `?? roles[0]` fallback +
 // cast smuggled through.
-const ROLE_PRIORITY: SeedUser['role'][] = ['super-admin', 'admin', 'dpo', 'editor', 'viewer'];
+const ROLE_PRIORITY: SeedUser['role'][] = ['system-admin', 'super-admin', 'admin', 'dpo', 'editor', 'viewer'];
 
 function pickPrimaryRole(roles: string[]): SeedUser['role'] | null {
     return ROLE_PRIORITY.find((r) => roles.includes(r)) ?? null;
@@ -46,7 +46,7 @@ function pickPrimaryRole(roles: string[]): SeedUser['role'] | null {
  * Root of the authenticated `/app/*` routes. Hosts the sidebar + topbar
  * + the route outlet + the floating palette + tweaks panel.
  */
-export function AppShell() {
+export function AppShell({ children, tenantScoped = true }: { children?: ReactNode; tenantScoped?: boolean } = {}) {
     const [theme, setTheme] = useTheme('dark');
     const [density, setDensity] = useDensity('balanced');
     const [font, setFont] = useFontPair('geist');
@@ -57,6 +57,7 @@ export function AppShell() {
     const section = deriveSectionFromMatch(matchRoute);
     const storeUser = useAuthStore((s) => s.user);
     const storeRoles = useAuthStore((s) => s.roles);
+    const features = useAuthStore((s) => s.features);
     const teams = useTeamStore((s) => s.teams);
     const currentTeam = useTeamStore((s) => s.currentTeam);
 
@@ -81,28 +82,26 @@ export function AppShell() {
           }
         : USERS[0];
 
-    // Active team object for the Topbar switcher. Before the first
-    // `/api/auth/me` sync (or for a guest preview) the store is empty —
-    // fall back to a synthetic `default` team so the shell never crashes
-    // on an undefined team. (In practice TeamGate only mounts AppShell
-    // once the URL hash resolved to a real team.)
-    const activeTeam: Team = teams.find((t) => t.tenant_id === currentTeam) ?? {
-        tenant_id: currentTeam ?? 'default',
-        hash: '',
-        name: 'Default',
-        projects: [],
-    };
+    // No synthetic fallback: zero memberships is a real state, and global
+    // control-plane pages must remain usable without inventing `default`.
+    const activeTeam = teams.find((t) => t.tenant_id === currentTeam) ?? null;
 
     // Sidebar badge: projects the user can access INSIDE the active team
     // (the switcher shows the same number per team — kept in lockstep by
     // deriving both from the same Team record).
-    const projectCount = activeTeam.projects.length;
+    const projectCount = activeTeam?.projects.length ?? 0;
 
     const onNav = useCallback(
         (id: SidebarSection) => {
-            navigate({ to: SECTION_ROUTES[id], params: { teamHash: activeTeam.hash } });
+            const route = SECTION_ROUTES[id];
+            if (route.includes('$teamHash')) {
+                if (activeTeam === null) return;
+                navigate({ to: route, params: { teamHash: activeTeam.hash } });
+                return;
+            }
+            navigate({ to: route });
         },
-        [navigate, activeTeam.hash],
+        [navigate, activeTeam],
     );
 
     return (
@@ -118,12 +117,23 @@ export function AppShell() {
                 fontFamily: 'var(--font-sans)',
             }}
         >
-            <Sidebar active={section} onNav={onNav} user={sidebarUser} projectCount={projectCount} />
+            <Sidebar
+                active={section}
+                onNav={onNav}
+                user={sidebarUser}
+                projectCount={projectCount}
+                features={features}
+                hasTenants={teams.length > 0}
+            />
             <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                 <Topbar
                     team={activeTeam}
                     teams={teams}
                     onTeamChange={(t) => {
+                        if (!tenantScoped) {
+                            navigate({ to: '/app/$teamHash/chat', params: { teamHash: t.hash } });
+                            return;
+                        }
                         // The URL is the source of truth for the active
                         // team: swap the hash segment and let TeamGate
                         // sync the store + clear the query cache. Search
@@ -143,8 +153,8 @@ export function AppShell() {
                   * pickers, tree selections, free-text filters) that
                   * would otherwise leak across tenants. Pairs with the
                   * queryClient.clear() in team-store.switchTeam. */}
-                <div key={activeTeam.tenant_id} style={{ flex: 1, overflow: 'auto', display: 'flex' }}>
-                    <Outlet />
+                <div key={tenantScoped ? (activeTeam?.tenant_id ?? 'no-tenant') : 'system'} style={{ flex: 1, overflow: 'auto', display: 'flex' }}>
+                    {children ?? <Outlet />}
                 </div>
             </main>
             <CommandPalette />
@@ -159,6 +169,7 @@ export function AppShell() {
                 setFont={setFont}
                 section={section ?? 'chat'}
                 setSection={onNav}
+                userRole={sidebarUser.role}
             />
         </div>
     );

@@ -117,19 +117,19 @@ final class ReembedTest extends TestCase
         $this->assertStringNotContainsString('[REDACTED]', $text);
         $this->assertStringNotContainsString(self::EMAIL, $text);
         $this->assertMatchesRegularExpression('/\[tok:[A-Za-z0-9_]+:[0-9a-f]+\]/', $text);
-        $this->assertDatabaseHas('pii_token_maps', ['tenant_id' => 'default', 'original' => self::EMAIL]);
+        $this->assertDatabaseHas('pii_token_maps', ['tenant_id' => 'test-tenant', 'original' => self::EMAIL]);
     }
 
     public function test_service_queues_one_job_per_live_document_tenant_scoped(): void
     {
         Queue::fake();
 
-        $this->makeDoc('default', 'support', 'a.md');
-        $this->makeDoc('default', 'support', 'b.md');
-        $this->makeDoc('default', 'other', 'c.md');     // different project
+        $this->makeDoc('test-tenant', 'support', 'a.md');
+        $this->makeDoc('test-tenant', 'support', 'b.md');
+        $this->makeDoc('test-tenant', 'other', 'c.md');     // different project
         $this->makeDoc('globex', 'support', 'd.md');     // different tenant
 
-        $queued = app(ReembedProjectService::class)->reembedProject('default', 'support');
+        $queued = app(ReembedProjectService::class)->reembedProject('test-tenant', 'support');
 
         $this->assertSame(2, $queued);
         Queue::assertPushed(ReembedDocumentJob::class, 2);
@@ -145,7 +145,7 @@ final class ReembedTest extends TestCase
         // ingest would store) + a masked chunk as if ingested under the OLD policy.
         $hash = hash('sha256', $this->markdown());
         $doc = KnowledgeDocument::create([
-            'tenant_id' => 'default', 'project_key' => 'support', 'source_type' => 'markdown',
+            'tenant_id' => 'test-tenant', 'project_key' => 'support', 'source_type' => 'markdown',
             'title' => 'Ticket', 'source_path' => 'tickets/1.md', 'language' => 'en',
             'access_scope' => 'internal', 'status' => 'active',
             'document_hash' => $hash, 'version_hash' => $hash,
@@ -159,7 +159,7 @@ final class ReembedTest extends TestCase
         $this->setPolicy('tokenise');
         $this->fakeEmbeddingCache();
 
-        (new ReembedDocumentJob($doc->id, 'default'))->handle(app(TenantContext::class), app(DocumentIngestor::class));
+        (new ReembedDocumentJob($doc->id, 'test-tenant'))->handle(app(TenantContext::class), app(DocumentIngestor::class));
 
         $text = KnowledgeChunk::where('knowledge_document_id', $doc->id)->get()->pluck('chunk_text')->implode("\n");
         $this->assertStringNotContainsString('[REDACTED]', $text);
@@ -169,7 +169,7 @@ final class ReembedTest extends TestCase
     public function test_job_skips_cleanly_when_the_source_is_missing_on_disk(): void
     {
         Storage::fake('kb'); // empty disk — the source file does not exist
-        $doc = $this->makeDoc('default', 'support', 'tickets/missing.md');
+        $doc = $this->makeDoc('test-tenant', 'support', 'tickets/missing.md');
         KnowledgeChunk::create([
             'knowledge_document_id' => $doc->id, 'project_key' => 'support', 'chunk_order' => 0,
             'chunk_hash' => hash('sha256', 'kept'), 'heading_path' => '', 'chunk_text' => 'kept chunk',
@@ -177,7 +177,7 @@ final class ReembedTest extends TestCase
         ]);
 
         // Must NOT throw (logged skip), and the existing chunk is left intact.
-        (new ReembedDocumentJob($doc->id, 'default'))->handle(app(TenantContext::class), app(DocumentIngestor::class));
+        (new ReembedDocumentJob($doc->id, 'test-tenant'))->handle(app(TenantContext::class), app(DocumentIngestor::class));
 
         $this->assertSame('kept chunk', KnowledgeChunk::where('knowledge_document_id', $doc->id)->value('chunk_text'));
     }

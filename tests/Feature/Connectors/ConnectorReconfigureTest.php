@@ -225,7 +225,7 @@ final class ConnectorReconfigureTest extends TestCase
 
         $this->artisan('connectors:reconfigure', [
             'installation' => $installation->id,
-            '--tenant' => 'default',
+            '--tenant' => 'test-tenant',
             '--set' => ['host=imap.cli-changed.tld'],
         ])->assertSuccessful();
 
@@ -242,7 +242,7 @@ final class ConnectorReconfigureTest extends TestCase
 
         $this->artisan('connectors:reconfigure', [
             'installation' => $installation->id,
-            '--tenant' => 'default',
+            '--tenant' => 'test-tenant',
             '--set' => ['nope=whatever'],
         ])->assertFailed();
     }
@@ -320,7 +320,7 @@ final class ConnectorReconfigureTest extends TestCase
     private function seedActiveImap(string $vaultPassword, array $configOverrides = []): ConnectorInstallation
     {
         $installation = ConnectorInstallation::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'connector_name' => 'imap',
             'label' => 'Date',
             'project_key' => 'support-mailbox',

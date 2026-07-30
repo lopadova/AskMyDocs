@@ -44,6 +44,9 @@ class PermissionControllerTest extends TestCase
         $this->assertArrayHasKey('kb', $grouped, 'kb domain must be grouped');
         $this->assertArrayHasKey('users', $grouped);
         $this->assertArrayHasKey('logs', $grouped);
+        $names = array_column($response->json('data'), 'name');
+        $this->assertNotContains('platform.admin', $names);
+        $this->assertNotContains('tenant.cross-access', $names);
     }
 
     public function test_grouped_keys_sorted_deterministically(): void

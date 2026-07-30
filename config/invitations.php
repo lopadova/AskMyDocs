@@ -15,8 +15,9 @@ declare(strict_types=1);
  * route; `manageInvitations` (super-admin + admin) is defined in
  * AppServiceProvider and asserted in AdminAuthorizationMatrixTest.
  *
- * R43: `invitation_required` defaults FALSE (env INVITE_REQUIRED) so existing
- * signup is unchanged — closed-beta posture is strictly opt-in.
+ * R43: `invitation_required` defaults FALSE (env INVITE_REQUIRED) for the
+ * package's generic redemption middleware. The host registration endpoints
+ * remain invite-only regardless of this package-level switch.
  */
 return [
     // The host user/account model (implements Padosoft\Invitations\Contracts\
@@ -50,11 +51,12 @@ return [
             'auth:sanctum',
             'tenant.authorize',
             'can:manageInvitations',
+            \App\Http\Middleware\RejectProtectedInvitationRole::class,
         ],
     ],
 
-    // R43 — closed-beta signup gate. Default FALSE: registration proceeds
-    // without an invite code unless an operator opts in via INVITE_REQUIRED=true.
+    // R43 — package-level closed-beta gate. Default FALSE. This does not weaken
+    // the host's /api/auth/register contract, where invite_code is always required.
     'invitation_required' => (bool) env('INVITE_REQUIRED', false),
 
     'codes' => [

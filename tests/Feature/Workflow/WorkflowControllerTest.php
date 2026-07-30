@@ -43,7 +43,7 @@ final class WorkflowControllerTest extends TestCase
         // previous suite that switched the tenant (e.g.
         // WorkflowServiceTest's cross-tenant scenarios) cannot leak
         // a non-default tenant into this suite's fixtures.
-        app(TenantContext::class)->set('default');
+        app(TenantContext::class)->set('test-tenant');
         $this->seed(RbacSeeder::class);
     }
 
@@ -51,7 +51,7 @@ final class WorkflowControllerTest extends TestCase
     {
         $admin = $this->makeUser('admin');
         Workflow::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'user_id' => $admin->id,
             'title' => 'A',
             'type' => 'assistant',
@@ -125,7 +125,7 @@ final class WorkflowControllerTest extends TestCase
     {
         $admin = $this->makeUser('admin');
         $wf = Workflow::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'user_id' => $admin->id,
             'title' => 'WF',
             'type' => 'assistant',
@@ -170,7 +170,7 @@ final class WorkflowControllerTest extends TestCase
     {
         $admin = $this->makeUser('admin');
         $wf = Workflow::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'user_id' => $admin->id,
             'title' => 'Old',
             'type' => 'assistant',
@@ -187,7 +187,7 @@ final class WorkflowControllerTest extends TestCase
     {
         $admin = $this->makeUser('admin');
         $wf = Workflow::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'user_id' => $admin->id,
             'title' => 'X',
             'type' => 'assistant',
@@ -203,7 +203,7 @@ final class WorkflowControllerTest extends TestCase
     {
         $admin = $this->makeUser('admin');
         $wf = Workflow::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'user_id' => null,
             'title' => 'Sys',
             'type' => 'assistant',
@@ -220,7 +220,7 @@ final class WorkflowControllerTest extends TestCase
     {
         $admin = $this->makeUser('admin');
         $wf = Workflow::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'user_id' => $admin->id,
             'title' => 'X',
             'type' => 'assistant',
@@ -244,7 +244,7 @@ final class WorkflowControllerTest extends TestCase
     {
         $admin = $this->makeUser('admin');
         $wf = Workflow::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'user_id' => $admin->id,
             'title' => 'X',
             'type' => 'assistant',
@@ -276,7 +276,7 @@ final class WorkflowControllerTest extends TestCase
 
         $other = $this->makeUser('admin');
         $wf = Workflow::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'user_id' => $other->id,
             'title' => 'Shared',
             'type' => 'assistant',
@@ -292,7 +292,7 @@ final class WorkflowControllerTest extends TestCase
 
         $this->actingAs($admin)->postJson("/api/admin/workflows/{$wf->id}/hide")->assertStatus(201);
         $this->assertDatabaseHas('hidden_workflows', [
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'user_id' => $admin->id,
             'workflow_id' => $wf->id,
         ]);
@@ -329,7 +329,7 @@ final class WorkflowControllerTest extends TestCase
 
         $other = $this->makeUser('admin');
         $wf = Workflow::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'user_id' => $other->id,
             'title' => 'Shared with viewer',
             'type' => 'assistant',
@@ -373,7 +373,7 @@ final class WorkflowControllerTest extends TestCase
         $recipient->save();
 
         $wf = Workflow::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'user_id' => $owner->id,
             'title' => 'Private',
             'type' => 'assistant',

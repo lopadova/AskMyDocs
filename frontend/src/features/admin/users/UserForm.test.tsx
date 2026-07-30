@@ -30,7 +30,7 @@ describe('UserForm', () => {
         const user = userEvent.setup();
         const onSubmit = vi.fn();
 
-        render(<UserForm mode="create" roles={ROLES} onSubmit={onSubmit} />);
+        render(<UserForm mode="create" roles={ROLES} projectKeys={['default']} onSubmit={onSubmit} />);
 
         // Submit empty — name, email, password must all fail.
         await user.click(screen.getByTestId('user-form-submit'));
@@ -48,6 +48,7 @@ describe('UserForm', () => {
             <UserForm
                 mode="create"
                 roles={ROLES}
+                projectKeys={['default']}
                 onSubmit={() => undefined}
                 serverErrors={{ email: 'The email has already been taken.' }}
             />,
@@ -65,6 +66,7 @@ describe('UserForm', () => {
             <UserForm
                 mode="edit"
                 roles={ROLES}
+                projectKeys={['default']}
                 onSubmit={onSubmit}
                 initial={{
                     id: 1,

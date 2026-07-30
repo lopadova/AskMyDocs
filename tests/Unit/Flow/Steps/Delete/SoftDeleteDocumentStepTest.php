@@ -58,7 +58,7 @@ final class SoftDeleteDocumentStepTest extends TestCase
         $context = new FlowContext(
             flowRunId: 'r',
             definitionName: 'kb.delete',
-            input: ['tenant_id' => 'default'],
+            input: ['tenant_id' => 'test-tenant'],
             stepOutputs: ['load-document' => ['found' => false]],
             dryRun: false,
         );
@@ -74,7 +74,7 @@ final class SoftDeleteDocumentStepTest extends TestCase
         return new FlowContext(
             flowRunId: 'soft-test',
             definitionName: 'kb.delete',
-            input: ['tenant_id' => 'default'],
+            input: ['tenant_id' => 'test-tenant'],
             stepOutputs: [
                 'load-document' => [
                     'found' => true,

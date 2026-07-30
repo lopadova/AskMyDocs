@@ -26,6 +26,8 @@ const createSchema = baseSchema.extend({
         .string()
         .min(8, 'Password must be at least 8 characters')
         .max(255),
+    initial_project_key: z.string().min(1, 'Initial project is required').max(120),
+    membership_role: z.enum(['member', 'admin', 'owner']),
 });
 
 const editSchema = baseSchema.extend({
@@ -37,6 +39,8 @@ const editSchema = baseSchema.extend({
             (v) => v === undefined || v === '' || v.length >= 8,
             'Password must be at least 8 characters',
         ),
+    initial_project_key: z.string().optional(),
+    membership_role: z.enum(['member', 'admin', 'owner']).optional(),
 });
 
 export type UserFormValues = z.infer<typeof createSchema>;
@@ -45,6 +49,7 @@ export interface UserFormProps {
     mode: 'create' | 'edit';
     initial?: AdminUser | null;
     roles: AdminRole[];
+    projectKeys: string[];
     onSubmit: (values: UserFormValues) => void | Promise<void>;
     submitting?: boolean;
     /**
@@ -59,6 +64,7 @@ export function UserForm({
     mode,
     initial,
     roles,
+    projectKeys,
     onSubmit,
     submitting,
     serverErrors,
@@ -81,6 +87,8 @@ export function UserForm({
             password: '',
             is_active: initial?.is_active ?? true,
             roles: initial?.roles ?? [],
+            initial_project_key: projectKeys[0] ?? '',
+            membership_role: 'member',
         },
     });
 
@@ -147,6 +155,46 @@ export function UserForm({
                     autoComplete="new-password"
                 />
             </Field>
+
+            {mode === 'create' && (
+                <div style={{ display: 'grid', gap: 10, gridTemplateColumns: '1fr 1fr' }}>
+                    <Field
+                        label="Initial project"
+                        error={errors.initial_project_key?.message}
+                        testid="user-form-initial-project-error"
+                    >
+                        <select
+                            aria-label="Initial project"
+                            data-testid="user-form-initial-project"
+                            {...register('initial_project_key')}
+                            className="focus-ring"
+                            style={inputStyle}
+                        >
+                            {projectKeys.length === 0 && <option value="">No projects available</option>}
+                            {projectKeys.map((projectKey) => (
+                                <option key={projectKey} value={projectKey}>{projectKey}</option>
+                            ))}
+                        </select>
+                    </Field>
+                    <Field
+                        label="Membership role"
+                        error={errors.membership_role?.message}
+                        testid="user-form-membership-role-error"
+                    >
+                        <select
+                            aria-label="Membership role"
+                            data-testid="user-form-membership-role"
+                            {...register('membership_role')}
+                            className="focus-ring"
+                            style={inputStyle}
+                        >
+                            <option value="member">Member</option>
+                            <option value="admin">Admin</option>
+                            <option value="owner">Owner</option>
+                        </select>
+                    </Field>
+                </div>
+            )}
 
             <div>
                 <div style={labelStyle}>Roles</div>

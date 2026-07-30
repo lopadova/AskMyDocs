@@ -20,9 +20,9 @@ import { useAuthStore } from '../../../lib/auth-store';
  * — the single sync point that also refreshes the team switcher (list +
  * label) via `useTeamStore.syncFromMe`.
  *
- * The list is what the current user may administer: their teams (+ every
- * team when they hold `tenant.cross-access`) plus the read-only `default`.
- * Only rows with `can_manage` expose a Rename action.
+ * The list is what the current user may administer from real memberships.
+ * The legacy `default` slug appears only with a membership and remains
+ * read-only. Only rows with `can_manage` expose a Rename action.
  *
  * R11: every interactive surface has `data-testid`. R15: dialog carries
  * `role="dialog"` + `aria-modal`, inputs are labelled. AdminShell wraps at

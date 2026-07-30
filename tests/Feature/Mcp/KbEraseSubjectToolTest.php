@@ -76,14 +76,14 @@ final class KbEraseSubjectToolTest extends TestCase
 
     public function test_super_admin_can_erase_and_it_is_audited(): void
     {
-        $this->vault('default', self::EMAIL);
+        $this->vault('test-tenant', self::EMAIL);
         $this->actingAs($this->user('super-admin'));
 
         $response = $this->invoke([self::EMAIL]);
         $payload = json_decode((string) $response->content(), true, flags: JSON_THROW_ON_ERROR);
 
         $this->assertSame(1, $payload['erased']);
-        $this->assertDatabaseMissing('pii_token_maps', ['tenant_id' => 'default', 'original' => self::EMAIL]);
+        $this->assertDatabaseMissing('pii_token_maps', ['tenant_id' => 'test-tenant', 'original' => self::EMAIL]);
         $this->assertDatabaseHas('admin_command_audit', [
             'command' => 'pii.erase',
             'status' => AdminCommandAudit::STATUS_COMPLETED,
@@ -92,13 +92,13 @@ final class KbEraseSubjectToolTest extends TestCase
 
     public function test_caller_without_permission_is_refused_and_audited(): void
     {
-        $this->vault('default', self::EMAIL);
+        $this->vault('test-tenant', self::EMAIL);
         $this->actingAs($this->user('admin')); // admin lacks pii.erase
 
         $response = $this->invoke([self::EMAIL]);
 
         $this->assertStringContainsString('Forbidden', (string) $response->content());
-        $this->assertDatabaseHas('pii_token_maps', ['tenant_id' => 'default', 'original' => self::EMAIL]);
+        $this->assertDatabaseHas('pii_token_maps', ['tenant_id' => 'test-tenant', 'original' => self::EMAIL]);
         $this->assertDatabaseHas('admin_command_audit', [
             'command' => 'pii.erase',
             'status' => AdminCommandAudit::STATUS_REJECTED,
@@ -116,7 +116,7 @@ final class KbEraseSubjectToolTest extends TestCase
 
     public function test_erasure_never_crosses_tenants(): void
     {
-        $this->vault('default', self::EMAIL);
+        $this->vault('test-tenant', self::EMAIL);
         $this->vault('globex', self::EMAIL);
         $this->actingAs($this->user('super-admin'));
 
