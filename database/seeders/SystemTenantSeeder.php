@@ -26,7 +26,14 @@ final class SystemTenantSeeder extends Seeder
         $now = now();
         $existing = DB::table('tenants')
             ->where('slug', SystemTenantRegistry::REGISTRATION)
-            ->exists();
+            ->first(['is_system']);
+
+        if ($existing !== null && ! (bool) $existing->is_system) {
+            throw new \RuntimeException(sprintf(
+                'Cannot reserve tenant slug "%s": an operational tenant already uses it.',
+                SystemTenantRegistry::REGISTRATION,
+            ));
+        }
 
         $attributes = [
             'name' => 'System Registration',
@@ -41,7 +48,7 @@ final class SystemTenantSeeder extends Seeder
             'updated_at' => $now,
         ];
 
-        if ($existing) {
+        if ($existing !== null) {
             DB::table('tenants')
                 ->where('slug', SystemTenantRegistry::REGISTRATION)
                 ->update($attributes);

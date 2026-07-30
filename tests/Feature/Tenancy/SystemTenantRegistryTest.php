@@ -38,7 +38,6 @@ final class SystemTenantRegistryTest extends TestCase
             ->update([
                 'name' => 'Tampered',
                 'status' => 'suspended',
-                'is_system' => false,
             ]);
 
         (new SystemTenantSeeder)->run();
@@ -53,6 +52,36 @@ final class SystemTenantRegistryTest extends TestCase
             'name' => 'System Registration',
             'status' => 'active',
             'is_system' => true,
+        ]);
+    }
+
+    public function test_seeder_refuses_to_convert_an_operational_tenant_into_the_system_namespace(): void
+    {
+        DB::table('tenants')
+            ->where('slug', SystemTenantRegistry::REGISTRATION)
+            ->delete();
+        DB::table('tenants')->insert([
+            'slug' => SystemTenantRegistry::REGISTRATION,
+            'name' => 'Existing Customer',
+            'subscription_tier' => 'enterprise',
+            'status' => 'active',
+            'is_system' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        try {
+            (new SystemTenantSeeder)->run();
+            $this->fail('An operational tenant must never be converted into a system tenant.');
+        } catch (\RuntimeException $exception) {
+            $this->assertStringContainsString('an operational tenant already uses it', $exception->getMessage());
+        }
+
+        $this->assertDatabaseHas('tenants', [
+            'slug' => SystemTenantRegistry::REGISTRATION,
+            'name' => 'Existing Customer',
+            'subscription_tier' => 'enterprise',
+            'is_system' => false,
         ]);
     }
 
