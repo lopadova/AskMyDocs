@@ -83,10 +83,15 @@ class User extends Authenticatable implements InvitedAccount
             // boot before the additive migration has run. Once the column is
             // present it becomes the case-insensitive uniqueness key used by
             // every account-creation surface.
-            if (Schema::hasColumn('users', 'email_normalized')) {
+            if (self::hasNormalizedEmailColumn()) {
                 $user->setAttribute('email_normalized', $normalized);
             }
         });
+    }
+
+    public static function hasNormalizedEmailColumn(): bool
+    {
+        return once(static fn (): bool => Schema::hasColumn('users', 'email_normalized'));
     }
 
     public static function normalizeEmail(string $email): string

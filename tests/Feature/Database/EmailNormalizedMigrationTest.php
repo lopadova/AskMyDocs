@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Database;
 
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -13,6 +14,18 @@ use Tests\TestCase;
 final class EmailNormalizedMigrationTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_user_caches_the_normalized_email_column_capability(): void
+    {
+        Schema::partialMock()
+            ->shouldReceive('hasColumn')
+            ->once()
+            ->with('users', 'email_normalized')
+            ->andReturnTrue();
+
+        $this->assertTrue(User::hasNormalizedEmailColumn());
+        $this->assertTrue(User::hasNormalizedEmailColumn());
+    }
 
     public function test_backfill_is_complete_for_a_multi_thousand_user_dataset(): void
     {
