@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Support\KbPath;
 use App\Support\TenantContext;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -94,14 +95,26 @@ class User extends Authenticatable implements InvitedAccount
         return once(static fn (): bool => Schema::hasColumn('users', 'email_normalized'));
     }
 
-    public static function emailIdentityColumn(): string
-    {
-        return self::hasNormalizedEmailColumn() ? 'email_normalized' : 'email';
-    }
-
     public static function normalizeEmail(string $email): string
     {
         return mb_strtolower(trim($email));
+    }
+
+    /**
+     * Apply the rolling-deployment-safe, case-insensitive identity lookup.
+     *
+     * @param  Builder<User>  $query
+     * @return Builder<User>
+     */
+    public function scopeWhereEmailIdentity(Builder $query, string $email): Builder
+    {
+        $normalized = self::normalizeEmail($email);
+
+        if (self::hasNormalizedEmailColumn()) {
+            return $query->where('email_normalized', $normalized);
+        }
+
+        return $query->whereRaw('LOWER(email) = ?', [$normalized]);
     }
 
     protected function casts(): array

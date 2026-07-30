@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Admin;
 
 use App\Models\User;
+use App\Rules\UniqueUserEmailIdentity;
 use App\Support\RoleAssignmentGuard;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
@@ -39,7 +40,7 @@ class UserUpdateRequest extends FormRequest
             'name' => ['sometimes', 'required', 'string', 'max:255'],
             'email' => [
                 'sometimes', 'required', 'email', 'max:255',
-                Rule::unique('users', User::emailIdentityColumn())->ignore($userId),
+                new UniqueUserEmailIdentity($userId),
             ],
             'password' => ['sometimes', 'nullable', 'string', Password::defaults()],
             'is_active' => ['sometimes', 'boolean'],

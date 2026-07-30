@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Admin;
 
 use App\Models\User;
+use App\Rules\UniqueUserEmailIdentity;
 use App\Support\RoleAssignmentGuard;
 use App\Support\TenantContext;
 use Illuminate\Contracts\Validation\Validator;
@@ -36,7 +37,7 @@ class UserStoreRequest extends FormRequest
     {
         return [
             'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', 'max:255', Rule::unique('users', User::emailIdentityColumn())],
+            'email' => ['required', 'email', 'max:255', new UniqueUserEmailIdentity],
             'password' => ['required', 'string', Password::defaults()],
             'is_active' => ['nullable', 'boolean'],
             'roles' => ['nullable', 'array'],

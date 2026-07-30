@@ -30,8 +30,7 @@ final class SystemAdminAccessService
     {
         $email = User::normalizeEmail($email);
         $user = User::withTrashed()
-            ->where('email_normalized', $email)
-            ->orWhereRaw('LOWER(email) = ?', [$email])
+            ->whereEmailIdentity($email)
             ->first();
         $command = $grant ? 'system-admin:grant' : 'system-admin:revoke';
 

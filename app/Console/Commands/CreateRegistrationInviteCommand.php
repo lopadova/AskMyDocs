@@ -90,7 +90,7 @@ final class CreateRegistrationInviteCommand extends Command
 
         $user = ctype_digit($reference)
             ? User::query()->find((int) $reference)
-            : User::query()->where('email_normalized', User::normalizeEmail($reference))->first();
+            : User::query()->whereEmailIdentity($reference)->first();
         if ($user === null) {
             $this->error("Issuer not found: {$reference}");
         }

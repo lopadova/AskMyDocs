@@ -9,6 +9,7 @@ use App\Support\TenantContext;
 use Database\Seeders\RbacSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Once;
 use Padosoft\AiActCompliance\MultiTenancy\Models\Tenant;
@@ -245,14 +246,20 @@ class UserControllerTest extends TestCase
         $this->makeViewer('dup', 'dup@demo.local');
 
         $response = $this->withLegacyEmailSchema(
-            fn () => $this->actingAs($admin)
-                ->postJson('/api/admin/users', [
-                    'name' => 'Dup',
-                    'email' => 'dup@demo.local',
-                    'password' => 'Super$tr0ngP@ss1',
-                    'initial_project_key' => self::PROJECT,
-                    'membership_role' => 'member',
-                ]),
+            function () use ($admin): \Illuminate\Testing\TestResponse {
+                DB::table('users')
+                    ->where('email', 'dup@demo.local')
+                    ->update(['email' => 'Dup@Demo.local']);
+
+                return $this->actingAs($admin)
+                    ->postJson('/api/admin/users', [
+                        'name' => 'Dup',
+                        'email' => 'dup@demo.local',
+                        'password' => 'Super$tr0ngP@ss1',
+                        'initial_project_key' => self::PROJECT,
+                        'membership_role' => 'member',
+                    ]);
+            },
         );
 
         $response->assertStatus(422)->assertJsonValidationErrors(['email']);
@@ -319,10 +326,16 @@ class UserControllerTest extends TestCase
         $this->makeViewer('existing', 'existing@demo.local');
 
         $response = $this->withLegacyEmailSchema(
-            fn () => $this->actingAs($admin)
-                ->patchJson("/api/admin/users/{$target->id}", [
-                    'email' => 'existing@demo.local',
-                ]),
+            function () use ($admin, $target): \Illuminate\Testing\TestResponse {
+                DB::table('users')
+                    ->where('email', 'existing@demo.local')
+                    ->update(['email' => 'Existing@Demo.local']);
+
+                return $this->actingAs($admin)
+                    ->patchJson("/api/admin/users/{$target->id}", [
+                        'email' => 'existing@demo.local',
+                    ]);
+            },
         );
 
         $response->assertStatus(422)->assertJsonValidationErrors(['email']);

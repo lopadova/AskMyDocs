@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Auth;
 
 use App\Models\User;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Foundation\Http\FormRequest;
 
 /**
@@ -34,12 +35,20 @@ class LoginRequest extends FormRequest
     /**
      * Credentials subset passed to Auth::attempt().
      *
-     * @return array{email: string, password: string, is_active: bool}
+     * Laravel's Eloquent user provider accepts a closure constraint. Using it
+     * lets the model select email_normalized after the additive migration and
+     * a case-insensitive legacy email lookup before it.
+     *
+     * @return array{email: \Closure(Builder<User>): void, password: string, is_active: bool}
      */
     public function credentials(): array
     {
+        $email = User::normalizeEmail((string) $this->input('email'));
+
         return [
-            'email' => (string) $this->input('email'),
+            'email' => static function (Builder $query) use ($email): void {
+                $query->whereEmailIdentity($email);
+            },
             'password' => (string) $this->input('password'),
             'is_active' => true,
         ];

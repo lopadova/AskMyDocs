@@ -6,8 +6,10 @@ use App\Models\ProjectMembership;
 use App\Models\User;
 use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Once;
 use Laravel\Sanctum\PersonalAccessToken;
 use Padosoft\AiActCompliance\MultiTenancy\Models\Tenant;
 use Tests\TestCase;
@@ -87,6 +89,28 @@ class TokenTest extends TestCase
             ->getJson('/api/auth/me')
             ->assertOk()
             ->assertJsonPath('user.id', $user->id);
+    }
+
+    public function test_token_matches_a_mixed_case_legacy_email_before_the_normalized_column_exists(): void
+    {
+        $user = $this->makeUser();
+        $migration = require dirname(__DIR__, 4).'/database/migrations/2026_07_27_000001_add_email_normalized_to_users_table.php';
+        $migration->down();
+        Once::flush();
+        DB::table('users')->where('id', $user->id)->update(['email' => 'Legacy.Token@Example.com']);
+
+        try {
+            $response = $this->postJson('/api/auth/token', [
+                'email' => 'legacy.token@example.com',
+                'password' => 'secret123',
+            ]);
+        } finally {
+            $migration->up();
+            Once::flush();
+        }
+
+        $response->assertCreated()->assertJsonPath('user.id', $user->id);
+        $this->assertDatabaseCount('personal_access_tokens', 1);
     }
 
     public function test_minted_token_is_scoped_to_kb_read_and_chat_not_wildcard(): void

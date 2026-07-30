@@ -101,7 +101,7 @@ class AuthController extends Controller
         }
 
         $user = User::query()
-            ->where('email_normalized', (string) $request->validated('email'))
+            ->whereEmailIdentity((string) $request->validated('email'))
             ->where('is_active', true)
             ->first();
 

@@ -7,9 +7,13 @@ namespace Tests\Feature\Console;
 use App\Invitations\RegistrationCodeResolution;
 use App\Invitations\RegistrationCodeResolver;
 use App\Models\Project;
+use App\Models\User;
 use App\Support\SystemTenantRegistry;
 use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Once;
 use Padosoft\AiActCompliance\MultiTenancy\Models\Tenant;
 use Padosoft\Invitations\Models\InviteCode;
 use Padosoft\Invitations\Services\CodeGenerator;
@@ -52,6 +56,30 @@ final class CreateRegistrationInviteCommandTest extends TestCase
         $this->assertTrue($resolution->ok);
         $this->assertSame(RegistrationCodeResolution::COMPANY_BOOTSTRAP, $resolution->intent);
         $this->assertNull($resolution->targetTenant);
+    }
+
+    public function test_command_resolves_a_mixed_case_issuer_on_the_legacy_email_schema(): void
+    {
+        $user = User::create([
+            'name' => 'Legacy Issuer',
+            'email' => 'issuer@example.com',
+            'password' => Hash::make('secret-password'),
+        ]);
+        $migration = require dirname(__DIR__, 3).'/database/migrations/2026_07_27_000001_add_email_normalized_to_users_table.php';
+        $migration->down();
+        Once::flush();
+        DB::table('users')->where('id', $user->id)->update(['email' => 'Legacy.Issuer@Example.com']);
+
+        try {
+            $this->artisan('registration-invite:create', [
+                '--issuer' => 'legacy.issuer@example.com',
+            ])->assertSuccessful();
+        } finally {
+            $migration->up();
+            Once::flush();
+        }
+
+        $this->assertSame($user->id, InviteCode::query()->firstOrFail()->issuer_id);
     }
 
     public function test_command_with_tenant_creates_one_explicit_tenant_grant(): void

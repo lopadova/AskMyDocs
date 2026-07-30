@@ -13,7 +13,6 @@ use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Spatie\Permission\Models\Role;
 
@@ -335,13 +334,10 @@ final class TenantProvisioningService
 
     private function findUserByEmail(string $email): ?User
     {
-        $query = User::withTrashed()->with('roles');
-
-        if (Schema::hasColumn('users', 'email_normalized')) {
-            return $query->where('email_normalized', $email)->first();
-        }
-
-        return $query->whereRaw('LOWER(email) = ?', [Str::lower($email)])->first();
+        return User::withTrashed()
+            ->with('roles')
+            ->whereEmailIdentity($email)
+            ->first();
     }
 
     private function effectiveTenantRole(User $user): ?string

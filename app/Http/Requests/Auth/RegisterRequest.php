@@ -3,8 +3,8 @@
 namespace App\Http\Requests\Auth;
 
 use App\Models\User;
+use App\Rules\UniqueUserEmailIdentity;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rule;
 
 /**
  * Validation for POST /api/auth/register (the React SPA sign-up).
@@ -34,7 +34,7 @@ class RegisterRequest extends FormRequest
     {
         return [
             'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', 'max:255', Rule::unique('users', User::emailIdentityColumn())],
+            'email' => ['required', 'email', 'max:255', new UniqueUserEmailIdentity],
             // `confirmed` pairs with `password_confirmation` from the form.
             'password' => ['required', 'confirmed', 'string', 'min:8'],
             'invite_code' => ['required', 'string', 'max:128'],

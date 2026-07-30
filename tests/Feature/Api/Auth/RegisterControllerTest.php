@@ -249,7 +249,7 @@ class RegisterControllerTest extends TestCase
         try {
             DB::table('users')->insert([
                 'name' => 'Existing',
-                'email' => 'new@example.com',
+                'email' => 'New@Example.com',
                 'password' => 'not-used',
                 'is_active' => true,
                 'created_at' => now(),
