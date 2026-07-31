@@ -26,6 +26,7 @@ final class DevelopSeederTest extends TestCase
         parent::setUp();
 
         config()->set('develop-deploy.enabled', true);
+        config()->set('develop-deploy.environment', null);
         config()->set('develop-deploy.allowed_environments', ['testing']);
         config()->set('develop-deploy.seed.password', self::PASSWORD);
     }
@@ -135,5 +136,25 @@ final class DevelopSeederTest extends TestCase
         $this->expectExceptionMessage('at least 12 characters');
 
         $this->seed(DevelopSeeder::class);
+    }
+
+    public function test_it_accepts_an_explicit_develop_environment_when_app_env_is_production(): void
+    {
+        app()->detectEnvironment(static fn (): string => 'production');
+        config()->set('develop-deploy.environment', 'develop');
+        config()->set('develop-deploy.allowed_environments', ['develop']);
+
+        app(DevelopSeeder::class)->run();
+
+        $this->assertSame(
+            7,
+            User::query()
+                ->where(function ($query): void {
+                    $query
+                        ->where('email', DevelopSeeder::SYSTEM_EMAIL)
+                        ->orWhere('email', 'like', '%.develop.test');
+                })
+                ->count(),
+        );
     }
 }

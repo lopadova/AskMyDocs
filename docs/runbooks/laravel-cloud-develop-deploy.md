@@ -14,14 +14,17 @@ database migrations:
 Configure these variables only on the Cloud environment tracking `develop`:
 
 ```dotenv
-APP_ENV=staging
+DEVELOP_DEPLOY_ENVIRONMENT=develop
 DEVELOP_DEPLOY_ENABLED=true
 DEVELOP_SEED_PASSWORD=<a-secret-with-at-least-12-characters>
 ```
 
 Keep `DEVELOP_DEPLOY_ENABLED=false` in production. The deploy script and
-`DevelopSeeder` both reject `APP_ENV=production`, so copying the flag alone
-cannot authorize a destructive reset.
+`DevelopSeeder` require the separate environment identity to be one of the
+allowed non-production values, so copying the flag alone cannot authorize a
+destructive reset. Laravel Cloud may reserve `APP_ENV=production` even for a
+test environment; do not weaken production runtime behavior just to identify
+the deployment target.
 
 ## Laravel Cloud commands
 
@@ -106,8 +109,9 @@ and rotates their password to the current secret.
   Command and that it produced `.laravel-cloud-commit-message`.
 - `DEVELOP_DEPLOY_ENABLED is not true`: set the variable only on the develop
   Cloud environment and redeploy.
-- `Refusing ... APP_ENV=production`: change the test environment to
-  `APP_ENV=staging`; never weaken this guard.
+- `Refusing ... APP_ENV=production`: configure
+  `DEVELOP_DEPLOY_ENVIRONMENT=develop` on the Cloud test environment. Laravel
+  Cloud may keep its reserved `APP_ENV=production` value.
 - `DEVELOP_SEED_PASSWORD is empty` or too short: configure a secret of at least
   12 characters, then redeploy the same commit.
 - a migration or seeder returns non-zero: the script stops immediately and

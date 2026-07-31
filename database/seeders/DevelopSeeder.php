@@ -89,7 +89,12 @@ final class DevelopSeeder extends Seeder
 
     private function assertAllowed(): void
     {
-        $environment = (string) app()->environment();
+        $applicationEnvironment = (string) app()->environment();
+        $environment = (string) config('develop-deploy.environment', '');
+        if ($environment === '') {
+            $environment = $applicationEnvironment;
+        }
+
         $allowedEnvironments = (array) config('develop-deploy.allowed_environments', []);
 
         if (
@@ -97,8 +102,9 @@ final class DevelopSeeder extends Seeder
             || ! in_array($environment, $allowedEnvironments, true)
         ) {
             throw new LogicException(sprintf(
-                'DevelopSeeder is disabled for APP_ENV=%s. Enable DEVELOP_DEPLOY_ENABLED only in the develop test environment.',
+                'DevelopSeeder is disabled for deployment environment %s (APP_ENV=%s). Enable DEVELOP_DEPLOY_ENABLED only in the develop test environment.',
                 $environment,
+                $applicationEnvironment,
             ));
         }
     }

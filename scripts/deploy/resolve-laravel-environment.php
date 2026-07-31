@@ -11,7 +11,11 @@ require $root.'/vendor/autoload.php';
 $app = require $root.'/bootstrap/app.php';
 $app->make(Kernel::class)->bootstrap();
 
-$environment = (string) config('app.env', '');
+$environment = (string) config('develop-deploy.environment', '');
+if ($environment === '') {
+    $environment = (string) config('app.env', '');
+}
+
 if ($environment === '' || preg_match('/[\t\r\n]/', $environment) === 1) {
     fwrite(STDERR, "Unable to resolve a safe Laravel application environment.\n");
     exit(1);

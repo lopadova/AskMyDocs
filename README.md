@@ -1541,7 +1541,8 @@ markers:
 - both markers rebuild and then seed the test database.
 
 The feature is fail-closed and must be enabled only in the non-production Cloud
-environment. See
+environment with both `DEVELOP_DEPLOY_ENVIRONMENT=develop` and
+`DEVELOP_DEPLOY_ENABLED=true`. See
 [`docs/runbooks/laravel-cloud-develop-deploy.md`](docs/runbooks/laravel-cloud-develop-deploy.md)
 for the exact Build Commands, Deploy Commands, environment variables and test
 credentials.

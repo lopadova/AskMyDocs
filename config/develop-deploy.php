@@ -9,11 +9,23 @@ return [
     |--------------------------------------------------------------------------
     |
     | This must be enabled only on the Laravel Cloud environment attached to
-    | the develop branch. Destructive deployment directives remain forbidden
-    | when APP_ENV is production, even if this flag is accidentally copied.
+    | the develop branch. Destructive deployment directives also require the
+    | separate environment identity below to match a non-production value.
     |
     */
     'enabled' => (bool) env('DEVELOP_DEPLOY_ENABLED', false),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Cloud environment identity
+    |--------------------------------------------------------------------------
+    |
+    | Laravel Cloud reserves APP_ENV=production for optimized runtime
+    | behaviour, including on test environments. This separate value names
+    | the Cloud environment whose destructive directives are being enabled.
+    |
+    */
+    'environment' => env('DEVELOP_DEPLOY_ENVIRONMENT'),
 
     'allowed_environments' => [
         'local',
