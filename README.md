@@ -1530,6 +1530,22 @@ the host console:
 php artisan system-admin:grant ops@example.com --yes
 ```
 
+### Laravel Cloud develop database directives
+
+The Cloud test environment attached to `develop` supports opt-in commit-message
+markers:
+
+- `[reset-database]` runs `php artisan migrate:fresh --force`;
+- `[init-seed]` loads two test companies, three users per company, their
+  projects/memberships, and a separate system administrator;
+- both markers rebuild and then seed the test database.
+
+The feature is fail-closed and must be enabled only in the non-production Cloud
+environment. See
+[`docs/runbooks/laravel-cloud-develop-deploy.md`](docs/runbooks/laravel-cloud-develop-deploy.md)
+for the exact Build Commands, Deploy Commands, environment variables and test
+credentials.
+
 ### Full configuration reference
 
 Every environment variable is documented inline in
