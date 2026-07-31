@@ -37,16 +37,30 @@ is_truthy() {
     esac
 }
 
+resolved_develop_enabled="${DEVELOP_DEPLOY_ENABLED:-}"
+resolved_app_environment="${APP_ENV:-}"
+resolved_seed_password="${DEVELOP_SEED_PASSWORD:-}"
+resolved_seed_password_length="${#resolved_seed_password}"
+unset resolved_seed_password
+
+if [[ -z "${resolved_develop_enabled}" ]]; then
+    IFS=$'\t' read -r \
+        resolved_develop_enabled \
+        resolved_app_environment \
+        resolved_seed_password_length \
+        < <(php scripts/deploy/resolve-laravel-environment.php)
+fi
+
 assert_develop_environment() {
-    if ! is_truthy "${DEVELOP_DEPLOY_ENABLED:-false}"; then
+    if ! is_truthy "${resolved_develop_enabled:-false}"; then
         echo "Refusing develop deployment directives: DEVELOP_DEPLOY_ENABLED is not true." >&2
         exit 1
     fi
 
-    case "$(printf '%s' "${APP_ENV:-}" | tr '[:upper:]' '[:lower:]')" in
+    case "$(printf '%s' "${resolved_app_environment:-}" | tr '[:upper:]' '[:lower:]')" in
         local|development|develop|staging|testing) ;;
         *)
-            echo "Refusing develop deployment directives for APP_ENV=${APP_ENV:-unset}." >&2
+            echo "Refusing develop deployment directives for APP_ENV=${resolved_app_environment:-unset}." >&2
             exit 1
             ;;
     esac
@@ -56,8 +70,8 @@ if [[ "${reset_database}" == true || "${init_seed}" == true ]]; then
     assert_develop_environment
 fi
 
-if [[ "${init_seed}" == true && -z "${DEVELOP_SEED_PASSWORD:-}" ]]; then
-    echo "Refusing [init-seed]: DEVELOP_SEED_PASSWORD is empty." >&2
+if [[ "${init_seed}" == true && "${resolved_seed_password_length:-0}" -lt 12 ]]; then
+    echo "Refusing [init-seed]: DEVELOP_SEED_PASSWORD is missing or shorter than 12 characters." >&2
     exit 1
 fi
 

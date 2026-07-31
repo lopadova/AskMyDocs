@@ -26,7 +26,21 @@ final class DevelopDeployScriptTest extends TestCase
         $fakePhp = $this->temporaryDirectory.'/php';
         $written = file_put_contents(
             $fakePhp,
-            "#!/usr/bin/env bash\nset -eu\nprintf '%s\\n' \"\$*\" >> \"\$DEVELOP_DEPLOY_TEST_LOG\"\n",
+            <<<'BASH'
+#!/usr/bin/env bash
+set -eu
+
+if [[ "${1:-}" == "scripts/deploy/resolve-laravel-environment.php" ]]; then
+    printf '%s\t%s\t%s\n' \
+        "${DEVELOP_DEPLOY_TEST_CONFIG_ENABLED:-false}" \
+        "${DEVELOP_DEPLOY_TEST_CONFIG_APP_ENV:-production}" \
+        "${DEVELOP_DEPLOY_TEST_CONFIG_PASSWORD_LENGTH:-0}"
+    exit 0
+fi
+
+printf '%s\n' "$*" >> "$DEVELOP_DEPLOY_TEST_LOG"
+BASH
+            ."\n",
         );
         if ($written === false || ! chmod($fakePhp, 0700)) {
             throw new RuntimeException('Unable to create the fake PHP executable.');
@@ -127,10 +141,33 @@ final class DevelopDeployScriptTest extends TestCase
         self::assertSame([], $this->loggedCommands());
     }
 
+    public function test_it_resolves_laravel_config_when_cloud_does_not_export_custom_variables(): void
+    {
+        $process = $this->runScript(
+            'chore: rebuild fixtures [reset-database] [init-seed]',
+            appEnvironment: false,
+            enabled: false,
+            password: false,
+            configEnvironment: 'staging',
+            configEnabled: 'true',
+            configPasswordLength: '32',
+        );
+
+        self::assertSame(0, $process->getExitCode(), $process->getErrorOutput());
+        self::assertSame([
+            'artisan migrate:fresh --force --no-interaction',
+            'artisan db:seed --class=Database\Seeders\DevelopSeeder --force --no-interaction',
+        ], $this->loggedCommands());
+    }
+
     private function runScript(
         string $commitMessage,
-        string $appEnvironment,
-        string $enabled,
+        string|false $appEnvironment,
+        string|false $enabled,
+        string|false $password = 'DevelopOnly!2026',
+        string $configEnvironment = 'production',
+        string $configEnabled = 'false',
+        string $configPasswordLength = '0',
     ): Process {
         $root = dirname(__DIR__, 3);
         $process = new Process(
@@ -139,9 +176,12 @@ final class DevelopDeployScriptTest extends TestCase
             [
                 'APP_ENV' => $appEnvironment,
                 'DEVELOP_DEPLOY_ENABLED' => $enabled,
-                'DEVELOP_SEED_PASSWORD' => 'DevelopOnly!2026',
+                'DEVELOP_SEED_PASSWORD' => $password,
                 'DEPLOY_COMMIT_MESSAGE' => $commitMessage,
                 'DEVELOP_DEPLOY_TEST_LOG' => $this->commandLog,
+                'DEVELOP_DEPLOY_TEST_CONFIG_APP_ENV' => $configEnvironment,
+                'DEVELOP_DEPLOY_TEST_CONFIG_ENABLED' => $configEnabled,
+                'DEVELOP_DEPLOY_TEST_CONFIG_PASSWORD_LENGTH' => $configPasswordLength,
                 'PATH' => $this->temporaryDirectory.PATH_SEPARATOR.(string) getenv('PATH'),
             ],
         );

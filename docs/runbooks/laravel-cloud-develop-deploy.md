@@ -38,6 +38,13 @@ environment's **Deploy Commands** to:
 bash scripts/deploy/laravel-cloud-develop.sh
 ```
 
+Laravel Cloud makes custom variables available to Laravel's configuration,
+but they may not be exported to the deploy-command shell. The script therefore
+falls back to bootstrapping Laravel through
+`scripts/deploy/resolve-laravel-environment.php` when the shell gate is absent.
+The resolver returns only the environment name, the boolean gate, and the
+password length; it never prints the seed password.
+
 Do not add `php artisan optimize:clear`, `queue:restart`,
 `horizon:terminate`, or `storage:link`: Laravel Cloud either manages those
 concerns or explicitly advises against running them in deploy commands.
