@@ -19,7 +19,7 @@ return new class extends Migration
             $table->string('tenant_id', 50)->default('default')->index();
             $table->string('project_key', 120);
             $table->string('sub_path', 500)->nullable();
-            $table->string('status', 20)->default('staged')->index();
+            $table->string('status', 32)->default('staged')->index();
             $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamp('committed_at')->nullable();
             $table->timestamp('finished_at')->nullable();
