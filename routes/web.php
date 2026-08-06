@@ -234,6 +234,66 @@ Route::get('/healthz', fn () => response('ok', 200, ['Content-Type' => 'text/pla
 $widgetDemoAllowed = app()->environment('testing')
     || (app()->environment('local') && (bool) config('widget.demo_enabled'));
 if ($widgetDemoAllowed) {
+    /*
+     * Demo-only host-backend boundary for authenticated widget users.
+     * The browser calls this same-origin URL; the endpoint keeps ik_ server-side
+     * and delegates the actual exchange to WidgetUserTokenController. It is
+     * mounted only under the local/testing demo gate above.
+     */
+    Route::get('/widget-demo/user-token', function () {
+        if (request()->boolean('fail')) {
+            return response()->json([
+                'error' => 'demo_identity_unavailable',
+                'message' => 'The demo host could not authenticate this user.',
+            ], 401)->header('Cache-Control', 'no-store');
+        }
+
+        $data = request()->validate([
+            'key' => ['required', 'string', 'max:255'],
+            'subject' => ['required', 'string', 'max:120'],
+        ]);
+        $key = \App\Models\WidgetKey::query()
+            ->where('public_key', $data['key'])
+            ->firstOrFail();
+        $encryptedSecret = \Illuminate\Support\Facades\Cache::get(
+            'widget-demo:identity-secret:'.$key->id,
+        );
+
+        try {
+            $identitySecret = is_string($encryptedSecret)
+                ? \Illuminate\Support\Facades\Crypt::decryptString($encryptedSecret)
+                : null;
+        } catch (\Throwable) {
+            $identitySecret = null;
+        }
+
+        if (! is_string($identitySecret)
+            || ! is_string($key->identity_secret_hash)
+            || ! \Illuminate\Support\Facades\Hash::check($identitySecret, $key->identity_secret_hash)) {
+            return response()->json([
+                'error' => 'demo_identity_unavailable',
+                'message' => 'The demo identity credential is unavailable.',
+            ], 503)->header('Cache-Control', 'no-store');
+        }
+
+        $origin = request()->getSchemeAndHttpHost();
+        $exchangeRequest = \Illuminate\Http\Request::create(
+            '/api/widget/user-token',
+            'POST',
+            ['subject' => $data['subject'], 'origin' => $origin],
+            server: [
+                'HTTP_X_WIDGET_KEY' => $key->public_key,
+                'HTTP_AUTHORIZATION' => 'Bearer '.$identitySecret,
+                'HTTP_ACCEPT' => 'application/json',
+            ],
+        );
+
+        return app(\App\Http\Controllers\Api\Widget\WidgetUserTokenController::class)(
+            $exchangeRequest,
+            app(\App\Services\Widget\WidgetUserTokenService::class),
+        )->header('Cache-Control', 'no-store');
+    })->name('widget.demo.user-token');
+
     Route::get('/widget-demo', function () {
         $key = \App\Models\WidgetKey::firstOrCreate(
             ['public_key' => 'pk_demo_local'],
@@ -252,11 +312,83 @@ if ($widgetDemoAllowed) {
             ],
         );
 
-        // ?mode=inline esercita il widget come blocco chat montato in un
-        // container della pagina; default helper (launcher flottante).
-        $mode = request()->query('mode') === 'inline' ? 'inline' : 'helper';
+        // ?mode=inline|fullscreen exercises both non-launcher layouts.
+        $requestedMode = request()->query('mode');
+        $mode = in_array($requestedMode, ['inline', 'fullscreen'], true)
+            ? $requestedMode
+            : 'helper';
+        $userAuth = request()->boolean('user_auth');
+        $subject = trim((string) request()->query('subject', 'demo-user'));
+        if ($subject === '') {
+            $subject = 'demo-user';
+        }
+        // Exercise the real cross-origin embed boundary locally. Browsers do
+        // not send Origin on same-origin GET requests, while widget auth is
+        // deliberately bound to the browser-supplied Origin header.
+        $alternateApiHost = match (request()->getHost()) {
+            '127.0.0.1' => 'localhost',
+            'localhost' => '127.0.0.1',
+            default => null,
+        };
+        $apiBase = $alternateApiHost === null
+            ? ''
+            : request()->getScheme().'://'.$alternateApiHost.':'.request()->getPort();
 
-        return view('widget-demo', ['publicKey' => $key->public_key, 'mode' => $mode]);
+        $userTokenUrl = null;
+        if ($userAuth) {
+            $cachedSecret = \Illuminate\Support\Facades\Cache::get(
+                'widget-demo:identity-secret:'.$key->id,
+            );
+            try {
+                $plainSecret = is_string($cachedSecret)
+                    ? \Illuminate\Support\Facades\Crypt::decryptString($cachedSecret)
+                    : null;
+            } catch (\Throwable) {
+                $plainSecret = null;
+            }
+
+            $key->refresh();
+            $credentialIsUsable = is_string($plainSecret)
+                && is_string($key->identity_secret_hash)
+                && \Illuminate\Support\Facades\Hash::check($plainSecret, $key->identity_secret_hash);
+
+            if (! $credentialIsUsable) {
+                $credentials = app(\App\Services\Widget\WidgetIdentityCredentialService::class);
+                $result = $key->user_auth_enabled
+                    ? $credentials->rotate(
+                        $key->id,
+                        $key->tenant_id,
+                        (int) $key->identity_credential_version,
+                        null,
+                        \App\Services\Widget\WidgetIdentityCredentialService::SURFACE_CLI,
+                    )
+                    : $credentials->enable(
+                        $key->id,
+                        $key->tenant_id,
+                        (int) $key->identity_credential_version,
+                        null,
+                        \App\Services\Widget\WidgetIdentityCredentialService::SURFACE_CLI,
+                    );
+                $plainSecret = $result->plainSecret;
+                \Illuminate\Support\Facades\Cache::forever(
+                    'widget-demo:identity-secret:'.$key->id,
+                    \Illuminate\Support\Facades\Crypt::encryptString((string) $plainSecret),
+                );
+            }
+
+            $userTokenUrl = route('widget.demo.user-token', [
+                'key' => $key->public_key,
+                'subject' => $subject,
+                'fail' => request()->boolean('auth_failure') ? 1 : 0,
+            ], false);
+        }
+
+        return view('widget-demo', [
+            'publicKey' => $key->public_key,
+            'apiBase' => $apiBase,
+            'mode' => $mode,
+            'userTokenUrl' => $userTokenUrl,
+        ]);
     })->name('widget.demo');
 }
 

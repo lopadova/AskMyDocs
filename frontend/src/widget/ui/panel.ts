@@ -42,6 +42,9 @@ export class WidgetPanel {
     /** Tema effettivo applicato (default < server < inline). */
     private theme: WidgetTheme = DEFAULT_THEME;
     private confirmBar: HTMLElement | null = null;
+    /** Composer gate: no first turn may race setup + authenticated history
+     *  restore and accidentally create/overwrite a different session. */
+    private initialized = false;
     /**
      * M4.8 — feedback visivo agentico (freccia/tour). Monta su `<body>` della
      * pagina ospite (non nello shadow root) per coprire l'intera viewport.
@@ -66,7 +69,8 @@ export class WidgetPanel {
         this.panel = this.el('section', 'amd-panel', {
             'data-testid': 'askmydocs-widget-panel',
             'data-open': 'false',
-            'data-state': 'idle',
+            'data-state': 'loading',
+            'aria-busy': 'true',
             role: 'dialog',
         });
 
@@ -88,6 +92,8 @@ export class WidgetPanel {
         });
         this.send = this.el('button', 'amd-send', { 'data-testid': 'askmydocs-widget-send', type: 'submit' });
         this.send.textContent = 'Invia';
+        this.input.disabled = true;
+        this.send.disabled = true;
         composer.append(this.input, this.send);
 
         this.panel.append(this.header, this.messages, this.status, composer);
@@ -112,12 +118,14 @@ export class WidgetPanel {
         this.applyTheme();
         void this.init();
 
-        if (this.mode === 'inline') {
+        if (this.mode === 'inline' || this.mode === 'fullscreen') {
             // Blocco chat a pagina: sempre aperto, statico, senza launcher/close
             // (nascosti via CSS .amd-mode-inline). role=region anziché dialog: è
             // una sezione inline, non un overlay modale (R15). Niente focus forzato
             // al boot → non scrolla la pagina verso il widget.
-            this.root.classList.add('amd-mode-inline');
+            this.root.classList.add(
+                this.mode === 'inline' ? 'amd-mode-inline' : 'amd-mode-fullscreen',
+            );
             this.panel.setAttribute('role', 'region');
             this.panel.dataset.open = 'true';
         } else if (cfg.autoOpen) {
@@ -125,13 +133,40 @@ export class WidgetPanel {
         }
     }
 
-    /** Fase 2: carica /setup e ri-applica il tema fondendo quello server. */
+    /**
+     * Acquires user auth first, then setup and identity-scoped history. Until
+     * all three complete the composer stays disabled, preventing the first
+     * message from racing restoration. Auth/bootstrap failures are rendered
+     * and keep the widget fail-closed.
+     */
     private async init(): Promise<void> {
-        const setup = await this.bridge.loadSetup();
-        const serverTheme = setup && typeof setup.theme === 'object' ? setup.theme : null;
-        if (serverTheme) {
-            this.serverTheme = serverTheme as Partial<WidgetTheme>;
-            this.applyTheme();
+        try {
+            await this.bridge.prepareUserAuthentication();
+            const setup = await this.bridge.loadSetup();
+            const serverTheme = setup && typeof setup.theme === 'object' ? setup.theme : null;
+            if (serverTheme) {
+                this.serverTheme = serverTheme as Partial<WidgetTheme>;
+                this.applyTheme();
+            }
+            const restored = await this.bridge.restoreAuthenticatedSession();
+            for (const message of restored) {
+                message.role === 'user'
+                    ? this.appendUser(message.content)
+                    : this.appendAssistant(message.content, []);
+            }
+
+            this.initialized = true;
+            this.panel.dataset.state = 'ready';
+            this.panel.setAttribute('aria-busy', 'false');
+            this.input.disabled = false;
+            this.send.disabled = false;
+            this.status.textContent = '';
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            this.panel.dataset.state = 'error';
+            this.panel.setAttribute('aria-busy', 'false');
+            this.status.textContent = 'Widget non disponibile.';
+            this.appendSystem(`Impossibile inizializzare il widget: ${message}`, 'error');
         }
     }
 
@@ -198,7 +233,9 @@ export class WidgetPanel {
     private events(): BridgeEvents {
         return {
             onBusy: (busy) => {
-                this.panel.dataset.state = busy ? 'busy' : 'idle';
+                this.panel.dataset.state = busy ? 'loading' : 'ready';
+                this.panel.setAttribute('aria-busy', busy ? 'true' : 'false');
+                this.input.disabled = busy;
                 this.send.disabled = busy;
                 this.status.textContent = busy ? 'L’assistente sta lavorando…' : '';
             },
@@ -219,7 +256,7 @@ export class WidgetPanel {
 
     private submitInput(): void {
         const text = this.input.value.trim();
-        if (text === '' || this.bridge.isBusy()) {
+        if (!this.initialized || text === '' || this.bridge.isBusy()) {
             return;
         }
         this.input.value = '';

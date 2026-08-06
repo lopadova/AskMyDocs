@@ -30,7 +30,8 @@
  *   - `inline`           blocco chat che riempie il container ospite indicato
  *                        da `mount` (selettore CSS). Senza container valido il
  *                        widget logga un errore e NON monta (R14: niente
- *                        fallback silenzioso a un launcher flottante).
+ *                        fallback silenzioso a un launcher flottante);
+ *   - `fullscreen`       chat a piena viewport, montata su body e sempre aperta.
  */
 import { WidgetPanel } from './ui/panel';
 import { BASE_WIDGET_CSS } from './ui/styles';
@@ -88,6 +89,11 @@ export function resolveConfig(script: HTMLScriptElement | null): Partial<WidgetC
     assign(ds.launcherLabel, (v) => (merged.launcherLabel = v));
     assign(ds.hostManifestUrl, (v) => (merged.hostManifestUrl = v));
     assign(ds.hostExecUrl, (v) => (merged.hostExecUrl = v));
+    assign(ds.userToken, (v) => (merged.userToken = v));
+    assign(ds.userTokenUrl, (v) => (merged.userTokenUrl = v));
+    if (ds.mode === 'helper' || ds.mode === 'inline' || ds.mode === 'fullscreen') {
+        merged.mode = ds.mode;
+    }
     if (ds.autoOpen === 'true' || ds.autoOpen === '') {
         merged.autoOpen = true;
     }
@@ -102,7 +108,7 @@ export function resolveConfig(script: HTMLScriptElement | null): Partial<WidgetC
 
 /** Modalità effettiva: inline solo se richiesta esplicitamente, altrimenti helper. */
 function resolveMode(cfg: Partial<WidgetConfig>): WidgetMode {
-    return cfg.mode === 'inline' ? 'inline' : 'helper';
+    return cfg.mode === 'inline' || cfg.mode === 'fullscreen' ? cfg.mode : 'helper';
 }
 
 /**
@@ -166,13 +172,19 @@ function init(): void {
         }
         parent = container;
     }
-
     const host = document.createElement('div');
     host.setAttribute('data-askmydocs-widget', '');
     if (mode === 'inline') {
         // Il container ospite controlla width/height; l'host li riempie.
         host.style.width = '100%';
         host.style.height = '100%';
+    }
+    if (mode === 'fullscreen') {
+        host.style.position = 'fixed';
+        host.style.inset = '0';
+        host.style.width = '100vw';
+        host.style.height = '100dvh';
+        host.style.zIndex = '2147483000';
     }
     parent.appendChild(host);
 

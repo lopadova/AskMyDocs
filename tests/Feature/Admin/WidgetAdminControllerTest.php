@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Admin;
 
 use App\Models\User;
+use App\Models\AdminCommandAudit;
 use App\Models\WidgetKey;
 use App\Models\WidgetSession;
 use App\Models\WidgetSessionStep;
@@ -537,6 +538,22 @@ final class WidgetAdminControllerTest extends TestCase
         $this->assertSame('inline', $row->theme_config['mode']);
     }
 
+    public function test_store_persists_fullscreen_widget_mode_via_theme(): void
+    {
+        $user = $this->superAdmin();
+
+        $this->actingAs($user)->postJson('/api/admin/widget-keys', [
+            'label' => 'Fullscreen portal',
+            'project_key' => 'portal',
+            'theme' => ['mode' => 'fullscreen'],
+        ])->assertCreated()->assertJsonPath('data.theme.mode', 'fullscreen');
+
+        $this->assertSame(
+            'fullscreen',
+            WidgetKey::query()->where('label', 'Fullscreen portal')->sole()->theme_config['mode'],
+        );
+    }
+
     public function test_default_key_resolves_helper_mode(): void
     {
         $user = $this->superAdmin();
@@ -862,5 +879,59 @@ final class WidgetAdminControllerTest extends TestCase
         $response->assertOk();
         // Only sessions for key1 should be returned
         $this->assertCount(1, $response->json('data'));
+    }
+
+    public function test_authenticated_user_credential_is_shown_once_and_rotatable(): void
+    {
+        $user = $this->superAdmin();
+        $created = $this->actingAs($user)->postJson('/api/admin/widget-keys', [
+            'label' => 'Authenticated portal',
+            'project_key' => 'portal',
+            'allowed_origins' => ['https://portal.example'],
+            'user_auth_enabled' => true,
+        ])->assertCreated();
+
+        $this->assertStringStartsWith('ik_', $created->json('identity_plain_secret'));
+        $id = (int) $created->json('data.id');
+
+        $index = $this->actingAs($user)->getJson('/api/admin/widget-keys')->assertOk();
+        $this->assertNull($index->json('data.0.identity_plain_secret'));
+        $this->assertTrue($index->json('data.0.user_auth_enabled'));
+        $this->assertSame(1, $index->json('data.0.identity_credential_version'));
+
+        $rotated = $this->actingAs($user)
+            ->postJson("/api/admin/widget-keys/{$id}/rotate-identity-secret", [
+                'identity_credential_version' => 1,
+            ])
+            ->assertOk();
+        $this->assertStringStartsWith('ik_', $rotated->json('identity_plain_secret'));
+        $this->assertNotSame(
+            $created->json('identity_plain_secret'),
+            $rotated->json('identity_plain_secret'),
+        );
+
+        $exchangePayload = [
+            'subject' => 'host-user-42',
+            'origin' => 'https://portal.example',
+        ];
+        $publicKey = (string) $created->json('public_key');
+
+        $this->postJson('/api/widget/user-token', $exchangePayload, [
+            'X-Widget-Key' => $publicKey,
+            'Authorization' => 'Bearer '.$created->json('identity_plain_secret'),
+        ])->assertUnauthorized()->assertJsonPath('error', 'identity_credentials_invalid');
+
+        $this->postJson('/api/widget/user-token', $exchangePayload, [
+            'X-Widget-Key' => $publicKey,
+            'Authorization' => 'Bearer '.$rotated->json('identity_plain_secret'),
+        ])->assertCreated();
+
+        $auditPayload = AdminCommandAudit::query()
+            ->where('command', 'widget.identity-credential')
+            ->get()
+            ->pluck('args_json')
+            ->toJson();
+        $this->assertStringNotContainsString((string) $created->json('identity_plain_secret'), $auditPayload);
+        $this->assertStringNotContainsString((string) $rotated->json('identity_plain_secret'), $auditPayload);
     }
 }

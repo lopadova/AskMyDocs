@@ -46,7 +46,7 @@ final class WidgetThemeService
      *
      * @var list<string>
      */
-    private const MODES = ['helper', 'inline'];
+    private const MODES = ['helper', 'inline', 'fullscreen'];
 
     /** @var list<string> */
     private const LAUNCHER_SIDES = ['right', 'left'];

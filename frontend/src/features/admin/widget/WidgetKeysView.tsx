@@ -36,6 +36,8 @@ interface WidgetKeyRow {
     skill: string;
     /** Operational switch: the host app may provide tools to the widget (HTP). */
     host_tools_enabled: boolean;
+    user_auth_enabled: boolean;
+    identity_credential_version: number;
     is_active: boolean;
     last_used_at: string | null;
     sessions_count: number;
@@ -53,6 +55,7 @@ interface CreateKeyResponse {
     data: WidgetKeyRow;
     plain_secret: string;
     public_key: string;
+    identity_plain_secret?: string | null;
 }
 
 type RotateKeyResponse = CreateKeyResponse;
@@ -64,7 +67,21 @@ interface EmbedTarget {
     label: string;
     allowedOrigins: string[];
     secret?: string;
+    identitySecret?: string;
+    userAuthEnabled: boolean;
+    initialTab?: 'quickstart' | 'authenticated';
     /** Saved appearance — lets the embed dialog bake it inline. */
+    theme?: WidgetTheme;
+}
+
+/** One-time identity credential, kept together with the key it belongs to. */
+interface IdentityCredential {
+    keyId: number;
+    secret: string;
+    publicKey: string;
+    projectKey: string;
+    label: string;
+    allowedOrigins: string[];
     theme?: WidgetTheme;
 }
 
@@ -125,6 +142,11 @@ const MODE_OPTIONS: { value: WidgetMode; label: string; hint: string }[] = [
         label: 'Inline chat — full block',
         hint: 'The whole chat is embedded at 100% of a container you place on the page. For a chat bound to a page.',
     },
+    {
+        value: 'fullscreen',
+        label: 'Fullscreen chat — entire viewport',
+        hint: 'A dedicated chat experience that fills the browser viewport, ready for authenticated history.',
+    },
 ];
 
 /** shadcn-styled control class shared by the native <select> here. */
@@ -149,6 +171,9 @@ export function WidgetKeysView() {
     const [newRateLimit, setNewRateLimit] = useState('');
     const [newSkill, setNewSkill] = useState('');
     const [newHostTools, setNewHostTools] = useState(false);
+    const [newUserAuth, setNewUserAuth] = useState(false);
+    const [identityCredential, setIdentityCredential] =
+        useState<IdentityCredential | null>(null);
     const [rotatedCreds, setRotatedCreds] = useState<RotateKeyResponse | null>(null);
     const [createdCreds, setCreatedCreds] = useState<CreateKeyResponse | null>(null);
     const [embedTarget, setEmbedTarget] = useState<EmbedTarget | null>(null);
@@ -171,6 +196,7 @@ export function WidgetKeysView() {
         setNewRateLimit('');
         setNewSkill('');
         setNewHostTools(false);
+        setNewUserAuth(false);
     };
 
     const createKey = useMutation({
@@ -185,6 +211,7 @@ export function WidgetKeysView() {
                 project_key: newProjectKey.trim(),
                 allowed_origins: origins,
                 host_tools_enabled: newHostTools,
+                user_auth_enabled: newUserAuth,
             };
             const rate = Number.parseInt(newRateLimit, 10);
             if (newRateLimit.trim() !== '' && Number.isFinite(rate)) {
@@ -207,6 +234,19 @@ export function WidgetKeysView() {
         },
         onSuccess: async (payload) => {
             setCreatedCreds(payload);
+            setIdentityCredential(
+                payload.identity_plain_secret
+                      ? {
+                          keyId: payload.data.id,
+                          secret: payload.identity_plain_secret,
+                          publicKey: payload.public_key,
+                          projectKey: payload.data.project_key,
+                          label: payload.data.label,
+                          allowedOrigins: payload.data.allowed_origins,
+                          theme: payload.data.theme,
+                      }
+                    : null,
+            );
             resetCreateForm();
             setShowCreate(false);
             await qc.invalidateQueries({ queryKey: ['admin-widget-keys'] });
@@ -254,6 +294,64 @@ export function WidgetKeysView() {
         },
         onSuccess: async () => {
             await qc.invalidateQueries({ queryKey: ['admin-widget-keys'] });
+        },
+    });
+
+    const toggleUserAuth = useMutation({
+        mutationFn: async (vars: { id: number; enabled: boolean; version: number }) => {
+            const { data } = await api.patch<{ identity_plain_secret?: string | null }>(
+                `/api/admin/widget-keys/${vars.id}`,
+                {
+                    user_auth_enabled: vars.enabled,
+                    identity_credential_version: vars.version,
+                },
+            );
+            return data.identity_plain_secret ?? null;
+        },
+        onSuccess: async (secret, vars) => {
+            if (!vars.enabled) {
+                setIdentityCredential((current) =>
+                    current?.keyId === vars.id ? null : current,
+                );
+            } else if (secret) {
+                const key = keys.data?.find((row) => row.id === vars.id);
+                if (key) {
+                    setIdentityCredential({
+                        keyId: key.id,
+                        secret,
+                        publicKey: key.public_key,
+                        projectKey: key.project_key,
+                        label: key.label,
+                        allowedOrigins: key.allowed_origins,
+                        theme: key.theme,
+                    });
+                }
+            }
+            await qc.invalidateQueries({ queryKey: ['admin-widget-keys'] });
+        },
+    });
+
+    const rotateIdentitySecret = useMutation({
+        mutationFn: async (vars: { id: number; version: number }) => {
+            const { data } = await api.post<{ identity_plain_secret: string }>(
+                `/api/admin/widget-keys/${vars.id}/rotate-identity-secret`,
+                { identity_credential_version: vars.version },
+            );
+            return data.identity_plain_secret;
+        },
+        onSuccess: (secret, vars) => {
+            const key = keys.data?.find((row) => row.id === vars.id);
+            if (key) {
+                setIdentityCredential({
+                    keyId: key.id,
+                    secret,
+                    publicKey: key.public_key,
+                    projectKey: key.project_key,
+                    label: key.label,
+                    allowedOrigins: key.allowed_origins,
+                    theme: key.theme,
+                });
+            }
         },
     });
 
@@ -342,6 +440,23 @@ export function WidgetKeysView() {
                             <p className="text-muted-foreground text-xs">
                                 {MODE_OPTIONS.find((o) => o.value === newMode)?.hint}
                                 {' '}You can change this later under <em>Appearance</em>.
+                            </p>
+                        </div>
+
+                        <div className="grid gap-1.5">
+                            <label className="flex items-center gap-2 text-sm font-medium">
+                                <input
+                                    type="checkbox"
+                                    data-testid="admin-widget-keys-user-auth-toggle"
+                                    checked={newUserAuth}
+                                    onChange={(e) => setNewUserAuth(e.target.checked)}
+                                />
+                                Enable authenticated host users and cross-device history
+                            </label>
+                            <p className="text-muted-foreground text-xs">
+                                Creates a server-only identity credential. Your backend exchanges
+                                an opaque subject for a short-lived <code>wu_…</code> token; never
+                                put the subject, email, or this credential in browser code.
                             </p>
                         </div>
 
@@ -506,11 +621,70 @@ export function WidgetKeysView() {
                             label: createdCreds.data.label,
                             allowedOrigins: createdCreds.data.allowed_origins,
                             secret: createdCreds.plain_secret,
+                            identitySecret: createdCreds.identity_plain_secret ?? undefined,
+                            userAuthEnabled: createdCreds.data.user_auth_enabled ?? false,
                             theme: createdCreds.data.theme,
                         })
                     }
                     onDismiss={() => setCreatedCreds(null)}
                 />
+            )}
+
+            {identityCredential && (
+                <Alert variant="info" data-testid="admin-widget-identity-secret">
+                    <KeyRound aria-hidden />
+                    <AlertTitle>
+                        Identity credential for {identityCredential.label} — copy it now
+                    </AlertTitle>
+                    <AlertDescription>
+                        <p>
+                            Send this only from the host backend as bearer auth to{' '}
+                            <code>/api/widget/user-token</code>, with
+                            <code>{' { subject, origin }'}</code> and
+                            <code>X-Widget-Key</code>. The returned <code>wu_…</code> token is the
+                            only identity value passed to the browser. Key:{' '}
+                            <code>{identityCredential.publicKey}</code>.
+                        </p>
+                        <div className="mt-2 flex items-center gap-2">
+                            <code className="font-mono">{identityCredential.secret}</code>
+                            <CopyButton
+                                value={identityCredential.secret}
+                                testId="admin-widget-identity-secret-copy"
+                            />
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                            <Button
+                                type="button"
+                                size="sm"
+                                data-testid="admin-widget-identity-secret-setup"
+                                onClick={() =>
+                                    setEmbedTarget({
+                                        publicKey: identityCredential.publicKey,
+                                        projectKey: identityCredential.projectKey,
+                                        label: identityCredential.label,
+                                        allowedOrigins: identityCredential.allowedOrigins,
+                                        identitySecret: identityCredential.secret,
+                                        userAuthEnabled: true,
+                                        initialTab: 'authenticated',
+                                        theme: identityCredential.theme,
+                                    })
+                                }
+                            >
+                                <Code2 aria-hidden />
+                                Open authenticated setup
+                            </Button>
+                            <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                data-testid="admin-widget-identity-secret-dismiss"
+                                onClick={() => setIdentityCredential(null)}
+                            >
+                                Dismiss
+                            </Button>
+                        </div>
+                    </AlertDescription>
+                </Alert>
             )}
 
             {/* Rotated credentials — show ONCE */}
@@ -526,6 +700,8 @@ export function WidgetKeysView() {
                             label: rotatedCreds.data.label,
                             allowedOrigins: rotatedCreds.data.allowed_origins,
                             secret: rotatedCreds.plain_secret,
+                            identitySecret: rotatedCreds.identity_plain_secret ?? undefined,
+                            userAuthEnabled: rotatedCreds.data.user_auth_enabled ?? false,
                             theme: rotatedCreds.data.theme,
                         })
                     }
@@ -560,6 +736,19 @@ export function WidgetKeysView() {
                     <AlertTitle>Could not update host tools.</AlertTitle>
                     <AlertDescription>
                         {extractApiError(toggleHostTools.error)}
+                    </AlertDescription>
+                </Alert>
+            )}
+
+            {(toggleUserAuth.isError || rotateIdentitySecret.isError) && (
+                <Alert
+                    variant="destructive"
+                    data-testid="admin-widget-keys-user-auth-error"
+                >
+                    <Ban aria-hidden />
+                    <AlertTitle>Could not update authenticated-user access.</AlertTitle>
+                    <AlertDescription>
+                        {extractApiError(toggleUserAuth.error ?? rotateIdentitySecret.error)}
                     </AlertDescription>
                 </Alert>
             )}
@@ -602,6 +791,7 @@ export function WidgetKeysView() {
                                 <th>Origins</th>
                                 <th>Rate</th>
                                 <th>Host tools</th>
+                                <th>User auth</th>
                                 <th>Status</th>
                                 <th>Sessions</th>
                                 <th>Last Used</th>
@@ -623,12 +813,21 @@ export function WidgetKeysView() {
                                             variant="muted"
                                             data-testid={`admin-widget-keys-mode-${key.id}`}
                                         >
-                                            {key.theme?.mode === 'inline' ? 'Inline' : 'Helper'}
+                                            {key.theme?.mode === 'inline'
+                                                ? 'Inline'
+                                                : key.theme?.mode === 'fullscreen'
+                                                  ? 'Fullscreen'
+                                                  : 'Helper'}
                                         </Badge>
                                     </td>
                                     <td className="max-w-[180px] truncate">
                                         {key.allowed_origins.length === 0 ? (
-                                            <span className="text-muted-foreground">any</span>
+                                            <span
+                                                className="text-muted-foreground"
+                                                data-testid={`admin-widget-keys-origins-empty-${key.id}`}
+                                            >
+                                                none configured
+                                            </span>
                                         ) : (
                                             key.allowed_origins.join(', ')
                                         )}
@@ -659,6 +858,27 @@ export function WidgetKeysView() {
                                         </label>
                                     </td>
                                     <td>
+                                        <label className="flex items-center gap-2">
+                                            <input
+                                                type="checkbox"
+                                                data-testid={`admin-widget-keys-${key.id}-user-auth-toggle`}
+                                                aria-label={`Authenticated users for ${key.label}`}
+                                                checked={key.user_auth_enabled ?? false}
+                                                disabled={toggleUserAuth.isPending}
+                                                onChange={(e) =>
+                                                    toggleUserAuth.mutate({
+                                                        id: key.id,
+                                                        enabled: e.target.checked,
+                                                        version: key.identity_credential_version,
+                                                    })
+                                                }
+                                            />
+                                            <span className="text-muted-foreground text-xs">
+                                                {key.user_auth_enabled ? 'On' : 'Off'}
+                                            </span>
+                                        </label>
+                                    </td>
+                                    <td>
                                         <Badge
                                             data-testid={`admin-widget-keys-status-${key.id}`}
                                             variant={key.is_active ? 'success' : 'destructive'}
@@ -674,6 +894,33 @@ export function WidgetKeysView() {
                                     </td>
                                     <td>
                                         <div className="flex flex-wrap justify-end gap-1.5">
+                                            {key.user_auth_enabled && (
+                                                <Button
+                                                    type="button"
+                                                    size="sm"
+                                                    variant="outline"
+                                                    data-testid={`admin-widget-keys-${key.id}-rotate-identity`}
+                                                    disabled={rotateIdentitySecret.isPending}
+                                                    onClick={() => {
+                                                        if (
+                                                            confirm(
+                                                                'Rotate the identity credential? The current ik_ will stop minting new user tokens immediately; existing wu_ tokens remain valid until expiry.',
+                                                            )
+                                                        ) {
+                                                            rotateIdentitySecret.mutate({
+                                                                id: key.id,
+                                                                version:
+                                                                    key.identity_credential_version,
+                                                            });
+                                                        }
+                                                    }}
+                                                    aria-label={`Rotate identity credential for ${key.label}`}
+                                                    title="Rotate the server-only ik_ identity credential"
+                                                >
+                                                    <KeyRound aria-hidden />
+                                                    Identity secret
+                                                </Button>
+                                            )}
                                             <Button
                                                 type="button"
                                                 size="sm"
@@ -685,6 +932,8 @@ export function WidgetKeysView() {
                                                         projectKey: key.project_key,
                                                         label: key.label,
                                                         allowedOrigins: key.allowed_origins,
+                                                        userAuthEnabled:
+                                                            key.user_auth_enabled ?? false,
                                                         theme: key.theme,
                                                     })
                                                 }
@@ -823,6 +1072,9 @@ export function WidgetKeysView() {
                     apiBase={instanceOrigin()}
                     allowedOrigins={embedTarget.allowedOrigins}
                     secret={embedTarget.secret}
+                    identitySecret={embedTarget.identitySecret}
+                    userAuthEnabled={embedTarget.userAuthEnabled}
+                    initialTab={embedTarget.initialTab}
                     theme={embedTarget.theme}
                 />
             )}

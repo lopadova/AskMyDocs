@@ -8,6 +8,21 @@
 export interface WidgetConfig {
     /** Chiave pubblica (pk_...). Obbligatoria. */
     key: string;
+    /**
+     * Short-lived authenticated user token (`wu_…`) minted server-to-server by
+     * the host application. Never place the host subject/email/internal id here.
+     * Backward-compatible static mode: the token stays in memory until it
+     * expires, but cannot be renewed automatically without `userTokenUrl`.
+     */
+    userToken?: string;
+    /**
+     * Same-origin host endpoint that returns `{ token: "wu_…", expires_at }`.
+     * The widget calls it with the host session cookie (`credentials:
+     * "same-origin"`) at boot and whenever the short-lived token needs renewal.
+     * The endpoint must authenticate the current host user server-side; never
+     * expose the identity secret or the host subject/email to the browser.
+     */
+    userTokenUrl?: string;
     /** Base URL dell'istanza AskMyDocs. Default: stessa origine ('' ). In
      *  modalità proxy (B) punta al backend del sito ospite. */
     apiBase?: string;
@@ -40,7 +55,8 @@ export interface WidgetConfig {
     /**
      * Modalità di resa del widget (precedenza sul `theme.mode` server):
      *   - `helper` (default) launcher flottante → pannello a comparsa;
-     *   - `inline`           blocco chat che riempie {@link WidgetConfig.mount}.
+     *   - `inline`           blocco chat che riempie {@link WidgetConfig.mount};
+     *   - `fullscreen`       esperienza chat che occupa l'intera viewport.
      * L'embed snippet la "congela" inline perché il mount è specifico del sito.
      */
     mode?: WidgetMode;
@@ -93,7 +109,7 @@ export interface HostExecResponse {
  * comparsa (kitt). `inline` = blocco chat che riempie il container ospite (chat
  * legata a una pagina). Mirror di WidgetThemeService::MODES (PHP).
  */
-export type WidgetMode = 'helper' | 'inline';
+export type WidgetMode = 'helper' | 'inline' | 'fullscreen';
 
 /** Chiave di font ammessa (mappa su uno stack sicuro — vedi FONT_STACKS). */
 export type WidgetFontKey = 'system' | 'inter' | 'roboto' | 'georgia' | 'mono';

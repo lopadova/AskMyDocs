@@ -78,6 +78,10 @@ the host *uses* them, never the reverse.
   Public codes distinguish joining one existing tenant from creating a new
   company, using a reserved string namespace rather than a numeric-ID range or
   a second invite table. See [invitations](/invitations).
+- **[ADR 0027](https://github.com/lopadova/AskMyDocs/blob/main/docs/adr/0027-v830-widget-identity-and-current-session.md) — Widget identity credentials and current-session restore.**
+  One tenant-scoped, audited credential core; an explicit identity-scoped
+  current-session query; and the security-motivated exception that keeps
+  one-time `ik_` secrets out of MCP transcripts.
 
 ## The autonomy arc: self-compiling knowledge, safely
 

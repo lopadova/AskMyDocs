@@ -86,6 +86,37 @@ describe('Transport', () => {
         }
     });
 
+    it('loads the explicit current session contract and does not paginate history', async () => {
+        fetchMock = mockFetch(200, {
+            data: {
+                id: 'session-current',
+                status: 'waiting_user',
+                summary: null,
+                page_url: null,
+                created_at: '2026-07-28T10:00:00Z',
+                updated_at: '2026-07-28T11:00:00Z',
+            },
+        });
+        globalThis.fetch = fetchMock;
+
+        const current = await new Transport(baseConfig).currentSession();
+
+        expect(current?.id).toBe('session-current');
+        expect(lastCall(fetchMock).url).toBe(
+            'https://kb.example.com/api/widget/sessions/current',
+        );
+    });
+
+    it('maps a 204 current-session response to an empty history state', async () => {
+        fetchMock = Object.assign(
+            vi.fn(async () => new Response(null, { status: 204 })),
+            { originalFetch },
+        ) as unknown as ReturnType<typeof mockFetch>;
+        globalThis.fetch = fetchMock;
+
+        await expect(new Transport(baseConfig).currentSession()).resolves.toBeNull();
+    });
+
     // --- (b) token mode: Authorization: Bearer wt_… when session token is set ---
 
     it('sends Authorization: Bearer wt_… when session token is set', async () => {
@@ -187,6 +218,40 @@ describe('Transport', () => {
         expect(headers['Authorization']).toBeUndefined();
     });
 
+    it('uses the authenticated user token when minting for an identity-owned session', async () => {
+        const mintMock = mockFetch(201, {
+            token: 'wt_authenticated_session',
+            expires_at: '2026-08-01T00:00:00Z',
+        });
+        globalThis.fetch = mintMock;
+
+        const t = new Transport({ ...baseConfig, userToken: 'wu_session_owner' });
+        await t.mintSessionToken('session-owned-by-user');
+
+        const { init } = lastCall(mintMock);
+        const headers = init.headers as Record<string, string>;
+        expect(headers['Authorization']).toBe('Bearer wu_session_owner');
+        expect(headers['X-Widget-Key']).toBeUndefined();
+        expect(JSON.parse(String(init.body))).toEqual({
+            session_id: 'session-owned-by-user',
+        });
+
+        const oneShotMock = mockFetch(200, {});
+        globalThis.fetch = oneShotMock;
+        await t.setup();
+
+        const oneShotHeaders = lastCall(oneShotMock).init.headers as Record<string, string>;
+        expect(oneShotHeaders['Authorization']).toBe('Bearer wt_authenticated_session');
+        expect(t.getSessionToken()).toBeNull();
+
+        const resumedMock = mockFetch(200, {});
+        globalThis.fetch = resumedMock;
+        await t.setup();
+
+        const resumedHeaders = lastCall(resumedMock).init.headers as Record<string, string>;
+        expect(resumedHeaders['Authorization']).toBe('Bearer wu_session_owner');
+    });
+
     // --- WidgetError on non-OK responses ---
 
     it('throws WidgetError on non-2xx responses', async () => {
@@ -213,5 +278,197 @@ describe('Transport', () => {
 
         const t = new Transport(baseConfig);
         await expect(t.setup()).rejects.toMatchObject({ code: 'timeout' });
+    });
+
+    // --- Authenticated host user (`wu_`) acquisition + renewal ---
+
+    it('loads a wu_ token from a same-origin userTokenUrl before setup', async () => {
+        const tokenUrl = new URL('/api/askmydocs/widget-user-token', window.location.href).toString();
+        const calls: Array<{ url: string; init: RequestInit }> = [];
+        globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init: RequestInit = {}) => {
+            const url = String(input);
+            calls.push({ url, init });
+            if (url === tokenUrl) {
+                return new Response(JSON.stringify({
+                    token: 'wu_from_host_session',
+                    expires_at: new Date(Date.now() + 10 * 60_000).toISOString(),
+                }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+            }
+
+            return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }) as unknown as typeof fetch;
+
+        const t = new Transport({ ...baseConfig, userTokenUrl: '/api/askmydocs/widget-user-token' });
+        await t.setup();
+
+        expect(calls.map((call) => call.url)).toEqual([
+            tokenUrl,
+            'https://kb.example.com/api/widget/setup',
+        ]);
+        expect(calls[0].init).toMatchObject({
+            method: 'GET',
+            credentials: 'same-origin',
+            cache: 'no-store',
+            headers: { Accept: 'application/json' },
+        });
+        expect(calls[1].init.headers).toMatchObject({
+            Authorization: 'Bearer wu_from_host_session',
+        });
+        expect((calls[1].init.headers as Record<string, string>)['X-Widget-Key']).toBeUndefined();
+    });
+
+    it('refreshes once and retries once when AskMyDocs returns user_token_invalid', async () => {
+        const tokenUrl = new URL('/api/askmydocs/widget-user-token', window.location.href).toString();
+        const askHeaders: string[] = [];
+        let tokenRequests = 0;
+        let setupRequests = 0;
+        globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init: RequestInit = {}) => {
+            const url = String(input);
+            if (url === tokenUrl) {
+                tokenRequests += 1;
+
+                return new Response(JSON.stringify({
+                    token: `wu_refresh_${tokenRequests}`,
+                    expires_at: new Date(Date.now() + 10 * 60_000).toISOString(),
+                }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+            }
+
+            setupRequests += 1;
+            askHeaders.push((init.headers as Record<string, string>).Authorization);
+            if (setupRequests === 1) {
+                return new Response(JSON.stringify({
+                    error: 'user_token_invalid',
+                    message: 'Expired.',
+                }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+            }
+
+            return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }) as unknown as typeof fetch;
+
+        await new Transport({ ...baseConfig, userTokenUrl: '/api/askmydocs/widget-user-token' }).setup();
+
+        expect(tokenRequests).toBe(2);
+        expect(setupRequests).toBe(2);
+        expect(askHeaders).toEqual([
+            'Bearer wu_refresh_1',
+            'Bearer wu_refresh_2',
+        ]);
+    });
+
+    it('does not retry a second time when the refreshed token is also rejected', async () => {
+        const tokenUrl = new URL('/api/askmydocs/widget-user-token', window.location.href).toString();
+        let tokenRequests = 0;
+        let setupRequests = 0;
+        globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+            if (String(input) === tokenUrl) {
+                tokenRequests += 1;
+
+                return new Response(JSON.stringify({
+                    token: `wu_still_invalid_${tokenRequests}`,
+                    expires_at: new Date(Date.now() + 10 * 60_000).toISOString(),
+                }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+            }
+            setupRequests += 1;
+
+            return new Response(JSON.stringify({
+                error: 'user_token_invalid',
+                message: 'Still invalid.',
+            }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+        }) as unknown as typeof fetch;
+
+        const request = new Transport({
+            ...baseConfig,
+            userTokenUrl: '/api/askmydocs/widget-user-token',
+        }).setup();
+
+        await expect(request).rejects.toMatchObject({ status: 401, code: 'user_token_invalid' });
+        expect(tokenRequests).toBe(2);
+        expect(setupRequests).toBe(2);
+    });
+
+    it('renews an almost-expired token before the next AskMyDocs request', async () => {
+        const tokenUrl = new URL('/api/askmydocs/widget-user-token', window.location.href).toString();
+        let tokenRequests = 0;
+        const askHeaders: string[] = [];
+        globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init: RequestInit = {}) => {
+            if (String(input) === tokenUrl) {
+                tokenRequests += 1;
+
+                return new Response(JSON.stringify({
+                    token: `wu_short_${tokenRequests}`,
+                    expires_at: new Date(Date.now() + (tokenRequests === 1 ? 5_000 : 10 * 60_000)).toISOString(),
+                }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+            }
+            askHeaders.push((init.headers as Record<string, string>).Authorization);
+
+            return new Response(JSON.stringify({
+                data: [],
+                meta: { current_page: 1, last_page: 1, per_page: 20, total: 0 },
+            }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }) as unknown as typeof fetch;
+
+        const t = new Transport({ ...baseConfig, userTokenUrl: '/api/askmydocs/widget-user-token' });
+        await t.setup();
+        await t.listSessions();
+
+        expect(tokenRequests).toBe(2);
+        expect(askHeaders).toEqual(['Bearer wu_short_1', 'Bearer wu_short_2']);
+    });
+
+    it('rejects an invalid user-token response without falling back to the public key', async () => {
+        let calls = 0;
+        globalThis.fetch = vi.fn(async () => {
+            calls += 1;
+
+            return new Response(JSON.stringify({
+                token: 'pk_not_a_user_token',
+                expires_at: new Date(Date.now() + 10 * 60_000).toISOString(),
+            }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }) as unknown as typeof fetch;
+
+        const request = new Transport({
+            ...baseConfig,
+            userTokenUrl: '/api/askmydocs/widget-user-token',
+        }).setup();
+
+        await expect(request).rejects.toMatchObject({ code: 'user_token_response_invalid' });
+        expect(calls).toBe(1);
+    });
+
+    it('rejects a cross-origin userTokenUrl before making any request', async () => {
+        const fetchSpy = vi.fn();
+        globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+        const request = new Transport({
+            ...baseConfig,
+            userTokenUrl: 'https://identity.example.net/widget-token',
+        }).setup();
+
+        await expect(request).rejects.toMatchObject({ code: 'user_token_url_cross_origin' });
+        expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it('keeps a static wu_ token backward-compatible without trying to refresh it', async () => {
+        const calls: Array<RequestInit> = [];
+        globalThis.fetch = vi.fn(async (_input: RequestInfo | URL, init: RequestInit = {}) => {
+            calls.push(init);
+
+            return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }) as unknown as typeof fetch;
+
+        await new Transport({ ...baseConfig, userToken: 'wu_static_embed' }).setup();
+
+        expect(calls).toHaveLength(1);
+        expect(calls[0].headers).toMatchObject({ Authorization: 'Bearer wu_static_embed' });
+    });
+
+    it('rejects a malformed static user token instead of silently using pk mode', async () => {
+        const fetchSpy = vi.fn();
+        globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+        const request = new Transport({ ...baseConfig, userToken: 'not-a-wu-token' }).setup();
+
+        await expect(request).rejects.toMatchObject({ code: 'user_token_config_invalid' });
+        expect(fetchSpy).not.toHaveBeenCalled();
     });
 });

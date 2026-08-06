@@ -6,6 +6,7 @@ namespace App\Providers;
 
 use App\Console\Commands\PruneWidgetSessionsCommand;
 use App\Console\Commands\WidgetEmitSecretCommand;
+use App\Console\Commands\WidgetIdentityCredentialCommand;
 use App\Services\Widget\AiTool\SearchKnowledgeBaseTool;
 use App\Services\Widget\WidgetAiToolRegistry;
 use Illuminate\Support\ServiceProvider;
@@ -39,6 +40,7 @@ final class WidgetServiceProvider extends ServiceProvider
         $this->commands([
             PruneWidgetSessionsCommand::class,
             WidgetEmitSecretCommand::class,
+            WidgetIdentityCredentialCommand::class,
         ]);
     }
 }

@@ -33,6 +33,7 @@ class WidgetSession extends Model
     protected $fillable = [
         'tenant_id',
         'widget_key_id',
+        'widget_identity_id',
         'project_key',
         'public_session_id',
         'status',
@@ -59,6 +60,11 @@ class WidgetSession extends Model
     public function widgetKey(): BelongsTo
     {
         return $this->belongsTo(WidgetKey::class);
+    }
+
+    public function identity(): BelongsTo
+    {
+        return $this->belongsTo(WidgetIdentity::class, 'widget_identity_id');
     }
 
     /** @return HasMany<WidgetSessionStep> */

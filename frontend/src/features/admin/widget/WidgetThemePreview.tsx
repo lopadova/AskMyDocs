@@ -41,6 +41,9 @@ const HELPER_PREVIEW_OVERRIDE = `
 const INLINE_PREVIEW_OVERRIDE = `
 .amd-root.amd-mode-inline { position: relative; height: 360px; padding: 12px; }
 `;
+const FULLSCREEN_PREVIEW_OVERRIDE = `
+.amd-root.amd-mode-fullscreen { position: relative; width: 100%; height: 360px; inset: auto; }
+`;
 
 /** Pannello chat condiviso da entrambe le modalità (launcher a parte). */
 function panelMarkup(theme: WidgetTheme): string {
@@ -49,7 +52,7 @@ function panelMarkup(theme: WidgetTheme): string {
         theme.headerLogoUrl !== ''
             ? `<img class="amd-logo" src="${escapeHtml(theme.headerLogoUrl)}" alt="">`
             : '';
-    const role = theme.mode === 'inline' ? 'region' : 'dialog';
+    const role = theme.mode === 'helper' ? 'dialog' : 'region';
 
     return `
   <section class="amd-panel" data-open="true" role="${role}" aria-label="${title}">
@@ -75,6 +78,9 @@ function previewMarkup(theme: WidgetTheme): string {
     // Inline: solo il blocco chat, nessun launcher.
     if (theme.mode === 'inline') {
         return `<div class="amd-root amd-mode-inline">${panelMarkup(theme)}</div>`;
+    }
+    if (theme.mode === 'fullscreen') {
+        return `<div class="amd-root amd-mode-fullscreen">${panelMarkup(theme)}</div>`;
     }
 
     const label = escapeHtml(theme.launcherLabel || 'Chiedi all’assistente');
@@ -109,7 +115,12 @@ export function WidgetThemePreview({ theme }: { theme: WidgetTheme }) {
             shadowRef.current = host.shadowRoot ?? host.attachShadow({ mode: 'open' });
         }
         const t = sanitizeTheme(theme);
-        const override = t.mode === 'inline' ? INLINE_PREVIEW_OVERRIDE : HELPER_PREVIEW_OVERRIDE;
+        const override =
+            t.mode === 'inline'
+                ? INLINE_PREVIEW_OVERRIDE
+                : t.mode === 'fullscreen'
+                  ? FULLSCREEN_PREVIEW_OVERRIDE
+                  : HELPER_PREVIEW_OVERRIDE;
         shadowRef.current.innerHTML = `<style>${BASE_WIDGET_CSS}${buildThemeCss(t)}${override}</style>${previewMarkup(t)}`;
     }, [theme]);
 

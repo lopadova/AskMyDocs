@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\Services\Widget;
 
+use App\Models\WidgetIdentity;
 use App\Models\WidgetKey;
 use App\Models\WidgetSession;
 use App\Models\WidgetSessionToken;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -33,28 +35,41 @@ final class WidgetSessionTokenService
      *
      * @return array{token: string, expires_at: string}  il token opaco e la scadenza ISO
      */
-    public function mint(WidgetKey $key, ?WidgetSession $session, ?string $origin): array
-    {
-        $ttl = (int) config('widget.session_token_ttl_minutes', self::DEFAULT_TTL_MINUTES);
-        $ttl = max(1, $ttl);
+    public function mint(
+        WidgetKey $key,
+        ?WidgetSession $session,
+        ?string $origin,
+        ?WidgetIdentity $callerIdentity = null,
+    ): array {
+        return DB::transaction(function () use ($key, $session, $origin, $callerIdentity): array {
+            $authorizedSession = $session === null
+                ? null
+                : $this->lockSessionForMint($key, $session, $callerIdentity);
 
-        $plain = 'wt_' . Str::random(48);
-        $expiresAt = now()->addMinutes($ttl);
+            $ttl = (int) config('widget.session_token_ttl_minutes', self::DEFAULT_TTL_MINUTES);
+            $ttl = max(1, $ttl);
 
-        WidgetSessionToken::create([
-            'tenant_id' => $key->tenant_id,
-            // #14 — persiste SOLO l'hash; il plaintext torna una volta al chiamante.
-            'token' => $this->hash($plain),
-            'widget_key_id' => $key->id,
-            'widget_session_id' => $session?->id,
-            'origin' => $origin,
-            'expires_at' => $expiresAt,
-        ]);
+            $plain = 'wt_' . Str::random(48);
+            $expiresAt = now()->addMinutes($ttl);
 
-        return [
-            'token' => $plain,
-            'expires_at' => $expiresAt->toIso8601String(),
-        ];
+            WidgetSessionToken::create([
+                'tenant_id' => $key->tenant_id,
+                // #14 — persiste SOLO l'hash; il plaintext torna una volta al chiamante.
+                'token' => $this->hash($plain),
+                'widget_key_id' => $key->id,
+                'widget_session_id' => $authorizedSession?->id,
+                'identity_access_epoch' => $authorizedSession?->widget_identity_id !== null
+                    ? (int) $key->identity_access_epoch
+                    : null,
+                'origin' => $origin,
+                'expires_at' => $expiresAt,
+            ]);
+
+            return [
+                'token' => $plain,
+                'expires_at' => $expiresAt->toIso8601String(),
+            ];
+        });
     }
 
     /**
@@ -75,7 +90,11 @@ final class WidgetSessionTokenService
             ->whereNull('consumed_at')
             ->first();
 
-        return $row?->widgetKey;
+        $key = $row?->widgetKey;
+
+        return $row !== null && $key !== null && $row->tenant_id === $key->tenant_id
+            ? $key
+            : null;
     }
 
     /**
@@ -122,8 +141,28 @@ final class WidgetSessionTokenService
             // condizionata al successo). Presentare un token per una key revocata
             // NON deve consumarlo senza concedere accesso.
             $key = $row->widgetKey;
-            if ($key === null || ! $key->is_active) {
+            if ($key === null || ! $key->is_active || $row->tenant_id !== $key->tenant_id) {
                 return null;
+            }
+            if ($row->origin !== null && ! $key->originAllowed($origin)) {
+                return null;
+            }
+
+            $session = null;
+            if ($row->widget_session_id !== null) {
+                $session = $this->lockSessionForConsume($key, (int) $row->widget_session_id);
+                if ($session === null) {
+                    return null;
+                }
+                // Disabling authenticated-user history is an immediate
+                // revocation boundary. A previously minted wt_ must not keep
+                // transferring an identity after user auth has been disabled.
+                if ($session->widget_identity_id !== null) {
+                    if (! $key->user_auth_enabled
+                        || $row->identity_access_epoch !== (int) $key->identity_access_epoch) {
+                        return null;
+                    }
+                }
             }
 
             // R21 — consumo atomico: write DENTRO il lock, solo a validazione superata.
@@ -131,10 +170,98 @@ final class WidgetSessionTokenService
 
             return [
                 'key' => $key,
-                'session' => $row->session,
+                'session' => $session,
                 'origin' => $row->origin,
             ];
         });
+    }
+
+    /**
+     * Blocca la sessione fino alla persistenza del token: controllo di
+     * ownership e creazione devono essere una singola operazione atomica.
+     *
+     * @throws AuthorizationException
+     */
+    private function lockSessionForMint(
+        WidgetKey $key,
+        WidgetSession $session,
+        ?WidgetIdentity $callerIdentity,
+    ): WidgetSession {
+        $locked = WidgetSession::query()
+            ->forTenant($key->tenant_id)
+            ->whereKey($session->id)
+            ->where('widget_key_id', $key->id)
+            ->where('project_key', $key->project_key)
+            ->lockForUpdate()
+            ->first();
+
+        if ($locked === null) {
+            throw new AuthorizationException('Widget session not available.');
+        }
+
+        if ($locked->widget_identity_id !== null
+            && ! $this->identityOwnsSession($key, $locked, $callerIdentity)) {
+            throw new AuthorizationException('Widget session not available.');
+        }
+
+        return $locked;
+    }
+
+    /**
+     * Risolve sotto lock la sessione incorporata nel token e ricontrolla
+     * tenant/key/project/identity prima di trasferirne il contesto.
+     */
+    private function lockSessionForConsume(WidgetKey $key, int $sessionId): ?WidgetSession
+    {
+        $session = WidgetSession::query()
+            ->forTenant($key->tenant_id)
+            ->whereKey($sessionId)
+            ->where('widget_key_id', $key->id)
+            ->where('project_key', $key->project_key)
+            ->lockForUpdate()
+            ->first();
+
+        if ($session === null || $session->widget_identity_id === null) {
+            return $session;
+        }
+
+        $identity = WidgetIdentity::query()
+            ->forTenant($key->tenant_id)
+            ->whereKey($session->widget_identity_id)
+            ->where('widget_key_id', $key->id)
+            ->where('project_key', $key->project_key)
+            ->lockForUpdate()
+            ->first();
+
+        if ($identity === null) {
+            return null;
+        }
+
+        $session->setRelation('identity', $identity);
+
+        return $session;
+    }
+
+    private function identityOwnsSession(
+        WidgetKey $key,
+        WidgetSession $session,
+        ?WidgetIdentity $callerIdentity,
+    ): bool {
+        if ($callerIdentity === null
+            || $callerIdentity->id !== $session->widget_identity_id
+            || $callerIdentity->tenant_id !== $key->tenant_id
+            || $callerIdentity->widget_key_id !== $key->id
+            || $callerIdentity->project_key !== $key->project_key) {
+            return false;
+        }
+
+        return WidgetIdentity::query()
+            ->forTenant($key->tenant_id)
+            ->whereKey($callerIdentity->id)
+            ->where('widget_key_id', $key->id)
+            ->where('project_key', $key->project_key)
+            ->lockForUpdate()
+            ->first() !== null;
     }
 
     private function hash(string $token): string

@@ -30,6 +30,10 @@ class WidgetKey extends Model
         'rate_limit',
         'skill',
         'host_tools_enabled',
+        'user_auth_enabled',
+        'identity_secret_hash',
+        'identity_credential_version',
+        'identity_access_epoch',
         'is_active',
         'label',
         'last_used_at',
@@ -40,6 +44,9 @@ class WidgetKey extends Model
         'allowed_origins' => 'array',
         'rate_limit' => 'integer',
         'host_tools_enabled' => 'boolean',
+        'user_auth_enabled' => 'boolean',
+        'identity_credential_version' => 'integer',
+        'identity_access_epoch' => 'integer',
         'is_active' => 'boolean',
         'last_used_at' => 'datetime',
         'theme_config' => 'array',
@@ -48,12 +55,18 @@ class WidgetKey extends Model
     /** Non esporre mai l'hash del secret nelle serializzazioni JSON. */
     protected $hidden = [
         'secret_hash',
+        'identity_secret_hash',
     ];
 
     /** @return HasMany<WidgetSession> */
     public function sessions(): HasMany
     {
         return $this->hasMany(WidgetSession::class);
+    }
+
+    public function identities(): HasMany
+    {
+        return $this->hasMany(WidgetIdentity::class);
     }
 
     /**

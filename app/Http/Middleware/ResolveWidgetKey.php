@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Middleware;
 
 use App\Models\WidgetKey;
+use App\Services\Widget\WidgetUserTokenService;
 use App\Support\TenantContext;
 use Closure;
 use Illuminate\Http\Request;
@@ -38,6 +39,7 @@ final class ResolveWidgetKey
     public const ATTR_KEY = 'widget_key';
     public const ATTR_MODE = 'widget_mode';
     public const ATTR_PROJECT = 'widget_project';
+    public const ATTR_IDENTITY = 'widget_identity';
 
     public function __construct(private readonly TenantContext $tenants) {}
 
@@ -48,6 +50,9 @@ final class ResolveWidgetKey
         // X-Widget-Key, vedi transport.ts). Il token risolve key+tenant da sé;
         // richiedere prima X-Widget-Key rendeva la modalità M5.2 morta (401).
         $bearer = (string) ($request->bearerToken() ?? '');
+        if ($bearer !== '' && str_starts_with($bearer, WidgetUserTokenService::PREFIX)) {
+            return $this->resolveFromUserToken($request, $next, $bearer);
+        }
         if ($bearer !== '' && str_starts_with($bearer, 'wt_')) {
             return $this->resolveFromSessionToken($request, $next, $bearer);
         }
@@ -86,6 +91,31 @@ final class ResolveWidgetKey
         $request->attributes->set(self::ATTR_MODE, $mode);
         $request->attributes->set(self::ATTR_PROJECT, $key->project_key);
 
+        $this->touchLastUsed($key);
+
+        return $next($request);
+    }
+
+    private function resolveFromUserToken(Request $request, Closure $next, string $bearer): Response
+    {
+        $result = app(WidgetUserTokenService::class)->validate(
+            $bearer,
+            $request->header('Origin'),
+        );
+        if ($result === null) {
+            return $this->deny(401, 'user_token_invalid', 'User token is invalid, expired, or not valid for this origin.');
+        }
+
+        $key = $result['key'];
+        if ($rl = $this->rateLimited($request, $key)) {
+            return $rl;
+        }
+
+        $this->tenants->set($key->tenant_id);
+        $request->attributes->set(self::ATTR_KEY, $key);
+        $request->attributes->set(self::ATTR_MODE, self::MODE_BROWSER);
+        $request->attributes->set(self::ATTR_PROJECT, $key->project_key);
+        $request->attributes->set(self::ATTR_IDENTITY, $result['identity']);
         $this->touchLastUsed($key);
 
         return $next($request);
@@ -216,6 +246,9 @@ final class ResolveWidgetKey
         // Imposta anche la sessione risolta dal token, se presente
         if ($result['session'] !== null) {
             $request->attributes->set('widget_session', $result['session']);
+            if ($result['session']->identity !== null) {
+                $request->attributes->set(self::ATTR_IDENTITY, $result['session']->identity);
+            }
         }
 
         $this->touchLastUsed($key);

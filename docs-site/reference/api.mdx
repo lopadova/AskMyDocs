@@ -190,10 +190,30 @@ behavior, duplicate handling and lifecycle enforcement.
 
 ## Embeddable widget — `/api/widget`
 
-The KITT widget authenticates with a `widget.key` (`throttle:120,1`): `GET
-/api/widget/setup`, `POST /api/widget/session-token`, and the session lifecycle
-(`sessions/start`, `sessions/{id}/step`, `/exec-tool`, `/cancel`, `/replay`).
-See [KITT widget](/kitt-widget).
+The KITT widget authenticates with a `widget.key` (`throttle:120,1`):
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/widget/setup` | resolved skill/theme configuration |
+| `POST` | `/api/widget/user-token` | server-side `ik_` exchange for an origin-bound `wu_` |
+| `POST` | `/api/widget/session-token` | mint a single-use `wt_` |
+| `GET` | `/api/widget/sessions` | paginated identity history (`wu_` required) |
+| `GET` | `/api/widget/sessions/current` | newest open identity session, or `204` |
+| `POST` | `/api/widget/sessions/start` | start a conversation |
+| `POST` | `/api/widget/sessions/{id}/step` | continue a conversation |
+| `POST` | `/api/widget/sessions/{id}/exec-tool` | run an enabled backend tool |
+| `POST` | `/api/widget/sessions/{id}/cancel` | abort a conversation |
+| `GET` | `/api/widget/sessions/{id}/replay` | replay identity-scoped visible steps |
+
+`/sessions/current` filters `active`, `waiting_user` and `waiting_tool`, ordered
+by `updated_at DESC, id DESC`; tenant, key, project and pseudonymous identity
+are all resolved server-side.
+
+Admin identity mutations use `PATCH /api/admin/widget-keys/{id}` (enable/disable)
+or `POST /api/admin/widget-keys/{id}/rotate-identity-secret`. Both carry
+`identity_credential_version`; a stale version returns `409
+identity_credential_conflict`. Secrets are returned only once. See
+[KITT widget](/kitt-widget).
 
 ## MCP — `/mcp/kb`
 
