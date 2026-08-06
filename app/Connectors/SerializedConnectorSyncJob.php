@@ -5,12 +5,14 @@ declare(strict_types=1);
 namespace App\Connectors;
 
 use App\Connectors\Imap\ImapSyncProgressContext;
+use App\Connectors\Imap\MailboxBusyException;
 use App\Connectors\Imap\MailboxLockKey;
 use DateTimeInterface;
 use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Padosoft\AskMyDocsConnectorBase\ConnectorRegistry;
 use Padosoft\AskMyDocsConnectorBase\ConnectorSyncJob;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
@@ -169,7 +171,8 @@ final class SerializedConnectorSyncJob extends ConnectorSyncJob
         return now()->addMinutes(max(1, $minutes));
     }
     /**
-     * Wrap the vendor sync with the generated-dataset progress coordinator.
+     * Wrap the vendor sync with the generated-dataset progress coordinator and
+     * recover a transient busy mailbox without leaving the installation errored.
      * The coordinator records only the contiguous prefix of UIDs whose parent
      * document and attachments were confirmed by the host ingestion bridge.
      */
@@ -199,7 +202,14 @@ final class SerializedConnectorSyncJob extends ConnectorSyncJob
                 $progressStarted = true;
             }
 
-            parent::handle($registry, $tenantContext);
+            try {
+                parent::handle($registry, $tenantContext);
+            } catch (MailboxBusyException) {
+                $this->recoverFromMailboxBusy();
+
+                $delay = max(1, (int) config('connectors.imap.mailbox_lock.requeue_after_seconds', 60));
+                $this->release($delay);
+            }
         } finally {
             try {
                 if ($progressStarted) {
@@ -275,5 +285,46 @@ final class SerializedConnectorSyncJob extends ConnectorSyncJob
                 "Unable to restore IMAP backfill watermark for installation {$this->installationId}.",
             );
         }
+    }
+
+    /**
+     * Undo the ERRORED state written by the vendor job for a transient busy
+     * mailbox, so the released job and the scheduler can retry an ACTIVE row.
+     * The guards prevent this path from clearing an unrelated failure.
+     */
+    private function recoverFromMailboxBusy(): void
+    {
+        $installation = ConnectorInstallation::query()
+            ->where('id', $this->installationId)
+            ->where('tenant_id', $this->tenantId)
+            ->first();
+
+        if ($installation === null) {
+            return;
+        }
+
+        if ($installation->status !== ConnectorInstallation::STATUS_ERRORED) {
+            return;
+        }
+
+        if (($installation->error_json['class'] ?? null) !== MailboxBusyException::class) {
+            return;
+        }
+
+        $saved = $installation->forceFill([
+            'status' => ConnectorInstallation::STATUS_ACTIVE,
+            'error_json' => null,
+        ])->save();
+
+        if (! $saved) {
+            throw new \RuntimeException(
+                "Unable to restore busy IMAP installation {$this->installationId} to active.",
+            );
+        }
+
+        Log::info('[connector-imap] mailbox busy — re-queuing sync instead of failing', [
+            'installation_id' => $this->installationId,
+            'tenant_id' => $this->tenantId,
+        ]);
     }
 }
