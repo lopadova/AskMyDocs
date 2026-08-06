@@ -121,6 +121,38 @@ final class ReconnectingImapClientTest extends TestCase
         }
     }
 
+    public function test_a_pathological_attempt_budget_is_capped(): void
+    {
+        // The reconnect runs inside the cross-tenant per-mailbox lock, so a
+        // misconfigured huge budget must NOT let a persistent drop hold that lock
+        // unboundedly — the attempt budget is hard-capped at 10 regardless of config.
+        $inner = new ScriptedImapClient(array_fill(0, 50, new ErrorException('fwrite(): SSL: Broken pipe')));
+        $client = new ReconnectingImapClient($inner, maxAttempts: 1000, retryDelayMs: 0);
+
+        try {
+            $client->ping();
+            $this->fail('a persistent drop should propagate after the capped budget');
+        } catch (ErrorException) {
+            // expected
+        }
+
+        $this->assertSame(10, $inner->calls, 'attempts must be capped at the ceiling (10), not the configured 1000');
+        $this->assertSame(9, $inner->closeCount, 'one reconnect between each of the 10 capped attempts');
+    }
+
+    public function test_a_negative_retry_delay_degrades_to_no_pause_not_a_fatal(): void
+    {
+        // retryDelayMs is env/config-sourced; usleep() throws a ValueError on a
+        // negative argument in PHP 8+. A misconfigured negative delay must clamp to
+        // "no pause" and still recover the drop — never turn it fatal.
+        $inner = new ScriptedImapClient([new ErrorException('fwrite(): SSL: Broken pipe')]);
+        $client = new ReconnectingImapClient($inner, maxAttempts: 2, retryDelayMs: -500);
+
+        $this->assertTrue($client->ping(), 'a negative delay must not throw — the drop still recovers');
+        $this->assertSame(2, $inner->calls);
+        $this->assertSame(1, $inner->closeCount);
+    }
+
     public function test_close_passes_through_without_retry_logic(): void
     {
         $inner = new ScriptedImapClient([]);
