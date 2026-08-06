@@ -1,0 +1,50 @@
+{
+    "company_key": "rotta-logistics",
+    "facts": [
+        {
+            "fact_id": "rotta.servizi.tracking",
+            "statement": "Ogni spedizione è tracciata con aggiornamenti di presa in carico, transito e consegna.",
+            "canonical_source": "case-studies/rotta-logistics/servizi-spedizione.md"
+        },
+        {
+            "fact_id": "rotta.resi.gesticlaim",
+            "statement": "Reclami, resi e rimborsi sono registrati come pratiche verificabili.",
+            "canonical_source": "case-studies/rotta-logistics/politica-resi-e-rimborsi.md"
+        },
+        {
+            "fact_id": "rotta.sla.penali",
+            "statement": "Gli SLA e le eventuali penali sono misurati sul servizio concordato.",
+            "canonical_source": "case-studies/rotta-logistics/sla-e-penali.md"
+        },
+        {
+            "fact_id": "rotta.hub.rete",
+            "statement": "La rete logistica coordina hub, giacenze e corrieri partner.",
+            "canonical_source": "case-studies/rotta-logistics/rete-hub-magazzini.md"
+        },
+        {
+            "fact_id": "rotta.adr.procedura",
+            "statement": "Le merci ADR richiedono classificazione, documenti e controlli dedicati.",
+            "canonical_source": "case-studies/rotta-logistics/merci-pericolose-adr.md"
+        },
+        {
+            "fact_id": "rotta.fatture.controllo",
+            "statement": "Fatture, insoluti e note di credito sono riconciliati con spedizioni e contratti.",
+            "canonical_source": "case-studies/rotta-logistics/_index.md"
+        },
+        {
+            "fact_id": "rotta.orbita.integrazione",
+            "statement": "OrbitaWMS governa stati, inventario e integrazioni operative.",
+            "canonical_source": "case-studies/rotta-logistics/wms-orbita-integrazione.md"
+        },
+        {
+            "fact_id": "rotta.formazione.runbook",
+            "statement": "Il personale applica runbook condivisi per giacenze ed escalation.",
+            "canonical_source": "case-studies/rotta-logistics/runbook-gestione-giacenze.md"
+        },
+        {
+            "fact_id": "rotta.qualita.correzioni",
+            "statement": "I dati provvisori o errati vengono rettificati con una comunicazione tracciata.",
+            "canonical_source": "case-studies/rotta-logistics/_index.md"
+        }
+    ]
+}

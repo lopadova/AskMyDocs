@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace App\Services\Demo\Contracts;
 
+use App\Services\Demo\MailboxAppendResult;
 use App\Services\Demo\MailboxTarget;
-use DateTimeInterface;
+use App\Services\Demo\PreparedEmailMessage;
+use App\Services\Demo\EmailSeedLockLease;
+use Closure;
 
 /**
  * Seam sopra l'I/O IMAP usato da {@see \App\Services\Demo\ImapMailboxSeeder}.
@@ -14,24 +17,43 @@ use DateTimeInterface;
  * (webklex/php-imap); nei test si binda un fake che registra le chiamate, così
  * il comando `mail:seed-imap` è verificabile senza un server IMAP reale.
  *
- * L'APPEND è a BATCH (una sola connessione per casella per N messaggi): con 100+
- * e-mail aprire una connessione per messaggio sarebbe lento e rischierebbe il
- * throttling lato Gmail.
+ * L'APPEND riusa una sola connessione per casella, ma consuma un iterable:
+ * anche dataset da decine di migliaia di messaggi restano memory-bounded.
  */
 interface MailboxAppender
 {
     /**
-     * Inserisce N messaggi RFC822 grezzi nella cartella target via IMAP APPEND,
-     * riusando UNA sola connessione. Deve sollevare un'eccezione su fallimento
-     * (mai fallire in silenzio — R14/R4). Ritorna il numero di messaggi inseriti.
+     * Inserisce i messaggi nella cartella target via IMAP APPEND, riusando una
+     * sola connessione. Deve sollevare un'eccezione su fallimento (mai fallire
+     * in silenzio — R14/R4).
      *
-     * @param  list<string>  $rfc822Messages
+     * Il callback viene invocato solo dopo che il messaggio è stato confermato
+     * presente: APPEND riuscito oppure Message-ID già trovato sul server.
+     *
+     * @param  iterable<PreparedEmailMessage>  $messages
+     * @param  Closure(PreparedEmailMessage, bool): void|null  $onStored
      */
-    public function appendBatch(MailboxTarget $target, array $rfc822Messages, DateTimeInterface $internalDate): int;
+    public function appendStream(
+        MailboxTarget $target,
+        iterable $messages,
+        ?Closure $onStored = null,
+        ?EmailSeedLockLease $lease = null,
+    ): MailboxAppendResult;
 
     /**
      * Elimina i messaggi della cartella target che portano l'header di seeding
      * uguale a $value. Ritorna il numero di messaggi rimossi.
+     *
+     * Il callback riceve il totale cumulativo solo dopo che il relativo batch
+     * è stato espunto con successo dal server.
+     *
+     * @param  Closure(int): void|null  $onPurged
      */
-    public function purgeSeeded(MailboxTarget $target, string $headerName, string $value): int;
+    public function purgeSeeded(
+        MailboxTarget $target,
+        string $headerName,
+        string $value,
+        ?EmailSeedLockLease $lease = null,
+        ?Closure $onPurged = null,
+    ): int;
 }

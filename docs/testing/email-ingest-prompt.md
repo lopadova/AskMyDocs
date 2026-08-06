@@ -1,109 +1,148 @@
-# Prompt agnostico — estendere il test e-mail→IMAP→ingest→chat alle aziende presenti
+# Prompt riutilizzabile: estendere il dataset email case-study
 
-Questo file è un **prompt riutilizzabile** (per un agente AI o per uno
-sviluppatore) che: (1) scopre quali aziende esistono già nel sistema, (2) capisce
-quali hanno documentazione, (3) estende il "seeder delle e-mail" con messaggi
-realistici e coerenti col dominio di ciascuna, (4) li consegna in caselle IMAP
-vere, (5) installa il connettore e fa l'ingest, (6) esegue i test di chat per
-account. È **agnostico** sui nomi azienda: non assumere mai un elenco fisso —
-scoprilo a runtime.
+Questo prompt guida un agente o uno sviluppatore nell’aggiunta di una nuova
+azienda o di nuovi scenari al dataset email v2. Il runbook eseguibile è
+[`email-ingest-e2e.md`](email-ingest-e2e.md).
 
-Il runbook operativo completo è
-[`email-ingest-e2e.md`](email-ingest-e2e.md). Questo prompt orchestra quel
-runbook in modo ripetibile.
+## Prompt
 
----
-
-## Copia-incolla: prompt per l'agente
-
-> **Obiettivo.** Verifica end-to-end l'ingest di e-mail reali via IMAP per le
-> aziende già presenti in AskMyDocs, e abilita i test di chat per account.
+> Estendi il dataset email case-study di AskMyDocs in modo deterministico.
 >
-> **Regole.**
-> - Sii agnostico sui nomi: **scopri** le aziende, non assumerle.
-> - Non seedare e-mail come righe DB. Le e-mail devono essere **inviate
->   davvero** (IMAP APPEND) e poi ingerite dal connettore.
-> - Ogni e-mail deve contenere un **"fatto-esca" unico** (codice/nome/numero)
->   che identifica l'azienda e non deve mai comparire nelle risposte di altre
->   aziende (rilevatore di contaminazione per il test di isolamento, R30).
-> - Tenant `default` salvo diversa evidenza. Tutto è dev/test: non toccare la
->   produzione.
+> Regole:
 >
-> **Passi.**
-> 1. **Discovery.** Esegui `php artisan demo:list-companies`. Annota, per ogni
->    `project_key`: nome, #documenti, #chunk, membri (email) e se ha un
->    connettore. Identifica le aziende **con documentazione** (docs > 0) e i
->    `project_key` **orfani** (docs ma 0 membri).
-> 2. **Selezione.** Per il test di chat servono aziende con (a) documentazione e
->    (b) almeno un utente membro che possa fare login. Elenca i candidati e
->    scegli quelli da coprire (di default: tutti quelli con docs > 0 e ≥1 membro).
-> 3. **Capire il dominio.** Per ogni azienda scelta, ispeziona la sua
->    documentazione (admin KB tree, oppure i `knowledge_documents` per quel
->    `project_key`) per capire il settore e il lessico (es. logistica, sicurezza
->    antincendio, e-commerce calzature). Le e-mail devono suonare plausibili in
->    quel dominio e **coerenti** con i documenti già presenti.
-> 4. **Estendere le fixtures.** In `database/seeders/TestEmailFixtures.php`
->    (ogni azienda ha **2 caselle** → 2 `mailbox_key`, es. `<project>-1`,
->    `<project>-2`):
->    - aggiungi/aggiorna in `MAILBOXES` un'entry per ogni casella: `mailbox_key`,
->      `project_key`, `company_name`, `email`, `folder` (la label IMAP), conn.
->      params, `password_env`. Modello di default: UN account Gmail condiviso
->      (`ACCOUNT_EMAIL` + `ACCOUNT_PASSWORD_ENV`) con una `folder`/label distinta
->      per casella — Google limita gli account per telefono. In alternativa, account
->      separati: `email`/`password_env` diversi per casella;
->    - aggiungi le e-mail in `database/seeders/emails/<mailbox_key>.json` (array
->      JSON; le 2 caselle della stessa azienda hanno e-mail diverse; ≥100 per
->      casella, vario tipo + thread domanda/risposta) con le chiavi `subject`,
->      `from_name`, `from_email`, `date`, `body_text`. Inserisci i fatti-esca
->      unici dell'azienda e annota quali sono (servono per i test di §8). Per la
->      generazione di massa usa un multi-agente (un agente per casella/batch che
->      scrive il proprio file).
->    - `configJson()` è già generico (host/port/encryption dal fixture + env
->      override, `folders.include=[<folder>]`, `date_window_days`): non modificarlo.
-> 5. **Credenziali.** Crea l'account Gmail (uno solo se usi le label) con App
->    Password (2FA + IMAP on) e metti la password nella env `password_env` in
->    `.env` (mai committarla). Aggiorna `.env.example` con le chiavi (vuote). Le
->    label vengono create da `mail:seed-imap` al primo invio.
-> 6. **Anteprima.** `php artisan mail:seed-imap --all --dry-run` e verifica
->    oggetti/contenuti.
-> 7. **Consegna.** `php artisan mail:seed-imap --all` (usa `--purge` per re-run
->    puliti). Conferma su Gmail che le e-mail sono arrivate.
-> 8. **Connettore + ingest.** Assicurati che la coda giri
->    (`QUEUE_CONNECTION=sync` o `php artisan queue:work`) e che i provider AI
->    (embeddings + chat) siano configurati, poi
->    `php artisan connector:imap:install --all --sync`. Punta SEMPRE il
->    connettore al `project_key` **esistente** dell'azienda così i membri
->    correnti vedono subito le e-mail; se usi un project_key nuovo, concedi la
->    membership con `auth:grant <email> viewer --project=<key>`.
-> 9. **Verifica ingest.** `php artisan demo:list-companies`: i conteggi
->    `docs`/`chunks` devono essere cresciuti per ogni azienda.
-> 10. **Test di chat per account.** Per ogni azienda: login come suo utente,
->     chiedi qualcosa la cui risposta sta in una e-mail ingerita → verifica
->     risposta grounded + citazione al messaggio. Poi fai la **prova di
->     isolamento**: chiedi a quell'account il fatto-esca di un'ALTRA azienda →
->     deve rispondere "nessun contesto", mai rivelarlo.
-> 11. **Report.** Riassumi: aziende coperte, #e-mail inviate/ingerite per
->     azienda, esito dei test di chat e di isolamento, eventuali project_key
->     orfani trovati e come risolti.
+> - scopri aziende, tenant, progetti e mailbox dal codice; non assumere un
+>   elenco esterno;
+> - non creare migliaia di JSON manuali e non usare un LLM durante la
+>   generazione;
+> - tratta `database/seeders/email-dataset/catalogs/<version>/` come immutabile:
+>   per una modifica pubblicata copia la versione in una directory nuova e
+>   incrementa `catalog_version`; non riscrivere `catalogs/v1`;
+> - usa solo persone e indirizzi sintetici su domini riservati `.example` o
+>   `example.com`;
+> - assegna a ogni azienda canarini unici, mai presenti nei cataloghi delle
+>   altre;
+> - mantieni `tenant_id = project_key = azienda`;
+> - tratta le email come fonti operative non canoniche;
+> - rappresenta fatti superati, proposte ed errori con `truth_state` e una
+>   correzione temporale esplicita;
+> - conserva il corpus curato in `database/seeders/emails/*.json` come gold;
+> - ogni Message-ID generato deve restare nel namespace riservato
+>   `@fixtures.askmydocs.invalid`;
+> - generation, validation e preflight devono funzionare senza rete o
+>   credenziali.
 >
-> **Aggiornamento aggiunte di codice.** Se aggiungi nuove env, aggiorna
-> `.env.example`; se cambi i comandi o le fixtures, aggiorna
-> `email-ingest-e2e.md`. Mantieni i test verdi (`vendor/bin/phpunit
-> tests/Feature/Console tests/Unit/Services/Demo`).
+> Procedura:
+>
+> 1. Esegui `php artisan demo:list-companies` e ispeziona
+>    `database/seeders/TestEmailFixtures.php`.
+> 2. Leggi i documenti canonici dell’azienda sotto
+>    `docs/case-studies/data/<project_key>/`.
+> 3. Crea `database/seeders/email-dataset/catalogs/<nuova-versione>/` a
+>    partire dalla versione corrente e assegna la stessa nuova
+>    `catalog_version` nel relativo `catalog.json`.
+>    Definisci:
+>    - mailbox e matrici scenario;
+>    - persone/ruoli;
+>    - fatti con fonte canonica e validità temporale;
+>    - template per thread, transazioni e report;
+>    - canarini aziendali.
+> 4. Se aggiungi una mailbox, aggiorna `TestEmailFixtures::MAILBOXES` con
+>    `mailbox_key`, `project_key`, `tenant_id`, `company_name`, account IMAP e
+>    label.
+> 5. Aggiorna il `catalog.json` della nuova directory e, soltanto se richiesto,
+>    i profili sotto `database/seeders/email-dataset/profiles/`. La versione
+>    `v1` corrente contiene per azienda 6 personas, 9 fatti, 9 scenari e 4
+>    canarini: non dichiarare soglie editoriali maggiori come già implementate.
+> 6. Genera un subset rapido:
+>
+>    ```bash
+>    php artisan demo:generate-case-study-emails \
+>      --profile=demo \
+>      --catalog-version=<nuova-versione> \
+>      --company=<project_key> \
+>      --stats
+>    ```
+>
+> 7. Verifica determinismo e qualità:
+>
+>    ```bash
+>    php artisan demo:generate-case-study-emails \
+>      --profile=demo \
+>      --catalog-version=<nuova-versione> \
+>      --company=<project_key> \
+>      --check
+>    php artisan demo:validate-case-study-emails \
+>      --dataset-version=<versione-subset>
+>    ```
+>
+> 8. Rigenera e valida il profilo `large` completo. Conferma conteggi esatti,
+>    zero duplicati, zero canarini esteri e thread validi. Il quality gate usa
+>    un indice SQLite temporaneo per le strutture corpus-sized; non sostituirlo
+>    con array PHP globali.
+> 9. Esegui il preflight senza rete:
+>
+>    ```bash
+>    php artisan mail:seed-imap \
+>      --all \
+>      --profile=large \
+>      --summary-only \
+>      --estimate-cost
+>    ```
+>
+> 10. Prima dell'IMAP verifica `KB_DISK_THROW=true`,
+>     `CASE_STUDY_EMAIL_DATASET_ROOT` e
+>     `CASE_STUDY_EMAIL_REQUIRE_FIXTURE_INDEX=true`. Solo in un ambiente
+>     local/testing con credenziali di test, consegna la versione con
+>     `--purge-dataset`; su interruzione usa `--resume`.
+> 11. Installa o riconfigura i connettori con
+>     `php artisan connector:imap:install --all --sync`.
+> 12. Verifica path KB stabile per `dataset_version + fixture_id`, restore della
+>     proiezione soft-deleted, documenti, tenant, metadata, assenza di
+>     Auto-Wiki/change analysis, retrieval positivo e rifiuto cross-company.
+> 13. Aggiorna runbook, help, `.env.example` e test se hai modificato contratti,
+>     comandi o env.
+> 14. Per rimuovere una versione da IMAP senza riappendere usa esclusivamente:
+>
+>     ```bash
+>     php artisan mail:seed-imap \
+>       --all \
+>       --dataset-version=<versione> \
+>       --purge-dataset \
+>       --purge-only \
+>       --summary-only
+>     ```
+>
+> Vincoli di rendicontazione:
+>
+> - il catalogo `v1` attuale genera text/plain e nessun attachment; non
+>   dichiarare HTML/allegati come coperti soltanto perché lo schema li accetta;
+> - il validator blocca domini reali, duplicati esatti e canarini esteri, ma non
+>   esegue detection semantica PII o near-duplicate;
+> - `--estimate-cost` dà conteggi, non un prezzo;
+> - test con cap ridotto non equivalgono a un E2E reale da 5.001+ messaggi;
+> - separa sempre esiti offline da IMAP/PostgreSQL/retrieval/performance live.
+>
+> Output richiesto:
+>
+> - elenco dei cataloghi modificati;
+> - dataset version;
+> - record/shard/checksum;
+> - conteggi per tenant, azienda e mailbox;
+> - esito quality gate, determinismo e preflight;
+> - esito dei test di isolamento;
+> - eventuali verifiche live non eseguite per mancanza di credenziali.
 
----
+## Riferimenti
 
-## Note di implementazione (riferimenti rapidi)
-
-- Fixtures: [`database/seeders/TestEmailFixtures.php`](../../database/seeders/TestEmailFixtures.php)
-  (`MAILBOXES`, `mailboxKeys()`, `mailboxKeysForProject()`, `passwordFor()`,
-  `configJson()`, `emailsForMailbox()` → `database/seeders/emails/*.json`,
-  `SEED_HEADER`).
-- Consegna: `app/Console/Commands/MailSeedImapCommand.php` →
-  `app/Services/Demo/ImapMailboxSeeder.php` (+ `EmailMessageBuilder`,
-  `WebklexMailboxAppender`).
-- Connettore: `app/Console/Commands/ConnectorImapInstallCommand.php` →
-  `App\Services\Admin\Connectors\ConfigureConnectorService`.
-- Discovery: `app/Console/Commands/DemoListCompaniesCommand.php`.
-- Lacuna membership (perché "la chat non trova niente"): l'ingest da connettore
-  NON crea `projects`/`project_memberships`; vedi §6 del runbook.
+- Cataloghi: `database/seeders/email-dataset/catalogs/<version>/`
+- Profili: `database/seeders/email-dataset/profiles/`
+- Gold curato: `database/seeders/emails/`
+- Generatore: `app/Services/Demo/EmailDataset/`
+- Comandi: `GenerateCaseStudyEmailsCommand`,
+  `ValidateCaseStudyEmailsCommand`, `MailSeedImapCommand`
+- Delivery: `ImapMailboxSeeder`, `EmailMessageBuilder`,
+  `WebklexMailboxAppender`
+- Ingest marker: `HostIngestionBridge`
+- Gate AI: `IngestDocumentJob`
+- Sync oltre cap: `SerializedConnectorSyncJob`,
+  `App\Connectors\Imap\ImapSyncProgressContext`

@@ -1,0 +1,9 @@
+{
+    "key": "large",
+    "description": "Dataset completo: 1.000 messaggi per mailbox, 2.000 per azienda.",
+    "mailbox_target": 1000,
+    "include_gold": true,
+    "thread_ratio": 0.65,
+    "timeline_start": "2024-01-01",
+    "timeline_end": "2026-06-30"
+}

@@ -2262,6 +2262,39 @@ genuine intermittent flake in the streaming / admin-kb-edit specs auto-recovers
 in-run instead of forcing a manual re-run, while a real regression still fails
 twice; local stays 0 for fast, honest feedback.
 
+**Email dataset v2 — deterministic bulk profiles.** The harness now preserves
+the 751 curated JSON messages as `gold` and can generate versioned, offline
+JSONL datasets from immutable catalogs under
+`database/seeders/email-dataset/catalogs/v1/`: `demo` (3,000), `large`
+(6,000; 2,000/company; 1,000/mailbox) and `stress` (30,000).
+`demo:generate-case-study-emails` publishes atomically, `--check` proves
+byte-determinism, and `demo:validate-case-study-emails` verifies checksums,
+identities, real thread chains, reserved domains, catalog references and
+cross-company canary phrases. Corpus-sized identities/thread indexes live in a
+temporary SQLite database rather than PHP arrays.
+`mail:seed-imap --profile=large` streams one RFC822 at a time with atomic
+checkpoints, a physical-mailbox lock and `--resume`; `--purge-dataset` cleans
+then re-appends, while `--purge-dataset --purge-only` only removes. Generated
+delivery reports lock/purge phases plus confirmed APPEND throughput and ETA;
+purge expunges bounded UIDPLUS batches instead of one message per round-trip. The
+30,000-message `stress` profile is for a disposable local IMAP server, not the
+shared Gmail account.
+
+Message-IDs are the trusted marker that skips Auto-Wiki/change-analysis. Before
+dispatch, the host requires `KB_DISK_THROW=true`, verifies the source and moves
+the parent from its UID path to a stable
+`.../datasets/<dataset_version>/<fixture_id>.md` path; an exact soft-deleted
+projection can be restored on re-delivery. IMAP syncs truncated at the upstream
+5,000-message cap persist a contiguous UID watermark and resume on the next
+run.
+
+The current `v1` catalogs contain 6 personas, 9 facts, 9 scenarios and 4
+canaries per company, and generate text/plain with no attachments. The static
+validator is not a semantic PII or near-duplicate scanner. Offline generation
+is complete; real IMAP, PostgreSQL/pgvector, retrieval, cost and performance
+certification remain separate. Full operator steps and rollback:
+[`docs/testing/email-ingest-e2e.md`](docs/testing/email-ingest-e2e.md).
+
 **v8.23.0 — PII-safe ingestion & reversible vault (GA, shipped 2026-06-25).**
 Ciclo 4 (the last) of the connectors / observability / config / PII roadmap.
 Makes the knowledge base **PII-safe by default** while letting an authorised

@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace App\Connectors;
 
+use App\Connectors\Imap\ImapSyncProgressContext;
 use App\Connectors\Imap\MailboxBusyException;
 use App\Connectors\Imap\MailboxLockKey;
 use DateTimeInterface;
 use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Padosoft\AskMyDocsConnectorBase\ConnectorRegistry;
@@ -17,11 +19,10 @@ use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
 use Padosoft\AskMyDocsConnectorBase\Support\TenantContext;
 
 /**
- * Host replacement for {@see ConnectorSyncJob} that adds per-mailbox re-queue: two
- * sync jobs for the SAME IMAP account never run at once — the second is released
- * back to the queue (no worker block, no spurious ERRORED), so the server never sees
- * "Too many simultaneous connections". Inherits all sync behaviour from the parent;
- * only the queue envelope changes.
+ * Host replacement for {@see ConnectorSyncJob} that adds two IMAP guarantees:
+ * per-mailbox re-queue and bounded, resumable UID progress. Two sync jobs for the
+ * SAME IMAP account never run at once, while a mailbox larger than the connector's
+ * per-run cap resumes from its last confirmed message on the next run.
  *
  * Dispatched by {@see \App\Connectors\Scheduling\SerializedSyncScheduler} (the
  * scheduled sweep) and by the admin "Sync now" controller. Non-IMAP connectors get
@@ -47,19 +48,17 @@ final class SerializedConnectorSyncJob extends ConnectorSyncJob
     public int $tries = 0;
 
     /**
-     * Route the sync of $installation to the correct queue job. The per-mailbox
-     * serialized envelope (tries=0 + retryUntil + WithoutOverlapping) only makes
-     * sense for an IMAP account while {@see serializes()} holds; every other
-     * connector — and IMAP with serialization disabled via
-     * `connectors.imap.serialize_connections` — keeps the vendor
-     * {@see ConnectorSyncJob} and its unchanged retry semantics.
+     * Route every IMAP sync through this host envelope. The overlap middleware
+     * remains conditional via {@see serializes()}, but UID progress tracking is
+     * required even when the mutex is disabled or unavailable. Other connectors
+     * keep the vendor {@see ConnectorSyncJob}.
      *
      * Single source of truth for the routing decision so the scheduled sweep and
      * the admin "Sync now" path can never drift apart.
      */
     public static function dispatchFor(ConnectorInstallation $installation): void
     {
-        if (self::serializes($installation)) {
+        if ($installation->connector_name === 'imap') {
             self::dispatch($installation->id, $installation->tenant_id);
 
             return;
@@ -87,9 +86,9 @@ final class SerializedConnectorSyncJob extends ConnectorSyncJob
      *      an unkeyable IMAP row gets no `WithoutOverlapping` either way, so the
      *      serialized envelope (tries=0 + retryUntil) would buy nothing.
      *
-     * When any fails, {@see dispatchFor()} degrades to the vendor {@see ConnectorSyncJob}
-     * (unchanged envelope) and {@see middleware()} adds no mutex — a clean no-op, never
-     * a crash.
+     * When any fails, {@see middleware()} adds no mutex — a clean no-op, never
+     * a crash. {@see dispatchFor()} still keeps the host job because UID
+     * checkpointing is independent from connection serialization.
      */
     public static function serializes(ConnectorInstallation $installation): bool
     {
@@ -171,42 +170,127 @@ final class SerializedConnectorSyncJob extends ConnectorSyncJob
 
         return now()->addMinutes(max(1, $minutes));
     }
-
     /**
-     * A {@see MailboxBusyException} is NOT a sync failure — it means another
-     * connection to this account is live RIGHT NOW (an operator action: folder
-     * picker / test-fetch / the pre-save connection test, or a stale Layer-1 lock
-     * left by a killed worker until its TTL). Layer 2's WithoutOverlapping only
-     * serializes sync JOBS against each other; it can't see those non-job holders,
-     * so the sync can still race into the Layer-1 lock and get "busy".
-     *
-     * Left alone, the vendor parent catches it, flips the row to ERRORED + writes
-     * error_json, and re-throws — surfacing a red "Sync failed" that STOPS auto-sync
-     * until a manual reinstall (the scheduler skips non-ACTIVE rows). That is wrong
-     * for a transient condition. Here we intercept it: undo the ERRORED state the
-     * parent just wrote and RE-QUEUE (like the WithoutOverlapping re-queue — a
-     * release, not a failure, so no JobFailed → no FAILED run row), so the sync
-     * transparently retries once the mailbox frees. `retryUntil()` still bounds the
-     * re-queues, so a mailbox that stays busy past the window ultimately fails loudly.
+     * Wrap the vendor sync with the generated-dataset progress coordinator and
+     * recover a transient busy mailbox without leaving the installation errored.
+     * The coordinator records only the contiguous prefix of UIDs whose parent
+     * document and attachments were confirmed by the host ingestion bridge.
      */
-    public function handle(ConnectorRegistry $registry, TenantContext $tenantContext): void
+    public function handle(
+        ConnectorRegistry $registry,
+        TenantContext $tenantContext,
+        ?ImapSyncProgressContext $progress = null,
+    ): void
     {
-        try {
-            parent::handle($registry, $tenantContext);
-        } catch (MailboxBusyException $e) {
-            $this->recoverFromMailboxBusy();
+        $progress ??= app(ImapSyncProgressContext::class);
+        $priorTenant = $tenantContext->current();
+        $progressStarted = false;
+        $priorLastSyncAt = null;
 
-            $delay = max(1, (int) config('connectors.imap.mailbox_lock.requeue_after_seconds', 60));
-            $this->release($delay);
+        try {
+            $tenantContext->set($this->tenantId);
+
+            $installation = ConnectorInstallation::query()
+                ->where('id', $this->installationId)
+                ->where('tenant_id', $this->tenantId)
+                ->first();
+            $tracksImap = $installation?->connector_name === 'imap';
+            $priorLastSyncAt = $installation?->last_sync_at?->copy();
+
+            if ($tracksImap) {
+                $progress->begin($installation);
+                $progressStarted = true;
+            }
+
+            try {
+                parent::handle($registry, $tenantContext);
+            } catch (MailboxBusyException) {
+                $this->recoverFromMailboxBusy();
+
+                $delay = max(1, (int) config('connectors.imap.mailbox_lock.requeue_after_seconds', 60));
+                $this->release($delay);
+            }
+        } finally {
+            try {
+                if ($progressStarted) {
+                    $hasUnconfirmedWork = $progress->hasUnconfirmedWork();
+
+                    try {
+                        $progress->finish();
+                    } finally {
+                        // A failed progress flush must not prevent the date
+                        // watermark from being rolled back. Otherwise a later
+                        // retry can exclude the historical UID/attachment that
+                        // the progress coordinator deliberately left pending.
+                        $this->restoreBackfillTimestampWhenIncomplete(
+                            $priorLastSyncAt,
+                            $hasUnconfirmedWork,
+                        );
+                    }
+                }
+            } finally {
+                // parent::handle() restores to the tenant it observed on entry.
+                // We set that entry value above so the progress coordinator and
+                // vault share the same tenant, then restore the worker's real
+                // prior tenant here.
+                $tenantContext->set($priorTenant);
+            }
         }
     }
 
     /**
-     * Undo the ERRORED state the vendor parent's recordFailure() just wrote for a
-     * transient busy, so the re-queued attempt (and the scheduler) still sees an
-     * ACTIVE row to sync. Guarded: only reverts a row that is CURRENTLY errored with
-     * exactly this busy signature, so it can never clobber a status another process
-     * legitimately set in the meantime.
+     * A truncated backfill or a UID whose body/attachments were not all
+     * confirmed is incomplete, not a successful date watermark. The vendor job
+     * records completedAt even for partial SyncResults; that timestamp becomes
+     * the next IMAP SINCE filter and can exclude historical mail still behind
+     * the safe UID checkpoint. Restore the previous value so the next run can
+     * resume from ImapSyncProgressContext's contiguous prefix.
+     */
+    private function restoreBackfillTimestampWhenIncomplete(
+        ?Carbon $priorLastSyncAt,
+        bool $hasUnconfirmedWork,
+    ): void {
+        $installation = ConnectorInstallation::query()
+            ->where('id', $this->installationId)
+            ->where('tenant_id', $this->tenantId)
+            ->first();
+
+        if ($installation === null) {
+            return;
+        }
+
+        $errors = (array) ($installation->error_json['partial_errors'] ?? []);
+        $incomplete = $hasUnconfirmedWork;
+
+        foreach ($errors as $error) {
+            if (
+                is_string($error)
+                && str_starts_with($error, 'sync truncated at max_messages_per_sync=')
+            ) {
+                $incomplete = true;
+                break;
+            }
+        }
+
+        if (! $incomplete) {
+            return;
+        }
+
+        $saved = $installation->forceFill([
+            'last_sync_at' => $priorLastSyncAt,
+        ])->save();
+
+        if (! $saved) {
+            throw new \RuntimeException(
+                "Unable to restore IMAP backfill watermark for installation {$this->installationId}.",
+            );
+        }
+    }
+
+    /**
+     * Undo the ERRORED state written by the vendor job for a transient busy
+     * mailbox, so the released job and the scheduler can retry an ACTIVE row.
+     * The guards prevent this path from clearing an unrelated failure.
      */
     private function recoverFromMailboxBusy(): void
     {
