@@ -19,10 +19,12 @@ namespace Database\Seeders;
  * appeso a una label NON entra in INBOX (sta solo nella label + "Tutti i messaggi"),
  * e il connettore sincronizza SOLO la label inclusa → niente doppioni.
  *
- * Le E-MAIL di ogni casella (≥100, vario tipo + thread domanda/risposta) vivono in
- * `database/seeders/emails/<mailbox_key>.json` (generate via multi-agente,
- * versionate), caricate da {@see emailsForMailbox()}. Ogni e-mail porta i
- * "fatti-esca" dell'azienda — assenti nelle altre — per il test di isolamento.
+ * Le 751 E-MAIL curate vivono in
+ * `database/seeders/emails/<mailbox_key>.json`, caricate da
+ * {@see emailsForMailbox()}; restano il livello gold compatibile. I profili
+ * deterministici v2 (`gold`, `demo`, `large`, `stress`) usano invece i cataloghi
+ * versionati in `database/seeders/email-dataset/` e vengono letti in streaming
+ * dagli shard JSONL. Ogni livello porta canarini aziendali assenti negli altri.
  *
  * I PARAMETRI DI CONNESSIONE stanno nel fixture; in .env c'è SOLO la password
  * (segreto) dell'account condiviso: `CONNECTOR_TEST_GMAIL_PASSWORD` (App Password
@@ -192,7 +194,10 @@ final class TestEmailFixtures
             // Solo la label di questa casella: su Gmail "Tutti i messaggi"/INBOX
             // duplicherebbero gli stessi messaggi.
             'folders' => ['include' => [$mailbox['folder']]],
-            'date_window_days' => (int) env('CONNECTOR_TEST_IMAP_DATE_WINDOW_DAYS', 365),
+            // 0 = nessun filtro temporale. Il dataset v2 riproduce una timeline
+            // 2024–2026 anche in INTERNALDATE; una finestra mobile di 365 giorni
+            // perderebbe silenziosamente gli shard storici del profilo large.
+            'date_window_days' => (int) env('CONNECTOR_TEST_IMAP_DATE_WINDOW_DAYS', 0),
         ];
     }
 

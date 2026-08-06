@@ -1,0 +1,25 @@
+{
+    "company_key": "prometeo-antincendio",
+    "canaries": [
+        {
+            "canary_id": "prometeo.canary.fenice-rame",
+            "phrase": "codice sintetico FENICE-RAME-52",
+            "scenario_types": ["incidenti-allarmi"]
+        },
+        {
+            "canary_id": "prometeo.canary.cpi-olmo",
+            "phrase": "marcatore sintetico CPI-OLMO-37",
+            "scenario_types": ["cpi-normativa"]
+        },
+        {
+            "canary_id": "prometeo.canary.pa12-iride",
+            "phrase": "riferimento sintetico PA12-IRIDE-64",
+            "scenario_types": ["sopralluoghi-pa12"]
+        },
+        {
+            "canary_id": "prometeo.canary.salamandra-neve",
+            "phrase": "segnale sintetico SALAMANDRA-NEVE-18",
+            "scenario_types": ["formazione"]
+        }
+    ]
+}

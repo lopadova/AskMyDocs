@@ -1,0 +1,41 @@
+{
+    "company_key": "passolibero-calzature",
+    "personas": [
+        {
+            "persona_id": "passolibero.ordini",
+            "name": "Assistenza Ordini PassoLibero",
+            "email": "ordini@passolibero-calzature.example",
+            "role": "ordini e consegne"
+        },
+        {
+            "persona_id": "passolibero.resi",
+            "name": "Team Resi PassoLibero",
+            "email": "resi@passolibero-calzature.example",
+            "role": "resi e rimborsi"
+        },
+        {
+            "persona_id": "passolibero.prodotto",
+            "name": "Chiara Fontana",
+            "email": "prodotto@passolibero-calzature.example",
+            "role": "prodotto e taglie"
+        },
+        {
+            "persona_id": "passolibero.magazzino",
+            "name": "Magazzino PassoLibero",
+            "email": "magazzino@passolibero-calzature.example",
+            "role": "scorte e riassortimenti"
+        },
+        {
+            "persona_id": "passolibero.qualita",
+            "name": "Controllo Qualità PassoLibero",
+            "email": "qualita@passolibero-calzature.example",
+            "role": "qualità e fornitori"
+        },
+        {
+            "persona_id": "passolibero.club",
+            "name": "ClubPasso",
+            "email": "clubpasso@passolibero-calzature.example",
+            "role": "fidelizzazione"
+        }
+    ]
+}

@@ -1,0 +1,50 @@
+{
+    "company_key": "passolibero-calzature",
+    "facts": [
+        {
+            "fact_id": "passolibero.ordini.spedizioni",
+            "statement": "Ordini e consegne seguono stati tracciati e comunicazioni verificabili.",
+            "canonical_source": "case-studies/passolibero-calzature/spedizioni-e-consegne.md"
+        },
+        {
+            "fact_id": "passolibero.resi.trentagiorni",
+            "statement": "La politica di reso definisce finestre, condizioni e percorso del rimborso.",
+            "canonical_source": "case-studies/passolibero-calzature/politica-resi-30-giorni.md"
+        },
+        {
+            "fact_id": "passolibero.prodotto.taglie",
+            "statement": "Taglie, materiali e cura del prodotto sono documentati nelle guide ufficiali.",
+            "canonical_source": "case-studies/passolibero-calzature/guida-taglie.md"
+        },
+        {
+            "fact_id": "passolibero.magazzino.scorte",
+            "statement": "Scorte e riassortimenti vengono pianificati per modello, taglia e colore.",
+            "canonical_source": "case-studies/passolibero-calzature/catalogo-modelli.md"
+        },
+        {
+            "fact_id": "passolibero.qualita.aeromesh",
+            "statement": "Materiali e lotti sono sottoposti a controlli qualità tracciati.",
+            "canonical_source": "case-studies/passolibero-calzature/materiali-aeromesh.md"
+        },
+        {
+            "fact_id": "passolibero.clubpasso.regole",
+            "statement": "ClubPasso applica benefici e comunicazioni secondo il programma pubblicato.",
+            "canonical_source": "case-studies/passolibero-calzature/programma-fedelta-clubpasso.md"
+        },
+        {
+            "fact_id": "passolibero.richiamo.zr20",
+            "statement": "Un richiamo prodotto collega lotto, clienti interessati e azioni correttive.",
+            "canonical_source": "case-studies/passolibero-calzature/incidente-richiamo-lotto-zr20.md"
+        },
+        {
+            "fact_id": "passolibero.fatture.ecommerce",
+            "statement": "La vendita è online e i documenti amministrativi sono collegati all'ordine.",
+            "canonical_source": "case-studies/passolibero-calzature/decision-vendita-solo-ecommerce.md"
+        },
+        {
+            "fact_id": "passolibero.qualita.correzioni",
+            "statement": "Dati provvisori o errati sono rettificati con messaggi successivi espliciti.",
+            "canonical_source": "case-studies/passolibero-calzature/_index.md"
+        }
+    ]
+}

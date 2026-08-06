@@ -1,0 +1,41 @@
+{
+    "company_key": "rotta-logistics",
+    "personas": [
+        {
+            "persona_id": "rotta.orbita",
+            "name": "Sistema OrbitaWMS",
+            "email": "no-reply@rotta-logistics.example",
+            "role": "automazione magazzino"
+        },
+        {
+            "persona_id": "rotta.operations",
+            "name": "Centrale Operativa Rotta",
+            "email": "operations@rotta-logistics.example",
+            "role": "operations"
+        },
+        {
+            "persona_id": "rotta.customercare",
+            "name": "Customer Care Rotta",
+            "email": "reclami@rotta-logistics.example",
+            "role": "customer care"
+        },
+        {
+            "persona_id": "rotta.commerciale",
+            "name": "Giulia Ferri",
+            "email": "giulia.ferri@rotta-logistics.example",
+            "role": "commerciale"
+        },
+        {
+            "persona_id": "rotta.dogana",
+            "name": "Ufficio Dogana Rotta",
+            "email": "dogana@rotta-logistics.example",
+            "role": "dogana e ADR"
+        },
+        {
+            "persona_id": "rotta.amministrazione",
+            "name": "Amministrazione Rotta",
+            "email": "amministrazione@rotta-logistics.example",
+            "role": "amministrazione"
+        }
+    ]
+}

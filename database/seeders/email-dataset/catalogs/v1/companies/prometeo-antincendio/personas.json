@@ -1,0 +1,41 @@
+{
+    "company_key": "prometeo-antincendio",
+    "personas": [
+        {
+            "persona_id": "prometeo.tecnico",
+            "name": "Ufficio Tecnico Prometeo",
+            "email": "tecnico@prometeo-antincendio.example",
+            "role": "manutenzione impianti"
+        },
+        {
+            "persona_id": "prometeo.cpi",
+            "name": "Elena Riva",
+            "email": "elena.riva@prometeo-antincendio.example",
+            "role": "prevenzione incendi e CPI"
+        },
+        {
+            "persona_id": "prometeo.sopralluoghi",
+            "name": "Squadra Sopralluoghi",
+            "email": "sopralluoghi@prometeo-antincendio.example",
+            "role": "sopralluoghi"
+        },
+        {
+            "persona_id": "prometeo.formazione",
+            "name": "Formazione Salamandra",
+            "email": "formazione@prometeo-antincendio.example",
+            "role": "formazione"
+        },
+        {
+            "persona_id": "prometeo.commerciale",
+            "name": "Marco Belli",
+            "email": "gare@prometeo-antincendio.example",
+            "role": "gare e preventivi"
+        },
+        {
+            "persona_id": "prometeo.amministrazione",
+            "name": "Amministrazione Prometeo",
+            "email": "amministrazione@prometeo-antincendio.example",
+            "role": "amministrazione"
+        }
+    ]
+}

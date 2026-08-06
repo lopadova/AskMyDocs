@@ -1,0 +1,162 @@
+{
+    "company_key": "passolibero-calzature",
+    "company_name": "PassoLibero Calzature",
+    "mailboxes": {
+        "passolibero-calzature-1": {
+            "to_email": "customer-care@passolibero-calzature.example",
+            "category_matrix_large": {
+                "ordini-consegne": 380,
+                "resi-rimborsi": 230,
+                "prodotto-taglie": 150,
+                "magazzino-scorte": 50,
+                "fornitori-qualita": 20,
+                "clubpasso-campagne": 120,
+                "richiami-frodi": 25,
+                "fatturazione": 15,
+                "correzioni-rumore": 10
+            }
+        },
+        "passolibero-calzature-2": {
+            "to_email": "operations@passolibero-calzature.example",
+            "category_matrix_large": {
+                "ordini-consegne": 80,
+                "resi-rimborsi": 130,
+                "prodotto-taglie": 150,
+                "magazzino-scorte": 250,
+                "fornitori-qualita": 180,
+                "clubpasso-campagne": 40,
+                "richiami-frodi": 95,
+                "fatturazione": 45,
+                "correzioni-rumore": 30
+            }
+        }
+    },
+    "scenarios": {
+        "ordini-consegne": {
+            "topic": "ordini, pagamenti, spedizioni e consegne",
+            "keywords": ["ordine", "pagamento", "spedizione", "consegna", "tracking"],
+            "persona_ids": ["passolibero.ordini", "passolibero.magazzino"],
+            "fact_ids": ["passolibero.ordini.spedizioni"],
+            "subject_templates": [
+                "Ordine {reference}: aggiornamento {status}",
+                "Consegna sintetica {reference} - evento #{sequence}"
+            ],
+            "body_templates": [
+                "Gentile {recipient},\n\nl'ordine sintetico {reference} è ora nello stato {status}. {fact}\n\nPassaggio registrato presso {location}; valore di prova {amount} EUR.\n\nPassoLibero",
+                "Buongiorno,\n\naggiornamento sulla consegna {reference}. {fact}\n\nSequenza di collaudo {sequence}; nessun acquisto reale è stato effettuato.\n\nAssistenza Ordini"
+            ]
+        },
+        "resi-rimborsi": {
+            "topic": "resi, cambi taglia e rimborsi",
+            "keywords": ["reso", "rimborso", "cambio", "taglia", "restituzione"],
+            "persona_ids": ["passolibero.resi", "passolibero.ordini"],
+            "fact_ids": ["passolibero.resi.trentagiorni"],
+            "subject_templates": [
+                "Reso {reference}: stato {status}",
+                "Cambio taglia sintetico {reference}"
+            ],
+            "body_templates": [
+                "Gentile {recipient},\n\nla pratica di reso sintetica {reference} è nello stato {status}. {fact}\n\nImporto dimostrativo: {amount} EUR; evento {sequence}.\n\nTeam Resi PassoLibero",
+                "Buongiorno,\n\nabbiamo registrato il cambio taglia {reference} presso {location}. {fact}\n\nRisponda al thread per confermare il test.\n\nPassoLibero"
+            ]
+        },
+        "prodotto-taglie": {
+            "topic": "prodotto, taglie, materiali e manutenzione",
+            "keywords": ["taglia", "materiale", "modello", "cura", "scarpa"],
+            "persona_ids": ["passolibero.prodotto", "passolibero.resi"],
+            "fact_ids": ["passolibero.prodotto.taglie"],
+            "subject_templates": [
+                "Informazioni modello {reference}",
+                "Guida taglia {reference}: verifica #{sequence}"
+            ],
+            "body_templates": [
+                "Buongiorno {recipient},\n\nper il modello sintetico {reference} consigliamo di consultare la guida. {fact}\n\nStato richiesta: {status}; punto prova {location}.\n\nTeam Prodotto",
+                "Gentile cliente,\n\nla scheda di test {reference} descrive materiale e manutenzione. {fact}\n\nIl valore {amount} EUR è esclusivamente dimostrativo.\n\nPassoLibero"
+            ]
+        },
+        "magazzino-scorte": {
+            "topic": "magazzino, scorte e riassortimenti",
+            "keywords": ["magazzino", "scorta", "riassortimento", "giacenza", "inventario"],
+            "persona_ids": ["passolibero.magazzino", "passolibero.prodotto"],
+            "fact_ids": ["passolibero.magazzino.scorte"],
+            "subject_templates": [
+                "Riassortimento {reference}: stato {status}",
+                "Inventario sintetico {location} #{sequence}"
+            ],
+            "body_templates": [
+                "Team,\n\nil riassortimento sintetico {reference} per {location} è nello stato {status}. {fact}\n\nQuantità di prova collegata alla sequenza {sequence}.\n\nMagazzino PassoLibero",
+                "Buongiorno,\n\nl'inventario di collaudo {reference} richiede verifica. {fact}\n\nValore simulato scorte: {amount} EUR.\n\nOperations"
+            ]
+        },
+        "fornitori-qualita": {
+            "topic": "fornitori, controllo qualità e produzione",
+            "keywords": ["fornitore", "qualità", "produzione", "lotto", "aeromesh"],
+            "persona_ids": ["passolibero.qualita", "passolibero.magazzino"],
+            "fact_ids": ["passolibero.qualita.aeromesh"],
+            "subject_templates": [
+                "Controllo qualità lotto {reference}",
+                "Fornitore sintetico {reference}: verifica materiale"
+            ],
+            "body_templates": [
+                "Buongiorno {recipient},\n\nil lotto sintetico {reference} è in controllo presso {location}. {fact}\n\nEsito provvisorio: {status}; campione {sequence}.\n\nControllo Qualità",
+                "Gentile fornitore,\n\nrichiediamo una verifica dimostrativa sul materiale {reference}. {fact}\n\nValore lotto simulato: {amount} EUR.\n\nPassoLibero"
+            ]
+        },
+        "clubpasso-campagne": {
+            "topic": "ClubPasso, campagne e recensioni",
+            "keywords": ["clubpasso", "campagna", "recensione", "punti", "fedeltà"],
+            "persona_ids": ["passolibero.club", "passolibero.ordini"],
+            "fact_ids": ["passolibero.clubpasso.regole"],
+            "subject_templates": [
+                "ClubPasso {reference}: saldo punti sintetico",
+                "Campagna di prova {reference} - stato {status}"
+            ],
+            "body_templates": [
+                "Ciao {recipient},\n\nl'evento ClubPasso sintetico {reference} è nello stato {status}. {fact}\n\nValore premio dimostrativo: {amount} EUR; sequenza {sequence}.\n\nClubPasso",
+                "Buongiorno,\n\nquesta campagna di collaudo riguarda {reference}. {fact}\n\nNessuna promozione reale è associata al messaggio.\n\nPassoLibero"
+            ]
+        },
+        "richiami-frodi": {
+            "topic": "richiami prodotto, frodi e incidenti",
+            "keywords": ["richiamo", "frode", "incidente", "lotto zr20", "sicurezza"],
+            "persona_ids": ["passolibero.qualita", "passolibero.resi"],
+            "fact_ids": ["passolibero.richiamo.zr20"],
+            "subject_templates": [
+                "Richiamo sintetico lotto {reference}",
+                "Segnalazione antifrode {reference}: {status}"
+            ],
+            "body_templates": [
+                "Attenzione,\n\nil caso di test {reference} presso {location} è nello stato {status}. {fact}\n\nSequenza controllata {sequence}; non riguarda clienti reali.\n\nQualità PassoLibero",
+                "Aggiornamento,\n\nla segnalazione sintetica {reference} richiede verifica. {fact}\n\nImpatto simulato {amount} EUR.\n\nPassoLibero"
+            ]
+        },
+        "fatturazione": {
+            "topic": "fatturazione e amministrazione",
+            "keywords": ["fattura", "ricevuta", "iva", "amministrazione", "pagamento"],
+            "persona_ids": ["passolibero.ordini", "passolibero.magazzino"],
+            "fact_ids": ["passolibero.fatture.ecommerce"],
+            "subject_templates": [
+                "Documento fiscale sintetico {reference}",
+                "Riconciliazione pagamento {reference}"
+            ],
+            "body_templates": [
+                "Gentile {recipient},\n\nil documento di prova {reference} è collegato a un ordine ecommerce sintetico. {fact}\n\nTotale simulato: {amount} EUR; stato {status}.\n\nAmministrazione PassoLibero",
+                "Buongiorno,\n\nrichiediamo la riconciliazione del pagamento {reference}. {fact}\n\nEvento dimostrativo #{sequence}; nessuna transazione reale.\n\nPassoLibero"
+            ]
+        },
+        "correzioni-rumore": {
+            "topic": "correzioni e rumore controllato",
+            "keywords": ["correzione", "rettifica", "errato", "test", "newsletter"],
+            "persona_ids": ["passolibero.qualita", "passolibero.ordini"],
+            "fact_ids": ["passolibero.qualita.correzioni"],
+            "subject_templates": [
+                "Rettifica ordine {reference}",
+                "Correzione dato sintetico #{sequence}"
+            ],
+            "body_templates": [
+                "Rettifica,\n\nil valore precedente di {reference} era provvisorio. Il nuovo stato è {status}. {fact}\n\nImporto corretto di test: {amount} EUR.\n\nQualità PassoLibero",
+                "Buongiorno,\n\nquesta comunicazione corregge l'evento sintetico {sequence} presso {location}. {fact}\n\nNon usare come conferma d'ordine reale.\n\nPassoLibero"
+            ]
+        }
+    }
+}

@@ -1,0 +1,162 @@
+{
+    "company_key": "prometeo-antincendio",
+    "company_name": "Prometeo Sicurezza Antincendio",
+    "mailboxes": {
+        "prometeo-antincendio-1": {
+            "to_email": "tecnica@prometeo-antincendio.example",
+            "category_matrix_large": {
+                "manutenzione-impianti": 300,
+                "cpi-normativa": 250,
+                "sopralluoghi-pa12": 190,
+                "formazione": 100,
+                "preventivi-gare": 20,
+                "incidenti-allarmi": 100,
+                "scadenze-amministrazione": 5,
+                "ricambi-fornitori": 20,
+                "correzioni-rumore": 15
+            }
+        },
+        "prometeo-antincendio-2": {
+            "to_email": "backoffice@prometeo-antincendio.example",
+            "category_matrix_large": {
+                "manutenzione-impianti": 140,
+                "cpi-normativa": 110,
+                "sopralluoghi-pa12": 90,
+                "formazione": 140,
+                "preventivi-gare": 200,
+                "incidenti-allarmi": 80,
+                "scadenze-amministrazione": 135,
+                "ricambi-fornitori": 60,
+                "correzioni-rumore": 45
+            }
+        }
+    },
+    "scenarios": {
+        "manutenzione-impianti": {
+            "topic": "manutenzione estintori, idranti e impianti",
+            "keywords": ["estintore", "idrante", "manutenzione", "impianto", "collaudo"],
+            "persona_ids": ["prometeo.tecnico", "prometeo.sopralluoghi"],
+            "fact_ids": ["prometeo.manutenzione.classi"],
+            "subject_templates": [
+                "Manutenzione impianto {reference}: stato {status}",
+                "Verifica estintori {reference} presso {location}"
+            ],
+            "body_templates": [
+                "Buongiorno {recipient},\n\nl'intervento sintetico {reference} presso {location} è nello stato {status}. {fact}\n\nControllo numero {sequence}; importo simulato {amount} EUR.\n\nUfficio Tecnico Prometeo",
+                "Team tecnico,\n\nla verifica di prova {reference} riguarda estintori e idranti del sito {location}. {fact}\n\nRegistrare l'esito con sequenza {sequence}.\n\nPrometeo"
+            ]
+        },
+        "cpi-normativa": {
+            "topic": "CPI, SCIA, normativa e Vigili del Fuoco",
+            "keywords": ["cpi", "scia", "normativa", "vigili", "vvf"],
+            "persona_ids": ["prometeo.cpi", "prometeo.tecnico"],
+            "fact_ids": ["prometeo.cpi.normativa"],
+            "subject_templates": [
+                "Pratica CPI {reference}: integrazione documenti",
+                "SCIA antincendio {reference} - verifica {status}"
+            ],
+            "body_templates": [
+                "Gentile {recipient},\n\nla pratica sintetica {reference} per {location} richiede una verifica documentale. {fact}\n\nStato: {status}; evento {sequence}.\n\nPrevenzione Incendi",
+                "Buongiorno,\n\naggiornamento di collaudo sulla SCIA {reference}. {fact}\n\nIl valore {amount} EUR è puramente simulato; non inoltrare a enti reali.\n\nPrometeo"
+            ]
+        },
+        "sopralluoghi-pa12": {
+            "topic": "sopralluoghi e Modulo PA-12",
+            "keywords": ["sopralluogo", "pa-12", "rilievo", "verbale", "ispezione"],
+            "persona_ids": ["prometeo.sopralluoghi", "prometeo.tecnico"],
+            "fact_ids": ["prometeo.sopralluogo.pa12"],
+            "subject_templates": [
+                "Sopralluogo {reference}: Modulo PA-12",
+                "Rilievi sito {location} - verbale {reference}"
+            ],
+            "body_templates": [
+                "Buongiorno {recipient},\n\nil sopralluogo sintetico {reference} presso {location} ha stato {status}. {fact}\n\nRilievo di prova #{sequence}; nessuna persona reale coinvolta.\n\nSquadra Sopralluoghi",
+                "Ciao team,\n\nil Modulo PA-12 relativo a {reference} è pronto per la revisione. {fact}\n\nValore simulato intervento: {amount} EUR.\n\nPrometeo"
+            ]
+        },
+        "formazione": {
+            "topic": "formazione, evacuazioni e Corso Salamandra",
+            "keywords": ["formazione", "salamandra", "evacuazione", "corso", "addetti"],
+            "persona_ids": ["prometeo.formazione", "prometeo.sopralluoghi"],
+            "fact_ids": ["prometeo.formazione.salamandra"],
+            "subject_templates": [
+                "Corso Salamandra {reference}: conferma sessione",
+                "Prova evacuazione {reference} presso {location}"
+            ],
+            "body_templates": [
+                "Gentile {recipient},\n\nla sessione sintetica {reference} è pianificata presso {location}. {fact}\n\nStato iscrizioni: {status}; classe di prova {sequence}.\n\nFormazione Salamandra",
+                "Buongiorno,\n\nla prova di evacuazione {reference} prevede una simulazione controllata. {fact}\n\nQuota dimostrativa: {amount} EUR.\n\nPrometeo Formazione"
+            ]
+        },
+        "preventivi-gare": {
+            "topic": "preventivi, contratti e gare",
+            "keywords": ["preventivo", "gara", "contratto", "offerta", "capitolato"],
+            "persona_ids": ["prometeo.commerciale", "prometeo.amministrazione"],
+            "fact_ids": ["prometeo.preventivi.controllo"],
+            "subject_templates": [
+                "Preventivo sintetico {reference}",
+                "Gara {reference}: chiarimento capitolato"
+            ],
+            "body_templates": [
+                "Buongiorno {recipient},\n\nil preventivo di prova {reference} copre il sito {location}. {fact}\n\nTotale simulato: {amount} EUR; stato {status}.\n\nUfficio Gare Prometeo",
+                "Gentile cliente,\n\nin merito alla gara {reference}, chiediamo conferma del perimetro. {fact}\n\nQuesito sintetico #{sequence}; non costituisce offerta reale.\n\nPrometeo"
+            ]
+        },
+        "incidenti-allarmi": {
+            "topic": "incidenti, allarmi ed escalation",
+            "keywords": ["allarme", "incidente", "escalation", "fenice", "emergenza"],
+            "persona_ids": ["prometeo.tecnico", "prometeo.cpi"],
+            "fact_ids": ["prometeo.incidenti.fenice7"],
+            "subject_templates": [
+                "Allarme sintetico {reference}: escalation {status}",
+                "Protocollo Fenice-7 evento {reference}"
+            ],
+            "body_templates": [
+                "Attenzione,\n\nl'evento di test {reference} presso {location} è nello stato {status}. {fact}\n\nSequenza di escalation {sequence}; non contattare servizi reali.\n\nCentrale Tecnica",
+                "Aggiornamento,\n\nil Protocollo Fenice-7 è stato applicato al caso sintetico {reference}. {fact}\n\nImpatto simulato {amount} EUR.\n\nPrometeo"
+            ]
+        },
+        "scadenze-amministrazione": {
+            "topic": "scadenze, fatture e amministrazione",
+            "keywords": ["scadenza", "fattura", "amministrazione", "rinnovo", "pagamento"],
+            "persona_ids": ["prometeo.amministrazione", "prometeo.cpi"],
+            "fact_ids": ["prometeo.scadenze.software"],
+            "subject_templates": [
+                "Scadenza sintetica {reference}",
+                "Rinnovo pratica {reference}: promemoria"
+            ],
+            "body_templates": [
+                "Buongiorno {recipient},\n\nla scadenza di prova {reference} per {location} è nello stato {status}. {fact}\n\nImporto simulato: {amount} EUR; evento {sequence}.\n\nAmministrazione Prometeo",
+                "Promemoria,\n\nverificare il rinnovo sintetico {reference}. {fact}\n\nIl sistema ha generato questa comunicazione per il collaudo.\n\nPrometeo"
+            ]
+        },
+        "ricambi-fornitori": {
+            "topic": "ricambi e fornitori",
+            "keywords": ["ricambio", "fornitore", "valvola", "materiale", "ordine"],
+            "persona_ids": ["prometeo.tecnico", "prometeo.commerciale"],
+            "fact_ids": ["prometeo.ricambi.compatibilita"],
+            "subject_templates": [
+                "Ricambio {reference}: verifica compatibilità",
+                "Ordine fornitore sintetico {reference}"
+            ],
+            "body_templates": [
+                "Buongiorno {recipient},\n\nil ricambio sintetico {reference} è destinato al sito {location}. {fact}\n\nStato ordine: {status}; valore {amount} EUR.\n\nUfficio Tecnico",
+                "Gentile fornitore,\n\nrichiediamo conferma di prova per {reference}. {fact}\n\nLotto sintetico #{sequence}; nessun acquisto reale.\n\nPrometeo"
+            ]
+        },
+        "correzioni-rumore": {
+            "topic": "correzioni e rumore controllato",
+            "keywords": ["correzione", "rettifica", "errato", "test", "newsletter"],
+            "persona_ids": ["prometeo.tecnico", "prometeo.amministrazione"],
+            "fact_ids": ["prometeo.qualita.correzioni"],
+            "subject_templates": [
+                "Rettifica rilievo {reference}",
+                "Correzione scadenza sintetica #{sequence}"
+            ],
+            "body_templates": [
+                "Rettifica,\n\nil dato precedente per {reference} non era definitivo. Il nuovo stato è {status}. {fact}\n\nValore corretto di prova: {amount} EUR.\n\nQualità Prometeo",
+                "Buongiorno,\n\nquesta comunicazione corregge il rilievo sintetico {sequence} presso {location}. {fact}\n\nNon usare come documento normativo.\n\nPrometeo"
+            ]
+        }
+    }
+}

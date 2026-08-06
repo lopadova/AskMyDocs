@@ -96,6 +96,17 @@ See the [auto-wiki engine](/architecture/auto-wiki-engine).
 | `kb:benchmark {--stub} {--with-answers} {--gate} {--project=benchmark} {--k=5} {--corpus=} {--queries=}` | Retrieval-quality benchmark (nDCG/MRR/precision/citation/refusal/graph) |
 | `kb:make-benchmark-fixtures` | Regenerate the binary (PDF + DOCX) benchmark corpus |
 
+## Case-study email datasets
+
+| Signature | Purpose |
+|---|---|
+| `demo:generate-case-study-emails {--profile=} {--seed=} {--catalog-version=} {--output=} {--force} {--check} {--stats}` | Generate or byte-check deterministic JSONL datasets offline |
+| `demo:validate-case-study-emails {--profile=} {--dataset-version=} {--dataset-root=}` | Validate manifest, hashes, records, threads, catalogs, and canaries |
+| `mail:seed-imap {--mailbox=*} {--project=*} {--all} {--dataset-version=} {--profile=} {--resume} {--estimate-cost} {--purge-dataset} {--purge-only} {--purge-all-seeded} {--purge} {--preview-purge} {--confirm-token=} {--actor=} {--dry-run}` | Offline preflight or local/testing-only IMAP delivery; destructive modes require an exact single-use token |
+
+See [case-study email datasets](/case-study-email-datasets) for the
+preview/confirm, audit, recovery, and rollback contracts.
+
 ## Auth, MCP & widget
 
 | Signature | Purpose |
