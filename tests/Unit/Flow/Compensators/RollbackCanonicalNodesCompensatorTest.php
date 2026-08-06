@@ -129,7 +129,7 @@ final class RollbackCanonicalNodesCompensatorTest extends TestCase
 
     private function context(): FlowContext
     {
-        return $this->contextForTenant('default');
+        return $this->contextForTenant('test-tenant');
     }
 
     private function contextForTenant(string $tenantId): FlowContext

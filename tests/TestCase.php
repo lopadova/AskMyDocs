@@ -6,6 +6,67 @@ use Orchestra\Testbench\TestCase as OrchestraTestCase;
 
 abstract class TestCase extends OrchestraTestCase
 {
+    private const FALLBACK_TEST_TENANT = 'test-tenant';
+
+    /**
+     * Most feature tests exercise an operational route rather than the
+     * no-membership boundary itself. Give those synthetic users an explicit
+     * membership in the active operational test tenant. If the context still
+     * points at a reserved namespace, move it to a dedicated test tenant;
+     * never manufacture access to `default`.
+     *
+     * Boundary tests that intentionally need an account with zero
+     * memberships use actingAsWithoutTenant().
+     */
+    public function actingAs(\Illuminate\Contracts\Auth\Authenticatable $user, $driver = null)
+    {
+        if ($this->app !== null) {
+            $schema = \Illuminate\Support\Facades\DB::connection()->getSchemaBuilder();
+            if (! $schema->hasTable('project_memberships')) {
+                return parent::actingAs($user, $driver);
+            }
+
+            $tenantId = app(\App\Support\TenantContext::class)->current();
+            $memberships = \Illuminate\Support\Facades\DB::table('project_memberships')
+                ->where('user_id', $user->getAuthIdentifier());
+
+            if (
+                ! \App\Support\SystemTenantRegistry::isReserved($tenantId)
+                && ! (clone $memberships)->where('tenant_id', $tenantId)->exists()
+            ) {
+                \Illuminate\Support\Facades\DB::table('project_memberships')->insertOrIgnore([
+                    'tenant_id' => $tenantId,
+                    'user_id' => $user->getAuthIdentifier(),
+                    'project_key' => 'test-project',
+                    'role' => 'member',
+                    'scope_allowlist' => null,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
+
+            if (
+                ! \App\Support\SystemTenantRegistry::isReserved($tenantId)
+                && (clone $memberships)->where('tenant_id', $tenantId)->exists()
+            ) {
+                // ResolveTenant runs before the authenticated request reaches
+                // tenant.authorize. Give no-header feature tests the same
+                // explicit operational context their SPA request would carry
+                // without mutating the User model with a non-schema attribute.
+                $this->withHeader('X-Tenant-Id', $tenantId);
+            }
+        }
+
+        return parent::actingAs($user, $driver);
+    }
+
+    protected function actingAsWithoutTenant(
+        \Illuminate\Contracts\Auth\Authenticatable $user,
+        $driver = null,
+    ) {
+        return parent::actingAs($user, $driver);
+    }
+
     protected function getEnvironmentSetUp($app): void
     {
         // Manual registration (instead of getPackageProviders) avoids
@@ -168,6 +229,14 @@ abstract class TestCase extends OrchestraTestCase
         $app->register(\App\Providers\AiServiceProvider::class);
         $app->register(\App\Providers\ChatLogServiceProvider::class);
         $app->register(\App\Providers\AppServiceProvider::class);
+        // The production fallback remains the reserved legacy `default`.
+        // Tests instead start and reset on a real operational namespace, so
+        // tenant-aware fixtures cannot accidentally encode implicit access to
+        // that reserved value.
+        $app->singleton(
+            \App\Support\TenantContext::class,
+            static fn (): \App\Support\TenantContext => new \App\Support\TenantContext(self::FALLBACK_TEST_TENANT),
+        );
         // v4.3/W1 sub-PR 4.5 — comprehensive PII boundary coverage.
         // The RedactorEngine binding is provided by the package's own
         // PiiRedactorServiceProvider (registered higher up in this list);
@@ -553,7 +622,8 @@ abstract class TestCase extends OrchestraTestCase
     }
 
     /**
-     * Pin the request-scoped TenantContext singleton to its default at the
+     * Pin the request-scoped TenantContext singleton to an operational test
+     * tenant at the
      * start of EVERY test. Testbench refreshes the app per test, but a test
      * that switches tenants (e.g. cross-tenant isolation specs) must never
      * be able to bleed that state into a sibling and cause a downstream
@@ -567,7 +637,7 @@ abstract class TestCase extends OrchestraTestCase
         parent::setUp();
 
         if ($this->app !== null && $this->app->bound(\App\Support\TenantContext::class)) {
-            $this->app->make(\App\Support\TenantContext::class)->reset();
+            $this->app->make(\App\Support\TenantContext::class)->set(self::FALLBACK_TEST_TENANT);
         }
     }
 

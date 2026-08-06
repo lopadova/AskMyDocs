@@ -71,7 +71,7 @@ final class ProjectControllerTest extends TestCase
         $resp->assertJsonPath('data.project_key', 'surface-kb')
             ->assertJsonPath('data.name', 'Surface KB');
         $this->assertDatabaseHas('projects', [
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'surface-kb',
             'name' => 'Surface KB',
         ]);

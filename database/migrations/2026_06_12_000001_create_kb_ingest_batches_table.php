@@ -33,7 +33,7 @@ return new class extends Migration
             $table->string('sub_path', 500)->nullable();
             // staged | committing | processing | completed |
             // completed_with_errors | cancelled | expired
-            $table->string('status', 20)->default('staged')->index();
+            $table->string('status', 32)->default('staged')->index();
             $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();
             // R21 — written inside the commit lock; non-null means "already committed".
             $table->timestamp('committed_at')->nullable();

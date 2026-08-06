@@ -50,7 +50,7 @@ final class EngagementAnalyticsTest extends TestCase
     private function event(int $userId, string $eventType, ?int $docId = null): void
     {
         KbContributionEvent::create([
-            'tenant_id' => 'default', 'user_id' => $userId, 'document_id' => $docId,
+            'tenant_id' => 'test-tenant', 'user_id' => $userId, 'document_id' => $docId,
             'project_key' => 'eng', 'event' => $eventType,
             'weight' => KbContributionEvent::WEIGHTS[$eventType] ?? 1, 'created_at' => now(),
         ]);
@@ -70,7 +70,7 @@ final class EngagementAnalyticsTest extends TestCase
             'metadata' => [], 'indexed_at' => now(),
         ]);
         KbCanonicalHealthSnapshot::create([
-            'tenant_id' => 'default', 'knowledge_document_id' => $doc->id, 'project_key' => 'eng',
+            'tenant_id' => 'test-tenant', 'knowledge_document_id' => $doc->id, 'project_key' => 'eng',
             'doc_slug' => null, 'health_score' => 88, 'factors' => [], 'computed_at' => now(),
         ]);
 
@@ -107,7 +107,7 @@ final class EngagementAnalyticsTest extends TestCase
     public function test_mcp_summary_tool_response_includes_trend(): void
     {
         KbEngagementSnapshot::create([
-            'tenant_id' => 'default', 'snapshot_date' => now()->toDateString(),
+            'tenant_id' => 'test-tenant', 'snapshot_date' => now()->toDateString(),
             'metrics' => ['contributors' => 2, 'new_docs' => 1, 'answers' => 0, 'avg_debt_score' => 30.0],
             'computed_at' => now(),
         ]);
@@ -128,12 +128,12 @@ final class EngagementAnalyticsTest extends TestCase
     {
         // Two snapshots; the endpoint returns them oldest→newest (R16 strict order).
         KbEngagementSnapshot::create([
-            'tenant_id' => 'default', 'snapshot_date' => now()->subDays(7)->toDateString(),
+            'tenant_id' => 'test-tenant', 'snapshot_date' => now()->subDays(7)->toDateString(),
             'metrics' => ['contributors' => 1, 'new_docs' => 2, 'answers' => 3, 'avg_debt_score' => 40.0],
             'computed_at' => now()->subDays(7),
         ]);
         KbEngagementSnapshot::create([
-            'tenant_id' => 'default', 'snapshot_date' => now()->toDateString(),
+            'tenant_id' => 'test-tenant', 'snapshot_date' => now()->toDateString(),
             'metrics' => ['contributors' => 4, 'new_docs' => 5, 'answers' => 6, 'avg_debt_score' => 38.0],
             'computed_at' => now(),
         ]);

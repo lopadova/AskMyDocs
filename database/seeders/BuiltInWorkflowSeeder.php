@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Database\Seeders;
 
 use App\Models\Workflow;
+use App\Support\SystemTenantRegistry;
 use App\Support\TenantContext;
 use App\Support\Workflow\WorkflowPractice;
 use App\Support\Workflow\WorkflowType;
@@ -21,12 +22,9 @@ use Illuminate\Database\Seeder;
  *
  * Copilot iter 15 — multi-tenant invocation pattern:
  *
- *   The seeder writes into the tenant currently set on the
- *   request-scoped {@see TenantContext} singleton. Single-tenant
- *   deploys (the v3 default) just run
- *   `php artisan db:seed --class=BuiltInWorkflowSeeder` and pick
- *   up the `'default'` tenant. Multi-tenant deploys MUST re-invoke
- *   once per active tenant with the tenant_id set on the context:
+ *   The seeder writes into the operational tenant currently set on the
+ *   request-scoped {@see TenantContext} singleton. Callers MUST set a real
+ *   company tenant first, then invoke it once per active tenant:
  *
  *     foreach ($tenantIds as $id) {
  *         app(TenantContext::class)->set($id);
@@ -45,6 +43,11 @@ class BuiltInWorkflowSeeder extends Seeder
     public function run(): void
     {
         $tenant = app(TenantContext::class)->current();
+        if (SystemTenantRegistry::isReserved($tenant)) {
+            throw new \LogicException(
+                'BuiltInWorkflowSeeder requires an operational tenant in TenantContext.'
+            );
+        }
 
         foreach ($this->templates() as $template) {
             Workflow::updateOrCreate(

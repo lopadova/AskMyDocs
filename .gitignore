@@ -39,6 +39,8 @@
 .env.*.local
 .env.live
 *.log
+# Ephemeral build-stage handoff consumed by the Laravel Cloud deploy script.
+/.laravel-cloud-commit-message
 # Playwright
 /playwright/.auth/
 /playwright-report/

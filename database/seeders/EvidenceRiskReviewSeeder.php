@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * v8.13/P11 — seed the evidence_risk_review_logs table with two reviews for the
- * `default` tenant so the Evidence & Risk Review admin happy-path Playwright
+ * primary demo tenant so the Evidence & Risk Review admin happy-path Playwright
  * scenario reads REAL rows (R13): the reviews list renders both, the detail
  * drill-down loads one with its findings, and the tenant stamp is visible.
  *
@@ -68,14 +68,14 @@ final class EvidenceRiskReviewSeeder extends Seeder
             [
                 'artifact_id' => $artifactId,
                 'profile_key' => 'default',
-                'tenant_id' => 'default',
+                'tenant_id' => DemoSeeder::PRIMARY_TENANT,
                 'max_verdict' => $maxVerdict,
                 'risk_score' => $riskScore,
                 'findings' => json_encode($findings),
                 'claim_verdicts' => json_encode($claimVerdicts),
                 'source_tiers' => json_encode(['s1' => ['key' => 'blog', 'rank' => 2, 'label' => 'Blog', 'builtin' => true]]),
                 'budget' => json_encode(['llm_calls' => 0, 'tokens' => 0, 'heavy_checks' => 0, 'wall_seconds' => 0.01]),
-                'artifact' => json_encode(['artifact_id' => $artifactId, 'tenant_id' => 'default']),
+                'artifact' => json_encode(['artifact_id' => $artifactId, 'tenant_id' => DemoSeeder::PRIMARY_TENANT]),
                 'options' => json_encode(['dry_run' => false]),
                 'metadata' => json_encode(['llm_enabled' => false, 'heavy_checks_run' => false]),
                 'reviewed_at' => $now,

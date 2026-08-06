@@ -37,7 +37,7 @@ final class KbCitationDocumentSeeder extends Seeder
 
     public function run(): void
     {
-        app(TenantContext::class)->set('default');
+        app(TenantContext::class)->set(DemoSeeder::PRIMARY_TENANT);
 
         // Fail LOUDLY if the prerequisite admin is missing (always run after
         // DemoSeeder): /testing/seed returns 200 on a no-op, so a silent early
@@ -48,7 +48,7 @@ final class KbCitationDocumentSeeder extends Seeder
         // with a different version_hash is never accidentally updated in place.
         $doc = KnowledgeDocument::withTrashed()->updateOrCreate(
             [
-                'tenant_id' => 'default',
+                'tenant_id' => DemoSeeder::PRIMARY_TENANT,
                 'project_key' => self::PROJECT,
                 'source_path' => 'decisions/' . self::SLUG . '.md',
                 'version_hash' => hash('sha256', self::SLUG . 'v'),
@@ -75,7 +75,7 @@ final class KbCitationDocumentSeeder extends Seeder
         $doc->chunks()->delete();
         foreach (self::CHUNKS as $order => $text) {
             KnowledgeChunk::create([
-                'tenant_id' => 'default',
+                'tenant_id' => DemoSeeder::PRIMARY_TENANT,
                 'knowledge_document_id' => $doc->id,
                 'project_key' => self::PROJECT,
                 'chunk_order' => $order,
@@ -87,16 +87,16 @@ final class KbCitationDocumentSeeder extends Seeder
         }
 
         $conversation = Conversation::updateOrCreate(
-            ['tenant_id' => 'default', 'user_id' => $admin->id, 'title' => 'Source modal demo'],
+            ['tenant_id' => DemoSeeder::PRIMARY_TENANT, 'user_id' => $admin->id, 'title' => 'Source modal demo'],
             ['project_key' => self::PROJECT],
         );
         $conversation->messages()->delete();
 
         $conversation->messages()->create([
-            'tenant_id' => 'default', 'role' => 'user', 'content' => 'What did we decide for caching?',
+            'tenant_id' => DemoSeeder::PRIMARY_TENANT, 'role' => 'user', 'content' => 'What did we decide for caching?',
         ]);
         $conversation->messages()->create([
-            'tenant_id' => 'default', 'role' => 'assistant',
+            'tenant_id' => DemoSeeder::PRIMARY_TENANT, 'role' => 'assistant',
             'content' => 'We chose a Redis cache layer; open the cited decision for the details.',
             'confidence' => 90,
             'metadata' => [

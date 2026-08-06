@@ -127,10 +127,12 @@ Applied to `{document}`, `{membership}`, `{report}` in `routes/api.php`.
 
 `ResolveTenant` runs FIRST (pre-auth, prepended) so it CANNOT validate the
 header against the user. The post-auth `AuthorizeTenantHeader` middleware
-(mounted after `auth:sanctum` on every authenticated group) rejects a
-foreign `X-Tenant-Id` with 403 unless the caller holds the
-`tenant.cross-access` permission (super-admin). Never trust the header for
-tenant selection without this guard.
+(mounted after `auth:sanctum` on every operational tenant group) rejects a
+tenant unless the caller has a real `project_memberships` row there. No role,
+including `system-admin`, bypasses this check. Global `/api/system-admin/*`
+routes are deliberately outside tenant authorization and are gated separately
+by `platform.admin`. Never trust the header for tenant selection without this
+guard.
 
 ## Architecture test
 

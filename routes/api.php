@@ -31,6 +31,7 @@ use App\Http\Controllers\Api\Admin\TabularReviewStreamController;
 use App\Http\Controllers\Api\Admin\UserController;
 use App\Http\Controllers\Api\Admin\WorkflowController;
 use App\Http\Controllers\Api\Auth\AuthController;
+use App\Http\Controllers\Api\Auth\CompanyOnboardingController;
 use App\Http\Controllers\Api\Auth\PasswordResetController as ApiPasswordResetController;
 use App\Http\Controllers\Api\Auth\RegisterController;
 use App\Http\Controllers\Api\Auth\TwoFactorController;
@@ -93,6 +94,12 @@ Route::middleware('web')->prefix('auth')->group(function () {
 
         Route::get('/me', [AuthController::class, 'me'])
             ->name('api.auth.me');
+
+        // Resumable registration completion for a normal account with no
+        // operational memberships. Deliberately outside tenant.authorize:
+        // there is no tenant to authorize until this request creates one.
+        Route::post('/onboarding/company', CompanyOnboardingController::class)
+            ->name('api.auth.onboarding.company');
 
         Route::prefix('2fa')->group(function () {
             Route::post('/enable', [TwoFactorController::class, 'enable'])
@@ -475,8 +482,8 @@ Route::middleware([
         // team, over the vendor `tenants` registry. Bound by `slug` (the
         // tenant_id) — index + store + update only (no show/destroy; teams
         // are never hard-deleted from the switcher). Rename authorizes the
-        // TARGET team inside TeamRegistryService (membership OR
-        // tenant.cross-access), independent of the request's X-Tenant-Id.
+        // TARGET team inside TeamRegistryService (membership required),
+        // independent of the request's X-Tenant-Id.
         // R32 — covered by the AdminAuthorizationMatrix (`/api/admin/teams`).
         Route::apiResource('teams', \App\Http\Controllers\Api\Admin\TeamController::class)
             ->parameters(['teams' => 'slug'])
@@ -758,6 +765,47 @@ Route::middleware([
             Route::get('/scheduler-status', [MaintenanceCommandController::class, 'schedulerStatus'])
                 ->name('api.admin.commands.scheduler-status');
         });
+    });
+
+/*
+|--------------------------------------------------------------------------
+| System administration — global tenant control plane
+|--------------------------------------------------------------------------
+|
+| Deliberately NOT tenant-scoped: the registry and its memberships are the
+| objects being administered. Authentication + the platform capability are
+| mandatory; every tenant-aware query inside the service carries its explicit
+| target tenant id. R32: represented in AdminAuthorizationMatrixTest.
+|
+*/
+Route::middleware([
+    \Illuminate\Cookie\Middleware\EncryptCookies::class,
+    \Illuminate\Session\Middleware\StartSession::class,
+    'auth:sanctum',
+    'can:platform.admin',
+])
+    ->prefix('system-admin')
+    ->group(function () {
+        Route::prefix('tenants')->group(function () {
+            Route::get('/', [\App\Http\Controllers\Api\SystemAdmin\TenantControlController::class, 'index'])
+                ->name('api.system-admin.tenants.index');
+            Route::post('/availability', [\App\Http\Controllers\Api\SystemAdmin\TenantControlController::class, 'availability'])
+                ->name('api.system-admin.tenants.availability');
+            Route::post('/', [\App\Http\Controllers\Api\SystemAdmin\TenantControlController::class, 'store'])
+                ->name('api.system-admin.tenants.store');
+            Route::get('/{slug}', [\App\Http\Controllers\Api\SystemAdmin\TenantControlController::class, 'show'])
+                ->name('api.system-admin.tenants.show');
+            Route::post('/{slug}/lifecycle-preview', [\App\Http\Controllers\Api\SystemAdmin\TenantControlController::class, 'lifecyclePreview'])
+                ->name('api.system-admin.tenants.lifecycle-preview');
+            Route::patch('/{slug}', [\App\Http\Controllers\Api\SystemAdmin\TenantControlController::class, 'update'])
+                ->name('api.system-admin.tenants.update');
+        });
+
+        Route::get('/super-admins', [\App\Http\Controllers\Api\SystemAdmin\SuperAdminController::class, 'index'])
+            ->name('api.system-admin.super-admins.index');
+        Route::get('/super-admins/{user}/tenants', [\App\Http\Controllers\Api\SystemAdmin\SuperAdminController::class, 'tenants'])
+            ->whereNumber('user')
+            ->name('api.system-admin.super-admins.tenants');
     });
 
 /*

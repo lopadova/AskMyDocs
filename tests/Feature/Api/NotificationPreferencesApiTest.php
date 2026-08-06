@@ -33,7 +33,7 @@ final class NotificationPreferencesApiTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        app(TenantContext::class)->set('default');
+        app(TenantContext::class)->set('test-tenant');
     }
 
     public function test_index_returns_grid_scaffolding_when_user_has_no_rows(): void
@@ -252,7 +252,7 @@ final class NotificationPreferencesApiTest extends TestCase
             'enabled' => true,
         ]);
         $this->assertDatabaseHas('notification_preferences', [
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'user_id' => $user->id,
             'event_type' => 'kb_doc_created',
             'channel' => 'in_app',

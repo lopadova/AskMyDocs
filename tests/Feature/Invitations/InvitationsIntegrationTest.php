@@ -5,14 +5,15 @@ declare(strict_types=1);
 namespace Tests\Feature\Invitations;
 
 use App\Invitations\ProjectMembershipProvisioner;
+use App\Invitations\ProtectedRoleProvisioner;
 use App\Models\ProjectMembership;
 use App\Models\User;
 use App\Support\TenantContext;
+use Database\Seeders\RbacSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Padosoft\Invitations\Contracts\InvitedAccount;
 use Padosoft\Invitations\Contracts\Provisioner;
 use Padosoft\Invitations\Contracts\TenantResolver;
-use Padosoft\Invitations\Provisioning\SpatiePermissionProvisioner;
 use Padosoft\Invitations\Services\AccountProvisioningService;
 use Padosoft\Invitations\Support\TenantGrant;
 use Tests\TestCase;
@@ -57,7 +58,7 @@ final class InvitationsIntegrationTest extends TestCase
 
         $classes = array_map(static fn (Provisioner $p): string => $p::class, $provisioners);
 
-        $this->assertContains(SpatiePermissionProvisioner::class, $classes);
+        $this->assertContains(ProtectedRoleProvisioner::class, $classes);
         $this->assertContains(ProjectMembershipProvisioner::class, $classes);
     }
 
@@ -150,6 +151,28 @@ final class InvitationsIntegrationTest extends TestCase
         );
     }
 
+    public function test_invitation_provisioning_cannot_grant_the_system_admin_role(): void
+    {
+        $this->seed(RbacSeeder::class);
+        $user = User::create([
+            'name' => 'Invitee',
+            'email' => 'protected-role@demo.local',
+            'password' => 'secret-password',
+        ]);
+
+        app(ProtectedRoleProvisioner::class)->provision(
+            $user,
+            new TenantGrant(tenantId: 'acme', role: 'system-admin'),
+        );
+
+        $this->assertFalse($user->fresh()->hasRole('system-admin'));
+        $this->assertDatabaseHas('admin_command_audit', [
+            'user_id' => $user->id,
+            'command' => 'system-admin:invite-grant',
+            'status' => 'rejected',
+        ]);
+    }
+
     public function test_provisioning_service_resolves_with_the_full_tagged_provisioner_set(): void
     {
         // The package wires AccountProvisioningService with
@@ -169,7 +192,7 @@ final class InvitationsIntegrationTest extends TestCase
             is_array($resolved) ? $resolved : iterator_to_array($resolved),
         );
 
-        $this->assertContains(SpatiePermissionProvisioner::class, $classes);
+        $this->assertContains(ProtectedRoleProvisioner::class, $classes);
         $this->assertContains(ProjectMembershipProvisioner::class, $classes);
     }
 

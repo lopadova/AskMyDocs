@@ -184,11 +184,11 @@ final class IngestionObservabilityTest extends TestCase
     {
         $admin = $this->superAdmin();
         $installation = ConnectorInstallation::create([
-            'tenant_id' => 'default', 'connector_name' => 'google-drive',
+            'tenant_id' => 'test-tenant', 'connector_name' => 'google-drive',
             'label' => 'support', 'status' => ConnectorInstallation::STATUS_ACTIVE,
             'created_by' => $admin->id,
         ]);
-        $this->makeRun('default', $installation->id, 'support');
+        $this->makeRun('test-tenant', $installation->id, 'support');
 
         $resp = $this->actingAs($admin)
             ->getJson("/api/admin/connectors/{$installation->id}/sync-runs");

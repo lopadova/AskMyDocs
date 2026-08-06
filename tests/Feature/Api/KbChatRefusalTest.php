@@ -171,7 +171,7 @@ final class KbChatRefusalTest extends TestCase
             'project_key' => 'test',
         ])->assertOk()->assertJsonPath('refusal_reason', 'no_relevant_context');
 
-        $gap = \App\Models\KbSearchFailure::query()->forTenant('default')->sole();
+        $gap = \App\Models\KbSearchFailure::query()->forTenant('test-tenant')->sole();
         $this->assertSame('How do I rotate the signing key?', $gap->query_text);
         $this->assertSame('test', $gap->project_key);
         $this->assertSame(\App\Models\KbSearchFailure::REASON_NO_CONTEXT, $gap->reason);

@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Auth;
 
+use App\Models\User;
 use Illuminate\Foundation\Http\FormRequest;
 
 /**
@@ -13,6 +14,11 @@ use Illuminate\Foundation\Http\FormRequest;
  */
 class TokenRequest extends FormRequest
 {
+    protected function prepareForValidation(): void
+    {
+        $this->merge(['email' => User::normalizeEmail((string) $this->input('email'))]);
+    }
+
     public function authorize(): bool
     {
         return true;

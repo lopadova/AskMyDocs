@@ -83,6 +83,7 @@ final class TenantReadScopeTest extends TestCase
         // EVERY tenant a user touched (memberships, conversations, chat logs,
         // connectors). Inherently cross-tenant — the inverse of a leak.
         'app/Compliance/UserTenantResolver.php' => 'Resolves the full set of tenants a user belongs to (DSAR); cross-tenant by design.',
+        'app/Services/Auth/CompanyOnboardingEligibility.php' => 'Identity-level onboarding gate checks whether the user belongs to any operational tenant; cross-tenant by definition.',
 
         // CLI command that resolves a WidgetKey by public_key (globally unique);
         // no HTTP request context → tenant is derived from the key itself, not

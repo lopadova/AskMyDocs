@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Admin;
 use App\Http\Requests\Admin\RoleStoreRequest;
 use App\Http\Requests\Admin\RoleUpdateRequest;
 use App\Http\Resources\Admin\RoleResource;
+use App\Support\PlatformAccess;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -22,13 +23,21 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class RoleController extends Controller
 {
-    private const PROTECTED_ROLES = ['super-admin', 'admin'];
+    private const PROTECTED_ROLES = [
+        PlatformAccess::SYSTEM_ADMIN_ROLE,
+        PlatformAccess::TENANT_SUPER_ADMIN_ROLE,
+        'admin',
+    ];
 
     public function index(Request $request): AnonymousResourceCollection
     {
         $perPage = max(1, min(200, (int) $request->query('per_page', 50)));
 
         $roles = Role::query()
+            ->when(
+                ! $request->user()?->can(PlatformAccess::PLATFORM_ADMIN_PERMISSION),
+                fn ($query) => $query->where('name', '!=', PlatformAccess::SYSTEM_ADMIN_ROLE),
+            )
             ->withCount('users')
             ->with('permissions:id,name')
             ->orderBy('name')
@@ -37,8 +46,14 @@ class RoleController extends Controller
         return RoleResource::collection($roles);
     }
 
-    public function show(Role $role): RoleResource
+    public function show(Request $request, Role $role): RoleResource
     {
+        abort_if(
+            $role->name === PlatformAccess::SYSTEM_ADMIN_ROLE
+                && ! $request->user()?->can(PlatformAccess::PLATFORM_ADMIN_PERMISSION),
+            Response::HTTP_NOT_FOUND,
+        );
+
         $role->loadCount('users');
         $role->loadMissing('permissions');
 
@@ -70,6 +85,13 @@ class RoleController extends Controller
 
     public function update(RoleUpdateRequest $request, Role $role): JsonResponse
     {
+        if ($role->name === PlatformAccess::SYSTEM_ADMIN_ROLE) {
+            return response()->json(
+                ['message' => 'The system-admin role is managed only by the platform access workflow.'],
+                Response::HTTP_CONFLICT,
+            );
+        }
+
         if (in_array($role->name, self::PROTECTED_ROLES, true) && $request->has('name') && $request->input('name') !== $role->name) {
             return response()->json(
                 ['message' => sprintf('Cannot rename the system role "%s".', $role->name)],

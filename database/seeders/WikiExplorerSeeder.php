@@ -19,7 +19,7 @@ final class WikiExplorerSeeder extends Seeder
     public function run(): void
     {
         KnowledgeDocument::updateOrCreate(
-            ['tenant_id' => 'default', 'project_key' => 'eng', 'source_path' => 'domain-concepts/auto-cache.md', 'version_hash' => 'wikiexp-v1'],
+            ['tenant_id' => DemoSeeder::PRIMARY_TENANT, 'project_key' => 'eng', 'source_path' => 'domain-concepts/auto-cache.md', 'version_hash' => 'wikiexp-v1'],
             [
                 'source_type' => 'markdown', 'title' => 'Caching (auto)', 'mime_type' => 'text/markdown',
                 'status' => 'active', 'document_hash' => str_repeat('1', 64), 'is_canonical' => true,
@@ -29,7 +29,7 @@ final class WikiExplorerSeeder extends Seeder
         );
 
         KnowledgeDocument::updateOrCreate(
-            ['tenant_id' => 'default', 'project_key' => 'eng', 'source_path' => 'decisions/dec-human.md', 'version_hash' => 'wikiexp-v1'],
+            ['tenant_id' => DemoSeeder::PRIMARY_TENANT, 'project_key' => 'eng', 'source_path' => 'decisions/dec-human.md', 'version_hash' => 'wikiexp-v1'],
             [
                 'source_type' => 'markdown', 'title' => 'Human decision', 'mime_type' => 'text/markdown',
                 'status' => 'active', 'document_hash' => str_repeat('2', 64), 'is_canonical' => true,

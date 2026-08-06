@@ -3,8 +3,12 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { AuthLayout, FieldError, type FieldErrors } from './AuthLayout';
-import { register as registerAccount, me } from './auth.api';
-import { useAuthStore } from '../../lib/auth-store';
+import {
+    register as registerAccount,
+    me,
+    type RegistrationResult,
+} from './auth.api';
+import { useAuthStore, type AuthMePayload } from '../../lib/auth-store';
 import { extractAxiosErrors } from './auth-errors';
 
 const schema = z
@@ -23,7 +27,10 @@ const schema = z
 type FormValues = z.infer<typeof schema>;
 
 export type RegisterPageProps = {
-    onSuccess?: () => void;
+    onSuccess?: (result: {
+        registration: RegistrationResult;
+        me: AuthMePayload;
+    }) => void;
     onNavigateLogin?: () => void;
 };
 
@@ -53,10 +60,17 @@ export function RegisterPage({ onSuccess, onNavigateLogin }: RegisterPageProps =
         setFormError(undefined);
         setSubmitting(true);
         try {
-            await registerAccount(values);
+            const registered = await registerAccount(values);
             const mePayload = await me();
+            // Let the route choose the intent-specific destination before the
+            // auth store update wakes RedirectIfAuth's generic `/app` effect.
+            // The callback receives the fresh `/me` payload directly, so it
+            // never depends on store timing.
+            onSuccess?.({
+                registration: registered.registration,
+                me: mePayload,
+            });
             setMe(mePayload);
-            onSuccess?.();
             return;
         } catch (err) {
             const { fieldErrors: fe, message } = extractAxiosErrors(err, 'Registration failed. Check your details and try again.');

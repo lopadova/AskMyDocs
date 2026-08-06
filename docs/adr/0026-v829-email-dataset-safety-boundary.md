@@ -1,4 +1,4 @@
-# ADR 0023 — Bounded generation and CLI-only safety boundary for case-study email datasets (v8.29)
+# ADR 0026 — Bounded generation and CLI-only safety boundary for case-study email datasets (v8.29)
 
 - **Status:** Accepted
 - **Date:** 2026-07-28

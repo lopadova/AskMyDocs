@@ -8,7 +8,7 @@ import type { Team } from '../../lib/team-store';
 import type { Theme } from './hooks';
 
 export type TopbarProps = {
-    team: Team;
+    team: Team | null;
     teams: Team[];
     onTeamChange: (t: Team) => void;
     theme: Theme;
@@ -41,7 +41,9 @@ export function Topbar({
                 zIndex: 5,
             }}
         >
-            <TeamSwitcher team={team} teams={teams} onChange={onTeamChange} />
+            {team !== null && teams.length > 0 && (
+                <TeamSwitcher team={team} teams={teams} onChange={onTeamChange} />
+            )}
             <div
                 style={{
                     display: 'flex',
@@ -59,27 +61,29 @@ export function Topbar({
                 ))}
             </div>
             <div style={{ flex: 1 }} />
-            <div
-                style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 4,
-                    padding: '4px 10px',
-                    background: 'var(--bg-2)',
-                    border: '1px solid var(--panel-border)',
-                    borderRadius: 9,
-                    fontSize: 11.5,
-                    color: 'var(--fg-2)',
-                }}
-            >
-                <span className="pulse-dot" style={{ width: 6, height: 6 }} />
-                <span className="mono">All systems operational</span>
-            </div>
+            {team !== null && (
+                <div
+                    style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        padding: '4px 10px',
+                        background: 'var(--bg-2)',
+                        border: '1px solid var(--panel-border)',
+                        borderRadius: 9,
+                        fontSize: 11.5,
+                        color: 'var(--fg-2)',
+                    }}
+                >
+                    <span className="pulse-dot" style={{ width: 6, height: 6 }} />
+                    <span className="mono">All systems operational</span>
+                </div>
+            )}
             {/* v8.0/W1.4 — real notification bell wired to
               * `/api/notifications/unread-count` (30s polling) and
               * the per-user dropdown. Replaces the previous static
               * mockup. */}
-            <NotificationBell />
+            {team !== null && <NotificationBell />}
             <Tooltip label={theme === 'dark' ? 'Light mode' : 'Dark mode'}>
                 <button
                     type="button"

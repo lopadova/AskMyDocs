@@ -9,6 +9,7 @@ use App\Models\KbEdge;
 use App\Models\KnowledgeDocument;
 use App\Models\User;
 use App\Support\TenantContext;
+use Database\Seeders\DemoSeeder;
 use Database\Seeders\KbChatGraphSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
@@ -25,7 +26,7 @@ final class KbChatGraphSeederTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        app(TenantContext::class)->set('default');
+        app(TenantContext::class)->set(DemoSeeder::PRIMARY_TENANT);
         // The seeder attaches its conversation to DemoSeeder's admin user.
         User::create(['name' => 'Admin', 'email' => 'admin@demo.local', 'password' => Hash::make('x')]);
     }
@@ -34,7 +35,7 @@ final class KbChatGraphSeederTest extends TestCase
     {
         (new KbChatGraphSeeder())->run();
 
-        $conversation = Conversation::query()->forTenant('default')
+        $conversation = Conversation::query()->forTenant(DemoSeeder::PRIMARY_TENANT)
             ->where('title', 'Cache architecture (graph demo)')->sole();
         $assistant = $conversation->messages()->where('role', 'assistant')->sole();
         $citations = $assistant->metadata['citations'];
@@ -43,11 +44,11 @@ final class KbChatGraphSeederTest extends TestCase
 
         // The cited doc's 1-hop neighbour exists in the graph + as a doc.
         $this->assertTrue(
-            KbEdge::query()->forTenant('default')->where('from_node_uid', 'dec-cache-graph')
+            KbEdge::query()->forTenant(DemoSeeder::PRIMARY_TENANT)->where('from_node_uid', 'dec-cache-graph')
                 ->where('to_node_uid', 'dec-redis-graph')->exists(),
         );
         $this->assertNotNull(
-            KnowledgeDocument::query()->forTenant('default')->where('slug', 'dec-redis-graph')->first(),
+            KnowledgeDocument::query()->forTenant(DemoSeeder::PRIMARY_TENANT)->where('slug', 'dec-redis-graph')->first(),
         );
     }
 
@@ -56,8 +57,8 @@ final class KbChatGraphSeederTest extends TestCase
         (new KbChatGraphSeeder())->run();
         (new KbChatGraphSeeder())->run();
 
-        $this->assertSame(1, Conversation::query()->forTenant('default')->where('title', 'Cache architecture (graph demo)')->count());
-        $conversation = Conversation::query()->forTenant('default')->where('title', 'Cache architecture (graph demo)')->sole();
+        $this->assertSame(1, Conversation::query()->forTenant(DemoSeeder::PRIMARY_TENANT)->where('title', 'Cache architecture (graph demo)')->count());
+        $conversation = Conversation::query()->forTenant(DemoSeeder::PRIMARY_TENANT)->where('title', 'Cache architecture (graph demo)')->sole();
         // Messages are reset each run — exactly one user + one assistant.
         $this->assertSame(2, $conversation->messages()->count());
     }

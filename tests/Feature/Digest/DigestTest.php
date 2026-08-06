@@ -71,15 +71,15 @@ final class DigestTest extends TestCase
     {
         $doc = $this->seedDoc();
         KbContributionEvent::create([
-            'tenant_id' => 'default', 'user_id' => 7, 'document_id' => $doc->id,
+            'tenant_id' => 'test-tenant', 'user_id' => 7, 'document_id' => $doc->id,
             'project_key' => 'eng', 'event' => 'created', 'weight' => 5, 'created_at' => now(),
         ]);
         KbContributionEvent::create([
-            'tenant_id' => 'default', 'user_id' => 7, 'document_id' => $doc->id,
+            'tenant_id' => 'test-tenant', 'user_id' => 7, 'document_id' => $doc->id,
             'project_key' => 'eng', 'event' => 'promoted', 'weight' => 8, 'created_at' => now(),
         ]);
         KbSearchFailure::create([
-            'tenant_id' => 'default', 'project_key' => 'eng',
+            'tenant_id' => 'test-tenant', 'project_key' => 'eng',
             'query_hash' => hash('sha256', 'how to deploy'), 'normalized_query' => 'how to deploy',
             'query_text' => 'how to deploy', 'reason' => KbSearchFailure::REASON_NO_CONTEXT,
             'occurrences' => 9, 'last_seen_at' => now(),
@@ -92,7 +92,7 @@ final class DigestTest extends TestCase
 
         $payload = app(DigestComposer::class)->composeForTenant('weekly');
 
-        $this->assertSame('default', $payload->tenantId);
+        $this->assertSame('test-tenant', $payload->tenantId);
         $this->assertSame('weekly', $payload->frequency);
         $this->assertGreaterThanOrEqual(1, count($payload->newDocs));
         $this->assertSame('how to deploy', $payload->topGaps[0]['question']);
@@ -146,7 +146,7 @@ final class DigestTest extends TestCase
         $this->seedActivity();
         config()->set('askmydocs.notifications.channels.discord.url', 'https://discord.test/webhook');
 
-        $this->artisan('digest:send', ['--tenant' => 'default', '--dry-run' => true])->assertExitCode(0);
+        $this->artisan('digest:send', ['--tenant' => 'test-tenant', '--dry-run' => true])->assertExitCode(0);
 
         Mail::assertNothingQueued();
         Bus::assertNotDispatched(SendDigestWebhookJob::class);
@@ -161,13 +161,13 @@ final class DigestTest extends TestCase
         // An email-enabled recipient.
         $user = User::create(['name' => 'Eng', 'email' => 'eng-'.uniqid().'@demo.local', 'password' => Hash::make('secret123')]);
         NotificationPreference::create([
-            'tenant_id' => 'default', 'user_id' => $user->id,
+            'tenant_id' => 'test-tenant', 'user_id' => $user->id,
             'event_type' => 'kb_doc_created', 'channel' => NotificationPreference::CHANNEL_EMAIL, 'enabled' => true,
         ]);
         config()->set('askmydocs.notifications.channels.discord.url', 'https://discord.test/webhook');
         config()->set('kb.digest.ai_narrative_enabled', false);
 
-        $this->artisan('digest:send', ['--tenant' => 'default'])->assertExitCode(0);
+        $this->artisan('digest:send', ['--tenant' => 'test-tenant'])->assertExitCode(0);
 
         Mail::assertQueued(DigestMail::class);
         Bus::assertDispatched(SendDigestWebhookJob::class, fn ($job) => $job->channelName === 'discord');

@@ -39,10 +39,16 @@ use Spatie\Permission\PermissionRegistrar;
  */
 class DemoSeeder extends Seeder
 {
+    public const PRIMARY_TENANT = 'a-demo';
+
     public function run(): void
     {
-        // Guarantee roles/permissions exist before we assign them.
-        if (Role::query()->count() === 0) {
+        // Guarantee the complete canonical set exists before assignment.
+        // The system-admin data migration intentionally creates its protected
+        // role on a fresh database, so a plain `Role::count() > 0` no longer
+        // proves the tenant roles have been seeded.
+        $canonicalRoles = ['system-admin', 'super-admin', 'admin', 'dpo', 'editor', 'viewer'];
+        if (Role::query()->whereIn('name', $canonicalRoles)->count() !== count($canonicalRoles)) {
             $this->call(RbacSeeder::class);
         }
 
@@ -87,10 +93,9 @@ class DemoSeeder extends Seeder
         // the `commands.destructive` permission — a super-admin-only
         // permission per config/admin.php.
         //
-        // Note: `admin@demo.local` already has super-admin above, but
-        // we seed a DEDICATED account here so the Playwright storage
-        // state for super-admin scenarios is distinct from the
-        // admin/viewer ones. Keeps the RBAC isolation clean.
+        // Keep this tenant-level operator distinct from admin/viewer and from
+        // the system administrator below so the E2E matrix proves all three
+        // boundaries independently.
         $super = User::firstOrCreate(
             ['email' => 'super@demo.local'],
             [
@@ -102,7 +107,19 @@ class DemoSeeder extends Seeder
             $super->assignRole('super-admin');
         }
 
-        // R32 — the dpo + editor accounts complete the five-role set so the
+        // Dedicated platform operator. Keep it distinct from the tenant
+        // super-admin so E2E proves the global boundary rather than relying on
+        // a conflated account.
+        $system = User::firstOrCreate(
+            ['email' => 'system@demo.local'],
+            [
+                'name' => 'Demo System Administrator',
+                'password' => Hash::make('password'),
+            ],
+        );
+        $system->assignRole(['system-admin', 'super-admin']);
+
+        // R32 — the dpo + editor accounts complete the six-role set so the
         // per-role access-control E2E (role-access.spec.ts) and the
         // AdminAuthorizationMatrixTest can exercise every distinct allow-set.
         // dpo = privacy role (PII tooling + AI Act, no system admin);
@@ -119,48 +136,49 @@ class DemoSeeder extends Seeder
             $roleUsers[] = $roleUser;
         }
 
-        $this->seedProjectMemberships($admin);
-        $this->seedProjectMemberships($viewer);
-        $this->seedProjectMemberships($super);
-        foreach ($roleUsers as $roleUser) {
-            $this->seedProjectMemberships($roleUser);
+        $this->seedPrimaryTenant();
+
+        $ctx = app(TenantContext::class);
+        $previous = $ctx->current();
+        $ctx->set(self::PRIMARY_TENANT);
+        try {
+            $this->seedProjectMemberships($admin);
+            $this->seedProjectMemberships($viewer);
+            $this->seedProjectMemberships($super);
+            foreach ($roleUsers as $roleUser) {
+                $this->seedProjectMemberships($roleUser);
+            }
+            $this->seedKnowledgeDocuments();
+            $this->seedCanonicalGraph();
+            $this->seedConversations($admin);
+            $this->seedChatLogs($admin);
+            $this->seedProjects();
+        } finally {
+            $ctx->set($previous);
         }
-        $this->seedKnowledgeDocuments();
-        $this->seedCanonicalGraph();
-        $this->seedConversations($admin);
-        $this->seedChatLogs($admin);
-        $this->seedProjects();
-        $this->seedDefaultTenant();
+
         $this->seedAcmeTenant($admin);
 
         app(PermissionRegistrar::class)->forgetCachedPermissions();
     }
 
     /**
-     * Label row for the DEFAULT tenant in the AI Act package's own `tenants`
-     * table. The package's TenantContextMiddleware resolves the active tenant
-     * by slug from the `X-Tenant-Id` header and 404s ("tenant not found") when
-     * the slug is absent. Since v8.17 the team switcher stamps
-     * `X-Tenant-Id: default` on every admin call — including the package's
-     * `/api/admin/ai-act-compliance/*` routes — so the `default` slug MUST
-     * exist here or the whole AI Act overview returns 404. `seedAcmeTenant`
-     * already does this for `acme`; `default` was the gap. Guarded so a
-     * deployment without the AI Act package migrations still seeds the rest.
+     * Registry row for the primary operational demo company.
      */
-    private function seedDefaultTenant(): void
+    private function seedPrimaryTenant(): void
     {
         if (! Schema::hasTable('tenants')) {
             return;
         }
 
         Tenant::query()->updateOrCreate(
-            ['slug' => 'default'],
-            ['name' => 'Default', 'status' => 'active'],
+            ['slug' => self::PRIMARY_TENANT],
+            ['name' => 'Demo Company', 'status' => 'active', 'is_system' => false],
         );
     }
 
     /**
-     * Registry rows for the default-tenant projects. The migration
+     * Registry rows for the primary demo tenant projects. The migration
      * backfill runs at migrate time (before any document exists), so a
      * fresh `migrate:fresh` + seed would leave the `projects` table empty
      * even though documents reference these keys — seed them here so the
@@ -173,16 +191,16 @@ class DemoSeeder extends Seeder
             ['key' => 'engineering', 'name' => 'Engineering', 'desc' => 'Runbooks and technical standards.'],
         ] as $p) {
             \App\Models\Project::updateOrCreate(
-                ['tenant_id' => 'default', 'project_key' => $p['key']],
+                ['tenant_id' => self::PRIMARY_TENANT, 'project_key' => $p['key']],
                 ['name' => $p['name'], 'description' => $p['desc']],
             );
         }
     }
 
     /**
-     * Second tenant (`acme`) for the team-switcher E2E. Everything above
-     * stays on `default` — existing specs see no change; the bootstrap
-     * team is `default` (first in the /api/auth/me ordering).
+     * Second tenant (`acme`) for the team-switcher E2E. The primary
+     * `a-demo` slug sorts first in `/api/auth/me`, so it remains the bootstrap
+     * company without relying on the reserved `default` namespace.
      *
      * Only admin@demo.local gets an acme membership: the viewer account
      * deliberately does NOT, so the failure-path spec can assert the
@@ -239,9 +257,9 @@ class DemoSeeder extends Seeder
     }
 
     /**
-     * Two acme chat logs — strictly fewer than the five `default` ones,
+     * Two acme chat logs — strictly fewer than the five primary-demo ones,
      * so the dashboard KPI is a differentiating signal after a team
-     * switch (R16: a leaked default payload cannot equal the acme one).
+     * switch (R16: a leaked primary payload cannot equal the acme one).
      */
     private function seedAcmeChatLogs(User $admin): void
     {
@@ -277,7 +295,11 @@ class DemoSeeder extends Seeder
     {
         foreach (['hr-portal', 'engineering'] as $projectKey) {
             ProjectMembership::firstOrCreate(
-                ['user_id' => $admin->id, 'project_key' => $projectKey],
+                [
+                    'tenant_id' => self::PRIMARY_TENANT,
+                    'user_id' => $admin->id,
+                    'project_key' => $projectKey,
+                ],
                 ['role' => 'member', 'scope_allowlist' => null],
             );
         }
@@ -327,6 +349,7 @@ class DemoSeeder extends Seeder
         string $preview,
     ): void {
         $doc = KnowledgeDocument::withoutGlobalScopes()
+            ->where('tenant_id', app(TenantContext::class)->current())
             ->where('project_key', $projectKey)
             ->where('slug', $slug)
             ->first();
@@ -386,7 +409,7 @@ class DemoSeeder extends Seeder
 
     private function seedConversations(User $admin): void
     {
-        if ($admin->conversations()->count() > 0) {
+        if ($admin->conversations()->forTenant(self::PRIMARY_TENANT)->count() > 0) {
             return;
         }
 
@@ -407,7 +430,7 @@ class DemoSeeder extends Seeder
      */
     private function seedChatLogs(User $admin): void
     {
-        if (\App\Models\ChatLog::query()->count() > 0) {
+        if (\App\Models\ChatLog::query()->forTenant(self::PRIMARY_TENANT)->exists()) {
             return;
         }
 
@@ -519,7 +542,11 @@ class DemoSeeder extends Seeder
 
         foreach ($nodes as [$project, $slug, $type, $label, $sourceDocId]) {
             KbNode::updateOrCreate(
-                ['project_key' => $project, 'node_uid' => $slug],
+                [
+                    'tenant_id' => self::PRIMARY_TENANT,
+                    'project_key' => $project,
+                    'node_uid' => $slug,
+                ],
                 [
                     'node_type' => $type,
                     'label' => $label,
@@ -534,7 +561,11 @@ class DemoSeeder extends Seeder
         // neighbour + one edge — enough to exercise the full render
         // path without overwhelming the radial layout.
         KbEdge::updateOrCreate(
-            ['project_key' => 'hr-portal', 'edge_uid' => 'demo-edge-remote-pto'],
+            [
+                'tenant_id' => self::PRIMARY_TENANT,
+                'project_key' => 'hr-portal',
+                'edge_uid' => 'demo-edge-remote-pto',
+            ],
             [
                 'from_node_uid' => 'remote-work-policy',
                 'to_node_uid' => 'pto-guidelines',
@@ -555,6 +586,7 @@ class DemoSeeder extends Seeder
     private function seedPromotionAudit(string $projectKey, string $slug, string $canonicalType): void
     {
         $exists = KbCanonicalAudit::query()
+            ->forTenant(self::PRIMARY_TENANT)
             ->where('project_key', $projectKey)
             ->where('slug', $slug)
             ->where('event_type', 'promoted')

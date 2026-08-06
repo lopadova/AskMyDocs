@@ -32,7 +32,7 @@ final class EvidenceTierTriSurfaceTest extends TestCase
     {
         parent::setUp();
         $this->seed(RbacSeeder::class);
-        app(TenantContext::class)->set('default');
+        app(TenantContext::class)->set('test-tenant');
     }
 
     private function doc(array $overrides = []): KnowledgeDocument
@@ -41,7 +41,7 @@ final class EvidenceTierTriSurfaceTest extends TestCase
         $n++;
 
         return KnowledgeDocument::create(array_merge([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'docs-v3',
             'source_type' => 'markdown',
             'title' => "Doc {$n}",
@@ -121,11 +121,18 @@ final class EvidenceTierTriSurfaceTest extends TestCase
     {
         $doc = $this->doc(['evidence_tier' => null]);
 
-        $this->artisan('kb:evidence-tier', ['document' => $doc->id])
+        $this->artisan('kb:evidence-tier', [
+            'document' => $doc->id,
+            '--tenant' => 'test-tenant',
+        ])
             ->expectsOutputToContain('(not assessed)')
             ->assertSuccessful();
 
-        $this->artisan('kb:evidence-tier', ['document' => $doc->id, '--set' => 'official'])
+        $this->artisan('kb:evidence-tier', [
+            'document' => $doc->id,
+            '--set' => 'official',
+            '--tenant' => 'test-tenant',
+        ])
             ->assertSuccessful();
 
         $this->assertSame('official', $doc->fresh()->evidence_tier);
@@ -134,8 +141,15 @@ final class EvidenceTierTriSurfaceTest extends TestCase
     public function test_command_rejects_invalid_tier_and_missing_doc(): void
     {
         $doc = $this->doc();
-        $this->artisan('kb:evidence-tier', ['document' => $doc->id, '--set' => 'nonsense'])->assertFailed();
-        $this->artisan('kb:evidence-tier', ['document' => 999999])->assertFailed();
+        $this->artisan('kb:evidence-tier', [
+            'document' => $doc->id,
+            '--set' => 'nonsense',
+            '--tenant' => 'test-tenant',
+        ])->assertFailed();
+        $this->artisan('kb:evidence-tier', [
+            'document' => 999999,
+            '--tenant' => 'test-tenant',
+        ])->assertFailed();
     }
 
     // ── HTTP — admin API ───────────────────────────────────────────────

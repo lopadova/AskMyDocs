@@ -29,33 +29,17 @@ export const api: AxiosInstance = axios.create({
  * - `/api/auth/*` + `/sanctum/*`: a stale persisted team would otherwise
  *   403 the bootstrap `me()` call and lock the user out before the team
  *   list can re-sync.
+ * - `/api/system-admin/*`: the global control plane administers the tenant
+ *   registry itself; target scoping is explicit in its service queries.
  * - `/testing/*`: E2E reset/seed endpoints operate deployment-wide.
  */
-const TENANT_EXEMPT_PREFIXES = ['/api/auth/', '/sanctum/', '/testing/'];
-
-/*
- * The `default` tenant is the host's "no multi-tenancy" sentinel
- * (App\Support\TenantContext::isDefault()): ResolveTenant resolves the
- * SAME context whether the header is `default` or absent, so omitting it
- * for `default` keeps first-party R30 scoping identical. Crucially, it
- * also keeps the SPA compatible with sister-package mounts whose own
- * tenant-context middleware 404s on an unknown tenant: the AI Act package
- * (`ai-act.tenant-context`) deliberately never promotes `default` into a
- * `tenants` row (App\Compliance\TenantContextBridge), so stamping
- * `X-Tenant-Id: default` on `/api/admin/ai-act-compliance/*` 404'd that
- * admin screen on every single-tenant deployment. With no header those
- * package middlewares pass through to the host config fallback (their
- * documented "no header" branch). Real tenants (e.g. `acme`, which DO get
- * a package `tenants` row) still send the header and stay scoped.
- */
-const DEFAULT_TENANT = 'default';
+const TENANT_EXEMPT_PREFIXES = ['/api/auth/', '/api/system-admin/', '/sanctum/', '/testing/'];
 
 api.interceptors.request.use((config) => {
     const team = useTeamStore.getState().currentTeam;
     const url = config.url ?? '';
     if (
         team !== null &&
-        team !== DEFAULT_TENANT &&
         !TENANT_EXEMPT_PREFIXES.some((p) => url.startsWith(p))
     ) {
         // config.headers can be undefined for ad-hoc request configs; initialise

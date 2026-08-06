@@ -24,9 +24,19 @@ export type RegisterInput = {
     invite_code: string;
 };
 
-export async function register(input: RegisterInput): Promise<LoginResponse> {
+export type RegistrationResult = {
+    intent: 'company_bootstrap' | 'tenant_join';
+    target_tenant: string | null;
+    onboarding_required: boolean;
+};
+
+export type RegisterResponse = LoginResponse & {
+    registration: RegistrationResult;
+};
+
+export async function register(input: RegisterInput): Promise<RegisterResponse> {
     await ensureCsrfCookie();
-    const { data } = await api.post<LoginResponse>('/api/auth/register', input);
+    const { data } = await api.post<RegisterResponse>('/api/auth/register', input);
     return data;
 }
 
@@ -37,6 +47,38 @@ export async function logout(): Promise<void> {
 
 export async function me(): Promise<AuthMePayload> {
     const { data } = await api.get<AuthMePayload>('/api/auth/me');
+    return data;
+}
+
+export type CompanyOnboardingInput = {
+    company_name: string;
+    tenant_slug?: string;
+    project_key?: string;
+};
+
+export type CompanyOnboardingResponse = {
+    data: {
+        tenant: {
+            slug: string;
+            name: string;
+            hash: string;
+        };
+        project: {
+            project_key: string;
+            name: string;
+            membership_role: 'owner';
+        };
+        onboarding_required: false;
+    };
+};
+
+export async function completeCompanyOnboarding(
+    input: CompanyOnboardingInput,
+): Promise<CompanyOnboardingResponse> {
+    const { data } = await api.post<CompanyOnboardingResponse>(
+        '/api/auth/onboarding/company',
+        input,
+    );
     return data;
 }
 

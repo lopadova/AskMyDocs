@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Admin;
 
+use App\Support\PlatformAccess;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -29,7 +30,13 @@ class RoleUpdateRequest extends FormRequest
                 Rule::unique('roles', 'name')->ignore($roleId),
             ],
             'permissions' => ['sometimes', 'array'],
-            'permissions.*' => ['string', Rule::exists('permissions', 'name')],
+            'permissions.*' => [
+                'string',
+                Rule::exists('permissions', 'name'),
+                Rule::notIn([
+                    PlatformAccess::PLATFORM_ADMIN_PERMISSION,
+                ]),
+            ],
         ];
     }
 }

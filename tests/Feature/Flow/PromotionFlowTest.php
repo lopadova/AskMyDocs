@@ -16,6 +16,7 @@ use Padosoft\LaravelFlow\ApprovalTokenManager;
 use Padosoft\LaravelFlow\Facades\Flow;
 use Padosoft\LaravelFlow\FlowExecutionOptions;
 use Padosoft\LaravelFlow\FlowRun;
+use Padosoft\LaravelFlow\Models\FlowWebhookOutboxRecord;
 use Tests\TestCase;
 
 /**
@@ -48,12 +49,12 @@ final class PromotionFlowTest extends TestCase
         $run = Flow::execute(
             PromotionFlow::NAME,
             [
-                'tenant_id' => 'default',
+                'tenant_id' => 'test-tenant',
                 'project_key' => 'acme',
                 'markdown' => $this->validDecision('dec-x'),
                 'title' => 'Decision X',
             ],
-            FlowExecutionOptions::make(correlationId: 'default'),
+            FlowExecutionOptions::make(correlationId: 'test-tenant'),
         );
 
         // Should pause at the approval gate before any write hits disk.
@@ -89,11 +90,11 @@ final class PromotionFlowTest extends TestCase
         $run = Flow::execute(
             PromotionFlow::NAME,
             [
-                'tenant_id' => 'default',
+                'tenant_id' => 'test-tenant',
                 'project_key' => 'acme',
                 'markdown' => "---\ntype: decision\nstatus: accepted\n---\n\n# Missing slug",
             ],
-            FlowExecutionOptions::make(correlationId: 'default'),
+            FlowExecutionOptions::make(correlationId: 'test-tenant'),
         );
 
         $this->assertNotSame(FlowRun::STATUS_PAUSED, $run->status);
@@ -109,11 +110,11 @@ final class PromotionFlowTest extends TestCase
         $run = Flow::execute(
             PromotionFlow::NAME,
             [
-                'tenant_id' => 'default',
+                'tenant_id' => 'test-tenant',
                 'project_key' => 'acme',
                 'markdown' => $this->validDecision('dec-x'),
             ],
-            FlowExecutionOptions::make(correlationId: 'default'),
+            FlowExecutionOptions::make(correlationId: 'test-tenant'),
         );
 
         $this->assertSame(FlowRun::STATUS_PAUSED, $run->status);
@@ -193,6 +194,18 @@ final class PromotionFlowTest extends TestCase
 
         $runRow = DB::table('flow_runs')->where('id', $run->id)->first();
         $this->assertSame('tenant-x', $runRow->tenant_id);
+
+        $approvalRow = DB::table('flow_approvals')->where('run_id', $run->id)->first();
+        $this->assertNotNull($approvalRow);
+        $this->assertSame('tenant-x', $approvalRow->tenant_id);
+
+        $outbox = FlowWebhookOutboxRecord::create([
+            'run_id' => $run->id,
+            'event' => 'flow.paused',
+            'status' => FlowWebhookOutboxRecord::STATUS_PENDING,
+            'payload' => [],
+        ]);
+        $this->assertSame('tenant-x', $outbox->tenant_id);
     }
 
     private function validDecision(string $slug): string

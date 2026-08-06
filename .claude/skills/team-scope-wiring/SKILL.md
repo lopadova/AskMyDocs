@@ -14,9 +14,9 @@ sincronizzata da `useAuthStore.setMe` a ogni bootstrap/login leggendo la
 chiave `teams` di `GET /api/auth/me` (costruita da
 `app/Services/Auth/UserTeamsResolver.php`).
 
-Ogni team ha un **hash di routing univoco** (BE `app/Support/TeamHash.php`
+Ogni team operativo ha un **hash di routing univoco** (BE `app/Support/TeamHash.php`
 = `substr(sha256(tenant_id), 0, 12)`, esposto nella chiave `teams` di
-`/api/auth/me`). **Tutte** le rotte autenticate vivono sotto
+`/api/auth/me`). Le rotte autenticate **tenant-scoped** vivono sotto
 `/app/{teamHash}/…`. L'URL è la **fonte di verità** del team attivo:
 `TeamGate` (in `frontend/src/routes/index.tsx`) possiede il segmento
 `$teamHash`, sincronizza lo store sull'hash dell'URL e, se il segmento
@@ -30,8 +30,9 @@ Quattro meccanismi rendono il cablaggio "gratis" per la maggior parte delle pagi
 1. **Header automatico** — l'interceptor in `frontend/src/lib/api.ts`
    timbra `X-Tenant-Id` su ogni richiesta dell'axios condiviso (esclusi
    `/api/auth/`, `/sanctum/`, `/testing/`). Lato BE `ResolveTenant` lo
-   risolve nel `TenantContext`; `AuthorizeTenantHeader` autorizza via
-   membership (`project_memberships` nel tenant) o `tenant.cross-access`.
+   risolve nel `TenantContext`; `AuthorizeTenantHeader` richiede sempre una
+   membership reale (`project_memberships` nel tenant). Le route globali
+   `/api/system-admin/*` sono escluse dall'header e protette da `platform.admin`.
 2. **URL hash-prefissato** — il segmento `{teamHash}` è in ogni rotta;
    un deep-link a `/app/{altroHash}/…` cambia team da solo via TeamGate.
 3. **Cache flush** — `switchTeam()` fa `queryClient.cancelQueries()` +

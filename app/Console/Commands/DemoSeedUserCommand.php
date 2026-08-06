@@ -7,6 +7,7 @@ namespace App\Console\Commands;
 use App\Models\Project;
 use App\Models\ProjectMembership;
 use App\Models\User;
+use App\Support\PlatformAccess;
 use App\Support\TenantContext;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Schema;
@@ -114,6 +115,12 @@ class DemoSeedUserCommand extends Command
 
     private function assignRole(User $user, string $roleName): void
     {
+        if ($roleName === PlatformAccess::SYSTEM_ADMIN_ROLE) {
+            $this->warn("role    : 'system-admin' is protected — use `php artisan system-admin:grant` instead. Skipped.");
+
+            return;
+        }
+
         $exists = Role::where('name', $roleName)
             ->where('guard_name', 'web')
             ->exists();

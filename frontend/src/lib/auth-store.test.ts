@@ -20,12 +20,14 @@ describe('useAuthStore', () => {
             roles: ['super-admin'],
             permissions: ['kb.read.any'],
             projects: [{ project_key: 'hr-portal', role: 'admin', scope: null }],
+            onboarding: { required: true, can_create_company: true },
         });
         const s = useAuthStore.getState();
         expect(s.user?.name).toBe('Elena');
         expect(s.roles).toEqual(['super-admin']);
         expect(s.permissions).toEqual(['kb.read.any']);
         expect(s.projects).toHaveLength(1);
+        expect(s.onboarding.required).toBe(true);
         expect(s.loading).toBe(false);
     });
 
@@ -40,6 +42,7 @@ describe('useAuthStore', () => {
         const s = useAuthStore.getState();
         expect(s.user).toBeNull();
         expect(s.roles).toHaveLength(0);
+        expect(s.onboarding.required).toBe(false);
         expect(s.loading).toBe(false);
     });
 

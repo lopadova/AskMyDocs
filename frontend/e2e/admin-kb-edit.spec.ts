@@ -104,12 +104,14 @@ test.describe('Admin KB Source Editor', () => {
         const content = cm.locator('.cm-content');
         await content.click();
         // Replace the whole buffer with a new document that has an invalid
-        // `status` value. Select-all + delete + retype.
-        await page.keyboard.press('Control+A');
-        await page.keyboard.press('Delete');
+        // `status` value. Select-all must use the host OS shortcut: Control+A
+        // only moves the caret on macOS and previously let this test save a
+        // partially-edited, non-canonical document instead of exercising 422.
+        await content.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
+        await content.press('Backspace');
         const invalid =
             '---\nid: dec-x\nslug: remote-work-policy\ntype: decision\nstatus: NOT_A_VALID_STATUS\n---\n\n# body\n';
-        await page.keyboard.type(invalid);
+        await content.pressSequentially(invalid);
 
         await page.getByTestId('kb-editor-save').click();
         await expect(page.getByTestId('kb-editor-error-frontmatter')).toBeVisible({

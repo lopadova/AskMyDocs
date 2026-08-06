@@ -5,8 +5,10 @@ namespace Tests\Feature\Api\Auth;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Once;
 use Tests\TestCase;
 
 class LoginTest extends TestCase
@@ -54,6 +56,28 @@ class LoginTest extends TestCase
         $this->assertTrue(Auth::check());
     }
 
+    public function test_login_matches_a_mixed_case_legacy_email_before_the_normalized_column_exists(): void
+    {
+        $user = $this->makeUser();
+        $migration = require dirname(__DIR__, 4).'/database/migrations/2026_07_27_000001_add_email_normalized_to_users_table.php';
+        $migration->down();
+        Once::flush();
+        DB::table('users')->where('id', $user->id)->update(['email' => 'Legacy.User@Example.com']);
+
+        try {
+            $response = $this->postJson('/api/auth/login', [
+                'email' => 'legacy.user@example.com',
+                'password' => 'secret123',
+            ]);
+        } finally {
+            $migration->up();
+            Once::flush();
+        }
+
+        $response->assertOk()->assertJsonPath('user.id', $user->id);
+        $this->assertAuthenticatedAs($user);
+    }
+
     public function test_login_with_wrong_password_returns_422(): void
     {
         $this->makeUser();
@@ -64,6 +88,19 @@ class LoginTest extends TestCase
         ]);
 
         $response->assertStatus(422)->assertJsonValidationErrors(['email']);
+        $this->assertFalse(Auth::check());
+    }
+
+    public function test_inactive_account_cannot_log_in(): void
+    {
+        $user = $this->makeUser();
+        $user->update(['is_active' => false]);
+
+        $this->postJson('/api/auth/login', [
+            'email' => 'TEST@EXAMPLE.COM',
+            'password' => 'secret123',
+        ])->assertStatus(422)->assertJsonValidationErrors(['email']);
+
         $this->assertFalse(Auth::check());
     }
 

@@ -5,9 +5,11 @@ namespace App\Http\Controllers\Api\Admin;
 use App\Http\Requests\Admin\UserStoreRequest;
 use App\Http\Requests\Admin\UserUpdateRequest;
 use App\Http\Resources\Admin\UserResource;
+use App\Models\ProjectMembership;
 use App\Models\User;
 use App\Notifications\NotificationPreferencesInitializer;
 use App\Support\LikeEscaper;
+use App\Support\PlatformAccess;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -38,7 +40,18 @@ class UserController extends Controller
 {
     public function index(Request $request): AnonymousResourceCollection
     {
-        $query = User::query();
+        $tenantId = app(TenantContext::class)->current();
+        $query = User::query()->whereHas(
+            'projectMemberships',
+            fn ($memberships) => $memberships->where('tenant_id', $tenantId),
+        );
+
+        if (! $request->user()?->can(PlatformAccess::PLATFORM_ADMIN_PERMISSION)) {
+            $query->whereDoesntHave(
+                'roles',
+                fn ($roles) => $roles->where('name', PlatformAccess::SYSTEM_ADMIN_ROLE),
+            );
+        }
 
         if ($request->boolean('with_trashed')) {
             $query->withTrashed();
@@ -78,8 +91,11 @@ class UserController extends Controller
         return UserResource::collection($users);
     }
 
-    public function show(User $user): UserResource
+    public function show(Request $request, User $user): UserResource
     {
+        $this->abortUnlessMemberOfCurrentTenant($user);
+        $this->abortIfHiddenSystemAdmin($request, $user);
+
         $user->loadMissing('roles', 'permissions');
 
         return new UserResource($user);
@@ -104,6 +120,13 @@ class UserController extends Controller
             $roles = $data['roles'] ?? ['viewer'];
             $user->syncRoles($roles);
 
+            ProjectMembership::create([
+                'tenant_id' => $tenants->current(),
+                'user_id' => $user->id,
+                'project_key' => $data['initial_project_key'],
+                'role' => $data['membership_role'],
+            ]);
+
             // v8.0/W2.3 — initialise `notification_preferences` from the
             // active tenant's baseline so the dispatcher has rows to
             // consult on the user's very first event. Idempotent at
@@ -122,6 +145,17 @@ class UserController extends Controller
 
     public function update(UserUpdateRequest $request, User $user): JsonResponse
     {
+        $this->abortUnlessMemberOfCurrentTenant($user);
+        $this->abortIfHiddenSystemAdmin($request, $user);
+
+        if ($user->hasRole(PlatformAccess::SYSTEM_ADMIN_ROLE, 'web')) {
+            return $this->protectedSystemAdminResponse();
+        }
+
+        if ($this->hasMembershipOutsideCurrentTenant($user)) {
+            return $this->crossTenantIdentityResponse();
+        }
+
         $data = $request->validated();
 
         // M2 (R21) — the last-super-admin guard + the role mutation run in
@@ -130,8 +164,10 @@ class UserController extends Controller
         // guard aborts with 409 instead of returning a JsonResponse from
         // inside the closure (which mixed HTTP concerns into the txn).
         DB::transaction(function () use ($data, $user, $request) {
+            User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
+
             if ($request->has('roles') && $this->wouldRemoveLastSuperAdmin($user, $data['roles'] ?? [])) {
-                abort(Response::HTTP_CONFLICT, 'Cannot remove the last super-admin role.');
+                abort(Response::HTTP_CONFLICT, 'Cannot remove the last super-admin role for this tenant.');
             }
 
             $fields = array_intersect_key($data, array_flip(['name', 'email', 'is_active']));
@@ -154,6 +190,17 @@ class UserController extends Controller
 
     public function destroy(Request $request, User $user): JsonResponse
     {
+        $this->abortUnlessMemberOfCurrentTenant($user);
+        $this->abortIfHiddenSystemAdmin($request, $user);
+
+        if ($user->hasRole(PlatformAccess::SYSTEM_ADMIN_ROLE, 'web')) {
+            return $this->protectedSystemAdminResponse();
+        }
+
+        if ($this->hasMembershipOutsideCurrentTenant($user)) {
+            return $this->crossTenantIdentityResponse();
+        }
+
         if ($request->user() !== null && $request->user()->id === $user->id) {
             return response()->json(
                 ['message' => 'You cannot delete your own account.'],
@@ -166,8 +213,10 @@ class UserController extends Controller
         // M2 (R21) — guard + delete inside one locked transaction so two
         // concurrent deletes of different super-admins can't both pass.
         DB::transaction(function () use ($user, $force) {
+            User::withTrashed()->whereKey($user->id)->lockForUpdate()->firstOrFail();
+
             if ($this->wouldRemoveLastSuperAdmin($user, [])) {
-                abort(Response::HTTP_CONFLICT, 'Cannot delete the last super-admin user.');
+                abort(Response::HTTP_CONFLICT, 'Cannot delete the last super-admin user for this tenant.');
             }
 
             if ($force) {
@@ -183,16 +232,37 @@ class UserController extends Controller
         return response()->json(null, Response::HTTP_NO_CONTENT);
     }
 
-    public function restore(int $id): JsonResponse
+    public function restore(Request $request, int $id): JsonResponse
     {
         $user = User::onlyTrashed()->findOrFail($id);
+        $this->abortUnlessMemberOfCurrentTenant($user);
+        $this->abortIfHiddenSystemAdmin($request, $user);
+        if ($user->hasRole(PlatformAccess::SYSTEM_ADMIN_ROLE, 'web')) {
+            return $this->protectedSystemAdminResponse();
+        }
+
+        if ($this->hasMembershipOutsideCurrentTenant($user)) {
+            return $this->crossTenantIdentityResponse();
+        }
+
         $user->restore();
 
         return (new UserResource($user->fresh(['roles'])))->response();
     }
 
-    public function toggleActive(Request $request, User $user): UserResource
+    public function toggleActive(Request $request, User $user): UserResource|JsonResponse
     {
+        $this->abortUnlessMemberOfCurrentTenant($user);
+        $this->abortIfHiddenSystemAdmin($request, $user);
+
+        if ($user->hasRole(PlatformAccess::SYSTEM_ADMIN_ROLE, 'web')) {
+            return $this->protectedSystemAdminResponse();
+        }
+
+        if ($this->hasMembershipOutsideCurrentTenant($user)) {
+            return $this->crossTenantIdentityResponse();
+        }
+
         $next = $request->has('is_active')
             ? $request->boolean('is_active')
             : ! $user->is_active;
@@ -203,8 +273,11 @@ class UserController extends Controller
         return new UserResource($user->fresh(['roles']));
     }
 
-    public function resendInvite(User $user): JsonResponse
+    public function resendInvite(Request $request, User $user): JsonResponse
     {
+        $this->abortUnlessMemberOfCurrentTenant($user);
+        $this->abortIfHiddenSystemAdmin($request, $user);
+
         // M1 — invite-mail delivery is NOT implemented yet (roadmap: admin
         // invite resend email). Do not pretend an email went out: log a
         // warning so operators can see the no-op, and return an honest
@@ -223,7 +296,7 @@ class UserController extends Controller
 
     /**
      * True when syncing `$newRoles` onto `$user` would leave zero
-     * super-admins across the system.
+     * super-admins that hold a membership in the active tenant.
      *
      * @param  array<int,string>  $newRoles  target role list (post-sync).
      */
@@ -256,6 +329,65 @@ class UserController extends Controller
             return false;
         }
 
-        return $role->users()->where('users.id', '!=', $user->id)->count() === 0;
+        $tenantId = app(TenantContext::class)->current();
+
+        return $role->users()
+            ->where('users.id', '!=', $user->id)
+            ->whereHas(
+                'projectMemberships',
+                fn ($memberships) => $memberships->where('tenant_id', $tenantId),
+            )
+            ->count() === 0;
+    }
+
+    private function abortUnlessMemberOfCurrentTenant(User $user): void
+    {
+        $tenantId = app(TenantContext::class)->current();
+
+        abort_unless(
+            ProjectMembership::query()
+                ->forTenant($tenantId)
+                ->where('user_id', $user->id)
+                ->exists(),
+            Response::HTTP_NOT_FOUND,
+        );
+    }
+
+    private function hasMembershipOutsideCurrentTenant(User $user): bool
+    {
+        $tenantId = app(TenantContext::class)->current();
+
+        // Deliberately unscoped cross-tenant identity check. A tenant surface
+        // must not mutate global identity fields when another tenant also
+        // depends on that same user.
+        return DB::table('project_memberships')
+            ->where('user_id', $user->id)
+            ->where('tenant_id', '!=', $tenantId)
+            ->exists();
+    }
+
+    private function abortIfHiddenSystemAdmin(Request $request, User $user): void
+    {
+        abort_if(
+            $user->hasRole(PlatformAccess::SYSTEM_ADMIN_ROLE, 'web')
+                && ! $request->user()?->can(PlatformAccess::PLATFORM_ADMIN_PERMISSION),
+            Response::HTTP_NOT_FOUND,
+        );
+    }
+
+    private function protectedSystemAdminResponse(): JsonResponse
+    {
+        return response()->json(
+            ['message' => 'System administrator accounts are managed only through the platform access workflow.'],
+            Response::HTTP_CONFLICT,
+        );
+    }
+
+    private function crossTenantIdentityResponse(): JsonResponse
+    {
+        return response()->json([
+            'error' => 'cross_tenant_identity',
+            'message' => 'This identity belongs to multiple tenants and must be managed through a global workflow.',
+        ], Response::HTTP_CONFLICT);
     }
 }
