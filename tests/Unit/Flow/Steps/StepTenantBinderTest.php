@@ -99,7 +99,7 @@ final class StepTenantBinderTest extends TestCase
     {
         $tenantContext = $this->app->make(TenantContext::class);
         $tenantContext->reset();
-        $this->assertSame('default', $tenantContext->current());
+        $this->assertSame('test-tenant', $tenantContext->current());
 
         $context = new FlowContext(
             flowRunId: 'unit-run-happy',

@@ -26,7 +26,8 @@ type Tab = 'profile' | 'roles' | 'memberships';
 
 /*
  * Slide-in drawer — three tabs: Profile / Roles / Project memberships.
- * Create-mode only shows Profile (no membership until the user exists).
+ * Create-mode only shows Profile; its initial project + membership role
+ * fields create the first membership atomically with the identity.
  * Profile tab hosts the UserForm; the Roles tab is collapsed into the
  * form role chips to avoid a duplicate UI, but a dedicated preview
  * makes the tab non-trivial so the three-tab shape matches the spec.
@@ -67,6 +68,8 @@ export function UserDrawer({
                     password: values.password,
                     is_active: values.is_active,
                     roles: values.roles,
+                    initial_project_key: values.initial_project_key,
+                    membership_role: values.membership_role,
                 });
                 toast.success(`User ${created.email} created`, 'toast-user-created');
                 onClose();
@@ -233,6 +236,7 @@ export function UserDrawer({
                                 mode={mode}
                                 initial={user}
                                 roles={roles}
+                                projectKeys={projectKeys}
                                 onSubmit={handleSubmit}
                                 submitting={createM.isPending || updateM.isPending}
                                 serverErrors={serverErrors}

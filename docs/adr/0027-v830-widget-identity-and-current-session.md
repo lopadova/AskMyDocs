@@ -1,4 +1,4 @@
-# ADR 0023 — Audited widget identity credentials and explicit current-session restore (v8.30)
+# ADR 0027 — Audited widget identity credentials and explicit current-session restore (v8.30)
 
 - **Status:** Accepted
 - **Date:** 2026-07-28

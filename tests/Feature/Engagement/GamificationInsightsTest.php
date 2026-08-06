@@ -48,7 +48,7 @@ final class GamificationInsightsTest extends TestCase
     private function doc(string $project, bool $canonical, string $status = 'accepted', ?string $evidence = 'primary'): KnowledgeDocument
     {
         return KnowledgeDocument::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => $project,
             'source_type' => 'markdown',
             'title' => 'Doc '.uniqid(),
@@ -70,7 +70,7 @@ final class GamificationInsightsTest extends TestCase
     private function event(int $userId, string $event, string $project, ?int $docId): void
     {
         KbContributionEvent::create([
-            'tenant_id' => 'default', 'user_id' => $userId, 'document_id' => $docId,
+            'tenant_id' => 'test-tenant', 'user_id' => $userId, 'document_id' => $docId,
             'project_key' => $project, 'event' => $event,
             'weight' => KbContributionEvent::WEIGHTS[$event] ?? 1, 'created_at' => now(),
         ]);
@@ -109,7 +109,7 @@ final class GamificationInsightsTest extends TestCase
         $this->assertSame(1, $result['tenant']);
 
         $this->assertDatabaseHas('kb_gamification_insights', [
-            'tenant_id' => 'default', 'scope_type' => 'user', 'scope_id' => (string) $u->id, 'period_label' => '2026-W25', 'model' => null,
+            'tenant_id' => 'test-tenant', 'scope_type' => 'user', 'scope_id' => (string) $u->id, 'period_label' => '2026-W25', 'model' => null,
         ]);
         $this->assertDatabaseHas('kb_gamification_insights', [
             'scope_type' => 'project', 'scope_id' => 'eng',
@@ -220,7 +220,7 @@ final class GamificationInsightsTest extends TestCase
         $u = $this->user();
         $this->event($u->id, 'created', 'eng', $this->doc('eng', true)->id);
 
-        $this->artisan('gamification:narrate', ['--tenant' => 'default', '--period' => '2026-W25'])->assertExitCode(0);
+        $this->artisan('gamification:narrate', ['--tenant' => 'test-tenant', '--period' => '2026-W25'])->assertExitCode(0);
 
         $this->assertDatabaseHas('kb_gamification_insights', ['scope_type' => 'user', 'scope_id' => (string) $u->id]);
     }

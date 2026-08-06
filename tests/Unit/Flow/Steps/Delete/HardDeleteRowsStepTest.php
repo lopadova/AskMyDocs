@@ -53,7 +53,7 @@ final class HardDeleteRowsStepTest extends TestCase
         return new FlowContext(
             flowRunId: 'hard-test',
             definitionName: 'kb.delete',
-            input: ['tenant_id' => 'default', 'force' => $force],
+            input: ['tenant_id' => 'test-tenant', 'force' => $force],
             stepOutputs: [
                 'load-document' => [
                     'found' => true,

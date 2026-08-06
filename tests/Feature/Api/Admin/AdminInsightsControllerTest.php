@@ -7,6 +7,7 @@ namespace Tests\Feature\Api\Admin;
 use App\Models\AdminCommandAudit;
 use App\Models\AdminInsightsSnapshot;
 use App\Models\KnowledgeDocument;
+use App\Models\ProjectMembership;
 use App\Models\User;
 use Database\Seeders\RbacSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -230,6 +231,7 @@ class AdminInsightsControllerTest extends TestCase
     public function test_document_suggestions_404_for_foreign_tenant_doc(): void
     {
         $super = $this->makeSuperAdmin();
+        $this->grantTenant($super, 'acme');
 
         // Document owned by tenant 'umbrella'.
         $foreign = $this->makeDocForTenant('umbrella');
@@ -259,6 +261,7 @@ class AdminInsightsControllerTest extends TestCase
     public function test_document_suggestions_resolves_own_tenant_doc(): void
     {
         $super = $this->makeSuperAdmin();
+        $this->grantTenant($super, 'acme');
 
         $own = $this->makeDocForTenant('acme', ['metadata' => ['tags' => ['cache']]]);
         $own->chunks()->create([
@@ -281,6 +284,16 @@ class AdminInsightsControllerTest extends TestCase
             ->getJson("/api/admin/insights/document/{$own->id}/ai-suggestions")
             ->assertOk()
             ->assertJsonPath('data.document_id', $own->id);
+    }
+
+    private function grantTenant(User $user, string $tenantId): void
+    {
+        ProjectMembership::create([
+            'tenant_id' => $tenantId,
+            'user_id' => $user->id,
+            'project_key' => 'insights',
+            'role' => 'admin',
+        ]);
     }
 
     // ------------------------------------------------------------------

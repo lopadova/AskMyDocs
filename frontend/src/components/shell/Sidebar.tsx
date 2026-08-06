@@ -3,6 +3,7 @@ import { Icon } from '../Icons';
 import { Avatar } from './Avatar';
 import { NAV_GROUPS, type SidebarSection } from './nav-config';
 import type { SeedUser } from '../../lib/seed';
+import type { AuthFeatures } from '../../lib/auth-store';
 
 export type { SidebarSection } from './nav-config';
 
@@ -14,6 +15,8 @@ export type SidebarProps = {
     collapsed?: boolean;
     user: SeedUser;
     projectCount: number;
+    features?: AuthFeatures;
+    hasTenants?: boolean;
 };
 
 /*
@@ -22,8 +25,26 @@ export type SidebarProps = {
  * appears twice. Groups default to expanded; the group that owns the active
  * section is always forced open so the current page is never hidden.
  */
-export function Sidebar({ active, onNav, collapsed = false, user, projectCount }: SidebarProps) {
-    const activeGroupId = NAV_GROUPS.find((g) => g.items.some((i) => i.id === active))?.id;
+export function Sidebar({
+    active,
+    onNav,
+    collapsed = false,
+    user,
+    projectCount,
+    features = {},
+    hasTenants = true,
+}: SidebarProps) {
+    const visibleGroups = NAV_GROUPS
+        .map((group) => ({
+            ...group,
+            items: group.items.filter((item) =>
+                (item.roles === undefined || item.roles.includes(user.role))
+                && (item.feature === undefined || features[item.feature] === true)
+                && (hasTenants || item.scope === 'system'),
+            ),
+        }))
+        .filter((group) => group.items.length > 0);
+    const activeGroupId = visibleGroups.find((g) => g.items.some((i) => i.id === active))?.id;
     const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
 
     // The active group is force-open (so the current page is never hidden), so
@@ -102,7 +123,7 @@ export function Sidebar({ active, onNav, collapsed = false, user, projectCount }
                 </button>
             </div>
             <nav style={{ flex: 1, overflow: 'auto', padding: '4px 10px 10px' }}>
-                {NAV_GROUPS.map((group) => {
+                {visibleGroups.map((group) => {
                     // The active section's group is always shown; user toggle wins
                     // otherwise. In icon-collapsed mode there are no group headers
                     // to re-expand with, so force every group open — a group can

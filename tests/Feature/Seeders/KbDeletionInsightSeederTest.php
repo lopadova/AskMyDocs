@@ -7,6 +7,7 @@ namespace Tests\Feature\Seeders;
 use App\Models\KbDocAnalysis;
 use App\Models\KnowledgeDocument;
 use App\Support\TenantContext;
+use Database\Seeders\DemoSeeder;
 use Database\Seeders\KbDeletionInsightSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -23,7 +24,7 @@ final class KbDeletionInsightSeederTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        app(TenantContext::class)->set('default');
+        app(TenantContext::class)->set(DemoSeeder::PRIMARY_TENANT);
     }
 
     public function test_it_seeds_a_soft_deleted_doc_and_a_deleted_analysis(): void
@@ -34,13 +35,13 @@ final class KbDeletionInsightSeederTest extends TestCase
             ->where('source_path', 'decisions/dec-cache-v1.md')
             ->sole();
         $this->assertTrue($doc->trashed(), 'the seeded doc must be soft-deleted');
-        $this->assertSame('default', $doc->tenant_id);
+        $this->assertSame(DemoSeeder::PRIMARY_TENANT, $doc->tenant_id);
 
-        $row = KbDocAnalysis::query()->forTenant('default')->where('knowledge_document_id', $doc->id)->sole();
+        $row = KbDocAnalysis::query()->forTenant(DemoSeeder::PRIMARY_TENANT)->where('knowledge_document_id', $doc->id)->sole();
         $this->assertSame(KbDocAnalysis::TRIGGER_DELETED, $row->trigger);
         $this->assertSame(KbDocAnalysis::STATUS_COMPLETED, $row->status);
         $this->assertSame(1, $row->impacted_count);
-        $this->assertSame('default', $row->tenant_id);
+        $this->assertSame(DemoSeeder::PRIMARY_TENANT, $row->tenant_id);
         $this->assertSame('update: drop the link to dec-cache-v1', $row->analysis_json['impacted_docs'][0]['suggested_action']);
     }
 
@@ -49,7 +50,7 @@ final class KbDeletionInsightSeederTest extends TestCase
         (new KbDeletionInsightSeeder())->run();
         (new KbDeletionInsightSeeder())->run();
 
-        $this->assertSame(1, KnowledgeDocument::withTrashed()->forTenant('default')->where('source_path', 'decisions/dec-cache-v1.md')->count());
-        $this->assertSame(1, KbDocAnalysis::query()->forTenant('default')->where('trigger', KbDocAnalysis::TRIGGER_DELETED)->count());
+        $this->assertSame(1, KnowledgeDocument::withTrashed()->forTenant(DemoSeeder::PRIMARY_TENANT)->where('source_path', 'decisions/dec-cache-v1.md')->count());
+        $this->assertSame(1, KbDocAnalysis::query()->forTenant(DemoSeeder::PRIMARY_TENANT)->where('trigger', KbDocAnalysis::TRIGGER_DELETED)->count());
     }
 }

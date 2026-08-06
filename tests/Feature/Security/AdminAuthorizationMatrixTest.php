@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Security;
 
+use App\Models\ProjectMembership;
 use App\Models\User;
+use App\Support\TenantContext;
 use Database\Seeders\RbacSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
+use Padosoft\AiActCompliance\MultiTenancy\Models\Tenant;
 use Tests\TestCase;
 
 /**
@@ -16,7 +19,8 @@ use Tests\TestCase;
  *
  * One data-driven matrix asserting that EVERY protected admin surface is
  * reachable by EXACTLY the roles that should reach it — no more, no less —
- * across all five roles (super-admin / admin / dpo / editor / viewer) plus
+ * across all six roles (system-admin / super-admin / admin / dpo / editor /
+ * viewer) plus
  * the unauthenticated guest.
  *
  * Why a single matrix and not only per-controller tests: per-endpoint tests
@@ -41,8 +45,10 @@ final class AdminAuthorizationMatrixTest extends TestCase
 {
     use RefreshDatabase;
 
+    private const OPERATIONAL_TENANT = 'matrix-tenant';
+
     /** Every role the RBAC system defines. Keep in sync with RbacSeeder::ROLES. */
-    private const ALL_ROLES = ['super-admin', 'admin', 'dpo', 'editor', 'viewer'];
+    private const ALL_ROLES = ['system-admin', 'super-admin', 'admin', 'dpo', 'editor', 'viewer'];
 
     /**
      * The authorization contract: representative protected endpoint → the
@@ -55,7 +61,7 @@ final class AdminAuthorizationMatrixTest extends TestCase
      */
     private function matrix(): array
     {
-        return [
+        $matrix = [
             // ── Core admin API group — middleware role:admin|super-admin ──
             '/api/admin/metrics/overview' => ['admin', 'super-admin'],
             '/api/admin/users' => ['admin', 'super-admin'],
@@ -118,11 +124,25 @@ final class AdminAuthorizationMatrixTest extends TestCase
 
             // ── Role-middleware groups — `role:` middleware, not a Gate ──
             '/api/admin/app-settings' => ['super-admin'],               // role:super-admin (v8.22 Ciclo 3)
+            // Global tenant control plane — platform permission only, no
+            // active-tenant scope.
+            '/api/system-admin/tenants' => ['system-admin'],
+            '/api/system-admin/super-admins' => ['system-admin'],
 
             // ── Widget admin (M6) — Gate::define() in AppServiceProvider ──
             '/api/admin/widget-keys' => ['super-admin'],                     // manageWidgetKeys
             '/api/admin/widget-sessions' => ['admin', 'super-admin'],        // viewWidgetSessions
         ];
+
+        // A system administrator always carries the companion super-admin
+        // role, so it passes every tenant surface a super-admin can pass.
+        foreach ($matrix as $uri => $allowed) {
+            if (in_array('super-admin', $allowed, true) && ! in_array('system-admin', $allowed, true)) {
+                $matrix[$uri][] = 'system-admin';
+            }
+        }
+
+        return $matrix;
     }
 
     /**
@@ -139,6 +159,18 @@ final class AdminAuthorizationMatrixTest extends TestCase
         parent::setUp();
         $this->seed(RbacSeeder::class);
         Cache::flush();
+        Tenant::query()->updateOrCreate(
+            ['slug' => self::OPERATIONAL_TENANT],
+            ['name' => 'Authorization Matrix', 'status' => 'active', 'is_system' => false],
+        );
+
+        // The matrix isolates role/gate authorization, so every operational
+        // request carries one valid tenant context and every synthetic user
+        // receives a matching membership below. Global /api/system-admin/*
+        // routes ignore this header by contract; their no-header behaviour is
+        // covered by the dedicated SystemAdmin controller tests.
+        $this->withHeader('X-Tenant-Id', self::OPERATIONAL_TENANT);
+        app(TenantContext::class)->set(self::OPERATIONAL_TENANT);
     }
 
     public function test_roles_not_in_the_allow_set_are_denied_with_403(): void
@@ -161,9 +193,9 @@ final class AdminAuthorizationMatrixTest extends TestCase
     {
         foreach ($this->matrix() as $uri => $allowed) {
             foreach ($allowed as $role) {
-                $status = $this->actingAs($this->userWithRole($role))
-                    ->getJson($uri)
-                    ->getStatusCode();
+                $response = $this->actingAs($this->userWithRole($role))
+                    ->getJson($uri);
+                $status = $response->getStatusCode();
 
                 // Authorization passed: the gate let the role through. The
                 // controller may answer 200/404/422/500 on data — none of
@@ -171,7 +203,7 @@ final class AdminAuthorizationMatrixTest extends TestCase
                 $this->assertNotSame(
                     403,
                     $status,
-                    "Role [{$role}] should pass the gate for [{$uri}] but got 403.",
+                    "Role [{$role}] should pass the gate for [{$uri}] but got 403: ".$response->getContent(),
                 );
             }
         }
@@ -537,7 +569,17 @@ final class AdminAuthorizationMatrixTest extends TestCase
             'email' => $role.'-'.uniqid().'@demo.local',
             'password' => Hash::make('secret-password'),
         ]);
-        $user->assignRole($role);
+        $user->assignRole(
+            $role === 'system-admin'
+                ? ['system-admin', 'super-admin']
+                : $role,
+        );
+        ProjectMembership::create([
+            'tenant_id' => self::OPERATIONAL_TENANT,
+            'user_id' => $user->id,
+            'project_key' => 'matrix',
+            'role' => 'member',
+        ]);
 
         return $user;
     }

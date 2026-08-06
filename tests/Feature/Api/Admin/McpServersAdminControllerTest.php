@@ -34,7 +34,7 @@ final class McpServersAdminControllerTest extends TestCase
         parent::setUp();
 
         Cache::flush();
-        app(TenantContext::class)->set('default');
+        app(TenantContext::class)->set('test-tenant');
         $this->seed(RbacSeeder::class);
     }
 
@@ -54,8 +54,8 @@ final class McpServersAdminControllerTest extends TestCase
     {
         $admin = $this->makeSuperAdmin();
 
-        $this->createServer($admin, ['tenant_id' => 'default', 'name' => 'b-server']);
-        $this->createServer($admin, ['tenant_id' => 'default', 'name' => 'a-server']);
+        $this->createServer($admin, ['tenant_id' => 'test-tenant', 'name' => 'b-server']);
+        $this->createServer($admin, ['tenant_id' => 'test-tenant', 'name' => 'a-server']);
         $this->createServer($admin, ['tenant_id' => 'tenant-x', 'name' => 'x-server']);
 
         $response = $this->actingAs($admin)->getJson('/api/admin/mcp-servers');
@@ -348,7 +348,7 @@ final class McpServersAdminControllerTest extends TestCase
     private function createServer(User $user, array $overrides = []): McpServer
     {
         $payload = array_merge([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'name' => 'server-'.uniqid(),
             'transport' => McpServer::TRANSPORT_HTTP,
             'endpoint' => 'http://127.0.0.1:3535',

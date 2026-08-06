@@ -94,7 +94,7 @@ final class IngestDocumentFlowPiiTest extends TestCase
     private function runFlow(bool $dryRun = false): FlowRun
     {
         $input = [
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'support',
             'source_path' => 'tickets/123.md',
             'disk' => 'kb',
@@ -103,8 +103,8 @@ final class IngestDocumentFlowPiiTest extends TestCase
             'mime_type' => 'text/markdown',
         ];
         $options = FlowExecutionOptions::make(
-            idempotencyKey: 'default:support:tickets/123.md'.($dryRun ? ':dry' : ''),
-            correlationId: 'default',
+            idempotencyKey: 'test-tenant:support:tickets/123.md'.($dryRun ? ':dry' : ''),
+            correlationId: 'test-tenant',
         );
 
         return $dryRun
@@ -154,7 +154,7 @@ final class IngestDocumentFlowPiiTest extends TestCase
 
         // The per-tenant vault keeps the original (R30/R31).
         $this->assertDatabaseHas('pii_token_maps', [
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'original' => self::EMAIL,
         ]);
     }

@@ -27,7 +27,7 @@ final class McpTenantTokenControllerTest extends TestCase
         parent::setUp();
 
         Cache::flush();
-        app(TenantContext::class)->set('default');
+        app(TenantContext::class)->set('test-tenant');
         $this->seed(RbacSeeder::class);
     }
 
@@ -36,7 +36,7 @@ final class McpTenantTokenControllerTest extends TestCase
         $super = $this->makeSuperAdmin();
 
         McpTenantToken::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'label' => 'Token A',
             'token_hash' => hash('sha256', 'a'),
             'token_last4' => 'aaaa',
@@ -81,7 +81,7 @@ final class McpTenantTokenControllerTest extends TestCase
     {
         $super = $this->makeSuperAdmin();
         $token = McpTenantToken::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'label' => 'Token A',
             'token_hash' => hash('sha256', 'a'),
             'token_last4' => 'aaaa',
@@ -129,4 +129,3 @@ final class McpTenantTokenControllerTest extends TestCase
         return $user;
     }
 }
-

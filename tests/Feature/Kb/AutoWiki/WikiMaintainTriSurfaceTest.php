@@ -29,7 +29,7 @@ final class WikiMaintainTriSurfaceTest extends TestCase
     {
         parent::setUp();
         $this->seed(RbacSeeder::class);
-        app(TenantContext::class)->set('default');
+        app(TenantContext::class)->set('test-tenant');
     }
 
     private function bindMaintainer(): \Mockery\MockInterface
@@ -62,7 +62,7 @@ final class WikiMaintainTriSurfaceTest extends TestCase
         $mock->shouldReceive('maintain')->once()
             ->andReturn(['projects' => ['docs-v3'], 'lint_issues' => 0, 'backfilled' => 3, 'fixed' => 0]);
 
-        $this->artisan('kb:wiki-maintain')
+        $this->artisan('kb:wiki-maintain', ['--tenant' => 'test-tenant'])
             ->expectsOutputToContain('3 doc(s) backfilled')
             ->assertSuccessful();
     }

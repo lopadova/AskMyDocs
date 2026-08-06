@@ -40,6 +40,7 @@ class TestingController extends Controller
     private const SEEDER_ALIASES = [
         'DemoSeeder' => \Database\Seeders\DemoSeeder::class,
         'RbacSeeder' => \Database\Seeders\RbacSeeder::class,
+        'RegistrationOnboardingSeeder' => \Database\Seeders\RegistrationOnboardingSeeder::class,
         'EmptyAdminSeeder' => \Database\Seeders\EmptyAdminSeeder::class,
         'AdminDegradedSeeder' => \Database\Seeders\AdminDegradedSeeder::class,
         // PR14 / Phase I — one deterministic snapshot row for the

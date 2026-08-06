@@ -115,7 +115,7 @@ final class ConnectorConfigExportTest extends TestCase
     public function test_export_is_scoped_to_the_active_tenant(): void
     {
         // An installation owned by a DIFFERENT tenant must not be exportable from
-        // the active (default) tenant — 404, never a cross-tenant leak (R30).
+        // the active tenant — 404, never a cross-tenant leak (R30).
         $foreign = ConnectorInstallation::create([
             'tenant_id' => 'tenant-foreign',
             'connector_name' => 'imap',
@@ -152,7 +152,7 @@ final class ConnectorConfigExportTest extends TestCase
             $installation->id, accessToken: 'cli-secret-pw', extra: ['auth_mode' => 'basic'],
         );
 
-        $this->artisan('connectors:export', ['installation' => $installation->id, '--tenant' => 'default'])
+        $this->artisan('connectors:export', ['installation' => $installation->id, '--tenant' => 'test-tenant'])
             ->assertSuccessful()
             ->expectsOutputToContain('imap.example.com')
             ->doesntExpectOutputToContain('cli-secret-pw');
@@ -160,7 +160,7 @@ final class ConnectorConfigExportTest extends TestCase
 
     public function test_export_cli_fails_loudly_for_an_unknown_installation(): void
     {
-        $this->artisan('connectors:export', ['installation' => 999999, '--tenant' => 'default'])
+        $this->artisan('connectors:export', ['installation' => 999999, '--tenant' => 'test-tenant'])
             ->assertFailed();
     }
 
@@ -170,7 +170,7 @@ final class ConnectorConfigExportTest extends TestCase
     private function seedImapInstallation(array $configOverrides = []): ConnectorInstallation
     {
         return ConnectorInstallation::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'connector_name' => 'imap',
             'label' => 'Date',
             'project_key' => 'support-mailbox',

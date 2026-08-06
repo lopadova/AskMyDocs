@@ -26,7 +26,7 @@ final class KbAutoWikiSettingControllerTest extends TestCase
     {
         parent::setUp();
         $this->seed(RbacSeeder::class);
-        app(TenantContext::class)->set('default');
+        app(TenantContext::class)->set('test-tenant');
         config(['kb.autowiki.enabled' => true, 'kb.autowiki.canonical_default' => true, 'kb.autowiki.non_canonical_default' => true]);
     }
 
@@ -49,7 +49,7 @@ final class KbAutoWikiSettingControllerTest extends TestCase
     private function doc(string $project): void
     {
         KnowledgeDocument::create([
-            'tenant_id' => 'default', 'project_key' => $project, 'source_type' => 'markdown',
+            'tenant_id' => 'test-tenant', 'project_key' => $project, 'source_type' => 'markdown',
             'source_path' => "decisions/{$project}-x.md", 'title' => 'X', 'mime_type' => 'text/markdown',
             'status' => 'active', 'document_hash' => str_repeat('a', 64), 'version_hash' => bin2hex(random_bytes(16)),
         ]);
@@ -80,14 +80,14 @@ final class KbAutoWikiSettingControllerTest extends TestCase
             ->assertJsonPath('setting.effective.canonical', false);
 
         $this->assertDatabaseHas('kb_analysis_settings', [
-            'tenant_id' => 'default', 'project_key' => 'eng', 'autowiki_enabled' => false,
+            'tenant_id' => 'test-tenant', 'project_key' => 'eng', 'autowiki_enabled' => false,
         ]);
     }
 
     public function test_upsert_is_a_partial_update(): void
     {
         KbAnalysisSetting::create([
-            'tenant_id' => 'default', 'project_key' => 'eng',
+            'tenant_id' => 'test-tenant', 'project_key' => 'eng',
             'autowiki_enabled' => true, 'autowiki_canonical' => false,
         ]);
 
@@ -104,7 +104,7 @@ final class KbAutoWikiSettingControllerTest extends TestCase
 
     public function test_upsert_null_clears_a_field_to_inherit(): void
     {
-        KbAnalysisSetting::create(['tenant_id' => 'default', 'project_key' => 'eng', 'autowiki_enabled' => false]);
+        KbAnalysisSetting::create(['tenant_id' => 'test-tenant', 'project_key' => 'eng', 'autowiki_enabled' => false]);
 
         $this->actingAs($this->admin())
             ->putJson('/api/admin/kb/autowiki-settings', ['project_key' => 'eng', 'autowiki_enabled' => null])

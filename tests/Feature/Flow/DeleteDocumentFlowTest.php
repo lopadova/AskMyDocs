@@ -33,17 +33,17 @@ final class DeleteDocumentFlowTest extends TestCase
 
     public function test_soft_delete_only_when_force_false(): void
     {
-        $doc = $this->seedDoc('default', 'acme', 'docs/x.md');
+        $doc = $this->seedDoc('test-tenant', 'acme', 'docs/x.md');
         Storage::disk('kb')->put('docs/x.md', '# x');
 
         $run = Flow::execute(
             DeleteDocumentFlow::NAME,
             [
-                'tenant_id' => 'default',
+                'tenant_id' => 'test-tenant',
                 'document_id' => $doc->id,
                 'force' => false,
             ],
-            FlowExecutionOptions::make(correlationId: 'default'),
+            FlowExecutionOptions::make(correlationId: 'test-tenant'),
         );
 
         $this->assertSame(FlowRun::STATUS_SUCCEEDED, $run->status);
@@ -54,17 +54,17 @@ final class DeleteDocumentFlowTest extends TestCase
 
     public function test_hard_delete_removes_rows_and_file(): void
     {
-        $doc = $this->seedDoc('default', 'acme', 'docs/x.md');
+        $doc = $this->seedDoc('test-tenant', 'acme', 'docs/x.md');
         Storage::disk('kb')->put('docs/x.md', '# x');
 
         $run = Flow::execute(
             DeleteDocumentFlow::NAME,
             [
-                'tenant_id' => 'default',
+                'tenant_id' => 'test-tenant',
                 'document_id' => $doc->id,
                 'force' => true,
             ],
-            FlowExecutionOptions::make(correlationId: 'default'),
+            FlowExecutionOptions::make(correlationId: 'test-tenant'),
         );
 
         $this->assertSame(FlowRun::STATUS_SUCCEEDED, $run->status);
@@ -74,18 +74,18 @@ final class DeleteDocumentFlowTest extends TestCase
 
     public function test_hard_delete_with_keep_file_preserves_disk(): void
     {
-        $doc = $this->seedDoc('default', 'acme', 'docs/x.md');
+        $doc = $this->seedDoc('test-tenant', 'acme', 'docs/x.md');
         Storage::disk('kb')->put('docs/x.md', '# x');
 
         $run = Flow::execute(
             DeleteDocumentFlow::NAME,
             [
-                'tenant_id' => 'default',
+                'tenant_id' => 'test-tenant',
                 'document_id' => $doc->id,
                 'force' => true,
                 'keep_file' => true,
             ],
-            FlowExecutionOptions::make(correlationId: 'default'),
+            FlowExecutionOptions::make(correlationId: 'test-tenant'),
         );
 
         $this->assertSame(FlowRun::STATUS_SUCCEEDED, $run->status);
@@ -98,12 +98,12 @@ final class DeleteDocumentFlowTest extends TestCase
         $run = Flow::execute(
             DeleteDocumentFlow::NAME,
             [
-                'tenant_id' => 'default',
+                'tenant_id' => 'test-tenant',
                 'project_key' => 'acme',
                 'source_path' => 'docs/missing.md',
                 'force' => false,
             ],
-            FlowExecutionOptions::make(correlationId: 'default'),
+            FlowExecutionOptions::make(correlationId: 'test-tenant'),
         );
 
         $this->assertSame(FlowRun::STATUS_SUCCEEDED, $run->status);
@@ -205,17 +205,17 @@ final class DeleteDocumentFlowTest extends TestCase
 
     public function test_dry_run_makes_no_mutations(): void
     {
-        $doc = $this->seedDoc('default', 'acme', 'docs/x.md');
+        $doc = $this->seedDoc('test-tenant', 'acme', 'docs/x.md');
         Storage::disk('kb')->put('docs/x.md', '# x');
 
         $run = Flow::dryRun(
             DeleteDocumentFlow::NAME,
             [
-                'tenant_id' => 'default',
+                'tenant_id' => 'test-tenant',
                 'document_id' => $doc->id,
                 'force' => true,
             ],
-            FlowExecutionOptions::make(correlationId: 'default'),
+            FlowExecutionOptions::make(correlationId: 'test-tenant'),
         );
 
         $this->assertSame(FlowRun::STATUS_SUCCEEDED, $run->status);

@@ -118,7 +118,7 @@ final class KbUploadCommitIntegrationTest extends TestCase
         $this->assertDatabaseHas('knowledge_documents', [
             'id' => $item->knowledge_document_id,
             'project_key' => 'engineering',
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
         ]);
 
         // The status endpoint the FE polls reflects the terminal counts.

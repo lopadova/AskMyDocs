@@ -28,7 +28,7 @@ final class WikiNavigateTriSurfaceTest extends TestCase
     {
         parent::setUp();
         $this->seed(RbacSeeder::class);
-        app(TenantContext::class)->set('default');
+        app(TenantContext::class)->set('test-tenant');
         $this->graph();
     }
 
@@ -36,13 +36,13 @@ final class WikiNavigateTriSurfaceTest extends TestCase
     {
         foreach (['a', 'b', 'c'] as $uid) {
             KbNode::create([
-                'tenant_id' => 'default', 'project_key' => 'docs-v3', 'node_uid' => $uid,
+                'tenant_id' => 'test-tenant', 'project_key' => 'docs-v3', 'node_uid' => $uid,
                 'node_type' => 'domain-concept', 'label' => $uid, 'payload_json' => ['dangling' => false],
             ]);
         }
         foreach ([['a', 'b'], ['b', 'c']] as [$from, $to]) {
             KbEdge::create([
-                'tenant_id' => 'default', 'project_key' => 'docs-v3',
+                'tenant_id' => 'test-tenant', 'project_key' => 'docs-v3',
                 'edge_uid' => "{$from}->{$to}:related_to", 'from_node_uid' => $from, 'to_node_uid' => $to,
                 'edge_type' => 'related_to', 'weight' => 0.5, 'provenance' => 'inferred',
             ]);
@@ -67,7 +67,12 @@ final class WikiNavigateTriSurfaceTest extends TestCase
 
     public function test_command_navigates_from_seeds(): void
     {
-        $this->artisan('kb:wiki-navigate', ['project' => 'docs-v3', '--seeds' => 'a', '--depth' => '2'])
+        $this->artisan('kb:wiki-navigate', [
+            'project' => 'docs-v3',
+            '--seeds' => 'a',
+            '--depth' => '2',
+            '--tenant' => 'test-tenant',
+        ])
             ->expectsOutputToContain('reached 2 node(s)')
             ->assertSuccessful();
     }

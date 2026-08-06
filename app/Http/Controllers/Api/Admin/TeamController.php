@@ -21,9 +21,9 @@ use Illuminate\Routing\Controller;
  *
  * Auth: `auth:sanctum` + `tenant.authorize` + `role:admin|super-admin`
  * (route group). Rename additionally authorizes the TARGET team inside the
- * service (membership OR `tenant.cross-access`), independently of the
- * request's `X-Tenant-Id` — team management is cross-tenant, so the header
- * scope does not authorize it. A team the actor may not administer 404s.
+ * service (membership required), independently of the request's
+ * `X-Tenant-Id`. A team the actor may not administer 404s; unassociated
+ * tenants belong to the global system-administration control plane.
  *
  * R44 — DELIBERATE surface scope: like {@see ProjectController}, team
  * management is an admin GOVERNANCE affordance, not an agent-facing
@@ -45,10 +45,9 @@ final class TeamController extends Controller
     /**
      * GET /api/admin/teams
      *
-     * Teams the authenticated user may see/administer (their memberships +
-     * every active team when they hold `tenant.cross-access`, plus the
-     * read-only `default`), with tenant-wide project/member counts and a
-     * per-row `can_manage` flag.
+     * Teams the authenticated user may see/administer (real memberships
+     * only), with tenant-wide project/member counts and a per-row
+     * `can_manage` flag. `default` is present only with a membership.
      */
     public function index(Request $request): JsonResponse
     {

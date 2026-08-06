@@ -49,6 +49,10 @@ never immortal. Wrong/unknown credentials → `422`. Request fields: `email`
 (required), `password` (required), `device_name` (optional, max 120). See
 [Desktop client & token authentication](/desktop-client).
 
+Session login and bearer-token issuance both require an active account.
+Email input is trimmed/lower-cased and resolved through the case-insensitive
+global identity key.
+
 ## KB chat & search — `/api/kb`
 
 | Method | Path | Auth | Purpose |
@@ -166,6 +170,23 @@ group is pinned in the [authorization matrix](/architecture/security-and-threat-
 | Tabular reviews | `/api/admin/tabular-reviews/*` | `can:viewTabularReviews` |
 | Workflows | `/api/admin/workflows/*` | `can:viewWorkflows` |
 | PII strategy | `/api/admin/pii/strategy` | `can:viewPiiRedactorAdmin` |
+
+## System-admin tenant control — `/api/system-admin/tenants`
+
+These endpoints require `can:platform.admin` and are intentionally global (no
+active-tenant header). A tenant `super-admin` does not satisfy this capability:
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/system-admin/tenants` | Paginated registry; `search`, `status`, `page`, `per_page` |
+| `POST` | `/api/system-admin/tenants/availability` | Non-mutating slug + account + requested-role preflight |
+| `POST` | `/api/system-admin/tenants` | Atomic tenant + project + create/attach user + role + membership |
+| `GET` | `/api/system-admin/tenants/{slug}` | Tenant metadata plus paginated users, roles, permissions and project access |
+| `POST` | `/api/system-admin/tenants/{slug}/lifecycle-preview` | Single-use confirmation bound to the exact status transition |
+| `PATCH` | `/api/system-admin/tenants/{slug}` | Change display name and/or confirmed `active\|suspended\|archived` lifecycle |
+
+See [System administration](/system-administration) for bootstrap, request
+behavior, duplicate handling and lifecycle enforcement.
 
 ## Embeddable widget — `/api/widget`
 

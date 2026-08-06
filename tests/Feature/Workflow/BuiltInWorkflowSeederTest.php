@@ -22,18 +22,15 @@ final class BuiltInWorkflowSeederTest extends TestCase
 {
     use RefreshDatabase;
 
+    private const TENANT = 'workflow-tenant';
+
     protected function setUp(): void
     {
         parent::setUp();
-        // Copilot iter 18: reset TenantContext to 'default' so this
-        // suite is deterministic regardless of which test file ran
-        // first. Without this, an earlier suite that switched the
-        // singleton to 'acme' would silently seed system workflows
-        // into the wrong tenant — the count assertion would still
-        // pass (16 rows exist) but the assertion that the seeder
-        // wrote into the DEFAULT tenant would fail.
+        // Pin an explicit operational tenant; reserved namespaces must never
+        // receive newly-seeded workflow data.
         Cache::flush();
-        app(TenantContext::class)->set('default');
+        app(TenantContext::class)->set(self::TENANT);
     }
 
     public function test_seeder_creates_exactly_16_system_workflows(): void
@@ -44,13 +41,13 @@ final class BuiltInWorkflowSeederTest extends TestCase
         $this->assertCount(16, $rows, 'Expected exactly 16 built-in system workflows.');
 
         // Each must carry is_system=true, a null user_id, AND a
-        // tenant_id matching the active TenantContext (default). The
+        // tenant_id matching the active TenantContext. The
         // tenant_id assertion is the deterministic check that proves
         // the setUp() reset took effect.
         foreach ($rows as $row) {
             $this->assertTrue((bool) $row->is_system);
             $this->assertNull($row->user_id);
-            $this->assertSame('default', $row->tenant_id);
+            $this->assertSame(self::TENANT, $row->tenant_id);
         }
     }
 
@@ -60,5 +57,15 @@ final class BuiltInWorkflowSeederTest extends TestCase
         $this->seed(BuiltInWorkflowSeeder::class);
 
         $this->assertSame(16, Workflow::query()->where('is_system', true)->count());
+    }
+
+    public function test_seeder_rejects_a_reserved_tenant_context(): void
+    {
+        app(TenantContext::class)->set('default');
+
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('requires an operational tenant');
+
+        $this->seed(BuiltInWorkflowSeeder::class);
     }
 }

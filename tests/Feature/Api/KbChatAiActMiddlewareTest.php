@@ -48,6 +48,7 @@ final class KbChatAiActMiddlewareTest extends TestCase
         config()->set('kb.reranking.enabled', false);
         config()->set('kb.graph.expansion_enabled', false);
         config()->set('kb.rejected.injection_enabled', false);
+        config()->set('kb.counterfactual.enabled', false);
 
         $this->stubKbAndAi();
     }

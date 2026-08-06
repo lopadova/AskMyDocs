@@ -106,7 +106,7 @@ final class KbPiiSettingControllerTest extends TestCase
             ->assertJsonPath('setting.effective.strategy', 'tokenise');
 
         $this->assertDatabaseHas('kb_pii_settings', [
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'support',
             'redact_enabled' => true,
             'strategy' => 'tokenise',
@@ -117,7 +117,7 @@ final class KbPiiSettingControllerTest extends TestCase
     {
         $dpo = $this->makeUser('dpo');
         KbPiiSetting::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'support',
             'redact_enabled' => true,
             'strategy' => 'tokenise',
@@ -136,7 +136,7 @@ final class KbPiiSettingControllerTest extends TestCase
     {
         $dpo = $this->makeUser('dpo');
         KbPiiSetting::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'support',
             'redact_enabled' => true,
             'strategy' => 'tokenise',
@@ -167,7 +167,7 @@ final class KbPiiSettingControllerTest extends TestCase
     {
         $dpo = $this->makeUser('dpo');
         KbPiiSetting::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'support',
             'redact_enabled' => true,
             'strategy' => 'tokenise',
@@ -185,7 +185,7 @@ final class KbPiiSettingControllerTest extends TestCase
             ->assertJsonPath('setting.effective.strategy', 'mask');
 
         $this->assertDatabaseMissing('kb_pii_settings', [
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'support',
         ]);
     }
@@ -204,7 +204,7 @@ final class KbPiiSettingControllerTest extends TestCase
     public function test_upsert_does_not_recommend_reembed_when_nothing_changes(): void
     {
         KbPiiSetting::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'support',
             'redact_enabled' => true,
             'strategy' => 'tokenise',
@@ -234,7 +234,7 @@ final class KbPiiSettingControllerTest extends TestCase
             'strategy' => 'tokenise',
         ])->assertOk()->assertJsonPath('setting.project_key', 'support');
 
-        $this->assertDatabaseHas('kb_pii_settings', ['tenant_id' => 'default', 'project_key' => 'support']);
+        $this->assertDatabaseHas('kb_pii_settings', ['tenant_id' => 'test-tenant', 'project_key' => 'support']);
         $this->assertDatabaseMissing('kb_pii_settings', ['project_key' => '  support  ']);
     }
 

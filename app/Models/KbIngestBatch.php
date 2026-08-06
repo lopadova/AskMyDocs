@@ -35,6 +35,8 @@ class KbIngestBatch extends Model
     use BelongsToTenant;
     use HasUuids;
 
+    public const STATUS_COLUMN_LENGTH = 32;
+
     public const STATUS_STAGED = 'staged';
     public const STATUS_COMMITTING = 'committing';
     public const STATUS_PROCESSING = 'processing';
@@ -42,6 +44,16 @@ class KbIngestBatch extends Model
     public const STATUS_COMPLETED_WITH_ERRORS = 'completed_with_errors';
     public const STATUS_CANCELLED = 'cancelled';
     public const STATUS_EXPIRED = 'expired';
+
+    public const STATUSES = [
+        self::STATUS_STAGED,
+        self::STATUS_COMMITTING,
+        self::STATUS_PROCESSING,
+        self::STATUS_COMPLETED,
+        self::STATUS_COMPLETED_WITH_ERRORS,
+        self::STATUS_CANCELLED,
+        self::STATUS_EXPIRED,
+    ];
 
     protected $table = 'kb_ingest_batches';
 

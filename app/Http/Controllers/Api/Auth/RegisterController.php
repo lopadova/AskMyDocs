@@ -3,16 +3,19 @@
 namespace App\Http\Controllers\Api\Auth;
 
 use App\Http\Requests\Auth\RegisterRequest;
+use App\Invitations\RegistrationAccountCompletionService;
+use App\Invitations\RegistrationCodeResolution;
+use App\Invitations\RegistrationCodeResolver;
 use App\Models\User;
+use App\Services\Auth\CompanyOnboardingEligibility;
 use App\Support\DesktopToken;
+use App\Support\TenantContext;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
-use Padosoft\Invitations\Contracts\TenantResolver;
-use Padosoft\Invitations\Services\CodeValidator;
 use Padosoft\Invitations\Services\RedemptionService;
 use Padosoft\Invitations\Support\RedemptionError;
 
@@ -46,9 +49,11 @@ use Padosoft\Invitations\Support\RedemptionError;
  *      brand-new account is force-deleted so the invite-only invariant holds
  *      (no role/membership is provisioned on the failure path, and User has no
  *      create-observer, so the row is the only artifact).
- *   4. Floor the account at `viewer` (layered on any grant role the redeem
- *      already provisioned — GRANT-never-revoke) and fire the standard
- *      `Registered` event.
+ *   4. Strictly verify the promised tenant grant, floor the account at
+ *      `viewer`, and persist a completion marker. If best-effort vendor
+ *      provisioning failed after redemption, return 503 and let the next
+ *      login resume from the immutable redemption.
+ *   5. Fire the standard `Registered` event.
  *
  * Every invite-code failure is surfaced as a 422 field error on `invite_code`
  * (R14 — never 200-with-empty) so the client shows it under the code input; the
@@ -64,9 +69,11 @@ use Padosoft\Invitations\Support\RedemptionError;
 class RegisterController extends Controller
 {
     public function __construct(
-        private readonly CodeValidator $validator,
+        private readonly RegistrationCodeResolver $codes,
         private readonly RedemptionService $redemption,
-        private readonly TenantResolver $tenant,
+        private readonly TenantContext $tenants,
+        private readonly CompanyOnboardingEligibility $onboarding,
+        private readonly RegistrationAccountCompletionService $completion,
     ) {}
 
     /**
@@ -74,7 +81,8 @@ class RegisterController extends Controller
      */
     public function register(RegisterRequest $request): JsonResponse
     {
-        $user = $this->provisionInvitedAccount($request);
+        $registered = $this->provisionInvitedAccount($request);
+        $user = $registered['user'];
 
         // Open the stateful session. The invite was already redeemed directly
         // inside the shared core, so the session carries no pending-redemption
@@ -89,6 +97,7 @@ class RegisterController extends Controller
                 'email' => $user->email,
             ],
             'abilities' => [],
+            'registration' => $this->registrationPayload($registered),
         ], 201);
     }
 
@@ -99,7 +108,8 @@ class RegisterController extends Controller
      */
     public function registerToken(RegisterRequest $request): JsonResponse
     {
-        $user = $this->provisionInvitedAccount($request);
+        $registered = $this->provisionInvitedAccount($request);
+        $user = $registered['user'];
 
         $token = DesktopToken::mint($user, $request->deviceName())->plainTextToken;
 
@@ -111,6 +121,7 @@ class RegisterController extends Controller
                 'name' => $user->name,
                 'email' => $user->email,
             ],
+            'registration' => $this->registrationPayload($registered),
         ], 201);
     }
 
@@ -121,16 +132,15 @@ class RegisterController extends Controller
      * why redeem runs outside a transaction and why the account is force-deleted
      * on a post-validation redeem failure.
      */
-    private function provisionInvitedAccount(RegisterRequest $request): User
+    private function provisionInvitedAccount(RegisterRequest $request): array
     {
         $data = $request->validated();
         $code = (string) $data['invite_code'];
-        $tenant = $this->tenant->current();
 
         // 1. Invite-only gate — fail fast on a bad code before touching `users`.
-        $check = $this->validator->validate($code, $tenant);
-        if (! $check->ok) {
-            throw $this->inviteCodeError($check->error);
+        $resolution = $this->codes->resolve($code);
+        if (! $resolution->ok || $resolution->redemptionTenant === null) {
+            throw $this->inviteCodeError($resolution->error);
         }
 
         // 2. Create the account (no role yet — see step 4).
@@ -142,7 +152,9 @@ class RegisterController extends Controller
             ]);
         } catch (\Illuminate\Database\QueryException $e) {
             // Concurrency guard: another request may create the same email between validation and insert.
-            if (User::where('email', (string) $data['email'])->exists()) {
+            if (User::withTrashed()
+                ->whereEmailIdentity((string) $data['email'])
+                ->exists()) {
                 throw ValidationException::withMessages([
                     'email' => [__('validation.unique', ['attribute' => 'email'])],
                 ]);
@@ -151,10 +163,20 @@ class RegisterController extends Controller
         }
 
         // 3. Authoritatively redeem the invite code.
-        $result = $this->redemption->redeem($code, $user, [
-            'ip' => $request->ip(),
-            'user_agent' => $request->userAgent(),
-        ]);
+        $previousTenant = $this->tenants->current();
+        try {
+            // RedemptionService reads its tenant from the package resolver,
+            // which is bound to this host context. Resolve the code first,
+            // switch only around the atomic redemption, then restore so a
+            // guest request never leaks the technical namespace downstream.
+            $this->tenants->set($resolution->redemptionTenant);
+            $result = $this->redemption->redeem($code, $user, [
+                'ip' => $request->ip(),
+                'user_agent' => $request->userAgent(),
+            ]);
+        } finally {
+            $this->tenants->set($previousTenant);
+        }
         if (! $result->ok && ! $result->already) {
             // Exhausted-between-checks race: drop the brand-new account so the
             // invite-only invariant never leaves a user who consumed no code.
@@ -164,12 +186,13 @@ class RegisterController extends Controller
             throw $this->inviteCodeError($result->error);
         }
 
-        // 4. Floor the account at 'viewer' (layered on any grant role redeem
-        // already provisioned — GRANT-never-revoke). Done post-redeem so the
-        // failure path above never has a role pivot to clean up.
-        $user->assignRole('viewer');
+        // 4. Strictly verify the access promised by a tenant-linked code and
+        // persist the registration completion marker. The vendor provisioners
+        // are intentionally best-effort; this host layer is retryable from a
+        // later login if their first attempt failed after the code was claimed.
+        $this->completion->complete($user, $resolution);
 
-        // Standard registration event. In this host the only Registered listener
+        // 5. Standard registration event. In this host the only Registered listener
         // is SendEmailVerificationNotification, which no-ops because User does
         // not implement MustVerifyEmail — so firing it is side-effect-free today
         // and safe on the stateless (no-session) path. The invite-only invariant
@@ -178,7 +201,24 @@ class RegisterController extends Controller
         // (welcome mail, verification) works for both sign-up surfaces.
         event(new Registered($user));
 
-        return $user;
+        return [
+            'user' => $user,
+            'intent' => $resolution->intent,
+            'target_tenant' => $resolution->targetTenant,
+        ];
+    }
+
+    /**
+     * @param array{user: User, intent: string|null, target_tenant: string|null} $registered
+     * @return array{intent: string, target_tenant: string|null, onboarding_required: bool}
+     */
+    private function registrationPayload(array $registered): array
+    {
+        return [
+            'intent' => $registered['intent'] ?? RegistrationCodeResolution::COMPANY_BOOTSTRAP,
+            'target_tenant' => $registered['target_tenant'],
+            'onboarding_required' => $this->onboarding->required($registered['user']),
+        ];
     }
 
     /**

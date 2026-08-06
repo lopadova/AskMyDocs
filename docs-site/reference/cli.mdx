@@ -101,6 +101,8 @@ See the [auto-wiki engine](/architecture/auto-wiki-engine).
 | Signature | Purpose |
 |---|---|
 | `auth:grant {email} {role} {--project=}` | Grant a Spatie role (and optional project membership) |
+| `system-admin:grant {email} {--yes}` | Grant audited global platform access plus the companion tenant role |
+| `system-admin:revoke {email} {--yes}` | Revoke global platform access, retain tenant `super-admin`, and protect the final active operator |
 | `askmydocs:mcp:connect {--server=} {--tenant=} {--token=} {--name=askmydocs}` | Print a Claude Code `.mcp.json` snippet for the MCP server |
 | `widget:emit-secret {public_key}` | Emit a new widget secret (`sk_…`) — shown once |
 | `widget:identity-credential {status\|enable\|disable\|rotate} {key} {--tenant=default} {--expected-version=} {--force}` | Inspect or mutate the audited server-only `ik_`; mutations require the current version and show a new secret once |

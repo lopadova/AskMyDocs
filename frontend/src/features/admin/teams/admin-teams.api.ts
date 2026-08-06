@@ -5,8 +5,8 @@ import { api } from '../../../lib/api';
  * typed methods over the standard `{ data: ... }` envelope. A "team" is a
  * tenant; its editable display name lives on the vendor `tenants` row that
  * the topbar switcher reads. The list returns the teams the current user
- * may administer (their memberships + every team when they hold
- * `tenant.cross-access`, plus the read-only `default`).
+ * may administer from their real memberships. The legacy `default` slug is
+ * returned only when it has an explicit membership.
  */
 
 export interface AdminTeam {

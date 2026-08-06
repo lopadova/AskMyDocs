@@ -32,7 +32,7 @@ final class McpToolCallAuditControllerTest extends TestCase
         parent::setUp();
         $this->seed(RbacSeeder::class);
         Cache::flush();
-        app(TenantContext::class)->set('default');
+        app(TenantContext::class)->set('test-tenant');
     }
 
     public function test_guest_is_unauthenticated(): void

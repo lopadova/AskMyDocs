@@ -2,11 +2,16 @@
 
 namespace Tests\Feature\Api\Auth;
 
+use App\Models\ProjectMembership;
 use App\Models\User;
+use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Once;
 use Laravel\Sanctum\PersonalAccessToken;
+use Padosoft\AiActCompliance\MultiTenancy\Models\Tenant;
 use Tests\TestCase;
 
 /**
@@ -18,6 +23,8 @@ class TokenTest extends TestCase
 {
     use RefreshDatabase;
 
+    private const OPERATIONAL_TENANT = 'acme';
+
     private const THROTTLE_KEY = 'token|test@example.com|127.0.0.1';
 
     protected function setUp(): void
@@ -25,15 +32,29 @@ class TokenTest extends TestCase
         parent::setUp();
 
         RateLimiter::clear(self::THROTTLE_KEY);
+        Tenant::query()->updateOrCreate(
+            ['slug' => self::OPERATIONAL_TENANT],
+            ['name' => 'Acme', 'status' => 'active', 'is_system' => false],
+        );
+        app(TenantContext::class)->set(self::OPERATIONAL_TENANT);
     }
 
     private function makeUser(string $password = 'secret123'): User
     {
-        return User::create([
+        $user = User::create([
             'name' => 'Test User',
             'email' => 'test@example.com',
             'password' => Hash::make($password),
         ]);
+
+        ProjectMembership::create([
+            'tenant_id' => self::OPERATIONAL_TENANT,
+            'user_id' => $user->id,
+            'project_key' => 'acme-kb',
+            'role' => 'member',
+        ]);
+
+        return $user;
     }
 
     public function test_valid_credentials_return_201_with_a_usable_bearer_token(): void
@@ -68,6 +89,28 @@ class TokenTest extends TestCase
             ->getJson('/api/auth/me')
             ->assertOk()
             ->assertJsonPath('user.id', $user->id);
+    }
+
+    public function test_token_matches_a_mixed_case_legacy_email_before_the_normalized_column_exists(): void
+    {
+        $user = $this->makeUser();
+        $migration = require dirname(__DIR__, 4).'/database/migrations/2026_07_27_000001_add_email_normalized_to_users_table.php';
+        $migration->down();
+        Once::flush();
+        DB::table('users')->where('id', $user->id)->update(['email' => 'Legacy.Token@Example.com']);
+
+        try {
+            $response = $this->postJson('/api/auth/token', [
+                'email' => 'legacy.token@example.com',
+                'password' => 'secret123',
+            ]);
+        } finally {
+            $migration->up();
+            Once::flush();
+        }
+
+        $response->assertCreated()->assertJsonPath('user.id', $user->id);
+        $this->assertDatabaseCount('personal_access_tokens', 1);
     }
 
     public function test_minted_token_is_scoped_to_kb_read_and_chat_not_wildcard(): void
@@ -117,7 +160,9 @@ class TokenTest extends TestCase
         $token = $user->createToken('scopeless', [])->plainTextToken;
 
         $this->withToken($token)
-            ->getJson('/api/kb/documents/search?q=hello')
+            ->getJson('/api/kb/documents/search?q=hello', [
+                'X-Tenant-Id' => self::OPERATIONAL_TENANT,
+            ])
             ->assertStatus(403)
             ->assertJsonPath('error', 'token_ability_forbidden');
     }
@@ -133,7 +178,9 @@ class TokenTest extends TestCase
         ])->json('token');
 
         $this->withToken($token)
-            ->getJson('/api/kb/documents/search?q=hello')
+            ->getJson('/api/kb/documents/search?q=hello', [
+                'X-Tenant-Id' => self::OPERATIONAL_TENANT,
+            ])
             ->assertOk()
             ->assertExactJson(['data' => []]);
     }
@@ -146,7 +193,9 @@ class TokenTest extends TestCase
         $user = $this->makeUser();
 
         $this->actingAs($user, 'web')
-            ->getJson('/api/kb/documents/search?q=hello')
+            ->getJson('/api/kb/documents/search?q=hello', [
+                'X-Tenant-Id' => self::OPERATIONAL_TENANT,
+            ])
             ->assertOk()
             ->assertExactJson(['data' => []]);
     }
@@ -170,6 +219,19 @@ class TokenTest extends TestCase
         $this->postJson('/api/auth/token', [
             'email' => 'test@example.com',
             'password' => 'wrong-password',
+        ])->assertStatus(422)->assertJsonValidationErrors(['email']);
+
+        $this->assertDatabaseCount('personal_access_tokens', 0);
+    }
+
+    public function test_inactive_account_cannot_mint_a_token(): void
+    {
+        $user = $this->makeUser();
+        $user->update(['is_active' => false]);
+
+        $this->postJson('/api/auth/token', [
+            'email' => 'TEST@EXAMPLE.COM',
+            'password' => 'secret123',
         ])->assertStatus(422)->assertJsonValidationErrors(['email']);
 
         $this->assertDatabaseCount('personal_access_tokens', 0);

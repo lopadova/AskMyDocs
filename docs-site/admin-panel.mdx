@@ -14,8 +14,9 @@ gated by a single-use confirm token.
 ## What's in it
 
 - **Dashboard** — KPIs, health checks, charts from real seeded metrics.
-- **Users / Roles / RBAC** — the five roles (super-admin / admin / dpo / editor /
-  viewer), permission matrix, role editor.
+- **Users / Roles / RBAC** — six roles (`system-admin`, tenant `super-admin`,
+  admin, dpo, editor, viewer), permission matrix and role editor. The protected
+  system role is visible only to platform operators and cannot be assigned here.
 - **Projects** — the first-class [project registry](/projects-registry): name +
   describe `project_key`s, with an immutable key and an in-use delete-guard.
 - **KB explorer** — browse the canonical tree, an inline source editor
@@ -46,7 +47,7 @@ flowchart LR
 ```
 
 Every protected route is in the **R32 authorization matrix** test — a new screen
-or endpoint that forgets its `role:` / `can:` gate fails CI. The five roles plus
+or endpoint that forgets its `role:` / `can:` gate fails CI. The six roles plus
 the guest are asserted against the exact allow-set for each group.
 
 ## The maintenance runner (6 gates)

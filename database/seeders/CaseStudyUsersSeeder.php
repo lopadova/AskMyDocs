@@ -25,8 +25,7 @@ use Padosoft\AiActCompliance\MultiTenancy\Models\Tenant;
  * is the platform's isolation primitive, so EVERY admin surface (connectors,
  * users, KB, …) is scoped per company — not just the documents. Each account's
  * membership is pinned to EXACTLY its own (tenant, project): the seeder deletes any
- * stray membership elsewhere (e.g. the all-projects backfill of {@see RbacSeeder}
- * on the default tenant) and (re)creates the single own membership. A user thus
+ * stray membership elsewhere and (re)creates the single own membership. A user thus
  * only ever sees its own company's tenant after the team switcher resolves it.
  *
  * The membership reset applies to EVERY tier — viewer, admin AND super-admin —
@@ -136,8 +135,7 @@ class CaseStudyUsersSeeder extends Seeder
         }
 
         // L'account appartiene a UNA sola azienda → membership SOLO nel suo
-        // tenant/progetto. Rimuove qualunque altra membership (es. backfill
-        // all-projects di RbacSeeder sul tenant default) così, entrando, vede
+        // tenant/progetto. Rimuove qualunque altra membership così, entrando, vede
         // esclusivamente la propria azienda. Va eseguito DOPO RbacSeeder.
         ProjectMembership::query()
             ->where('user_id', $user->id)

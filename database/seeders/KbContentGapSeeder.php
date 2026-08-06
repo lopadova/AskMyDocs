@@ -31,7 +31,7 @@ final class KbContentGapSeeder extends Seeder
             $normalized = mb_substr(mb_strtolower(preg_replace('/\s+/u', ' ', trim($query)) ?? ''), 0, 500);
             KbSearchFailure::updateOrCreate(
                 [
-                    'tenant_id' => 'default',
+                    'tenant_id' => DemoSeeder::PRIMARY_TENANT,
                     'project_key' => 'eng',
                     'query_hash' => hash('sha256', $normalized),
                     'reason' => KbSearchFailure::REASON_NO_CONTEXT,

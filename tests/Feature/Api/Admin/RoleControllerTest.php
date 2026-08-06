@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Api\Admin;
 
+use App\Models\ProjectMembership;
 use App\Models\User;
 use Database\Seeders\RbacSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -45,6 +46,7 @@ class RoleControllerTest extends TestCase
         $this->assertContains('admin', $names);
         $this->assertContains('editor', $names);
         $this->assertContains('viewer', $names);
+        $this->assertNotContains('system-admin', $names);
     }
 
     public function test_store_creates_role_with_permissions(): void
@@ -115,6 +117,32 @@ class RoleControllerTest extends TestCase
         $this->assertDatabaseHas('roles', ['id' => $adminRole->id]);
     }
 
+    public function test_platform_role_is_immutable_and_global_permissions_are_not_role_assignable(): void
+    {
+        $system = User::create([
+            'name' => 'System',
+            'email' => 'system@demo.local',
+            'password' => Hash::make('secret123'),
+        ]);
+        $system->assignRole(['system-admin', 'super-admin']);
+        $this->grantDefaultMembership($system);
+        $systemRole = Role::findByName('system-admin', 'web');
+
+        $this->actingAs($system)
+            ->patchJson("/api/admin/roles/{$systemRole->id}", [
+                'permissions' => ['logs.view'],
+            ])
+            ->assertConflict();
+
+        $this->actingAs($system)
+            ->postJson('/api/admin/roles', [
+                'name' => 'platform-clone',
+                'permissions' => ['platform.admin'],
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['permissions.0']);
+    }
+
     public function test_destroy_deletes_custom_role(): void
     {
         $admin = $this->makeAdmin();
@@ -153,6 +181,7 @@ class RoleControllerTest extends TestCase
             'password' => Hash::make('secret123'),
         ]);
         $admin->assignRole('admin');
+        $this->grantDefaultMembership($admin);
 
         return $admin;
     }
@@ -165,7 +194,18 @@ class RoleControllerTest extends TestCase
             'password' => Hash::make('secret123'),
         ]);
         $user->assignRole('viewer');
+        $this->grantDefaultMembership($user);
 
         return $user;
+    }
+
+    private function grantDefaultMembership(User $user): void
+    {
+        ProjectMembership::create([
+            'tenant_id' => 'default',
+            'user_id' => $user->id,
+            'project_key' => 'roles-test',
+            'role' => 'member',
+        ]);
     }
 }

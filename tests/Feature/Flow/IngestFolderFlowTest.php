@@ -39,7 +39,7 @@ final class IngestFolderFlowTest extends TestCase
         Storage::disk('kb')->put('docs/b.md', '# b');
         Storage::disk('kb')->put('docs/c.md', '# c');
 
-        $run = $this->runFlow('default', 'docs', recursive: false);
+        $run = $this->runFlow('test-tenant', 'docs', recursive: false);
 
         $this->assertSame(FlowRun::STATUS_SUCCEEDED, $run->status);
         $dispatch = $run->stepResults['dispatch-ingest-fan-out'];
@@ -53,8 +53,8 @@ final class IngestFolderFlowTest extends TestCase
 
         $run = Flow::dryRun(
             IngestFolderFlow::NAME,
-            $this->input('default', 'docs'),
-            FlowExecutionOptions::make(correlationId: 'default'),
+            $this->input('test-tenant', 'docs'),
+            FlowExecutionOptions::make(correlationId: 'test-tenant'),
         );
 
         $this->assertSame(FlowRun::STATUS_SUCCEEDED, $run->status);
@@ -65,12 +65,12 @@ final class IngestFolderFlowTest extends TestCase
     {
         // Seed two docs in the DB; only ONE has a corresponding file on disk.
         $tc = $this->app->make(TenantContext::class);
-        $tc->set('default');
-        $orphan = KnowledgeDocument::create($this->docRow('default', 'p', 'docs/orphan.md'));
-        $kept = KnowledgeDocument::create($this->docRow('default', 'p', 'docs/keep.md'));
+        $tc->set('test-tenant');
+        $orphan = KnowledgeDocument::create($this->docRow('test-tenant', 'p', 'docs/orphan.md'));
+        $kept = KnowledgeDocument::create($this->docRow('test-tenant', 'p', 'docs/keep.md'));
         Storage::disk('kb')->put('docs/keep.md', '# keep');
 
-        $run = $this->runFlow('default', 'docs', pruneOrphans: true, projectKey: 'p');
+        $run = $this->runFlow('test-tenant', 'docs', pruneOrphans: true, projectKey: 'p');
 
         $this->assertSame(FlowRun::STATUS_SUCCEEDED, $run->status);
         // Orphan was soft-deleted (default delete mode).
@@ -81,11 +81,11 @@ final class IngestFolderFlowTest extends TestCase
     public function test_empty_folder_with_prune_orphans_still_removes_orphan_doc(): void
     {
         $tc = $this->app->make(TenantContext::class);
-        $tc->set('default');
-        $orphan = KnowledgeDocument::create($this->docRow('default', 'p', 'docs/orphan.md'));
+        $tc->set('test-tenant');
+        $orphan = KnowledgeDocument::create($this->docRow('test-tenant', 'p', 'docs/orphan.md'));
 
         // No files at all on disk under docs/.
-        $run = $this->runFlow('default', 'docs', pruneOrphans: true, projectKey: 'p');
+        $run = $this->runFlow('test-tenant', 'docs', pruneOrphans: true, projectKey: 'p');
 
         $this->assertSame(FlowRun::STATUS_SUCCEEDED, $run->status);
         $this->assertNull(KnowledgeDocument::find($orphan->id));
@@ -97,8 +97,8 @@ final class IngestFolderFlowTest extends TestCase
         // Force include of an unsupported extension via the pattern override.
         $run = Flow::execute(
             IngestFolderFlow::NAME,
-            array_merge($this->input('default', 'docs'), ['extensions' => ['md', 'png']]),
-            FlowExecutionOptions::make(correlationId: 'default'),
+            array_merge($this->input('test-tenant', 'docs'), ['extensions' => ['md', 'png']]),
+            FlowExecutionOptions::make(correlationId: 'test-tenant'),
         );
 
         $this->assertSame(FlowRun::STATUS_SUCCEEDED, $run->status);

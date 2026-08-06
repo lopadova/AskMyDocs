@@ -28,9 +28,12 @@ export const E2E_BASE_URL = process.env.E2E_BASE_URL ?? 'http://127.0.0.1:8000';
  *    user record they just authenticated with. The `super-admin-setup`
  *    project boots through DemoSeeder via the auto-fixture and stays
  *    on it for the duration of the suite.
+ *  - `system@demo.local` — DemoSeeder ONLY. It owns the protected
+ *    system-admin role plus companion super-admin and is reserved for
+ *    the chromium-system-admin control-plane scenarios.
  *
- * Setup projects (`setup`, `viewer-setup`, `super-admin-setup` —
- * driven by `auth.setup.ts`, `viewer.setup.ts`, `super-admin.setup.ts`)
+ * Setup projects (`setup`, `viewer-setup`, `super-admin-setup`,
+ * `system-admin-setup` — driven by the matching `*.setup.ts` files)
  * are not listed because they perform their own login flow against
  * the storageState at boot and don't reuse this map.
  */
@@ -38,6 +41,7 @@ export const PROJECT_CREDENTIALS: Record<string, { email: string; password: stri
     chromium: { email: 'admin@demo.local', password: 'password' },
     'chromium-viewer': { email: 'viewer@demo.local', password: 'password' },
     'chromium-super-admin': { email: 'super@demo.local', password: 'password' },
+    'chromium-system-admin': { email: 'system@demo.local', password: 'password' },
 };
 
 /**

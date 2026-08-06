@@ -77,7 +77,7 @@ final class ConfigureConnectorTest extends TestCase
         $this->assertNull($response->json('data.redirect_to'));
 
         $installation = ConnectorInstallation::query()
-            ->where('tenant_id', 'default')->where('connector_name', 'imap')->firstOrFail();
+            ->where('tenant_id', 'test-tenant')->where('connector_name', 'imap')->firstOrFail();
         $this->assertSame(ConnectorInstallation::STATUS_ACTIVE, $installation->status);
 
         // config_json carries the non-secret connection metadata — NEVER the password.
@@ -119,7 +119,7 @@ final class ConfigureConnectorTest extends TestCase
         $this->assertSame(
             0,
             ConnectorInstallation::query()
-                ->where('tenant_id', 'default')->where('connector_name', 'imap')->count(),
+                ->where('tenant_id', 'test-tenant')->where('connector_name', 'imap')->count(),
             'A failed connection test must leave no connector_installations row behind.',
         );
     }
@@ -146,7 +146,7 @@ final class ConfigureConnectorTest extends TestCase
         $this->assertSame('active', $response->json('data.status'));
 
         $rows = ConnectorInstallation::query()
-            ->where('tenant_id', 'default')->where('connector_name', 'imap')->get();
+            ->where('tenant_id', 'test-tenant')->where('connector_name', 'imap')->get();
         $this->assertCount(1, $rows, 'The retry must not leak a second row.');
         $this->assertSame('Autry', $rows->first()->label);
         $this->assertSame(ConnectorInstallation::STATUS_ACTIVE, $rows->first()->status);
@@ -192,7 +192,7 @@ final class ConfigureConnectorTest extends TestCase
 
         $this->assertSame('active', $response->json('data.status'));
         $installation = ConnectorInstallation::query()
-            ->where('tenant_id', 'default')->where('connector_name', 'imap')->firstOrFail();
+            ->where('tenant_id', 'test-tenant')->where('connector_name', 'imap')->firstOrFail();
         $this->assertSame('basic', $installation->config_json['auth_mode']);
     }
 
@@ -236,7 +236,7 @@ final class ConfigureConnectorTest extends TestCase
         $this->assertStringContainsString('client_id=test-client-id', $redirect);
 
         $installation = ConnectorInstallation::query()
-            ->where('tenant_id', 'default')->where('connector_name', 'imap')->firstOrFail();
+            ->where('tenant_id', 'test-tenant')->where('connector_name', 'imap')->firstOrFail();
         $this->assertSame(ConnectorInstallation::STATUS_PENDING, $installation->status);
         $this->assertSame('xoauth2', $installation->config_json['auth_mode']);
         $this->assertSame('google', $installation->config_json['xoauth2_provider']);
@@ -290,7 +290,7 @@ final class ConfigureConnectorTest extends TestCase
         $this->assertSame(
             2,
             ConnectorInstallation::query()
-                ->where('tenant_id', 'default')->where('connector_name', 'imap')->count(),
+                ->where('tenant_id', 'test-tenant')->where('connector_name', 'imap')->count(),
         );
         $labels = ConnectorInstallation::query()
             ->where('connector_name', 'imap')->orderBy('label')->pluck('label')->all();
@@ -333,7 +333,7 @@ final class ConfigureConnectorTest extends TestCase
             ->assertOk();
 
         $installation = ConnectorInstallation::query()
-            ->where('tenant_id', 'default')->where('connector_name', 'imap')->firstOrFail();
+            ->where('tenant_id', 'test-tenant')->where('connector_name', 'imap')->firstOrFail();
         $this->assertNull($installation->project_key);
     }
 
@@ -352,7 +352,7 @@ final class ConfigureConnectorTest extends TestCase
         // installation row, no vaulted secret — Connect is what persists.
         $this->assertSame(
             0,
-            ConnectorInstallation::query()->where('tenant_id', 'default')->where('connector_name', 'imap')->count(),
+            ConnectorInstallation::query()->where('tenant_id', 'test-tenant')->where('connector_name', 'imap')->count(),
             'A connection test must never create an installation row.',
         );
     }
@@ -369,7 +369,7 @@ final class ConfigureConnectorTest extends TestCase
         // reason; NOT a silent success and NOT a persisted row.
         $this->assertFalse($response->json('ok'));
         $this->assertNotEmpty($response->json('error'));
-        $this->assertSame(0, ConnectorInstallation::query()->where('tenant_id', 'default')->where('connector_name', 'imap')->count());
+        $this->assertSame(0, ConnectorInstallation::query()->where('tenant_id', 'test-tenant')->where('connector_name', 'imap')->count());
     }
 
     public function test_test_connection_reports_missing_fields_without_calling_the_server(): void

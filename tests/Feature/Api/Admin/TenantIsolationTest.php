@@ -22,8 +22,8 @@ use Tests\TestCase;
  *     LogViewer / KbTree / MaintenanceCommand controllers — kb_tags is
  *     the simplest tenant-aware CRUD and exercises the identical pattern.
  *
- * kb_tags is seeded in two tenants ('acme', 'umbrella'). A super-admin
- * (holds `tenant.cross-access`) drives the active tenant via the
+ * kb_tags is seeded in two tenants ('acme', 'umbrella'). An operator with
+ * explicit memberships drives the active tenant via the
  * X-Tenant-Id header and must only ever see / resolve the rows of the
  * tenant they pointed at. The systemic guard against NEW unscoped reads
  * lives in tests/Architecture/TenantReadScopeTest.php.
@@ -63,20 +63,21 @@ final class TenantIsolationTest extends TestCase
             ->assertJsonPath('error', 'tenant_forbidden');
     }
 
-    public function test_super_admin_may_switch_tenant_via_header(): void
+    public function test_system_admin_without_membership_cannot_switch_tenant_via_header(): void
     {
-        $super = $this->makeUser('super-admin');
+        $system = $this->makeUser('system-admin');
 
-        $this->actingAs($super)
+        $this->actingAs($system)
             ->withHeader('X-Tenant-Id', 'acme')
             ->getJson('/api/admin/kb/tags')
-            ->assertOk();
+            ->assertForbidden()
+            ->assertJsonPath('error', 'tenant_forbidden');
     }
 
     public function test_admin_with_membership_in_requested_tenant_may_switch_via_header(): void
     {
-        // Team-switcher path (2026-06-10): no cross-access permission, but
-        // a project_memberships row in 'acme' lets the user operate there.
+        // Team-switcher path: a project_memberships row in 'acme' lets the
+        // user operate there; no role-level bypass is involved.
         $admin = $this->makeUser('admin');
         \App\Models\ProjectMembership::create([
             'tenant_id' => 'acme',
@@ -98,10 +99,11 @@ final class TenantIsolationTest extends TestCase
             ->assertJsonPath('error', 'tenant_forbidden');
     }
 
-    public function test_regular_admin_without_header_operates_in_default_tenant(): void
+    public function test_regular_admin_without_header_operates_in_active_test_tenant(): void
     {
         $admin = $this->makeUser('admin');
-        $this->seedTag('default', 'hr', 'policy');
+        $this->grant($admin, 'test-tenant', 'test-project');
+        $this->seedTag('test-tenant', 'hr', 'policy');
 
         $resp = $this->actingAs($admin)->getJson('/api/admin/kb/tags')->assertOk();
 
@@ -113,16 +115,18 @@ final class TenantIsolationTest extends TestCase
 
     public function test_tag_list_is_scoped_to_the_active_tenant(): void
     {
-        $super = $this->makeUser('super-admin');
+        $system = $this->makeUser('system-admin');
+        $this->grant($system, 'acme', 'acme-kb');
+        $this->grant($system, 'umbrella', 'umbrella-kb');
         $this->seedTag('acme', 'hr', 'acme-only');
         $this->seedTag('umbrella', 'hr', 'umbrella-only');
 
-        $acme = $this->actingAs($super)
+        $acme = $this->actingAs($system)
             ->withHeader('X-Tenant-Id', 'acme')
             ->getJson('/api/admin/kb/tags')->assertOk();
         $this->assertSame(['acme-only'], collect($acme->json('data'))->pluck('slug')->all());
 
-        $umbrella = $this->actingAs($super)
+        $umbrella = $this->actingAs($system)
             ->withHeader('X-Tenant-Id', 'umbrella')
             ->getJson('/api/admin/kb/tags')->assertOk();
         $this->assertSame(['umbrella-only'], collect($umbrella->json('data'))->pluck('slug')->all());
@@ -130,11 +134,12 @@ final class TenantIsolationTest extends TestCase
 
     public function test_cannot_show_a_tag_owned_by_another_tenant(): void
     {
-        $super = $this->makeUser('super-admin');
+        $system = $this->makeUser('system-admin');
+        $this->grant($system, 'acme', 'acme-kb');
         $foreignTagId = $this->seedTag('umbrella', 'hr', 'secret');
 
         // Active tenant = acme; the umbrella tag id must 404 (IDOR guard).
-        $this->actingAs($super)
+        $this->actingAs($system)
             ->withHeader('X-Tenant-Id', 'acme')
             ->getJson("/api/admin/kb/tags/{$foreignTagId}")
             ->assertStatus(404);
@@ -142,10 +147,11 @@ final class TenantIsolationTest extends TestCase
 
     public function test_cannot_delete_a_tag_owned_by_another_tenant(): void
     {
-        $super = $this->makeUser('super-admin');
+        $system = $this->makeUser('system-admin');
+        $this->grant($system, 'acme', 'acme-kb');
         $foreignTagId = $this->seedTag('umbrella', 'hr', 'secret');
 
-        $this->actingAs($super)
+        $this->actingAs($system)
             ->withHeader('X-Tenant-Id', 'acme')
             ->deleteJson("/api/admin/kb/tags/{$foreignTagId}")
             ->assertStatus(404);
@@ -157,7 +163,8 @@ final class TenantIsolationTest extends TestCase
     public function test_cannot_verify_a_compliance_report_owned_by_another_tenant(): void
     {
         // C4 (R30) — the {report} binding is tenant-scoped.
-        $super = $this->makeUser('super-admin');
+        $system = $this->makeUser('system-admin');
+        $this->grant($system, 'acme', 'acme-kb');
         $foreignReportId = (int) DB::table('compliance_reports')->insertGetId([
             'tenant_id' => 'umbrella',
             'period_start' => '2026-01-01',
@@ -171,7 +178,7 @@ final class TenantIsolationTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        $this->actingAs($super)
+        $this->actingAs($system)
             ->withHeader('X-Tenant-Id', 'acme')
             ->postJson("/api/admin/compliance/reports/{$foreignReportId}/verify")
             ->assertStatus(404);
@@ -195,7 +202,7 @@ final class TenantIsolationTest extends TestCase
             'email' => $role.'-'.uniqid().'@demo.local',
             'password' => Hash::make('secret123'),
         ]);
-        $user->assignRole($role);
+        $user->assignRole($role === 'system-admin' ? ['system-admin', 'super-admin'] : $role);
 
         return $user;
     }
@@ -210,6 +217,16 @@ final class TenantIsolationTest extends TestCase
             'color' => null,
             'created_at' => now(),
             'updated_at' => now(),
+        ]);
+    }
+
+    private function grant(User $user, string $tenantId, string $projectKey): void
+    {
+        \App\Models\ProjectMembership::create([
+            'tenant_id' => $tenantId,
+            'user_id' => $user->id,
+            'project_key' => $projectKey,
+            'role' => 'admin',
         ]);
     }
 }

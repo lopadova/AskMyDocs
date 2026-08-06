@@ -28,7 +28,7 @@ final class WikiReviewTriSurfaceTest extends TestCase
     {
         parent::setUp();
         $this->seed(RbacSeeder::class);
-        app(TenantContext::class)->set('default');
+        app(TenantContext::class)->set('test-tenant');
     }
 
     private function doc(): \App\Models\KnowledgeDocument
@@ -37,7 +37,7 @@ final class WikiReviewTriSurfaceTest extends TestCase
         $n++;
 
         return \App\Models\KnowledgeDocument::create([
-            'tenant_id' => 'default', 'project_key' => 'docs-v3', 'source_type' => 'markdown',
+            'tenant_id' => 'test-tenant', 'project_key' => 'docs-v3', 'source_type' => 'markdown',
             'title' => "Doc {$n}", 'source_path' => "docs/rv-{$n}.md", 'mime_type' => 'text/markdown',
             'status' => 'active', 'document_hash' => str_repeat('a', 64), 'version_hash' => 'v'.$n,
             'is_canonical' => false, 'slug' => "doc-{$n}", 'generation_source' => 'auto',
@@ -77,7 +77,10 @@ final class WikiReviewTriSurfaceTest extends TestCase
             'cross_refs_valid' => true, 'novelty' => 'novel', 'contradictions' => [],
         ]);
 
-        $this->artisan('kb:wiki-review', ['document' => $doc->id])
+        $this->artisan('kb:wiki-review', [
+            'document' => $doc->id,
+            '--tenant' => 'test-tenant',
+        ])
             ->expectsOutputToContain('Verdict: approved')
             ->assertSuccessful();
     }
@@ -85,7 +88,10 @@ final class WikiReviewTriSurfaceTest extends TestCase
     public function test_command_fails_for_missing_doc(): void
     {
         $this->bindReviewer();
-        $this->artisan('kb:wiki-review', ['document' => 999999])->assertFailed();
+        $this->artisan('kb:wiki-review', [
+            'document' => 999999,
+            '--tenant' => 'test-tenant',
+        ])->assertFailed();
     }
 
     public function test_api_review(): void

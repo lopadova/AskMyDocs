@@ -4,6 +4,7 @@ import { SegmentedControl } from './SegmentedControl';
 import type { Density, FontPair, Theme } from './hooks';
 import type { SidebarSection } from './Sidebar';
 import { NAV_ITEMS } from './nav-config';
+import type { SeedUser } from '../../lib/seed';
 
 export type TweaksPanelProps = {
     open: boolean;
@@ -16,6 +17,7 @@ export type TweaksPanelProps = {
     setFont: (f: FontPair) => void;
     section: SidebarSection;
     setSection: (s: SidebarSection) => void;
+    userRole?: SeedUser['role'];
 };
 
 function TweakRow({ label, children }: { label: string; children: ReactNode }) {
@@ -49,6 +51,7 @@ export function TweaksPanel({
     setFont,
     section,
     setSection,
+    userRole = 'super-admin',
 }: TweaksPanelProps) {
     if (!open) {
         return null;
@@ -127,7 +130,9 @@ export function TweaksPanel({
                             jump-to-section selector stays in sync with every
                             section in the unified rail (R18 — not a stale
                             hard-coded subset). */}
-                        {NAV_ITEMS.map((item) => (
+                        {NAV_ITEMS.filter(
+                            (item) => item.roles === undefined || item.roles.includes(userRole),
+                        ).map((item) => (
                             <option key={item.id} value={item.id}>
                                 {item.label}
                             </option>

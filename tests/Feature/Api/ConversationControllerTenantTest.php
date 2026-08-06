@@ -44,7 +44,7 @@ final class ConversationControllerTenantTest extends TestCase
         $ctx = app(TenantContext::class);
 
         // Two conversations in `default`, one in `acme` — all the SAME user.
-        $ctx->set('default');
+        $ctx->set('test-tenant');
         $user->conversations()->create(['title' => 'Default A', 'project_key' => 'hr-portal']);
         $user->conversations()->create(['title' => 'Default B', 'project_key' => 'hr-portal']);
 
@@ -80,7 +80,7 @@ final class ConversationControllerTenantTest extends TestCase
             'password' => Hash::make('secret123'),
         ]);
 
-        app(TenantContext::class)->set('default');
+        app(TenantContext::class)->set('test-tenant');
         $user->conversations()->create(['title' => 'Only in default']);
         app(TenantContext::class)->reset();
 

@@ -3,13 +3,13 @@ import { useTeamStore, type Team } from './team-store';
 import { queryClient } from './query-client';
 
 const TEAMS: Team[] = [
-    { tenant_id: 'default', hash: 'def0def0def0', name: 'Default', projects: [] },
     {
         tenant_id: 'acme',
         hash: 'acme00acme00',
         name: 'Acme Corporation',
         projects: [{ project_key: 'acme-kb', role: 'admin', scope: [] }],
     },
+    { tenant_id: 'globex', hash: '910b4b835f63', name: 'Globex', projects: [] },
 ];
 
 beforeEach(() => {
@@ -22,40 +22,40 @@ describe('useTeamStore.syncFromMe', () => {
     it('bootstraps to the first team when nothing is persisted', () => {
         useTeamStore.getState().syncFromMe(TEAMS, 1);
         const s = useTeamStore.getState();
-        expect(s.currentTeam).toBe('default');
+        expect(s.currentTeam).toBe('acme');
         expect(s.teams).toHaveLength(2);
         expect(s.userId).toBe(1);
     });
 
     it('keeps a persisted selection that is still valid for the same user', () => {
-        useTeamStore.setState({ currentTeam: 'acme', userId: 1 });
+        useTeamStore.setState({ currentTeam: 'globex', userId: 1 });
         useTeamStore.getState().syncFromMe(TEAMS, 1);
-        expect(useTeamStore.getState().currentTeam).toBe('acme');
+        expect(useTeamStore.getState().currentTeam).toBe('globex');
     });
 
     it('falls back to the first team when the persisted selection is no longer offered', () => {
         useTeamStore.setState({ currentTeam: 'gone-tenant', userId: 1 });
         useTeamStore.getState().syncFromMe(TEAMS, 1);
-        expect(useTeamStore.getState().currentTeam).toBe('default');
+        expect(useTeamStore.getState().currentTeam).toBe('acme');
     });
 
     it('discards the persisted selection when a different user logs in', () => {
-        useTeamStore.setState({ currentTeam: 'acme', userId: 1 });
+        useTeamStore.setState({ currentTeam: 'globex', userId: 1 });
         useTeamStore.getState().syncFromMe(TEAMS, 2);
         const s = useTeamStore.getState();
-        expect(s.currentTeam).toBe('default');
+        expect(s.currentTeam).toBe('acme');
         expect(s.userId).toBe(2);
     });
 
     it('discards a corrupted persisted value that fails the tenant-id format', () => {
         useTeamStore.setState({ currentTeam: 'NOT VALID!', userId: 1 });
         useTeamStore.getState().syncFromMe(TEAMS, 1);
-        expect(useTeamStore.getState().currentTeam).toBe('default');
+        expect(useTeamStore.getState().currentTeam).toBe('acme');
     });
 
-    it('falls back to literal default when the BE sends no teams at all', () => {
+    it('keeps a real null selection when the BE sends no teams at all', () => {
         useTeamStore.getState().syncFromMe([], 1);
-        expect(useTeamStore.getState().currentTeam).toBe('default');
+        expect(useTeamStore.getState().currentTeam).toBeNull();
     });
 });
 
@@ -65,9 +65,9 @@ describe('useTeamStore.switchTeam', () => {
         const clear = vi.spyOn(queryClient, 'clear');
 
         useTeamStore.getState().syncFromMe(TEAMS, 1);
-        useTeamStore.getState().switchTeam('acme');
+        useTeamStore.getState().switchTeam('globex');
 
-        expect(useTeamStore.getState().currentTeam).toBe('acme');
+        expect(useTeamStore.getState().currentTeam).toBe('globex');
         expect(cancel).toHaveBeenCalled();
         expect(clear).toHaveBeenCalled();
     });
@@ -75,7 +75,7 @@ describe('useTeamStore.switchTeam', () => {
     it('is a no-op for the already-active team (no cache churn)', () => {
         const clear = vi.spyOn(queryClient, 'clear');
         useTeamStore.getState().syncFromMe(TEAMS, 1);
-        useTeamStore.getState().switchTeam('default');
+        useTeamStore.getState().switchTeam('acme');
         expect(clear).not.toHaveBeenCalled();
     });
 
@@ -83,7 +83,7 @@ describe('useTeamStore.switchTeam', () => {
         const clear = vi.spyOn(queryClient, 'clear');
         useTeamStore.getState().syncFromMe(TEAMS, 1);
         useTeamStore.getState().switchTeam('intruder-tenant');
-        expect(useTeamStore.getState().currentTeam).toBe('default');
+        expect(useTeamStore.getState().currentTeam).toBe('acme');
         expect(clear).not.toHaveBeenCalled();
     });
 });
@@ -94,11 +94,17 @@ describe('useTeamStore.resetToFirstTeam', () => {
         vi.spyOn(queryClient, 'cancelQueries').mockResolvedValue();
 
         useTeamStore.getState().syncFromMe(TEAMS, 1);
-        useTeamStore.getState().switchTeam('acme');
+        useTeamStore.getState().switchTeam('globex');
         clear.mockClear();
 
         useTeamStore.getState().resetToFirstTeam();
-        expect(useTeamStore.getState().currentTeam).toBe('default');
+        expect(useTeamStore.getState().currentTeam).toBe('acme');
         expect(clear).toHaveBeenCalled();
+    });
+
+    it('clears the selection when no team remains available', () => {
+        useTeamStore.getState().syncFromMe(TEAMS, 1);
+        useTeamStore.getState().syncFromMe([], 1);
+        expect(useTeamStore.getState().currentTeam).toBeNull();
     });
 });

@@ -36,7 +36,7 @@ final class CanonicalIndexFlowTest extends TestCase
 
     public function test_happy_path_populates_self_node_targets_and_edges(): void
     {
-        $doc = $this->seedCanonicalDoc('default', 'acme', 'dec-x', [
+        $doc = $this->seedCanonicalDoc('test-tenant', 'acme', 'dec-x', [
             'related_slugs' => ['mod-cache'],
             'supersedes_slugs' => ['dec-prev'],
             'superseded_by_slugs' => [],
@@ -44,8 +44,8 @@ final class CanonicalIndexFlowTest extends TestCase
 
         $run = Flow::execute(
             CanonicalIndexFlow::NAME,
-            ['tenant_id' => 'default', 'document_id' => $doc->id],
-            FlowExecutionOptions::make(correlationId: 'default'),
+            ['tenant_id' => 'test-tenant', 'document_id' => $doc->id],
+            FlowExecutionOptions::make(correlationId: 'test-tenant'),
         );
 
         $this->assertSame(FlowRun::STATUS_SUCCEEDED, $run->status);
@@ -70,18 +70,18 @@ final class CanonicalIndexFlowTest extends TestCase
         // Persisted Flow rows carry the tenant.
         $runRow = DB::table('flow_runs')->where('id', $run->id)->first();
         $this->assertNotNull($runRow);
-        $this->assertSame('default', $runRow->tenant_id);
+        $this->assertSame('test-tenant', $runRow->tenant_id);
         $this->assertSame('succeeded', $runRow->status);
     }
 
     public function test_short_circuits_on_non_canonical_doc_without_writing_graph(): void
     {
-        $doc = $this->seedNonCanonicalDoc('default', 'acme');
+        $doc = $this->seedNonCanonicalDoc('test-tenant', 'acme');
 
         $run = Flow::execute(
             CanonicalIndexFlow::NAME,
-            ['tenant_id' => 'default', 'document_id' => $doc->id],
-            FlowExecutionOptions::make(correlationId: 'default'),
+            ['tenant_id' => 'test-tenant', 'document_id' => $doc->id],
+            FlowExecutionOptions::make(correlationId: 'test-tenant'),
         );
 
         $this->assertSame(FlowRun::STATUS_SUCCEEDED, $run->status);
