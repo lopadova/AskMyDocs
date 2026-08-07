@@ -67,7 +67,8 @@ export interface WidgetConfig {
      */
     mount?: string;
     /**
-     * Tema grafico INLINE opzionale (precedenza massima: inline > server > default).
+     * Tema grafico INLINE opzionale. Precedenza effettiva:
+     * CSS host `--askmydocs-*` > inline > server > default.
      * Parziale: ogni campo assente cade sul tema server (/setup) o sul default.
      */
     theme?: Partial<WidgetTheme>;
@@ -116,6 +117,7 @@ export type WidgetFontKey = 'system' | 'inter' | 'roboto' | 'georgia' | 'mono';
 export type LauncherSide = 'right' | 'left';
 export type LauncherShape = 'pill' | 'rounded' | 'circle';
 export type LauncherIcon = 'chat' | 'sparkles' | 'help' | 'none';
+export type WidgetShadow = 'none' | 'soft' | 'medium' | 'strong';
 
 /**
  * Identità grafica del widget. Forma piatta e tipizzata, speculare a
@@ -127,6 +129,7 @@ export interface WidgetTheme {
     mode: WidgetMode;
     // Colori (solo hex #rgb/#rrggbb/#rrggbbaa)
     accent: string;
+    accentForeground: string;
     background: string;
     foreground: string;
     muted: string;
@@ -139,6 +142,23 @@ export interface WidgetTheme {
     userBubbleForeground: string;
     assistantBubbleBackground: string;
     assistantBubbleForeground: string;
+    composerBackground: string;
+    inputBackground: string;
+    inputForeground: string;
+    inputPlaceholder: string;
+    citationBackground: string;
+    citationForeground: string;
+    focusRing: string;
+    systemBackground: string;
+    systemForeground: string;
+    errorBackground: string;
+    errorForeground: string;
+    confirmBackground: string;
+    confirmForeground: string;
+    confirmBorder: string;
+    sourceSidebarBackground: string;
+    sourceSidebarForeground: string;
+    sourceBackdrop: string;
     // Tipografia
     fontFamily: WidgetFontKey;
     fontSize: number;
@@ -148,12 +168,33 @@ export interface WidgetTheme {
     launcherLabel: string;
     launcherIcon: LauncherIcon;
     launcherIconUrl: string;
+    launcherOffsetX: number;
+    launcherOffsetY: number;
+    launcherSize: number;
+    launcherShadow: WidgetShadow;
     // Pannello
     panelWidth: number;
     panelHeight: number;
     panelRadius: number;
+    panelShadow: WidgetShadow;
     panelTitle: string;
     headerLogoUrl: string;
+    // Spaziatura e geometria
+    headerPaddingX: number;
+    headerPaddingY: number;
+    messagesPadding: number;
+    messageGap: number;
+    bubblePaddingX: number;
+    bubblePaddingY: number;
+    bubbleRadius: number;
+    bubbleMaxWidth: number;
+    composerPadding: number;
+    inputRadius: number;
+    buttonRadius: number;
+    logoHeight: number;
+    // Viewer fonti
+    sourceViewerWidth: number;
+    sourceViewerRadius: number;
 }
 
 export interface SnapshotField {
@@ -255,11 +296,42 @@ export interface ToolCall {
     is_host_tool?: boolean;
 }
 
+export interface CitationChunkEvidence {
+    chunk_id?: string | number | null;
+    heading?: string | null;
+    score?: number;
+    snippet?: string;
+    evidence_hash?: string | null;
+}
+
 export interface Citation {
     document_id: number | null;
     title: string;
     source_path: string | null;
-    origin?: string;
+    slug?: string | null;
+    project_key?: string | null;
+    source_type?: string | null;
+    generation_source?: 'auto' | 'human' | null;
+    headings?: string[];
+    chunks_used?: number;
+    origin?: 'primary' | 'related' | 'rejected' | string | null;
+    chunks?: CitationChunkEvidence[];
+}
+
+export interface WidgetDocumentSection {
+    heading_path: string | null;
+    content: string;
+}
+
+/** Session-scoped indexed document returned by the cited-source endpoint. */
+export interface WidgetDocumentPreview {
+    document_id: number;
+    title: string | null;
+    source_path: string | null;
+    source_type: string | null;
+    language: string | null;
+    source_updated_at: string | null;
+    sections: WidgetDocumentSection[];
 }
 
 /** Risposta del backend a start/step. */

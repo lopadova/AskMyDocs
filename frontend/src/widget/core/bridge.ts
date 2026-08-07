@@ -11,7 +11,16 @@
  *   le azioni con confirmation_required passano da onConfirm.
  */
 import { buildSnapshot } from '../dom/snapshot';
-import type { Citation, HostTool, HostToolResult, Snapshot, ToolCall, TurnResponse, WidgetConfig } from '../types';
+import type {
+    Citation,
+    HostTool,
+    HostToolResult,
+    Snapshot,
+    ToolCall,
+    TurnResponse,
+    WidgetConfig,
+    WidgetDocumentPreview,
+} from '../types';
 import { Executor } from './executor';
 import { Transport, WidgetError } from './transport';
 
@@ -31,7 +40,7 @@ export interface ExecToolResponse {
 export interface BridgeEvents {
     onBusy: (busy: boolean) => void;
     onAnswer: (text: string, citations: Citation[]) => void;
-    onBotText: (text: string) => void;
+    onBotText: (text: string, citations: Citation[]) => void;
     onAction: (tool: string, args: Record<string, unknown>) => void;
     onAsk: (question: string, options: string[]) => void;
     onDone: (summary: string) => void;
@@ -54,6 +63,7 @@ export interface BridgeEvents {
 export interface RestoredMessage {
     role: 'user' | 'assistant';
     content: string;
+    citations?: Citation[];
 }
 
 const MAX_AUTO_STEPS = 12;
@@ -147,18 +157,50 @@ export class Bridge {
 
         return replay.steps.flatMap((step): RestoredMessage[] => {
             const content = step.args_json?.content;
-            if (typeof content !== 'string' || content === '') {
-                return [];
-            }
             if (step.kind === 'user_message') {
-                return [{ role: 'user', content }];
+                return typeof content === 'string' && content !== ''
+                    ? [{ role: 'user', content }]
+                    : [];
             }
             if (step.kind === 'bot_message') {
-                return [{ role: 'assistant', content }];
+                const rawCitations = step.args_json?.citations;
+                const citations = Array.isArray(rawCitations)
+                    ? rawCitations.filter(
+                        (citation): citation is Citation =>
+                            typeof citation === 'object' &&
+                            citation !== null &&
+                            'document_id' in citation &&
+                            'title' in citation &&
+                            'source_path' in citation,
+                    )
+                    : [];
+                if ((typeof content !== 'string' || content === '') && citations.length === 0) {
+                    return [];
+                }
+
+                return [{
+                    role: 'assistant',
+                    content: typeof content === 'string' ? content : '',
+                    ...(citations.length > 0 ? { citations } : {}),
+                }];
             }
 
             return [];
         });
+    }
+
+    /** Load one full source through the current session-scoped endpoint. */
+    async fetchCitationDocument(documentId: number, signal?: AbortSignal): Promise<WidgetDocumentPreview> {
+        if (this.sessionId === null) {
+            throw new WidgetError('La sessione del widget non è ancora disponibile.', 409, 'session_missing');
+        }
+
+        return this.transport.fetchCitationDocument(this.sessionId, documentId, signal);
+    }
+
+    /** Namespace the source cache by the exact public session being authorised. */
+    citationCacheNamespace(): string {
+        return this.sessionId ?? 'no-session';
     }
 
     async sendUserMessage(message: string): Promise<void> {
@@ -261,8 +303,8 @@ export class Bridge {
 
             return;
         }
-        if (res.bot_message) {
-            this.events.onBotText(res.bot_message);
+        if (res.bot_message || (res.citations?.length ?? 0) > 0) {
+            this.events.onBotText(res.bot_message ?? '', res.citations ?? []);
         }
 
         if (call.tool === 'ask_user') {

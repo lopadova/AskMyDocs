@@ -64,7 +64,28 @@ describe('Bridge authenticated history restore', () => {
                             step_index: 1,
                             kind: 'bot_message',
                             tool: null,
-                            args_json: { content: 'Restored answer' },
+                            args_json: {
+                                content: 'Restored answer',
+                                citations: [{
+                                    document_id: 7,
+                                    title: 'Restored source',
+                                    source_path: 'docs/restored.md',
+                                    origin: 'primary',
+                                }],
+                            },
+                        },
+                        {
+                            step_index: 2,
+                            kind: 'bot_message',
+                            tool: null,
+                            args_json: {
+                                content: '',
+                                citations: [{
+                                    document_id: 8,
+                                    title: 'Tool-loop source',
+                                    source_path: 'docs/tool-loop.md',
+                                }],
+                            },
                         },
                     ],
                 }), { status: 200, headers: { 'Content-Type': 'application/json' } });
@@ -77,7 +98,25 @@ describe('Bridge authenticated history restore', () => {
 
         expect(restored).toEqual([
             { role: 'user', content: 'Question from the restored session' },
-            { role: 'assistant', content: 'Restored answer' },
+            {
+                role: 'assistant',
+                content: 'Restored answer',
+                citations: [{
+                    document_id: 7,
+                    title: 'Restored source',
+                    source_path: 'docs/restored.md',
+                    origin: 'primary',
+                }],
+            },
+            {
+                role: 'assistant',
+                content: '',
+                citations: [{
+                    document_id: 8,
+                    title: 'Tool-loop source',
+                    source_path: 'docs/tool-loop.md',
+                }],
+            },
         ]);
         expect(urls).toEqual([
             'https://kb.example.com/api/widget/sessions/current',

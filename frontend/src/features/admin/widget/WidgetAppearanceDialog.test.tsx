@@ -43,6 +43,14 @@ describe('WidgetAppearanceDialog', () => {
         expect(screen.getByTestId('admin-widget-appearance-mode-note')).toBeDefined();
     });
 
+    it('organizes advanced controls into the five appearance sections', () => {
+        renderDialog();
+
+        for (const section of ['branding', 'launcher', 'chat', 'composer', 'sources']) {
+            expect(screen.getByTestId(`admin-widget-appearance-tab-${section}`)).toBeDefined();
+        }
+    });
+
     it('saves the edited theme via PATCH with the changed colour', async () => {
         mockedApi.patch.mockResolvedValueOnce({ data: { data: {} } });
         const user = userEvent.setup();
@@ -116,6 +124,30 @@ describe('WidgetAppearanceDialog', () => {
         await waitFor(() => {
             const err = screen.getByTestId('admin-widget-appearance-error');
             expect(err.textContent).toContain('Invalid colour.');
+        });
+    });
+
+    it('edits source-viewer tokens and includes them in the saved theme', async () => {
+        mockedApi.patch.mockResolvedValueOnce({ data: { data: {} } });
+        const user = userEvent.setup();
+        renderDialog();
+
+        await user.click(screen.getByTestId('admin-widget-appearance-tab-sources'));
+        fireEvent.change(screen.getByTestId('admin-widget-appearance-field-sourceViewerWidth'), {
+            target: { value: '1120' },
+        });
+        fireEvent.change(screen.getByTestId('admin-widget-appearance-hex-sourceSidebarBackground'), {
+            target: { value: '#112233' },
+        });
+        await user.click(screen.getByTestId('admin-widget-appearance-save'));
+
+        await waitFor(() => {
+            expect(mockedApi.patch).toHaveBeenCalledWith('/api/admin/widget-keys/7', {
+                theme: expect.objectContaining({
+                    sourceViewerWidth: 1120,
+                    sourceSidebarBackground: '#112233',
+                }),
+            });
         });
     });
 });

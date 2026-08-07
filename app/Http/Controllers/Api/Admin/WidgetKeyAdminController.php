@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\Admin;
 
+use App\Models\Project;
 use App\Models\User;
 use App\Models\WidgetKey;
+use App\Services\Admin\ProjectCatalogService;
 use App\Services\Widget\Exceptions\WidgetIdentityCredentialConflict;
 use App\Services\Widget\Exceptions\WidgetIdentityCredentialDisabled;
 use App\Services\Widget\Exceptions\WidgetIdentityCredentialNotFound;
@@ -20,6 +22,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 /**
@@ -35,6 +38,7 @@ final class WidgetKeyAdminController extends Controller
         private readonly TenantContext $tenantContext,
         private readonly WidgetThemeService $theme,
         private readonly WidgetIdentityCredentialService $identityCredentials,
+        private readonly ProjectCatalogService $projects,
     ) {}
 
     /** List all widget keys for the current tenant. */
@@ -67,7 +71,16 @@ final class WidgetKeyAdminController extends Controller
                     ->where('tenant_id', $tenantId)
                     ->where('project_key', (string) $request->input('project_key')),
             ],
-            'project_key' => ['required', 'string', 'max:120'],
+            'project_key' => [
+                'required',
+                'string',
+                'max:120',
+                function (string $attribute, mixed $value, \Closure $fail): void {
+                    if (! is_string($value) || ! $this->projects->contains($value)) {
+                        $fail('The selected project is not available for this tenant.');
+                    }
+                },
+            ],
             'allowed_origins' => ['nullable', 'array'],
             'allowed_origins.*' => ['string', 'max:255'],
             'rate_limit' => ['nullable', 'integer', 'min:1', 'max:1000'],
@@ -89,6 +102,24 @@ final class WidgetKeyAdminController extends Controller
             $plainSecret,
             $request,
         ): array {
+            // Serialize widget creation with registry deletion. A first-class
+            // project has a lockable row shared with ProjectController::destroy;
+            // legacy catalogue entries intentionally have no registry row, so
+            // they remain valid through the historical document/membership/key
+            // sources. Re-checking the catalogue inside the transaction closes
+            // the window between request validation and the insert.
+            Project::query()
+                ->forTenant($tenantId)
+                ->where('project_key', $validated['project_key'])
+                ->lockForUpdate()
+                ->first(['id']);
+
+            if (! $this->projects->contains($validated['project_key'])) {
+                throw ValidationException::withMessages([
+                    'project_key' => ['The selected project is not available for this tenant.'],
+                ]);
+            }
+
             // Identity auth starts disabled: the shared service below is the
             // only writer for user_auth_enabled, its hash and its version.
             $row = WidgetKey::query()->create([
@@ -169,6 +200,7 @@ final class WidgetKeyAdminController extends Controller
         // Il tema vive sulla colonna `theme_config` (nome diverso dalla chiave
         // FE `theme`): gestito a parte, mai via fill().
         $themeProvided = array_key_exists('theme', $validated);
+        $themePatch = $themeProvided && is_array($validated['theme']) ? $validated['theme'] : [];
         unset($validated['theme']);
         $userAuthProvided = array_key_exists('user_auth_enabled', $validated);
         $userAuthEnabled = (bool) ($validated['user_auth_enabled'] ?? false);
@@ -180,7 +212,7 @@ final class WidgetKeyAdminController extends Controller
                 $row,
                 $validated,
                 $themeProvided,
-                $request,
+                $themePatch,
                 $userAuthProvided,
                 $userAuthEnabled,
                 $identityVersion,
@@ -188,7 +220,12 @@ final class WidgetKeyAdminController extends Controller
             ): array {
                 $row->fill(array_filter($validated, fn ($value) => $value !== null));
                 if ($themeProvided) {
-                    $row->theme_config = $this->theme->sanitize($request->input('theme', []));
+                    // PATCH semantico: i campi omessi conservano il valore
+                    // attualmente risolto, invece di tornare ai default.
+                    $row->theme_config = $this->theme->sanitize(array_replace(
+                        $this->theme->resolve($row->theme_config),
+                        $themePatch,
+                    ));
                 }
                 $row->save();
 

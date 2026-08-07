@@ -6,12 +6,15 @@ namespace Tests\Feature\Admin;
 
 use App\Models\User;
 use App\Models\AdminCommandAudit;
+use App\Models\Project;
 use App\Models\WidgetKey;
 use App\Models\WidgetSession;
 use App\Models\WidgetSessionStep;
 use App\Support\TenantContext;
 use Database\Seeders\RbacSeeder;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
@@ -33,6 +36,14 @@ final class WidgetAdminControllerTest extends TestCase
     {
         parent::setUp();
         $this->seed(RbacSeeder::class);
+
+        foreach (['my-project', 'docs-v3', 'engineering', 'gescat', 'p', 'portal'] as $projectKey) {
+            Project::query()->create([
+                'tenant_id' => 'test-tenant',
+                'project_key' => $projectKey,
+                'name' => ucfirst(str_replace('-', ' ', $projectKey)),
+            ]);
+        }
     }
 
     private function superAdmin(): User
@@ -192,6 +203,99 @@ final class WidgetAdminControllerTest extends TestCase
             'label' => 'New Key',
             'project_key' => 'my-project',
             'tenant_id' => 'test-tenant',
+        ]);
+    }
+
+    public function test_store_rejects_a_project_outside_the_tenant_catalog(): void
+    {
+        $user = $this->superAdmin();
+
+        Project::query()->create([
+            'tenant_id' => 'another-tenant',
+            'project_key' => 'private-project',
+            'name' => 'Private project',
+        ]);
+
+        $this->actingAs($user)->postJson('/api/admin/widget-keys', [
+            'label' => 'Cross tenant',
+            'project_key' => 'private-project',
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors('project_key');
+
+        $this->assertDatabaseMissing('widget_keys', [
+            'tenant_id' => 'test-tenant',
+            'project_key' => 'private-project',
+        ]);
+    }
+
+    public function test_store_rechecks_the_catalog_inside_the_transaction(): void
+    {
+        $user = $this->superAdmin();
+        $project = Project::query()
+            ->where('tenant_id', 'test-tenant')
+            ->where('project_key', 'my-project')
+            ->sole();
+        $removedBetweenValidationAndTransaction = false;
+
+        // Simulate the only dangerous interleaving on SQLite: the registry row
+        // disappears after the validator has materialised its catalogue but
+        // before store() enters its write transaction. The second catalogue
+        // check must reject the now-stale selection instead of creating an
+        // orphan widget key.
+        DB::listen(function (QueryExecuted $query) use (
+            $project,
+            &$removedBetweenValidationAndTransaction,
+        ): void {
+            $sql = strtolower($query->sql);
+            if ($removedBetweenValidationAndTransaction
+                || ! str_contains($sql, 'select distinct')
+                || ! str_contains($sql, 'project_key')
+                || ! str_contains($sql, 'widget_keys')) {
+                return;
+            }
+
+            $removedBetweenValidationAndTransaction = true;
+            DB::table('projects')->where('id', $project->id)->delete();
+        });
+
+        $this->actingAs($user)->postJson('/api/admin/widget-keys', [
+            'label' => 'Raced project',
+            'project_key' => 'my-project',
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors('project_key');
+
+        $this->assertTrue($removedBetweenValidationAndTransaction);
+        $this->assertDatabaseMissing('widget_keys', [
+            'tenant_id' => 'test-tenant',
+            'project_key' => 'my-project',
+            'label' => 'Raced project',
+        ]);
+    }
+
+    public function test_store_preserves_a_legacy_catalog_project_without_a_registry_row(): void
+    {
+        $user = $this->superAdmin();
+        WidgetKey::factory()->create([
+            'tenant_id' => 'test-tenant',
+            'project_key' => 'legacy-widget-only',
+            'label' => 'Existing legacy key',
+        ]);
+
+        $this->assertDatabaseMissing('projects', [
+            'tenant_id' => 'test-tenant',
+            'project_key' => 'legacy-widget-only',
+        ]);
+
+        $this->actingAs($user)->postJson('/api/admin/widget-keys', [
+            'label' => 'Second legacy key',
+            'project_key' => 'legacy-widget-only',
+        ])->assertCreated()
+            ->assertJsonPath('data.project_key', 'legacy-widget-only');
+
+        $this->assertDatabaseHas('widget_keys', [
+            'tenant_id' => 'test-tenant',
+            'project_key' => 'legacy-widget-only',
+            'label' => 'Second legacy key',
         ]);
     }
 
@@ -493,6 +597,64 @@ final class WidgetAdminControllerTest extends TestCase
             ->assertJsonPath('data.theme.background', '#ffffff'); // default conservato
 
         $this->assertSame('#ef4444', $key->fresh()->theme_config['accent']);
+    }
+
+    public function test_update_theme_is_a_true_partial_patch(): void
+    {
+        $user = $this->superAdmin();
+        $theme = app(\App\Services\Widget\WidgetThemeService::class)->sanitize([
+            'accent' => '#111111',
+            'background' => '#222222',
+            'panelWidth' => 640,
+            'panelShadow' => 'soft',
+        ]);
+        $key = WidgetKey::query()->create([
+            'tenant_id' => 'test-tenant',
+            'project_key' => 'p',
+            'public_key' => 'pk_theme_partial_update',
+            'label' => 'Partial theme',
+            'allowed_origins' => [],
+            'rate_limit' => 60,
+            'skill' => 'askmydocs-assistant@1',
+            'theme_config' => $theme,
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($user)->patchJson("/api/admin/widget-keys/{$key->id}", [
+            'theme' => ['accent' => '#abcdef'],
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.theme.accent', '#abcdef')
+            ->assertJsonPath('data.theme.background', '#222222')
+            ->assertJsonPath('data.theme.panelWidth', 640)
+            ->assertJsonPath('data.theme.panelShadow', 'soft');
+
+        $stored = $key->fresh()->theme_config;
+        $this->assertSame('#abcdef', $stored['accent']);
+        $this->assertSame('#222222', $stored['background']);
+        $this->assertSame(640, $stored['panelWidth']);
+        $this->assertSame('soft', $stored['panelShadow']);
+    }
+
+    public function test_advanced_theme_ranges_and_shadow_allowlist_are_validated(): void
+    {
+        $user = $this->superAdmin();
+
+        $this->actingAs($user)->postJson('/api/admin/widget-keys', [
+            'label' => 'Invalid advanced theme',
+            'project_key' => 'p',
+            'theme' => [
+                'panelWidth' => 721,
+                'sourceViewerWidth' => 559,
+                'launcherShadow' => 'custom-css',
+            ],
+        ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors([
+                'theme.panelWidth',
+                'theme.sourceViewerWidth',
+                'theme.launcherShadow',
+            ]);
     }
 
     public function test_invalid_theme_color_is_rejected_with_422(): void

@@ -22,6 +22,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { CopyButton } from './CopyButton';
 import { EmbedCodeDialog } from './EmbedCodeDialog';
+import { useKbProjects } from '../kb/kb-tree.api';
 
 /**
  * WidgetKey row as returned by the admin API.
@@ -187,6 +188,8 @@ export function WidgetKeysView() {
             return data.data;
         },
     });
+    const projectsQuery = useKbProjects();
+    const projectOptions = projectsQuery.data?.projects ?? [];
 
     const resetCreateForm = () => {
         setNewLabel('');
@@ -208,7 +211,9 @@ export function WidgetKeysView() {
 
             const payload: Record<string, unknown> = {
                 label: newLabel.trim(),
-                project_key: newProjectKey.trim(),
+                // Project keys are opaque catalogue identities: submit the
+                // selected value directly rather than rebuilding or slugging it.
+                project_key: newProjectKey,
                 allowed_origins: origins,
                 host_tools_enabled: newHostTools,
                 user_auth_enabled: newUserAuth,
@@ -356,7 +361,12 @@ export function WidgetKeysView() {
     });
 
     const canSubmit =
-        newLabel.trim() !== '' && newProjectKey.trim() !== '' && !createKey.isPending;
+        newLabel.trim() !== ''
+        && newProjectKey !== ''
+        && projectOptions.includes(newProjectKey)
+        && !projectsQuery.isLoading
+        && !projectsQuery.isError
+        && !createKey.isPending;
 
     return (
         <section data-testid="admin-widget-keys-view" className="grid gap-5">
@@ -479,19 +489,92 @@ export function WidgetKeysView() {
 
                         <div className="grid gap-1.5">
                             <Label htmlFor="wk-project">
-                                Project key <span className="text-destructive">*</span>
+                                Project <span className="text-destructive">*</span>
                             </Label>
-                            <Input
+                            <select
                                 id="wk-project"
                                 data-testid="admin-widget-keys-project"
                                 value={newProjectKey}
                                 onChange={(e) => setNewProjectKey(e.target.value)}
-                                placeholder="e.g. modelsgenerator"
-                            />
+                                disabled={
+                                    projectsQuery.isLoading
+                                    || projectsQuery.isError
+                                    || projectOptions.length === 0
+                                }
+                                className={SELECT_CLASS}
+                            >
+                                <option value="" disabled>
+                                    {projectsQuery.isLoading
+                                        ? 'Loading projects…'
+                                        : projectsQuery.isError
+                                          ? 'Projects unavailable'
+                                          : projectOptions.length === 0
+                                            ? 'No projects available'
+                                            : 'Select a project…'}
+                                </option>
+                                {projectOptions.map((projectKey) => (
+                                    <option key={projectKey} value={projectKey}>
+                                        {projectKey}
+                                    </option>
+                                ))}
+                            </select>
                             <p className="text-muted-foreground text-xs">
                                 Which knowledge-base project the widget retrieves from. Answers
                                 and citations are grounded strictly in this project.
                             </p>
+                            {projectsQuery.isLoading && (
+                                <p
+                                    role="status"
+                                    data-testid="admin-widget-keys-project-loading"
+                                    className="text-muted-foreground text-xs"
+                                >
+                                    Loading the projects available in this team…
+                                </p>
+                            )}
+                            {projectsQuery.isError && (
+                                <Alert
+                                    variant="destructive"
+                                    data-testid="admin-widget-keys-project-error"
+                                >
+                                    <Ban aria-hidden />
+                                    <AlertTitle>Could not load projects</AlertTitle>
+                                    <AlertDescription>
+                                        <p>{extractApiError(projectsQuery.error)}</p>
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="outline"
+                                            className="mt-2"
+                                            data-testid="admin-widget-keys-project-retry"
+                                            disabled={projectsQuery.isFetching}
+                                            onClick={() => void projectsQuery.refetch()}
+                                        >
+                                            <RotateCw aria-hidden />
+                                            {projectsQuery.isFetching ? 'Retrying…' : 'Retry'}
+                                        </Button>
+                                    </AlertDescription>
+                                </Alert>
+                            )}
+                            {!projectsQuery.isLoading
+                                && !projectsQuery.isError
+                                && projectOptions.length === 0 && (
+                                <Alert
+                                    variant="info"
+                                    data-testid="admin-widget-keys-project-empty"
+                                >
+                                    <Info aria-hidden />
+                                    <AlertTitle>No projects available</AlertTitle>
+                                    <AlertDescription>
+                                        Create or import a project before creating a widget key.{' '}
+                                        <a
+                                            href="./projects"
+                                            className="font-medium underline underline-offset-4"
+                                        >
+                                            Manage projects
+                                        </a>
+                                    </AlertDescription>
+                                </Alert>
+                            )}
                         </div>
 
                         <div className="grid gap-1.5">

@@ -12,6 +12,7 @@ use App\Models\WidgetSessionStep;
 use App\Services\Widget\WidgetAiToolRegistry;
 use App\Services\Widget\WidgetOrchestratorService;
 use App\Services\Widget\WidgetPiiMasker;
+use App\Services\Widget\WidgetSessionResolver;
 use App\Services\Widget\WidgetSnapshotValidator;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
@@ -36,6 +37,7 @@ final class WidgetSessionController extends Controller
     public function __construct(
         private readonly TenantContext $tenants,
         private readonly WidgetPiiMasker $piiMasker,
+        private readonly WidgetSessionResolver $sessions,
     ) {}
 
     public function start(
@@ -379,23 +381,7 @@ final class WidgetSessionController extends Controller
      */
     private function resolveSession(Request $request, string $publicId): WidgetSession
     {
-        // R30 — scope to the active tenant (set FROM the key by
-        // ResolveWidgetKey) AND to the calling key. forTenant() is the
-        // primary tenant boundary; widget_key_id is the anti-IDOR guard so
-        // one key can't drive another key's session within the same tenant.
-        $key = $this->key($request);
-        $query = WidgetSession::query()
-            ->forTenant($this->tenants->current())
-            ->where('public_session_id', $publicId)
-            ->where('widget_key_id', $key->id)
-            ->where('project_key', $key->project_key);
-
-        $identity = $this->identity($request);
-        $identity === null
-            ? $query->whereNull('widget_identity_id')
-            : $query->where('widget_identity_id', $identity->id);
-
-        return $query->firstOrFail();
+        return $this->sessions->findOrFail($request, $publicId);
     }
 
     private function key(Request $request): WidgetKey

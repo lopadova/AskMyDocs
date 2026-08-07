@@ -22,6 +22,14 @@ export default defineConfig({
         outDir: path.resolve(projectRoot, 'public/widget'),
         emptyOutDir: true,
         sourcemap: false,
+        // CommonMark + GFM are intentionally bundled in the single IIFE. A
+        // conservative two-pass Terser compression recovers part of that cost
+        // without property mangling, unsafe transforms or a browser-target
+        // change.
+        minify: 'terser',
+        terserOptions: {
+            compress: { passes: 2 },
+        },
         lib: {
             entry: path.resolve(projectRoot, 'frontend/src/widget/loader.ts'),
             name: 'AskMyDocsWidget',

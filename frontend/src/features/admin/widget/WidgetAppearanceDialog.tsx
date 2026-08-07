@@ -10,6 +10,7 @@ import type {
     LauncherSide,
     WidgetFontKey,
     WidgetMode,
+    WidgetShadow,
     WidgetTheme,
 } from '../../../widget/types';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -79,6 +80,12 @@ const ICON_OPTIONS: { value: LauncherIcon; label: string }[] = [
     { value: 'help', label: 'Help' },
     { value: 'none', label: 'No icon' },
 ];
+const SHADOW_OPTIONS: { value: WidgetShadow; label: string }[] = [
+    { value: 'none', label: 'None' },
+    { value: 'soft', label: 'Soft' },
+    { value: 'medium', label: 'Medium' },
+    { value: 'strong', label: 'Strong' },
+];
 
 /** Pull a human message out of an axios error (422 validation first). */
 function extractApiError(err: unknown): string {
@@ -99,8 +106,8 @@ function extractApiError(err: unknown): string {
 }
 
 /**
- * Per-key appearance editor: a sectioned form (Launcher / Colors / Panel /
- * Typography) with a live Shadow-DOM preview. Saves the theme via
+ * Per-key appearance editor: a sectioned form (Branding / Launcher / Chat /
+ * Composer / Sources) with a live Shadow-DOM preview. Saves the theme via
  * `PATCH /api/admin/widget-keys/{id}` ({ theme }) — the backend sanitizes and
  * persists it; `GET /api/widget/setup` then serves it to the widget.
  *
@@ -135,7 +142,7 @@ export function WidgetAppearanceDialog({
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent
                 data-testid="admin-widget-appearance-dialog"
-                className="sm:max-w-4xl"
+                className="max-h-[92vh] overflow-y-auto sm:max-w-6xl"
             >
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
@@ -150,7 +157,6 @@ export function WidgetAppearanceDialog({
                     </DialogDescription>
                 </DialogHeader>
 
-                {/* Mode — frames everything below: inline has no launcher. */}
                 <div className="grid gap-1.5">
                     <SelectField
                         id="mode"
@@ -162,10 +168,6 @@ export function WidgetAppearanceDialog({
                     <p className="text-muted-foreground text-xs">
                         {MODE_OPTIONS.find((o) => o.value === theme.mode)?.hint}
                     </p>
-                    {/* #35 — il runtime fissa il layout all'embed time: il tipo qui
-                        vale per gli snippet NUOVI e per l'anteprima, non per i widget
-                        già installati (i colori si aggiornano live via /setup, il
-                        layout no). Evita di far credere che il cambio si propaghi. */}
                     <p
                         className="text-muted-foreground text-xs"
                         data-testid="admin-widget-appearance-mode-note"
@@ -176,23 +178,38 @@ export function WidgetAppearanceDialog({
                     </p>
                 </div>
 
-                <div className="grid gap-5 lg:grid-cols-2">
+                <div className="grid gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,.85fr)]">
                     {/* Controls */}
-                    <Tabs defaultValue="launcher" className="min-w-0">
-                        <TabsList className="flex-wrap">
+                    <Tabs defaultValue="branding" className="min-w-0">
+                        <TabsList className="h-auto w-full flex-wrap justify-start">
+                            <TabsTrigger value="branding" data-testid="admin-widget-appearance-tab-branding">
+                                <span data-testid="admin-widget-appearance-tab-colors">Branding</span>
+                            </TabsTrigger>
                             <TabsTrigger value="launcher" data-testid="admin-widget-appearance-tab-launcher">
                                 Launcher
                             </TabsTrigger>
-                            <TabsTrigger value="colors" data-testid="admin-widget-appearance-tab-colors">
-                                Colors
+                            <TabsTrigger value="chat" data-testid="admin-widget-appearance-tab-chat">
+                                Chat
                             </TabsTrigger>
-                            <TabsTrigger value="panel" data-testid="admin-widget-appearance-tab-panel">
-                                Panel
+                            <TabsTrigger value="composer" data-testid="admin-widget-appearance-tab-composer">
+                                Composer
                             </TabsTrigger>
-                            <TabsTrigger value="type" data-testid="admin-widget-appearance-tab-type">
-                                Typography
+                            <TabsTrigger value="sources" data-testid="admin-widget-appearance-tab-sources">
+                                Sources
                             </TabsTrigger>
                         </TabsList>
+
+                        <TabsContent value="branding" className="mt-3 grid gap-4">
+                            <div className="grid gap-3 sm:grid-cols-2">
+                                <TextField id="panelTitle" label="Panel title" value={theme.panelTitle} placeholder="Assistente" onChange={(v) => set({ panelTitle: v })} />
+                                <TextField id="headerLogoUrl" label="Header logo URL (https, optional)" value={theme.headerLogoUrl} placeholder="https://cdn.example.com/logo.png" onChange={(v) => set({ headerLogoUrl: v })} />
+                                <SelectField id="fontFamily" label="Font" value={theme.fontFamily} options={FONT_OPTIONS} onChange={(v) => set({ fontFamily: v as WidgetFontKey })} />
+                                <RangeField id="fontSize" label="Base font size" min={12} max={18} step={1} unit="px" value={theme.fontSize} onChange={(v) => set({ fontSize: v })} />
+                                <ColorField id="accent" label="Accent" value={theme.accent} onChange={(v) => set({ accent: v })} />
+                                <ColorField id="accentForeground" label="Accent text" value={theme.accentForeground} onChange={(v) => set({ accentForeground: v })} />
+                                <RangeField id="logoHeight" label="Logo height" min={16} max={64} step={1} unit="px" value={theme.logoHeight} onChange={(v) => set({ logoHeight: v })} />
+                            </div>
+                        </TabsContent>
 
                         <TabsContent value="launcher" className="mt-3 grid gap-3">
                             {theme.mode !== 'helper' && (
@@ -253,51 +270,79 @@ export function WidgetAppearanceDialog({
                                     onChange={(v) => set({ launcherForeground: v })}
                                 />
                             </div>
+                            <div className="grid gap-3 sm:grid-cols-2">
+                                <RangeField id="launcherOffsetX" label="Horizontal offset" min={0} max={96} step={1} unit="px" value={theme.launcherOffsetX} onChange={(v) => set({ launcherOffsetX: v })} />
+                                <RangeField id="launcherOffsetY" label="Bottom offset" min={0} max={96} step={1} unit="px" value={theme.launcherOffsetY} onChange={(v) => set({ launcherOffsetY: v })} />
+                                <RangeField id="launcherSize" label="Button height / circle size" min={40} max={80} step={1} unit="px" value={theme.launcherSize} onChange={(v) => set({ launcherSize: v })} />
+                                <SelectField id="launcherShadow" label="Shadow" value={theme.launcherShadow} options={SHADOW_OPTIONS} onChange={(v) => set({ launcherShadow: v as WidgetShadow })} />
+                            </div>
                         </TabsContent>
 
-                        <TabsContent value="colors" className="mt-3 grid grid-cols-2 gap-3">
-                            <ColorField id="accent" label="Accent" value={theme.accent} onChange={(v) => set({ accent: v })} />
-                            <ColorField id="background" label="Panel background" value={theme.background} onChange={(v) => set({ background: v })} />
-                            <ColorField id="foreground" label="Text" value={theme.foreground} onChange={(v) => set({ foreground: v })} />
-                            <ColorField id="border" label="Border" value={theme.border} onChange={(v) => set({ border: v })} />
-                            <ColorField id="headerBackground" label="Header background" value={theme.headerBackground} onChange={(v) => set({ headerBackground: v })} />
-                            <ColorField id="headerForeground" label="Header text" value={theme.headerForeground} onChange={(v) => set({ headerForeground: v })} />
-                            <ColorField id="userBubbleBackground" label="User bubble" value={theme.userBubbleBackground} onChange={(v) => set({ userBubbleBackground: v })} />
-                            <ColorField id="userBubbleForeground" label="User bubble text" value={theme.userBubbleForeground} onChange={(v) => set({ userBubbleForeground: v })} />
-                            <ColorField id="assistantBubbleBackground" label="Assistant bubble" value={theme.assistantBubbleBackground} onChange={(v) => set({ assistantBubbleBackground: v })} />
-                            <ColorField id="assistantBubbleForeground" label="Assistant bubble text" value={theme.assistantBubbleForeground} onChange={(v) => set({ assistantBubbleForeground: v })} />
-                            <ColorField id="muted" label="Muted / status" value={theme.muted} onChange={(v) => set({ muted: v })} />
+                        <TabsContent value="chat" className="mt-3 grid gap-4">
+                            <div className="grid grid-cols-2 gap-3">
+                                <ColorField id="background" label="Panel background" value={theme.background} onChange={(v) => set({ background: v })} />
+                                <ColorField id="foreground" label="Text" value={theme.foreground} onChange={(v) => set({ foreground: v })} />
+                                <ColorField id="border" label="Border" value={theme.border} onChange={(v) => set({ border: v })} />
+                                <ColorField id="muted" label="Muted / status" value={theme.muted} onChange={(v) => set({ muted: v })} />
+                                <ColorField id="headerBackground" label="Header background" value={theme.headerBackground} onChange={(v) => set({ headerBackground: v })} />
+                                <ColorField id="headerForeground" label="Header text" value={theme.headerForeground} onChange={(v) => set({ headerForeground: v })} />
+                                <ColorField id="userBubbleBackground" label="User bubble" value={theme.userBubbleBackground} onChange={(v) => set({ userBubbleBackground: v })} />
+                                <ColorField id="userBubbleForeground" label="User bubble text" value={theme.userBubbleForeground} onChange={(v) => set({ userBubbleForeground: v })} />
+                                <ColorField id="assistantBubbleBackground" label="Assistant bubble" value={theme.assistantBubbleBackground} onChange={(v) => set({ assistantBubbleBackground: v })} />
+                                <ColorField id="assistantBubbleForeground" label="Assistant bubble text" value={theme.assistantBubbleForeground} onChange={(v) => set({ assistantBubbleForeground: v })} />
+                                <ColorField id="systemBackground" label="System state" value={theme.systemBackground} onChange={(v) => set({ systemBackground: v })} />
+                                <ColorField id="systemForeground" label="System text" value={theme.systemForeground} onChange={(v) => set({ systemForeground: v })} />
+                                <ColorField id="errorBackground" label="Error state" value={theme.errorBackground} onChange={(v) => set({ errorBackground: v })} />
+                                <ColorField id="errorForeground" label="Error text" value={theme.errorForeground} onChange={(v) => set({ errorForeground: v })} />
+                                <ColorField id="confirmBackground" label="Confirmation state" value={theme.confirmBackground} onChange={(v) => set({ confirmBackground: v })} />
+                                <ColorField id="confirmForeground" label="Confirmation text" value={theme.confirmForeground} onChange={(v) => set({ confirmForeground: v })} />
+                                <ColorField id="confirmBorder" label="Confirmation border" value={theme.confirmBorder} onChange={(v) => set({ confirmBorder: v })} />
+                            </div>
+                            <div className="grid gap-3 sm:grid-cols-2">
+                                <RangeField id="panelWidth" label="Panel width" min={320} max={720} step={10} unit="px" value={theme.panelWidth} onChange={(v) => set({ panelWidth: v })} />
+                                <RangeField id="panelHeight" label="Panel height" min={420} max={900} step={10} unit="px" value={theme.panelHeight} onChange={(v) => set({ panelHeight: v })} />
+                                <RangeField id="panelRadius" label="Panel radius" min={0} max={24} step={1} unit="px" value={theme.panelRadius} onChange={(v) => set({ panelRadius: v })} />
+                                <SelectField id="panelShadow" label="Panel shadow" value={theme.panelShadow} options={SHADOW_OPTIONS} onChange={(v) => set({ panelShadow: v as WidgetShadow })} />
+                                <RangeField id="headerPaddingX" label="Header horizontal padding" min={0} max={40} step={1} unit="px" value={theme.headerPaddingX} onChange={(v) => set({ headerPaddingX: v })} />
+                                <RangeField id="headerPaddingY" label="Header vertical padding" min={0} max={40} step={1} unit="px" value={theme.headerPaddingY} onChange={(v) => set({ headerPaddingY: v })} />
+                                <RangeField id="messagesPadding" label="Messages padding" min={0} max={40} step={1} unit="px" value={theme.messagesPadding} onChange={(v) => set({ messagesPadding: v })} />
+                                <RangeField id="messageGap" label="Message gap" min={0} max={32} step={1} unit="px" value={theme.messageGap} onChange={(v) => set({ messageGap: v })} />
+                                <RangeField id="bubblePaddingX" label="Bubble horizontal padding" min={0} max={32} step={1} unit="px" value={theme.bubblePaddingX} onChange={(v) => set({ bubblePaddingX: v })} />
+                                <RangeField id="bubblePaddingY" label="Bubble vertical padding" min={0} max={32} step={1} unit="px" value={theme.bubblePaddingY} onChange={(v) => set({ bubblePaddingY: v })} />
+                                <RangeField id="bubbleRadius" label="Bubble radius" min={0} max={32} step={1} unit="px" value={theme.bubbleRadius} onChange={(v) => set({ bubbleRadius: v })} />
+                                <RangeField id="bubbleMaxWidth" label="Bubble max width" min={50} max={100} step={1} unit="%" value={theme.bubbleMaxWidth} onChange={(v) => set({ bubbleMaxWidth: v })} />
+                            </div>
                         </TabsContent>
 
-                        <TabsContent value="panel" className="mt-3 grid gap-3">
-                            <TextField
-                                id="panelTitle"
-                                label="Panel title"
-                                value={theme.panelTitle}
-                                placeholder="Assistente"
-                                onChange={(v) => set({ panelTitle: v })}
-                            />
-                            <TextField
-                                id="headerLogoUrl"
-                                label="Header logo URL (https, optional)"
-                                value={theme.headerLogoUrl}
-                                placeholder="https://cdn.example.com/logo.png"
-                                onChange={(v) => set({ headerLogoUrl: v })}
-                            />
-                            <RangeField id="panelWidth" label="Width" min={320} max={480} step={10} unit="px" value={theme.panelWidth} onChange={(v) => set({ panelWidth: v })} />
-                            <RangeField id="panelHeight" label="Height" min={420} max={680} step={10} unit="px" value={theme.panelHeight} onChange={(v) => set({ panelHeight: v })} />
-                            <RangeField id="panelRadius" label="Corner radius" min={0} max={24} step={1} unit="px" value={theme.panelRadius} onChange={(v) => set({ panelRadius: v })} />
+                        <TabsContent value="composer" className="mt-3 grid gap-4">
+                            <div className="grid grid-cols-2 gap-3">
+                                <ColorField id="composerBackground" label="Composer background" value={theme.composerBackground} onChange={(v) => set({ composerBackground: v })} />
+                                <ColorField id="inputBackground" label="Input background" value={theme.inputBackground} onChange={(v) => set({ inputBackground: v })} />
+                                <ColorField id="inputForeground" label="Input text" value={theme.inputForeground} onChange={(v) => set({ inputForeground: v })} />
+                                <ColorField id="inputPlaceholder" label="Placeholder" value={theme.inputPlaceholder} onChange={(v) => set({ inputPlaceholder: v })} />
+                                <ColorField id="focusRing" label="Focus ring" value={theme.focusRing} onChange={(v) => set({ focusRing: v })} />
+                            </div>
+                            <div className="grid gap-3 sm:grid-cols-2">
+                                <RangeField id="composerPadding" label="Composer padding" min={0} max={32} step={1} unit="px" value={theme.composerPadding} onChange={(v) => set({ composerPadding: v })} />
+                                <RangeField id="inputRadius" label="Input radius" min={0} max={32} step={1} unit="px" value={theme.inputRadius} onChange={(v) => set({ inputRadius: v })} />
+                                <RangeField id="buttonRadius" label="Button radius" min={0} max={32} step={1} unit="px" value={theme.buttonRadius} onChange={(v) => set({ buttonRadius: v })} />
+                            </div>
                         </TabsContent>
 
-                        <TabsContent value="type" className="mt-3 grid gap-3">
-                            <SelectField
-                                id="fontFamily"
-                                label="Font"
-                                value={theme.fontFamily}
-                                options={FONT_OPTIONS}
-                                onChange={(v) => set({ fontFamily: v as WidgetFontKey })}
-                            />
-                            <RangeField id="fontSize" label="Base font size" min={12} max={18} step={1} unit="px" value={theme.fontSize} onChange={(v) => set({ fontSize: v })} />
+                        <TabsContent value="sources" className="mt-3 grid gap-4">
+                            <p className="text-muted-foreground text-xs">
+                                These tokens style citation chips and the document viewer opened
+                                from an answer.
+                            </p>
+                            <div className="grid grid-cols-2 gap-3">
+                                <ColorField id="citationBackground" label="Citation chip" value={theme.citationBackground} onChange={(v) => set({ citationBackground: v })} />
+                                <ColorField id="citationForeground" label="Citation text" value={theme.citationForeground} onChange={(v) => set({ citationForeground: v })} />
+                                <ColorField id="sourceSidebarBackground" label="Sidebar background" value={theme.sourceSidebarBackground} onChange={(v) => set({ sourceSidebarBackground: v })} />
+                                <ColorField id="sourceSidebarForeground" label="Sidebar text" value={theme.sourceSidebarForeground} onChange={(v) => set({ sourceSidebarForeground: v })} />
+                                <ColorField id="sourceBackdrop" label="Viewer backdrop" value={theme.sourceBackdrop} onChange={(v) => set({ sourceBackdrop: v })} />
+                            </div>
+                            <RangeField id="sourceViewerWidth" label="Viewer width" min={560} max={1200} step={20} unit="px" value={theme.sourceViewerWidth} onChange={(v) => set({ sourceViewerWidth: v })} />
+                            <RangeField id="sourceViewerRadius" label="Viewer radius" min={0} max={32} step={1} unit="px" value={theme.sourceViewerRadius} onChange={(v) => set({ sourceViewerRadius: v })} />
                         </TabsContent>
                     </Tabs>
 

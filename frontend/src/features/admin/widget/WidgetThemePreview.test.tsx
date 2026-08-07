@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { render } from '@testing-library/react';
+import { fireEvent, render } from '@testing-library/react';
 
 import { DEFAULT_THEME, sanitizeTheme } from '../../../widget/ui/styles';
 import { WidgetThemePreview } from './WidgetThemePreview';
@@ -16,19 +16,19 @@ describe('WidgetThemePreview', () => {
         const { container } = render(
             <WidgetThemePreview theme={sanitizeTheme({ ...DEFAULT_THEME, accent: '#123456' })} />,
         );
-        expect(shadowStyle(container)).toContain('--amd-accent:#123456;');
+        expect(shadowStyle(container)).toContain('--amd-accent:var(--askmydocs-accent,#123456);');
     });
 
     it('updates the preview when the theme changes (R16)', () => {
         const { container, rerender } = render(
             <WidgetThemePreview theme={sanitizeTheme({ ...DEFAULT_THEME, accent: '#123456' })} />,
         );
-        expect(shadowStyle(container)).toContain('--amd-accent:#123456;');
+        expect(shadowStyle(container)).toContain('--amd-accent:var(--askmydocs-accent,#123456);');
 
         rerender(<WidgetThemePreview theme={sanitizeTheme({ ...DEFAULT_THEME, accent: '#abcdef' })} />);
         const css = shadowStyle(container);
-        expect(css).toContain('--amd-accent:#abcdef;');
-        expect(css).not.toContain('--amd-accent:#123456;');
+        expect(css).toContain('--amd-accent:var(--askmydocs-accent,#abcdef);');
+        expect(css).not.toContain('--amd-accent:var(--askmydocs-accent,#123456);');
     });
 
     it('renders the inline block (no launcher) when mode is inline', () => {
@@ -64,5 +64,31 @@ describe('WidgetThemePreview', () => {
             ?.firstElementChild as HTMLElement;
         expect(host.shadowRoot?.querySelector('.amd-panel')).not.toBeNull();
         expect(shadowStyle(container)).not.toContain('display:none');
+    });
+
+    it('toggles to a static Sources preview using the source theme tokens', () => {
+        const { container, getByTestId } = render(
+            <WidgetThemePreview
+                theme={sanitizeTheme({
+                    ...DEFAULT_THEME,
+                    sourceSidebarBackground: '#112233',
+                    sourceViewerRadius: 24,
+                })}
+            />,
+        );
+
+        fireEvent.click(getByTestId('admin-widget-appearance-preview-sources'));
+
+        const host = container.querySelector('[data-testid="admin-widget-appearance-preview"]')
+            ?.firstElementChild as HTMLElement;
+        expect(host.shadowRoot?.querySelector('.amd-preview-source-dialog')).not.toBeNull();
+        expect(host.shadowRoot?.textContent).toContain('Guida prodotto');
+        expect(shadowStyle(container)).toContain(
+            '--amd-source-sidebar-bg:var(--askmydocs-source-sidebar-background,#112233);',
+        );
+        expect(shadowStyle(container)).toContain(
+            '--amd-source-viewer-radius:var(--askmydocs-source-viewer-radius,24px);',
+        );
+        expect(getByTestId('admin-widget-appearance-preview-sources').getAttribute('aria-pressed')).toBe('true');
     });
 });
