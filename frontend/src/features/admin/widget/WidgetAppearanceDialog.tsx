@@ -1,6 +1,6 @@
-import { useState, type ReactNode } from 'react';
+import { useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Ban, Palette, RotateCcw } from 'lucide-react';
+import { Ban, Bot, CheckCircle2, FileJson, Palette, RotateCcw, Upload } from 'lucide-react';
 
 import { api } from '../../../lib/api';
 import { DEFAULT_THEME, sanitizeTheme } from '../../../widget/ui/styles';
@@ -26,8 +26,16 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Textarea } from '@/components/ui/textarea';
 
+import { CopyButton } from './CopyButton';
 import { WidgetThemePreview } from './WidgetThemePreview';
+import {
+    buildWidgetThemeAgentHandoff,
+    MAX_WIDGET_THEME_PROFILE_CHARS,
+    parseWidgetThemeProfile,
+    WidgetThemeProfileError,
+} from './widget-theme-exchange';
 
 interface WidgetAppearanceDialogProps {
     open: boolean;
@@ -124,8 +132,64 @@ export function WidgetAppearanceDialog({
 }: WidgetAppearanceDialogProps) {
     const qc = useQueryClient();
     const [theme, setTheme] = useState<WidgetTheme>(() => sanitizeTheme(initialTheme));
+    const [exchangePanel, setExchangePanel] = useState<'handoff' | 'import' | null>(null);
+    const [importSource, setImportSource] = useState('');
+    const [importFeedback, setImportFeedback] = useState<
+        { kind: 'success' | 'error'; message: string } | null
+    >(null);
+    const importFileRequest = useRef(0);
+    const agentHandoff = useMemo(() => buildWidgetThemeAgentHandoff(theme), [theme]);
 
     const set = (patch: Partial<WidgetTheme>) => setTheme((prev) => ({ ...prev, ...patch }));
+
+    const applyImportedProfile = () => {
+        try {
+            const profile = parseWidgetThemeProfile(importSource);
+            setTheme(profile.theme);
+            setImportFeedback({
+                kind: 'success',
+                message:
+                    'JSON applied to the draft and live preview. Review it, then save explicitly.',
+            });
+        } catch (error) {
+            setImportFeedback({
+                kind: 'error',
+                message: error instanceof WidgetThemeProfileError
+                    ? error.message
+                    : 'The JSON profile could not be imported.',
+            });
+        }
+    };
+
+    const loadImportFile = async (event: ChangeEvent<HTMLInputElement>) => {
+        const input = event.currentTarget;
+        const file = input.files?.[0];
+        input.value = '';
+        const requestId = ++importFileRequest.current;
+        if (!file) return;
+        // A new file selection supersedes the previous source immediately so
+        // a failed/oversized read can never leave stale JSON applicable.
+        setImportSource('');
+        setImportFeedback(null);
+        if (file.size > MAX_WIDGET_THEME_PROFILE_CHARS) {
+            setImportFeedback({
+                kind: 'error',
+                message: 'The JSON profile exceeds the 64 KB limit.',
+            });
+            return;
+        }
+        try {
+            const source = await file.text();
+            if (requestId !== importFileRequest.current) return;
+            setImportSource(source);
+        } catch {
+            if (requestId !== importFileRequest.current) return;
+            setImportFeedback({
+                kind: 'error',
+                message: 'The selected JSON file could not be read.',
+            });
+        }
+    };
 
     const save = useMutation({
         mutationFn: async () => {
@@ -156,6 +220,167 @@ export function WidgetAppearanceDialog({
                         every embed of this key — or bake it inline from the embed dialog.
                     </DialogDescription>
                 </DialogHeader>
+
+                <section
+                    className="grid gap-3 rounded-lg border border-border bg-[var(--bg-2)] p-3"
+                    data-testid="admin-widget-appearance-agent-tools"
+                    aria-label="Agent-assisted appearance setup"
+                >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0">
+                            <h3 className="m-0 flex items-center gap-2 text-sm font-semibold">
+                                <Bot aria-hidden className="size-4 text-[var(--accent-a)]" />
+                                Agent-assisted setup
+                            </h3>
+                            <p className="text-muted-foreground mt-1 text-xs">
+                                Give the handoff script to an agent inside the host application,
+                                then import its complete JSON profile here. Import only changes the
+                                draft and preview; it never saves automatically.
+                            </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                            <Button
+                                type="button"
+                                size="sm"
+                                variant={exchangePanel === 'handoff' ? 'default' : 'secondary'}
+                                data-testid="admin-widget-appearance-handoff"
+                                aria-expanded={exchangePanel === 'handoff'}
+                                aria-controls="admin-widget-appearance-handoff-panel"
+                                onClick={() =>
+                                    setExchangePanel((current) =>
+                                        current === 'handoff' ? null : 'handoff',
+                                    )
+                                }
+                            >
+                                <Bot aria-hidden />
+                                Agent handoff
+                            </Button>
+                            <Button
+                                type="button"
+                                size="sm"
+                                variant={exchangePanel === 'import' ? 'default' : 'secondary'}
+                                data-testid="admin-widget-appearance-import-json"
+                                aria-expanded={exchangePanel === 'import'}
+                                aria-controls="admin-widget-appearance-import-panel"
+                                onClick={() =>
+                                    setExchangePanel((current) =>
+                                        current === 'import' ? null : 'import',
+                                    )
+                                }
+                            >
+                                <FileJson aria-hidden />
+                                Import JSON
+                            </Button>
+                        </div>
+                    </div>
+
+                    {exchangePanel === 'handoff' && (
+                        <div
+                            id="admin-widget-appearance-handoff-panel"
+                            className="grid gap-2"
+                            data-testid="admin-widget-appearance-handoff-panel"
+                        >
+                            <p className="text-muted-foreground text-xs">
+                                Copy this self-contained script into your coding agent. It contains
+                                only the visual contract and a credential-free starting theme.
+                                Widget keys, tenant/project data, free-form text, asset URLs and API
+                                credentials are not copied.
+                            </p>
+                            <div className="overflow-hidden rounded-md border border-border">
+                                <div className="bg-muted flex items-center justify-between gap-2 border-b border-border py-1.5 pr-2 pl-3">
+                                    <span className="text-muted-foreground font-mono text-[10px] font-semibold tracking-widest uppercase">
+                                        Agent handoff script
+                                    </span>
+                                    <CopyButton
+                                        value={agentHandoff}
+                                        testId="admin-widget-appearance-handoff-copy"
+                                        label="Copy handoff"
+                                    />
+                                </div>
+                                <pre
+                                    className="text-foreground max-h-72 overflow-auto bg-background p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap [font-variant-ligatures:none]"
+                                    data-testid="admin-widget-appearance-handoff-text"
+                                >
+                                    {agentHandoff}
+                                </pre>
+                            </div>
+                        </div>
+                    )}
+
+                    {exchangePanel === 'import' && (
+                        <div
+                            id="admin-widget-appearance-import-panel"
+                            className="grid gap-3"
+                            data-testid="admin-widget-appearance-import-panel"
+                        >
+                            <div className="grid gap-1.5">
+                                <Label htmlFor="admin-widget-appearance-import-input">
+                                    Paste the complete JSON profile
+                                </Label>
+                                <Textarea
+                                    id="admin-widget-appearance-import-input"
+                                    className="min-h-56 font-mono text-xs [font-variant-ligatures:none]"
+                                    data-testid="admin-widget-appearance-import-input"
+                                    value={importSource}
+                                    spellCheck={false}
+                                    placeholder={
+                                        '{\n  "_meta": { "format": "askmydocs.widget-theme", "version": 1 },\n  "theme": { ... }\n}'
+                                    }
+                                    onChange={(event) => {
+                                        importFileRequest.current += 1;
+                                        setImportSource(event.target.value);
+                                        setImportFeedback(null);
+                                    }}
+                                />
+                            </div>
+                            <div className="flex flex-wrap items-end justify-between gap-3">
+                                <div className="grid gap-1.5">
+                                    <Label htmlFor="admin-widget-appearance-import-file">
+                                        Or load a JSON file
+                                    </Label>
+                                    <Input
+                                        id="admin-widget-appearance-import-file"
+                                        type="file"
+                                        accept="application/json,.json"
+                                        className="max-w-sm"
+                                        data-testid="admin-widget-appearance-import-file"
+                                        onChange={(event) => void loadImportFile(event)}
+                                    />
+                                </div>
+                                <Button
+                                    type="button"
+                                    data-testid="admin-widget-appearance-import-apply"
+                                    disabled={importSource.trim() === ''}
+                                    onClick={applyImportedProfile}
+                                >
+                                    <Upload aria-hidden />
+                                    Apply to draft
+                                </Button>
+                            </div>
+
+                            {importFeedback?.kind === 'error' && (
+                                <Alert
+                                    variant="destructive"
+                                    data-testid="admin-widget-appearance-import-error"
+                                >
+                                    <Ban aria-hidden />
+                                    <AlertTitle>JSON not imported</AlertTitle>
+                                    <AlertDescription>{importFeedback.message}</AlertDescription>
+                                </Alert>
+                            )}
+                            {importFeedback?.kind === 'success' && (
+                                <div
+                                    role="status"
+                                    className="flex items-start gap-2 rounded-md border border-emerald-500/35 bg-emerald-500/10 px-3 py-2 text-sm"
+                                    data-testid="admin-widget-appearance-import-success"
+                                >
+                                    <CheckCircle2 aria-hidden className="mt-0.5 size-4 shrink-0 text-emerald-600" />
+                                    <span>{importFeedback.message}</span>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </section>
 
                 <div className="grid gap-1.5">
                     <SelectField
@@ -368,7 +593,10 @@ export function WidgetAppearanceDialog({
                         type="button"
                         variant="ghost"
                         data-testid="admin-widget-appearance-reset"
-                        onClick={() => setTheme(DEFAULT_THEME)}
+                        onClick={() => {
+                            setTheme(DEFAULT_THEME);
+                            setImportFeedback(null);
+                        }}
                     >
                         <RotateCcw aria-hidden />
                         Reset to defaults

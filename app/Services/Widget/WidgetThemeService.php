@@ -333,12 +333,18 @@ final class WidgetThemeService
 
         $value = trim($value);
 
+        if (mb_strlen($value) > 500) {
+            return '';
+        }
         if (filter_var($value, FILTER_VALIDATE_URL) === false) {
             return '';
         }
         if (! str_starts_with(strtolower($value), 'https://')) {
             return '';
         }
+        // Canonicalize the scheme so resolved legacy/inline themes also match
+        // the lowercase validation contract used by admin JSON profiles.
+        $value = 'https://'.substr($value, strlen('https://'));
         // Caratteri che romperebbero url("…") / src="…".
         if (preg_match('/["\'\(\)<>\s\\\\]/', $value) === 1) {
             return '';

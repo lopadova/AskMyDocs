@@ -371,11 +371,17 @@ function url(value: unknown, fallback: string): string {
         return '';
     }
     const trimmed = value.trim();
-    if (!/^https:\/\//i.test(trimmed) || /["'()<>\s\\]/.test(trimmed)) {
+    if (
+        Array.from(trimmed).length > 500 ||
+        !/^https:\/\//i.test(trimmed) ||
+        /["'()<>\s\\]/.test(trimmed)
+    ) {
         return fallback;
     }
     try {
-        return new URL(trimmed).protocol === 'https:' ? trimmed : fallback;
+        return new URL(trimmed).protocol === 'https:'
+            ? `https://${trimmed.slice('https://'.length)}`
+            : fallback;
     } catch {
         return fallback;
     }

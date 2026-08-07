@@ -80,8 +80,15 @@ describe('sanitizeTheme', () => {
         expect(sanitizeTheme({ headerLogoUrl: 'http://cdn.example.com/l.png' }).headerLogoUrl).toBe('');
         expect(sanitizeTheme({ headerLogoUrl: 'https:cdn.example.com/l.png' }).headerLogoUrl).toBe('');
         expect(sanitizeTheme({ headerLogoUrl: 'https:/cdn.example.com/l.png' }).headerLogoUrl).toBe('');
+        expect(sanitizeTheme({ headerLogoUrl: 'HTTPS://cdn.example.com/l.png' }).headerLogoUrl).toBe(
+            'https://cdn.example.com/l.png',
+        );
         expect(sanitizeTheme({ launcherIconUrl: 'javascript:alert(1)' }).launcherIconUrl).toBe('');
         expect(sanitizeTheme({ launcherIconUrl: 'https://x.com/a") url(' }).launcherIconUrl).toBe('');
+        expect(
+            sanitizeTheme({ headerLogoUrl: `https://cdn.example.com/${'a'.repeat(500)}` })
+                .headerLogoUrl,
+        ).toBe('');
     });
 
     it('strips control characters and caps label length', () => {

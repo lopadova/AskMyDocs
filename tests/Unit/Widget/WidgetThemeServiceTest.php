@@ -155,8 +155,19 @@ final class WidgetThemeServiceTest extends TestCase
         $this->assertSame('', $this->service->sanitize(['headerLogoUrl' => 'http://cdn.example.com/x.png'])['headerLogoUrl']);
         $this->assertSame('', $this->service->sanitize(['headerLogoUrl' => 'https:cdn.example.com/x.png'])['headerLogoUrl']);
         $this->assertSame('', $this->service->sanitize(['headerLogoUrl' => 'https:/cdn.example.com/x.png'])['headerLogoUrl']);
+        $this->assertSame('https://cdn.example.com/x.png', $this->service->sanitize(['headerLogoUrl' => 'HTTPS://cdn.example.com/x.png'])['headerLogoUrl']);
         $this->assertSame('', $this->service->sanitize(['launcherIconUrl' => 'javascript:alert(1)'])['launcherIconUrl']);
         $this->assertSame('', $this->service->sanitize(['launcherIconUrl' => 'https://x.com/a").evil("'])['launcherIconUrl']);
+    }
+
+    #[Test]
+    public function sanitize_rejects_an_image_url_longer_than_backend_validation_allows(): void
+    {
+        $out = $this->service->sanitize([
+            'headerLogoUrl' => 'https://cdn.example.com/'.str_repeat('a', 500),
+        ]);
+
+        $this->assertSame('', $out['headerLogoUrl']);
     }
 
     #[Test]

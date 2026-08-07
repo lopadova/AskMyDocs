@@ -407,6 +407,42 @@ are inherited through the Shadow DOM:
 Structural/string fields (`mode`, launcher side/shape/icon/label and image
 URLs) remain typed configuration and do not have a CSS-variable equivalent.
 
+### Agent handoff and JSON import
+
+The **Agent handoff** action in the admin Appearance dialog copies a
+self-contained prompt for a coding agent that can inspect the host site's
+design system. The prompt contains a complete safe starting theme, every
+supported field and its validation constraints, but never widget keys,
+tenant/project identifiers, origins, tokens or API credentials. Free-form
+labels and asset URLs are blanked so they cannot leak path credentials or act
+as indirect prompt instructions; the agent infers public replacements from the
+host interface. The agent must return only a portable profile with this
+versioned envelope:
+
+```json
+{
+  "_meta": {
+    "format": "askmydocs.widget-theme",
+    "version": 1
+  },
+  "theme": {
+    "mode": "helper",
+    "accent": "#7c3aed"
+  }
+}
+```
+
+The abbreviated `theme` above is illustrative only: an imported profile must
+contain **every** `WidgetTheme` field. **Import JSON** accepts pasted content or
+a `.json` file, validates the envelope and all values atomically, and rejects
+missing or unknown fields instead of silently defaulting or clamping them. A
+single clean fenced `json` code block is accepted; surrounding prose is not.
+
+A successful import updates only the Appearance draft and live preview. The
+operator must review it and press **Save appearance** before a `PATCH` is sent.
+This exchange flow is admin-only and is not included in the embeddable widget
+bundle.
+
 **Security (R19):** every value is validated and sanitized on **both** sides —
 the backend rejects invalid input with `422`, and the widget re-sanitizes inline
 themes (colours must be hex, numbers are clamped, fonts and shadows come from
