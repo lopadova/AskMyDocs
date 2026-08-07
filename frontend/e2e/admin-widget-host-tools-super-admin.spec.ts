@@ -1,5 +1,6 @@
 import type { Page } from '@playwright/test';
-import { test as baseTest, expect } from './fixtures';
+import { test as baseTest, expect } from '@playwright/test';
+import { resetAndLoginWidgetSuperAdmin } from './helpers/widget-super-admin';
 
 /*
  * Widget host-tools switch — super-admin SPA scenarios.
@@ -23,7 +24,11 @@ import { test as baseTest, expect } from './fixtures';
  * the switch here is what gates host tools per-customer at runtime.
  */
 
-baseTest.describe.configure({ timeout: 90_000 });
+baseTest.describe.configure({ mode: 'serial', timeout: 90_000 });
+
+baseTest.beforeEach(async ({ page, context }) => {
+    await resetAndLoginWidgetSuperAdmin(page, context);
+});
 
 /** Create a widget key via the real UI + API with host tools enabled; returns its id. */
 async function createKeyWithHostTools(page: Page, label: string): Promise<number> {
@@ -32,7 +37,10 @@ async function createKeyWithHostTools(page: Page, label: string): Promise<number
 
     await page.getByTestId('admin-widget-keys-create-btn').click();
     await page.getByTestId('admin-widget-keys-label').fill(label);
-    await page.getByTestId('admin-widget-keys-project').fill('e2e-host-tools');
+    const project = page.getByTestId('admin-widget-keys-project');
+    await expect(project).toBeEnabled({ timeout: 15_000 });
+    await project.selectOption('hr-portal');
+    await expect(project).toHaveValue('hr-portal');
 
     // Drive the actual transition: the checkbox starts off, we turn it on.
     const toggle = page.getByTestId('admin-widget-keys-host-tools-toggle');

@@ -112,7 +112,7 @@ All key management is **super-admin** only, tenant-scoped (`manageWidgetKeys` ga
 | `skill` | – | `^[a-z0-9][a-z0-9-]*@[0-9]+$`, e.g. `askmydocs-assistant@1`. Default `askmydocs-assistant@1`. |
 | `host_tools_enabled` | – | Boolean, default `false`. Operator switch for HTP (see §9). |
 | `user_auth_enabled` | – | Boolean, default `false`. Creates a one-time `ik_` credential used by the host backend to mint short-lived user tokens. |
-| `theme` | – | Theme object; validated + sanitised server-side (colours `#rgb`/`#rrggbb`/`#rrggbbaa`, allowlisted font stacks, `https://` logo URLs). |
+| `theme` | – | Theme object; validated + sanitised server-side (hex colours, clamped dimensions, allowlisted font/shadow presets, `https://` image URLs). `PATCH` is partial and preserves omitted theme fields. |
 
 Changing `user_auth_enabled` and rotating `ik_` require the current
 `identity_credential_version`. A stale request returns `409
@@ -140,7 +140,7 @@ or from `data-*` attributes on the `<script>` tag (data-attrs win).
 | `title` | string | — | Panel title. |
 | `launcherLabel` | string | — | Launcher button label. |
 | `autoOpen` | boolean | `false` | Open the panel on load (helper mode). |
-| `theme` | object | key's theme | Inline theme overrides. |
+| `theme` | object | key's theme | Inline theme overrides. Effective precedence: host `--askmydocs-*` CSS variables → inline theme → key theme → defaults. See `frontend/src/widget/README.md` for the complete token/range table. |
 | `hostManifestUrl` | string | — | HTP manifest URL (see §9). |
 | `hostExecUrl` | string | — | HTP execution URL (see §9). |
 | `csrfToken` | string | `<meta name="csrf-token">` | CSRF token for same-origin host calls. |
@@ -276,14 +276,19 @@ validates its dedicated `ik_` credential. CORS is handled by
 | `POST` | `/api/widget/sessions/{session}/exec-tool` | Execute a backend (BE) tool for the session. |
 | `POST` | `/api/widget/sessions/{session}/cancel` | Abort the session. |
 | `GET` | `/api/widget/sessions/{session}/replay` | Fetch the session's steps (PII-masked). |
+| `GET` | `/api/widget/sessions/{session}/documents/{documentId}/preview` | Reconstruct a document cited in this exact session from its ordered indexed chunks (`Cache-Control: no-store`). |
 
 - `{session}` is the opaque `public_session_id` (UUID); a session belonging to a
   different key/tenant resolves to `404` (anti-IDOR).
+- Source preview additionally requires the same project and optional widget
+  identity plus a persisted citation for `{documentId}`. Uncited, foreign,
+  missing and soft-deleted documents deliberately share one `404` response.
 - **`start` / `step` request body**: `{ snapshot: {…}, message?: string,
   tool_result?: {…} }`. `snapshot` is required and capped (see §12).
 - **Turn response** (`type` discriminates): `message` (grounded answer + `citations`
   + `confidence`), `tool_call` (a tool for the FE/host/BE to run, with an
-  `execution` of `fe` | `host` | `be`), or `blocked`.
+  `execution` of `fe` | `host` | `be`; grounded tool turns also carry
+  `bot_message` + `citations`), or `blocked`.
 - **Session statuses**: `active`, `waiting_user`, `waiting_tool`, `completed`,
   `blocked`, `aborted`, `error`. Only `active` / `waiting_user` / `waiting_tool`
   accept a new `step` (a closed/blocked/errored session returns `409`).

@@ -117,6 +117,35 @@ describe('Transport', () => {
         await expect(new Transport(baseConfig).currentSession()).resolves.toBeNull();
     });
 
+    it('loads a cited document through the session-scoped preview endpoint', async () => {
+        fetchMock = mockFetch(200, {
+            document_id: 7,
+            title: 'Cache decision',
+            source_path: 'decisions/cache.md',
+            source_type: 'markdown',
+            language: 'en',
+            source_updated_at: null,
+            sections: [{ heading_path: 'Decision', content: 'Redis.' }],
+        });
+        globalThis.fetch = fetchMock;
+
+        const controller = new AbortController();
+        const document = await new Transport(baseConfig).fetchCitationDocument(
+            'session/with unsafe chars',
+            7,
+            controller.signal,
+        );
+
+        expect(document.document_id).toBe(7);
+        const { url, init } = lastCall(fetchMock);
+        expect(url).toBe(
+            'https://kb.example.com/api/widget/sessions/session%2Fwith%20unsafe%20chars/documents/7/preview',
+        );
+        expect(init.method).toBe('GET');
+        expect(init.cache).toBe('no-store');
+        expect((init.headers as Record<string, string>)['X-Widget-Key']).toBe('pk_test_abc123');
+    });
+
     // --- (b) token mode: Authorization: Bearer wt_… when session token is set ---
 
     it('sends Authorization: Bearer wt_… when session token is set', async () => {

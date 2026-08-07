@@ -10,8 +10,9 @@ import { Bridge, type BridgeEvents } from '../core/bridge';
 import type { Artifact } from '../core/bridge';
 import type { Citation, ToolCall, WidgetConfig, WidgetMode, WidgetTheme } from '../types';
 import { OverlaySystem } from './overlay';
-import { DEFAULT_THEME, buildThemeCss, launcherIconSvg, sanitizeTheme } from './styles';
+import { DEFAULT_THEME, buildThemeCss, launcherIconSvg, mergeThemeLayers } from './styles';
 import { UiArtifactRenderer } from './UiArtifactRenderer';
+import { SourceViewer } from './source-viewer';
 
 const DEFAULT_TITLE = 'Assistente';
 const DEFAULT_LAUNCHER_LABEL = 'Chiedi all’assistente';
@@ -23,6 +24,7 @@ export class WidgetPanel {
      *  per il layout: il `theme.mode` server è solo informativo. */
     private readonly mode: WidgetMode;
     private readonly bridge: Bridge;
+    private readonly sourceViewer: SourceViewer;
     private readonly launcher: HTMLButtonElement;
     private readonly launcherIconSlot: HTMLElement;
     private readonly launcherLabelEl: HTMLElement;
@@ -113,6 +115,11 @@ export class WidgetPanel {
         });
 
         this.bridge = new Bridge(cfg, this.events());
+        this.sourceViewer = new SourceViewer(
+            root,
+            (documentId, signal) => this.bridge.fetchCitationDocument(documentId, signal),
+            () => this.bridge.citationCacheNamespace(),
+        );
 
         // Fase 1: tema inline + default subito. Fase 2: ri-applica col server.
         this.applyTheme();
@@ -152,7 +159,7 @@ export class WidgetPanel {
             for (const message of restored) {
                 message.role === 'user'
                     ? this.appendUser(message.content)
-                    : this.appendAssistant(message.content, []);
+                    : this.appendAssistant(message.content, message.citations ?? []);
             }
 
             this.initialized = true;
@@ -177,11 +184,7 @@ export class WidgetPanel {
      * cfg.launcherLabel (back-compat).
      */
     private applyTheme(): void {
-        this.theme = sanitizeTheme({
-            ...DEFAULT_THEME,
-            ...(this.serverTheme ?? {}),
-            ...(this.cfg.theme ?? {}),
-        });
+        this.theme = mergeThemeLayers(this.serverTheme, this.cfg.theme);
         const t = this.theme;
 
         this.themeStyle.textContent = buildThemeCss(t);
@@ -240,7 +243,7 @@ export class WidgetPanel {
                 this.status.textContent = busy ? 'L’assistente sta lavorando…' : '';
             },
             onAnswer: (text, citations) => this.appendAssistant(text, citations),
-            onBotText: (text) => this.appendAssistant(text, []),
+            onBotText: (text, citations) => this.appendAssistant(text, citations),
             onAction: (tool) => this.appendSystem(`Azione: ${tool}`, 'system'),
             onAsk: (question, options) => this.appendAsk(question, options),
             onDone: (summary) => this.appendSystem(`✓ ${summary}`, 'system'),
@@ -283,11 +286,52 @@ export class WidgetPanel {
         const msg = this.appendMessage(text, 'assistant');
         if (citations.length > 0) {
             const wrap = this.el('div', 'amd-citations');
-            for (const c of citations.slice(0, 8)) {
-                const chip = this.el('span', 'amd-cite', { 'data-testid': 'askmydocs-widget-citation' });
-                chip.textContent = c.title || c.source_path || 'fonte';
-                wrap.append(chip);
+            const seen = new Set<string>();
+            const uniqueCitations = citations.filter((citation) => {
+                const key = Number.isInteger(citation.document_id) && (citation.document_id as number) > 0
+                    ? `document:${citation.document_id}`
+                    : `legacy:${citation.title ?? ''}:${citation.source_path ?? ''}`;
+                if (seen.has(key)) return false;
+                seen.add(key);
+
+                return true;
+            });
+            const openableIds = [...new Set(
+                uniqueCitations
+                    .map((citation) => citation.document_id)
+                    .filter((id): id is number => Number.isInteger(id) && (id as number) > 0),
+            )];
+            if (openableIds.length > 0) {
+                const openAll = this.el('button', 'amd-citations-label', {
+                    type: 'button',
+                    'data-testid': 'askmydocs-widget-sources-open',
+                    'aria-label': `Apri ${openableIds.length} documenti citati`,
+                });
+                openAll.textContent = `Fonti · ${openableIds.length}`;
+                openAll.addEventListener('click', () => {
+                    this.sourceViewer.open(citations, null, openAll);
+                });
+                wrap.append(openAll);
             }
+
+            const chips = this.el('div', 'amd-citation-chips');
+            for (const [index, c] of uniqueCitations.slice(0, 8).entries()) {
+                const canOpen = Number.isInteger(c.document_id) && (c.document_id as number) > 0;
+                const chip = this.el(canOpen ? 'button' : 'span', 'amd-cite', {
+                    'data-testid': 'askmydocs-widget-citation',
+                    'data-index': String(index),
+                    'data-openable': canOpen ? 'true' : 'false',
+                    ...(canOpen ? { type: 'button', 'aria-label': `Apri fonte ${index + 1}: ${c.title || c.source_path || 'fonte'}` } : {}),
+                });
+                chip.textContent = c.title || c.source_path || 'fonte';
+                if (canOpen) {
+                    chip.addEventListener('click', () => {
+                        this.sourceViewer.open(citations, c.document_id, chip);
+                    });
+                }
+                chips.append(chip);
+            }
+            wrap.append(chips);
             msg.append(wrap);
         }
     }

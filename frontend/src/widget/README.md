@@ -295,13 +295,57 @@ Identity credential lifecycle is explicit:
 
 ---
 
+## Cited source viewer
+
+Grounded answers render at most eight deduplicated citation chips plus a
+`Fonti · N` control. A citation carrying `document_id` is a button; opening it
+shows every unique source from that answer in a native `<dialog>` inside the
+widget Shadow DOM. The viewer uses a desktop sidebar, a compact selector and
+fullscreen layout below 640px, and restores focus to the originating chip when
+closed.
+
+The selected source is fetched from:
+
+```text
+GET /api/widget/sessions/{session}/documents/{documentId}/preview
+```
+
+The response contains document metadata and ordered indexed sections. It is
+available only when the exact tenant, widget key, project, optional user
+identity and session match and the document really appears in a persisted
+citation for that session. Missing, deleted, uncited or foreign documents all
+return the same `404`; responses use `Cache-Control: no-store`. The browser
+keeps only an in-memory cache keyed by session and document, aborts obsolete
+requests and exposes loading, empty, retryable-error and success states.
+
+```json
+{
+  "document_id": 42,
+  "title": "Product guide",
+  "source_path": "docs/product.md",
+  "source_type": "markdown",
+  "language": "en",
+  "source_updated_at": "2026-08-07T10:00:00Z",
+  "sections": [{ "heading_path": "Setup", "content": "..." }]
+}
+```
+
+Section content is rendered as CommonMark/GFM using direct `micromark` and
+`micromark-extension-gfm` dependencies. Raw HTML and dangerous protocols are
+disabled, remote images are replaced with their alt text, and links are limited
+to safe HTTP(S)/email destinations. Persisted evidence headings and snippets go
+through the existing PII masker before replay.
+
+---
+
 ## Appearance / Theming
 
 Each widget key carries an optional **theme** (launcher button + chat panel
-graphics, typography). It is delivered two ways, merged with this precedence:
+graphics, typography and source viewer). It is delivered in three layers, with
+this precedence:
 
 ```
-inline (host snippet)  >  server (GET /api/widget/setup)  >  built-in default
+host CSS vars  >  inline (host snippet)  >  server (GET /api/widget/setup)  >  built-in default
 ```
 
 - **Server-side (recommended):** edit the theme in the admin UI
@@ -323,7 +367,9 @@ inline (host snippet)  >  server (GET /api/widget/setup)  >  built-in default
       launcherSide: 'left',         // right | left
       launcherIcon: 'sparkles',     // chat | sparkles | help | none
       fontFamily: 'inter',          // system | inter | roboto | georgia | mono
-      panelWidth: 420,
+      panelWidth: 640,
+      panelShadow: 'soft',          // none | soft | medium | strong
+      sourceViewerWidth: 960,
     },
   };
 </script>
@@ -334,16 +380,40 @@ inline (host snippet)  >  server (GET /api/widget/setup)  >  built-in default
 
 | Group | Fields |
 |-------|--------|
-| Colours (hex) | `accent`, `background`, `foreground`, `muted`, `border`, `headerBackground`, `headerForeground`, `launcherBackground`, `launcherForeground`, `userBubbleBackground`, `userBubbleForeground`, `assistantBubbleBackground`, `assistantBubbleForeground` |
+| Layout | `mode` (`helper`/`inline`/`fullscreen`; normally emitted as the top-level embed option) |
+| Core colours (hex) | `accent`, `accentForeground`, `background`, `foreground`, `muted`, `border`, `headerBackground`, `headerForeground`, `launcherBackground`, `launcherForeground`, `userBubbleBackground`, `userBubbleForeground`, `assistantBubbleBackground`, `assistantBubbleForeground` |
+| Composer + states (hex) | `composerBackground`, `inputBackground`, `inputForeground`, `inputPlaceholder`, `focusRing`, `systemBackground`, `systemForeground`, `errorBackground`, `errorForeground`, `confirmBackground`, `confirmForeground`, `confirmBorder` |
+| Sources (hex) | `citationBackground`, `citationForeground`, `sourceSidebarBackground`, `sourceSidebarForeground`, `sourceBackdrop` |
 | Typography | `fontFamily` (allowlist), `fontSize` (12–18) |
-| Launcher | `launcherSide` (`right`/`left`), `launcherShape` (`pill`/`rounded`/`circle`), `launcherLabel`, `launcherIcon` (`chat`/`sparkles`/`help`/`none`), `launcherIconUrl` (https) |
-| Panel | `panelWidth` (320–480), `panelHeight` (420–680), `panelRadius` (0–24), `panelTitle`, `headerLogoUrl` (https) |
+| Launcher | `launcherSide` (`right`/`left`), `launcherShape` (`pill`/`rounded`/`circle`), `launcherLabel`, `launcherIcon` (`chat`/`sparkles`/`help`/`none`), `launcherIconUrl` (https), `launcherOffsetX`/`launcherOffsetY` (0–96), `launcherSize` (40–80), `launcherShadow` (preset) |
+| Panel | `panelWidth` (320–720), `panelHeight` (420–900), `panelRadius` (0–24), `panelShadow` (preset), `panelTitle`, `headerLogoUrl` (https) |
+| Spacing + shape | `headerPaddingX`/`headerPaddingY` (0–40), `messagesPadding` (0–40), `messageGap` (0–32), `bubblePaddingX`/`bubblePaddingY` (0–32), `bubbleRadius` (0–32), `bubbleMaxWidth` (50–100%), `composerPadding` (0–32), `inputRadius`/`buttonRadius` (0–32), `logoHeight` (16–64) |
+| Source viewer | `sourceViewerWidth` (560–1200), `sourceViewerRadius` (0–32); the viewer remains viewport-responsive and becomes fullscreen below 640px |
+
+Every CSS-expressible camelCase token also has a kebab-case host variable.
+For example, `accentForeground`, `panelWidth` and `sourceViewerRadius` map to
+`--askmydocs-accent-foreground`, `--askmydocs-panel-width` and
+`--askmydocs-source-viewer-radius`. Host variables include their CSS unit and
+are inherited through the Shadow DOM:
+
+```css
+:root {
+  --askmydocs-accent: #7c3aed;
+  --askmydocs-panel-width: 680px;
+  --askmydocs-source-backdrop: #111827dd;
+}
+```
+
+Structural/string fields (`mode`, launcher side/shape/icon/label and image
+URLs) remain typed configuration and do not have a CSS-variable equivalent.
 
 **Security (R19):** every value is validated and sanitized on **both** sides —
 the backend rejects invalid input with `422`, and the widget re-sanitizes inline
-themes (colours must be hex, numbers are clamped, fonts come from an allowlist,
-image URLs must be `https`). The theme flows into a `<style>` inside the widget's
-Shadow DOM, so a malformed value can never break out or inject CSS. The single
+themes (colours must be hex, numbers are clamped, fonts and shadows come from
+allowlists, image URLs must be `https`). Theme configuration flows into a
+`<style>` inside the widget's Shadow DOM, so a malformed payload can never break
+out or inject CSS. Host variables are ordinary CSS authored by the host site and
+are never copied into generated style text. The single
 source of truth for defaults + validation is `App\Services\Widget\WidgetThemeService`
 (PHP) mirrored by `frontend/src/widget/ui/styles.ts` (`DEFAULT_THEME`,
 `sanitizeTheme`, `buildThemeCss`).

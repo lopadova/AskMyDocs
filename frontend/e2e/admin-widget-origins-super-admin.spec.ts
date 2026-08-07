@@ -1,5 +1,6 @@
 import type { Page } from '@playwright/test';
-import { test as baseTest, expect } from './fixtures';
+import { test as baseTest, expect } from '@playwright/test';
+import { resetAndLoginWidgetSuperAdmin } from './helpers/widget-super-admin';
 
 /*
  * Widget allowed-origins editor — super-admin SPA scenarios.
@@ -21,7 +22,11 @@ import { test as baseTest, expect } from './fixtures';
  *     error surfaces inline; the dialog stays open.
  */
 
-baseTest.describe.configure({ timeout: 90_000 });
+baseTest.describe.configure({ mode: 'serial', timeout: 90_000 });
+
+baseTest.beforeEach(async ({ page, context }) => {
+    await resetAndLoginWidgetSuperAdmin(page, context);
+});
 
 /** Create a widget key via the real UI + API, returning its id. */
 async function createKey(page: Page, label: string): Promise<number> {
@@ -30,7 +35,10 @@ async function createKey(page: Page, label: string): Promise<number> {
 
     await page.getByTestId('admin-widget-keys-create-btn').click();
     await page.getByTestId('admin-widget-keys-label').fill(label);
-    await page.getByTestId('admin-widget-keys-project').fill('e2e-origins');
+    const project = page.getByTestId('admin-widget-keys-project');
+    await expect(project).toBeEnabled({ timeout: 15_000 });
+    await project.selectOption('hr-portal');
+    await expect(project).toHaveValue('hr-portal');
 
     const createPost = page.waitForResponse(
         (r) => r.url().endsWith('/api/admin/widget-keys') && r.request().method() === 'POST',

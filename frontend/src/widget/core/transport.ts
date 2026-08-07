@@ -5,7 +5,16 @@
  * sollevati come WidgetError con status + codice così la UI può mostrarli
  * (R14: mai trattare un fallimento come successo).
  */
-import type { HostExecResponse, HostManifest, HostTool, HostToolResult, Snapshot, ToolResult, TurnResponse } from '../types';
+import type {
+    HostExecResponse,
+    HostManifest,
+    HostTool,
+    HostToolResult,
+    Snapshot,
+    ToolResult,
+    TurnResponse,
+    WidgetDocumentPreview,
+} from '../types';
 import type { WidgetConfig } from '../types';
 import type { ExecToolResponse } from './bridge';
 
@@ -161,6 +170,20 @@ export class Transport {
         const res = await this.request(`/sessions/${encodeURIComponent(sessionId)}/replay`, { method: 'GET' });
 
         return this.parse(res);
+    }
+
+    /** Full indexed content of a document that was cited in this session. */
+    async fetchCitationDocument(
+        sessionId: string,
+        documentId: number,
+        signal?: AbortSignal,
+    ): Promise<WidgetDocumentPreview> {
+        const res = await this.request(
+            `/sessions/${encodeURIComponent(sessionId)}/documents/${encodeURIComponent(String(documentId))}/preview`,
+            { method: 'GET', cache: 'no-store', signal },
+        );
+
+        return this.parse<WidgetDocumentPreview>(res);
     }
 
     /** M4: chiama POST /sessions/{id}/exec-tool per i tool BE. */
@@ -475,16 +498,30 @@ export class Transport {
      */
     private async fetchWithTimeout(input: string, init: RequestInit = {}): Promise<Response> {
         const controller = new AbortController();
+        const externalSignal = init.signal;
+        const abortFromCaller = () => controller.abort(externalSignal?.reason);
+        if (externalSignal?.aborted) {
+            abortFromCaller();
+        } else {
+            externalSignal?.addEventListener('abort', abortFromCaller, { once: true });
+        }
         const timer = setTimeout(() => controller.abort(), Transport.TIMEOUT_MS);
         try {
             return await fetch(input, { ...init, signal: controller.signal });
         } catch (error) {
             if (error instanceof DOMException && error.name === 'AbortError') {
+                // A source-viewer navigation/close intentionally aborts stale
+                // reads; preserve AbortError so the viewer can discard it
+                // silently. Timeout remains a visible transport failure.
+                if (externalSignal?.aborted) {
+                    throw error;
+                }
                 throw new WidgetError('La richiesta è scaduta. Riprova.', 0, 'timeout');
             }
             throw error;
         } finally {
             clearTimeout(timer);
+            externalSignal?.removeEventListener('abort', abortFromCaller);
         }
     }
 

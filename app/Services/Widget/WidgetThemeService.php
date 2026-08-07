@@ -57,13 +57,23 @@ final class WidgetThemeService
     /** @var list<string> */
     private const LAUNCHER_ICONS = ['chat', 'sparkles', 'help', 'none'];
 
+    /** Preset ombra sicuri. Il valore CSS effettivo vive solo nel frontend. @var list<string> */
+    private const SHADOWS = ['none', 'soft', 'medium', 'strong'];
+
     /** Campi colore (solo hex). @var list<string> */
     private const COLOR_KEYS = [
-        'accent', 'background', 'foreground', 'muted', 'border',
+        'accent', 'accentForeground', 'background', 'foreground', 'muted', 'border',
         'headerBackground', 'headerForeground',
         'launcherBackground', 'launcherForeground',
         'userBubbleBackground', 'userBubbleForeground',
         'assistantBubbleBackground', 'assistantBubbleForeground',
+        'composerBackground',
+        'inputBackground', 'inputForeground', 'inputPlaceholder',
+        'citationBackground', 'citationForeground', 'focusRing',
+        'systemBackground', 'systemForeground',
+        'errorBackground', 'errorForeground',
+        'confirmBackground', 'confirmForeground', 'confirmBorder',
+        'sourceSidebarBackground', 'sourceSidebarForeground', 'sourceBackdrop',
     ];
 
     /** Hex #rgb / #rrggbb / #rrggbbaa. */
@@ -83,6 +93,7 @@ final class WidgetThemeService
             'mode' => 'helper',
             // Colori
             'accent' => '#2563eb',
+            'accentForeground' => '#ffffff',
             'background' => '#ffffff',
             'foreground' => '#1f2937',
             'muted' => '#6b7280',
@@ -95,6 +106,23 @@ final class WidgetThemeService
             'userBubbleForeground' => '#ffffff',
             'assistantBubbleBackground' => '#f3f4f6',
             'assistantBubbleForeground' => '#1f2937',
+            'composerBackground' => '#ffffff',
+            'inputBackground' => '#ffffff',
+            'inputForeground' => '#1f2937',
+            'inputPlaceholder' => '#9ca3af',
+            'citationBackground' => '#e0e7ff',
+            'citationForeground' => '#3730a3',
+            'focusRing' => '#93c5fd',
+            'systemBackground' => '#fff7ed',
+            'systemForeground' => '#9a3412',
+            'errorBackground' => '#fef2f2',
+            'errorForeground' => '#b91c1c',
+            'confirmBackground' => '#fffbeb',
+            'confirmForeground' => '#1f2937',
+            'confirmBorder' => '#fde68a',
+            'sourceSidebarBackground' => '#f8fafc',
+            'sourceSidebarForeground' => '#334155',
+            'sourceBackdrop' => '#0f172acc',
             // Tipografia
             'fontFamily' => 'system',
             'fontSize' => 14,
@@ -104,12 +132,33 @@ final class WidgetThemeService
             'launcherLabel' => '',
             'launcherIcon' => 'chat',
             'launcherIconUrl' => '',
+            'launcherOffsetX' => 20,
+            'launcherOffsetY' => 20,
+            'launcherSize' => 56,
+            'launcherShadow' => 'medium',
             // Pannello
             'panelWidth' => 380,
             'panelHeight' => 560,
             'panelRadius' => 14,
+            'panelShadow' => 'strong',
             'panelTitle' => '',
             'headerLogoUrl' => '',
+            // Spaziatura e geometria
+            'headerPaddingX' => 14,
+            'headerPaddingY' => 12,
+            'messagesPadding' => 14,
+            'messageGap' => 10,
+            'bubblePaddingX' => 12,
+            'bubblePaddingY' => 9,
+            'bubbleRadius' => 12,
+            'bubbleMaxWidth' => 88,
+            'composerPadding' => 10,
+            'inputRadius' => 10,
+            'buttonRadius' => 10,
+            'logoHeight' => 22,
+            // Viewer delle fonti (responsive lato widget).
+            'sourceViewerWidth' => 880,
+            'sourceViewerRadius' => 16,
         ];
     }
 
@@ -130,13 +179,32 @@ final class WidgetThemeService
             "{$prefix}.launcherSide" => ['sometimes', 'string', Rule::in(self::LAUNCHER_SIDES)],
             "{$prefix}.launcherShape" => ['sometimes', 'string', Rule::in(self::LAUNCHER_SHAPES)],
             "{$prefix}.launcherIcon" => ['sometimes', 'string', Rule::in(self::LAUNCHER_ICONS)],
+            "{$prefix}.launcherShadow" => ['sometimes', 'string', Rule::in(self::SHADOWS)],
+            "{$prefix}.panelShadow" => ['sometimes', 'string', Rule::in(self::SHADOWS)],
             "{$prefix}.launcherLabel" => ['sometimes', 'nullable', 'string', 'max:60'],
             "{$prefix}.panelTitle" => ['sometimes', 'nullable', 'string', 'max:60'],
             "{$prefix}.launcherIconUrl" => ['sometimes', 'nullable', 'string', 'url', 'max:500', 'starts_with:https://'],
             "{$prefix}.headerLogoUrl" => ['sometimes', 'nullable', 'string', 'url', 'max:500', 'starts_with:https://'],
-            "{$prefix}.panelWidth" => ['sometimes', 'integer', 'min:320', 'max:480'],
-            "{$prefix}.panelHeight" => ['sometimes', 'integer', 'min:420', 'max:680'],
+            "{$prefix}.launcherOffsetX" => ['sometimes', 'integer', 'min:0', 'max:96'],
+            "{$prefix}.launcherOffsetY" => ['sometimes', 'integer', 'min:0', 'max:96'],
+            "{$prefix}.launcherSize" => ['sometimes', 'integer', 'min:40', 'max:80'],
+            "{$prefix}.panelWidth" => ['sometimes', 'integer', 'min:320', 'max:720'],
+            "{$prefix}.panelHeight" => ['sometimes', 'integer', 'min:420', 'max:900'],
             "{$prefix}.panelRadius" => ['sometimes', 'integer', 'min:0', 'max:24'],
+            "{$prefix}.headerPaddingX" => ['sometimes', 'integer', 'min:0', 'max:40'],
+            "{$prefix}.headerPaddingY" => ['sometimes', 'integer', 'min:0', 'max:40'],
+            "{$prefix}.messagesPadding" => ['sometimes', 'integer', 'min:0', 'max:40'],
+            "{$prefix}.messageGap" => ['sometimes', 'integer', 'min:0', 'max:32'],
+            "{$prefix}.bubblePaddingX" => ['sometimes', 'integer', 'min:0', 'max:32'],
+            "{$prefix}.bubblePaddingY" => ['sometimes', 'integer', 'min:0', 'max:32'],
+            "{$prefix}.bubbleRadius" => ['sometimes', 'integer', 'min:0', 'max:32'],
+            "{$prefix}.bubbleMaxWidth" => ['sometimes', 'integer', 'min:50', 'max:100'],
+            "{$prefix}.composerPadding" => ['sometimes', 'integer', 'min:0', 'max:32'],
+            "{$prefix}.inputRadius" => ['sometimes', 'integer', 'min:0', 'max:32'],
+            "{$prefix}.buttonRadius" => ['sometimes', 'integer', 'min:0', 'max:32'],
+            "{$prefix}.logoHeight" => ['sometimes', 'integer', 'min:16', 'max:64'],
+            "{$prefix}.sourceViewerWidth" => ['sometimes', 'integer', 'min:560', 'max:1200'],
+            "{$prefix}.sourceViewerRadius" => ['sometimes', 'integer', 'min:0', 'max:32'],
         ];
 
         foreach (self::COLOR_KEYS as $key) {
@@ -168,13 +236,32 @@ final class WidgetThemeService
         $out['launcherSide'] = $this->enum($input['launcherSide'] ?? null, self::LAUNCHER_SIDES, $d['launcherSide']);
         $out['launcherShape'] = $this->enum($input['launcherShape'] ?? null, self::LAUNCHER_SHAPES, $d['launcherShape']);
         $out['launcherIcon'] = $this->enum($input['launcherIcon'] ?? null, self::LAUNCHER_ICONS, $d['launcherIcon']);
+        $out['launcherShadow'] = $this->enum($input['launcherShadow'] ?? null, self::SHADOWS, $d['launcherShadow']);
+        $out['panelShadow'] = $this->enum($input['panelShadow'] ?? null, self::SHADOWS, $d['panelShadow']);
         $out['launcherLabel'] = $this->text($input['launcherLabel'] ?? null, 60);
         $out['panelTitle'] = $this->text($input['panelTitle'] ?? null, 60);
         $out['launcherIconUrl'] = $this->url($input['launcherIconUrl'] ?? null);
         $out['headerLogoUrl'] = $this->url($input['headerLogoUrl'] ?? null);
-        $out['panelWidth'] = $this->int($input['panelWidth'] ?? null, 320, 480, $d['panelWidth']);
-        $out['panelHeight'] = $this->int($input['panelHeight'] ?? null, 420, 680, $d['panelHeight']);
+        $out['launcherOffsetX'] = $this->int($input['launcherOffsetX'] ?? null, 0, 96, $d['launcherOffsetX']);
+        $out['launcherOffsetY'] = $this->int($input['launcherOffsetY'] ?? null, 0, 96, $d['launcherOffsetY']);
+        $out['launcherSize'] = $this->int($input['launcherSize'] ?? null, 40, 80, $d['launcherSize']);
+        $out['panelWidth'] = $this->int($input['panelWidth'] ?? null, 320, 720, $d['panelWidth']);
+        $out['panelHeight'] = $this->int($input['panelHeight'] ?? null, 420, 900, $d['panelHeight']);
         $out['panelRadius'] = $this->int($input['panelRadius'] ?? null, 0, 24, $d['panelRadius']);
+        $out['headerPaddingX'] = $this->int($input['headerPaddingX'] ?? null, 0, 40, $d['headerPaddingX']);
+        $out['headerPaddingY'] = $this->int($input['headerPaddingY'] ?? null, 0, 40, $d['headerPaddingY']);
+        $out['messagesPadding'] = $this->int($input['messagesPadding'] ?? null, 0, 40, $d['messagesPadding']);
+        $out['messageGap'] = $this->int($input['messageGap'] ?? null, 0, 32, $d['messageGap']);
+        $out['bubblePaddingX'] = $this->int($input['bubblePaddingX'] ?? null, 0, 32, $d['bubblePaddingX']);
+        $out['bubblePaddingY'] = $this->int($input['bubblePaddingY'] ?? null, 0, 32, $d['bubblePaddingY']);
+        $out['bubbleRadius'] = $this->int($input['bubbleRadius'] ?? null, 0, 32, $d['bubbleRadius']);
+        $out['bubbleMaxWidth'] = $this->int($input['bubbleMaxWidth'] ?? null, 50, 100, $d['bubbleMaxWidth']);
+        $out['composerPadding'] = $this->int($input['composerPadding'] ?? null, 0, 32, $d['composerPadding']);
+        $out['inputRadius'] = $this->int($input['inputRadius'] ?? null, 0, 32, $d['inputRadius']);
+        $out['buttonRadius'] = $this->int($input['buttonRadius'] ?? null, 0, 32, $d['buttonRadius']);
+        $out['logoHeight'] = $this->int($input['logoHeight'] ?? null, 16, 64, $d['logoHeight']);
+        $out['sourceViewerWidth'] = $this->int($input['sourceViewerWidth'] ?? null, 560, 1200, $d['sourceViewerWidth']);
+        $out['sourceViewerRadius'] = $this->int($input['sourceViewerRadius'] ?? null, 0, 32, $d['sourceViewerRadius']);
 
         return $out;
     }
@@ -207,11 +294,19 @@ final class WidgetThemeService
 
     private function int(mixed $value, int $min, int $max, int $default): int
     {
-        if (! is_int($value) && ! (is_string($value) && is_numeric($value))) {
+        if (! is_int($value)
+            && ! is_float($value)
+            && ! (is_string($value) && is_numeric($value))) {
             return $default;
         }
 
-        return max($min, min($max, (int) $value));
+        $number = (float) $value;
+        if (! is_finite($number)) {
+            return $default;
+        }
+
+        // Keep parity with the inline TypeScript sanitizer (Math.round).
+        return max($min, min($max, (int) round($number)));
     }
 
     private function text(mixed $value, int $max): string

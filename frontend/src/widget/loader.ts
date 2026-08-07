@@ -34,6 +34,7 @@
  *   - `fullscreen`       chat a piena viewport, montata su body e sempre aperta.
  */
 import { WidgetPanel } from './ui/panel';
+import { SOURCE_VIEWER_CSS } from './ui/source-viewer';
 import { BASE_WIDGET_CSS } from './ui/styles';
 import type { WidgetConfig, WidgetMode } from './types';
 
@@ -190,7 +191,7 @@ function init(): void {
 
     const shadow = host.attachShadow({ mode: 'open' });
     const style = document.createElement('style');
-    style.textContent = BASE_WIDGET_CSS;
+    style.textContent = BASE_WIDGET_CSS + SOURCE_VIEWER_CSS;
     shadow.appendChild(style);
 
     const root = document.createElement('div');

@@ -46,6 +46,7 @@ use App\Http\Controllers\Api\KbDocumentSearchController;
 use App\Http\Controllers\Api\KbIngestController;
 use App\Http\Controllers\Api\KbPromotionController;
 use App\Http\Controllers\Api\KbResolveWikilinkController;
+use App\Http\Controllers\Api\Widget\WidgetDocumentPreviewController;
 use App\Http\Controllers\Api\Widget\WidgetSessionController;
 use App\Http\Controllers\Api\Widget\WidgetSessionTokenController;
 use App\Http\Controllers\Api\Widget\WidgetSetupController;
@@ -1476,6 +1477,11 @@ Route::middleware(['throttle:120,1', 'widget.key'])
         // M5.9 — replay endpoint: ritorna gli step con PII mascherata, scope per key.
         Route::get('/sessions/{session}/replay', [WidgetSessionController::class, 'replay'])
             ->name('api.widget.sessions.replay');
+        // Full source viewer: only documents cited by this exact session can
+        // be reconstructed, with the same tenant/key/project/identity scope.
+        Route::get('/sessions/{session}/documents/{documentId}/preview', WidgetDocumentPreviewController::class)
+            ->whereNumber('documentId')
+            ->name('api.widget.sessions.documents.preview');
     });
 
 // Server-to-server only: authenticates with the per-widget identity secret.

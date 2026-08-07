@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { WidgetKeysView } from './WidgetKeysView';
+import { useKbProjects } from '../kb/kb-tree.api';
 
 // Mock the api module
 vi.mock('../../../lib/api', () => ({
@@ -13,10 +14,29 @@ vi.mock('../../../lib/api', () => ({
     },
 }));
 
+vi.mock('../kb/kb-tree.api', () => ({
+    useKbProjects: vi.fn(),
+}));
+
 import { api } from '../../../lib/api';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mockedApi = api as any;
+const mockedUseKbProjects = vi.mocked(useKbProjects);
+
+function projectQuery(
+    overrides: Record<string, unknown> = {},
+): ReturnType<typeof useKbProjects> {
+    return {
+        data: { projects: ['main'] },
+        isLoading: false,
+        isError: false,
+        isFetching: false,
+        error: null,
+        refetch: vi.fn(),
+        ...overrides,
+    } as unknown as ReturnType<typeof useKbProjects>;
+}
 
 function renderWithQuery(ui: React.ReactElement) {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -26,6 +46,7 @@ function renderWithQuery(ui: React.ReactElement) {
 describe('WidgetKeysView', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        mockedUseKbProjects.mockReturnValue(projectQuery());
     });
 
     it('renders the view with testid (R11)', () => {
@@ -156,6 +177,107 @@ describe('WidgetKeysView', () => {
         });
     });
 
+    it('requires choosing a project from the tenant catalogue', async () => {
+        mockedApi.get.mockResolvedValue({ data: { data: [] } });
+        mockedUseKbProjects.mockReturnValue(
+            projectQuery({ data: { projects: ['engineering', 'hr-portal'] } }),
+        );
+        mockedApi.post.mockResolvedValueOnce({
+            data: {
+                data: {
+                    id: 99,
+                    label: 'Docs',
+                    public_key: 'pk_docs',
+                    project_key: 'hr-portal',
+                    allowed_origins: [],
+                    rate_limit: 60,
+                    skill: 'askmydocs-assistant@1',
+                    host_tools_enabled: false,
+                    user_auth_enabled: false,
+                    identity_credential_version: 0,
+                    is_active: true,
+                    last_used_at: null,
+                    sessions_count: 0,
+                    created_at: '2026-08-07T00:00:00Z',
+                    updated_at: '2026-08-07T00:00:00Z',
+                },
+                plain_secret: 'sk_docs',
+                public_key: 'pk_docs',
+            },
+        });
+
+        renderWithQuery(<WidgetKeysView />);
+        fireEvent.click(screen.getByTestId('admin-widget-keys-create-btn'));
+        fireEvent.change(await screen.findByTestId('admin-widget-keys-label'), {
+            target: { value: 'Docs' },
+        });
+
+        const picker = screen.getByTestId('admin-widget-keys-project');
+        expect(within(picker).getAllByRole('option').map((option) => option.textContent))
+            .toEqual(['Select a project…', 'engineering', 'hr-portal']);
+        expect(screen.getByTestId('admin-widget-keys-create-submit')).toBeDisabled();
+
+        fireEvent.change(picker, { target: { value: 'hr-portal' } });
+        fireEvent.click(screen.getByTestId('admin-widget-keys-create-submit'));
+
+        await waitFor(() => {
+            expect(mockedApi.post).toHaveBeenCalledWith(
+                '/api/admin/widget-keys',
+                expect.objectContaining({ project_key: 'hr-portal' }),
+            );
+        });
+    });
+
+    it('disables the project picker while the catalogue is loading', async () => {
+        mockedApi.get.mockResolvedValueOnce({ data: { data: [] } });
+        mockedUseKbProjects.mockReturnValue(
+            projectQuery({ data: undefined, isLoading: true }),
+        );
+
+        renderWithQuery(<WidgetKeysView />);
+        fireEvent.click(screen.getByTestId('admin-widget-keys-create-btn'));
+
+        expect(await screen.findByTestId('admin-widget-keys-project-loading')).toBeVisible();
+        expect(screen.getByTestId('admin-widget-keys-project')).toBeDisabled();
+        expect(screen.getByTestId('admin-widget-keys-create-submit')).toBeDisabled();
+    });
+
+    it('surfaces a project catalogue error and retries it', async () => {
+        const refetch = vi.fn();
+        mockedApi.get.mockResolvedValueOnce({ data: { data: [] } });
+        mockedUseKbProjects.mockReturnValue(
+            projectQuery({
+                data: undefined,
+                isError: true,
+                error: new Error('Catalogue unavailable'),
+                refetch,
+            }),
+        );
+
+        renderWithQuery(<WidgetKeysView />);
+        fireEvent.click(screen.getByTestId('admin-widget-keys-create-btn'));
+
+        expect(await screen.findByTestId('admin-widget-keys-project-error'))
+            .toHaveTextContent('Catalogue unavailable');
+        fireEvent.click(screen.getByTestId('admin-widget-keys-project-retry'));
+        expect(refetch).toHaveBeenCalledOnce();
+    });
+
+    it('links to project management when the tenant catalogue is empty', async () => {
+        mockedApi.get.mockResolvedValueOnce({ data: { data: [] } });
+        mockedUseKbProjects.mockReturnValue(
+            projectQuery({ data: { projects: [] } }),
+        );
+
+        renderWithQuery(<WidgetKeysView />);
+        fireEvent.click(screen.getByTestId('admin-widget-keys-create-btn'));
+
+        expect(await screen.findByTestId('admin-widget-keys-project-empty')).toBeVisible();
+        expect(screen.getByRole('link', { name: 'Manage projects' }))
+            .toHaveAttribute('href', './projects');
+        expect(screen.getByTestId('admin-widget-keys-project')).toBeDisabled();
+    });
+
     it('shows loading state (R14)', () => {
         mockedApi.get.mockReturnValue(new Promise(() => {})); // never resolves
         renderWithQuery(<WidgetKeysView />);
@@ -281,7 +403,7 @@ describe('WidgetKeysView', () => {
             target: { value: 'Prod' },
         });
         fireEvent.change(screen.getByTestId('admin-widget-keys-project'), {
-            target: { value: 'x' },
+            target: { value: 'main' },
         });
         fireEvent.click(screen.getByTestId('admin-widget-keys-create-submit'));
 
