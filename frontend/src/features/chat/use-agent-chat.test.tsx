@@ -78,6 +78,38 @@ describe('useAgentChat', () => {
         expect(onFinish).toHaveBeenCalledOnce();
     });
 
+    it('does not cancel a first turn when the empty history resolves during startup', async () => {
+        let resolveStart: ((value: Awaited<ReturnType<typeof chatApi.startAgentTurn>>) => void) | undefined;
+        vi.spyOn(chatApi, 'startAgentTurn').mockImplementation(() => new Promise((resolve) => { resolveStart = resolve; }));
+        vi.spyOn(chatApi, 'listMessages').mockResolvedValue([userMessage, assistantMessage]);
+        const eventFetch = vi.fn(async () => eventResponse(completedEvent()));
+        vi.stubGlobal('fetch', eventFetch);
+
+        const { result, rerender } = renderHook(
+            ({ history }: { history: Message[] | undefined }) => useAgentChat({
+                conversationId: 7,
+                filters: {},
+                initialMessages: history,
+            }),
+            { initialProps: { history: undefined as Message[] | undefined } },
+        );
+
+        let sending!: Promise<void>;
+        act(() => { sending = result.current.sendMessage({ text: 'Dammi gli ordini' }); });
+        rerender({ history: [] });
+        act(() => resolveStart?.({
+            run_id: 'run-1', status: 'queued', locale: 'it-IT',
+            events_url: '/agent-runs/run-1/events', cancel_url: '/cancel', continue_url: '/continue',
+            user_message: userMessage,
+        }));
+
+        await act(async () => sending);
+
+        expect(eventFetch).toHaveBeenCalledOnce();
+        expect(result.current.messages).toEqual([userMessage, assistantMessage]);
+        expect(result.current.events.at(-1)?.type).toBe('run.completed');
+    });
+
     it('cancels the current backend run when stopped', async () => {
         let resolveStart: ((value: Awaited<ReturnType<typeof chatApi.startAgentTurn>>) => void) | undefined;
         vi.spyOn(chatApi, 'startAgentTurn').mockImplementation(() => new Promise((resolve) => { resolveStart = resolve; }));
