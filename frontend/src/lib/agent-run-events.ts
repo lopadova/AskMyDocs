@@ -53,6 +53,7 @@ export interface ConsumeAgentRunOptions {
     onEvent: (event: AgentRunEvent) => void;
     signal?: AbortSignal;
     maxConnections?: number;
+    initialSequence?: number;
 }
 
 const STOP_EVENTS: Record<string, AgentRunStopReason> = {
@@ -77,7 +78,7 @@ export async function consumeAgentRun(options: ConsumeAgentRunOptions): Promise<
         options.signal?.addEventListener('abort', relayAbort, { once: true });
     }
 
-    let lastSequence = 0;
+    let lastSequence = Math.max(0, options.initialSequence ?? 0);
     const maxConnections = Math.max(1, options.maxConnections ?? 100);
     try {
         for (let connection = 0; connection < maxConnections; connection++) {
