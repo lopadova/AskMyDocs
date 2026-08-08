@@ -49,6 +49,8 @@ class TestingController extends Controller
         // v8.5 — one vector-searchable hr-portal doc (real DocumentIngestor
         // path, fake embeddings) for chat-stream-browser.spec.ts.
         'E2eStreamSeeder' => \Database\Seeders\E2eStreamSeeder::class,
+        // Dependent live-API agent flow for chat and widget E2E.
+        'E2eAgentRetrievalSeeder' => \Database\Seeders\E2eAgentRetrievalSeeder::class,
         // v8.8/W2 — one `deleted`-trigger analysis row for the Doc Insights
         // deletion-impact happy-path E2E (admin-kb-insights-deleted.spec.ts).
         'KbDeletionInsightSeeder' => \Database\Seeders\KbDeletionInsightSeeder::class,

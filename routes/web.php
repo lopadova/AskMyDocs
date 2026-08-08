@@ -252,6 +252,40 @@ if (app()->environment('testing')) {
             'meta' => ['page' => $page, 'next_cursor' => 'c'.($page + 1)],
         ]);
     });
+
+    // Dependent-call fixture for the durable retrieval agent. The first route
+    // resolves a human name to an id; the second returns two non-empty pages so
+    // Playwright observes both logical chaining and physical pagination.
+    Route::get('/testing/api-fixture/customers', function (\Illuminate\Http\Request $request) {
+        $name = trim((string) $request->query('name', ''));
+        if ($name === '503') {
+            return response()->json(['error' => 'Temporary upstream failure.'], 503);
+        }
+
+        return response()->json(['items' => [[
+            'id' => 77,
+            'name' => $name !== '' ? $name : 'Tizio',
+        ]]]);
+    });
+    Route::get('/testing/api-fixture/customers/{id}/orders', function (string $id, \Illuminate\Http\Request $request) {
+        $page = max(1, (int) $request->query('page', 1));
+        $orders = match ($page) {
+            1 => [
+                ['number' => 'A-100', 'customer_id' => (int) $id, 'total' => 120],
+                ['number' => 'A-101', 'customer_id' => (int) $id, 'total' => 80],
+            ],
+            2 => [['number' => 'A-102', 'customer_id' => (int) $id, 'total' => 45]],
+            default => [],
+        };
+
+        return response()->json([
+            'orders' => $orders,
+            'meta' => [
+                'page' => $page,
+                'locale' => $request->header('Accept-Language'),
+            ],
+        ]);
+    })->whereNumber('id');
 }
 
 /*
