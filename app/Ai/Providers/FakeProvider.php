@@ -52,6 +52,20 @@ final class FakeProvider implements AiProviderInterface
 
     public function chatWithHistory(string $systemPrompt, array $messages, array $options = []): AiResponse
     {
+        // The durable retrieval agent uses forced structured-output tools for
+        // planning and synthesis. Supporting those two contracts here lets the
+        // browser E2E exercise the real queue, HTTP tools and SSE transport
+        // without an external model. FakeProvider remains hard-gated to
+        // local/testing by AiManager, so this deterministic scenario can never
+        // influence a production answer.
+        $forcedFunction = $this->forcedFunction($options);
+        if ($forcedFunction === 'submit_agent_plan') {
+            return $this->structuredResponse($forcedFunction, $this->agentPlan($systemPrompt, $messages));
+        }
+        if ($forcedFunction === 'submit_agent_answer') {
+            return $this->structuredResponse($forcedFunction, $this->agentAnswer($systemPrompt, $messages));
+        }
+
         // Function-calling deterministico per il widget KITT (R13 / M4.14): quando
         // l'orchestratore offre dei tool, il FakeProvider emette una sequenza di
         // tool_call SCRIPTATA (per parola-chiave del messaggio utente + numero di
@@ -81,6 +95,210 @@ final class FakeProvider implements AiProviderInterface
             totalTokens: 28,
             finishReason: 'stop',
         );
+    }
+
+    /** @param array<string,mixed> $options */
+    private function forcedFunction(array $options): ?string
+    {
+        $choice = $options['tool_choice'] ?? null;
+        if (! is_array($choice)) {
+            return null;
+        }
+        $function = $choice['function'] ?? null;
+
+        return is_array($function) && is_string($function['name'] ?? null)
+            ? $function['name']
+            : null;
+    }
+
+    /** @param list<array{role:string,content:string}> $messages @return array<string,mixed> */
+    private function agentPlan(string $systemPrompt, array $messages): array
+    {
+        $payload = $this->lastJsonPayload($messages);
+        $question = mb_strtolower((string) ($payload['question'] ?? ''));
+        $completed = is_array($payload['completed_actions'] ?? null)
+            ? $payload['completed_actions']
+            : [];
+        $toolNames = [];
+        foreach (is_array($payload['available_tools'] ?? null) ? $payload['available_tools'] : [] as $tool) {
+            if (is_array($tool) && is_string($tool['name'] ?? null)) {
+                $toolNames[] = $tool['name'];
+            }
+        }
+
+        if ($completed !== []) {
+            return ['decision' => 'answer', 'actions' => []];
+        }
+        if ((str_contains($question, 'ordin') || str_contains($question, 'order'))
+            && in_array('find_customer', $toolNames, true)
+            && in_array('get_orders', $toolNames, true)) {
+            $italian = $this->expectsItalian($systemPrompt);
+            $customer = str_contains($question, '503') ? '503' : 'Tizio';
+
+            return [
+                'decision' => 'tools',
+                'actions' => [
+                    [
+                        'id' => 'find_customer',
+                        'tool' => 'find_customer',
+                        'arguments' => ['name' => $customer],
+                        'depends_on' => [],
+                        'purpose' => $italian ? 'Cerco il cliente richiesto' : 'Find the requested customer',
+                    ],
+                    [
+                        'id' => 'load_orders',
+                        'tool' => 'get_orders',
+                        'arguments' => [
+                            'customer_id' => ['$from' => 'find_customer', 'path' => 'items.0.id'],
+                        ],
+                        'depends_on' => ['find_customer'],
+                        'purpose' => $italian ? 'Recupero tutti gli ordini del cliente' : 'Load all customer orders',
+                    ],
+                ],
+            ];
+        }
+
+        return ['decision' => 'answer', 'actions' => []];
+    }
+
+    /** @param list<array{role:string,content:string}> $messages @return array<string,mixed> */
+    private function agentAnswer(string $systemPrompt, array $messages): array
+    {
+        $payload = $this->lastJsonPayload($messages);
+        $evidence = is_array($payload['evidence'] ?? null) ? $payload['evidence'] : [];
+        $tools = is_array($evidence['api_tools'] ?? null) ? $evidence['api_tools'] : [];
+        $documents = is_array($evidence['documents'] ?? null) ? $evidence['documents'] : [];
+        $italian = $this->expectsItalian($systemPrompt);
+        $orderNumbers = [];
+        $hasError = false;
+        $toolExecutionIds = [];
+        $customer = 'Tizio';
+
+        foreach ($tools as $tool) {
+            if (! is_array($tool)) {
+                continue;
+            }
+            $executionId = (int) ($tool['execution_id'] ?? 0);
+            if ($executionId > 0) {
+                $toolExecutionIds[] = $executionId;
+            }
+            $arguments = is_array($tool['arguments'] ?? null) ? $tool['arguments'] : [];
+            if (is_string($arguments['name'] ?? null) && $arguments['name'] !== '503') {
+                $customer = $arguments['name'];
+            }
+            $result = is_array($tool['result'] ?? null) ? $tool['result'] : [];
+            $hasError = $hasError || $this->containsKey($result, 'error');
+            foreach ($this->valuesForKeys($result, ['number', 'order_number']) as $number) {
+                if (is_scalar($number) && (string) $number !== '') {
+                    $orderNumbers[] = (string) $number;
+                }
+            }
+        }
+        $orderNumbers = array_values(array_unique($orderNumbers));
+        $documentIds = array_values(array_filter(array_map(
+            static fn (mixed $document): int => is_array($document) ? (int) ($document['document_id'] ?? 0) : 0,
+            $documents,
+        )));
+
+        if ($orderNumbers !== []) {
+            $answer = $italian
+                ? sprintf('Ho trovato %d ordini per %s: %s.', count($orderNumbers), $customer, implode(', ', $orderNumbers))
+                : sprintf('I found %d orders for %s: %s.', count($orderNumbers), $customer, implode(', ', $orderNumbers));
+            $completeness = $hasError ? 'partial' : 'complete';
+            $limitations = $hasError
+                ? [$italian ? 'Alcune richieste API non sono state completate.' : 'Some API requests did not complete.']
+                : [];
+        } elseif ($hasError) {
+            $answer = $italian
+                ? 'Non ho potuto recuperare gli ordini perché il servizio esterno non è temporaneamente disponibile.'
+                : 'I could not retrieve the orders because the external service is temporarily unavailable.';
+            $completeness = 'partial';
+            $limitations = [$italian ? 'Il servizio ordini ha restituito un errore temporaneo.' : 'The orders service returned a temporary error.'];
+        } else {
+            $answer = $italian
+                ? 'Ho completato la ricerca con le informazioni disponibili.'
+                : 'I completed the search with the available information.';
+            $completeness = ($tools === [] && $documents === []) ? 'insufficient' : 'complete';
+            $limitations = $completeness === 'insufficient'
+                ? [$italian ? 'Non sono state trovate evidenze pertinenti.' : 'No relevant evidence was found.']
+                : [];
+        }
+
+        return [
+            'answer' => $answer,
+            'completeness' => $completeness,
+            'document_ids' => $documentIds,
+            'tool_execution_ids' => array_values(array_unique($toolExecutionIds)),
+            'limitations' => $limitations,
+        ];
+    }
+
+    /** @param list<array{role:string,content:string}> $messages @return array<string,mixed> */
+    private function lastJsonPayload(array $messages): array
+    {
+        for ($index = count($messages) - 1; $index >= 0; $index--) {
+            $content = $messages[$index]['content'] ?? null;
+            if (! is_string($content)) {
+                continue;
+            }
+            $decoded = json_decode($content, true);
+            if (is_array($decoded)) {
+                return $decoded;
+            }
+        }
+
+        return [];
+    }
+
+    /** @param array<string,mixed> $arguments */
+    private function structuredResponse(string $name, array $arguments): AiResponse
+    {
+        return new AiResponse(
+            content: '',
+            provider: 'fake',
+            model: $this->modelName('chat_model'),
+            promptTokens: 11,
+            completionTokens: 7,
+            totalTokens: 18,
+            finishReason: 'tool_calls',
+            toolCalls: [['name' => $name, 'arguments' => $arguments]],
+        );
+    }
+
+    private function expectsItalian(string $systemPrompt): bool
+    {
+        return preg_match('/\\bin\\s+it(?:-[a-z0-9]{2,8})*(?=[\\s.,;])/i', $systemPrompt) === 1;
+    }
+
+    /** @param array<mixed> $value */
+    private function containsKey(array $value, string $needle): bool
+    {
+        foreach ($value as $key => $item) {
+            if ($key === $needle) {
+                return true;
+            }
+            if (is_array($item) && $this->containsKey($item, $needle)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** @param array<mixed> $value @param list<string> $keys @return list<mixed> */
+    private function valuesForKeys(array $value, array $keys): array
+    {
+        $found = [];
+        foreach ($value as $key => $item) {
+            if (is_string($key) && in_array($key, $keys, true)) {
+                $found[] = $item;
+            }
+            if (is_array($item)) {
+                array_push($found, ...$this->valuesForKeys($item, $keys));
+            }
+        }
+
+        return $found;
     }
 
     /**

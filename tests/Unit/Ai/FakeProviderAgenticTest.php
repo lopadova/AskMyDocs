@@ -88,4 +88,60 @@ final class FakeProviderAgenticTest extends TestCase
         $this->assertSame([], $turn2->toolCalls);
         $this->assertSame(FakeProvider::ANSWER, $turn2->content);
     }
+
+    public function test_durable_agent_scenario_plans_dependent_calls_then_answers(): void
+    {
+        $question = 'Dammi tutti gli ordini di Tizio';
+        $plan = $this->provider()->chatWithHistory('final answer in it-IT', [[
+            'role' => 'user',
+            'content' => json_encode([
+                'question' => $question,
+                'available_tools' => [
+                    ['name' => 'find_customer'],
+                    ['name' => 'get_orders'],
+                ],
+                'completed_actions' => [],
+            ], JSON_THROW_ON_ERROR),
+        ]], $this->forcedOptions('submit_agent_plan'));
+
+        $this->assertSame('submit_agent_plan', $plan->toolCalls[0]['name']);
+        $arguments = $plan->toolCalls[0]['arguments'];
+        $this->assertSame('tools', $arguments['decision']);
+        $this->assertSame(['find_customer'], $arguments['actions'][1]['depends_on']);
+        $this->assertSame(
+            ['$from' => 'find_customer', 'path' => 'items.0.id'],
+            $arguments['actions'][1]['arguments']['customer_id'],
+        );
+
+        $answer = $this->provider()->chatWithHistory('final answer in it.', [[
+            'role' => 'user',
+            'content' => json_encode([
+                'question' => $question,
+                'evidence' => [
+                    'documents' => [],
+                    'api_tools' => [[
+                        'execution_id' => 12,
+                        'arguments' => ['name' => 'Tizio'],
+                        'result' => ['items' => [
+                            ['number' => 'A-100'],
+                            ['number' => 'A-101'],
+                        ]],
+                    ]],
+                ],
+            ], JSON_THROW_ON_ERROR),
+        ]], $this->forcedOptions('submit_agent_answer'));
+
+        $this->assertSame('submit_agent_answer', $answer->toolCalls[0]['name']);
+        $this->assertSame('Ho trovato 2 ordini per Tizio: A-100, A-101.', $answer->toolCalls[0]['arguments']['answer']);
+        $this->assertSame([12], $answer->toolCalls[0]['arguments']['tool_execution_ids']);
+    }
+
+    /** @return array<string,mixed> */
+    private function forcedOptions(string $function): array
+    {
+        return [
+            'tools' => [['type' => 'function', 'function' => ['name' => $function]]],
+            'tool_choice' => ['type' => 'function', 'function' => ['name' => $function]],
+        ];
+    }
 }
