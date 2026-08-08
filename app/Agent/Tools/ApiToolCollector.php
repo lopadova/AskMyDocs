@@ -75,8 +75,11 @@ final class ApiToolCollector
         if (! $listRoute instanceof ApiRoute || ! $detailRoute instanceof ApiRoute) {
             return $this->failure('relation_unavailable');
         }
-        if ($listRoute->tenant_id !== $context->tenantId
+        if ($relation->tenant_id !== $context->tenantId
+            || $listRoute->tenant_id !== $context->tenantId
             || $detailRoute->tenant_id !== $context->tenantId
+            || $relation->api_connector_id !== $listRoute->api_connector_id
+            || $relation->api_connector_id !== $detailRoute->api_connector_id
             || $this->projectKey($listRoute) !== $context->projectKey
             || $this->projectKey($detailRoute) !== $context->projectKey) {
             return $this->failure('relation_scope_mismatch');

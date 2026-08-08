@@ -11,6 +11,7 @@ use App\Agent\Evidence\AgentEvidenceFactory;
 use App\Agent\Tools\AgentToolDefinition;
 use App\Ai\AiManager;
 use App\Ai\AiResponse;
+use App\Services\Widget\WidgetPiiMasker;
 use Mockery;
 use Tests\TestCase;
 
@@ -49,16 +50,16 @@ final class AgentAnswerSynthesizerTest extends TestCase
             toolCalls: [[
                 'name' => 'submit_agent_answer',
                 'arguments' => [
-                    'answer' => 'Tizio ha l’ordine **A-100**; la policy indica che gli ordini pagati sono definitivi.',
+                    'answer' => 'Tizio ha l’ordine **A-100**; contatto admin@example.com.',
                     'completeness' => 'complete',
                     'document_ids' => [12, 999],
                     'tool_execution_ids' => [55, 999],
-                    'limitations' => [],
+                    'limitations' => ['Non mostrare Bearer eyJabcdefghijk.abcdefghijklmnopqrstu'],
                 ],
             ]],
         ));
 
-        $answer = (new AgentAnswerSynthesizer($ai))->synthesize(
+        $answer = (new AgentAnswerSynthesizer($ai, app(WidgetPiiMasker::class)))->synthesize(
             'Quali ordini ha Tizio?',
             $this->context(),
             new AgentLoopOutcome('answer', $evidence, []),
@@ -70,6 +71,9 @@ final class AgentAnswerSynthesizerTest extends TestCase
         $this->assertSame([55], array_column($answer->toolSources, 'execution_id'));
         $this->assertArrayNotHasKey('result', $answer->toolSources[0]);
         $this->assertStringContainsString('A-100', $answer->answer);
+        $this->assertStringContainsString('[EMAIL]', $answer->answer);
+        $this->assertStringNotContainsString('admin@example.com', $answer->answer);
+        $this->assertStringContainsString('Bearer [TOKEN]', $answer->limitations[0]);
     }
 
     private function context(): AgentExecutionContext
