@@ -43,6 +43,27 @@ final class WidgetAuthenticatedHistoryTest extends TestCase
         $this->assertStringNotContainsString('internal-user-42', $response->json('token'));
     }
 
+    public function test_user_token_signs_and_restores_the_requested_locale(): void
+    {
+        $key = $this->key('pk_identity_locale', 'ik_locale');
+
+        $response = $this->postJson('/api/widget/user-token', [
+            'subject' => 'internal-user-42',
+            'origin' => 'https://host.example',
+            'locale' => 'it_it',
+        ], [
+            'X-Widget-Key' => $key->public_key,
+            'Authorization' => 'Bearer ik_locale',
+        ])->assertCreated()->assertJsonPath('locale', 'it-IT');
+
+        $validated = app(\App\Services\Widget\WidgetUserTokenService::class)->validate(
+            (string) $response->json('token'),
+            'https://host.example',
+        );
+
+        $this->assertSame('it-IT', $validated['locale'] ?? null);
+    }
+
     public function test_authenticated_history_and_replay_are_scoped_to_identity(): void
     {
         $key = $this->key('pk_history', 'ik_history');

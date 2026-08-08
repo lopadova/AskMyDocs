@@ -19,6 +19,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use InvalidArgumentException;
+use App\Support\SupportedLocale;
 
 /**
  * Endpoint del loop ReAct del widget (gira dietro `widget.key`, quindi
@@ -74,6 +75,7 @@ final class WidgetSessionController extends Controller
             pageUrl: $this->nullableString($data['page_url'] ?? null) ?? $this->nullableString(data_get($snapshot, 'page.url')),
             origin: $this->nullableString($request->header('Origin')),
             identity: $this->identity($request),
+            locale: $this->resolvedStartLocale($request, $snapshot),
         );
 
         return response()->json($payload);
@@ -416,6 +418,7 @@ final class WidgetSessionController extends Controller
             'status' => $session->status,
             'summary' => $session->summary,
             'page_url' => $session->page_url,
+            'locale' => SupportedLocale::normalize($session->locale),
             'created_at' => $session->created_at->toIso8601String(),
             'updated_at' => $session->updated_at->toIso8601String(),
         ];
@@ -441,5 +444,18 @@ final class WidgetSessionController extends Controller
     private function nullableString(mixed $value): ?string
     {
         return is_string($value) && $value !== '' ? $value : null;
+    }
+
+    /** @param array<string,mixed> $snapshot */
+    private function resolvedStartLocale(Request $request, array $snapshot): string
+    {
+        $signedLocale = $request->attributes->get(ResolveWidgetKey::ATTR_LOCALE);
+        if (is_string($signedLocale) && SupportedLocale::isSupported($signedLocale)) {
+            return SupportedLocale::normalize($signedLocale);
+        }
+
+        $pageLocale = data_get($snapshot, 'active_context.locale');
+
+        return SupportedLocale::normalize(is_string($pageLocale) ? $pageLocale : null);
     }
 }

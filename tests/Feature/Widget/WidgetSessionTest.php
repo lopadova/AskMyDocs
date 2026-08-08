@@ -156,6 +156,7 @@ final class WidgetSessionTest extends TestCase
         $userToken = (string) $this->postJson('/api/widget/user-token', [
             'subject' => 'customer-42',
             'origin' => 'https://allowed.test',
+            'locale' => 'it-IT',
         ], [
             'X-Widget-Key' => $key->public_key,
             'Authorization' => 'Bearer '.$identitySecret,
@@ -171,11 +172,29 @@ final class WidgetSessionTest extends TestCase
 
         $session = WidgetSession::query()->firstOrFail();
         $this->assertNotNull($session->widget_identity_id);
+        $this->assertSame('it-IT', $session->locale);
         $this->assertDatabaseHas('widget_identities', [
             'id' => $session->widget_identity_id,
             'widget_key_id' => $key->id,
             'project_key' => 'customer-portal',
         ]);
+    }
+
+    public function test_anonymous_start_pins_the_active_page_locale(): void
+    {
+        Http::fake([
+            '*/embeddings' => $this->fakeEmbeddings(),
+            '*/chat/completions' => $this->fakeChatMessage('Welcome.'),
+        ]);
+
+        $key = $this->makeKey();
+
+        $this->withHeaders($this->headers($key))->postJson('/api/widget/sessions/start', [
+            'snapshot' => $this->snapshot(['active_context' => ['locale' => 'en-US']]),
+            'message' => 'Help',
+        ])->assertOk();
+
+        $this->assertSame('en-US', WidgetSession::query()->firstOrFail()->locale);
     }
 
     public function test_start_returns_a_validated_tool_call(): void

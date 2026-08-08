@@ -41,6 +41,7 @@ class WidgetSession extends Model
         'mission',
         'page_url',
         'origin',
+        'locale',
         'summary',
         'blocked_reason',
         'meta',

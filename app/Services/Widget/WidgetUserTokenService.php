@@ -8,13 +8,14 @@ use App\Models\WidgetIdentity;
 use App\Models\WidgetKey;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Str;
+use App\Support\SupportedLocale;
 
 final class WidgetUserTokenService
 {
     public const PREFIX = 'wu_';
 
     /** @return array{token:string,expires_at:string,identity:WidgetIdentity} */
-    public function issue(WidgetKey $key, string $subject, string $origin): array
+    public function issue(WidgetKey $key, string $subject, string $origin, ?string $locale = null): array
     {
         // Include the complete ownership boundary so the same host subject is
         // not correlatable across widgets/projects from a database export.
@@ -33,6 +34,7 @@ final class WidgetUserTokenService
         $identity->forceFill(['last_seen_at' => now()])->saveQuietly();
 
         $expiresAt = now()->addMinutes((int) config('widget.user_token_ttl_minutes', 15));
+        $resolvedLocale = SupportedLocale::normalize($locale);
         $claims = [
             'v' => 1,
             'jti' => (string) Str::uuid(),
@@ -41,6 +43,7 @@ final class WidgetUserTokenService
             'iid' => $identity->id,
             'iep' => (int) $key->identity_access_epoch,
             'org' => $this->normalizeOrigin($origin),
+            'loc' => $resolvedLocale,
             'exp' => $expiresAt->timestamp,
         ];
 
@@ -51,7 +54,7 @@ final class WidgetUserTokenService
         ];
     }
 
-    /** @return array{key:WidgetKey,identity:WidgetIdentity,origin:string}|null */
+    /** @return array{key:WidgetKey,identity:WidgetIdentity,origin:string,locale:string}|null */
     public function validate(string $token, ?string $origin): ?array
     {
         if (! str_starts_with($token, self::PREFIX) || ! is_string($origin) || $origin === '') {
@@ -93,7 +96,13 @@ final class WidgetUserTokenService
             return null;
         }
 
-        return ['key' => $key, 'identity' => $identity, 'origin' => $claims['org']];
+        return [
+            'key' => $key,
+            'identity' => $identity,
+            'origin' => $claims['org'],
+            // Backward-compatible fallback for already-issued v1 claims.
+            'locale' => SupportedLocale::normalize(is_string($claims['loc'] ?? null) ? $claims['loc'] : null),
+        ];
     }
 
     private function normalizeOrigin(string $origin): string

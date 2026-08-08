@@ -15,6 +15,7 @@ use App\Services\Kb\Chat\ChatRetrievalService;
 use App\Services\Kb\Grounding\ConfidenceCalculator;
 use App\Services\Kb\Retrieval\SearchResult;
 use Illuminate\Support\Str;
+use App\Support\SupportedLocale;
 
 /**
  * WidgetOrchestratorService — il motore del loop ReAct del widget KITT
@@ -58,7 +59,7 @@ final class WidgetOrchestratorService
      * @param  array<string, mixed>  $snapshot
      * @return array<string, mixed>
      */
-    public function start(WidgetKey $key, array $snapshot, ?string $userMessage, ?string $pageUrl, ?string $origin, ?\App\Models\WidgetIdentity $identity = null): array
+    public function start(WidgetKey $key, array $snapshot, ?string $userMessage, ?string $pageUrl, ?string $origin, ?\App\Models\WidgetIdentity $identity = null, ?string $locale = null): array
     {
         $session = WidgetSession::create([
             // tenant_id auto-fill via BelongsToTenant (= tenant della key, R30).
@@ -70,6 +71,7 @@ final class WidgetOrchestratorService
             'skill' => $key->skill,
             'page_url' => $pageUrl,
             'origin' => $origin,
+            'locale' => SupportedLocale::normalize($locale),
             'meta' => ['consecutive_errors' => 0],
         ]);
 
