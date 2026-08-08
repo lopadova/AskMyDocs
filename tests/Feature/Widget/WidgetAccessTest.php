@@ -103,7 +103,9 @@ final class WidgetAccessTest extends TestCase
         // Tema additivo (R27): key senza theme_config → default risolto.
         $res->assertJsonPath('theme.accent', '#2563eb')
             ->assertJsonPath('theme.fontFamily', 'system')
-            ->assertJsonPath('theme.launcherShape', 'pill');
+            ->assertJsonPath('theme.launcherShape', 'pill')
+            ->assertJsonPath('intro.enabled', false)
+            ->assertJsonPath('intro.variant', 'card');
     }
 
     public function test_setup_returns_the_stored_theme_resolved_over_defaults(): void
@@ -121,6 +123,28 @@ final class WidgetAccessTest extends TestCase
             ->assertJsonPath('theme.accent', '#10b981')   // valore custom
             ->assertJsonPath('theme.launcherShape', 'circle')
             ->assertJsonPath('theme.background', '#ffffff'); // resto sui default
+    }
+
+    public function test_setup_returns_the_stored_intro_resolved_over_defaults(): void
+    {
+        $key = $this->makeKey([
+            'allowed_origins' => ['https://allowed.test'],
+            'intro_config' => [
+                'enabled' => true,
+                'title' => 'Product assistant',
+                'suggestions' => [['label' => 'Start', 'prompt' => 'Explain the product']],
+            ],
+        ]);
+
+        $this->withHeaders([
+            'X-Widget-Key' => $key->public_key,
+            'Origin' => 'https://allowed.test',
+        ])->getJson('/api/widget/setup')
+            ->assertOk()
+            ->assertJsonPath('intro.enabled', true)
+            ->assertJsonPath('intro.title', 'Product assistant')
+            ->assertJsonPath('intro.variant', 'card')
+            ->assertJsonPath('intro.suggestions.0.prompt', 'Explain the product');
     }
 
     public function test_proxy_mode_with_valid_secret_skips_the_origin_check(): void
