@@ -8,6 +8,10 @@ return [
         'poll_ms' => (int) env('AGENT_EVENT_POLL_MS', 100),
         'stream_seconds' => (float) env('AGENT_EVENT_STREAM_SECONDS', 25),
     ],
+    'limits' => [
+        'confirmation_logical_extension_max' => (int) env('AGENT_CONFIRMATION_LOGICAL_EXTENSION_MAX', 25),
+        'confirmation_physical_extension_max' => (int) env('AGENT_CONFIRMATION_PHYSICAL_EXTENSION_MAX', 100),
+    ],
     'locales' => [
         'supported' => array_values(array_filter(array_map(
             static fn (string $locale): string => trim($locale),

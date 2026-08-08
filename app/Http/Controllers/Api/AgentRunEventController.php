@@ -5,8 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Api;
 
 use App\Agent\AgentEventStream;
-use App\Models\AgentRun;
-use App\Support\TenantContext;
+use App\Agent\AgentRunAccess;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -17,16 +16,12 @@ final class AgentRunEventController extends Controller
         Request $request,
         string $run,
         AgentEventStream $stream,
-        TenantContext $tenants,
+        AgentRunAccess $access,
     ): StreamedResponse {
         $user = $request->user();
         abort_if($user === null, 401);
 
-        $agentRun = AgentRun::query()
-            ->forTenant($tenants->current())
-            ->where('run_id', $run)
-            ->where('user_id', $user->getAuthIdentifier())
-            ->firstOrFail();
+        $agentRun = $access->forUserOrFail($run, $user);
 
         $after = max(
             0,
