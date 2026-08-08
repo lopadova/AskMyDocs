@@ -41,6 +41,8 @@ class KnowledgeBaseServerRegistrationTest extends TestCase
     public function test_server_registers_the_widget_intro_config_tool(): void
     {
         $this->assertContains(\App\Mcp\Tools\WidgetIntroConfigTool::class, $this->registeredTools());
+    }
+
     public function test_server_registers_the_api_connectors_tool(): void
     {
         // v8.27 — the Connettore API MCP read surface (R44 third surface).
