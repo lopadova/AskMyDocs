@@ -9,6 +9,7 @@ return [
         'stream_seconds' => (float) env('AGENT_EVENT_STREAM_SECONDS', 25),
     ],
     'limits' => [
+        'physical_hard' => (int) env('AGENT_PHYSICAL_HARD_LIMIT', 100),
         'confirmation_logical_extension_max' => (int) env('AGENT_CONFIRMATION_LOGICAL_EXTENSION_MAX', 25),
         'confirmation_physical_extension_max' => (int) env('AGENT_CONFIRMATION_PHYSICAL_EXTENSION_MAX', 100),
     ],
