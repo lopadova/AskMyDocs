@@ -79,6 +79,26 @@ final class AgentEvidenceEnvelope implements JsonSerializable
         $this->warnings[] = ['code' => $code, 'source' => $source];
     }
 
+    /** Import a previously masked checkpoint without changing its provenance. */
+    public function import(array $payload): void
+    {
+        foreach (is_array($payload['documents'] ?? null) ? $payload['documents'] : [] as $document) {
+            if (is_array($document)) {
+                $this->addDocument($document);
+            }
+        }
+        foreach (is_array($payload['api_tools'] ?? null) ? $payload['api_tools'] : [] as $tool) {
+            if (is_array($tool)) {
+                $this->apiTools[] = $this->masker->maskArray($tool) ?? [];
+            }
+        }
+        foreach (is_array($payload['warnings'] ?? null) ? $payload['warnings'] : [] as $warning) {
+            if (is_array($warning) && is_string($warning['code'] ?? null)) {
+                $this->addWarning($warning['code'], is_string($warning['source'] ?? null) ? $warning['source'] : null);
+            }
+        }
+    }
+
     /** @return list<array<string,mixed>> */
     public function documents(): array
     {
