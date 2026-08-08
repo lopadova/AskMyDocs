@@ -8,6 +8,8 @@ import {
     sanitizeTheme,
 } from '../../../widget/ui/styles';
 import type { WidgetTheme } from '../../../widget/types';
+import type { WidgetIntro } from '../../../widget/types';
+import { DEFAULT_INTRO, sanitizeIntro } from '../../../widget/ui/intro';
 
 /**
  * Anteprima live e isolata del widget: monta uno Shadow DOM e vi inietta lo
@@ -69,7 +71,26 @@ const SOURCE_PREVIEW_OVERRIDE = `
 `;
 
 /** Pannello chat condiviso da entrambe le modalità (launcher a parte). */
-function panelMarkup(theme: WidgetTheme): string {
+function introMarkup(rawIntro: WidgetIntro): string {
+    const intro = sanitizeIntro(rawIntro);
+    if (!intro.enabled || intro.title === '') return '';
+    const image = intro.imageUrl !== '' && intro.imageAlt !== ''
+        ? `<img class="amd-intro-image" src="${escapeHtml(intro.imageUrl)}" alt="${escapeHtml(intro.imageAlt)}">`
+        : '';
+    const eyebrow = intro.eyebrow !== '' ? `<p class="amd-intro-eyebrow">${escapeHtml(intro.eyebrow)}</p>` : '';
+    const subtitle = intro.subtitle !== '' ? `<p class="amd-intro-subtitle">${escapeHtml(intro.subtitle)}</p>` : '';
+    const body = intro.body !== '' ? `<p class="amd-intro-body">${escapeHtml(intro.body)}</p>` : '';
+    const bullets = intro.bullets.length > 0
+        ? `<ul class="amd-intro-bullets">${intro.bullets.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`
+        : '';
+    const suggestions = intro.suggestions.length > 0
+        ? `<div class="amd-intro-suggestions">${intro.suggestions.map((item) => `<button class="amd-intro-suggestion" type="button">${escapeHtml(item.label)}</button>`).join('')}</div>`
+        : '';
+
+    return `<section class="amd-intro" data-variant="${intro.variant}">${image}<div class="amd-intro-content">${eyebrow}<h2 class="amd-intro-title">${escapeHtml(intro.title)}</h2>${subtitle}${body}${bullets}${suggestions}</div></section>`;
+}
+
+function panelMarkup(theme: WidgetTheme, intro: WidgetIntro): string {
     const title = escapeHtml(theme.panelTitle || 'Assistente');
     const logo =
         theme.headerLogoUrl !== ''
@@ -85,6 +106,7 @@ function panelMarkup(theme: WidgetTheme): string {
       <button class="amd-close" type="button" aria-label="Chiudi">×</button>
     </header>
     <div class="amd-messages">
+      ${introMarkup(intro)}
       <div class="amd-msg assistant"><div>Ciao! Come posso aiutarti oggi?</div></div>
       <div class="amd-msg user"><div>Mostrami la documentazione del prodotto.</div></div>
       <div class="amd-msg assistant">
@@ -125,17 +147,17 @@ function sourcesMarkup(): string {
 </div>`;
 }
 
-function previewMarkup(theme: WidgetTheme, view: 'chat' | 'sources'): string {
+function previewMarkup(theme: WidgetTheme, intro: WidgetIntro, view: 'chat' | 'sources'): string {
     if (view === 'sources') {
         return sourcesMarkup();
     }
 
     // Inline: solo il blocco chat, nessun launcher.
     if (theme.mode === 'inline') {
-        return `<div class="amd-root amd-mode-inline">${panelMarkup(theme)}</div>`;
+        return `<div class="amd-root amd-mode-inline">${panelMarkup(theme, intro)}</div>`;
     }
     if (theme.mode === 'fullscreen') {
-        return `<div class="amd-root amd-mode-fullscreen">${panelMarkup(theme)}</div>`;
+        return `<div class="amd-root amd-mode-fullscreen">${panelMarkup(theme, intro)}</div>`;
     }
 
     const label = escapeHtml(theme.launcherLabel || 'Chiedi all’assistente');
@@ -152,11 +174,11 @@ function previewMarkup(theme: WidgetTheme, view: 'chat' | 'sources'): string {
     <span class="amd-launcher-icon" aria-hidden="true"${iconStyle}>${iconInner}</span>
     <span class="amd-launcher-label">${label}</span>
   </button>
-  ${panelMarkup(theme)}
+  ${panelMarkup(theme, intro)}
 </div>`;
 }
 
-export function WidgetThemePreview({ theme }: { theme: WidgetTheme }) {
+export function WidgetThemePreview({ theme, intro = DEFAULT_INTRO }: { theme: WidgetTheme; intro?: WidgetIntro }) {
     const hostRef = useRef<HTMLDivElement | null>(null);
     const shadowRef = useRef<ShadowRoot | null>(null);
     const [view, setView] = useState<'chat' | 'sources'>('chat');
@@ -171,6 +193,7 @@ export function WidgetThemePreview({ theme }: { theme: WidgetTheme }) {
             shadowRef.current = host.shadowRoot ?? host.attachShadow({ mode: 'open' });
         }
         const t = sanitizeTheme(theme);
+        const welcome = sanitizeIntro(intro);
         const override =
             view === 'sources'
                 ? SOURCE_PREVIEW_OVERRIDE
@@ -179,8 +202,8 @@ export function WidgetThemePreview({ theme }: { theme: WidgetTheme }) {
                 : t.mode === 'fullscreen'
                   ? FULLSCREEN_PREVIEW_OVERRIDE
                   : HELPER_PREVIEW_OVERRIDE;
-        shadowRef.current.innerHTML = `<style>${BASE_WIDGET_CSS}${buildThemeCss(t)}${override}</style>${previewMarkup(t, view)}`;
-    }, [theme, view]);
+        shadowRef.current.innerHTML = `<style>${BASE_WIDGET_CSS}${buildThemeCss(t)}${override}</style>${previewMarkup(t, welcome, view)}`;
+    }, [theme, intro, view]);
 
     return (
         <div

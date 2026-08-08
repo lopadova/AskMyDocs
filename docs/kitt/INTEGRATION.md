@@ -141,6 +141,7 @@ or from `data-*` attributes on the `<script>` tag (data-attrs win).
 | `launcherLabel` | string | — | Launcher button label. |
 | `autoOpen` | boolean | `false` | Open the panel on load (helper mode). |
 | `theme` | object | key's theme | Inline theme overrides. Effective precedence: host `--askmydocs-*` CSS variables → inline theme → key theme → defaults. See `frontend/src/widget/README.md` for the complete token/range table. |
+| `intro` | object \| `false` | key's intro | Structured welcome card shown before the first message. Inline fields override the per-key default; `false` disables it on the current page. Arbitrary HTML is not supported. |
 | `hostManifestUrl` | string | — | HTP manifest URL (see §9). |
 | `hostExecUrl` | string | — | HTP execution URL (see §9). |
 | `csrfToken` | string | `<meta name="csrf-token">` | CSRF token for same-origin host calls. |
@@ -155,6 +156,45 @@ or from `data-*` attributes on the `<script>` tag (data-attrs win).
 - `helper` — a fixed floating launcher on `<body>` that slides out a chat panel.
 - `inline` — the chat renders as a full block inside `mount` (fills its width/height).
 - `fullscreen` — an always-open chat that fills the viewport; no mount container.
+
+### Pre-conversation welcome card
+
+The host backend can make the widget feel native to each page by emitting a
+structured `intro` object. Content is rendered as text nodes inside the widget's
+Shadow DOM; HTML, inline SVG and arbitrary CSS are deliberately rejected.
+
+```html
+<script>
+  window.AskMyDocsWidget = {
+    key: 'pk_live_…',
+    intro: {
+      enabled: true,
+      variant: 'hero', // compact | card | hero
+      eyebrow: 'Documentation assistant',
+      title: 'How can I help?',
+      subtitle: 'Answers from official sources',
+      body: 'Search manuals, procedures and product documentation.',
+      imageUrl: 'https://cdn.example.com/product-assistant.webp',
+      imageAlt: 'Product documentation assistant',
+      icon: 'sparkles', // sparkles | chat | search | help | none
+      bullets: ['Search official documentation', 'Open cited sources'],
+      suggestions: [
+        { label: 'Get started', prompt: 'Explain how to get started' },
+        { label: 'Browse procedures', prompt: 'Show the available procedures' }
+      ],
+      dismissible: true,
+      hideAfterFirstMessage: true
+    }
+  };
+</script>
+```
+
+The saved key configuration comes from `GET /api/widget/setup`; the host object
+overrides it field-by-field. An authenticated replay with existing messages does
+not show the card again. A suggestion is a real first user message, and the card
+collapses when that message is sent. Limits are four bullets, four suggestions,
+HTTPS-only images, and bounded plain text. Server-rendered applications should
+use their framework's safe JavaScript serializer (Laravel: `Js::from($config)`).
 
 ---
 
@@ -411,7 +451,7 @@ Under `/app/admin/widget` (React, `frontend/src/features/admin/widget/*`):
 
 | Table | Key columns |
 |---|---|
-| `widget_keys` | `tenant_id`, `project_key`, `public_key` (unique), `secret_hash` (nullable, hashed), `identity_secret_hash` (nullable, hashed), `identity_credential_version`, `identity_access_epoch`, `user_auth_enabled`, `allowed_origins` (json), `rate_limit`, `skill`, `host_tools_enabled`, `theme_config` (json), `is_active`, `label`, `last_used_at`. Unique `(tenant_id, project_key, label)`. |
+| `widget_keys` | `tenant_id`, `project_key`, `public_key` (unique), `secret_hash` (nullable, hashed), `identity_secret_hash` (nullable, hashed), `identity_credential_version`, `identity_access_epoch`, `user_auth_enabled`, `allowed_origins` (json), `rate_limit`, `skill`, `host_tools_enabled`, `theme_config` (json), `intro_config` (json), `is_active`, `label`, `last_used_at`. Unique `(tenant_id, project_key, label)`. |
 | `widget_identities` | `tenant_id`, `widget_key_id` (FK cascade), `project_key`, `subject_hash` (HMAC), `last_seen_at`. Unique `(widget_key_id, subject_hash)`. The raw host subject is never persisted. |
 | `widget_sessions` | `tenant_id`, `widget_key_id` (FK cascade), `widget_identity_id` (nullable FK), `project_key`, `public_session_id` (uuid, unique), `status`, `skill`, `page_url`, `origin`, `summary`, `blocked_reason`, `meta` (json). Indexed `(tenant_id, created_at)`. |
 | `widget_session_steps` | `tenant_id`, `widget_session_id` (FK cascade), `step_index`, `kind` (`snapshot`/`tool_call`/`tool_result`/`user_message`/`bot_message`), `tool`, `args_json` / `diagnostic_json` / `snapshot_in_json` (PII-masked), `tokens_in` / `tokens_out` / `latency_ms`. |

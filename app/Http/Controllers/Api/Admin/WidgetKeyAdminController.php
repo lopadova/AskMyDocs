@@ -13,6 +13,7 @@ use App\Services\Widget\Exceptions\WidgetIdentityCredentialDisabled;
 use App\Services\Widget\Exceptions\WidgetIdentityCredentialNotFound;
 use App\Services\Widget\Exceptions\WidgetIdentityCredentialUnauthorized;
 use App\Services\Widget\WidgetIdentityCredentialService;
+use App\Services\Widget\WidgetIntroService;
 use App\Services\Widget\WidgetThemeService;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
@@ -37,6 +38,7 @@ final class WidgetKeyAdminController extends Controller
     public function __construct(
         private readonly TenantContext $tenantContext,
         private readonly WidgetThemeService $theme,
+        private readonly WidgetIntroService $intro,
         private readonly WidgetIdentityCredentialService $identityCredentials,
         private readonly ProjectCatalogService $projects,
     ) {}
@@ -90,7 +92,14 @@ final class WidgetKeyAdminController extends Controller
             'skill' => ['nullable', 'string', 'max:100', 'regex:/^[a-z0-9][a-z0-9-]*@[0-9]+$/'],
             'host_tools_enabled' => ['nullable', 'boolean'],
             'user_auth_enabled' => ['nullable', 'boolean'],
-        ] + $this->theme->rules('theme'));
+        ] + $this->theme->rules('theme') + $this->intro->rules('intro'));
+
+        $introConfig = array_key_exists('intro', $validated)
+            ? $this->intro->sanitize(is_array($validated['intro']) ? $validated['intro'] : [])
+            : null;
+        if ($introConfig !== null) {
+            $this->intro->assertUsable($introConfig);
+        }
 
         $plainSecret = 'sk_'.Str::random(40);
         $publicKey = 'pk_'.Str::random(32);
@@ -101,6 +110,7 @@ final class WidgetKeyAdminController extends Controller
             $publicKey,
             $plainSecret,
             $request,
+            $introConfig,
         ): array {
             // Serialize widget creation with registry deletion. A first-class
             // project has a lockable row shared with ProjectController::destroy;
@@ -139,6 +149,7 @@ final class WidgetKeyAdminController extends Controller
                 'theme_config' => array_key_exists('theme', $validated)
                     ? $this->theme->sanitize($validated['theme'])
                     : null,
+                'intro_config' => $introConfig,
             ]);
 
             if (! ($validated['user_auth_enabled'] ?? false)) {
@@ -195,13 +206,16 @@ final class WidgetKeyAdminController extends Controller
                 'integer',
                 'min:0',
             ],
-        ] + $this->theme->rules('theme'));
+        ] + $this->theme->rules('theme') + $this->intro->rules('intro'));
 
         // Il tema vive sulla colonna `theme_config` (nome diverso dalla chiave
         // FE `theme`): gestito a parte, mai via fill().
         $themeProvided = array_key_exists('theme', $validated);
         $themePatch = $themeProvided && is_array($validated['theme']) ? $validated['theme'] : [];
         unset($validated['theme']);
+        $introProvided = array_key_exists('intro', $validated);
+        $introPatch = $introProvided && is_array($validated['intro']) ? $validated['intro'] : [];
+        unset($validated['intro']);
         $userAuthProvided = array_key_exists('user_auth_enabled', $validated);
         $userAuthEnabled = (bool) ($validated['user_auth_enabled'] ?? false);
         $identityVersion = (int) ($validated['identity_credential_version'] ?? 0);
@@ -213,6 +227,8 @@ final class WidgetKeyAdminController extends Controller
                 $validated,
                 $themeProvided,
                 $themePatch,
+                $introProvided,
+                $introPatch,
                 $userAuthProvided,
                 $userAuthEnabled,
                 $identityVersion,
@@ -226,6 +242,11 @@ final class WidgetKeyAdminController extends Controller
                         $this->theme->resolve($row->theme_config),
                         $themePatch,
                     ));
+                }
+                if ($introProvided) {
+                    $resolvedIntro = $this->intro->patch($row->intro_config, $introPatch);
+                    $this->intro->assertUsable($resolvedIntro);
+                    $row->intro_config = $resolvedIntro;
                 }
                 $row->save();
 
@@ -390,6 +411,7 @@ final class WidgetKeyAdminController extends Controller
             // Tema risolto (stored sui default) così l'editor admin parte sempre
             // da un oggetto completo, anche per le key senza tema esplicito.
             'theme' => $this->theme->resolve($row->theme_config),
+            'intro' => $this->intro->resolve($row->intro_config),
             'created_at' => $row->created_at->toIso8601String(),
             'updated_at' => $row->updated_at->toIso8601String(),
         ];

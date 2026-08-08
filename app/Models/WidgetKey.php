@@ -38,6 +38,7 @@ class WidgetKey extends Model
         'label',
         'last_used_at',
         'theme_config',
+        'intro_config',
     ];
 
     protected $casts = [
@@ -50,6 +51,7 @@ class WidgetKey extends Model
         'is_active' => 'boolean',
         'last_used_at' => 'datetime',
         'theme_config' => 'array',
+        'intro_config' => 'array',
     ];
 
     /** Non esporre mai l'hash del secret nelle serializzazioni JSON. */

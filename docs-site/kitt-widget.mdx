@@ -61,6 +61,48 @@ and does not force focus during bootstrap. While identity and history load it
 exposes `data-state="loading"` and `aria-busy="true"` and keeps the composer
 disabled.
 
+## Page-native welcome content
+
+Before the first message, KITT can render a branded empty-state card explaining
+what the chat is for. Configure a reusable default on the widget key, then let
+the host backend override it per page through `window.AskMyDocsWidget.intro`:
+
+```html
+<script>
+  window.AskMyDocsWidget = {
+    key: 'pk_live_…',
+    intro: {
+      enabled: true,
+      variant: 'hero',
+      eyebrow: 'Product help',
+      title: 'Find the right answer quickly',
+      subtitle: 'Grounded in official documentation',
+      body: 'Ask about setup, procedures, features and troubleshooting.',
+      imageUrl: 'https://cdn.example.com/product-help.webp',
+      imageAlt: 'Product help assistant',
+      icon: 'sparkles',
+      bullets: ['Verified sources', 'Page-aware assistance'],
+      suggestions: [
+        { label: 'Get started', prompt: 'Explain how to get started' }
+      ],
+      dismissible: true,
+      hideAfterFirstMessage: true
+    }
+  };
+</script>
+```
+
+The runtime precedence is key default → host override; `intro: false` disables a
+saved card on a specific page. Existing authenticated history suppresses the
+card. Suggestion chips send their `prompt` as the first user message. All fields
+are bounded plain text, images must use HTTPS and arbitrary HTML is never
+accepted, so tenant-controlled content cannot escape the Shadow DOM renderer.
+
+The admin's **Appearance → Welcome** tab provides the same contract with a live
+preview. Operators can also inspect or update it with `widget:intro`, while the
+read-only `WidgetIntroConfigTool` exposes the resolved configuration to MCP
+clients without returning widget credentials.
+
 ## Authenticated users and history
 
 Enable **Authenticated users** on a widget key to receive a one-time,

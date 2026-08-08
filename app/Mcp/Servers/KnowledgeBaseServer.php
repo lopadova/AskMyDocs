@@ -8,6 +8,7 @@ use App\Mcp\Tools\FinOpsBudgetStatusTool;
 use App\Mcp\Tools\ConnectorInstallationsTool;
 use App\Mcp\Tools\ConnectorSettingsTool;
 use App\Mcp\Tools\AppSettingsTool;
+use App\Mcp\Tools\WidgetIntroConfigTool;
 use App\Mcp\Tools\KbDetokenizeTool;
 use App\Mcp\Tools\KbEraseSubjectTool;
 use App\Mcp\Tools\KbReembedProjectTool;
@@ -143,6 +144,10 @@ class KnowledgeBaseServer extends Server
         // v8.22 (Ciclo 3) — runtime config governance read surface (R44):
         // governable settings with effective value + provenance, tenant-scoped (R30).
         AppSettingsTool::class,
+
+        // Widget presentation is readable by agents, while mutations stay on
+        // the authenticated admin HTTP API / operator CLI.
+        WidgetIntroConfigTool::class,
 
         // v8.23 (Ciclo 4) — PII ingestion policy read surface (R44): the
         // effective redact-on/off + strategy per (tenant, project), tenant-scoped (R30).

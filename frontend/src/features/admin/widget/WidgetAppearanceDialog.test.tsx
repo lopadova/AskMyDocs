@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { DEFAULT_THEME } from '../../../widget/ui/styles';
+import { DEFAULT_INTRO } from '../../../widget/ui/intro';
 import { WidgetAppearanceDialog } from './WidgetAppearanceDialog';
 import {
     buildWidgetThemeAgentHandoff,
@@ -48,12 +49,50 @@ describe('WidgetAppearanceDialog', () => {
         expect(screen.getByTestId('admin-widget-appearance-mode-note')).toBeDefined();
     });
 
-    it('organizes advanced controls into the five appearance sections', () => {
+    it('organizes advanced controls into the six appearance sections', () => {
         renderDialog();
 
-        for (const section of ['branding', 'launcher', 'chat', 'composer', 'sources']) {
+        for (const section of ['branding', 'launcher', 'chat', 'composer', 'sources', 'welcome']) {
             expect(screen.getByTestId(`admin-widget-appearance-tab-${section}`)).toBeDefined();
         }
+    });
+
+    it('edits and saves structured welcome content with the theme', async () => {
+        const user = userEvent.setup();
+        mockedApi.patch.mockResolvedValue({ data: {} });
+        const qc = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+        render(
+            <QueryClientProvider client={qc}>
+                <WidgetAppearanceDialog
+                    open
+                    onOpenChange={() => {}}
+                    keyId={7}
+                    label="Production"
+                    projectKey="docs-v3"
+                    initialTheme={DEFAULT_THEME}
+                    initialIntro={DEFAULT_INTRO}
+                />
+            </QueryClientProvider>,
+        );
+
+        await user.click(screen.getByTestId('admin-widget-appearance-tab-welcome'));
+        await user.click(screen.getByTestId('admin-widget-appearance-field-intro-enabled'));
+        await user.type(screen.getByTestId('admin-widget-appearance-field-intro-title'), 'Product assistant');
+        fireEvent.change(screen.getByTestId('admin-widget-appearance-field-intro-suggestions'), {
+            target: { value: 'Get started | Explain how to start' },
+        });
+        await user.click(screen.getByTestId('admin-widget-appearance-save'));
+
+        await waitFor(() => expect(mockedApi.patch).toHaveBeenCalledWith(
+            '/api/admin/widget-keys/7',
+            expect.objectContaining({
+                intro: expect.objectContaining({
+                    enabled: true,
+                    title: 'Product assistant',
+                    suggestions: [{ label: 'Get started', prompt: 'Explain how to start' }],
+                }),
+            }),
+        ));
     });
 
     it('exposes the agent handoff and JSON import actions without saving', async () => {

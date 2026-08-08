@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test';
 import { test as baseTest, expect } from '@playwright/test';
 import { createWidgetThemeProfile } from '../src/features/admin/widget/widget-theme-exchange';
+import { DEFAULT_INTRO } from '../src/widget/ui/intro';
 import { DEFAULT_THEME } from '../src/widget/ui/styles';
 import { resetAndLoginWidgetSuperAdmin } from './helpers/widget-super-admin';
 
@@ -105,6 +106,24 @@ baseTest.describe('Widget appearance editor — super-admin', () => {
             'rgb(17, 24, 39)',
         );
 
+        await page.getByTestId('admin-widget-appearance-tab-welcome').click();
+        await page.getByTestId('admin-widget-appearance-field-intro-enabled').check();
+        await page
+            .getByTestId('admin-widget-appearance-field-intro-title')
+            .fill('Ask the HR team');
+        await page
+            .getByTestId('admin-widget-appearance-field-intro-body')
+            .fill('Use this chat for answers grounded in the company handbook.');
+        await page
+            .getByTestId('admin-widget-appearance-field-intro-bullets')
+            .fill('Remote-work policy\nLeave and benefits');
+        await page
+            .getByTestId('admin-widget-appearance-field-intro-suggestions')
+            .fill('Remote work | What is our remote-work policy?');
+        await page.getByTestId('admin-widget-appearance-preview-chat').click();
+        await expect(preview.locator('.amd-intro-title')).toHaveText('Ask the HR team');
+        await expect(preview.locator('.amd-intro-suggestion')).toHaveText('Remote work');
+
         const patch = page.waitForResponse(
             (r) =>
                 r.url().includes(`/api/admin/widget-keys/${id}`) && r.request().method() === 'PATCH',
@@ -131,6 +150,18 @@ baseTest.describe('Widget appearance editor — super-admin', () => {
                     sourceSidebarForeground: '#f9fafb',
                     sourceViewerWidth: 1120,
                     sourceViewerRadius: 28,
+                },
+                intro: {
+                    enabled: true,
+                    title: 'Ask the HR team',
+                    body: 'Use this chat for answers grounded in the company handbook.',
+                    bullets: ['Remote-work policy', 'Leave and benefits'],
+                    suggestions: [
+                        {
+                            label: 'Remote work',
+                            prompt: 'What is our remote-work policy?',
+                        },
+                    ],
                 },
             },
         });
@@ -238,7 +269,10 @@ baseTest.describe('Widget appearance editor — super-admin', () => {
                 `PATCH imported theme failed: ${response.status()} ${await response.text()}`,
             );
         }
-        expect(response.request().postDataJSON()).toEqual({ theme: importedProfile.theme });
+        expect(response.request().postDataJSON()).toEqual({
+            theme: importedProfile.theme,
+            intro: DEFAULT_INTRO,
+        });
         await expect(response.json()).resolves.toMatchObject({
             data: { project_key: 'hr-portal', theme: importedProfile.theme },
         });

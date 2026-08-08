@@ -72,6 +72,36 @@ export interface WidgetConfig {
      * Parziale: ogni campo assente cade sul tema server (/setup) o sul default.
      */
     theme?: Partial<WidgetTheme>;
+    /**
+     * Structured pre-conversation content. The host may override the per-key
+     * server default field-by-field, or pass `false` to disable it for a page.
+     * Arbitrary HTML is deliberately unsupported.
+     */
+    intro?: Partial<WidgetIntro> | false;
+}
+
+export type WidgetIntroVariant = 'compact' | 'card' | 'hero';
+export type WidgetIntroIcon = 'sparkles' | 'chat' | 'search' | 'help' | 'none';
+
+export interface WidgetIntroSuggestion {
+    label: string;
+    prompt: string;
+}
+
+export interface WidgetIntro {
+    enabled: boolean;
+    variant: WidgetIntroVariant;
+    eyebrow: string;
+    title: string;
+    subtitle: string;
+    body: string;
+    imageUrl: string;
+    imageAlt: string;
+    icon: WidgetIntroIcon;
+    bullets: string[];
+    suggestions: WidgetIntroSuggestion[];
+    dismissible: boolean;
+    hideAfterFirstMessage: boolean;
 }
 
 /**

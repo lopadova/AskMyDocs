@@ -4,6 +4,7 @@ import { Ban, Bot, CheckCircle2, FileJson, Palette, RotateCcw, Upload } from 'lu
 
 import { api } from '../../../lib/api';
 import { DEFAULT_THEME, sanitizeTheme } from '../../../widget/ui/styles';
+import { DEFAULT_INTRO, sanitizeIntro } from '../../../widget/ui/intro';
 import type {
     LauncherIcon,
     LauncherShape,
@@ -12,6 +13,9 @@ import type {
     WidgetMode,
     WidgetShadow,
     WidgetTheme,
+    WidgetIntro,
+    WidgetIntroIcon,
+    WidgetIntroVariant,
 } from '../../../widget/types';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -45,6 +49,7 @@ interface WidgetAppearanceDialogProps {
     projectKey: string;
     /** Current theme of the key (resolved server-side, always complete). */
     initialTheme: WidgetTheme;
+    initialIntro?: WidgetIntro;
 }
 
 const HEX_RE = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
@@ -129,9 +134,19 @@ export function WidgetAppearanceDialog({
     label,
     projectKey,
     initialTheme,
+    initialIntro,
 }: WidgetAppearanceDialogProps) {
     const qc = useQueryClient();
     const [theme, setTheme] = useState<WidgetTheme>(() => sanitizeTheme(initialTheme));
+    const [intro, setIntro] = useState<WidgetIntro>(() => sanitizeIntro(initialIntro ?? DEFAULT_INTRO));
+    const [introBulletsDraft, setIntroBulletsDraft] = useState(() =>
+        sanitizeIntro(initialIntro ?? DEFAULT_INTRO).bullets.join('\n'),
+    );
+    const [introSuggestionsDraft, setIntroSuggestionsDraft] = useState(() =>
+        sanitizeIntro(initialIntro ?? DEFAULT_INTRO).suggestions
+            .map((item) => `${item.label} | ${item.prompt}`)
+            .join('\n'),
+    );
     const [exchangePanel, setExchangePanel] = useState<'handoff' | 'import' | null>(null);
     const [importSource, setImportSource] = useState('');
     const [importFeedback, setImportFeedback] = useState<
@@ -141,6 +156,8 @@ export function WidgetAppearanceDialog({
     const agentHandoff = useMemo(() => buildWidgetThemeAgentHandoff(theme), [theme]);
 
     const set = (patch: Partial<WidgetTheme>) => setTheme((prev) => ({ ...prev, ...patch }));
+    const setWelcome = (patch: Partial<WidgetIntro>) =>
+        setIntro((prev) => ({ ...prev, ...patch }));
 
     const applyImportedProfile = () => {
         try {
@@ -193,7 +210,13 @@ export function WidgetAppearanceDialog({
 
     const save = useMutation({
         mutationFn: async () => {
-            const { data } = await api.patch(`/api/admin/widget-keys/${keyId}`, { theme });
+            const payload: { theme: WidgetTheme; intro?: WidgetIntro } = {
+                theme,
+            };
+            if (initialIntro !== undefined || JSON.stringify(intro) !== JSON.stringify(DEFAULT_INTRO)) {
+                payload.intro = sanitizeIntro(intro);
+            }
+            const { data } = await api.patch(`/api/admin/widget-keys/${keyId}`, payload);
             return data;
         },
         onSuccess: async () => {
@@ -422,6 +445,9 @@ export function WidgetAppearanceDialog({
                             <TabsTrigger value="sources" data-testid="admin-widget-appearance-tab-sources">
                                 Sources
                             </TabsTrigger>
+                            <TabsTrigger value="welcome" data-testid="admin-widget-appearance-tab-welcome">
+                                Welcome
+                            </TabsTrigger>
                         </TabsList>
 
                         <TabsContent value="branding" className="mt-3 grid gap-4">
@@ -569,6 +595,98 @@ export function WidgetAppearanceDialog({
                             <RangeField id="sourceViewerWidth" label="Viewer width" min={560} max={1200} step={20} unit="px" value={theme.sourceViewerWidth} onChange={(v) => set({ sourceViewerWidth: v })} />
                             <RangeField id="sourceViewerRadius" label="Viewer radius" min={0} max={32} step={1} unit="px" value={theme.sourceViewerRadius} onChange={(v) => set({ sourceViewerRadius: v })} />
                         </TabsContent>
+                        <TabsContent value="welcome" className="mt-3 grid gap-4">
+                            <label className="flex items-center gap-2 text-sm" htmlFor="intro-enabled">
+                                <input
+                                    id="intro-enabled"
+                                    type="checkbox"
+                                    data-testid="admin-widget-appearance-field-intro-enabled"
+                                    checked={intro.enabled}
+                                    onChange={(event) => setWelcome({ enabled: event.target.checked })}
+                                    className="size-4 accent-[var(--accent-a)]"
+                                />
+                                Show a welcome card before the first message
+                            </label>
+                            <div className="grid gap-3 sm:grid-cols-2">
+                                <SelectField
+                                    id="intro-variant"
+                                    label="Layout"
+                                    value={intro.variant}
+                                    options={[
+                                        { value: 'compact', label: 'Compact' },
+                                        { value: 'card', label: 'Card' },
+                                        { value: 'hero', label: 'Hero' },
+                                    ]}
+                                    onChange={(value) => setWelcome({ variant: value as WidgetIntroVariant })}
+                                />
+                                <SelectField
+                                    id="intro-icon"
+                                    label="Icon"
+                                    value={intro.icon}
+                                    options={[
+                                        { value: 'sparkles', label: 'Sparkles' },
+                                        { value: 'chat', label: 'Chat' },
+                                        { value: 'search', label: 'Search' },
+                                        { value: 'help', label: 'Help' },
+                                        { value: 'none', label: 'No icon' },
+                                    ]}
+                                    onChange={(value) => setWelcome({ icon: value as WidgetIntroIcon })}
+                                />
+                                <TextField id="intro-eyebrow" label="Eyebrow" value={intro.eyebrow} placeholder="Documentation assistant" onChange={(value) => setWelcome({ eyebrow: value })} />
+                                <TextField id="intro-title" label="Title" value={intro.title} placeholder="How can I help?" onChange={(value) => setWelcome({ title: value })} />
+                                <TextField id="intro-subtitle" label="Subtitle" value={intro.subtitle} placeholder="Answers from official sources" onChange={(value) => setWelcome({ subtitle: value })} />
+                                <TextField id="intro-image-url" label="Image URL (https, optional)" value={intro.imageUrl} placeholder="https://cdn.example.com/assistant.webp" onChange={(value) => setWelcome({ imageUrl: value })} />
+                                <TextField id="intro-image-alt" label="Image alternative text" value={intro.imageAlt} placeholder="Product assistant" onChange={(value) => setWelcome({ imageAlt: value })} />
+                            </div>
+                            <FieldRow id="intro-body" label="Description">
+                                <Textarea
+                                    id="intro-body"
+                                    data-testid="admin-widget-appearance-field-intro-body"
+                                    value={intro.body}
+                                    maxLength={600}
+                                    onChange={(event) => setWelcome({ body: event.target.value })}
+                                    placeholder="Explain what visitors can ask this chat."
+                                />
+                            </FieldRow>
+                            <FieldRow id="intro-bullets" label="Benefits — one per line, maximum four">
+                                <Textarea
+                                    id="intro-bullets"
+                                    data-testid="admin-widget-appearance-field-intro-bullets"
+                                    value={introBulletsDraft}
+                                    onChange={(event) => {
+                                        setIntroBulletsDraft(event.target.value);
+                                        setWelcome({ bullets: event.target.value.split('\n').slice(0, 4) });
+                                    }}
+                                    placeholder={'Search official documentation\nGet verifiable sources'}
+                                />
+                            </FieldRow>
+                            <FieldRow id="intro-suggestions" label="Suggested questions — Label | prompt, one per line">
+                                <Textarea
+                                    id="intro-suggestions"
+                                    data-testid="admin-widget-appearance-field-intro-suggestions"
+                                    value={introSuggestionsDraft}
+                                    onChange={(event) => {
+                                        setIntroSuggestionsDraft(event.target.value);
+                                        setWelcome({ suggestions: event.target.value.split('\n').slice(0, 4).flatMap((line) => {
+                                            const separator = line.indexOf('|');
+                                            if (separator < 0) return [];
+                                            return [{ label: line.slice(0, separator).trim(), prompt: line.slice(separator + 1).trim() }];
+                                        }) });
+                                    }}
+                                    placeholder={'How do I start? | Explain how to start using the product'}
+                                />
+                            </FieldRow>
+                            <div className="flex flex-wrap gap-4">
+                                <label className="flex items-center gap-2 text-sm" htmlFor="intro-dismissible">
+                                    <input id="intro-dismissible" type="checkbox" checked={intro.dismissible} onChange={(event) => setWelcome({ dismissible: event.target.checked })} className="size-4 accent-[var(--accent-a)]" />
+                                    Can be dismissed
+                                </label>
+                                <label className="flex items-center gap-2 text-sm" htmlFor="intro-hide-first">
+                                    <input id="intro-hide-first" type="checkbox" checked={intro.hideAfterFirstMessage} onChange={(event) => setWelcome({ hideAfterFirstMessage: event.target.checked })} className="size-4 accent-[var(--accent-a)]" />
+                                    Hide after first message
+                                </label>
+                            </div>
+                        </TabsContent>
                     </Tabs>
 
                     {/* Live preview */}
@@ -576,7 +694,7 @@ export function WidgetAppearanceDialog({
                         <span className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
                             Live preview
                         </span>
-                        <WidgetThemePreview theme={theme} />
+                        <WidgetThemePreview theme={theme} intro={intro} />
                     </div>
                 </div>
 
@@ -595,6 +713,9 @@ export function WidgetAppearanceDialog({
                         data-testid="admin-widget-appearance-reset"
                         onClick={() => {
                             setTheme(DEFAULT_THEME);
+                            setIntro(DEFAULT_INTRO);
+                            setIntroBulletsDraft('');
+                            setIntroSuggestionsDraft('');
                             setImportFeedback(null);
                         }}
                     >

@@ -543,10 +543,61 @@ final class WidgetAdminControllerTest extends TestCase
         $this->actingAs($user)->getJson('/api/admin/widget-keys')
             ->assertOk()
             ->assertJsonPath('data.0.theme.accent', '#2563eb')
-            ->assertJsonPath('data.0.theme.fontFamily', 'system');
+            ->assertJsonPath('data.0.theme.fontFamily', 'system')
+            ->assertJsonPath('data.0.intro.enabled', false);
 
         // theme_config resta null finché non si personalizza.
         $this->assertNull($key->fresh()->theme_config);
+    }
+
+    public function test_store_and_partial_update_persist_a_sanitized_intro(): void
+    {
+        $user = $this->superAdmin();
+
+        $response = $this->actingAs($user)->postJson('/api/admin/widget-keys', [
+            'label' => 'Introduced',
+            'project_key' => 'p',
+            'intro' => [
+                'enabled' => true,
+                'variant' => 'hero',
+                'title' => 'Product assistant',
+                'body' => 'Answers from official documentation.',
+                'suggestions' => [['label' => 'Start', 'prompt' => 'Explain the product']],
+            ],
+        ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('data.intro.enabled', true)
+            ->assertJsonPath('data.intro.variant', 'hero')
+            ->assertJsonPath('data.intro.title', 'Product assistant');
+
+        $id = (int) $response->json('data.id');
+        $this->actingAs($user)->patchJson("/api/admin/widget-keys/{$id}", [
+            'intro' => ['body' => 'Updated body.'],
+        ])->assertOk()
+            ->assertJsonPath('data.intro.title', 'Product assistant')
+            ->assertJsonPath('data.intro.body', 'Updated body.');
+    }
+
+    public function test_enabled_intro_requires_title_and_image_alt_text(): void
+    {
+        $user = $this->superAdmin();
+
+        $this->actingAs($user)->postJson('/api/admin/widget-keys', [
+            'label' => 'Invalid intro',
+            'project_key' => 'p',
+            'intro' => ['enabled' => true],
+        ])->assertStatus(422)->assertJsonValidationErrors('intro.title');
+
+        $this->actingAs($user)->postJson('/api/admin/widget-keys', [
+            'label' => 'Invalid image',
+            'project_key' => 'p',
+            'intro' => [
+                'enabled' => true,
+                'title' => 'Hello',
+                'imageUrl' => 'https://cdn.example.test/hero.webp',
+            ],
+        ])->assertStatus(422)->assertJsonValidationErrors('intro.imageAlt');
     }
 
     public function test_store_persists_and_sanitizes_a_theme(): void

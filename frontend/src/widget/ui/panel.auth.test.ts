@@ -48,7 +48,7 @@ describe('WidgetPanel authenticated-user bootstrap', () => {
                 });
             }
             if (url.endsWith('/api/widget/setup')) {
-                return json({});
+                return json({ intro: { enabled: true, title: 'Do not repeat me' } });
             }
             if (url.endsWith('/api/widget/sessions/current')) {
                 return pendingHistory;
@@ -109,6 +109,7 @@ describe('WidgetPanel authenticated-user bootstrap', () => {
             expect(panel.dataset.state).toBe('ready');
             expect(input.disabled).toBe(false);
         });
+        expect(root.querySelector('[data-testid="askmydocs-widget-intro"]')).toBeNull();
 
         input.value = 'Continua';
         form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
