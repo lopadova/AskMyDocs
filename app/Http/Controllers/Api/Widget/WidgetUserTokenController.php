@@ -9,6 +9,7 @@ use App\Services\Widget\WidgetUserTokenService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use App\Support\SupportedLocale;
 
 final class WidgetUserTokenController extends Controller
 {
@@ -17,6 +18,16 @@ final class WidgetUserTokenController extends Controller
         $data = $request->validate([
             'subject' => ['required', 'string', 'max:255'],
             'origin' => ['required', 'url', 'max:255'],
+            'locale' => [
+                'sometimes',
+                'string',
+                'max:35',
+                static function (string $attribute, mixed $value, \Closure $fail): void {
+                    if (! is_string($value) || ! SupportedLocale::isSupported($value)) {
+                        $fail("The {$attribute} is not supported.");
+                    }
+                },
+            ],
         ]);
 
         $publicKey = (string) $request->header('X-Widget-Key', '');
@@ -39,11 +50,17 @@ final class WidgetUserTokenController extends Controller
             ], 403);
         }
 
-        $result = $tokens->issue($key, $data['subject'], $data['origin']);
+        $result = $tokens->issue(
+            $key,
+            $data['subject'],
+            $data['origin'],
+            is_string($data['locale'] ?? null) ? $data['locale'] : null,
+        );
 
         return response()->json([
             'token' => $result['token'],
             'expires_at' => $result['expires_at'],
+            'locale' => SupportedLocale::normalize(is_string($data['locale'] ?? null) ? $data['locale'] : null),
         ], 201);
     }
 }

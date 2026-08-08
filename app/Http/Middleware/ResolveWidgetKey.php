@@ -40,6 +40,7 @@ final class ResolveWidgetKey
     public const ATTR_MODE = 'widget_mode';
     public const ATTR_PROJECT = 'widget_project';
     public const ATTR_IDENTITY = 'widget_identity';
+    public const ATTR_LOCALE = 'widget_locale';
 
     public function __construct(private readonly TenantContext $tenants) {}
 
@@ -116,6 +117,7 @@ final class ResolveWidgetKey
         $request->attributes->set(self::ATTR_MODE, self::MODE_BROWSER);
         $request->attributes->set(self::ATTR_PROJECT, $key->project_key);
         $request->attributes->set(self::ATTR_IDENTITY, $result['identity']);
+        $request->attributes->set(self::ATTR_LOCALE, $result['locale']);
         $this->touchLastUsed($key);
 
         return $next($request);
@@ -246,6 +248,7 @@ final class ResolveWidgetKey
         // Imposta anche la sessione risolta dal token, se presente
         if ($result['session'] !== null) {
             $request->attributes->set('widget_session', $result['session']);
+            $request->attributes->set(self::ATTR_LOCALE, $result['session']->locale);
             if ($result['session']->identity !== null) {
                 $request->attributes->set(self::ATTR_IDENTITY, $result['session']->identity);
             }
