@@ -35,6 +35,7 @@ final readonly class AgentLoop
         private AgentEventPublisher $events,
         private AgentRunControl $control,
         private WidgetPiiMasker $masker,
+        private AgentRetrievalFiltersFactory $retrievalFilters,
     ) {}
 
     public function run(AgentRun $run, AgentExecutionContext $context): AgentLoopOutcome
@@ -45,6 +46,7 @@ final readonly class AgentLoop
         }
 
         $budget = new AgentBudgetTracker($run);
+        $filters = $this->retrievalFilters->forRun($run, $context);
         [$evidence, $completed, $results, $retrieved] = $this->restore($run);
         $user = $run->user;
         $tools = $this->registry->forContext($context, $user instanceof User ? $user : null);
@@ -53,7 +55,7 @@ final readonly class AgentLoop
             $this->control->ensureActive($run);
             $this->events->publish($run, 'retrieval.started', 'retrieval.started');
             try {
-                $search = $this->retrieval->retrieve($question, $context->projectKey);
+                $search = $this->retrieval->retrieve($question, $context->projectKey, $filters);
                 $documents = $this->evidenceFactory->fromSearchResult($search);
                 $evidence->import($documents->jsonSerialize());
                 $budget->recordResult(0, $documents->byteSize(), true);
@@ -153,6 +155,7 @@ final readonly class AgentLoop
                         $budget,
                         $evidence,
                         $plan,
+                        $filters,
                     );
                     $this->finishExecution($execution, $result, $started);
                     $results[$action->id] = $result->body;
@@ -227,13 +230,14 @@ final readonly class AgentLoop
         AgentBudgetTracker $budget,
         AgentEvidenceEnvelope $evidence,
         AgentPlan $plan,
+        \App\Services\Kb\Retrieval\RetrievalFilters $filters,
     ): AgentToolActionResult {
         if ($tool->kind === 'knowledge') {
             $query = trim((string) ($arguments['query'] ?? ''));
             if ($query === '') {
                 throw new \InvalidArgumentException('knowledge_query_required');
             }
-            $search = $this->retrieval->retrieve($query, $context->projectKey);
+            $search = $this->retrieval->retrieve($query, $context->projectKey, $filters);
             $found = $this->evidenceFactory->fromSearchResult($search);
             $evidence->import($found->jsonSerialize());
             $body = ['documents' => $found->documents()];
