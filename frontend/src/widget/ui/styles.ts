@@ -214,6 +214,14 @@ export const BASE_WIDGET_CSS = `
 button.amd-cite { cursor: pointer; }
 .amd-cite:focus-visible { outline: 2px solid var(--amd-focus-ring, #93c5fd); outline-offset: 2px; }
 .amd-status { padding: 0 var(--amd-messages-padding, 14px) 6px; font-size: 12px; color: var(--amd-muted); min-height: 16px; }
+.amd-activity { margin: 0 var(--amd-messages-padding, 14px) 8px; padding: 10px 11px; border: 1px solid var(--amd-border); border-radius: var(--amd-bubble-radius, 12px); background: var(--amd-assistant-bg, #f3f4f6); color: var(--amd-assistant-fg, var(--amd-fg)); box-shadow: var(--amd-launcher-shadow, 0 4px 16px rgba(15,23,42,.12)); }
+.amd-activity[hidden] { display: none; }
+.amd-activity[data-state="confirmation"] { background: var(--amd-confirm-bg, #fffbeb); color: var(--amd-confirm-fg, var(--amd-fg)); border-color: var(--amd-confirm-border, #fde68a); }
+.amd-activity-message { font-size: 12.5px; line-height: 1.4; }
+.amd-activity-meta { min-height: 14px; margin-top: 4px; color: var(--amd-muted); font-size: 10.5px; }
+.amd-activity-track { height: 3px; margin-top: 6px; overflow: hidden; border-radius: 99px; background: var(--amd-border); }
+.amd-activity-progress { width: 0; height: 100%; border-radius: inherit; background: var(--amd-accent); transition: width .25s ease; }
+.amd-activity-actions { display: flex; gap: 6px; margin-top: 7px; }
 .amd-confirm { margin: 6px var(--amd-messages-padding, 14px); padding: 10px; border: 1px solid var(--amd-confirm-border, #fde68a); background: var(--amd-confirm-bg, #fffbeb); color: var(--amd-confirm-fg, var(--amd-fg)); border-radius: var(--amd-bubble-radius, 12px); font-size: 13px; }
 .amd-confirm-actions { margin-top: 8px; display: flex; gap: 8px; }
 .amd-btn { padding: 7px 12px; border-radius: var(--amd-button-radius, 10px); border: 1px solid var(--amd-border); background: var(--amd-input-bg, #fff); color: var(--amd-input-fg, var(--amd-fg)); font-size: 13px; cursor: pointer; }

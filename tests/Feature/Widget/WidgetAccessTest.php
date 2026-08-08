@@ -10,6 +10,8 @@ use App\Services\Widget\WidgetSessionTokenService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
+use Padosoft\AskMyDocsConnectorApi\Models\ApiConnector;
+use Padosoft\AskMyDocsConnectorApi\Models\ApiRoute;
 
 /**
  * M1 — gate del canale pubblico widget (`widget.key` + /api/widget/setup).
@@ -95,7 +97,9 @@ final class WidgetAccessTest extends TestCase
 
         $res->assertOk()
             ->assertJsonPath('skill', 'askmydocs-assistant@1')
-            ->assertJsonPath('project', 'hr-portal'); // R30: project dalla key
+            ->assertJsonPath('project', 'hr-portal') // R30: project dalla key
+            ->assertJsonPath('data_agent.enabled', false)
+            ->assertJsonPath('data_agent.tool_count', 0);
 
         $this->assertContains('click', $res->json('tools_enabled'));
         $this->assertContains('search_knowledge_base', $res->json('tools_enabled'));
@@ -106,6 +110,36 @@ final class WidgetAccessTest extends TestCase
             ->assertJsonPath('theme.launcherShape', 'pill')
             ->assertJsonPath('intro.enabled', false)
             ->assertJsonPath('intro.variant', 'card');
+    }
+
+    public function test_setup_enables_the_data_agent_only_for_active_project_tools(): void
+    {
+        $key = $this->makeKey(['project_key' => 'orders']);
+        $connector = ApiConnector::create(['tenant_id' => 'default', 'name' => 'ERP', 'is_active' => true]);
+        ApiRoute::create([
+            'tenant_id' => 'default',
+            'api_connector_id' => $connector->id,
+            'project_key' => 'orders',
+            'name' => 'Orders',
+            'slug' => 'list_orders',
+            'http_method' => 'GET',
+            'url' => 'https://api.example.test/orders',
+            'mode' => 'tool',
+            'status' => 'active',
+            'tool_definition' => [
+                'name' => 'list_orders',
+                'description' => 'List orders',
+                'input_schema' => ['type' => 'object', 'properties' => []],
+            ],
+        ]);
+
+        $this->withHeaders([
+            'X-Widget-Key' => $key->public_key,
+            'Origin' => 'https://allowed.test',
+        ])->getJson('/api/widget/setup')
+            ->assertOk()
+            ->assertJsonPath('data_agent.enabled', true)
+            ->assertJsonPath('data_agent.tool_count', 1);
     }
 
     public function test_setup_returns_the_stored_theme_resolved_over_defaults(): void
