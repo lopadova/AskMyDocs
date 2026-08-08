@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 return [
     'queue' => env('AGENT_QUEUE', 'agent'),
+    'planner' => [
+        'max_actions_per_plan' => (int) env('AGENT_MAX_ACTIONS_PER_PLAN', 8),
+    ],
     'events' => [
         'poll_ms' => (int) env('AGENT_EVENT_POLL_MS', 100),
         'stream_seconds' => (float) env('AGENT_EVENT_STREAM_SECONDS', 25),
