@@ -25,6 +25,24 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
         }
 
         $context = $this->context($run);
+        try {
+            $context->assertMatches($run);
+        } catch (\DomainException) {
+            $run->forceFill([
+                'status' => AgentRun::STATUS_FAILED,
+                'error_code' => 'unauthorized',
+                'completed_at' => now(),
+            ])->save();
+            $this->events->publish(
+                $run,
+                'run.failed',
+                'run.failed',
+                data: ['error_code' => 'unauthorized'],
+                canCancel: false,
+            );
+
+            return;
+        }
         $context->activate();
         $firstStart = ! $run->events()->where('type', 'run.started')->exists();
         $run->forceFill([

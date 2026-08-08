@@ -9,16 +9,55 @@ use App\Ai\AiManager;
 use App\Ai\AiResponse;
 use App\Contracts\AgentRunHandler;
 use App\Models\AgentRun;
+use App\Models\User;
 use App\Services\Kb\Chat\ChatRetrievalService;
 use App\Services\Kb\Retrieval\SearchResult;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Hash;
 use Mockery;
 use Tests\TestCase;
 
 final class DefaultAgentRunHandlerTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_handler_fails_closed_when_actor_and_linked_user_do_not_match(): void
+    {
+        $owner = User::create([
+            'name' => 'Owner',
+            'email' => 'owner-context@example.com',
+            'password' => Hash::make('secret-pass-123'),
+            'locale' => 'it-IT',
+        ]);
+        $other = User::create([
+            'name' => 'Other',
+            'email' => 'other-context@example.com',
+            'password' => Hash::make('secret-pass-123'),
+            'locale' => 'it-IT',
+        ]);
+        $run = AgentRun::create([
+            'run_id' => Str::uuid()->toString(),
+            'tenant_id' => 'acme',
+            'project_key' => 'crm',
+            'user_id' => $other->id,
+            'channel' => 'chat',
+            'actor_type' => 'user',
+            'actor_id' => (string) $owner->id,
+            'locale' => 'it-IT',
+            'timezone' => 'Europe/Rome',
+            'status' => AgentRun::STATUS_QUEUED,
+            'input_json' => ['question' => 'Dati riservati'],
+        ]);
+
+        app(AgentRunHandler::class)->handle($run);
+
+        $run->refresh();
+        $this->assertSame(AgentRun::STATUS_FAILED, $run->status);
+        $this->assertSame('unauthorized', $run->error_code);
+        $this->assertSame(['run.failed'], $run->events()->pluck('type')->all());
+        $this->assertSame(0, $run->toolExecutions()->count());
+    }
 
     public function test_container_handler_runs_collection_synthesis_and_terminal_lifecycle(): void
     {
@@ -51,13 +90,21 @@ final class DefaultAgentRunHandlerTest extends TestCase
         $retrieval->shouldReceive('retrieve')->once()->andReturn(new SearchResult(collect(), collect(), collect()));
         $this->app->instance(ChatRetrievalService::class, $retrieval);
 
+        $user = User::create([
+            'name' => 'Agent user',
+            'email' => 'handler-agent@example.com',
+            'password' => Hash::make('secret-pass-123'),
+            'locale' => 'it-IT',
+        ]);
+
         $run = AgentRun::create([
             'run_id' => Str::uuid()->toString(),
             'tenant_id' => 'acme',
             'project_key' => 'crm',
+            'user_id' => $user->id,
             'channel' => 'chat',
             'actor_type' => 'user',
-            'actor_id' => '1',
+            'actor_id' => (string) $user->id,
             'locale' => 'it-IT',
             'timezone' => 'Europe/Rome',
             'status' => AgentRun::STATUS_QUEUED,

@@ -18,6 +18,9 @@ final readonly class AgentRunAccess
             ->forTenant($this->tenants->current())
             ->where('run_id', $publicRunId)
             ->where('user_id', $user->getAuthIdentifier())
+            ->where('actor_type', 'user')
+            ->where('actor_id', (string) $user->getAuthIdentifier())
+            ->where('channel', 'chat')
             ->firstOrFail();
     }
 }

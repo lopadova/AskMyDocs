@@ -117,6 +117,7 @@ final class ApiToolCollectorTest extends TestCase
 
         $list = $this->route('customers', 'http://api.example.test/customers', null, endpointType: 'list', itemsPath: 'data');
         $detail = $this->route('customer-detail', 'http://api.example.test/customers/{id}', null, endpointType: 'detail');
+        $detail->forceFill(['api_connector_id' => $list->api_connector_id])->save();
         $this->parameter($detail, 'id', 'path', 'llm', 'integer', null, true);
         $relation = ApiRouteRelation::create([
             'tenant_id' => 'acme',
@@ -157,6 +158,7 @@ final class ApiToolCollectorTest extends TestCase
         Http::fake(['*' => Http::response(['ok' => true])]);
         $list = $this->route('list', 'http://api.example.test/items', null, endpointType: 'list');
         $detail = $this->route('mutating-detail', 'http://api.example.test/items', null, endpointType: 'detail', method: 'POST');
+        $detail->forceFill(['api_connector_id' => $list->api_connector_id])->save();
         $relation = ApiRouteRelation::create([
             'tenant_id' => 'acme',
             'api_connector_id' => $list->api_connector_id,
@@ -174,6 +176,30 @@ final class ApiToolCollectorTest extends TestCase
 
         $this->assertFalse($result->complete);
         $this->assertSame('fanout_requires_read_only_route', $result->stopReason);
+        Http::assertNothingSent();
+    }
+
+    public function test_fanout_refuses_a_relation_row_from_another_tenant(): void
+    {
+        Http::fake(['*' => Http::response(['ok' => true])]);
+        $list = $this->route('foreign-list', 'http://api.example.test/items', null, endpointType: 'list');
+        $detail = $this->route('foreign-detail', 'http://api.example.test/items/{id}', null, endpointType: 'detail');
+        $relation = ApiRouteRelation::create([
+            'tenant_id' => 'other-tenant',
+            'api_connector_id' => $list->api_connector_id,
+            'list_route_id' => $list->id,
+            'detail_route_id' => $detail->id,
+            'field_map' => [['from' => 'id', 'to_param' => 'id']],
+        ]);
+
+        $result = app(ApiToolCollector::class)->collectRelatedDetails(
+            $relation,
+            [['id' => 1]],
+            $this->context(),
+            $this->budget(),
+        );
+
+        $this->assertSame('relation_scope_mismatch', $result->stopReason);
         Http::assertNothingSent();
     }
 

@@ -5,11 +5,15 @@ declare(strict_types=1);
 namespace App\Agent;
 
 use App\Ai\AiManager;
+use App\Services\Widget\WidgetPiiMasker;
 
 /** Produces a grounded answer from the unified document and live-API envelope. */
 final readonly class AgentAnswerSynthesizer
 {
-    public function __construct(private AiManager $ai) {}
+    public function __construct(
+        private AiManager $ai,
+        private WidgetPiiMasker $masker,
+    ) {}
 
     public function synthesize(
         string $question,
@@ -46,12 +50,15 @@ final readonly class AgentAnswerSynthesizer
         }
 
         return new AgentAnswer(
-            answer: $answer,
+            answer: $this->masker->maskString($answer),
             locale: $context->locale,
             completeness: $completeness,
             citations: $this->selectedDocuments($evidence['documents'], $payload['document_ids'] ?? []),
             toolSources: $this->selectedTools($evidence['api_tools'], $payload['tool_execution_ids'] ?? []),
-            limitations: $this->limitations($payload['limitations'] ?? []),
+            limitations: array_map(
+                $this->masker->maskString(...),
+                $this->limitations($payload['limitations'] ?? []),
+            ),
         );
     }
 

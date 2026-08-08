@@ -69,6 +69,23 @@ final class AgentEventPublisherTest extends TestCase
         new AgentProgress(logicalMinimum: 5, logicalLikely: 3, logicalMaximum: 4);
     }
 
+    public function test_event_messages_and_payloads_are_masked_before_persistence(): void
+    {
+        $run = $this->makeRun('it-IT');
+        $event = app(AgentEventPublisher::class)->publish(
+            $run,
+            'tool.started',
+            'tool.started',
+            ['tool' => 'ERP admin@example.com'],
+            ['diagnostic' => 'Bearer eyJabcdefghijk.abcdefghijklmnopqrstu'],
+        );
+
+        $this->assertSame('Sto chiamando ERP [EMAIL].', $event->message);
+        $this->assertSame('ERP [EMAIL]', $event->message_params['tool']);
+        $this->assertSame('Bearer [TOKEN]', data_get($event->payload_json, 'data.diagnostic'));
+        $this->assertStringNotContainsString('admin@example.com', json_encode($event->toArray()));
+    }
+
     private function makeRun(string $locale): AgentRun
     {
         return AgentRun::create([

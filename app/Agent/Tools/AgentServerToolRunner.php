@@ -66,7 +66,9 @@ final readonly class AgentServerToolRunner
             ->whereIn('project_key', $scopes)
             ->where('status', RouteStatus::Active->value)
             ->whereIn('mode', [RouteMode::Tool->value, RouteMode::Both->value])
-            ->whereHas('connector', fn ($query) => $query->where('is_active', true))
+            ->whereHas('connector', fn ($query) => $query
+                ->where('tenant_id', $context->tenantId)
+                ->where('is_active', true))
             ->with('parameters')
             ->first();
         if (! $route instanceof ApiRoute) {
