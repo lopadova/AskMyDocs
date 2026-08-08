@@ -45,6 +45,7 @@ import { FreeEndpointModal } from './FreeEndpointModal';
 import { RelationEditor } from './RelationEditor';
 import { DrillTestPanel } from './DrillTestPanel';
 import { buttonStyle } from './styles';
+import { AgentRuntimeOverview } from './AgentRuntimeOverview';
 
 /*
  * v8.27 — API Connector (Connettore API) admin landing.
@@ -458,6 +459,8 @@ export function ApiConnectorsView() {
                         </button>
                     </div>
                 </div>
+
+                <AgentRuntimeOverview />
 
                 {state === 'loading' && (
                     <div
