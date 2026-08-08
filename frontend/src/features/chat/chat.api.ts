@@ -189,6 +189,25 @@ export interface Message {
     refusal_reason?: string | null;
 }
 
+export interface AgentRunLink {
+    id: string;
+    status: string;
+    locale: string;
+    events_url: string;
+    cancel_url: string;
+    continue_url: string;
+}
+
+export interface AgentTurnStarted {
+    run_id: string;
+    status: string;
+    locale: string;
+    events_url: string;
+    cancel_url: string;
+    continue_url: string;
+    user_message: Message;
+}
+
 export interface RunnerUpChunk {
     chunk_id: number;
     project_key: string | null;
@@ -259,6 +278,37 @@ export const chatApi = {
             : { content };
         const { data } = await api.post<Message>(`/conversations/${conversationId}/messages`, payload);
         return data;
+    },
+
+    async startAgentTurn(
+        conversationId: number,
+        content: string,
+        filters?: FilterState,
+    ): Promise<AgentTurnStarted> {
+        const payload = filters && !isFilterStateEmpty(filters)
+            ? { content, filters }
+            : { content };
+        const { data } = await api.post<AgentTurnStarted>(
+            `/conversations/${conversationId}/messages/agent`,
+            payload,
+        );
+
+        return data;
+    },
+
+    async cancelAgentRun(url: string): Promise<void> {
+        await api.post(url);
+    },
+
+    async continueAgentRun(
+        url: string,
+        physicalExtension: number,
+        logicalExtension = 0,
+    ): Promise<void> {
+        await api.post(url, {
+            physical_extension: physicalExtension,
+            logical_extension: logicalExtension,
+        });
     },
 
     async listCollections(): Promise<ChatCollectionOption[]> {
