@@ -13,6 +13,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Auth;
 
 final class ExecuteAgentRunJob implements ShouldQueue
 {
@@ -31,7 +32,18 @@ final class ExecuteAgentRunJob implements ShouldQueue
         $run = AgentRun::query()->findOrFail($this->agentRunId);
         $tenants->set($run->tenant_id);
         $this->context($run)->activate();
-        $handler->handle($run);
+        Auth::forgetGuards();
+        if ($run->user !== null) {
+            Auth::setUser($run->user);
+        }
+
+        try {
+            $handler->handle($run);
+        } finally {
+            // Queue workers are long-lived. Never leak one run's principal
+            // into the next job (especially an anonymous widget run).
+            Auth::forgetGuards();
+        }
     }
 
     private function context(AgentRun $run): AgentExecutionContext

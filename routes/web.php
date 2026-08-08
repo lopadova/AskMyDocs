@@ -4,6 +4,7 @@ use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\SpaController;
 use App\Http\Controllers\TestingController;
+use App\Http\Controllers\Api\AgentMessageController;
 use App\Http\Controllers\Api\ChatExtrasController;
 use App\Http\Controllers\Api\ConversationController;
 use App\Http\Controllers\Api\FeedbackController;
@@ -106,6 +107,8 @@ Route::middleware('auth')->group(function () {
         Route::delete('/{conversation}', [ConversationController::class, 'destroy']);
         Route::get('/{conversation}/messages', [MessageController::class, 'index']);
         Route::post('/{conversation}/messages', [MessageController::class, 'store'])
+            ->middleware($chatPostMiddleware);
+        Route::post('/{conversation}/messages/agent', [AgentMessageController::class, 'store'])
             ->middleware($chatPostMiddleware);
         Route::post('/{conversation}/generate-title', [ConversationController::class, 'generateTitle']);
         Route::post('/{conversation}/messages/{message}/feedback', [FeedbackController::class, 'store']);

@@ -15,6 +15,7 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
         private AgentLoop $loop,
         private AgentAnswerSynthesizer $synthesizer,
         private AgentEventPublisher $events,
+        private AgentResultProjector $projector,
     ) {}
 
     public function handle(AgentRun $run): void
@@ -81,6 +82,7 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
                 'completed_at' => now(),
                 'error_code' => null,
             ])->save();
+            $this->projector->project($run, $answer);
             $this->events->publish(
                 $run,
                 $status === AgentRun::STATUS_PARTIAL ? 'run.partial' : 'run.completed',

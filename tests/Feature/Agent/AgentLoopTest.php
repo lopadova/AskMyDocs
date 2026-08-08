@@ -79,7 +79,11 @@ final class AgentLoopTest extends TestCase
         $this->app->instance(AiManager::class, $ai);
 
         $retrieval = Mockery::mock(ChatRetrievalService::class)->makePartial();
-        $retrieval->shouldReceive('retrieve')->once()->with('Dammi tutti gli ordini di Tizio', 'crm')
+        $retrieval->shouldReceive('retrieve')->once()->with(
+            'Dammi tutti gli ordini di Tizio',
+            'crm',
+            Mockery::type(\App\Services\Kb\Retrieval\RetrievalFilters::class),
+        )
             ->andReturn(new SearchResult(collect(), collect(), collect()));
         $this->app->instance(ChatRetrievalService::class, $retrieval);
 
