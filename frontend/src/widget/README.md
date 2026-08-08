@@ -72,6 +72,41 @@ correct snippet automatically.
 
 ---
 
+## Welcome content before the first message
+
+`intro` is a structured, plain-text empty state rendered inside the same Shadow
+DOM and theme as the chat. The per-key value arrives from `/api/widget/setup`;
+the host can override individual fields or pass `intro: false` for a page.
+
+```typescript
+window.AskMyDocsWidget = {
+  key: 'pk_live_abc123',
+  intro: {
+    enabled: true,
+    variant: 'hero',
+    eyebrow: 'Product help',
+    title: 'How can I help?',
+    subtitle: 'Answers from official documentation',
+    body: 'Ask about setup, procedures and troubleshooting.',
+    imageUrl: 'https://cdn.example.com/product-help.webp',
+    imageAlt: 'Product help assistant',
+    icon: 'sparkles',
+    bullets: ['Verified answers', 'Open cited sources'],
+    suggestions: [{ label: 'Get started', prompt: 'Explain how to get started' }],
+    dismissible: true,
+    hideAfterFirstMessage: true,
+  },
+};
+```
+
+Variants are `compact`, `card`, and `hero`; icons are `sparkles`, `chat`,
+`search`, `help`, and `none`. There are at most four bullets and four
+suggestions. Images are HTTPS-only and require alternative text. User-provided
+HTML/SVG/CSS is never accepted. Existing authenticated history suppresses the
+card, and a suggestion sends its prompt as the first user message.
+
+---
+
 ## Mode A — Browser Embed (default)
 
 The simplest integration. The widget authenticates with a **public key**
