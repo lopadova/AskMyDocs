@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Services\Auth\CompanyOnboardingEligibility;
 use App\Services\Auth\UserTeamsResolver;
 use App\Support\DesktopToken;
+use App\Support\SupportedLocale;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -69,6 +70,7 @@ class AuthController extends Controller
                 'id' => $user->id,
                 'name' => $user->name,
                 'email' => $user->email,
+                'locale' => SupportedLocale::normalize($user->locale),
             ],
             'abilities' => [],
         ], 200);
@@ -125,6 +127,7 @@ class AuthController extends Controller
                 'id' => $user->id,
                 'name' => $user->name,
                 'email' => $user->email,
+                'locale' => SupportedLocale::normalize($user->locale),
             ],
         ], 201);
     }
@@ -187,6 +190,7 @@ class AuthController extends Controller
                 'name' => $user->name,
                 'email' => $user->email,
                 'email_verified_at' => $user->email_verified_at,
+                'locale' => SupportedLocale::normalize($user->locale),
             ],
             'roles' => $user->getRoleNames(),
             'permissions' => $user->getAllPermissions()->pluck('name'),
@@ -202,7 +206,7 @@ class AuthController extends Controller
             'preferences' => [
                 'theme' => 'dark',
                 'density' => 'balanced',
-                'language' => 'en',
+                'language' => SupportedLocale::normalize($user->locale),
             ],
             // R27 additive — UI capability hints for the SPA (never strip or
             // rename existing keys). `invitations_admin` mirrors the

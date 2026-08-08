@@ -38,6 +38,7 @@ use App\Http\Controllers\Api\Auth\TwoFactorController;
 use App\Http\Controllers\Api\ChatFilterPresetController;
 use App\Http\Controllers\Api\KbChatController;
 use App\Http\Controllers\Api\ChatPreferencesController;
+use App\Http\Controllers\Api\UserLocaleController;
 use App\Http\Controllers\Api\KbChunkFeedbackController;
 use App\Http\Controllers\Api\KbCollectionPickerController;
 use App\Http\Controllers\Api\KbDeleteController;
@@ -250,6 +251,10 @@ Route::middleware([
         ->name('api.me.chat-preferences.show');
     Route::patch('/me/chat-preferences', [ChatPreferencesController::class, 'update'])
         ->name('api.me.chat-preferences.update');
+    Route::get('/me/locale', [UserLocaleController::class, 'show'])
+        ->name('api.me.locale.show');
+    Route::patch('/me/locale', [UserLocaleController::class, 'update'])
+        ->name('api.me.locale.update');
 
     // v8.15/W3 — per-user rich-digest preferences + the in-app digest feed.
     Route::get('/me/digest-preferences', [\App\Http\Controllers\Api\DigestPreferenceController::class, 'show'])

@@ -6,6 +6,7 @@ export type AuthUser = {
     name: string;
     email: string;
     email_verified_at?: string | null;
+    locale?: string;
 };
 
 export type AuthProject = {
