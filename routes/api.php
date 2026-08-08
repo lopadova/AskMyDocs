@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\Admin\AdminInsightsController;
 use App\Http\Controllers\Api\Admin\AdminNotificationDefaultsController;
 use App\Http\Controllers\Api\Admin\ConnectorAdminController;
+use App\Http\Controllers\Api\Admin\AgentRunOverviewController;
 use App\Http\Controllers\Api\Admin\ComplianceReportController;
 use App\Http\Controllers\Api\Admin\EvernoteEnexController;
 use App\Http\Controllers\Api\Admin\DashboardMetricsController;
@@ -1015,6 +1016,19 @@ Route::middleware([
     ->group(function () {
         Route::get('/queue', [\App\Http\Controllers\Api\Admin\IngestionController::class, 'queue'])
             ->name('api.admin.ingestion.queue');
+    });
+
+Route::middleware([
+    \Illuminate\Cookie\Middleware\EncryptCookies::class,
+    \Illuminate\Session\Middleware\StartSession::class,
+    'auth:sanctum',
+    'tenant.authorize',
+    'can:manageConnectors',
+])
+    ->prefix('admin/agent-runs')
+    ->group(function () {
+        Route::get('/overview', AgentRunOverviewController::class)
+            ->name('api.admin.agent-runs.overview');
     });
 
 /*
