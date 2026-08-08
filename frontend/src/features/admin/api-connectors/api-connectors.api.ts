@@ -92,6 +92,37 @@ export interface ApiConnector {
     updated_at: string | null;
 }
 
+export interface AgentRunOverview {
+    window: { hours: number; since: string };
+    metrics: {
+        runs: number;
+        successful_runs: number;
+        failed_runs: number;
+        cancelled_runs: number;
+        success_rate: number | null;
+        logical_calls: number;
+        physical_requests: number;
+        tool_executions: number;
+        tool_failures: number;
+        average_duration_ms: number | null;
+    };
+    status_counts: Record<string, number>;
+    policy: Record<string, number>;
+    recent_runs: Array<{
+        run_id: string;
+        project_key: string | null;
+        channel: 'chat' | 'widget';
+        locale: string;
+        status: string;
+        error_code: string | null;
+        logical_calls: number;
+        physical_calls: number;
+        tool_executions: number;
+        created_at: string | null;
+        completed_at: string | null;
+    }>;
+}
+
 /** A single route parameter (ApiRouteParameterResource). `secret_ref` is a key NAME, never the value. */
 export interface ApiRouteParameter {
     id: number;
@@ -332,6 +363,11 @@ export interface DrillResult {
 const BASE = '/api/admin/api-connectors';
 
 export const apiConnectorsApi = {
+    async agentOverview(): Promise<AgentRunOverview> {
+        const { data } = await api.get<{ data: AgentRunOverview }>('/api/admin/agent-runs/overview');
+        return data.data;
+    },
+
     async list(): Promise<ApiConnector[]> {
         const { data } = await api.get<{ data: ApiConnector[] }>(BASE);
         return data.data;
