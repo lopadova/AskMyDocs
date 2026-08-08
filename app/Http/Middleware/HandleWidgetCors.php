@@ -28,7 +28,7 @@ use Symfony\Component\HttpFoundation\Response;
  */
 final class HandleWidgetCors
 {
-    private const ALLOW_HEADERS = 'Content-Type, Authorization, X-Widget-Key, X-Requested-With';
+    private const ALLOW_HEADERS = 'Content-Type, Authorization, X-Widget-Key, X-Requested-With, Last-Event-ID';
     private const ALLOW_METHODS = 'POST, GET, OPTIONS';
 
     public function handle(Request $request, Closure $next): Response

@@ -11,6 +11,7 @@ describe('widget SnapshotBuilder', () => {
     beforeEach(() => {
         document.body.innerHTML = '';
         document.title = 'Test Page';
+        document.documentElement.lang = '';
         // jsdom returns an all-zero rect from getBoundingClientRect, which would
         // make every element read as invisible (isVisible checks width/height).
         // Stub a non-zero rect so elements behave like in a real browser; the
@@ -40,6 +41,19 @@ describe('widget SnapshotBuilder', () => {
         expect(email?.label).toBe('Email');
         expect(email?.value).toBe('a@b.test');
         expect(snap.actions.map((a) => a.verb)).toContain('save');
+    });
+
+    it('uses the host page language when no active locale control exists', () => {
+        document.documentElement.lang = 'it-IT';
+
+        expect(buildSnapshot().active_context.locale).toBe('it-IT');
+    });
+
+    it('prefers the active annotated locale over the host page language', () => {
+        document.documentElement.lang = 'it';
+        document.body.innerHTML = '<button data-kitt-locale="en-US" data-kitt-active="true">English</button>';
+
+        expect(buildSnapshot().active_context.locale).toBe('en-US');
     });
 
     it('never exposes the value of a data-kitt-sensitive field', () => {

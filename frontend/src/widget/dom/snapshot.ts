@@ -101,7 +101,9 @@ function activeContext(): Snapshot['active_context'] {
 
     return {
         region: activeRegion ? attr(activeRegion, 'data-kitt-region') : null,
-        locale: activeLocale ? attr(activeLocale, 'data-kitt-locale') : null,
+        locale: activeLocale
+            ? attr(activeLocale, 'data-kitt-locale')
+            : clean(document.documentElement.lang, 35) || null,
         focus_field: focus ? attr(focus, 'data-kitt-field') : null,
         modal: modal && isVisible(modal) ? (modal.id || 'dialog') : null,
     };
