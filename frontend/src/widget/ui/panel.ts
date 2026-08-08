@@ -10,6 +10,7 @@ import { Bridge, type BridgeEvents } from '../core/bridge';
 import type { Artifact } from '../core/bridge';
 import type { Citation, ToolCall, WidgetConfig, WidgetMode, WidgetTheme } from '../types';
 import { OverlaySystem } from './overlay';
+import { IntroCard, mergeIntroLayers } from './intro';
 import { DEFAULT_THEME, buildThemeCss, launcherIconSvg, mergeThemeLayers } from './styles';
 import { UiArtifactRenderer } from './UiArtifactRenderer';
 import { SourceViewer } from './source-viewer';
@@ -32,6 +33,7 @@ export class WidgetPanel {
     private readonly header: HTMLElement;
     private readonly titleEl: HTMLElement;
     private readonly messages: HTMLElement;
+    private readonly introCard: IntroCard;
     private readonly status: HTMLElement;
     private readonly input: HTMLTextAreaElement;
     private readonly send: HTMLButtonElement;
@@ -83,6 +85,7 @@ export class WidgetPanel {
         this.header.append(this.titleEl, close);
 
         this.messages = this.el('div', 'amd-messages', { 'data-testid': 'askmydocs-widget-messages', role: 'log', 'aria-live': 'polite' });
+        this.introCard = new IntroCard(this.messages, (prompt) => this.submitText(prompt));
         this.status = this.el('div', 'amd-status', { 'data-testid': 'askmydocs-widget-status', 'aria-live': 'polite' });
 
         const composer = this.el('form', 'amd-composer');
@@ -168,6 +171,10 @@ export class WidgetPanel {
             this.input.disabled = false;
             this.send.disabled = false;
             this.status.textContent = '';
+            if (restored.length === 0) {
+                const serverIntro = setup && typeof setup.intro === 'object' ? setup.intro : null;
+                this.introCard.show(mergeIntroLayers(serverIntro, this.cfg.intro));
+            }
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             this.panel.dataset.state = 'error';
@@ -263,6 +270,12 @@ export class WidgetPanel {
             return;
         }
         this.input.value = '';
+        this.submitText(text);
+    }
+
+    private submitText(text: string): void {
+        if (!this.initialized || text.trim() === '' || this.bridge.isBusy()) return;
+        this.introCard.beforeFirstMessage();
         this.appendUser(text);
         void this.bridge.sendUserMessage(text);
     }

@@ -177,6 +177,33 @@ export const BASE_WIDGET_CSS = `
 .amd-title { font-size: 14px; font-weight: 700; flex: 1 1 auto; }
 .amd-close { background: transparent; border: none; color: inherit; font-size: 20px; cursor: pointer; line-height: 1; flex: 0 0 auto; }
 .amd-messages { flex: 1; overflow-y: auto; padding: var(--amd-messages-padding, 14px); display: flex; flex-direction: column; gap: var(--amd-message-gap, 10px); }
+.amd-intro {
+    position: relative; align-self: stretch; overflow: hidden;
+    border: 1px solid var(--amd-border); border-radius: var(--amd-panel-radius, 14px);
+    background: linear-gradient(145deg, var(--amd-assistant-bg, #f3f4f6), var(--amd-bg, #fff));
+    color: var(--amd-fg); box-shadow: var(--amd-launcher-shadow, 0 8px 24px rgba(15,23,42,.12));
+}
+.amd-intro[data-variant="compact"] { box-shadow: none; }
+.amd-intro[data-variant="hero"] .amd-intro-image { height: 156px; }
+.amd-intro-image { display: block; width: 100%; height: 112px; object-fit: cover; }
+.amd-intro-content { position: relative; padding: 18px; }
+.amd-intro-icon { width: 38px; height: 38px; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 12px; border-radius: 12px; color: var(--amd-accent); background: var(--amd-citation-bg, #e0e7ff); }
+.amd-intro-icon svg { width: 21px; height: 21px; }
+.amd-intro-dismiss { position: absolute; top: 8px; right: 8px; width: 30px; height: 30px; border: 0; border-radius: 50%; background: transparent; color: var(--amd-muted); font-size: 20px; line-height: 1; cursor: pointer; }
+.amd-intro-dismiss:hover { background: var(--amd-assistant-bg, #f3f4f6); }
+.amd-intro-dismiss:focus-visible, .amd-intro-suggestion:focus-visible { outline: 2px solid var(--amd-focus-ring, #93c5fd); outline-offset: 2px; }
+.amd-intro-eyebrow { margin: 0 34px 5px 0; color: var(--amd-accent); font-size: 10px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; }
+.amd-intro-title { margin: 0; color: var(--amd-fg); font-size: calc(var(--amd-font-size, 14px) + 5px); line-height: 1.2; }
+.amd-intro-subtitle { margin: 7px 0 0; color: var(--amd-fg); font-size: var(--amd-font-size, 14px); font-weight: 650; line-height: 1.4; }
+.amd-intro-body { margin: 8px 0 0; color: var(--amd-muted); font-size: calc(var(--amd-font-size, 14px) - 1px); line-height: 1.55; white-space: pre-wrap; }
+.amd-intro-bullets { display: grid; gap: 6px; margin: 12px 0 0; padding: 0; list-style: none; color: var(--amd-fg); font-size: calc(var(--amd-font-size, 14px) - 1px); }
+.amd-intro-bullets li { position: relative; padding-left: 18px; }
+.amd-intro-bullets li::before { content: '✓'; position: absolute; left: 0; color: var(--amd-accent); font-weight: 800; }
+.amd-intro-suggestions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 14px; }
+.amd-intro-suggestion { border: 1px solid var(--amd-border); border-radius: var(--amd-button-radius, 10px); padding: 7px 10px; background: var(--amd-bg); color: var(--amd-fg); font: inherit; font-size: calc(var(--amd-font-size, 14px) - 1px); cursor: pointer; }
+.amd-intro-suggestion:hover { border-color: var(--amd-accent); color: var(--amd-accent); }
+.amd-intro-exit { pointer-events: none; animation: amd-intro-exit 180ms ease forwards; }
+@keyframes amd-intro-exit { to { opacity: 0; transform: translateY(-6px); max-height: 0; margin: 0; border-width: 0; } }
 .amd-msg { max-width: var(--amd-bubble-max-width, 88%); padding: var(--amd-bubble-padding-y, 9px) var(--amd-bubble-padding-x, 12px); border-radius: var(--amd-bubble-radius, 12px); font-size: var(--amd-font-size, 14px); line-height: 1.45; white-space: pre-wrap; word-wrap: break-word; }
 .amd-msg.user { align-self: flex-end; background: var(--amd-user-bg, var(--amd-accent)); color: var(--amd-user-fg, #fff); border-bottom-right-radius: 4px; }
 .amd-msg.assistant { align-self: flex-start; background: var(--amd-assistant-bg, #f3f4f6); color: var(--amd-assistant-fg, var(--amd-fg)); border-bottom-left-radius: 4px; }
@@ -229,6 +256,9 @@ button.amd-cite { cursor: pointer; }
     border: 0; border-radius: 0; box-shadow: none;
 }
 .amd-root.amd-mode-fullscreen .amd-close { display: none; }
+@media (prefers-reduced-motion: reduce) {
+    .amd-intro-exit { animation: none; transition: none; }
+}
 `;
 
 /** Alias retro-compat: il loader storico iniettava `WIDGET_CSS`. */
