@@ -7,16 +7,24 @@ namespace App\Agent;
 use App\Models\AgentRun;
 use App\Models\Conversation;
 use App\Models\Message;
+use App\Models\WidgetSession;
+use App\Models\WidgetSessionStep;
+use App\Services\Widget\WidgetPiiMasker;
+use Illuminate\Support\Facades\DB;
 
 /** Materializes terminal AgentRun results onto their channel's durable history. */
 final class AgentResultProjector
 {
+    public function __construct(private readonly WidgetPiiMasker $masker) {}
+
     public function project(AgentRun $run, AgentAnswer $answer): void
     {
-        if ($run->channel !== 'chat') {
+        if ($run->channel === 'widget') {
+            $this->projectWidget($run, $answer);
+
             return;
         }
-        if ($run->conversation_id === null) {
+        if ($run->channel !== 'chat' || $run->conversation_id === null) {
             return;
         }
 
@@ -57,5 +65,51 @@ final class AgentResultProjector
             ],
         );
         $conversation->touch();
+    }
+
+    private function projectWidget(AgentRun $run, AgentAnswer $answer): void
+    {
+        if ($run->widget_session_id === null) {
+            return;
+        }
+
+        DB::transaction(function () use ($run, $answer): void {
+            $session = WidgetSession::query()
+                ->forTenant($run->tenant_id)
+                ->whereKey($run->widget_session_id)
+                ->where('project_key', $run->project_key)
+                ->when(
+                    $run->widget_identity_id === null,
+                    fn ($query) => $query->whereNull('widget_identity_id'),
+                    fn ($query) => $query->where('widget_identity_id', $run->widget_identity_id),
+                )
+                ->lockForUpdate()
+                ->first();
+            if (! $session instanceof WidgetSession) {
+                throw new \DomainException('agent_widget_session_scope_mismatch');
+            }
+
+            WidgetSessionStep::query()->firstOrCreate(
+                ['agent_run_id' => $run->id],
+                [
+                    'tenant_id' => $run->tenant_id,
+                    'widget_session_id' => $session->id,
+                    'step_index' => (int) ($session->steps()->max('step_index') ?? -1) + 1,
+                    'kind' => WidgetSessionStep::KIND_BOT_MESSAGE,
+                    'args_json' => $this->masker->maskArray([
+                        'content' => $answer->answer,
+                        'citations' => $answer->citations,
+                        'tool_sources' => $answer->toolSources,
+                        'completeness' => $answer->completeness,
+                        'limitations' => $answer->limitations,
+                        'locale' => $answer->locale,
+                    ]) ?? [],
+                ],
+            );
+            $session->forceFill([
+                'status' => WidgetSession::STATUS_ACTIVE,
+                'blocked_reason' => null,
+            ])->save();
+        }, 3);
     }
 }
