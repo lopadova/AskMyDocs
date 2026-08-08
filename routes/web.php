@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\ConversationController;
 use App\Http\Controllers\Api\FeedbackController;
 use App\Http\Controllers\Api\MessageController;
 use App\Http\Controllers\Api\MessageStreamController;
+use App\Http\Controllers\Api\AgentRunEventController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -155,6 +156,9 @@ if ($aiActConsentFeatureSse !== '') {
 }
 Route::post('/conversations/{conversation}/messages/stream', [MessageStreamController::class, 'store'])
     ->middleware($chatSseMiddleware);
+Route::get('/agent-runs/{run}/events', AgentRunEventController::class)
+    ->middleware(['auth.sse', 'tenant.authorize'])
+    ->name('agent-runs.events');
 
 /*
 |--------------------------------------------------------------------------

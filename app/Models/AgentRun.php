@@ -56,4 +56,14 @@ final class AgentRun extends Model
     public function widgetSession(): BelongsTo { return $this->belongsTo(WidgetSession::class); }
     public function events(): HasMany { return $this->hasMany(AgentRunEvent::class); }
     public function toolExecutions(): HasMany { return $this->hasMany(AgentToolExecution::class); }
+
+    public function isTerminal(): bool
+    {
+        return in_array($this->status, [
+            self::STATUS_COMPLETED,
+            self::STATUS_PARTIAL,
+            self::STATUS_FAILED,
+            self::STATUS_CANCELLED,
+        ], true);
+    }
 }
