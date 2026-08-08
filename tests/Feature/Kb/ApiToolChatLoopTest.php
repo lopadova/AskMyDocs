@@ -55,6 +55,7 @@ final class ApiToolChatLoopTest extends TestCase
             'name' => 'Op',
             'email' => 'op@example.com',
             'password' => Hash::make('secret-pass-123'),
+            'locale' => 'it-IT',
         ]);
 
         $this->seedOrdersRoute();
@@ -84,7 +85,8 @@ final class ApiToolChatLoopTest extends TestCase
 
         // The external endpoint was actually hit, server-side, with the llm arg.
         Http::assertSent(fn ($request) => str_contains($request->url(), 'api.example.test/orders')
-            && str_contains($request->url(), 'order_id=10293'));
+            && str_contains($request->url(), 'order_id=10293')
+            && $request->header('Accept-Language')[0] === 'it-IT');
 
         // A sanitised tool-call log row was written (spec §9 observability).
         $this->assertDatabaseHas('api_tool_call_logs', [
