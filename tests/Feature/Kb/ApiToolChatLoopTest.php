@@ -6,6 +6,7 @@ namespace Tests\Feature\Kb;
 
 use App\Mcp\Client\McpToolCallingService;
 use App\Models\User;
+use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
@@ -87,7 +88,7 @@ final class ApiToolChatLoopTest extends TestCase
 
         // A sanitised tool-call log row was written (spec §9 observability).
         $this->assertDatabaseHas('api_tool_call_logs', [
-            'tenant_id' => 'default',
+            'tenant_id' => app(TenantContext::class)->current(),
             'response_status' => 200,
         ]);
     }
