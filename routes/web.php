@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\FeedbackController;
 use App\Http\Controllers\Api\MessageController;
 use App\Http\Controllers\Api\MessageStreamController;
 use App\Http\Controllers\Api\AgentRunEventController;
+use App\Http\Controllers\Api\AgentRunControlController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -159,6 +160,12 @@ Route::post('/conversations/{conversation}/messages/stream', [MessageStreamContr
 Route::get('/agent-runs/{run}/events', AgentRunEventController::class)
     ->middleware(['auth.sse', 'tenant.authorize'])
     ->name('agent-runs.events');
+Route::post('/agent-runs/{run}/cancel', [AgentRunControlController::class, 'cancel'])
+    ->middleware(['auth', 'tenant.authorize'])
+    ->name('agent-runs.cancel');
+Route::post('/agent-runs/{run}/continue', [AgentRunControlController::class, 'resume'])
+    ->middleware(['auth', 'tenant.authorize'])
+    ->name('agent-runs.continue');
 
 /*
 |--------------------------------------------------------------------------
