@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Agent\DefaultAgentRunHandler;
+use App\Contracts\AgentRunHandler;
 use App\Compliance\AskMyDocsUserDataDeleter;
 use App\Compliance\AskMyDocsUserDataExporter;
 use App\Compliance\RagRefusalQualityMetric;
@@ -65,6 +67,8 @@ class AppServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        $this->app->bind(AgentRunHandler::class, DefaultAgentRunHandler::class);
+
         // PR11 / Phase G4 — PDF rendering strategy. The interface is
         // resolved through {@see PdfRendererFactory} so the controller
         // can type-hint `PdfRenderer` and let the container pick the
