@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace App\Mcp\Client;
 
+use App\Agent\Tools\ApiToolRequestContext;
 use App\Ai\AiManager;
 use App\Ai\AiResponse;
 use App\Mcp\Client\Registry\McpServerRegistry;
 use App\Models\McpServer;
 use App\Models\User;
 use App\Support\TenantContext;
+use App\Support\SupportedLocale;
 use Padosoft\AskMyDocsConnectorApi\Models\ApiRoute;
 use Padosoft\AskMyDocsConnectorApi\Services\ApiToolExecutor;
 use Padosoft\AskMyDocsConnectorApi\Services\ApiToolRegistry;
@@ -35,6 +37,7 @@ final class McpToolCallingService
         private readonly ApiToolRegistry $apiToolRegistry,
         private readonly ApiToolExecutor $apiToolExecutor,
         private readonly TenantContext $tenantContext,
+        private readonly ApiToolRequestContext $apiToolRequestContext,
     ) {}
 
     public function canHandleToolCalling(?User $user): bool
@@ -67,6 +70,11 @@ final class McpToolCallingService
         $projectKey = isset($context['project_key']) && is_string($context['project_key'])
             ? $context['project_key']
             : null;
+        if ($user instanceof User) {
+            // The authenticated preference is authoritative; callers cannot
+            // override the run language with an arbitrary context value.
+            $context['locale'] = SupportedLocale::normalize($user->locale);
+        }
 
         $toolIndex = $this->buildToolIndex($user, $projectKey);
         if ($toolIndex === []) {
@@ -296,7 +304,13 @@ final class McpToolCallingService
             return ['error' => 'This API tool is no longer available.'];
         }
 
-        return $this->apiToolExecutor->execute($route, $arguments, $context);
+        $prepared = $this->apiToolRequestContext->apply($route, $arguments, $context);
+
+        return $this->apiToolExecutor->execute(
+            $prepared['route'],
+            $prepared['arguments'],
+            $prepared['context'],
+        );
     }
 
     /**
