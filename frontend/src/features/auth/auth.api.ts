@@ -50,6 +50,16 @@ export async function me(): Promise<AuthMePayload> {
     return data;
 }
 
+export type UserLocaleResponse = {
+    locale: string;
+    supported: string[];
+};
+
+export async function updateLocale(locale: string): Promise<UserLocaleResponse> {
+    const { data } = await api.patch<UserLocaleResponse>('/api/me/locale', { locale });
+    return data;
+}
+
 export type CompanyOnboardingInput = {
     company_name: string;
     tenant_slug?: string;

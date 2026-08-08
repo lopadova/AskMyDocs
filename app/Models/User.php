@@ -54,6 +54,7 @@ class User extends Authenticatable implements InvitedAccount
         // ergonomics regardless of which tenant they are operating
         // in.
         'chat_preferences',
+        'locale',
     ];
 
     // Mirror the `default(true)` on the migration so newly created

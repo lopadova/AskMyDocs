@@ -54,6 +54,23 @@ class MeTest extends TestCase
             ]);
     }
 
+    public function test_authenticated_me_exposes_the_users_persisted_locale(): void
+    {
+        $user = User::create([
+            'name' => 'Giulia',
+            'email' => 'giulia@example.com',
+            'password' => Hash::make('secret123'),
+            'locale' => 'it-IT',
+        ]);
+
+        $this->actingAsWithoutTenant($user);
+
+        $this->getJson('/api/auth/me')
+            ->assertOk()
+            ->assertJsonPath('user.locale', 'it-IT')
+            ->assertJsonPath('preferences.language', 'it-IT');
+    }
+
     public function test_authenticated_me_with_role_and_membership_populates_rbac_arrays(): void
     {
         Permission::findOrCreate('kb.read.any', 'web');
