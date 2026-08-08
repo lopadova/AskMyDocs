@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { DEFAULT_THEME } from '../../../widget/ui/styles';
+import { DEFAULT_INTRO } from '../../../widget/ui/intro';
 import { EmbedCodeDialog } from './EmbedCodeDialog';
 
 function renderDialog(props?: Partial<React.ComponentProps<typeof EmbedCodeDialog>>) {
@@ -104,6 +105,21 @@ describe('EmbedCodeDialog', () => {
             'admin-widget-embed-opt-theme',
         )) as HTMLInputElement;
         expect(toggle.disabled).toBe(true);
+    });
+
+    it('bakes saved welcome content only when explicitly selected', async () => {
+        const user = userEvent.setup();
+        renderDialog({ intro: { ...DEFAULT_INTRO, enabled: true, title: 'Product assistant' } });
+        expect(screen.getByTestId('admin-widget-embed-snippet').textContent).not.toContain('intro:');
+
+        await user.click(screen.getByTestId('admin-widget-embed-tab-options'));
+        await user.click(await screen.findByTestId('admin-widget-embed-opt-intro'));
+
+        await waitFor(() => {
+            const code = screen.getByTestId('admin-widget-embed-snippet-options').textContent ?? '';
+            expect(code).toContain('intro:');
+            expect(code).toContain('"title": "Product assistant"');
+        });
     });
 
     it('embeds the real secret in the proxy server snippet when provided', async () => {

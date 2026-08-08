@@ -4,7 +4,8 @@ import { Ban, Code2, Globe, Info, KeyRound, Palette, Plus, RotateCw, Trash2 } fr
 
 import { api } from '../../../lib/api';
 import { DEFAULT_THEME, sanitizeTheme } from '../../../widget/ui/styles';
-import type { WidgetMode, WidgetTheme } from '../../../widget/types';
+import { DEFAULT_INTRO, sanitizeIntro } from '../../../widget/ui/intro';
+import type { WidgetIntro, WidgetMode, WidgetTheme } from '../../../widget/types';
 import { WidgetAppearanceDialog } from './WidgetAppearanceDialog';
 import { WidgetOriginsDialog } from './WidgetOriginsDialog';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -44,6 +45,7 @@ interface WidgetKeyRow {
     sessions_count: number;
     /** Resolved appearance theme (always complete — backend merges defaults). */
     theme?: WidgetTheme;
+    intro?: WidgetIntro;
     created_at: string;
     updated_at: string;
 }
@@ -73,6 +75,7 @@ interface EmbedTarget {
     initialTab?: 'quickstart' | 'authenticated';
     /** Saved appearance — lets the embed dialog bake it inline. */
     theme?: WidgetTheme;
+    intro?: WidgetIntro;
 }
 
 /** One-time identity credential, kept together with the key it belongs to. */
@@ -92,6 +95,7 @@ interface AppearanceTarget {
     label: string;
     projectKey: string;
     theme: WidgetTheme;
+    intro: WidgetIntro;
 }
 
 /** Target passed to the allowed-origins editor. */
@@ -1018,6 +1022,7 @@ export function WidgetKeysView() {
                                                         userAuthEnabled:
                                                             key.user_auth_enabled ?? false,
                                                         theme: key.theme,
+                                                        intro: key.intro,
                                                     })
                                                 }
                                                 title="Get the embed snippet"
@@ -1037,6 +1042,7 @@ export function WidgetKeysView() {
                                                         label: key.label,
                                                         projectKey: key.project_key,
                                                         theme: sanitizeTheme(key.theme ?? DEFAULT_THEME),
+                                                        intro: sanitizeIntro(key.intro ?? DEFAULT_INTRO),
                                                     })
                                                 }
                                                 title="Customize the launcher and chat appearance"
@@ -1159,6 +1165,7 @@ export function WidgetKeysView() {
                     userAuthEnabled={embedTarget.userAuthEnabled}
                     initialTab={embedTarget.initialTab}
                     theme={embedTarget.theme}
+                    intro={embedTarget.intro}
                 />
             )}
 
@@ -1174,6 +1181,7 @@ export function WidgetKeysView() {
                     label={appearanceTarget.label}
                     projectKey={appearanceTarget.projectKey}
                     initialTheme={appearanceTarget.theme}
+                    initialIntro={appearanceTarget.intro}
                 />
             )}
 

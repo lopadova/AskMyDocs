@@ -15,7 +15,8 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 import { DEFAULT_THEME, sanitizeTheme } from '../../../widget/ui/styles';
-import type { WidgetTheme } from '../../../widget/types';
+import { sanitizeIntro } from '../../../widget/ui/intro';
+import type { WidgetIntro, WidgetTheme } from '../../../widget/types';
 import { CopyButton } from './CopyButton';
 import { highlightSnippet } from './highlightSnippet';
 
@@ -51,6 +52,8 @@ interface EmbedCodeDialogProps {
      * operator can bake it inline into the snippet (`theme: {…}`).
      */
     theme?: WidgetTheme;
+    /** Saved introduction. It normally arrives through /setup and can also be baked inline. */
+    intro?: WidgetIntro;
 }
 
 /** Escape a value so it is safe inside a single-quoted JS string literal. */
@@ -118,11 +121,13 @@ export function EmbedCodeDialog({
     userAuthEnabled = false,
     initialTab = 'quickstart',
     theme,
+    intro,
 }: EmbedCodeDialogProps) {
     const [title, setTitle] = useState('');
     const [launcherLabel, setLauncherLabel] = useState('');
     const [autoOpen, setAutoOpen] = useState(false);
     const [includeTheme, setIncludeTheme] = useState(false);
+    const [includeIntro, setIncludeIntro] = useState(false);
     const [base, setBase] = useState(apiBase);
     const [userTokenUrl, setUserTokenUrl] = useState('/api/askmydocs/widget-user-token');
     // Inline-mode only: the host container the chat block mounts into.
@@ -171,6 +176,8 @@ export function EmbedCodeDialog({
         return out;
     }, [theme]);
     const hasCustomTheme = Object.keys(themeDelta).length > 0;
+    const resolvedIntro = useMemo(() => sanitizeIntro(intro), [intro]);
+    const hasIntro = resolvedIntro.enabled && resolvedIntro.title !== '';
 
     const snippet = useMemo(() => {
         const cfg: string[] = [`    key: '${jsString(publicKey)}',`];
@@ -210,6 +217,14 @@ export function EmbedCodeDialog({
                     .join('\n') + ',';
             cfg.push(entry);
         }
+        if (includeIntro && hasIntro) {
+            const raw = JSON.stringify(resolvedIntro, null, 2).replace(/<\/(?=script)/gi, '<\\/');
+            cfg.push(
+                raw.split('\n')
+                    .map((line, i) => (i === 0 ? `    intro: ${line}` : `      ${line}`))
+                    .join('\n') + ',',
+            );
+        }
 
         // Inline mode prepends the host container the chat fills.
         const head =
@@ -242,6 +257,9 @@ export function EmbedCodeDialog({
         includeTheme,
         hasCustomTheme,
         themeDelta,
+        includeIntro,
+        hasIntro,
+        resolvedIntro,
         label,
         scriptSrc,
         userAuthEnabled,
@@ -559,6 +577,28 @@ export function EmbedCodeDialog({
                                                 {' '}
                                                 (currently default — nothing to bake)
                                             </span>
+                                        )}
+                                    </span>
+                                </label>
+                            )}
+                            {intro && (
+                                <label
+                                    className="flex items-center gap-2 text-sm sm:col-span-2"
+                                    htmlFor="embed-opt-intro"
+                                >
+                                    <input
+                                        id="embed-opt-intro"
+                                        type="checkbox"
+                                        data-testid="admin-widget-embed-opt-intro"
+                                        checked={includeIntro}
+                                        disabled={!hasIntro}
+                                        onChange={(e) => setIncludeIntro(e.target.checked)}
+                                        className="size-4 accent-[var(--accent-a)]"
+                                    />
+                                    <span>
+                                        Bake the saved welcome content inline
+                                        {!hasIntro && (
+                                            <span className="text-muted-foreground"> (currently disabled)</span>
                                         )}
                                     </span>
                                 </label>
