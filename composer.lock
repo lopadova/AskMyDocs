@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "8f11e209cda945419e440775c1ab8e0f",
+    "content-hash": "71a961b303e35e0ea918b0ee9555f944",
     "packages": [
         {
             "name": "aws/aws-crt-php",
@@ -2913,11 +2913,11 @@
         },
         {
             "name": "padosoft/askmydocs-connector-api",
-            "version": "dev-main",
+            "version": "dev-feature/list-detail-relations",
             "dist": {
                 "type": "path",
                 "url": "/Users/marco/packages/askmydocs-connector-api",
-                "reference": "a22b6dd05a52d4cb6f9a08cc365911f6092d5786"
+                "reference": "d28832490b5fbb1db9db29c6e51747826dc92f89"
             },
             "require": {
                 "illuminate/contracts": "^12.0|^13.0",
@@ -2973,7 +2973,7 @@
                     "email": "lorenzo.padovani@padosoft.com"
                 }
             ],
-            "description": "API connector for AskMyDocs — turn any configured HTTP endpoint into a live LLM tool callable during chat (RAG + fresh data). Fase 1: live tools; Fase 2 (ingest) designed in.",
+            "description": "API connector for AskMyDocs — turn any configured HTTP endpoint into a live LLM tool callable during chat (RAG + fresh data). Phase 1: live tools; Phase 2 (ingest) designed in.",
             "keywords": [
                 "askmydocs",
                 "connectors",

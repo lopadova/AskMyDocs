@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Kb;
 
+use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Padosoft\AskMyDocsConnectorApi\Models\ApiConnector;
@@ -105,9 +106,10 @@ final class ApiToolExecutorTest extends TestCase
 
     public function test_registry_is_tenant_scoped(): void
     {
-        $this->makeRoute('http://api.example.test/orders'); // tenant 'default', active
+        $tenantId = app(TenantContext::class)->current();
+        $this->makeRoute('http://api.example.test/orders'); // active tenant, active route
 
-        $mine = app(ApiToolRegistry::class)->activeToolsForTenant('default', null);
+        $mine = app(ApiToolRegistry::class)->activeToolsForTenant($tenantId, null);
         $other = app(ApiToolRegistry::class)->activeToolsForTenant('other-tenant', null);
 
         $this->assertNotEmpty($mine);
