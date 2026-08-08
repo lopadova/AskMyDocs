@@ -14,6 +14,7 @@ import type {
     ToolResult,
     TurnResponse,
     WidgetDocumentPreview,
+    WidgetAgentTurnResponse,
 } from '../types';
 import type { WidgetConfig } from '../types';
 import type { ExecToolResponse } from './bridge';
@@ -117,6 +118,58 @@ export class Transport {
         });
 
         return this.parse<TurnResponse>(res);
+    }
+
+    async startAgent(snapshot: Snapshot, message: string): Promise<WidgetAgentTurnResponse> {
+        const res = await this.request('/sessions/agent/start', {
+            method: 'POST',
+            body: JSON.stringify({ snapshot, message, page_url: location.href }),
+        });
+
+        return this.parse<WidgetAgentTurnResponse>(res);
+    }
+
+    async stepAgent(sessionId: string, message: string): Promise<WidgetAgentTurnResponse> {
+        const res = await this.request(`/sessions/${encodeURIComponent(sessionId)}/agent`, {
+            method: 'POST',
+            body: JSON.stringify({ message }),
+        });
+
+        return this.parse<WidgetAgentTurnResponse>(res);
+    }
+
+    async openAgentEvents(eventsUrl: string, after: number, signal: AbortSignal): Promise<Response> {
+        const separator = eventsUrl.includes('?') ? '&' : '?';
+
+        return this.requestUrl(this.resolveAgentUrl(`${eventsUrl}${separator}after=${after}`), {
+            method: 'GET',
+            cache: 'no-store',
+            signal,
+            headers: {
+                Accept: 'text/event-stream, application/json',
+                'Last-Event-ID': String(after),
+            },
+        });
+    }
+
+    async cancelAgent(cancelUrl: string): Promise<void> {
+        const response = await this.requestUrl(this.resolveAgentUrl(cancelUrl), { method: 'POST' });
+        await this.parse(response);
+    }
+
+    async continueAgent(
+        continueUrl: string,
+        physicalExtension: number,
+        logicalExtension: number,
+    ): Promise<void> {
+        const response = await this.requestUrl(this.resolveAgentUrl(continueUrl), {
+            method: 'POST',
+            body: JSON.stringify({
+                physical_extension: physicalExtension,
+                logical_extension: logicalExtension,
+            }),
+        });
+        await this.parse(response);
     }
 
     async step(
@@ -318,11 +371,15 @@ export class Transport {
      * - never falls back to `X-Widget-Key` when user auth was configured.
      */
     private async request(path: string, init: RequestInit): Promise<Response> {
+        return this.requestUrl(this.url(path), init);
+    }
+
+    private async requestUrl(url: string, init: RequestInit): Promise<Response> {
         await this.ensureUserAuthentication();
 
-        let response = await this.fetchWithTimeout(this.url(path), {
+        let response = await this.fetchWithTimeout(url, {
             ...init,
-            headers: this.headers(),
+            headers: this.mergedHeaders(init.headers),
         });
 
         if (
@@ -331,9 +388,9 @@ export class Transport {
             await this.isInvalidUserTokenResponse(response)
         ) {
             await this.refreshUserToken();
-            response = await this.fetchWithTimeout(this.url(path), {
+            response = await this.fetchWithTimeout(url, {
                 ...init,
-                headers: this.headers(),
+                headers: this.mergedHeaders(init.headers),
             });
         }
 
@@ -527,6 +584,37 @@ export class Transport {
 
     private url(path: string): string {
         return `${this.base}/api/widget${path}`;
+    }
+
+    private resolveAgentUrl(url: string): string {
+        if (/^https?:\/\//i.test(url)) return url;
+        if (url.startsWith('/')) return `${this.base}${url}`;
+
+        return `${this.base}/${url}`;
+    }
+
+    private mergedHeaders(overrides: HeadersInit | undefined): Record<string, string> {
+        const headers = this.headers();
+        if (overrides) {
+            new Headers(overrides).forEach((value, key) => {
+                const existing = Object.keys(headers).find((name) => name.toLowerCase() === key.toLowerCase());
+                headers[existing ?? this.canonicalHeaderName(key)] = value;
+            });
+        }
+
+        return headers;
+    }
+
+    private canonicalHeaderName(name: string): string {
+        const known: Record<string, string> = {
+            accept: 'Accept',
+            authorization: 'Authorization',
+            'content-type': 'Content-Type',
+            'last-event-id': 'Last-Event-ID',
+            'x-widget-key': 'X-Widget-Key',
+        };
+
+        return known[name.toLowerCase()] ?? name;
     }
 
     /** A deliberately minted single-use session token (`wt_`) has precedence

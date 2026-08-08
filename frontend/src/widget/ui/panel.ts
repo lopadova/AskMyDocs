@@ -14,6 +14,7 @@ import { IntroCard, mergeIntroLayers } from './intro';
 import { DEFAULT_THEME, buildThemeCss, launcherIconSvg, mergeThemeLayers } from './styles';
 import { UiArtifactRenderer } from './UiArtifactRenderer';
 import { SourceViewer } from './source-viewer';
+import type { AgentRunEvent } from '../../lib/agent-run-events';
 
 const DEFAULT_TITLE = 'Assistente';
 const DEFAULT_LAUNCHER_LABEL = 'Chiedi all’assistente';
@@ -35,6 +36,11 @@ export class WidgetPanel {
     private readonly messages: HTMLElement;
     private readonly introCard: IntroCard;
     private readonly status: HTMLElement;
+    private readonly activity: HTMLElement;
+    private readonly activityMessage: HTMLElement;
+    private readonly activityMeta: HTMLElement;
+    private readonly activityProgress: HTMLElement;
+    private readonly activityActions: HTMLElement;
     private readonly input: HTMLTextAreaElement;
     private readonly send: HTMLButtonElement;
     /** <style> del tema, dentro `root` (scope shadow) — aggiornabile. */
@@ -87,6 +93,19 @@ export class WidgetPanel {
         this.messages = this.el('div', 'amd-messages', { 'data-testid': 'askmydocs-widget-messages', role: 'log', 'aria-live': 'polite' });
         this.introCard = new IntroCard(this.messages, (prompt) => this.submitText(prompt));
         this.status = this.el('div', 'amd-status', { 'data-testid': 'askmydocs-widget-status', 'aria-live': 'polite' });
+        this.activity = this.el('aside', 'amd-activity', {
+            'data-testid': 'askmydocs-widget-agent-activity',
+            'data-state': 'idle',
+            'aria-live': 'polite',
+            hidden: '',
+        });
+        this.activityMessage = this.el('div', 'amd-activity-message', { 'data-testid': 'askmydocs-widget-agent-message' });
+        this.activityMeta = this.el('div', 'amd-activity-meta', { 'data-testid': 'askmydocs-widget-agent-meta' });
+        const progressTrack = this.el('div', 'amd-activity-track');
+        this.activityProgress = this.el('div', 'amd-activity-progress', { 'data-testid': 'askmydocs-widget-agent-progress' });
+        progressTrack.append(this.activityProgress);
+        this.activityActions = this.el('div', 'amd-activity-actions');
+        this.activity.append(this.activityMessage, this.activityMeta, progressTrack, this.activityActions);
 
         const composer = this.el('form', 'amd-composer');
         this.input = this.el('textarea', 'amd-input', {
@@ -101,7 +120,7 @@ export class WidgetPanel {
         this.send.disabled = true;
         composer.append(this.input, this.send);
 
-        this.panel.append(this.header, this.messages, this.status, composer);
+        this.panel.append(this.header, this.messages, this.activity, this.status, composer);
         root.append(this.themeStyle, this.launcher, this.panel);
 
         this.launcher.addEventListener('click', () => this.toggle());
@@ -261,7 +280,75 @@ export class WidgetPanel {
             onPointAt: (target) => this.overlay.pointAt(target),
             onTourStep: (target, message, index, total) => this.overlay.tourStep(target, message, index, total),
             onClearOverlay: () => this.overlay.clear(),
+            onAgentEvent: (event) => this.renderAgentEvent(event),
+            onAgentConfirmation: (event, accept, reject) => this.renderAgentConfirmation(event, accept, reject),
         };
+    }
+
+    private renderAgentEvent(event: AgentRunEvent): void {
+        const italian = event.locale.toLowerCase().startsWith('it');
+        this.activity.hidden = false;
+        this.activity.dataset.state = event.type === 'run.awaiting_confirmation'
+            ? 'confirmation'
+            : event.type.startsWith('run.') && ['run.completed', 'run.partial', 'run.failed', 'run.cancelled'].includes(event.type)
+                ? 'settled'
+                : 'active';
+        this.activity.setAttribute('aria-busy', this.activity.dataset.state === 'active' ? 'true' : 'false');
+        this.activityMessage.textContent = event.message ?? (italian ? 'L’assistente sta lavorando.' : 'The assistant is working.');
+
+        const physical = event.progress?.physical;
+        const logical = event.progress?.logical;
+        const metric = physical && physical.estimated.likely > 0 ? physical : logical;
+        const completed = metric?.completed ?? 0;
+        const estimated = Math.max(completed, metric?.estimated.likely ?? 0);
+        const bits: string[] = [];
+        if (estimated > 0) bits.push(`${completed} / ~${estimated} ${italian ? 'chiamate' : 'calls'}`);
+        if (event.progress?.eta_ms != null) bits.push(`${Math.ceil(event.progress.eta_ms / 1000)}s`);
+        this.activityMeta.textContent = bits.join(' · ');
+        this.activityProgress.style.width = `${estimated > 0 ? Math.min(100, Math.round((completed / estimated) * 100)) : 12}%`;
+        this.activityActions.replaceChildren();
+        if (event.can_cancel && this.activity.dataset.state === 'active') {
+            const cancel = this.el('button', 'amd-btn', {
+                type: 'button',
+                'data-testid': 'askmydocs-widget-agent-cancel',
+            });
+            cancel.textContent = italian ? 'Annulla' : 'Cancel';
+            cancel.addEventListener('click', () => {
+                this.renderAgentCancelled(italian);
+                void this.bridge.cancel();
+            });
+            this.activityActions.append(cancel);
+        }
+    }
+
+    private renderAgentConfirmation(event: AgentRunEvent, accept: () => void, reject: () => void): void {
+        this.renderAgentEvent(event);
+        const italian = event.locale.toLowerCase().startsWith('it');
+        this.activity.dataset.state = 'confirmation';
+        this.activityActions.replaceChildren();
+        const proceed = this.el('button', 'amd-btn primary', {
+            type: 'button',
+            'data-testid': 'askmydocs-widget-agent-continue',
+        });
+        proceed.textContent = italian ? 'Continua la ricerca' : 'Continue search';
+        proceed.addEventListener('click', accept, { once: true });
+        const cancel = this.el('button', 'amd-btn', {
+            type: 'button',
+            'data-testid': 'askmydocs-widget-agent-reject',
+        });
+        cancel.textContent = italian ? 'Annulla' : 'Cancel';
+        cancel.addEventListener('click', () => {
+            this.renderAgentCancelled(italian);
+            reject();
+        }, { once: true });
+        this.activityActions.append(proceed, cancel);
+    }
+
+    private renderAgentCancelled(italian: boolean): void {
+        this.activity.dataset.state = 'settled';
+        this.activity.setAttribute('aria-busy', 'false');
+        this.activityMessage.textContent = italian ? 'La ricerca è stata annullata.' : 'The search was cancelled.';
+        this.activityActions.replaceChildren();
     }
 
     private submitInput(): void {

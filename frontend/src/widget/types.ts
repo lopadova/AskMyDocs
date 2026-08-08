@@ -377,6 +377,22 @@ export interface TurnResponse {
     meta?: Record<string, unknown>;
 }
 
+export interface WidgetAgentRun {
+    id: string;
+    status: string;
+    locale: string;
+    events_url: string;
+    cancel_url: string;
+    continue_url: string;
+    budget?: Record<string, unknown>;
+}
+
+export interface WidgetAgentTurnResponse {
+    session: { id: string; status: string; locale: string };
+    type: 'agent_run';
+    run: WidgetAgentRun;
+}
+
 export interface ToolResult {
     ok: boolean;
     tool: string;

@@ -12,6 +12,7 @@ use App\Services\Widget\WidgetThemeService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Padosoft\AskMyDocsConnectorApi\Services\ApiToolRegistry;
 
 /**
  * GET /api/widget/setup — manifest della skill per il widget FE.
@@ -28,6 +29,7 @@ final class WidgetSetupController extends Controller
         WidgetSkillRegistry $skills,
         WidgetThemeService $theme,
         WidgetIntroService $intro,
+        ApiToolRegistry $apiTools,
     ): JsonResponse
     {
         /** @var WidgetKey $key */
@@ -55,6 +57,10 @@ final class WidgetSetupController extends Controller
             ], 404);
         }
 
+        $activeApiTools = (bool) config('connector-api.chat_tools.enabled', true)
+            ? $apiTools->activeToolsForTenant((string) $key->tenant_id, (string) $key->project_key)
+            : [];
+
         return response()->json([
             'skill' => $skillId,
             'project' => $key->project_key,
@@ -62,6 +68,10 @@ final class WidgetSetupController extends Controller
             'auto_annotation_rules' => $manifest['auto_annotation_rules'] ?? [],
             'default_policies' => $manifest['default_policies'] ?? [],
             'default_locale' => $manifest['default_locale'] ?? 'en',
+            'data_agent' => [
+                'enabled' => $activeApiTools !== [],
+                'tool_count' => count($activeApiTools),
+            ],
             // R27 additivo: identità grafica risolta (stored sui default) per
             // l'applicazione dinamica lato widget. `null` → default.
             'theme' => $theme->resolve($key->theme_config),
