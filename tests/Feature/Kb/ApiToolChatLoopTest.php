@@ -124,6 +124,41 @@ final class ApiToolChatLoopTest extends TestCase
         $this->assertDatabaseCount('api_tool_call_logs', 0);
     }
 
+    public function test_api_tools_can_chain_a_lookup_into_a_dependent_request(): void
+    {
+        $user = User::create([
+            'name' => 'Op',
+            'email' => 'chain@example.com',
+            'password' => Hash::make('secret-pass-123'),
+        ]);
+
+        $this->seedCustomerOrderRoutes();
+
+        Http::fake([
+            'openrouter.ai/*' => Http::sequence()
+                ->push($this->namedToolCallTurn('call_customer', 'find_customer', ['name' => 'Tizio']), 200)
+                ->push($this->namedToolCallTurn('call_orders', 'get_customer_orders', ['customer_id' => 'cust-7']), 200)
+                ->push($this->finalAnswerTurn('Tizio has two open orders.'), 200),
+            'api.example.test/customers*' => Http::response(['items' => [['id' => 'cust-7', 'name' => 'Tizio']]], 200),
+            'api.example.test/orders*' => Http::response(['items' => [['id' => 'ord-1'], ['id' => 'ord-2']]], 200),
+        ]);
+
+        $response = app(McpToolCallingService::class)->chatWithTools(
+            systemPrompt: 'Use live tools when needed.',
+            messages: [['role' => 'user', 'content' => 'Dammi gli ordini di Tizio']],
+            user: $user,
+            context: ['project_key' => null],
+        );
+
+        $this->assertSame('Tizio has two open orders.', $response->content);
+        $this->assertCount(2, $response->toolCalls);
+        $this->assertSame(['find_customer', 'get_customer_orders'], array_column($response->toolCalls, 'name'));
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/customers')
+            && str_contains($request->url(), 'name=Tizio'));
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/orders')
+            && str_contains($request->url(), 'customer_id=cust-7'));
+    }
+
     private function seedOrdersRoute(): void
     {
         $connector = ApiConnector::create([
@@ -168,6 +203,55 @@ final class ApiToolChatLoopTest extends TestCase
         ]);
     }
 
+    private function seedCustomerOrderRoutes(): void
+    {
+        $connector = ApiConnector::create([
+            'name' => 'CRM + ERP',
+            'project_key' => null,
+            'is_active' => true,
+        ]);
+
+        foreach ([
+            ['name' => 'Clienti', 'slug' => 'find_customer', 'url' => 'https://api.example.test/customers', 'param' => 'name'],
+            ['name' => 'Ordini cliente', 'slug' => 'get_customer_orders', 'url' => 'https://api.example.test/orders', 'param' => 'customer_id'],
+        ] as $definition) {
+            $route = ApiRoute::create([
+                'api_connector_id' => $connector->id,
+                'project_key' => '',
+                'name' => $definition['name'],
+                'slug' => $definition['slug'],
+                'description' => $definition['name'],
+                'http_method' => 'GET',
+                'url' => $definition['url'],
+                'mode' => 'tool',
+                'status' => 'active',
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [$definition['param'] => ['type' => 'string']],
+                    'required' => [$definition['param']],
+                ],
+                'tool_definition' => [
+                    'name' => $definition['slug'],
+                    'description' => $definition['name'],
+                    'input_schema' => [
+                        'type' => 'object',
+                        'properties' => [$definition['param'] => ['type' => 'string']],
+                        'required' => [$definition['param']],
+                    ],
+                ],
+            ]);
+
+            ApiRouteParameter::create([
+                'api_route_id' => $route->id,
+                'name' => $definition['param'],
+                'location' => 'query',
+                'source' => 'llm',
+                'type' => 'string',
+                'required' => true,
+            ]);
+        }
+    }
+
     /** @return array<string,mixed> */
     private function toolCallTurn(): array
     {
@@ -181,6 +265,30 @@ final class ApiToolChatLoopTest extends TestCase
                         'id' => 'call_1',
                         'type' => 'function',
                         'function' => ['name' => 'get_orders', 'arguments' => '{"order_id":"10293"}'],
+                    ]],
+                ],
+                'finish_reason' => 'tool_calls',
+            ]],
+            'usage' => ['prompt_tokens' => 10, 'completion_tokens' => 5, 'total_tokens' => 15],
+        ];
+    }
+
+    /** @param array<string,mixed> $arguments */
+    private function namedToolCallTurn(string $id, string $name, array $arguments): array
+    {
+        return [
+            'model' => 'openai/gpt-4o-mini',
+            'choices' => [[
+                'message' => [
+                    'role' => 'assistant',
+                    'content' => '',
+                    'tool_calls' => [[
+                        'id' => $id,
+                        'type' => 'function',
+                        'function' => [
+                            'name' => $name,
+                            'arguments' => json_encode($arguments, JSON_THROW_ON_ERROR),
+                        ],
                     ]],
                 ],
                 'finish_reason' => 'tool_calls',
