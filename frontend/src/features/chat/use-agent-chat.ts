@@ -54,12 +54,15 @@ export function useAgentChat(options: UseAgentChatOptions): UseAgentChatResult {
     const [confirmation, setConfirmation] = useState<AgentConfirmation | null>(null);
     const abortRef = useRef<AbortController | null>(null);
     const runRef = useRef<AgentTurnStarted | null>(null);
+    const turnInFlightRef = useRef(false);
     const lastSequenceRef = useRef(0);
     const generationRef = useRef(0);
     const filtersRef = useRef(filters);
+    const initialMessagesRef = useRef(initialMessages);
     const callbacksRef = useRef({ onFinish, onError });
 
     filtersRef.current = filters;
+    initialMessagesRef.current = initialMessages;
     callbacksRef.current = { onFinish, onError };
 
     useEffect(() => {
@@ -67,14 +70,24 @@ export function useAgentChat(options: UseAgentChatOptions): UseAgentChatResult {
         abortRef.current?.abort();
         abortRef.current = null;
         runRef.current = null;
+        turnInFlightRef.current = false;
         lastSequenceRef.current = 0;
         setActiveRun(null);
         setConfirmation(null);
         setEvents([]);
         setError(null);
         setStatus('ready');
-        setMessages(initialMessages ?? []);
-    }, [conversationId, initialMessages]);
+        setMessages(initialMessagesRef.current ?? []);
+    }, [conversationId]);
+
+    // Message history commonly resolves after a newly-created conversation
+    // has already started its first turn. Hydrate idle conversations, but do
+    // not let that late empty snapshot cancel or overwrite an in-flight run.
+    useEffect(() => {
+        if (initialMessages !== undefined && !turnInFlightRef.current) {
+            setMessages(initialMessages);
+        }
+    }, [initialMessages]);
 
     useEffect(() => () => abortRef.current?.abort(), []);
 
@@ -113,6 +126,7 @@ export function useAgentChat(options: UseAgentChatOptions): UseAgentChatResult {
         setStatus('ready');
         setActiveRun(null);
         runRef.current = null;
+        turnInFlightRef.current = false;
         callbacksRef.current.onFinish?.();
     }, [conversationId]);
 
@@ -133,6 +147,7 @@ export function useAgentChat(options: UseAgentChatOptions): UseAgentChatResult {
     const reportError = useCallback((reason: unknown, generation: number) => {
         if (generation !== generationRef.current) return;
         if (reason instanceof DOMException && reason.name === 'AbortError') return;
+        turnInFlightRef.current = false;
         const next = reason instanceof Error ? reason : new Error(String(reason));
         setError(next);
         setStatus('error');
@@ -149,6 +164,7 @@ export function useAgentChat(options: UseAgentChatOptions): UseAgentChatResult {
         setEvents([]);
         setConfirmation(null);
         setStatus('submitted');
+        turnInFlightRef.current = true;
         lastSequenceRef.current = 0;
         try {
             const liveFilters = filtersRef.current;
@@ -174,6 +190,7 @@ export function useAgentChat(options: UseAgentChatOptions): UseAgentChatResult {
     const stop = useCallback(() => {
         const run = runRef.current;
         abortRef.current?.abort();
+        turnInFlightRef.current = false;
         setStatus('ready');
         if (run) void chatApi.cancelAgentRun(run.cancel_url).catch(() => undefined);
     }, []);
@@ -187,6 +204,7 @@ export function useAgentChat(options: UseAgentChatOptions): UseAgentChatResult {
         abortRef.current = controller;
         setError(null);
         setStatus('submitted');
+        turnInFlightRef.current = true;
         try {
             await chatApi.continueAgentRun(
                 run.continue_url,
