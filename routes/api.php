@@ -49,6 +49,7 @@ use App\Http\Controllers\Api\KbPromotionController;
 use App\Http\Controllers\Api\KbResolveWikilinkController;
 use App\Http\Controllers\Api\Widget\WidgetDocumentPreviewController;
 use App\Http\Controllers\Api\Widget\WidgetSessionController;
+use App\Http\Controllers\Api\Widget\WidgetAgentRunController;
 use App\Http\Controllers\Api\Widget\WidgetSessionTokenController;
 use App\Http\Controllers\Api\Widget\WidgetSetupController;
 use App\Http\Controllers\Api\Widget\WidgetUserTokenController;
@@ -1483,12 +1484,22 @@ Route::middleware(['throttle:120,1', 'widget.key'])
         // dentro il controller (anti-IDOR, R30). /exec-tool + /replay in M4.
         Route::post('/sessions/start', [WidgetSessionController::class, 'start'])
             ->name('api.widget.sessions.start');
+        Route::post('/sessions/agent/start', [WidgetAgentRunController::class, 'start'])
+            ->name('api.widget.sessions.agent.start');
         Route::get('/sessions', [WidgetSessionController::class, 'index'])
             ->name('api.widget.sessions.index');
         Route::get('/sessions/current', [WidgetSessionController::class, 'current'])
             ->name('api.widget.sessions.current');
         Route::post('/sessions/{session}/step', [WidgetSessionController::class, 'step'])
             ->name('api.widget.sessions.step');
+        Route::post('/sessions/{session}/agent', [WidgetAgentRunController::class, 'store'])
+            ->name('api.widget.sessions.agent.store');
+        Route::get('/sessions/{session}/agent-runs/{run}/events', [WidgetAgentRunController::class, 'events'])
+            ->name('api.widget.sessions.agent.events');
+        Route::post('/sessions/{session}/agent-runs/{run}/cancel', [WidgetAgentRunController::class, 'cancel'])
+            ->name('api.widget.sessions.agent.cancel');
+        Route::post('/sessions/{session}/agent-runs/{run}/continue', [WidgetAgentRunController::class, 'resume'])
+            ->name('api.widget.sessions.agent.continue');
         // M4 — esecuzione BE AiTool. Il FE chiama questo quando l'orchestratore
         // emette una tool_call con is_be_tool=true.
         Route::post('/sessions/{session}/exec-tool', [WidgetSessionController::class, 'execTool'])

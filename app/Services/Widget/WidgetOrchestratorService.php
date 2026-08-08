@@ -61,7 +61,24 @@ final class WidgetOrchestratorService
      */
     public function start(WidgetKey $key, array $snapshot, ?string $userMessage, ?string $pageUrl, ?string $origin, ?\App\Models\WidgetIdentity $identity = null, ?string $locale = null): array
     {
-        $session = WidgetSession::create([
+        $session = $this->openSession($key, $pageUrl, $origin, $identity, $locale);
+
+        return $this->runTurn($session, $snapshot, $userMessage, null);
+    }
+
+    /**
+     * Open a widget session without invoking the legacy synchronous DOM loop.
+     * The durable data-agent endpoint uses this factory so both paths pin the
+     * exact same key, project, identity and locale boundaries.
+     */
+    public function openSession(
+        WidgetKey $key,
+        ?string $pageUrl,
+        ?string $origin,
+        ?\App\Models\WidgetIdentity $identity = null,
+        ?string $locale = null,
+    ): WidgetSession {
+        return WidgetSession::create([
             // tenant_id auto-fill via BelongsToTenant (= tenant della key, R30).
             'widget_key_id' => $key->id,
             'widget_identity_id' => $identity?->id,
@@ -74,8 +91,6 @@ final class WidgetOrchestratorService
             'locale' => SupportedLocale::normalize($locale),
             'meta' => ['consecutive_errors' => 0],
         ]);
-
-        return $this->runTurn($session, $snapshot, $userMessage, null);
     }
 
     /**

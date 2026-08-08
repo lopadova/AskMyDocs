@@ -73,4 +73,10 @@ class WidgetSession extends Model
     {
         return $this->hasMany(WidgetSessionStep::class);
     }
+
+    /** @return HasMany<AgentRun> */
+    public function agentRuns(): HasMany
+    {
+        return $this->hasMany(AgentRun::class);
+    }
 }
