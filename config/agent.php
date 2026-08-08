@@ -11,6 +11,13 @@ return [
         'poll_ms' => (int) env('AGENT_EVENT_POLL_MS', 100),
         'stream_seconds' => (float) env('AGENT_EVENT_STREAM_SECONDS', 25),
     ],
+    'tools' => [
+        'pagination_max_pages' => (int) env('AGENT_PAGINATION_MAX_PAGES', 100),
+        'fanout_max_items' => (int) env('AGENT_FANOUT_MAX_ITEMS', 100),
+        'fanout_concurrency' => (int) env('AGENT_FANOUT_CONCURRENCY', 5),
+        'fanout_driver' => env('AGENT_FANOUT_DRIVER', 'process'),
+        'fanout_timeout_seconds' => (int) env('AGENT_FANOUT_TIMEOUT_SECONDS', 90),
+    ],
     'limits' => [
         'iterations' => (int) env('AGENT_ITERATION_LIMIT', 8),
         'logical_soft' => (int) env('AGENT_LOGICAL_SOFT_LIMIT', 12),
