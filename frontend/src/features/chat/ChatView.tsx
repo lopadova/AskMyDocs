@@ -587,57 +587,50 @@ export function ChatView(): ReactNode {
                 }
             />
             <div
+                className="chat-main-column"
                 style={{
                     flex: 1,
                     display: 'flex',
                     flexDirection: 'column',
                     minWidth: 0,
+                    minHeight: 0,
+                    overflow: 'hidden',
                     position: 'relative',
                 }}
             >
                 <header
                     data-testid="chat-header"
-                    style={{
-                        padding: '12px 24px',
-                        borderBottom: '1px solid var(--hairline)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 10,
-                    }}
+                    className="chat-header-shell"
                 >
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                        {activeId !== null ? (
-                            <ConversationTitle
-                                conversationId={activeId}
-                                title={
-                                    activeConversation?.title?.trim()
-                                        ? activeConversation.title
-                                        : `Conversation #${activeId}`
-                                }
-                            />
-                        ) : (
-                            <div style={{ fontSize: 13.5, fontWeight: 500, color: 'var(--fg-0)' }}>
-                                New chat
-                            </div>
-                        )}
-                        <div
-                            style={{
-                                fontSize: 11,
-                                color: 'var(--fg-3)',
-                                fontFamily: 'var(--font-mono)',
-                                marginTop: 2,
-                                display: 'flex',
-                                gap: 10,
-                            }}
-                        >
+                    <span className="chat-header-icon" aria-hidden="true">
+                        <Icon.Chat size={17} />
+                    </span>
+                    <div className="chat-header-content">
+                        <div className="chat-header-title-row">
+                            {activeId !== null ? (
+                                <ConversationTitle
+                                    conversationId={activeId}
+                                    title={
+                                        activeConversation?.title?.trim()
+                                            ? activeConversation.title
+                                            : `Conversation #${activeId}`
+                                    }
+                                />
+                            ) : (
+                                <div className="chat-header-new-title">New chat</div>
+                            )}
+                        </div>
+                        <div className="chat-header-meta">
+                            <span className="chat-header-meta-label">Project</span>
                             <ProjectSelector
                                 value={projectScopeValue}
                                 projects={teamProjectKeys}
                                 allowAll
                                 onChange={handleScopeChange}
                             />
-                            <span>·</span>
-                            <span>{headerMeta}</span>
+                            <span className="chat-header-meta-divider" aria-hidden="true" />
+                            <span className="chat-header-meta-label">Model</span>
+                            <span className="chat-model-chip">{headerMeta}</span>
                         </div>
                     </div>
                     <button

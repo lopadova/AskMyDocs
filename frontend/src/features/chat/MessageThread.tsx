@@ -146,10 +146,9 @@ export function MessageThread({
             aria-label="Conversation messages"
             aria-live="polite"
             aria-busy={isLoadingHistory || isStreaming}
-            className="grid-bg"
-            style={{ flex: 1, overflow: 'auto', padding: '24px 32px' }}
+            className="grid-bg chat-thread-scroll"
         >
-            <div style={{ maxWidth: 780, margin: '0 auto' }}>
+            <div className="chat-thread-content">
                 {state === 'empty' && <EmptyThread />}
                 {state === 'error' && (
                     <div data-testid="chat-thread-error" role="alert" style={errorStyle}>

@@ -244,7 +244,7 @@ export function Composer({
     const serverError = error ? (error.message ?? 'Provider returned an error.') : null;
 
     return (
-        <div style={{ padding: '12px 24px 18px' }}>
+        <div className="chat-composer-shell" style={{ padding: '12px 24px 18px' }}>
             <form
                 data-testid="chat-composer"
                 aria-label="Message composer"

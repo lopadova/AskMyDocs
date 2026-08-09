@@ -27,6 +27,7 @@ describe('AgentActivityBar', () => {
         const cancel = vi.fn();
         render(<AgentActivityBar events={[progressEvent]} active awaitingConfirmation={false} onCancel={cancel} onContinue={() => undefined} />);
 
+        expect(screen.getByTestId('agent-activity-heading')).toHaveTextContent('Ricerca in corso');
         expect(screen.getByTestId('agent-activity-message')).toHaveTextContent('Completate 3 richieste API');
         expect(screen.getByTestId('agent-activity-calls')).toHaveTextContent('3 / ~10 chiamate');
         expect(screen.getByTestId('agent-activity-progress')).toHaveStyle({ width: '30%' });
@@ -41,5 +42,26 @@ describe('AgentActivityBar', () => {
         fireEvent.click(screen.getByTestId('agent-activity-continue'));
         expect(proceed).toHaveBeenCalledOnce();
         expect(screen.getByTestId('agent-activity-bar')).toHaveAttribute('data-state', 'confirmation');
+        expect(screen.getByTestId('agent-activity-heading')).toHaveTextContent('Conferma necessaria');
+    });
+
+    it('keeps a settled summary compact and exposes the chronological timeline on demand', () => {
+        const completedEvent: AgentRunEvent = {
+            ...progressEvent,
+            sequence: 3,
+            type: 'run.completed',
+            message: 'La risposta è pronta.',
+            progress: {
+                ...progressEvent.progress!,
+                physical: { completed: 10, estimated: { min: 10, likely: 10, max: 10 } },
+            },
+        };
+
+        render(<AgentActivityBar events={[progressEvent, completedEvent]} active={false} awaitingConfirmation={false} onCancel={() => undefined} onContinue={() => undefined} />);
+
+        expect(screen.getByTestId('agent-activity-heading')).toHaveTextContent('Attività completata');
+        expect(screen.getByText('Cronologia attività')).toBeInTheDocument();
+        expect(screen.getByText('2')).toBeInTheDocument();
+        expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '100');
     });
 });

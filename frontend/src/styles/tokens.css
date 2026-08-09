@@ -323,6 +323,278 @@ textarea:focus-visible {
 .chat-user-row:focus-within .chat-user-edit { opacity: 1; }
 @media (hover: none) { .chat-user-edit { opacity: 1; } }
 
+/* Chat shell: every vertical region owns its space. min-height: 0 is
+   essential for the message thread to scroll inside the viewport instead
+   of pushing the composer beyond the bottom edge. */
+.chat-main-column {
+  background: var(--bg-0);
+}
+.chat-header-shell {
+  flex: 0 0 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 24px;
+  background: color-mix(in srgb, var(--panel-solid) 94%, var(--accent-a) 6%);
+  border-bottom: 1px solid var(--panel-border-strong);
+  box-shadow: 0 1px 0 var(--hairline), var(--shadow-sm);
+  position: relative;
+  z-index: 2;
+}
+.chat-header-icon {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--fg-0);
+  background: var(--grad-accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent-a) 36%, transparent);
+  border-radius: 10px;
+}
+.chat-header-content {
+  flex: 1;
+  min-width: 0;
+}
+.chat-header-title-row {
+  min-width: 0;
+  min-height: 22px;
+  display: flex;
+  align-items: center;
+}
+.chat-header-new-title {
+  color: var(--fg-0);
+  font-size: 14px;
+  font-weight: 600;
+}
+.chat-header-meta {
+  min-width: 0;
+  margin-top: 5px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--fg-3);
+}
+.chat-header-meta-label {
+  font: 500 9.5px/1 var(--font-sans);
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+.chat-header-meta-divider {
+  width: 1px;
+  height: 16px;
+  margin: 0 2px;
+  background: var(--panel-border-strong);
+}
+.chat-project-selector,
+.chat-model-chip {
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  color: var(--fg-2);
+  background: var(--bg-2);
+  border: 1px solid var(--panel-border-strong);
+  border-radius: 7px;
+  font: 500 10.5px/1 var(--font-mono);
+}
+.chat-project-selector {
+  max-width: 180px;
+  padding: 0 24px 0 8px;
+  cursor: pointer;
+}
+.chat-model-chip {
+  max-width: min(260px, 32vw);
+  padding: 0 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-thread-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 28px clamp(18px, 3vw, 40px);
+  border-top: 1px solid var(--hairline);
+}
+.chat-thread-content {
+  width: 100%;
+  max-width: 860px;
+  margin: 0 auto;
+}
+.chat-composer-shell {
+  flex: 0 0 auto;
+  background: color-mix(in srgb, var(--bg-0) 96%, var(--accent-a) 4%);
+  border-top: 1px solid var(--hairline);
+}
+
+/* Agent activity card: compact summary first, chronological details on
+   demand. overflow:hidden keeps the progress bar and expanded timeline
+   inside the rounded border at every viewport width. */
+.agent-activity-card {
+  flex: 0 0 auto;
+  width: auto;
+  max-width: calc(100% - 48px);
+  margin: 12px 24px;
+  color: var(--fg-1);
+  background: color-mix(in srgb, var(--panel-solid) 94%, var(--accent-a) 6%);
+  border: 1px solid var(--panel-border-strong);
+  border-radius: 14px;
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+.agent-activity-card[data-state="active"] {
+  border-color: color-mix(in srgb, var(--accent-a) 42%, var(--panel-border));
+}
+.agent-activity-card[data-state="confirmation"] {
+  border-color: color-mix(in srgb, var(--warn) 48%, var(--panel-border));
+}
+.agent-activity-card[data-state="settled"] {
+  border-color: color-mix(in srgb, var(--ok) 28%, var(--panel-border));
+}
+.agent-activity-main {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+}
+.agent-activity-icon {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent-b);
+  background: var(--grad-accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent-a) 30%, transparent);
+  border-radius: 9px;
+}
+.agent-activity-card[data-state="settled"] .agent-activity-icon {
+  color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 12%, transparent);
+  border-color: color-mix(in srgb, var(--ok) 28%, transparent);
+}
+.agent-activity-card[data-state="confirmation"] .agent-activity-icon {
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+  border-color: color-mix(in srgb, var(--warn) 28%, transparent);
+}
+.agent-activity-content {
+  flex: 1;
+  min-width: 0;
+}
+.agent-activity-heading-row {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+.agent-activity-heading {
+  flex: 1;
+  min-width: 0;
+  color: var(--fg-0);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.agent-activity-metrics {
+  flex: 0 0 auto;
+  display: inline-flex;
+  gap: 10px;
+  color: var(--fg-3);
+  font: 500 10px/1 var(--font-mono);
+}
+.agent-activity-message {
+  margin-top: 3px;
+  color: var(--fg-2);
+  font-size: 11.5px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.agent-activity-progress-track {
+  height: 4px;
+  margin-top: 9px;
+  overflow: hidden;
+  background: var(--bg-3);
+  border: 1px solid var(--hairline);
+  border-radius: 99px;
+}
+.agent-activity-progress-value {
+  height: 100%;
+  background: var(--grad-accent);
+  border-radius: inherit;
+  transition: width .25s ease;
+}
+.agent-activity-details {
+  color: var(--fg-2);
+  border-top: 1px solid var(--hairline);
+  font-size: 11px;
+}
+.agent-activity-details summary {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 14px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.agent-activity-details summary::-webkit-details-marker { display: none; }
+.agent-activity-details summary::before {
+  content: "›";
+  color: var(--fg-3);
+  font-size: 15px;
+  transform: rotate(0deg);
+  transition: transform .16s ease;
+}
+.agent-activity-details[open] summary::before { transform: rotate(90deg); }
+.agent-activity-details summary:hover { color: var(--fg-1); background: var(--bg-2); }
+.agent-activity-count {
+  min-width: 20px;
+  padding: 2px 6px;
+  color: var(--fg-2);
+  background: var(--bg-3);
+  border: 1px solid var(--panel-border);
+  border-radius: 99px;
+  font: 500 9.5px/1 var(--font-mono);
+  text-align: center;
+}
+.agent-activity-details ol {
+  max-height: 220px;
+  margin: 0;
+  padding: 8px 18px 12px 42px;
+  overflow: auto;
+  border-top: 1px solid var(--hairline);
+}
+.agent-activity-details li {
+  padding: 3px 0;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 720px) {
+  .chat-header-shell { padding: 11px 14px; }
+  .chat-header-icon { display: none; }
+  .chat-header-meta-label,
+  .chat-header-meta-divider { display: none; }
+  .chat-model-chip { max-width: 42vw; }
+  .agent-activity-card {
+    max-width: calc(100% - 28px);
+    margin: 10px 14px;
+  }
+  .agent-activity-main { align-items: flex-start; padding: 11px 12px; }
+  .agent-activity-icon { width: 28px; height: 28px; flex-basis: 28px; }
+  .agent-activity-heading-row { align-items: flex-start; flex-direction: column; gap: 4px; }
+  .agent-activity-metrics { white-space: normal; }
+  .chat-thread-scroll { padding: 20px 14px; }
+  .chat-composer-shell { padding: 10px 14px 14px !important; }
+}
+
 /* chat: conversation-list rows. Inline styles can't express :hover, so
    the row look lives here and is driven by `data-active`. The active row
    gains a soft fill + a left accent bar so the selected conversation is
