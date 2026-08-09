@@ -73,20 +73,11 @@ export function ProjectSelector({
 
     return (
         <select
+            className="chat-project-selector"
             data-testid="chat-project-selector"
             aria-label="Project scope"
             value={value ?? '__unset__'}
             onChange={(e) => onChange(e.target.value)}
-            style={{
-                background: 'transparent',
-                color: 'var(--fg-3)',
-                border: '1px solid var(--panel-border, rgba(255,255,255,.18))',
-                borderRadius: 6,
-                fontFamily: 'var(--font-mono)',
-                fontSize: 11,
-                padding: '0 4px',
-                cursor: 'pointer',
-            }}
         >
             {value === null && (
                 <option value="__unset__" disabled>
