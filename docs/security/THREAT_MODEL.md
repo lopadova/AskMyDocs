@@ -22,7 +22,7 @@ a snapshot.
 |---|---|---|
 | HTTP API + SPA routes | ~261 host routes + 13 vendor-mounted route groups (exploration report; resolved-router CI gate lands in PR 7) | Sanctum + `role:`/`can:` groups + `tenant.authorize`; public subset enumerated in §3 |
 | Artisan CLI | 70 command classes in `app/Console/Commands/` | operator shell access; destructive commands need DB-backed single-use confirm tokens (R21) |
-| Scheduler | 26 `TierOneSchedulerRegistrar::SLOTS` + `eval_nightly` + `ai_act_regulatory_poll` (both config-gated) + dynamic per-installation connector sync (`SerializedSyncScheduler`) | server-side only; `onOneServer()->withoutOverlapping()` |
+| Scheduler | 29 `TierOneSchedulerRegistrar::SLOTS` + `eval_nightly` + `ai_act_regulatory_poll` (both config-gated) + dynamic per-installation connector sync (`SerializedSyncScheduler`) | server-side only; `onOneServer()->withoutOverlapping()` |
 | Queue jobs | 9 job classes in `app/Jobs/` + `App\Connectors\SerializedConnectorSyncJob` + package-owned jobs | payloads are server-minted; initiating identity re-authorized at effect time (SEC-AI-ACT-001 §4) |
 | MCP tools | 46 tools on `KnowledgeBaseServer` (43 host + 3 vendor `Invite*`); **12 write-capable** (lack `#[IsReadOnly]`); count locked by `KnowledgeBaseServerRegistrationTest` | `EnforceMcpScope` + `McpToolAuthorizer`; bidirectional write-tool coverage test lands in PR 3 |
 | SSE streams | 2 (chat stream, tabular-review `generate-stream`) | Sanctum; tabular-review stream tenant scoping verified in PR 4 |

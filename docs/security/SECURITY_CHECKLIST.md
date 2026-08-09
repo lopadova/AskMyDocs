@@ -43,9 +43,9 @@ commit-signature platform settings. All such items are `infra-verification-requi
 and listed in §6.
 
 **Baseline populations** (measured 2026-08-09 @ `7844e9ee` — see THREAT_MODEL §1):
-70 Artisan commands · 26+ scheduler slots · 9+ queue jobs · 46 MCP tools (12
-write-capable) · 2 SSE streams · 5 AI providers · public widget (11 routes) ·
-Tauri desktop · 0 inbound webhooks · 0 CSV exports.
+70 Artisan commands · 29 scheduler slots (+2 config-gated + connector sync) · 9+
+queue jobs · 46 MCP tools (12 write-capable) · 2 SSE streams · 5 AI providers ·
+public widget (11 routes) · Tauri desktop · 0 inbound webhooks · 0 CSV exports.
 
 **Prescreen result (2026-08-09).** `npm run security:rules` green (19 IDs, 88
 dispositions, 8 AI lessons, 3 mirrors). Dangerous-sink sweep: all
@@ -647,7 +647,7 @@ per-surface state; a control is only as strong as its weakest member.
 |---|---|---|---|
 | HTTP / API | ~261 host + 13 vendor route groups | auth decision per group (R32 matrix); resolved-router gate not yet a test | route-exposure gate → PR 7 |
 | CLI (Artisan) | 70 commands | destructive commands gated by R21 confirm tokens; operator-shell trust | verify no unguarded destructive command → PR 7 (adjacent) |
-| Scheduler | 26+ slots + connector sync | server-side only, config-gated, `onOneServer` | — (no external input) |
+| Scheduler | 29 slots + connector sync | server-side only, config-gated, `onOneServer` | — (no external input) |
 | Queue | 9 host jobs + connector/pkg jobs | initiator re-authorized at effect (SEC-AI-ACT §4) | MCP-triggered write re-auth proof → PR 3 |
 | Streaming (SSE) | 2 (chat, tabular-review) | tenant-scoped in-controller (`forTenant`, 404 on miss) | cross-tenant denial regression test → PR 4 |
 | Fallback / retry | provider fallback chain | metered + bounded | PII + provider-policy on fallback branch → PR 8 |
