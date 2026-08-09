@@ -37,7 +37,7 @@ class CspReportController extends Controller
         $decoded = json_decode($raw, true);
         $report = is_array($decoded) ? ($decoded['csp-report'] ?? $decoded) : [];
 
-        Log::channel(config('logging.default'))->warning('csp.violation', [
+        Log::warning('csp.violation', [
             'blocked_uri' => $this->field($report['blocked-uri'] ?? null),
             'violated_directive' => $this->field($report['violated-directive'] ?? null),
             'document_uri' => $this->field($report['document-uri'] ?? null),

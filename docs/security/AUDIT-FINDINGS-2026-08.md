@@ -16,7 +16,7 @@ Severity scale: Critical (public/unauth data exposure or RCE-class) · High
 
 ## Open findings
 
-### F-01 — No security response headers (CSP / HSTS / XFO / nosniff) — Medium
+### F-01 — No security response headers (CSP / HSTS / XFO / nosniff) — Medium — remediation in review (PR 1 #410)
 - **Rule/ID:** `SEC-CSP-001`, `SEC-TLS-001`, response-headers, csp-nonce-cache.
 - **Population:** every HTML response from `SpaController` + `resources/views/app.blade.php` + the widget bootstrap; measured — no middleware emits CSP/HSTS/X-Frame-Options/X-Content-Type-Options today.
 - **Impact:** without CSP a single reflected/stored script (or a compromised dependency in the SPA bundle) executes unconstrained; without HSTS a first-hit downgrade is possible at the edge; without `nosniff`/`X-Frame-Options` MIME-sniffing and clickjacking are open.

@@ -79,7 +79,7 @@ are §6.
 | 11 | ci-workflow-permissions | SEC-CI-PERM-001 | applicable | implemented | workflow permissions blocks present | .github/workflows/* | least-privilege audit + action SHA pinning | PR 9 |
 | 12 | client-ip-identity | SEC-CLIENTIP-001 | applicable | implemented | trusted-proxy handling; IP not used for auth | — | trusted-proxy runtime config | DEPLOY §6 |
 | 13 | edge-credential-leak-protection | — | applicable | infra-verification-required | n/a in repo | — | rotate + verify at deployment edge | INFRA §6 |
-| 14 | content-security-policy | SEC-CSP-001 | applicable | open | no CSP header emitted today | — | nonce-based CSP middleware + app.blade.php nonce | PR 1 |
+| 14 | content-security-policy | SEC-CSP-001 | applicable | regression-tested | SecurityHeaders middleware — nonce CSP, report-only default | SecurityHeadersTest + security-headers.spec.ts | enforce mode = deployment-config; edge emission = infra §6 | PR 1 (#410) |
 | 15 | control-coverage | SEC-COVERAGE-001 | applicable | regression-tested | effective-population arch tests (Tenant*, Matrix) | tests/Architecture/* | route-exposure population gate | PR 7 |
 | 16 | cors-config | SEC-CORS-001 | applicable | implemented | config/cors.php exact origins, R19 CSV trim | cors config test | edge CORS parity evidence | DEPLOY §6 |
 | 17 | db-least-privilege | SEC-DBPRIV-001 | applicable | infra-verification-required | app cannot create extensions at runtime (migrations separate) | — | DB grants + role separation runtime evidence | INFRA §6 |
@@ -121,7 +121,7 @@ are §6.
 | 53 | multi-repository-security-coverage | — | N/A-topology | N/A | single deployable today | — | revisit if components deploy independently | — |
 | 54 | supply-chain-ci | SEC-SUPPLY-001 | applicable | open | committed lockfiles | — | immutable action SHAs + secret isolation audit | PR 9 |
 | 55 | sync-ai-instructions | SYNC-AI-001 | applicable | regression-tested | 8 rules + 3 mirrors + validator | npm run security:rules | — | PR B |
-| 56 | tls-hsts | SEC-TLS-001 | applicable | open | no HSTS header emitted today | — | app-side HSTS (deployed evidence stays INFRA) | PR 1 |
+| 56 | tls-hsts | SEC-TLS-001 | applicable | regression-tested | SecurityHeaders — HSTS over HTTPS in production env | SecurityHeadersTest (HTTPS+env gating) | deployed-edge emission stays INFRA §6 | PR 1 (#410) |
 | 57 | upload-hardening | SEC-UPLOAD-001 | applicable | open | ingest accepts markdown; no magic-byte gate on binary connector fetch | — | decoded MIME/size vs SourceType allow-list | PR 5 |
 | 58 | webhook-verify-before-effects | SEC-WEBHOOK-001 | N/A-topology | N/A | no inbound webhook route exists | — | rule activates when inbound webhook ships | — |
 | 59 | xml-parsing | SEC-XML-001 | applicable | implemented | no untrusted XML parse in host; symfony/yaml safe | — | connector packages own their XML (package CI) | — |
@@ -134,8 +134,8 @@ are §6.
 | 66 | appkey-rotation | SEC-APPKEY-001 | applicable | implemented | APP_KEY used by Laravel crypto | — | key-dependency inventory + previous-key coverage | residual §1 |
 | 67 | backoffice-no-remember | SEC-AUTHHARD-001 | applicable | implemented | Sanctum tokens; no remember-me recaller for staff | auth tests | crafted-recaller negative test | PR 10 |
 | 68 | circuit-breaker | — | applicable | implemented | provider retry/backoff bounds | provider tests | per-service breaker choke point | PR 2 |
-| 69 | csp-nonce-cache | SEC-CSP-REPORT-001 | applicable | open | no nonce yet | — | fresh nonce across cache hit/miss/refresh | PR 1 |
-| 70 | csp-report-collection | SEC-CSP-REPORT-001 | applicable | open | no collector | — | throttled report-only collector | PR 1 |
+| 69 | csp-nonce-cache | SEC-CSP-REPORT-001 | applicable | regression-tested | per-request nonce in SecurityHeaders; no full-page cache in host | SecurityHeadersTest (nonce freshness) | — | PR 1 (#410) |
+| 70 | csp-report-collection | SEC-CSP-REPORT-001 | applicable | regression-tested | CspReportController — bounded, control-char-safe, 404 when unset | SecurityHeadersTest + security-headers.spec.ts | — | PR 1 (#410) |
 | 71 | dependency-regression-gate | — | applicable | open | no advisory baseline file | — | stable advisory IDs + expiring exceptions | PR 9 |
 | 72 | deploy-credentials | — | applicable | infra-verification-required | no deploy secrets in repo | — | protected OIDC deploy identity | INFRA §6 |
 | 73 | dev-dump-anonymization | SEC-DUMP-001 | applicable | implemented | no production dumps in repo | — | anonymization marker verifier | residual §1 |
@@ -147,8 +147,8 @@ are §6.
 | 79 | postmessage-origin | — | N/A-topology | N/A | widget renders same-page; no cross-origin postMessage today | — | activates if widget iframes cross-origin | PR 11 (Tauri) |
 | 80 | processor-register | — | applicable | implemented | provider = subprocessor; documented in FinOps/config | — | residency/DPA register evidence | INFRA §6 |
 | 81 | production-posture | SEC-POSTURA-001 | applicable | implemented | raw-env debug gate; unknown env = production | posture tests | cached-config divergence check | DEPLOY §6 |
-| 82 | request-correlation | — | applicable | implemented | trace_id on chat_logs | FinOps tests | HTTP-wide correlation middleware | PR 1 |
-| 83 | response-headers | — | applicable | open | no security headers middleware | — | exact real headers + emitter ownership | PR 1 |
+| 82 | request-correlation | — | applicable | regression-tested | X-Request-Id in SecurityHeaders (reuse/mint, control-char-safe) + trace_id on chat_logs | SecurityHeadersTest (request-id) | — | PR 1 (#410) |
+| 83 | response-headers | — | applicable | regression-tested | SecurityHeaders middleware (nosniff/XFO/Referrer/Permissions-Policy) | SecurityHeadersTest + security-headers.spec.ts | deployed-edge emission stays INFRA §6 | PR 1 (#410) |
 | 84 | route-exposure-regression-gate | — | applicable | open | no resolved-router gate yet | — | real router regression gate | PR 7 |
 | 85 | sast-regression-gate | — | applicable | open | no SAST in CI | — | baseline/full SAST fail-closed | PR 9 |
 | 86 | session-device-binding | — | applicable | implemented | no IP binding; UA is signal only | — | measured report-only rollout | residual §1 |
@@ -699,7 +699,7 @@ CI green.
 |---|---|---|---|---|
 | A | Audit scaffolding (this doc + threat model + findings + agent + skill) | security-checklist, security-inventory, sync (doc) | method | in review |
 | B | Coverage-gate hardening (bidirectional validator + requiredFiles + typecheck CI) | sync-ai-instructions, control-coverage | — | planned |
-| 1 | Security response headers (CSP nonce, HSTS, XFO, nosniff, Referrer/Permissions-Policy) | content-security-policy, response-headers, csp-nonce-cache, csp-report-collection, tls-hsts, request-correlation | ASVS V3/V12, Top-10 A02/A09 | planned |
+| 1 | Security response headers (CSP nonce, HSTS, XFO, nosniff, Referrer/Permissions-Policy) | content-security-policy, response-headers, csp-nonce-cache, csp-report-collection, tls-hsts, request-correlation | ASVS V3/V12, Top-10 A02/A09 | in review (#410) — enforce mode + edge emission remain deployment/infra |
 | 2 | Outbound SSRF guard (webhook/digest/widget-fetch) | ssrf-outbound, http-client-service, circuit-breaker, external-response-validation | ASVS V13(SSRF), AISVS C4, Top-10 A10 | planned |
 | 3 | MCP write-tool authorization coverage (12 write tools) | rule-ai-agent-actions, ai-initiating-user, multi-surface-gates, fail-closed | AISVS C5/C9/C10, Top-10 A06 | planned |
 | 4 | Tenant scope on SSE + no-`tenant.authorize` blocks | tenant-object-authorization, security-boundaries, frontend-tenant-architecture | ASVS V8, AISVS C8, Top-10 A01 | planned |
