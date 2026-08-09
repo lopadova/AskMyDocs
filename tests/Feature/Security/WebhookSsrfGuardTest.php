@@ -63,7 +63,9 @@ class WebhookSsrfGuardTest extends TestCase
             channelName: 'webhook',
             eventRowId: (int) $row->id,
             tenantId: 'default',
-            url: 'http://127.0.0.1:9200/_bulk',
+            // https so the block is on the resolved-internal-IP path, not merely
+            // the https-only scheme rule.
+            url: 'https://127.0.0.1:9200/_bulk',
             payload: ['text' => 'x'],
         ))->handle();
 

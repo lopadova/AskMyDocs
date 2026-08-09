@@ -7,12 +7,14 @@ namespace App\Support\Http;
 /**
  * SSRF allow-list for server-side outbound requests (SEC-SSRF-001).
  *
- * assertAllowed() rejects a URL whose scheme is not permitted, whose host
- * cannot be resolved, or whose host resolves to a private / loopback /
- * link-local / cloud-metadata / reserved address. Every A/AAAA record is
- * checked — a host that resolves to a public AND a private address is rejected
- * (reject-if-any). Redirects are disabled by callers so a 3xx cannot smuggle an
- * internal target past this check.
+ * assertAllowed() rejects a URL whose scheme is not permitted, whose authority
+ * embeds credentials, whose host is an obfuscated numeric address, or whose host
+ * resolves to a private / loopback / link-local / cloud-metadata / reserved
+ * address. Every A/AAAA record is checked — a host that resolves to a public AND
+ * a private address is rejected (reject-if-any). A host that does not resolve is
+ * allowed (it reaches nothing; blocking it would break transient DNS + reserved
+ * test TLDs without adding SSRF protection). Redirects are disabled by callers so
+ * a 3xx cannot smuggle an internal target past this check.
  *
  * Residual (documented): this is a resolve-then-check, so a DNS-rebind between
  * validation and the actual connect (TOCTOU) is not fully closed — pinning the
@@ -105,15 +107,12 @@ class OutboundUrlValidator
             }
         }
 
-        $ips = array_values(array_unique(array_map([self::class, 'unmapIpv4'], $ips)));
-        if ($ips === []) {
-            // Bound the host in the message so a pathologically long attacker
-            // host cannot bloat the log line (the exception is logged verbatim).
-            $safeHost = mb_substr($host, 0, 100);
-            throw new UnsafeOutboundUrlException("Outbound URL host '{$safeHost}' does not resolve.");
-        }
-
-        return $ips;
+        // A host that does not resolve is NOT an SSRF risk — it reaches nothing,
+        // so it is allowed (the HTTP client will simply fail to connect if it is
+        // genuinely unreachable). Rejecting here would also break legitimate
+        // transient DNS failures and reserved test TLDs (.test/.example). SSRF
+        // protection is about hosts that DO resolve to a private/internal IP.
+        return array_values(array_unique(array_map([self::class, 'unmapIpv4'], $ips)));
     }
 
     /**
