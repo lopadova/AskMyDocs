@@ -80,7 +80,7 @@ final class SendDigestWebhookJob implements ShouldQueue
         }
 
         $response = Http::timeout(self::REQUEST_TIMEOUT_SECONDS)
-            ->withOptions(['allow_redirects' => (bool) config('outbound-http.follow_redirects', false)])
+            ->withOptions(['allow_redirects' => false])
             ->withHeaders($headers)
             ->withBody($body, 'application/json')
             ->post($this->url);

@@ -107,7 +107,10 @@ class OutboundUrlValidator
 
         $ips = array_values(array_unique(array_map([self::class, 'unmapIpv4'], $ips)));
         if ($ips === []) {
-            throw new UnsafeOutboundUrlException("Outbound URL host '{$host}' does not resolve.");
+            // Bound the host in the message so a pathologically long attacker
+            // host cannot bloat the log line (the exception is logged verbatim).
+            $safeHost = mb_substr($host, 0, 100);
+            throw new UnsafeOutboundUrlException("Outbound URL host '{$safeHost}' does not resolve.");
         }
 
         return $ips;

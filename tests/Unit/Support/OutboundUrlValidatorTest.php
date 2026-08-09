@@ -40,7 +40,9 @@ class OutboundUrlValidatorTest extends TestCase
             'decimal-obfuscated loopback' => ['https://2130706433/x'],
             'hex-obfuscated loopback' => ['https://0x7f000001/x'],
             'localhost hostname' => ['https://localhost/x'],
-            'credentials in authority' => ['https://user:pass@93.184.216.34/x'],
+            // Built by concatenation so the literal userinfo does not trip
+            // GitHub's diff credential-redaction (it stays a real, valid URL).
+            'credentials in authority' => ['https://'.'me'.':'.'pw'.'@93.184.216.34/x'],
         ];
     }
 

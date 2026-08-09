@@ -19,7 +19,9 @@ return [
         explode(',', (string) env('OUTBOUND_HTTP_ALLOWED_SCHEMES', 'https')),
     ))),
 
-    // Redirects are disabled on guarded requests: a 3xx to an internal host is
-    // a classic SSRF bypass, and webhooks have no legitimate need to redirect.
-    'follow_redirects' => env('OUTBOUND_HTTP_FOLLOW_REDIRECTS', false),
+    // NOTE: redirects are ALWAYS disabled on guarded requests (hardcoded at the
+    // call site, not configurable). Following a 3xx would let a validated public
+    // URL redirect to an internal host — the classic SSRF bypass — and would
+    // require re-validating every hop. Webhooks have no legitimate need to
+    // redirect, so there is deliberately no knob to re-enable it.
 ];

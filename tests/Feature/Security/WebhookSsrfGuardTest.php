@@ -14,7 +14,8 @@ use Tests\TestCase;
 /**
  * Proves the SSRF guard is wired into BOTH outbound webhook sinks (SEC-SSRF-001,
  * R26): an internal target sends NOTHING on the wire, a public target sends. The
- * short-circuit is proved with Http::assertNothingSent() — transport-agnostic.
+ * short-circuit is proved with Http::assertNothingSent() — both sinks issue
+ * their request through Laravel's HTTP client, so faking it captures every send.
  */
 class WebhookSsrfGuardTest extends TestCase
 {
