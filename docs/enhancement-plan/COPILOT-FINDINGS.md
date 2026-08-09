@@ -486,6 +486,22 @@ decision is traceable.
 
 ---
 
+### PR #406 — Enterprise AI/security rule port
+
+| Path | Category | Pattern | Fix SHA |
+|---|---|---|---|
+| `.github/scripts/security-rules/validate-security-rule-coverage.mjs` | `injection-attack` | The R40 heredoc regression gate rejected backticks but not `$()`; both execute command substitution in an unquoted heredoc. The validator now inventories and rejects both forms, with a red/green regression proof. | _this PR_ |
+| `scripts/local-critic-loop.sh` | `r14-silent-tooling-failure` | Copilot rewrote its response file as UTF-16LE; `grep` emitted a binary-file notice that Bash treated as an arithmetic variable under `set -u`. Normalize NUL/CR bytes, force text grep, require the complete `SUMMARY: <N> must-fix, <M> nit` grammar, validate both counts, and fail closed on malformed output. | _this PR_ |
+| `.github/scripts/security-rules/validate-security-rule-coverage.mjs` | `heredoc-scan-coverage` | Shell command substitution also applies to tab-stripping `<<-DELIMITER` heredocs. Inventory both unquoted heredoc forms and allow tab-indented terminators only for the tab-stripping form. | _this PR_ |
+| `.claude/rules/rule-security-instruction-sync.md` | `validator-contract-drift` | Instruction text must describe checks the validator actually performs. Keep the declared contract synchronized with IDs, dispositions, mirrors, R40 safety and CI wiring. | _this PR_ |
+
+**Calibration:** when a shell template deliberately keeps variable expansion, scan
+for every command-substitution syntax rather than only the syntax that triggered the
+original incident. This extends the existing R19/input-escape lesson to automation
+prompts and is mirrored in `rule-security-ci-supply-chain.md`.
+
+---
+
 ## Appendix — protocol hooks
 
 - Every `fix(enh-*): address Copilot review on PR #N` commit MUST touch this
