@@ -10,7 +10,7 @@ class Message extends Model
 {
     use BelongsToTenant;
 
-    public $timestamps = false;
+    public const UPDATED_AT = null;
 
     protected $fillable = [
         'tenant_id',

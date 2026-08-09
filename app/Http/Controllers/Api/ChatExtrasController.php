@@ -103,21 +103,12 @@ class ChatExtrasController extends Controller
             abort(404, 'Message does not belong to this conversation.');
         }
 
-        // Copy every message up to AND INCLUDING the chosen anchor.
-        // Order primarily by created_at, fall back to id for stable
-        // ordering when timestamps share the same precision (SQLite
-        // tests can produce ties). The id <= filter is the safety net
-        // — created_at ties would otherwise pull post-anchor rows
-        // into the branch.
+        // Message ids are the causal sequence for a conversation. Timestamps
+        // can come from different clocks (database defaults versus queued
+        // workers), so using them here can group answers before questions.
+        // Copy every message up to and including the selected anchor by id.
         $messages = $conversation->messages()
-            ->where(function ($q) use ($message) {
-                $q->where('created_at', '<', $message->created_at)
-                    ->orWhere(function ($q2) use ($message) {
-                        $q2->where('created_at', '=', $message->created_at)
-                            ->where('id', '<=', $message->id);
-                    });
-            })
-            ->orderBy('created_at')
+            ->where('id', '<=', $message->id)
             ->orderBy('id')
             ->get();
 
