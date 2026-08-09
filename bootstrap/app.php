@@ -136,6 +136,11 @@ return Application::configure(basePath: dirname(__DIR__))
         // not a general loosening.
         $middleware->validateCsrfTokens(except: [
             'testing/*',
+            // Browsers POST CSP violation reports as a native request with no
+            // CSRF token; without this exemption every real report would 419.
+            // The collector is unauthenticated, throttled and bounded, and
+            // performs no state-changing side effect from report contents.
+            'csp-report',
         ]);
 
         // (No custom api-stateful group — Laravel 11+ `$middleware->group()`

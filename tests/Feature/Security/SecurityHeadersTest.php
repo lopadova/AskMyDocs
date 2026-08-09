@@ -159,6 +159,24 @@ class SecurityHeadersTest extends TestCase
         $response->assertStatus(404);
     }
 
+    /**
+     * Browsers POST CSP reports with no CSRF token. Testbench does not run the
+     * host bootstrap CSRF middleware, so this locks the production exemption at
+     * the source level; the real-stack 204 is proven by the Playwright spec.
+     */
+    public function test_csp_report_route_is_exempt_from_csrf(): void
+    {
+        // base_path() resolves to the Testbench skeleton, not the host app, so
+        // read the real host bootstrap relative to this test file.
+        $bootstrap = file_get_contents(dirname(__DIR__, 3).'/bootstrap/app.php');
+
+        $this->assertMatchesRegularExpression(
+            "/validateCsrfTokens\(except:\s*\[[^\]]*'csp-report'/s",
+            (string) $bootstrap,
+            'POST /csp-report must be exempt from CSRF or real browser reports 419',
+        );
+    }
+
     private function extractNonce(?string $policy): string
     {
         if ($policy === null) {
