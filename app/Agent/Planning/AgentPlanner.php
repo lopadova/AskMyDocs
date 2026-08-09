@@ -51,6 +51,7 @@ final readonly class AgentPlanner
             $payload,
             $tools,
             (int) config('agent.planner.max_actions_per_plan', 8),
+            array_values(array_filter(array_column($completedActions, 'id'), 'is_string')),
         );
     }
 
@@ -64,6 +65,7 @@ Use documents and API tools together when both can contribute. Plans may contain
 For a value produced by an earlier action use {"\$from":"step_id","path":"items.0.id"} as the argument value.
 The purpose field is a short user-visible operational label, not private reasoning or chain-of-thought.
 Choose answer only when current evidence is sufficient; choose insufficient only after useful tools are exhausted.
+When decision is answer or insufficient, actions must be an empty array. Never invent an answer tool.
 PROMPT;
     }
 
@@ -84,7 +86,11 @@ PROMPT;
                             'items' => [
                                 'type' => 'object',
                                 'properties' => [
-                                    'id' => ['type' => 'string'],
+                                    'id' => [
+                                        'type' => 'string',
+                                        'pattern' => '^[a-z0-9][a-z0-9_-]{0,63}$',
+                                        'description' => 'Unique action identifier. Lowercase letters, digits, underscores and hyphens only.',
+                                    ],
                                     'tool' => ['type' => 'string'],
                                     'arguments' => ['type' => 'object'],
                                     'depends_on' => ['type' => 'array', 'items' => ['type' => 'string']],
