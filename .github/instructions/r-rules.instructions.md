@@ -20,6 +20,20 @@ file is the **path-scoped critical subset** the two Copilot surfaces
 must enforce on every diff, distilled from the rules that show up
 most often in real reviews.
 
+The security catalogue distilled from Lorenzo's security experience is
+canonical under `.claude/rules/rule-security-*.md`. Load these path-scoped
+mirrors whenever their scope matches:
+
+- `.github/instructions/security-ai.instructions.md`
+- `.github/instructions/security-actions.instructions.md`
+- `.github/instructions/security-baseline.instructions.md`
+
+For AI/MCP/widget changes, `SEC-LLM-001` and `SEC-AI-ACT-001` are blocking:
+the model is untrusted, provider/PII/budget/audit coverage includes every path,
+tools authorize before access with immutable initiating identity, model output is
+validated data, and unknown policy/registry/config fails closed. Run
+`npm run security:rules` when the instruction contract changes.
+
 When reviewing code, weight findings against THESE rules first; everything
 else is nitpick territory.
 
