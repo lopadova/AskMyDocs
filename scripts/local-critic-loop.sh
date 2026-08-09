@@ -93,7 +93,7 @@ violations of the AskMyDocs R-rules (see .github/instructions/r-rules.instructio
         one failure path; selectors use testid/role, waits use
         data-state
 - R13 — E2E mocks ONLY external services; intercepting internal
-        routes is a violation unless marked `R13: failure injection`
+        routes is a violation unless marked 'R13: failure injection'
 
 Read these files for the review:
 - Diff to review:     $DIFF_FILE
@@ -125,21 +125,34 @@ copilot --autopilot --yolo \
   -p "$PROMPT" \
   2>&1 | tee "$RESPONSE_FILE"
 
-# 5. Parse SUMMARY line.
-SUMMARY_LINE="$(grep -E '^SUMMARY: [0-9]+ must-fix' "$RESPONSE_FILE" | tail -1 || true)"
+# 5. Parse SUMMARY line. Copilot may invoke PowerShell while reviewing and
+# rewrite the response file as UTF-16LE; strip NUL bytes before grep so a valid
+# ASCII SUMMARY does not become the literal string "Binary file ... matches".
+# Remove CR as well so UTF-16LE/CRLF output has one canonical line ending.
+SUMMARY_LINE="$(tr -d '\000\r' <"$RESPONSE_FILE" | grep -aE '^SUMMARY: [0-9]+ must-fix, [0-9]+ nit$' | tail -1 || true)"
 
 if [[ -z "$SUMMARY_LINE" ]]; then
   echo
-  echo "✗ Could not find 'SUMMARY: <N> must-fix' line in response."
+  echo "✗ Could not find exact 'SUMMARY: <N> must-fix, <M> nit' line in response."
   echo "  Treating as critic-loop failure — review output manually."
   exit 2
 fi
 
-MUST_FIX="$(echo "$SUMMARY_LINE" | sed -E 's/^SUMMARY: ([0-9]+) must-fix.*/\1/')"
+SUMMARY_PATTERN='^SUMMARY: ([0-9]+) must-fix, ([0-9]+) nit$'
+if [[ ! "$SUMMARY_LINE" =~ $SUMMARY_PATTERN ]]; then
+  echo "✗ Malformed SUMMARY contract: '$SUMMARY_LINE'"
+  exit 2
+fi
+MUST_FIX="${BASH_REMATCH[1]}"
+NIT="${BASH_REMATCH[2]}"
+if [[ ! "$MUST_FIX" =~ ^[0-9]+$ || ! "$NIT" =~ ^[0-9]+$ ]]; then
+  echo "✗ Invalid numeric counts parsed from SUMMARY: '$SUMMARY_LINE'"
+  exit 2
+fi
 echo
 echo "$SUMMARY_LINE"
 
-if [[ "$MUST_FIX" -gt 0 ]]; then
+if (( MUST_FIX > 0 )); then
   echo "✗ $MUST_FIX must-fix finding(s). Fix locally, re-run, then push."
   exit 1
 fi

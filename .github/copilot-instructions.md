@@ -645,6 +645,24 @@ including `labeled`. See full rule in `CLAUDE.md` R46 +
 
 ---
 
+## Security rule catalogue — Lorenzo security experience
+
+Canonical rules: `.claude/rules/rule-security-*.md`. Auto-loaded review mirrors:
+`.github/instructions/security-*.instructions.md`. For AI/RAG/MCP/provider/widget
+or model-rendering changes, enforce `SEC-LLM-001` and `SEC-AI-ACT-001` using the
+`secure-ai-surface` skill.
+
+Review the effective population, including SDK, direct HTTP, stream, fallback,
+queue, MCP and widget paths. Provider/model policy, PII, budget, audit, immutable
+initiating identity, idempotency and safe rendering must cover every path. Prompts
+and tenant/admin settings are not security boundaries; unknown policy fails closed.
+
+Mapping and infrastructure residuals:
+`docs/security/LORENZO_SECURITY_EXPERIENCE.md`. Rule/skill/mirror changes must
+pass `npm run security:rules`.
+
+---
+
 ## 7. Testing & CI
 
 - `vendor/bin/phpunit` — SQLite in-memory, migrations under

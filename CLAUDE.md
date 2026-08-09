@@ -1631,6 +1631,25 @@ loop (R40) on that delta before merge.
 
 ---
 
+## Security rule catalogue — Lorenzo security experience
+
+AskMyDocs security rules live under `.claude/rules/rule-security-*.md`; the
+critical path-scoped mirrors used by local/cloud Copilot live under
+`.github/instructions/security-*.instructions.md`. For any AI, RAG, MCP,
+provider, widget or model-rendering change, apply `SEC-LLM-001` and
+`SEC-AI-ACT-001` through `.claude/skills/secure-ai-surface/SKILL.md`.
+
+The central lesson is effective coverage: provider/model policy, PII filtering,
+budget, audit, immutable initiating identity, idempotency and safe rendering must
+cover SDK, direct HTTP, stream, fallback, queue, MCP and widget paths. A prompt or
+tenant/admin setting is never a security boundary; unknown policy fails closed.
+
+The complete source-rule disposition and infrastructure residuals are recorded in
+`docs/security/LORENZO_SECURITY_EXPERIENCE.md`. Any security rule/skill/mirror
+change must keep that matrix synchronized and pass `npm run security:rules`.
+
+---
+
 ## 8. Testing & CI
 
 - `vendor/bin/phpunit` — full suite; SQLite in-memory, migrations live in

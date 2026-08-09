@@ -93,6 +93,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Validate security rule coverage
+        run: npm run security:rules
+
       - name: Run Vitest (react)
         run: npm test
 
