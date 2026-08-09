@@ -6,6 +6,8 @@ namespace App\Jobs;
 
 use App\Models\NotificationEvent;
 use App\Notifications\NotificationEventLogger;
+use App\Support\Http\OutboundUrlValidator;
+use App\Support\Http\UnsafeOutboundUrlException;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -135,6 +137,23 @@ final class SendExternalNotificationJob implements ShouldQueue
             return;
         }
 
+        // SSRF guard (SEC-SSRF-001): reject a destination that resolves to a
+        // private / loopback / link-local / metadata address BEFORE any request
+        // leaves the host. An unsafe URL is a permanent misconfiguration — mark
+        // it failed and do NOT retry (throwing would re-queue it).
+        try {
+            OutboundUrlValidator::assertAllowed($this->url);
+        } catch (UnsafeOutboundUrlException $e) {
+            NotificationEventLogger::append(
+                eventRowId: $this->eventRowId,
+                tenantId: $this->tenantId,
+                channel: $this->channelName,
+                status: 'failed',
+                error: 'blocked by SSRF guard: '.$e->getMessage(),
+            );
+            return;
+        }
+
         // Serialise the payload ONCE with explicit flags. The same
         // bytes are signed (for HMAC) and shipped on the wire — if
         // we let `Http::post()` re-encode internally with different
@@ -148,6 +167,7 @@ final class SendExternalNotificationJob implements ShouldQueue
         }
 
         $response = Http::timeout(self::REQUEST_TIMEOUT_SECONDS)
+            ->withOptions(['allow_redirects' => (bool) config('outbound-http.follow_redirects', false)])
             ->withHeaders($headers)
             ->withBody($body, 'application/json')
             ->post($this->url);

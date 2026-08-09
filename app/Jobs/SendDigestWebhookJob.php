@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Jobs;
 
+use App\Support\Http\OutboundUrlValidator;
+use App\Support\Http\UnsafeOutboundUrlException;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -56,6 +58,20 @@ final class SendDigestWebhookJob implements ShouldQueue
 
     public function handle(): void
     {
+        // SSRF guard (SEC-SSRF-001): block a destination that resolves to a
+        // private / loopback / link-local / metadata address before egress. An
+        // unsafe URL is a permanent misconfiguration — log and stop, never retry.
+        try {
+            OutboundUrlValidator::assertAllowed($this->url);
+        } catch (UnsafeOutboundUrlException $e) {
+            Log::warning('SendDigestWebhookJob: blocked by SSRF guard', [
+                'channel' => $this->channelName,
+                'tenant_id' => $this->tenantId,
+                'reason' => $e->getMessage(),
+            ]);
+            return;
+        }
+
         $body = json_encode($this->payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
 
         $headers = ['Content-Type' => 'application/json'];
@@ -64,6 +80,7 @@ final class SendDigestWebhookJob implements ShouldQueue
         }
 
         $response = Http::timeout(self::REQUEST_TIMEOUT_SECONDS)
+            ->withOptions(['allow_redirects' => (bool) config('outbound-http.follow_redirects', false)])
             ->withHeaders($headers)
             ->withBody($body, 'application/json')
             ->post($this->url);
