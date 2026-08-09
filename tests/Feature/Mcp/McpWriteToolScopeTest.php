@@ -39,6 +39,23 @@ class McpWriteToolScopeTest extends TestCase
         return $tools;
     }
 
+    /**
+     * Resolve a real registered tool name by its read-only status, rather than
+     * hard-coding a literal that could drift from Tool::name() (Copilot #412).
+     */
+    private function toolName(bool $readOnly): string
+    {
+        foreach ($this->registeredTools() as $toolClass) {
+            $reflection = new ReflectionClass($toolClass);
+            $isReadOnly = $reflection->getAttributes(IsReadOnly::class) !== [];
+            if ($isReadOnly === $readOnly) {
+                return $reflection->newInstanceWithoutConstructor()->name();
+            }
+        }
+
+        $this->fail('no '.($readOnly ? 'read-only' : 'write-capable').' tool is registered');
+    }
+
     public function test_every_write_capable_registered_tool_requires_the_write_scope(): void
     {
         $writeNames = EnforceMcpScope::writeToolNames();
@@ -69,17 +86,22 @@ class McpWriteToolScopeTest extends TestCase
 
     public function test_read_only_tool_does_not_require_the_write_scope(): void
     {
-        // A representative read tool must resolve to mcp:read, never write.
+        // A real registered read tool must never appear in the write-scope set.
         $writeNames = EnforceMcpScope::writeToolNames();
-        $this->assertArrayNotHasKey('appsettings', $writeNames);
-        $this->assertArrayNotHasKey('appsettingstool', $writeNames);
+        $readToolNormalized = strtolower((string) preg_replace(
+            '/[^a-z0-9]/',
+            '',
+            $this->toolName(readOnly: true),
+        ));
+
+        $this->assertArrayNotHasKey($readToolNormalized, $writeNames);
     }
 
     public function test_read_scoped_token_is_denied_a_write_tool(): void
     {
         $this->mintToken(['mcp:read']);
 
-        $response = $this->callTool('kb-wiki-promote-tool');
+        $response = $this->callTool($this->toolName(readOnly: false));
 
         $this->assertSame(403, $response->getStatusCode());
         $this->assertStringContainsString('mcp_scope_missing', (string) $response->getContent());
@@ -91,7 +113,7 @@ class McpWriteToolScopeTest extends TestCase
         $this->mintToken(['mcp:read', 'mcp:tools:write']);
 
         $passed = false;
-        $response = $this->callTool('kb-wiki-promote-tool', function () use (&$passed) {
+        $response = $this->callTool($this->toolName(readOnly: false), function () use (&$passed) {
             $passed = true;
 
             return response('ok', 200);
@@ -106,7 +128,7 @@ class McpWriteToolScopeTest extends TestCase
         $this->mintToken(['mcp:read']);
 
         $passed = false;
-        $response = $this->callTool('app-settings-tool', function () use (&$passed) {
+        $response = $this->callTool($this->toolName(readOnly: true), function () use (&$passed) {
             $passed = true;
 
             return response('ok', 200);
