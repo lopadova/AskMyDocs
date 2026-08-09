@@ -41,14 +41,19 @@ class SecurityHeaders
             return $next($request);
         }
 
-        $nonce = $this->prepareNonce();
+        // Only mint a nonce + prime Vite when CSP is actually enabled — pure-API
+        // traffic with CSP off pays nothing.
+        $cspEnabled = (bool) config('security-headers.csp.enabled', true);
+        $nonce = $cspEnabled ? $this->prepareNonce() : null;
         $requestId = $this->resolveRequestId($request);
 
         $response = $next($request);
 
         $this->applyStaticHeaders($response);
         $this->applyHsts($request, $response);
-        $this->applyCsp($response, $nonce);
+        if ($nonce !== null) {
+            $this->applyCsp($response, $nonce);
+        }
         $this->applyRequestId($response, $requestId);
 
         return $response;
@@ -113,13 +118,10 @@ class SecurityHeaders
 
     private function applyCsp(Response $response, string $nonce): void
     {
-        if (! config('security-headers.csp.enabled', true)) {
-            return;
-        }
-
-        // CSP is only meaningful on HTML documents; skip JSON/SSE/binary.
+        // CSP is only meaningful on HTML documents; skip JSON/SSE/binary AND
+        // typeless responses (204/empty), which must not carry a CSP header.
         $contentType = (string) $response->headers->get('Content-Type', '');
-        if ($contentType !== '' && ! Str::contains($contentType, 'text/html')) {
+        if (! Str::contains($contentType, 'text/html')) {
             return;
         }
 

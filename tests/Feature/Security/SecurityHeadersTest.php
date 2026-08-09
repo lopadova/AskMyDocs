@@ -2,7 +2,6 @@
 
 namespace Tests\Feature\Security;
 
-use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
 
 /**
@@ -28,6 +27,7 @@ class SecurityHeadersTest extends TestCase
                 'Content-Type' => 'text/html; charset=UTF-8',
             ]));
             $router->get('/sec-json', fn () => response()->json(['ok' => true]));
+            $router->get('/sec-nocontent', fn () => response()->noContent());
         });
     }
 
@@ -63,6 +63,15 @@ class SecurityHeadersTest extends TestCase
         $this->assertNull($response->headers->get('Content-Security-Policy-Report-Only'));
         $this->assertNull($response->headers->get('Content-Security-Policy'));
         $response->assertHeader('X-Content-Type-Options', 'nosniff');
+    }
+
+    public function test_csp_is_absent_on_typeless_no_content_response(): void
+    {
+        $response = $this->get('/sec-nocontent');
+
+        $response->assertNoContent();
+        $this->assertNull($response->headers->get('Content-Security-Policy-Report-Only'));
+        $this->assertNull($response->headers->get('Content-Security-Policy'));
     }
 
     public function test_csp_nonce_is_fresh_per_request(): void
