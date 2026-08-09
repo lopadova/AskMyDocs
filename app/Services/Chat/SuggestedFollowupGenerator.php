@@ -89,7 +89,6 @@ PROMPT;
     private function fetchLastTurnPair(Conversation $conversation): ?array
     {
         $latest = $conversation->messages()
-            ->orderByDesc('created_at')
             ->orderByDesc('id')
             ->limit(4)
             ->get();

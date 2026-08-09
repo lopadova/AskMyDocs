@@ -44,11 +44,11 @@ class Conversation extends Model
 
     public function messages(): HasMany
     {
-        return $this->hasMany(Message::class)->orderBy('created_at');
+        return $this->hasMany(Message::class);
     }
 
     public function latestMessage(): HasMany
     {
-        return $this->hasMany(Message::class)->latest('created_at')->limit(1);
+        return $this->hasMany(Message::class)->latest('id')->limit(1);
     }
 }
