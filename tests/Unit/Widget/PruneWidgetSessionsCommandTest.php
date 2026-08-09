@@ -28,6 +28,12 @@ final class PruneWidgetSessionsCommandTest extends TestCase
         parent::setUp();
         // Ensure a predictable config value for tests
         config(['widget.session_retention_days' => 90]);
+        // Freeze the clock so exact-cutoff assertions are deterministic: a
+        // session stamped at now()->subDays(90) at setup would otherwise be
+        // fractionally OLDER than the prune command's own now()->subDays(90)
+        // cutoff computed milliseconds later, deleting a session the test
+        // expects to be kept (test_boundary_session_at_exact_cutoff_is_kept).
+        $this->freezeTime();
     }
 
     private function makeKey(array $overrides = []): WidgetKey
