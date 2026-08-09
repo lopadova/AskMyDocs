@@ -88,12 +88,15 @@ class OutboundUrlValidator
             throw new UnsafeOutboundUrlException('Outbound URL host is a numeric/obfuscated address.');
         }
 
+        // A failed lookup (NXDOMAIN) is expected control flow, not an error to
+        // surface — but suppress its warning with a scoped handler rather than
+        // the `@` operator (R7: no @-silenced errors).
         $ips = [];
-        $v4 = @gethostbynamel($host);
+        $v4 = self::withoutWarnings(static fn () => gethostbynamel($host));
         if (is_array($v4)) {
             $ips = $v4;
         }
-        $v6 = @dns_get_record($host, DNS_AAAA);
+        $v6 = self::withoutWarnings(static fn () => dns_get_record($host, DNS_AAAA));
         if (is_array($v6)) {
             foreach ($v6 as $record) {
                 if (isset($record['ipv6'])) {
@@ -124,6 +127,20 @@ class OutboundUrlValidator
         }
 
         return $ip;
+    }
+
+    /**
+     * Run a DNS lookup with warnings suppressed via a scoped error handler
+     * (never the `@` operator — R7). Returns the callback's value.
+     */
+    private static function withoutWarnings(callable $callback): mixed
+    {
+        set_error_handler(static fn (): bool => true);
+        try {
+            return $callback();
+        } finally {
+            restore_error_handler();
+        }
     }
 
     private static function isPublicIp(string $ip): bool
