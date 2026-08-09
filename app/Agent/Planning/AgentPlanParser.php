@@ -9,8 +9,12 @@ use App\Agent\Tools\AgentToolDefinition;
 
 final class AgentPlanParser
 {
-    /** @param array<string,mixed> $payload @param array<string,AgentToolDefinition> $tools */
-    public function parse(array $payload, array $tools, int $maximum = 8): AgentPlan
+    /**
+     * @param array<string,mixed> $payload
+     * @param array<string,AgentToolDefinition> $tools
+     * @param list<string> $completedActionIds
+     */
+    public function parse(array $payload, array $tools, int $maximum = 8, array $completedActionIds = []): AgentPlan
     {
         $decision = (string) ($payload['decision'] ?? '');
         if (! in_array($decision, ['tools', 'answer', 'insufficient'], true)) {
@@ -19,12 +23,24 @@ final class AgentPlanParser
 
         $rawActions = is_array($payload['actions'] ?? null) ? array_values($payload['actions']) : [];
         $maximum = max(1, $maximum);
-        if (count($rawActions) > $maximum || ($decision !== 'tools' && $rawActions !== [])) {
+        if ($decision === 'tools' && count($rawActions) > $maximum) {
             throw new \UnexpectedValueException('Planner returned an invalid action count.');
+        }
+        // A few tool-calling providers attach a synthetic "answer" action to
+        // terminal decisions. Terminal plans are deliberately normalized to
+        // zero executable actions so such output can never dispatch a tool.
+        if ($decision !== 'tools') {
+            $rawActions = [];
         }
 
         $actions = [];
         $knownIds = [];
+        foreach ($completedActionIds as $completedActionId) {
+            $completedActionId = trim($completedActionId);
+            if (preg_match('/^[a-z0-9][a-z0-9_-]{0,63}$/', $completedActionId) === 1) {
+                $knownIds[$completedActionId] = true;
+            }
+        }
         foreach ($rawActions as $index => $raw) {
             if (! is_array($raw)) {
                 throw new \UnexpectedValueException('Planner action must be an object.');
@@ -36,7 +52,7 @@ final class AgentPlanParser
                 is_array($raw['depends_on'] ?? null) ? $raw['depends_on'] : [],
                 'is_string',
             ));
-            if (preg_match('/^[a-z][a-z0-9_-]{0,63}$/', $id) !== 1 || isset($knownIds[$id])) {
+            if (preg_match('/^[a-z0-9][a-z0-9_-]{0,63}$/', $id) !== 1 || isset($knownIds[$id])) {
                 throw new \UnexpectedValueException("Planner action id [{$id}] is invalid or duplicated.");
             }
             if (! isset($tools[$toolName])) {
