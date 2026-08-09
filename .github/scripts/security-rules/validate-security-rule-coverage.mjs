@@ -16,6 +16,9 @@ const requiredFiles = [
     '.github/instructions/security-actions.instructions.md',
     '.github/instructions/security-baseline.instructions.md',
     'docs/security/LORENZO_SECURITY_EXPERIENCE.md',
+    'docs/security/SECURITY_CHECKLIST.md',
+    'docs/security/THREAT_MODEL.md',
+    'docs/security/AUDIT-FINDINGS-2026-08.md',
 ];
 
 const securityControls = [
@@ -111,10 +114,35 @@ for (const lesson of aiHardeningLessons) {
     }
 }
 
+const controlSet = new Set(securityControls);
+
+// Forward: every declared control has a disposition row in the matrix.
 for (const slug of securityControls) {
     const expression = new RegExp(`^\\| ${escapeRegExp(slug)} \\|`, 'm');
     if (!expression.test(matrix)) {
         failures.push(`security control has no explicit disposition: ${slug}`);
+    }
+}
+
+// Reverse: every disposition row in the matrix is a declared control. Catches a
+// stale/orphan matrix row that the forward check alone would silently accept
+// (the bidirectional contract required by rule-security-control-coverage §2).
+const dispositionRowPattern =
+    /^\| ([a-z][a-z0-9-]+) \| (Adopted|Adapted|Infrastructure|N\/A)/gm;
+for (const match of matrix.matchAll(dispositionRowPattern)) {
+    const slug = match[1];
+    if (!controlSet.has(slug)) {
+        failures.push(`matrix disposition row is not a declared control (stale/orphan): ${slug}`);
+    }
+}
+
+// Parity: SECURITY_CHECKLIST.md §1 must reference every control slug, so the
+// checklist and the disposition matrix can never drift apart.
+const checklist = contentByFile.get('docs/security/SECURITY_CHECKLIST.md') ?? '';
+for (const slug of securityControls) {
+    const cell = new RegExp(`\\| ${escapeRegExp(slug)} \\|`);
+    if (!cell.test(checklist)) {
+        failures.push(`SECURITY_CHECKLIST.md §1 is missing control row: ${slug}`);
     }
 }
 
@@ -204,7 +232,7 @@ if (failures.length > 0) {
 
 console.log(
     `Security-rule contract OK: ${requiredIds.length} identifiers, `
-    + `${securityControls.length} control dispositions, `
+    + `${securityControls.length} control dispositions (bidirectional + checklist parity), `
     + `${aiHardeningLessons.length} AI hardening lessons, `
     + `${mirrors.length} Copilot mirrors, safe R40 prompt and parser.`,
 );

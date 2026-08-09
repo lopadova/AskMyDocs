@@ -2,9 +2,9 @@ name: tests
 
 on:
   push:
-    branches: [main, 'feature/v*', 'feature/v*/**']
+    branches: [main, develop, 'feature/v*', 'feature/v*/**']
   pull_request:
-    branches: [main, 'feature/v*', 'feature/v*/**']
+    branches: [main, develop, 'feature/v*', 'feature/v*/**']
     # `labeled` is added on top of the defaults (opened/synchronize/reopened)
     # so that adding the `run-e2e` label (R46 final-gate step) fires a fresh
     # workflow run with the label now present — which lights up the gated
@@ -95,6 +95,9 @@ jobs:
 
       - name: Validate security rule coverage
         run: npm run security:rules
+
+      - name: TypeScript typecheck
+        run: npm run typecheck
 
       - name: Run Vitest (react)
         run: npm test
