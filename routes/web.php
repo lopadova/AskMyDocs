@@ -217,6 +217,13 @@ if (app()->environment('testing')) {
 Route::get('/healthz', fn () => response('ok', 200, ['Content-Type' => 'text/plain']))
     ->name('healthz');
 
+// CSP violation report collector (csp-report-collection). Public + throttled
+// (browsers POST reports without credentials); inert 404 when no report_uri is
+// configured. Bounded body + control-character-safe logging in the controller.
+Route::post('/csp-report', [\App\Http\Controllers\CspReportController::class, 'store'])
+    ->middleware('throttle:60,1')
+    ->name('csp.report');
+
 /*
 |--------------------------------------------------------------------------
 | KITT widget — pagina demo pubblica (non-SPA), solo local/testing

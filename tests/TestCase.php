@@ -288,6 +288,10 @@ abstract class TestCase extends OrchestraTestCase
         $app['config']->set('chat-log', require __DIR__.'/../config/chat-log.php');
         $app['config']->set('sanctum', require __DIR__.'/../config/sanctum.php');
         $app['config']->set('cors', require __DIR__.'/../config/cors.php');
+        // Security response headers (Testbench does not auto-load host config/).
+        // Loaded with its shipped defaults so the matrix + header tests verify
+        // the SECURE configuration, not the framework default.
+        $app['config']->set('security-headers', require __DIR__.'/../config/security-headers.php');
         $app['config']->set('auth', require __DIR__.'/../config/auth.php');
         $app['config']->set('permission', require __DIR__.'/../config/permission.php');
         $app['config']->set('rbac', require __DIR__.'/../config/rbac.php');

@@ -19,6 +19,13 @@ return Application::configure(basePath: dirname(__DIR__))
         // when no header / claim is present (R31 backward-compat with v3).
         $middleware->prepend(\App\Http\Middleware\ResolveTenant::class);
 
+        // Security response headers (SEC-CSP-001 / SEC-TLS-001 / response-headers
+        // / csp-nonce-cache / request-correlation). Appended so it runs LAST on
+        // the way out and stamps the final response of every request — SPA, API,
+        // widget and SSE alike. No-op when config('security-headers.enabled') is
+        // false (R43 OFF path). CSP ships report-only by default.
+        $middleware->append(\App\Http\Middleware\SecurityHeaders::class);
+
         // Canale widget KITT: CORS dedicato per /api/widget/*. Prepended (come
         // ResolveTenant) così gestisce il preflight OPTIONS PRIMA del routing
         // e riflette l'Origin del sito ospite. Il gate reale resta `widget.key`
