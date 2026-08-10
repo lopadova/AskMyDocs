@@ -70,7 +70,7 @@ are §6.
 | 2 | rule-ai-llm-security | SEC-LLM-001 | applicable | implemented | app/Ai/AiManager.php gates; kb_rag prompt delimits untrusted chunks | AiManager + provider tests | provider/model allow-list at construction choke point | PR 8 |
 | 3 | ajax-route-hardening | SEC-AJAX-001 | applicable | regression-tested | every entrypoint has explicit auth decision (Sanctum groups) | AdminAuthorizationMatrixTest | — | PR 7 (gate) |
 | 4 | api-login-gates | SEC-MFA-API-001 | applicable | regression-tested | API/admin/MCP strong-auth consistency | AdminAuthorizationMatrixTest | MFA not implemented — tracked as residual | — |
-| 5 | api-token-lifecycle | SEC-TOKEN-001 | applicable | open | Sanctum opaque tokens; expiration currently null | — | bounded expiry + revoke-on-password-change | PR 10 |
+| 5 | api-token-lifecycle | SEC-TOKEN-001 | applicable | regression-tested | Sanctum expiration bounded (30d, env-configurable) + password reset revokes all tokens | PasswordResetRevokesTokensTest | — | PR 10 (#419) |
 | 6 | audit-trail-integrity | SEC-AUDIT-001 | applicable | regression-tested | kb_canonical_audit + admin_command_audit immutable (no updated_at) | audit feature tests | independent retention evidence | INFRA §6 |
 | 7 | auth-hardening | SEC-AUTHHARD-001 | applicable | implemented | invite-gated register, throttled 6/min/IP, viewer floor | RegisterController tests | — | PR 10 (CSRF negatives) |
 | 8 | aws-iam-sigv4 | SEC-AWSCRED-001 | applicable | infra-verification-required | no static AWS keys in repo | — | OIDC/short-lived role at deploy — needs cloud evidence | INFRA §6 |
@@ -86,7 +86,7 @@ are §6.
 | 18 | dependency-security | SEC-DEPS-001 | applicable | implemented | dependabot.yml (composer/npm/actions) + report-only composer/npm audit CI job | .github/dependabot.yml + tests.yml dependency-audit | flip to blocking + expiring advisory baseline after triaging the ~52 existing advisories | PR 9 (#418) |
 | 19 | deserialization | SEC-DESERIALIZE-001 | applicable | implemented | both unserialize sites carry allowed_classes allow-list | prescreen 2026-08-09 | regression test on allow-list | PR 9 |
 | 20 | dns-dangling | SEC-DNS-001 | applicable | infra-verification-required | n/a in repo | — | external DNS inventory/monitoring | INFRA §6 |
-| 21 | dormant-access | SEC-OFFBOARD-001 | applicable | implemented | membership removal revokes access; final-super-admin guard | SystemAdmin tests | token/session revocation on offboard | PR 10 |
+| 21 | dormant-access | SEC-OFFBOARD-001 | applicable | regression-tested | membership removal revokes access; final-super-admin guard; password reset now revokes all tokens | SystemAdmin tests + PasswordResetRevokesTokensTest | — | PR 10 (#419) |
 | 22 | effective-security-population | SEC-INVENTORY-001 | applicable | regression-tested | behavior-based inventory in threat model + arch tests | tests/Architecture/* | — | PR 7 |
 | 23 | email-auth-dns | SEC-DNSMAIL-001 | applicable | infra-verification-required | n/a in repo | — | SPF/DKIM/DMARC external evidence | INFRA §6 |
 | 24 | env-gate-fail-closed | SEC-ENV-001 | applicable | implemented | /testing/* only under APP_ENV=testing; fake providers gated | env-gate tests | scheduled runtime drift report | DEPLOY §6 |
@@ -130,7 +130,7 @@ are §6.
 | 62 | admin-authorization-granularity | SEC-BOADMIN-001 | applicable | regression-tested | specific capability gates (can:) not blanket admin | Matrix | limiter inventory | PR 7 |
 | 63 | ai-data-flow | SEC-LLM-001 | applicable | implemented | FinOps meters every provider egress path | FinOps tests | PII gate on all egress branches | PR 8 |
 | 64 | ai-initiating-user | SEC-AI-ACT-001 | applicable | regression-tested | initiator captured server-side; MCP write tools gated by write scope + token-tenant match | McpWriteToolScopeTest + job tests | — | PR 3 (#412) |
-| 65 | ai-provider-supply-chain | SEC-LLM-001 | applicable | open | config/ai.php models; runtime-settable paths exist | — | code-owned endpoint/model allow-list | PR 8 |
+| 65 | ai-provider-supply-chain | SEC-LLM-001 | applicable | regression-tested | code-owned provider match in AiManager::resolve; app-settings override validated to configured providers; base-URL config-only; fake refused outside testing/local | AiProviderAllowlistTest | — | PR 8 (#420) |
 | 66 | appkey-rotation | SEC-APPKEY-001 | applicable | implemented | APP_KEY used by Laravel crypto | — | key-dependency inventory + previous-key coverage | residual §1 |
 | 67 | backoffice-no-remember | SEC-AUTHHARD-001 | applicable | implemented | Sanctum tokens; no remember-me recaller for staff | auth tests | crafted-recaller negative test | PR 10 |
 | 68 | circuit-breaker | — | applicable | implemented | provider retry/backoff bounds | provider tests | per-service breaker choke point | PR 2 |
@@ -706,9 +706,9 @@ CI green.
 | 5 | Upload hardening (magic-byte vs SourceType) | upload-hardening | ASVS V5, Top-10 A05 | in review (#416) — FileTypeSniffer at the upload boundary; Browsershot arg-array remains a follow-up nit |
 | 6 | Identity-aware throttle on /kb/chat | public-flow-throttle | ASVS V6.1, AISVS C11, Top-10 A07 | in review (#417) — throttle:kb-chat identity+tenant; no /kb/search route exists |
 | 7 | Route-exposure regression gate | route-exposure-regression-gate, http-surface-inventory | ASVS V4, Top-10 A01 | in review (#421) — resolved-router gate; also asserts every SSE route carries tenant.authorize (locks the F-04 class); no unexpected exposure found |
-| 8 | AI provider/model/base-URL allow-list policy | ai-provider-supply-chain, ai-data-flow, rule-ai-llm-security | AISVS C3/C6, Top-10 A05 | planned |
-| 9 | Supply-chain CI (dependabot + report-only audit) | dependency-security, supply-chain-ci | ASVS V15, AISVS C6, Top-10 A03 | in review (#418) — blocking audit gate + baseline + larastan/SAST are documented follow-ups (need advisory triage) |
-| 10 | Sanctum token lifecycle + CSRF negatives | api-token-lifecycle, dormant-access, backoffice-no-remember | ASVS V7, Top-10 A07 | planned |
+| 8 | AI provider allow-list (regression lock) | ai-provider-supply-chain | AISVS C3/C6, Top-10 A05 | in review (#420) — enforcement already existed; PR adds the regression gate + verified no runtime-settable base-URL/model path |
+| 9 | Supply-chain CI (dependabot + report-only audit) | dependency-security, supply-chain-ci | ASVS V15, AISVS C6, Top-10 A03 | merged #418 2026-08-10 — blocking audit gate + baseline + larastan/SAST are documented follow-ups (need advisory triage) |
+| 10 | Sanctum token lifecycle (bounded expiry + revoke-on-reset) | api-token-lifecycle, dormant-access | ASVS V7, Top-10 A07 | merged #419 2026-08-10 — CSRF is already enforced by Laravel stateful Sanctum on the cookie SPA |
 | 11 | Tauri desktop hardening (capabilities + CSP) | postmessage-origin (Tauri), tls-hsts (client) | ASVS V13, Top-10 A02 | planned |
 
 **Residual (not a PR — tracked in §1/§6):** password-breach-check, MFA,
