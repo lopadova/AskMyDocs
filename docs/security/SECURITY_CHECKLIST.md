@@ -130,7 +130,7 @@ are §6.
 | 62 | admin-authorization-granularity | SEC-BOADMIN-001 | applicable | regression-tested | specific capability gates (can:) not blanket admin | Matrix | limiter inventory | PR 7 |
 | 63 | ai-data-flow | SEC-LLM-001 | applicable | implemented | FinOps meters every provider egress path | FinOps tests | PII gate on all egress branches | PR 8 |
 | 64 | ai-initiating-user | SEC-AI-ACT-001 | applicable | regression-tested | initiator captured server-side; MCP write tools gated by write scope + token-tenant match | McpWriteToolScopeTest + job tests | — | PR 3 (#412) |
-| 65 | ai-provider-supply-chain | SEC-LLM-001 | applicable | open | config/ai.php models; runtime-settable paths exist | — | code-owned endpoint/model allow-list | PR 8 |
+| 65 | ai-provider-supply-chain | SEC-LLM-001 | applicable | regression-tested | code-owned provider match in AiManager::resolve; app-settings override validated to configured providers; base-URL config-only; fake refused outside testing/local | AiProviderAllowlistTest | — | PR 8 (#420) |
 | 66 | appkey-rotation | SEC-APPKEY-001 | applicable | implemented | APP_KEY used by Laravel crypto | — | key-dependency inventory + previous-key coverage | residual §1 |
 | 67 | backoffice-no-remember | SEC-AUTHHARD-001 | applicable | implemented | Sanctum tokens; no remember-me recaller for staff | auth tests | crafted-recaller negative test | PR 10 |
 | 68 | circuit-breaker | — | applicable | implemented | provider retry/backoff bounds | provider tests | per-service breaker choke point | PR 2 |
@@ -706,9 +706,9 @@ CI green.
 | 5 | Upload hardening (magic-byte vs SourceType) | upload-hardening | ASVS V5, Top-10 A05 | in review (#416) — FileTypeSniffer at the upload boundary; Browsershot arg-array remains a follow-up nit |
 | 6 | Identity-aware throttle on /kb/chat | public-flow-throttle | ASVS V6.1, AISVS C11, Top-10 A07 | in review (#417) — throttle:kb-chat identity+tenant; no /kb/search route exists |
 | 7 | Route-exposure regression gate + RBAC matrix completeness | route-exposure-regression-gate, http-surface-inventory, backoffice-exposure, control-coverage | ASVS V4, Top-10 A01 | planned |
-| 8 | AI provider/model/base-URL allow-list policy | ai-provider-supply-chain, ai-data-flow, rule-ai-llm-security | AISVS C3/C6, Top-10 A05 | planned |
+| 8 | AI provider allow-list (regression lock) | ai-provider-supply-chain | AISVS C3/C6, Top-10 A05 | in review (#420) — enforcement already existed; PR adds the regression gate + verified no runtime-settable base-URL/model path |
 | 9 | Supply-chain CI (dependabot + report-only audit) | dependency-security, supply-chain-ci | ASVS V15, AISVS C6, Top-10 A03 | merged #418 2026-08-10 — blocking audit gate + baseline + larastan/SAST are documented follow-ups (need advisory triage) |
-| 10 | Sanctum token lifecycle (bounded expiry + revoke-on-reset) | api-token-lifecycle, dormant-access | ASVS V7, Top-10 A07 | in review (#419) — CSRF is already enforced by Laravel stateful Sanctum on the cookie SPA |
+| 10 | Sanctum token lifecycle (bounded expiry + revoke-on-reset) | api-token-lifecycle, dormant-access | ASVS V7, Top-10 A07 | merged #419 2026-08-10 — CSRF is already enforced by Laravel stateful Sanctum on the cookie SPA |
 | 11 | Tauri desktop hardening (capabilities + CSP) | postmessage-origin (Tauri), tls-hsts (client) | ASVS V13, Top-10 A02 | planned |
 
 **Residual (not a PR — tracked in §1/§6):** password-breach-check, MFA,
