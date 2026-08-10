@@ -1074,5 +1074,23 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('register', function (Request $request) {
             return Limit::perMinute(6)->by($request->ip());
         });
+
+        // SEC-THROTTLE-001 (F-06): the authenticated /kb/chat endpoint drives an
+        // AI provider turn (real spend) but carried no rate limit — one tenant
+        // user could exhaust provider quota / DB capacity for everyone. Key the
+        // limiter by the effective identity AND tenant (not IP alone, which
+        // punishes shared-NAT tenants and is trivially rotated); fall back to IP
+        // for any unauthenticated caller. A zero/invalid config cannot silently
+        // disable it — it floors at 1/min.
+        RateLimiter::for('kb-chat', function (Request $request) {
+            $tenant = app(\App\Support\TenantContext::class)->current();
+            $user = $request->user();
+            $identity = $user !== null
+                ? 'u:'.$user->getAuthIdentifier()
+                : 'ip:'.$request->ip();
+            $max = max(1, (int) config('kb.chat.rate_limit_per_minute', 20));
+
+            return Limit::perMinute($max)->by($identity.'|t:'.$tenant);
+        });
     }
 }

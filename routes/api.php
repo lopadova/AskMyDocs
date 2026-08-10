@@ -161,7 +161,7 @@ Route::middleware([
     // and only constrains Bearer PATs (the desktop demo): a token not scoped
     // for chat is rejected before it can burn provider quota (EnforceTokenAbility).
     Route::post('/kb/chat', KbChatController::class)
-        ->middleware(array_merge($chatMiddleware, ['token.ability:kb:chat']));
+        ->middleware(array_merge($chatMiddleware, ['token.ability:kb:chat', 'throttle:kb-chat']));
     // v8.8.3 — anonymous-chat capability probe. Lets the SPA render the
     // "New anonymous chat" surface as a clean disabled landing (R14/R43)
     // when `kb.anonymous_chat.enabled` is off, instead of only learning
