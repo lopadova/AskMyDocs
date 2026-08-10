@@ -95,7 +95,20 @@ Original finding (as filed):
 - **Remediation:** PR 6 — named rate limiter keyed by identity+tenant (IP fallback for anonymous) on `/api/kb/chat` + `/api/kb/search`; tests: 429 over threshold, independent buckets per tenant.
 - **Residual:** daily cost cap is a separate FinOps control (already metered); this closes the rate dimension.
 
-### F-07 — No resolved-router exposure regression gate — Medium
+### F-07 — No resolved-router exposure regression gate — Medium — remediation in review (PR 7 #421)
+
+**Fixed in PR 7:** `tests/Architecture/RouteExposureTest` enumerates the REAL
+resolved routing table (web.php + api.php, group middleware included) and asserts
+(1) every state-changing route is authenticated or on an 11-entry reasoned
+public allow-list, and (2) every `auth.sse` route also carries `tenant.authorize`
+— locking the exact F-04 IDOR class. **Sweep result:** no unexpected exposure —
+the only un-authenticated mutating routes are the auth/registration/widget-token/
+testing endpoints (all legitimately public), and both SSE routes now carry
+tenant.authorize (the chat stream always did; the tabular-review stream was fixed
+in PR 4). The suspected `eval-harness.api.middleware=[]` / pii-redactor-admin
+gaps from the initial filing did not surface as ungated mutating routes.
+
+Original finding (as filed):
 - **Rule/ID:** `SEC-COVERAGE-001`, route-exposure-regression-gate, http-surface-inventory.
 - **Population:** ~261 host routes + 13 vendor-mounted route groups. The R32 matrix covers a representative endpoint per group, but a new mutating route that forgets its gate — or a vendor package mounting routes with a permissive `['api']` default — can ship green (the exact class of bug R32's first run caught for `ai-act-compliance`).
 - **Impact:** an ungated mutating route is a potential unauth data-exposure or write. Two suspects to confirm in-PR: `eval-harness.api.middleware` reported empty, and `pii-redactor-admin` middleware without an auth fallback.
@@ -103,7 +116,20 @@ Original finding (as filed):
 - **Remediation:** PR 7 — architecture test that loads the **resolved** routing table, asserts every `POST/PUT/PATCH/DELETE` route is in an authenticated group or an explicitly-declared public allow-list, and that every gated group has an R32 matrix row. Fix the two suspects in-PR or spin off.
 - **Residual:** none — this becomes the standing gate.
 
-### F-08 — AI provider/model/base-URL not constrained by a code-owned allow-list — Medium (conditional)
+### F-08 — AI provider allow-list not regression-locked — Low (enforcement already present) — remediation in review (PR 8 #420)
+
+**Trace result — the enforcement already exists (severity downgraded):**
+`AiManager::resolve()` constrains the provider name with a code-owned `match`
+(`default => throw`); the only runtime knob (the `ai.provider` app-settings
+override) is honoured **only** when `config("ai.providers.{name}")` is non-null,
+so an unknown value falls back to the config default (fail-closed); the base URL
+is read from `config('ai.providers.*')` (env), never from a request or app-setting;
+and the `fake` provider throws outside testing/local. The chat request accepts
+only `question` — no user-supplied provider/model/base-URL reaches the client.
+PR 8 adds `AiProviderAllowlistTest` locking all of the above so a future change
+can't silently open a runtime-settable egress.
+
+Original finding (as filed):
 - **Rule/ID:** `SEC-LLM-001` gate #2, ai-provider-supply-chain.
 - **Population:** `app/Ai/AiManager.php` + provider construction; runtime-settable inputs (`app_settings`, `widget.tool_calling_providers`).
 - **Impact (conditional on a runtime-settable path reaching client construction):** if a tenant/admin setting can select provider/model/base-URL without a code-owned allow-list, a mis-set or malicious value could exfiltrate prompts to an unapproved endpoint (a data-subprocessor decision made at runtime). Severity depends on whether the setting actually flows to the client URL — to be confirmed by trace before implementation.
@@ -130,7 +156,17 @@ Original finding (as filed):
 - **Remediation:** PR 9 — `composer audit` + `npm audit` with an expiring advisory baseline, `.github/dependabot.yml`, PHPStan/Larastan baseline, optional CodeQL; verify actions pinned to commit SHAs.
 - **Residual (infra):** CodeQL/SAST at org level may need org setup — that portion stays §6 until a green run exists.
 
-### F-10 — Sanctum token lifecycle + CSRF negatives incomplete — Low
+### F-10 — Sanctum token lifecycle incomplete — Low — remediation in review (PR 10 #419)
+
+**Fixed in PR 10:** `config/sanctum.php` `expiration` was `null` (tokens never
+expire) → now bounded to 30 days (`SANCTUM_TOKEN_EXPIRATION_MINUTES`,
+env-configurable); and `PasswordResetController::reset` now calls
+`$user->tokens()->delete()` so a password reset revokes every issued API token
+(dormant-access). Tested by `PasswordResetRevokesTokensTest`. CSRF on stateful
+routes is already enforced by Laravel's Sanctum stateful guard on the cookie SPA
+(and the one public POST — `/csp-report` — was explicitly CSRF-exempted in PR 1).
+
+Original finding (as filed):
 - **Rule/ID:** `SEC-TOKEN-001`, auth-hardening, dormant-access.
 - **Population:** `config/sanctum.php` (`expiration => null`), password-change flow, stateful SPA routes.
 - **Impact:** non-expiring tokens widen the window on a leaked token; no explicit test that a password change revokes tokens; CSRF negative coverage on stateful routes is thin.
