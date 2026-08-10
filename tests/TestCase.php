@@ -288,6 +288,8 @@ abstract class TestCase extends OrchestraTestCase
         $app['config']->set('chat-log', require __DIR__.'/../config/chat-log.php');
         $app['config']->set('sanctum', require __DIR__.'/../config/sanctum.php');
         $app['config']->set('cors', require __DIR__.'/../config/cors.php');
+        // Outbound-HTTP SSRF policy (Testbench does not auto-load host config/).
+        $app['config']->set('outbound-http', require __DIR__.'/../config/outbound-http.php');
         $app['config']->set('auth', require __DIR__.'/../config/auth.php');
         $app['config']->set('permission', require __DIR__.'/../config/permission.php');
         $app['config']->set('rbac', require __DIR__.'/../config/rbac.php');

@@ -24,7 +24,7 @@ Severity scale: Critical (public/unauth data exposure or RCE-class) · High
 - **Remediation:** PR 1 — `app/Http/Middleware/SecurityHeaders.php`, nonce-based CSP compatible with Vite/SPA + widget, HSTS gated to production posture, exact-value feature tests.
 - **Residual (infra):** headers actually emitted at the edge — §6 items 8/9.
 
-### F-02 — Outbound requests have no SSRF guard — High (conditional)
+### F-02 — Outbound requests have no SSRF guard — Medium (config-set URLs) — remediation in review (PR 2 #411)
 - **Rule/ID:** `SEC-SSRF-001`, http-client-service, circuit-breaker.
 - **Population:** `app/Notifications/Channels/AbstractWebhookChannel.php` (+ Discord/Slack/Teams/Webhook subclasses), `app/Jobs/SendDigestWebhookJob.php`, `app/Jobs/SendExternalNotificationJob.php`, and host fetches in widget theme/intro services. All use raw `Http::` with a tenant/operator-supplied URL and no scheme/IP validation.
 - **Impact (conditional on who can set the webhook URL):** an operator or tenant-admin who can configure a notification/digest webhook can point it at `http://169.254.169.254/…` (cloud metadata), `http://127.0.0.1:…` or an internal service, turning the app server into an SSRF pivot. Severity is High where tenant-admins configure webhooks; Medium if restricted to platform operators.
@@ -32,7 +32,20 @@ Severity scale: Critical (public/unauth data exposure or RCE-class) · High
 - **Remediation:** PR 2 — single guard (https-only, DNS→IP reject of private/loopback/link-local/`169.254.169.254`, redirect re-validation, timeout + response-size cap) reused by all four sinks; negative tests for internal IP / metadata / DNS-rebind / internal-redirect.
 - **Residual:** none once the guard covers every sink (verify no other raw `Http::` egress to a user-controlled host).
 
-### F-03 — MCP write-tool authorization not proven across the population — High
+### F-03 — Read-scoped MCP token can invoke write tools — Medium (admin-minted token) — remediation in review (PR 3 #412)
+
+**Correction after investigation:** the population is **15** write-capable
+registered tools (not 12 — reflection over `KnowledgeBaseServer::$tools` includes
+`KbEraseSubject`, `KbReembedProject`, `InviteGenerateCodes`). Root cause: on the
+`/mcp/kb` server path, `EnforceMcpScope` mapped every non-"propose" tool to
+`mcp:read`, so a token deliberately scoped read-only could still call any write
+tool. Minting a token requires the `manageMcpTools` capability (admin/super-admin),
+so this is a least-privilege/defense-in-depth gap (Medium), not an anonymous hole;
+`KbDetokenize`/`KbEraseSubject` additionally self-check their own permission.
+Fixed in PR 3: write tools now require `mcp:tools:write`, with the write set
+reflection-derived and bidirectionally locked.
+
+Original finding (as filed):
 - **Rule/ID:** `SEC-AI-ACT-001`, AISVS C5/C9/C10, multi-surface-gates (R44).
 - **Population:** 12 write-capable MCP tools lacking `#[IsReadOnly]`: `KbApplySuggestion`, `KbBuildWikiIndex`, `KbDetokenize`, `KbRebuildWikiLinks`, `KbSetEvidenceTier`, `KbSynthesizeConcepts`, `KbWikiHub`, `KbWikiLint`, `KbWikiMaintain`, `KbWikiNavigate`, `KbWikiPromote`, `KbWikiReview` — measured via `grep -L IsReadOnly app/Mcp/Tools/*.php`.
 - **Impact:** `EnforceMcpScope`/`McpToolAuthorizer` exist, but there is no bidirectional test proving **every** write tool routes through the authorization choke point with initiating identity + permission + tenant scope **before** validation/data access. A future write tool that forgets the gate ships green (same blast-radius argument as R32).
@@ -40,13 +53,14 @@ Severity scale: Critical (public/unauth data exposure or RCE-class) · High
 - **Remediation:** PR 3 — architecture test enumerating write-capable tools (no `IsReadOnly`) and asserting authorizer coverage; negative test (write tool without permission → deny, audited). `KbDetokenize` (reverses PII redaction) is the highest-value target and gets an explicit cross-tenant + permission negative test.
 - **Residual:** none once the enumeration test is the gate.
 
-### F-04 — SSE tabular-review stream lacks a cross-tenant denial regression test — Medium
-- **Rule/ID:** `SEC-IDOR-001`, security-boundaries.
-- **Population:** `app/Http/Controllers/Api/Admin/TabularReviewStreamController.php`, route `POST /api/admin/tabular-reviews/{id}/generate-stream` (middleware `auth.sse:sanctum` + `can:viewTabularReviews`, **no** `tenant.authorize`).
-- **Impact:** the controller **already** scopes correctly (`forTenant($ctx->current())` on the review lookup, returns **404** on a cross-tenant id) — so this is a defense-in-depth verification, not a live leak. The gap is the absence of a regression test locking that behavior, and the route relying on in-controller scoping rather than the `tenant.authorize` middleware layer used elsewhere.
-- **Source→sink:** `X-Tenant-Id` header + `{id}` path param → `forTenant()` query → 404 (correct today).
-- **Remediation:** PR 4 — cross-tenant denial test on the SSE endpoint (tenant A cannot stream tenant B's review id → 404); document why `platform.admin` / system-admin blocks intentionally omit `tenant.authorize` (ADR 0023/0024) and confirm `ResolveTenant` trusts `X-Tenant-Id` only after membership check.
-- **Residual:** none.
+### F-04 — Cross-tenant IDOR on the tabular-review SSE stream — **High (confirmed live leak)** — remediation in review (PR 4 #414)
+- **Rule/ID:** `SEC-IDOR-001`, security-boundaries (R30).
+- **Population:** `app/Http/Controllers/Api/Admin/TabularReviewStreamController.php`, route `POST /api/admin/tabular-reviews/{id}/generate-stream` — middleware was `auth.sse:sanctum` + `can:viewTabularReviews`, **no** `tenant.authorize`.
+- **Impact — CORRECTED FROM THE INITIAL FILING:** the initial audit judged this a defense-in-depth gap because the controller scopes with `forTenant(TenantContext::current())`. **Empirical verification proved that wrong.** `ResolveTenant` (global) sets `TenantContext` from the inbound `X-Tenant-Id` header **without any membership check**, and the route lacked `tenant.authorize`. So an admin holding the *global* `viewTabularReviews` permission could send `X-Tenant-Id: victim` → `TenantContext` becomes `victim` → `forTenant('victim')` finds the review → **HTTP 200 streaming another tenant's tabular-review data.** Confirmed in a Testbench harness with `ResolveTenant` active: status **200** with the victim review streamed. This is a live cross-tenant data leak (High).
+- **Source→sink:** attacker `X-Tenant-Id: victim` header → `ResolveTenant` (no membership check) → `TenantContext='victim'` → controller `forTenant('victim')` → 200 + victim data.
+- **Remediation:** PR 4 — add `tenant.authorize` (`AuthorizeTenantHeader`) to the route; it requires the authenticated user to have a membership in the resolved tenant, so a spoofed header now **403s before the controller runs**. `TabularReviewStreamTenantIsolationTest` prepends `ResolveTenant` (mirroring production) and locks both layers: spoofed header → 403, in-tenant cross-review id → 404. The existing `TabularReviewStreamControllerTest` moved off the reserved `default` tenant (which `tenant.authorize` forbids) onto a real `acme` tenant.
+- **Lesson:** this is the audit's headline result — a finding the paper analysis under-rated until it was executed. Every "the controller already scopes it" claim on a route lacking `tenant.authorize` must be verified with `ResolveTenant` active and a spoofed header.
+- **Residual:** none for this route. Follow-up: PR 7's route-exposure gate should flag every other mutating/streaming route missing `tenant.authorize`.
 
 ### F-05 — No decoded-type (magic-byte) validation on ingested binaries — Medium — remediation in review (PR 5 #416)
 
