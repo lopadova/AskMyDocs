@@ -31,6 +31,15 @@ final class FileTypeSniffer
      *
      * @var array<string, string>
      */
+    /**
+     * ZIP local-file-header, empty-archive and spanned-archive signatures. DOCX
+     * is an OOXML zip; a real one always has entries (PK\x03\x04) but we accept
+     * the whole family so a valid edge-case archive is never falsely rejected.
+     *
+     * @var array<int, string>
+     */
+    private const ZIP_SIGNATURES = ["PK\x03\x04", "PK\x05\x06", "PK\x07\x08"];
+
     private const BINARY_SIGNATURES = [
         'pdf' => "%PDF-",
         'zip' => "PK\x03\x04",
@@ -58,7 +67,7 @@ final class FileTypeSniffer
             SourceType::PDF => str_starts_with($head, '%PDF-')
                 ? null
                 : 'declared as PDF but the content is not a PDF (missing %PDF- signature)',
-            SourceType::DOCX => str_starts_with($head, "PK\x03\x04")
+            SourceType::DOCX => self::startsWithAny($head, self::ZIP_SIGNATURES)
                 ? null
                 : 'declared as DOCX but the content is not an OOXML/ZIP container',
             SourceType::MARKDOWN, SourceType::TEXT => self::binarySignatureIn($head),
@@ -66,6 +75,20 @@ final class FileTypeSniffer
             // uploaded as raw files, so there is nothing to sniff here.
             default => null,
         };
+    }
+
+    /**
+     * @param  array<int, string>  $signatures
+     */
+    private static function startsWithAny(string $head, array $signatures): bool
+    {
+        foreach ($signatures as $signature) {
+            if (str_starts_with($head, $signature)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static function binarySignatureIn(string $head): ?string

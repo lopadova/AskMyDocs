@@ -48,7 +48,15 @@ Severity scale: Critical (public/unauth data exposure or RCE-class) · High
 - **Remediation:** PR 4 — cross-tenant denial test on the SSE endpoint (tenant A cannot stream tenant B's review id → 404); document why `platform.admin` / system-admin blocks intentionally omit `tenant.authorize` (ADR 0023/0024) and confirm `ResolveTenant` trusts `X-Tenant-Id` only after membership check.
 - **Residual:** none.
 
-### F-05 — No decoded-type (magic-byte) validation on ingested binaries — Medium
+### F-05 — No decoded-type (magic-byte) validation on ingested binaries — Medium — remediation in review (PR 5 #416)
+
+**Confirmed at the host boundary:** `StageKbUploadRequest::validateFileTypes`
+gated by extension + `getClientMimeType()` (both attacker-controlled). Fixed in
+PR 5 with `App\Support\Kb\FileTypeSniffer` (magic-byte check vs declared
+`SourceType`; DOCX validated as a ZIP container to avoid finfo false-rejects).
+`Browsershot` arg-array (`SEC-SHELL-001`) confirmed a low-risk follow-up nit.
+
+Original finding (as filed):
 - **Rule/ID:** `SEC-UPLOAD-001`, resource-limits.
 - **Population:** KB ingest API (batch ≤ 100), UI staging buffer, and connector-fetched documents (IMAP attachments / cloud files) that flow into per-source chunkers.
 - **Impact:** ingestion trusts the declared source-type/extension; a polyglot or mismatched-MIME payload could be routed to the wrong chunker/parser or persisted with a misleading type. Text-markdown path is normalized (`KbPath`) but the binary connector path lacks a decoded-type vs `SourceType` allow-list gate.

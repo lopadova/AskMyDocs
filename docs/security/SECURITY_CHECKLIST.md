@@ -122,7 +122,7 @@ are §6.
 | 54 | supply-chain-ci | SEC-SUPPLY-001 | applicable | open | committed lockfiles | — | immutable action SHAs + secret isolation audit | PR 9 |
 | 55 | sync-ai-instructions | SYNC-AI-001 | applicable | regression-tested | 8 rules + 3 mirrors + validator | npm run security:rules | — | PR B |
 | 56 | tls-hsts | SEC-TLS-001 | applicable | open | no HSTS header emitted today | — | app-side HSTS (deployed evidence stays INFRA) | PR 1 |
-| 57 | upload-hardening | SEC-UPLOAD-001 | applicable | open | ingest accepts markdown; no magic-byte gate on binary connector fetch | — | decoded MIME/size vs SourceType allow-list | PR 5 |
+| 57 | upload-hardening | SEC-UPLOAD-001 | applicable | regression-tested | FileTypeSniffer magic-byte check vs declared SourceType at StageKbUploadRequest boundary | FileTypeSnifferTest + KbUploadMagicByteTest | connector-fetched binaries covered by package CI | PR 5 (#416) |
 | 58 | webhook-verify-before-effects | SEC-WEBHOOK-001 | N/A-topology | N/A | no inbound webhook route exists | — | rule activates when inbound webhook ships | — |
 | 59 | xml-parsing | SEC-XML-001 | applicable | implemented | no untrusted XML parse in host; symfony/yaml safe | — | connector packages own their XML (package CI) | — |
 | 60 | rule-build-verification | BUILD-VERIFY-001 | applicable | regression-tested | fresh phpunit+vitest+e2e evidence per PR | .github/workflows/tests.yml | — | PR 9 |
@@ -703,7 +703,7 @@ CI green.
 | 2 | Outbound SSRF guard (webhook/digest/widget-fetch) | ssrf-outbound, http-client-service, circuit-breaker, external-response-validation | ASVS V13(SSRF), AISVS C4, Top-10 A10 | planned |
 | 3 | MCP write-tool authorization coverage (12 write tools) | rule-ai-agent-actions, ai-initiating-user, multi-surface-gates, fail-closed | AISVS C5/C9/C10, Top-10 A06 | planned |
 | 4 | Tenant scope on SSE + no-`tenant.authorize` blocks | tenant-object-authorization, security-boundaries, frontend-tenant-architecture | ASVS V8, AISVS C8, Top-10 A01 | planned |
-| 5 | Upload hardening (magic-byte/MIME vs SourceType) | upload-hardening, resource-limits, shell-command-array | ASVS V5, Top-10 A05 | planned |
+| 5 | Upload hardening (magic-byte vs SourceType) | upload-hardening | ASVS V5, Top-10 A05 | in review (#416) — FileTypeSniffer at the upload boundary; Browsershot arg-array remains a follow-up nit |
 | 6 | Identity-aware throttle on public chat/search | public-flow-throttle, resource-limits | ASVS V6.1, AISVS C11, Top-10 A07 | planned |
 | 7 | Route-exposure regression gate + RBAC matrix completeness | route-exposure-regression-gate, http-surface-inventory, backoffice-exposure, control-coverage | ASVS V4, Top-10 A01 | planned |
 | 8 | AI provider/model/base-URL allow-list policy | ai-provider-supply-chain, ai-data-flow, rule-ai-llm-security | AISVS C3/C6, Top-10 A05 | planned |
