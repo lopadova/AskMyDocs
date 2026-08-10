@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\Admin\Kb;
 
+use App\Support\Kb\FileTypeSniffer;
 use App\Support\Kb\SourceType;
 use App\Support\KbPath;
 use Illuminate\Foundation\Http\FormRequest;
@@ -95,6 +96,18 @@ class StageKbUploadRequest extends FormRequest
                     "files.{$i}",
                     'Unsupported file type. Allowed: md, markdown, txt, pdf, docx.',
                 );
+
+                continue;
+            }
+
+            // SEC-UPLOAD-001: the extension / client MIME above are attacker-
+            // controlled. Verify the file's REAL leading bytes are consistent
+            // with the declared type so a polyglot or a binary smuggled under a
+            // .md/.pdf name is rejected at the boundary, never routed to the
+            // wrong chunker.
+            $mismatch = FileTypeSniffer::mismatchReason((string) $file->getRealPath(), $type);
+            if ($mismatch !== null) {
+                $validator->errors()->add("files.{$i}", "File content does not match its type: {$mismatch}.");
             }
         }
     }
