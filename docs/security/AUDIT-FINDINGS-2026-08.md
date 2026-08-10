@@ -62,7 +62,15 @@ Original finding (as filed):
 - **Lesson:** this is the audit's headline result — a finding the paper analysis under-rated until it was executed. Every "the controller already scopes it" claim on a route lacking `tenant.authorize` must be verified with `ResolveTenant` active and a spoofed header.
 - **Residual:** none for this route. Follow-up: PR 7's route-exposure gate should flag every other mutating/streaming route missing `tenant.authorize`.
 
-### F-05 — No decoded-type (magic-byte) validation on ingested binaries — Medium
+### F-05 — No decoded-type (magic-byte) validation on ingested binaries — Medium — remediation in review (PR 5 #416)
+
+**Confirmed at the host boundary:** `StageKbUploadRequest::validateFileTypes`
+gated by extension + `getClientMimeType()` (both attacker-controlled). Fixed in
+PR 5 with `App\Support\Kb\FileTypeSniffer` (magic-byte check vs declared
+`SourceType`; DOCX validated as a ZIP container to avoid finfo false-rejects).
+`Browsershot` arg-array (`SEC-SHELL-001`) confirmed a low-risk follow-up nit.
+
+Original finding (as filed):
 - **Rule/ID:** `SEC-UPLOAD-001`, resource-limits.
 - **Population:** KB ingest API (batch ≤ 100), UI staging buffer, and connector-fetched documents (IMAP attachments / cloud files) that flow into per-source chunkers.
 - **Impact:** ingestion trusts the declared source-type/extension; a polyglot or mismatched-MIME payload could be routed to the wrong chunker/parser or persisted with a misleading type. Text-markdown path is normalized (`KbPath`) but the binary connector path lacks a decoded-type vs `SourceType` allow-list gate.
