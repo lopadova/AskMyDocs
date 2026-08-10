@@ -31,15 +31,22 @@ class RouteExposureTest extends TestCase
      *
      * @var array<int, string>
      */
+    /** Exact middleware names that authenticate. @var array<int, string> */
+    private const AUTH_EXACT = ['auth', 'tenant.authorize', 'widget.key', 'mcp.scope'];
+
+    /**
+     * Prefixes that authenticate/authorize. `auth:` / `auth.` are precise so a
+     * hypothetical `authorize-*` alias is NOT mistaken for authentication.
+     *
+     * @var array<int, string>
+     */
     private const AUTH_PREFIXES = [
-        'auth',                 // auth, auth:sanctum, auth.sse, auth.sse:sanctum
+        'auth:',                // auth:sanctum
+        'auth.',                // auth.sse, auth.sse:sanctum
         'role:',
         'can:',
         'permission:',
         'role_or_permission:',
-        'tenant.authorize',
-        'widget.key',
-        'mcp.scope',
     ];
 
     /**
@@ -74,6 +81,9 @@ class RouteExposureTest extends TestCase
     private function routeHasAuth(Route $route): bool
     {
         foreach (array_filter($route->gatherMiddleware(), 'is_string') as $m) {
+            if (in_array($m, self::AUTH_EXACT, true)) {
+                return true;
+            }
             foreach (self::AUTH_PREFIXES as $prefix) {
                 if (str_starts_with($m, $prefix)) {
                     return true;
