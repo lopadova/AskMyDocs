@@ -16,7 +16,7 @@ Severity scale: Critical (public/unauth data exposure or RCE-class) · High
 
 ## Open findings
 
-### F-01 — No security response headers (CSP / HSTS / XFO / nosniff) — Medium — remediation in review (PR 1 #410)
+### F-01 — No security response headers (CSP / HSTS / XFO / nosniff) — Medium — remediated — PR 1 merged #410 2026-08-10
 - **Rule/ID:** `SEC-CSP-001`, `SEC-TLS-001`, response-headers, csp-nonce-cache.
 - **Population:** every HTML response from `SpaController` + `resources/views/app.blade.php` + the widget bootstrap; measured — no middleware emits CSP/HSTS/X-Frame-Options/X-Content-Type-Options today.
 - **Impact:** without CSP a single reflected/stored script (or a compromised dependency in the SPA bundle) executes unconstrained; without HSTS a first-hit downgrade is possible at the edge; without `nosniff`/`X-Frame-Options` MIME-sniffing and clickjacking are open.
@@ -24,7 +24,7 @@ Severity scale: Critical (public/unauth data exposure or RCE-class) · High
 - **Remediation:** PR 1 — `app/Http/Middleware/SecurityHeaders.php`, nonce-based CSP compatible with Vite/SPA + widget, HSTS gated to production posture, exact-value feature tests.
 - **Residual (infra):** headers actually emitted at the edge — §6 items 8/9.
 
-### F-02 — Outbound requests have no SSRF guard — Medium (config-set URLs) — remediation in review (PR 2 #411)
+### F-02 — Outbound requests have no SSRF guard — Medium (config-set URLs) — remediated — PR 2 merged #411 2026-08-10
 - **Rule/ID:** `SEC-SSRF-001`, http-client-service, circuit-breaker.
 - **Population:** `app/Notifications/Channels/AbstractWebhookChannel.php` (+ Discord/Slack/Teams/Webhook subclasses), `app/Jobs/SendDigestWebhookJob.php`, `app/Jobs/SendExternalNotificationJob.php`, and host fetches in widget theme/intro services. All use raw `Http::` with a tenant/operator-supplied URL and no scheme/IP validation.
 - **Impact (conditional on who can set the webhook URL):** an operator or tenant-admin who can configure a notification/digest webhook can point it at `http://169.254.169.254/…` (cloud metadata), `http://127.0.0.1:…` or an internal service, turning the app server into an SSRF pivot. Severity is High where tenant-admins configure webhooks; Medium if restricted to platform operators.
@@ -32,7 +32,7 @@ Severity scale: Critical (public/unauth data exposure or RCE-class) · High
 - **Remediation:** PR 2 — single guard (https-only, DNS→IP reject of private/loopback/link-local/`169.254.169.254`, redirect re-validation, timeout + response-size cap) reused by all four sinks; negative tests for internal IP / metadata / DNS-rebind / internal-redirect.
 - **Residual:** none once the guard covers every sink (verify no other raw `Http::` egress to a user-controlled host).
 
-### F-03 — Read-scoped MCP token can invoke write tools — Medium (admin-minted token) — remediation in review (PR 3 #412)
+### F-03 — Read-scoped MCP token can invoke write tools — Medium (admin-minted token) — remediated — PR 3 merged #412 2026-08-10
 
 **Correction after investigation:** the population is **15** write-capable
 registered tools (not 12 — reflection over `KnowledgeBaseServer::$tools` includes
@@ -53,7 +53,7 @@ Original finding (as filed):
 - **Remediation:** PR 3 — architecture test enumerating write-capable tools (no `IsReadOnly`) and asserting authorizer coverage; negative test (write tool without permission → deny, audited). `KbDetokenize` (reverses PII redaction) is the highest-value target and gets an explicit cross-tenant + permission negative test.
 - **Residual:** none once the enumeration test is the gate.
 
-### F-04 — Cross-tenant IDOR on the tabular-review SSE stream — **High (confirmed live leak)** — remediation in review (PR 4 #414)
+### F-04 — Cross-tenant IDOR on the tabular-review SSE stream — **High (confirmed live leak)** — remediated — PR 4 merged #414 2026-08-10
 - **Rule/ID:** `SEC-IDOR-001`, security-boundaries (R30).
 - **Population:** `app/Http/Controllers/Api/Admin/TabularReviewStreamController.php`, route `POST /api/admin/tabular-reviews/{id}/generate-stream` — middleware was `auth.sse:sanctum` + `can:viewTabularReviews`, **no** `tenant.authorize`.
 - **Impact — CORRECTED FROM THE INITIAL FILING:** the initial audit judged this a defense-in-depth gap because the controller scopes with `forTenant(TenantContext::current())`. **Empirical verification proved that wrong.** `ResolveTenant` (global) sets `TenantContext` from the inbound `X-Tenant-Id` header **without any membership check**, and the route lacked `tenant.authorize`. So an admin holding the *global* `viewTabularReviews` permission could send `X-Tenant-Id: victim` → `TenantContext` becomes `victim` → `forTenant('victim')` finds the review → **HTTP 200 streaming another tenant's tabular-review data.** Confirmed in a Testbench harness with `ResolveTenant` active: status **200** with the victim review streamed. This is a live cross-tenant data leak (High).
@@ -62,7 +62,7 @@ Original finding (as filed):
 - **Lesson:** this is the audit's headline result — a finding the paper analysis under-rated until it was executed. Every "the controller already scopes it" claim on a route lacking `tenant.authorize` must be verified with `ResolveTenant` active and a spoofed header.
 - **Residual:** none for this route. Follow-up: PR 7's route-exposure gate should flag every other mutating/streaming route missing `tenant.authorize`.
 
-### F-05 — No decoded-type (magic-byte) validation on ingested binaries — Medium — remediation in review (PR 5 #416)
+### F-05 — No decoded-type (magic-byte) validation on ingested binaries — Medium — remediated — PR 5 merged #416 2026-08-10
 
 **Confirmed at the host boundary:** `StageKbUploadRequest::validateFileTypes`
 gated by extension + `getClientMimeType()` (both attacker-controlled). Fixed in
@@ -78,7 +78,7 @@ Original finding (as filed):
 - **Remediation:** PR 5 — magic-byte/MIME check vs the `SourceType` allow-list at the ingest boundary (decoded type must match declared); reject polyglot/mismatch/oversize; negative tests. Also verify `Browsershot` PDF export uses an argument array, not string interpolation (`SEC-SHELL-001`).
 - **Residual:** none for host; connector-package binary handling covered by package CI.
 
-### F-06 — /kb/chat has no identity+tenant-aware throttle — Medium — remediation in review (PR 6 #417)
+### F-06 — /kb/chat has no identity+tenant-aware throttle — Medium — remediated — PR 6 merged #417 2026-08-10
 
 **Scope correction:** there is **no `/api/kb/search` route** (verified); the gap
 is the authenticated `POST /kb/chat` (auth:sanctum + tenant.authorize group) with
@@ -95,7 +95,7 @@ Original finding (as filed):
 - **Remediation:** PR 6 — named rate limiter keyed by identity+tenant (IP fallback for anonymous) on `/api/kb/chat` + `/api/kb/search`; tests: 429 over threshold, independent buckets per tenant.
 - **Residual:** daily cost cap is a separate FinOps control (already metered); this closes the rate dimension.
 
-### F-07 — No resolved-router exposure regression gate — Medium — remediation in review (PR 7 #421)
+### F-07 — No resolved-router exposure regression gate — Medium — remediated — PR 7 merged #421 2026-08-10
 
 **Fixed in PR 7:** `tests/Architecture/RouteExposureTest` enumerates the REAL
 resolved routing table (web.php + api.php, group middleware included) and asserts
@@ -116,7 +116,7 @@ Original finding (as filed):
 - **Remediation:** PR 7 — architecture test that loads the **resolved** routing table, asserts every `POST/PUT/PATCH/DELETE` route is in an authenticated group or an explicitly-declared public allow-list, and that every gated group has an R32 matrix row. Fix the two suspects in-PR or spin off.
 - **Residual:** none — this becomes the standing gate.
 
-### F-08 — AI provider allow-list not regression-locked — Low (enforcement already present) — remediation in review (PR 8 #420)
+### F-08 — AI provider allow-list not regression-locked — Low (enforcement already present) — remediated — PR 8 merged #420 2026-08-10
 
 **Trace result — the enforcement already exists (severity downgraded):**
 `AiManager::resolve()` constrains the provider name with a code-owned `match`
@@ -137,7 +137,7 @@ Original finding (as filed):
 - **Remediation:** PR 8 — after the trace: exact code-owned allow-list at the construction choke point (provider ∈ known set, base-URL host ∈ validated list at boot, model ∈ configured list; fail-closed on unknown); negative tests. If the trace shows no runtime-settable path reaches the URL, downgrade to `implemented` + add the guard test as a regression lock.
 - **Residual:** none.
 
-### F-09 — No dependency-audit / SAST CI gate — Medium — partial remediation in review (PR 9 #418)
+### F-09 — No dependency-audit / SAST CI gate — Medium — partial remediation merged — PR 9 #418 2026-08-10 (larastan/SAST follow-ups tracked)
 
 **PR 9 ships the safe, mergeable parts:** `.github/dependabot.yml` (composer +
 npm + github-actions, weekly grouped update PRs + immediate advisory PRs) and a
@@ -156,7 +156,7 @@ Original finding (as filed):
 - **Remediation:** PR 9 — `composer audit` + `npm audit` with an expiring advisory baseline, `.github/dependabot.yml`, PHPStan/Larastan baseline, optional CodeQL; verify actions pinned to commit SHAs.
 - **Residual (infra):** CodeQL/SAST at org level may need org setup — that portion stays §6 until a green run exists.
 
-### F-10 — Sanctum token lifecycle incomplete — Low — remediation in review (PR 10 #419)
+### F-10 — Sanctum token lifecycle incomplete — Low — remediated — PR 10 merged #419 2026-08-10
 
 **Fixed in PR 10:** `config/sanctum.php` `expiration` was `null` (tokens never
 expire) → now bounded to 30 days (`SANCTUM_TOKEN_EXPIRATION_MINUTES`,
@@ -173,7 +173,7 @@ Original finding (as filed):
 - **Remediation:** PR 10 — bounded, env-configurable token expiry default; token-revocation-on-password-change test; CSRF negative tests; crafted-recaller-cookie rejection test (backoffice-no-remember).
 - **Residual:** none.
 
-### F-11 — Tauri desktop capabilities are broad; CSP is null — Low — remediation in review (PR 11 #422)
+### F-11 — Tauri desktop capabilities are broad; CSP is null — Low — remediated — PR 11 merged #422 2026-08-10
 
 **PR 11 (safe, mergeable subset — Tauri config is not CI-testable here):**
 `tauri.conf.json` `app.security.csp` was `null` (no webview CSP) → set to a
