@@ -104,7 +104,7 @@ are §6.
 | 36 | password-policy | SEC-PWPOLICY-001 | applicable | implemented | consistent password rules across flows | auth tests | breach-check integration | residual §1 |
 | 37 | path-containment | SEC-PATH-001 | applicable | regression-tested | KbPath::normalize() rejects .. and normalizes | KbPathTest | — | — |
 | 38 | pii-encryption | SEC-PII-CRYPT-001 | applicable | implemented | classified sensitive fields encrypted (vault) | vault tests | key rotation evidence | INFRA §6 |
-| 39 | public-flow-throttle | SEC-THROTTLE-001 | applicable | open | widget throttled; /api/kb/chat + /api/kb/search not identity-aware | — | named identity+tenant limiter | PR 6 |
+| 39 | public-flow-throttle | SEC-THROTTLE-001 | applicable | regression-tested | `throttle:kb-chat` limiter keyed identity+tenant on POST /kb/chat (floors at 1/min); widget already throttled; no /kb/search route exists | KbChatThrottleTest | daily cost cap is separate FinOps control | PR 6 (#417) |
 | 40 | race-conditions | SEC-RACE-001 / R21 | applicable | regression-tested | confirm-token consume inside lockForUpdate txn | CommandRunner concurrency test | — | — |
 | 41 | raw-sql-inventory | SEC-RAWSQL-001 | applicable | implemented | DB::raw/whereRaw parametrized or aggregate-only | prescreen 2026-08-09 | arch analyzer for raw SQL | PR 9 |
 | 42 | redis-production-posture | SEC-REDIS-001 | applicable | infra-verification-required | n/a in repo | — | TLS/auth/network runtime evidence | INFRA §6 |
@@ -704,7 +704,7 @@ CI green.
 | 3 | MCP write-tool scope gate (15 write tools) | rule-ai-agent-actions, ai-initiating-user | AISVS C5/C9/C10, Top-10 A06 | merged #412 2026-08-10 — mcp:tools:write required, reflection-locked |
 | 4 | Tenant scope on SSE (tabular-review stream) — **real IDOR fix** | tenant-object-authorization, security-boundaries | ASVS V8, AISVS C8, Top-10 A01 | merged #414 2026-08-10 — confirmed cross-tenant leak (200→403) closed with tenant.authorize |
 | 5 | Upload hardening (magic-byte vs SourceType) | upload-hardening | ASVS V5, Top-10 A05 | in review (#416) — FileTypeSniffer at the upload boundary; Browsershot arg-array remains a follow-up nit |
-| 6 | Identity-aware throttle on public chat/search | public-flow-throttle, resource-limits | ASVS V6.1, AISVS C11, Top-10 A07 | planned |
+| 6 | Identity-aware throttle on /kb/chat | public-flow-throttle | ASVS V6.1, AISVS C11, Top-10 A07 | in review (#417) — throttle:kb-chat identity+tenant; no /kb/search route exists |
 | 7 | Route-exposure regression gate + RBAC matrix completeness | route-exposure-regression-gate, http-surface-inventory, backoffice-exposure, control-coverage | ASVS V4, Top-10 A01 | planned |
 | 8 | AI provider/model/base-URL allow-list policy | ai-provider-supply-chain, ai-data-flow, rule-ai-llm-security | AISVS C3/C6, Top-10 A05 | planned |
 | 9 | Supply-chain & SAST CI (composer/npm audit, dependabot, larastan) | dependency-security, supply-chain-ci, sast-regression-gate, dependency-regression-gate | ASVS V15, AISVS C6, Top-10 A03 | planned |
