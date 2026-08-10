@@ -144,7 +144,7 @@ are §6.
 | 76 | gdpr-consent-and-access | SEC-GDPR-001 | applicable | implemented | DSAR/erasure via PII tri-surface + AI-Act package | PII/AI-Act tests | consent notice version evidence | INFRA §6 |
 | 77 | http-surface-inventory | — | applicable | regression-tested | RouteExposureTest enumerates the resolved router; mutating routes authenticated-or-declared-public (11 reasoned public) | RouteExposureTest | — | PR 7 (#421) |
 | 78 | log-retention-and-siem | SEC-SIEM-001 | applicable | infra-verification-required | prune jobs present (chat-log:prune etc.) | prune tests | off-host SIEM delivery evidence | INFRA §6 |
-| 79 | postmessage-origin | — | N/A-topology | N/A | widget renders same-page; no cross-origin postMessage today | — | activates if widget iframes cross-origin | PR 11 (Tauri) |
+| 79 | postmessage-origin | — | applicable | deployment-config-required | Tauri webview CSP set (was null): default-src self, object-src none, base-uri self, frame-ancestors none; dropped https private-IP allowances | (Tauri config — validated JSON; needs a desktop build to smoke) | script-src 'self' + LAN-wildcard/dangerous-settings → dev-only capability are build-gated follow-ups | PR 11 (#422) |
 | 80 | processor-register | — | applicable | implemented | provider = subprocessor; documented in FinOps/config | — | residency/DPA register evidence | INFRA §6 |
 | 81 | production-posture | SEC-POSTURA-001 | applicable | implemented | raw-env debug gate; unknown env = production | posture tests | cached-config divergence check | DEPLOY §6 |
 | 82 | request-correlation | — | applicable | implemented | trace_id on chat_logs | FinOps tests | HTTP-wide correlation middleware | PR 1 |
@@ -709,7 +709,7 @@ CI green.
 | 8 | AI provider allow-list (regression lock) | ai-provider-supply-chain | AISVS C3/C6, Top-10 A05 | in review (#420) — enforcement already existed; PR adds the regression gate + verified no runtime-settable base-URL/model path |
 | 9 | Supply-chain CI (dependabot + report-only audit) | dependency-security, supply-chain-ci | ASVS V15, AISVS C6, Top-10 A03 | merged #418 2026-08-10 — blocking audit gate + baseline + larastan/SAST are documented follow-ups (need advisory triage) |
 | 10 | Sanctum token lifecycle (bounded expiry + revoke-on-reset) | api-token-lifecycle, dormant-access | ASVS V7, Top-10 A07 | merged #419 2026-08-10 — CSRF is already enforced by Laravel stateful Sanctum on the cookie SPA |
-| 11 | Tauri desktop hardening (capabilities + CSP) | postmessage-origin (Tauri), tls-hsts (client) | ASVS V13, Top-10 A02 | planned |
+| 11 | Tauri desktop hardening (CSP + capability trim) | postmessage-origin (Tauri) | ASVS V13, Top-10 A02 | in review (#422) — CSP set (was null) + dropped https private-IP allowances; deeper LAN/dev-capability split is build-gated |
 
 **Residual (not a PR — tracked in §1/§6):** password-breach-check, MFA,
 appkey-rotation inventory, session-device-binding report-only rollout,

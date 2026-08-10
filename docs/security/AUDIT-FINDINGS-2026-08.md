@@ -173,7 +173,21 @@ Original finding (as filed):
 - **Remediation:** PR 10 — bounded, env-configurable token expiry default; token-revocation-on-password-change test; CSRF negative tests; crafted-recaller-cookie rejection test (backoffice-no-remember).
 - **Residual:** none.
 
-### F-11 — Tauri desktop capabilities are broad; CSP is null — Low
+### F-11 — Tauri desktop capabilities are broad; CSP is null — Low — remediation in review (PR 11 #422)
+
+**PR 11 (safe, mergeable subset — Tauri config is not CI-testable here):**
+`tauri.conf.json` `app.security.csp` was `null` (no webview CSP) → set to a
+hardening policy (`default-src 'self'`, `script-src 'self' 'unsafe-inline'`,
+`object-src 'none'`, `base-uri 'self'`, `frame-ancestors 'none'`, `form-action
+'self'`; `connect-src 'self' https: http:` preserves backend + LAN self-hosting).
+Removed the two `https://192.168.*.*` / `https://10.*.*.*` allowances from the
+http capability (https on a private IP with a valid cert is essentially
+nonexistent; http LAN stays for self-hosting). **Build-gated follow-ups** (need a
+`tauri build` to validate, so not done blind): tighten `script-src` to `'self'`,
+move the remaining LAN wildcards + the `dangerous-settings`/`acceptInvalidCerts`
+capability into a **dev-only** capability profile.
+
+Original finding (as filed):
 - **Rule/ID:** `SEC-TLS-001` (client), postmessage-origin (Tauri).
 - **Population:** `desktop/src-tauri/capabilities/default.json` (LAN wildcards `192.168.*.*`/`10.*.*.*`, `acceptInvalidCerts`), `desktop/src-tauri/tauri.conf.json` (CSP null).
 - **Impact:** a production desktop build accepting invalid certs on LAN wildcards weakens transport auth; a null CSP in the webview removes a defense layer. Low because it needs a local network attacker + a shipped desktop build.
