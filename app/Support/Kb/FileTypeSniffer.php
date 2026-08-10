@@ -42,7 +42,6 @@ final class FileTypeSniffer
 
     private const BINARY_SIGNATURES = [
         'pdf' => "%PDF-",
-        'zip' => "PK\x03\x04",
         'png' => "\x89PNG\r\n\x1a\n",
         'jpeg' => "\xFF\xD8\xFF",
         'gif87' => 'GIF87a',
@@ -53,12 +52,22 @@ final class FileTypeSniffer
     ];
 
     /**
+     * Bytes scanned for the declared-text NUL/binary check. Signatures live at
+     * offset 0 so a small window suffices for them; NUL bytes can appear later,
+     * so we scan a larger prefix (a real markdown/text file has none here).
+     */
+    private const TEXT_SCAN_BYTES = 8192;
+
+    /**
      * Returns a human-readable error when the file's real content does not
      * match its declared type, or null when the content is acceptable.
      */
     public static function mismatchReason(string $realPath, SourceType $declared): ?string
     {
-        $head = self::readHead($realPath, 16);
+        // Read a larger prefix so the declared-text NUL scan is not limited to
+        // the first few bytes (a binary could keep its first bytes text-like);
+        // the magic-number signatures below only look at offset 0.
+        $head = self::readHead($realPath, self::TEXT_SCAN_BYTES);
         if ($head === null) {
             return 'file could not be read for type verification';
         }
@@ -93,6 +102,10 @@ final class FileTypeSniffer
 
     private static function binarySignatureIn(string $head): ?string
     {
+        if (self::startsWithAny($head, self::ZIP_SIGNATURES)) {
+            return 'declared as text/markdown but the content is a zip binary';
+        }
+
         foreach (self::BINARY_SIGNATURES as $label => $signature) {
             if (str_starts_with($head, $signature)) {
                 return "declared as text/markdown but the content is a {$label} binary";

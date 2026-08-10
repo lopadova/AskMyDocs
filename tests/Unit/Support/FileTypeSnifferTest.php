@@ -20,7 +20,9 @@ class FileTypeSnifferTest extends TestCase
     protected function tearDown(): void
     {
         foreach ($this->tmp as $path) {
-            @unlink($path);
+            if (is_file($path)) {
+                unlink($path);
+            }
         }
         parent::tearDown();
     }
