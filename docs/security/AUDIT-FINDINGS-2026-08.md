@@ -94,7 +94,20 @@ Original finding (as filed):
 - **Remediation:** PR 7 — architecture test that loads the **resolved** routing table, asserts every `POST/PUT/PATCH/DELETE` route is in an authenticated group or an explicitly-declared public allow-list, and that every gated group has an R32 matrix row. Fix the two suspects in-PR or spin off.
 - **Residual:** none — this becomes the standing gate.
 
-### F-08 — AI provider/model/base-URL not constrained by a code-owned allow-list — Medium (conditional)
+### F-08 — AI provider allow-list not regression-locked — Low (enforcement already present) — remediation in review (PR 8 #420)
+
+**Trace result — the enforcement already exists (severity downgraded):**
+`AiManager::resolve()` constrains the provider name with a code-owned `match`
+(`default => throw`); the only runtime knob (the `ai.provider` app-settings
+override) is honoured **only** when `config("ai.providers.{name}")` is non-null,
+so an unknown value falls back to the config default (fail-closed); the base URL
+is read from `config('ai.providers.*')` (env), never from a request or app-setting;
+and the `fake` provider throws outside testing/local. The chat request accepts
+only `question` — no user-supplied provider/model/base-URL reaches the client.
+PR 8 adds `AiProviderAllowlistTest` locking all of the above so a future change
+can't silently open a runtime-settable egress.
+
+Original finding (as filed):
 - **Rule/ID:** `SEC-LLM-001` gate #2, ai-provider-supply-chain.
 - **Population:** `app/Ai/AiManager.php` + provider construction; runtime-settable inputs (`app_settings`, `widget.tool_calling_providers`).
 - **Impact (conditional on a runtime-settable path reaching client construction):** if a tenant/admin setting can select provider/model/base-URL without a code-owned allow-list, a mis-set or malicious value could exfiltrate prompts to an unapproved endpoint (a data-subprocessor decision made at runtime). Severity depends on whether the setting actually flows to the client URL — to be confirmed by trace before implementation.
