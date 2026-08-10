@@ -32,7 +32,20 @@ Severity scale: Critical (public/unauth data exposure or RCE-class) · High
 - **Remediation:** PR 2 — single guard (https-only, DNS→IP reject of private/loopback/link-local/`169.254.169.254`, redirect re-validation, timeout + response-size cap) reused by all four sinks; negative tests for internal IP / metadata / DNS-rebind / internal-redirect.
 - **Residual:** none once the guard covers every sink (verify no other raw `Http::` egress to a user-controlled host).
 
-### F-03 — MCP write-tool authorization not proven across the population — High
+### F-03 — Read-scoped MCP token can invoke write tools — Medium (admin-minted token) — remediation in review (PR 3 #412)
+
+**Correction after investigation:** the population is **15** write-capable
+registered tools (not 12 — reflection over `KnowledgeBaseServer::$tools` includes
+`KbEraseSubject`, `KbReembedProject`, `InviteGenerateCodes`). Root cause: on the
+`/mcp/kb` server path, `EnforceMcpScope` mapped every non-"propose" tool to
+`mcp:read`, so a token deliberately scoped read-only could still call any write
+tool. Minting a token requires the `manageMcpTools` capability (admin/super-admin),
+so this is a least-privilege/defense-in-depth gap (Medium), not an anonymous hole;
+`KbDetokenize`/`KbEraseSubject` additionally self-check their own permission.
+Fixed in PR 3: write tools now require `mcp:tools:write`, with the write set
+reflection-derived and bidirectionally locked.
+
+Original finding (as filed):
 - **Rule/ID:** `SEC-AI-ACT-001`, AISVS C5/C9/C10, multi-surface-gates (R44).
 - **Population:** 12 write-capable MCP tools lacking `#[IsReadOnly]`: `KbApplySuggestion`, `KbBuildWikiIndex`, `KbDetokenize`, `KbRebuildWikiLinks`, `KbSetEvidenceTier`, `KbSynthesizeConcepts`, `KbWikiHub`, `KbWikiLint`, `KbWikiMaintain`, `KbWikiNavigate`, `KbWikiPromote`, `KbWikiReview` — measured via `grep -L IsReadOnly app/Mcp/Tools/*.php`.
 - **Impact:** `EnforceMcpScope`/`McpToolAuthorizer` exist, but there is no bidirectional test proving **every** write tool routes through the authorization choke point with initiating identity + permission + tenant scope **before** validation/data access. A future write tool that forgets the gate ships green (same blast-radius argument as R32).
