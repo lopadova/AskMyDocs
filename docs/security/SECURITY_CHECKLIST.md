@@ -697,19 +697,19 @@ CI green.
 
 | PR | Title | Closes (controls) | Standards touched | Status |
 |---|---|---|---|---|
-| A | Audit scaffolding (this doc + threat model + findings + agent + skill) | security-checklist, security-inventory, sync (doc) | method | in review |
-| B | Coverage-gate hardening (bidirectional validator + requiredFiles + typecheck CI) | sync-ai-instructions, control-coverage | — | planned |
-| 1 | Security response headers (CSP nonce, HSTS, XFO, nosniff, Referrer/Permissions-Policy) | content-security-policy, response-headers, csp-nonce-cache, csp-report-collection, tls-hsts, request-correlation | ASVS V3/V12, Top-10 A02/A09 | in review (#410) — enforce mode + edge emission remain deployment/infra |
+| A | Audit scaffolding (this doc + threat model + findings + agent + skill) | security-checklist, security-inventory, sync (doc) | method | merged #408 2026-08-10 |
+| B | Coverage-gate hardening (bidirectional validator + requiredFiles + typecheck CI) | sync-ai-instructions, control-coverage | — | merged #409 2026-08-10 |
+| 1 | Security response headers (CSP nonce, HSTS, XFO, nosniff, Referrer/Permissions-Policy) | content-security-policy, response-headers, csp-nonce-cache, csp-report-collection, tls-hsts, request-correlation | ASVS V3/V12, Top-10 A02/A09 | merged #410 2026-08-10 — 15 PHPUnit assertions lock the header contract; enforce mode + edge emission remain deployment/infra; the E2E spec validates on the healthy-infra run (suite currently times out at the 30-min job cap) |
 | 2 | Outbound SSRF guard (webhook/digest) | ssrf-outbound, http-client-service | ASVS V13(SSRF), AISVS C4, Top-10 A10 | merged #411 2026-08-10 — widget URLs client-rendered (SANO); circuit-breaker choke-point remains open |
 | 3 | MCP write-tool scope gate (15 write tools) | rule-ai-agent-actions, ai-initiating-user | AISVS C5/C9/C10, Top-10 A06 | merged #412 2026-08-10 — mcp:tools:write required, reflection-locked |
 | 4 | Tenant scope on SSE (tabular-review stream) — **real IDOR fix** | tenant-object-authorization, security-boundaries | ASVS V8, AISVS C8, Top-10 A01 | merged #414 2026-08-10 — confirmed cross-tenant leak (200→403) closed with tenant.authorize |
-| 5 | Upload hardening (magic-byte vs SourceType) | upload-hardening | ASVS V5, Top-10 A05 | in review (#416) — FileTypeSniffer at the upload boundary; Browsershot arg-array remains a follow-up nit |
-| 6 | Identity-aware throttle on /kb/chat | public-flow-throttle | ASVS V6.1, AISVS C11, Top-10 A07 | in review (#417) — throttle:kb-chat identity+tenant; no /kb/search route exists |
-| 7 | Route-exposure regression gate | route-exposure-regression-gate, http-surface-inventory | ASVS V4, Top-10 A01 | in review (#421) — resolved-router gate; also asserts every SSE route carries tenant.authorize (locks the F-04 class); no unexpected exposure found |
-| 8 | AI provider allow-list (regression lock) | ai-provider-supply-chain | AISVS C3/C6, Top-10 A05 | in review (#420) — enforcement already existed; PR adds the regression gate + verified no runtime-settable base-URL/model path |
+| 5 | Upload hardening (magic-byte vs SourceType) | upload-hardening | ASVS V5, Top-10 A05 | merged #416 2026-08-10 — FileTypeSniffer at the upload boundary; Browsershot arg-array remains a follow-up nit |
+| 6 | Identity-aware throttle on /kb/chat | public-flow-throttle | ASVS V6.1, AISVS C11, Top-10 A07 | merged #417 2026-08-10 — throttle:kb-chat identity+tenant; no /kb/search route exists |
+| 7 | Route-exposure regression gate | route-exposure-regression-gate, http-surface-inventory | ASVS V4, Top-10 A01 | merged #421 2026-08-10 — resolved-router gate; also asserts every SSE route carries tenant.authorize (locks the F-04 class); no unexpected exposure found |
+| 8 | AI provider allow-list (regression lock) | ai-provider-supply-chain | AISVS C3/C6, Top-10 A05 | merged #420 2026-08-10 — enforcement already existed; PR adds the regression gate + verified no runtime-settable base-URL/model path |
 | 9 | Supply-chain CI (dependabot + report-only audit) | dependency-security, supply-chain-ci | ASVS V15, AISVS C6, Top-10 A03 | merged #418 2026-08-10 — blocking audit gate + baseline + larastan/SAST are documented follow-ups (need advisory triage) |
 | 10 | Sanctum token lifecycle (bounded expiry + revoke-on-reset) | api-token-lifecycle, dormant-access | ASVS V7, Top-10 A07 | merged #419 2026-08-10 — CSRF is already enforced by Laravel stateful Sanctum on the cookie SPA |
-| 11 | Tauri desktop hardening (CSP + capability trim) | postmessage-origin (Tauri) | ASVS V13, Top-10 A02 | in review (#422) — CSP set (was null) + dropped https private-IP allowances; deeper LAN/dev-capability split is build-gated |
+| 11 | Tauri desktop hardening (CSP + capability trim) | postmessage-origin (Tauri) | ASVS V13, Top-10 A02 | merged #422 2026-08-10 — CSP set (was null) + dropped https private-IP allowances; deeper LAN/dev-capability split is build-gated |
 
 **Residual (not a PR — tracked in §1/§6):** password-breach-check, MFA,
 appkey-rotation inventory, session-device-binding report-only rollout,
