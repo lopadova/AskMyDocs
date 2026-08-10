@@ -24,7 +24,7 @@ Severity scale: Critical (public/unauth data exposure or RCE-class) · High
 - **Remediation:** PR 1 — `app/Http/Middleware/SecurityHeaders.php`, nonce-based CSP compatible with Vite/SPA + widget, HSTS gated to production posture, exact-value feature tests.
 - **Residual (infra):** headers actually emitted at the edge — §6 items 8/9.
 
-### F-02 — Outbound requests have no SSRF guard — High (conditional)
+### F-02 — Outbound requests have no SSRF guard — Medium (config-set URLs) — remediation in review (PR 2 #411)
 - **Rule/ID:** `SEC-SSRF-001`, http-client-service, circuit-breaker.
 - **Population:** `app/Notifications/Channels/AbstractWebhookChannel.php` (+ Discord/Slack/Teams/Webhook subclasses), `app/Jobs/SendDigestWebhookJob.php`, `app/Jobs/SendExternalNotificationJob.php`, and host fetches in widget theme/intro services. All use raw `Http::` with a tenant/operator-supplied URL and no scheme/IP validation.
 - **Impact (conditional on who can set the webhook URL):** an operator or tenant-admin who can configure a notification/digest webhook can point it at `http://169.254.169.254/…` (cloud metadata), `http://127.0.0.1:…` or an internal service, turning the app server into an SSRF pivot. Severity is High where tenant-admins configure webhooks; Medium if restricted to platform operators.
@@ -32,7 +32,20 @@ Severity scale: Critical (public/unauth data exposure or RCE-class) · High
 - **Remediation:** PR 2 — single guard (https-only, DNS→IP reject of private/loopback/link-local/`169.254.169.254`, redirect re-validation, timeout + response-size cap) reused by all four sinks; negative tests for internal IP / metadata / DNS-rebind / internal-redirect.
 - **Residual:** none once the guard covers every sink (verify no other raw `Http::` egress to a user-controlled host).
 
-### F-03 — MCP write-tool authorization not proven across the population — High
+### F-03 — Read-scoped MCP token can invoke write tools — Medium (admin-minted token) — remediation in review (PR 3 #412)
+
+**Correction after investigation:** the population is **15** write-capable
+registered tools (not 12 — reflection over `KnowledgeBaseServer::$tools` includes
+`KbEraseSubject`, `KbReembedProject`, `InviteGenerateCodes`). Root cause: on the
+`/mcp/kb` server path, `EnforceMcpScope` mapped every non-"propose" tool to
+`mcp:read`, so a token deliberately scoped read-only could still call any write
+tool. Minting a token requires the `manageMcpTools` capability (admin/super-admin),
+so this is a least-privilege/defense-in-depth gap (Medium), not an anonymous hole;
+`KbDetokenize`/`KbEraseSubject` additionally self-check their own permission.
+Fixed in PR 3: write tools now require `mcp:tools:write`, with the write set
+reflection-derived and bidirectionally locked.
+
+Original finding (as filed):
 - **Rule/ID:** `SEC-AI-ACT-001`, AISVS C5/C9/C10, multi-surface-gates (R44).
 - **Population:** 12 write-capable MCP tools lacking `#[IsReadOnly]`: `KbApplySuggestion`, `KbBuildWikiIndex`, `KbDetokenize`, `KbRebuildWikiLinks`, `KbSetEvidenceTier`, `KbSynthesizeConcepts`, `KbWikiHub`, `KbWikiLint`, `KbWikiMaintain`, `KbWikiNavigate`, `KbWikiPromote`, `KbWikiReview` — measured via `grep -L IsReadOnly app/Mcp/Tools/*.php`.
 - **Impact:** `EnforceMcpScope`/`McpToolAuthorizer` exist, but there is no bidirectional test proving **every** write tool routes through the authorization choke point with initiating identity + permission + tenant scope **before** validation/data access. A future write tool that forgets the gate ships green (same blast-radius argument as R32).
@@ -40,15 +53,24 @@ Severity scale: Critical (public/unauth data exposure or RCE-class) · High
 - **Remediation:** PR 3 — architecture test enumerating write-capable tools (no `IsReadOnly`) and asserting authorizer coverage; negative test (write tool without permission → deny, audited). `KbDetokenize` (reverses PII redaction) is the highest-value target and gets an explicit cross-tenant + permission negative test.
 - **Residual:** none once the enumeration test is the gate.
 
-### F-04 — SSE tabular-review stream lacks a cross-tenant denial regression test — Medium
-- **Rule/ID:** `SEC-IDOR-001`, security-boundaries.
-- **Population:** `app/Http/Controllers/Api/Admin/TabularReviewStreamController.php`, route `POST /api/admin/tabular-reviews/{id}/generate-stream` (middleware `auth.sse:sanctum` + `can:viewTabularReviews`, **no** `tenant.authorize`).
-- **Impact:** the controller **already** scopes correctly (`forTenant($ctx->current())` on the review lookup, returns **404** on a cross-tenant id) — so this is a defense-in-depth verification, not a live leak. The gap is the absence of a regression test locking that behavior, and the route relying on in-controller scoping rather than the `tenant.authorize` middleware layer used elsewhere.
-- **Source→sink:** `X-Tenant-Id` header + `{id}` path param → `forTenant()` query → 404 (correct today).
-- **Remediation:** PR 4 — cross-tenant denial test on the SSE endpoint (tenant A cannot stream tenant B's review id → 404); document why `platform.admin` / system-admin blocks intentionally omit `tenant.authorize` (ADR 0023/0024) and confirm `ResolveTenant` trusts `X-Tenant-Id` only after membership check.
-- **Residual:** none.
+### F-04 — Cross-tenant IDOR on the tabular-review SSE stream — **High (confirmed live leak)** — remediation in review (PR 4 #414)
+- **Rule/ID:** `SEC-IDOR-001`, security-boundaries (R30).
+- **Population:** `app/Http/Controllers/Api/Admin/TabularReviewStreamController.php`, route `POST /api/admin/tabular-reviews/{id}/generate-stream` — middleware was `auth.sse:sanctum` + `can:viewTabularReviews`, **no** `tenant.authorize`.
+- **Impact — CORRECTED FROM THE INITIAL FILING:** the initial audit judged this a defense-in-depth gap because the controller scopes with `forTenant(TenantContext::current())`. **Empirical verification proved that wrong.** `ResolveTenant` (global) sets `TenantContext` from the inbound `X-Tenant-Id` header **without any membership check**, and the route lacked `tenant.authorize`. So an admin holding the *global* `viewTabularReviews` permission could send `X-Tenant-Id: victim` → `TenantContext` becomes `victim` → `forTenant('victim')` finds the review → **HTTP 200 streaming another tenant's tabular-review data.** Confirmed in a Testbench harness with `ResolveTenant` active: status **200** with the victim review streamed. This is a live cross-tenant data leak (High).
+- **Source→sink:** attacker `X-Tenant-Id: victim` header → `ResolveTenant` (no membership check) → `TenantContext='victim'` → controller `forTenant('victim')` → 200 + victim data.
+- **Remediation:** PR 4 — add `tenant.authorize` (`AuthorizeTenantHeader`) to the route; it requires the authenticated user to have a membership in the resolved tenant, so a spoofed header now **403s before the controller runs**. `TabularReviewStreamTenantIsolationTest` prepends `ResolveTenant` (mirroring production) and locks both layers: spoofed header → 403, in-tenant cross-review id → 404. The existing `TabularReviewStreamControllerTest` moved off the reserved `default` tenant (which `tenant.authorize` forbids) onto a real `acme` tenant.
+- **Lesson:** this is the audit's headline result — a finding the paper analysis under-rated until it was executed. Every "the controller already scopes it" claim on a route lacking `tenant.authorize` must be verified with `ResolveTenant` active and a spoofed header.
+- **Residual:** none for this route. Follow-up: PR 7's route-exposure gate should flag every other mutating/streaming route missing `tenant.authorize`.
 
-### F-05 — No decoded-type (magic-byte) validation on ingested binaries — Medium
+### F-05 — No decoded-type (magic-byte) validation on ingested binaries — Medium — remediation in review (PR 5 #416)
+
+**Confirmed at the host boundary:** `StageKbUploadRequest::validateFileTypes`
+gated by extension + `getClientMimeType()` (both attacker-controlled). Fixed in
+PR 5 with `App\Support\Kb\FileTypeSniffer` (magic-byte check vs declared
+`SourceType`; DOCX validated as a ZIP container to avoid finfo false-rejects).
+`Browsershot` arg-array (`SEC-SHELL-001`) confirmed a low-risk follow-up nit.
+
+Original finding (as filed):
 - **Rule/ID:** `SEC-UPLOAD-001`, resource-limits.
 - **Population:** KB ingest API (batch ≤ 100), UI staging buffer, and connector-fetched documents (IMAP attachments / cloud files) that flow into per-source chunkers.
 - **Impact:** ingestion trusts the declared source-type/extension; a polyglot or mismatched-MIME payload could be routed to the wrong chunker/parser or persisted with a misleading type. Text-markdown path is normalized (`KbPath`) but the binary connector path lacks a decoded-type vs `SourceType` allow-list gate.
@@ -56,7 +78,16 @@ Severity scale: Critical (public/unauth data exposure or RCE-class) · High
 - **Remediation:** PR 5 — magic-byte/MIME check vs the `SourceType` allow-list at the ingest boundary (decoded type must match declared); reject polyglot/mismatch/oversize; negative tests. Also verify `Browsershot` PDF export uses an argument array, not string interpolation (`SEC-SHELL-001`).
 - **Residual:** none for host; connector-package binary handling covered by package CI.
 
-### F-06 — Public chat/search throttle is not identity+tenant aware — Medium
+### F-06 — /kb/chat has no identity+tenant-aware throttle — Medium — remediation in review (PR 6 #417)
+
+**Scope correction:** there is **no `/api/kb/search` route** (verified); the gap
+is the authenticated `POST /kb/chat` (auth:sanctum + tenant.authorize group) with
+no rate limit → one tenant user could exhaust AI provider quota for everyone.
+Fixed in PR 6: a `throttle:kb-chat` RateLimiter keyed by identity + tenant
+(floors at 1/min even if misconfigured to 0). Anonymous/widget chat already
+carries its own throttle.
+
+Original finding (as filed):
 - **Rule/ID:** `SEC-THROTTLE-001`, resource-limits.
 - **Population:** `POST /api/kb/chat`, `POST /api/kb/search`, anonymous chat. The widget path is already session-throttled; these are not keyed to identity+tenant.
 - **Impact:** a single tenant or anonymous caller can exhaust AI spend / DB search capacity for others (cost-DoS + noisy-neighbor); IP-only throttling is trivially bypassed and punishes shared-NAT tenants.
@@ -64,7 +95,20 @@ Severity scale: Critical (public/unauth data exposure or RCE-class) · High
 - **Remediation:** PR 6 — named rate limiter keyed by identity+tenant (IP fallback for anonymous) on `/api/kb/chat` + `/api/kb/search`; tests: 429 over threshold, independent buckets per tenant.
 - **Residual:** daily cost cap is a separate FinOps control (already metered); this closes the rate dimension.
 
-### F-07 — No resolved-router exposure regression gate — Medium
+### F-07 — No resolved-router exposure regression gate — Medium — remediation in review (PR 7 #421)
+
+**Fixed in PR 7:** `tests/Architecture/RouteExposureTest` enumerates the REAL
+resolved routing table (web.php + api.php, group middleware included) and asserts
+(1) every state-changing route is authenticated or on an 11-entry reasoned
+public allow-list, and (2) every `auth.sse` route also carries `tenant.authorize`
+— locking the exact F-04 IDOR class. **Sweep result:** no unexpected exposure —
+the only un-authenticated mutating routes are the auth/registration/widget-token/
+testing endpoints (all legitimately public), and both SSE routes now carry
+tenant.authorize (the chat stream always did; the tabular-review stream was fixed
+in PR 4). The suspected `eval-harness.api.middleware=[]` / pii-redactor-admin
+gaps from the initial filing did not surface as ungated mutating routes.
+
+Original finding (as filed):
 - **Rule/ID:** `SEC-COVERAGE-001`, route-exposure-regression-gate, http-surface-inventory.
 - **Population:** ~261 host routes + 13 vendor-mounted route groups. The R32 matrix covers a representative endpoint per group, but a new mutating route that forgets its gate — or a vendor package mounting routes with a permissive `['api']` default — can ship green (the exact class of bug R32's first run caught for `ai-act-compliance`).
 - **Impact:** an ungated mutating route is a potential unauth data-exposure or write. Two suspects to confirm in-PR: `eval-harness.api.middleware` reported empty, and `pii-redactor-admin` middleware without an auth fallback.
@@ -72,7 +116,20 @@ Severity scale: Critical (public/unauth data exposure or RCE-class) · High
 - **Remediation:** PR 7 — architecture test that loads the **resolved** routing table, asserts every `POST/PUT/PATCH/DELETE` route is in an authenticated group or an explicitly-declared public allow-list, and that every gated group has an R32 matrix row. Fix the two suspects in-PR or spin off.
 - **Residual:** none — this becomes the standing gate.
 
-### F-08 — AI provider/model/base-URL not constrained by a code-owned allow-list — Medium (conditional)
+### F-08 — AI provider allow-list not regression-locked — Low (enforcement already present) — remediation in review (PR 8 #420)
+
+**Trace result — the enforcement already exists (severity downgraded):**
+`AiManager::resolve()` constrains the provider name with a code-owned `match`
+(`default => throw`); the only runtime knob (the `ai.provider` app-settings
+override) is honoured **only** when `config("ai.providers.{name}")` is non-null,
+so an unknown value falls back to the config default (fail-closed); the base URL
+is read from `config('ai.providers.*')` (env), never from a request or app-setting;
+and the `fake` provider throws outside testing/local. The chat request accepts
+only `question` — no user-supplied provider/model/base-URL reaches the client.
+PR 8 adds `AiProviderAllowlistTest` locking all of the above so a future change
+can't silently open a runtime-settable egress.
+
+Original finding (as filed):
 - **Rule/ID:** `SEC-LLM-001` gate #2, ai-provider-supply-chain.
 - **Population:** `app/Ai/AiManager.php` + provider construction; runtime-settable inputs (`app_settings`, `widget.tool_calling_providers`).
 - **Impact (conditional on a runtime-settable path reaching client construction):** if a tenant/admin setting can select provider/model/base-URL without a code-owned allow-list, a mis-set or malicious value could exfiltrate prompts to an unapproved endpoint (a data-subprocessor decision made at runtime). Severity depends on whether the setting actually flows to the client URL — to be confirmed by trace before implementation.
@@ -80,21 +137,57 @@ Severity scale: Critical (public/unauth data exposure or RCE-class) · High
 - **Remediation:** PR 8 — after the trace: exact code-owned allow-list at the construction choke point (provider ∈ known set, base-URL host ∈ validated list at boot, model ∈ configured list; fail-closed on unknown); negative tests. If the trace shows no runtime-settable path reaches the URL, downgrade to `implemented` + add the guard test as a regression lock.
 - **Residual:** none.
 
-### F-09 — No dependency-audit / SAST CI gate — Medium
+### F-09 — No dependency-audit / SAST CI gate — Medium — partial remediation in review (PR 9 #418)
+
+**PR 9 ships the safe, mergeable parts:** `.github/dependabot.yml` (composer +
+npm + github-actions, weekly grouped update PRs + immediate advisory PRs) and a
+**report-only** `dependency-audit` CI job (composer audit + npm audit). It is
+deliberately NOT a blocking gate yet: the default branch carries ~52 known
+advisories, so a hard gate would red-CI every PR before triage. Documented
+follow-ups (the finding stays partially open): flip the audit job to blocking
+with an **expiring advisory baseline** (dependency-regression-gate) after
+triaging the backlog, add **larastan/SAST** with a generated baseline, and sweep
+third-party Action refs to pinned commit SHAs.
+
+Original finding (as filed):
 - **Rule/ID:** `SEC-DEPS-001`, `SEC-SUPPLY-001`, sast-regression-gate, `BUILD-VERIFY-001`.
 - **Population:** `composer.lock` + `package-lock.json` are committed (good), but CI runs no `composer audit` / `npm audit` / SAST; GitHub Actions third-party pinning to unverified.
 - **Impact:** a newly-disclosed advisory in a transitive dependency ships silently; no fail-closed gate on new SAST findings (Top-10 2025 A03).
 - **Remediation:** PR 9 — `composer audit` + `npm audit` with an expiring advisory baseline, `.github/dependabot.yml`, PHPStan/Larastan baseline, optional CodeQL; verify actions pinned to commit SHAs.
 - **Residual (infra):** CodeQL/SAST at org level may need org setup — that portion stays §6 until a green run exists.
 
-### F-10 — Sanctum token lifecycle + CSRF negatives incomplete — Low
+### F-10 — Sanctum token lifecycle incomplete — Low — remediation in review (PR 10 #419)
+
+**Fixed in PR 10:** `config/sanctum.php` `expiration` was `null` (tokens never
+expire) → now bounded to 30 days (`SANCTUM_TOKEN_EXPIRATION_MINUTES`,
+env-configurable); and `PasswordResetController::reset` now calls
+`$user->tokens()->delete()` so a password reset revokes every issued API token
+(dormant-access). Tested by `PasswordResetRevokesTokensTest`. CSRF on stateful
+routes is already enforced by Laravel's Sanctum stateful guard on the cookie SPA
+(and the one public POST — `/csp-report` — was explicitly CSRF-exempted in PR 1).
+
+Original finding (as filed):
 - **Rule/ID:** `SEC-TOKEN-001`, auth-hardening, dormant-access.
 - **Population:** `config/sanctum.php` (`expiration => null`), password-change flow, stateful SPA routes.
 - **Impact:** non-expiring tokens widen the window on a leaked token; no explicit test that a password change revokes tokens; CSRF negative coverage on stateful routes is thin.
 - **Remediation:** PR 10 — bounded, env-configurable token expiry default; token-revocation-on-password-change test; CSRF negative tests; crafted-recaller-cookie rejection test (backoffice-no-remember).
 - **Residual:** none.
 
-### F-11 — Tauri desktop capabilities are broad; CSP is null — Low
+### F-11 — Tauri desktop capabilities are broad; CSP is null — Low — remediation in review (PR 11 #422)
+
+**PR 11 (safe, mergeable subset — Tauri config is not CI-testable here):**
+`tauri.conf.json` `app.security.csp` was `null` (no webview CSP) → set to a
+hardening policy (`default-src 'self'`, `script-src 'self' 'unsafe-inline'`,
+`object-src 'none'`, `base-uri 'self'`, `frame-ancestors 'none'`, `form-action
+'self'`; `connect-src 'self' https: http:` preserves backend + LAN self-hosting).
+Removed the two `https://192.168.*.*` / `https://10.*.*.*` allowances from the
+http capability (https on a private IP with a valid cert is essentially
+nonexistent; http LAN stays for self-hosting). **Build-gated follow-ups** (need a
+`tauri build` to validate, so not done blind): tighten `script-src` to `'self'`,
+move the remaining LAN wildcards + the `dangerous-settings`/`acceptInvalidCerts`
+capability into a **dev-only** capability profile.
+
+Original finding (as filed):
 - **Rule/ID:** `SEC-TLS-001` (client), postmessage-origin (Tauri).
 - **Population:** `desktop/src-tauri/capabilities/default.json` (LAN wildcards `192.168.*.*`/`10.*.*.*`, `acceptInvalidCerts`), `desktop/src-tauri/tauri.conf.json` (CSP null).
 - **Impact:** a production desktop build accepting invalid certs on LAN wildcards weakens transport auth; a null CSP in the webview removes a defense layer. Low because it needs a local network attacker + a shipped desktop build.

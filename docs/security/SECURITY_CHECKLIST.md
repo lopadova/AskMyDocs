@@ -66,11 +66,11 @@ are §6.
 
 | # | Control (slug) | SEC-ID | Applicability | Evidence-state | Code evidence | Test evidence | Infra / residual step | PR |
 |---|---|---|---|---|---|---|---|---|
-| 1 | rule-ai-agent-actions | SEC-AI-ACT-001 | applicable | implemented | WidgetToolValidator + WidgetAiToolRegistry closed contract; MCP tools delegate to core services | WidgetToolValidatorTest, widget contract tests | write-tool choke-point coverage proven bidirectionally | PR 3 |
+| 1 | rule-ai-agent-actions | SEC-AI-ACT-001 | applicable | regression-tested | EnforceMcpScope requires mcp:tools:write for write tools (reflection-derived); WidgetToolValidator closed contract | McpWriteToolScopeTest (bidirectional) + WidgetToolValidatorTest | — | PR 3 (#412) |
 | 2 | rule-ai-llm-security | SEC-LLM-001 | applicable | implemented | app/Ai/AiManager.php gates; kb_rag prompt delimits untrusted chunks | AiManager + provider tests | provider/model allow-list at construction choke point | PR 8 |
 | 3 | ajax-route-hardening | SEC-AJAX-001 | applicable | regression-tested | every entrypoint has explicit auth decision (Sanctum groups) | AdminAuthorizationMatrixTest | — | PR 7 (gate) |
 | 4 | api-login-gates | SEC-MFA-API-001 | applicable | regression-tested | API/admin/MCP strong-auth consistency | AdminAuthorizationMatrixTest | MFA not implemented — tracked as residual | — |
-| 5 | api-token-lifecycle | SEC-TOKEN-001 | applicable | open | Sanctum opaque tokens; expiration currently null | — | bounded expiry + revoke-on-password-change | PR 10 |
+| 5 | api-token-lifecycle | SEC-TOKEN-001 | applicable | regression-tested | Sanctum expiration bounded (30d, env-configurable) + password reset revokes all tokens | PasswordResetRevokesTokensTest | — | PR 10 (#419) |
 | 6 | audit-trail-integrity | SEC-AUDIT-001 | applicable | regression-tested | kb_canonical_audit + admin_command_audit immutable (no updated_at) | audit feature tests | independent retention evidence | INFRA §6 |
 | 7 | auth-hardening | SEC-AUTHHARD-001 | applicable | implemented | invite-gated register, throttled 6/min/IP, viewer floor | RegisterController tests | — | PR 10 (CSRF negatives) |
 | 8 | aws-iam-sigv4 | SEC-AWSCRED-001 | applicable | infra-verification-required | no static AWS keys in repo | — | OIDC/short-lived role at deploy — needs cloud evidence | INFRA §6 |
@@ -83,10 +83,10 @@ are §6.
 | 15 | control-coverage | SEC-COVERAGE-001 | applicable | regression-tested | effective-population arch tests (Tenant*, Matrix) | tests/Architecture/* | route-exposure population gate | PR 7 |
 | 16 | cors-config | SEC-CORS-001 | applicable | implemented | config/cors.php exact origins, R19 CSV trim | cors config test | edge CORS parity evidence | DEPLOY §6 |
 | 17 | db-least-privilege | SEC-DBPRIV-001 | applicable | infra-verification-required | app cannot create extensions at runtime (migrations separate) | — | DB grants + role separation runtime evidence | INFRA §6 |
-| 18 | dependency-security | SEC-DEPS-001 | applicable | open | committed composer.lock + package-lock.json | — | composer audit + npm audit blocking gate | PR 9 |
+| 18 | dependency-security | SEC-DEPS-001 | applicable | implemented | dependabot.yml (composer/npm/actions) + report-only composer/npm audit CI job | .github/dependabot.yml + tests.yml dependency-audit | flip to blocking + expiring advisory baseline after triaging the ~52 existing advisories | PR 9 (#418) |
 | 19 | deserialization | SEC-DESERIALIZE-001 | applicable | implemented | both unserialize sites carry allowed_classes allow-list | prescreen 2026-08-09 | regression test on allow-list | PR 9 |
 | 20 | dns-dangling | SEC-DNS-001 | applicable | infra-verification-required | n/a in repo | — | external DNS inventory/monitoring | INFRA §6 |
-| 21 | dormant-access | SEC-OFFBOARD-001 | applicable | implemented | membership removal revokes access; final-super-admin guard | SystemAdmin tests | token/session revocation on offboard | PR 10 |
+| 21 | dormant-access | SEC-OFFBOARD-001 | applicable | regression-tested | membership removal revokes access; final-super-admin guard; password reset now revokes all tokens | SystemAdmin tests + PasswordResetRevokesTokensTest | — | PR 10 (#419) |
 | 22 | effective-security-population | SEC-INVENTORY-001 | applicable | regression-tested | behavior-based inventory in threat model + arch tests | tests/Architecture/* | — | PR 7 |
 | 23 | email-auth-dns | SEC-DNSMAIL-001 | applicable | infra-verification-required | n/a in repo | — | SPF/DKIM/DMARC external evidence | INFRA §6 |
 | 24 | env-gate-fail-closed | SEC-ENV-001 | applicable | implemented | /testing/* only under APP_ENV=testing; fake providers gated | env-gate tests | scheduled runtime drift report | DEPLOY §6 |
@@ -95,8 +95,8 @@ are §6.
 | 27 | fail-closed-security-controls | SEC-FAILCLOSED-001 | applicable | implemented | unknown policy denies (AppSettingsResolver, tool registries) | R43 both-states tests | — | PR 3/8 |
 | 28 | frontend-secrets | SEC-FESECRET-001 | applicable | implemented | no secrets in Vite/React/widget bundles | — | bundle-scan regression check | PR 9 |
 | 29 | gdpr-data-inventory | SEC-GDPR-001 | applicable | implemented | PII tri-surface (v8.23) vault + erasure + prune jobs | PII feature tests | processor register residency evidence | INFRA §6 |
-| 30 | http-client-service | ARCH-HTTP-001 | applicable | open | raw Http:: in webhook/digest/widget-fetch paths | — | hardened centralized outbound client (SSRF) | PR 2 |
-| 31 | tenant-object-authorization | SEC-IDOR-001 | applicable | regression-tested | forTenant() scoping; TenantIdMandatoryTest + R32 | TenantReadScopeTest, Matrix | SSE endpoint cross-tenant denial test | PR 4 |
+| 30 | http-client-service | ARCH-HTTP-001 | applicable | regression-tested | OutboundUrlValidator guards both webhook sinks; widget URLs are client-rendered (SANO) | OutboundUrlValidatorTest + WebhookSsrfGuardTest | AI provider egress allow-listed separately (PR 8) | PR 2 (#411) |
+| 31 | tenant-object-authorization | SEC-IDOR-001 | applicable | regression-tested | forTenant() scoping; TenantIdMandatoryTest + R32; **tabular-review SSE stream now carries tenant.authorize (real IDOR fix)** | TenantReadScopeTest, Matrix, TabularReviewStreamTenantIsolationTest | — | PR 4 (#414) |
 | 32 | key-management | SEC-KEYS-001 | applicable | implemented | encrypted PII vault; managed keys | vault tests | rotation + separated-duties runtime evidence | INFRA §6 |
 | 33 | logging-security | SEC-LOG-001 | applicable | implemented | no secrets in query-string (H6); trace_id correlation | logging tests | HTTP-wide correlation-id middleware | PR 1 (adjacent) |
 | 34 | multi-surface-security-gates | — | applicable | implemented | HTTP/CLI/queue/MCP parity via shared core services (R44) | tri-surface tests | MCP write parity proof | PR 3 |
@@ -104,7 +104,7 @@ are §6.
 | 36 | password-policy | SEC-PWPOLICY-001 | applicable | implemented | consistent password rules across flows | auth tests | breach-check integration | residual §1 |
 | 37 | path-containment | SEC-PATH-001 | applicable | regression-tested | KbPath::normalize() rejects .. and normalizes | KbPathTest | — | — |
 | 38 | pii-encryption | SEC-PII-CRYPT-001 | applicable | implemented | classified sensitive fields encrypted (vault) | vault tests | key rotation evidence | INFRA §6 |
-| 39 | public-flow-throttle | SEC-THROTTLE-001 | applicable | open | widget throttled; /api/kb/chat + /api/kb/search not identity-aware | — | named identity+tenant limiter | PR 6 |
+| 39 | public-flow-throttle | SEC-THROTTLE-001 | applicable | regression-tested | `throttle:kb-chat` limiter keyed identity+tenant on POST /kb/chat (floors at 1/min); widget already throttled; no /kb/search route exists | KbChatThrottleTest | daily cost cap is separate FinOps control | PR 6 (#417) |
 | 40 | race-conditions | SEC-RACE-001 / R21 | applicable | regression-tested | confirm-token consume inside lockForUpdate txn | CommandRunner concurrency test | — | — |
 | 41 | raw-sql-inventory | SEC-RAWSQL-001 | applicable | implemented | DB::raw/whereRaw parametrized or aggregate-only | prescreen 2026-08-09 | arch analyzer for raw SQL | PR 9 |
 | 42 | redis-production-posture | SEC-REDIS-001 | applicable | infra-verification-required | n/a in repo | — | TLS/auth/network runtime evidence | INFRA §6 |
@@ -117,20 +117,20 @@ are §6.
 | 49 | shell-command-array | SEC-SHELL-001 | applicable | implemented | no shell_exec/exec in app/ | prescreen 2026-08-09 | Browsershot arg-array verification | PR 5 |
 | 50 | signed-commits | SEC-SIGNCOMMIT-001 | applicable | infra-verification-required | n/a provable in repo | — | branch/platform signature verification | INFRA §6 |
 | 51 | signed-url-tokens | SEC-SIGNURL-001 | applicable | regression-tested | DB-backed single-use confirm tokens (R21) | CommandRunner tests | — | — |
-| 52 | ssrf-outbound | SEC-SSRF-001 | applicable | open | outbound webhook/digest/widget-fetch URLs unvalidated | — | scheme/DNS/IP/redirect validation guard | PR 2 |
+| 52 | ssrf-outbound | SEC-SSRF-001 | applicable | regression-tested | OutboundUrlValidator (scheme + DNS→IP private/metadata reject + redirects off) on both webhook jobs | OutboundUrlValidatorTest + WebhookSsrfGuardTest | DNS-rebind TOCTOU documented residual | PR 2 (#411) |
 | 53 | multi-repository-security-coverage | — | N/A-topology | N/A | single deployable today | — | revisit if components deploy independently | — |
-| 54 | supply-chain-ci | SEC-SUPPLY-001 | applicable | open | committed lockfiles | — | immutable action SHAs + secret isolation audit | PR 9 |
+| 54 | supply-chain-ci | SEC-SUPPLY-001 | applicable | implemented | committed lockfiles + dependabot (incl. github-actions ecosystem for pin freshness) | .github/dependabot.yml | action SHA-pinning sweep is a follow-up | PR 9 (#418) |
 | 55 | sync-ai-instructions | SYNC-AI-001 | applicable | regression-tested | 8 rules + 3 mirrors + validator | npm run security:rules | — | PR B |
 | 56 | tls-hsts | SEC-TLS-001 | applicable | regression-tested | SecurityHeaders — HSTS over HTTPS in production env | SecurityHeadersTest (HTTPS+env gating) | deployed-edge emission stays INFRA §6 | PR 1 (#410) |
-| 57 | upload-hardening | SEC-UPLOAD-001 | applicable | open | ingest accepts markdown; no magic-byte gate on binary connector fetch | — | decoded MIME/size vs SourceType allow-list | PR 5 |
+| 57 | upload-hardening | SEC-UPLOAD-001 | applicable | regression-tested | FileTypeSniffer magic-byte check vs declared SourceType at StageKbUploadRequest boundary | FileTypeSnifferTest + KbUploadMagicByteTest | connector-fetched binaries covered by package CI | PR 5 (#416) |
 | 58 | webhook-verify-before-effects | SEC-WEBHOOK-001 | N/A-topology | N/A | no inbound webhook route exists | — | rule activates when inbound webhook ships | — |
 | 59 | xml-parsing | SEC-XML-001 | applicable | implemented | no untrusted XML parse in host; symfony/yaml safe | — | connector packages own their XML (package CI) | — |
 | 60 | rule-build-verification | BUILD-VERIFY-001 | applicable | regression-tested | fresh phpunit+vitest+e2e evidence per PR | .github/workflows/tests.yml | — | PR 9 |
 | 61 | accepted-security-debt | — | applicable | implemented | expiring baseline pattern documented | — | advisory baseline with expiry | PR 9 |
 | 62 | admin-authorization-granularity | SEC-BOADMIN-001 | applicable | regression-tested | specific capability gates (can:) not blanket admin | Matrix | limiter inventory | PR 7 |
 | 63 | ai-data-flow | SEC-LLM-001 | applicable | implemented | FinOps meters every provider egress path | FinOps tests | PII gate on all egress branches | PR 8 |
-| 64 | ai-initiating-user | SEC-AI-ACT-001 | applicable | implemented | initiator captured server-side, re-auth at effect | job tests | MCP write re-auth proof | PR 3 |
-| 65 | ai-provider-supply-chain | SEC-LLM-001 | applicable | open | config/ai.php models; runtime-settable paths exist | — | code-owned endpoint/model allow-list | PR 8 |
+| 64 | ai-initiating-user | SEC-AI-ACT-001 | applicable | regression-tested | initiator captured server-side; MCP write tools gated by write scope + token-tenant match | McpWriteToolScopeTest + job tests | — | PR 3 (#412) |
+| 65 | ai-provider-supply-chain | SEC-LLM-001 | applicable | regression-tested | code-owned provider match in AiManager::resolve; app-settings override validated to configured providers; base-URL config-only; fake refused outside testing/local | AiProviderAllowlistTest | — | PR 8 (#420) |
 | 66 | appkey-rotation | SEC-APPKEY-001 | applicable | implemented | APP_KEY used by Laravel crypto | — | key-dependency inventory + previous-key coverage | residual §1 |
 | 67 | backoffice-no-remember | SEC-AUTHHARD-001 | applicable | implemented | Sanctum tokens; no remember-me recaller for staff | auth tests | crafted-recaller negative test | PR 10 |
 | 68 | circuit-breaker | — | applicable | implemented | provider retry/backoff bounds | provider tests | per-service breaker choke point | PR 2 |
@@ -142,14 +142,14 @@ are §6.
 | 74 | exposed-public-files | SEC-ESPOSTI-001 | applicable | implemented | public/ is Vite build output only | — | positive public asset inventory | PR 7 (adjacent) |
 | 75 | frontend-tenant-architecture | — | applicable | regression-tested | FE tenant state presentation-only; backend scopes | TenantReadScopeTest | — | PR 4 |
 | 76 | gdpr-consent-and-access | SEC-GDPR-001 | applicable | implemented | DSAR/erasure via PII tri-surface + AI-Act package | PII/AI-Act tests | consent notice version evidence | INFRA §6 |
-| 77 | http-surface-inventory | — | applicable | open | manual inventory today | — | resolved-router perimeter gate | PR 7 |
+| 77 | http-surface-inventory | — | applicable | regression-tested | RouteExposureTest enumerates the resolved router; mutating routes authenticated-or-declared-public (11 reasoned public) | RouteExposureTest | — | PR 7 (#421) |
 | 78 | log-retention-and-siem | SEC-SIEM-001 | applicable | infra-verification-required | prune jobs present (chat-log:prune etc.) | prune tests | off-host SIEM delivery evidence | INFRA §6 |
-| 79 | postmessage-origin | — | N/A-topology | N/A | widget renders same-page; no cross-origin postMessage today | — | activates if widget iframes cross-origin | PR 11 (Tauri) |
+| 79 | postmessage-origin | — | applicable | deployment-config-required | Tauri webview CSP set (was null): default-src self, object-src none, base-uri self, frame-ancestors none; dropped https private-IP allowances | (Tauri config — validated JSON; needs a desktop build to smoke) | script-src 'self' + LAN-wildcard/dangerous-settings → dev-only capability are build-gated follow-ups | PR 11 (#422) |
 | 80 | processor-register | — | applicable | implemented | provider = subprocessor; documented in FinOps/config | — | residency/DPA register evidence | INFRA §6 |
 | 81 | production-posture | SEC-POSTURA-001 | applicable | implemented | raw-env debug gate; unknown env = production | posture tests | cached-config divergence check | DEPLOY §6 |
 | 82 | request-correlation | — | applicable | regression-tested | X-Request-Id in SecurityHeaders (reuse/mint, control-char-safe) + trace_id on chat_logs | SecurityHeadersTest (request-id) | — | PR 1 (#410) |
 | 83 | response-headers | — | applicable | regression-tested | SecurityHeaders middleware (nosniff/XFO/Referrer/Permissions-Policy) | SecurityHeadersTest + security-headers.spec.ts | deployed-edge emission stays INFRA §6 | PR 1 (#410) |
-| 84 | route-exposure-regression-gate | — | applicable | open | no resolved-router gate yet | — | real router regression gate | PR 7 |
+| 84 | route-exposure-regression-gate | — | applicable | regression-tested | RouteExposureTest: mutating routes gated-or-allow-listed + every auth.sse route carries tenant.authorize (F-04 class) | RouteExposureTest | — | PR 7 (#421) |
 | 85 | sast-regression-gate | — | applicable | open | no SAST in CI | — | baseline/full SAST fail-closed | PR 9 |
 | 86 | session-device-binding | — | applicable | implemented | no IP binding; UA is signal only | — | measured report-only rollout | residual §1 |
 | 87 | sri-pinned-cdn | — | N/A-topology | N/A | no external CDN assets (self-hosted Vite) | — | activates if a CDN asset is added | PR 9 |
@@ -700,16 +700,16 @@ CI green.
 | A | Audit scaffolding (this doc + threat model + findings + agent + skill) | security-checklist, security-inventory, sync (doc) | method | in review |
 | B | Coverage-gate hardening (bidirectional validator + requiredFiles + typecheck CI) | sync-ai-instructions, control-coverage | — | planned |
 | 1 | Security response headers (CSP nonce, HSTS, XFO, nosniff, Referrer/Permissions-Policy) | content-security-policy, response-headers, csp-nonce-cache, csp-report-collection, tls-hsts, request-correlation | ASVS V3/V12, Top-10 A02/A09 | in review (#410) — enforce mode + edge emission remain deployment/infra |
-| 2 | Outbound SSRF guard (webhook/digest/widget-fetch) | ssrf-outbound, http-client-service, circuit-breaker, external-response-validation | ASVS V13(SSRF), AISVS C4, Top-10 A10 | planned |
-| 3 | MCP write-tool authorization coverage (12 write tools) | rule-ai-agent-actions, ai-initiating-user, multi-surface-gates, fail-closed | AISVS C5/C9/C10, Top-10 A06 | planned |
-| 4 | Tenant scope on SSE + no-`tenant.authorize` blocks | tenant-object-authorization, security-boundaries, frontend-tenant-architecture | ASVS V8, AISVS C8, Top-10 A01 | planned |
-| 5 | Upload hardening (magic-byte/MIME vs SourceType) | upload-hardening, resource-limits, shell-command-array | ASVS V5, Top-10 A05 | planned |
-| 6 | Identity-aware throttle on public chat/search | public-flow-throttle, resource-limits | ASVS V6.1, AISVS C11, Top-10 A07 | planned |
-| 7 | Route-exposure regression gate + RBAC matrix completeness | route-exposure-regression-gate, http-surface-inventory, backoffice-exposure, control-coverage | ASVS V4, Top-10 A01 | planned |
-| 8 | AI provider/model/base-URL allow-list policy | ai-provider-supply-chain, ai-data-flow, rule-ai-llm-security | AISVS C3/C6, Top-10 A05 | planned |
-| 9 | Supply-chain & SAST CI (composer/npm audit, dependabot, larastan) | dependency-security, supply-chain-ci, sast-regression-gate, dependency-regression-gate | ASVS V15, AISVS C6, Top-10 A03 | planned |
-| 10 | Sanctum token lifecycle + CSRF negatives | api-token-lifecycle, dormant-access, backoffice-no-remember | ASVS V7, Top-10 A07 | planned |
-| 11 | Tauri desktop hardening (capabilities + CSP) | postmessage-origin (Tauri), tls-hsts (client) | ASVS V13, Top-10 A02 | planned |
+| 2 | Outbound SSRF guard (webhook/digest) | ssrf-outbound, http-client-service | ASVS V13(SSRF), AISVS C4, Top-10 A10 | merged #411 2026-08-10 — widget URLs client-rendered (SANO); circuit-breaker choke-point remains open |
+| 3 | MCP write-tool scope gate (15 write tools) | rule-ai-agent-actions, ai-initiating-user | AISVS C5/C9/C10, Top-10 A06 | merged #412 2026-08-10 — mcp:tools:write required, reflection-locked |
+| 4 | Tenant scope on SSE (tabular-review stream) — **real IDOR fix** | tenant-object-authorization, security-boundaries | ASVS V8, AISVS C8, Top-10 A01 | merged #414 2026-08-10 — confirmed cross-tenant leak (200→403) closed with tenant.authorize |
+| 5 | Upload hardening (magic-byte vs SourceType) | upload-hardening | ASVS V5, Top-10 A05 | in review (#416) — FileTypeSniffer at the upload boundary; Browsershot arg-array remains a follow-up nit |
+| 6 | Identity-aware throttle on /kb/chat | public-flow-throttle | ASVS V6.1, AISVS C11, Top-10 A07 | in review (#417) — throttle:kb-chat identity+tenant; no /kb/search route exists |
+| 7 | Route-exposure regression gate | route-exposure-regression-gate, http-surface-inventory | ASVS V4, Top-10 A01 | in review (#421) — resolved-router gate; also asserts every SSE route carries tenant.authorize (locks the F-04 class); no unexpected exposure found |
+| 8 | AI provider allow-list (regression lock) | ai-provider-supply-chain | AISVS C3/C6, Top-10 A05 | in review (#420) — enforcement already existed; PR adds the regression gate + verified no runtime-settable base-URL/model path |
+| 9 | Supply-chain CI (dependabot + report-only audit) | dependency-security, supply-chain-ci | ASVS V15, AISVS C6, Top-10 A03 | merged #418 2026-08-10 — blocking audit gate + baseline + larastan/SAST are documented follow-ups (need advisory triage) |
+| 10 | Sanctum token lifecycle (bounded expiry + revoke-on-reset) | api-token-lifecycle, dormant-access | ASVS V7, Top-10 A07 | merged #419 2026-08-10 — CSRF is already enforced by Laravel stateful Sanctum on the cookie SPA |
+| 11 | Tauri desktop hardening (CSP + capability trim) | postmessage-origin (Tauri) | ASVS V13, Top-10 A02 | in review (#422) — CSP set (was null) + dropped https private-IP allowances; deeper LAN/dev-capability split is build-gated |
 
 **Residual (not a PR — tracked in §1/§6):** password-breach-check, MFA,
 appkey-rotation inventory, session-device-binding report-only rollout,

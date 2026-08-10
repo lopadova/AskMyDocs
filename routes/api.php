@@ -161,7 +161,7 @@ Route::middleware([
     // and only constrains Bearer PATs (the desktop demo): a token not scoped
     // for chat is rejected before it can burn provider quota (EnforceTokenAbility).
     Route::post('/kb/chat', KbChatController::class)
-        ->middleware(array_merge($chatMiddleware, ['token.ability:kb:chat']));
+        ->middleware(array_merge($chatMiddleware, ['token.ability:kb:chat', 'throttle:kb-chat']));
     // v8.8.3 — anonymous-chat capability probe. Lets the SPA render the
     // "New anonymous chat" surface as a clean disabled landing (R14/R43)
     // when `kb.anonymous_chat.enabled` is off, instead of only learning
@@ -1289,6 +1289,16 @@ Route::middleware([
     \Illuminate\Cookie\Middleware\EncryptCookies::class,
     \Illuminate\Session\Middleware\StartSession::class,
     'auth.sse:sanctum',
+    // SECURITY (SEC-IDOR-001, F-04): tenant.authorize is REQUIRED here.
+    // ResolveTenant (global) honours an inbound X-Tenant-Id header WITHOUT a
+    // membership check, and the controller drives its query off
+    // TenantContext::current(). Without this guard an admin holding the global
+    // `viewTabularReviews` permission could send `X-Tenant-Id: victim` and
+    // stream another tenant's tabular-review data (confirmed: 200 + data leak).
+    // AuthorizeTenantHeader requires the authenticated user to have a membership
+    // in the resolved tenant, so a spoofed header now 403s. Mirrors every other
+    // operational /api group.
+    'tenant.authorize',
     'can:viewTabularReviews',
 ])->post(
     '/admin/tabular-reviews/{id}/generate-stream',

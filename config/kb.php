@@ -395,6 +395,13 @@ return [
         'enabled' => (bool) env('KB_ANONYMOUS_CHAT_ENABLED', false),
     ],
 
+    // SEC-THROTTLE-001 — per-minute cap on POST /kb/chat, keyed by identity +
+    // tenant (see the `kb-chat` RateLimiter in AppServiceProvider). Bounds AI
+    // provider spend per caller; floors at 1/min even if misconfigured to 0.
+    'chat' => [
+        'rate_limit_per_minute' => (int) env('KB_CHAT_RATE_LIMIT_PER_MINUTE', 20),
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Cloud Time Machine — archived-version retention (v8.7/W5)

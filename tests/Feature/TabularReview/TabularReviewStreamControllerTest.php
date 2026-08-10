@@ -49,7 +49,12 @@ final class TabularReviewStreamControllerTest extends TestCase
         // even if a prior test mutated the singleton.
         Cache::flush();
         $this->seed(RbacSeeder::class);
-        app(TenantContext::class)->set('default');
+        // A real (non-reserved) tenant: the generate-stream route now carries
+        // tenant.authorize (SEC-IDOR-001 fix), which forbids the reserved
+        // 'default' namespace. actingAs() auto-provisions the acting user a
+        // membership in this tenant, so the guard passes for the owner while
+        // still blocking cross-tenant/ spoofed access.
+        app(TenantContext::class)->set('acme');
     }
 
     public function test_stream_emits_start_document_cell_done_events(): void

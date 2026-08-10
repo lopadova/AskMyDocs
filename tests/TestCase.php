@@ -292,6 +292,8 @@ abstract class TestCase extends OrchestraTestCase
         // Loaded with its shipped defaults so the matrix + header tests verify
         // the SECURE configuration, not the framework default.
         $app['config']->set('security-headers', require __DIR__.'/../config/security-headers.php');
+        // Outbound-HTTP SSRF policy (Testbench does not auto-load host config/).
+        $app['config']->set('outbound-http', require __DIR__.'/../config/outbound-http.php');
         $app['config']->set('auth', require __DIR__.'/../config/auth.php');
         $app['config']->set('permission', require __DIR__.'/../config/permission.php');
         $app['config']->set('rbac', require __DIR__.'/../config/rbac.php');
