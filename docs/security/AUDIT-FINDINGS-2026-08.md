@@ -78,7 +78,16 @@ Original finding (as filed):
 - **Remediation:** PR 5 — magic-byte/MIME check vs the `SourceType` allow-list at the ingest boundary (decoded type must match declared); reject polyglot/mismatch/oversize; negative tests. Also verify `Browsershot` PDF export uses an argument array, not string interpolation (`SEC-SHELL-001`).
 - **Residual:** none for host; connector-package binary handling covered by package CI.
 
-### F-06 — Public chat/search throttle is not identity+tenant aware — Medium
+### F-06 — /kb/chat has no identity+tenant-aware throttle — Medium — remediation in review (PR 6 #417)
+
+**Scope correction:** there is **no `/api/kb/search` route** (verified); the gap
+is the authenticated `POST /kb/chat` (auth:sanctum + tenant.authorize group) with
+no rate limit → one tenant user could exhaust AI provider quota for everyone.
+Fixed in PR 6: a `throttle:kb-chat` RateLimiter keyed by identity + tenant
+(floors at 1/min even if misconfigured to 0). Anonymous/widget chat already
+carries its own throttle.
+
+Original finding (as filed):
 - **Rule/ID:** `SEC-THROTTLE-001`, resource-limits.
 - **Population:** `POST /api/kb/chat`, `POST /api/kb/search`, anonymous chat. The widget path is already session-throttled; these are not keyed to identity+tenant.
 - **Impact:** a single tenant or anonymous caller can exhaust AI spend / DB search capacity for others (cost-DoS + noisy-neighbor); IP-only throttling is trivially bypassed and punishes shared-NAT tenants.
@@ -102,7 +111,19 @@ Original finding (as filed):
 - **Remediation:** PR 8 — after the trace: exact code-owned allow-list at the construction choke point (provider ∈ known set, base-URL host ∈ validated list at boot, model ∈ configured list; fail-closed on unknown); negative tests. If the trace shows no runtime-settable path reaches the URL, downgrade to `implemented` + add the guard test as a regression lock.
 - **Residual:** none.
 
-### F-09 — No dependency-audit / SAST CI gate — Medium
+### F-09 — No dependency-audit / SAST CI gate — Medium — partial remediation in review (PR 9 #418)
+
+**PR 9 ships the safe, mergeable parts:** `.github/dependabot.yml` (composer +
+npm + github-actions, weekly grouped update PRs + immediate advisory PRs) and a
+**report-only** `dependency-audit` CI job (composer audit + npm audit). It is
+deliberately NOT a blocking gate yet: the default branch carries ~52 known
+advisories, so a hard gate would red-CI every PR before triage. Documented
+follow-ups (the finding stays partially open): flip the audit job to blocking
+with an **expiring advisory baseline** (dependency-regression-gate) after
+triaging the backlog, add **larastan/SAST** with a generated baseline, and sweep
+third-party Action refs to pinned commit SHAs.
+
+Original finding (as filed):
 - **Rule/ID:** `SEC-DEPS-001`, `SEC-SUPPLY-001`, sast-regression-gate, `BUILD-VERIFY-001`.
 - **Population:** `composer.lock` + `package-lock.json` are committed (good), but CI runs no `composer audit` / `npm audit` / SAST; GitHub Actions third-party pinning to unverified.
 - **Impact:** a newly-disclosed advisory in a transitive dependency ships silently; no fail-closed gate on new SAST findings (Top-10 2025 A03).
