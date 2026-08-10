@@ -85,6 +85,23 @@ class KbChatThrottleTest extends TestCase
         $this->actingAs($second, 'sanctum')->postJson('/api/kb/chat', ['question' => 'q1'])->assertOk();
     }
 
+    public function test_buckets_are_independent_per_tenant_for_the_same_user(): void
+    {
+        $user = $this->user('multi-tenant-user');
+        $ctx = app(\App\Support\TenantContext::class);
+
+        // Exhaust the bucket while acting in tenant-x.
+        $ctx->set('tenant-x');
+        $this->actingAs($user, 'sanctum')->postJson('/api/kb/chat', ['question' => 'q1'])->assertOk();
+        $this->actingAs($user, 'sanctum')->postJson('/api/kb/chat', ['question' => 'q2'])->assertOk();
+        $this->actingAs($user, 'sanctum')->postJson('/api/kb/chat', ['question' => 'q3'])->assertStatus(429);
+
+        // The SAME user acting in a different tenant has a fresh bucket — the
+        // limiter key is identity AND tenant.
+        $ctx->set('tenant-y');
+        $this->actingAs($user, 'sanctum')->postJson('/api/kb/chat', ['question' => 'q1'])->assertOk();
+    }
+
     public function test_zero_config_still_enforces_a_floor_of_one_per_minute(): void
     {
         config()->set('kb.chat.rate_limit_per_minute', 0);
