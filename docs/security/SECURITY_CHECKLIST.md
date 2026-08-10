@@ -96,7 +96,7 @@ are §6.
 | 28 | frontend-secrets | SEC-FESECRET-001 | applicable | implemented | no secrets in Vite/React/widget bundles | — | bundle-scan regression check | PR 9 |
 | 29 | gdpr-data-inventory | SEC-GDPR-001 | applicable | implemented | PII tri-surface (v8.23) vault + erasure + prune jobs | PII feature tests | processor register residency evidence | INFRA §6 |
 | 30 | http-client-service | ARCH-HTTP-001 | applicable | regression-tested | OutboundUrlValidator guards both webhook sinks; widget URLs are client-rendered (SANO) | OutboundUrlValidatorTest + WebhookSsrfGuardTest | AI provider egress allow-listed separately (PR 8) | PR 2 (#411) |
-| 31 | tenant-object-authorization | SEC-IDOR-001 | applicable | regression-tested | forTenant() scoping; TenantIdMandatoryTest + R32 | TenantReadScopeTest, Matrix | SSE endpoint cross-tenant denial test | PR 4 |
+| 31 | tenant-object-authorization | SEC-IDOR-001 | applicable | regression-tested | forTenant() scoping; TenantIdMandatoryTest + R32; **tabular-review SSE stream now carries tenant.authorize (real IDOR fix)** | TenantReadScopeTest, Matrix, TabularReviewStreamTenantIsolationTest | — | PR 4 (#414) |
 | 32 | key-management | SEC-KEYS-001 | applicable | implemented | encrypted PII vault; managed keys | vault tests | rotation + separated-duties runtime evidence | INFRA §6 |
 | 33 | logging-security | SEC-LOG-001 | applicable | implemented | no secrets in query-string (H6); trace_id correlation | logging tests | HTTP-wide correlation-id middleware | PR 1 (adjacent) |
 | 34 | multi-surface-security-gates | — | applicable | implemented | HTTP/CLI/queue/MCP parity via shared core services (R44) | tri-surface tests | MCP write parity proof | PR 3 |
@@ -702,7 +702,7 @@ CI green.
 | 1 | Security response headers (CSP nonce, HSTS, XFO, nosniff, Referrer/Permissions-Policy) | content-security-policy, response-headers, csp-nonce-cache, csp-report-collection, tls-hsts, request-correlation | ASVS V3/V12, Top-10 A02/A09 | planned |
 | 2 | Outbound SSRF guard (webhook/digest) | ssrf-outbound, http-client-service | ASVS V13(SSRF), AISVS C4, Top-10 A10 | in review (#411) — widget URLs client-rendered (SANO); circuit-breaker choke-point remains open |
 | 3 | MCP write-tool authorization coverage (12 write tools) | rule-ai-agent-actions, ai-initiating-user, multi-surface-gates, fail-closed | AISVS C5/C9/C10, Top-10 A06 | planned |
-| 4 | Tenant scope on SSE + no-`tenant.authorize` blocks | tenant-object-authorization, security-boundaries, frontend-tenant-architecture | ASVS V8, AISVS C8, Top-10 A01 | planned |
+| 4 | Tenant scope on SSE (tabular-review stream) — **real IDOR fix** | tenant-object-authorization, security-boundaries | ASVS V8, AISVS C8, Top-10 A01 | in review (#414) — confirmed cross-tenant leak (200→403) closed with tenant.authorize |
 | 5 | Upload hardening (magic-byte/MIME vs SourceType) | upload-hardening, resource-limits, shell-command-array | ASVS V5, Top-10 A05 | planned |
 | 6 | Identity-aware throttle on public chat/search | public-flow-throttle, resource-limits | ASVS V6.1, AISVS C11, Top-10 A07 | planned |
 | 7 | Route-exposure regression gate + RBAC matrix completeness | route-exposure-regression-gate, http-surface-inventory, backoffice-exposure, control-coverage | ASVS V4, Top-10 A01 | planned |
