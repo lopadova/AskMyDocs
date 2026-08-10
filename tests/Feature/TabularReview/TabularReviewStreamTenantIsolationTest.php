@@ -16,12 +16,15 @@ use Tests\TestCase;
 /**
  * Cross-tenant isolation for the tabular-review SSE stream (SEC-IDOR-001, F-04).
  *
- * The route `POST /api/admin/tabular-reviews/{id}/generate-stream` carries
- * `auth.sse:sanctum` + `can:viewTabularReviews` but NOT `tenant.authorize`; it
- * relies on the controller's own `forTenant(TenantContext::current())` scoping.
- * These tests lock that in: an admin can never stream a review that belongs to a
- * tenant they are not a member of — neither with no header nor by spoofing
- * `X-Tenant-Id`.
+ * The route `POST /api/admin/tabular-reviews/{id}/generate-stream` now carries
+ * `auth.sse:sanctum` + `tenant.authorize` + `can:viewTabularReviews`, on top of
+ * the controller's own `forTenant(TenantContext::current())` scoping
+ * (defense-in-depth). `tenant.authorize` rejects a spoofed `X-Tenant-Id` with a
+ * 403 before the controller ever runs, while the controller's tenant scoping
+ * independently returns 404 for an in-tenant request to another tenant's
+ * review. These tests lock both layers in: an admin can never stream a review
+ * that belongs to a tenant they are not a member of — neither with no header
+ * nor by spoofing `X-Tenant-Id`.
  */
 class TabularReviewStreamTenantIsolationTest extends TestCase
 {
