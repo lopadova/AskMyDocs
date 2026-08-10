@@ -70,7 +70,7 @@ are §6.
 | 2 | rule-ai-llm-security | SEC-LLM-001 | applicable | implemented | app/Ai/AiManager.php gates; kb_rag prompt delimits untrusted chunks | AiManager + provider tests | provider/model allow-list at construction choke point | PR 8 |
 | 3 | ajax-route-hardening | SEC-AJAX-001 | applicable | regression-tested | every entrypoint has explicit auth decision (Sanctum groups) | AdminAuthorizationMatrixTest | — | PR 7 (gate) |
 | 4 | api-login-gates | SEC-MFA-API-001 | applicable | regression-tested | API/admin/MCP strong-auth consistency | AdminAuthorizationMatrixTest | MFA not implemented — tracked as residual | — |
-| 5 | api-token-lifecycle | SEC-TOKEN-001 | applicable | open | Sanctum opaque tokens; expiration currently null | — | bounded expiry + revoke-on-password-change | PR 10 |
+| 5 | api-token-lifecycle | SEC-TOKEN-001 | applicable | regression-tested | Sanctum expiration bounded (30d, env-configurable) + password reset revokes all tokens | PasswordResetRevokesTokensTest | — | PR 10 (#419) |
 | 6 | audit-trail-integrity | SEC-AUDIT-001 | applicable | regression-tested | kb_canonical_audit + admin_command_audit immutable (no updated_at) | audit feature tests | independent retention evidence | INFRA §6 |
 | 7 | auth-hardening | SEC-AUTHHARD-001 | applicable | implemented | invite-gated register, throttled 6/min/IP, viewer floor | RegisterController tests | — | PR 10 (CSRF negatives) |
 | 8 | aws-iam-sigv4 | SEC-AWSCRED-001 | applicable | infra-verification-required | no static AWS keys in repo | — | OIDC/short-lived role at deploy — needs cloud evidence | INFRA §6 |
@@ -86,7 +86,7 @@ are §6.
 | 18 | dependency-security | SEC-DEPS-001 | applicable | open | committed composer.lock + package-lock.json | — | composer audit + npm audit blocking gate | PR 9 |
 | 19 | deserialization | SEC-DESERIALIZE-001 | applicable | implemented | both unserialize sites carry allowed_classes allow-list | prescreen 2026-08-09 | regression test on allow-list | PR 9 |
 | 20 | dns-dangling | SEC-DNS-001 | applicable | infra-verification-required | n/a in repo | — | external DNS inventory/monitoring | INFRA §6 |
-| 21 | dormant-access | SEC-OFFBOARD-001 | applicable | implemented | membership removal revokes access; final-super-admin guard | SystemAdmin tests | token/session revocation on offboard | PR 10 |
+| 21 | dormant-access | SEC-OFFBOARD-001 | applicable | regression-tested | membership removal revokes access; final-super-admin guard; password reset now revokes all tokens | SystemAdmin tests + PasswordResetRevokesTokensTest | — | PR 10 (#419) |
 | 22 | effective-security-population | SEC-INVENTORY-001 | applicable | regression-tested | behavior-based inventory in threat model + arch tests | tests/Architecture/* | — | PR 7 |
 | 23 | email-auth-dns | SEC-DNSMAIL-001 | applicable | infra-verification-required | n/a in repo | — | SPF/DKIM/DMARC external evidence | INFRA §6 |
 | 24 | env-gate-fail-closed | SEC-ENV-001 | applicable | implemented | /testing/* only under APP_ENV=testing; fake providers gated | env-gate tests | scheduled runtime drift report | DEPLOY §6 |
@@ -708,7 +708,7 @@ CI green.
 | 7 | Route-exposure regression gate + RBAC matrix completeness | route-exposure-regression-gate, http-surface-inventory, backoffice-exposure, control-coverage | ASVS V4, Top-10 A01 | planned |
 | 8 | AI provider/model/base-URL allow-list policy | ai-provider-supply-chain, ai-data-flow, rule-ai-llm-security | AISVS C3/C6, Top-10 A05 | planned |
 | 9 | Supply-chain & SAST CI (composer/npm audit, dependabot, larastan) | dependency-security, supply-chain-ci, sast-regression-gate, dependency-regression-gate | ASVS V15, AISVS C6, Top-10 A03 | planned |
-| 10 | Sanctum token lifecycle + CSRF negatives | api-token-lifecycle, dormant-access, backoffice-no-remember | ASVS V7, Top-10 A07 | planned |
+| 10 | Sanctum token lifecycle (bounded expiry + revoke-on-reset) | api-token-lifecycle, dormant-access | ASVS V7, Top-10 A07 | in review (#419) — CSRF is already enforced by Laravel stateful Sanctum on the cookie SPA |
 | 11 | Tauri desktop hardening (capabilities + CSP) | postmessage-origin (Tauri), tls-hsts (client) | ASVS V13, Top-10 A02 | planned |
 
 **Residual (not a PR — tracked in §1/§6):** password-breach-check, MFA,

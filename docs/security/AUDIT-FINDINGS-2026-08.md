@@ -109,7 +109,17 @@ Original finding (as filed):
 - **Remediation:** PR 9 — `composer audit` + `npm audit` with an expiring advisory baseline, `.github/dependabot.yml`, PHPStan/Larastan baseline, optional CodeQL; verify actions pinned to commit SHAs.
 - **Residual (infra):** CodeQL/SAST at org level may need org setup — that portion stays §6 until a green run exists.
 
-### F-10 — Sanctum token lifecycle + CSRF negatives incomplete — Low
+### F-10 — Sanctum token lifecycle incomplete — Low — remediation in review (PR 10 #419)
+
+**Fixed in PR 10:** `config/sanctum.php` `expiration` was `null` (tokens never
+expire) → now bounded to 30 days (`SANCTUM_TOKEN_EXPIRATION_MINUTES`,
+env-configurable); and `PasswordResetController::reset` now calls
+`$user->tokens()->delete()` so a password reset revokes every issued API token
+(dormant-access). Tested by `PasswordResetRevokesTokensTest`. CSRF on stateful
+routes is already enforced by Laravel's Sanctum stateful guard on the cookie SPA
+(and the one public POST — `/csp-report` — was explicitly CSRF-exempted in PR 1).
+
+Original finding (as filed):
 - **Rule/ID:** `SEC-TOKEN-001`, auth-hardening, dormant-access.
 - **Population:** `config/sanctum.php` (`expiration => null`), password-change flow, stateful SPA routes.
 - **Impact:** non-expiring tokens widen the window on a leaked token; no explicit test that a password change revokes tokens; CSRF negative coverage on stateful routes is thin.

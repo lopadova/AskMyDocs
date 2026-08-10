@@ -39,11 +39,15 @@ return [
     |--------------------------------------------------------------------------
     |
     | First-party SPA sessions are unaffected by this setting; it applies to
-    | issued personal access tokens only. `null` means tokens never expire.
+    | issued personal access tokens (the Tauri desktop PAT) only. Previously
+    | `null` (never expire); SEC-TOKEN-001 requires a bounded lifetime, so it now
+    | defaults to 30 days and is env-configurable. A leaked PAT can therefore
+    | only be replayed for a bounded window even if it is never explicitly
+    | revoked (and password reset revokes all of a user's tokens outright).
     |
     */
 
-    'expiration' => null,
+    'expiration' => (int) env('SANCTUM_TOKEN_EXPIRATION_MINUTES', 60 * 24 * 30),
 
     /*
     |--------------------------------------------------------------------------
