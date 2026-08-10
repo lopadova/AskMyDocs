@@ -142,14 +142,14 @@ are §6.
 | 74 | exposed-public-files | SEC-ESPOSTI-001 | applicable | implemented | public/ is Vite build output only | — | positive public asset inventory | PR 7 (adjacent) |
 | 75 | frontend-tenant-architecture | — | applicable | regression-tested | FE tenant state presentation-only; backend scopes | TenantReadScopeTest | — | PR 4 |
 | 76 | gdpr-consent-and-access | SEC-GDPR-001 | applicable | implemented | DSAR/erasure via PII tri-surface + AI-Act package | PII/AI-Act tests | consent notice version evidence | INFRA §6 |
-| 77 | http-surface-inventory | — | applicable | open | manual inventory today | — | resolved-router perimeter gate | PR 7 |
+| 77 | http-surface-inventory | — | applicable | regression-tested | RouteExposureTest enumerates the resolved router; mutating routes authenticated-or-declared-public (11 reasoned public) | RouteExposureTest | — | PR 7 (#421) |
 | 78 | log-retention-and-siem | SEC-SIEM-001 | applicable | infra-verification-required | prune jobs present (chat-log:prune etc.) | prune tests | off-host SIEM delivery evidence | INFRA §6 |
 | 79 | postmessage-origin | — | N/A-topology | N/A | widget renders same-page; no cross-origin postMessage today | — | activates if widget iframes cross-origin | PR 11 (Tauri) |
 | 80 | processor-register | — | applicable | implemented | provider = subprocessor; documented in FinOps/config | — | residency/DPA register evidence | INFRA §6 |
 | 81 | production-posture | SEC-POSTURA-001 | applicable | implemented | raw-env debug gate; unknown env = production | posture tests | cached-config divergence check | DEPLOY §6 |
 | 82 | request-correlation | — | applicable | implemented | trace_id on chat_logs | FinOps tests | HTTP-wide correlation middleware | PR 1 |
 | 83 | response-headers | — | applicable | open | no security headers middleware | — | exact real headers + emitter ownership | PR 1 |
-| 84 | route-exposure-regression-gate | — | applicable | open | no resolved-router gate yet | — | real router regression gate | PR 7 |
+| 84 | route-exposure-regression-gate | — | applicable | regression-tested | RouteExposureTest: mutating routes gated-or-allow-listed + every auth.sse route carries tenant.authorize (F-04 class) | RouteExposureTest | — | PR 7 (#421) |
 | 85 | sast-regression-gate | — | applicable | open | no SAST in CI | — | baseline/full SAST fail-closed | PR 9 |
 | 86 | session-device-binding | — | applicable | implemented | no IP binding; UA is signal only | — | measured report-only rollout | residual §1 |
 | 87 | sri-pinned-cdn | — | N/A-topology | N/A | no external CDN assets (self-hosted Vite) | — | activates if a CDN asset is added | PR 9 |
@@ -705,7 +705,7 @@ CI green.
 | 4 | Tenant scope on SSE (tabular-review stream) — **real IDOR fix** | tenant-object-authorization, security-boundaries | ASVS V8, AISVS C8, Top-10 A01 | merged #414 2026-08-10 — confirmed cross-tenant leak (200→403) closed with tenant.authorize |
 | 5 | Upload hardening (magic-byte vs SourceType) | upload-hardening | ASVS V5, Top-10 A05 | in review (#416) — FileTypeSniffer at the upload boundary; Browsershot arg-array remains a follow-up nit |
 | 6 | Identity-aware throttle on /kb/chat | public-flow-throttle | ASVS V6.1, AISVS C11, Top-10 A07 | in review (#417) — throttle:kb-chat identity+tenant; no /kb/search route exists |
-| 7 | Route-exposure regression gate + RBAC matrix completeness | route-exposure-regression-gate, http-surface-inventory, backoffice-exposure, control-coverage | ASVS V4, Top-10 A01 | planned |
+| 7 | Route-exposure regression gate | route-exposure-regression-gate, http-surface-inventory | ASVS V4, Top-10 A01 | in review (#421) — resolved-router gate; also asserts every SSE route carries tenant.authorize (locks the F-04 class); no unexpected exposure found |
 | 8 | AI provider/model/base-URL allow-list policy | ai-provider-supply-chain, ai-data-flow, rule-ai-llm-security | AISVS C3/C6, Top-10 A05 | planned |
 | 9 | Supply-chain CI (dependabot + report-only audit) | dependency-security, supply-chain-ci | ASVS V15, AISVS C6, Top-10 A03 | in review (#418) — blocking audit gate + baseline + larastan/SAST are documented follow-ups (need advisory triage) |
 | 10 | Sanctum token lifecycle + CSRF negatives | api-token-lifecycle, dormant-access, backoffice-no-remember | ASVS V7, Top-10 A07 | planned |

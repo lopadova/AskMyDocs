@@ -95,7 +95,20 @@ Original finding (as filed):
 - **Remediation:** PR 6 — named rate limiter keyed by identity+tenant (IP fallback for anonymous) on `/api/kb/chat` + `/api/kb/search`; tests: 429 over threshold, independent buckets per tenant.
 - **Residual:** daily cost cap is a separate FinOps control (already metered); this closes the rate dimension.
 
-### F-07 — No resolved-router exposure regression gate — Medium
+### F-07 — No resolved-router exposure regression gate — Medium — remediation in review (PR 7 #421)
+
+**Fixed in PR 7:** `tests/Architecture/RouteExposureTest` enumerates the REAL
+resolved routing table (web.php + api.php, group middleware included) and asserts
+(1) every state-changing route is authenticated or on an 11-entry reasoned
+public allow-list, and (2) every `auth.sse` route also carries `tenant.authorize`
+— locking the exact F-04 IDOR class. **Sweep result:** no unexpected exposure —
+the only un-authenticated mutating routes are the auth/registration/widget-token/
+testing endpoints (all legitimately public), and both SSE routes now carry
+tenant.authorize (the chat stream always did; the tabular-review stream was fixed
+in PR 4). The suspected `eval-harness.api.middleware=[]` / pii-redactor-admin
+gaps from the initial filing did not surface as ungated mutating routes.
+
+Original finding (as filed):
 - **Rule/ID:** `SEC-COVERAGE-001`, route-exposure-regression-gate, http-surface-inventory.
 - **Population:** ~261 host routes + 13 vendor-mounted route groups. The R32 matrix covers a representative endpoint per group, but a new mutating route that forgets its gate — or a vendor package mounting routes with a permissive `['api']` default — can ship green (the exact class of bug R32's first run caught for `ai-act-compliance`).
 - **Impact:** an ungated mutating route is a potential unauth data-exposure or write. Two suspects to confirm in-PR: `eval-harness.api.middleware` reported empty, and `pii-redactor-admin` middleware without an auth fallback.
