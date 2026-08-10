@@ -53,13 +53,14 @@ Original finding (as filed):
 - **Remediation:** PR 3 — architecture test enumerating write-capable tools (no `IsReadOnly`) and asserting authorizer coverage; negative test (write tool without permission → deny, audited). `KbDetokenize` (reverses PII redaction) is the highest-value target and gets an explicit cross-tenant + permission negative test.
 - **Residual:** none once the enumeration test is the gate.
 
-### F-04 — SSE tabular-review stream lacks a cross-tenant denial regression test — Medium
-- **Rule/ID:** `SEC-IDOR-001`, security-boundaries.
-- **Population:** `app/Http/Controllers/Api/Admin/TabularReviewStreamController.php`, route `POST /api/admin/tabular-reviews/{id}/generate-stream` (middleware `auth.sse:sanctum` + `can:viewTabularReviews`, **no** `tenant.authorize`).
-- **Impact:** the controller **already** scopes correctly (`forTenant($ctx->current())` on the review lookup, returns **404** on a cross-tenant id) — so this is a defense-in-depth verification, not a live leak. The gap is the absence of a regression test locking that behavior, and the route relying on in-controller scoping rather than the `tenant.authorize` middleware layer used elsewhere.
-- **Source→sink:** `X-Tenant-Id` header + `{id}` path param → `forTenant()` query → 404 (correct today).
-- **Remediation:** PR 4 — cross-tenant denial test on the SSE endpoint (tenant A cannot stream tenant B's review id → 404); document why `platform.admin` / system-admin blocks intentionally omit `tenant.authorize` (ADR 0023/0024) and confirm `ResolveTenant` trusts `X-Tenant-Id` only after membership check.
-- **Residual:** none.
+### F-04 — Cross-tenant IDOR on the tabular-review SSE stream — **High (confirmed live leak)** — remediation in review (PR 4 #414)
+- **Rule/ID:** `SEC-IDOR-001`, security-boundaries (R30).
+- **Population:** `app/Http/Controllers/Api/Admin/TabularReviewStreamController.php`, route `POST /api/admin/tabular-reviews/{id}/generate-stream` — middleware was `auth.sse:sanctum` + `can:viewTabularReviews`, **no** `tenant.authorize`.
+- **Impact — CORRECTED FROM THE INITIAL FILING:** the initial audit judged this a defense-in-depth gap because the controller scopes with `forTenant(TenantContext::current())`. **Empirical verification proved that wrong.** `ResolveTenant` (global) sets `TenantContext` from the inbound `X-Tenant-Id` header **without any membership check**, and the route lacked `tenant.authorize`. So an admin holding the *global* `viewTabularReviews` permission could send `X-Tenant-Id: victim` → `TenantContext` becomes `victim` → `forTenant('victim')` finds the review → **HTTP 200 streaming another tenant's tabular-review data.** Confirmed in a Testbench harness with `ResolveTenant` active: status **200** with the victim review streamed. This is a live cross-tenant data leak (High).
+- **Source→sink:** attacker `X-Tenant-Id: victim` header → `ResolveTenant` (no membership check) → `TenantContext='victim'` → controller `forTenant('victim')` → 200 + victim data.
+- **Remediation:** PR 4 — add `tenant.authorize` (`AuthorizeTenantHeader`) to the route; it requires the authenticated user to have a membership in the resolved tenant, so a spoofed header now **403s before the controller runs**. `TabularReviewStreamTenantIsolationTest` prepends `ResolveTenant` (mirroring production) and locks both layers: spoofed header → 403, in-tenant cross-review id → 404. The existing `TabularReviewStreamControllerTest` moved off the reserved `default` tenant (which `tenant.authorize` forbids) onto a real `acme` tenant.
+- **Lesson:** this is the audit's headline result — a finding the paper analysis under-rated until it was executed. Every "the controller already scopes it" claim on a route lacking `tenant.authorize` must be verified with `ResolveTenant` active and a spoofed header.
+- **Residual:** none for this route. Follow-up: PR 7's route-exposure gate should flag every other mutating/streaming route missing `tenant.authorize`.
 
 ### F-05 — No decoded-type (magic-byte) validation on ingested binaries — Medium
 - **Rule/ID:** `SEC-UPLOAD-001`, resource-limits.

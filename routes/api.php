@@ -1289,6 +1289,16 @@ Route::middleware([
     \Illuminate\Cookie\Middleware\EncryptCookies::class,
     \Illuminate\Session\Middleware\StartSession::class,
     'auth.sse:sanctum',
+    // SECURITY (SEC-IDOR-001, F-04): tenant.authorize is REQUIRED here.
+    // ResolveTenant (global) honours an inbound X-Tenant-Id header WITHOUT a
+    // membership check, and the controller drives its query off
+    // TenantContext::current(). Without this guard an admin holding the global
+    // `viewTabularReviews` permission could send `X-Tenant-Id: victim` and
+    // stream another tenant's tabular-review data (confirmed: 200 + data leak).
+    // AuthorizeTenantHeader requires the authenticated user to have a membership
+    // in the resolved tenant, so a spoofed header now 403s. Mirrors every other
+    // operational /api group.
+    'tenant.authorize',
     'can:viewTabularReviews',
 ])->post(
     '/admin/tabular-reviews/{id}/generate-stream',
