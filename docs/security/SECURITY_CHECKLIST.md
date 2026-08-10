@@ -95,7 +95,7 @@ are §6.
 | 27 | fail-closed-security-controls | SEC-FAILCLOSED-001 | applicable | implemented | unknown policy denies (AppSettingsResolver, tool registries) | R43 both-states tests | — | PR 3/8 |
 | 28 | frontend-secrets | SEC-FESECRET-001 | applicable | implemented | no secrets in Vite/React/widget bundles | — | bundle-scan regression check | PR 9 |
 | 29 | gdpr-data-inventory | SEC-GDPR-001 | applicable | implemented | PII tri-surface (v8.23) vault + erasure + prune jobs | PII feature tests | processor register residency evidence | INFRA §6 |
-| 30 | http-client-service | ARCH-HTTP-001 | applicable | open | raw Http:: in webhook/digest/widget-fetch paths | — | hardened centralized outbound client (SSRF) | PR 2 |
+| 30 | http-client-service | ARCH-HTTP-001 | applicable | regression-tested | OutboundUrlValidator guards both webhook sinks; widget URLs are client-rendered (SANO) | OutboundUrlValidatorTest + WebhookSsrfGuardTest | AI provider egress allow-listed separately (PR 8) | PR 2 (#411) |
 | 31 | tenant-object-authorization | SEC-IDOR-001 | applicable | regression-tested | forTenant() scoping; TenantIdMandatoryTest + R32; **tabular-review SSE stream now carries tenant.authorize (real IDOR fix)** | TenantReadScopeTest, Matrix, TabularReviewStreamTenantIsolationTest | — | PR 4 (#414) |
 | 32 | key-management | SEC-KEYS-001 | applicable | implemented | encrypted PII vault; managed keys | vault tests | rotation + separated-duties runtime evidence | INFRA §6 |
 | 33 | logging-security | SEC-LOG-001 | applicable | implemented | no secrets in query-string (H6); trace_id correlation | logging tests | HTTP-wide correlation-id middleware | PR 1 (adjacent) |
@@ -117,7 +117,7 @@ are §6.
 | 49 | shell-command-array | SEC-SHELL-001 | applicable | implemented | no shell_exec/exec in app/ | prescreen 2026-08-09 | Browsershot arg-array verification | PR 5 |
 | 50 | signed-commits | SEC-SIGNCOMMIT-001 | applicable | infra-verification-required | n/a provable in repo | — | branch/platform signature verification | INFRA §6 |
 | 51 | signed-url-tokens | SEC-SIGNURL-001 | applicable | regression-tested | DB-backed single-use confirm tokens (R21) | CommandRunner tests | — | — |
-| 52 | ssrf-outbound | SEC-SSRF-001 | applicable | open | outbound webhook/digest/widget-fetch URLs unvalidated | — | scheme/DNS/IP/redirect validation guard | PR 2 |
+| 52 | ssrf-outbound | SEC-SSRF-001 | applicable | regression-tested | OutboundUrlValidator (scheme + DNS→IP private/metadata reject + redirects off) on both webhook jobs | OutboundUrlValidatorTest + WebhookSsrfGuardTest | DNS-rebind TOCTOU documented residual | PR 2 (#411) |
 | 53 | multi-repository-security-coverage | — | N/A-topology | N/A | single deployable today | — | revisit if components deploy independently | — |
 | 54 | supply-chain-ci | SEC-SUPPLY-001 | applicable | open | committed lockfiles | — | immutable action SHAs + secret isolation audit | PR 9 |
 | 55 | sync-ai-instructions | SYNC-AI-001 | applicable | regression-tested | 8 rules + 3 mirrors + validator | npm run security:rules | — | PR B |
@@ -700,8 +700,8 @@ CI green.
 | A | Audit scaffolding (this doc + threat model + findings + agent + skill) | security-checklist, security-inventory, sync (doc) | method | in review |
 | B | Coverage-gate hardening (bidirectional validator + requiredFiles + typecheck CI) | sync-ai-instructions, control-coverage | — | planned |
 | 1 | Security response headers (CSP nonce, HSTS, XFO, nosniff, Referrer/Permissions-Policy) | content-security-policy, response-headers, csp-nonce-cache, csp-report-collection, tls-hsts, request-correlation | ASVS V3/V12, Top-10 A02/A09 | planned |
-| 2 | Outbound SSRF guard (webhook/digest/widget-fetch) | ssrf-outbound, http-client-service, circuit-breaker, external-response-validation | ASVS V13(SSRF), AISVS C4, Top-10 A10 | planned |
-| 3 | MCP write-tool scope gate (15 write tools) | rule-ai-agent-actions, ai-initiating-user | AISVS C5/C9/C10, Top-10 A06 | in review (#412) — mcp:tools:write required, reflection-locked |
+| 2 | Outbound SSRF guard (webhook/digest) | ssrf-outbound, http-client-service | ASVS V13(SSRF), AISVS C4, Top-10 A10 | in review (#411) — widget URLs client-rendered (SANO); circuit-breaker choke-point remains open |
+| 3 | MCP write-tool scope gate (15 write tools) | rule-ai-agent-actions, ai-initiating-user | AISVS C5/C9/C10, Top-10 A06 | merged #412 2026-08-10 — mcp:tools:write required, reflection-locked |
 | 4 | Tenant scope on SSE (tabular-review stream) — **real IDOR fix** | tenant-object-authorization, security-boundaries | ASVS V8, AISVS C8, Top-10 A01 | merged #414 2026-08-10 — confirmed cross-tenant leak (200→403) closed with tenant.authorize |
 | 5 | Upload hardening (magic-byte/MIME vs SourceType) | upload-hardening, resource-limits, shell-command-array | ASVS V5, Top-10 A05 | planned |
 | 6 | Identity-aware throttle on public chat/search | public-flow-throttle, resource-limits | ASVS V6.1, AISVS C11, Top-10 A07 | planned |

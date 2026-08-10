@@ -24,7 +24,7 @@ Severity scale: Critical (public/unauth data exposure or RCE-class) · High
 - **Remediation:** PR 1 — `app/Http/Middleware/SecurityHeaders.php`, nonce-based CSP compatible with Vite/SPA + widget, HSTS gated to production posture, exact-value feature tests.
 - **Residual (infra):** headers actually emitted at the edge — §6 items 8/9.
 
-### F-02 — Outbound requests have no SSRF guard — High (conditional)
+### F-02 — Outbound requests have no SSRF guard — Medium (config-set URLs) — remediation in review (PR 2 #411)
 - **Rule/ID:** `SEC-SSRF-001`, http-client-service, circuit-breaker.
 - **Population:** `app/Notifications/Channels/AbstractWebhookChannel.php` (+ Discord/Slack/Teams/Webhook subclasses), `app/Jobs/SendDigestWebhookJob.php`, `app/Jobs/SendExternalNotificationJob.php`, and host fetches in widget theme/intro services. All use raw `Http::` with a tenant/operator-supplied URL and no scheme/IP validation.
 - **Impact (conditional on who can set the webhook URL):** an operator or tenant-admin who can configure a notification/digest webhook can point it at `http://169.254.169.254/…` (cloud metadata), `http://127.0.0.1:…` or an internal service, turning the app server into an SSRF pivot. Severity is High where tenant-admins configure webhooks; Medium if restricted to platform operators.
