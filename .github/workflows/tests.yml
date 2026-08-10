@@ -105,6 +105,40 @@ jobs:
       - name: Run Vitest (legacy rich-content)
         run: npm run test:legacy
 
+  # SEC-DEPS-001 / supply-chain-ci — dependency vulnerability visibility.
+  # REPORT-ONLY for now (continue-on-error): the default branch already carries
+  # a backlog of advisories, so a hard gate would block every PR before the
+  # backlog is triaged. Dependabot (.github/dependabot.yml) actively opens fix
+  # PRs; this job surfaces the current advisory set in the CI summary. Flip the
+  # `continue-on-error` to false — or add an expiring advisory baseline — once the
+  # existing advisories are triaged (dependency-regression-gate).
+  dependency-audit:
+    name: Dependency audit (report-only)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP 8.3
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+
+      - name: Composer audit
+        run: composer audit --no-interaction || true
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: npm audit (production deps)
+        run: |
+          npm ci
+          npm audit --omit=dev || true
+
   playwright:
     name: Playwright E2E
     runs-on: ubuntu-latest

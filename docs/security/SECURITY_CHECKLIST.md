@@ -83,7 +83,7 @@ are §6.
 | 15 | control-coverage | SEC-COVERAGE-001 | applicable | regression-tested | effective-population arch tests (Tenant*, Matrix) | tests/Architecture/* | route-exposure population gate | PR 7 |
 | 16 | cors-config | SEC-CORS-001 | applicable | implemented | config/cors.php exact origins, R19 CSV trim | cors config test | edge CORS parity evidence | DEPLOY §6 |
 | 17 | db-least-privilege | SEC-DBPRIV-001 | applicable | infra-verification-required | app cannot create extensions at runtime (migrations separate) | — | DB grants + role separation runtime evidence | INFRA §6 |
-| 18 | dependency-security | SEC-DEPS-001 | applicable | open | committed composer.lock + package-lock.json | — | composer audit + npm audit blocking gate | PR 9 |
+| 18 | dependency-security | SEC-DEPS-001 | applicable | implemented | dependabot.yml (composer/npm/actions) + report-only composer/npm audit CI job | .github/dependabot.yml + tests.yml dependency-audit | flip to blocking + expiring advisory baseline after triaging the ~52 existing advisories | PR 9 (#418) |
 | 19 | deserialization | SEC-DESERIALIZE-001 | applicable | implemented | both unserialize sites carry allowed_classes allow-list | prescreen 2026-08-09 | regression test on allow-list | PR 9 |
 | 20 | dns-dangling | SEC-DNS-001 | applicable | infra-verification-required | n/a in repo | — | external DNS inventory/monitoring | INFRA §6 |
 | 21 | dormant-access | SEC-OFFBOARD-001 | applicable | implemented | membership removal revokes access; final-super-admin guard | SystemAdmin tests | token/session revocation on offboard | PR 10 |
@@ -104,7 +104,7 @@ are §6.
 | 36 | password-policy | SEC-PWPOLICY-001 | applicable | implemented | consistent password rules across flows | auth tests | breach-check integration | residual §1 |
 | 37 | path-containment | SEC-PATH-001 | applicable | regression-tested | KbPath::normalize() rejects .. and normalizes | KbPathTest | — | — |
 | 38 | pii-encryption | SEC-PII-CRYPT-001 | applicable | implemented | classified sensitive fields encrypted (vault) | vault tests | key rotation evidence | INFRA §6 |
-| 39 | public-flow-throttle | SEC-THROTTLE-001 | applicable | open | widget throttled; /api/kb/chat + /api/kb/search not identity-aware | — | named identity+tenant limiter | PR 6 |
+| 39 | public-flow-throttle | SEC-THROTTLE-001 | applicable | regression-tested | `throttle:kb-chat` limiter keyed identity+tenant on POST /kb/chat (floors at 1/min); widget already throttled; no /kb/search route exists | KbChatThrottleTest | daily cost cap is separate FinOps control | PR 6 (#417) |
 | 40 | race-conditions | SEC-RACE-001 / R21 | applicable | regression-tested | confirm-token consume inside lockForUpdate txn | CommandRunner concurrency test | — | — |
 | 41 | raw-sql-inventory | SEC-RAWSQL-001 | applicable | implemented | DB::raw/whereRaw parametrized or aggregate-only | prescreen 2026-08-09 | arch analyzer for raw SQL | PR 9 |
 | 42 | redis-production-posture | SEC-REDIS-001 | applicable | infra-verification-required | n/a in repo | — | TLS/auth/network runtime evidence | INFRA §6 |
@@ -119,7 +119,7 @@ are §6.
 | 51 | signed-url-tokens | SEC-SIGNURL-001 | applicable | regression-tested | DB-backed single-use confirm tokens (R21) | CommandRunner tests | — | — |
 | 52 | ssrf-outbound | SEC-SSRF-001 | applicable | regression-tested | OutboundUrlValidator (scheme + DNS→IP private/metadata reject + redirects off) on both webhook jobs | OutboundUrlValidatorTest + WebhookSsrfGuardTest | DNS-rebind TOCTOU documented residual | PR 2 (#411) |
 | 53 | multi-repository-security-coverage | — | N/A-topology | N/A | single deployable today | — | revisit if components deploy independently | — |
-| 54 | supply-chain-ci | SEC-SUPPLY-001 | applicable | open | committed lockfiles | — | immutable action SHAs + secret isolation audit | PR 9 |
+| 54 | supply-chain-ci | SEC-SUPPLY-001 | applicable | implemented | committed lockfiles + dependabot (incl. github-actions ecosystem for pin freshness) | .github/dependabot.yml | action SHA-pinning sweep is a follow-up | PR 9 (#418) |
 | 55 | sync-ai-instructions | SYNC-AI-001 | applicable | regression-tested | 8 rules + 3 mirrors + validator | npm run security:rules | — | PR B |
 | 56 | tls-hsts | SEC-TLS-001 | applicable | open | no HSTS header emitted today | — | app-side HSTS (deployed evidence stays INFRA) | PR 1 |
 | 57 | upload-hardening | SEC-UPLOAD-001 | applicable | regression-tested | FileTypeSniffer magic-byte check vs declared SourceType at StageKbUploadRequest boundary | FileTypeSnifferTest + KbUploadMagicByteTest | connector-fetched binaries covered by package CI | PR 5 (#416) |
@@ -704,10 +704,10 @@ CI green.
 | 3 | MCP write-tool scope gate (15 write tools) | rule-ai-agent-actions, ai-initiating-user | AISVS C5/C9/C10, Top-10 A06 | merged #412 2026-08-10 — mcp:tools:write required, reflection-locked |
 | 4 | Tenant scope on SSE (tabular-review stream) — **real IDOR fix** | tenant-object-authorization, security-boundaries | ASVS V8, AISVS C8, Top-10 A01 | merged #414 2026-08-10 — confirmed cross-tenant leak (200→403) closed with tenant.authorize |
 | 5 | Upload hardening (magic-byte vs SourceType) | upload-hardening | ASVS V5, Top-10 A05 | in review (#416) — FileTypeSniffer at the upload boundary; Browsershot arg-array remains a follow-up nit |
-| 6 | Identity-aware throttle on public chat/search | public-flow-throttle, resource-limits | ASVS V6.1, AISVS C11, Top-10 A07 | planned |
+| 6 | Identity-aware throttle on /kb/chat | public-flow-throttle | ASVS V6.1, AISVS C11, Top-10 A07 | in review (#417) — throttle:kb-chat identity+tenant; no /kb/search route exists |
 | 7 | Route-exposure regression gate + RBAC matrix completeness | route-exposure-regression-gate, http-surface-inventory, backoffice-exposure, control-coverage | ASVS V4, Top-10 A01 | planned |
 | 8 | AI provider allow-list (regression lock) | ai-provider-supply-chain | AISVS C3/C6, Top-10 A05 | in review (#420) — enforcement already existed; PR adds the regression gate + verified no runtime-settable base-URL/model path |
-| 9 | Supply-chain & SAST CI (composer/npm audit, dependabot, larastan) | dependency-security, supply-chain-ci, sast-regression-gate, dependency-regression-gate | ASVS V15, AISVS C6, Top-10 A03 | planned |
+| 9 | Supply-chain CI (dependabot + report-only audit) | dependency-security, supply-chain-ci | ASVS V15, AISVS C6, Top-10 A03 | merged #418 2026-08-10 — blocking audit gate + baseline + larastan/SAST are documented follow-ups (need advisory triage) |
 | 10 | Sanctum token lifecycle + CSRF negatives | api-token-lifecycle, dormant-access, backoffice-no-remember | ASVS V7, Top-10 A07 | planned |
 | 11 | Tauri desktop hardening (capabilities + CSP) | postmessage-origin (Tauri), tls-hsts (client) | ASVS V13, Top-10 A02 | planned |
 
