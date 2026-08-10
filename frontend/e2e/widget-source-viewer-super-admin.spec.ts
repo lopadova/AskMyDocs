@@ -231,6 +231,10 @@ test.describe('Widget cited-source viewer — real document', () => {
         const citation = await askForCitedDocument(page);
 
         let previewAttempts = 0;
+        // R13: failure injection — the happy-path preview flow is covered by the
+        // other tests in this file against real seeded data; here we force a
+        // one-shot 503 on the first preview fetch to exercise the 503-state +
+        // retry UX, then let the real endpoint serve the retry.
         await page.route('**/api/widget/sessions/*/documents/*/preview', async (route) => {
             previewAttempts += 1;
             if (previewAttempts === 1) {
