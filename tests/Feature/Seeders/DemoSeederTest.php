@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Seeders;
 
+use App\Models\AdminInsightsSnapshot;
 use App\Models\KnowledgeDocument;
 use App\Models\ProjectMembership;
 use App\Models\User;
 use App\Services\Auth\UserTeamsResolver;
+use Database\Seeders\AdminInsightsSeeder;
 use Database\Seeders\DemoSeeder;
+use Database\Seeders\EmptyAdminSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 use Padosoft\AiActCompliance\MultiTenancy\Models\Tenant;
@@ -86,5 +89,35 @@ final class DemoSeederTest extends TestCase
                 ->whereIn('tenant_id', [DemoSeeder::PRIMARY_TENANT, 'acme'])
                 ->count(),
         );
+    }
+
+    public function test_empty_admin_seeder_keeps_the_shell_inside_an_operational_tenant(): void
+    {
+        $this->seed(EmptyAdminSeeder::class);
+
+        $admin = User::query()->where('email', 'admin@demo.local')->sole();
+
+        $this->assertSame(
+            [DemoSeeder::PRIMARY_TENANT],
+            array_column(app(UserTeamsResolver::class)->resolve($admin), 'tenant_id'),
+        );
+        $this->assertDatabaseHas('projects', [
+            'tenant_id' => DemoSeeder::PRIMARY_TENANT,
+            'project_key' => 'empty-dashboard',
+        ]);
+        $this->assertSame(0, KnowledgeDocument::query()->count());
+    }
+
+    public function test_admin_insights_seeder_writes_the_demo_tenant_idempotently(): void
+    {
+        $this->seed(DemoSeeder::class);
+        $this->seed(AdminInsightsSeeder::class);
+        $this->seed(AdminInsightsSeeder::class);
+
+        $this->assertSame(
+            1,
+            AdminInsightsSnapshot::query()->forTenant(DemoSeeder::PRIMARY_TENANT)->count(),
+        );
+        $this->assertSame(0, AdminInsightsSnapshot::query()->forTenant('default')->count());
     }
 }

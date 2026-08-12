@@ -20,8 +20,10 @@ class AdminInsightsSeeder extends Seeder
     public function run(): void
     {
         $date = Carbon::today()->toDateString();
+        $tenantId = DemoSeeder::PRIMARY_TENANT;
 
         $row = AdminInsightsSnapshot::query()
+            ->forTenant($tenantId)
             ->whereDate('snapshot_date', $date)
             ->first();
 
@@ -98,7 +100,7 @@ class AdminInsightsSeeder extends Seeder
             $row->update($payload);
         } else {
             AdminInsightsSnapshot::create(array_merge(
-                ['snapshot_date' => $date],
+                ['tenant_id' => $tenantId, 'snapshot_date' => $date],
                 $payload,
             ));
         }
