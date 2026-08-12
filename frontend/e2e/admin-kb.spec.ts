@@ -51,6 +51,7 @@ test.describe('Admin KB Tree', () => {
         // `content` inside each document; the top-level `project` +
         // `markdown` shape would 422 against the controller contract.
         const ingest = await request.post('/api/kb/ingest', {
+            headers: { 'X-Tenant-Id': 'a-demo' },
             data: {
                 documents: [
                     {
