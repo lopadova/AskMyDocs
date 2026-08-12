@@ -38,7 +38,11 @@ test.describe('Chat live actions — feedback, auto-title, rename, citation nav'
             throw new Error('XSRF-TOKEN cookie missing after /sanctum/csrf-cookie');
         }
         const createResp = await page.request.post('/conversations', {
-            headers: { 'X-XSRF-TOKEN': decodeURIComponent(xsrf.value), Accept: 'application/json' },
+            headers: {
+                'X-XSRF-TOKEN': decodeURIComponent(xsrf.value),
+                'X-Tenant-Id': 'a-demo',
+                Accept: 'application/json',
+            },
             data: { project_key: null },
         });
         expect(

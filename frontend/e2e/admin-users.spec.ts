@@ -55,8 +55,9 @@ test.describe('Admin Users', () => {
         await expect(page.getByTestId('membership-editor')).toHaveAttribute('data-state', 'ready', {
             timeout: 10_000,
         });
-        // A brand-new user has no memberships yet.
-        await expect(page.getByTestId('memberships-empty')).toBeVisible();
+        // User creation requires one tenant-scoped initial membership; the
+        // form defaults to the first catalogued project (engineering).
+        await expect(page.getByTestId('membership-engineering')).toBeVisible();
 
         // Grant access to the seeded `hr-portal` project (DemoSeeder seeds
         // knowledge_documents under hr-portal + engineering, so the picker —
@@ -105,11 +106,14 @@ test.describe('Admin Users', () => {
         const csrf = await request.get('/sanctum/csrf-cookie');
         expect(csrf.ok()).toBeTruthy();
         const create = await request.post('/api/admin/users', {
+            headers: { 'X-Tenant-Id': 'a-demo' },
             data: {
                 name: 'Throwaway',
                 email: 'throwaway@demo.local',
                 password: 'P@ssw0rd-Throwaway-9',
                 roles: ['viewer'],
+                initial_project_key: 'engineering',
+                membership_role: 'member',
             },
         });
         expect(create.status()).toBe(201);
@@ -165,22 +169,23 @@ test.describe('Admin Users', () => {
         await expect(page.getByTestId('user-form-email-error')).toBeVisible({ timeout: 10_000 });
     });
 
-    test('failure — self delete blocked with 422 error toast', async ({ page }) => {
+    test('failure — cross-tenant identity deletion is routed to the global workflow', async ({ page }) => {
         await page.goto('/app/admin/users');
         await expect(page.getByTestId('users-table')).toHaveAttribute('data-state', 'ready', {
             timeout: 15_000,
         });
 
-        // Filter to the admin account so we act on the currently-signed-in row.
+        // Demo Admin intentionally belongs to both a-demo and acme. Tenant
+        // administration must not delete that shared global identity.
         await page.getByTestId('users-filter-q').fill('admin@demo.local');
         const row = page.locator('tbody tr', { hasText: 'admin@demo.local' });
         await expect(row).toBeVisible({ timeout: 10_000 });
 
         await row.locator('[data-testid^="users-row-"][data-testid$="-delete"]').click();
 
-        // The backend returns 422 "You cannot delete your own account."
+        // The cross-tenant guard runs before destructive account checks.
         await expect(page.getByTestId('toast-user-error')).toBeVisible({ timeout: 10_000 });
-        await expect(page.getByTestId('toast-user-error')).toContainText(/cannot delete/i);
+        await expect(page.getByTestId('toast-user-error')).toContainText(/multiple tenants|global workflow/i);
 
         // Admin row remains in the table.
         await expect(page.locator('tbody tr', { hasText: 'admin@demo.local' })).toBeVisible();

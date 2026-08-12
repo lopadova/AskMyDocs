@@ -1,5 +1,6 @@
 import { test as baseTest, expect } from '@playwright/test';
 import { test as seededTest } from './fixtures';
+import { loginAsProjectUser } from './setup-helpers';
 
 /*
  * v4.2/W4 sub-PR 5 — Admin PII Redactor SPA mount (initial iframe).
@@ -140,7 +141,11 @@ baseTest.describe('Admin PII Redactor — viewer (RBAC denied)', () => {
 
     baseTest('viewer hitting /app/admin/pii-redactor sees admin-forbidden and no cross-mounted shell', async ({
         page,
+        context,
     }) => {
+        // The preceding seeded scenarios recreate the users table, which
+        // invalidates the setup project's persisted password-hash session.
+        await loginAsProjectUser(page, context, null, 'chromium-viewer');
         await page.goto('/app/admin/pii-redactor');
 
         // Same RequireRole pattern as the rest of the admin SPA — the
@@ -160,9 +165,11 @@ baseTest.describe('Admin PII Redactor — viewer (RBAC denied)', () => {
      * branching the test on env.
      */
     baseTest('viewer GET /admin/pii-redactor rejects with 4xx (R13: failure injection on package mount URL)', async ({
-        request,
+        page,
+        context,
     }) => {
-        const response = await request.get('/admin/pii-redactor');
+        await loginAsProjectUser(page, context, null, 'chromium-viewer');
+        const response = await page.request.get('/admin/pii-redactor');
 
         // 404 when env=false (default in CI/dev — no routes registered),
         // 403 when env=true + viewer role. Either status proves the
