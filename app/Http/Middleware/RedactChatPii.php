@@ -12,9 +12,10 @@ use Symfony\Component\HttpFoundation\Response;
 /**
  * Redact PII from the `content` field of incoming chat-message requests.
  *
- * Wraps the two POST endpoints that persist user-submitted chat content:
+ * Wraps the three POST endpoints that persist user-submitted chat content:
  *
  *   POST /conversations/{conversation}/messages         (sync — MessageController::store)
+ *   POST /conversations/{conversation}/messages/agent   (durable agent loop)
  *   POST /conversations/{conversation}/messages/stream  (SSE — MessageStreamController::store)
  *
  * When BOTH `kb.pii_redactor.enabled` AND
@@ -30,7 +31,7 @@ use Symfony\Component\HttpFoundation\Response;
  * behaviour change until they explicitly flip BOTH integration knobs ON.
  *
  * Scope (architecture-tested by `tests/Architecture/PiiRedactionMiddlewareScopeTest`):
- *   - Bound ONLY to the two chat-message routes via the `redact-chat-pii`
+ *   - Bound ONLY to the three chat-message routes via the `redact-chat-pii`
  *     alias declared in `bootstrap/app.php`.
  *   - NEVER bound to `/admin/*` / `/insights/*` / `/api/kb/ingest|delete/*`
  *     routes — those carry curator-supplied content that must NOT be

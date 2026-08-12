@@ -14,9 +14,10 @@ use Tests\TestCase;
  *
  * The `redact-chat-pii` middleware (registered in `bootstrap/app.php`,
  * implemented in `App\Http\Middleware\RedactChatPii`) MUST be bound
- * ONLY to the two chat-message persistence endpoints:
+ * ONLY to the three chat-message persistence endpoints:
  *
  *   - POST /conversations/{conversation}/messages         (sync)
+ *   - POST /conversations/{conversation}/messages/agent   (durable agent loop)
  *   - POST /conversations/{conversation}/messages/stream  (SSE)
  *
  * It MUST NOT leak onto:
@@ -48,7 +49,7 @@ final class PiiRedactionMiddlewareScopeTest extends TestCase
         'testing/',
     ];
 
-    public function test_redact_chat_pii_middleware_is_bound_to_exactly_two_chat_routes(): void
+    public function test_redact_chat_pii_middleware_is_bound_to_exactly_three_chat_routes(): void
     {
         $boundRoutes = $this->routesWithMiddleware(RedactChatPii::class);
 
@@ -64,10 +65,11 @@ final class PiiRedactionMiddlewareScopeTest extends TestCase
         $this->assertSame(
             [
                 'conversations/{conversation}/messages',
+                'conversations/{conversation}/messages/agent',
                 'conversations/{conversation}/messages/stream',
             ],
             $uris,
-            'redact-chat-pii must be bound to EXACTLY the two chat-message routes — '
+            'redact-chat-pii must be bound to EXACTLY the three chat-message routes — '
             .'any additional binding risks redacting curator/admin content.'
         );
     }
