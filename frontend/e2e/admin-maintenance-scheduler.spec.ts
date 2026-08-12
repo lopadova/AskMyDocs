@@ -42,7 +42,9 @@ test.describe('Admin Maintenance — scheduler status widget', () => {
     });
 
     test('GET /scheduler-status includes the new cron_expression field per row', async ({ request }) => {
-        const resp = await request.get('/api/admin/commands/scheduler-status');
+        const resp = await request.get('/api/admin/commands/scheduler-status', {
+            headers: { 'X-Tenant-Id': 'a-demo' },
+        });
         expect(resp.ok()).toBeTruthy();
 
         const body = await resp.json();
