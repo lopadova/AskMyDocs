@@ -619,6 +619,12 @@ jobs:
           APP_ENV: testing
           AI_PROVIDER: fake
           AI_EMBEDDINGS_PROVIDER: fake
+          # ExecuteAgentRunJob resolves the connector URL guard inside this
+          # long-lived worker process, not inside the HTTP server that queued
+          # it. Mirror the E2E-only server overrides here or loopback fixture
+          # routes are rejected as http/private before the first tool call.
+          API_CONNECTOR_SSRF_ENABLED: 'false'
+          API_CONNECTOR_HTTPS_ONLY: 'false'
         run: |
           mkdir -p storage/logs
           setsid -f php artisan queue:work database \
