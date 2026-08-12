@@ -41,6 +41,7 @@ const ENDPOINTS: ReadonlyArray<{ uri: string; allowed: readonly string[] }> = [
     // v8.27 — API Connector (Connettore API) admin group (gate: manageConnectors;
     // package routes mounted with the host's authenticated admin stack, R32)
     { uri: '/api/admin/api-connectors', allowed: ['admin', 'super-admin'] },
+    { uri: '/api/admin/agent-runs/overview', allowed: ['admin', 'super-admin'] },
     { uri: '/api/admin/mcp-servers', allowed: ['super-admin'] },
     { uri: '/api/admin/mcp-tool-call-audit', allowed: ['admin', 'super-admin'] },
     { uri: '/api/admin/pii/strategy', allowed: ['admin', 'dpo', 'super-admin'] },
@@ -98,7 +99,9 @@ test.describe('R32 per-role admin API access control', () => {
             await loginAs(page, roleEmail(role));
 
             for (const { uri, allowed } of ENDPOINTS) {
-                const status = (await page.request.get(uri)).status();
+                const status = (await page.request.get(uri, {
+                    headers: { 'X-Tenant-Id': 'a-demo' },
+                })).status();
                 const shouldPass = allowed.includes(role);
                 if (shouldPass) {
                     expect(
