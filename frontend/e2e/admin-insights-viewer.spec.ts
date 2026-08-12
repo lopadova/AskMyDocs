@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures';
 
 /*
  * PR14 — Phase I. Admin Insights RBAC denial under viewer.
