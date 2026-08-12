@@ -20,7 +20,9 @@ test.describe('Admin Insights — super-admin recompute flow', () => {
         // Call the endpoint directly — the UI for the compute button
         // ships in a later polish phase; the backend contract is the
         // load-bearing surface.
-        const response = await request.post('/api/admin/insights/compute');
+        const response = await request.post('/api/admin/insights/compute', {
+            headers: { 'X-Tenant-Id': 'a-demo' },
+        });
         expect(response.status()).toBe(202);
 
         const body = await response.json();
