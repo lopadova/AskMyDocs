@@ -507,6 +507,14 @@ jobs:
           # otherwise → ACTIVE. Default-OFF in production. Read at runtime (no
           # config:cache), so config('connectors.fake_imap_ping') resolves true.
           CONNECTOR_IMAP_FAKE_PING: 'true'
+          # v8.27 — API Connector route tests call the app's own deterministic
+          # JSON fixtures from the BACKEND. Playwright cannot intercept that
+          # server-to-server HTTP boundary, and CI skips playwright.config.ts's
+          # webServer block, so mirror the testing-only SSRF/HTTPS overrides on
+          # this explicitly-started server. Production defaults remain strict;
+          # UrlGuard + executor tests cover the protected path.
+          API_CONNECTOR_SSRF_ENABLED: 'false'
+          API_CONNECTOR_HTTPS_ONLY: 'false'
           # v8.18/W4 — gamification stays ON (default) so the badges/coaching
           # surfaces render, but the AI NARRATION layer is forced OFF for E2E.
           # The narrator resolves the named `openrouter` provider directly (NOT the
