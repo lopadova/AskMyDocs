@@ -1,5 +1,6 @@
 import { test as baseTest, expect } from '@playwright/test';
 import { test as seededTest } from './fixtures';
+import { loginAsProjectUser } from './setup-helpers';
 
 /*
  * v8.x — Native Invitations admin.
@@ -143,11 +144,14 @@ seededTest.describe('Admin Invitations — native admin', () => {
         },
     );
 });
-
 baseTest.describe('Admin Invitations — viewer (RBAC denied)', () => {
     baseTest.use({ storageState: 'playwright/.auth/viewer.json' });
 
-    baseTest('viewer hitting /app/admin/invitations sees admin-forbidden', async ({ page }) => {
+    baseTest('viewer hitting /app/admin/invitations sees admin-forbidden', async ({ page, context }) => {
+        // Earlier seeded scenarios recreate the users table and invalidate the
+        // setup project's persisted session. Re-authenticate the viewer so the
+        // assertion measures RBAC, not an expired-cookie redirect.
+        await loginAsProjectUser(page, context, null, 'chromium-viewer');
         await page.goto('/app/admin/invitations');
         await expect(page.getByTestId('admin-forbidden')).toBeVisible({ timeout: 15_000 });
         await expect(page.getByTestId('admin-invitations')).toHaveCount(0);
@@ -160,10 +164,12 @@ baseTest.describe('Admin Invitations — viewer (RBAC denied)', () => {
      * stays unregistered) and env=true + non-allowed-role (403) without
      * branching on env.
      */
-    baseTest('viewer GET /admin/invitations rejects with 4xx (R13: failure injection on package mount URL)', async ({
-        request,
-    }) => {
-        const response = await request.get('/admin/invitations');
-        expect([403, 404]).toContain(response.status());
-    });
+    baseTest(
+        'viewer GET /admin/invitations rejects with 4xx (R13: failure injection on package mount URL)',
+        async ({ page, context }) => {
+            await loginAsProjectUser(page, context, null, 'chromium-viewer');
+            const response = await page.request.get('/admin/invitations');
+            expect([403, 404]).toContain(response.status());
+        },
+    );
 });

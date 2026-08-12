@@ -55,7 +55,6 @@ type RequestTarget = Page | APIRequestContext;
 function asRequest(target: RequestTarget): APIRequestContext {
     return 'request' in target ? target.request : target;
 }
-
 /*
  * Setup-time helpers shared across the spec files `auth.setup.ts`,
  * `viewer.setup.ts`, and `super-admin.setup.ts` (project names in
@@ -293,7 +292,7 @@ export async function resetAndSeed(target: RequestTarget, seeder = 'DemoSeeder')
 export async function loginAsProjectUser(
     page: Page,
     context: BrowserContext,
-    request: APIRequestContext,
+    request: APIRequestContext | null,
     projectName: string,
 ): Promise<void> {
     const creds = PROJECT_CREDENTIALS[projectName];
@@ -344,6 +343,14 @@ export async function loginAsProjectUser(
         throw new Error(
             `loginAsProjectUser: /api/auth/me returned wrong user. expected ${creds.email}, got ${mePayload.user?.email ?? '(no user)'}`,
         );
+    }
+
+    // Some RBAC-only specs need a fresh browser session after another
+    // scenario recreated the users table, but never use Playwright's separate
+    // top-level request cookie jar. Allow them to avoid rotating that unrelated
+    // jar (which may still contain pre-reset host/domain cookie variants).
+    if (request === null) {
+        return;
     }
 
     // Re-login on the top-level `request` fixture's cookie jar too —
