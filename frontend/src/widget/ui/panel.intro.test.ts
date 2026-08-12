@@ -62,11 +62,18 @@ describe('WidgetPanel introduction lifecycle', () => {
         expect(root.querySelector('[data-testid="askmydocs-widget-intro"]')).toHaveTextContent('Page-specific title');
         expect(root.querySelector('[data-testid="askmydocs-widget-intro"]')).toHaveTextContent('Official documentation only.');
 
+        const intro = root.querySelector<HTMLElement>('[data-testid="askmydocs-widget-intro"]')!;
         root.querySelector<HTMLButtonElement>('[data-testid="askmydocs-widget-intro-suggestion"]')?.click();
+        // The exit class is synchronous; capture the node before the 220 ms
+        // fallback removes it so a busy full-suite worker cannot race this
+        // transient animation state.
+        expect(intro).toHaveClass('amd-intro-exit');
         await vi.waitFor(() => expect(calls.some((call) => call.url.endsWith('/sessions/start'))).toBe(true));
         const start = calls.find((call) => call.url.endsWith('/sessions/start'))!;
         expect(JSON.parse(start.body ?? '{}').message).toBe('Explain how to start');
-        expect(root.querySelector('[data-testid="askmydocs-widget-intro"]')).toHaveClass('amd-intro-exit');
+        await vi.waitFor(() => expect(
+            root.querySelector('[data-testid="askmydocs-widget-intro"]'),
+        ).toBeNull());
     });
 
     it('lets the host explicitly disable a server introduction', async () => {
