@@ -188,7 +188,11 @@ baseTest.describe('Connectors — IMAP credential flow (super-admin)', () => {
         if (!xsrf) throw new Error('XSRF-TOKEN cookie missing after login — cannot seed project');
         const proj = await page.request.post('/api/admin/projects', {
             data: { name: 'Acme HR', project_key: 'acme-hr' },
-            headers: { 'X-XSRF-TOKEN': decodeURIComponent(xsrf.value), Accept: 'application/json' },
+            headers: {
+                'X-XSRF-TOKEN': decodeURIComponent(xsrf.value),
+                'X-Tenant-Id': 'a-demo',
+                Accept: 'application/json',
+            },
         });
         if (!proj.ok()) throw new Error(`seed project failed: ${proj.status()} ${await proj.text()}`);
 
