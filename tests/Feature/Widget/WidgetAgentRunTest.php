@@ -14,6 +14,7 @@ use App\Models\WidgetSession;
 use App\Models\WidgetSessionStep;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 final class WidgetAgentRunTest extends TestCase
@@ -44,7 +45,8 @@ final class WidgetAgentRunTest extends TestCase
         $this->assertSame('orders', $run->project_key);
         $this->assertSame('anonymous_widget', $run->actor_type);
         $this->assertSame($run->run_id, data_get($session->steps()->sole()->args_json, 'agent_run_id'));
-        Queue::assertPushed(ExecuteAgentRunJob::class, fn ($job): bool => $job->agentRunId === $run->id);
+        Queue::assertPushed(ExecuteAgentRunJob::class, fn ($job): bool => $job->agentRunId === $run->id
+            && $job->tenantId === $run->tenant_id);
     }
 
     public function test_terminal_widget_projection_is_idempotent_and_replayable(): void
@@ -135,7 +137,7 @@ final class WidgetAgentRunTest extends TestCase
             'tenant_id' => $key->tenant_id,
             'widget_key_id' => $key->id,
             'project_key' => $key->project_key,
-            'public_session_id' => \Illuminate\Support\Str::uuid()->toString(),
+            'public_session_id' => Str::uuid()->toString(),
             'status' => WidgetSession::STATUS_ACTIVE,
             'skill' => $key->skill,
             'locale' => 'it-IT',
@@ -145,7 +147,7 @@ final class WidgetAgentRunTest extends TestCase
     private function agentRun(WidgetSession $session): AgentRun
     {
         return AgentRun::create([
-            'run_id' => \Illuminate\Support\Str::uuid()->toString(),
+            'run_id' => Str::uuid()->toString(),
             'tenant_id' => $session->tenant_id,
             'project_key' => $session->project_key,
             'widget_session_id' => $session->id,

@@ -7,14 +7,19 @@ namespace Tests\Feature\Agent;
 use App\Agent\AgentEventPublisher;
 use App\Agent\AgentExecutionContextFactory;
 use App\Agent\AgentRunDispatcher;
+use App\Contracts\AgentRunHandler;
 use App\Http\Controllers\Api\AgentRunEventController;
 use App\Jobs\ExecuteAgentRunJob;
 use App\Models\AgentRun;
 use App\Models\User;
+use App\Support\TenantContext;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 final class AgentRunTransportTest extends TestCase
@@ -41,7 +46,50 @@ final class AgentRunTransportTest extends TestCase
         $this->assertSame('it-IT', $run->locale);
         $this->assertSame(AgentRun::STATUS_QUEUED, $run->status);
         $this->assertSame('Dammi gli ordini', $run->input_json['question']);
-        Queue::assertPushed(ExecuteAgentRunJob::class, fn ($job): bool => $job->agentRunId === $run->id);
+        Queue::assertPushed(ExecuteAgentRunJob::class, fn ($job): bool => $job->agentRunId === $run->id
+            && $job->tenantId === $run->tenant_id);
+    }
+
+    public function test_worker_scopes_the_run_and_restores_long_lived_process_context(): void
+    {
+        $user = $this->user('worker-context@example.com');
+        $run = $this->completedRun($user);
+        $tenants = app(TenantContext::class);
+        $tenants->reset();
+        $resetTenant = $tenants->current();
+        App::setLocale('en');
+        date_default_timezone_set('UTC');
+
+        $handler = \Mockery::mock(AgentRunHandler::class);
+        $handler->shouldReceive('handle')
+            ->once()
+            ->withArgs(function (AgentRun $handled) use ($run, $tenants): bool {
+                $this->assertSame($run->id, $handled->id);
+                $this->assertSame('test-tenant', $tenants->current());
+                $this->assertSame('it', App::currentLocale());
+                $this->assertSame('Europe/Rome', date_default_timezone_get());
+
+                return true;
+            });
+
+        (new ExecuteAgentRunJob($run->id, 'test-tenant'))->handle($handler, $tenants);
+
+        $this->assertSame($resetTenant, $tenants->current());
+        $this->assertSame('en', App::currentLocale());
+        $this->assertSame('UTC', date_default_timezone_get());
+    }
+
+    public function test_worker_cannot_load_a_run_through_another_tenant(): void
+    {
+        $user = $this->user('worker-idor@example.com');
+        $run = $this->completedRun($user);
+        $handler = \Mockery::mock(AgentRunHandler::class);
+        $handler->shouldNotReceive('handle');
+
+        $this->expectException(ModelNotFoundException::class);
+
+        (new ExecuteAgentRunJob($run->id, 'other-tenant'))
+            ->handle($handler, app(TenantContext::class));
     }
 
     public function test_sse_replays_only_events_after_the_cursor_and_is_no_store(): void
@@ -79,7 +127,7 @@ final class AgentRunTransportTest extends TestCase
     private function completedRun(User $user): AgentRun
     {
         return AgentRun::create([
-            'run_id' => \Illuminate\Support\Str::uuid()->toString(),
+            'run_id' => Str::uuid()->toString(),
             'tenant_id' => 'test-tenant',
             'project_key' => 'orders',
             'user_id' => $user->id,

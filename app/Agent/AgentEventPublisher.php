@@ -17,8 +17,8 @@ final readonly class AgentEventPublisher
     ) {}
 
     /**
-     * @param array<string,scalar|null> $messageParameters
-     * @param array<string,mixed> $data
+     * @param  array<string,scalar|null>  $messageParameters
+     * @param  array<string,mixed>  $data
      */
     public function publish(
         AgentRun $run,
@@ -35,7 +35,11 @@ final readonly class AgentEventPublisher
             $run, $type, $messageKey, $messageParameters, $data, $progress, $canCancel,
         ): AgentRunEvent {
             /** @var AgentRun $locked */
-            $locked = AgentRun::query()->whereKey($run->getKey())->lockForUpdate()->firstOrFail();
+            $locked = AgentRun::query()
+                ->forTenant($run->tenant_id)
+                ->whereKey($run->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
             $sequence = $locked->last_sequence + 1;
             $safeParameters = $this->masker->maskArray($messageParameters) ?? [];
             $safeData = $this->masker->maskArray($data) ?? [];
