@@ -12,10 +12,11 @@ import type { Page } from '@playwright/test';
  * R13 — real backend, real DB, real Sanctum cookies, real Gate. The "Test
  * connessione" / "Prova tool" calls are issued BY THE BACKEND over HTTP, so
  * Playwright cannot page.route them (same constraint as the IMAP TCP seam). The
- * happy path therefore points the route at the app's OWN /healthz endpoint — a
- * real, deterministic local 200 — with the SSRF guard relaxed for E2E in
+ * happy path therefore points the route at the app's OWN JSON fixture — a real,
+ * deterministic local 200 — with the SSRF guard relaxed for E2E in
  * playwright.config.ts (API_CONNECTOR_SSRF_ENABLED=false). NO internal /api/*
- * route is intercepted on the happy path.
+ * route is intercepted on the happy path. The free-form probe separately uses
+ * /healthz to prove that successful non-JSON responses remain inspectable.
  *
  * R11/R12 — happy path (create connector → add route → test → activate) +
  * failure path (422 on an invalid route create).
@@ -55,6 +56,16 @@ async function addRouteAndTest(
     connectorId: string,
     opts: { name: string; url: string; expectedType: 'list' | 'detail'; withIdParam?: boolean; exampleArgs?: string },
 ): Promise<string> {
+    const statusSelector = `[data-testid^="api-connector-${connectorId}-route-"][data-testid$="-status"]`;
+    const statusRows = page.locator(statusSelector);
+    const knownStatusIds = new Set(
+        await statusRows.evaluateAll((elements) =>
+            elements
+                .map((element) => element.getAttribute('data-testid'))
+                .filter((id): id is string => id !== null),
+        ),
+    );
+
     await page.getByTestId(`api-connector-${connectorId}-route-add`).click();
     await expect(page.getByTestId('api-route-form')).toBeVisible();
     await page.getByTestId('api-route-form-name').fill(opts.name);
@@ -86,10 +97,18 @@ async function addRouteAndTest(
     await page.getByTestId('api-route-form-submit').click();
     await expect(page.getByTestId('toast-api-route-created')).toBeVisible({ timeout: 15_000 });
 
-    const statusLoc = page
-        .locator(`[data-testid^="api-connector-${connectorId}-route-"][data-testid$="-status"]`)
-        .last();
-    const base = (await statusLoc.getAttribute('data-testid'))!.replace('-status', '');
+    await expect(statusRows).toHaveCount(knownStatusIds.size + 1, { timeout: 15_000 });
+    const createdStatusId = (
+        await statusRows.evaluateAll((elements) =>
+            elements
+                .map((element) => element.getAttribute('data-testid'))
+                .filter((id): id is string => id !== null),
+        )
+    ).find((id) => !knownStatusIds.has(id));
+    if (createdStatusId === undefined) {
+        throw new Error('The saved API route did not render a distinct status row.');
+    }
+    const base = createdStatusId.replace('-status', '');
     // The auto-detected endpoint type shows as a chip on the route row.
     await expect(page.getByTestId(`${base}-endpoint-type`)).toHaveAttribute('data-endpoint-type', opts.expectedType, {
         timeout: 15_000,
@@ -123,19 +142,19 @@ test.describe('Admin API Connectors', () => {
         const cardId = (await card.getAttribute('data-testid'))!; // api-connector-{id}-card
         const connectorId = cardId.replace('api-connector-', '').replace('-card', '');
 
-        // Add a route pointing at the app's own /healthz (deterministic local 200).
+        // Add a route pointing at the app's own deterministic JSON list fixture.
         await page.getByTestId(`api-connector-${connectorId}-route-add`).click();
         const routeForm = page.getByTestId('api-route-form');
         await expect(routeForm).toBeVisible();
-        await page.getByTestId('api-route-form-name').fill('Ping healthz');
+        await page.getByTestId('api-route-form-name').fill('List users');
         await page.getByTestId('api-route-form-http_method').selectOption('GET');
-        await page.getByTestId('api-route-form-url').fill(HEALTHZ);
+        await page.getByTestId('api-route-form-url').fill(LIST_FIXTURE);
         // Mode is locked to `tool`; ingest/both are Fase 2 (the select is disabled).
         const mode = page.getByTestId('api-route-form-mode');
         await expect(mode).toBeDisabled();
         await expect(mode).toHaveValue('tool');
 
-        // Testa the config BEFORE saving (dry-run against /healthz), then Save —
+        // Testa the config BEFORE saving (dry-run against JSON), then Save —
         // which persists + runs the final test that promotes draft→tested.
         await page.getByTestId('api-route-form-test').click();
         const result = page.getByTestId('api-route-form-test-result');
