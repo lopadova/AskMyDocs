@@ -310,7 +310,9 @@ export async function loginAsProjectUser(
     // pick its XSRF-TOKEN cookie by accident. `context.cookies(url)`
     // returns only the cookies that would be sent to that URL.
     const cookies = await context.cookies(E2E_BASE_URL);
-    const xsrfCookie = cookies.find((c) => c.name === 'XSRF-TOKEN');
+    const xsrfCookie = cookies
+        .filter((c) => c.name === 'XSRF-TOKEN')
+        .sort((left, right) => right.expires - left.expires)[0];
     if (!xsrfCookie) {
         throw new Error(
             `loginAsProjectUser: XSRF-TOKEN cookie missing on page context for ${E2E_BASE_URL} after /sanctum/csrf-cookie`,
@@ -346,7 +348,34 @@ export async function loginAsProjectUser(
 
     // Re-login on the top-level `request` fixture's cookie jar too —
     // see the long comment in fixtures.ts for the rationale (Playwright
-    // keeps `request` and `page.request` cookie jars separate).
+    // keeps `request` and `page.request` cookie jars separate). With the
+    // CI file-session driver, however, migrate:fresh does not remove the
+    // existing session file and the re-seeded user keeps the same id. In
+    // that case the request jar is already authenticated: rotating its CSRF
+    // cookie again can race Laravel's session regeneration and produce a
+    // false 419. Preserve the valid session and only perform the CSRF/login
+    // dance when the jar is actually unauthenticated.
+    const existingRequestMe = await request.get('/api/auth/me', {
+        headers: { Accept: 'application/json' },
+    });
+    if (existingRequestMe.ok()) {
+        const existingPayload = (await existingRequestMe.json()) as {
+            user?: { email?: string };
+        };
+        if (existingPayload.user?.email !== creds.email) {
+            throw new Error(
+                `loginAsProjectUser: top-level request context returned wrong user. expected ${creds.email}, got ${existingPayload.user?.email ?? '(no user)'}`,
+            );
+        }
+
+        return;
+    }
+    if (existingRequestMe.status() !== 401) {
+        throw new Error(
+            `loginAsProjectUser: top-level /api/auth/me failed before re-login: ${existingRequestMe.status()} ${await existingRequestMe.text()}`,
+        );
+    }
+
     const csrfResponse = await request.get('/sanctum/csrf-cookie');
     if (!csrfResponse.ok()) {
         throw new Error(
@@ -360,9 +389,16 @@ export async function loginAsProjectUser(
     // `context.cookies(url)`), so we match by hostname.
     const requestStorage = await request.storageState();
     const baseHost = new URL(E2E_BASE_URL).hostname;
-    const requestXsrf = requestStorage.cookies.find(
-        (c) => c.name === 'XSRF-TOKEN' && c.domain.replace(/^\./, '') === baseHost,
-    );
+    // A storageState created before SESSION_DOMAIN was normalised can carry
+    // both a host-only cookie (`127.0.0.1`) and the current domain cookie
+    // (`.127.0.0.1`). Laravel just rotated the latter, but Array.find() would
+    // pick the stale host-only token and make the login fail with 419. Select
+    // the newest matching cookie deterministically.
+    const requestXsrf = requestStorage.cookies
+        .filter(
+            (c) => c.name === 'XSRF-TOKEN' && c.domain.replace(/^\./, '') === baseHost,
+        )
+        .sort((left, right) => right.expires - left.expires)[0];
     if (!requestXsrf) {
         // Throwing instead of returning silently: a missing XSRF cookie
         // here means the top-level `request` context can't perform an
