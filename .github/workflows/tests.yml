@@ -500,6 +500,11 @@ jobs:
           # clean-404 landing is covered by GuardrailsAdminMountingTest (phpunit), per
           # R43 (both states tested).
           AI_GUARDRAILS_ADMIN_ENABLED: 'true'
+          # The native Invitations page exposes its authenticated Advanced
+          # launcher only while the cross-mounted package panel is enabled.
+          # admin-invitations.spec.ts asserts that ON path; the default-OFF
+          # branch remains covered by Vitest and PHPUnit.
+          INVITATIONS_ADMIN_ENABLED: 'true'
           # v8.17 — OFFLINE IMAP seam (CONNECTOR_IMAP_FAKE_PING) so
           # connectors-imap-super-admin.spec.ts drives the real credential-connector
           # flow without a live IMAP server (a BACKEND TCP dependency Playwright
