@@ -2,9 +2,13 @@
 
 namespace Database\Seeders;
 
+use App\Models\Project;
+use App\Models\ProjectMembership;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
+use Padosoft\AiActCompliance\MultiTenancy\Models\Tenant;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
 
@@ -46,6 +50,36 @@ class EmptyAdminSeeder extends Seeder
         );
         if (! $viewer->hasRole('viewer')) {
             $viewer->assignRole('viewer');
+        }
+
+        // The admin shell now requires an operational tenant membership.
+        // Keep the dashboard dataset empty while still modelling a valid
+        // company/project boundary, otherwise the SPA correctly renders the
+        // company-onboarding gate instead of the dashboard empty states.
+        if (Schema::hasTable('tenants')) {
+            Tenant::query()->updateOrCreate(
+                ['slug' => DemoSeeder::PRIMARY_TENANT],
+                ['name' => 'Empty Dashboard Company', 'status' => 'active', 'is_system' => false],
+            );
+        }
+
+        Project::query()->updateOrCreate(
+            [
+                'tenant_id' => DemoSeeder::PRIMARY_TENANT,
+                'project_key' => 'empty-dashboard',
+            ],
+            ['name' => 'Empty Dashboard', 'description' => 'E2E empty-state project.'],
+        );
+
+        foreach ([$admin, $viewer] as $user) {
+            ProjectMembership::query()->firstOrCreate(
+                [
+                    'tenant_id' => DemoSeeder::PRIMARY_TENANT,
+                    'user_id' => $user->id,
+                    'project_key' => 'empty-dashboard',
+                ],
+                ['role' => 'member', 'scope_allowlist' => null],
+            );
         }
 
         app(PermissionRegistrar::class)->forgetCachedPermissions();
