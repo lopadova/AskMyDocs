@@ -349,7 +349,11 @@ if ($widgetDemoAllowed) {
         $key = \App\Models\WidgetKey::query()
             ->where('public_key', $data['key'])
             ->firstOrFail();
-        $encryptedSecret = \Illuminate\Support\Facades\Cache::get(
+        // The demo runs behind multiple PHP workers in E2E. Keep only this
+        // hand-off credential in a cross-process store; the application's
+        // default cache remains free to use the process-local `array` driver
+        // for isolated rate-limit and lock state.
+        $encryptedSecret = \Illuminate\Support\Facades\Cache::store('file')->get(
             'widget-demo:identity-secret:'.$key->id,
         );
 
@@ -430,7 +434,7 @@ if ($widgetDemoAllowed) {
 
         $userTokenUrl = null;
         if ($userAuth) {
-            $cachedSecret = \Illuminate\Support\Facades\Cache::get(
+            $cachedSecret = \Illuminate\Support\Facades\Cache::store('file')->get(
                 'widget-demo:identity-secret:'.$key->id,
             );
             try {
@@ -464,7 +468,7 @@ if ($widgetDemoAllowed) {
                         \App\Services\Widget\WidgetIdentityCredentialService::SURFACE_CLI,
                     );
                 $plainSecret = $result->plainSecret;
-                \Illuminate\Support\Facades\Cache::forever(
+                \Illuminate\Support\Facades\Cache::store('file')->forever(
                     'widget-demo:identity-secret:'.$key->id,
                     \Illuminate\Support\Facades\Crypt::encryptString((string) $plainSecret),
                 );
