@@ -741,15 +741,16 @@ jobs:
           fi
 
       - name: Stop queue worker
-        # `if: always()` so the dedicated KB ingest worker started above is
+        # `if: always()` so the dedicated agent + KB worker started above is
         # reaped whether the run passed, failed, or was cancelled. Mirrors the
-        # PGID-then-PID teardown of the artisan-serve step.
+        # PGID-then-PID teardown of the artisan-serve step. Allow in-flight
+        # durable runs a short grace period to persist their terminal event.
         if: always()
         run: |
           term_then_kill() {
             local target="$1"
             kill -TERM -- "$target" 2>/dev/null || true
-            sleep 1
+            sleep 3
             if kill -0 -- "$target" 2>/dev/null; then
               kill -KILL -- "$target" 2>/dev/null || true
             fi
