@@ -107,6 +107,13 @@ export default defineConfig({
                   // look unauthenticated on the immediately-following /me.
                   SESSION_DOMAIN: '127.0.0.1',
                   SESSION_DRIVER: 'database',
+                  // The demo authenticated widget writes its one-time
+                  // identity credential during the page request and reads it
+                  // back during the token exchange. With four PHP workers an
+                  // `array` cache is process-local and makes that exchange
+                  // nondeterministically fail with 503; file is shared by all
+                  // workers and remains fully local to the E2E environment.
+                  CACHE_STORE: 'file',
                   SANCTUM_STATEFUL_DOMAINS: '127.0.0.1,127.0.0.1:8000,localhost,localhost:8000',
                   // Local E2E has no long-running queue worker. Pin the
                   // connection explicitly instead of inheriting a developer

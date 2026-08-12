@@ -322,10 +322,11 @@ jobs:
           # or file). Spatie's permission migration calls
           # `forgetCachedPermissions()` at the end of its up(), which
           # would crash on `database` driver before the table exists.
-          # `array` is sufficient for migrations + a Playwright run;
-          # `file` persists session cookies across HTTP requests so
-          # login flows survive across page navigations.
-          set_env CACHE_STORE     array
+          # Both cache and session state must survive across requests. The
+          # E2E server has four PHP workers, so the process-local `array`
+          # cache would lose the demo widget identity credential whenever
+          # its token exchange lands on a different worker.
+          set_env CACHE_STORE     file
           set_env SESSION_DRIVER  file
           # Database queue (async) + a dedicated worker started below.
           # Rationale (R38 — heavy work must NOT run inline behind
