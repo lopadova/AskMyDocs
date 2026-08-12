@@ -31,11 +31,14 @@ async function createThrowawayUser(
     const csrf = await request.get('/sanctum/csrf-cookie');
     expect(csrf.ok()).toBeTruthy();
     const create = await request.post('/api/admin/users', {
+        headers: { 'X-Tenant-Id': 'a-demo' },
         data: {
             name: 'Membership Target',
             email,
             password: 'P@ssw0rd-Membership-1',
             roles: ['viewer'],
+            initial_project_key: 'engineering',
+            membership_role: 'member',
         },
     });
     expect(create.status()).toBe(201);
@@ -73,8 +76,9 @@ test.describe('Admin Project Membership', () => {
         await createThrowawayUser(request, email);
         await openMembershipsTab(page, email);
 
-        // Fresh user: no memberships yet.
-        await expect(page.getByTestId('memberships-empty')).toBeVisible();
+        // User creation requires one initial membership. Keep engineering as
+        // the baseline, then add and remove hr-portal through the editor.
+        await expect(page.getByTestId('membership-engineering')).toBeVisible();
 
         // Assign hr-portal.
         await page.getByTestId('membership-add').click();
@@ -82,13 +86,6 @@ test.describe('Admin Project Membership', () => {
         await page.getByTestId('membership-add-role').selectOption('member');
         await page.getByTestId('membership-add-save').click();
         await expect(page.getByTestId('membership-hr-portal')).toBeVisible({ timeout: 10_000 });
-
-        // Assign engineering — the picker now only offers the remaining key.
-        await page.getByTestId('membership-add').click();
-        await page.getByTestId('membership-add-project').selectOption('engineering');
-        await page.getByTestId('membership-add-role').selectOption('admin');
-        await page.getByTestId('membership-add-save').click();
-        await expect(page.getByTestId('membership-engineering')).toBeVisible({ timeout: 10_000 });
 
         // Both rows present.
         await expect(page.getByTestId('membership-hr-portal')).toBeVisible();
@@ -124,7 +121,7 @@ test.describe('Admin Project Membership', () => {
         });
 
         await openMembershipsTab(page, email);
-        await expect(page.getByTestId('memberships-empty')).toBeVisible();
+        await expect(page.getByTestId('membership-engineering')).toBeVisible();
 
         await page.getByTestId('membership-add').click();
         await page.getByTestId('membership-add-project').selectOption('hr-portal');
