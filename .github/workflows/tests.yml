@@ -585,19 +585,23 @@ jobs:
           tail -200 storage/logs/artisan-serve.log || true
           exit 1
 
-      # KB UI upload progress reconciles ONLY via queue lifecycle events
+      # KB UI upload progress reconciles ONLY via queue lifecycle events,
+      # while durable chat/widget agent runs execute on the dedicated `agent`
+      # queue. The E2E agent retrieval scenarios wait on the real SSE stream,
+      # so CI must drain that queue as well as the ingestion queues.
       # (JobProcessing/Processed → App\Listeners\KbUploadBatchItemProgress).
       # With the async database queue (set above) a committed batch INSERTS
       # IngestDocumentJob rows; this worker drains them so the events fire and
       # the upload reaches data-done=1 — WITHOUT making KB saves synchronous
       # (that's why we don't use QUEUE_CONNECTION=sync; see the queue comment
       # + R38). Covers `kb-ingest` (IngestDocumentJob, via config('kb.ingest.
-      # queue')) and `default` (follow-on analyze/auto-wiki). OFFLINE AI so it
-      # never calls a real provider. `setsid -f` detaches it into its own
+      # queue')), `default` (follow-on analyze/auto-wiki), and `agent`
+      # (document + API tool loop). OFFLINE AI so it never calls a real
+      # provider. `setsid -f` detaches it into its own
       # session/PGID (same rationale as the artisan-serve start) so the
       # runner's per-step cleanup can't HUP it mid-run; PGID captured for the
       # "Stop queue worker" cleanup.
-      - name: Start KB ingest queue worker (testing)
+      - name: Start agent and KB queue worker (testing)
         env:
           APP_ENV: testing
           AI_PROVIDER: fake
@@ -605,7 +609,7 @@ jobs:
         run: |
           mkdir -p storage/logs
           setsid -f php artisan queue:work database \
-              --queue=kb-ingest,default --sleep=1 --tries=3 --no-interaction \
+              --queue=agent,kb-ingest,default --sleep=1 --tries=3 --no-interaction \
               > storage/logs/queue-worker.log 2>&1
           for i in $(seq 1 10); do
             wpid=$(pgrep -f 'artisan queue:work' | head -1)
@@ -613,10 +617,10 @@ jobs:
               wpgid=$(ps -o pgid= -p "$wpid" 2>/dev/null | tr -d ' ')
               if [ -n "$wpgid" ]; then
                 echo "$wpgid" > /tmp/queue-worker.pgid
-                echo "KB ingest queue worker up (PID=$wpid, PGID=$wpgid)"
+                echo "Agent and KB queue worker up (PID=$wpid, PGID=$wpgid)"
               else
                 echo "$wpid" > /tmp/queue-worker.pid
-                echo "KB ingest queue worker up (PID=$wpid; no PGID)"
+                echo "Agent and KB queue worker up (PID=$wpid; no PGID)"
               fi
               exit 0
             fi
@@ -763,4 +767,3 @@ jobs:
           else
             echo "(no /tmp/queue-worker.pgid or .pid — worker step never ran)"
           fi
-
