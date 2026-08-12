@@ -4,13 +4,12 @@ import { composer, thread, waitForThreadReady } from './helpers';
 import { seedDb } from './setup-helpers';
 
 /*
- * v8.5 — the DEFINITIVE browser streaming E2E.
+ * v8.5 — the definitive real browser transport E2E.
  *
- * This is the test that would have caught the v8.4 chat crashes (source-url
- * providerMetadata + finish.usage). It drives the REAL `/messages/stream` SSE
- * through the REAL `@ai-sdk` transport in the browser — the only layer that
- * validates each UIMessageChunk against the SDK zod schema, which is exactly
- * where those wire-format bugs fired ("Type validation failed …").
+ * The chat now starts a durable agent run and consumes its resumable event
+ * feed before reloading canonical history. These scenarios exercise that REAL
+ * path without intercepting internal requests, including retrieval, event
+ * rendering, citations, persistence, and terminal state handling.
  *
  * Determinism without a live LLM: the server runs with AI_PROVIDER=fake /
  * AI_EMBEDDINGS_PROVIDER=fake (CI: the workflow's "Start Laravel server"
@@ -27,30 +26,23 @@ import { seedDb } from './setup-helpers';
  * to PROJECTS[0] = `hr-portal` (ChatView), so the seeded doc is in scope.
  *
  * NOTHING is stubbed here (R13): no `page.route` on internal routes. The whole
- * round-trip — auth, retrieval, the real SSE frames, the real SDK transport,
- * the React render — runs for real. A wire-format regression makes the assertions
- * below fail (the stream never reaches `ready` / no chip / a pageerror), instead
- * of crashing at the user's first click.
+ * round-trip — auth, retrieval, durable agent events, canonical history, and
+ * React rendering — runs for real.
  */
 
 test.describe.configure({ timeout: 60_000 });
 
-test.describe('Chat streaming — real SSE through the real @ai-sdk transport', () => {
+test.describe('Chat agent transport — real durable run and event feed', () => {
     /**
-     * Failure path (R12) — empty retrieval → refusal stream.
+     * Empty retrieval remains a valid completed durable run.
      *
-     * Without E2eStreamSeeder the DemoSeeder docs have NULL embeddings
-     * (not vector-searchable). The retrieval layer returns zero hits →
-     * shouldRefuse=true → the controller emits the refusal wire variant:
-     *   start → data-refusal → data-confidence → finish
-     * instead of the grounded path. This exercises the REAL refusal SSE
-     * frames through the REAL @ai-sdk transport — the same layer that
-     * validated (and crashed on) bad wire format in v8.4.
-     * The assertions confirm: the FE renders RefusalNotice (no citation
-     * chip), the stream still reaches `ready`, and no SDK validation
-     * error fires on the refusal frames.
+     * Without E2eStreamSeeder the DemoSeeder docs have NULL embeddings, so the
+     * run has no grounded evidence. The planner still reaches a terminal state
+     * and persists its deterministic fallback answer. The assertions ensure
+     * that activity settles, no citation is invented, canonical history is
+     * visible, and no event/UI validation error fires.
      */
-    test('a query with no matching docs triggers a refusal stream, renders RefusalNotice, and reaches ready without SDK errors', async ({ page }) => {
+    test('a query with no matching docs completes without invented citations or transport errors', async ({ page }) => {
         // seeded auto-fixture ran DemoSeeder — NULL-embedding chunks only.
         // We intentionally do NOT call seedDb(page, 'E2eStreamSeeder')
         // so retrieval returns empty → shouldRefuse → refusal stream path.
@@ -67,17 +59,19 @@ test.describe('Chat streaming — real SSE through the real @ai-sdk transport', 
         await input.fill('How many days per week can I work remotely?');
         await send.click();
 
-        // The BE streams the refusal path (data-refusal frame) — the UI
-        // must render RefusalNotice, NOT a citation chip.
-        await expect(page.getByTestId('refusal-notice')).toBeVisible({ timeout: 30_000 });
-        await expect(page.getByTestId('refusal-notice')).toHaveAttribute('data-reason', 'no_relevant_context');
+        const activity = page.getByTestId('agent-activity-bar');
+        await expect(activity).toHaveAttribute('data-state', 'settled', { timeout: 30_000 });
+        await expect(activity).toContainText('The answer is ready.');
+
+        const assistant = page.locator('[data-testid^="chat-message-"][data-role="assistant"]').last();
+        await expect(assistant).toContainText('I completed the search with the available information.', { timeout: 30_000 });
         await expect(page.getByTestId('chat-citations')).not.toBeVisible();
 
-        // The stream still completes: finish frame parsed cleanly → ready.
+        // The event feed completed and canonical history was reloaded.
         await waitForThreadReady(page, 30_000);
         await expect(thread(page)).toHaveAttribute('data-state', 'ready');
 
-        // No SDK validation error on the refusal frames.
+        // No browser-side transport validation error.
         expect(fatalErrors, fatalErrors.join('\n')).toEqual([]);
     });
 
