@@ -31,7 +31,7 @@ final class TenantReadScopeTest extends TestCase
      * this guard (Copilot caught ChatLogProvenance + 16 others missing).
      */
     private const TENANT_AWARE_MODELS = [
-        'AdminCommandAudit', 'AdminCommandNonce', 'AdminInsightsSnapshot',
+        'AdminCommandAudit', 'AdminCommandNonce', 'AdminInsightsSnapshot', 'AgentRun',
         'EmailDatasetOperationNonce',
         'ChatFilterPreset', 'ChatLog', 'ChatLogProvenance', 'ComplianceReport', 'DigestPreference',
         'Conversation', 'HiddenWorkflow', 'KbAnalysisSetting', 'KbCanonicalAudit',
@@ -162,7 +162,7 @@ final class TenantReadScopeTest extends TestCase
         $this->assertSame(
             [],
             $violations,
-            "These files query a tenant-aware model without forTenant() (R30). "
+            'These files query a tenant-aware model without forTenant() (R30). '
             ."Add ->forTenant(\$ctx->current()) or justify an ALLOWLIST entry:\n  - "
             .implode("\n  - ", $violations),
         );
@@ -191,7 +191,7 @@ final class TenantReadScopeTest extends TestCase
             $actual,
             $declared,
             'TENANT_AWARE_MODELS is out of sync with the BelongsToTenant models in app/Models. '
-            ."Missing from the list: ".implode(', ', array_diff($actual, $declared)).'. '
+            .'Missing from the list: '.implode(', ', array_diff($actual, $declared)).'. '
             .'Extra in the list: '.implode(', ', array_diff($declared, $actual)).'.',
         );
     }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Agent;
 
 use App\Agent\AgentAnswer;
+use App\Agent\AgentExecutionContext;
 use App\Agent\AgentResultProjector;
 use App\Agent\AgentRetrievalFiltersFactory;
 use App\Http\Controllers\Api\AgentMessageController;
@@ -18,6 +19,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 final class AgentMessageControllerTest extends TestCase
@@ -64,11 +66,12 @@ final class AgentMessageControllerTest extends TestCase
         $this->assertSame($user->id, $run->user_id);
         $this->assertSame('other-project', data_get($run->input_json, 'filters.project_keys.0'));
         $this->assertSame($run->run_id, data_get($conversation->messages()->sole()->metadata, 'agent_run_id'));
-        Queue::assertPushed(ExecuteAgentRunJob::class, fn ($job): bool => $job->agentRunId === $run->id);
+        Queue::assertPushed(ExecuteAgentRunJob::class, fn ($job): bool => $job->agentRunId === $run->id
+            && $job->tenantId === 'acme');
 
         $filters = app(AgentRetrievalFiltersFactory::class)->forRun(
             $run,
-            \App\Agent\AgentExecutionContext::fromArray([
+            AgentExecutionContext::fromArray([
                 'run_id' => $run->run_id,
                 'tenant_id' => $run->tenant_id,
                 'project_key' => $run->project_key,
@@ -94,7 +97,7 @@ final class AgentMessageControllerTest extends TestCase
             'project_key' => 'crm',
         ]);
         $run = AgentRun::create([
-            'run_id' => \Illuminate\Support\Str::uuid()->toString(),
+            'run_id' => Str::uuid()->toString(),
             'tenant_id' => 'acme',
             'project_key' => 'crm',
             'user_id' => $user->id,

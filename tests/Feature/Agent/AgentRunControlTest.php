@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Agent;
 
-use App\Agent\AgentRunAccess;
 use App\Agent\AgentRunControl;
 use App\Http\Controllers\Api\AgentRunControlController;
 use App\Jobs\ExecuteAgentRunJob;
@@ -14,6 +13,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 final class AgentRunControlTest extends TestCase
@@ -69,7 +69,8 @@ final class AgentRunControlTest extends TestCase
             ->assertJsonPath('budget.confirmed_logical_extension', 5)
             ->assertJsonPath('budget.confirmed_physical_extension', 50);
 
-        Queue::assertPushed(ExecuteAgentRunJob::class, fn ($job): bool => $job->agentRunId === $run->id);
+        Queue::assertPushed(ExecuteAgentRunJob::class, fn ($job): bool => $job->agentRunId === $run->id
+            && $job->tenantId === $run->tenant_id);
         $this->assertSame('budget.extended', $run->events()->latest('sequence')->firstOrFail()->type);
     }
 
@@ -100,7 +101,7 @@ final class AgentRunControlTest extends TestCase
     private function makeRun(User $user, string $status): AgentRun
     {
         return AgentRun::create([
-            'run_id' => \Illuminate\Support\Str::uuid()->toString(),
+            'run_id' => Str::uuid()->toString(),
             'tenant_id' => 'test-tenant',
             'user_id' => $user->id,
             'channel' => 'chat',

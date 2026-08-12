@@ -16,7 +16,11 @@ final readonly class AgentRunControl
     {
         $updated = DB::transaction(function () use ($run): AgentRun {
             /** @var AgentRun $locked */
-            $locked = AgentRun::query()->whereKey($run->id)->lockForUpdate()->firstOrFail();
+            $locked = AgentRun::query()
+                ->forTenant($run->tenant_id)
+                ->whereKey($run->id)
+                ->lockForUpdate()
+                ->firstOrFail();
             if ($locked->isTerminal()) {
                 throw new \DomainException('run_not_cancellable');
             }
@@ -65,7 +69,11 @@ final readonly class AgentRunControl
 
         $updated = DB::transaction(function () use ($run, $logicalExtension, $physicalExtension): AgentRun {
             /** @var AgentRun $locked */
-            $locked = AgentRun::query()->whereKey($run->id)->lockForUpdate()->firstOrFail();
+            $locked = AgentRun::query()
+                ->forTenant($run->tenant_id)
+                ->whereKey($run->id)
+                ->lockForUpdate()
+                ->firstOrFail();
             if ($locked->status !== AgentRun::STATUS_AWAITING_CONFIRMATION) {
                 throw new \DomainException('run_not_awaiting_confirmation');
             }
@@ -93,14 +101,17 @@ final readonly class AgentRunControl
                 'physical_extension' => $physicalExtension,
             ],
         );
-        ExecuteAgentRunJob::dispatch($updated->id);
+        ExecuteAgentRunJob::dispatch($updated->id, $updated->tenant_id);
 
         return $updated->refresh();
     }
 
     public function ensureActive(AgentRun $run): void
     {
-        $status = AgentRun::query()->whereKey($run->id)->value('status');
+        $status = AgentRun::query()
+            ->forTenant($run->tenant_id)
+            ->whereKey($run->id)
+            ->value('status');
         if ($status === AgentRun::STATUS_CANCELLED) {
             throw new AgentRunCancelledException($run->run_id);
         }

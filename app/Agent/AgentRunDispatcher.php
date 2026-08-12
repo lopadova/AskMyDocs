@@ -11,8 +11,8 @@ use Illuminate\Support\Facades\DB;
 final class AgentRunDispatcher
 {
     /**
-     * @param array<string,mixed> $input
-     * @param array{user_id?:int,conversation_id?:int,widget_identity_id?:int,widget_session_id?:int} $links
+     * @param  array<string,mixed>  $input
+     * @param  array{user_id?:int,conversation_id?:int,widget_identity_id?:int,widget_session_id?:int}  $links
      */
     public function dispatch(AgentExecutionContext $context, array $input, array $links = []): AgentRun
     {
@@ -34,7 +34,7 @@ final class AgentRunDispatcher
             'counters_json' => [],
         ]));
 
-        ExecuteAgentRunJob::dispatch($run->id);
+        ExecuteAgentRunJob::dispatch($run->id, $run->tenant_id);
 
         return $run;
     }

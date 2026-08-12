@@ -13,6 +13,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Auth;
 
 final class ExecuteAgentRunJob implements ShouldQueue
@@ -20,29 +21,42 @@ final class ExecuteAgentRunJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 1;
+
     public int $timeout = 120;
 
-    public function __construct(public readonly int $agentRunId)
-    {
+    public function __construct(
+        public readonly int $agentRunId,
+        public readonly string $tenantId,
+    ) {
         $this->onQueue((string) config('agent.queue', 'agent'));
     }
 
     public function handle(AgentRunHandler $handler, TenantContext $tenants): void
     {
-        $run = AgentRun::query()->findOrFail($this->agentRunId);
-        $tenants->set($run->tenant_id);
-        $this->context($run)->activate();
-        Auth::forgetGuards();
-        if ($run->user !== null) {
-            Auth::setUser($run->user);
-        }
+        $run = AgentRun::query()
+            ->forTenant($this->tenantId)
+            ->findOrFail($this->agentRunId);
+        $previousLocale = App::currentLocale();
+        $previousTimezone = date_default_timezone_get();
 
         try {
+            $tenants->set($this->tenantId);
+            $context = $this->context($run);
+            $context->assertMatches($run);
+            $context->activate();
+            Auth::forgetGuards();
+            if ($run->user !== null) {
+                Auth::setUser($run->user);
+            }
+
             $handler->handle($run);
         } finally {
             // Queue workers are long-lived. Never leak one run's principal
             // into the next job (especially an anonymous widget run).
             Auth::forgetGuards();
+            $tenants->reset();
+            App::setLocale($previousLocale);
+            date_default_timezone_set($previousTimezone);
         }
     }
 
