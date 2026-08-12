@@ -10,6 +10,8 @@ use App\Models\User;
 use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
+use Illuminate\Session\ArraySessionHandler;
+use Illuminate\Session\Store;
 use Illuminate\Support\Facades\Hash;
 use Padosoft\AiActCompliance\MultiTenancy\Models\Tenant;
 use Symfony\Component\HttpFoundation\Response;
@@ -90,6 +92,51 @@ final class AuthorizeTenantHeaderTest extends TestCase
         ]);
 
         $this->assertPassesThrough($this->request(header: 'acme', user: $user));
+    }
+
+    public function test_remembers_a_successfully_authorised_explicit_tenant_in_the_session(): void
+    {
+        $user = $this->realUser('remembered-member@example.com');
+        $this->membership($user, 'acme');
+        $request = $this->request(header: 'acme', user: $user);
+
+        $this->assertPassesThrough($request);
+
+        $this->assertSame('acme', $request->session()->get('askmydocs.active_tenant'));
+    }
+
+    public function test_reuses_the_remembered_tenant_for_a_same_origin_package_spa(): void
+    {
+        $user = $this->realUser('package-spa-member@example.com');
+        $this->membership($user, 'acme');
+        $request = $this->request(header: null, user: $user, rememberedTenant: 'acme');
+
+        $this->assertPassesThrough($request);
+
+        $this->assertSame('acme', app(TenantContext::class)->current());
+    }
+
+    public function test_rejects_and_forgets_a_remembered_tenant_after_membership_is_revoked(): void
+    {
+        $user = $this->realUser('revoked-package-spa-member@example.com');
+        $request = $this->request(header: null, user: $user, rememberedTenant: 'acme');
+
+        $response = $this->dispatch($request);
+
+        $this->assertSame(Response::HTTP_FORBIDDEN, $response->getStatusCode());
+        $this->assertNull($request->session()->get('askmydocs.active_tenant'));
+    }
+
+    public function test_explicit_tenant_never_falls_back_to_a_remembered_tenant(): void
+    {
+        $user = $this->realUser('explicit-tenant-member@example.com');
+        $this->membership($user, 'acme');
+        $request = $this->request(header: 'victim', user: $user, rememberedTenant: 'acme');
+
+        $response = $this->dispatch($request);
+
+        $this->assertSame(Response::HTTP_FORBIDDEN, $response->getStatusCode());
+        $this->assertSame('acme', $request->session()->get('askmydocs.active_tenant'));
     }
 
     public function test_rejects_foreign_header_when_membership_is_in_another_tenant(): void
@@ -178,15 +225,31 @@ final class AuthorizeTenantHeaderTest extends TestCase
         );
     }
 
-    private function request(?string $header, ?object $user): Request
+    private function request(?string $header, ?object $user, ?string $rememberedTenant = null): Request
     {
         $request = Request::create('/api/admin/kb/tags', 'GET');
+        $session = new Store('authorize-tenant-test', new ArraySessionHandler(120));
+        $session->start();
+        if ($rememberedTenant !== null) {
+            $session->put('askmydocs.active_tenant', $rememberedTenant);
+        }
+        $request->setLaravelSession($session);
         if ($header !== null) {
             $request->headers->set('X-Tenant-Id', $header);
         }
         $request->setUserResolver(static fn () => $user);
 
         return $request;
+    }
+
+    private function membership(User $user, string $tenantId): void
+    {
+        ProjectMembership::create([
+            'tenant_id' => $tenantId,
+            'user_id' => $user->id,
+            'project_key' => $tenantId.'-kb',
+            'role' => 'member',
+        ]);
     }
 
     private function realUser(string $email): User
