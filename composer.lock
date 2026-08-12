@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "71724f2a8ad6b3c398de56b86247b60b",
+    "content-hash": "cb54111988e73475074c79a60c565db6",
     "packages": [
         {
             "name": "aws/aws-crt-php",
@@ -2913,7 +2913,7 @@
         },
         {
             "name": "padosoft/askmydocs-connector-api",
-            "version": "dev-feature/list-detail-relations",
+            "version": "v1.0.0-beta.1",
             "source": {
                 "type": "git",
                 "url": "https://github.com/padosoft/askmydocs-connector-api.git",
@@ -2991,7 +2991,7 @@
                 "tool-calling"
             ],
             "support": {
-                "source": "https://github.com/padosoft/askmydocs-connector-api/tree/feature/list-detail-relations",
+                "source": "https://github.com/padosoft/askmydocs-connector-api/tree/v1.0.0-beta.1",
                 "issues": "https://github.com/padosoft/askmydocs-connector-api/issues"
             },
             "time": "2026-08-12T09:18:52+00:00"
@@ -12027,7 +12027,7 @@
     "aliases": [],
     "minimum-stability": "stable",
     "stability-flags": {
-        "padosoft/askmydocs-connector-api": 20
+        "padosoft/askmydocs-connector-api": 10
     },
     "prefer-stable": true,
     "prefer-lowest": false,
