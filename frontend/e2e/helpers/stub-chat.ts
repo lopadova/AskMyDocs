@@ -5,19 +5,15 @@ import type { Page } from '@playwright/test';
  * `chat*.spec.ts` file in the suite.
  *
  * Why this exists: per `feedback_w3_vercel_test_rigor` §2 + the W3
- * design doc §7.2, the W3.2 FE migration to `@ai-sdk/react` switches
- * the SPA from `POST /conversations/{id}/messages` (synchronous JSON)
- * to `POST /conversations/{id}/messages/stream` (SSE protocol per
- * W3.1). If each spec file inlines its own request-stub block against
- * the synchronous endpoint, a future change to the streaming endpoint
- * would force per-spec edits — violating the zero-edit gate Lorenzo
- * locked in for design fidelity.
+ * design doc §7.2, the frontend chat transport has evolved from the
+ * synchronous endpoint, through the SDK stream, to the durable agent
+ * start + resumable events protocol. Keeping those details here means
+ * rendering-focused specs do not need transport-specific stubs.
  *
  * The contract here is "stub the chat-completion call site" without
- * naming the URL/protocol. Today the helper fulfills the synchronous
- * JSON shape against `POST /conversations/{id}/messages`. When the SPA
- * migrates to the streaming endpoint, ONLY this file changes — every
- * spec call site stays byte-identical and continues to pass.
+ * leaking the URL/protocol into every scenario. The current path starts
+ * a run at `/messages/agent`, consumes `/agent-runs/{run}/events`, then
+ * reloads the canonical message history.
  *
  * NOTE(R13): the `EXTERNAL_PROXY_PATTERNS` entry in
  * `scripts/verify-e2e-real-data.sh` matches the conversations-
@@ -59,7 +55,8 @@ export interface StubChatMessage {
 
 export interface StubChatOptions {
     /**
-     * The assistant message returned on `POST /conversations/{id}/messages`.
+     * The assistant message exposed by the canonical history reload after the
+     * stubbed durable run completes.
      */
     assistant: StubChatMessage;
 
@@ -88,11 +85,11 @@ export interface StubChatOptions {
 /**
  * Stub the chat-completion request/response cycle for a single test.
  *
- * - POST `/conversations/{id}/messages` → returns `options.assistant`
- *   as the assistant Message JSON.
+ * - POST `/conversations/{id}/messages/agent` → returns a deterministic run.
+ * - GET the advertised event stream → emits one terminal run event.
  * - GET `/conversations/{id}/messages` → returns `options.list`
  *   (defaults to `[assistant]`) as the message thread.
- * - Any other method → `route.fallback()` (real backend).
+ * - Legacy message/stream routes remain available to older focused specs.
  *
  * The stub registers via Playwright's request-interception API and
  * stays active for the remainder of the test. Callers DO NOT need to
@@ -101,6 +98,7 @@ export interface StubChatOptions {
  */
 export async function stubChatAssistantReply(page: Page, options: StubChatOptions): Promise<void> {
     const list = options.list ?? [options.assistant];
+    const runId = `stub-run-${options.assistant.id}`;
 
     // Track POST observation per route handler so the GET refetch
     // returns `[]` BEFORE the user sends a message, and the seeded
@@ -137,7 +135,83 @@ export async function stubChatAssistantReply(page: Page, options: StubChatOption
     // patterns keep the routing intent visible and avoid the
     // bouncer entirely.
     await page.route('**/conversations/*/messages', handleChat);
-    await page.route('**/conversations/*/messages/stream', handleChat);
+    await page.route('**/conversations/*/messages/stream**', handleChat);
+    await page.route('**/conversations/*/messages/agent', handleAgentStart);
+
+    async function handleAgentStart(
+        route: Parameters<Parameters<Page['route']>[1]>[0],
+    ): Promise<void> {
+        if (route.request().method() !== 'POST') {
+            await route.fallback();
+            return;
+        }
+
+        const body = route.request().postDataJSON() as {
+            content?: string;
+            filters?: Record<string, unknown>;
+        };
+        const conversationId = new URL(route.request().url()).pathname.split('/')[2] ?? '0';
+        options.onPost?.(body);
+        postObserved = true;
+
+        const seededUser = list.find((message) => message.role === 'user');
+        const userMessage: StubChatMessage = seededUser ?? {
+            id: Math.max(1, options.assistant.id - 1),
+            role: 'user',
+            content: body.content ?? '',
+            metadata: { agent_run_id: runId },
+            rating: null,
+            created_at: new Date().toISOString(),
+        };
+
+        await route.fulfill({
+            status: 202,
+            contentType: 'application/json',
+            body: JSON.stringify({
+                run_id: runId,
+                status: 'queued',
+                locale: 'en',
+                // Keep the rendering stub on the same allowlisted external-
+                // provider boundary as the legacy SDK stream. The production
+                // controller returns `/agent-runs/{run}/events`; transport
+                // contract coverage for that URL lives in use-agent-chat tests.
+                events_url: `/conversations/${conversationId}/messages/stream?stub_agent_run=${runId}`,
+                cancel_url: `/agent-runs/${runId}/cancel`,
+                continue_url: `/agent-runs/${runId}/continue`,
+                user_message: userMessage,
+            }),
+        });
+    }
+
+    async function handleAgentEvents(
+        route: Parameters<Parameters<Page['route']>[1]>[0],
+    ): Promise<void> {
+        if (route.request().method() !== 'GET') {
+            await route.fallback();
+            return;
+        }
+
+        const event = {
+            run_id: runId,
+            sequence: 1,
+            type: 'run.completed',
+            phase: 'run',
+            locale: 'en',
+            message_key: 'run.completed',
+            message_params: {},
+            message: 'The answer is ready.',
+            progress: null,
+            can_cancel: false,
+            data: { response: { answer: options.assistant.content } },
+            created_at: new Date().toISOString(),
+        };
+        await route.fulfill({
+            status: 200,
+            contentType: 'text/event-stream',
+            headers: { 'Cache-Control': 'no-store' },
+            body: `id: 1\nevent: run.completed\ndata: ${JSON.stringify(event)}\n\n`,
+        });
+    }
 
     async function handleChat(route: Parameters<Parameters<Page['route']>[1]>[0]): Promise<void> {
         const url = route.request().url();
@@ -146,6 +220,10 @@ export async function stubChatAssistantReply(page: Page, options: StubChatOption
         const isStream = path.endsWith('/stream');
 
         if (method === 'GET') {
+            if (isStream) {
+                await handleAgentEvents(route);
+                return;
+            }
             const body = postObserved ? list : [];
             await route.fulfill({
                 status: 200,
