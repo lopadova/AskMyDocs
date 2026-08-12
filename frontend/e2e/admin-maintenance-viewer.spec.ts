@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures';
 
 /*
  * PR13 — Phase H2. Admin Maintenance RBAC denial under viewer.

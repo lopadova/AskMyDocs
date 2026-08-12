@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures';
 
 /*
  * PR8 — Phase G1. Admin KB Explorer RBAC denial.

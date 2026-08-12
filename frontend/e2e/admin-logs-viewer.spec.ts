@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures';
 
 /*
  * PR12 — Phase H1. Admin Log Viewer RBAC denial scenarios.

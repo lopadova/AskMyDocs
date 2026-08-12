@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures';
 
 /*
  * v6.0 — AI Act compliance scaffold RBAC denial.

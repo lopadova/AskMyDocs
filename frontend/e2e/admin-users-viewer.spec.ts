@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures';
 
 /*
  * PR7 — Phase F2. Admin Users RBAC denial scenarios.

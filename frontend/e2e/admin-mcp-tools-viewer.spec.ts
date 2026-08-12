@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures';
 
 /*
  * v5.0/W2 — Admin MCP Tools — viewer-role denial scenario.
