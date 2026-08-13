@@ -23,6 +23,8 @@ const connectorsMock: QueryMock<ConnectorEntry[]> = { data: [], isLoading: false
 vi.mock('./ingestion-hooks', () => ({
     useQueueDepths: () => ({ ...queueMock, refetch: vi.fn() }),
     useSyncRuns: () => ({ ...runsMock, refetch: vi.fn() }),
+    useImapBackfill: () => ({ data: null, isLoading: false, isError: false, refetch: vi.fn() }),
+    useStartImapBackfill: () => ({ mutate: vi.fn(), isPending: false, isError: false }),
 }));
 
 vi.mock('../connectors/connectors-hooks', () => ({
