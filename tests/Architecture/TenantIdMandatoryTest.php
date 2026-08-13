@@ -98,6 +98,8 @@ final class TenantIdMandatoryTest extends TestCase
         \App\Models\TabularCell::class,
         // v8.21/Ciclo 2 — connector sync-run observability.
         \App\Models\ConnectorSyncRun::class,
+        \App\Models\ImapBackfill::class,
+        \App\Models\ImapBackfillWindow::class,
         // v8.22/Ciclo 3 — runtime configuration governance.
         \App\Models\AppSetting::class,
         // v4.7/W2 — workflows backend. `workflow_shares` is an

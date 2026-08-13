@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Connectors\Scheduling;
 
 use App\Connectors\SerializedConnectorSyncJob;
+use App\Models\ImapBackfill;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Schema;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
@@ -56,6 +57,10 @@ final class SerializedSyncScheduler extends SyncScheduler
             ->orderBy('id')
             ->chunkById(100, function ($installations) use ($defaultMinutes, $perConnector, &$dispatched): void {
                 foreach ($installations as $installation) {
+                    if ($this->hasActiveImapBackfill($installation)) {
+                        continue;
+                    }
+
                     $cadenceMinutes = $this->cadenceMinutesFor(
                         $installation->connector_name,
                         $perConnector,
@@ -94,5 +99,18 @@ final class SerializedSyncScheduler extends SyncScheduler
         }
 
         return $installation->last_sync_at->copy()->addMinutes($cadenceMinutes)->lte(now());
+    }
+
+    private function hasActiveImapBackfill(ConnectorInstallation $installation): bool
+    {
+        if ($installation->connector_name !== 'imap' || ! Schema::hasTable('imap_backfills')) {
+            return false;
+        }
+
+        return ImapBackfill::query()
+            ->forTenant((string) $installation->tenant_id)
+            ->where('connector_installation_id', $installation->id)
+            ->whereIn('status', ImapBackfill::ACTIVE_STATUSES)
+            ->exists();
     }
 }

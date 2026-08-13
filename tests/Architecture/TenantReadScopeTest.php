@@ -41,7 +41,7 @@ final class TenantReadScopeTest extends TestCase
         'KnowledgeDocument', 'KnowledgeDocumentAcl', 'McpServer',
         'McpTenantToken', 'McpToolCallAudit', 'Message', 'NotificationDigest',
         'NotificationEvent', 'NotificationPreference', 'NotificationTenantDefault',
-        'AppSetting', 'ConnectorSyncRun',
+        'AppSetting', 'ConnectorSyncRun', 'ImapBackfill', 'ImapBackfillWindow',
         'Project', 'ProjectMembership', 'TabularCell', 'TabularReview',
         'TenantSchedulerOverride', 'WidgetIdentity', 'WidgetKey', 'WidgetSession',
         'WidgetSessionStep', 'WidgetSessionToken', 'Workflow',
@@ -54,6 +54,9 @@ final class TenantReadScopeTest extends TestCase
      * @var array<string, string>
      */
     private const ALLOWLIST = [
+        // Scheduler sweep is intentionally cross-tenant; each queued job captures
+        // the row's tenant and rebinds both tenant contexts before any work.
+        'app/Connectors/Scheduling/ImapBackfillScheduler.php' => 'Cross-tenant scheduled dispatcher; jobs are tenant-captured.',
         // Cross-tenant by design: the embedding cache + the deleter's
         // legacy unscoped sweep both log/justify the cross-tenant access
         // inline, and DocumentDeleter applies forTenant CONDITIONALLY

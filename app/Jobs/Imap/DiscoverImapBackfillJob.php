@@ -1,0 +1,102 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Jobs\Imap;
+
+use App\Connectors\Imap\Backfill\ImapBackfillDiscovery;
+use App\Connectors\Imap\MailboxLockKey;
+use App\Connectors\SerializedConnectorSyncJob;
+use App\Models\ImapBackfill;
+use App\Support\TenantContext;
+use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\Middleware\WithoutOverlapping;
+use Illuminate\Queue\SerializesModels;
+use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
+use Padosoft\AskMyDocsConnectorBase\Support\TenantContext as PackageTenantContext;
+use Throwable;
+
+final class DiscoverImapBackfillJob implements ShouldQueue
+{
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+
+    public int $tries = 5;
+    public int $timeout = 600;
+    public array $backoff = [30, 60, 120, 300];
+
+    public function __construct(
+        public readonly int $backfillId,
+        public readonly string $tenantId,
+    ) {}
+
+    public function handle(ImapBackfillDiscovery $discovery): void
+    {
+        $this->bindTenant();
+        $backfill = ImapBackfill::query()->forTenant($this->tenantId)->find($this->backfillId);
+        if ($backfill === null || $backfill->status !== ImapBackfill::STATUS_DISCOVERING) {
+            return;
+        }
+        $installation = ConnectorInstallation::query()
+            ->forTenant($this->tenantId)
+            ->where('id', $backfill->connector_installation_id)
+            ->where('connector_name', 'imap')
+            ->firstOrFail();
+
+        try {
+            $discovery->discover($installation, $backfill);
+        } catch (Throwable $e) {
+            $backfill->forceFill([
+                'heartbeat_at' => now(),
+                'error_json' => ['message' => $e->getMessage(), 'type' => $e::class],
+            ])->save();
+            throw $e;
+        }
+
+        PumpImapBackfillJob::dispatch($backfill->id, $this->tenantId)
+            ->onQueue((string) config('connectors.imap.backfill.queue', 'connectors'));
+    }
+
+    /** @return array<int,object> */
+    public function middleware(): array
+    {
+        $this->bindTenant();
+        $backfill = ImapBackfill::query()->forTenant($this->tenantId)->find($this->backfillId);
+        $installation = $backfill === null ? null : ConnectorInstallation::query()
+            ->forTenant($this->tenantId)
+            ->find($backfill->connector_installation_id);
+        if ($installation === null || ! SerializedConnectorSyncJob::serializes($installation)) {
+            return [];
+        }
+        $key = MailboxLockKey::forInstallation($installation);
+
+        return $key === null ? [] : [
+            (new WithoutOverlapping($key))
+                ->releaseAfter((int) config('connectors.imap.mailbox_lock.requeue_after_seconds', 60))
+                ->expireAfter((int) config('connectors.imap.mailbox_lock.ttl_seconds', 700)),
+        ];
+    }
+
+    public function failed(?Throwable $exception): void
+    {
+        $this->bindTenant();
+        ImapBackfill::query()
+            ->forTenant($this->tenantId)
+            ->where('id', $this->backfillId)
+            ->where('status', ImapBackfill::STATUS_DISCOVERING)
+            ->update([
+                'status' => ImapBackfill::STATUS_FAILED,
+                'heartbeat_at' => now(),
+                'error_json' => ['message' => $exception?->getMessage() ?? 'IMAP discovery failed'],
+                'updated_at' => now(),
+            ]);
+    }
+
+    private function bindTenant(): void
+    {
+        app(TenantContext::class)->set($this->tenantId);
+        app(PackageTenantContext::class)->set($this->tenantId);
+    }
+}
