@@ -11,6 +11,7 @@ use App\Jobs\Imap\ImportImapBackfillWindowJob;
 use App\Jobs\Imap\PumpImapBackfillJob;
 use App\Models\ImapBackfill;
 use App\Models\ImapBackfillWindow;
+use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
@@ -43,9 +44,10 @@ final class ImapBackfillTest extends TestCase
     public function test_pump_claims_only_one_window_at_a_time(): void
     {
         Queue::fake();
+        $tenantId = $this->tenantId();
         $installation = $this->installation();
         $backfill = ImapBackfill::create([
-            'tenant_id' => 'default',
+            'tenant_id' => $tenantId,
             'connector_installation_id' => $installation->id,
             'status' => ImapBackfill::STATUS_RUNNING,
             'batch_size' => 100,
@@ -55,7 +57,7 @@ final class ImapBackfillTest extends TestCase
         ]);
         foreach ([['2025-01-01', '2025-02-01'], ['2025-02-01', '2025-03-01']] as [$start, $end]) {
             ImapBackfillWindow::create([
-                'tenant_id' => 'default',
+                'tenant_id' => $tenantId,
                 'imap_backfill_id' => $backfill->id,
                 'connector_installation_id' => $installation->id,
                 'mailbox' => 'INBOX',
@@ -66,8 +68,8 @@ final class ImapBackfillTest extends TestCase
             ]);
         }
 
-        (new PumpImapBackfillJob($backfill->id, 'default'))->handle();
-        (new PumpImapBackfillJob($backfill->id, 'default'))->handle();
+        (new PumpImapBackfillJob($backfill->id, $tenantId))->handle();
+        (new PumpImapBackfillJob($backfill->id, $tenantId))->handle();
 
         $this->assertSame(1, ImapBackfillWindow::query()->where('status', ImapBackfillWindow::STATUS_QUEUED)->count());
         $this->assertSame(1, ImapBackfillWindow::query()->where('status', ImapBackfillWindow::STATUS_PENDING)->count());
@@ -77,9 +79,10 @@ final class ImapBackfillTest extends TestCase
     public function test_normal_scheduler_skips_imap_while_backfill_is_active(): void
     {
         Queue::fake();
+        $tenantId = $this->tenantId();
         $installation = $this->installation();
         ImapBackfill::create([
-            'tenant_id' => 'default',
+            'tenant_id' => $tenantId,
             'connector_installation_id' => $installation->id,
             'status' => ImapBackfill::STATUS_RUNNING,
             'batch_size' => 100,
@@ -93,7 +96,7 @@ final class ImapBackfillTest extends TestCase
     private function installation(): ConnectorInstallation
     {
         return ConnectorInstallation::create([
-            'tenant_id' => 'default',
+            'tenant_id' => $this->tenantId(),
             'connector_name' => 'imap',
             'label' => 'autry',
             'config_json' => [
@@ -108,5 +111,10 @@ final class ImapBackfillTest extends TestCase
             'last_sync_at' => null,
             'created_by' => 1,
         ]);
+    }
+
+    private function tenantId(): string
+    {
+        return app(TenantContext::class)->current();
     }
 }
