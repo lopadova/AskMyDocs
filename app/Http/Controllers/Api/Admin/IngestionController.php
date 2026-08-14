@@ -45,7 +45,10 @@ final class IngestionController extends Controller
 
     public function imapBackfill(int $installationId): JsonResponse
     {
-        return response()->json(['data' => $this->imapBackfills->status($installationId)]);
+        return response()->json(['data' => [
+            'enabled' => $this->imapBackfills->isEnabled(),
+            'backfill' => $this->imapBackfills->status($installationId),
+        ]]);
     }
 
     public function startImapBackfill(int $installationId): JsonResponse
@@ -53,7 +56,10 @@ final class IngestionController extends Controller
         $backfill = $this->imapBackfills->start($installationId);
 
         return response()->json([
-            'data' => $this->imapBackfills->status($backfill->connector_installation_id),
+            'data' => [
+                'enabled' => $this->imapBackfills->isEnabled(),
+                'backfill' => $this->imapBackfills->status($backfill->connector_installation_id),
+            ],
         ], 202);
     }
 }

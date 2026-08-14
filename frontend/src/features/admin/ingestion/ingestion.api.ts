@@ -59,6 +59,11 @@ export interface ImapBackfillDto {
     last_error: Record<string, unknown> | null;
 }
 
+export interface ImapBackfillStateDto {
+    enabled: boolean;
+    backfill: ImapBackfillDto | null;
+}
+
 export const adminIngestionApi = {
     async queueDepths(): Promise<QueueDepth[]> {
         const { data } = await api.get<{ data: QueueDepth[] }>('/api/admin/ingestion/queue');
@@ -73,15 +78,15 @@ export const adminIngestionApi = {
         return data.data;
     },
 
-    async imapBackfill(installationId: number): Promise<ImapBackfillDto | null> {
-        const { data } = await api.get<{ data: ImapBackfillDto | null }>(
+    async imapBackfill(installationId: number): Promise<ImapBackfillStateDto> {
+        const { data } = await api.get<{ data: ImapBackfillStateDto }>(
             `/api/admin/connectors/${installationId}/imap-backfill`,
         );
         return data.data;
     },
 
-    async startImapBackfill(installationId: number): Promise<ImapBackfillDto> {
-        const { data } = await api.post<{ data: ImapBackfillDto }>(
+    async startImapBackfill(installationId: number): Promise<ImapBackfillStateDto> {
+        const { data } = await api.post<{ data: ImapBackfillStateDto }>(
             `/api/admin/connectors/${installationId}/imap-backfill`,
         );
         return data.data;

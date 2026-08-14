@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { adminIngestionApi, type ImapBackfillDto, type QueueDepth, type SyncRunDto } from './ingestion.api';
+import { adminIngestionApi, type ImapBackfillStateDto, type QueueDepth, type SyncRunDto } from './ingestion.api';
 
 /*
  * TanStack Query hooks over /api/admin/ingestion/* + the per-account
@@ -42,7 +42,7 @@ export function useSyncRuns(installationId: number | null) {
 }
 
 export function useImapBackfill(installationId: number | null, enabled: boolean) {
-    return useQuery<ImapBackfillDto | null>({
+    return useQuery<ImapBackfillStateDto>({
         queryKey: [...INGESTION_KEY, 'imap-backfill', installationId],
         queryFn: () => {
             if (installationId === null) throw new Error('IMAP backfill requested without an installation');
@@ -60,7 +60,10 @@ export function useStartImapBackfill() {
     return useMutation({
         mutationFn: (installationId: number) => adminIngestionApi.startImapBackfill(installationId),
         onSuccess: (data) => {
-            queryClient.setQueryData([...INGESTION_KEY, 'imap-backfill', data.installation_id], data);
+            const installationId = data.backfill?.installation_id;
+            if (installationId !== undefined) {
+                queryClient.setQueryData([...INGESTION_KEY, 'imap-backfill', installationId], data);
+            }
         },
     });
 }
