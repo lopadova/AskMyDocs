@@ -206,6 +206,17 @@ final class ImapBackfillTest extends TestCase
         $this->assertSame('UIDVALIDITY changed', $backfill->fresh()->error_json['message']);
     }
 
+    public function test_import_job_lock_requeues_are_bounded_by_wall_clock_not_attempts(): void
+    {
+        config()->set('connectors.imap.mailbox_lock.requeue_window_minutes', 30);
+        $job = new ImportImapBackfillWindowJob(1, $this->tenantId());
+        $now = now();
+
+        $this->assertSame(0, $job->tries);
+        $this->assertGreaterThan($now->copy()->addMinutes(29)->getTimestamp(), $job->retryUntil()->getTimestamp());
+        $this->assertLessThanOrEqual($now->copy()->addMinutes(31)->getTimestamp(), $job->retryUntil()->getTimestamp());
+    }
+
     public function test_deleting_installation_cascades_campaigns_and_windows(): void
     {
         $installation = $this->installation();

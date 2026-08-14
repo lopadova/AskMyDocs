@@ -10,6 +10,7 @@ use App\Connectors\SerializedConnectorSyncJob;
 use App\Models\ImapBackfill;
 use App\Models\ImapBackfillWindow;
 use App\Support\TenantContext;
+use DateTimeInterface;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -25,7 +26,7 @@ final class ImportImapBackfillWindowJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 5;
+    public int $tries = 0;
     public int $timeout = 600;
     public int $maxExceptions = 5;
     public array $backoff = [30, 60, 120, 300];
@@ -34,6 +35,14 @@ final class ImportImapBackfillWindowJob implements ShouldQueue
         public readonly int $windowId,
         public readonly string $tenantId,
     ) {}
+
+    public function retryUntil(): DateTimeInterface
+    {
+        return now()->addMinutes(max(
+            1,
+            (int) config('connectors.imap.mailbox_lock.requeue_window_minutes', 30),
+        ));
+    }
 
     public function handle(ImapBackfillImporter $importer): void
     {
