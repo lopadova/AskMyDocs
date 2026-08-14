@@ -5,9 +5,7 @@ declare(strict_types=1);
 namespace App\Connectors\Imap\Backfill;
 
 use Carbon\Carbon;
-use Padosoft\AskMyDocsConnectorBase\BaseConnector;
-use Padosoft\AskMyDocsConnectorBase\ConnectorRegistry;
-use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
+use Padosoft\AskMyDocsConnectorImap\Imap\ImapAttachment;
 use Padosoft\AskMyDocsConnectorImap\Imap\ImapMessage;
 use Padosoft\AskMyDocsConnectorImap\Imap\MailboxState;
 use Padosoft\AskMyDocsConnectorImap\Imap\WebklexImapClient;
@@ -15,69 +13,23 @@ use RuntimeException;
 use Webklex\PHPIMAP\Address;
 use Webklex\PHPIMAP\Attribute;
 use Webklex\PHPIMAP\Client;
-use Webklex\PHPIMAP\ClientManager;
 use Webklex\PHPIMAP\IMAP;
 use Webklex\PHPIMAP\Message;
-use Padosoft\AskMyDocsConnectorImap\Imap\ImapAttachment;
 
 /**
  * One short-lived IMAP session used by discovery or one backfill batch.
  * Date-range UID searches use the server-side IMAP SINCE/BEFORE predicates;
  * only the selected UIDs are fetched with bodies.
  */
-final class ImapBackfillMailboxClient
+final class ImapBackfillMailboxClient implements ImapBackfillClient
 {
     /** @var array<string,int> */
     private array $uidValidity = [];
 
-    private function __construct(
+    public function __construct(
         private readonly Client $rawClient,
         private readonly WebklexImapClient $client,
     ) {}
-
-    public static function forInstallation(
-        ConnectorInstallation $installation,
-        ConnectorRegistry $registry,
-    ): self {
-        $connector = $registry->get('imap');
-        if (! $connector instanceof BaseConnector) {
-            throw new RuntimeException('The IMAP connector is not installed.');
-        }
-
-        $secret = (string) ($connector->refreshTokenIfExpired($installation->id) ?? '');
-        if ($secret === '') {
-            throw new RuntimeException('The IMAP credential is missing or expired.');
-        }
-
-        $config = (array) ($installation->config_json ?? []);
-        $authMode = (string) ($config['auth_mode'] ?? 'basic');
-        $connection = (array) ($config['connection'] ?? []);
-
-        // Never send a freshly minted Microsoft app-only token to a configurable
-        // host. This mirrors the connector package's own security boundary.
-        if ($authMode === 'xoauth2_client_credentials') {
-            $provider = (array) config('connectors.providers.imap.client_credentials.microsoft', []);
-            $connection['host'] = (string) ($provider['imap_host'] ?? 'outlook.office365.com');
-            $connection['port'] = (int) ($provider['imap_port'] ?? 993);
-            $connection['encryption'] = (string) ($provider['imap_encryption'] ?? 'ssl');
-        }
-
-        $manager = new ClientManager;
-        $raw = $manager->make([
-            'host' => (string) ($connection['host'] ?? ''),
-            'port' => (int) ($connection['port'] ?? 993),
-            'encryption' => (string) ($connection['encryption'] ?? 'ssl'),
-            'validate_cert' => (bool) ($connection['validate_cert'] ?? true),
-            'username' => (string) ($connection['username'] ?? ''),
-            'password' => $secret,
-            'rfc' => 'BODY',
-            'authentication' => in_array($authMode, ['xoauth2', 'xoauth2_client_credentials'], true)
-                ? 'oauth'
-                : null,
-        ]);
-
-        return new self($raw, new WebklexImapClient($raw));
-    }
 
     /** @return list<string> */
     public function mailboxes(): array
@@ -108,12 +60,13 @@ final class ImapBackfillMailboxClient
         Carbon $end,
         int $afterUid = 0,
         ?int $throughUid = null,
+        ?int $limit = null,
     ): array {
         if ($throughUid !== null && $afterUid >= $throughUid) {
             return [];
         }
 
-        return $this->uids($mailbox, $start, $end, $afterUid, $throughUid);
+        return $this->uids($mailbox, $start, $end, $afterUid, $throughUid, $limit);
     }
 
     public function fetchMessage(string $mailbox, int $uid): ImapMessage
@@ -165,6 +118,55 @@ final class ImapBackfillMailboxClient
         ?Carbon $end,
         int $afterUid,
         ?int $throughUid = null,
+        ?int $limit = null,
+    ): array {
+        if ($limit !== null && $throughUid !== null) {
+            return $this->boundedUids($mailbox, $start, $end, $afterUid, $throughUid, $limit);
+        }
+
+        return $this->searchUids($mailbox, $start, $end, $afterUid + 1, $throughUid);
+    }
+
+    /**
+     * Search bounded UID ranges on the server until limit results are collected.
+     * A range contains at most limit possible UIDs, so neither one SEARCH reply
+     * nor the accumulated PHP list can grow with the remaining mailbox history.
+     *
+     * @return list<int>
+     */
+    private function boundedUids(
+        string $mailbox,
+        ?Carbon $start,
+        ?Carbon $end,
+        int $afterUid,
+        int $throughUid,
+        int $limit,
+    ): array {
+        $limit = max(1, $limit);
+        $cursor = max(1, $afterUid + 1);
+        $uids = [];
+
+        while ($cursor <= $throughUid && count($uids) < $limit) {
+            $rangeEnd = min($throughUid, $cursor + $limit - 1);
+            foreach ($this->searchUids($mailbox, $start, $end, $cursor, $rangeEnd) as $uid) {
+                $uids[] = $uid;
+                if (count($uids) >= $limit) {
+                    break;
+                }
+            }
+            $cursor = $rangeEnd + 1;
+        }
+
+        return $uids;
+    }
+
+    /** @return list<int> */
+    private function searchUids(
+        string $mailbox,
+        ?Carbon $start,
+        ?Carbon $end,
+        int $fromUid,
+        ?int $throughUid,
     ): array {
         $folder = $this->rawClient->getFolder($mailbox);
         if ($folder === null) {
@@ -180,16 +182,15 @@ final class ImapBackfillMailboxClient
         if ($end !== null) {
             $query->before($end);
         }
-        if ($afterUid > 0) {
-            $query->whereUid(($afterUid + 1).':'.($throughUid ?? '*'));
-        } elseif ($throughUid !== null) {
-            $query->whereUid('1:'.$throughUid);
-        }
+        $query->whereUid(max(1, $fromUid).':'.($throughUid ?? '*'));
 
         $uids = array_map('intval', $query->search()->all());
         sort($uids, SORT_NUMERIC);
 
-        return array_values(array_filter($uids, static fn (int $uid): bool => $uid > $afterUid));
+        return array_values(array_filter(
+            $uids,
+            static fn (int $uid): bool => $uid >= $fromUid && ($throughUid === null || $uid <= $throughUid),
+        ));
     }
 
     private function mapMessage(string $mailbox, Message $message): ImapMessage

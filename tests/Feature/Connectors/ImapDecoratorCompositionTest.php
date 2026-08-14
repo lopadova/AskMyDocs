@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Connectors;
 
+use App\Connectors\Imap\Backfill\ImapBackfillClientFactory;
+use App\Connectors\Imap\ReconnectingImapBackfillClient;
 use App\Connectors\Imap\ReconnectingImapClient;
+use App\Connectors\Imap\SerializingImapBackfillClient;
 use App\Connectors\Imap\SerializingImapClient;
 use App\Connectors\Imap\SerializingImapClientFactory;
 use Padosoft\AskMyDocsConnectorImap\Imap\ImapClientFactoryInterface;
@@ -47,6 +50,26 @@ final class ImapDecoratorCompositionTest extends TestCase
             ReconnectingImapClient::class,
             $inner,
             'reconnect must be nested INSIDE the serialization lock (Serializing(Reconnecting(raw)))',
+        );
+    }
+
+    public function test_backfill_bulk_client_uses_the_same_reconnect_and_serialization_chain(): void
+    {
+        $factory = $this->app->make(ImapClientFactoryInterface::class);
+        $this->assertInstanceOf(ImapBackfillClientFactory::class, $factory);
+
+        $client = $factory->makeBackfill(
+            ['host' => 'imap.x.test', 'port' => 993, 'username' => 'u@x.test'],
+            's',
+            'basic',
+        );
+        $this->assertInstanceOf(SerializingImapBackfillClient::class, $client);
+
+        $inner = (new ReflectionProperty(SerializingImapBackfillClient::class, 'inner'))->getValue($client);
+        $this->assertInstanceOf(
+            ReconnectingImapBackfillClient::class,
+            $inner,
+            'backfill reconnect must remain inside the shared per-mailbox lock',
         );
     }
 }

@@ -8,7 +8,6 @@ use App\Models\ImapBackfill;
 use App\Models\ImapBackfillWindow;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
-use Padosoft\AskMyDocsConnectorBase\ConnectorRegistry;
 use Padosoft\AskMyDocsConnectorBase\Contracts\ConnectorIngestionContract;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
 use Padosoft\AskMyDocsConnectorImap\Imap\AttachmentPolicy;
@@ -21,7 +20,7 @@ use RuntimeException;
 final class ImapBackfillImporter
 {
     public function __construct(
-        private readonly ConnectorRegistry $registry,
+        private readonly ImapBackfillClientProviderContract $clients,
         private readonly ConnectorIngestionContract $ingestion,
     ) {}
 
@@ -30,7 +29,7 @@ final class ImapBackfillImporter
         ImapBackfill $backfill,
         ImapBackfillWindow $window,
     ): ImapBackfillBatchResult {
-        $client = ImapBackfillMailboxClient::forInstallation($installation, $this->registry);
+        $client = $this->clients->forInstallation($installation);
         $config = $this->resolvedConfig((array) ($backfill->settings_json ?? []));
         $limit = max(1, (int) $backfill->batch_size);
 
@@ -41,12 +40,15 @@ final class ImapBackfillImporter
                     "UIDVALIDITY changed for {$window->mailbox}; start a new backfill snapshot."
                 );
             }
+            // Ask the IMAP server for one item beyond the batch so hasMore is
+            // known without transferring every remaining UID in the window.
             $uids = $client->uidsBetween(
                 $window->mailbox,
                 $window->window_start->copy()->startOfDay(),
                 $window->window_end->copy()->startOfDay(),
                 (int) $window->last_uid,
                 (int) $window->snapshot_max_uid,
+                $limit + 1,
             );
 
             $expected = (int) $window->processed_messages + count($uids);

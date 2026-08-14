@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Connectors\Imap;
 
+use App\Connectors\Imap\Backfill\ImapBackfillClient;
+use App\Connectors\Imap\Backfill\ImapBackfillClientFactory;
 use Illuminate\Contracts\Cache\LockProvider;
 use Padosoft\AskMyDocsConnectorImap\Imap\ImapClientFactoryInterface;
 use Padosoft\AskMyDocsConnectorImap\Imap\ImapClientInterface;
@@ -18,7 +20,7 @@ use Padosoft\AskMyDocsConnectorImap\Imap\ImapClientInterface;
  * A connection whose `host`/`username` can't form a mailbox key (misconfigured row)
  * is returned undecorated — there is nothing meaningful to serialize on.
  */
-final class SerializingImapClientFactory implements ImapClientFactoryInterface
+final class SerializingImapClientFactory implements ImapClientFactoryInterface, ImapBackfillClientFactory
 {
     public function __construct(
         private readonly ImapClientFactoryInterface $inner,
@@ -40,6 +42,27 @@ final class SerializingImapClientFactory implements ImapClientFactoryInterface
         }
 
         return new SerializingImapClient(
+            $client,
+            $this->lockProvider,
+            $key,
+            $this->waitSeconds,
+            $this->ttlSeconds,
+        );
+    }
+
+    public function makeBackfill(array $connection, string $secret, string $authMode): ImapBackfillClient
+    {
+        if (! $this->inner instanceof ImapBackfillClientFactory) {
+            throw new \RuntimeException('The inner IMAP factory does not support durable backfills.');
+        }
+
+        $client = $this->inner->makeBackfill($connection, $secret, $authMode);
+        $key = MailboxLockKey::forConnection($connection);
+        if ($key === null) {
+            return $client;
+        }
+
+        return new SerializingImapBackfillClient(
             $client,
             $this->lockProvider,
             $key,

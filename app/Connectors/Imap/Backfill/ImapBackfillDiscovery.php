@@ -8,16 +8,15 @@ use App\Models\ImapBackfill;
 use App\Models\ImapBackfillWindow;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
-use Padosoft\AskMyDocsConnectorBase\ConnectorRegistry;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
 
 final class ImapBackfillDiscovery
 {
-    public function __construct(private readonly ConnectorRegistry $registry) {}
+    public function __construct(private readonly ImapBackfillClientProviderContract $clients) {}
 
     public function discover(ConnectorInstallation $installation, ImapBackfill $backfill): void
     {
-        $client = ImapBackfillMailboxClient::forInstallation($installation, $this->registry);
+        $client = $this->clients->forInstallation($installation);
         $config = (array) ($backfill->settings_json ?? []);
 
         try {
