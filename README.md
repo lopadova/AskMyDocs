@@ -200,6 +200,13 @@ tells buyers to demand:
   never opens a second connection — instead of hard-failing the run and leaving the install stuck at
   *"Not synced yet"*. Auth failures are never retried. Tunable via `CONNECTOR_IMAP_RECONNECT_ON_DROP`
   (default on), `CONNECTOR_IMAP_RECONNECT_MAX_ATTEMPTS`, `CONNECTOR_IMAP_RECONNECT_RETRY_DELAY_MS`.
+  **Full-history imports are durable and bounded**: selected folders are divided into date windows,
+  each UID batch checkpoints in SQL, and `kb-ingest` workers index independently. Configure the master
+  switch, queue, batch/fetch sizes, stale-worker recovery and oldest accepted date with
+  `CONNECTOR_IMAP_BACKFILL_ENABLED`, `CONNECTOR_IMAP_BACKFILL_QUEUE`,
+  `CONNECTOR_IMAP_BACKFILL_BATCH_SIZE`, `CONNECTOR_IMAP_BACKFILL_FETCH_SIZE`,
+  `CONNECTOR_IMAP_BACKFILL_STALE_MINUTES` and `CONNECTOR_IMAP_BACKFILL_ABSOLUTE_START`.
+  The operation is available through Admin HTTP/UI and the write-capable `KbImapBackfillTool` MCP tool.
 - **AI Guardrails on the live chat path** (v8.19) — every chat turn is **screened on input** (a
   malicious / policy-violating prompt becomes a localized refusal — never a 500 — with an append-only
   audit row) and **sanitized on output** (exfil links defanged before the answer reaches the client),
