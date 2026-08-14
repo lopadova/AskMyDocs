@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Connectors;
 
 use App\Connectors\Imap\Backfill\ImapBackfillManager;
+use App\Connectors\Scheduling\ImapBackfillScheduler;
 use App\Connectors\Scheduling\SerializedSyncScheduler;
 use App\Jobs\Imap\DiscoverImapBackfillJob;
 use App\Jobs\Imap\ImportImapBackfillWindowJob;
@@ -94,6 +95,27 @@ final class ImapBackfillTest extends TestCase
 
         $this->assertSame(0, (new SerializedSyncScheduler)->dispatchDueSyncs());
         Queue::assertNothingPushed();
+    }
+
+    public function test_backfill_scheduler_recovers_stale_discovery_dispatch(): void
+    {
+        Queue::fake();
+        config()->set('connectors.imap.backfill.stale_after_minutes', 20);
+        $installation = $this->installation();
+        $backfill = ImapBackfill::create([
+            'tenant_id' => $this->tenantId(),
+            'connector_installation_id' => $installation->id,
+            'status' => ImapBackfill::STATUS_DISCOVERING,
+            'batch_size' => 100,
+            'cutoff_at' => now(),
+            'heartbeat_at' => now()->subMinutes(21),
+        ]);
+
+        $this->assertSame(1, (new ImapBackfillScheduler)->pumpActive());
+
+        Queue::assertPushed(DiscoverImapBackfillJob::class, function ($job) use ($backfill): bool {
+            return $job->backfillId === $backfill->id && $job->tenantId === $this->tenantId();
+        });
     }
 
     public function test_disabled_backfill_rejects_start_without_dispatching(): void
