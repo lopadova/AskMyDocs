@@ -16,6 +16,7 @@ use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
+use Padosoft\AskMyDocsConnectorBase\Support\TenantContext as PackageTenantContext;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
@@ -78,6 +79,19 @@ final class ImapBackfillTest extends TestCase
         $this->assertSame(1, ImapBackfillWindow::query()->where('status', ImapBackfillWindow::STATUS_QUEUED)->count());
         $this->assertSame(1, ImapBackfillWindow::query()->where('status', ImapBackfillWindow::STATUS_PENDING)->count());
         Queue::assertPushed(ImportImapBackfillWindowJob::class, 1);
+    }
+
+    public function test_pump_restores_both_worker_tenant_contexts_after_an_early_return(): void
+    {
+        $hostTenant = app(TenantContext::class);
+        $packageTenant = app(PackageTenantContext::class);
+        $hostTenant->set('host-worker');
+        $packageTenant->set('package-worker');
+
+        (new PumpImapBackfillJob(999999, 'job-tenant'))->handle();
+
+        $this->assertSame('host-worker', $hostTenant->current());
+        $this->assertSame('package-worker', $packageTenant->current());
     }
 
     public function test_normal_scheduler_skips_imap_while_backfill_is_active(): void
