@@ -152,11 +152,12 @@ final class ImapBackfillImporter
             $safe = Str::slug(pathinfo($attachment->filename, PATHINFO_FILENAME)) ?: 'file';
             $extension = pathinfo($attachment->filename, PATHINFO_EXTENSION);
             $attachmentRelative = sprintf(
-                '%s/connectors/imap/installation-%d/%s/%d/%s%s',
+                '%s/connectors/imap/installation-%d/%s/%d/%02d-%s%s',
                 $projectKey,
                 $installation->id,
                 $mailboxSlug,
                 $message->uid,
+                $emitted,
                 $safe,
                 $extension !== '' ? '.'.$extension : '',
             );

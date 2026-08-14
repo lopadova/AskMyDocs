@@ -20,6 +20,7 @@ use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Padosoft\AskMyDocsConnectorBase\Contracts\ConnectorIngestionContract;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
+use Padosoft\AskMyDocsConnectorImap\Imap\ImapAttachment;
 use Padosoft\AskMyDocsConnectorImap\Imap\ImapMessage;
 use Padosoft\AskMyDocsConnectorImap\Imap\MailboxState;
 use RuntimeException;
@@ -173,6 +174,46 @@ final class ImapBackfillAlgorithmsTest extends TestCase
         $this->assertNotSame($paths[0], $paths[1]);
     }
 
+    public function test_import_keeps_duplicate_attachment_filenames_in_distinct_paths(): void
+    {
+        Storage::fake('local');
+        $installation = $this->installation();
+        $backfill = $this->backfill($installation, ImapBackfill::STATUS_RUNNING, [
+            'batch_size' => 1,
+            'settings_json' => [
+                'skip_auto_generated' => false,
+                'attachments' => [
+                    'enabled' => true,
+                    'allowed_extensions' => ['pdf'],
+                    'max_size_mb' => 1,
+                    'max_per_email' => 20,
+                    'skip_inline' => true,
+                ],
+            ],
+        ]);
+        $window = $this->window($installation, $backfill, [
+            'snapshot_uid_validity' => 77,
+            'snapshot_max_uid' => 1,
+        ]);
+        $client = new AlgorithmFakeImapClient;
+        $client->state = new MailboxState(uidValidity: 77, lastUid: 1);
+        $client->betweenUidValues = [1];
+        $client->bulkMessages = [1 => $this->message(1, Carbon::parse('2026-01-10'), attachments: [
+            new ImapAttachment('report.pdf', 'application/pdf', 5, false, 'first'),
+            new ImapAttachment('report.pdf', 'application/pdf', 6, false, 'second'),
+        ])];
+        $ingestion = new RecordingConnectorIngestion;
+
+        (new ImapBackfillImporter($this->provider($client), $ingestion))
+            ->importBatch($installation, $backfill, $window);
+
+        $paths = array_column($ingestion->dispatched, 'relativePath');
+        $this->assertCount(3, $paths);
+        $this->assertStringEndsWith('/01-report.pdf', $paths[1]);
+        $this->assertStringEndsWith('/02-report.pdf', $paths[2]);
+        $this->assertNotSame($paths[1], $paths[2]);
+    }
+
     private function provider(AlgorithmFakeImapClient $client): ImapBackfillClientProviderContract
     {
         return new class($client) implements ImapBackfillClientProviderContract
@@ -228,7 +269,13 @@ final class ImapBackfillAlgorithmsTest extends TestCase
         ]);
     }
 
-    private function message(int $uid, Carbon $date, string $mailbox = 'INBOX'): ImapMessage
+    /** @param list<ImapAttachment> $attachments */
+    private function message(
+        int $uid,
+        Carbon $date,
+        string $mailbox = 'INBOX',
+        array $attachments = [],
+    ): ImapMessage
     {
         return new ImapMessage(
             uid: $uid,
@@ -248,7 +295,7 @@ final class ImapBackfillAlgorithmsTest extends TestCase
             textBody: "Body {$uid}",
             htmlBody: null,
             rawHeaders: [],
-            attachments: [],
+            attachments: $attachments,
         );
     }
 
