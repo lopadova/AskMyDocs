@@ -217,6 +217,17 @@ final class ImapBackfillTest extends TestCase
         $this->assertLessThanOrEqual($now->copy()->addMinutes(31)->getTimestamp(), $job->retryUntil()->getTimestamp());
     }
 
+    public function test_discovery_job_lock_requeues_are_bounded_by_wall_clock_not_attempts(): void
+    {
+        config()->set('connectors.imap.mailbox_lock.requeue_window_minutes', 45);
+        $job = new DiscoverImapBackfillJob(1, $this->tenantId());
+        $now = now();
+
+        $this->assertSame(0, $job->tries);
+        $this->assertGreaterThan($now->copy()->addMinutes(44)->getTimestamp(), $job->retryUntil()->getTimestamp());
+        $this->assertLessThanOrEqual($now->copy()->addMinutes(46)->getTimestamp(), $job->retryUntil()->getTimestamp());
+    }
+
     public function test_deleting_installation_cascades_campaigns_and_windows(): void
     {
         $installation = $this->installation();
