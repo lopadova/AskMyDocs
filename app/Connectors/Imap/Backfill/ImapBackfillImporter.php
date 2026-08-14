@@ -102,7 +102,11 @@ final class ImapBackfillImporter
         AttachmentPolicy $policy,
     ): int {
         $projectKey = $this->projectKey($installation);
-        $mailboxSlug = Str::slug($message->mailbox) ?: 'folder';
+        $mailboxSlug = sprintf(
+            '%s-%s',
+            Str::slug($message->mailbox) ?: 'folder',
+            substr(hash('sha256', $message->mailbox), 0, 12),
+        );
         $preferText = (string) ($config['body_format'] ?? 'prefer_text') === 'prefer_text';
         $markdown = (new EmailToMarkdown)->render(
             $message,

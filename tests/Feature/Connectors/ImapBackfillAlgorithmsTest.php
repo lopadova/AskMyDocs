@@ -142,6 +142,37 @@ final class ImapBackfillAlgorithmsTest extends TestCase
         $importer->importBatch($installation, $backfill, $window);
     }
 
+    public function test_import_keeps_slug_colliding_mailboxes_in_distinct_paths(): void
+    {
+        Storage::fake('local');
+        $installation = $this->installation();
+        $backfill = $this->backfill($installation, ImapBackfill::STATUS_RUNNING, [
+            'batch_size' => 1,
+            'settings_json' => ['skip_auto_generated' => false, 'attachments' => ['enabled' => false]],
+        ]);
+        $client = new AlgorithmFakeImapClient;
+        $client->state = new MailboxState(uidValidity: 77, lastUid: 1);
+        $client->betweenUidValues = [1];
+        $ingestion = new RecordingConnectorIngestion;
+        $importer = new ImapBackfillImporter($this->provider($client), $ingestion);
+
+        foreach (['Support/EMEA', 'SupportEMEA'] as $mailbox) {
+            $window = $this->window($installation, $backfill, [
+                'mailbox' => $mailbox,
+                'snapshot_uid_validity' => 77,
+                'snapshot_max_uid' => 1,
+            ]);
+            $client->bulkMessages = [1 => $this->message(1, Carbon::parse('2026-01-10'), $mailbox)];
+            $importer->importBatch($installation, $backfill, $window);
+        }
+
+        $paths = array_column($ingestion->dispatched, 'relativePath');
+        $this->assertCount(2, array_unique($paths));
+        $this->assertStringContainsString('/supportemea-', $paths[0]);
+        $this->assertStringContainsString('/supportemea-', $paths[1]);
+        $this->assertNotSame($paths[0], $paths[1]);
+    }
+
     private function provider(AlgorithmFakeImapClient $client): ImapBackfillClientProviderContract
     {
         return new class($client) implements ImapBackfillClientProviderContract
@@ -197,12 +228,12 @@ final class ImapBackfillAlgorithmsTest extends TestCase
         ]);
     }
 
-    private function message(int $uid, Carbon $date): ImapMessage
+    private function message(int $uid, Carbon $date, string $mailbox = 'INBOX'): ImapMessage
     {
         return new ImapMessage(
             uid: $uid,
             uidValidity: 77,
-            mailbox: 'INBOX',
+            mailbox: $mailbox,
             messageId: "<{$uid}@example.test>",
             inReplyTo: null,
             references: [],
