@@ -31,6 +31,10 @@ return new class extends Migration
 
             $table->index(['tenant_id', 'connector_installation_id', 'status'], 'idx_imap_backfills_install_status');
             $table->index(['tenant_id', 'status', 'updated_at'], 'idx_imap_backfills_status_updated');
+            $table->foreign('connector_installation_id', 'fk_imap_backfills_install')
+                ->references('id')
+                ->on('connector_installations')
+                ->cascadeOnDelete();
         });
 
         Schema::create('imap_backfill_windows', function (Blueprint $table): void {
@@ -62,6 +66,14 @@ return new class extends Migration
             );
             $table->index(['tenant_id', 'imap_backfill_id', 'status', 'next_attempt_at'], 'idx_imap_windows_campaign_status');
             $table->index(['tenant_id', 'status', 'heartbeat_at'], 'idx_imap_windows_status_heartbeat');
+            $table->foreign('imap_backfill_id', 'fk_imap_windows_backfill')
+                ->references('id')
+                ->on('imap_backfills')
+                ->cascadeOnDelete();
+            $table->foreign('connector_installation_id', 'fk_imap_windows_install')
+                ->references('id')
+                ->on('connector_installations')
+                ->cascadeOnDelete();
         });
     }
 

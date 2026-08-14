@@ -15,6 +15,9 @@ use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
+use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
+use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
 use Tests\TestCase;
 
 final class ImapBackfillTest extends TestCase
@@ -91,6 +94,119 @@ final class ImapBackfillTest extends TestCase
 
         $this->assertSame(0, (new SerializedSyncScheduler)->dispatchDueSyncs());
         Queue::assertNothingPushed();
+    }
+
+    public function test_disabled_backfill_rejects_start_without_dispatching(): void
+    {
+        Queue::fake();
+        config()->set('connectors.imap.backfill.enabled', false);
+        $installation = $this->installation();
+
+        $this->expectException(ConflictHttpException::class);
+        try {
+            app(ImapBackfillManager::class)->start($installation->id);
+        } finally {
+            Queue::assertNothingPushed();
+        }
+    }
+
+    public function test_start_requires_an_active_imap_installation(): void
+    {
+        Queue::fake();
+        $installation = $this->installation();
+        $installation->forceFill(['status' => ConnectorInstallation::STATUS_DISABLED])->save();
+
+        $this->expectException(UnprocessableEntityHttpException::class);
+        app(ImapBackfillManager::class)->start($installation->id);
+    }
+
+    public function test_status_404s_for_an_unknown_or_cross_tenant_installation(): void
+    {
+        $foreign = $this->installation();
+        $foreign->forceFill(['tenant_id' => 'tenant-b'])->save();
+
+        $this->expectException(NotFoundHttpException::class);
+        app(ImapBackfillManager::class)->status($foreign->id);
+    }
+
+    public function test_status_treats_completed_as_100_percent_and_clamps_running_progress(): void
+    {
+        $installation = $this->installation();
+        $backfill = ImapBackfill::create([
+            'tenant_id' => $this->tenantId(),
+            'connector_installation_id' => $installation->id,
+            'status' => ImapBackfill::STATUS_COMPLETED,
+            'batch_size' => 100,
+            'total_messages' => 100,
+            'processed_messages' => 90,
+            'total_windows' => 1,
+            'completed_windows' => 1,
+            'cutoff_at' => now(),
+        ]);
+
+        $manager = app(ImapBackfillManager::class);
+        $this->assertSame(100.0, $manager->status($installation->id)['progress_percent']);
+
+        $backfill->forceFill([
+            'status' => ImapBackfill::STATUS_RUNNING,
+            'processed_messages' => 150,
+        ])->save();
+        $this->assertSame(100.0, $manager->status($installation->id)['progress_percent']);
+    }
+
+    public function test_exhausted_window_retries_fail_the_window_and_campaign(): void
+    {
+        $installation = $this->installation();
+        $backfill = ImapBackfill::create([
+            'tenant_id' => $this->tenantId(),
+            'connector_installation_id' => $installation->id,
+            'status' => ImapBackfill::STATUS_RUNNING,
+            'batch_size' => 100,
+            'total_windows' => 1,
+            'cutoff_at' => now(),
+        ]);
+        $window = ImapBackfillWindow::create([
+            'tenant_id' => $this->tenantId(),
+            'imap_backfill_id' => $backfill->id,
+            'connector_installation_id' => $installation->id,
+            'mailbox' => 'INBOX',
+            'window_start' => '2026-01-01',
+            'window_end' => '2026-02-01',
+            'status' => ImapBackfillWindow::STATUS_RUNNING,
+        ]);
+
+        (new ImportImapBackfillWindowJob($window->id, $this->tenantId()))
+            ->failed(new \RuntimeException('UIDVALIDITY changed'));
+
+        $this->assertSame(ImapBackfillWindow::STATUS_FAILED, $window->fresh()->status);
+        $this->assertNull($window->fresh()->next_attempt_at);
+        $this->assertSame(ImapBackfill::STATUS_FAILED, $backfill->fresh()->status);
+        $this->assertSame('UIDVALIDITY changed', $backfill->fresh()->error_json['message']);
+    }
+
+    public function test_deleting_installation_cascades_campaigns_and_windows(): void
+    {
+        $installation = $this->installation();
+        $backfill = ImapBackfill::create([
+            'tenant_id' => $this->tenantId(),
+            'connector_installation_id' => $installation->id,
+            'status' => ImapBackfill::STATUS_RUNNING,
+            'batch_size' => 100,
+            'cutoff_at' => now(),
+        ]);
+        ImapBackfillWindow::create([
+            'tenant_id' => $this->tenantId(),
+            'imap_backfill_id' => $backfill->id,
+            'connector_installation_id' => $installation->id,
+            'mailbox' => 'INBOX',
+            'window_start' => '2026-01-01',
+            'window_end' => '2026-02-01',
+        ]);
+
+        $installation->delete();
+
+        $this->assertDatabaseCount('imap_backfills', 0);
+        $this->assertDatabaseCount('imap_backfill_windows', 0);
     }
 
     private function installation(): ConnectorInstallation

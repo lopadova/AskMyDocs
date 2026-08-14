@@ -11,7 +11,9 @@ use App\Support\TenantContext;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
+use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
+use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
 
 final class ImapBackfillManager
 {
@@ -19,26 +21,37 @@ final class ImapBackfillManager
 
     public function start(int $installationId): ImapBackfill
     {
+        if (! $this->isEnabled()) {
+            throw new ConflictHttpException('Full-history IMAP imports are disabled by deployment configuration.');
+        }
+
         if (! Schema::hasTable('imap_backfills')) {
             throw new \RuntimeException('Run database migrations before starting an IMAP backfill.');
         }
 
         $tenantId = $this->tenantContext->current();
-        $installation = ConnectorInstallation::query()
-            ->forTenant($tenantId)
-            ->where('id', $installationId)
-            ->where('connector_name', 'imap')
-            ->first();
-        if ($installation === null) {
-            throw new NotFoundHttpException('IMAP installation not found.');
-        }
+        $backfill = DB::transaction(function () use ($tenantId, $installationId): ImapBackfill {
+            // The installation row always exists before a campaign and is unique,
+            // so it is the serialization point for concurrent empty-set starts.
+            $installation = ConnectorInstallation::query()
+                ->forTenant($tenantId)
+                ->where('id', $installationId)
+                ->where('connector_name', 'imap')
+                ->lockForUpdate()
+                ->first();
+            if ($installation === null) {
+                throw new NotFoundHttpException('IMAP installation not found.');
+            }
+            if ($installation->status !== ConnectorInstallation::STATUS_ACTIVE) {
+                throw new UnprocessableEntityHttpException(
+                    'The IMAP account must be active before starting a full-history import.',
+                );
+            }
 
-        $backfill = DB::transaction(function () use ($tenantId, $installation): ImapBackfill {
             $active = ImapBackfill::query()
                 ->forTenant($tenantId)
                 ->where('connector_installation_id', $installation->id)
                 ->whereIn('status', ImapBackfill::ACTIVE_STATUSES)
-                ->lockForUpdate()
                 ->latest('id')
                 ->first();
             if ($active !== null) {
@@ -77,6 +90,11 @@ final class ImapBackfillManager
         return $backfill->fresh();
     }
 
+    public function isEnabled(): bool
+    {
+        return config('connectors.imap.backfill.enabled', true) === true;
+    }
+
     public function hasCompletedBackfill(int $installationId): bool
     {
         if (! Schema::hasTable('imap_backfills')) {
@@ -94,6 +112,19 @@ final class ImapBackfillManager
     public function status(int $installationId): ?array
     {
         $tenantId = $this->tenantContext->current();
+        $installation = ConnectorInstallation::query()
+            ->forTenant($tenantId)
+            ->where('id', $installationId)
+            ->where('connector_name', 'imap')
+            ->first();
+        if ($installation === null) {
+            throw new NotFoundHttpException('IMAP installation not found.');
+        }
+
+        if (! Schema::hasTable('imap_backfills')) {
+            return null;
+        }
+
         $backfill = ImapBackfill::query()
             ->forTenant($tenantId)
             ->where('connector_installation_id', $installationId)
@@ -116,6 +147,15 @@ final class ImapBackfillManager
             ->latest('updated_at')
             ->first();
 
+        $progressPercent = match (true) {
+            $backfill->status === ImapBackfill::STATUS_COMPLETED => 100.0,
+            $backfill->total_messages > 0 => max(0.0, min(
+                100.0,
+                round(($backfill->processed_messages / $backfill->total_messages) * 100, 2),
+            )),
+            default => 0.0,
+        };
+
         return [
             'id' => $backfill->id,
             'installation_id' => $backfill->connector_installation_id,
@@ -125,9 +165,7 @@ final class ImapBackfillManager
             'dispatched_documents' => $backfill->dispatched_documents,
             'total_windows' => $backfill->total_windows,
             'completed_windows' => $backfill->completed_windows,
-            'progress_percent' => $backfill->total_messages > 0
-                ? round(($backfill->processed_messages / $backfill->total_messages) * 100, 2)
-                : ($backfill->status === ImapBackfill::STATUS_COMPLETED ? 100.0 : 0.0),
+            'progress_percent' => $progressPercent,
             'batch_size' => $backfill->batch_size,
             'started_at' => $backfill->started_at?->toIso8601String(),
             'completed_at' => $backfill->completed_at?->toIso8601String(),

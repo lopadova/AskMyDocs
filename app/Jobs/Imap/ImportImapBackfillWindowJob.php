@@ -138,16 +138,40 @@ final class ImportImapBackfillWindowJob implements ShouldQueue
     public function failed(?Throwable $exception): void
     {
         $this->bindTenant();
-        $window = ImapBackfillWindow::query()->forTenant($this->tenantId)->find($this->windowId);
-        if ($window === null || $window->status === ImapBackfillWindow::STATUS_COMPLETED) {
-            return;
-        }
-        $window->forceFill([
-            'status' => ImapBackfillWindow::STATUS_PENDING,
-            'heartbeat_at' => now(),
-            'next_attempt_at' => now()->addMinute(),
-            'error_json' => ['message' => $exception?->getMessage() ?? 'IMAP batch failed; retry scheduled'],
-        ])->save();
+        DB::transaction(function () use ($exception): void {
+            $window = ImapBackfillWindow::query()
+                ->forTenant($this->tenantId)
+                ->where('id', $this->windowId)
+                ->lockForUpdate()
+                ->first();
+            if ($window === null || $window->status === ImapBackfillWindow::STATUS_COMPLETED) {
+                return;
+            }
+
+            $error = [
+                'message' => $exception?->getMessage() ?? 'IMAP batch failed after exhausting retries',
+                'type' => $exception === null ? null : $exception::class,
+                'at' => now()->toIso8601String(),
+            ];
+            $window->forceFill([
+                'status' => ImapBackfillWindow::STATUS_FAILED,
+                'heartbeat_at' => now(),
+                'finished_at' => now(),
+                'next_attempt_at' => null,
+                'error_json' => $error,
+            ])->save();
+
+            ImapBackfill::query()
+                ->forTenant($this->tenantId)
+                ->where('id', $window->imap_backfill_id)
+                ->whereIn('status', ImapBackfill::ACTIVE_STATUSES)
+                ->update([
+                    'status' => ImapBackfill::STATUS_FAILED,
+                    'heartbeat_at' => now(),
+                    'error_json' => json_encode($error, JSON_THROW_ON_ERROR),
+                    'updated_at' => now(),
+                ]);
+        });
     }
 
     private function bindTenant(): void
