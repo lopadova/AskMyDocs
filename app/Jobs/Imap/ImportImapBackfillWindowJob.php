@@ -46,7 +46,11 @@ final class ImportImapBackfillWindowJob implements ShouldQueue
 
     public function handle(ImapBackfillImporter $importer): void
     {
-        $this->bindTenant();
+        $this->runInTenant(fn () => $this->importWindow($importer));
+    }
+
+    private function importWindow(ImapBackfillImporter $importer): void
+    {
         $window = ImapBackfillWindow::query()
             ->forTenant($this->tenantId)
             ->where('id', $this->windowId)
@@ -127,7 +131,6 @@ final class ImportImapBackfillWindowJob implements ShouldQueue
     /** @return array<int,object> */
     public function middleware(): array
     {
-        $this->bindTenant();
         $window = ImapBackfillWindow::query()->forTenant($this->tenantId)->find($this->windowId);
         $installation = $window === null ? null : ConnectorInstallation::query()
             ->forTenant($this->tenantId)
@@ -146,7 +149,11 @@ final class ImportImapBackfillWindowJob implements ShouldQueue
 
     public function failed(?Throwable $exception): void
     {
-        $this->bindTenant();
+        $this->runInTenant(fn () => $this->markFailed($exception));
+    }
+
+    private function markFailed(?Throwable $exception): void
+    {
         DB::transaction(function () use ($exception): void {
             $window = ImapBackfillWindow::query()
                 ->forTenant($this->tenantId)
@@ -183,9 +190,21 @@ final class ImportImapBackfillWindowJob implements ShouldQueue
         });
     }
 
-    private function bindTenant(): void
+    private function runInTenant(callable $callback): mixed
     {
-        app(TenantContext::class)->set($this->tenantId);
-        app(PackageTenantContext::class)->set($this->tenantId);
+        $hostTenant = app(TenantContext::class);
+        $packageTenant = app(PackageTenantContext::class);
+        $previousHostTenant = $hostTenant->current();
+        $previousPackageTenant = $packageTenant->current();
+
+        try {
+            $hostTenant->set($this->tenantId);
+            $packageTenant->set($this->tenantId);
+
+            return $callback();
+        } finally {
+            $hostTenant->set($previousHostTenant);
+            $packageTenant->set($previousPackageTenant);
+        }
     }
 }

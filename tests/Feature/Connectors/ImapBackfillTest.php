@@ -231,6 +231,27 @@ final class ImapBackfillTest extends TestCase
         $this->assertLessThanOrEqual($now->copy()->addMinutes(31)->getTimestamp(), $job->retryUntil()->getTimestamp());
     }
 
+    public function test_import_job_restores_tenants_and_middleware_does_not_mutate_them(): void
+    {
+        $hostTenant = app(TenantContext::class);
+        $packageTenant = app(PackageTenantContext::class);
+        $hostTenant->set('host-worker');
+        $packageTenant->set('package-worker');
+        $job = new ImportImapBackfillWindowJob(999999, 'job-tenant');
+
+        $job->middleware();
+        $this->assertSame('host-worker', $hostTenant->current());
+        $this->assertSame('package-worker', $packageTenant->current());
+
+        $job->handle(app(\App\Connectors\Imap\Backfill\ImapBackfillImporter::class));
+        $this->assertSame('host-worker', $hostTenant->current());
+        $this->assertSame('package-worker', $packageTenant->current());
+
+        $job->failed(new \RuntimeException('test failure'));
+        $this->assertSame('host-worker', $hostTenant->current());
+        $this->assertSame('package-worker', $packageTenant->current());
+    }
+
     public function test_discovery_job_lock_requeues_are_bounded_by_wall_clock_not_attempts(): void
     {
         config()->set('connectors.imap.mailbox_lock.requeue_window_minutes', 45);
