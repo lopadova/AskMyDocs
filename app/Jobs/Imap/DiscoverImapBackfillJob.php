@@ -105,7 +105,9 @@ final class DiscoverImapBackfillJob implements ShouldQueue
             ->update([
                 'status' => ImapBackfill::STATUS_FAILED,
                 'heartbeat_at' => now(),
-                'error_json' => ['message' => $exception?->getMessage() ?? 'IMAP discovery failed'],
+                'error_json' => json_encode([
+                    'message' => $exception?->getMessage() ?? 'IMAP discovery failed',
+                ], JSON_THROW_ON_ERROR),
                 'updated_at' => now(),
             ]);
     }

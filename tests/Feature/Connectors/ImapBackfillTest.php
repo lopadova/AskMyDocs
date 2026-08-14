@@ -263,6 +263,24 @@ final class ImapBackfillTest extends TestCase
         $this->assertSame('package-worker', $packageTenant->current());
     }
 
+    public function test_discovery_failure_bulk_update_serializes_error_json(): void
+    {
+        $installation = $this->installation();
+        $backfill = ImapBackfill::create([
+            'tenant_id' => $this->tenantId(),
+            'connector_installation_id' => $installation->id,
+            'status' => ImapBackfill::STATUS_DISCOVERING,
+            'batch_size' => 100,
+            'cutoff_at' => now(),
+        ]);
+
+        (new DiscoverImapBackfillJob($backfill->id, $this->tenantId()))
+            ->failed(new \RuntimeException('discovery exploded'));
+
+        $this->assertSame(ImapBackfill::STATUS_FAILED, $backfill->fresh()->status);
+        $this->assertSame(['message' => 'discovery exploded'], $backfill->fresh()->error_json);
+    }
+
     public function test_deleting_installation_cascades_campaigns_and_windows(): void
     {
         $installation = $this->installation();
