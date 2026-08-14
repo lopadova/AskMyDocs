@@ -242,6 +242,27 @@ final class ImapBackfillTest extends TestCase
         $this->assertLessThanOrEqual($now->copy()->addMinutes(46)->getTimestamp(), $job->retryUntil()->getTimestamp());
     }
 
+    public function test_discovery_job_restores_tenants_and_middleware_does_not_mutate_them(): void
+    {
+        $hostTenant = app(TenantContext::class);
+        $packageTenant = app(PackageTenantContext::class);
+        $hostTenant->set('host-worker');
+        $packageTenant->set('package-worker');
+        $job = new DiscoverImapBackfillJob(999999, 'job-tenant');
+
+        $job->middleware();
+        $this->assertSame('host-worker', $hostTenant->current());
+        $this->assertSame('package-worker', $packageTenant->current());
+
+        $job->handle(app(\App\Connectors\Imap\Backfill\ImapBackfillDiscovery::class));
+        $this->assertSame('host-worker', $hostTenant->current());
+        $this->assertSame('package-worker', $packageTenant->current());
+
+        $job->failed(new \RuntimeException('test failure'));
+        $this->assertSame('host-worker', $hostTenant->current());
+        $this->assertSame('package-worker', $packageTenant->current());
+    }
+
     public function test_deleting_installation_cascades_campaigns_and_windows(): void
     {
         $installation = $this->installation();
