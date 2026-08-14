@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Connectors\Imap;
 
 use App\Connectors\Imap\Backfill\ImapBackfillClient;
+use App\Connectors\Imap\Backfill\ImapBackfillMailboxSnapshot;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -40,9 +41,12 @@ final class ReconnectingImapBackfillClient implements ImapBackfillClient
         return $this->attempt('backfill.selectMailbox', fn (): MailboxState => $this->inner->selectMailbox($mailbox));
     }
 
-    public function allUids(string $mailbox): array
+    public function snapshotMailbox(string $mailbox): ImapBackfillMailboxSnapshot
     {
-        return $this->attempt('backfill.allUids', fn (): array => $this->inner->allUids($mailbox));
+        return $this->attempt(
+            'backfill.snapshotMailbox',
+            fn (): ImapBackfillMailboxSnapshot => $this->inner->snapshotMailbox($mailbox),
+        );
     }
 
     public function uidsBetween(

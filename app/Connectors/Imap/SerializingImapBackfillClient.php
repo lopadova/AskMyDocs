@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Connectors\Imap;
 
 use App\Connectors\Imap\Backfill\ImapBackfillClient;
+use App\Connectors\Imap\Backfill\ImapBackfillMailboxSnapshot;
 use Carbon\Carbon;
 use Illuminate\Contracts\Cache\Lock;
 use Illuminate\Contracts\Cache\LockProvider;
@@ -38,10 +39,10 @@ final class SerializingImapBackfillClient implements ImapBackfillClient
         return $this->inner->selectMailbox($mailbox);
     }
 
-    public function allUids(string $mailbox): array
+    public function snapshotMailbox(string $mailbox): ImapBackfillMailboxSnapshot
     {
         $this->acquire();
-        return $this->inner->allUids($mailbox);
+        return $this->inner->snapshotMailbox($mailbox);
     }
 
     public function uidsBetween(

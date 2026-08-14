@@ -45,10 +45,20 @@ final class ImapBackfillMailboxClient implements ImapBackfillClient
         return $state;
     }
 
-    /** @return list<int> */
-    public function allUids(string $mailbox): array
+    public function snapshotMailbox(string $mailbox): ImapBackfillMailboxSnapshot
     {
-        return $this->uids($mailbox, null, null, 0);
+        $state = $this->selectMailbox($mailbox);
+        $folder = $this->rawClient->getFolder($mailbox);
+        if ($folder === null) {
+            throw new RuntimeException("Mailbox not found: {$mailbox}");
+        }
+        $status = $folder->status();
+
+        return new ImapBackfillMailboxSnapshot(
+            uidValidity: $state->uidValidity,
+            maxUid: $state->lastUid,
+            messageCount: max(0, (int) ($status['messages'] ?? 0)),
+        );
     }
 
     /**

@@ -6,6 +6,7 @@ namespace App\Connectors\Testing;
 
 use App\Connectors\Imap\Backfill\ImapBackfillClient;
 use App\Connectors\Imap\Backfill\ImapBackfillClientFactory;
+use App\Connectors\Imap\Backfill\ImapBackfillMailboxSnapshot;
 use Carbon\Carbon;
 use Padosoft\AskMyDocsConnectorImap\Imap\ImapClientFactoryInterface;
 use Padosoft\AskMyDocsConnectorImap\Imap\ImapClientInterface;
@@ -65,9 +66,9 @@ final class FakeImapBackfillClient implements ImapBackfillClient
         return new MailboxState(uidValidity: 1, lastUid: 0);
     }
 
-    public function allUids(string $mailbox): array
+    public function snapshotMailbox(string $mailbox): ImapBackfillMailboxSnapshot
     {
-        return [];
+        return new ImapBackfillMailboxSnapshot(uidValidity: 1, maxUid: 0, messageCount: 0);
     }
 
     public function uidsBetween(

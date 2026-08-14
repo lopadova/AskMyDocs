@@ -12,6 +12,8 @@ use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
 
 final class ImapBackfillDiscovery
 {
+    private const FIRST_MESSAGE_SEARCH_LIMIT = 500;
+
     public function __construct(private readonly ImapBackfillClientProviderContract $clients) {}
 
     public function discover(ConnectorInstallation $installation, ImapBackfill $backfill): void
@@ -27,26 +29,36 @@ final class ImapBackfillDiscovery
             $absoluteStart = Carbon::parse((string) config('connectors.imap.backfill.absolute_start', '1970-01-01'))->startOfDay();
 
             foreach ($mailboxes as $mailbox) {
-                $state = $client->selectMailbox($mailbox);
-                $uids = $client->allUids($mailbox);
-                if ($uids === []) {
+                $snapshot = $client->snapshotMailbox($mailbox);
+                if ($snapshot->messageCount === 0 || $snapshot->maxUid === 0) {
                     continue;
                 }
 
-                $totalMessages += count($uids);
-                $first = $client->fetchMessage($mailbox, $uids[0]);
+                $firstUids = $client->uidsBetween(
+                    $mailbox,
+                    $absoluteStart,
+                    $cutoffEnd,
+                    throughUid: $snapshot->maxUid,
+                    limit: self::FIRST_MESSAGE_SEARCH_LIMIT,
+                );
+                if ($firstUids === []) {
+                    continue;
+                }
+
+                $totalMessages += $snapshot->messageCount;
+                $first = $client->fetchMessage($mailbox, $firstUids[0]);
                 $firstMonth = ($first->date ?? $absoluteStart)->copy()->startOfMonth();
                 $firstMonth = $firstMonth->max($absoluteStart)->min($cutoffEnd->copy()->subDay()->startOfMonth());
 
                 // A single prefix window guarantees coverage even when messages
                 // were moved and UID order differs from their internal date.
                 if ($absoluteStart->lt($firstMonth)) {
-                    $rows[] = $this->windowRow($installation, $backfill, $mailbox, $absoluteStart, $firstMonth, $state->uidValidity, max($uids));
+                    $rows[] = $this->windowRow($installation, $backfill, $mailbox, $absoluteStart, $firstMonth, $snapshot->uidValidity, $snapshot->maxUid);
                 }
 
                 for ($start = $firstMonth->copy(); $start->lt($cutoffEnd); $start->addMonth()) {
                     $end = $start->copy()->addMonth()->min($cutoffEnd);
-                    $rows[] = $this->windowRow($installation, $backfill, $mailbox, $start, $end, $state->uidValidity, max($uids));
+                    $rows[] = $this->windowRow($installation, $backfill, $mailbox, $start, $end, $snapshot->uidValidity, $snapshot->maxUid);
                 }
             }
 

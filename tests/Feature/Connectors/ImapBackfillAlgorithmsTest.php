@@ -8,6 +8,7 @@ use App\Connectors\Imap\Backfill\ImapBackfillClient;
 use App\Connectors\Imap\Backfill\ImapBackfillClientProviderContract;
 use App\Connectors\Imap\Backfill\ImapBackfillDiscovery;
 use App\Connectors\Imap\Backfill\ImapBackfillImporter;
+use App\Connectors\Imap\Backfill\ImapBackfillMailboxSnapshot;
 use App\Jobs\Imap\ImportImapBackfillWindowJob;
 use App\Jobs\Imap\PumpImapBackfillJob;
 use App\Models\ImapBackfill;
@@ -37,8 +38,8 @@ final class ImapBackfillAlgorithmsTest extends TestCase
         ]);
         $client = new AlgorithmFakeImapClient;
         $client->mailboxNames = ['INBOX'];
-        $client->state = new MailboxState(uidValidity: 77, lastUid: 20);
-        $client->allUidValues = [10, 20];
+        $client->snapshot = new ImapBackfillMailboxSnapshot(uidValidity: 77, maxUid: 20, messageCount: 2);
+        $client->betweenUidValues = [10, 20];
         $client->singleMessages[10] = $this->message(10, Carbon::parse('2026-01-15'));
 
         (new ImapBackfillDiscovery($this->provider($client)))->discover($installation, $backfill);
@@ -61,6 +62,7 @@ final class ImapBackfillAlgorithmsTest extends TestCase
         $this->assertSame([20], $windows->pluck('snapshot_max_uid')->unique()->values()->all());
         $this->assertSame(2, $backfill->fresh()->total_messages);
         $this->assertSame(ImapBackfill::STATUS_RUNNING, $backfill->fresh()->status);
+        $this->assertSame(500, $client->requestedLimit);
         $this->assertTrue($client->closed);
     }
 
@@ -230,8 +232,7 @@ final class AlgorithmFakeImapClient implements ImapBackfillClient
     /** @var list<string> */
     public array $mailboxNames = ['INBOX'];
     public MailboxState $state;
-    /** @var list<int> */
-    public array $allUidValues = [];
+    public ImapBackfillMailboxSnapshot $snapshot;
     /** @var list<int> */
     public array $betweenUidValues = [];
     /** @var array<int,ImapMessage> */
@@ -244,11 +245,12 @@ final class AlgorithmFakeImapClient implements ImapBackfillClient
     public function __construct()
     {
         $this->state = new MailboxState(uidValidity: 1, lastUid: 0);
+        $this->snapshot = new ImapBackfillMailboxSnapshot(uidValidity: 1, maxUid: 0, messageCount: 0);
     }
 
     public function mailboxes(): array { return $this->mailboxNames; }
     public function selectMailbox(string $mailbox): MailboxState { return $this->state; }
-    public function allUids(string $mailbox): array { return $this->allUidValues; }
+    public function snapshotMailbox(string $mailbox): ImapBackfillMailboxSnapshot { return $this->snapshot; }
 
     public function uidsBetween(
         string $mailbox,

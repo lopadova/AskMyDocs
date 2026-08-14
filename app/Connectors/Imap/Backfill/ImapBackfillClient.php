@@ -23,8 +23,7 @@ interface ImapBackfillClient
 
     public function selectMailbox(string $mailbox): MailboxState;
 
-    /** @return list<int> */
-    public function allUids(string $mailbox): array;
+    public function snapshotMailbox(string $mailbox): ImapBackfillMailboxSnapshot;
 
     /**
      * @return list<int>
