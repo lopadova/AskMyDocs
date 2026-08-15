@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { AdminShell } from '../shell/AdminShell';
 import { useConnectors } from '../connectors/connectors-hooks';
-import { useQueueDepths, useSyncRuns } from './ingestion-hooks';
+import { useImapBackfill, useQueueDepths, useStartImapBackfill, useSyncRuns } from './ingestion-hooks';
 import type { SyncRunStatus } from './ingestion.api';
 
 /*
@@ -59,6 +59,22 @@ export function IngestionView() {
         selectedId !== null && accounts.some((a) => a.installationId === selectedId);
     const effectiveId = (selectedStillExists ? selectedId : accounts[0]?.installationId) ?? null;
     const runsQuery = useSyncRuns(effectiveId);
+    const selectedAccount = accounts.find((account) => account.installationId === effectiveId) ?? null;
+    const isImap = selectedAccount?.connectorKey === 'imap';
+    const backfillQuery = useImapBackfill(effectiveId, isImap);
+    const startBackfill = useStartImapBackfill();
+    const backfill = backfillQuery.data?.backfill ?? null;
+    const backfillEnabled = backfillQuery.data?.enabled ?? true;
+    const backfillBusy = backfillQuery.isLoading || startBackfill.isPending;
+    const backfillPanelState = backfillBusy
+        ? 'loading'
+        : backfillQuery.isError || startBackfill.isError
+          ? 'error'
+          : !backfillEnabled
+            ? 'disabled'
+            : backfill === null
+              ? 'empty'
+              : 'ready';
 
     const state: 'loading' | 'ready' | 'error' = queueQuery.isLoading
         ? 'loading'
@@ -162,6 +178,78 @@ export function IngestionView() {
                             ))}
                         </select>
                     </div>
+
+                    {isImap && effectiveId !== null && (
+                        <div
+                            data-testid="imap-backfill"
+                            data-state={backfillPanelState}
+                            data-backfill-status={backfill?.status ?? 'none'}
+                            aria-busy={backfillBusy}
+                            style={{ ...panelStyle, textAlign: 'left', padding: 16 }}
+                        >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                                <div>
+                                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-0)' }}>Full mailbox import</div>
+                                    <div style={{ fontSize: 11.5, color: 'var(--fg-3)' }}>
+                                        Durable date windows with UID checkpoints; indexing runs independently.
+                                    </div>
+                                </div>
+                                {backfillEnabled
+                                    && (backfill === null || backfill.status === 'failed')
+                                    && !backfillQuery.isLoading && (
+                                    <button
+                                        type="button"
+                                        data-testid="imap-backfill-start"
+                                        className="focus-ring"
+                                        disabled={startBackfill.isPending}
+                                        onClick={() => startBackfill.mutate(effectiveId)}
+                                        style={retryStyle}
+                                    >
+                                        {startBackfill.isPending
+                                            ? 'Starting…'
+                                            : backfill?.status === 'failed'
+                                              ? 'Retry full import'
+                                              : 'Import all history'}
+                                    </button>
+                                )}
+                            </div>
+
+                            {backfillQuery.isLoading && <div role="status" style={{ marginTop: 10 }}>Reading backfill status…</div>}
+                            {backfillQuery.isError && <div role="alert" style={{ marginTop: 10, color: '#fca5a5' }}>Could not read backfill status.</div>}
+                            {startBackfill.isError && <div role="alert" style={{ marginTop: 10, color: '#fca5a5' }}>Could not start the full import.</div>}
+                            {!backfillEnabled && !backfillQuery.isLoading && !backfillQuery.isError && (
+                                <div data-testid="imap-backfill-disabled" role="status" style={{ marginTop: 10, color: 'var(--fg-2)' }}>
+                                    Full mailbox imports are disabled by deployment configuration.
+                                </div>
+                            )}
+                            {backfill && (
+                                <div style={{ marginTop: 12, display: 'grid', gap: 8 }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                                        <span style={{ color: 'var(--fg-2)' }}>{backfill.status}</span>
+                                        <span data-testid="imap-backfill-progress" style={{ color: 'var(--fg-0)', fontFamily: 'var(--font-mono)' }}>
+                                            {backfill.processed_messages.toLocaleString()} / {backfill.total_messages.toLocaleString()} ({backfill.progress_percent}%)
+                                        </span>
+                                    </div>
+                                    <div style={{ height: 7, borderRadius: 99, overflow: 'hidden', background: 'var(--bg-2)' }}>
+                                        <div style={{ height: '100%', width: `${Math.min(100, backfill.progress_percent)}%`, background: '#34d399' }} />
+                                    </div>
+                                    <div style={{ fontSize: 11.5, color: 'var(--fg-3)' }}>
+                                        {backfill.completed_windows.toLocaleString()} / {backfill.total_windows.toLocaleString()} windows · {backfill.dispatched_documents.toLocaleString()} documents queued · batch {backfill.batch_size}
+                                    </div>
+                                    {backfill.current_window && (
+                                        <div data-testid="imap-backfill-current-window" style={{ fontSize: 11.5, color: 'var(--fg-2)', fontFamily: 'var(--font-mono)' }}>
+                                            {backfill.current_window.mailbox} · {backfill.current_window.start} → {backfill.current_window.end} · UID {backfill.current_window.last_uid}
+                                        </div>
+                                    )}
+                                    {backfill.last_error && (
+                                        <div role="alert" style={{ fontSize: 11.5, color: '#fca5a5' }}>
+                                            Last error: {String(backfill.last_error.message ?? 'unknown')}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    )}
 
                     {connectorsQuery.isLoading ? (
                         <div data-testid="admin-ingestion-accounts-loading" role="status" aria-busy="true" style={panelStyle}>

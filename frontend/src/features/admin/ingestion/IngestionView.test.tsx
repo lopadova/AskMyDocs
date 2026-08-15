@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ConnectorEntry } from '../connectors/connectors.api';
-import type { QueueDepth, SyncRunDto } from './ingestion.api';
+import type { ImapBackfillDto, ImapBackfillStateDto, QueueDepth, SyncRunDto } from './ingestion.api';
 
 /*
  * v8.21 (Ciclo 2) — IngestionView unit tests. Mocks the queue/sync-run hooks
@@ -19,10 +19,18 @@ interface QueryMock<T> {
 const queueMock: QueryMock<QueueDepth[]> = { data: undefined, isLoading: false, isError: false };
 const runsMock: QueryMock<SyncRunDto[]> = { data: undefined, isLoading: false, isError: false };
 const connectorsMock: QueryMock<ConnectorEntry[]> = { data: [], isLoading: false, isError: false };
+const backfillMock: QueryMock<ImapBackfillStateDto> = {
+    data: { enabled: true, backfill: null },
+    isLoading: false,
+    isError: false,
+};
+const startBackfillMock = { mutate: vi.fn(), isPending: false, isError: false };
 
 vi.mock('./ingestion-hooks', () => ({
     useQueueDepths: () => ({ ...queueMock, refetch: vi.fn() }),
     useSyncRuns: () => ({ ...runsMock, refetch: vi.fn() }),
+    useImapBackfill: () => ({ ...backfillMock, refetch: vi.fn() }),
+    useStartImapBackfill: () => startBackfillMock,
 }));
 
 vi.mock('../connectors/connectors-hooks', () => ({
@@ -50,6 +58,12 @@ beforeEach(() => {
     connectorsMock.data = [];
     connectorsMock.isLoading = false;
     connectorsMock.isError = false;
+    backfillMock.data = { enabled: true, backfill: null };
+    backfillMock.isLoading = false;
+    backfillMock.isError = false;
+    startBackfillMock.mutate.mockReset();
+    startBackfillMock.isPending = false;
+    startBackfillMock.isError = false;
 });
 
 function entry(installations: { id: number; label: string }[]): ConnectorEntry {
@@ -70,6 +84,35 @@ function entry(installations: { id: number; label: string }[]): ConnectorEntry {
             folders: { include: [] },
             date_window_days: null,
         })),
+    };
+}
+
+function backfill(status: ImapBackfillDto['status']): ImapBackfillDto {
+    return {
+        id: 1,
+        installation_id: 7,
+        status,
+        total_messages: 128_199,
+        processed_messages: status === 'completed' ? 128_000 : 3_500,
+        dispatched_documents: 3_500,
+        total_windows: 56,
+        completed_windows: status === 'completed' ? 56 : 3,
+        progress_percent: status === 'completed' ? 100 : 2.73,
+        batch_size: 100,
+        started_at: '2026-08-13T12:00:00Z',
+        completed_at: status === 'completed' ? '2026-08-14T12:00:00Z' : null,
+        heartbeat_at: '2026-08-13T12:05:00Z',
+        current_window: status === 'running'
+            ? {
+                mailbox: 'INBOX',
+                start: '2026-01-01',
+                end: '2026-02-01',
+                processed_messages: 100,
+                expected_messages: 101,
+                last_uid: 123,
+            }
+            : null,
+        last_error: status === 'failed' ? { message: 'UIDVALIDITY changed' } : null,
     };
 }
 
@@ -166,5 +209,65 @@ describe('IngestionView', () => {
         runsMock.data = [];
         wrap(<IngestionView />);
         expect(screen.getByTestId('admin-ingestion-runs-empty')).toBeInTheDocument();
+    });
+
+    it('exposes the IMAP panel loading state and busy semantics', () => {
+        queueMock.data = [];
+        connectorsMock.data = [entry([{ id: 7, label: 'support' }])];
+        backfillMock.data = undefined;
+        backfillMock.isLoading = true;
+
+        wrap(<IngestionView />);
+
+        expect(screen.getByTestId('imap-backfill')).toHaveAttribute('data-state', 'loading');
+        expect(screen.getByTestId('imap-backfill')).toHaveAttribute('aria-busy', 'true');
+    });
+
+    it('starts an empty full-history import from the observable panel', () => {
+        queueMock.data = [];
+        connectorsMock.data = [entry([{ id: 7, label: 'support' }])];
+
+        wrap(<IngestionView />);
+
+        const panel = screen.getByTestId('imap-backfill');
+        expect(panel).toHaveAttribute('data-state', 'empty');
+        expect(panel).toHaveAttribute('aria-busy', 'false');
+        fireEvent.click(screen.getByTestId('imap-backfill-start'));
+        expect(startBackfillMock.mutate).toHaveBeenCalledWith(7);
+    });
+
+    it('shows progress and keeps retry available after a terminal failure', () => {
+        queueMock.data = [];
+        connectorsMock.data = [entry([{ id: 7, label: 'support' }])];
+        backfillMock.data = { enabled: true, backfill: backfill('failed') };
+
+        wrap(<IngestionView />);
+
+        expect(screen.getByTestId('imap-backfill')).toHaveAttribute('data-state', 'ready');
+        expect(screen.getByTestId('imap-backfill-progress')).toHaveTextContent('3,500 / 128,199');
+        expect(screen.getByTestId('imap-backfill-start')).toHaveTextContent('Retry full import');
+        fireEvent.click(screen.getByTestId('imap-backfill-start'));
+        expect(startBackfillMock.mutate).toHaveBeenCalledWith(7);
+    });
+
+    it('surfaces disabled and start-failure states explicitly', () => {
+        queueMock.data = [];
+        connectorsMock.data = [entry([{ id: 7, label: 'support' }])];
+        backfillMock.data = { enabled: false, backfill: null };
+        const { rerender } = wrap(<IngestionView />);
+
+        expect(screen.getByTestId('imap-backfill')).toHaveAttribute('data-state', 'disabled');
+        expect(screen.getByTestId('imap-backfill-disabled')).toBeInTheDocument();
+        expect(screen.queryByTestId('imap-backfill-start')).not.toBeInTheDocument();
+
+        backfillMock.data = { enabled: true, backfill: null };
+        startBackfillMock.isError = true;
+        rerender(
+            <QueryClientProvider client={new QueryClient()}>
+                <IngestionView />
+            </QueryClientProvider>,
+        );
+        expect(screen.getByTestId('imap-backfill')).toHaveAttribute('data-state', 'error');
+        expect(screen.getByRole('alert')).toHaveTextContent('Could not start the full import.');
     });
 });

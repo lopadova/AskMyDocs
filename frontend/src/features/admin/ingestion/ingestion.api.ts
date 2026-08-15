@@ -32,6 +32,38 @@ export interface SyncRunDto {
     error: Record<string, unknown> | null;
 }
 
+export type ImapBackfillStatus = 'discovering' | 'running' | 'completed' | 'failed' | 'paused' | (string & {});
+
+export interface ImapBackfillDto {
+    id: number;
+    installation_id: number;
+    status: ImapBackfillStatus;
+    total_messages: number;
+    processed_messages: number;
+    dispatched_documents: number;
+    total_windows: number;
+    completed_windows: number;
+    progress_percent: number;
+    batch_size: number;
+    started_at: string | null;
+    completed_at: string | null;
+    heartbeat_at: string | null;
+    current_window: {
+        mailbox: string;
+        start: string;
+        end: string;
+        processed_messages: number;
+        expected_messages: number;
+        last_uid: number;
+    } | null;
+    last_error: Record<string, unknown> | null;
+}
+
+export interface ImapBackfillStateDto {
+    enabled: boolean;
+    backfill: ImapBackfillDto | null;
+}
+
 export const adminIngestionApi = {
     async queueDepths(): Promise<QueueDepth[]> {
         const { data } = await api.get<{ data: QueueDepth[] }>('/api/admin/ingestion/queue');
@@ -42,6 +74,20 @@ export const adminIngestionApi = {
         const { data } = await api.get<{ data: SyncRunDto[] }>(
             `/api/admin/connectors/${installationId}/sync-runs`,
             { params: { limit } },
+        );
+        return data.data;
+    },
+
+    async imapBackfill(installationId: number): Promise<ImapBackfillStateDto> {
+        const { data } = await api.get<{ data: ImapBackfillStateDto }>(
+            `/api/admin/connectors/${installationId}/imap-backfill`,
+        );
+        return data.data;
+    },
+
+    async startImapBackfill(installationId: number): Promise<ImapBackfillStateDto> {
+        const { data } = await api.post<{ data: ImapBackfillStateDto }>(
+            `/api/admin/connectors/${installationId}/imap-backfill`,
         );
         return data.data;
     },

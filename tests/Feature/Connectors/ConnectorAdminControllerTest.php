@@ -288,6 +288,31 @@ final class ConnectorAdminControllerTest extends TestCase
         Queue::assertNotPushed(ConnectorSyncJob::class);
     }
 
+    public function test_sync_now_keeps_incremental_imap_sync_when_backfill_is_disabled(): void
+    {
+        Queue::fake();
+        config()->set('connectors.imap.backfill.enabled', false);
+        $admin = $this->makeSuperAdmin();
+
+        $installation = ConnectorInstallation::create([
+            'tenant_id' => 'test-tenant',
+            'connector_name' => 'imap',
+            'config_json' => [
+                'date_window_days' => 0,
+                'connection' => ['host' => 'imap.x.test', 'username' => 'u@x.test'],
+            ],
+            'status' => ConnectorInstallation::STATUS_ACTIVE,
+            'created_by' => $admin->id,
+        ]);
+
+        $response = $this->actingAs($admin)
+            ->postJson("/api/admin/connectors/{$installation->id}/sync-now");
+
+        $response->assertAccepted()->assertJsonPath('data.queued', true);
+        $this->assertNull($response->json('data.mode'));
+        Queue::assertPushed(SerializedConnectorSyncJob::class);
+    }
+
     public function test_sync_now_dispatches_the_vendor_job_for_a_non_imap_connector(): void
     {
         // R43 — a non-IMAP connector does NOT share a per-account connection limit, so

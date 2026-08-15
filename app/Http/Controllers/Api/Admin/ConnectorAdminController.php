@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Connectors\SerializedConnectorSyncJob;
+use App\Connectors\Imap\Backfill\ImapBackfillManager;
 use App\Http\Requests\Admin\ConfigureConnectorRequest;
 use App\Http\Requests\Admin\ReconfigureConnectorRequest;
 use App\Http\Requests\Admin\StartConnectorInstallRequest;
@@ -392,7 +393,7 @@ final class ConnectorAdminController extends Controller
      * cannot be synced: returning 202 `queued:true` would lie about a job the guard
      * drops. Surface a 422 telling the operator what to do (finish auth / Enable).
      */
-    public function syncNow(int $installationId): JsonResponse
+    public function syncNow(int $installationId, ImapBackfillManager $imapBackfills): JsonResponse
     {
         $installation = $this->installations->findOr404($installationId);
 
@@ -415,6 +416,25 @@ final class ConnectorAdminController extends Controller
                 'status' => ConnectorInstallation::STATUS_ACTIVE,
                 'error_json' => null,
             ])->save();
+        }
+
+        $config = (array) ($installation->config_json ?? []);
+        if (
+            $installation->connector_name === 'imap'
+            && $imapBackfills->isEnabled()
+            && (int) ($config['date_window_days'] ?? 365) === 0
+            && ! $imapBackfills->hasCompletedBackfill($installation->id)
+        ) {
+            $backfill = $imapBackfills->start($installation->id);
+
+            return response()->json([
+                'data' => [
+                    'installation_id' => $installation->id,
+                    'queued' => true,
+                    'mode' => 'imap_backfill',
+                    'backfill_id' => $backfill->id,
+                ],
+            ], 202);
         }
 
         SerializedConnectorSyncJob::dispatchFor($installation);

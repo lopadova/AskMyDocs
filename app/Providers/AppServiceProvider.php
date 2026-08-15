@@ -135,6 +135,10 @@ class AppServiceProvider extends ServiceProvider
             HostIngestionBridge::class,
         );
         $this->app->singleton(\App\Connectors\Imap\ImapSyncProgressContext::class);
+        $this->app->bind(
+            \App\Connectors\Imap\Backfill\ImapBackfillClientProviderContract::class,
+            \App\Connectors\Imap\Backfill\ImapBackfillClientProvider::class,
+        );
 
         // v8.21 (Ciclo 2) — process-scoped holder for the in-flight connector
         // sync run; the bridge bumps its discovered-doc counter and the recorder
@@ -202,6 +206,7 @@ class AppServiceProvider extends ServiceProvider
         $this->registerFinOpsGates();
         $this->registerGuardrailsGates();
         $this->registerFakeImapFactory();
+        $this->registerImapBackfillFactory();
         $this->registerImapReconnect();
         $this->registerImapSyncProgressTracking();
         $this->registerImapConnectionSerializer();
@@ -352,6 +357,30 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(
             \Padosoft\AskMyDocsConnectorImap\Imap\ImapClientFactoryInterface::class,
             \App\Connectors\Testing\FakeImapClientFactory::class,
+        );
+    }
+
+    /**
+     * Extend the package factory with the host-only bounded/bulk operations used
+     * by durable backfills. This runs before reconnect + progress + serializer;
+     * all later decorators implement the same extension, so resolving the normal
+     * package factory yields one shared chain for every IMAP surface.
+     */
+    private function registerImapBackfillFactory(): void
+    {
+        if (! interface_exists(\Padosoft\AskMyDocsConnectorImap\Imap\ImapClientFactoryInterface::class)) {
+            return;
+        }
+
+        $this->app->extend(
+            \Padosoft\AskMyDocsConnectorImap\Imap\ImapClientFactoryInterface::class,
+            static function ($factory): \Padosoft\AskMyDocsConnectorImap\Imap\ImapClientFactoryInterface {
+                if ($factory instanceof \App\Connectors\Imap\Backfill\ImapBackfillClientFactory) {
+                    return $factory;
+                }
+
+                return new \App\Connectors\Imap\Backfill\ImapBackfillClientFactoryAdapter($factory);
+            },
         );
     }
 

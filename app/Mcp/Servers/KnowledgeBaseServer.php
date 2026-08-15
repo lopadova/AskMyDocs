@@ -14,6 +14,7 @@ use App\Mcp\Tools\KbEraseSubjectTool;
 use App\Mcp\Tools\KbReembedProjectTool;
 use App\Mcp\Tools\KbPiiPolicyTool;
 use App\Mcp\Tools\KbIngestionStatusTool;
+use App\Mcp\Tools\KbImapBackfillTool;
 use App\Mcp\Tools\FinOpsSpendSummaryTool;
 use App\Mcp\Tools\FinOpsTopModelsTool;
 use App\Mcp\Tools\KbApplySuggestionTool;
@@ -140,6 +141,11 @@ class KnowledgeBaseServer extends Server
         // v8.21 (Ciclo 2) — ingestion/sync observability read surface (R44):
         // queue depths + recent connector sync runs, tenant-scoped (R30).
         KbIngestionStatusTool::class,
+
+        // Durable IMAP full-history import status/start over the same manager as
+        // HTTP and PHP. This is a write-capable tool (no IsReadOnly annotation),
+        // so MCP scope + authorizer require mcp:tools:write + super-admin.
+        KbImapBackfillTool::class,
 
         // v8.22 (Ciclo 3) — runtime config governance read surface (R44):
         // governable settings with effective value + provenance, tenant-scoped (R30).
