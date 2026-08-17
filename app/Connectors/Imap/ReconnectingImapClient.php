@@ -147,7 +147,15 @@ final class ReconnectingImapClient implements ImapClientInterface
                 // Permanent: rejected credentials never recover on a reconnect.
                 throw $e;
             } catch (\Throwable $e) {
-                if ($attempt >= $maxAttempts || ! $this->isTransientDrop($e)) {
+                $transient = $this->isTransientDrop($e);
+                if ($attempt >= $maxAttempts || ! $transient) {
+                    Log::error('[imap-test-fetch-diag] IMAP operation abandoned', [
+                        'operation' => $label,
+                        'attempt' => $attempt,
+                        'max_attempts' => $maxAttempts,
+                        'transient' => $transient,
+                        'exception_chain' => Backfill\ImapBackfillDiagnostics::exceptionChain($e),
+                    ]);
                     throw $e;
                 }
 
