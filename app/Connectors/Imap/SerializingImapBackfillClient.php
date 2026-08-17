@@ -10,6 +10,7 @@ use Carbon\Carbon;
 use Illuminate\Contracts\Cache\Lock;
 use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Contracts\Cache\LockTimeoutException;
+use Illuminate\Support\Facades\Log;
 use Padosoft\AskMyDocsConnectorImap\Imap\ImapMessage;
 use Padosoft\AskMyDocsConnectorImap\Imap\MailboxState;
 
@@ -89,10 +90,22 @@ final class SerializingImapBackfillClient implements ImapBackfillClient
             return;
         }
 
+        $startedAt = microtime(true);
+        Log::info('[imap-backfill-diag] waiting for shared mailbox lock', [
+            'mailbox_lock_key' => $this->lockKey,
+            'wait_seconds' => $this->waitSeconds,
+            'ttl_seconds' => $this->ttlSeconds,
+        ]);
         $lock = $this->lockProvider->lock($this->lockKey, max(1, $this->ttlSeconds));
         try {
             $lock->block(max(0, $this->waitSeconds));
         } catch (LockTimeoutException $e) {
+            Log::warning('[imap-backfill-diag] shared mailbox lock timed out', [
+                'mailbox_lock_key' => $this->lockKey,
+                'wait_seconds' => $this->waitSeconds,
+                'ttl_seconds' => $this->ttlSeconds,
+                'elapsed_ms' => Backfill\ImapBackfillDiagnostics::elapsedMs($startedAt),
+            ]);
             throw new MailboxBusyException(
                 'Mailbox busy: another connection to this account is already in progress.',
                 previous: $e,
@@ -101,6 +114,11 @@ final class SerializingImapBackfillClient implements ImapBackfillClient
 
         $this->lock = $lock;
         $this->held = true;
+        Log::info('[imap-backfill-diag] shared mailbox lock acquired', [
+            'mailbox_lock_key' => $this->lockKey,
+            'ttl_seconds' => $this->ttlSeconds,
+            'elapsed_ms' => Backfill\ImapBackfillDiagnostics::elapsedMs($startedAt),
+        ]);
     }
 
     private function release(): void
@@ -111,7 +129,14 @@ final class SerializingImapBackfillClient implements ImapBackfillClient
 
         try {
             $this->lock?->release();
-        } catch (\Throwable) {
+            Log::info('[imap-backfill-diag] shared mailbox lock released', [
+                'mailbox_lock_key' => $this->lockKey,
+            ]);
+        } catch (\Throwable $exception) {
+            Log::warning('[imap-backfill-diag] shared mailbox lock release failed', [
+                'mailbox_lock_key' => $this->lockKey,
+                'exception_chain' => Backfill\ImapBackfillDiagnostics::exceptionChain($exception),
+            ]);
             // The TTL remains the crash backstop; never mask the real IMAP error.
         } finally {
             $this->lock = null;

@@ -299,7 +299,35 @@ final class ImapBackfillTest extends TestCase
             ->failed(new \RuntimeException('discovery exploded'));
 
         $this->assertSame(ImapBackfill::STATUS_FAILED, $backfill->fresh()->status);
-        $this->assertSame(['message' => 'discovery exploded'], $backfill->fresh()->error_json);
+        $error = $backfill->fresh()->error_json;
+        $this->assertSame('discovery exploded', $error['message']);
+        $this->assertSame(\RuntimeException::class, $error['type']);
+        $this->assertSame('discovery exploded', $error['terminal_queue_error']['message']);
+        $this->assertSame(\RuntimeException::class, $error['terminal_queue_error']['type']);
+        $this->assertNotEmpty($error['terminal_queue_error']['at']);
+    }
+
+    public function test_terminal_queue_failure_preserves_the_original_discovery_error(): void
+    {
+        $installation = $this->installation();
+        $backfill = ImapBackfill::create([
+            'tenant_id' => $this->tenantId(),
+            'connector_installation_id' => $installation->id,
+            'status' => ImapBackfill::STATUS_DISCOVERING,
+            'batch_size' => 100,
+            'cutoff_at' => now(),
+            'error_json' => [
+                'message' => 'IMAP discovery failed [diag=abc phase=list_mailboxes]: fwrite(): SSL: Broken pipe',
+                'type' => \RuntimeException::class,
+            ],
+        ]);
+
+        (new DiscoverImapBackfillJob($backfill->id, $this->tenantId()))
+            ->failed(new \RuntimeException('has been attempted too many times'));
+
+        $error = $backfill->fresh()->error_json;
+        $this->assertSame('IMAP discovery failed [diag=abc phase=list_mailboxes]: fwrite(): SSL: Broken pipe', $error['message']);
+        $this->assertSame('has been attempted too many times', $error['terminal_queue_error']['message']);
     }
 
     public function test_deleting_installation_cascades_campaigns_and_windows(): void
