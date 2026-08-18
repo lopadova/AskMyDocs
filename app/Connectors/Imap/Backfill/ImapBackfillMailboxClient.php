@@ -5,10 +5,11 @@ declare(strict_types=1);
 namespace App\Connectors\Imap\Backfill;
 
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Log;
 use Padosoft\AskMyDocsConnectorImap\Imap\ImapAttachment;
+use Padosoft\AskMyDocsConnectorImap\Imap\ImapClientInterface;
 use Padosoft\AskMyDocsConnectorImap\Imap\ImapMessage;
 use Padosoft\AskMyDocsConnectorImap\Imap\MailboxState;
-use Padosoft\AskMyDocsConnectorImap\Imap\WebklexImapClient;
 use RuntimeException;
 use Webklex\PHPIMAP\Address;
 use Webklex\PHPIMAP\Attribute;
@@ -28,7 +29,7 @@ final class ImapBackfillMailboxClient implements ImapBackfillClient
 
     public function __construct(
         private readonly Client $rawClient,
-        private readonly WebklexImapClient $client,
+        private readonly ImapClientInterface $client,
     ) {}
 
     /** @return list<string> */
@@ -123,10 +124,26 @@ final class ImapBackfillMailboxClient implements ImapBackfillClient
             throw new RuntimeException("Mailbox not found: {$mailbox}");
         }
 
-        $messages = [];
-        foreach ($folder->query()->whereUidIn($uids)->setSequence(IMAP::ST_UID)->get() as $rawMessage) {
-            if ($rawMessage instanceof Message) {
-                $messages[] = $this->mapMessage($mailbox, $rawMessage);
+        try {
+            $messages = [];
+            foreach ($folder->query()->whereUidIn($uids)->setSequence(IMAP::ST_UID)->get() as $rawMessage) {
+                if ($rawMessage instanceof Message) {
+                    $messages[] = $this->mapMessage($mailbox, $rawMessage);
+                }
+            }
+        } catch (\Throwable $exception) {
+            Log::warning('[imap-backfill] bulk fetch degraded to per-message recovery', [
+                'mailbox_hash' => substr(hash('sha256', $mailbox), 0, 16),
+                'uid_count' => count($uids),
+                'exception_type' => $exception::class,
+            ]);
+            $messages = [];
+        }
+
+        $returned = array_fill_keys(array_map(static fn (ImapMessage $message): int => $message->uid, $messages), true);
+        foreach ($uids as $uid) {
+            if (! isset($returned[$uid])) {
+                $messages[] = $this->fetchMessageWithHeaderlessFallback($mailbox, $uid);
             }
         }
         usort($messages, static fn (ImapMessage $a, ImapMessage $b): int => $a->uid <=> $b->uid);
@@ -268,6 +285,55 @@ final class ImapBackfillMailboxClient implements ImapBackfillClient
             htmlBody: $message->hasHTMLBody() ? $message->getHTMLBody() : null,
             rawHeaders: $this->headers($message),
             attachments: $attachments,
+        );
+    }
+
+    private function fetchMessageWithHeaderlessFallback(string $mailbox, int $uid): ImapMessage
+    {
+        try {
+            return $this->client->fetchMessage($mailbox, $uid);
+        } catch (\Throwable $exception) {
+            $message = $this->headerlessMessage($mailbox, $uid);
+            Log::warning('[imap-backfill] recovered message without RFC822 headers', [
+                'mailbox_hash' => substr(hash('sha256', $mailbox), 0, 16),
+                'uid' => $uid,
+                'exception_type' => $exception::class,
+            ]);
+
+            return $message;
+        }
+    }
+
+    private function headerlessMessage(string $mailbox, int $uid): ImapMessage
+    {
+        $uidValidity = (int) ($this->uidValidity[$mailbox] ?? 0);
+        $date = $this->internalDate($mailbox, $uid);
+        $connection = $this->rawClient->getConnection();
+        $contents = $connection
+            ->content([$uid], 'RFC822', IMAP::ST_UID)
+            ->setCanBeEmpty(true)
+            ->validatedData();
+        $body = is_array($contents) ? ($contents[$uid] ?? $contents[(string) $uid] ?? '') : '';
+
+        return new ImapMessage(
+            uid: $uid,
+            uidValidity: $uidValidity,
+            mailbox: $mailbox,
+            messageId: sprintf('imap-fallback-%d-%s-%d', $uidValidity, substr(hash('sha256', $mailbox), 0, 16), $uid),
+            inReplyTo: null,
+            references: [],
+            fromName: '',
+            fromEmail: '',
+            to: [],
+            cc: [],
+            date: $date,
+            subject: '',
+            flags: [],
+            labels: [],
+            textBody: is_string($body) && $body !== '' ? $body : null,
+            htmlBody: null,
+            rawHeaders: ['x-askmydocs-recovery' => 'missing-rfc822-headers'],
+            attachments: [],
         );
     }
 
