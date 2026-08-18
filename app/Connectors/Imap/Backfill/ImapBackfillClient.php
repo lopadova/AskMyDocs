@@ -40,6 +40,11 @@ interface ImapBackfillClient
     public function fetchMessage(string $mailbox, int $uid): ImapMessage;
 
     /**
+     * Read the server-assigned message date without parsing RFC822 headers.
+     */
+    public function internalDate(string $mailbox, int $uid): Carbon;
+
+    /**
      * @param list<int> $uids
      * @return list<ImapMessage>
      */

@@ -84,6 +84,28 @@ final class ImapBackfillMailboxClient implements ImapBackfillClient
         return $this->client->fetchMessage($mailbox, $uid);
     }
 
+    public function internalDate(string $mailbox, int $uid): Carbon
+    {
+        $connection = $this->rawClient->getConnection();
+        if (! method_exists($connection, 'fetch')) {
+            throw new RuntimeException('The configured IMAP protocol cannot fetch INTERNALDATE.');
+        }
+
+        $dates = $connection
+            ->fetch(['INTERNALDATE'], [$uid], null, IMAP::ST_UID)
+            ->validatedData();
+        $value = is_array($dates) ? ($dates[$uid] ?? $dates[(string) $uid] ?? null) : null;
+        if (! is_string($value) || trim($value) === '') {
+            throw new RuntimeException("IMAP did not return INTERNALDATE for UID {$uid}.");
+        }
+
+        try {
+            return Carbon::parse($value);
+        } catch (\Throwable $exception) {
+            throw new RuntimeException("IMAP returned an invalid INTERNALDATE for UID {$uid}.", previous: $exception);
+        }
+    }
+
     /**
      * Fetch headers, flags and bodies for many UIDs in one IMAP exchange. A
      * 20-message sub-batch replaces roughly 80 per-message network commands.

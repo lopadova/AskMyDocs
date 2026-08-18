@@ -98,16 +98,16 @@ final class ImapBackfillDiscovery
                 }
 
                 $totalMessages += $snapshot->messageCount;
-                $phase = 'fetch_first_message';
+                $phase = 'fetch_first_internal_date';
                 $phaseStartedAt = microtime(true);
-                $first = $client->fetchMessage($mailbox, $firstUids[0]);
-                Log::info('[imap-backfill-diag] discovery first message fetched', [
+                $firstDate = $client->internalDate($mailbox, $firstUids[0]);
+                Log::info('[imap-backfill-diag] discovery first INTERNALDATE fetched', [
                     'diagnostic_id' => $diagnosticId,
                     'phase' => $phase,
                     'mailbox_hash' => $mailboxHash,
                     'elapsed_ms' => ImapBackfillDiagnostics::elapsedMs($phaseStartedAt),
                 ]);
-                $firstMonth = ($first->date ?? $absoluteStart)->copy()->startOfMonth();
+                $firstMonth = $firstDate->copy()->startOfMonth();
                 $firstMonth = $firstMonth->max($absoluteStart)->min($cutoffEnd->copy()->subDay()->startOfMonth());
 
                 // A single prefix window guarantees coverage even when messages
