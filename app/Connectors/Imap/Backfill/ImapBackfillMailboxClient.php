@@ -24,6 +24,10 @@ use Webklex\PHPIMAP\Message;
  */
 final class ImapBackfillMailboxClient implements ImapBackfillClient
 {
+    private const BOUNDED_UID_INITIAL_SPAN = 1000;
+
+    private const BOUNDED_UID_MAX_SPAN = 50000;
+
     /** @var array<string,int> */
     private array $uidValidity = [];
 
@@ -178,8 +182,12 @@ final class ImapBackfillMailboxClient implements ImapBackfillClient
 
     /**
      * Search bounded UID ranges on the server until limit results are collected.
-     * A range contains at most limit possible UIDs, so neither one SEARCH reply
-     * nor the accumulated PHP list can grow with the remaining mailbox history.
+     *
+     * Date windows and UID order are independent after messages are moved. A
+     * fixed range as small as the result limit therefore degenerates into one
+     * network round-trip per ~100 possible UIDs for sparse windows. Grow the UID
+     * span according to the observed hit density while capping every SEARCH
+     * reply. This keeps both memory and round-trips bounded.
      *
      * @return list<int>
      */
@@ -194,14 +202,33 @@ final class ImapBackfillMailboxClient implements ImapBackfillClient
         $limit = max(1, $limit);
         $cursor = max(1, $afterUid + 1);
         $uids = [];
+        $span = min(
+            self::BOUNDED_UID_MAX_SPAN,
+            max($limit, self::BOUNDED_UID_INITIAL_SPAN),
+        );
 
         while ($cursor <= $throughUid && count($uids) < $limit) {
-            $rangeEnd = min($throughUid, $cursor + $limit - 1);
-            foreach ($this->searchUids($mailbox, $start, $end, $cursor, $rangeEnd) as $uid) {
+            $rangeEnd = min($throughUid, $cursor + $span - 1);
+            $rangeUids = $this->searchUids($mailbox, $start, $end, $cursor, $rangeEnd);
+            foreach ($rangeUids as $uid) {
                 $uids[] = $uid;
                 if (count($uids) >= $limit) {
                     break;
                 }
+            }
+
+            $remaining = $limit - count($uids);
+            $scanned = $rangeEnd - $cursor + 1;
+            if ($remaining > 0) {
+                $span = $rangeUids === []
+                    ? min(self::BOUNDED_UID_MAX_SPAN, $span * 4)
+                    : min(
+                        self::BOUNDED_UID_MAX_SPAN,
+                        max(
+                            self::BOUNDED_UID_INITIAL_SPAN,
+                            (int) ceil($remaining * $scanned / count($rangeUids)),
+                        ),
+                    );
             }
             $cursor = $rangeEnd + 1;
         }

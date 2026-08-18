@@ -6,6 +6,7 @@ namespace Tests\Unit\Connectors;
 
 use App\Connectors\Imap\Backfill\ImapBackfillMailboxClient;
 use Carbon\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Padosoft\AskMyDocsConnectorImap\Imap\ImapClientInterface;
 use Padosoft\AskMyDocsConnectorImap\Imap\ImapMessage;
@@ -65,6 +66,31 @@ final class ImapBackfillMailboxClientTest extends TestCase
         $this->assertSame(77, $messages[0]->uidValidity);
         $this->assertSame('recoverable raw body', $messages[0]->textBody);
         $this->assertSame('missing-rfc822-headers', $messages[0]->rawHeaders['x-askmydocs-recovery']);
+    }
+
+    public function test_bounded_uid_search_expands_sparse_ranges_without_excessive_round_trips(): void
+    {
+        $expected = range(150000, 150100);
+        $folder = new SparseUidFolder($expected);
+        $rawClient = new InternalDateTestClient(
+            new RecordingInternalDateProtocol(Response::empty()),
+            $folder,
+        );
+        $client = new ImapBackfillMailboxClient($rawClient, new HeaderlessImapClient);
+
+        $uids = $client->uidsBetween(
+            'INBOX',
+            Carbon::parse('1970-01-01'),
+            Carbon::parse('2025-03-01'),
+            throughUid: 200000,
+            limit: 101,
+        );
+
+        $this->assertSame($expected, $uids);
+        $this->assertCount(6, $folder->ranges);
+        foreach ($folder->ranges as [$from, $to]) {
+            $this->assertLessThanOrEqual(50000, $to - $from + 1);
+        }
     }
 }
 
@@ -148,6 +174,58 @@ final class FailingBulkQuery extends WhereQuery
     public function get(): MessageCollection
     {
         throw new RuntimeException('bulk header response was empty');
+    }
+}
+
+final class SparseUidFolder extends Folder
+{
+    /** @var list<array{int,int}> */
+    public array $ranges = [];
+
+    /** @param list<int> $matches */
+    public function __construct(public readonly array $matches) {}
+
+    public function query(array $extensions = []): WhereQuery
+    {
+        return new SparseUidQuery($this);
+    }
+}
+
+final class SparseUidQuery extends WhereQuery
+{
+    private int $fromUid = 1;
+
+    private int $throughUid = 1;
+
+    public function __construct(private readonly SparseUidFolder $folder) {}
+
+    public function __call(string $name, ?array $arguments): mixed
+    {
+        return $this;
+    }
+
+    public function setSequence(int $sequence): static
+    {
+        return $this;
+    }
+
+    public function whereUid(int|string $uid): static
+    {
+        [$from, $through] = array_map('intval', explode(':', (string) $uid, 2));
+        $this->fromUid = $from;
+        $this->throughUid = $through;
+
+        return $this;
+    }
+
+    public function search(): Collection
+    {
+        $this->folder->ranges[] = [$this->fromUid, $this->throughUid];
+
+        return collect(array_values(array_filter(
+            $this->folder->matches,
+            fn (int $uid): bool => $uid >= $this->fromUid && $uid <= $this->throughUid,
+        )));
     }
 }
 
