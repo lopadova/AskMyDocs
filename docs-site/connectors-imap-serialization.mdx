@@ -104,7 +104,10 @@ adds Laravel's `WithoutOverlapping` middleware keyed by the **mailbox lock key**
 (so two installations on the same account never run concurrently) plus a
 **wall-clock `retryUntil`** window. A job that finds the mailbox busy re-queues
 itself after a short delay rather than failing with a spurious error or burning
-its retry budget. Admin "sync now" dispatches the same serialized job.
+its retry budget. The middleware key is explicitly `shared()` with IMAP backfill
+discovery and window-import jobs: Laravel otherwise scopes an overlap key by job
+class, which would let incremental sync and full-history import collide. Admin
+"sync now" dispatches the same serialized job.
 
 ## Configuration
 

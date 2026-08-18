@@ -87,11 +87,15 @@ function entry(installations: { id: number; label: string }[]): ConnectorEntry {
     };
 }
 
-function backfill(status: ImapBackfillDto['status']): ImapBackfillDto {
+function backfill(
+    status: ImapBackfillDto['status'],
+    retryMode: ImapBackfillDto['retry_mode'] = status === 'failed' ? 'resume' : null,
+): ImapBackfillDto {
     return {
         id: 1,
         installation_id: 7,
         status,
+        retry_mode: retryMode,
         total_messages: 128_199,
         processed_messages: status === 'completed' ? 128_000 : 3_500,
         dispatched_documents: 3_500,
@@ -112,7 +116,7 @@ function backfill(status: ImapBackfillDto['status']): ImapBackfillDto {
                 last_uid: 123,
             }
             : null,
-        last_error: status === 'failed' ? { message: 'UIDVALIDITY changed' } : null,
+        last_error: status === 'failed' ? { message: 'Exchange closed the connection' } : null,
     };
 }
 
@@ -245,9 +249,19 @@ describe('IngestionView', () => {
 
         expect(screen.getByTestId('imap-backfill')).toHaveAttribute('data-state', 'ready');
         expect(screen.getByTestId('imap-backfill-progress')).toHaveTextContent('3,500 / 128,199');
-        expect(screen.getByTestId('imap-backfill-start')).toHaveTextContent('Retry full import');
+        expect(screen.getByTestId('imap-backfill-start')).toHaveTextContent('Resume full import');
         fireEvent.click(screen.getByTestId('imap-backfill-start'));
         expect(startBackfillMock.mutate).toHaveBeenCalledWith(7);
+    });
+
+    it('surfaces an explicit restart when UIDVALIDITY invalidates the snapshot', () => {
+        queueMock.data = [];
+        connectorsMock.data = [entry([{ id: 7, label: 'support' }])];
+        backfillMock.data = { enabled: true, backfill: backfill('failed', 'restart') };
+
+        wrap(<IngestionView />);
+
+        expect(screen.getByTestId('imap-backfill-start')).toHaveTextContent('Restart full import');
     });
 
     it('surfaces disabled and start-failure states explicitly', () => {

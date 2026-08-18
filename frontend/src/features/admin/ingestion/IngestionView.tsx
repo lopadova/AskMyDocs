@@ -64,6 +64,10 @@ export function IngestionView() {
     const backfillQuery = useImapBackfill(effectiveId, isImap);
     const startBackfill = useStartImapBackfill();
     const backfill = backfillQuery.data?.backfill ?? null;
+    const isBackfillResume = backfill?.status === 'failed' && backfill.retry_mode !== 'restart';
+    const isBackfillRestart = backfill?.status === 'failed' && backfill.retry_mode === 'restart';
+    const backfillActionVerb = isBackfillResume ? 'resume' : isBackfillRestart ? 'restart' : 'start';
+    const backfillPendingLabel = isBackfillResume ? 'Resuming…' : isBackfillRestart ? 'Restarting…' : 'Starting…';
     const backfillEnabled = backfillQuery.data?.enabled ?? true;
     const backfillBusy = backfillQuery.isLoading || startBackfill.isPending;
     const backfillPanelState = backfillBusy
@@ -206,9 +210,11 @@ export function IngestionView() {
                                         style={retryStyle}
                                     >
                                         {startBackfill.isPending
-                                            ? 'Starting…'
-                                            : backfill?.status === 'failed'
-                                              ? 'Retry full import'
+                                            ? backfillPendingLabel
+                                            : isBackfillResume
+                                              ? 'Resume full import'
+                                              : isBackfillRestart
+                                                ? 'Restart full import'
                                               : 'Import all history'}
                                     </button>
                                 )}
@@ -216,7 +222,7 @@ export function IngestionView() {
 
                             {backfillQuery.isLoading && <div role="status" style={{ marginTop: 10 }}>Reading backfill status…</div>}
                             {backfillQuery.isError && <div role="alert" style={{ marginTop: 10, color: '#fca5a5' }}>Could not read backfill status.</div>}
-                            {startBackfill.isError && <div role="alert" style={{ marginTop: 10, color: '#fca5a5' }}>Could not start the full import.</div>}
+                            {startBackfill.isError && <div role="alert" style={{ marginTop: 10, color: '#fca5a5' }}>Could not {backfillActionVerb} the full import.</div>}
                             {!backfillEnabled && !backfillQuery.isLoading && !backfillQuery.isError && (
                                 <div data-testid="imap-backfill-disabled" role="status" style={{ marginTop: 10, color: 'var(--fg-2)' }}>
                                     Full mailbox imports are disabled by deployment configuration.

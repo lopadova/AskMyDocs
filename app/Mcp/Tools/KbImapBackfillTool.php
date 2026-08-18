@@ -14,7 +14,7 @@ use Laravel\Mcp\Server\Tool;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
 /** MCP read/start surface over the same tenant-scoped backfill manager as HTTP. */
-#[Description('Inspect or start a durable full-history IMAP import. action=status reads the latest campaign; action=start creates or returns the active campaign. Tenant-scoped; start is a super-admin write operation.')]
+#[Description('Inspect, start, or resume a durable full-history IMAP import. action=status reads the latest campaign; action=start creates a campaign, returns an active one, or resumes the latest failed campaign from its saved UID checkpoints. Tenant-scoped; start is a super-admin write operation.')]
 class KbImapBackfillTool extends Tool
 {
     public function schema(JsonSchema $schema): array

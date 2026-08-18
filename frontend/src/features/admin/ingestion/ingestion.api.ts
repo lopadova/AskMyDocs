@@ -38,6 +38,7 @@ export interface ImapBackfillDto {
     id: number;
     installation_id: number;
     status: ImapBackfillStatus;
+    retry_mode: 'resume' | 'restart' | null;
     total_messages: number;
     processed_messages: number;
     dispatched_documents: number;
