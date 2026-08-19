@@ -4,6 +4,11 @@ import { ToolCallBubble, type ToolCallData } from './ToolCallBubble';
 
 const { getMock, postMock } = vi.hoisted(() => ({ getMock: vi.fn(), postMock: vi.fn() }));
 vi.mock('../../../lib/api', () => ({ api: { get: getMock, post: postMock } }));
+vi.mock('./McpAppFrame', () => ({
+    McpAppFrame: ({ app, conversationId }: { app: { id: string }; conversationId: number }) => (
+        <div data-testid={`mock-mcp-app-${app.id}`}>conversation {conversationId}</div>
+    ),
+}));
 
 function makeToolCall(overrides: Partial<ToolCallData> = {}): ToolCallData {
     return {
@@ -63,6 +68,17 @@ describe('ToolCallBubble', () => {
     it('renders the denied label and lock icon when status is denied', () => {
         render(<ToolCallBubble toolCall={makeToolCall({ status: 'denied' })} />);
         expect(screen.getByText(/denied/i)).toBeInTheDocument();
+    });
+
+    it('renders an MCP App only for a successful scoped tool call', () => {
+        render(
+            <ToolCallBubble
+                conversationId={17}
+                toolCall={makeToolCall({ app: { id: '01APP', fallback: 'Fallback' } })}
+            />,
+        );
+
+        expect(screen.getByTestId('mock-mcp-app-01APP')).toHaveTextContent('conversation 17');
     });
 
     it('resumes a confirmation-scoped MCP call through the authenticated conversation endpoint', async () => {

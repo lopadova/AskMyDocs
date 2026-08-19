@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../../lib/api';
+import { McpAppFrame, type McpAppHandle } from './McpAppFrame';
 import { ToolResultPreview } from './ToolResultPreview';
 
 /*
@@ -27,6 +28,7 @@ export interface ToolCallData {
     prompt?: Record<string, unknown> | null;
     task_id?: string | null;
     task?: Record<string, unknown> | null;
+    app?: McpAppHandle | null;
 }
 
 interface RemoteTaskResponse {
@@ -59,6 +61,7 @@ export function ToolCallBubble({ toolCall, conversationId }: ToolCallBubbleProps
     );
     const [taskStatusMessage, setTaskStatusMessage] = useState<string | null>(null);
     const [pollRevision, setPollRevision] = useState(0);
+    const [interactionApp, setInteractionApp] = useState<McpAppHandle | null>(null);
 
     const effectiveStatus = interactionStatus ?? toolCall.status;
     const palette = paletteForStatus(effectiveStatus);
@@ -76,6 +79,7 @@ export function ToolCallBubble({ toolCall, conversationId }: ToolCallBubbleProps
         setTaskInputRequests(data.input_requests ?? null);
         if (data.status === 'completed') {
             setInteractionResult(data.artifact ?? data);
+            setInteractionApp(readAppHandle(data.artifact));
             setInteractionStatus('ok');
             setExpanded(true);
             return false;
@@ -151,6 +155,7 @@ export function ToolCallBubble({ toolCall, conversationId }: ToolCallBubbleProps
                 return;
             }
             setInteractionResult(data.artifact ?? data);
+            setInteractionApp(readAppHandle(data.artifact));
             setInteractionStatus(data.status === 'declined' ? 'denied' : data.status === 'error' ? 'error' : 'ok');
             setExpanded(true);
         } catch (cause) {
@@ -320,6 +325,10 @@ export function ToolCallBubble({ toolCall, conversationId }: ToolCallBubbleProps
                 </div>
             ) : null}
 
+            {effectiveStatus === 'ok' && conversationId !== undefined && (interactionApp ?? toolCall.app) ? (
+                <McpAppFrame app={(interactionApp ?? toolCall.app) as McpAppHandle} conversationId={conversationId} />
+            ) : null}
+
             {expanded ? (
                 <div
                     id={`chat-tool-call-${toolCall.id}-details`}
@@ -361,6 +370,20 @@ export function ToolCallBubble({ toolCall, conversationId }: ToolCallBubbleProps
             ) : null}
         </div>
     );
+}
+
+function readAppHandle(artifact: unknown): McpAppHandle | null {
+    if (!artifact || typeof artifact !== 'object' || Array.isArray(artifact)) return null;
+    const app = (artifact as Record<string, unknown>).app;
+    if (!app || typeof app !== 'object' || Array.isArray(app)) return null;
+    const record = app as Record<string, unknown>;
+    if (typeof record.id !== 'string' || record.id.length === 0) return null;
+
+    return {
+        id: record.id,
+        resource_uri: typeof record.resource_uri === 'string' ? record.resource_uri : undefined,
+        fallback: typeof record.fallback === 'string' ? record.fallback : undefined,
+    };
 }
 
 function StatusIcon({ status }: { status: ToolCallStatus }) {

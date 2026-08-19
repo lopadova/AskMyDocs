@@ -46,6 +46,11 @@ describe('getToolCalls — legacy AppMessage shape', () => {
                     server_id: 7,
                     arguments: { owner: 'lopadova' },
                     result: { repositories: ['a'] },
+                    app: {
+                        id: '01APP',
+                        resource_uri: 'ui://github/repositories.html',
+                        fallback: 'Repository list',
+                    },
                 },
             ]),
         );
@@ -57,6 +62,11 @@ describe('getToolCalls — legacy AppMessage shape', () => {
             status: 'ok',
             server_name: 'github',
             server_id: 7,
+            app: {
+                id: '01APP',
+                resource_uri: 'ui://github/repositories.html',
+                fallback: 'Repository list',
+            },
         });
     });
 
