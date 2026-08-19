@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import {
+import type {
     AppBridge,
+    McpUiResourceCsp,
+    McpUiResourcePermissions,
     PostMessageTransport,
-    buildAllowAttribute,
-    type McpUiResourceCsp,
-    type McpUiResourcePermissions,
 } from '@modelcontextprotocol/ext-apps/app-bridge';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
@@ -105,104 +104,113 @@ export function McpAppFrame({ app, conversationId }: McpAppFrameProps) {
         }
 
         let disposed = false;
-        const transport = new PostMessageTransport(frameWindow, frameWindow);
-        const bridge = new AppBridge(
-            null,
-            { name: 'AskMyDocs', version: '1.0.0' },
-            {
-                openLinks: {},
-                serverTools: {},
-                logging: {},
-                sandbox: {
-                    csp: resource.csp,
-                    permissions: resource.permissions,
-                },
-            },
-            {
-                hostContext: {
-                    theme: currentTheme(),
-                    displayMode: 'inline',
-                    availableDisplayModes: ['inline'],
-                    containerDimensions: { maxHeight: 900 },
-                    locale: navigator.language,
-                    timeZone: currentTimeZone(),
-                    userAgent: 'AskMyDocs',
-                    platform: 'web',
-                    deviceCapabilities: {
-                        touch: navigator.maxTouchPoints > 0,
-                        hover: window.matchMedia?.('(hover: hover)').matches ?? false,
+        let bridge: AppBridge | null = null;
+        let transport: PostMessageTransport | null = null;
+
+        void (async () => {
+            const bridgeModule = await import('@modelcontextprotocol/ext-apps/app-bridge');
+            if (disposed) return;
+
+            const nextTransport = new bridgeModule.PostMessageTransport(frameWindow, frameWindow);
+            const nextBridge = new bridgeModule.AppBridge(
+                null,
+                { name: 'AskMyDocs', version: '1.0.0' },
+                {
+                    openLinks: {},
+                    serverTools: {},
+                    logging: {},
+                    sandbox: {
+                        csp: resource.csp,
+                        permissions: resource.permissions,
                     },
                 },
-            },
-        );
-
-        bridge.onsandboxready = () => {
-            void bridge.sendSandboxResourceReady({
-                html: resource.html ?? '',
-                sandbox: 'allow-scripts',
-                csp: resource.csp,
-                permissions: resource.permissions,
-            }).catch(() => {
-                if (!disposed) setError('The MCP App sandbox rejected its resource.');
-            });
-        };
-        bridge.oninitialized = () => {
-            void (async () => {
-                await bridge.sendToolInput({ arguments: resource.tool_input ?? {} });
-                await bridge.sendToolResult(normalizeCallToolResult(resource.tool_result));
-                if (!disposed) setReady(true);
-            })().catch(() => {
-                if (!disposed) setError('The MCP App could not be initialized.');
-            });
-        };
-        bridge.onsizechange = ({ height: requestedHeight }) => {
-            if (typeof requestedHeight === 'number' && Number.isFinite(requestedHeight)) {
-                setHeight(Math.max(120, Math.min(Math.ceil(requestedHeight), 900)));
-            }
-        };
-        bridge.onopenlink = async ({ url }) => {
-            try {
-                const target = new URL(url);
-                if (target.protocol !== 'https:') return { isError: true };
-                window.open(target.href, '_blank', 'noopener,noreferrer');
-                return {};
-            } catch {
-                return { isError: true };
-            }
-        };
-        bridge.oncalltool = async ({ name, arguments: toolArguments }) => {
-            if (pendingResolverRef.current !== null) {
-                return errorResult('Complete the current MCP App interaction before starting another tool call.');
-            }
-            const { data } = await api.post<AppToolCallResponse>(
-                `/api/conversations/mcp/apps/${app.id}/tools/call`,
                 {
-                    conversation_id: String(conversationId),
-                    name,
-                    arguments: toolArguments ?? {},
+                    hostContext: {
+                        theme: currentTheme(),
+                        displayMode: 'inline',
+                        availableDisplayModes: ['inline'],
+                        containerDimensions: { maxHeight: 900 },
+                        locale: navigator.language,
+                        timeZone: currentTimeZone(),
+                        userAgent: 'AskMyDocs',
+                        platform: 'web',
+                        deviceCapabilities: {
+                            touch: navigator.maxTouchPoints > 0,
+                            hover: window.matchMedia?.('(hover: hover)').matches ?? false,
+                        },
+                    },
                 },
             );
+            bridge = nextBridge;
+            transport = nextTransport;
 
-            if (
-                (data.status === 'confirmation_required' || data.status === 'input_required')
-                && data.pending_interaction_id
-            ) {
-                return new Promise<CallToolResult>((resolve) => {
-                    pendingResolverRef.current = { resolve };
-                    setPendingInteraction({
-                        id: data.pending_interaction_id as string,
-                        kind: data.status as PendingAppInteraction['kind'],
-                        prompt: data.prompt,
-                    });
+            nextBridge.onsandboxready = () => {
+                void nextBridge.sendSandboxResourceReady({
+                    html: resource.html ?? '',
+                    sandbox: 'allow-scripts',
+                    csp: resource.csp,
+                    permissions: resource.permissions,
+                }).catch(() => {
+                    if (!disposed) setError('The MCP App sandbox rejected its resource.');
                 });
-            }
+            };
+            nextBridge.oninitialized = () => {
+                void (async () => {
+                    await nextBridge.sendToolInput({ arguments: resource.tool_input ?? {} });
+                    await nextBridge.sendToolResult(normalizeCallToolResult(resource.tool_result));
+                    if (!disposed) setReady(true);
+                })().catch(() => {
+                    if (!disposed) setError('The MCP App could not be initialized.');
+                });
+            };
+            nextBridge.onsizechange = ({ height: requestedHeight }) => {
+                if (typeof requestedHeight === 'number' && Number.isFinite(requestedHeight)) {
+                    setHeight(Math.max(120, Math.min(Math.ceil(requestedHeight), 900)));
+                }
+            };
+            nextBridge.onopenlink = async ({ url }) => {
+                try {
+                    const target = new URL(url);
+                    if (target.protocol !== 'https:') return { isError: true };
+                    window.open(target.href, '_blank', 'noopener,noreferrer');
+                    return {};
+                } catch {
+                    return { isError: true };
+                }
+            };
+            nextBridge.oncalltool = async ({ name, arguments: toolArguments }) => {
+                if (pendingResolverRef.current !== null) {
+                    return errorResult('Complete the current MCP App interaction before starting another tool call.');
+                }
+                const { data } = await api.post<AppToolCallResponse>(
+                    `/api/conversations/mcp/apps/${app.id}/tools/call`,
+                    {
+                        conversation_id: String(conversationId),
+                        name,
+                        arguments: toolArguments ?? {},
+                    },
+                );
 
-            return normalizeCallToolResult(data.result ?? data.artifact);
-        };
+                if (
+                    (data.status === 'confirmation_required' || data.status === 'input_required')
+                    && data.pending_interaction_id
+                ) {
+                    return new Promise<CallToolResult>((resolve) => {
+                        pendingResolverRef.current = { resolve };
+                        setPendingInteraction({
+                            id: data.pending_interaction_id as string,
+                            kind: data.status as PendingAppInteraction['kind'],
+                            prompt: data.prompt,
+                        });
+                    });
+                }
 
-        void bridge.connect(transport).then(() => {
+                return normalizeCallToolResult(data.result ?? data.artifact);
+            };
+
+            await nextBridge.connect(nextTransport);
             if (!disposed) iframe.src = sandboxUrl.href;
-        }).catch(() => {
+        })().catch(() => {
             if (!disposed) setError('The MCP Apps bridge could not connect to its sandbox.');
         });
 
@@ -210,9 +218,15 @@ export function McpAppFrame({ app, conversationId }: McpAppFrameProps) {
             disposed = true;
             pendingResolverRef.current?.resolve(errorResult('The MCP App was closed before the tool call completed.'));
             pendingResolverRef.current = null;
-            void bridge.teardownResource({}).catch(() => undefined).finally(() => {
-                void transport.close();
-            });
+            const activeBridge = bridge;
+            const activeTransport = transport;
+            if (activeBridge !== null) {
+                void activeBridge.teardownResource({}).catch(() => undefined).finally(() => {
+                    if (activeTransport !== null) void activeTransport.close();
+                });
+            } else if (activeTransport !== null) {
+                void activeTransport.close();
+            }
             iframe.src = 'about:blank';
         };
     }, [app.id, conversationId, resource]);
@@ -253,7 +267,7 @@ export function McpAppFrame({ app, conversationId }: McpAppFrameProps) {
     }
 
     const fallback = resource?.fallback ?? app.fallback ?? 'This MCP tool returned an interactive app.';
-    const iframeAllow = buildAllowAttribute(resource?.permissions);
+    const iframeAllow = permissionAllowAttribute(resource?.permissions);
 
     return (
         <div
@@ -339,6 +353,21 @@ function safeSandboxUrl(raw: string): URL | null {
     } catch {
         return null;
     }
+}
+
+function permissionAllowAttribute(permissions: McpUiResourcePermissions | undefined): string {
+    if (!permissions) return '';
+    const features: Array<[keyof McpUiResourcePermissions, string]> = [
+        ['camera', 'camera'],
+        ['microphone', 'microphone'],
+        ['geolocation', 'geolocation'],
+        ['clipboardWrite', 'clipboard-write'],
+    ];
+
+    return features
+        .filter(([key]) => permissions[key] !== undefined)
+        .map(([, feature]) => feature)
+        .join('; ');
 }
 
 function normalizeCallToolResult(value: unknown): CallToolResult {
