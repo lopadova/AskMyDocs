@@ -4,9 +4,10 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\Admin;
 
+use App\Mcp\Client\McpHandshakeService;
+use App\Mcp\Migration\LegacyMcpServerImporter;
 use App\Models\McpServer;
 use App\Support\TenantContext;
-use App\Mcp\Client\McpHandshakeService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -32,6 +33,7 @@ final class McpServersAdminController extends Controller
     public function __construct(
         private readonly TenantContext $tenantContext,
         private readonly McpHandshakeService $handshakeService,
+        private readonly LegacyMcpServerImporter $legacyImporter,
     ) {}
 
     public function index(): JsonResponse
@@ -70,6 +72,7 @@ final class McpServersAdminController extends Controller
             'status' => McpServer::STATUS_PENDING,
             'created_by' => $request->user()->getAuthIdentifier(),
         ]);
+        $this->syncLegacy($server);
 
         return response()->json([
             'data' => $this->serialize($server),
@@ -98,11 +101,15 @@ final class McpServersAdminController extends Controller
                 return response()->json(['error' => 'Failed to persist handshake error state.'], 500);
             }
 
+            $this->syncLegacy($server->fresh());
+
             return response()->json([
                 'data' => $this->serialize($server->fresh()),
                 'error' => 'MCP handshake failed.',
             ], 502);
         }
+
+        $this->syncLegacy($server);
 
         return response()->json([
             'data' => $this->serialize($server),
@@ -120,6 +127,7 @@ final class McpServersAdminController extends Controller
         if (! $server->forceFill(['enabled_tools_json' => $validated['enabled_tools']])->save()) {
             abort(500, 'Failed to persist enabled tools update.');
         }
+        $this->syncLegacy($server);
 
         return response()->json([
             'data' => $this->serialize($server),
@@ -132,6 +140,7 @@ final class McpServersAdminController extends Controller
         if (! $server->forceFill(['status' => McpServer::STATUS_DISABLED])->save()) {
             abort(500, 'Failed to persist server disable.');
         }
+        $this->syncLegacy($server);
 
         return response()->json([
             'data' => $this->serialize($server),
@@ -141,6 +150,9 @@ final class McpServersAdminController extends Controller
     public function destroy(int $id): JsonResponse
     {
         $server = $this->findForTenant($id);
+        if (config('connector-mcp.legacy_adapter_enabled', false)) {
+            $this->legacyImporter->deleteImported($server);
+        }
         $server->delete();
 
         return response()->json(null, 204);
@@ -159,6 +171,15 @@ final class McpServersAdminController extends Controller
         }
 
         return $server;
+    }
+
+    private function syncLegacy(McpServer $server): void
+    {
+        if (! config('connector-mcp.legacy_adapter_enabled', false)) {
+            return;
+        }
+
+        $this->legacyImporter->importServer($server);
     }
 
     private function encryptAuthConfig(?array $authConfig): ?string

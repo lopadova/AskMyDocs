@@ -168,6 +168,8 @@ abstract class TestCase extends OrchestraTestCase
         // HostIngestionBridge (overriding the package default
         // NullConnectorIngestionContract).
         $app->register(\Padosoft\AskMyDocsConnectorBase\ConnectorServiceProvider::class);
+        $app->register(\Padosoft\AskMyDocsConnectorApi\ApiConnectorServiceProvider::class);
+        $app->register(\Padosoft\AskMyDocsConnectorMcp\McpConnectorServiceProvider::class);
         $app->register(\Padosoft\AskMyDocsConnectorGoogleDrive\GoogleDriveServiceProvider::class);
         $app->register(\Padosoft\AskMyDocsConnectorNotion\NotionServiceProvider::class);
         $app->register(\Padosoft\AskMyDocsConnectorEvernote\EvernoteServiceProvider::class);

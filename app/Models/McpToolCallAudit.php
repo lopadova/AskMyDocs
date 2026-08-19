@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * v5.0/W7 — audit row for every MCP tool call.
@@ -38,9 +38,13 @@ class McpToolCallAudit extends Model
     use BelongsToTenant;
 
     public const STATUS_OK = 'ok';
+
     public const STATUS_ERROR = 'error';
+
     public const STATUS_TIMEOUT = 'timeout';
+
     public const STATUS_DENIED = 'denied';
+
     // v7.0/W6.3 — the host audit column was widened from a strict
     // ENUM to `varchar(32)` so the package's transport layer can emit
     // its own status string when a non-timeout transport failure
@@ -55,16 +59,22 @@ class McpToolCallAudit extends Model
         'tenant_id',
         'user_id',
         'actor',
+        'source',
         'mcp_server_id',
         'mcp_server_name',
+        'mcp_connection_id',
+        'invocation_id',
         'conversation_id',
         'message_id',
         'tool_name',
+        'tool_remote_name',
+        'tool_local_name',
         'input_hash',
         'input_json_redacted',
         'result_hash',
         'duration_ms',
         'status',
+        'error_class',
         'error_json',
     ];
 
@@ -158,8 +168,9 @@ class McpToolCallAudit extends Model
             // deterministic non-empty representation that includes the
             // last json_encode error code so distinct failure modes do
             // not collide.
-            $canonical = '__canonical_hash_encode_failed__:' . json_last_error();
+            $canonical = '__canonical_hash_encode_failed__:'.json_last_error();
         }
+
         return hash('sha256', $canonical);
     }
 

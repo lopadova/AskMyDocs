@@ -103,12 +103,13 @@ class MessageController extends Controller
         // it falls back to the legacy single-project DTO.
         $result = $retrieval->retrieve($question, $projectKey, $filters);
         $chunks = $result->primary;
+        $hasLiveTools = $toolCallingService->canHandleToolCalling($request->user(), $projectKey);
 
         // 3b. T3.3 — deterministic refusal short-circuit. If too few chunks
         // pass the shared grounding gate (rerank_score OR vector floor, read
         // shape-agnostically — see RetrievalGrounding), save a refusal
         // assistant message and return WITHOUT calling the LLM.
-        if ($retrieval->shouldRefuse($result)) {
+        if ($retrieval->shouldRefuse($result) && ! $hasLiveTools) {
             return $this->refusalResponse(
                 request: $request,
                 chatLog: $chatLog,
@@ -145,6 +146,7 @@ class MessageController extends Controller
             context: [
                 'conversation_id' => $conversation->id,
                 'message_id' => $userMessage->id,
+                'project_key' => $projectKey,
             ],
         ));
         $toolCalls = $this->summarizeToolCallsForMetadata($aiResponse->toolCalls);
@@ -599,6 +601,10 @@ class MessageController extends Controller
                 'status' => (string) ($toolCall['status'] ?? 'completed'),
                 'server_id' => $toolCall['server_id'] ?? null,
                 'server_name' => $toolCall['server_name'] ?? null,
+                'source' => $toolCall['source'] ?? null,
+                'provenance' => is_array($toolCall['provenance'] ?? null) ? $toolCall['provenance'] : [],
+                'pending_interaction_id' => $toolCall['pending_interaction_id'] ?? null,
+                'prompt' => is_array($toolCall['prompt'] ?? null) ? $toolCall['prompt'] : null,
                 'error' => $toolCall['error'] ?? null,
             ],
             $toolCalls,
