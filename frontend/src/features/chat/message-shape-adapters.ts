@@ -309,7 +309,7 @@ export function getConfidence(m: RenderableMessage): number | null {
 export interface RenderableToolCall {
     id: string;
     name: string;
-    status: 'pending' | 'ok' | 'error' | 'timeout' | 'denied' | 'confirmation_required' | 'input_required';
+    status: 'pending' | 'ok' | 'error' | 'timeout' | 'denied' | 'confirmation_required' | 'input_required' | 'task_accepted';
     server_name?: string | null;
     server_id?: number | null;
     arguments?: Record<string, unknown> | null;
@@ -317,6 +317,8 @@ export interface RenderableToolCall {
     error?: string | null;
     pending_interaction_id?: string | null;
     prompt?: Record<string, unknown> | null;
+    task_id?: string | null;
+    task?: Record<string, unknown> | null;
 }
 
 export function getToolCalls(m: RenderableMessage): RenderableToolCall[] {
@@ -351,9 +353,9 @@ export function getToolCalls(m: RenderableMessage): RenderableToolCall[] {
 function normalizeToolCall(raw: unknown): RenderableToolCall {
     const record = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
     const status = String(record.status ?? 'ok');
-    const mappedStatus = status === 'completed' || status === 'task_accepted' ? 'ok' : status;
+    const mappedStatus = status === 'completed' ? 'ok' : status;
     const validStatus: RenderableToolCall['status'] = [
-        'pending', 'ok', 'error', 'timeout', 'denied', 'confirmation_required', 'input_required',
+        'pending', 'ok', 'error', 'timeout', 'denied', 'confirmation_required', 'input_required', 'task_accepted',
     ].includes(mappedStatus)
         ? (mappedStatus as RenderableToolCall['status'])
         : 'ok';
@@ -375,6 +377,10 @@ function normalizeToolCall(raw: unknown): RenderableToolCall {
         pending_interaction_id: typeof record.pending_interaction_id === 'string' ? record.pending_interaction_id : null,
         prompt: record.prompt && typeof record.prompt === 'object' && !Array.isArray(record.prompt)
             ? (record.prompt as Record<string, unknown>)
+            : null,
+        task_id: typeof record.task_id === 'string' ? record.task_id : null,
+        task: record.task && typeof record.task === 'object' && !Array.isArray(record.task)
+            ? (record.task as Record<string, unknown>)
             : null,
     };
 }

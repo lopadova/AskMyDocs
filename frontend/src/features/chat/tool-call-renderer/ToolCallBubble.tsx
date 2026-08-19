@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../../lib/api';
 import { ToolResultPreview } from './ToolResultPreview';
 
@@ -12,7 +12,7 @@ import { ToolResultPreview } from './ToolResultPreview';
  *   denied        → lock + denial reason
  */
 
-export type ToolCallStatus = 'pending' | 'ok' | 'error' | 'timeout' | 'denied' | 'confirmation_required' | 'input_required';
+export type ToolCallStatus = 'pending' | 'ok' | 'error' | 'timeout' | 'denied' | 'confirmation_required' | 'input_required' | 'task_accepted' | 'cancel_requested' | 'cancelled';
 
 export interface ToolCallData {
     id: string;
@@ -25,6 +25,20 @@ export interface ToolCallData {
     error?: string | null;
     pending_interaction_id?: string | null;
     prompt?: Record<string, unknown> | null;
+    task_id?: string | null;
+    task?: Record<string, unknown> | null;
+}
+
+interface RemoteTaskResponse {
+    task_id: string;
+    status: 'working' | 'input_required' | 'completed' | 'failed' | 'cancelled' | 'expired';
+    status_message?: string | null;
+    poll_interval_ms?: number;
+    input_requests?: Record<string, unknown> | null;
+    artifact?: unknown;
+    error?: { message?: string } | null;
+    cancel_requested?: boolean;
+    terminal?: boolean;
 }
 
 interface ToolCallBubbleProps {
@@ -39,24 +53,103 @@ export function ToolCallBubble({ toolCall, conversationId }: ToolCallBubbleProps
     const [interactionError, setInteractionError] = useState<string | null>(null);
     const [inputJson, setInputJson] = useState('{}');
     const [submitting, setSubmitting] = useState(false);
+    const [activeTaskId, setActiveTaskId] = useState(toolCall.task_id ?? null);
+    const [taskInputRequests, setTaskInputRequests] = useState<Record<string, unknown> | null>(
+        (toolCall.task?.input_requests as Record<string, unknown> | undefined) ?? null,
+    );
+    const [taskStatusMessage, setTaskStatusMessage] = useState<string | null>(null);
+    const [pollRevision, setPollRevision] = useState(0);
 
     const effectiveStatus = interactionStatus ?? toolCall.status;
     const palette = paletteForStatus(effectiveStatus);
     const stateLabel = labelForStatus(effectiveStatus);
-    const requiresInteraction = interactionStatus === null
+    const requiresLocalInteraction = interactionStatus === null
         && (toolCall.status === 'confirmation_required' || toolCall.status === 'input_required')
         && toolCall.pending_interaction_id
         && conversationId !== undefined;
+    const requiresTaskInput = effectiveStatus === 'input_required'
+        && activeTaskId !== null
+        && conversationId !== undefined;
+
+    const applyTaskResponse = useCallback((data: RemoteTaskResponse): boolean => {
+        setTaskStatusMessage(data.status_message ?? null);
+        setTaskInputRequests(data.input_requests ?? null);
+        if (data.status === 'completed') {
+            setInteractionResult(data.artifact ?? data);
+            setInteractionStatus('ok');
+            setExpanded(true);
+            return false;
+        }
+        if (data.status === 'failed' || data.status === 'expired') {
+            setInteractionStatus('error');
+            setInteractionError(data.error?.message ?? (data.status === 'expired' ? 'The MCP task expired.' : 'The MCP task failed.'));
+            setExpanded(true);
+            return false;
+        }
+        if (data.status === 'cancelled') {
+            setInteractionStatus('cancelled');
+            setExpanded(true);
+            return false;
+        }
+        if (data.status === 'input_required') {
+            setInteractionStatus('input_required');
+            return false;
+        }
+        setInteractionStatus(data.cancel_requested ? 'cancel_requested' : 'task_accepted');
+        return true;
+    }, []);
+
+    useEffect(() => {
+        if (activeTaskId === null || conversationId === undefined) return;
+        const taskId = activeTaskId;
+        const scopedConversationId = conversationId;
+        let disposed = false;
+        let timer: ReturnType<typeof setTimeout> | undefined;
+
+        async function poll() {
+            try {
+                const { data } = await api.get<RemoteTaskResponse>(
+                    `/api/conversations/mcp/tasks/${taskId}`,
+                    { params: { conversation_id: String(scopedConversationId) } },
+                );
+                if (disposed) return;
+                const keepPolling = applyTaskResponse(data);
+                if (keepPolling) {
+                    const delay = Math.max(250, Math.min(data.poll_interval_ms ?? 1000, 30_000));
+                    timer = setTimeout(() => void poll(), delay);
+                }
+            } catch (cause) {
+                if (disposed) return;
+                const message = (cause as { response?: { data?: { message?: string; error?: string } }; message?: string })
+                    ?.response?.data;
+                setInteractionError(message?.message ?? message?.error ?? 'Could not refresh this MCP task.');
+                timer = setTimeout(() => void poll(), 5000);
+            }
+        }
+
+        void poll();
+        return () => {
+            disposed = true;
+            if (timer !== undefined) clearTimeout(timer);
+        };
+    }, [activeTaskId, applyTaskResponse, conversationId, pollRevision]);
 
     async function respond(response: Record<string, unknown>) {
         if (!toolCall.pending_interaction_id || conversationId === undefined) return;
         setSubmitting(true);
         setInteractionError(null);
         try {
-            const { data } = await api.post<{ status: string; artifact?: unknown }>(
+            const { data } = await api.post<{ status: string; artifact?: unknown; task_id?: string; task?: RemoteTaskResponse }>(
                 `/api/conversations/mcp/interactions/${toolCall.pending_interaction_id}`,
                 { conversation_id: String(conversationId), response },
             );
+            if (data.status === 'task_accepted' && data.task_id) {
+                setActiveTaskId(data.task_id);
+                setInteractionResult(data.task ?? data);
+                setInteractionStatus('task_accepted');
+                setExpanded(true);
+                return;
+            }
             setInteractionResult(data.artifact ?? data);
             setInteractionStatus(data.status === 'declined' ? 'denied' : data.status === 'error' ? 'error' : 'ok');
             setExpanded(true);
@@ -78,6 +171,52 @@ export function ToolCallBubble({ toolCall, conversationId }: ToolCallBubbleProps
             void respond(parsed as Record<string, unknown>);
         } catch (cause) {
             setInteractionError(cause instanceof Error ? cause.message : 'Invalid JSON input.');
+        }
+    }
+
+    async function submitTaskInput() {
+        if (activeTaskId === null || conversationId === undefined) return;
+        try {
+            const parsed: unknown = JSON.parse(inputJson);
+            if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+                throw new Error('Input responses must be a JSON object.');
+            }
+            setSubmitting(true);
+            setInteractionError(null);
+            const { data } = await api.post<RemoteTaskResponse>(
+                `/api/conversations/mcp/tasks/${activeTaskId}/input`,
+                { conversation_id: String(conversationId), input_responses: parsed },
+            );
+            if (applyTaskResponse(data)) {
+                setPollRevision((value) => value + 1);
+            }
+        } catch (cause) {
+            const response = (cause as { response?: { data?: { message?: string; error?: string } }; message?: string })
+                ?.response?.data;
+            setInteractionError(response?.message ?? response?.error ?? (cause instanceof Error ? cause.message : 'Could not update this MCP task.'));
+        } finally {
+            setSubmitting(false);
+        }
+    }
+
+    async function cancelTask() {
+        if (activeTaskId === null || conversationId === undefined) return;
+        setSubmitting(true);
+        setInteractionError(null);
+        try {
+            const { data } = await api.post<RemoteTaskResponse>(
+                `/api/conversations/mcp/tasks/${activeTaskId}/cancel`,
+                { conversation_id: String(conversationId) },
+            );
+            if (applyTaskResponse(data)) {
+                setPollRevision((value) => value + 1);
+            }
+        } catch (cause) {
+            const response = (cause as { response?: { data?: { message?: string; error?: string } }; message?: string })
+                ?.response?.data;
+            setInteractionError(response?.message ?? response?.error ?? 'Could not cancel this MCP task.');
+        } finally {
+            setSubmitting(false);
         }
     }
 
@@ -149,26 +288,37 @@ export function ToolCallBubble({ toolCall, conversationId }: ToolCallBubbleProps
                 </span>
             </button>
 
-            {requiresInteraction && (
+            {(requiresLocalInteraction || requiresTaskInput) && (
                 <div data-testid={`chat-tool-call-${toolCall.id}-interaction`} style={{ marginTop: 10, display: 'grid', gap: 8 }}>
                     {typeof toolCall.prompt?.message === 'string' && (
                         <div style={{ color: 'var(--fg-1)' }}>{toolCall.prompt.message}</div>
                     )}
-                    {toolCall.status === 'confirmation_required' ? (
+                    {taskStatusMessage ? <div style={{ color: 'var(--fg-1)' }}>{taskStatusMessage}</div> : null}
+                    {requiresLocalInteraction && toolCall.status === 'confirmation_required' ? (
                         <div style={{ display: 'flex', gap: 8 }}>
                             <button type="button" disabled={submitting} onClick={() => void respond({ confirmed: true })} style={interactionButtonStyle}>Confirm</button>
                             <button type="button" disabled={submitting} onClick={() => void respond({ confirmed: false })} style={interactionButtonStyle}>Decline</button>
                         </div>
                     ) : (
                         <>
-                            {toolCall.prompt?.inputRequests && <ToolResultPreview value={toolCall.prompt.inputRequests} />}
+                            {(taskInputRequests ?? toolCall.prompt?.inputRequests) && <ToolResultPreview value={taskInputRequests ?? toolCall.prompt?.inputRequests} />}
                             <textarea aria-label="MCP input responses" value={inputJson} onChange={(event) => setInputJson(event.target.value)} rows={4} style={interactionInputStyle} />
-                            <button type="button" disabled={submitting} onClick={submitInput} style={interactionButtonStyle}>Send input</button>
+                            <button type="button" disabled={submitting} onClick={requiresTaskInput ? submitTaskInput : submitInput} style={interactionButtonStyle}>Send input</button>
                         </>
                     )}
                     {interactionError && <div role="alert" style={{ color: 'var(--danger-fg)' }}>{interactionError}</div>}
                 </div>
             )}
+
+            {activeTaskId !== null && (effectiveStatus === 'task_accepted' || effectiveStatus === 'cancel_requested') ? (
+                <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {taskStatusMessage ? <span>{taskStatusMessage}</span> : null}
+                    <button type="button" disabled={submitting || effectiveStatus === 'cancel_requested'} onClick={() => void cancelTask()} style={interactionButtonStyle}>
+                        {effectiveStatus === 'cancel_requested' ? 'Cancellation requested' : 'Cancel task'}
+                    </button>
+                    {interactionError && <div role="alert" style={{ color: 'var(--danger-fg)' }}>{interactionError}</div>}
+                </div>
+            ) : null}
 
             {expanded ? (
                 <div
@@ -181,7 +331,7 @@ export function ToolCallBubble({ toolCall, conversationId }: ToolCallBubbleProps
                             <ToolResultPreview value={toolCall.arguments} />
                         </Section>
                     ) : null}
-                    {toolCall.status === 'error' || toolCall.status === 'timeout' || toolCall.status === 'denied' ? (
+                    {effectiveStatus === 'error' || effectiveStatus === 'timeout' || effectiveStatus === 'denied' || effectiveStatus === 'cancelled' ? (
                         <Section title="Error" testid={`chat-tool-call-${toolCall.id}-error`} tone="error">
                             <pre
                                 style={{
@@ -193,7 +343,7 @@ export function ToolCallBubble({ toolCall, conversationId }: ToolCallBubbleProps
                                     wordBreak: 'break-word',
                                 }}
                             >
-                                {toolCall.error ?? 'No error message reported.'}
+                                {interactionError ?? toolCall.error ?? (effectiveStatus === 'cancelled' ? 'The MCP task was cancelled.' : 'No error message reported.')}
                             </pre>
                         </Section>
                     ) : null}
@@ -312,6 +462,7 @@ function paletteForStatus(status: ToolCallStatus) {
                 iconFill: 'rgba(245,158,11,0.85)',
             };
         case 'denied':
+        case 'cancelled':
             return {
                 background: 'rgba(148,163,184,0.10)',
                 border: 'rgba(148,163,184,0.32)',
@@ -320,6 +471,7 @@ function paletteForStatus(status: ToolCallStatus) {
             };
         case 'confirmation_required':
         case 'input_required':
+        case 'cancel_requested':
             return {
                 background: 'rgba(245,158,11,0.08)',
                 border: 'rgba(245,158,11,0.32)',
@@ -327,6 +479,7 @@ function paletteForStatus(status: ToolCallStatus) {
                 iconFill: 'rgba(245,158,11,0.85)',
             };
         case 'pending':
+        case 'task_accepted':
         default:
             return {
                 background: 'rgba(59,130,246,0.08)',
@@ -353,6 +506,12 @@ function labelForStatus(status: ToolCallStatus): string {
             return 'Confirmation required';
         case 'input_required':
             return 'Input required';
+        case 'task_accepted':
+            return 'Running asynchronously';
+        case 'cancel_requested':
+            return 'Cancellation requested';
+        case 'cancelled':
+            return 'Cancelled';
         default:
             return status;
     }
