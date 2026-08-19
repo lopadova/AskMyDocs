@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\DB;
 use Padosoft\AskMyDocsConnectorBase\ConnectorRegistry;
 use Padosoft\AskMyDocsConnectorBase\Contracts\SupportsCredentialForm;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
+use Padosoft\AskMyDocsConnectorMcp\Contracts\ManagesOwnConnections;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 /**
@@ -64,30 +65,32 @@ final class ConnectorInstallationService
             ->get(['id', 'connector_name', 'label', 'project_key', 'status', 'last_sync_at', 'error_json', 'config_json'])
             ->groupBy('connector_name');
 
-        return $this->registry->all()->map(function ($connector) use ($byConnector): array {
-            $isCredential = $connector instanceof SupportsCredentialForm;
-            $installations = $byConnector->get($connector->key(), collect())
-                ->map(fn (ConnectorInstallation $i) => $this->installationArray($i))
-                ->values()
-                ->all();
+        return $this->registry->all()
+            ->reject(static fn ($connector): bool => $connector instanceof ManagesOwnConnections)
+            ->map(function ($connector) use ($byConnector): array {
+                $isCredential = $connector instanceof SupportsCredentialForm;
+                $installations = $byConnector->get($connector->key(), collect())
+                    ->map(fn (ConnectorInstallation $i) => $this->installationArray($i))
+                    ->values()
+                    ->all();
 
-            return [
-                'key' => $connector->key(),
-                'display_name' => $connector->displayName(),
-                'icon_url' => $connector->iconUrl(),
-                'oauth_scopes' => $connector->oauthScopes(),
-                'auth_kind' => $isCredential ? 'credential' : 'oauth',
-                'credential_form_schema' => $isCredential ? $connector->credentialFormSchema() : null,
-                // v8.20 — a LIST of accounts (was a single nullable installation).
-                'installations' => $installations,
-                // Back-compat (R27 additive): the pre-v8.20 single-installation
-                // shape. Prefer the legacy 'default'-label account so a tenant
-                // that later adds more accounts doesn't surface an arbitrary one
-                // (e.g. 'sales') to the not-yet-migrated FE; PR2 switches it to
-                // `installations` and removes this.
-                'installation' => $this->backCompatInstallation($installations),
-            ];
-        })->values()->all();
+                return [
+                    'key' => $connector->key(),
+                    'display_name' => $connector->displayName(),
+                    'icon_url' => $connector->iconUrl(),
+                    'oauth_scopes' => $connector->oauthScopes(),
+                    'auth_kind' => $isCredential ? 'credential' : 'oauth',
+                    'credential_form_schema' => $isCredential ? $connector->credentialFormSchema() : null,
+                    // v8.20 — a LIST of accounts (was a single nullable installation).
+                    'installations' => $installations,
+                    // Back-compat (R27 additive): the pre-v8.20 single-installation
+                    // shape. Prefer the legacy 'default'-label account so a tenant
+                    // that later adds more accounts doesn't surface an arbitrary one
+                    // (e.g. 'sales') to the not-yet-migrated FE; PR2 switches it to
+                    // `installations` and removes this.
+                    'installation' => $this->backCompatInstallation($installations),
+                ];
+            })->values()->all();
     }
 
     /**

@@ -8,9 +8,15 @@ use App\Models\User;
 use App\Support\TenantContext;
 use Database\Seeders\RbacSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Hash;
+use Padosoft\AskMyDocsConnectorBase\ConnectorRegistry;
+use Padosoft\AskMyDocsConnectorBase\ConnectorSyncJob;
+use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
 use Padosoft\AskMyDocsConnectorBase\Support\TenantContext as ConnectorTenantContext;
+use Padosoft\AskMyDocsConnectorMcp\McpConnector;
 use Padosoft\AskMyDocsConnectorMcp\Models\McpConnection;
+use Padosoft\AskMyDocsConnectorMcp\Models\McpConnectionResource;
 use Padosoft\AskMyDocsConnectorMcp\Models\McpConnectionTool;
 use Padosoft\AskMyDocsConnectorMcp\Models\McpServerDefinition;
 use Padosoft\AskMyDocsConnectorMcp\Services\McpToolExecutor;
@@ -78,6 +84,54 @@ final class McpConnectorHostRoutesTest extends TestCase
         $user = $this->user('disabled@example.test');
 
         $this->actingAs($user)->getJson('/api/me/connected-apps/mcp')->assertNotFound();
+    }
+
+    public function test_mcp_resource_connector_is_registered_but_hidden_from_generic_roster(): void
+    {
+        $this->assertInstanceOf(McpConnector::class, app(ConnectorRegistry::class)->get(McpConnector::KEY));
+
+        $admin = $this->user('roster@example.test');
+        $admin->assignRole('admin');
+        $keys = collect($this->actingAs($admin)->getJson('/api/admin/connectors')->assertOk()->json('data'))
+            ->pluck('key');
+
+        $this->assertNotContains(McpConnector::KEY, $keys);
+    }
+
+    public function test_admin_can_enable_and_queue_selected_resources(): void
+    {
+        Bus::fake();
+        $admin = $this->user('resource-admin@example.test');
+        $admin->assignRole('admin');
+        $server = $this->server('test-tenant', 'Resource MCP');
+        $installation = ConnectorInstallation::query()->create([
+            'tenant_id' => 'test-tenant',
+            'connector_name' => McpConnector::KEY,
+            'label' => 'Resource MCP',
+            'project_key' => 'default',
+            'config_json' => [],
+            'status' => ConnectorInstallation::STATUS_ACTIVE,
+        ]);
+        $connection = $this->connection($server, 'shared');
+        $connection->forceFill(['connector_installation_id' => $installation->getKey()])->save();
+        $installation->forceFill(['config_json' => ['mcp_connection_public_id' => $connection->public_id]])->save();
+        $resource = McpConnectionResource::query()->create([
+            'tenant_id' => 'test-tenant',
+            'mcp_connector_connection_id' => $connection->getKey(),
+            'uri' => 'docs://handbook',
+            'uri_hash' => hash('sha256', 'docs://handbook'),
+            'name' => 'Handbook',
+        ]);
+
+        $this->actingAs($admin)->putJson(
+            "/api/admin/connectors/mcp/{$connection->public_id}/resources/{$resource->getKey()}",
+            ['enabled' => true],
+        )->assertOk()->assertJsonPath('enabled', true);
+        $this->actingAs($admin)->postJson(
+            "/api/admin/connectors/mcp/{$connection->public_id}/resources/sync",
+        )->assertAccepted()->assertJsonPath('status', 'queued');
+
+        Bus::assertDispatched(ConnectorSyncJob::class, fn (ConnectorSyncJob $job): bool => $job->installationId === $installation->getKey());
     }
 
     public function test_confirmation_resume_executes_and_is_audited_through_the_host_listener(): void
