@@ -15,6 +15,20 @@ export interface McpConnectionToolDto {
     removed_at: string | null;
 }
 
+export interface McpConnectionResourceDto {
+    id: number;
+    uri: string;
+    name: string | null;
+    title: string | null;
+    description: string | null;
+    mime_type: string | null;
+    size: number | null;
+    enabled: boolean;
+    last_ingested_at: string | null;
+    removed_at: string | null;
+    ingest_error_json: Record<string, unknown> | null;
+}
+
 export interface McpServerDto {
     id: number;
     name: string;
@@ -35,8 +49,10 @@ export interface McpConnectionDto {
     status: McpConnectionStatus;
     granted_scopes_json: string[] | null;
     error_json: Record<string, unknown> | null;
+    connector_installation_id: number | null;
     server: McpServerDto;
     tools: McpConnectionToolDto[];
+    resources: McpConnectionResourceDto[];
 }
 
 export interface CreateMcpConnectionPayload {
@@ -76,6 +92,14 @@ export const mcpConnectionsApi = {
 
     async setTool(scope: McpConnectionScope, connectionId: string, toolId: number, enabled: boolean): Promise<void> {
         await api.put(`${base(scope)}/${connectionId}/tools/${toolId}`, { enabled });
+    },
+
+    async setResource(connectionId: string, resourceId: number, enabled: boolean): Promise<void> {
+        await api.put(`/api/admin/connectors/mcp/${connectionId}/resources/${resourceId}`, { enabled });
+    },
+
+    async syncResources(connectionId: string): Promise<void> {
+        await api.post(`/api/admin/connectors/mcp/${connectionId}/resources/sync`);
     },
 
     async beginOAuth(scope: McpConnectionScope, connectionId: string): Promise<string> {
