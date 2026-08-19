@@ -17,6 +17,12 @@ use Tests\TestCase;
  */
 final class EmailMessageBuilderTest extends TestCase
 {
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+        parent::tearDown();
+    }
+
     private function target(): MailboxTarget
     {
         return new MailboxTarget(
