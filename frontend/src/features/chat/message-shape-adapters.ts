@@ -319,6 +319,13 @@ export interface RenderableToolCall {
     prompt?: Record<string, unknown> | null;
     task_id?: string | null;
     task?: Record<string, unknown> | null;
+    app?: RenderableMcpApp | null;
+}
+
+export interface RenderableMcpApp {
+    id: string;
+    resource_uri?: string;
+    fallback?: string;
 }
 
 export function getToolCalls(m: RenderableMessage): RenderableToolCall[] {
@@ -382,6 +389,19 @@ function normalizeToolCall(raw: unknown): RenderableToolCall {
         task: record.task && typeof record.task === 'object' && !Array.isArray(record.task)
             ? (record.task as Record<string, unknown>)
             : null,
+        app: normalizeMcpApp(record.app),
+    };
+}
+
+function normalizeMcpApp(raw: unknown): RenderableMcpApp | null {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    const record = raw as Record<string, unknown>;
+    if (typeof record.id !== 'string' || record.id.length === 0) return null;
+
+    return {
+        id: record.id,
+        resource_uri: typeof record.resource_uri === 'string' ? record.resource_uri : undefined,
+        fallback: typeof record.fallback === 'string' ? record.fallback : undefined,
     };
 }
 
