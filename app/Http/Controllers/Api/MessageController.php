@@ -611,6 +611,8 @@ class MessageController extends Controller
                 'provenance' => is_array($toolCall['provenance'] ?? null) ? $toolCall['provenance'] : [],
                 'pending_interaction_id' => $toolCall['pending_interaction_id'] ?? null,
                 'prompt' => is_array($toolCall['prompt'] ?? null) ? $toolCall['prompt'] : null,
+                'task_id' => $toolCall['task_id'] ?? null,
+                'task' => is_array($toolCall['task'] ?? null) ? $toolCall['task'] : null,
                 'error' => $toolCall['error'] ?? null,
             ],
             $toolCalls,

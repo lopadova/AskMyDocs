@@ -9,6 +9,7 @@ use App\Support\TenantContext;
 use Database\Seeders\RbacSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Padosoft\AskMyDocsConnectorBase\ConnectorRegistry;
 use Padosoft\AskMyDocsConnectorBase\ConnectorSyncJob;
@@ -184,6 +185,61 @@ final class McpConnectorHostRoutesTest extends TestCase
             'tool_local_name' => $tool->local_name,
             'status' => 'ok',
         ]);
+    }
+
+    public function test_remote_task_status_route_is_actor_and_conversation_scoped(): void
+    {
+        $user = $this->user('task-owner@example.test');
+        $other = $this->user('task-other@example.test');
+        $server = $this->server('test-tenant', 'Task MCP');
+        $connection = $this->connection($server, 'shared');
+        $tool = McpConnectionTool::query()->create([
+            'tenant_id' => 'test-tenant',
+            'mcp_connector_connection_id' => $connection->getKey(),
+            'remote_name' => 'reports.generate',
+            'local_name' => 'task_reports_generate_12345678',
+            'input_schema_json' => ['type' => 'object'],
+            'risk' => 'read',
+            'policy' => 'enabled',
+            'enabled' => true,
+            'confirmation_required' => false,
+        ]);
+        $transport = new StubMcpTransport;
+        $transport->responses['server/discover'] = [
+            'protocolVersion' => '2026-07-28',
+            'capabilities' => ['extensions' => ['io.modelcontextprotocol/tasks' => []]],
+        ];
+        $transport->scriptToolCall('reports.generate', [
+            'resultType' => 'task',
+            'taskId' => 'remote-host-task',
+            'status' => 'working',
+            'ttlMs' => 60_000,
+            'pollIntervalMs' => 250,
+        ]);
+        $transport->responses['tasks/get'] = [
+            'resultType' => 'complete',
+            'taskId' => 'remote-host-task',
+            'status' => 'completed',
+            'ttlMs' => 60_000,
+            'result' => ['content' => [['type' => 'text', 'text' => 'Generated host report.']]],
+        ];
+        McpClient::useTransportResolver(static fn (): McpTransportContract => $transport);
+
+        $outcome = app(McpToolExecutor::class)->invoke(
+            $tool->local_name,
+            [],
+            $user,
+            'conversation-task',
+        );
+        $this->assertSame('task_accepted', $outcome->status);
+        DB::table('mcp_connector_remote_tasks')->update(['next_poll_at' => now()->subSecond()]);
+
+        $endpoint = '/api/conversations/mcp/tasks/'.$outcome->taskId.'?conversation_id=conversation-task';
+        $this->actingAs($other)->getJson($endpoint)->assertNotFound();
+        $this->actingAs($user)->getJson($endpoint)
+            ->assertOk()
+            ->assertJsonPath('status', 'completed')
+            ->assertJsonPath('artifact.text', 'Generated host report.');
     }
 
     private function user(string $email): User

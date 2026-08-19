@@ -94,4 +94,65 @@ final class ChatToolCallingServiceTest extends TestCase
         $this->assertSame(['query' => 'latest'], $source->calls[0]['arguments']);
         $this->assertSame('project-a', $source->calls[0]['context']['project_key']);
     }
+
+    public function test_it_suspends_the_tool_loop_while_a_remote_task_is_running(): void
+    {
+        $source = new class implements ChatToolSourceContract
+        {
+            public function key(): string
+            {
+                return 'mcp';
+            }
+
+            public function catalog(User $user, ?string $projectKey = null): array
+            {
+                return [[
+                    'name' => 'report_generate',
+                    'description' => 'Generate report',
+                    'inputSchema' => ['type' => 'object'],
+                ]];
+            }
+
+            public function invoke(array $tool, array $arguments, User $user, array $context = []): ChatToolInvocationResult
+            {
+                return new ChatToolInvocationResult(
+                    'task_accepted',
+                    ['status' => 'task_accepted', 'task_id' => 'task-local-1'],
+                    [
+                        'source' => 'mcp',
+                        'task_id' => 'task-local-1',
+                        'task' => ['status' => 'working', 'poll_interval_ms' => 1000],
+                        'prompt' => ['message' => 'The MCP task is running.'],
+                    ],
+                );
+            }
+        };
+        $provider = Mockery::mock(AiProviderInterface::class);
+        $provider->shouldReceive('name')->once()->andReturn('openai');
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('provider')->once()->andReturn($provider);
+        $ai->shouldReceive('chatWithHistory')->once()->andReturn(new AiResponse(
+            '',
+            'openai',
+            'test-model',
+            toolCalls: [[
+                'id' => 'call-task-1',
+                'type' => 'function',
+                'function' => ['name' => 'report_generate', 'arguments' => '{}'],
+            ]],
+        ));
+
+        $service = new McpToolCallingService($ai, new ChatToolSourceRegistry([$source]));
+        $response = $service->chatWithTools(
+            'system',
+            [['role' => 'user', 'content' => 'Generate it']],
+            user: new User,
+            context: ['conversation_id' => '7'],
+        );
+
+        $this->assertSame('tool_interaction', $response->finishReason);
+        $this->assertSame('The MCP task is running.', $response->content);
+        $this->assertSame('task_accepted', $response->toolCalls[0]['status']);
+        $this->assertSame('task-local-1', $response->toolCalls[0]['task_id']);
+    }
 }
