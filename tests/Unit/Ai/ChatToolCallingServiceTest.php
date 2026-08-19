@@ -48,8 +48,15 @@ final class ChatToolCallingServiceTest extends TestCase
 
                 return new ChatToolInvocationResult(
                     'completed',
-                    ['artifact' => ['text' => 'Fresh MCP evidence.']],
-                    ['source' => 'mcp', 'connection_id' => 'connection-1'],
+                    ['artifact' => [
+                        'text' => 'Fresh MCP evidence.',
+                        'app' => ['id' => '01APPHANDLE', 'resource_uri' => 'ui://fresh/result.html'],
+                    ]],
+                    [
+                        'source' => 'mcp',
+                        'connection_id' => 'connection-1',
+                        'app' => ['id' => '01APPHANDLE', 'resource_uri' => 'ui://fresh/result.html'],
+                    ],
                 );
             }
         };
@@ -91,6 +98,7 @@ final class ChatToolCallingServiceTest extends TestCase
         $this->assertSame('Fresh MCP evidence.', $response->content);
         $this->assertSame('completed', $response->toolCalls[0]['status']);
         $this->assertSame('connection-1', $response->toolCalls[0]['provenance']['connection_id']);
+        $this->assertSame('01APPHANDLE', $response->toolCalls[0]['app']['id']);
         $this->assertSame(['query' => 'latest'], $source->calls[0]['arguments']);
         $this->assertSame('project-a', $source->calls[0]['context']['project_key']);
     }

@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Mcp;
 
+use App\Http\Middleware\SecurityHeaders;
 use App\Models\User;
 use App\Support\TenantContext;
 use Database\Seeders\RbacSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -24,8 +26,8 @@ use Padosoft\AskMyDocsConnectorMcp\Services\McpToolExecutor;
 use Padosoft\AskMyDocsMcpPack\Contracts\McpServerContract;
 use Padosoft\AskMyDocsMcpPack\Contracts\McpTransportContract;
 use Padosoft\AskMyDocsMcpPack\Services\McpClient;
-use Tests\TestCase;
 use Tests\Support\Mcp\StubMcpTransport;
+use Tests\TestCase;
 
 final class McpConnectorHostRoutesTest extends TestCase
 {
@@ -240,6 +242,80 @@ final class McpConnectorHostRoutesTest extends TestCase
             ->assertOk()
             ->assertJsonPath('status', 'completed')
             ->assertJsonPath('artifact.text', 'Generated host report.');
+    }
+
+    public function test_mcp_app_is_actor_scoped_and_sandbox_keeps_its_dedicated_frame_policy(): void
+    {
+        config()->set('connector-mcp.apps.sandbox_origin', 'https://mcp-apps.example.test');
+        config()->set('connector-mcp.apps.host_origins', ['https://askmydocs.example.test']);
+        $user = $this->user('app-owner@example.test');
+        $other = $this->user('app-other@example.test');
+        $server = $this->server('test-tenant', 'App MCP');
+        $connection = $this->connection($server, 'shared');
+        $tool = McpConnectionTool::query()->create([
+            'tenant_id' => 'test-tenant',
+            'mcp_connector_connection_id' => $connection->getKey(),
+            'remote_name' => 'reports.show',
+            'local_name' => 'app_reports_show_12345678',
+            'input_schema_json' => ['type' => 'object'],
+            'meta_json' => ['ui' => ['resourceUri' => 'ui://reports/show.html']],
+            'risk' => 'read',
+            'policy' => 'enabled',
+            'enabled' => true,
+            'confirmation_required' => false,
+        ]);
+        $transport = new StubMcpTransport;
+        $transport->responses['server/discover'] = [
+            'protocolVersion' => '2026-07-28',
+            'capabilities' => ['tools' => [], 'resources' => []],
+        ];
+        $transport->scriptToolCall('reports.show', [
+            'content' => [['type' => 'text', 'text' => 'Interactive report ready.']],
+            'structuredContent' => ['reportId' => 42],
+            '_meta' => ['ui' => ['resourceUri' => 'ui://reports/show.html']],
+        ]);
+        $transport->responses['resources/read'] = ['contents' => [[
+            'uri' => 'ui://reports/show.html',
+            'mimeType' => 'text/html;profile=mcp-app',
+            'text' => '<!doctype html><html><body><main>Report 42</main></body></html>',
+            '_meta' => ['ui' => ['csp' => ['connectDomains' => []]]],
+        ]]];
+        McpClient::useTransportResolver(static fn (): McpTransportContract => $transport);
+
+        $outcome = app(McpToolExecutor::class)->invoke(
+            $tool->local_name,
+            ['reportId' => 42],
+            $user,
+            'conversation-app',
+        );
+        $appId = (string) data_get($outcome->artifact?->app, 'id');
+        $this->assertNotSame('', $appId);
+
+        $url = '/api/conversations/mcp/apps/'.$appId.'?conversation_id=conversation-app';
+        $this->actingAs($other)->getJson($url)->assertNotFound();
+        $this->actingAs($user)->getJson($url)
+            ->assertOk()
+            ->assertJsonPath('available', true)
+            ->assertJsonPath('tool_result.structuredContent.reportId', 42);
+
+        $sandbox = $this->get('/mcp-apps/sandbox');
+        $sandbox->assertOk();
+        $this->assertNull($sandbox->headers->get('X-Frame-Options'));
+        // Testbench does not load bootstrap/app.php's global middleware. The
+        // package marker is therefore still present here; pass the response
+        // through the real host middleware to verify the production path.
+        $this->assertSame('1', $sandbox->headers->get('X-AskMyDocs-MCP-App-Sandbox'));
+        $filtered = app(SecurityHeaders::class)->handle(
+            Request::create('/mcp-apps/sandbox', 'GET'),
+            static fn () => $sandbox->baseResponse,
+        );
+        $this->assertNull($filtered->headers->get('X-AskMyDocs-MCP-App-Sandbox'));
+        $this->assertNull($filtered->headers->get('X-Frame-Options'));
+        $this->assertStringContainsString(
+            'frame-ancestors https://askmydocs.example.test',
+            (string) $filtered->headers->get('Content-Security-Policy'),
+        );
+        $this->assertNull($filtered->headers->get('Content-Security-Policy-Report-Only'));
     }
 
     private function user(string $email): User
