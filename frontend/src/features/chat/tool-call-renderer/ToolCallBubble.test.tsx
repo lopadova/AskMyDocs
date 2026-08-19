@@ -1,6 +1,9 @@
-import { describe, it, expect } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { ToolCallBubble, type ToolCallData } from './ToolCallBubble';
+
+const { postMock } = vi.hoisted(() => ({ postMock: vi.fn() }));
+vi.mock('../../../lib/api', () => ({ api: { post: postMock } }));
 
 function makeToolCall(overrides: Partial<ToolCallData> = {}): ToolCallData {
     return {
@@ -60,5 +63,29 @@ describe('ToolCallBubble', () => {
     it('renders the denied label and lock icon when status is denied', () => {
         render(<ToolCallBubble toolCall={makeToolCall({ status: 'denied' })} />);
         expect(screen.getByText(/denied/i)).toBeInTheDocument();
+    });
+
+    it('resumes a confirmation-scoped MCP call through the authenticated conversation endpoint', async () => {
+        postMock.mockResolvedValueOnce({ data: { status: 'completed', artifact: { text: 'Write completed.' } } });
+        render(
+            <ToolCallBubble
+                conversationId={17}
+                toolCall={makeToolCall({
+                    status: 'confirmation_required',
+                    pending_interaction_id: '01K2PENDING',
+                    prompt: { message: 'Confirm this write.' },
+                    result: null,
+                })}
+            />,
+        );
+
+        fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+
+        await waitFor(() => expect(postMock).toHaveBeenCalledWith(
+            '/api/conversations/mcp/interactions/01K2PENDING',
+            { conversation_id: '17', response: { confirmed: true } },
+        ));
+        expect(await screen.findByTestId('chat-tool-call-tool_42-resumed-result')).toHaveTextContent('Write completed.');
+        expect(screen.getByTestId('chat-tool-call-tool_42')).toHaveAttribute('data-tool-status', 'ok');
     });
 });

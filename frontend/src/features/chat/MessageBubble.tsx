@@ -217,7 +217,7 @@ export function MessageBubble({
                 {toolCalls.length > 0 && (
                     <div data-testid={`chat-message-${messageId}-tool-calls`}>
                         {toolCalls.map((toolCall) => (
-                            <ToolCallBubble key={toolCall.id} toolCall={toolCall} />
+                            <ToolCallBubble key={toolCall.id} toolCall={toolCall} conversationId={conversationId} />
                         ))}
                     </div>
                 )}

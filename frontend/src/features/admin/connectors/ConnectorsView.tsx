@@ -20,6 +20,7 @@ import {
 } from './connection-vm';
 import type { ConnectionActions, ConnectionInFlight } from './connections-shared';
 import { CONNECTORS_STYLES } from './connectors-styles';
+import { McpConnectionsPanel } from '../../mcp-connections/McpConnectionsPanel';
 import {
     adminConnectorsApi,
     type ConfigureConnectorPayload,
@@ -836,6 +837,10 @@ const errorVm: ConnectionVM | null =
                     tools). Created + listed here; deep route/auth/relation/test
                     management drills into the dedicated page via "Manage". */}
                 <ApiConnectionsSection />
+
+                {/* MCP connections — remote MCP servers and their discovered
+                    tools/resources, governed independently from API routes. */}
+                <McpConnectionsPanel scope="shared" />
             </div>
 
             {modal?.kind === 'credential-add' && (
