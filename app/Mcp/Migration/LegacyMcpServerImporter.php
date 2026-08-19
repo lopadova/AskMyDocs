@@ -12,6 +12,7 @@ use Padosoft\AskMyDocsConnectorBase\Support\TenantContext;
 use Padosoft\AskMyDocsConnectorMcp\Models\McpConnection;
 use Padosoft\AskMyDocsConnectorMcp\Models\McpConnectionTool;
 use Padosoft\AskMyDocsConnectorMcp\Models\McpServerDefinition;
+use Padosoft\AskMyDocsConnectorMcp\Services\McpConnectionManager;
 use Padosoft\AskMyDocsConnectorMcp\Services\McpLocalToolName;
 use Padosoft\AskMyDocsConnectorMcp\Services\McpToolPolicy;
 
@@ -22,6 +23,7 @@ final readonly class LegacyMcpServerImporter
         private TenantContext $connectorTenants,
         private McpLocalToolName $names,
         private McpToolPolicy $policy,
+        private McpConnectionManager $connections,
     ) {}
 
     /** @return array{servers:int,connections:int,tools:int} */
@@ -114,6 +116,7 @@ final readonly class LegacyMcpServerImporter
                     : null,
             ]);
             $connection->save();
+            $this->connections->ensureIngestInstallation($connection, (string) $legacy->created_by);
 
             $tools = $this->reconcileTools($connection, $legacy, $handshake);
 
@@ -128,10 +131,22 @@ final readonly class LegacyMcpServerImporter
 
     public function deleteImported(McpServer $legacy): void
     {
-        McpServerDefinition::query()
+        $tenantId = (string) $legacy->tenant_id;
+        $this->hostTenants->set($tenantId);
+        $this->connectorTenants->set($tenantId);
+        $definition = McpServerDefinition::query()
             ->where('tenant_id', (string) $legacy->tenant_id)
             ->where('legacy_reference', 'mcp_servers:'.$legacy->getKey())
-            ->delete();
+            ->first();
+        if ($definition === null) {
+            return;
+        }
+        foreach ($definition->connections()->get() as $connection) {
+            $this->connections->delete($connection->load('server'));
+        }
+        if ($definition->exists) {
+            $definition->delete();
+        }
     }
 
     /** @param array<string, mixed> $handshake */
