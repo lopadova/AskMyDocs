@@ -494,6 +494,9 @@ abstract class TestCase extends OrchestraTestCase
                 \Padosoft\AskMyDocsConnectorJira\JiraConnector::class,
                 // v8.17 — first credential-based connector (IMAP).
                 \Padosoft\AskMyDocsConnectorImap\ImapConnector::class,
+                // MCP keeps its own connection UI, but implements the base
+                // connector contract so selected resources use the scheduler.
+                \Padosoft\AskMyDocsConnectorMcp\McpConnector::class,
             ],
         ), static fn (string $fqcn): bool => class_exists($fqcn)));
         // v8.17 — in production the IMAP package's ServiceProvider
