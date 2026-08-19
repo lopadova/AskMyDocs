@@ -46,6 +46,8 @@ final readonly class McpConnectorChatToolSource implements ChatToolSourceContrac
             'source' => $this->key(),
             'pending_interaction_id' => $outcome->pendingInteractionId,
             'prompt' => $outcome->prompt,
+            'task_id' => $outcome->taskId,
+            'task' => $outcome->task,
         ];
 
         return new ChatToolInvocationResult(

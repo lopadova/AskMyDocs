@@ -18,6 +18,6 @@ final readonly class ChatToolInvocationResult
 
     public function requiresInteraction(): bool
     {
-        return in_array($this->status, ['confirmation_required', 'input_required'], true);
+        return in_array($this->status, ['confirmation_required', 'input_required', 'task_accepted'], true);
     }
 }

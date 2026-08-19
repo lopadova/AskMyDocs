@@ -456,6 +456,8 @@ final class McpToolCallingService
         $toolCall['server_name'] = $metadata['server_name'] ?? $toolCall['server_name'] ?? null;
         $toolCall['pending_interaction_id'] = $metadata['pending_interaction_id'] ?? null;
         $toolCall['prompt'] = is_array($metadata['prompt'] ?? null) ? $metadata['prompt'] : null;
+        $toolCall['task_id'] = $metadata['task_id'] ?? null;
+        $toolCall['task'] = is_array($metadata['task'] ?? null) ? $metadata['task'] : null;
         $toolCall['provenance'] = array_filter(array_merge(
             is_array($toolCall['provenance'] ?? null) ? $toolCall['provenance'] : [],
             $metadata,
