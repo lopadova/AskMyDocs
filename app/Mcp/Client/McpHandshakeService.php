@@ -6,6 +6,7 @@ namespace App\Mcp\Client;
 
 use App\Mcp\Adapters\McpServerAdapter;
 use App\Models\McpServer;
+use Padosoft\AskMyDocsMcpPack\Exceptions\McpException;
 use Padosoft\AskMyDocsMcpPack\Exceptions\McpTransportException;
 use Padosoft\AskMyDocsMcpPack\Services\McpClient;
 
@@ -65,7 +66,7 @@ final class McpHandshakeService
         $toolsListError = null;
         try {
             $tools = $client->listTools();
-        } catch (McpTransportException $exception) {
+        } catch (McpException $exception) {
             $toolsListError = $exception->getMessage();
         }
 

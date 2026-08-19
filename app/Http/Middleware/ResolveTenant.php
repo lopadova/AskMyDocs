@@ -9,6 +9,7 @@ use App\Support\TenantContext;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Padosoft\AskMyDocsConnectorBase\Support\TenantContext as ConnectorTenantContext;
 use Symfony\Component\HttpFoundation\Response;
 use Throwable;
 
@@ -37,6 +38,7 @@ final class ResolveTenant
 
         try {
             app(TenantContext::class)->set($tenantId);
+            app(ConnectorTenantContext::class)->set($tenantId);
         } catch (\InvalidArgumentException $e) {
             return response()->json([
                 'error' => 'invalid_tenant_id',

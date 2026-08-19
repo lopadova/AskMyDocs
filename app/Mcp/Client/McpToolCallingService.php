@@ -4,21 +4,17 @@ declare(strict_types=1);
 
 namespace App\Mcp\Client;
 
-use App\Agent\Tools\ApiToolRequestContext;
 use App\Ai\AiManager;
 use App\Ai\AiResponse;
-use App\Mcp\Client\Registry\McpServerRegistry;
-use App\Models\McpServer;
+use App\Ai\Tools\ChatToolSourceRegistry;
 use App\Models\User;
 use App\Services\Kb\Provenance\ToolFirewallVerdict;
-use App\Support\TenantContext;
 use App\Support\SupportedLocale;
-use Padosoft\AskMyDocsConnectorApi\Models\ApiRoute;
-use Padosoft\AskMyDocsConnectorApi\Services\ApiToolExecutor;
-use Padosoft\AskMyDocsConnectorApi\Services\ApiToolRegistry;
 
 final class McpToolCallingService
 {
+    private const string SELF_REFUSAL_SENTINEL = '__NO_GROUNDED_ANSWER__';
+
     /**
      * Provider names that can execute OpenAI-style function/tool calling with
      * the payload schema this service generates. openai + openrouter speak the
@@ -32,22 +28,16 @@ final class McpToolCallingService
 
     public function __construct(
         private readonly AiManager $ai,
-        private readonly McpServerRegistry $registry,
-        private readonly ToolInvoker $invoker,
-        private readonly McpToolAuthorizer $authorizer,
-        private readonly ApiToolRegistry $apiToolRegistry,
-        private readonly ApiToolExecutor $apiToolExecutor,
-        private readonly TenantContext $tenantContext,
-        private readonly ApiToolRequestContext $apiToolRequestContext,
+        private readonly ChatToolSourceRegistry $sources,
     ) {}
 
-    public function canHandleToolCalling(?User $user): bool
+    public function canHandleToolCalling(?User $user, ?string $projectKey = null): bool
     {
         if (! $this->meetsToolCallingPrerequisites($user)) {
             return false;
         }
 
-        return $this->buildToolIndex($user) !== [];
+        return $this->buildToolIndex($user, $projectKey) !== [];
     }
 
     /**
@@ -112,6 +102,7 @@ final class McpToolCallingService
         $chatHistory = $messages;
         $maxIterations = max((int) config('mcp.tool_calling.max_iterations', 3), 1);
         $toolCallsSummary = [];
+        $groundingFallback = null;
 
         for ($iteration = 0; $iteration < $maxIterations; $iteration++) {
             $turnOptions = $this->toolTurnOptions($options, $toolIndex);
@@ -119,7 +110,10 @@ final class McpToolCallingService
             $toolCalls = $this->normalizeProviderToolCalls($llmResponse->toolCalls);
 
             if ($toolCalls === []) {
-                return $this->injectToolCalls($llmResponse, $toolCallsSummary);
+                return $this->injectToolCalls(
+                    $this->withGroundingFallback($llmResponse, $groundingFallback),
+                    $toolCallsSummary,
+                );
             }
 
             $chatHistory[] = [
@@ -139,41 +133,43 @@ final class McpToolCallingService
                     $chatHistory[] = $this->toolErrorMessage(
                         id: $toolCall['id'],
                         toolName: $toolName,
-                        error: "MCP tool [{$toolName}] is not configured for the current tenant.",
+                        error: "Chat tool [{$toolName}] is not configured for the current tenant.",
                     );
                     $toolCallsSummary[$toolCallSummaryIndex] = $this->injectToolErrorMetadata(
                         $toolCall,
-                        "MCP tool [{$toolName}] is not configured for the current tenant.",
+                        "Chat tool [{$toolName}] is not configured for the current tenant.",
                     );
+
                     continue;
                 }
 
-                $isApiTool = isset($toolDefinition['api_route_id']);
-                if (! $isApiTool) {
-                    $toolCallsSummary[$toolCallSummaryIndex] = $this->appendInvokedToolCallMetadata(
-                        toolCall: $toolCall,
-                        server: $toolDefinition['server'],
-                    );
-                    $toolCall = $toolCallsSummary[$toolCallSummaryIndex];
-                }
+                $toolCallsSummary[$toolCallSummaryIndex] = $this->appendInvokedToolCallMetadata(
+                    toolCall: $toolCall,
+                    toolDefinition: $toolDefinition,
+                );
+                $toolCall = $toolCallsSummary[$toolCallSummaryIndex];
 
                 try {
-                    $toolResult = $isApiTool
-                        ? $this->invokeApiTool((int) $toolDefinition['api_route_id'], $toolCall['arguments'], $context)
-                        : $this->invoker->invoke(
-                            user: $user,
-                            server: $toolDefinition['server'],
-                            toolName: $toolName,
-                            toolInput: $toolCall['arguments'],
-                            context: $context,
-                        );
-                    $chatHistory[] = $this->toolResultMessage($toolCall, $toolResult);
+                    $outcome = $toolDefinition['source']->invoke(
+                        tool: $toolDefinition['source_tool'],
+                        arguments: $toolCall['arguments'],
+                        user: $user,
+                        context: $context + ['project_key' => $projectKey],
+                    );
                     $toolCallsSummary[$toolCallSummaryIndex] = $this->attachToolResultMetadata(
                         $toolCall,
-                        $toolResult,
-                        'ok',
-                        null,
+                        $outcome->payload,
+                        $outcome->status,
+                        $outcome->error,
+                        $outcome->metadata,
                     );
+                    if ($outcome->requiresInteraction()) {
+                        return $this->interactionResponse($llmResponse, $toolCallsSummary, $outcome->metadata);
+                    }
+                    if ($outcome->status === 'completed' && $outcome->error === null) {
+                        $groundingFallback = $this->groundingFallback($outcome->payload) ?? $groundingFallback;
+                    }
+                    $chatHistory[] = $this->toolResultMessage($toolCall, $outcome->payload);
                 } catch (\Throwable $exception) {
                     $chatHistory[] = $this->toolErrorMessage(
                         id: $toolCall['id'],
@@ -195,8 +191,9 @@ final class McpToolCallingService
         }
 
         $finalTurn = $this->ai->chatWithHistory($systemPrompt, $chatHistory, $options);
+
         return $this->injectToolCalls(
-            $finalTurn,
+            $this->withGroundingFallback($finalTurn, $groundingFallback),
             array_merge($toolCallsSummary, $this->normalizeProviderToolCalls($finalTurn->toolCalls)),
         );
     }
@@ -204,15 +201,6 @@ final class McpToolCallingService
     private function meetsToolCallingPrerequisites(?User $user): bool
     {
         if (! $user instanceof User) {
-            return false;
-        }
-
-        // Tool calling is available when EITHER external MCP servers are enabled
-        // OR the API-connector live tools are enabled — the latter is an
-        // independent tool source and must not be gated behind MCP.
-        $mcpEnabled = (bool) config('mcp.enabled', false);
-        $apiToolsEnabled = (bool) config('connector-api.chat_tools.enabled', true);
-        if (! $mcpEnabled && ! $apiToolsEnabled) {
             return false;
         }
 
@@ -224,208 +212,15 @@ final class McpToolCallingService
         return $this->ai->provider()->name();
     }
 
-    /**
-     * @return array<string, array{server?: McpServer, api_route_id?: int, schema: array<int, array<string, mixed>>|array<string, mixed>}>
-     */
+    /** @return array<string, array<string, mixed>> */
     private function buildToolIndex(User $user, ?string $projectKey = null): array
     {
-        $toolIndex = [];
-        $servers = $this->registry->activeServersForTenant();
-
-        foreach ($servers as $server) {
-            if (! $server instanceof McpServer) {
-                continue;
-            }
-
-            $tools = $this->extractToolsFromServer($server);
-            if ($tools === []) {
-                continue;
-            }
-
-            $enabledTools = $server->enabled_tools_json;
-            if (! is_array($enabledTools) || $enabledTools === []) {
-                continue;
-            }
-
-            $allowAllTools = $enabledTools === ['*'];
-            foreach ($tools as $tool) {
-                if (! is_array($tool)) {
-                    continue;
-                }
-                $name = (string) ($tool['name'] ?? '');
-                if ($name === '') {
-                    continue;
-                }
-
-                if (! $allowAllTools && ! in_array($name, $enabledTools, true)) {
-                    continue;
-                }
-
-                if (! $this->authorizer->canInvoke($user, $server, $name)) {
-                    continue;
-                }
-
-                if (array_key_exists($name, $toolIndex)) {
-                    continue;
-                }
-
-                $toolIndex[$name] = [
-                    'server' => $server,
-                    'schema' => $this->normalizeToolForProvider($tool, $name),
-                ];
-            }
-        }
-
-        $this->mergeApiTools($toolIndex, $projectKey);
-
-        return $toolIndex;
-    }
-
-    /**
-     * Merge the API-connector live tools (spec "Connettore API") into the index
-     * alongside the external MCP-server tools. Each API entry carries an
-     * `api_route_id` instead of a `server`; the dispatch loop routes it to the
-     * {@see ApiToolExecutor}. Config-gated (R43) and tenant-scoped (R30); an
-     * MCP tool already in the index wins a name collision (first-registered).
-     *
-     * @param  array<string, array<string, mixed>>  $toolIndex
-     */
-    private function mergeApiTools(array &$toolIndex, ?string $projectKey): void
-    {
-        if (! (bool) config('connector-api.chat_tools.enabled', true)) {
-            return;
-        }
-
-        $tenantId = $this->tenantContext->current();
-
-        foreach ($this->apiToolRegistry->activeToolsForTenant($tenantId, $projectKey) as $apiTool) {
-            $name = (string) ($apiTool['name'] ?? '');
-            if ($name === '' || array_key_exists($name, $toolIndex)) {
-                continue;
-            }
-
-            $toolIndex[$name] = [
-                'api_route_id' => (int) $apiTool['route_id'],
-                'schema' => $this->normalizeToolForProvider($apiTool['definition'], $name),
-            ];
-        }
-    }
-
-    /**
-     * Execute an API-connector tool call server-side via the package executor.
-     * The route is reloaded tenant-scoped (R30) — it may have been disabled
-     * between index build and invocation. Returns the sanitised tool_result
-     * (or a structured error the LLM can explain, never a throw — R14).
-     *
-     * @param  array<string, mixed>  $arguments
-     * @param  array<string, mixed>  $context
-     * @return array<string, mixed>
-     */
-    private function invokeApiTool(int $routeId, array $arguments, array $context): array
-    {
-        $route = ApiRoute::query()
-            ->forTenant($this->tenantContext->current())
-            ->with('parameters')
-            ->find($routeId);
-
-        if ($route === null) {
-            return ['error' => 'This API tool is no longer available.'];
-        }
-
-        $prepared = $this->apiToolRequestContext->apply($route, $arguments, $context);
-
-        return $this->apiToolExecutor->execute(
-            $prepared['route'],
-            $prepared['arguments'],
-            $prepared['context'],
-        );
-    }
-
-    /**
-     * @return list<array<string, mixed>>
-     */
-    private function extractToolsFromServer(McpServer $server): array
-    {
-        $handshake = $server->handshake_response_json;
-        if (! is_array($handshake)) {
-            return [];
-        }
-
-        $candidateTools = data_get($handshake, 'tools');
-        if (! is_array($candidateTools)) {
-            $candidateTools = data_get($handshake, 'capabilities.tools');
-        }
-        if (! is_array($candidateTools)) {
-            $candidateTools = data_get($handshake, 'tool.list');
-        }
-
-        if (! is_array($candidateTools)) {
-            return [];
-        }
-
-        if (array_is_list($candidateTools)) {
-            return $candidateTools;
-        }
-
-        $tools = [];
-        foreach ($candidateTools as $key => $tool) {
-            if (is_array($tool)) {
-                if (! array_key_exists('name', $tool)) {
-                    $tool['name'] = (string) $key;
-                }
-                $tools[] = $tool;
-            } elseif (is_string($tool)) {
-                $tools[] = ['name' => $tool];
-            }
-        }
-
-        return $tools;
-    }
-
-    /**
-     * OpenAI-compatible function schema:
-     * {
-     *   type: 'function',
-     *   function: {
-     *     name: string,
-     *     description: string,
-     *     parameters: array
-     *   }
-     * }
-     *
-     * @param array<string, mixed>  $tool
-     * @return array<string, mixed>
-     */
-    private function normalizeToolForProvider(array $tool, string $name): array
-    {
-        $description = data_get($tool, 'description', '');
-        $inputSchema = data_get($tool, 'inputSchema', data_get($tool, 'input_schema'));
-        if (! is_array($inputSchema)) {
-            $inputSchema = data_get($tool, 'parameters', []);
-        }
-        if (! is_array($inputSchema)) {
-            $inputSchema = [];
-        }
-        if (! array_key_exists('type', $inputSchema)) {
-            $inputSchema['type'] = 'object';
-        }
-        if (! array_key_exists('properties', $inputSchema)) {
-            $inputSchema['properties'] = [];
-        }
-
-        return [
-            'type' => 'function',
-            'function' => [
-                'name' => $name,
-                'description' => is_string($description) ? $description : '',
-                'parameters' => $inputSchema,
-            ],
-        ];
+        return $this->sources->toolIndex($user, $projectKey);
     }
 
     /**
      * @param  array<string, mixed>  $options
-     * @param  array<string, array{server: McpServer, schema: array<string, mixed>}>  $toolIndex
+     * @param  array<string, array<string, mixed>>  $toolIndex
      * @return array<string, mixed>
      */
     /**
@@ -460,7 +255,7 @@ final class McpToolCallingService
     private function toolTurnOptions(array $options, array $toolIndex): array
     {
         $toolsPayload = array_map(
-            static fn(array $toolDefinition): array => $toolDefinition['schema'],
+            static fn (array $toolDefinition): array => $toolDefinition['schema'],
             array_values($toolIndex),
         );
 
@@ -473,7 +268,6 @@ final class McpToolCallingService
     }
 
     /**
-     * @param  mixed  $rawToolCalls
      * @return list<array{id:string,name:string,arguments:array,arguments_json:string}>
      */
     private function normalizeProviderToolCalls(mixed $rawToolCalls): array
@@ -488,7 +282,7 @@ final class McpToolCallingService
                 continue;
             }
 
-            $id = (string) data_get($toolCall, 'id', 'tool_' . bin2hex(random_bytes(8)));
+            $id = (string) data_get($toolCall, 'id', 'tool_'.bin2hex(random_bytes(8)));
             $name = (string) data_get($toolCall, 'function.name', '');
             if ($name === '') {
                 $name = (string) data_get($toolCall, 'name', '');
@@ -518,7 +312,6 @@ final class McpToolCallingService
     }
 
     /**
-     * @param  mixed  $rawArguments
      * @return array<string, mixed>
      */
     private function normalizeToolArguments(mixed $rawArguments): array
@@ -549,7 +342,7 @@ final class McpToolCallingService
     private function normalizeToolCallResultShape(array $toolCall): array
     {
         return [
-            'id' => (string) ($toolCall['id'] ?? ('tool_' . bin2hex(random_bytes(8)))),
+            'id' => (string) ($toolCall['id'] ?? ('tool_'.bin2hex(random_bytes(8)))),
             'name' => (string) ($toolCall['name'] ?? ''),
             'status' => (string) ($toolCall['status'] ?? 'pending'),
             'arguments' => is_array($toolCall['arguments'] ?? null) ? $toolCall['arguments'] : [],
@@ -578,7 +371,7 @@ final class McpToolCallingService
     private function toProviderToolCalls(array $toolCalls): array
     {
         return array_map(
-            static fn(array $toolCall): array => [
+            static fn (array $toolCall): array => [
                 'id' => (string) $toolCall['id'],
                 'type' => 'function',
                 'function' => [
@@ -615,7 +408,7 @@ final class McpToolCallingService
     {
         return [
             'role' => 'tool',
-            'tool_call_id' => $toolCall['id'] ?? ('tool_' . bin2hex(random_bytes(8))),
+            'tool_call_id' => $toolCall['id'] ?? ('tool_'.bin2hex(random_bytes(8))),
             'name' => $toolCall['name'],
             'content' => $this->encodeToolResult($result),
         ];
@@ -630,13 +423,21 @@ final class McpToolCallingService
         if ($json === false) {
             return '';
         }
+
         return $json;
     }
 
-    private function appendInvokedToolCallMetadata(array $toolCall, McpServer $server): array
+    /** @param array<string, mixed> $toolDefinition */
+    private function appendInvokedToolCallMetadata(array $toolCall, array $toolDefinition): array
     {
-        $toolCall['server_id'] = $server->id;
-        $toolCall['server_name'] = $server->name;
+        $provenance = is_array($toolDefinition['provenance'] ?? null)
+            ? $toolDefinition['provenance']
+            : [];
+        $toolCall['source'] = $toolDefinition['source_key'] ?? null;
+        $toolCall['server_id'] = $provenance['server_id'] ?? null;
+        $toolCall['server_name'] = $provenance['server_name'] ?? null;
+        $toolCall['provenance'] = $provenance;
+
         return $toolCall;
     }
 
@@ -645,17 +446,54 @@ final class McpToolCallingService
         mixed $result,
         string $status,
         ?string $error,
+        array $metadata = [],
     ): array {
         $toolCall['status'] = $status;
         $toolCall['result'] = is_array($result) ? ['size' => count($result)] : null;
         $toolCall['error'] = $error;
+        $toolCall['source'] = $metadata['source'] ?? $toolCall['source'] ?? null;
+        $toolCall['server_id'] = $metadata['server_id'] ?? $toolCall['server_id'] ?? null;
+        $toolCall['server_name'] = $metadata['server_name'] ?? $toolCall['server_name'] ?? null;
+        $toolCall['pending_interaction_id'] = $metadata['pending_interaction_id'] ?? null;
+        $toolCall['prompt'] = is_array($metadata['prompt'] ?? null) ? $metadata['prompt'] : null;
+        $toolCall['provenance'] = array_filter(array_merge(
+            is_array($toolCall['provenance'] ?? null) ? $toolCall['provenance'] : [],
+            $metadata,
+        ), static fn (mixed $value): bool => $value !== null);
+
         return $toolCall;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $toolCallsSummary
+     * @param  array<string, mixed>  $metadata
+     */
+    private function interactionResponse(AiResponse $response, array $toolCallsSummary, array $metadata): AiResponse
+    {
+        $message = data_get($metadata, 'prompt.message');
+        if (! is_string($message) || $message === '') {
+            $message = $response->content !== ''
+                ? $response->content
+                : 'This tool call requires your input before the conversation can continue.';
+        }
+
+        return new AiResponse(
+            content: $message,
+            provider: $response->provider,
+            model: $response->model,
+            promptTokens: $response->promptTokens,
+            completionTokens: $response->completionTokens,
+            totalTokens: $response->totalTokens,
+            finishReason: 'tool_interaction',
+            toolCalls: $toolCallsSummary,
+        );
     }
 
     private function injectToolErrorMetadata(array $toolCall, string $error): array
     {
         $toolCall['status'] = 'error';
         $toolCall['error'] = $error;
+
         return $toolCall;
     }
 
@@ -671,5 +509,33 @@ final class McpToolCallingService
             finishReason: $response->finishReason,
             toolCalls: $toolCallsSummary,
         );
+    }
+
+    private function withGroundingFallback(AiResponse $response, ?string $fallback): AiResponse
+    {
+        if ($fallback === null || trim($response->content) !== self::SELF_REFUSAL_SENTINEL) {
+            return $response;
+        }
+
+        return $response->withContent($fallback);
+    }
+
+    private function groundingFallback(mixed $payload): ?string
+    {
+        $candidate = data_get($payload, 'artifact.text');
+        if (! is_string($candidate) || trim($candidate) === '') {
+            $candidate = data_get($payload, 'text');
+        }
+        if (! is_string($candidate) || trim($candidate) === '') {
+            $candidate = json_encode(
+                $payload,
+                JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE,
+            );
+        }
+        if (! is_string($candidate) || trim($candidate) === '') {
+            return null;
+        }
+
+        return mb_substr(trim($candidate), 0, 12_000);
     }
 }
