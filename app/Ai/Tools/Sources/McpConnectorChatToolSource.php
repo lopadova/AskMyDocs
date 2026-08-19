@@ -48,6 +48,9 @@ final readonly class McpConnectorChatToolSource implements ChatToolSourceContrac
             'prompt' => $outcome->prompt,
             'task_id' => $outcome->taskId,
             'task' => $outcome->task,
+            'app' => is_array(data_get($payload, 'artifact.app'))
+                ? data_get($payload, 'artifact.app')
+                : null,
         ];
 
         return new ChatToolInvocationResult(

@@ -458,6 +458,7 @@ final class McpToolCallingService
         $toolCall['prompt'] = is_array($metadata['prompt'] ?? null) ? $metadata['prompt'] : null;
         $toolCall['task_id'] = $metadata['task_id'] ?? null;
         $toolCall['task'] = is_array($metadata['task'] ?? null) ? $metadata['task'] : null;
+        $toolCall['app'] = is_array($metadata['app'] ?? null) ? $metadata['app'] : null;
         $toolCall['provenance'] = array_filter(array_merge(
             is_array($toolCall['provenance'] ?? null) ? $toolCall['provenance'] : [],
             $metadata,

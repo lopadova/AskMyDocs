@@ -29,4 +29,21 @@ return [
         'client_name' => env('APP_NAME', 'AskMyDocs'),
         'client_uri' => env('APP_URL'),
     ],
+
+    'apps' => [
+        // Must be a distinct, cookie-free origin pointing back to the static
+        // `/mcp-apps/sandbox` route (for example `https://mcp-apps.example`).
+        'sandbox_origin' => env('MCP_CONNECTOR_APP_SANDBOX_ORIGIN'),
+        'sandbox_path' => env('MCP_CONNECTOR_APP_SANDBOX_PATH', '/mcp-apps/sandbox'),
+        'host_origins' => array_values(array_filter(array_map(
+            'trim',
+            explode(',', (string) env('MCP_CONNECTOR_APP_HOST_ORIGINS', (string) env('APP_URL', ''))),
+        ))),
+        'allow_insecure_local' => (bool) env('MCP_CONNECTOR_APP_ALLOW_INSECURE_LOCAL', false),
+        'allow_nested_frames' => (bool) env('MCP_CONNECTOR_APP_ALLOW_NESTED_FRAMES', false),
+        'allowed_permissions' => array_values(array_filter(array_map(
+            'trim',
+            explode(',', (string) env('MCP_CONNECTOR_APP_PERMISSIONS', '')),
+        ))),
+    ],
 ];
