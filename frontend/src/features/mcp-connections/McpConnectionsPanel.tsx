@@ -42,9 +42,10 @@ export function McpConnectionsPanel({ scope }: { scope: McpConnectionScope }) {
         onError: (cause) => setError(toAdminError(cause).message),
     });
     const action = useMutation({
-        mutationFn: async (request: { kind: 'discover' | 'disconnect' | 'remove'; id: string }) => {
+        mutationFn: async (request: { kind: 'discover' | 'disconnect' | 'remove' | 'sync-resources'; id: string }) => {
             if (request.kind === 'discover') return mcpConnectionsApi.discover(scope, request.id);
             if (request.kind === 'disconnect') return mcpConnectionsApi.disconnect(scope, request.id);
+            if (request.kind === 'sync-resources') return mcpConnectionsApi.syncResources(request.id);
             return mcpConnectionsApi.remove(scope, request.id);
         },
         onSuccess: refresh,
@@ -53,6 +54,12 @@ export function McpConnectionsPanel({ scope }: { scope: McpConnectionScope }) {
     const toolMutation = useMutation({
         mutationFn: (request: { connectionId: string; toolId: number; enabled: boolean }) =>
             mcpConnectionsApi.setTool(scope, request.connectionId, request.toolId, request.enabled),
+        onSuccess: refresh,
+        onError: (cause) => setError(toAdminError(cause).message),
+    });
+    const resourceMutation = useMutation({
+        mutationFn: (request: { connectionId: string; resourceId: number; enabled: boolean }) =>
+            mcpConnectionsApi.setResource(request.connectionId, request.resourceId, request.enabled),
         onSuccess: refresh,
         onError: (cause) => setError(toAdminError(cause).message),
     });
@@ -66,7 +73,7 @@ export function McpConnectionsPanel({ scope }: { scope: McpConnectionScope }) {
     const state = query.isLoading ? 'loading' : query.isError ? 'error' : 'ready';
     const title = scope === 'shared' ? 'MCP live connections' : 'Connected Apps';
     const subtitle = scope === 'shared'
-        ? 'Shared MCP servers provide fresh tools to every authorised chat in this tenant.'
+        ? 'Shared MCP servers provide fresh chat tools and selected resources for the project knowledge base.'
         : 'Connect your own MCP apps. Personal credentials and tools are visible only to you.';
 
     function submit(event: FormEvent) {
@@ -144,10 +151,11 @@ export function McpConnectionsPanel({ scope }: { scope: McpConnectionScope }) {
                 <ConnectionCard
                     key={connection.public_id}
                     connection={connection}
-                    busy={action.isPending || toolMutation.isPending || oauth.isPending}
+                    busy={action.isPending || toolMutation.isPending || resourceMutation.isPending || oauth.isPending}
                     onAction={(kind) => action.mutate({ kind, id: connection.public_id })}
                     onOAuth={() => oauth.mutate(connection.public_id)}
                     onTool={(toolId, enabled) => toolMutation.mutate({ connectionId: connection.public_id, toolId, enabled })}
+                    onResource={(resourceId, enabled) => resourceMutation.mutate({ connectionId: connection.public_id, resourceId, enabled })}
                 />
             ))}
         </section>
@@ -160,12 +168,14 @@ function ConnectionCard({
     onAction,
     onOAuth,
     onTool,
+    onResource,
 }: {
     connection: McpConnectionDto;
     busy: boolean;
-    onAction: (kind: 'discover' | 'disconnect' | 'remove') => void;
+    onAction: (kind: 'discover' | 'disconnect' | 'remove' | 'sync-resources') => void;
     onOAuth: () => void;
     onTool: (toolId: number, enabled: boolean) => void;
+    onResource: (resourceId: number, enabled: boolean) => void;
 }) {
     const oauthRequired = connection.server.auth_mode === 'oauth'
         || connection.status === 'reauthorization_required'
@@ -190,6 +200,11 @@ function ConnectionCard({
                 <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
                     {oauthRequired && <button type="button" disabled={busy} onClick={onOAuth} style={smallButtonStyle}>Connect OAuth</button>}
                     <button type="button" disabled={busy} onClick={() => onAction('discover')} style={smallButtonStyle}>Discover</button>
+                    {connection.mode === 'shared' && connection.resources.some((resource) => resource.enabled) && (
+                        <button type="button" disabled={busy || connection.connector_installation_id === null} onClick={() => onAction('sync-resources')} style={smallButtonStyle}>
+                            Sync resources
+                        </button>
+                    )}
                     <button type="button" disabled={busy} onClick={() => onAction('disconnect')} style={smallButtonStyle}>Disconnect</button>
                     <button type="button" disabled={busy} onClick={() => onAction('remove')} style={dangerButtonStyle}>Remove</button>
                 </div>
@@ -210,6 +225,28 @@ function ConnectionCard({
                         <span style={riskStyle(tool.risk)}>{tool.risk}</span>
                         {tool.confirmation_required && <span style={mutedBadgeStyle}>confirmation</span>}
                         {tool.removed_at && <span style={mutedBadgeStyle}>removed</span>}
+                    </label>
+                ))}
+            </div>
+            <div style={{ marginTop: 14, borderTop: '1px solid var(--hairline)', paddingTop: 12 }}>
+                <div style={{ fontSize: 12, fontWeight: 650, color: 'var(--fg-2)', marginBottom: 8 }}>
+                    Resources ({connection.resources.length})
+                </div>
+                {connection.resources.length === 0 ? (
+                    <div style={{ color: 'var(--fg-3)', fontSize: 12 }}>The server reported no ingestible resources.</div>
+                ) : connection.resources.map((resource) => (
+                    <label key={resource.id} style={toolRowStyle}>
+                        {connection.mode === 'shared' ? (
+                            <input type="checkbox" checked={resource.enabled} disabled={busy || resource.removed_at !== null} onChange={(event) => onResource(resource.id, event.target.checked)} />
+                        ) : <span style={mutedBadgeStyle}>catalog only</span>}
+                        <span style={{ flex: 1, minWidth: 180 }}>
+                            <strong style={{ display: 'block', color: 'var(--fg-1)', fontSize: 12.5 }}>{resource.title ?? resource.name ?? resource.uri}</strong>
+                            <span style={{ color: 'var(--fg-3)', fontSize: 11.5, overflowWrap: 'anywhere' }}>{resource.uri}</span>
+                        </span>
+                        {resource.mime_type && <span style={mutedBadgeStyle}>{resource.mime_type}</span>}
+                        {resource.last_ingested_at && <span style={mutedBadgeStyle}>ingested</span>}
+                        {resource.ingest_error_json && <span style={{ ...mutedBadgeStyle, color: '#fca5a5' }}>error</span>}
+                        {resource.removed_at && <span style={mutedBadgeStyle}>removed</span>}
                     </label>
                 ))}
             </div>
