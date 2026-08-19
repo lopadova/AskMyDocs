@@ -54,6 +54,7 @@ export type SidebarSection =
     | 'app-settings'
     | 'digest'
     | 'my-kb'
+    | 'connected-apps'
     | 'engagement';
 
 export interface NavItem {
@@ -84,6 +85,7 @@ export const NAV_GROUPS: NavGroup[] = [
             { id: 'chat', label: 'Chat', icon: 'Chat', route: '/app/$teamHash/chat' },
             // v8.15/W4.2 — personal "your KB" dashboard; any authenticated user.
             { id: 'my-kb', label: 'My KB', icon: 'Sparkles', route: '/app/me' },
+            { id: 'connected-apps', label: 'Connected Apps', icon: 'Link', route: '/app/connected-apps' },
             // v8.15/W3.2 — per-user digest (feed + preferences); any authenticated user.
             { id: 'digest', label: 'Digest', icon: 'Calendar', route: '/app/digest' },
         ],
