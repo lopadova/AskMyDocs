@@ -60,6 +60,7 @@ import { DigestFeedCard } from '../features/digest/DigestFeedCard';
 import { DigestPreferences } from '../features/digest/DigestPreferences';
 import { MeDashboard } from '../features/dashboard/MeDashboard';
 import { EngagementPanel } from '../features/admin/engagement/EngagementPanel';
+import { ConnectedAppsView } from '../features/mcp-connections/ConnectedAppsView';
 import { GamificationInsightsPanel } from '../features/admin/engagement/GamificationInsightsPanel';
 import { AdminNotificationDefaultsGrid } from '../features/notifications/AdminNotificationDefaultsGrid';
 import { WidgetAdminView } from '../features/admin/widget/WidgetAdminView';
@@ -1302,6 +1303,12 @@ const meDashboardRoute = createRoute({
     component: MeDashboardRoute,
 });
 
+const connectedAppsRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'connected-apps',
+    component: ConnectedAppsView,
+});
+
 // v8.15/W4.2 — admin engagement analytics. RequireRole wraps the panel here in
 // the route component (viewer/editor land on AdminForbidden, not a crash).
 function AdminEngagementRoute() {
@@ -1442,6 +1449,7 @@ const routeTree = rootRoute.addChildren([
         teamRoute.addChildren(teamChildren),
         digestRoute,
         meDashboardRoute,
+        connectedAppsRoute,
     ]),
 ]);
 

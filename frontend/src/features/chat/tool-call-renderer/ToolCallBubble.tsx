@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { api } from '../../../lib/api';
 import { ToolResultPreview } from './ToolResultPreview';
 
 /*
@@ -11,7 +12,7 @@ import { ToolResultPreview } from './ToolResultPreview';
  *   denied        → lock + denial reason
  */
 
-export type ToolCallStatus = 'pending' | 'ok' | 'error' | 'timeout' | 'denied';
+export type ToolCallStatus = 'pending' | 'ok' | 'error' | 'timeout' | 'denied' | 'confirmation_required' | 'input_required';
 
 export interface ToolCallData {
     id: string;
@@ -22,23 +23,69 @@ export interface ToolCallData {
     arguments?: Record<string, unknown> | null;
     result?: Record<string, unknown> | null;
     error?: string | null;
+    pending_interaction_id?: string | null;
+    prompt?: Record<string, unknown> | null;
 }
 
 interface ToolCallBubbleProps {
     toolCall: ToolCallData;
+    conversationId?: number;
 }
 
-export function ToolCallBubble({ toolCall }: ToolCallBubbleProps) {
+export function ToolCallBubble({ toolCall, conversationId }: ToolCallBubbleProps) {
     const [expanded, setExpanded] = useState(false);
+    const [interactionStatus, setInteractionStatus] = useState<ToolCallStatus | null>(null);
+    const [interactionResult, setInteractionResult] = useState<unknown>(null);
+    const [interactionError, setInteractionError] = useState<string | null>(null);
+    const [inputJson, setInputJson] = useState('{}');
+    const [submitting, setSubmitting] = useState(false);
 
-    const palette = paletteForStatus(toolCall.status);
-    const stateLabel = labelForStatus(toolCall.status);
+    const effectiveStatus = interactionStatus ?? toolCall.status;
+    const palette = paletteForStatus(effectiveStatus);
+    const stateLabel = labelForStatus(effectiveStatus);
+    const requiresInteraction = interactionStatus === null
+        && (toolCall.status === 'confirmation_required' || toolCall.status === 'input_required')
+        && toolCall.pending_interaction_id
+        && conversationId !== undefined;
+
+    async function respond(response: Record<string, unknown>) {
+        if (!toolCall.pending_interaction_id || conversationId === undefined) return;
+        setSubmitting(true);
+        setInteractionError(null);
+        try {
+            const { data } = await api.post<{ status: string; artifact?: unknown }>(
+                `/api/conversations/mcp/interactions/${toolCall.pending_interaction_id}`,
+                { conversation_id: String(conversationId), response },
+            );
+            setInteractionResult(data.artifact ?? data);
+            setInteractionStatus(data.status === 'declined' ? 'denied' : data.status === 'error' ? 'error' : 'ok');
+            setExpanded(true);
+        } catch (cause) {
+            const message = (cause as { response?: { data?: { message?: string; error?: string } }; message?: string })
+                ?.response?.data;
+            setInteractionError(message?.message ?? message?.error ?? 'Could not resume this MCP tool call.');
+        } finally {
+            setSubmitting(false);
+        }
+    }
+
+    function submitInput() {
+        try {
+            const parsed: unknown = JSON.parse(inputJson);
+            if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+                throw new Error('Input responses must be a JSON object.');
+            }
+            void respond(parsed as Record<string, unknown>);
+        } catch (cause) {
+            setInteractionError(cause instanceof Error ? cause.message : 'Invalid JSON input.');
+        }
+    }
 
     return (
         <div
             data-testid={`chat-tool-call-${toolCall.id}`}
             data-tool-name={toolCall.name}
-            data-tool-status={toolCall.status}
+            data-tool-status={effectiveStatus}
             role="group"
             aria-label={`Tool call ${toolCall.name} — ${stateLabel}`}
             style={{
@@ -71,7 +118,7 @@ export function ToolCallBubble({ toolCall }: ToolCallBubbleProps) {
                     font: 'inherit',
                 }}
             >
-                <StatusIcon status={toolCall.status} />
+                <StatusIcon status={effectiveStatus} />
                 <span style={{ fontWeight: 600 }}>{toolCall.name}</span>
                 <span
                     aria-hidden="true"
@@ -101,6 +148,27 @@ export function ToolCallBubble({ toolCall }: ToolCallBubbleProps) {
                     {expanded ? '▾' : '▸'}
                 </span>
             </button>
+
+            {requiresInteraction && (
+                <div data-testid={`chat-tool-call-${toolCall.id}-interaction`} style={{ marginTop: 10, display: 'grid', gap: 8 }}>
+                    {typeof toolCall.prompt?.message === 'string' && (
+                        <div style={{ color: 'var(--fg-1)' }}>{toolCall.prompt.message}</div>
+                    )}
+                    {toolCall.status === 'confirmation_required' ? (
+                        <div style={{ display: 'flex', gap: 8 }}>
+                            <button type="button" disabled={submitting} onClick={() => void respond({ confirmed: true })} style={interactionButtonStyle}>Confirm</button>
+                            <button type="button" disabled={submitting} onClick={() => void respond({ confirmed: false })} style={interactionButtonStyle}>Decline</button>
+                        </div>
+                    ) : (
+                        <>
+                            {toolCall.prompt?.inputRequests && <ToolResultPreview value={toolCall.prompt.inputRequests} />}
+                            <textarea aria-label="MCP input responses" value={inputJson} onChange={(event) => setInputJson(event.target.value)} rows={4} style={interactionInputStyle} />
+                            <button type="button" disabled={submitting} onClick={submitInput} style={interactionButtonStyle}>Send input</button>
+                        </>
+                    )}
+                    {interactionError && <div role="alert" style={{ color: 'var(--danger-fg)' }}>{interactionError}</div>}
+                </div>
+            )}
 
             {expanded ? (
                 <div
@@ -132,6 +200,11 @@ export function ToolCallBubble({ toolCall }: ToolCallBubbleProps) {
                     {toolCall.result ? (
                         <Section title="Result" testid={`chat-tool-call-${toolCall.id}-result`}>
                             <ToolResultPreview value={toolCall.result} />
+                        </Section>
+                    ) : null}
+                    {interactionResult !== null ? (
+                        <Section title="Resumed result" testid={`chat-tool-call-${toolCall.id}-resumed-result`}>
+                            <ToolResultPreview value={interactionResult} />
                         </Section>
                     ) : null}
                 </div>
@@ -245,6 +318,14 @@ function paletteForStatus(status: ToolCallStatus) {
                 color: '#cbd5e1',
                 iconFill: 'rgba(148,163,184,0.85)',
             };
+        case 'confirmation_required':
+        case 'input_required':
+            return {
+                background: 'rgba(245,158,11,0.08)',
+                border: 'rgba(245,158,11,0.32)',
+                color: '#fde68a',
+                iconFill: 'rgba(245,158,11,0.85)',
+            };
         case 'pending':
         default:
             return {
@@ -268,7 +349,34 @@ function labelForStatus(status: ToolCallStatus): string {
             return 'Timeout';
         case 'denied':
             return 'Denied';
+        case 'confirmation_required':
+            return 'Confirmation required';
+        case 'input_required':
+            return 'Input required';
         default:
             return status;
     }
 }
+
+const interactionButtonStyle: React.CSSProperties = {
+    width: 'fit-content',
+    border: '1px solid rgba(245,158,11,.4)',
+    borderRadius: 7,
+    background: 'rgba(245,158,11,.12)',
+    color: 'var(--fg-0)',
+    padding: '6px 10px',
+    cursor: 'pointer',
+    font: 'inherit',
+};
+
+const interactionInputStyle: React.CSSProperties = {
+    width: '100%',
+    boxSizing: 'border-box',
+    border: '1px solid var(--border-2)',
+    borderRadius: 7,
+    background: 'var(--bg-2)',
+    color: 'var(--fg-0)',
+    padding: 8,
+    fontFamily: 'var(--font-mono, ui-monospace)',
+    fontSize: 12,
+};

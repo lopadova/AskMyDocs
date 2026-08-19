@@ -309,12 +309,14 @@ export function getConfidence(m: RenderableMessage): number | null {
 export interface RenderableToolCall {
     id: string;
     name: string;
-    status: 'pending' | 'ok' | 'error' | 'timeout' | 'denied';
+    status: 'pending' | 'ok' | 'error' | 'timeout' | 'denied' | 'confirmation_required' | 'input_required';
     server_name?: string | null;
     server_id?: number | null;
     arguments?: Record<string, unknown> | null;
     result?: Record<string, unknown> | null;
     error?: string | null;
+    pending_interaction_id?: string | null;
+    prompt?: Record<string, unknown> | null;
 }
 
 export function getToolCalls(m: RenderableMessage): RenderableToolCall[] {
@@ -349,8 +351,11 @@ export function getToolCalls(m: RenderableMessage): RenderableToolCall[] {
 function normalizeToolCall(raw: unknown): RenderableToolCall {
     const record = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
     const status = String(record.status ?? 'ok');
-    const validStatus: RenderableToolCall['status'] = ['pending', 'ok', 'error', 'timeout', 'denied'].includes(status)
-        ? (status as RenderableToolCall['status'])
+    const mappedStatus = status === 'completed' || status === 'task_accepted' ? 'ok' : status;
+    const validStatus: RenderableToolCall['status'] = [
+        'pending', 'ok', 'error', 'timeout', 'denied', 'confirmation_required', 'input_required',
+    ].includes(mappedStatus)
+        ? (mappedStatus as RenderableToolCall['status'])
         : 'ok';
     return {
         id: String(record.id ?? ''),
@@ -367,6 +372,10 @@ function normalizeToolCall(raw: unknown): RenderableToolCall {
                 ? (record.result as Record<string, unknown>)
                 : null,
         error: typeof record.error === 'string' ? record.error : null,
+        pending_interaction_id: typeof record.pending_interaction_id === 'string' ? record.pending_interaction_id : null,
+        prompt: record.prompt && typeof record.prompt === 'object' && !Array.isArray(record.prompt)
+            ? (record.prompt as Record<string, unknown>)
+            : null,
     };
 }
 

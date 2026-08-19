@@ -19,6 +19,7 @@ import {
 } from './connection-vm';
 import type { ConnectionActions, ConnectionInFlight } from './connections-shared';
 import { CONNECTORS_STYLES } from './connectors-styles';
+import { McpConnectionsPanel } from '../../mcp-connections/McpConnectionsPanel';
 import {
     adminConnectorsApi,
     type ConfigureConnectorPayload,
@@ -949,6 +950,8 @@ export function ConnectorsView() {
                         </section>
                     </>
                 )}
+
+                <McpConnectionsPanel scope="shared" />
             </div>
 
             {modal?.kind === 'credential-add' && (
