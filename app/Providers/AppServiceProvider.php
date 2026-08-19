@@ -4,6 +4,11 @@ namespace App\Providers;
 
 use App\Agent\DefaultAgentRunHandler;
 use App\Contracts\AgentRunHandler;
+use App\Ai\Tools\ChatToolSourceContract;
+use App\Ai\Tools\ChatToolSourceRegistry;
+use App\Ai\Tools\Sources\ApiConnectorChatToolSource;
+use App\Ai\Tools\Sources\LegacyMcpChatToolSource;
+use App\Ai\Tools\Sources\McpConnectorChatToolSource;
 use App\Compliance\AskMyDocsUserDataDeleter;
 use App\Compliance\AskMyDocsUserDataExporter;
 use App\Compliance\RagRefusalQualityMetric;
@@ -11,6 +16,7 @@ use App\Console\Commands\AuthGrantCommand;
 use App\Console\Commands\CollectionsReevaluateCommand;
 use App\Console\Commands\ComplianceDigestQuarterlyCommand;
 use App\Console\Commands\EvalNightlyCommand;
+use App\Console\Commands\ImportLegacyMcpServersCommand;
 use App\Console\Commands\InsightsComputeCommand;
 use App\Console\Commands\KbDeleteCommand;
 use App\Console\Commands\KbIngestCommand;
@@ -30,6 +36,7 @@ use App\Connectors\HostIngestionBridge;
 use App\Mcp\Adapters\EloquentMcpServerRegistry;
 use App\Mcp\Adapters\HostBridge;
 use App\Mcp\Adapters\McpToolAuthorizerAdapter;
+use App\Mcp\Audit\McpConnectorInvocationAuditListener;
 use App\Models\KnowledgeDocument;
 use Padosoft\AskMyDocsMcpPack\Contracts\McpHostBridgeContract;
 use Padosoft\AskMyDocsMcpPack\Contracts\McpServerRegistryContract;
@@ -42,6 +49,7 @@ use Padosoft\AskMyDocsConnectorBase\Contracts\ConnectorIngestionContract;
 use Padosoft\AskMyDocsConnectorBase\Support\TenantContext as PackageTenantContext;
 use Padosoft\AskMyDocsConnectorApi\Contracts\ResponseAnalyst;
 use Padosoft\AskMyDocsConnectorApi\Contracts\ToolDescriptionAssistant;
+use Padosoft\AskMyDocsConnectorMcp\Events\McpToolInvocationFinished;
 use Padosoft\EvidenceRiskReview\Contracts\EvidenceReviewerLlmContract;
 use Padosoft\EvidenceRiskReview\Contracts\TenantResolver as EvidenceTenantResolver;
 use App\Invitations\ProjectMembershipProvisioner;
@@ -54,6 +62,7 @@ use App\Services\Admin\Pdf\PdfRendererFactory;
 use App\Services\Kb\Pipeline\PipelineRegistry;
 use App\Support\KbDiskWriteSafety;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
@@ -135,6 +144,21 @@ class AppServiceProvider extends ServiceProvider
             return $packageCtx;
         });
 
+        // Live tools from the legacy runtime, API connector and MCP connector
+        // share one host-owned catalogue and execution contract.
+        $this->app->singleton(LegacyMcpChatToolSource::class);
+        $this->app->singleton(ApiConnectorChatToolSource::class);
+        $this->app->singleton(McpConnectorChatToolSource::class);
+        $this->app->tag([
+            LegacyMcpChatToolSource::class,
+            ApiConnectorChatToolSource::class,
+            McpConnectorChatToolSource::class,
+        ], ChatToolSourceContract::class);
+        $this->app->singleton(
+            ChatToolSourceRegistry::class,
+            fn ($app) => new ChatToolSourceRegistry($app->tagged(ChatToolSourceContract::class)),
+        );
+
         // v4.6 — bind the IoC contract that connector packages call
         // into for ingest dispatch, PII redaction, audit emission,
         // and provider-side deletion. R26 redaction + R30 tenant
@@ -196,6 +220,10 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(McpHostBridgeContract::class, HostBridge::class);
         $this->app->singleton(McpServerRegistryContract::class, EloquentMcpServerRegistry::class);
         $this->app->singleton(McpToolAuthorizerContract::class, McpToolAuthorizerAdapter::class);
+        $this->app->make(Dispatcher::class)->listen(
+            McpToolInvocationFinished::class,
+            McpConnectorInvocationAuditListener::class,
+        );
 
         // v8.21 (Ciclo 2) — observe ConnectorSyncJob via the queue lifecycle to
         // record per-run rows in `connector_sync_runs` (the package job emits no
@@ -884,6 +912,7 @@ class AppServiceProvider extends ServiceProvider
             CollectionsReevaluateCommand::class,
             // v8.0/W7.4 — consumer MCP debugger bootstrap snippet.
             McpConnectCommand::class,
+            ImportLegacyMcpServersCommand::class,
             // v4.3/W3 — nightly eval-harness regression sentinel.
             EvalNightlyCommand::class,
             // v8.0/W8.5 — quarterly compliance digest (tenant opt-in).

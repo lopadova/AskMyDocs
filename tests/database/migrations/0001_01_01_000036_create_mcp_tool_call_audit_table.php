@@ -18,14 +18,19 @@ return new class extends Migration
             // user_id when available.
             $table->foreignId('user_id')->nullable()->constrained('users')->cascadeOnDelete();
             $table->string('actor', 100)->nullable();
-            $table->foreignId('mcp_server_id')->constrained('mcp_servers')->cascadeOnDelete();
+            $table->string('source', 40)->default('legacy_mcp');
+            $table->foreignId('mcp_server_id')->nullable()->constrained('mcp_servers')->cascadeOnDelete();
             // v7.0/W6.3 — denormalised server name for audit
             // reports; populated by the package writer alongside
             // the FK so reports don't need to join `mcp_servers`.
             $table->string('mcp_server_name', 100)->nullable();
+            $table->string('mcp_connection_id', 64)->nullable();
+            $table->uuid('invocation_id')->nullable();
             $table->foreignId('conversation_id')->nullable()->constrained('conversations')->nullOnDelete();
             $table->foreignId('message_id')->nullable()->constrained('messages')->nullOnDelete();
             $table->string('tool_name', 100);
+            $table->string('tool_remote_name', 255)->nullable();
+            $table->string('tool_local_name', 255)->nullable();
             // v7.0/W6.2 — package coexistence columns (nullable). The
             // prod schema lands them via a follow-up additive
             // migration; the test schema inlines them into the
@@ -41,6 +46,7 @@ return new class extends Migration
             // so the package can emit `transport_error` and any
             // future package-defined value without an enum migration.
             $table->string('status', 32)->default('ok');
+            $table->string('error_class', 255)->nullable();
             $table->json('error_json')->nullable();
             $table->timestamps();
 
@@ -50,6 +56,11 @@ return new class extends Migration
                 'idx_mcp_tool_call_audit_tenant_server_tool',
             );
             $table->index('input_hash', 'idx_mcp_tool_call_audit_input_hash');
+            $table->index(
+                ['tenant_id', 'source', 'mcp_connection_id'],
+                'idx_mcp_tool_call_audit_tenant_source_connection',
+            );
+            $table->index('invocation_id', 'idx_mcp_tool_call_audit_invocation');
         });
     }
 
@@ -58,4 +69,3 @@ return new class extends Migration
         Schema::dropIfExists('mcp_tool_call_audit');
     }
 };
-
