@@ -11,6 +11,7 @@ use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Hash;
+use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
 use Padosoft\AskMyDocsConnectorBase\Support\TenantContext as ConnectorTenantContext;
 use Padosoft\AskMyDocsConnectorMcp\Models\McpConnection;
 use Padosoft\AskMyDocsConnectorMcp\Models\McpConnectionTool;
@@ -75,9 +76,14 @@ final class LegacyMcpServerImporterTest extends TestCase
         $this->assertFalse($second['connection_created']);
         $this->assertSame(1, McpServerDefinition::withoutGlobalScopes()->count());
         $this->assertSame(1, McpConnection::withoutGlobalScopes()->count());
+        $this->assertSame(1, ConnectorInstallation::withoutGlobalScopes()->where('connector_name', 'mcp')->count());
         $this->assertSame(2, McpConnectionTool::withoutGlobalScopes()->count());
 
         $definition = McpServerDefinition::withoutGlobalScopes()->sole();
+        $connection = McpConnection::withoutGlobalScopes()->sole();
+        $installation = ConnectorInstallation::withoutGlobalScopes()->where('connector_name', 'mcp')->sole();
+        $this->assertSame($installation->getKey(), $connection->connector_installation_id);
+        $this->assertSame($connection->public_id, $installation->config_json['mcp_connection_public_id']);
         $this->assertSame('legacy_headers', $definition->auth_mode);
         $this->assertSame('legacy', $definition->negotiated_era);
         $this->assertSame('Bearer legacy-secret', $definition->legacy_headers_encrypted['Authorization']);
@@ -90,6 +96,9 @@ final class LegacyMcpServerImporterTest extends TestCase
         $this->assertTrue($write->enabled);
         $this->assertTrue($write->confirmation_required);
         $this->assertSame('write', $write->risk);
+
+        $importer->deleteImported($legacy);
+        $this->assertDatabaseMissing('connector_installations', ['id' => $installation->getKey()]);
     }
 
     public function test_it_marks_tools_missing_without_deleting_them(): void
