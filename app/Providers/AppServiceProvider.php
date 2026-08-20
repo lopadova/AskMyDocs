@@ -149,6 +149,10 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(LegacyMcpChatToolSource::class);
         $this->app->singleton(ApiConnectorChatToolSource::class);
         $this->app->singleton(McpConnectorChatToolSource::class);
+        $this->app->singleton(
+            \Padosoft\AskMyDocsConnectorMcp\Contracts\McpRuntimeGateContract::class,
+            \App\Mcp\Runtime\HostMcpRuntimeGateAdapter::class,
+        );
         $this->app->tag([
             LegacyMcpChatToolSource::class,
             ApiConnectorChatToolSource::class,

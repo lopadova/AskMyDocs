@@ -37,6 +37,7 @@ final class McpConnectorHostRoutesTest extends TestCase
     {
         parent::setUp();
         config()->set('connector-mcp.enabled', true);
+        config()->set('connector-mcp.runtime_mode', 'active');
         config()->set('connector-mcp.routes.admin_ability', 'manageConnectors');
         app(TenantContext::class)->set('test-tenant');
         app(ConnectorTenantContext::class)->set('test-tenant');
