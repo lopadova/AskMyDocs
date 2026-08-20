@@ -15,6 +15,7 @@ use App\Compliance\RagRefusalQualityMetric;
 use App\Console\Commands\AuthGrantCommand;
 use App\Console\Commands\CollectionsReevaluateCommand;
 use App\Console\Commands\ComplianceDigestQuarterlyCommand;
+use App\Console\Commands\CompareMcpConnectorShadowCommand;
 use App\Console\Commands\EvalNightlyCommand;
 use App\Console\Commands\ImportLegacyMcpServersCommand;
 use App\Console\Commands\InsightsComputeCommand;
@@ -32,6 +33,7 @@ use App\Console\Commands\PruneDeletedDocumentsCommand;
 use App\Console\Commands\PruneEmbeddingCacheCommand;
 use App\Console\Commands\PruneNotificationsCommand;
 use App\Console\Commands\PruneOrphanFilesCommand;
+use App\Console\Commands\SmokeMcpConnectorCommand;
 use App\Connectors\HostIngestionBridge;
 use App\Mcp\Adapters\EloquentMcpServerRegistry;
 use App\Mcp\Adapters\HostBridge;
@@ -917,6 +919,8 @@ class AppServiceProvider extends ServiceProvider
             // v8.0/W7.4 — consumer MCP debugger bootstrap snippet.
             McpConnectCommand::class,
             ImportLegacyMcpServersCommand::class,
+            CompareMcpConnectorShadowCommand::class,
+            SmokeMcpConnectorCommand::class,
             // v4.3/W3 — nightly eval-harness regression sentinel.
             EvalNightlyCommand::class,
             // v8.0/W8.5 — quarterly compliance digest (tenant opt-in).
