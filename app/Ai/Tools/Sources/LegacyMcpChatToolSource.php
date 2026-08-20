@@ -9,6 +9,7 @@ use App\Ai\Tools\ChatToolSourceContract;
 use App\Mcp\Client\McpToolAuthorizer;
 use App\Mcp\Client\Registry\McpServerRegistry;
 use App\Mcp\Client\ToolInvoker;
+use App\Mcp\Runtime\McpRuntimeGate;
 use App\Models\McpServer;
 use App\Models\User;
 
@@ -18,6 +19,7 @@ final readonly class LegacyMcpChatToolSource implements ChatToolSourceContract
         private McpServerRegistry $registry,
         private ToolInvoker $invoker,
         private McpToolAuthorizer $authorizer,
+        private McpRuntimeGate $runtime,
     ) {}
 
     public function key(): string
@@ -27,7 +29,7 @@ final readonly class LegacyMcpChatToolSource implements ChatToolSourceContract
 
     public function catalog(User $user, ?string $projectKey = null): array
     {
-        if (! config('mcp.enabled', false)) {
+        if (! config('mcp.enabled', false) || ! $this->runtime->usesLegacy()) {
             return [];
         }
 
@@ -68,6 +70,10 @@ final readonly class LegacyMcpChatToolSource implements ChatToolSourceContract
 
     public function invoke(array $tool, array $arguments, User $user, array $context = []): ChatToolInvocationResult
     {
+        if (! $this->runtime->usesLegacy()) {
+            throw new \RuntimeException('The legacy MCP runtime is not active for this tenant.');
+        }
+
         $server = $tool['server'] ?? null;
         $name = $tool['name'] ?? null;
         if (! $server instanceof McpServer || ! is_string($name) || ! $this->authorizer->canInvoke($user, $server, $name)) {

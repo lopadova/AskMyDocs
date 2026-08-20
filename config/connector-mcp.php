@@ -8,6 +8,7 @@ use Illuminate\Session\Middleware\StartSession;
 
 return [
     'enabled' => (bool) env('MCP_CONNECTOR_ENABLED', false),
+    'runtime_mode' => env('MCP_CONNECTOR_RUNTIME_MODE', 'off'),
     'legacy_adapter_enabled' => (bool) env('MCP_CONNECTOR_LEGACY_ADAPTER_ENABLED', false),
 
     'routes' => [
