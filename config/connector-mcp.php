@@ -11,6 +11,13 @@ return [
     'runtime_mode' => env('MCP_CONNECTOR_RUNTIME_MODE', 'off'),
     'legacy_adapter_enabled' => (bool) env('MCP_CONNECTOR_LEGACY_ADAPTER_ENABLED', false),
 
+    'http' => [
+        'internal_endpoint_allowlist' => array_values(array_filter(array_map(
+            'trim',
+            explode(',', (string) env('MCP_CONNECTOR_INTERNAL_ENDPOINT_ALLOWLIST', '')),
+        ))),
+    ],
+
     'routes' => [
         'middleware' => [
             'api',

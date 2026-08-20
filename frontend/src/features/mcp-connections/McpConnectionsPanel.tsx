@@ -217,7 +217,7 @@ function ConnectionCard({
                     <div style={{ color: 'var(--fg-3)', fontSize: 12 }}>The server reported an empty catalog.</div>
                 ) : connection.tools.map((tool) => (
                     <label key={tool.id} style={toolRowStyle}>
-                        <input type="checkbox" checked={tool.enabled} disabled={busy || tool.removed_at !== null} onChange={(event) => onTool(tool.id, event.target.checked)} />
+                        <input type="checkbox" checked={tool.enabled} disabled={busy || tool.removed_at != null} onChange={(event) => onTool(tool.id, event.target.checked)} />
                         <span style={{ flex: 1, minWidth: 180 }}>
                             <strong style={{ display: 'block', color: 'var(--fg-1)', fontSize: 12.5 }}>{tool.title ?? tool.remote_name}</strong>
                             <span style={{ color: 'var(--fg-3)', fontSize: 11.5 }}>{tool.local_name}</span>
@@ -237,7 +237,7 @@ function ConnectionCard({
                 ) : connection.resources.map((resource) => (
                     <label key={resource.id} style={toolRowStyle}>
                         {connection.mode === 'shared' ? (
-                            <input type="checkbox" checked={resource.enabled} disabled={busy || resource.removed_at !== null} onChange={(event) => onResource(resource.id, event.target.checked)} />
+                            <input type="checkbox" checked={resource.enabled} disabled={busy || resource.removed_at != null} onChange={(event) => onResource(resource.id, event.target.checked)} />
                         ) : <span style={mutedBadgeStyle}>catalog only</span>}
                         <span style={{ flex: 1, minWidth: 180 }}>
                             <strong style={{ display: 'block', color: 'var(--fg-1)', fontSize: 12.5 }}>{resource.title ?? resource.name ?? resource.uri}</strong>

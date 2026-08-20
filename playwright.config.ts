@@ -145,6 +145,9 @@ const serveEnv = {
     // app, so the outbound target has to be readable from the server's own
     // environment, not just from the spec process.
     E2E_OUTBOUND_BASE_URL: process.env.E2E_OUTBOUND_BASE_URL ?? 'http://127.0.0.1:8001',
+    MCP_CONNECTOR_ENABLED: 'true',
+    MCP_CONNECTOR_RUNTIME_MODE: 'active',
+    MCP_CONNECTOR_INTERNAL_ENDPOINT_ALLOWLIST: '127.0.0.1',
 };
 
 /**
@@ -245,6 +248,14 @@ export default defineConfig({
               reuseExistingServer: !process.env.CI,
               timeout: 120_000,
               env: serveEnv,
+              stdout: 'pipe',
+              stderr: 'pipe',
+          },
+          {
+              command: 'node frontend/e2e/fixtures/mcp-server.mjs',
+              url: 'http://127.0.0.1:3536/healthz',
+              reuseExistingServer: !process.env.CI,
+              timeout: 30_000,
               stdout: 'pipe',
               stderr: 'pipe',
           },
