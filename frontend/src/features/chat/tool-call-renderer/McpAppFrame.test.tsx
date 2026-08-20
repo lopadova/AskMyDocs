@@ -8,20 +8,30 @@ interface MockBridgeInstance {
     oninitialized?: (params: Record<string, never>) => void;
     onsizechange?: (params: { height?: number; width?: number }) => void;
     oncalltool?: (params: { name: string; arguments?: Record<string, unknown> }) => Promise<unknown>;
+    onmessage?: (params: { role: 'user'; content: Array<{ type: string; text?: string }> }) => Promise<unknown>;
+    onupdatemodelcontext?: (params: {
+        content?: unknown[];
+        structuredContent?: Record<string, unknown>;
+    }) => Promise<unknown>;
+    ondownloadfile?: (params: { contents: unknown[] }) => Promise<unknown>;
+    onrequestdisplaymode?: (params: { mode: 'inline' | 'fullscreen' | 'pip' }) => Promise<unknown>;
+    capabilities: Record<string, unknown>;
+    setHostContext: ReturnType<typeof vi.fn>;
     sendSandboxResourceReady: ReturnType<typeof vi.fn>;
     sendToolInput: ReturnType<typeof vi.fn>;
     sendToolResult: ReturnType<typeof vi.fn>;
     connect: ReturnType<typeof vi.fn>;
 }
 
-const { getMock, postMock, bridgeInstances, transportCloseMock } = vi.hoisted(() => ({
+const { getMock, postMock, putMock, bridgeInstances, transportCloseMock } = vi.hoisted(() => ({
     getMock: vi.fn(),
     postMock: vi.fn(),
+    putMock: vi.fn(),
     bridgeInstances: [] as MockBridgeInstance[],
     transportCloseMock: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock('../../../lib/api', () => ({ api: { get: getMock, post: postMock } }));
+vi.mock('../../../lib/api', () => ({ api: { get: getMock, post: postMock, put: putMock } }));
 vi.mock('@modelcontextprotocol/ext-apps/app-bridge', () => ({
     buildAllowAttribute: vi.fn(() => 'camera'),
     PostMessageTransport: class {
@@ -32,13 +42,20 @@ vi.mock('@modelcontextprotocol/ext-apps/app-bridge', () => ({
         oninitialized?: (params: Record<string, never>) => void;
         onsizechange?: (params: { height?: number; width?: number }) => void;
         oncalltool?: (params: { name: string; arguments?: Record<string, unknown> }) => Promise<unknown>;
+        onmessage?: MockBridgeInstance['onmessage'];
+        onupdatemodelcontext?: MockBridgeInstance['onupdatemodelcontext'];
+        ondownloadfile?: MockBridgeInstance['ondownloadfile'];
+        onrequestdisplaymode?: MockBridgeInstance['onrequestdisplaymode'];
+        capabilities: Record<string, unknown>;
+        setHostContext = vi.fn();
         sendSandboxResourceReady = vi.fn().mockResolvedValue(undefined);
         sendToolInput = vi.fn().mockResolvedValue(undefined);
         sendToolResult = vi.fn().mockResolvedValue(undefined);
         connect = vi.fn().mockResolvedValue(undefined);
         teardownResource = vi.fn().mockResolvedValue({});
 
-        constructor() {
+        constructor(_transport: unknown, _info: unknown, capabilities: Record<string, unknown>) {
+            this.capabilities = capabilities;
             bridgeInstances.push(this);
         }
     },
@@ -75,6 +92,7 @@ describe('McpAppFrame', () => {
         bridgeInstances.splice(0);
         getMock.mockReset();
         postMock.mockReset();
+        putMock.mockReset();
         transportCloseMock.mockClear();
     });
 
@@ -208,5 +226,75 @@ describe('McpAppFrame', () => {
 
         expect(await screen.findByRole('alert')).toHaveTextContent('not valid or is not isolated');
         expect(bridgeInstances).toHaveLength(0);
+    });
+
+    it('enables advanced message, model-context, download and fullscreen capabilities only when advertised', async () => {
+        getMock.mockResolvedValueOnce({
+            data: appResource({ advanced_enabled: true }),
+        });
+        putMock.mockResolvedValueOnce({ data: {} });
+        postMock.mockResolvedValueOnce({
+            data: {
+                downloads: [
+                    {
+                        name: 'report.txt',
+                        url: '/mcp-pack/v2/artifacts/file/download?signature=signed',
+                    },
+                ],
+            },
+        });
+        const onSendMessage = vi.fn().mockResolvedValue(undefined);
+        const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+        const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+
+        render(<McpAppFrame app={handle} conversationId={23} onSendMessage={onSendMessage} />);
+        await waitFor(() => expect(bridgeInstances).toHaveLength(1));
+        const bridge = bridgeInstances[0];
+        expect(bridge.capabilities).toMatchObject({
+            downloadFile: {},
+            message: { text: {} },
+            updateModelContext: { text: {}, structuredContent: {} },
+        });
+
+        await expect(
+            bridge.onupdatemodelcontext?.({
+                content: [{ type: 'text', text: 'Europe selected' }],
+                structuredContent: { region: 'EU' },
+            }),
+        ).resolves.toEqual({});
+        expect(putMock).toHaveBeenCalledWith('/api/conversations/mcp/apps/01MCPAPP/model-context', {
+            conversation_id: '23',
+            content: [{ type: 'text', text: 'Europe selected' }],
+            structuredContent: { region: 'EU' },
+        });
+
+        await expect(
+            bridge.onmessage?.({
+                role: 'user',
+                content: [{ type: 'text', text: 'Show the selected region' }],
+            }),
+        ).resolves.toEqual({});
+        expect(onSendMessage).toHaveBeenCalledWith('Show the selected region', '01MCPAPP');
+
+        await expect(
+            bridge.ondownloadfile?.({
+                contents: [{ type: 'resource', resource: { text: 'report' } }],
+            }),
+        ).resolves.toEqual({});
+        expect(postMock).toHaveBeenCalledWith('/api/conversations/mcp/apps/01MCPAPP/downloads', {
+            conversation_id: '23',
+            contents: [{ type: 'resource', resource: { text: 'report' } }],
+        });
+        expect(click).toHaveBeenCalledTimes(1);
+
+        await expect(bridge.onrequestdisplaymode?.({ mode: 'fullscreen' })).resolves.toEqual({ mode: 'fullscreen' });
+        expect(await screen.findByRole('button', { name: 'Exit fullscreen' })).toBeInTheDocument();
+        expect(bridge.setHostContext).toHaveBeenCalledWith({
+            displayMode: 'fullscreen',
+            availableDisplayModes: ['inline', 'fullscreen'],
+        });
+
+        confirm.mockRestore();
+        click.mockRestore();
     });
 });

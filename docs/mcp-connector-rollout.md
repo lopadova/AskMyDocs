@@ -46,6 +46,7 @@ MCP_CONNECTOR_ENABLED=true
 MCP_CONNECTOR_RUNTIME_MODE=off
 MCP_CONNECTOR_LEGACY_ADAPTER_ENABLED=true
 MCP_CONNECTOR_CLIENT_METADATA_URL=https://app.example.com/.well-known/mcp-client.json
+MCP_CONNECTOR_APP_ADVANCED_ENABLED=false
 ```
 
 For shared internal MCP endpoints, add only explicitly approved hostnames or IP
@@ -65,6 +66,11 @@ origin, TLS and CSP routing are deployed:
 MCP_CONNECTOR_APP_SANDBOX_ORIGIN=https://mcp-apps.example.com
 MCP_CONNECTOR_APP_HOST_ORIGINS=https://app.example.com
 ```
+
+Keep `MCP_CONNECTOR_APP_ADVANCED_ENABLED=false` until the basic sandbox flow is
+validated. Enabling it exposes scoped app-to-chat messages, encrypted model
+context, signed downloads and fullscreen requests. Those capabilities remain
+unavailable unless the connector runtime is also `active` for the tenant.
 
 Register this OAuth callback at every pre-registered authorization server:
 

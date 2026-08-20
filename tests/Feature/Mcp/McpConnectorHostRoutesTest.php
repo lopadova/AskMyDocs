@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Tests\Feature\Mcp;
 
 use App\Http\Middleware\SecurityHeaders;
+use App\Mcp\Apps\McpAppTurnContext;
+use App\Models\Conversation;
 use App\Models\User;
 use App\Support\TenantContext;
 use Database\Seeders\RbacSeeder;
@@ -247,10 +249,16 @@ final class McpConnectorHostRoutesTest extends TestCase
 
     public function test_mcp_app_is_actor_scoped_and_sandbox_keeps_its_dedicated_frame_policy(): void
     {
+        config()->set('connector-mcp.apps.advanced_enabled', true);
         config()->set('connector-mcp.apps.sandbox_origin', 'https://mcp-apps.example.test');
         config()->set('connector-mcp.apps.host_origins', ['https://askmydocs.example.test']);
         $user = $this->user('app-owner@example.test');
         $other = $this->user('app-other@example.test');
+        $conversation = Conversation::query()->create([
+            'tenant_id' => 'test-tenant',
+            'user_id' => $user->getKey(),
+            'title' => 'MCP App test',
+        ]);
         $server = $this->server('test-tenant', 'App MCP');
         $connection = $this->connection($server, 'shared');
         $tool = McpConnectionTool::query()->create([
@@ -287,17 +295,29 @@ final class McpConnectorHostRoutesTest extends TestCase
             $tool->local_name,
             ['reportId' => 42],
             $user,
-            'conversation-app',
+            (string) $conversation->getKey(),
         );
         $appId = (string) data_get($outcome->artifact?->app, 'id');
         $this->assertNotSame('', $appId);
 
-        $url = '/api/conversations/mcp/apps/'.$appId.'?conversation_id=conversation-app';
+        $url = '/api/conversations/mcp/apps/'.$appId.'?conversation_id='.$conversation->getKey();
         $this->actingAs($other)->getJson($url)->assertNotFound();
         $this->actingAs($user)->getJson($url)
             ->assertOk()
             ->assertJsonPath('available', true)
+            ->assertJsonPath('advanced_enabled', true)
             ->assertJsonPath('tool_result.structuredContent.reportId', 42);
+
+        $this->actingAs($user)->putJson('/api/conversations/mcp/apps/'.$appId.'/model-context', [
+            'conversation_id' => (string) $conversation->getKey(),
+            'content' => [['type' => 'text', 'text' => 'The user selected report 42.']],
+            'structuredContent' => ['reportId' => 42],
+        ])->assertOk();
+        $turnContext = app(McpAppTurnContext::class)->resolve($appId, $user, $conversation);
+        $this->assertStringContainsString('selected report 42', (string) $turnContext);
+        $this->assertStringContainsString('"reportId":42', (string) $turnContext);
+        config()->set('connector-mcp.runtime_mode', 'off');
+        $this->assertNull(app(McpAppTurnContext::class)->resolve($appId, $user, $conversation));
 
         $sandbox = $this->get('/mcp-apps/sandbox');
         $sandbox->assertOk();

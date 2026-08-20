@@ -39,6 +39,9 @@ return [
     ],
 
     'apps' => [
+        // Advanced host capabilities (ui/message, model context, downloads and
+        // fullscreen) remain opt-in independently from the basic sandbox.
+        'advanced_enabled' => (bool) env('MCP_CONNECTOR_APP_ADVANCED_ENABLED', false),
         // Must be a distinct, cookie-free origin pointing back to the static
         // `/mcp-apps/sandbox` route (for example `https://mcp-apps.example`).
         'sandbox_origin' => env('MCP_CONNECTOR_APP_SANDBOX_ORIGIN'),
