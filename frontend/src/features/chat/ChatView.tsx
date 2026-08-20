@@ -512,6 +512,13 @@ export function ChatView(): ReactNode {
         }
     };
 
+    const handleMcpAppMessage = async (content: string, appId: string): Promise<void> => {
+        if (activeId === null || chat.status === 'submitted' || chat.status === 'streaming') {
+            throw new Error('The conversation is not ready for an MCP App message.');
+        }
+        await chat.sendMessage({ text: content }, { body: { mcp_app_id: appId } });
+    };
+
     // v4.5/W7 Tier 1 #2 — regenerate the LAST assistant turn.
     const handleRegenerate = () => {
         chat.regenerate();
@@ -663,6 +670,7 @@ export function ChatView(): ReactNode {
                     onEditUserMessage={handleEditUserMessage}
                     showCounterfactual={showCounterfactual}
                     onOpenSource={handleOpenSource}
+                    onMcpAppMessage={handleMcpAppMessage}
                 />
 
                 <SuggestedFollowups

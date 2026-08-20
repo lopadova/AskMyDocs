@@ -28,6 +28,7 @@ interface McpAppResource {
     description?: string | null;
     tool_input?: Record<string, unknown>;
     tool_result?: unknown;
+    advanced_enabled?: boolean;
 }
 
 interface AppToolCallResponse {
@@ -52,10 +53,13 @@ interface PendingResolver {
 interface McpAppFrameProps {
     app: McpAppHandle;
     conversationId: number;
+    onSendMessage?: (content: string, appId: string) => Promise<void>;
 }
 
-export function McpAppFrame({ app, conversationId }: McpAppFrameProps) {
+export function McpAppFrame({ app, conversationId, onSendMessage }: McpAppFrameProps) {
     const iframeRef = useRef<HTMLIFrameElement>(null);
+    const bridgeRef = useRef<AppBridge | null>(null);
+    const onSendMessageRef = useRef(onSendMessage);
     const pendingResolverRef = useRef<PendingResolver | null>(null);
     const [resource, setResource] = useState<McpAppResource | null>(null);
     const [loading, setLoading] = useState(true);
@@ -65,6 +69,11 @@ export function McpAppFrame({ app, conversationId }: McpAppFrameProps) {
     const [pendingInteraction, setPendingInteraction] = useState<PendingAppInteraction | null>(null);
     const [inputJson, setInputJson] = useState('{}');
     const [submitting, setSubmitting] = useState(false);
+    const [displayMode, setDisplayMode] = useState<'inline' | 'fullscreen'>('inline');
+
+    useEffect(() => {
+        onSendMessageRef.current = onSendMessage;
+    }, [onSendMessage]);
 
     useEffect(() => {
         let disposed = false;
@@ -119,6 +128,13 @@ export function McpAppFrame({ app, conversationId }: McpAppFrameProps) {
                     openLinks: {},
                     serverTools: {},
                     logging: {},
+                    ...(resource.advanced_enabled
+                        ? {
+                              downloadFile: {},
+                              message: { text: {} },
+                              updateModelContext: { text: {}, structuredContent: {} },
+                          }
+                        : {}),
                     sandbox: {
                         csp: resource.csp,
                         permissions: resource.permissions,
@@ -128,7 +144,7 @@ export function McpAppFrame({ app, conversationId }: McpAppFrameProps) {
                     hostContext: {
                         theme: currentTheme(),
                         displayMode: 'inline',
-                        availableDisplayModes: ['inline'],
+                        availableDisplayModes: resource.advanced_enabled ? ['inline', 'fullscreen'] : ['inline'],
                         containerDimensions: { maxHeight: 900 },
                         locale: navigator.language,
                         timeZone: currentTimeZone(),
@@ -142,6 +158,7 @@ export function McpAppFrame({ app, conversationId }: McpAppFrameProps) {
                 },
             );
             bridge = nextBridge;
+            bridgeRef.current = nextBridge;
             transport = nextTransport;
 
             nextBridge.onsandboxready = () => {
@@ -207,6 +224,55 @@ export function McpAppFrame({ app, conversationId }: McpAppFrameProps) {
 
                 return normalizeCallToolResult(data.result ?? data.artifact);
             };
+            if (resource.advanced_enabled) {
+                nextBridge.onmessage = async ({ role, content }) => {
+                    if (role !== 'user' || !onSendMessageRef.current) return { isError: true };
+                    const text = content
+                        .map((block) => (block.type === 'text' ? block.text : ''))
+                        .filter((value) => value !== '')
+                        .join('\n')
+                        .trim();
+                    if (text === '' || text.length > 10_000) return { isError: true };
+                    try {
+                        await onSendMessageRef.current(text, app.id);
+                        return {};
+                    } catch {
+                        return { isError: true };
+                    }
+                };
+                nextBridge.onupdatemodelcontext = async ({ content, structuredContent }) => {
+                    await api.put(`/api/conversations/mcp/apps/${app.id}/model-context`, {
+                        conversation_id: String(conversationId),
+                        content: content ?? [],
+                        ...(structuredContent ? { structuredContent } : {}),
+                    });
+                    return {};
+                };
+                nextBridge.ondownloadfile = async ({ contents }) => {
+                    if (!window.confirm('Download files requested by this MCP App?')) return { isError: true };
+                    try {
+                        const { data } = await api.post<{
+                            downloads: Array<{ name: string; url: string }>;
+                        }>(`/api/conversations/mcp/apps/${app.id}/downloads`, {
+                            conversation_id: String(conversationId),
+                            contents,
+                        });
+                        for (const download of data.downloads) triggerDownload(download.url, download.name);
+                        return {};
+                    } catch {
+                        return { isError: true };
+                    }
+                };
+                nextBridge.onrequestdisplaymode = async ({ mode }) => {
+                    const actual = mode === 'fullscreen' ? 'fullscreen' : 'inline';
+                    setDisplayMode(actual);
+                    nextBridge.setHostContext({
+                        displayMode: actual,
+                        availableDisplayModes: ['inline', 'fullscreen'],
+                    });
+                    return { mode: actual };
+                };
+            }
 
             await nextBridge.connect(nextTransport);
             if (!disposed) iframe.src = sandboxUrl.href;
@@ -218,6 +284,7 @@ export function McpAppFrame({ app, conversationId }: McpAppFrameProps) {
             disposed = true;
             pendingResolverRef.current?.resolve(errorResult('The MCP App was closed before the tool call completed.'));
             pendingResolverRef.current = null;
+            if (bridgeRef.current === bridge) bridgeRef.current = null;
             const activeBridge = bridge;
             const activeTransport = transport;
             if (activeBridge !== null) {
@@ -230,6 +297,14 @@ export function McpAppFrame({ app, conversationId }: McpAppFrameProps) {
             iframe.src = 'about:blank';
         };
     }, [app.id, conversationId, resource]);
+
+    function changeDisplayMode(mode: 'inline' | 'fullscreen') {
+        setDisplayMode(mode);
+        bridgeRef.current?.setHostContext({
+            displayMode: mode,
+            availableDisplayModes: ['inline', 'fullscreen'],
+        });
+    }
 
     async function respondToInteraction(response: Record<string, unknown>) {
         if (!pendingInteraction) return;
@@ -278,8 +353,27 @@ export function McpAppFrame({ app, conversationId }: McpAppFrameProps) {
                 border: resource?.prefers_border === false ? 0 : '1px solid var(--border-2)',
                 borderRadius: 10,
                 background: 'var(--bg-2)',
+                ...(displayMode === 'fullscreen'
+                    ? {
+                          position: 'fixed',
+                          inset: 16,
+                          zIndex: 1000,
+                          display: 'flex',
+                          flexDirection: 'column',
+                          boxShadow: '0 24px 80px rgba(0,0,0,.45)',
+                      }
+                    : {}),
             }}
         >
+            {displayMode === 'fullscreen' ? (
+                <button
+                    type="button"
+                    onClick={() => changeDisplayMode('inline')}
+                    style={{ ...buttonStyle, margin: 8, marginLeft: 'auto' }}
+                >
+                    Exit fullscreen
+                </button>
+            ) : null}
             {loading ? <div style={noticeStyle}>Loading interactive MCP App…</div> : null}
             {!loading && !resource?.available ? (
                 <div style={noticeStyle}>
@@ -301,7 +395,8 @@ export function McpAppFrame({ app, conversationId }: McpAppFrameProps) {
                         style={{
                             display: ready ? 'block' : 'none',
                             width: '100%',
-                            height,
+                            height: displayMode === 'fullscreen' ? '100%' : height,
+                            flex: displayMode === 'fullscreen' ? 1 : undefined,
                             border: 0,
                             background: 'transparent',
                         }}
@@ -343,6 +438,16 @@ export function McpAppFrame({ app, conversationId }: McpAppFrameProps) {
             ) : null}
         </div>
     );
+}
+
+function triggerDownload(url: string, name: string): void {
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = name;
+    link.rel = 'noopener noreferrer';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
 }
 
 function safeSandboxUrl(raw: string): URL | null {

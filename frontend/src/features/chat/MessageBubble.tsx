@@ -62,6 +62,7 @@ export interface MessageBubbleProps {
      * Wired by ChatView (admin-gated). Forwarded to CitationsPopover.
      */
     onOpenSource?: (citation: import('./chat.api').MessageCitation) => void;
+    onMcpAppMessage?: (content: string, appId: string) => Promise<void>;
 }
 
 /**
@@ -95,6 +96,7 @@ export function MessageBubble({
     onEditSubmit,
     showCounterfactual = true,
     onOpenSource,
+    onMcpAppMessage,
 }: MessageBubbleProps): ReactNode {
     const isUser = message.role === 'user';
     const thinking = getReasoningSteps(message);
@@ -217,7 +219,12 @@ export function MessageBubble({
                 {toolCalls.length > 0 && (
                     <div data-testid={`chat-message-${messageId}-tool-calls`}>
                         {toolCalls.map((toolCall) => (
-                            <ToolCallBubble key={toolCall.id} toolCall={toolCall} conversationId={conversationId} />
+                            <ToolCallBubble
+                                key={toolCall.id}
+                                toolCall={toolCall}
+                                conversationId={conversationId}
+                                onMcpAppMessage={onMcpAppMessage}
+                            />
                         ))}
                     </div>
                 )}

@@ -60,6 +60,7 @@ export interface MessageThreadProps {
      * Wired by ChatView (admin-gated); forwarded to each MessageBubble.
      */
     onOpenSource?: (citation: import('./chat.api').MessageCitation) => void;
+    onMcpAppMessage?: (content: string, appId: string) => Promise<void>;
 }
 
 /**
@@ -89,6 +90,7 @@ export function MessageThread({
     onEditUserMessage,
     showCounterfactual = true,
     onOpenSource,
+    onMcpAppMessage,
 }: MessageThreadProps): ReactNode {
     const threadRef = useRef<HTMLDivElement>(null);
 
@@ -220,6 +222,7 @@ export function MessageThread({
                                 onEditSubmit={editHandler}
                                 showCounterfactual={showCounterfactual}
                                 onOpenSource={onOpenSource}
+                                onMcpAppMessage={onMcpAppMessage}
                             />
                         );
                     });

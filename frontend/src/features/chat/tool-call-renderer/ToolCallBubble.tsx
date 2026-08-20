@@ -46,9 +46,10 @@ interface RemoteTaskResponse {
 interface ToolCallBubbleProps {
     toolCall: ToolCallData;
     conversationId?: number;
+    onMcpAppMessage?: (content: string, appId: string) => Promise<void>;
 }
 
-export function ToolCallBubble({ toolCall, conversationId }: ToolCallBubbleProps) {
+export function ToolCallBubble({ toolCall, conversationId, onMcpAppMessage }: ToolCallBubbleProps) {
     const [expanded, setExpanded] = useState(false);
     const [interactionStatus, setInteractionStatus] = useState<ToolCallStatus | null>(null);
     const [interactionResult, setInteractionResult] = useState<unknown>(null);
@@ -326,7 +327,11 @@ export function ToolCallBubble({ toolCall, conversationId }: ToolCallBubbleProps
             ) : null}
 
             {effectiveStatus === 'ok' && conversationId !== undefined && (interactionApp ?? toolCall.app) ? (
-                <McpAppFrame app={(interactionApp ?? toolCall.app) as McpAppHandle} conversationId={conversationId} />
+                <McpAppFrame
+                    app={(interactionApp ?? toolCall.app) as McpAppHandle}
+                    conversationId={conversationId}
+                    onSendMessage={onMcpAppMessage}
+                />
             ) : null}
 
             {expanded ? (
