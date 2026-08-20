@@ -6,6 +6,7 @@ namespace App\Ai\Tools\Sources;
 
 use App\Ai\Tools\ChatToolInvocationResult;
 use App\Ai\Tools\ChatToolSourceContract;
+use App\Mcp\Runtime\McpRuntimeGate;
 use App\Models\User;
 use Padosoft\AskMyDocsConnectorMcp\Services\McpChatCatalogService;
 use Padosoft\AskMyDocsConnectorMcp\Services\McpToolExecutor;
@@ -15,6 +16,7 @@ final readonly class McpConnectorChatToolSource implements ChatToolSourceContrac
     public function __construct(
         private McpChatCatalogService $catalog,
         private McpToolExecutor $executor,
+        private McpRuntimeGate $runtime,
     ) {}
 
     public function key(): string
@@ -24,13 +26,17 @@ final readonly class McpConnectorChatToolSource implements ChatToolSourceContrac
 
     public function catalog(User $user, ?string $projectKey = null): array
     {
-        return config('connector-mcp.enabled', false)
+        return $this->runtime->usesConnector()
             ? $this->catalog->forActor($user, $projectKey)
             : [];
     }
 
     public function invoke(array $tool, array $arguments, User $user, array $context = []): ChatToolInvocationResult
     {
+        if (! $this->runtime->usesConnector()) {
+            throw new \RuntimeException('The MCP connector runtime is not active for this tenant.');
+        }
+
         $name = is_string($tool['name'] ?? null) ? $tool['name'] : '';
         $conversationId = (string) ($context['conversation_id'] ?? '');
         $projectKey = is_string($context['project_key'] ?? null) ? $context['project_key'] : null;

@@ -47,6 +47,16 @@ final class AppSettingRegistry
                 'min' => 5,
                 'max' => 1440,
             ],
+            // Tenant rollout gate for the replacement MCP runtime. The deploy
+            // switch in connector-mcp.enabled remains the hard kill switch.
+            'connector.mcp.runtime_mode' => [
+                'label' => 'MCP connector runtime mode',
+                'type' => 'enum',
+                'config' => 'connector-mcp.runtime_mode',
+                'scope' => 'tenant',
+                'deployOnly' => false,
+                'enum' => ['off', 'shadow', 'active'],
+            ],
             // Deploy-only security knob — visible but NOT runtime-settable.
             'ai_finops.enabled' => [
                 'label' => 'AI FinOps metering (deploy-managed)',
