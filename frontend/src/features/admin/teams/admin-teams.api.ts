@@ -21,6 +21,8 @@ export interface AdminTeam {
     is_default: boolean;
     /** Whether the current user may rename this team. */
     can_manage: boolean;
+    /** Authenticated URL; null until a logo has been uploaded. */
+    logo_url?: string | null;
     project_count: number;
     member_count: number;
 }
@@ -52,5 +54,19 @@ export const adminTeamsApi = {
             payload,
         );
         return data.data;
+    },
+
+    async uploadLogo(slug: string, logo: File): Promise<{ logo_url: string }> {
+        const form = new FormData();
+        form.append('logo', logo);
+        const { data } = await api.post<{ data: { logo_url: string } }>(
+            `/api/admin/teams/${encodeURIComponent(slug)}/logo`,
+            form,
+        );
+        return data.data;
+    },
+
+    async deleteLogo(slug: string): Promise<void> {
+        await api.delete(`/api/admin/teams/${encodeURIComponent(slug)}/logo`);
     },
 };
