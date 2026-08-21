@@ -1,7 +1,9 @@
 import { useState } from "react";
+import { TenantLogo } from "../components/TenantLogo";
 import type { AuthUser, Team } from "../lib/types";
 
 interface Props {
+  token: string;
   user: AuthUser;
   teams: Team[];
   initialTenantId?: string | null;
@@ -12,6 +14,7 @@ interface Props {
 type Step = "tenant" | "project";
 
 export function WorkspaceScreen({
+  token,
   user,
   teams,
   initialTenantId = null,
@@ -117,9 +120,12 @@ export function WorkspaceScreen({
                       aria-pressed={team.tenant_id === tenantId}
                       data-testid={`workspace-tenant-${team.tenant_id}`}
                     >
-                      <span className="workspace-option-mark" aria-hidden="true">
-                        {team.name.trim().charAt(0).toUpperCase() || "T"}
-                      </span>
+                      <TenantLogo
+                        token={token}
+                        tenantName={team.name}
+                        logoUrl={team.logo_url}
+                        className="workspace-logo"
+                      />
                       <span className="workspace-option-copy">
                         <strong>{team.name}</strong>
                         <span className="muted small">
@@ -149,13 +155,23 @@ export function WorkspaceScreen({
             </>
           ) : (
             <>
-              <div className="workspace-copy">
-                <p className="workspace-eyebrow">{selectedTeam?.name}</p>
-                <h1 id="workspace-title">Choose a project</h1>
-                <p className="muted">
-                  Chat, search, sources, and local conversations will use this
-                  project.
-                </p>
+              <div className="workspace-tenant-heading">
+                {selectedTeam && (
+                  <TenantLogo
+                    token={token}
+                    tenantName={selectedTeam.name}
+                    logoUrl={selectedTeam.logo_url}
+                    className="workspace-logo"
+                  />
+                )}
+                <div className="workspace-copy">
+                  <p className="workspace-eyebrow">{selectedTeam?.name}</p>
+                  <h1 id="workspace-title">Choose a project</h1>
+                  <p className="muted">
+                    Chat, search, sources, and local conversations will use this
+                    project.
+                  </p>
+                </div>
               </div>
 
               {!selectedTeam || selectedTeam.projects.length === 0 ? (

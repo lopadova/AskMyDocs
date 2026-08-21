@@ -207,6 +207,32 @@ export async function searchDocs(
   return Array.isArray(data) ? data : [];
 }
 
+/** Download an authenticated tenant logo and expose it as a CSP-safe blob URL. */
+export async function fetchTenantLogo(
+  token: string,
+  logoUrl: string,
+): Promise<string> {
+  const apiOrigin = new URL(`${API_BASE}/`);
+  const absolute = new URL(logoUrl, apiOrigin);
+  if (absolute.origin !== apiOrigin.origin) {
+    throw new ApiError(
+      0,
+      "Tenant logo URL is outside the configured API origin",
+      null,
+    );
+  }
+  const res = await http(absolute.toString(), { headers: authHeaders(token) });
+  if (!res.ok) {
+    const body = await parseBody(res);
+    throw new ApiError(
+      res.status,
+      errorMessage(body, "Could not load tenant logo"),
+      body,
+    );
+  }
+  return URL.createObjectURL(await res.blob());
+}
+
 /** Full source text + metadata of a single document, for the fullpage MD
  *  viewer. Reachable by any authenticated reader and scoped to the caller's
  *  tenant + AccessScope (R30) — a 404 means "not found OR not yours", with no
