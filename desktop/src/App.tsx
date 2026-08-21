@@ -9,6 +9,7 @@ import {
   type Session,
 } from "./lib/store";
 import type { MePayload, Team } from "./lib/types";
+import { TenantLogo } from "./components/TenantLogo";
 import { ChatScreen } from "./screens/ChatScreen";
 import { LoginScreen } from "./screens/LoginScreen";
 import { RegisterScreen } from "./screens/RegisterScreen";
@@ -219,6 +220,7 @@ function App() {
   if (!activeTeam || !activeProject) {
     return (
       <WorkspaceScreen
+        token={session.token}
         user={session.user}
         teams={me.teams}
         initialTenantId={activeTeam?.tenant_id ?? null}
@@ -233,7 +235,15 @@ function App() {
   return (
     <div className="shell" data-testid="app-shell">
       <header className="topbar">
-        <div className="brand">AskMyDocs</div>
+        <div className="brand" data-testid="active-tenant-brand">
+          <TenantLogo
+            token={session.token}
+            tenantName={activeTeam.name}
+            logoUrl={activeTeam.logo_url}
+            className="topbar-logo"
+          />
+          <span>{activeTeam.name}</span>
+        </div>
         <nav className="tabs" aria-label="Sections">
           <button
             type="button"
