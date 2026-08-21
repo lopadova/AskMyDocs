@@ -39,6 +39,23 @@ return [
 
         /*
         |----------------------------------------------------------------------
+        | Tenant branding logos
+        |----------------------------------------------------------------------
+        |
+        | Private originals used by the SPA and the Tauri app. They are served
+        | only by the authenticated tenant-logo endpoint after membership has
+        | been checked, so no public storage symlink is required.
+        |
+        */
+        'tenant-logos' => [
+            'driver' => 'local',
+            'root' => env('TENANT_LOGO_ROOT', storage_path('app/tenant-logos')),
+            'visibility' => 'private',
+            'throw' => true,
+        ],
+
+        /*
+        |----------------------------------------------------------------------
         | Knowledge Base disk
         |----------------------------------------------------------------------
         |

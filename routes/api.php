@@ -46,6 +46,7 @@ use App\Http\Controllers\Api\KbDocumentSearchController;
 use App\Http\Controllers\Api\KbIngestController;
 use App\Http\Controllers\Api\KbPromotionController;
 use App\Http\Controllers\Api\KbResolveWikilinkController;
+use App\Http\Controllers\Api\TenantLogoController;
 use App\Http\Controllers\Api\Widget\WidgetDocumentPreviewController;
 use App\Http\Controllers\Api\Widget\WidgetSessionController;
 use App\Http\Controllers\Api\Widget\WidgetSessionTokenController;
@@ -137,6 +138,13 @@ Route::prefix('auth')->group(function () {
             ->name('api.auth.token.revoke');
     });
 });
+
+// Authenticated image stream shared by the cookie SPA and Bearer desktop
+// client. It deliberately sits outside tenant.authorize because <img> cannot
+// attach X-Tenant-Id; the controller authorizes the target slug by membership.
+Route::get('/tenant-logos/{slug}', TenantLogoController::class)
+    ->middleware(['web', 'auth:sanctum'])
+    ->name('api.tenant-logos.show');
 
 Route::middleware([
     \Illuminate\Cookie\Middleware\EncryptCookies::class,
@@ -487,6 +495,10 @@ Route::middleware([
         // TARGET team inside TeamRegistryService (membership required),
         // independent of the request's X-Tenant-Id.
         // R32 — covered by the AdminAuthorizationMatrix (`/api/admin/teams`).
+        Route::post('teams/{slug}/logo', [\App\Http\Controllers\Api\Admin\TeamLogoController::class, 'store'])
+            ->name('api.admin.teams.logo.store');
+        Route::delete('teams/{slug}/logo', [\App\Http\Controllers\Api\Admin\TeamLogoController::class, 'destroy'])
+            ->name('api.admin.teams.logo.destroy');
         Route::apiResource('teams', \App\Http\Controllers\Api\Admin\TeamController::class)
             ->parameters(['teams' => 'slug'])
             ->only(['index', 'store', 'update'])
