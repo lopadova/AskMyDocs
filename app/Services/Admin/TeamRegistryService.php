@@ -60,6 +60,7 @@ final class TeamRegistryService
     public function __construct(
         private readonly TenantContext $tenantContext,
         private readonly UserTeamsResolver $teamsResolver,
+        private readonly TenantBrandingService $branding,
     ) {}
 
     /**
@@ -85,6 +86,7 @@ final class TeamRegistryService
                 'slug' => $slug,
                 'name' => $team['name'],
                 'hash' => $team['hash'],
+                'logo_url' => $team['logo_url'] ?? null,
                 'status' => $statuses[$slug] ?? ($slug === SystemTenantRegistry::LEGACY_DEFAULT ? 'system' : 'active'),
                 'is_default' => $slug === SystemTenantRegistry::LEGACY_DEFAULT,
                 // Only offer Rename when a `tenants` registry row actually
@@ -440,6 +442,7 @@ final class TeamRegistryService
             'slug' => $slug,
             'name' => $tenant?->name ?? Str::headline($slug),
             'hash' => TeamHash::for($slug),
+            'logo_url' => $this->branding->payload($slug)['logo_url'] ?? null,
             'status' => $tenant?->status ?? ($slug === SystemTenantRegistry::LEGACY_DEFAULT ? 'system' : 'active'),
             'is_default' => $slug === SystemTenantRegistry::LEGACY_DEFAULT,
             'can_manage' => $this->canManage($user, $slug),

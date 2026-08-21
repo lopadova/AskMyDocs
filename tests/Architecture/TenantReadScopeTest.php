@@ -44,7 +44,7 @@ final class TenantReadScopeTest extends TestCase
         'NotificationEvent', 'NotificationPreference', 'NotificationTenantDefault',
         'AppSetting', 'ConnectorSyncRun', 'ImapBackfill', 'ImapBackfillWindow',
         'Project', 'ProjectMembership', 'TabularCell', 'TabularReview',
-        'TenantSchedulerOverride', 'WidgetIdentity', 'WidgetKey', 'WidgetSession',
+        'TenantBranding', 'TenantSchedulerOverride', 'WidgetIdentity', 'WidgetKey', 'WidgetSession',
         'WidgetSessionStep', 'WidgetSessionToken', 'Workflow',
     ];
 

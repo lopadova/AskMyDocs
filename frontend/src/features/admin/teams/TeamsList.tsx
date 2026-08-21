@@ -7,6 +7,7 @@ import {
     type UpdateTeamPayload,
 } from './admin-teams.api';
 import { TeamFormDialog } from './TeamFormDialog';
+import { TeamLogoDialog } from './TeamLogoDialog';
 import { toAdminError } from '../shared/errors';
 import { me as fetchMe } from '../../auth/auth.api';
 import { useAuthStore } from '../../../lib/auth-store';
@@ -33,6 +34,7 @@ export function TeamsList(): ReactNode {
     const [filter, setFilter] = useState('');
     const [editing, setEditing] = useState<AdminTeam | null>(null);
     const [createOpen, setCreateOpen] = useState(false);
+    const [branding, setBranding] = useState<AdminTeam | null>(null);
     const [submitError, setSubmitError] = useState<string | null>(null);
     const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
@@ -190,6 +192,7 @@ export function TeamsList(): ReactNode {
                             }}
                         >
                             <th style={cellStyle}>Name</th>
+                            <th style={cellStyle}>Logo</th>
                             <th style={cellStyle}>Slug</th>
                             <th style={cellStyle}>Status</th>
                             <th style={cellStyle}>Projects</th>
@@ -209,6 +212,18 @@ export function TeamsList(): ReactNode {
                                     {team.name}
                                     {team.is_default && (
                                         <span style={{ marginLeft: 6, fontSize: 10, color: 'var(--fg-3)' }}>(bootstrap)</span>
+                                    )}
+                                </td>
+                                <td style={cellStyle}>
+                                    {team.logo_url ? (
+                                        <img
+                                            src={team.logo_url}
+                                            alt={`${team.name} logo`}
+                                            data-testid={`admin-team-row-${team.slug}-logo-image`}
+                                            style={{ width: 54, height: 30, objectFit: 'contain', display: 'block' }}
+                                        />
+                                    ) : (
+                                        <span data-testid={`admin-team-row-${team.slug}-logo-empty`} style={{ color: 'var(--fg-3)' }}>—</span>
                                     )}
                                 </td>
                                 <td
@@ -235,18 +250,29 @@ export function TeamsList(): ReactNode {
                                 </td>
                                 <td style={{ ...cellStyle, textAlign: 'right', whiteSpace: 'nowrap' }}>
                                     {team.can_manage ? (
-                                        <button
-                                            type="button"
-                                            data-testid={`admin-team-row-${team.slug}-edit`}
-                                            aria-label={`Rename team ${team.name}`}
-                                            onClick={() => {
-                                                resetErrors();
-                                                setEditing(team);
-                                            }}
-                                            style={iconButtonStyle()}
-                                        >
-                                            Rename
-                                        </button>
+                                        <>
+                                            <button
+                                                type="button"
+                                                data-testid={`admin-team-row-${team.slug}-logo`}
+                                                aria-label={`Manage logo for ${team.name}`}
+                                                onClick={() => setBranding(team)}
+                                                style={iconButtonStyle()}
+                                            >
+                                                Logo
+                                            </button>
+                                            <button
+                                                type="button"
+                                                data-testid={`admin-team-row-${team.slug}-edit`}
+                                                aria-label={`Rename team ${team.name}`}
+                                                onClick={() => {
+                                                    resetErrors();
+                                                    setEditing(team);
+                                                }}
+                                                style={iconButtonStyle()}
+                                            >
+                                                Rename
+                                            </button>
+                                        </>
                                     ) : (
                                         <span style={{ color: 'var(--fg-3)', fontSize: 11 }}>—</span>
                                     )}
@@ -277,6 +303,16 @@ export function TeamsList(): ReactNode {
                     submitError={submitError}
                     fieldErrors={fieldErrors}
                     isSubmitting={updateMutation.isPending}
+                />
+            )}
+            {branding !== null && (
+                <TeamLogoDialog
+                    team={branding}
+                    onClose={() => setBranding(null)}
+                    onChanged={async () => {
+                        await qc.invalidateQueries({ queryKey: ['admin-teams'] });
+                        await syncSwitcher();
+                    }}
                 />
             )}
         </div>
