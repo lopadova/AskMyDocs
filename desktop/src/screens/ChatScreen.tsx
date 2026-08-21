@@ -7,7 +7,8 @@ import type { Citation, LocalMessage, Thread } from "../lib/types";
 
 interface Props {
   token: string;
-  tenantId?: string;
+  tenantId: string;
+  projectKey: string;
 }
 
 function newId(): string {
@@ -33,7 +34,7 @@ function citationLabel(citation: Citation): string {
   );
 }
 
-export function ChatScreen({ token, tenantId }: Props) {
+export function ChatScreen({ token, tenantId, projectKey }: Props) {
   const [threads, setThreads] = useState<Thread[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
@@ -50,7 +51,7 @@ export function ChatScreen({ token, tenantId }: Props) {
   // Hydrate threads from disk once.
   useEffect(() => {
     let cancelled = false;
-    loadThreads().then((stored) => {
+    loadThreads(tenantId, projectKey).then((stored) => {
       if (cancelled) {
         return;
       }
@@ -61,15 +62,15 @@ export function ChatScreen({ token, tenantId }: Props) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [tenantId, projectKey]);
 
   // Persist on every change once the initial load has happened, so we never
   // clobber stored threads with the empty bootstrap state.
   useEffect(() => {
     if (loaded) {
-      void saveThreads(threads);
+      void saveThreads(tenantId, projectKey, threads);
     }
-  }, [threads, loaded]);
+  }, [threads, loaded, tenantId, projectKey]);
 
   const active = threads.find((t) => t.id === activeId) ?? null;
 
@@ -138,7 +139,7 @@ export function ChatScreen({ token, tenantId }: Props) {
     setSending(true);
 
     try {
-      const res = await chat(token, question, tenantId);
+      const res = await chat(token, question, tenantId, projectKey);
       const assistant: LocalMessage = {
         role: "assistant",
         content: res.answer,
@@ -288,6 +289,46 @@ export function ChatScreen({ token, tenantId }: Props) {
                   </div>
                 )}
 
+              {message.role === "assistant" && message.meta && (
+                <div className="badge-row" data-testid="chat-response-meta">
+                  {message.meta.chunks_used !== undefined && (
+                    <span className="badge ghost">{message.meta.chunks_used} chunks</span>
+                  )}
+                  {message.meta.latency_ms !== undefined && (
+                    <span className="badge ghost">{(message.meta.latency_ms / 1000).toFixed(1)}s</span>
+                  )}
+                  {message.meta.cost && (
+                    <span className="badge ghost">{message.meta.cost} {message.meta.cost_currency ?? ""}</span>
+                  )}
+                </div>
+              )}
+
+              {message.role === "assistant" && (message.meta?.retrieval_runner_up?.length ?? 0) > 0 && (
+                <details className="chat-details" data-testid="chat-runner-up">
+                  <summary>Considered but not used ({message.meta?.runner_up_count ?? message.meta?.retrieval_runner_up?.length})</summary>
+                  <ul>
+                    {message.meta?.retrieval_runner_up?.map((row, ri) => (
+                      <li key={row.chunk_id ?? ri}>
+                        <strong>{row.document?.title ?? row.heading_path ?? `Chunk ${row.chunk_id ?? ri + 1}`}</strong>
+                        {row.reason && <span className="muted small"> · {row.reason}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+
+              {message.role === "assistant" && (message.meta?.counterfactual?.length ?? 0) > 0 && (
+                <details className="chat-details" data-testid="chat-counterfactual">
+                  <summary>Related evidence in other projects</summary>
+                  {message.meta?.counterfactual?.map((panel) => (
+                    <div key={panel.project_key} className="counterfactual-project">
+                      <strong>{panel.project_key}</strong>
+                      <span className="muted small"> · {panel.top_chunks.length} result{panel.top_chunks.length === 1 ? "" : "s"}</span>
+                    </div>
+                  ))}
+                </details>
+              )}
+
               {message.role === "assistant" &&
                 message.citations &&
                 message.citations.length > 0 && (
@@ -313,6 +354,7 @@ export function ChatScreen({ token, tenantId }: Props) {
                               setOpenDoc({
                                 documentId: docId,
                                 title: citation.title,
+                                projectKey: citation.project_key,
                                 sourcePath: citation.source_path,
                               })
                             }

@@ -43,6 +43,8 @@ export async function clearSession(): Promise<void> {
   const s = await store();
   await s.delete("token");
   await s.delete("user");
+  await s.delete("active_tenant");
+  await s.delete("active_projects");
   await s.save();
 }
 
@@ -58,14 +60,31 @@ export async function saveActiveTenant(tenantId: string): Promise<void> {
   await s.save();
 }
 
-export async function loadThreads(): Promise<Thread[]> {
+export async function loadActiveProject(tenantId: string): Promise<string | null> {
   const s = await store();
-  const threads = await s.get<Thread[]>("threads");
+  const projects = await s.get<Record<string, string>>("active_projects");
+  return projects?.[tenantId] ?? null;
+}
+
+export async function saveActiveProject(tenantId: string, projectKey: string): Promise<void> {
+  const s = await store();
+  const projects = (await s.get<Record<string, string>>("active_projects")) ?? {};
+  await s.set("active_projects", { ...projects, [tenantId]: projectKey });
+  await s.save();
+}
+
+function threadStoreKey(tenantId: string, projectKey: string): string {
+  return `threads:${encodeURIComponent(tenantId)}:${encodeURIComponent(projectKey)}`;
+}
+
+export async function loadThreads(tenantId: string, projectKey: string): Promise<Thread[]> {
+  const s = await store();
+  const threads = await s.get<Thread[]>(threadStoreKey(tenantId, projectKey));
   return Array.isArray(threads) ? threads : [];
 }
 
-export async function saveThreads(threads: Thread[]): Promise<void> {
+export async function saveThreads(tenantId: string, projectKey: string, threads: Thread[]): Promise<void> {
   const s = await store();
-  await s.set("threads", threads);
+  await s.set(threadStoreKey(tenantId, projectKey), threads);
   await s.save();
 }

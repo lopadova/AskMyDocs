@@ -5,6 +5,11 @@ a non-browser client needs against the Laravel backend:
 
 - **Login** — `POST /api/auth/token` issues a Sanctum **Bearer token** (no
   cookie/CSRF dance). The token is stored locally and survives restarts.
+- **Multi-tenant workspace selection** — after login, the client reads
+  `GET /api/auth/me`, lets the user choose a tenant and then one of their
+  projects, and sends both `X-Tenant-Id` and `project_key` on KB requests.
+  Tenant branding is downloaded through the authenticated logo endpoint and
+  remains visible in the app header.
 - **Sign up** — `POST /api/auth/register-token` creates an **invite-only**
   account (a valid invite code is required), redeems the code server-side, and
   returns a Bearer token in the same shape as login. It's the stateless
@@ -12,8 +17,10 @@ a non-browser client needs against the Laravel backend:
   token through `App\Support\DesktopToken` so the scope/TTL never drift.
 - **Chat** — `POST /api/kb/chat` (stateless, grounded answers with citations
   and a confidence badge). Answers render as **markdown**, and each citation
-  opens its source document in the viewer. Conversation threads are kept
-  **locally** on disk.
+  opens its source document in the viewer. Retrieval runner-ups,
+  counterfactual project evidence, latency and server-side cost are rendered
+  when supplied. Conversation threads are kept **locally** on disk and are
+  isolated by tenant + project.
 - **Search** — `GET /api/kb/documents/search` (document title/path
   autocomplete).
 - **Document viewer** — `GET /api/kb/documents/{id}/preview` returns a
@@ -153,6 +160,7 @@ desktop/
 │   ├── components/DocumentModal.tsx  # fullpage MD viewer (GET …/preview)
 │   ├── screens/LoginScreen.tsx
 │   ├── screens/RegisterScreen.tsx    # invite-only Bearer sign-up
+│   ├── screens/WorkspaceScreen.tsx # tenant → project selection
 │   ├── screens/ChatScreen.tsx
 │   └── screens/SearchScreen.tsx
 └── src-tauri/               # Rust shell (registers http + store plugins)

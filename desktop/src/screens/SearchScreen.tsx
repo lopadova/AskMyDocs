@@ -5,12 +5,13 @@ import type { DocSearchResult } from "../lib/types";
 
 interface Props {
   token: string;
-  tenantId?: string;
+  tenantId: string;
+  projectKey: string;
 }
 
 type State = "idle" | "loading" | "ready" | "empty" | "error";
 
-export function SearchScreen({ token, tenantId }: Props) {
+export function SearchScreen({ token, tenantId, projectKey }: Props) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<DocSearchResult[]>([]);
   const [state, setState] = useState<State>("idle");
@@ -32,7 +33,7 @@ export function SearchScreen({ token, tenantId }: Props) {
     let cancelled = false;
     const handle = setTimeout(async () => {
       try {
-        const found = await searchDocs(token, needle, tenantId);
+        const found = await searchDocs(token, needle, tenantId, projectKey);
         if (cancelled) {
           return;
         }
@@ -55,7 +56,7 @@ export function SearchScreen({ token, tenantId }: Props) {
       cancelled = true;
       clearTimeout(handle);
     };
-  }, [query, token, tenantId]);
+  }, [query, token, tenantId, projectKey]);
 
   return (
     <div className="search" data-testid="search-screen" data-state={state}>

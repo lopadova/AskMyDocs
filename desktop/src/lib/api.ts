@@ -163,11 +163,12 @@ export async function chat(
   token: string,
   question: string,
   tenantId?: string,
+  projectKey?: string,
 ): Promise<ChatResponse> {
   const res = await http(`${API_BASE}/api/kb/chat`, {
     method: "POST",
     headers: authHeaders(token, tenantId),
-    body: JSON.stringify({ question }),
+    body: JSON.stringify({ question, ...(projectKey ? { project_key: projectKey } : {}) }),
   });
   const body = await parseBody(res);
   if (!res.ok) {
@@ -180,8 +181,11 @@ export async function searchDocs(
   token: string,
   query: string,
   tenantId?: string,
+  projectKey?: string,
 ): Promise<DocSearchResult[]> {
-  const url = `${API_BASE}/api/kb/documents/search?q=${encodeURIComponent(query)}`;
+  const params = new URLSearchParams({ q: query });
+  if (projectKey) params.append("project_keys[]", projectKey);
+  const url = `${API_BASE}/api/kb/documents/search?${params.toString()}`;
   const res = await http(url, { headers: authHeaders(token, tenantId) });
   const body = await parseBody(res);
   if (!res.ok) {
@@ -189,6 +193,24 @@ export async function searchDocs(
   }
   const data = (body as { data?: DocSearchResult[] }).data;
   return Array.isArray(data) ? data : [];
+}
+
+/** Download an authenticated tenant logo and expose it as a CSP-safe blob URL. */
+export async function fetchTenantLogo(
+  token: string,
+  logoUrl: string,
+): Promise<string> {
+  const apiOrigin = new URL(`${API_BASE}/`);
+  const absolute = new URL(logoUrl, apiOrigin);
+  if (absolute.origin !== apiOrigin.origin) {
+    throw new ApiError(0, "Tenant logo URL is outside the configured API origin", null);
+  }
+  const res = await http(absolute.toString(), { headers: authHeaders(token) });
+  if (!res.ok) {
+    const body = await parseBody(res);
+    throw new ApiError(res.status, errorMessage(body, "Could not load tenant logo"), body);
+  }
+  return URL.createObjectURL(await res.blob());
 }
 
 /** Full source text + metadata of a single document, for the fullpage MD
