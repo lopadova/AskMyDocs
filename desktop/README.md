@@ -10,12 +10,18 @@ a non-browser client needs against the Laravel backend:
   returns a Bearer token in the same shape as login. It's the stateless
   counterpart of the web `POST /api/auth/register`; both flows mint the desktop
   token through `App\Support\DesktopToken` so the scope/TTL never drift.
+- **Workspace selection** — after authentication, `GET /api/auth/me` supplies
+  the user's tenants and project memberships. The app requires an explicit
+  **tenant → project** selection before opening the workspace, persists that
+  pair across restarts, and lets the user switch either value inside the app.
 - **Chat** — `POST /api/kb/chat` (stateless, grounded answers with citations
   and a confidence badge). Answers render as **markdown**, and each citation
-  opens its source document in the viewer. Conversation threads are kept
-  **locally** on disk.
+  opens its source document in the viewer. The selected tenant is sent as
+  `X-Tenant-Id`; the selected project is sent as `X-Project-Key` and
+  `project_key`. Conversation threads are kept **locally** on disk and isolated
+  per tenant/project pair.
 - **Search** — `GET /api/kb/documents/search` (document title/path
-  autocomplete).
+  autocomplete), scoped with the selected tenant and `project_keys[]`.
 - **Document viewer** — `GET /api/kb/documents/{id}/preview` returns a
   document's full source text (reconstructed from its chunks, tenant +
   AccessScope scoped). Clicking a search result or a chat citation opens a
@@ -153,6 +159,7 @@ desktop/
 │   ├── components/DocumentModal.tsx  # fullpage MD viewer (GET …/preview)
 │   ├── screens/LoginScreen.tsx
 │   ├── screens/RegisterScreen.tsx    # invite-only Bearer sign-up
+│   ├── screens/WorkspaceScreen.tsx   # tenant → project session picker
 │   ├── screens/ChatScreen.tsx
 │   └── screens/SearchScreen.tsx
 └── src-tauri/               # Rust shell (registers http + store plugins)
@@ -160,9 +167,10 @@ desktop/
 
 ## Notes / out of scope
 
-- **Conversation history is local.** The server's `/conversations` endpoints
-  use the web-session guard, so a Bearer client can't reach them; each thread
-  lives in the local store and every turn hits the stateless `/api/kb/chat`.
+- **Conversation history is local and workspace-scoped.** The server's
+  `/conversations` endpoints use the web-session guard, so a Bearer client can't
+  reach them; each thread lives under its tenant/project store key and every
+  turn hits the stateless `/api/kb/chat`.
 - The Bearer token is kept in the plugin store (plaintext on disk). Hardening
   it into the OS keychain is a follow-up, not part of this demo.
 - **Local TLS:** the Tauri HTTP plugin (rustls) doesn't trust the local-CA cert

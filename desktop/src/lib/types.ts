@@ -111,9 +111,10 @@ export interface LocalMessage {
   meta?: ChatMeta;
 }
 
-// A conversation thread lives entirely on the client (persisted in the Tauri
-// store). Each turn calls the stateless POST /api/kb/chat — the backend never
-// stores per-conversation history for Bearer clients.
+// A conversation thread lives entirely on the client (persisted in a
+// tenant/project-specific Tauri store key). Each turn calls the stateless
+// POST /api/kb/chat — the backend never stores per-conversation history for
+// Bearer clients.
 export interface Thread {
   id: string;
   title: string;

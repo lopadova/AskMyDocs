@@ -14,14 +14,21 @@ export interface DocumentRef {
 
 interface Props {
   token: string;
-  tenantId?: string;
+  tenantId: string;
+  projectKey: string;
   target: DocumentRef;
   onClose: () => void;
 }
 
 type State = "loading" | "ready" | "empty" | "error";
 
-export function DocumentModal({ token, tenantId, target, onClose }: Props) {
+export function DocumentModal({
+  token,
+  tenantId,
+  projectKey,
+  target,
+  onClose,
+}: Props) {
   const [doc, setDoc] = useState<DocumentPreview | null>(null);
   const [state, setState] = useState<State>("loading");
   const [error, setError] = useState("");
@@ -34,7 +41,7 @@ export function DocumentModal({ token, tenantId, target, onClose }: Props) {
     setState("loading");
     setError("");
     setDoc(null);
-    fetchDocumentPreview(token, target.documentId, tenantId)
+    fetchDocumentPreview(token, target.documentId, tenantId, projectKey)
       .then((preview) => {
         if (cancelled) {
           return;
@@ -56,7 +63,7 @@ export function DocumentModal({ token, tenantId, target, onClose }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [token, tenantId, target.documentId]);
+  }, [token, tenantId, projectKey, target.documentId]);
 
   // Close on Escape; move focus into the dialog on open and restore it on close.
   useEffect(() => {
@@ -76,7 +83,7 @@ export function DocumentModal({ token, tenantId, target, onClose }: Props) {
 
   const title = doc?.title ?? target.title ?? "Document";
   const sourcePath = doc?.source_path ?? target.sourcePath ?? null;
-  const projectKey = doc?.project_key ?? target.projectKey ?? null;
+  const displayProjectKey = doc?.project_key ?? target.projectKey ?? projectKey;
 
   return (
     <div
@@ -103,7 +110,9 @@ export function DocumentModal({ token, tenantId, target, onClose }: Props) {
               {title}
             </h2>
             <div className="doc-modal-meta">
-              {projectKey && <span className="badge ghost">{projectKey}</span>}
+              {displayProjectKey && (
+                <span className="badge ghost">{displayProjectKey}</span>
+              )}
               {doc?.source_type && (
                 <span className="badge ghost">{doc.source_type}</span>
               )}
