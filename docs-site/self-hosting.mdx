@@ -86,7 +86,7 @@ canonical-indexing jobs (`IngestDocumentJob`, `CanonicalIndexerJob`); the
     Seed the Spatie roles + permissions so you can sign in to the admin SPA:
     ```bash
     php artisan db:seed
-    php artisan auth:grant you@example.com super-admin
+    php artisan system-admin:grant you@example.com --yes
     ```
   </Step>
   <Step title="Build the SPA">
@@ -156,7 +156,7 @@ sudo -u postgres psql -d askmydocs -c "CREATE EXTENSION IF NOT EXISTS vector;"
 php artisan migrate --force && php artisan db:seed --force
 
 # 3. first admin
-php artisan auth:grant ops@acme.com super-admin
+php artisan system-admin:grant ops@acme.com --yes
 
 # 4. ingest a folder of docs
 php artisan kb:ingest-folder docs/ --project=handbook

@@ -31,7 +31,7 @@ final class WidgetThemeServiceTest extends TestCase
         $d = $this->service->defaults();
 
         // Un campione delle chiavi attese.
-        foreach (['accent', 'background', 'fontFamily', 'fontSize', 'launcherSide', 'panelWidth'] as $key) {
+        foreach (['accent', 'accentForeground', 'composerBackground', 'citationBackground', 'sourceBackdrop', 'fontFamily', 'fontSize', 'launcherSide', 'panelWidth', 'sourceViewerWidth'] as $key) {
             $this->assertArrayHasKey($key, $d);
         }
         $this->assertMatchesRegularExpression('/^#[0-9a-f]{6}$/', $d['accent']);
@@ -83,15 +83,46 @@ final class WidgetThemeServiceTest extends TestCase
     #[Test]
     public function sanitize_clamps_numbers_into_range(): void
     {
-        $tooBig = $this->service->sanitize(['fontSize' => 999, 'panelWidth' => 9999, 'panelRadius' => 500]);
+        $tooBig = $this->service->sanitize([
+            'fontSize' => 999,
+            'panelWidth' => 9999,
+            'panelHeight' => 9999,
+            'panelRadius' => 500,
+            'launcherOffsetX' => 999,
+            'sourceViewerWidth' => 9999,
+            'sourceViewerRadius' => 999,
+        ]);
         $this->assertSame(18, $tooBig['fontSize']);
-        $this->assertSame(480, $tooBig['panelWidth']);
+        $this->assertSame(720, $tooBig['panelWidth']);
+        $this->assertSame(900, $tooBig['panelHeight']);
         $this->assertSame(24, $tooBig['panelRadius']);
+        $this->assertSame(96, $tooBig['launcherOffsetX']);
+        $this->assertSame(1200, $tooBig['sourceViewerWidth']);
+        $this->assertSame(32, $tooBig['sourceViewerRadius']);
 
-        $tooSmall = $this->service->sanitize(['fontSize' => 1, 'panelHeight' => 10, 'panelRadius' => -50]);
+        $tooSmall = $this->service->sanitize([
+            'fontSize' => 1,
+            'panelHeight' => 10,
+            'panelRadius' => -50,
+            'launcherSize' => 1,
+            'bubbleMaxWidth' => 1,
+            'logoHeight' => 1,
+            'sourceViewerWidth' => 1,
+        ]);
         $this->assertSame(12, $tooSmall['fontSize']);
         $this->assertSame(420, $tooSmall['panelHeight']);
         $this->assertSame(0, $tooSmall['panelRadius']);
+        $this->assertSame(40, $tooSmall['launcherSize']);
+        $this->assertSame(50, $tooSmall['bubbleMaxWidth']);
+        $this->assertSame(16, $tooSmall['logoHeight']);
+        $this->assertSame(560, $tooSmall['sourceViewerWidth']);
+
+        // Same rounding contract as sanitizeTheme() in TypeScript.
+        $this->assertSame(14, $this->service->sanitize(['fontSize' => 13.6])['fontSize']);
+        $this->assertSame(14, $this->service->sanitize(['fontSize' => '13.6'])['fontSize']);
+        $this->assertSame(12, $this->service->sanitize(['fontSize' => '1e1'])['fontSize']);
+        $this->assertSame(14, $this->service->sanitize(['fontSize' => '0x10'])['fontSize']);
+        $this->assertSame(14, $this->service->sanitize(['fontSize' => '0b1111'])['fontSize']);
     }
 
     #[Test]
@@ -101,11 +132,15 @@ final class WidgetThemeServiceTest extends TestCase
             'fontFamily' => 'Comic Sans; }',
             'launcherShape' => 'hexagon',
             'launcherIcon' => '<svg onload=alert(1)>',
+            'launcherShadow' => '0 0 100px red',
+            'panelShadow' => 'url(javascript:alert(1))',
         ]);
 
         $this->assertSame('system', $out['fontFamily']);
         $this->assertSame('pill', $out['launcherShape']);
         $this->assertSame('chat', $out['launcherIcon']);
+        $this->assertSame('medium', $out['launcherShadow']);
+        $this->assertSame('strong', $out['panelShadow']);
     }
 
     #[Test]
@@ -118,8 +153,21 @@ final class WidgetThemeServiceTest extends TestCase
 
         // http (non-https), data:, e url con meta-caratteri → scartati.
         $this->assertSame('', $this->service->sanitize(['headerLogoUrl' => 'http://cdn.example.com/x.png'])['headerLogoUrl']);
+        $this->assertSame('', $this->service->sanitize(['headerLogoUrl' => 'https:cdn.example.com/x.png'])['headerLogoUrl']);
+        $this->assertSame('', $this->service->sanitize(['headerLogoUrl' => 'https:/cdn.example.com/x.png'])['headerLogoUrl']);
+        $this->assertSame('https://cdn.example.com/x.png', $this->service->sanitize(['headerLogoUrl' => 'HTTPS://cdn.example.com/x.png'])['headerLogoUrl']);
         $this->assertSame('', $this->service->sanitize(['launcherIconUrl' => 'javascript:alert(1)'])['launcherIconUrl']);
         $this->assertSame('', $this->service->sanitize(['launcherIconUrl' => 'https://x.com/a").evil("'])['launcherIconUrl']);
+    }
+
+    #[Test]
+    public function sanitize_rejects_an_image_url_longer_than_backend_validation_allows(): void
+    {
+        $out = $this->service->sanitize([
+            'headerLogoUrl' => 'https://cdn.example.com/'.str_repeat('a', 500),
+        ]);
+
+        $this->assertSame('', $out['headerLogoUrl']);
     }
 
     #[Test]
@@ -132,6 +180,10 @@ final class WidgetThemeServiceTest extends TestCase
 
         $this->assertSame('Ask me', $out['launcherLabel']);
         $this->assertSame(60, mb_strlen($out['panelTitle']));
+        $this->assertSame(
+            str_repeat('a', 59).'😀',
+            $this->service->sanitize(['panelTitle' => str_repeat('a', 59).'😀'])['panelTitle'],
+        );
     }
 
     #[Test]

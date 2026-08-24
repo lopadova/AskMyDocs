@@ -5,12 +5,16 @@ declare(strict_types=1);
 namespace Tests\Feature\Admin;
 
 use App\Models\User;
+use App\Models\AdminCommandAudit;
+use App\Models\Project;
 use App\Models\WidgetKey;
 use App\Models\WidgetSession;
 use App\Models\WidgetSessionStep;
 use App\Support\TenantContext;
 use Database\Seeders\RbacSeeder;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
@@ -32,6 +36,14 @@ final class WidgetAdminControllerTest extends TestCase
     {
         parent::setUp();
         $this->seed(RbacSeeder::class);
+
+        foreach (['my-project', 'docs-v3', 'engineering', 'gescat', 'p', 'portal'] as $projectKey) {
+            Project::query()->create([
+                'tenant_id' => 'test-tenant',
+                'project_key' => $projectKey,
+                'name' => ucfirst(str_replace('-', ' ', $projectKey)),
+            ]);
+        }
     }
 
     private function superAdmin(): User
@@ -77,7 +89,7 @@ final class WidgetAdminControllerTest extends TestCase
         $user = $this->superAdmin();
 
         WidgetKey::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'test-project',
             'public_key' => 'pk_test_abc123',
             'secret_hash' => bcrypt('sk_test_secret'),
@@ -108,7 +120,7 @@ final class WidgetAdminControllerTest extends TestCase
         $user = $this->superAdmin();
 
         $withSessions = WidgetKey::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'p-count',
             'public_key' => 'pk_count_2',
             'secret_hash' => Hash::make('sk_count_2'),
@@ -120,7 +132,7 @@ final class WidgetAdminControllerTest extends TestCase
         ]);
         for ($i = 0; $i < 2; $i++) {
             WidgetSession::query()->create([
-                'tenant_id' => 'default',
+                'tenant_id' => 'test-tenant',
                 'widget_key_id' => $withSessions->id,
                 'project_key' => 'p-count',
                 'public_session_id' => \Illuminate\Support\Str::uuid(),
@@ -130,7 +142,7 @@ final class WidgetAdminControllerTest extends TestCase
         }
 
         $withoutSessions = WidgetKey::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'p-count',
             'public_key' => 'pk_count_0',
             'secret_hash' => Hash::make('sk_count_0'),
@@ -190,7 +202,100 @@ final class WidgetAdminControllerTest extends TestCase
         $this->assertDatabaseHas('widget_keys', [
             'label' => 'New Key',
             'project_key' => 'my-project',
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
+        ]);
+    }
+
+    public function test_store_rejects_a_project_outside_the_tenant_catalog(): void
+    {
+        $user = $this->superAdmin();
+
+        Project::query()->create([
+            'tenant_id' => 'another-tenant',
+            'project_key' => 'private-project',
+            'name' => 'Private project',
+        ]);
+
+        $this->actingAs($user)->postJson('/api/admin/widget-keys', [
+            'label' => 'Cross tenant',
+            'project_key' => 'private-project',
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors('project_key');
+
+        $this->assertDatabaseMissing('widget_keys', [
+            'tenant_id' => 'test-tenant',
+            'project_key' => 'private-project',
+        ]);
+    }
+
+    public function test_store_rechecks_the_catalog_inside_the_transaction(): void
+    {
+        $user = $this->superAdmin();
+        $project = Project::query()
+            ->where('tenant_id', 'test-tenant')
+            ->where('project_key', 'my-project')
+            ->sole();
+        $removedBetweenValidationAndTransaction = false;
+
+        // Simulate the only dangerous interleaving on SQLite: the registry row
+        // disappears after the validator has materialised its catalogue but
+        // before store() enters its write transaction. The second catalogue
+        // check must reject the now-stale selection instead of creating an
+        // orphan widget key.
+        DB::listen(function (QueryExecuted $query) use (
+            $project,
+            &$removedBetweenValidationAndTransaction,
+        ): void {
+            $sql = strtolower($query->sql);
+            if ($removedBetweenValidationAndTransaction
+                || ! str_contains($sql, 'select distinct')
+                || ! str_contains($sql, 'project_key')
+                || ! str_contains($sql, 'widget_keys')) {
+                return;
+            }
+
+            $removedBetweenValidationAndTransaction = true;
+            DB::table('projects')->where('id', $project->id)->delete();
+        });
+
+        $this->actingAs($user)->postJson('/api/admin/widget-keys', [
+            'label' => 'Raced project',
+            'project_key' => 'my-project',
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors('project_key');
+
+        $this->assertTrue($removedBetweenValidationAndTransaction);
+        $this->assertDatabaseMissing('widget_keys', [
+            'tenant_id' => 'test-tenant',
+            'project_key' => 'my-project',
+            'label' => 'Raced project',
+        ]);
+    }
+
+    public function test_store_preserves_a_legacy_catalog_project_without_a_registry_row(): void
+    {
+        $user = $this->superAdmin();
+        WidgetKey::factory()->create([
+            'tenant_id' => 'test-tenant',
+            'project_key' => 'legacy-widget-only',
+            'label' => 'Existing legacy key',
+        ]);
+
+        $this->assertDatabaseMissing('projects', [
+            'tenant_id' => 'test-tenant',
+            'project_key' => 'legacy-widget-only',
+        ]);
+
+        $this->actingAs($user)->postJson('/api/admin/widget-keys', [
+            'label' => 'Second legacy key',
+            'project_key' => 'legacy-widget-only',
+        ])->assertCreated()
+            ->assertJsonPath('data.project_key', 'legacy-widget-only');
+
+        $this->assertDatabaseHas('widget_keys', [
+            'tenant_id' => 'test-tenant',
+            'project_key' => 'legacy-widget-only',
+            'label' => 'Second legacy key',
         ]);
     }
 
@@ -285,7 +390,7 @@ final class WidgetAdminControllerTest extends TestCase
     {
         $user = $this->superAdmin();
         $key = WidgetKey::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'gescat',
             'public_key' => 'pk_host_tools',
             'secret_hash' => bcrypt('sk_host_tools'),
@@ -318,7 +423,7 @@ final class WidgetAdminControllerTest extends TestCase
     {
         $user = $this->superAdmin();
         $key = WidgetKey::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'test-project',
             'public_key' => 'pk_test_update',
             'secret_hash' => bcrypt('sk_test_secret'),
@@ -344,7 +449,7 @@ final class WidgetAdminControllerTest extends TestCase
     {
         $user = $this->superAdmin();
         $key = WidgetKey::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'test-project',
             'public_key' => 'pk_test_origins',
             'secret_hash' => bcrypt('sk_test_secret'),
@@ -376,7 +481,7 @@ final class WidgetAdminControllerTest extends TestCase
     {
         $user = $this->superAdmin();
         $key = WidgetKey::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'test-project',
             'public_key' => 'pk_test_clear_origins',
             'secret_hash' => bcrypt('sk_test_secret'),
@@ -402,7 +507,7 @@ final class WidgetAdminControllerTest extends TestCase
     {
         $user = $this->superAdmin();
         $key = WidgetKey::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'test-project',
             'public_key' => 'pk_test_long_origin',
             'secret_hash' => bcrypt('sk_test_secret'),
@@ -425,7 +530,7 @@ final class WidgetAdminControllerTest extends TestCase
     {
         $user = $this->superAdmin();
         $key = WidgetKey::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'p',
             'public_key' => 'pk_theme_default',
             'label' => 'No theme',
@@ -438,10 +543,61 @@ final class WidgetAdminControllerTest extends TestCase
         $this->actingAs($user)->getJson('/api/admin/widget-keys')
             ->assertOk()
             ->assertJsonPath('data.0.theme.accent', '#2563eb')
-            ->assertJsonPath('data.0.theme.fontFamily', 'system');
+            ->assertJsonPath('data.0.theme.fontFamily', 'system')
+            ->assertJsonPath('data.0.intro.enabled', false);
 
         // theme_config resta null finché non si personalizza.
         $this->assertNull($key->fresh()->theme_config);
+    }
+
+    public function test_store_and_partial_update_persist_a_sanitized_intro(): void
+    {
+        $user = $this->superAdmin();
+
+        $response = $this->actingAs($user)->postJson('/api/admin/widget-keys', [
+            'label' => 'Introduced',
+            'project_key' => 'p',
+            'intro' => [
+                'enabled' => true,
+                'variant' => 'hero',
+                'title' => 'Product assistant',
+                'body' => 'Answers from official documentation.',
+                'suggestions' => [['label' => 'Start', 'prompt' => 'Explain the product']],
+            ],
+        ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('data.intro.enabled', true)
+            ->assertJsonPath('data.intro.variant', 'hero')
+            ->assertJsonPath('data.intro.title', 'Product assistant');
+
+        $id = (int) $response->json('data.id');
+        $this->actingAs($user)->patchJson("/api/admin/widget-keys/{$id}", [
+            'intro' => ['body' => 'Updated body.'],
+        ])->assertOk()
+            ->assertJsonPath('data.intro.title', 'Product assistant')
+            ->assertJsonPath('data.intro.body', 'Updated body.');
+    }
+
+    public function test_enabled_intro_requires_title_and_image_alt_text(): void
+    {
+        $user = $this->superAdmin();
+
+        $this->actingAs($user)->postJson('/api/admin/widget-keys', [
+            'label' => 'Invalid intro',
+            'project_key' => 'p',
+            'intro' => ['enabled' => true],
+        ])->assertStatus(422)->assertJsonValidationErrors('intro.title');
+
+        $this->actingAs($user)->postJson('/api/admin/widget-keys', [
+            'label' => 'Invalid image',
+            'project_key' => 'p',
+            'intro' => [
+                'enabled' => true,
+                'title' => 'Hello',
+                'imageUrl' => 'https://cdn.example.test/hero.webp',
+            ],
+        ])->assertStatus(422)->assertJsonValidationErrors('intro.imageAlt');
     }
 
     public function test_store_persists_and_sanitizes_a_theme(): void
@@ -473,7 +629,7 @@ final class WidgetAdminControllerTest extends TestCase
     {
         $user = $this->superAdmin();
         $key = WidgetKey::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'p',
             'public_key' => 'pk_theme_update',
             'label' => 'L',
@@ -492,6 +648,64 @@ final class WidgetAdminControllerTest extends TestCase
             ->assertJsonPath('data.theme.background', '#ffffff'); // default conservato
 
         $this->assertSame('#ef4444', $key->fresh()->theme_config['accent']);
+    }
+
+    public function test_update_theme_is_a_true_partial_patch(): void
+    {
+        $user = $this->superAdmin();
+        $theme = app(\App\Services\Widget\WidgetThemeService::class)->sanitize([
+            'accent' => '#111111',
+            'background' => '#222222',
+            'panelWidth' => 640,
+            'panelShadow' => 'soft',
+        ]);
+        $key = WidgetKey::query()->create([
+            'tenant_id' => 'test-tenant',
+            'project_key' => 'p',
+            'public_key' => 'pk_theme_partial_update',
+            'label' => 'Partial theme',
+            'allowed_origins' => [],
+            'rate_limit' => 60,
+            'skill' => 'askmydocs-assistant@1',
+            'theme_config' => $theme,
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($user)->patchJson("/api/admin/widget-keys/{$key->id}", [
+            'theme' => ['accent' => '#abcdef'],
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.theme.accent', '#abcdef')
+            ->assertJsonPath('data.theme.background', '#222222')
+            ->assertJsonPath('data.theme.panelWidth', 640)
+            ->assertJsonPath('data.theme.panelShadow', 'soft');
+
+        $stored = $key->fresh()->theme_config;
+        $this->assertSame('#abcdef', $stored['accent']);
+        $this->assertSame('#222222', $stored['background']);
+        $this->assertSame(640, $stored['panelWidth']);
+        $this->assertSame('soft', $stored['panelShadow']);
+    }
+
+    public function test_advanced_theme_ranges_and_shadow_allowlist_are_validated(): void
+    {
+        $user = $this->superAdmin();
+
+        $this->actingAs($user)->postJson('/api/admin/widget-keys', [
+            'label' => 'Invalid advanced theme',
+            'project_key' => 'p',
+            'theme' => [
+                'panelWidth' => 721,
+                'sourceViewerWidth' => 559,
+                'launcherShadow' => 'custom-css',
+            ],
+        ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors([
+                'theme.panelWidth',
+                'theme.sourceViewerWidth',
+                'theme.launcherShadow',
+            ]);
     }
 
     public function test_invalid_theme_color_is_rejected_with_422(): void
@@ -537,11 +751,27 @@ final class WidgetAdminControllerTest extends TestCase
         $this->assertSame('inline', $row->theme_config['mode']);
     }
 
+    public function test_store_persists_fullscreen_widget_mode_via_theme(): void
+    {
+        $user = $this->superAdmin();
+
+        $this->actingAs($user)->postJson('/api/admin/widget-keys', [
+            'label' => 'Fullscreen portal',
+            'project_key' => 'portal',
+            'theme' => ['mode' => 'fullscreen'],
+        ])->assertCreated()->assertJsonPath('data.theme.mode', 'fullscreen');
+
+        $this->assertSame(
+            'fullscreen',
+            WidgetKey::query()->where('label', 'Fullscreen portal')->sole()->theme_config['mode'],
+        );
+    }
+
     public function test_default_key_resolves_helper_mode(): void
     {
         $user = $this->superAdmin();
         WidgetKey::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'p',
             'public_key' => 'pk_mode_default',
             'label' => 'No mode',
@@ -573,7 +803,7 @@ final class WidgetAdminControllerTest extends TestCase
     {
         $user = $this->superAdmin();
         $key = WidgetKey::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'test-project',
             'public_key' => 'pk_test_old',
             'secret_hash' => bcrypt('sk_test_old'),
@@ -604,7 +834,7 @@ final class WidgetAdminControllerTest extends TestCase
     {
         $user = $this->superAdmin();
         $key = WidgetKey::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'test-project',
             'public_key' => 'pk_test_revoke',
             'secret_hash' => bcrypt('sk_test_revoke'),
@@ -626,7 +856,7 @@ final class WidgetAdminControllerTest extends TestCase
     {
         $user = $this->superAdmin();
         $key = WidgetKey::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'test-project',
             'public_key' => 'pk_test_destroy',
             'secret_hash' => bcrypt('sk_test_destroy'),
@@ -649,7 +879,7 @@ final class WidgetAdminControllerTest extends TestCase
 
         // Key in default tenant
         WidgetKey::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'default-project',
             'public_key' => 'pk_visible',
             'secret_hash' => bcrypt('sk_visible'),
@@ -698,7 +928,7 @@ final class WidgetAdminControllerTest extends TestCase
         $user = $this->adminUser(); // admin can view sessions
 
         $key = WidgetKey::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'test-project',
             'public_key' => 'pk_sess_test',
             'secret_hash' => bcrypt('sk_sess_test'),
@@ -710,7 +940,7 @@ final class WidgetAdminControllerTest extends TestCase
         ]);
 
         $session = WidgetSession::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'widget_key_id' => $key->id,
             'project_key' => 'test-project',
             'public_session_id' => \Illuminate\Support\Str::uuid(),
@@ -731,7 +961,7 @@ final class WidgetAdminControllerTest extends TestCase
         $user = $this->adminUser();
 
         $key = WidgetKey::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'test-project',
             'public_key' => 'pk_sess_27',
             'secret_hash' => bcrypt('sk_sess_27'),
@@ -743,7 +973,7 @@ final class WidgetAdminControllerTest extends TestCase
         ]);
 
         $session = WidgetSession::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'widget_key_id' => $key->id,
             'project_key' => 'test-project',
             'public_session_id' => \Illuminate\Support\Str::uuid(),
@@ -767,7 +997,7 @@ final class WidgetAdminControllerTest extends TestCase
         $user = $this->adminUser();
 
         $key = WidgetKey::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'test-project',
             'public_key' => 'pk_detail_test',
             'secret_hash' => bcrypt('sk_detail_test'),
@@ -779,7 +1009,7 @@ final class WidgetAdminControllerTest extends TestCase
         ]);
 
         $session = WidgetSession::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'widget_key_id' => $key->id,
             'project_key' => 'test-project',
             'public_session_id' => \Illuminate\Support\Str::uuid(),
@@ -788,7 +1018,7 @@ final class WidgetAdminControllerTest extends TestCase
         ]);
 
         WidgetSessionStep::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'widget_session_id' => $session->id,
             'step_index' => 0,
             'kind' => 'user_message',
@@ -815,7 +1045,7 @@ final class WidgetAdminControllerTest extends TestCase
         $user = $this->adminUser();
 
         $key1 = WidgetKey::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'project-1',
             'public_key' => 'pk_filter_1',
             'secret_hash' => bcrypt('sk_filter_1'),
@@ -827,7 +1057,7 @@ final class WidgetAdminControllerTest extends TestCase
         ]);
 
         $key2 = WidgetKey::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'project-2',
             'public_key' => 'pk_filter_2',
             'secret_hash' => bcrypt('sk_filter_2'),
@@ -840,7 +1070,7 @@ final class WidgetAdminControllerTest extends TestCase
 
         // Session on key1
         WidgetSession::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'widget_key_id' => $key1->id,
             'project_key' => 'project-1',
             'public_session_id' => \Illuminate\Support\Str::uuid(),
@@ -849,7 +1079,7 @@ final class WidgetAdminControllerTest extends TestCase
 
         // Session on key2
         WidgetSession::query()->create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'widget_key_id' => $key2->id,
             'project_key' => 'project-2',
             'public_session_id' => \Illuminate\Support\Str::uuid(),
@@ -862,5 +1092,59 @@ final class WidgetAdminControllerTest extends TestCase
         $response->assertOk();
         // Only sessions for key1 should be returned
         $this->assertCount(1, $response->json('data'));
+    }
+
+    public function test_authenticated_user_credential_is_shown_once_and_rotatable(): void
+    {
+        $user = $this->superAdmin();
+        $created = $this->actingAs($user)->postJson('/api/admin/widget-keys', [
+            'label' => 'Authenticated portal',
+            'project_key' => 'portal',
+            'allowed_origins' => ['https://portal.example'],
+            'user_auth_enabled' => true,
+        ])->assertCreated();
+
+        $this->assertStringStartsWith('ik_', $created->json('identity_plain_secret'));
+        $id = (int) $created->json('data.id');
+
+        $index = $this->actingAs($user)->getJson('/api/admin/widget-keys')->assertOk();
+        $this->assertNull($index->json('data.0.identity_plain_secret'));
+        $this->assertTrue($index->json('data.0.user_auth_enabled'));
+        $this->assertSame(1, $index->json('data.0.identity_credential_version'));
+
+        $rotated = $this->actingAs($user)
+            ->postJson("/api/admin/widget-keys/{$id}/rotate-identity-secret", [
+                'identity_credential_version' => 1,
+            ])
+            ->assertOk();
+        $this->assertStringStartsWith('ik_', $rotated->json('identity_plain_secret'));
+        $this->assertNotSame(
+            $created->json('identity_plain_secret'),
+            $rotated->json('identity_plain_secret'),
+        );
+
+        $exchangePayload = [
+            'subject' => 'host-user-42',
+            'origin' => 'https://portal.example',
+        ];
+        $publicKey = (string) $created->json('public_key');
+
+        $this->postJson('/api/widget/user-token', $exchangePayload, [
+            'X-Widget-Key' => $publicKey,
+            'Authorization' => 'Bearer '.$created->json('identity_plain_secret'),
+        ])->assertUnauthorized()->assertJsonPath('error', 'identity_credentials_invalid');
+
+        $this->postJson('/api/widget/user-token', $exchangePayload, [
+            'X-Widget-Key' => $publicKey,
+            'Authorization' => 'Bearer '.$rotated->json('identity_plain_secret'),
+        ])->assertCreated();
+
+        $auditPayload = AdminCommandAudit::query()
+            ->where('command', 'widget.identity-credential')
+            ->get()
+            ->pluck('args_json')
+            ->toJson();
+        $this->assertStringNotContainsString((string) $created->json('identity_plain_secret'), $auditPayload);
+        $this->assertStringNotContainsString((string) $rotated->json('identity_plain_secret'), $auditPayload);
     }
 }

@@ -28,7 +28,7 @@ class MeTest extends TestCase
             'password' => Hash::make('secret123'),
         ]);
 
-        $this->actingAs($user);
+        $this->actingAsWithoutTenant($user);
 
         $response = $this->getJson('/api/auth/me');
 
@@ -42,12 +42,33 @@ class MeTest extends TestCase
                 'roles' => [],
                 'permissions' => [],
                 'projects' => [],
+                'onboarding' => [
+                    'required' => true,
+                    'can_create_company' => true,
+                ],
                 'preferences' => [
                     'theme' => 'dark',
                     'density' => 'balanced',
                     'language' => 'en',
                 ],
             ]);
+    }
+
+    public function test_authenticated_me_exposes_the_users_persisted_locale(): void
+    {
+        $user = User::create([
+            'name' => 'Giulia',
+            'email' => 'giulia@example.com',
+            'password' => Hash::make('secret123'),
+            'locale' => 'it-IT',
+        ]);
+
+        $this->actingAsWithoutTenant($user);
+
+        $this->getJson('/api/auth/me')
+            ->assertOk()
+            ->assertJsonPath('user.locale', 'it-IT')
+            ->assertJsonPath('preferences.language', 'it-IT');
     }
 
     public function test_authenticated_me_with_role_and_membership_populates_rbac_arrays(): void
@@ -71,7 +92,7 @@ class MeTest extends TestCase
             'scope_allowlist' => ['folder_globs' => ['hr/*']],
         ]);
 
-        $this->actingAs($user);
+        $this->actingAsWithoutTenant($user);
 
         $response = $this->getJson('/api/auth/me');
 
@@ -94,19 +115,16 @@ class MeTest extends TestCase
         $response->assertStatus(401);
     }
 
-    public function test_me_teams_falls_back_to_default_for_user_without_memberships(): void
+    public function test_me_teams_is_empty_for_user_without_memberships(): void
     {
         $user = $this->makeUser('nomember@example.com');
 
-        $this->actingAs($user);
+        $this->actingAsWithoutTenant($user);
 
         $this->getJson('/api/auth/me')
             ->assertOk()
-            ->assertJsonCount(1, 'teams')
-            ->assertJsonPath('teams.0.tenant_id', 'default')
-            ->assertJsonPath('teams.0.hash', \App\Support\TeamHash::for('default'))
-            ->assertJsonPath('teams.0.name', 'Default')
-            ->assertJsonPath('teams.0.projects', []);
+            ->assertJsonCount(0, 'teams')
+            ->assertJsonPath('onboarding.required', true);
     }
 
     public function test_me_teams_hash_is_deterministic_unique_and_url_safe(): void
@@ -119,7 +137,7 @@ class MeTest extends TestCase
             'role' => 'admin',
         ]);
 
-        $this->actingAs($user);
+        $this->actingAsWithoutTenant($user);
 
         $teams = $this->getJson('/api/auth/me')->assertOk()->json('teams');
 
@@ -135,10 +153,17 @@ class MeTest extends TestCase
         $this->assertSame($hashes, $again);
     }
 
-    public function test_me_teams_groups_memberships_per_tenant_with_default_first(): void
+    public function test_me_teams_groups_operational_memberships_and_hides_reserved_default(): void
     {
         $user = $this->makeUser('multi@example.com');
 
+        ProjectMembership::create([
+            'tenant_id' => 'default',
+            'user_id' => $user->id,
+            'project_key' => 'legacy-kb',
+            'role' => 'viewer',
+            'scope_allowlist' => null,
+        ]);
         ProjectMembership::create([
             'tenant_id' => 'zeta-corp',
             'user_id' => $user->id,
@@ -161,20 +186,19 @@ class MeTest extends TestCase
             'scope_allowlist' => null,
         ]);
 
-        $this->actingAs($user);
+        $this->actingAsWithoutTenant($user);
 
         $response = $this->getJson('/api/auth/me')->assertOk();
 
-        // default first (bootstrap team), then alphabetical.
-        $response->assertJsonPath('teams.0.tenant_id', 'default')
-            ->assertJsonPath('teams.1.tenant_id', 'acme')
-            ->assertJsonPath('teams.2.tenant_id', 'zeta-corp')
-            ->assertJsonCount(3, 'teams')
-            ->assertJsonCount(2, 'teams.1.projects')
-            ->assertJsonPath('teams.1.projects.0.project_key', 'acme-kb')
-            ->assertJsonPath('teams.1.projects.0.role', 'admin')
-            ->assertJsonPath('teams.1.projects.0.scope.folder_globs.0', 'docs/*')
-            ->assertJsonPath('teams.2.projects.0.project_key', 'zeta-kb');
+        $response->assertJsonPath('teams.0.tenant_id', 'acme')
+            ->assertJsonPath('teams.1.tenant_id', 'zeta-corp')
+            ->assertJsonCount(2, 'teams')
+            ->assertJsonCount(2, 'teams.0.projects')
+            ->assertJsonPath('teams.0.projects.0.project_key', 'acme-kb')
+            ->assertJsonPath('teams.0.projects.0.role', 'admin')
+            ->assertJsonPath('teams.0.projects.0.scope.folder_globs.0', 'docs/*')
+            ->assertJsonPath('teams.1.projects.0.project_key', 'zeta-kb')
+            ->assertJsonPath('onboarding.required', false);
     }
 
     public function test_me_teams_uses_tenants_table_label_with_humanised_fallback(): void
@@ -195,38 +219,47 @@ class MeTest extends TestCase
             'role' => 'viewer',
         ]);
 
-        $this->actingAs($user);
+        $this->actingAsWithoutTenant($user);
 
         $this->getJson('/api/auth/me')
             ->assertOk()
-            ->assertJsonPath('teams.1.tenant_id', 'acme')
-            ->assertJsonPath('teams.1.name', 'Acme Corporation')
-            ->assertJsonPath('teams.2.tenant_id', 'no-row-tenant')
-            ->assertJsonPath('teams.2.name', 'No Row Tenant');
+            ->assertJsonPath('teams.0.tenant_id', 'acme')
+            ->assertJsonPath('teams.0.name', 'Acme Corporation')
+            ->assertJsonPath('teams.1.tenant_id', 'no-row-tenant')
+            ->assertJsonPath('teams.1.name', 'No Row Tenant');
     }
 
-    public function test_me_teams_includes_all_active_tenants_for_cross_access_user(): void
+    public function test_me_teams_for_system_admin_contains_only_active_membership_tenants(): void
     {
         Tenant::create(['slug' => 'acme', 'name' => 'Acme Corporation']);
         Tenant::create(['slug' => 'globex', 'name' => 'Globex']);
         Tenant::create(['slug' => 'frozen-co', 'name' => 'Frozen Co', 'status' => 'suspended']);
 
-        Permission::findOrCreate('tenant.cross-access', 'web');
         $user = $this->makeUser('operator@example.com');
-        $user->givePermissionTo('tenant.cross-access');
+        $systemRole = Role::findOrCreate('system-admin', 'web');
+        $user->assignRole($systemRole);
+        ProjectMembership::create([
+            'tenant_id' => 'acme',
+            'user_id' => $user->id,
+            'project_key' => 'acme-kb',
+            'role' => 'admin',
+        ]);
+        ProjectMembership::create([
+            'tenant_id' => 'frozen-co',
+            'user_id' => $user->id,
+            'project_key' => 'frozen-kb',
+            'role' => 'admin',
+        ]);
 
-        $this->actingAs($user);
+        $this->actingAsWithoutTenant($user);
 
         $response = $this->getJson('/api/auth/me')->assertOk();
 
         $tenantIds = array_column($response->json('teams'), 'tenant_id');
-        $this->assertSame(['default', 'acme', 'globex'], $tenantIds);
+        $this->assertSame(['acme'], $tenantIds);
+        $this->assertNotContains('globex', $tenantIds, 'system role must not add unassociated tenants');
         $this->assertNotContains('frozen-co', $tenantIds, 'suspended tenants must not be offered as teams');
-
-        // Cross-access teams without memberships expose an empty projects
-        // list — the FE derives project options from tenant-scoped
-        // endpoints (R18), not from this payload.
-        $this->assertSame([], $response->json('teams.1.projects'));
+        $this->assertSame('acme-kb', $response->json('teams.0.projects.0.project_key'));
     }
 
     public function test_me_teams_extension_is_additive_and_leaves_legacy_keys_untouched(): void
@@ -239,7 +272,7 @@ class MeTest extends TestCase
             'role' => 'admin',
         ]);
 
-        $this->actingAs($user);
+        $this->actingAsWithoutTenant($user);
 
         $response = $this->getJson('/api/auth/me')->assertOk();
 
@@ -252,15 +285,16 @@ class MeTest extends TestCase
                 'permissions',
                 'projects',
                 'teams' => [['tenant_id', 'hash', 'name', 'projects']],
+                'onboarding' => ['required', 'can_create_company'],
                 'preferences' => ['theme', 'density', 'language'],
-                'features' => ['invitations_admin'],
+                'features' => ['invitations_admin', 'system_admin'],
             ]);
     }
 
     public function test_me_exposes_invitations_admin_feature_flag_in_both_states(): void
     {
         $user = $this->makeUser('flag@example.com');
-        $this->actingAs($user);
+        $this->actingAsWithoutTenant($user);
 
         $previous = config('invitations-admin.enabled', false);
 
@@ -280,6 +314,23 @@ class MeTest extends TestCase
         } finally {
             config(['invitations-admin.enabled' => $previous]);
         }
+    }
+
+    public function test_me_exposes_system_admin_capability_from_platform_permission(): void
+    {
+        Permission::findOrCreate('platform.admin', 'web');
+        $user = $this->makeUser('platform@example.com');
+        $this->actingAsWithoutTenant($user);
+
+        $this->getJson('/api/auth/me')
+            ->assertOk()
+            ->assertJsonPath('features.system_admin', false);
+
+        $user->givePermissionTo('platform.admin');
+
+        $this->getJson('/api/auth/me')
+            ->assertOk()
+            ->assertJsonPath('features.system_admin', true);
     }
 
     private function makeUser(string $email): User

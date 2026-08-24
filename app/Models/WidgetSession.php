@@ -33,6 +33,7 @@ class WidgetSession extends Model
     protected $fillable = [
         'tenant_id',
         'widget_key_id',
+        'widget_identity_id',
         'project_key',
         'public_session_id',
         'status',
@@ -40,6 +41,7 @@ class WidgetSession extends Model
         'mission',
         'page_url',
         'origin',
+        'locale',
         'summary',
         'blocked_reason',
         'meta',
@@ -61,9 +63,20 @@ class WidgetSession extends Model
         return $this->belongsTo(WidgetKey::class);
     }
 
+    public function identity(): BelongsTo
+    {
+        return $this->belongsTo(WidgetIdentity::class, 'widget_identity_id');
+    }
+
     /** @return HasMany<WidgetSessionStep> */
     public function steps(): HasMany
     {
         return $this->hasMany(WidgetSessionStep::class);
+    }
+
+    /** @return HasMany<AgentRun> */
+    public function agentRuns(): HasMany
+    {
+        return $this->hasMany(AgentRun::class);
     }
 }

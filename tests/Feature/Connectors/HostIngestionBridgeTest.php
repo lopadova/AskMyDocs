@@ -8,12 +8,18 @@ use App\Connectors\HostIngestionBridge;
 use App\Jobs\IngestDocumentJob;
 use App\Models\KbCanonicalAudit;
 use App\Models\KnowledgeDocument;
+use App\Services\Demo\EmailDataset\EmailDatasetReader;
+use App\Services\Demo\EmailDataset\FixtureMetadataIndex;
 use App\Services\Kb\DocumentDeleter;
 use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Storage;
 use Padosoft\AskMyDocsConnectorBase\Contracts\ConnectorIngestionContract;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
+use PHPUnit\Framework\Attributes\DataProvider;
+use RuntimeException;
 use Tests\TestCase;
 
 /**
@@ -24,6 +30,15 @@ use Tests\TestCase;
 final class HostIngestionBridgeTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Most bridge tests isolate Message-ID parsing. The dedicated fixture
+        // index integration test below enables the production-strict lookup.
+        config()->set('connectors.case_study_email_dataset.require_fixture_index', false);
+    }
 
     public function test_bridge_is_bound_as_singleton_via_contract(): void
     {
@@ -55,8 +70,471 @@ final class HostIngestionBridgeTest extends TestCase
                 && $job->disk === 'kb'
                 && $job->title === 'Page ABC'
                 && $job->mimeType === 'text/markdown'
-                && $job->tenantId === 'acme';
+                && $job->tenantId === 'acme'
+                && $job->metadata === ['notion_page_id' => 'abc-123'];
         });
+    }
+
+    public function test_dispatch_ingestion_derives_generated_fixture_metadata_from_reserved_message_id(): void
+    {
+        Queue::fake();
+
+        /** @var HostIngestionBridge $bridge */
+        $bridge = $this->app->make(ConnectorIngestionContract::class);
+
+        $fixtureId = str_repeat('a', 64);
+
+        $bridge->dispatchIngestion(
+            projectKey: 'connector-email-rotta',
+            relativePath: 'email/rotta/message.md',
+            disk: 'kb',
+            title: 'Generated fixture',
+            metadata: [
+                'imap_message_id' => "<large-v2.{$fixtureId}@fixtures.askmydocs.invalid>",
+                'imap_mailbox' => 'INBOX',
+                'generated_fixture' => false,
+                'dataset_version' => 'spoofed-version',
+                'fixture_id' => str_repeat('b', 64),
+            ],
+            mimeType: 'text/markdown',
+            tenantId: 'rotta',
+        );
+
+        Queue::assertPushed(IngestDocumentJob::class, function (IngestDocumentJob $job) use ($fixtureId): bool {
+            return $job->projectKey === 'connector-email-rotta'
+                && $job->tenantId === 'rotta'
+                && $job->metadata === [
+                    'imap_message_id' => "<large-v2.{$fixtureId}@fixtures.askmydocs.invalid>",
+                    'imap_mailbox' => 'INBOX',
+                    'generated_fixture' => true,
+                    'dataset_version' => 'large-v2',
+                    'fixture_id' => $fixtureId,
+                ];
+        });
+    }
+
+    public function test_dispatch_ingestion_accepts_reserved_message_id_without_angle_brackets(): void
+    {
+        Queue::fake();
+
+        /** @var HostIngestionBridge $bridge */
+        $bridge = $this->app->make(ConnectorIngestionContract::class);
+
+        $fixtureId = str_repeat('c', 64);
+
+        $bridge->dispatchIngestion(
+            projectKey: 'connector-email-prometeo',
+            relativePath: 'email/prometeo/message.md',
+            disk: 'kb',
+            title: 'Generated fixture',
+            metadata: [
+                'imap_message_id' => "demo-v2.{$fixtureId}@fixtures.askmydocs.invalid",
+                'imap_uid' => 42,
+            ],
+            mimeType: 'text/markdown',
+            tenantId: 'prometeo',
+        );
+
+        Queue::assertPushed(IngestDocumentJob::class, function (IngestDocumentJob $job) use ($fixtureId): bool {
+            return $job->metadata['generated_fixture'] === true
+                && $job->metadata['dataset_version'] === 'demo-v2'
+                && $job->metadata['fixture_id'] === $fixtureId
+                && $job->metadata['imap_uid'] === 42;
+        });
+    }
+
+    public function test_imap_dispatch_requires_a_persisted_source_before_queueing_or_acknowledging(): void
+    {
+        Queue::fake();
+        Storage::fake('kb');
+        config()->set('kb.sources.disk', 'kb');
+        config()->set('kb.sources.path_prefix', '');
+        config()->set('filesystems.disks.kb.throw', true);
+
+        /** @var HostIngestionBridge $bridge */
+        $bridge = $this->app->make(ConnectorIngestionContract::class);
+
+        try {
+            $bridge->dispatchIngestion(
+                projectKey: 'connector-email',
+                relativePath: 'connector-email/connectors/imap/installation-12/inbox/99.md',
+                disk: 'kb',
+                title: 'Missing source',
+                metadata: [
+                    'connector' => 'imap',
+                    'installation_id' => 12,
+                    'imap_uid' => '99',
+                    'imap_doc_key' => 'INBOX:1:99',
+                    'imap_mailbox' => 'INBOX',
+                    'imap_message_id' => '<ordinary@example.test>',
+                ],
+                mimeType: 'text/markdown',
+                tenantId: 'default',
+            );
+            $this->fail('A missing IMAP source must fail before dispatch.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('was not persisted', $exception->getMessage());
+        }
+
+        Queue::assertNothingPushed();
+    }
+
+    public function test_generated_imap_fixture_uses_a_stable_path_across_new_transport_uids(): void
+    {
+        Queue::fake();
+        Storage::fake('kb');
+        config()->set('kb.sources.disk', 'kb');
+        config()->set('kb.sources.path_prefix', '');
+        config()->set('filesystems.disks.kb.throw', true);
+
+        /** @var HostIngestionBridge $bridge */
+        $bridge = $this->app->make(ConnectorIngestionContract::class);
+
+        $fixtureId = str_repeat('e', 64);
+        $messageId = "<large-v2.{$fixtureId}@fixtures.askmydocs.invalid>";
+        $first = 'connector-email/connectors/imap/installation-12/inbox/99.md';
+        $second = 'connector-email/connectors/imap/installation-12/inbox/177.md';
+        Storage::disk('kb')->put($first, '# fixture');
+        Storage::disk('kb')->put($second, '# fixture');
+
+        foreach ([[$first, '99'], [$second, '177']] as [$path, $uid]) {
+            $bridge->dispatchIngestion(
+                projectKey: 'connector-email',
+                relativePath: $path,
+                disk: 'kb',
+                title: 'Generated fixture',
+                metadata: [
+                    'connector' => 'imap',
+                    'installation_id' => 12,
+                    'imap_uid' => $uid,
+                    'imap_doc_key' => "INBOX:1:{$uid}",
+                    'imap_mailbox' => 'INBOX',
+                    'imap_message_id' => $messageId,
+                ],
+                mimeType: 'text/markdown',
+                tenantId: 'default',
+            );
+        }
+
+        $stable = 'connector-email/connectors/imap/installation-12/inbox'
+            ."/datasets/large-v2/{$fixtureId}.md";
+        Storage::disk('kb')->assertExists($stable);
+        Storage::disk('kb')->assertMissing($first);
+        Storage::disk('kb')->assertMissing($second);
+
+        Queue::assertPushed(IngestDocumentJob::class, 2);
+        Queue::assertPushed(IngestDocumentJob::class, function (IngestDocumentJob $job) use (
+            $stable,
+            $fixtureId,
+        ): bool {
+            return $job->relativePath === $stable
+                && $job->metadata['generated_fixture'] === true
+                && $job->metadata['fixture_id'] === $fixtureId
+                && $job->metadata['imap_doc_key'] === "fixture:large-v2:{$fixtureId}"
+                && str_starts_with(
+                    (string) $job->metadata['imap_transport_doc_key'],
+                    'INBOX:1:',
+                );
+        });
+    }
+
+    public function test_generated_imap_fixture_restores_the_exact_soft_deleted_projection(): void
+    {
+        Queue::fake();
+        Storage::fake('kb');
+        config()->set('kb.sources.disk', 'kb');
+        config()->set('kb.sources.path_prefix', '');
+        config()->set('filesystems.disks.kb.throw', true);
+
+        $fixtureId = str_repeat('f', 64);
+        $stable = 'connector-email/connectors/imap/installation-12/inbox'
+            ."/datasets/large-v2/{$fixtureId}.md";
+        $document = KnowledgeDocument::query()->create([
+            'tenant_id' => 'default',
+            'project_key' => 'connector-email',
+            'source_type' => 'markdown',
+            'title' => 'Rolled back fixture',
+            'source_path' => $stable,
+            'mime_type' => 'text/markdown',
+            'language' => 'it',
+            'access_scope' => 'internal',
+            'status' => 'active',
+            'document_hash' => hash('sha256', '# fixture'),
+            'version_hash' => hash('sha256', '# fixture'),
+            'metadata' => [
+                'generated_fixture' => true,
+                'dataset_version' => 'large-v2',
+                'fixture_id' => $fixtureId,
+            ],
+            'indexed_at' => now(),
+        ]);
+        $document->delete();
+        $this->assertTrue($document->trashed());
+
+        $transient = 'connector-email/connectors/imap/installation-12/inbox/244.md';
+        Storage::disk('kb')->put($transient, '# fixture');
+
+        /** @var HostIngestionBridge $bridge */
+        $bridge = $this->app->make(ConnectorIngestionContract::class);
+        $bridge->dispatchIngestion(
+            projectKey: 'connector-email',
+            relativePath: $transient,
+            disk: 'kb',
+            title: 'Generated fixture',
+            metadata: [
+                'connector' => 'imap',
+                'installation_id' => 12,
+                'imap_uid' => '244',
+                'imap_doc_key' => 'INBOX:1:244',
+                'imap_mailbox' => 'INBOX',
+                'imap_message_id' => "<large-v2.{$fixtureId}@fixtures.askmydocs.invalid>",
+            ],
+            mimeType: 'text/markdown',
+            tenantId: 'default',
+        );
+
+        $this->assertFalse(
+            KnowledgeDocument::withTrashed()->findOrFail($document->id)->trashed(),
+        );
+        Queue::assertPushed(IngestDocumentJob::class);
+    }
+
+    public function test_generated_imap_fixture_propagates_sharded_index_metadata_to_the_job(): void
+    {
+        Queue::fake();
+        Storage::fake('kb');
+        config()->set('kb.sources.disk', 'kb');
+        config()->set('kb.sources.path_prefix', '');
+        config()->set('filesystems.disks.kb.throw', true);
+
+        $root = sys_get_temp_dir().'/askmydocs-host-fixture-index-'.bin2hex(random_bytes(8));
+        try {
+            $this->artisan('demo:generate-case-study-emails', [
+                '--profile' => 'gold',
+                '--seed' => '818',
+                '--mailbox' => ['rotta-logistics-1'],
+                '--output' => $root,
+            ])->assertSuccessful();
+
+            $directories = glob($root.'/*', GLOB_ONLYDIR);
+            $this->assertIsArray($directories);
+            $this->assertCount(1, $directories);
+            $datasetDirectory = $directories[0];
+            $datasetVersion = basename($datasetDirectory);
+
+            /** @var EmailDatasetReader $reader */
+            $reader = $this->app->make(EmailDatasetReader::class);
+            $record = null;
+            foreach ($reader->recordsForMailbox($datasetDirectory, 'rotta-logistics-1') as $candidate) {
+                $candidateBody = str_replace(
+                    ["\r\n", "\r"],
+                    "\n",
+                    (string) $candidate['body_text'],
+                );
+                if (! str_contains($candidateBody, "\n")) {
+                    continue;
+                }
+
+                $record = $candidate;
+                break;
+            }
+            $this->assertIsArray($record);
+
+            config()->set('connectors.case_study_email_dataset.root', $root);
+            config()->set('connectors.case_study_email_dataset.require_fixture_index', true);
+
+            $transient = 'rotta-logistics/connectors/imap/installation-21/inbox/313.md';
+            $transportBody = str_replace(
+                "\n",
+                "\r\n",
+                str_replace(
+                    ["\r\n", "\r"],
+                    "\n",
+                    trim((string) $record['body_text']),
+                ),
+            );
+            $this->assertStringContainsString("\r\n", $transportBody);
+            $committedMarkdown = '# '.$record['subject']
+                ."\n\n---\n\n".$transportBody."\n";
+            Storage::disk('kb')->put($transient, $committedMarkdown);
+
+            /** @var HostIngestionBridge $bridge */
+            $bridge = $this->app->make(ConnectorIngestionContract::class);
+            $bridge->dispatchIngestion(
+                projectKey: 'rotta-logistics',
+                relativePath: $transient,
+                disk: 'kb',
+                title: (string) $record['subject'],
+                metadata: [
+                    'connector' => 'imap',
+                    'installation_id' => 21,
+                    'imap_uid' => '313',
+                    'imap_doc_key' => 'rotta-logistics-1:1:313',
+                    'imap_mailbox' => 'rotta-logistics-1',
+                    'imap_message_id' => (string) $record['message_id'],
+                ],
+                mimeType: 'text/markdown',
+                tenantId: 'rotta-logistics',
+            );
+
+            Queue::assertPushed(
+                IngestDocumentJob::class,
+                function (IngestDocumentJob $job) use ($record, $datasetVersion): bool {
+                    foreach ([
+                        'company_key',
+                        'mailbox_key',
+                        'scenario_type',
+                        'topic',
+                        'message_type',
+                        'thread_id',
+                        'fact_ids',
+                        'canonical_sources',
+                        'truth_state',
+                        'canary_ids',
+                    ] as $field) {
+                        if (($job->metadata[$field] ?? null) !== $record[$field]) {
+                            return false;
+                        }
+                    }
+
+                    return $job->metadata['dataset_version'] === $datasetVersion
+                        && $job->metadata['fixture_id'] === $record['fixture_id']
+                        && $job->metadata['content_sha256'] === FixtureMetadataIndex::contentChecksum(
+                            (string) $record['subject'],
+                            (string) $record['body_text'],
+                        );
+                },
+            );
+
+            $tampered = 'rotta-logistics/connectors/imap/installation-21/inbox/314.md';
+            Storage::disk('kb')->put(
+                $tampered,
+                '# '.$record['subject']."\n\n---\n\ncontenuto alterato\n",
+            );
+            try {
+                $bridge->dispatchIngestion(
+                    projectKey: 'rotta-logistics',
+                    relativePath: $tampered,
+                    disk: 'kb',
+                    title: (string) $record['subject'],
+                    metadata: [
+                        'connector' => 'imap',
+                        'installation_id' => 21,
+                        'imap_uid' => '314',
+                        'imap_doc_key' => 'rotta-logistics-1:1:314',
+                        'imap_mailbox' => 'rotta-logistics-1',
+                        'imap_message_id' => (string) $record['message_id'],
+                    ],
+                    mimeType: 'text/markdown',
+                    tenantId: 'rotta-logistics',
+                );
+                $this->fail('Tampered bytes with a committed fixture Message-ID were accepted.');
+            } catch (RuntimeException $exception) {
+                $this->assertStringContainsString('content does not match', $exception->getMessage());
+            }
+
+            $stable = 'rotta-logistics/connectors/imap/installation-21/rotta-logistics-1'
+                ."/datasets/{$datasetVersion}/{$record['fixture_id']}.md";
+            Storage::disk('kb')->assertExists($stable);
+            $this->assertSame($committedMarkdown, Storage::disk('kb')->get($stable));
+            Queue::assertPushed(IngestDocumentJob::class, 1);
+        } finally {
+            if (is_dir($root)) {
+                $this->assertTrue((new Filesystem)->deleteDirectory($root));
+            }
+        }
+    }
+
+    public function test_imap_dispatch_rejects_a_non_strict_kb_disk(): void
+    {
+        Queue::fake();
+        Storage::fake('kb');
+        config()->set('kb.sources.disk', 'kb');
+        config()->set('kb.sources.path_prefix', '');
+        config()->set('filesystems.disks.kb.throw', false);
+        Storage::disk('kb')->put('imap/message.md', '# persisted but non-strict');
+
+        /** @var HostIngestionBridge $bridge */
+        $bridge = $this->app->make(ConnectorIngestionContract::class);
+
+        try {
+            $bridge->dispatchIngestion(
+                projectKey: 'connector-email',
+                relativePath: 'imap/message.md',
+                disk: 'kb',
+                title: 'Unsafe storage contract',
+                metadata: [
+                    'connector' => 'imap',
+                    'installation_id' => 1,
+                    'imap_mailbox' => 'INBOX',
+                    'imap_message_id' => '<ordinary@example.test>',
+                ],
+                mimeType: 'text/markdown',
+                tenantId: 'default',
+            );
+            $this->fail('A non-strict KB disk must be rejected for IMAP ingestion.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('throw=true', $exception->getMessage());
+        }
+
+        Queue::assertNothingPushed();
+    }
+
+    #[DataProvider('untrustedFixtureMessageIdProvider')]
+    public function test_dispatch_ingestion_does_not_trust_invalid_message_ids_or_spoofed_metadata(mixed $messageId): void
+    {
+        Queue::fake();
+
+        /** @var HostIngestionBridge $bridge */
+        $bridge = $this->app->make(ConnectorIngestionContract::class);
+
+        $metadata = [
+            'imap_message_id' => $messageId,
+            'imap_mailbox' => 'INBOX',
+            'generated_fixture' => true,
+            'dataset_version' => 'spoofed',
+            'fixture_id' => str_repeat('d', 64),
+        ];
+
+        $bridge->dispatchIngestion(
+            projectKey: 'connector-email',
+            relativePath: 'email/ordinary.md',
+            disk: 'kb',
+            title: 'Ordinary message',
+            metadata: $metadata,
+            mimeType: 'text/markdown',
+            tenantId: 'acme',
+        );
+
+        Queue::assertPushed(IngestDocumentJob::class, function (IngestDocumentJob $job) use ($messageId): bool {
+            return $job->metadata['imap_message_id'] === $messageId
+                && $job->metadata['imap_mailbox'] === 'INBOX'
+                && ! array_key_exists('generated_fixture', $job->metadata)
+                && ! array_key_exists('dataset_version', $job->metadata)
+                && ! array_key_exists('fixture_id', $job->metadata);
+        });
+    }
+
+    /**
+     * @return array<string, array{mixed}>
+     */
+    public static function untrustedFixtureMessageIdProvider(): array
+    {
+        $fixtureId = str_repeat('a', 64);
+
+        return [
+            'ordinary provider message id' => ['message@example.com'],
+            'custom header-like value' => ["large-v2.{$fixtureId}@example.com"],
+            'uppercase dataset version' => ["Large-v2.{$fixtureId}@fixtures.askmydocs.invalid"],
+            'uppercase fixture hex' => ['large-v2.'.str_repeat('A', 64).'@fixtures.askmydocs.invalid'],
+            'fixture id too short' => ['large-v2.'.str_repeat('a', 63).'@fixtures.askmydocs.invalid'],
+            'fixture id too long' => ['large-v2.'.str_repeat('a', 65).'@fixtures.askmydocs.invalid'],
+            'missing closing bracket' => ["<large-v2.{$fixtureId}@fixtures.askmydocs.invalid"],
+            'missing opening bracket' => ["large-v2.{$fixtureId}@fixtures.askmydocs.invalid>"],
+            'trailing content' => ["large-v2.{$fixtureId}@fixtures.askmydocs.invalid.evil"],
+            'non string' => [42],
+            'missing message id' => [null],
+        ];
     }
 
     public function test_resolve_kb_source_path_normalises_and_applies_prefix(): void

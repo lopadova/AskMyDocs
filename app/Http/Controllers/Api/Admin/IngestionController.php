@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\Admin;
 
+use App\Connectors\Imap\Backfill\ImapBackfillManager;
 use App\Services\Admin\IngestionObservabilityService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -23,7 +24,10 @@ use Illuminate\Routing\Controller;
  */
 final class IngestionController extends Controller
 {
-    public function __construct(private readonly IngestionObservabilityService $service) {}
+    public function __construct(
+        private readonly IngestionObservabilityService $service,
+        private readonly ImapBackfillManager $imapBackfills,
+    ) {}
 
     public function queue(): JsonResponse
     {
@@ -37,5 +41,25 @@ final class IngestionController extends Controller
         return response()->json([
             'data' => $this->service->syncRunsForInstallation($installationId, $limit),
         ]);
+    }
+
+    public function imapBackfill(int $installationId): JsonResponse
+    {
+        return response()->json(['data' => [
+            'enabled' => $this->imapBackfills->isEnabled(),
+            'backfill' => $this->imapBackfills->status($installationId),
+        ]]);
+    }
+
+    public function startImapBackfill(int $installationId): JsonResponse
+    {
+        $backfill = $this->imapBackfills->start($installationId);
+
+        return response()->json([
+            'data' => [
+                'enabled' => $this->imapBackfills->isEnabled(),
+                'backfill' => $this->imapBackfills->status($backfill->connector_installation_id),
+            ],
+        ], 202);
     }
 }

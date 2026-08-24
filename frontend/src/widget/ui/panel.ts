@@ -10,8 +10,11 @@ import { Bridge, type BridgeEvents } from '../core/bridge';
 import type { Artifact } from '../core/bridge';
 import type { Citation, ToolCall, WidgetConfig, WidgetMode, WidgetTheme } from '../types';
 import { OverlaySystem } from './overlay';
-import { DEFAULT_THEME, buildThemeCss, launcherIconSvg, sanitizeTheme } from './styles';
+import { IntroCard, mergeIntroLayers } from './intro';
+import { DEFAULT_THEME, buildThemeCss, launcherIconSvg, mergeThemeLayers } from './styles';
 import { UiArtifactRenderer } from './UiArtifactRenderer';
+import { SourceViewer } from './source-viewer';
+import type { AgentRunEvent } from '../../lib/agent-run-events';
 
 const DEFAULT_TITLE = 'Assistente';
 const DEFAULT_LAUNCHER_LABEL = 'Chiedi all’assistente';
@@ -23,6 +26,7 @@ export class WidgetPanel {
      *  per il layout: il `theme.mode` server è solo informativo. */
     private readonly mode: WidgetMode;
     private readonly bridge: Bridge;
+    private readonly sourceViewer: SourceViewer;
     private readonly launcher: HTMLButtonElement;
     private readonly launcherIconSlot: HTMLElement;
     private readonly launcherLabelEl: HTMLElement;
@@ -30,7 +34,13 @@ export class WidgetPanel {
     private readonly header: HTMLElement;
     private readonly titleEl: HTMLElement;
     private readonly messages: HTMLElement;
+    private readonly introCard: IntroCard;
     private readonly status: HTMLElement;
+    private readonly activity: HTMLElement;
+    private readonly activityMessage: HTMLElement;
+    private readonly activityMeta: HTMLElement;
+    private readonly activityProgress: HTMLElement;
+    private readonly activityActions: HTMLElement;
     private readonly input: HTMLTextAreaElement;
     private readonly send: HTMLButtonElement;
     /** <style> del tema, dentro `root` (scope shadow) — aggiornabile. */
@@ -42,6 +52,9 @@ export class WidgetPanel {
     /** Tema effettivo applicato (default < server < inline). */
     private theme: WidgetTheme = DEFAULT_THEME;
     private confirmBar: HTMLElement | null = null;
+    /** Composer gate: no first turn may race setup + authenticated history
+     *  restore and accidentally create/overwrite a different session. */
+    private initialized = false;
     /**
      * M4.8 — feedback visivo agentico (freccia/tour). Monta su `<body>` della
      * pagina ospite (non nello shadow root) per coprire l'intera viewport.
@@ -66,7 +79,8 @@ export class WidgetPanel {
         this.panel = this.el('section', 'amd-panel', {
             'data-testid': 'askmydocs-widget-panel',
             'data-open': 'false',
-            'data-state': 'idle',
+            'data-state': 'loading',
+            'aria-busy': 'true',
             role: 'dialog',
         });
 
@@ -77,7 +91,21 @@ export class WidgetPanel {
         this.header.append(this.titleEl, close);
 
         this.messages = this.el('div', 'amd-messages', { 'data-testid': 'askmydocs-widget-messages', role: 'log', 'aria-live': 'polite' });
+        this.introCard = new IntroCard(this.messages, (prompt) => this.submitText(prompt));
         this.status = this.el('div', 'amd-status', { 'data-testid': 'askmydocs-widget-status', 'aria-live': 'polite' });
+        this.activity = this.el('aside', 'amd-activity', {
+            'data-testid': 'askmydocs-widget-agent-activity',
+            'data-state': 'idle',
+            'aria-live': 'polite',
+            hidden: '',
+        });
+        this.activityMessage = this.el('div', 'amd-activity-message', { 'data-testid': 'askmydocs-widget-agent-message' });
+        this.activityMeta = this.el('div', 'amd-activity-meta', { 'data-testid': 'askmydocs-widget-agent-meta' });
+        const progressTrack = this.el('div', 'amd-activity-track');
+        this.activityProgress = this.el('div', 'amd-activity-progress', { 'data-testid': 'askmydocs-widget-agent-progress' });
+        progressTrack.append(this.activityProgress);
+        this.activityActions = this.el('div', 'amd-activity-actions');
+        this.activity.append(this.activityMessage, this.activityMeta, progressTrack, this.activityActions);
 
         const composer = this.el('form', 'amd-composer');
         this.input = this.el('textarea', 'amd-input', {
@@ -88,9 +116,11 @@ export class WidgetPanel {
         });
         this.send = this.el('button', 'amd-send', { 'data-testid': 'askmydocs-widget-send', type: 'submit' });
         this.send.textContent = 'Invia';
+        this.input.disabled = true;
+        this.send.disabled = true;
         composer.append(this.input, this.send);
 
-        this.panel.append(this.header, this.messages, this.status, composer);
+        this.panel.append(this.header, this.messages, this.activity, this.status, composer);
         root.append(this.themeStyle, this.launcher, this.panel);
 
         this.launcher.addEventListener('click', () => this.toggle());
@@ -107,17 +137,24 @@ export class WidgetPanel {
         });
 
         this.bridge = new Bridge(cfg, this.events());
+        this.sourceViewer = new SourceViewer(
+            root,
+            (documentId, signal) => this.bridge.fetchCitationDocument(documentId, signal),
+            () => this.bridge.citationCacheNamespace(),
+        );
 
         // Fase 1: tema inline + default subito. Fase 2: ri-applica col server.
         this.applyTheme();
         void this.init();
 
-        if (this.mode === 'inline') {
+        if (this.mode === 'inline' || this.mode === 'fullscreen') {
             // Blocco chat a pagina: sempre aperto, statico, senza launcher/close
             // (nascosti via CSS .amd-mode-inline). role=region anziché dialog: è
             // una sezione inline, non un overlay modale (R15). Niente focus forzato
             // al boot → non scrolla la pagina verso il widget.
-            this.root.classList.add('amd-mode-inline');
+            this.root.classList.add(
+                this.mode === 'inline' ? 'amd-mode-inline' : 'amd-mode-fullscreen',
+            );
             this.panel.setAttribute('role', 'region');
             this.panel.dataset.open = 'true';
         } else if (cfg.autoOpen) {
@@ -125,13 +162,44 @@ export class WidgetPanel {
         }
     }
 
-    /** Fase 2: carica /setup e ri-applica il tema fondendo quello server. */
+    /**
+     * Acquires user auth first, then setup and identity-scoped history. Until
+     * all three complete the composer stays disabled, preventing the first
+     * message from racing restoration. Auth/bootstrap failures are rendered
+     * and keep the widget fail-closed.
+     */
     private async init(): Promise<void> {
-        const setup = await this.bridge.loadSetup();
-        const serverTheme = setup && typeof setup.theme === 'object' ? setup.theme : null;
-        if (serverTheme) {
-            this.serverTheme = serverTheme as Partial<WidgetTheme>;
-            this.applyTheme();
+        try {
+            await this.bridge.prepareUserAuthentication();
+            const setup = await this.bridge.loadSetup();
+            const serverTheme = setup && typeof setup.theme === 'object' ? setup.theme : null;
+            if (serverTheme) {
+                this.serverTheme = serverTheme as Partial<WidgetTheme>;
+                this.applyTheme();
+            }
+            const restored = await this.bridge.restoreAuthenticatedSession();
+            for (const message of restored) {
+                message.role === 'user'
+                    ? this.appendUser(message.content)
+                    : this.appendAssistant(message.content, message.citations ?? []);
+            }
+
+            this.initialized = true;
+            this.panel.dataset.state = 'ready';
+            this.panel.setAttribute('aria-busy', 'false');
+            this.input.disabled = false;
+            this.send.disabled = false;
+            this.status.textContent = '';
+            if (restored.length === 0) {
+                const serverIntro = setup && typeof setup.intro === 'object' ? setup.intro : null;
+                this.introCard.show(mergeIntroLayers(serverIntro, this.cfg.intro));
+            }
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            this.panel.dataset.state = 'error';
+            this.panel.setAttribute('aria-busy', 'false');
+            this.status.textContent = 'Widget non disponibile.';
+            this.appendSystem(`Impossibile inizializzare il widget: ${message}`, 'error');
         }
     }
 
@@ -142,11 +210,7 @@ export class WidgetPanel {
      * cfg.launcherLabel (back-compat).
      */
     private applyTheme(): void {
-        this.theme = sanitizeTheme({
-            ...DEFAULT_THEME,
-            ...(this.serverTheme ?? {}),
-            ...(this.cfg.theme ?? {}),
-        });
+        this.theme = mergeThemeLayers(this.serverTheme, this.cfg.theme);
         const t = this.theme;
 
         this.themeStyle.textContent = buildThemeCss(t);
@@ -198,12 +262,14 @@ export class WidgetPanel {
     private events(): BridgeEvents {
         return {
             onBusy: (busy) => {
-                this.panel.dataset.state = busy ? 'busy' : 'idle';
+                this.panel.dataset.state = busy ? 'loading' : 'ready';
+                this.panel.setAttribute('aria-busy', busy ? 'true' : 'false');
+                this.input.disabled = busy;
                 this.send.disabled = busy;
                 this.status.textContent = busy ? 'L’assistente sta lavorando…' : '';
             },
             onAnswer: (text, citations) => this.appendAssistant(text, citations),
-            onBotText: (text) => this.appendAssistant(text, []),
+            onBotText: (text, citations) => this.appendAssistant(text, citations),
             onAction: (tool) => this.appendSystem(`Azione: ${tool}`, 'system'),
             onAsk: (question, options) => this.appendAsk(question, options),
             onDone: (summary) => this.appendSystem(`✓ ${summary}`, 'system'),
@@ -214,15 +280,89 @@ export class WidgetPanel {
             onPointAt: (target) => this.overlay.pointAt(target),
             onTourStep: (target, message, index, total) => this.overlay.tourStep(target, message, index, total),
             onClearOverlay: () => this.overlay.clear(),
+            onAgentEvent: (event) => this.renderAgentEvent(event),
+            onAgentConfirmation: (event, accept, reject) => this.renderAgentConfirmation(event, accept, reject),
         };
+    }
+
+    private renderAgentEvent(event: AgentRunEvent): void {
+        const italian = event.locale.toLowerCase().startsWith('it');
+        this.activity.hidden = false;
+        this.activity.dataset.state = event.type === 'run.awaiting_confirmation'
+            ? 'confirmation'
+            : event.type.startsWith('run.') && ['run.completed', 'run.partial', 'run.failed', 'run.cancelled'].includes(event.type)
+                ? 'settled'
+                : 'active';
+        this.activity.setAttribute('aria-busy', this.activity.dataset.state === 'active' ? 'true' : 'false');
+        this.activityMessage.textContent = event.message ?? (italian ? 'L’assistente sta lavorando.' : 'The assistant is working.');
+
+        const physical = event.progress?.physical;
+        const logical = event.progress?.logical;
+        const metric = physical && physical.estimated.likely > 0 ? physical : logical;
+        const completed = metric?.completed ?? 0;
+        const estimated = Math.max(completed, metric?.estimated.likely ?? 0);
+        const bits: string[] = [];
+        if (estimated > 0) bits.push(`${completed} / ~${estimated} ${italian ? 'chiamate' : 'calls'}`);
+        if (event.progress?.eta_ms != null) bits.push(`${Math.ceil(event.progress.eta_ms / 1000)}s`);
+        this.activityMeta.textContent = bits.join(' · ');
+        this.activityProgress.style.width = `${estimated > 0 ? Math.min(100, Math.round((completed / estimated) * 100)) : 12}%`;
+        this.activityActions.replaceChildren();
+        if (event.can_cancel && this.activity.dataset.state === 'active') {
+            const cancel = this.el('button', 'amd-btn', {
+                type: 'button',
+                'data-testid': 'askmydocs-widget-agent-cancel',
+            });
+            cancel.textContent = italian ? 'Annulla' : 'Cancel';
+            cancel.addEventListener('click', () => {
+                this.renderAgentCancelled(italian);
+                void this.bridge.cancel();
+            });
+            this.activityActions.append(cancel);
+        }
+    }
+
+    private renderAgentConfirmation(event: AgentRunEvent, accept: () => void, reject: () => void): void {
+        this.renderAgentEvent(event);
+        const italian = event.locale.toLowerCase().startsWith('it');
+        this.activity.dataset.state = 'confirmation';
+        this.activityActions.replaceChildren();
+        const proceed = this.el('button', 'amd-btn primary', {
+            type: 'button',
+            'data-testid': 'askmydocs-widget-agent-continue',
+        });
+        proceed.textContent = italian ? 'Continua la ricerca' : 'Continue search';
+        proceed.addEventListener('click', accept, { once: true });
+        const cancel = this.el('button', 'amd-btn', {
+            type: 'button',
+            'data-testid': 'askmydocs-widget-agent-reject',
+        });
+        cancel.textContent = italian ? 'Annulla' : 'Cancel';
+        cancel.addEventListener('click', () => {
+            this.renderAgentCancelled(italian);
+            reject();
+        }, { once: true });
+        this.activityActions.append(proceed, cancel);
+    }
+
+    private renderAgentCancelled(italian: boolean): void {
+        this.activity.dataset.state = 'settled';
+        this.activity.setAttribute('aria-busy', 'false');
+        this.activityMessage.textContent = italian ? 'La ricerca è stata annullata.' : 'The search was cancelled.';
+        this.activityActions.replaceChildren();
     }
 
     private submitInput(): void {
         const text = this.input.value.trim();
-        if (text === '' || this.bridge.isBusy()) {
+        if (!this.initialized || text === '' || this.bridge.isBusy()) {
             return;
         }
         this.input.value = '';
+        this.submitText(text);
+    }
+
+    private submitText(text: string): void {
+        if (!this.initialized || text.trim() === '' || this.bridge.isBusy()) return;
+        this.introCard.beforeFirstMessage();
         this.appendUser(text);
         void this.bridge.sendUserMessage(text);
     }
@@ -246,11 +386,52 @@ export class WidgetPanel {
         const msg = this.appendMessage(text, 'assistant');
         if (citations.length > 0) {
             const wrap = this.el('div', 'amd-citations');
-            for (const c of citations.slice(0, 8)) {
-                const chip = this.el('span', 'amd-cite', { 'data-testid': 'askmydocs-widget-citation' });
-                chip.textContent = c.title || c.source_path || 'fonte';
-                wrap.append(chip);
+            const seen = new Set<string>();
+            const uniqueCitations = citations.filter((citation) => {
+                const key = Number.isInteger(citation.document_id) && (citation.document_id as number) > 0
+                    ? `document:${citation.document_id}`
+                    : `legacy:${citation.title ?? ''}:${citation.source_path ?? ''}`;
+                if (seen.has(key)) return false;
+                seen.add(key);
+
+                return true;
+            });
+            const openableIds = [...new Set(
+                uniqueCitations
+                    .map((citation) => citation.document_id)
+                    .filter((id): id is number => Number.isInteger(id) && (id as number) > 0),
+            )];
+            if (openableIds.length > 0) {
+                const openAll = this.el('button', 'amd-citations-label', {
+                    type: 'button',
+                    'data-testid': 'askmydocs-widget-sources-open',
+                    'aria-label': `Apri ${openableIds.length} documenti citati`,
+                });
+                openAll.textContent = `Fonti · ${openableIds.length}`;
+                openAll.addEventListener('click', () => {
+                    this.sourceViewer.open(citations, null, openAll);
+                });
+                wrap.append(openAll);
             }
+
+            const chips = this.el('div', 'amd-citation-chips');
+            for (const [index, c] of uniqueCitations.slice(0, 8).entries()) {
+                const canOpen = Number.isInteger(c.document_id) && (c.document_id as number) > 0;
+                const chip = this.el(canOpen ? 'button' : 'span', 'amd-cite', {
+                    'data-testid': 'askmydocs-widget-citation',
+                    'data-index': String(index),
+                    'data-openable': canOpen ? 'true' : 'false',
+                    ...(canOpen ? { type: 'button', 'aria-label': `Apri fonte ${index + 1}: ${c.title || c.source_path || 'fonte'}` } : {}),
+                });
+                chip.textContent = c.title || c.source_path || 'fonte';
+                if (canOpen) {
+                    chip.addEventListener('click', () => {
+                        this.sourceViewer.open(citations, c.document_id, chip);
+                    });
+                }
+                chips.append(chip);
+            }
+            wrap.append(chips);
             msg.append(wrap);
         }
     }

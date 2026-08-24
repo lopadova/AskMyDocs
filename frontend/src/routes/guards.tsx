@@ -40,7 +40,15 @@ export function useAuthBootstrap(): void {
     }, [setMe, clear, setLoading]);
 }
 
-function AuthGate({ children, waitFor }: { children: ReactNode; waitFor: 'authed' | 'guest' }) {
+function AuthGate({
+    children,
+    waitFor,
+    onAuthenticated,
+}: {
+    children: ReactNode;
+    waitFor: 'authed' | 'guest';
+    onAuthenticated?: () => void;
+}) {
     const user = useAuthStore((s) => s.user);
     const loading = useAuthStore((s) => s.loading);
     const navigate = useNavigate();
@@ -57,9 +65,13 @@ function AuthGate({ children, waitFor }: { children: ReactNode; waitFor: 'authed
         }
         if (waitFor === 'guest' && user) {
             setRedirecting(true);
-            navigate({ to: '/app' });
+            if (onAuthenticated) {
+                onAuthenticated();
+            } else {
+                navigate({ to: '/app' });
+            }
         }
-    }, [loading, user, waitFor, navigate]);
+    }, [loading, user, waitFor, navigate, onAuthenticated]);
 
     if (loading || redirecting) {
         return (
@@ -89,6 +101,16 @@ export function RequireAuth({ children }: { children: ReactNode }) {
     return <AuthGate waitFor="authed">{children}</AuthGate>;
 }
 
-export function RedirectIfAuth({ children }: { children: ReactNode }) {
-    return <AuthGate waitFor="guest">{children}</AuthGate>;
+export function RedirectIfAuth({
+    children,
+    onAuthenticated,
+}: {
+    children: ReactNode;
+    onAuthenticated?: () => void;
+}) {
+    return (
+        <AuthGate waitFor="guest" onAuthenticated={onAuthenticated}>
+            {children}
+        </AuthGate>
+    );
 }

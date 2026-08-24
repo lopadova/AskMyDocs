@@ -92,7 +92,7 @@ final class PopulateCanonicalNodesStepTest extends TestCase
         $context = new FlowContext(
             flowRunId: 'r',
             definitionName: 'kb.canonical-index',
-            input: ['tenant_id' => 'default', 'document_id' => 1],
+            input: ['tenant_id' => 'test-tenant', 'document_id' => 1],
             stepOutputs: ['load-document' => ['indexable' => false, 'reason' => 'not_canonical']],
             dryRun: false,
         );
@@ -109,7 +109,7 @@ final class PopulateCanonicalNodesStepTest extends TestCase
         return new FlowContext(
             flowRunId: 'nodes-test-run',
             definitionName: 'kb.canonical-index',
-            input: ['tenant_id' => 'default', 'document_id' => $doc->id],
+            input: ['tenant_id' => 'test-tenant', 'document_id' => $doc->id],
             stepOutputs: [
                 'load-document' => [
                     'indexable' => true,

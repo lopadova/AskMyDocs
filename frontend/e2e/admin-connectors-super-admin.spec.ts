@@ -146,4 +146,35 @@ baseTest.describe('Admin Connectors — super-admin', () => {
         const installRequest = await installRequestPromise;
         expect(new URL(installRequest.url()).searchParams.get('label')).toBe('CI-OAuth');
     });
+
+    // The API connector (padosoft/askmydocs-connector-api) is a distinct
+    // paradigm (endpoints → live chat tools). In the unified gallery it gets its
+    // own "API connections" section where a connection is CREATED + listed
+    // inline; the deep route/auth/relation/test management drills into the
+    // dedicated page via "Manage". R13: real backend + DB, internal navigation.
+    baseTest('create an API connection from the gallery, then drill into Manage', async ({ page }) => {
+        await page.goto('/app/admin/connectors');
+        await expect(page.getByTestId('admin-connectors')).toBeVisible({ timeout: 15_000 });
+
+        const section = page.getByTestId('api-connections-section');
+        await expect(section).toBeVisible();
+
+        // Create inline via the section's "+ New API connection".
+        await page.getByTestId('api-connector-gallery-create').click();
+        await expect(page.getByTestId('api-connector-form')).toBeVisible();
+        await page.getByTestId('api-connector-form-name').fill('E2E Gallery API');
+        await page.getByTestId('api-connector-form-base_url').fill('http://127.0.0.1:8000');
+        await page.getByTestId('api-connector-form-submit').click();
+        await expect(page.getByTestId('toast-api-connector-created')).toBeVisible({ timeout: 15_000 });
+
+        // The new connection renders as a card in the section.
+        const tile = page.locator('[data-testid^="api-connection-tile-"]').first();
+        await expect(tile).toBeVisible({ timeout: 15_000 });
+        const tileId = (await tile.getAttribute('data-testid'))!; // api-connection-tile-{id}
+
+        // "Manage" drills into the dedicated page for routes/auth/relations/tests.
+        await page.getByTestId(`${tileId}-manage`).click();
+        await expect(page).toHaveURL(/\/admin\/api-connectors$/);
+        await expect(page.getByTestId('api-connectors-view')).toBeVisible({ timeout: 15_000 });
+    });
 });

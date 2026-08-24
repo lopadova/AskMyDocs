@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Connectors;
 
+use App\Connectors\Imap\ProgressTrackingImapClientFactory;
 use App\Connectors\Imap\ReconnectingImapClientFactory;
 use Padosoft\AskMyDocsConnectorImap\Imap\ImapClientFactoryInterface;
+use ReflectionProperty;
 use Tests\TestCase;
 
 /**
@@ -13,7 +15,8 @@ use Tests\TestCase;
  * wraps the resolved IMAP factory so every produced client absorbs a transient
  * transport drop with one close-and-retry. The default test env pins the flag OFF
  * ({@see ImapReconnectDisabledTest} covers that branch); serialization stays OFF
- * suite-wide, so the reconnect factory is the outermost wrapper here.
+ * suite-wide. UID progress tracking is always the outer factory on real IMAP
+ * connections, so this test pins reconnect immediately inside that observer.
  */
 final class ImapReconnectWiringTest extends TestCase
 {
@@ -28,6 +31,11 @@ final class ImapReconnectWiringTest extends TestCase
     {
         $factory = $this->app->make(ImapClientFactoryInterface::class);
 
-        $this->assertInstanceOf(ReconnectingImapClientFactory::class, $factory);
+        $this->assertInstanceOf(ProgressTrackingImapClientFactory::class, $factory);
+
+        $inner = (new ReflectionProperty(ProgressTrackingImapClientFactory::class, 'inner'))
+            ->getValue($factory);
+
+        $this->assertInstanceOf(ReconnectingImapClientFactory::class, $inner);
     }
 }

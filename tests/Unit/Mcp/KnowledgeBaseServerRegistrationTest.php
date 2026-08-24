@@ -29,12 +29,24 @@ class KnowledgeBaseServerRegistrationTest extends TestCase
         return $property->getDefaultValue();
     }
 
-    public function test_server_registers_exactly_forty_five_tools(): void
+    public function test_server_registers_exactly_forty_seven_tools(): void
     {
         // 36 (v8.21) + 3 invitations tools (v8.x) + 1 AppSettingsTool (v8.22)
         // + 1 KbPiiPolicyTool + 1 KbDetokenizeTool + 1 KbEraseSubjectTool
-        // + 1 KbReembedProjectTool (v8.23/Ciclo 4) + 1 ConnectorSettingsTool (v8.25).
-        $this->assertCount(45, $this->registeredTools());
+        // + 1 KbReembedProjectTool (v8.23/Ciclo 4) + 1 ConnectorSettingsTool (v8.25)
+        // + 1 ApiConnectorsTool (v8.27 Connettore API) + 1 WidgetIntroConfigTool + 1 KbImapBackfillTool.
+        $this->assertCount(47, $this->registeredTools());
+    }
+
+    public function test_server_registers_the_widget_intro_config_tool(): void
+    {
+        $this->assertContains(\App\Mcp\Tools\WidgetIntroConfigTool::class, $this->registeredTools());
+    }
+
+    public function test_server_registers_the_api_connectors_tool(): void
+    {
+        // v8.27 — the Connettore API MCP read surface (R44 third surface).
+        $this->assertContains(\App\Mcp\Tools\ApiConnectorsTool::class, $this->registeredTools());
     }
 
     public function test_server_registers_the_invitations_tools(): void
@@ -51,6 +63,11 @@ class KnowledgeBaseServerRegistrationTest extends TestCase
     {
         // v8.21/Ciclo 2 — the ingestion/sync observability MCP read surface.
         $this->assertContains(\App\Mcp\Tools\KbIngestionStatusTool::class, $this->registeredTools());
+    }
+
+    public function test_server_registers_the_imap_backfill_tool(): void
+    {
+        $this->assertContains(\App\Mcp\Tools\KbImapBackfillTool::class, $this->registeredTools());
     }
 
     public function test_server_registers_the_app_settings_tool(): void

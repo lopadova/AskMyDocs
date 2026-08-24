@@ -7,7 +7,8 @@ import type { Citation, LocalMessage, Thread } from "../lib/types";
 
 interface Props {
   token: string;
-  tenantId?: string;
+  tenantId: string;
+  projectKey: string;
 }
 
 function newId(): string {
@@ -33,7 +34,7 @@ function citationLabel(citation: Citation): string {
   );
 }
 
-export function ChatScreen({ token, tenantId }: Props) {
+export function ChatScreen({ token, tenantId, projectKey }: Props) {
   const [threads, setThreads] = useState<Thread[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
@@ -47,10 +48,14 @@ export function ChatScreen({ token, tenantId }: Props) {
   const [openDoc, setOpenDoc] = useState<DocumentRef | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
 
-  // Hydrate threads from disk once.
+  // Conversation history is isolated by the selected workspace. This avoids
+  // showing a tenant/project's local messages after the user switches context.
   useEffect(() => {
     let cancelled = false;
-    loadThreads().then((stored) => {
+    setLoaded(false);
+    setThreads([]);
+    setActiveId(null);
+    loadThreads(tenantId, projectKey).then((stored) => {
       if (cancelled) {
         return;
       }
@@ -61,15 +66,15 @@ export function ChatScreen({ token, tenantId }: Props) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [tenantId, projectKey]);
 
   // Persist on every change once the initial load has happened, so we never
   // clobber stored threads with the empty bootstrap state.
   useEffect(() => {
     if (loaded) {
-      void saveThreads(threads);
+      void saveThreads(tenantId, projectKey, threads);
     }
-  }, [threads, loaded]);
+  }, [threads, loaded, tenantId, projectKey]);
 
   const active = threads.find((t) => t.id === activeId) ?? null;
 
@@ -138,7 +143,7 @@ export function ChatScreen({ token, tenantId }: Props) {
     setSending(true);
 
     try {
-      const res = await chat(token, question, tenantId);
+      const res = await chat(token, question, tenantId, projectKey);
       const assistant: LocalMessage = {
         role: "assistant",
         content: res.answer,
@@ -374,6 +379,7 @@ export function ChatScreen({ token, tenantId }: Props) {
         <DocumentModal
           token={token}
           tenantId={tenantId}
+          projectKey={projectKey}
           target={openDoc}
           onClose={() => setOpenDoc(null)}
         />

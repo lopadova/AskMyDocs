@@ -64,13 +64,18 @@
     <script>
         window.AskMyDocsWidget = {
             key: @json($publicKey),
-            apiBase: '',
+            apiBase: @json($apiBase),
+@if ($userTokenUrl)
+            userTokenUrl: @json($userTokenUrl),
+@endif
 @if ($mode === 'inline')
             mode: 'inline',
             mount: '#askmydocs-chat',
+@elseif ($mode === 'fullscreen')
+            mode: 'fullscreen',
 @endif
             title: 'Assistente Demo',
-@if ($mode !== 'inline')
+@if ($mode === 'helper')
             launcherLabel: 'Chiedi',
             autoOpen: false,
 @endif
@@ -79,6 +84,22 @@
             theme: {
                 accent: '#16a34a',
                 launcherBackground: '#16a34a',
+            },
+            intro: {
+                enabled: true,
+                variant: 'card',
+                eyebrow: 'Demo guidata',
+                title: 'Scopri cosa può fare questa chat',
+                subtitle: 'Risposte documentate e assistenza sulla pagina',
+                body: 'Puoi interrogare la knowledge base oppure chiedere aiuto per compilare l’interfaccia demo.',
+                icon: 'sparkles',
+                bullets: ['Consulta contenuti verificati', 'Ricevi indicazioni contestuali'],
+                suggestions: [
+                    { label: 'Cosa posso chiedere?', prompt: 'Spiegami in breve come puoi aiutarmi in questa pagina' },
+                    { label: 'Cerca nella documentazione', prompt: 'Mostrami le informazioni principali disponibili' },
+                ],
+                dismissible: true,
+                hideAfterFirstMessage: true,
             },
         };
     </script>

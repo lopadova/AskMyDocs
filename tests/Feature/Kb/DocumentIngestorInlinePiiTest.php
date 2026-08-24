@@ -151,7 +151,7 @@ final class DocumentIngestorInlinePiiTest extends TestCase
 
         // The per-tenant vault keeps the original (R30/R31 — tenant-scoped row).
         $this->assertDatabaseHas('pii_token_maps', [
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'original' => self::EMAIL,
         ]);
     }
@@ -194,7 +194,7 @@ final class DocumentIngestorInlinePiiTest extends TestCase
         }
         // The 'support' project opts IN via a policy row.
         KbPiiSetting::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'support',
             'redact_enabled' => true,
             'strategy' => 'mask',

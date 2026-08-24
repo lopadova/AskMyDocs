@@ -6,6 +6,7 @@ namespace Tests\Feature\Api;
 
 use App\Http\Controllers\Api\MessageController;
 use App\Models\Conversation;
+use App\Models\Message;
 use App\Models\User;
 use App\Services\Kb\KbSearchService;
 use App\Services\Kb\Retrieval\SearchResult;
@@ -52,6 +53,10 @@ final class MessageControllerTest extends TestCase
         Route::post(
             '/conversations/{conversation}/messages',
             [MessageController::class, 'store'],
+        )->middleware(SubstituteBindings::class);
+        Route::get(
+            '/conversations/{conversation}/messages',
+            [MessageController::class, 'index'],
         )->middleware(SubstituteBindings::class);
 
         config()->set('ai.default', 'anthropic');
@@ -190,5 +195,49 @@ final class MessageControllerTest extends TestCase
             ->assertJsonPath('confidence', 0);
 
         Http::assertNothingSent();
+    }
+
+    public function test_history_uses_causal_message_ids_when_worker_and_database_clocks_differ(): void
+    {
+        $messages = [
+            Message::create([
+                'conversation_id' => $this->conversation->id,
+                'role' => 'user',
+                'content' => 'First question',
+                'created_at' => '2026-08-09 16:41:00',
+            ]),
+            Message::create([
+                'conversation_id' => $this->conversation->id,
+                'role' => 'assistant',
+                'content' => 'First answer',
+                'created_at' => '2026-08-09 14:41:07',
+            ]),
+            Message::create([
+                'conversation_id' => $this->conversation->id,
+                'role' => 'user',
+                'content' => 'Second question',
+                'created_at' => '2026-08-09 16:41:24',
+            ]),
+            Message::create([
+                'conversation_id' => $this->conversation->id,
+                'role' => 'assistant',
+                'content' => 'Second answer',
+                'created_at' => '2026-08-09 14:41:32',
+            ]),
+        ];
+
+        $response = $this->actingAs($this->user)->getJson(
+            '/conversations/'.$this->conversation->id.'/messages',
+        );
+
+        $response->assertOk();
+        $this->assertSame(
+            array_map(static fn (Message $message): int => $message->id, $messages),
+            array_column($response->json(), 'id'),
+        );
+        $this->assertSame(
+            ['user', 'assistant', 'user', 'assistant'],
+            array_column($response->json(), 'role'),
+        );
     }
 }

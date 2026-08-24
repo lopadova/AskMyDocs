@@ -29,6 +29,10 @@ return [
     */
     'session_token_ttl_minutes' => (int) env('WIDGET_SESSION_TOKEN_TTL', 30),
 
+    // Short-lived, authenticated host-user token (wu_…). Issued only through
+    // the server-to-server identity exchange endpoint.
+    'user_token_ttl_minutes' => (int) env('WIDGET_USER_TOKEN_TTL', 15),
+
     /*
     |--------------------------------------------------------------------------
     | M5.4 — Session rate-limit (requests per minute per session)

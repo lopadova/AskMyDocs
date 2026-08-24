@@ -7,9 +7,9 @@ RAG engine and can both **read** and **act on** the host page's DOM
 
 ---
 
-## Layout modes — Helper launcher vs Inline chat
+## Layout modes — Helper, Inline, and Fullscreen
 
-The widget renders in one of two layouts, chosen per key (admin **Widget → Keys**,
+The widget renders in one of three layouts, chosen per key (admin **Widget → Keys**,
 field *Widget type*, also editable under **Appearance**) and baked into the snippet
 by the **Embed** dialog. This is **independent** from the authentication mode
 (A browser / B proxy, below).
@@ -19,6 +19,9 @@ by the **Embed** dialog. This is **independent** from the authentication mode
 - **`inline`** — the chat is a full block that fills a container you place on the
   page (100% of the mount element's width and height), with **no launcher**. Use it
   for a chat bound to a page.
+- **`fullscreen`** — an always-open chat surface that fills the browser viewport,
+  with no launcher or mount container. Use it for a dedicated assistant page and
+  authenticated multi-device history.
 
 ### Helper (default)
 
@@ -47,12 +50,60 @@ the size; the chat fills it:
 <script src="https://kb.example.com/widget/askmydocs-widget.js" defer></script>
 ```
 
+### Fullscreen chat
+
+```html
+<script>
+  window.AskMyDocsWidget = {
+    key: 'pk_live_abc123',
+    apiBase: 'https://kb.example.com',
+    mode: 'fullscreen',
+  };
+</script>
+<script src="https://kb.example.com/widget/askmydocs-widget.js" defer></script>
+```
+
 `mode` and `mount` are **top-level** config (siblings of `key`), not part of the
 `theme` block. If `mount` is missing or matches no element, the widget logs an error
 to the console and does **not** mount — there is no silent fallback to a floating
 launcher (R14). The key's saved type is stored server-side (`widget_keys.theme_config.mode`)
 and surfaced via `GET /api/widget/setup` so the admin **Embed** dialog generates the
 correct snippet automatically.
+
+---
+
+## Welcome content before the first message
+
+`intro` is a structured, plain-text empty state rendered inside the same Shadow
+DOM and theme as the chat. The per-key value arrives from `/api/widget/setup`;
+the host can override individual fields or pass `intro: false` for a page.
+
+```typescript
+window.AskMyDocsWidget = {
+  key: 'pk_live_abc123',
+  intro: {
+    enabled: true,
+    variant: 'hero',
+    eyebrow: 'Product help',
+    title: 'How can I help?',
+    subtitle: 'Answers from official documentation',
+    body: 'Ask about setup, procedures and troubleshooting.',
+    imageUrl: 'https://cdn.example.com/product-help.webp',
+    imageAlt: 'Product help assistant',
+    icon: 'sparkles',
+    bullets: ['Verified answers', 'Open cited sources'],
+    suggestions: [{ label: 'Get started', prompt: 'Explain how to get started' }],
+    dismissible: true,
+    hideAfterFirstMessage: true,
+  },
+};
+```
+
+Variants are `compact`, `card`, and `hero`; icons are `sparkles`, `chat`,
+`search`, `help`, and `none`. There are at most four bullets and four
+suggestions. Images are HTTPS-only and require alternative text. User-provided
+HTML/SVG/CSS is never accepted. Existing authenticated history suppresses the
+card, and a suggestion sends its prompt as the first user message.
 
 ---
 
@@ -134,12 +185,11 @@ instance directly:
 
 ---
 
-## Session Tokens (M5.2) — Avoiding Repeated `pk_` in the Browser
+## Session Tokens (M5.2) — Optional One-Request Bearers
 
 For additional security in Mode A, the widget can **mint a session token**
-(`wt_…`) from the backend and use it as a Bearer token for subsequent
-requests instead of sending the public key on every call.  Session tokens
-are:
+(`wt_…`) and use it as a Bearer token for exactly the next request. Session
+tokens are:
 
 - **Origin-bound** — only valid from the `Origin` that minted them.
 - **Single-shot** — consumed after one request (R21: atomic consumption
@@ -153,11 +203,10 @@ are:
 // The Transport class handles this automatically:
 const transport = new Transport({ key: 'pk_live_abc123', apiBase: 'https://kb.example.com' });
 
-// Mint a session token (uses X-Widget-Key once)
+// Mint with the current credential: wu_ for an authenticated user, otherwise pk_.
 const { token, expires_at } = await transport.mintSessionToken();
 
-// All subsequent requests use Authorization: Bearer *** instead of X-Widget-Key
-// The token is consumed after the first request and the Transport falls back to pk mode.
+// The next request uses wt_. It is then consumed and Transport resumes wu_ or pk_.
 await transport.start(snapshot, 'Hello');
 ```
 
@@ -179,18 +228,159 @@ Response: { "token": "wt_...", "expires_at": "..." }
 | Mode | Header | Token | Origin check | Trust level |
 |------|--------|-------|--------------|-------------|
 | A (browser) | `X-Widget-Key: pk_…` | Public key | Required | Standard |
-| A + session token | `Authorization: Bearer *** | Session token (`wt_…`) | Origin-bound | Enhanced |
-| B (proxy) | `Authorization: Bearer ***` | Secret hash (`sk_…`) | None | High (server-to-server) |
+| A + session token | `Authorization: Bearer wt_…` | Single-use session token | Origin-bound | Enhanced |
+| Authenticated host user | `Authorization: Bearer wu_…` | Short-lived user token | Origin-bound | Host-authenticated identity |
+| B (proxy) | `Authorization: Bearer sk_…` | Server secret | None | High (server-to-server) |
+
+## Authenticated host users and cross-device history
+
+Per-key user authentication is opt-in under **Widget → Keys**. Enabling it
+creates a separate `ik_…` server credential, shown once and rotatable. Keep it
+on the host backend; never expose the credential or the host subject in HTML.
+
+The host application remains responsible for authenticating the user. Its
+backend exchanges a stable opaque subject (prefer a user UUID or an HMAC of an
+internal id; do not use a mutable email):
+
+```http
+POST /api/widget/user-token
+X-Widget-Key: pk_…
+Authorization: Bearer ik_…
+Content-Type: application/json
+
+{"subject":"host-internal-stable-subject","origin":"https://portal.example"}
+```
+
+AskMyDocs stores only a keyed hash of that subject and returns a short-lived,
+origin-bound `wu_…` token:
+
+```json
+{"token":"wu_…","expires_at":"2026-07-27T14:30:00+00:00"}
+```
+
+There is deliberately no AskMyDocs refresh token in the browser. The
+recommended integration exposes a session-protected, same-origin endpoint on
+the host application. The widget calls it with the host's normal cookie,
+obtains `wu_…` in memory, renews it shortly before expiry, and retries once if
+AskMyDocs reports `user_token_invalid`.
+
+```php
+// Host application: routes/web.php
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Route;
+
+Route::get('/api/askmydocs/widget-user-token', function (Request $request) {
+    $response = Http::acceptJson()
+        ->withHeaders([
+            'X-Widget-Key' => config('services.askmydocs.widget_public_key'),
+        ])
+        ->withToken(config('services.askmydocs.widget_identity_secret'))
+        ->post(rtrim(config('services.askmydocs.url'), '/').'/api/widget/user-token', [
+            // Prefer an immutable UUID; never accept subject from request input.
+            'subject' => (string) $request->user()->getAuthIdentifier(),
+            'origin' => config('services.askmydocs.widget_origin'),
+        ])
+        ->throw();
+
+    return response()->json($response->only(['token', 'expires_at']))
+        ->header('Cache-Control', 'no-store');
+})->middleware('auth');
+```
+
+Point the widget at that host endpoint:
+
+```html
+<script>
+  window.AskMyDocsWidget = {
+    key: 'pk_…',
+    apiBase: 'https://kb.example.com',
+    userTokenUrl: '/api/askmydocs/widget-user-token'
+  };
+</script>
+```
+
+`userTokenUrl` must resolve to the same origin as the host page and return
+exactly `{ token: "wu_…", expires_at: "ISO-8601" }`. The loader also accepts
+`data-user-token-url`. A static `userToken: "wu_…"` remains supported for
+server-rendered, short-lived pages, but it cannot be renewed after it expires.
+The runtime requests the endpoint with `cache: "no-store"`; the host endpoint
+should also return `Cache-Control: no-store`.
+
+With a valid user token the runtime calls `GET
+/api/widget/sessions/current`, restores the newest open conversation, and
+replays its visible messages. The current-session endpoint filters
+`active|waiting_user|waiting_tool`, orders by `updated_at DESC, id DESC`, and
+returns `{ data: session }` or an empty `204`; it is deliberately independent
+from paginated `GET /api/widget/sessions`. Replay remains `GET
+/api/widget/sessions/{uuid}/replay`. Every endpoint is scoped to tenant, widget
+key, project and pseudonymous identity. If authenticated mode is configured but
+the host endpoint or history restore fails, the widget exposes an error and
+keeps the composer disabled instead of silently creating an anonymous
+conversation.
+
+Identity credential lifecycle is explicit:
+
+- **rotate `ik_`:** the old secret stops minting immediately; already-issued
+  `wu_` tokens remain valid until `WIDGET_USER_TOKEN_TTL`;
+- **disable user auth:** existing `wu_` and identity-bound `wt_` tokens are
+  rejected immediately because validators check the live key on every request;
+- **logout:** stop serving `userTokenUrl`, remove/reload the widget, and let the
+  in-memory `wu_` disappear. AskMyDocs stores no browser refresh token.
+
+---
+
+## Cited source viewer
+
+Grounded answers render at most eight deduplicated citation chips plus a
+`Fonti · N` control. A citation carrying `document_id` is a button; opening it
+shows every unique source from that answer in a native `<dialog>` inside the
+widget Shadow DOM. The viewer uses a desktop sidebar, a compact selector and
+fullscreen layout below 640px, and restores focus to the originating chip when
+closed.
+
+The selected source is fetched from:
+
+```text
+GET /api/widget/sessions/{session}/documents/{documentId}/preview
+```
+
+The response contains document metadata and ordered indexed sections. It is
+available only when the exact tenant, widget key, project, optional user
+identity and session match and the document really appears in a persisted
+citation for that session. Missing, deleted, uncited or foreign documents all
+return the same `404`; responses use `Cache-Control: no-store`. The browser
+keeps only an in-memory cache keyed by session and document, aborts obsolete
+requests and exposes loading, empty, retryable-error and success states.
+
+```json
+{
+  "document_id": 42,
+  "title": "Product guide",
+  "source_path": "docs/product.md",
+  "source_type": "markdown",
+  "language": "en",
+  "source_updated_at": "2026-08-07T10:00:00Z",
+  "sections": [{ "heading_path": "Setup", "content": "..." }]
+}
+```
+
+Section content is rendered as CommonMark/GFM using direct `micromark` and
+`micromark-extension-gfm` dependencies. Raw HTML and dangerous protocols are
+disabled, remote images are replaced with their alt text, and links are limited
+to safe HTTP(S)/email destinations. Persisted evidence headings and snippets go
+through the existing PII masker before replay.
 
 ---
 
 ## Appearance / Theming
 
 Each widget key carries an optional **theme** (launcher button + chat panel
-graphics, typography). It is delivered two ways, merged with this precedence:
+graphics, typography and source viewer). It is delivered in three layers, with
+this precedence:
 
 ```
-inline (host snippet)  >  server (GET /api/widget/setup)  >  built-in default
+host CSS vars  >  inline (host snippet)  >  server (GET /api/widget/setup)  >  built-in default
 ```
 
 - **Server-side (recommended):** edit the theme in the admin UI
@@ -212,7 +402,9 @@ inline (host snippet)  >  server (GET /api/widget/setup)  >  built-in default
       launcherSide: 'left',         // right | left
       launcherIcon: 'sparkles',     // chat | sparkles | help | none
       fontFamily: 'inter',          // system | inter | roboto | georgia | mono
-      panelWidth: 420,
+      panelWidth: 640,
+      panelShadow: 'soft',          // none | soft | medium | strong
+      sourceViewerWidth: 960,
     },
   };
 </script>
@@ -223,16 +415,76 @@ inline (host snippet)  >  server (GET /api/widget/setup)  >  built-in default
 
 | Group | Fields |
 |-------|--------|
-| Colours (hex) | `accent`, `background`, `foreground`, `muted`, `border`, `headerBackground`, `headerForeground`, `launcherBackground`, `launcherForeground`, `userBubbleBackground`, `userBubbleForeground`, `assistantBubbleBackground`, `assistantBubbleForeground` |
+| Layout | `mode` (`helper`/`inline`/`fullscreen`; normally emitted as the top-level embed option) |
+| Core colours (hex) | `accent`, `accentForeground`, `background`, `foreground`, `muted`, `border`, `headerBackground`, `headerForeground`, `launcherBackground`, `launcherForeground`, `userBubbleBackground`, `userBubbleForeground`, `assistantBubbleBackground`, `assistantBubbleForeground` |
+| Composer + states (hex) | `composerBackground`, `inputBackground`, `inputForeground`, `inputPlaceholder`, `focusRing`, `systemBackground`, `systemForeground`, `errorBackground`, `errorForeground`, `confirmBackground`, `confirmForeground`, `confirmBorder` |
+| Sources (hex) | `citationBackground`, `citationForeground`, `sourceSidebarBackground`, `sourceSidebarForeground`, `sourceBackdrop` |
 | Typography | `fontFamily` (allowlist), `fontSize` (12–18) |
-| Launcher | `launcherSide` (`right`/`left`), `launcherShape` (`pill`/`rounded`/`circle`), `launcherLabel`, `launcherIcon` (`chat`/`sparkles`/`help`/`none`), `launcherIconUrl` (https) |
-| Panel | `panelWidth` (320–480), `panelHeight` (420–680), `panelRadius` (0–24), `panelTitle`, `headerLogoUrl` (https) |
+| Launcher | `launcherSide` (`right`/`left`), `launcherShape` (`pill`/`rounded`/`circle`), `launcherLabel`, `launcherIcon` (`chat`/`sparkles`/`help`/`none`), `launcherIconUrl` (https), `launcherOffsetX`/`launcherOffsetY` (0–96), `launcherSize` (40–80), `launcherShadow` (preset) |
+| Panel | `panelWidth` (320–720), `panelHeight` (420–900), `panelRadius` (0–24), `panelShadow` (preset), `panelTitle`, `headerLogoUrl` (https) |
+| Spacing + shape | `headerPaddingX`/`headerPaddingY` (0–40), `messagesPadding` (0–40), `messageGap` (0–32), `bubblePaddingX`/`bubblePaddingY` (0–32), `bubbleRadius` (0–32), `bubbleMaxWidth` (50–100%), `composerPadding` (0–32), `inputRadius`/`buttonRadius` (0–32), `logoHeight` (16–64) |
+| Source viewer | `sourceViewerWidth` (560–1200), `sourceViewerRadius` (0–32); the viewer remains viewport-responsive and becomes fullscreen below 640px |
+
+Every CSS-expressible camelCase token also has a kebab-case host variable.
+For example, `accentForeground`, `panelWidth` and `sourceViewerRadius` map to
+`--askmydocs-accent-foreground`, `--askmydocs-panel-width` and
+`--askmydocs-source-viewer-radius`. Host variables include their CSS unit and
+are inherited through the Shadow DOM:
+
+```css
+:root {
+  --askmydocs-accent: #7c3aed;
+  --askmydocs-panel-width: 680px;
+  --askmydocs-source-backdrop: #111827dd;
+}
+```
+
+Structural/string fields (`mode`, launcher side/shape/icon/label and image
+URLs) remain typed configuration and do not have a CSS-variable equivalent.
+
+### Agent handoff and JSON import
+
+The **Agent handoff** action in the admin Appearance dialog copies a
+self-contained prompt for a coding agent that can inspect the host site's
+design system. The prompt contains a complete safe starting theme, every
+supported field and its validation constraints, but never widget keys,
+tenant/project identifiers, origins, tokens or API credentials. Free-form
+labels and asset URLs are blanked so they cannot leak path credentials or act
+as indirect prompt instructions; the agent infers public replacements from the
+host interface. The agent must return only a portable profile with this
+versioned envelope:
+
+```json
+{
+  "_meta": {
+    "format": "askmydocs.widget-theme",
+    "version": 1
+  },
+  "theme": {
+    "mode": "helper",
+    "accent": "#7c3aed"
+  }
+}
+```
+
+The abbreviated `theme` above is illustrative only: an imported profile must
+contain **every** `WidgetTheme` field. **Import JSON** accepts pasted content or
+a `.json` file, validates the envelope and all values atomically, and rejects
+missing or unknown fields instead of silently defaulting or clamping them. A
+single clean fenced `json` code block is accepted; surrounding prose is not.
+
+A successful import updates only the Appearance draft and live preview. The
+operator must review it and press **Save appearance** before a `PATCH` is sent.
+This exchange flow is admin-only and is not included in the embeddable widget
+bundle.
 
 **Security (R19):** every value is validated and sanitized on **both** sides —
 the backend rejects invalid input with `422`, and the widget re-sanitizes inline
-themes (colours must be hex, numbers are clamped, fonts come from an allowlist,
-image URLs must be `https`). The theme flows into a `<style>` inside the widget's
-Shadow DOM, so a malformed value can never break out or inject CSS. The single
+themes (colours must be hex, numbers are clamped, fonts and shadows come from
+allowlists, image URLs must be `https`). Theme configuration flows into a
+`<style>` inside the widget's Shadow DOM, so a malformed payload can never break
+out or inject CSS. Host variables are ordinary CSS authored by the host site and
+are never copied into generated style text. The single
 source of truth for defaults + validation is `App\Services\Widget\WidgetThemeService`
 (PHP) mirrored by `frontend/src/widget/ui/styles.ts` (`DEFAULT_THEME`,
 `sanitizeTheme`, `buildThemeCss`).
@@ -380,8 +632,8 @@ window.addEventListener('amd:message', (e) => {
    masked (tokenised) before storage. Re-detokenisation requires
    `detokenisePiiRedactor` gate.
 4. **Rate limiting**: per (key + IP), configurable per key (default 60/min).
-5. **Session token rotation** (M5.2): single-shot `wt_…` tokens prevent
-   credential reuse in browser mode.
+5. **Session-token replay protection** (M5.2): single-shot `wt_…` tokens are
+   accepted for one request only.
 6. **Auto-purge**: old sessions are pruned by `widget:prune-sessions`
    (configurable retention, see `config/widget.php`).
 7. **RBAC**: admin management (create/rotate/revoke keys) requires
@@ -408,6 +660,14 @@ Widget keys and sessions are managed via the admin SPA at
 | DELETE | `/api/admin/widget-keys/{id}` | Hard delete (cascading) |
 | POST | `/api/admin/widget-keys/{id}/rotate` | Regenerate pk_ + sk_ (returns new credentials once) |
 | POST | `/api/admin/widget-keys/{id}/revoke` | Set `is_active=false` (preserves data) |
+| POST | `/api/admin/widget-keys/{id}/rotate-identity-secret` | Rotate `ik_` once; requires `identity_credential_version` |
+
+Enabling/disabling user auth through `PATCH` also requires the current
+`identity_credential_version`; stale writes return `409
+identity_credential_conflict`. Every identity mutation is tenant-scoped,
+transactional and written to `admin_command_audit` without plaintext or hashes.
+There is deliberately no MCP mutation: a one-time `ik_` must not enter an agent
+transcript.
 
 **Session inspection** (`viewWidgetSessions` gate — admin + super-admin):
 
@@ -424,4 +684,9 @@ php artisan widget:prune-sessions
 
 # Issue a new secret for an existing key
 php artisan widget:emit-secret <public_key>
+
+# Inspect first, then mutate with optimistic version protection
+php artisan widget:identity-credential status 42 --tenant=acme
+php artisan widget:identity-credential rotate 42 --tenant=acme \
+  --expected-version=3 --force
 ```

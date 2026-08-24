@@ -11,9 +11,20 @@
  *   le azioni con confirmation_required passano da onConfirm.
  */
 import { buildSnapshot } from '../dom/snapshot';
-import type { Citation, HostTool, HostToolResult, Snapshot, ToolCall, TurnResponse, WidgetConfig } from '../types';
+import type {
+    Citation,
+    HostTool,
+    HostToolResult,
+    Snapshot,
+    ToolCall,
+    TurnResponse,
+    WidgetConfig,
+    WidgetDocumentPreview,
+} from '../types';
 import { Executor } from './executor';
 import { Transport, WidgetError } from './transport';
+import { consumeAgentRun, type AgentRunEvent } from '../../lib/agent-run-events';
+import type { WidgetAgentRun, WidgetAgentTurnResponse } from '../types';
 
 /** Artifact renderizzabile nella chat (spec §5.3). */
 export interface Artifact {
@@ -31,7 +42,7 @@ export interface ExecToolResponse {
 export interface BridgeEvents {
     onBusy: (busy: boolean) => void;
     onAnswer: (text: string, citations: Citation[]) => void;
-    onBotText: (text: string) => void;
+    onBotText: (text: string, citations: Citation[]) => void;
     onAction: (tool: string, args: Record<string, unknown>) => void;
     onAsk: (question: string, options: string[]) => void;
     onDone: (summary: string) => void;
@@ -49,6 +60,18 @@ export interface BridgeEvents {
     onPointAt: (target: HTMLElement | null, name: string) => void;
     onTourStep: (target: HTMLElement | null, message: string, index: number, total: number) => void;
     onClearOverlay: () => void;
+    onAgentEvent?: (event: AgentRunEvent) => void;
+    onAgentConfirmation?: (
+        event: AgentRunEvent,
+        accept: () => void,
+        reject: () => void,
+    ) => void;
+}
+
+export interface RestoredMessage {
+    role: 'user' | 'assistant';
+    content: string;
+    citations?: Citation[];
 }
 
 const MAX_AUTO_STEPS = 12;
@@ -75,6 +98,9 @@ export class Bridge {
      * manifest configurato / fetch fallito → degrado solo-RAG).
      */
     private hostTools: HostTool[] | null = null;
+    private dataAgentEnabled = false;
+    private activeAgentRun: WidgetAgentRun | null = null;
+    private agentAbort: AbortController | null = null;
 
     constructor(
         private readonly cfg: WidgetConfig,
@@ -89,17 +115,108 @@ export class Bridge {
     }
 
     /**
+     * Acquires authenticated-user credentials before setup/history calls.
+     * Kept explicit so the panel can block its composer until identity restore
+     * has completed; Transport also enforces this gate on every API request.
+     */
+    async prepareUserAuthentication(): Promise<void> {
+        await this.transport.prepareUserAuthentication();
+    }
+
+    /**
      * Carica il manifest da GET /api/widget/setup (skill, tool, e — nuovo — il
      * `theme` server). Resiliente (R14 lato widget): un fallimento NON rompe la
      * chat, il widget resta sul tema inline+default. Ritorna l'oggetto setup o
      * null se la chiamata fallisce.
      */
     async loadSetup(): Promise<Record<string, unknown> | null> {
+        await this.prepareUserAuthentication();
         try {
-            return await this.transport.setup(this.skill);
-        } catch {
+            const setup = await this.transport.setup(this.skill);
+            this.dataAgentEnabled = setup.data_agent !== null
+                && typeof setup.data_agent === 'object'
+                && (setup.data_agent as Record<string, unknown>).enabled === true;
+
+            return setup;
+        } catch (error) {
+            if (
+                this.transport.isUserAuthenticationConfigured() &&
+                error instanceof WidgetError &&
+                (error.code === 'user_token_invalid' ||
+                    error.code === 'user_token_config_invalid' ||
+                    error.code === 'user_token_response_invalid' ||
+                    error.code === 'user_token_url_cross_origin')
+            ) {
+                throw error;
+            }
+
             return null;
         }
+    }
+
+    /**
+     * Restore the newest still-open session for an authenticated host user.
+     * The server scopes both list and replay to the identity in the signed token.
+     */
+    async restoreAuthenticatedSession(): Promise<RestoredMessage[]> {
+        if (!this.transport.isUserAuthenticationConfigured()) {
+            return [];
+        }
+        await this.prepareUserAuthentication();
+
+        const current = await this.transport.currentSession();
+        if (!current) {
+            return [];
+        }
+        const replay = await this.transport.replay(current.id);
+        this.sessionId = current.id;
+
+        return replay.steps.flatMap((step): RestoredMessage[] => {
+            const content = step.args_json?.content;
+            if (step.kind === 'user_message') {
+                return typeof content === 'string' && content !== ''
+                    ? [{ role: 'user', content }]
+                    : [];
+            }
+            if (step.kind === 'bot_message') {
+                const rawCitations = step.args_json?.citations;
+                const citations = Array.isArray(rawCitations)
+                    ? rawCitations.filter(
+                        (citation): citation is Citation =>
+                            typeof citation === 'object' &&
+                            citation !== null &&
+                            'document_id' in citation &&
+                            'title' in citation &&
+                            'source_path' in citation,
+                    )
+                    : [];
+                if ((typeof content !== 'string' || content === '') && citations.length === 0) {
+                    return [];
+                }
+
+                return [{
+                    role: 'assistant',
+                    content: typeof content === 'string' ? content : '',
+                    ...(citations.length > 0 ? { citations } : {}),
+                }];
+            }
+
+            return [];
+        });
+    }
+
+    /** Load one full source through the current session-scoped endpoint. */
+    async fetchCitationDocument(documentId: number, signal?: AbortSignal): Promise<WidgetDocumentPreview> {
+        if (this.sessionId === null) {
+            throw new WidgetError('La sessione del widget non è ancora disponibile.', 409, 'session_missing');
+        }
+
+        return this.transport.fetchCitationDocument(this.sessionId, documentId, signal);
+    }
+
+    /** Namespace the source cache by the exact public session being authorised. */
+    citationCacheNamespace(): string {
+        return this.sessionId ?? 'no-session';
     }
 
     async sendUserMessage(message: string): Promise<void> {
@@ -110,6 +227,14 @@ export class Bridge {
         // (freccia/tour) lasciato dal turno precedente.
         this.events.onClearOverlay();
         await this.guard(async () => {
+            if (this.dataAgentEnabled) {
+                const response = this.sessionId
+                    ? await this.transport.stepAgent(this.sessionId, message)
+                    : await this.transport.startAgent(await this.startSnapshot(), message);
+                await this.handleAgentRun(response);
+
+                return;
+            }
             if (this.sessionId) {
                 const snapshot = this.snapshotWithHostTools();
                 const res = await this.transport.step(this.sessionId, snapshot, message, null);
@@ -158,6 +283,17 @@ export class Bridge {
     }
 
     async cancel(): Promise<void> {
+        this.agentAbort?.abort();
+        if (this.activeAgentRun) {
+            try {
+                await this.transport.cancelAgent(this.activeAgentRun.cancel_url);
+            } catch {
+                /* best effort */
+            }
+            this.activeAgentRun = null;
+
+            return;
+        }
         if (this.sessionId) {
             try {
                 await this.transport.cancel(this.sessionId);
@@ -167,12 +303,90 @@ export class Bridge {
         }
     }
 
+    private async handleAgentRun(response: WidgetAgentTurnResponse, afterSequence = 0): Promise<void> {
+        this.sessionId = response.session.id;
+        this.activeAgentRun = response.run;
+        this.agentAbort?.abort();
+        const controller = new AbortController();
+        this.agentAbort = controller;
+        const result = await consumeAgentRun({
+            initialSequence: afterSequence,
+            signal: controller.signal,
+            open: (after, signal) => this.transport.openAgentEvents(response.run.events_url, after, signal),
+            onEvent: (event) => this.events.onAgentEvent?.(event),
+        });
+
+        if (result.reason === 'awaiting_confirmation') {
+            const extension = result.event.data.extension;
+            const values = typeof extension === 'object' && extension !== null
+                ? extension as Record<string, unknown>
+                : {};
+            const physical = Math.max(1, Number(values.physical_extension ?? 25));
+            const logical = Math.max(0, Number(values.logical_extension ?? 0));
+            this.events.onAgentConfirmation?.(
+                result.event,
+                () => {
+                    void this.guard(async () => {
+                        await this.transport.continueAgent(response.run.continue_url, physical, logical);
+                        await this.handleAgentRun(response, result.lastSequence);
+                    });
+                },
+                () => { void this.cancel(); },
+            );
+
+            return;
+        }
+
+        this.activeAgentRun = null;
+        this.agentAbort = null;
+        if (result.reason === 'cancelled') return;
+        if (result.reason === 'failed') {
+            this.events.onError(result.event.message ?? 'The agent could not complete the search.');
+
+            return;
+        }
+
+        const rawResponse = result.event.data.response;
+        const answer = typeof rawResponse === 'object' && rawResponse !== null
+            ? rawResponse as Record<string, unknown>
+            : {};
+        const citations = this.agentCitations(answer);
+        this.events.onAnswer(typeof answer.answer === 'string' ? answer.answer : '', citations);
+    }
+
+    private agentCitations(answer: Record<string, unknown>): Citation[] {
+        const documents = Array.isArray(answer.citations)
+            ? answer.citations.filter((citation): citation is Citation => (
+                typeof citation === 'object' && citation !== null
+                && 'document_id' in citation && 'title' in citation
+            ))
+            : [];
+        const apiSources: Citation[] = Array.isArray(answer.tool_sources)
+            ? answer.tool_sources
+                .filter((source): source is Record<string, unknown> => typeof source === 'object' && source !== null)
+                .map((source) => ({
+                    document_id: null,
+                    title: typeof source.label === 'string'
+                        ? source.label
+                        : typeof source.tool === 'string' ? source.tool : 'API',
+                    source_path: null,
+                    source_type: 'api',
+                    origin: 'tool',
+                }))
+            : [];
+
+        return [...documents, ...apiSources];
+    }
+
     private async guard(fn: () => Promise<void>): Promise<void> {
         this.busy = true;
         this.events.onBusy(true);
         try {
             await fn();
         } catch (error) {
+            if (error instanceof DOMException && error.name === 'AbortError') {
+                return;
+            }
             const message = error instanceof WidgetError || error instanceof Error ? error.message : String(error);
             this.events.onError(message);
         } finally {
@@ -202,8 +416,8 @@ export class Bridge {
 
             return;
         }
-        if (res.bot_message) {
-            this.events.onBotText(res.bot_message);
+        if (res.bot_message || (res.citations?.length ?? 0) > 0) {
+            this.events.onBotText(res.bot_message ?? '', res.citations ?? []);
         }
 
         if (call.tool === 'ask_user') {

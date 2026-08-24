@@ -8,6 +8,7 @@ use App\Jobs\EvaluateCollectionsJob;
 use App\Models\KbCollection;
 use App\Models\KbCollectionMember;
 use App\Models\KnowledgeDocument;
+use App\Models\ProjectMembership;
 use App\Models\User;
 use App\Support\TenantContext;
 use Database\Seeders\RbacSeeder;
@@ -115,6 +116,12 @@ final class KbCollectionMembersControllerTest extends TestCase
             'password' => Hash::make('secret123'),
         ]);
         $admin->assignRole('admin');
+        ProjectMembership::create([
+            'tenant_id' => 'tenant-a',
+            'user_id' => $admin->id,
+            'project_key' => 'hr',
+            'role' => 'admin',
+        ]);
 
         return $admin;
     }

@@ -3,6 +3,7 @@ import { test } from './fixtures';
 import { composer, thread, waitForThreadReady } from './helpers';
 import {
     buildAssistantMessage,
+    buildUserMessage,
     stubChatAssistantReply,
 } from './helpers/stub-chat';
 
@@ -122,11 +123,17 @@ test.describe('v4.5/W7 — Vercel SDK UI Tier 1 + Tier 2', () => {
     });
 
     test('user-message edit button opens the inline editor, Cancel restores the bubble', async ({ page }) => {
+        const user = buildUserMessage({
+            id: 7003,
+            content: 'Edit-this-user-message',
+        });
+        const assistant = buildAssistantMessage({
+            id: 7004,
+            content: 'edited-test reply',
+        });
         await stubChatAssistantReply(page, {
-            assistant: buildAssistantMessage({
-                id: 7004,
-                content: 'edited-test reply',
-            }),
+            assistant,
+            list: [user, assistant],
         });
 
         await page.goto('/app/chat');

@@ -8,6 +8,7 @@ use App\Models\WidgetKey;
 use App\Models\WidgetSession;
 use App\Models\WidgetSessionStep;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
@@ -137,6 +138,63 @@ final class WidgetSessionTest extends TestCase
         // Persistenza step: messaggio utente + risposta bot.
         $this->assertDatabaseHas('widget_session_steps', ['kind' => WidgetSessionStep::KIND_USER_MESSAGE]);
         $this->assertDatabaseHas('widget_session_steps', ['kind' => WidgetSessionStep::KIND_BOT_MESSAGE]);
+    }
+
+    public function test_authenticated_start_persists_the_resolved_widget_identity(): void
+    {
+        Http::fake([
+            '*/embeddings' => $this->fakeEmbeddings(),
+            '*/chat/completions' => $this->fakeChatMessage('Bentornata Alice.'),
+        ]);
+
+        $identitySecret = 'ik_authenticated_start';
+        $key = $this->makeKey([
+            'project_key' => 'customer-portal',
+            'identity_secret_hash' => Hash::make($identitySecret),
+            'user_auth_enabled' => true,
+        ]);
+        $userToken = (string) $this->postJson('/api/widget/user-token', [
+            'subject' => 'customer-42',
+            'origin' => 'https://allowed.test',
+            'locale' => 'it-IT',
+        ], [
+            'X-Widget-Key' => $key->public_key,
+            'Authorization' => 'Bearer '.$identitySecret,
+        ])->assertCreated()->json('token');
+
+        $this->withHeaders([
+            'Origin' => 'https://allowed.test',
+            'Authorization' => 'Bearer '.$userToken,
+        ])->postJson('/api/widget/sessions/start', [
+            'snapshot' => $this->snapshot(),
+            'message' => 'Riprendi la mia pratica',
+        ])->assertOk()->assertJsonPath('answer', 'Bentornata Alice.');
+
+        $session = WidgetSession::query()->firstOrFail();
+        $this->assertNotNull($session->widget_identity_id);
+        $this->assertSame('it-IT', $session->locale);
+        $this->assertDatabaseHas('widget_identities', [
+            'id' => $session->widget_identity_id,
+            'widget_key_id' => $key->id,
+            'project_key' => 'customer-portal',
+        ]);
+    }
+
+    public function test_anonymous_start_pins_the_active_page_locale(): void
+    {
+        Http::fake([
+            '*/embeddings' => $this->fakeEmbeddings(),
+            '*/chat/completions' => $this->fakeChatMessage('Welcome.'),
+        ]);
+
+        $key = $this->makeKey();
+
+        $this->withHeaders($this->headers($key))->postJson('/api/widget/sessions/start', [
+            'snapshot' => $this->snapshot(['active_context' => ['locale' => 'en-US']]),
+            'message' => 'Help',
+        ])->assertOk();
+
+        $this->assertSame('en-US', WidgetSession::query()->firstOrFail()->locale);
     }
 
     public function test_start_returns_a_validated_tool_call(): void

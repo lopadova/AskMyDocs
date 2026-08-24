@@ -15,12 +15,12 @@ use Spatie\Permission\Models\Role;
  * `role:admin|super-admin`). The store/update FormRequests previously
  * validated assigned roles only with `Rule::exists('roles','name')`, so an
  * `admin` could `syncRoles(['super-admin'])` on any account (including their
- * own) and inherit `commands.destructive` + `tenant.cross-access` —
- * permissions deliberately withheld from `admin` (see RbacSeeder).
+ * own) and inherit tenant-level destructive capabilities deliberately
+ * withheld from `admin` (see RbacSeeder).
  *
  * Invariant enforced here: a user may only assign a role whose permission
- * set is fully contained in their OWN effective permissions. A super-admin
- * holds every permission, so only a super-admin can grant `super-admin`;
+ * set is fully contained in their OWN effective permissions. A tenant
+ * super-admin holds every tenant permission, so it can grant `super-admin`;
  * an `admin` can still grant `viewer`/`editor` (subsets of its grants) but
  * not a role carrying a permission it lacks. This is a strict
  * "no-privilege-amplification" ceiling rather than a hard-coded role list,
@@ -48,6 +48,15 @@ final class RoleAssignmentGuard
             return [];
         }
 
+        // The platform role is never managed through tenant-facing Users CRUD,
+        // even by another system administrator. Grant/revoke has its own
+        // audited CLI workflow and last-system-admin protections.
+        if (in_array(PlatformAccess::SYSTEM_ADMIN_ROLE, $names, true)) {
+            $disallowed = [PlatformAccess::SYSTEM_ADMIN_ROLE];
+        } else {
+            $disallowed = [];
+        }
+
         $actorPermissions = array_flip(
             $actor->getAllPermissions()->pluck('name')->all()
         );
@@ -58,8 +67,11 @@ final class RoleAssignmentGuard
             ->get()
             ->keyBy('name');
 
-        $disallowed = [];
         foreach ($names as $name) {
+            if ($name === PlatformAccess::SYSTEM_ADMIN_ROLE) {
+                continue;
+            }
+
             $role = $roles->get($name);
             if ($role === null) {
                 // Unknown role — leave rejection to the `exists` rule.

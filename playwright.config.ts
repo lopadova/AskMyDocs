@@ -100,6 +100,25 @@ export default defineConfig({
                   // CI test DB name so migrations behave identically. Create it once:
                   // `createdb askmydocs_test` (see .env.example). The TestingController guard enforces this too.
                   DB_DATABASE: 'askmydocs_test',
+                  // Never inherit the local Valet/Herd cookie domain
+                  // (`askmydocs.test`) while the Playwright server runs on
+                  // 127.0.0.1. A mismatched Domain silently discards both the
+                  // XSRF and session cookies, making successful registration
+                  // look unauthenticated on the immediately-following /me.
+                  SESSION_DOMAIN: '127.0.0.1',
+                  SESSION_DRIVER: 'database',
+                  // Keep rate limits and locks process-local throughout the
+                  // long test matrix. The authenticated widget demo selects
+                  // the shared file store explicitly for its credential only.
+                  CACHE_STORE: 'array',
+                  SANCTUM_STATEFUL_DOMAINS: '127.0.0.1,127.0.0.1:8000,localhost,localhost:8000',
+                  // Local E2E has no long-running queue worker. Pin the
+                  // connection explicitly instead of inheriting a developer
+                  // `.env` value such as `database`, otherwise KB ingest jobs
+                  // remain queued forever and the upload progress gate stalls.
+                  // CI skips this webServer block and keeps its dedicated
+                  // database worker (see .github/workflows/tests.yml).
+                  QUEUE_CONNECTION: 'sync',
                   // drives the real /messages/stream SSE through the real
                   // @ai-sdk transport. The fake provider streams a canned
                   // answer + a constant embedding vector (so retrieval always
@@ -147,6 +166,18 @@ export default defineConfig({
                   // ping is input-driven: host containing `invalid`/`fail` → 422,
                   // otherwise → ACTIVE. Default-OFF in production.
                   CONNECTOR_IMAP_FAKE_PING: 'true',
+                  // v8.27 — API Connector (Connettore API): the "Test connessione"
+                  // / "Prova tool" calls are made BY THE BACKEND over HTTP (like the
+                  // IMAP TCP dependency), so Playwright cannot page.route them.
+                  // Relax the SSRF guard for E2E so admin-api-connectors.spec.ts can
+                  // point a route at the app's OWN local /healthz endpoint and drive
+                  // the real create → test → activate flow end-to-end against a
+                  // deterministic 200 (no external network, no flake). Production
+                  // keeps the guard ON (https-only + loopback/private blocked) by
+                  // default; the guarded paths are covered by ApiToolExecutorTest +
+                  // the package's UrlGuard tests (phpunit), per R43 (both states).
+                  API_CONNECTOR_SSRF_ENABLED: 'false',
+                  API_CONNECTOR_HTTPS_ONLY: 'false',
                   // v8.18/W4 — gamification stays ON (default) so the badges +
                   // coaching surfaces render, but the AI NARRATION layer is forced
                   // OFF for E2E: the narrator resolves the named `openrouter`
@@ -197,6 +228,11 @@ export default defineConfig({
             dependencies: ['viewer-setup'],
         },
         {
+            name: 'system-admin-setup',
+            testMatch: /system-admin\.setup\.ts/,
+            dependencies: ['super-admin-setup'],
+        },
+        {
             name: 'chromium',
             use: {
                 ...devices['Desktop Chrome'],
@@ -207,7 +243,13 @@ export default defineConfig({
             // state; every *-super-admin.spec.ts under the super-admin
             // one. Keep the ignore list a single regex so new RBAC
             // denial / elevation specs don't need this config touched.
-            testIgnore: [/.*\.setup\.ts/, /.*-viewer\.spec\.ts/, /.*-super-admin\.spec\.ts/, /role-access\.spec\.ts/],
+            testIgnore: [
+                /.*\.setup\.ts/,
+                /.*-viewer\.spec\.ts/,
+                /.*-super-admin\.spec\.ts/,
+                /.*-system-admin\.spec\.ts/,
+                /role-access\.spec\.ts/,
+            ],
         },
         {
             // Non-admin project — runs ONLY the *-viewer scenarios.
@@ -234,9 +276,18 @@ export default defineConfig({
             testMatch: /.*-super-admin\.spec\.ts/,
         },
         {
+            name: 'chromium-system-admin',
+            use: {
+                ...devices['Desktop Chrome'],
+                storageState: 'playwright/.auth/system-admin.json',
+            },
+            dependencies: ['system-admin-setup'],
+            testMatch: /.*-system-admin\.spec\.ts/,
+        },
+        {
             // R32 — per-role access-control gate. Runs role-access.spec.ts in a
             // CLEAN (unauthenticated) context: the spec logs in as each of the
-            // five roles inline + asserts the API allow-set, plus a guest case.
+            // six roles inline + asserts the API allow-set, plus a guest case.
             // No pre-auth storage state may leak in. Depends on `setup` only to
             // serialise the boot-time DB migrate; the spec's own beforeEach
             // reseeds via resetAndSeed.

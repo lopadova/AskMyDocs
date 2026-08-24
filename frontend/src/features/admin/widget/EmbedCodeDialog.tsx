@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ExternalLink, Info } from 'lucide-react';
+import { ExternalLink, Info, ShieldCheck } from 'lucide-react';
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -15,7 +15,8 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 import { DEFAULT_THEME, sanitizeTheme } from '../../../widget/ui/styles';
-import type { WidgetTheme } from '../../../widget/types';
+import { sanitizeIntro } from '../../../widget/ui/intro';
+import type { WidgetIntro, WidgetTheme } from '../../../widget/types';
 import { CopyButton } from './CopyButton';
 import { highlightSnippet } from './highlightSnippet';
 
@@ -38,14 +39,30 @@ interface EmbedCodeDialogProps {
      */
     secret?: string | null;
     /**
+     * Plain identity secret (ik_…) — available only immediately after it is
+     * generated. It is shown only in the host-server environment snippet.
+     */
+    identitySecret?: string | null;
+    /** Whether this key requires the authenticated-host-user integration guide. */
+    userAuthEnabled?: boolean;
+    /** Open directly on the authenticated setup after issuing an ik_ credential. */
+    initialTab?: 'quickstart' | 'authenticated';
+    /**
      * Saved appearance theme of the key. When present and non-default, the
      * operator can bake it inline into the snippet (`theme: {…}`).
      */
     theme?: WidgetTheme;
+    /** Saved introduction. It normally arrives through /setup and can also be baked inline. */
+    intro?: WidgetIntro;
 }
 
 /** Escape a value so it is safe inside a single-quoted JS string literal. */
 function jsString(value: string): string {
+    return value.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+/** Escape a value for a single-quoted PHP string in generated host code. */
+function phpString(value: string): string {
     return value.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 }
 
@@ -100,19 +117,28 @@ export function EmbedCodeDialog({
     apiBase,
     allowedOrigins = [],
     secret,
+    identitySecret,
+    userAuthEnabled = false,
+    initialTab = 'quickstart',
     theme,
+    intro,
 }: EmbedCodeDialogProps) {
     const [title, setTitle] = useState('');
     const [launcherLabel, setLauncherLabel] = useState('');
     const [autoOpen, setAutoOpen] = useState(false);
     const [includeTheme, setIncludeTheme] = useState(false);
+    const [includeIntro, setIncludeIntro] = useState(false);
     const [base, setBase] = useState(apiBase);
+    const [userTokenUrl, setUserTokenUrl] = useState('/api/askmydocs/widget-user-token');
     // Inline-mode only: the host container the chat block mounts into.
     const [containerId, setContainerId] = useState('askmydocs-chat');
     const [height, setHeight] = useState('600');
 
-    // Layout the key was created with — drives helper vs inline snippet.
-    const mode = theme?.mode === 'inline' ? 'inline' : 'helper';
+    // Layout the key was created with — drives helper/inline/fullscreen snippet.
+    const mode =
+        theme?.mode === 'inline' || theme?.mode === 'fullscreen'
+            ? theme.mode
+            : 'helper';
 
     const resolvedBase = trimTrailingSlash(base.trim());
     const scriptSrc = `${resolvedBase}/widget/askmydocs-widget.js`;
@@ -150,16 +176,23 @@ export function EmbedCodeDialog({
         return out;
     }, [theme]);
     const hasCustomTheme = Object.keys(themeDelta).length > 0;
+    const resolvedIntro = useMemo(() => sanitizeIntro(intro), [intro]);
+    const hasIntro = resolvedIntro.enabled && resolvedIntro.title !== '';
 
     const snippet = useMemo(() => {
         const cfg: string[] = [`    key: '${jsString(publicKey)}',`];
         if (resolvedBase) {
             cfg.push(`    apiBase: '${jsString(resolvedBase)}',`);
         }
+        if (userAuthEnabled && userTokenUrl.trim()) {
+            cfg.push(`    userTokenUrl: '${jsString(userTokenUrl.trim())}',`);
+        }
         if (mode === 'inline') {
             // Inline chat mounts into a host container; both lines are required.
             cfg.push("    mode: 'inline',");
             cfg.push(`    mount: '${jsString(mountSelector)}',`);
+        } else if (mode === 'fullscreen') {
+            cfg.push("    mode: 'fullscreen',");
         }
         if (title.trim()) {
             cfg.push(`    title: '${jsString(title.trim())}',`);
@@ -183,6 +216,14 @@ export function EmbedCodeDialog({
                     .map((line, i) => (i === 0 ? `    theme: ${line}` : `      ${line}`))
                     .join('\n') + ',';
             cfg.push(entry);
+        }
+        if (includeIntro && hasIntro) {
+            const raw = JSON.stringify(resolvedIntro, null, 2).replace(/<\/(?=script)/gi, '<\\/');
+            cfg.push(
+                raw.split('\n')
+                    .map((line, i) => (i === 0 ? `    intro: ${line}` : `      ${line}`))
+                    .join('\n') + ',',
+            );
         }
 
         // Inline mode prepends the host container the chat fills.
@@ -216,9 +257,61 @@ export function EmbedCodeDialog({
         includeTheme,
         hasCustomTheme,
         themeDelta,
+        includeIntro,
+        hasIntro,
+        resolvedIntro,
         label,
         scriptSrc,
+        userAuthEnabled,
+        userTokenUrl,
     ]);
+
+    const hostOrigin = allowedOrigins[0] ?? 'https://your-site.example';
+    const hostEnvSnippet = [
+        `ASKMYDOCS_URL=${resolvedBase || 'https://askmydocs.example'}`,
+        `ASKMYDOCS_WIDGET_PUBLIC_KEY=${publicKey}`,
+        `ASKMYDOCS_WIDGET_IDENTITY_SECRET=${identitySecret ?? 'ik_…'}`,
+        `ASKMYDOCS_WIDGET_ORIGIN=${hostOrigin}`,
+    ].join('\n');
+    const laravelServerSnippet = [
+        '// config/services.php',
+        "'askmydocs' => [",
+        "    'url' => env('ASKMYDOCS_URL'),",
+        "    'widget_public_key' => env('ASKMYDOCS_WIDGET_PUBLIC_KEY'),",
+        "    'widget_identity_secret' => env('ASKMYDOCS_WIDGET_IDENTITY_SECRET'),",
+        "    'widget_origin' => env('ASKMYDOCS_WIDGET_ORIGIN'),",
+        '],',
+        '',
+        '// routes/web.php — this endpoint is on YOUR host application',
+        'use Illuminate\\Http\\Request;',
+        'use Illuminate\\Support\\Facades\\Http;',
+        'use Illuminate\\Support\\Facades\\Route;',
+        '',
+        `Route::get('${phpString(userTokenUrl.trim() || '/api/askmydocs/widget-user-token')}', function (Request $request) {`,
+        '    $response = Http::acceptJson()',
+        "        ->withHeaders(['X-Widget-Key' => config('services.askmydocs.widget_public_key')])",
+        "        ->withToken(config('services.askmydocs.widget_identity_secret'))",
+        "        ->post(rtrim(config('services.askmydocs.url'), '/').'/api/widget/user-token', [",
+        '            // Prefer a stable UUID. Never accept this value from the browser.',
+        "            'subject' => (string) $request->user()->getAuthIdentifier(),",
+        "            'origin' => config('services.askmydocs.widget_origin'),",
+        '        ])',
+        '        ->throw();',
+        '',
+        "    return response()->json($response->only(['token', 'expires_at']))",
+        "        ->header('Cache-Control', 'no-store');",
+        "})->middleware('auth');",
+    ].join('\n');
+    const authenticatedBrowserSnippet = [
+        '<script>',
+        '  window.AskMyDocsWidget = {',
+        `    key: '${jsString(publicKey)}',`,
+        ...(resolvedBase ? [`    apiBase: '${jsString(resolvedBase)}',`] : []),
+        `    userTokenUrl: '${jsString(userTokenUrl.trim() || '/api/askmydocs/widget-user-token')}',`,
+        '  };',
+        '</script>',
+        `<script src="${scriptSrc}" defer></script>`,
+    ].join('\n');
 
     const proxyConfigSnippet = [
         '<script>',
@@ -254,7 +347,7 @@ export function EmbedCodeDialog({
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent
                 data-testid="admin-widget-keys-embed-dialog"
-                className="sm:max-w-2xl"
+                className="max-h-[90vh] overflow-y-auto sm:max-w-2xl"
             >
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
@@ -263,6 +356,14 @@ export function EmbedCodeDialog({
                         {mode === 'inline' && (
                             <Badge variant="muted" data-testid="admin-widget-embed-mode-inline">
                                 inline chat
+                            </Badge>
+                        )}
+                        {mode === 'fullscreen' && (
+                            <Badge
+                                variant="muted"
+                                data-testid="admin-widget-embed-mode-fullscreen"
+                            >
+                                fullscreen chat
                             </Badge>
                         )}
                     </DialogTitle>
@@ -274,7 +375,13 @@ export function EmbedCodeDialog({
                     </DialogDescription>
                 </DialogHeader>
 
-                <Tabs defaultValue="quickstart">
+                <Tabs
+                    defaultValue={
+                        initialTab === 'authenticated' && userAuthEnabled
+                            ? 'authenticated'
+                            : 'quickstart'
+                    }
+                >
                     <TabsList>
                         <TabsTrigger
                             value="quickstart"
@@ -291,6 +398,14 @@ export function EmbedCodeDialog({
                         <TabsTrigger value="proxy" data-testid="admin-widget-embed-tab-proxy">
                             Proxy (advanced)
                         </TabsTrigger>
+                        {userAuthEnabled && (
+                            <TabsTrigger
+                                value="authenticated"
+                                data-testid="admin-widget-embed-tab-authenticated"
+                            >
+                                Authenticated users
+                            </TabsTrigger>
+                        )}
                     </TabsList>
 
                     <TabsContent value="quickstart" className="mt-3 grid gap-3">
@@ -311,18 +426,29 @@ export function EmbedCodeDialog({
                                 </span>
                             ) : (
                                 <span className="text-[var(--warn)] font-medium">
-                                    any origin — no allowlist set (lock this down in production)
+                                    no browser origin is allowed — add the host origin before testing
                                 </span>
                             )}
                         </div>
                         <Alert variant="info">
                             <Info aria-hidden />
                             <AlertTitle>
-                                {mode === 'inline'
+                                {userAuthEnabled
+                                    ? 'Host token endpoint + embed tags'
+                                    : mode === 'inline'
                                     ? 'A container + two tags'
-                                    : 'Two tags, nothing else'}
+                                    : mode === 'fullscreen'
+                                      ? 'Two tags for a full-page chat'
+                                      : 'Two tags, nothing else'}
                             </AlertTitle>
                             <AlertDescription>
+                                {userAuthEnabled && (
+                                    <p className="mb-2">
+                                        First configure the session-protected endpoint in the{' '}
+                                        <strong>Authenticated users</strong> tab. This snippet
+                                        calls that endpoint before contacting AskMyDocs.
+                                    </p>
+                                )}
                                 {mode === 'inline' ? (
                                     <>
                                         The <code className="font-mono">&lt;div&gt;</code> is where
@@ -455,6 +581,28 @@ export function EmbedCodeDialog({
                                     </span>
                                 </label>
                             )}
+                            {intro && (
+                                <label
+                                    className="flex items-center gap-2 text-sm sm:col-span-2"
+                                    htmlFor="embed-opt-intro"
+                                >
+                                    <input
+                                        id="embed-opt-intro"
+                                        type="checkbox"
+                                        data-testid="admin-widget-embed-opt-intro"
+                                        checked={includeIntro}
+                                        disabled={!hasIntro}
+                                        onChange={(e) => setIncludeIntro(e.target.checked)}
+                                        className="size-4 accent-[var(--accent-a)]"
+                                    />
+                                    <span>
+                                        Bake the saved welcome content inline
+                                        {!hasIntro && (
+                                            <span className="text-muted-foreground"> (currently disabled)</span>
+                                        )}
+                                    </span>
+                                </label>
+                            )}
                         </div>
                         <CodeBlock
                             code={snippet}
@@ -511,6 +659,143 @@ export function EmbedCodeDialog({
                             />
                         </div>
                     </TabsContent>
+
+                    {userAuthEnabled && (
+                        <TabsContent
+                            value="authenticated"
+                            className="mt-3 grid gap-4"
+                            data-testid="admin-widget-auth-guide"
+                        >
+                            <Alert variant="info">
+                                <ShieldCheck aria-hidden />
+                                <AlertTitle>The host session authenticates the user</AlertTitle>
+                                <AlertDescription>
+                                    The browser never sends an email, user id, or{' '}
+                                    <code className="font-mono">ik_…</code> credential to
+                                    AskMyDocs. Your authenticated backend exchanges a stable,
+                                    opaque subject for a short-lived <code>wu_…</code>. The
+                                    widget renews it through the same-origin endpoint below; no
+                                    refresh token is stored in the browser.
+                                </AlertDescription>
+                            </Alert>
+
+                            <div className="grid gap-1.5">
+                                <Label htmlFor="embed-user-token-url">Host token endpoint</Label>
+                                <Input
+                                    id="embed-user-token-url"
+                                    name="user_token_url"
+                                    data-testid="admin-widget-embed-user-token-url"
+                                    value={userTokenUrl}
+                                    onChange={(event) => setUserTokenUrl(event.target.value)}
+                                    placeholder="/api/askmydocs/widget-user-token"
+                                />
+                                <p className="text-muted-foreground text-xs">
+                                    Keep this same-origin and protect it with the host
+                                    application&apos;s normal login/session middleware.
+                                </p>
+                            </div>
+
+                            <div className="grid gap-1.5">
+                                <span className="text-muted-foreground text-xs font-medium">
+                                    1. Host environment — never expose these values to JavaScript
+                                </span>
+                                <CodeBlock
+                                    code={hostEnvSnippet}
+                                    lang="ENV"
+                                    snippetTestId="admin-widget-embed-auth-env"
+                                    copyTestId="admin-widget-embed-auth-env-copy"
+                                />
+                                {!identitySecret && (
+                                    <p
+                                        className="text-[var(--warn)] text-xs"
+                                        data-testid="admin-widget-embed-auth-secret-missing"
+                                    >
+                                        The identity secret is shown only once. Rotate the
+                                        identity credential from the key row to obtain a new{' '}
+                                        <code className="font-mono">ik_…</code>.
+                                    </p>
+                                )}
+                            </div>
+
+                            <div className="grid gap-1.5">
+                                <span className="text-muted-foreground text-xs font-medium">
+                                    2. Laravel host endpoint
+                                </span>
+                                <CodeBlock
+                                    code={laravelServerSnippet}
+                                    lang="PHP"
+                                    snippetTestId="admin-widget-embed-auth-server"
+                                    copyTestId="admin-widget-embed-auth-server-copy"
+                                />
+                            </div>
+
+                            <div className="grid gap-1.5">
+                                <span className="text-muted-foreground text-xs font-medium">
+                                    3. Browser bootstrap
+                                </span>
+                                <CodeBlock
+                                    code={authenticatedBrowserSnippet}
+                                    lang="HTML"
+                                    snippetTestId="admin-widget-embed-auth-browser"
+                                    copyTestId="admin-widget-embed-auth-browser-copy"
+                                />
+                            </div>
+
+                            <div className="overflow-x-auto rounded-md border border-border">
+                                <table
+                                    className="w-full border-collapse text-xs"
+                                    data-testid="admin-widget-embed-auth-token-table"
+                                >
+                                    <thead>
+                                        <tr className="text-muted-foreground border-b border-border text-left [&>th]:px-3 [&>th]:py-2">
+                                            <th>Prefix</th>
+                                            <th>Purpose</th>
+                                            <th>Where it belongs</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="[&_td]:px-3 [&_td]:py-2">
+                                        <tr>
+                                            <td className="font-mono">pk_</td>
+                                            <td>Widget/project identity</td>
+                                            <td>Browser configuration</td>
+                                        </tr>
+                                        <tr>
+                                            <td className="font-mono">sk_</td>
+                                            <td>Optional full proxy credential</td>
+                                            <td>Host backend only</td>
+                                        </tr>
+                                        <tr>
+                                            <td className="font-mono">ik_</td>
+                                            <td>Mints authenticated-user tokens</td>
+                                            <td>Host backend only</td>
+                                        </tr>
+                                        <tr>
+                                            <td className="font-mono">wu_</td>
+                                            <td>Short-lived user bearer, renewed automatically</td>
+                                            <td>Widget memory only</td>
+                                        </tr>
+                                        <tr>
+                                            <td className="font-mono">wt_</td>
+                                            <td>Optional single-use session token, not refresh</td>
+                                            <td>Widget transport only</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <Alert variant="info">
+                                <Info aria-hidden />
+                                <AlertTitle>Use a stable identifier, not an email</AlertTitle>
+                                <AlertDescription>
+                                    Prefer the host user UUID or an HMAC of the internal id.
+                                    Changing the subject creates a different widget identity and
+                                    disconnects the previous history. The endpoint must derive
+                                    the subject from the logged-in user; never accept it as a
+                                    request parameter.
+                                </AlertDescription>
+                            </Alert>
+                        </TabsContent>
+                    )}
                 </Tabs>
 
                 <a

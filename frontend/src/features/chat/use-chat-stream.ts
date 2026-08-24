@@ -251,7 +251,7 @@ export function useChatStream(options: UseChatStreamOptions): UseChatHelpers<UIM
                     headers['X-XSRF-TOKEN'] = xsrf;
                 }
                 const team = useTeamStore.getState().currentTeam;
-                if (team !== null && team !== 'default') {
+                if (team !== null) {
                     headers['X-Tenant-Id'] = team;
                 }
                 return { body, headers };

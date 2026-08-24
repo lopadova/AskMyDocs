@@ -4,9 +4,12 @@ namespace App\Http\Controllers\Api\Auth;
 
 use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Requests\Auth\TokenRequest;
+use App\Invitations\RegistrationAccountCompletionService;
 use App\Models\User;
+use App\Services\Auth\CompanyOnboardingEligibility;
 use App\Services\Auth\UserTeamsResolver;
 use App\Support\DesktopToken;
+use App\Support\SupportedLocale;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -27,6 +30,10 @@ use Laravel\Sanctum\PersonalAccessToken;
  */
 class AuthController extends Controller
 {
+    public function __construct(
+        private readonly RegistrationAccountCompletionService $registration,
+    ) {}
+
     public function login(LoginRequest $request): JsonResponse
     {
         $key = $request->throttleKey();
@@ -47,16 +54,23 @@ class AuthController extends Controller
             ]);
         }
 
+        $user = $request->user();
+        try {
+            $this->registration->reconcile($user);
+        } catch (\Throwable $e) {
+            Auth::guard('web')->logout();
+            throw $e;
+        }
+
         RateLimiter::clear($key);
         $request->session()->regenerate();
-
-        $user = $request->user();
 
         return response()->json([
             'user' => [
                 'id' => $user->id,
                 'name' => $user->name,
                 'email' => $user->email,
+                'locale' => SupportedLocale::normalize($user->locale),
             ],
             'abilities' => [],
         ], 200);
@@ -88,7 +102,10 @@ class AuthController extends Controller
             ])->status(429);
         }
 
-        $user = User::where('email', (string) $request->validated('email'))->first();
+        $user = User::query()
+            ->whereEmailIdentity((string) $request->validated('email'))
+            ->where('is_active', true)
+            ->first();
 
         if ($user === null || ! Hash::check((string) $request->validated('password'), $user->password)) {
             RateLimiter::hit($key);
@@ -98,8 +115,9 @@ class AuthController extends Controller
             ]);
         }
 
-        RateLimiter::clear($key);
+        $this->registration->reconcile($user);
 
+        RateLimiter::clear($key);
         $token = DesktopToken::mint($user, $request->deviceName())->plainTextToken;
 
         return response()->json([
@@ -109,6 +127,7 @@ class AuthController extends Controller
                 'id' => $user->id,
                 'name' => $user->name,
                 'email' => $user->email,
+                'locale' => SupportedLocale::normalize($user->locale),
             ],
         ], 201);
     }
@@ -139,13 +158,19 @@ class AuthController extends Controller
         return response()->noContent();
     }
 
-    public function me(Request $request, UserTeamsResolver $teams): JsonResponse
+    public function me(
+        Request $request,
+        UserTeamsResolver $teams,
+        CompanyOnboardingEligibility $onboarding,
+    ): JsonResponse
     {
         $user = $request->user();
 
         if ($user === null) {
             return response()->json(['message' => 'Unauthenticated.'], 401);
         }
+
+        $this->registration->reconcile($user);
 
         $projects = $user->projectMemberships()
             ->get(['project_key', 'role', 'scope_allowlist'])
@@ -156,24 +181,32 @@ class AuthController extends Controller
             ])
             ->values();
 
+        $resolvedTeams = $teams->resolve($user);
+        $onboardingRequired = $onboarding->required($user);
+
         return response()->json([
             'user' => [
                 'id' => $user->id,
                 'name' => $user->name,
                 'email' => $user->email,
                 'email_verified_at' => $user->email_verified_at,
+                'locale' => SupportedLocale::normalize($user->locale),
             ],
             'roles' => $user->getRoleNames(),
             'permissions' => $user->getAllPermissions()->pluck('name'),
             'projects' => $projects,
-            // R27 — additive: the legacy cross-tenant `projects` list above
-            // stays untouched; `teams` groups the same memberships per
-            // tenant for the SPA team switcher.
-            'teams' => $teams->resolve($user),
+            // R27 — additive: the legacy flattened `projects` list above
+            // stays untouched; `teams` groups the same explicit memberships
+            // per active tenant for the SPA team switcher.
+            'teams' => $resolvedTeams,
+            'onboarding' => [
+                'required' => $onboardingRequired,
+                'can_create_company' => $onboardingRequired,
+            ],
             'preferences' => [
                 'theme' => 'dark',
                 'density' => 'balanced',
-                'language' => 'en',
+                'language' => SupportedLocale::normalize($user->locale),
             ],
             // R27 additive — UI capability hints for the SPA (never strip or
             // rename existing keys). `invitations_admin` mirrors the
@@ -183,6 +216,7 @@ class AuthController extends Controller
             // 404 route when the package mount is OFF (R14/R43).
             'features' => [
                 'invitations_admin' => (bool) config('invitations-admin.enabled', false),
+                'system_admin' => $user->can(\App\Support\PlatformAccess::PLATFORM_ADMIN_PERMISSION),
             ],
         ], 200);
     }

@@ -60,7 +60,7 @@ final class GamificationInsightsHttpTest extends TestCase
     private function seedComputed(int $userId): void
     {
         $doc = KnowledgeDocument::create([
-            'tenant_id' => 'default', 'project_key' => 'eng', 'source_type' => 'markdown',
+            'tenant_id' => 'test-tenant', 'project_key' => 'eng', 'source_type' => 'markdown',
             'title' => 'D', 'source_path' => 'kb/'.uniqid().'.md',
             'document_hash' => hash('sha256', uniqid('', true)), 'version_hash' => hash('sha256', uniqid('', true)),
             'status' => 'active', 'is_canonical' => true, 'canonical_status' => 'accepted',
@@ -68,7 +68,7 @@ final class GamificationInsightsHttpTest extends TestCase
             'evidence_tier' => 'primary', 'retrieval_priority' => 60, 'frontmatter_json' => ['slug' => 'x'],
         ]);
         KbContributionEvent::create([
-            'tenant_id' => 'default', 'user_id' => $userId, 'document_id' => $doc->id,
+            'tenant_id' => 'test-tenant', 'user_id' => $userId, 'document_id' => $doc->id,
             'project_key' => 'eng', 'event' => 'created', 'weight' => 5, 'created_at' => now(),
         ]);
         app(GamificationInsightsService::class)->recomputeForTenant('2026-W25');

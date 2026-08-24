@@ -6,7 +6,7 @@ import { resetAndSeed } from './setup-helpers';
  *
  * The deterministic authoritative gate lives in PHPUnit
  * (tests/Feature/Security/AdminAuthorizationMatrixTest). THIS spec is the
- * end-to-end complement: it logs in as each of the five seeded roles through
+ * end-to-end complement: it logs in as each of the six seeded roles through
  * the REAL served app (real Sanctum cookie session, real middleware, the real
  * config/*.php — including the package route gates that Testbench can't fully
  * mirror) and asserts that each role reaches EXACTLY the admin APIs it should.
@@ -16,7 +16,7 @@ import { resetAndSeed } from './setup-helpers';
  * services. The assertion is on the authorization decision: a role NOT in the
  * allow-set must get 403; a role IN the allow-set must get anything-but-403.
  *
- * Runs unauthenticated (no storageState); each test logs in inline so the five
+ * Runs unauthenticated (no storageState); each test logs in inline so the six
  * roles stay isolated. Add a row to ENDPOINTS whenever you add a protected
  * route group (see .claude/skills/rbac-authorization-matrix).
  */
@@ -31,10 +31,17 @@ const ENDPOINTS: ReadonlyArray<{ uri: string; allowed: readonly string[] }> = [
     { uri: '/api/admin/users', allowed: ['admin', 'super-admin'] },
     { uri: '/api/admin/projects', allowed: ['admin', 'super-admin'] },
     { uri: '/api/admin/teams', allowed: ['admin', 'super-admin'] },
+    // global control plane — exact platform capability
+    { uri: '/api/system-admin/tenants', allowed: ['system-admin'] },
+    { uri: '/api/system-admin/super-admins', allowed: ['system-admin'] },
     { uri: '/api/admin/logs/chat', allowed: ['admin', 'super-admin'] },
     { uri: '/api/admin/kb/tree', allowed: ['admin', 'super-admin'] },
     // gate-based groups
     { uri: '/api/admin/connectors', allowed: ['admin', 'super-admin'] },
+    // v8.27 — API Connector (Connettore API) admin group (gate: manageConnectors;
+    // package routes mounted with the host's authenticated admin stack, R32)
+    { uri: '/api/admin/api-connectors', allowed: ['admin', 'super-admin'] },
+    { uri: '/api/admin/agent-runs/overview', allowed: ['admin', 'super-admin'] },
     { uri: '/api/admin/mcp-servers', allowed: ['super-admin'] },
     { uri: '/api/admin/mcp-tool-call-audit', allowed: ['admin', 'super-admin'] },
     { uri: '/api/admin/pii/strategy', allowed: ['admin', 'dpo', 'super-admin'] },
@@ -53,11 +60,12 @@ const ENDPOINTS: ReadonlyArray<{ uri: string; allowed: readonly string[] }> = [
     { uri: '/api/admin/invitations/metrics', allowed: ['admin', 'super-admin'] },
 ];
 
-const ALL_ROLES = ['super-admin', 'admin', 'dpo', 'editor', 'viewer'] as const;
+const ALL_ROLES = ['system-admin', 'super-admin', 'admin', 'dpo', 'editor', 'viewer'] as const;
 
 // DemoSeeder seeds the super-admin as `super@demo.local` (NOT
 // `super-admin@demo.local`); every other role uses `<role>@demo.local`.
 function roleEmail(role: string): string {
+    if (role === 'system-admin') return 'system@demo.local';
     return role === 'super-admin' ? 'super@demo.local' : `${role}@demo.local`;
 }
 
@@ -78,6 +86,10 @@ async function loginAs(page: Page, email: string): Promise<void> {
 }
 
 test.describe('R32 per-role admin API access control', () => {
+    // Every case recreates the same PostgreSQL database. Keep this suite serial
+    // so concurrent migrate:fresh calls cannot drop each other's schema.
+    test.describe.configure({ mode: 'serial' });
+
     test.beforeEach(async ({ page }) => {
         await resetAndSeed(page);
     });
@@ -87,8 +99,11 @@ test.describe('R32 per-role admin API access control', () => {
             await loginAs(page, roleEmail(role));
 
             for (const { uri, allowed } of ENDPOINTS) {
-                const status = (await page.request.get(uri)).status();
-                if (allowed.includes(role)) {
+                const status = (await page.request.get(uri, {
+                    headers: { 'X-Tenant-Id': 'a-demo' },
+                })).status();
+                const shouldPass = allowed.includes(role);
+                if (shouldPass) {
                     expect(
                         status,
                         `[${role}] should PASS the gate for ${uri} (got ${status})`,

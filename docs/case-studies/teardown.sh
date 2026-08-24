@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 #
-# teardown.sh — rimuove i 3 dataset di case study: documenti + chunk + grafo
-# (kb_nodes / kb_edges) + file sul disco "kb", e opzionalmente le ProjectMembership.
+# teardown.sh — rimuove un target case-study ESPLICITO, tenant + progetto.
+# Senza --dataset-version fa hard delete di documenti, chunk, grafo e file del
+# progetto; con --dataset-version fa solo soft delete delle email generate di
+# quella versione.
 #
 # Tutta la logica distruttiva passa dal servizio DocumentDeleter::delete($doc, true),
 # che cascata su chunk + kb_nodes + kb_edges e rimuove il file tramite il disco "kb"
@@ -9,12 +11,14 @@
 # TENANT corrente (R30): non tocca documenti/membership di altri tenant che
 # condividono la stessa project_key. La cancellazione è chunked (R3).
 #
-# Le ProjectMembership dei 3 progetti restano per default (sono inerti: senza
-# documenti non danno accesso ad alcun dato). Passa --memberships per rimuoverle.
+# Le ProjectMembership restano per default. Passa --memberships solo nel teardown
+# completo; è incompatibile con un rollback email per dataset version.
 #
 # Uso:
-#   ./teardown.sh                # hard delete dei documenti dei 3 progetti (tenant corrente)
-#   ./teardown.sh --memberships  # rimuove anche le ProjectMembership dei 3 progetti
+#   ./teardown.sh --tenant=rotta-logistics --project=rotta-logistics
+#   ./teardown.sh --tenant=rotta-logistics --project=rotta-logistics --memberships
+#   ./teardown.sh --tenant=rotta-logistics --project=rotta-logistics \
+#     --dataset-version=case-study-email-v2-g1-large-s20260723-catalogv1-snapa48c0f4751b501df
 #
 # GUARDRAIL: lo script è BLOCCATO fuori da APP_ENV=local|testing. Per forzare
 # (sconsigliato, p.es. su uno staging usa-e-getta) esegui con  ALLOW_NONLOCAL=1 .
@@ -26,7 +30,39 @@ ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 cd "${ROOT}"
 
 DROP_MEMBERSHIPS=0
-[ "${1:-}" = "--memberships" ] && DROP_MEMBERSHIPS=1
+TENANT_ID=""
+PROJECT_KEY=""
+DATASET_VERSION=""
+
+for ARG in "$@"; do
+  case "${ARG}" in
+    --tenant=*) TENANT_ID="${ARG#--tenant=}" ;;
+    --project=*) PROJECT_KEY="${ARG#--project=}" ;;
+    --dataset-version=*) DATASET_VERSION="${ARG#--dataset-version=}" ;;
+    --memberships) DROP_MEMBERSHIPS=1 ;;
+    *)
+      echo "!! opzione sconosciuta: ${ARG}"
+      exit 2
+      ;;
+  esac
+done
+
+if [[ ! "${TENANT_ID}" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
+  echo "!! --tenant=<slug> è obbligatorio e deve essere esplicito."
+  exit 2
+fi
+if [[ ! "${PROJECT_KEY}" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
+  echo "!! --project=<project_key> è obbligatorio e deve essere esplicito."
+  exit 2
+fi
+if [ -n "${DATASET_VERSION}" ] && [[ ! "${DATASET_VERSION}" =~ ^[a-z0-9-]+$ ]]; then
+  echo "!! --dataset-version contiene caratteri non validi."
+  exit 2
+fi
+if [ -n "${DATASET_VERSION}" ] && [ "${DROP_MEMBERSHIPS}" = "1" ]; then
+  echo "!! --memberships non è ammesso nel rollback di una dataset version."
+  exit 2
+fi
 
 # --- guard: tinker è una dipendenza dev (composer install con dev) -----------
 # Senza questo check, un'installazione --no-dev produrrebbe APP_ENV vuoto e un
@@ -38,68 +74,82 @@ if [ "${TINKER_OK:-0}" = "0" ]; then
   exit 1
 fi
 
-# Le aziende: <cartella dataset> == <project key>, derivate da data/ (stessa
-# single source di ingest.sh). CSV via env per i blocchi tinker.
-PROJECTS=()
-shopt -s nullglob
-for d in "${SCRIPT_DIR}/data"/*/; do
-  PROJECTS+=("$(basename "${d}")")
-done
-shopt -u nullglob
-if [ "${#PROJECTS[@]}" -eq 0 ]; then
-  echo "!! nessun dataset in ${SCRIPT_DIR}/data — niente da rimuovere."
+# La cartella sorgente è la allowlist dei project_key case-study.
+if [ ! -d "${SCRIPT_DIR}/data/${PROJECT_KEY}" ]; then
+  echo "!! project_key non presente nei case study: ${PROJECT_KEY}"
   exit 1
 fi
-KEYS_CSV="$(IFS=,; echo "${PROJECTS[*]}")"
 
 # --- Guardrail: solo ambienti usa-e-getta -----------------------------------
 APP_ENV_NOW="$(php artisan tinker --execute='echo app()->environment();' 2>/dev/null | tail -n1 | tr -d '[:space:]')"
 if [ "${APP_ENV_NOW}" != "local" ] && [ "${APP_ENV_NOW}" != "testing" ]; then
   if [ "${ALLOW_NONLOCAL:-0}" != "1" ]; then
     echo "!! APP_ENV='${APP_ENV_NOW}' non è local/testing: teardown distruttivo BLOCCATO."
-    echo "   Per forzare (sconsigliato): ALLOW_NONLOCAL=1 $0 ${1:-}"
+    echo "   Per forzare (sconsigliato): ALLOW_NONLOCAL=1 $0 $*"
     exit 1
   fi
   echo "** ATTENZIONE: teardown distruttivo con APP_ENV='${APP_ENV_NOW}' (ALLOW_NONLOCAL=1)."
 fi
 
-echo "==> AskMyDocs — teardown dei 3 dataset di case study (tenant corrente)"
+if [ -n "${DATASET_VERSION}" ]; then
+  echo "==> Rollback email dataset '${DATASET_VERSION}' (tenant=${TENANT_ID}, project=${PROJECT_KEY})"
+else
+  echo "==> Teardown completo case study (tenant=${TENANT_ID}, project=${PROJECT_KEY})"
+fi
 
-# Cancellazione documenti+grafo+file, tenant-scoped e chunked, via DocumentDeleter.
-CASE_STUDY_KEYS="${KEYS_CSV}" php artisan tinker --execute='
-  $keys = array_filter(array_map("trim", explode(",", (string) getenv("CASE_STUDY_KEYS"))));
-  $tenant  = app(\App\Support\TenantContext::class)->current();
+# Cancellazione tenant/project-scoped e chunked via DocumentDeleter.
+CASE_STUDY_TENANT="${TENANT_ID}" \
+CASE_STUDY_PROJECT="${PROJECT_KEY}" \
+CASE_STUDY_DATASET_VERSION="${DATASET_VERSION}" \
+php artisan tinker --execute='
+  $tenant  = (string) getenv("CASE_STUDY_TENANT");
+  $project = (string) getenv("CASE_STUDY_PROJECT");
+  $version = (string) getenv("CASE_STUDY_DATASET_VERSION");
   $deleter = app(\App\Services\Kb\DocumentDeleter::class);
   $prefix  = trim((string) config("kb.sources.path_prefix", ""), "/");
 
-  foreach ($keys as $key) {
-    $count = 0;
-    \App\Models\KnowledgeDocument::withTrashed()
-      ->forTenant($tenant)
-      ->where("project_key", $key)
-      ->chunkById(100, function ($docs) use ($deleter, &$count) {
-        foreach ($docs as $d) { $deleter->delete($d, true); $count++; }
-      });
-    // Rimuove la directory (ormai vuota) sul disco kb configurato, rispettando KB_PATH_PREFIX.
-    // R4: il boolean di deleteDirectory NON va ignorato — se la delete fallisce
-    // (disco remoto/mal configurato, permessi) interrompiamo con errore esplicito.
-    $dir = ($prefix === "" ? "" : $prefix."/")."case-studies/".$key;
+  $count = 0;
+  $query = \App\Models\KnowledgeDocument::query()
+    ->forTenant($tenant)
+    ->where("project_key", $project);
+
+  if ($version !== "") {
+    $query
+      ->where("metadata->generated_fixture", true)
+      ->where("metadata->dataset_version", $version);
+  } else {
+    $query->withTrashed();
+  }
+
+  $query->chunkById(100, function ($docs) use ($deleter, $version, &$count) {
+    foreach ($docs as $document) {
+      $deleter->delete($document, force: $version === "");
+      $count++;
+    }
+  });
+
+  if ($version === "") {
+    // Il path è cancellato solo nel teardown completo di questo project_key.
+    $dir = ($prefix === "" ? "" : $prefix."/")."case-studies/".$project;
     if (\Illuminate\Support\Facades\Storage::disk("kb")->deleteDirectory($dir) === false) {
       throw new \RuntimeException("Rimozione della directory fallita sul disco kb: ".$dir);
     }
-    echo "$key: $count documenti rimossi (tenant=$tenant)\n";
   }
+  echo "$project: $count documenti ".($version === "" ? "rimossi" : "soft-deleted")
+    ." (tenant=$tenant".($version === "" ? "" : ", dataset=$version").")\n";
 '
 
 if [ "${DROP_MEMBERSHIPS}" = "1" ]; then
-  echo "==> Rimuovo le ProjectMembership dei progetti case study (tenant corrente)"
-  CASE_STUDY_KEYS="${KEYS_CSV}" php artisan tinker --execute='
-    $keys = array_filter(array_map("trim", explode(",", (string) getenv("CASE_STUDY_KEYS"))));
-    $tenant = app(\App\Support\TenantContext::class)->current();
+  echo "==> Rimuovo le ProjectMembership del target"
+  CASE_STUDY_TENANT="${TENANT_ID}" \
+  CASE_STUDY_PROJECT="${PROJECT_KEY}" \
+  php artisan tinker --execute='
+    $tenant = (string) getenv("CASE_STUDY_TENANT");
+    $project = (string) getenv("CASE_STUDY_PROJECT");
     $n = \App\Models\ProjectMembership::forTenant($tenant)
-      ->whereIn("project_key", $keys)
+      ->where("project_key", $project)
       ->delete();
-    echo "membership rimosse: $n (tenant=$tenant)\n";
+    echo "membership rimosse: $n (tenant=$tenant, project=$project)\n";
   '
 fi
 

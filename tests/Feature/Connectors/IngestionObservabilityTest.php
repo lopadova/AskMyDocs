@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace Tests\Feature\Connectors;
 
 use App\Connectors\SerializedConnectorSyncJob;
+use App\Jobs\Imap\PumpImapBackfillJob;
 use App\Models\ConnectorSyncRun;
+use App\Models\ImapBackfill;
+use App\Models\ImapBackfillWindow;
 use App\Models\User;
 use App\Services\Admin\IngestionObservabilityService;
 use App\Support\TenantContext;
@@ -14,6 +17,7 @@ use Database\Seeders\RbacSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Queue;
 use Padosoft\AskMyDocsConnectorBase\ConnectorRegistry;
 use Padosoft\AskMyDocsConnectorBase\ConnectorSyncJob;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
@@ -184,11 +188,11 @@ final class IngestionObservabilityTest extends TestCase
     {
         $admin = $this->superAdmin();
         $installation = ConnectorInstallation::create([
-            'tenant_id' => 'default', 'connector_name' => 'google-drive',
+            'tenant_id' => 'test-tenant', 'connector_name' => 'google-drive',
             'label' => 'support', 'status' => ConnectorInstallation::STATUS_ACTIVE,
             'created_by' => $admin->id,
         ]);
-        $this->makeRun('default', $installation->id, 'support');
+        $this->makeRun('test-tenant', $installation->id, 'support');
 
         $resp = $this->actingAs($admin)
             ->getJson("/api/admin/connectors/{$installation->id}/sync-runs");
@@ -209,6 +213,54 @@ final class IngestionObservabilityTest extends TestCase
         $this->actingAs($admin)
             ->getJson("/api/admin/connectors/{$foreign->id}/sync-runs")
             ->assertStatus(404);
+    }
+
+    public function test_imap_backfill_post_resumes_the_failed_campaign_over_http(): void
+    {
+        Queue::fake();
+        $admin = $this->superAdmin();
+        $tenantId = app(TenantContext::class)->current();
+        $installation = ConnectorInstallation::create([
+            'tenant_id' => $tenantId,
+            'connector_name' => 'imap',
+            'label' => 'autry',
+            'status' => ConnectorInstallation::STATUS_ACTIVE,
+            'created_by' => $admin->id,
+        ]);
+        $backfill = ImapBackfill::create([
+            'tenant_id' => $tenantId,
+            'connector_installation_id' => $installation->id,
+            'status' => ImapBackfill::STATUS_FAILED,
+            'batch_size' => 100,
+            'total_messages' => 10_000,
+            'processed_messages' => 9_000,
+            'total_windows' => 1,
+            'cutoff_at' => now()->subHour(),
+            'error_json' => ['message' => 'transport failure'],
+        ]);
+        ImapBackfillWindow::create([
+            'tenant_id' => $tenantId,
+            'imap_backfill_id' => $backfill->id,
+            'connector_installation_id' => $installation->id,
+            'mailbox' => 'INBOX',
+            'window_start' => '2025-01-01',
+            'window_end' => '2025-02-01',
+            'status' => ImapBackfillWindow::STATUS_FAILED,
+            'last_uid' => 9_000,
+            'processed_messages' => 9_000,
+            'error_json' => ['message' => 'transport failure'],
+        ]);
+
+        $response = $this->actingAs($admin)
+            ->postJson("/api/admin/connectors/{$installation->id}/imap-backfill");
+
+        $response->assertAccepted()
+            ->assertJsonPath('data.backfill.id', $backfill->id)
+            ->assertJsonPath('data.backfill.status', ImapBackfill::STATUS_RUNNING)
+            ->assertJsonPath('data.backfill.processed_messages', 9_000)
+            ->assertJsonPath('data.backfill.retry_mode', null);
+        $this->assertDatabaseCount('imap_backfills', 1);
+        Queue::assertPushed(PumpImapBackfillJob::class, 1);
     }
 
     public function test_ingestion_endpoints_reject_unauthorized_and_guest(): void

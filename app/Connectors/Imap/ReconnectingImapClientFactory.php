@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Connectors\Imap;
 
+use App\Connectors\Imap\Backfill\ImapBackfillClient;
+use App\Connectors\Imap\Backfill\ImapBackfillClientFactory;
 use Padosoft\AskMyDocsConnectorImap\Imap\ImapClientFactoryInterface;
 use Padosoft\AskMyDocsConnectorImap\Imap\ImapClientInterface;
 
@@ -19,7 +21,7 @@ use Padosoft\AskMyDocsConnectorImap\Imap\ImapClientInterface;
  * Unlike serialization, reconnection has nothing to key on — it wraps every client
  * unconditionally.
  */
-final class ReconnectingImapClientFactory implements ImapClientFactoryInterface
+final class ReconnectingImapClientFactory implements ImapClientFactoryInterface, ImapBackfillClientFactory
 {
     public function __construct(
         private readonly ImapClientFactoryInterface $inner,
@@ -34,6 +36,19 @@ final class ReconnectingImapClientFactory implements ImapClientFactoryInterface
     {
         return new ReconnectingImapClient(
             $this->inner->make($connection, $secret, $authMode),
+            $this->maxAttempts,
+            $this->retryDelayMs,
+        );
+    }
+
+    public function makeBackfill(array $connection, string $secret, string $authMode): ImapBackfillClient
+    {
+        if (! $this->inner instanceof ImapBackfillClientFactory) {
+            throw new \RuntimeException('The inner IMAP factory does not support durable backfills.');
+        }
+
+        return new ReconnectingImapBackfillClient(
+            $this->inner->makeBackfill($connection, $secret, $authMode),
             $this->maxAttempts,
             $this->retryDelayMs,
         );

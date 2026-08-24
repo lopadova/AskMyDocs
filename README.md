@@ -194,6 +194,21 @@ tells buyers to demand:
   Tunable via `CONNECTOR_IMAP_SERIALIZE_CONNECTIONS` (default on; needs an atomic lock store / Redis)
   + `CONNECTOR_IMAP_MAILBOX_LOCK_*`. See the
   [doc-site](https://padosoft.mintlify.app/connectors-imap-serialization).
+  A **transient transport drop** on a live session (the classic *"fwrite(): SSL: Broken pipe"* /
+  connection-reset / idle drop Gmail & Exchange trigger mid-sync) is **absorbed by one
+  close-and-retry on a fresh connection** — nested **inside** the per-mailbox lock, so the retry
+  never opens a second connection — instead of hard-failing the run and leaving the install stuck at
+  *"Not synced yet"*. Auth failures are never retried. Tunable via `CONNECTOR_IMAP_RECONNECT_ON_DROP`
+  (default on), `CONNECTOR_IMAP_RECONNECT_MAX_ATTEMPTS`, `CONNECTOR_IMAP_RECONNECT_RETRY_DELAY_MS`.
+- **API connector — endpoints as live LLM tools** (v8.27, `padosoft/askmydocs-connector-api`) — a
+  NEW paradigm: instead of ingesting, each configured HTTP **endpoint (Rotta)** becomes a **tool the
+  LLM can call live during chat**, so the model can pull **fresh** data (orders, stock, tracking…)
+  straight from the customer's APIs on top of the indexed knowledge. A "Test connessione" call
+  auto-infers the input/output schema and generates the tool definition; execution is **server-side
+  only** — the model supplies just the `llm` parameter values and never sees URLs/headers/secrets.
+   SSRF-guarded (`UrlGuard`), encrypted credentials, per-route timeout/retry/rate-limit/cache + output
+   cap; auth none/API-key/Bearer/Basic/custom/OAuth2-cc; works across OpenAI, OpenRouter, Anthropic and
+   Gemini. Configure under **Admin → API Connectors**. The durable multi-call retrieval loop, SSE protocol, safety budgets and mock-server test procedure are documented in the [agentic API retrieval runbook](docs/runbooks/agentic-api-retrieval.md). **Full-history imports are durable and bounded**: selected folders are divided into date windows, each UID batch checkpoints in SQL, and `kb-ingest` workers index independently. Configure the master switch, queue, batch/fetch sizes, stale-worker recovery and oldest accepted date with `CONNECTOR_IMAP_BACKFILL_ENABLED`, `CONNECTOR_IMAP_BACKFILL_QUEUE`, `CONNECTOR_IMAP_BACKFILL_BATCH_SIZE`, `CONNECTOR_IMAP_BACKFILL_FETCH_SIZE`, `CONNECTOR_IMAP_BACKFILL_STALE_MINUTES` and `CONNECTOR_IMAP_BACKFILL_ABSOLUTE_START`.  The operation is available through Admin HTTP/UI and the write-capable `KbImapBackfillTool` MCP tool.
 - **AI Guardrails on the live chat path** (v8.19) — every chat turn is **screened on input** (a
   malicious / policy-violating prompt becomes a localized refusal — never a 500 — with an append-only
   audit row) and **sanitized on output** (exfil links defanged before the answer reaches the client),
@@ -300,18 +315,19 @@ that perceives and acts on the host page. A customer pastes a snippet; the
 widget captures a structured snapshot of the current page (regions, fields,
 actions, messages, outline) and reasons about what's actually on screen.
 
-- **Embed in one snippet** — `<script>window.AskMyDocsWidget = { key: 'pk_…', apiBase: '…' }</script>` + the async loader. Two layouts: a floating `helper` launcher or an `inline` mounted block. Theme, title, skill all configurable via `window.AskMyDocsWidget` or `data-*` attrs.
+- **Embed in one snippet** — `<script>window.AskMyDocsWidget = { key: 'pk_…', apiBase: '…' }</script>` + the async loader. Three layouts: a floating `helper` launcher, an `inline` mounted block, or an always-open `fullscreen` viewport. Theme, title, skill and a structured pre-conversation welcome card (`intro`: image/icon, title, text, benefits and suggested questions) are configurable per key or per page.
 - **Grounded + cited, never a generic bot** — the widget runs the first-party `KbSearchService` + reranker + refusal gate, scoped to the key's tenant + project. The browser **never** names a tenant — tenant/project are resolved server-side from the key (R30); cross-key/cross-tenant session access is `404` (anti-IDOR).
 - **Agentic by design** — the LLM emits tool calls executed in the page DOM (`click` / `type` / `select` / `navigate_to` / `submit_form` / `wait_for` + ~15 more), or server-side via `/exec-tool` (`search_knowledge_base`), in a bounded loop with per-session step + consecutive-error caps. **Skills** (JSON manifests under `resources/widget/skills/*`) declare which tools, what auto-annotation rules, and the run policies.
 - **Host-Tools Protocol (HTP)** — your app can expose its *own* tools to the agent ("create order", "set rate"), **double-gated** (per key *and* per skill) and **off by default**. The page is annotated with stable, verb-based `data-kitt-*` attributes (`region` / `field` / `action` / `message` / `locale` / `skip`); `data-kitt-sensitive` and `type=password`/`hidden` values are force-nulled server-side so secrets never reach the LLM or the step log.
 - **Secure embedding** — exact-match `Origin` allowlist (browser mode) or `sk_` secret (server-to-server); **single-use, origin-bound session tokens** consumed atomically under a lock (R21, hashed at rest, rate-limit checked *before* burn); snapshot byte + count caps; `javascript:`/`data:`/protocol-relative navigation blocked on both server and client; PII masked on every persisted step (Italian VAT masking is checksum-validated so non-PII codes stay readable).
-- **Full admin surface** — `/app/admin/widget` (super-admin): create / rotate / revoke keys, manage allowed origins + theme, toggle host-tools, copy the ready-made embed snippet, and replay every session step (PII-masked).
+- **Full admin surface** — `/app/admin/widget` (super-admin): create / rotate / revoke keys, manage allowed origins + theme + welcome content, toggle host-tools, copy the ready-made embed snippet, and replay every session step (PII-masked).
 
 **Try it.** As super-admin, open `/app/admin/widget`, create a key (set a
 `project_key` + your site's origin), copy the **Embed code** snippet into
 your page, and reload. Locally, set `WIDGET_DEMO_ENABLED=true` and open
 `/widget-demo` for a self-contained annotated demo page (add `?mode=inline`
-for the inline layout). Full developer guide:
+or `?mode=fullscreen`; add `&user_auth=1` to exercise authenticated history).
+Full developer guide:
 [`docs/kitt/INTEGRATION.md`](docs/kitt/INTEGRATION.md).
 
 > **Security & embedding.** KITT is a cross-origin embeddable *and* an
@@ -720,17 +736,64 @@ INVITE_REQUIRED=false
 **Sign-up is invite-only and SPA-native.** The React `/register` screen posts to
 **`POST /api/auth/register`** — a guest route, throttled `6/min` per IP
 (`throttle:register`), sitting outside the `auth:sanctum` group. The controller
-**pre-validates** the code with the package `CodeValidator` *before* creating the
-account (so a bad code never mints an orphan user), then redeems it authoritatively
-via `RedemptionService` (atomic; run **outside** a DB transaction so the package's
-PostgreSQL compensation path is not poisoned); on an exhausted-between-checks race
-the brand-new account is **force-deleted** so the invite-only invariant holds. The
-account is floored at `viewer` (layered on any grant role — GRANT-never-revoke) and
-the SPA session is opened. Every invite-code failure surfaces as a localized
+resolves the globally unique opaque code with `RegistrationCodeResolver`, then
+validates it through the package `CodeValidator` *before* creating the account
+(so a bad code never mints an orphan user). It redeems authoritatively via
+`RedemptionService` (atomic; run **outside** a DB transaction so the package's
+PostgreSQL compensation path is not poisoned); on an exhausted-between-checks
+race the brand-new account is **force-deleted** so the invite-only invariant
+holds. The account is floored at `viewer` (layered on any grant role —
+GRANT-never-revoke) and the SPA session is opened. Every invite-code failure
+surfaces as a localized
 **422 on the `invite_code` field** (`lang/{en,it}/register.php`, R24). Here
 `invite_code` is **always required**, regardless of the `INVITE_REQUIRED` gate. The
 whole auth surface — `/login`, `/register`, `/forgot-password`, `/reset-password` —
 is the React SPA on a hard reload too; the legacy Blade auth views were removed.
+
+Public registration codes have two explicit intents and are issued from the
+global control plane with one Artisan command:
+
+```bash
+# Register a new account, then force company onboarding.
+php artisan registration-invite:create --uses=1
+
+# Join an existing operational tenant and project; onboarding is skipped.
+php artisan registration-invite:create \
+  --tenant=acme \
+  --project=acme-kb \
+  --role=viewer \
+  --membership-role=member \
+  --uses=1
+```
+
+Both forms are stored under the reserved `system-registration` tenant namespace,
+which is seeded idempotently and marked `tenants.is_system=true`; it is a
+technical partition, never an operational company and never appears in
+`/api/auth/me.teams`. A code without `--tenant` carries the
+`company_bootstrap` intent and creates **no** membership during registration.
+The authenticated account is routed to `/app/onboarding` and cannot enter a
+tenant dashboard until `POST /api/auth/onboarding/company` atomically creates
+the company tenant, initial project and owner membership; the creator receives
+the tenant `super-admin` role. The gate is resumable on the next login and also
+applies whenever a normal account has no operational membership. A
+`platform.admin` account remains in the global system control plane instead.
+
+A code created with `--tenant` carries one explicit `tenant_join` grant. Its
+target must be an active, non-system tenant and every `--project` must already
+belong to it; redemption provisions those memberships and enters the company
+directly. Registration adds a strict completion layer over the invitation
+package's best-effort provisioners: the promised role and memberships are
+verified transactionally before a session or token is returned, then
+`users.registration_completed_at` is persisted. If the code was consumed but a
+database fault prevented provisioning, registration returns
+`503 registration_provisioning_pending`; the next valid login resumes from the
+immutable redemption. Once completion is marked, removing the user from every
+company is treated as an intentional revocation and never restores the old
+grant. Neither flow falls back to the legacy slug `default`, which is reserved
+and confers no implicit access. After a successful tenant-linked registration,
+the SPA opens `/app/welcome/{teamHash}` and names the assigned company before
+the user explicitly enters its chat; bootstrap registrations continue directly
+to `/app/onboarding`.
 
 The admin surface is a **native, in-app tabbed page** at
 `/app/{team}/admin/invitations` (Overview · Campaigns · Codes · Invite ·
@@ -990,7 +1053,7 @@ The polymorphic entry point is `DocumentIngestor::ingest(string $projectKey, Sou
 
 ### Multi-tenant deployment (v4.0)
 
-The v4.0 cycle adds a **per-request tenant context** that scopes every Eloquent query against tenant-aware tables (R30/R31). Existing v3.x deployments are backward-compatible — every row gets `tenant_id = 'default'` and the resolver returns `'default'` unless explicitly configured otherwise.
+The v4.0 cycle adds a **per-request tenant context** that scopes every Eloquent query against tenant-aware tables (R30/R31). Historical v3.x rows may still carry the storage value `tenant_id = 'default'`, but `default` is now a reserved, non-operational slug: it is never exposed as a team and never grants access. Every operational request requires an explicit membership in an active, non-system tenant.
 
 **The plumbing**
 
@@ -1045,8 +1108,8 @@ The front-end half of multi-tenancy. A user who belongs to more than one team ge
 a **topbar team switcher** and a tenant that is always visible in the URL.
 
 - **`/api/auth/me` returns a `teams` array** (`UserTeamsResolver`) grouping the
-  caller's memberships by tenant + any cross-access tenants — the switcher only ever
-  offers teams whose requests would actually be authorised.
+  caller's memberships by active tenant. Zero memberships returns `teams: []`;
+  `default` is never synthesized and appears only with a real membership.
 - **Per-team URLs** — every authenticated screen lives under `/app/{teamHash}/…`
   (`TeamHash` is a BE-computed, non-secret routing namespace; authorization stays on
   the server-validated header). Legacy hash-less bookmarks redirect into the active
@@ -1059,10 +1122,13 @@ a **topbar team switcher** and a tenant that is always visible in the URL.
 - **Cache isolation on switch** — switching team `clear()`s the whole TanStack Query
   cache and remounts the route outlet (`key=tenant_id`), so no tenant's data ever
   renders under another; a revoked membership self-heals on the next bootstrap.
-- **Membership-aware gate** — `AuthorizeTenantHeader` accepts the requested tenant for
-  the caller's own tenant, a cross-access permission, **or** a `project_membership` in
-  that tenant (scoped to both the tenant *and* the user — no escalation); anything else
-  is `403 tenant_forbidden`, which the SPA turns into a snap-back to the first valid team.
+- **Membership-required gate** — `AuthorizeTenantHeader` validates the resolved tenant
+  on every operational request, even when the header is absent. A
+  `project_membership` in that tenant is required; anything else is
+  `403 tenant_forbidden`.
+- **No-tenant state** — `/app` opens the last/first valid membership, sends a
+  tenant-less System Admin to `/app/system/tenants`, and shows “Nessun tenant
+  assegnato” to any other tenant-less identity.
 
 → Deep dive: [padosoft.mintlify.app/team-switcher](https://padosoft.mintlify.app/team-switcher).
 
@@ -1188,10 +1254,10 @@ and the ADR set under [`docs/adr/`](docs/adr/)).
 | Evidence & Risk Review firewall | `padosoft/laravel-evidence-risk-review` v1.1 wired tri-surface (PHP command + MCP tools + HTTP API + native FE admin at `/app/admin/evidence-risk-review`): a budget-bounded sweep labels source evidence tiers and scores per-claim risk verdicts (keep / soften / flag / remove) into a tenant-scoped review log. Host `TenantResolver` binding forces R30 isolation (a client `tenant` filter cannot widen scope); opt-in via `EVIDENCE_RISK_REVIEW_ADMIN_ENABLED` + optional LLM pass over `AiManager` via `EVIDENCE_RISK_REVIEW_LLM_ENABLED` (both default-OFF, R43) | v8.13 |
 | PII redaction at 11 persistence boundaries | `padosoft/laravel-pii-redactor` v1.2 wired at: (1) chat-message middleware, (2) embedding-cache pre-redact, (3) AI-insights snippet sanitiser, (4) operator detokenize endpoint, (5) Monolog log channel processor, (6) failed-jobs sanitiser via `JobFailed` listener with deterministic UUID match, (7) `Conversation`+`Message` `saving` observers, (8) `ChatLog::creating` observer, (9) `AdminCommandAudit::creating` observer, (10) `AdminInsightsSnapshot::creating` observer (6 JSON columns), (11) Flow `CurrentPayloadRedactorProvider` contract binding (covers run input + step results + audit + webhook outbox + approvals in one wire). All 5 v4.3 env knobs default OFF | v4.3 |
 | Multi-tenant isolation (R30 + R31) | The tenant-aware models (authoritative list in `tests/Architecture/TenantIdMandatoryTest::TENANT_AWARE_MODELS` — incl. `Project` + the `KbIngestBatch`/`KbIngestBatchItem` upload-tracking pair added with the team switcher) carry `tenant_id`; `BelongsToTenant` auto-fills from `TenantContext` on `creating`; the `kb_edges` composite FK is **project-scoped** (`(project_key, node_uid)`, intra-project integrity) while cross-**tenant** isolation is the application-layer R30 `forTenant()` scope (the trait adds **no** global read scope); architecture tests `TenantIdMandatoryTest` + `TenantReadScopeTest` gate new models | v4.0 |
-| Team switcher membership gate | `AuthorizeTenantHeader` validates `X-Tenant-Id` after `auth:sanctum`: accepts the caller's own tenant, a cross-access permission, **or** a `project_membership` in the requested tenant — scoped to **both** the tenant *and* the user, so a membership in another tenant or another user's membership never widens access; else `403 tenant_forbidden`. `TeamHash` is a non-secret routing namespace (auth never keys on it). The SPA omits the `X-Tenant-Id` header for the `default` sentinel so sister-package mounts fall back instead of 404ing | team switcher cycle |
+| Team switcher membership gate | `AuthorizeTenantHeader` runs after `auth:sanctum` and requires a `project_membership` in the resolved tenant on every operational route, with or without `X-Tenant-Id`; another tenant's or user's membership never widens access. `default` is a normal legacy slug and is offered only with membership. Global `/api/system-admin/*` and identity `/api/auth/*` routes intentionally sit outside this gate | team switcher cycle |
 | Automated isolation verification | Executable `IsolationMatrix` shared by a live E2E (`LiveRagIsolationTest`, opt-in `LIVE_RAG=1` + real pgvector/embeddings), the `case-study:verify-isolation [--strict]` CLI, and the CI membership-axis `CaseStudyProjectIsolationTest`; separates HARD breaches (real leak → fail) from SOFT refusal-ideal misses (warning unless `--strict`); `KB_PROJECT_ISOLATION_ENABLED` tested in both states (R43) | team switcher cycle |
 | `ResolveTenant` middleware + 4 resolvers | Header (`X-Tenant-ID`), domain regex, authenticated user column, or `'default'` (v3 backward compat); per-request singleton; queue workers re-bind tenant via try/finally restore | v4.0 |
-| Spatie RBAC (5 roles) | `super-admin` / `admin` / `editor` / `viewer` / `dpo` (DPO added in v4.2 for PII admin); permission matrix grouped by dotted-prefix domain; gates wired at controller + route + middleware layer | v3.0 |
+| Spatie RBAC (6 roles, two admin boundaries) | `system-admin` is the global platform operator and owns only `platform.admin`; `super-admin` is the maximum tenant role and tenant access always requires membership. Every system-admin carries companion `super-admin` for route-role compatibility, never as a membership bypass. The protected global role is assignable only through audited `system-admin:grant|revoke` commands | v3.0 · v8.30 |
 | Sanctum stateful SPA + Bearer tokens | Two transports feed the same guard: cookie-based SPA (`/sanctum/csrf-cookie` + `X-XSRF-TOKEN`) and personal access tokens for API clients / MCP / GitHub Action; `AuthenticateForSse` middleware emits JSON 401 (not HTML redirect) on streaming endpoints | v3.0 |
 | Stateless token-auth for non-browser clients | `POST /api/auth/token` verifies credentials with **no session / no CSRF** and mints a Sanctum PAT scoped to least-privilege `kb:read` + `kb:chat` with a **finite 30-day expiry** (never `['*']`, never immortal); `POST /api/auth/token/revoke` is the stateless sign-out (`204`); `EnforceTokenAbility` (`token.ability:<ability>`) gate constrains **only** PATs (`403 token_ability_forbidden`) on the dual-auth `/api/kb/chat` + `/api/kb/documents/search` + `/api/kb/documents/{documentId}/preview` routes and is a no-op for the cookie SPA | desktop client |
 | Tauri desktop + iOS client (`desktop/`) | Self-contained Tauri v2 + React (Vite) demo client: login, grounded chat with clickable markdown citations, document search, full-page source viewer; conversation threads persist **locally** (the Bearer client can't reach the session-guarded `/conversations`); all calls route through the Tauri HTTP plugin (no CORS change); same codebase targets iOS via Tauri v2 mobile; outside Laravel CI | desktop client |
@@ -1460,8 +1526,8 @@ php artisan key:generate
 
 # 3. Migrate + seed
 php artisan migrate
-php artisan db:seed --class=RbacSeeder      # 5 roles + permission matrix
-php artisan db:seed --class=DemoSeeder      # 3 demo accounts + canonical KB
+php artisan db:seed --class=RbacSeeder      # 6 roles + permission matrix
+php artisan db:seed --class=DemoSeeder      # per-role demo accounts + canonical KB
 
 # 4. Run
 php artisan serve
@@ -1471,6 +1537,31 @@ Open `http://localhost:8000` and log in as `super@demo.local` /
 `password` (DemoSeeder creates the account with the `super-admin` role).
 The SPA redirects to `/app/chat`; click **Dashboard** in the sidebar
 to land on `/app/admin`.
+
+For the global tenant control plane, use `system@demo.local` / `password`
+in development. In a real installation, grant the protected role only from
+the host console:
+
+```bash
+php artisan system-admin:grant ops@example.com --yes
+```
+
+### Laravel Cloud develop database directives
+
+The Cloud test environment attached to `develop` supports opt-in commit-message
+markers:
+
+- `[reset-database]` runs `php artisan migrate:fresh --force`;
+- `[init-seed]` loads two test companies, three users per company, their
+  projects/memberships, and a separate system administrator;
+- both markers rebuild and then seed the test database.
+
+The feature is fail-closed and must be enabled only in the non-production Cloud
+environment with both `DEVELOP_DEPLOY_ENVIRONMENT=develop` and
+`DEVELOP_DEPLOY_ENABLED=true`. See
+[`docs/runbooks/laravel-cloud-develop-deploy.md`](docs/runbooks/laravel-cloud-develop-deploy.md)
+for the exact Build Commands, Deploy Commands, environment variables and test
+credentials.
 
 ### Full configuration reference
 
@@ -1986,21 +2077,44 @@ including commercial use.
 
 ## Changelog
 
+**v8.30.0 — System administrator boundary and global tenant control.**
+The former overloaded `super-admin` concept is split in two. A tenant
+`super-admin` is now the strongest application administrator only inside
+tenants where the account has membership; only `system-admin` owns
+`platform.admin`. The global control plane lives at `/app/system/tenants`,
+`/app/system/super-admins` and `/api/system-admin/*`, outside the active-team
+route/header context, with audited atomic provisioning and DB-backed single-use
+lifecycle confirmations. The control plane includes a read-only, paginated
+Super Admin roster and paginated tenant associations. Operational routes now
+require membership for every role; accounts with none retain a real zero-tenant
+state instead of receiving synthetic `default` access. Existing super-admin assignments are conservatively
+copied to `system-admin` during the migration so deploys do not lose operators;
+review and revoke excess global accounts afterward. New global grants/revokes
+are possible only through `system-admin:grant|revoke {email} --yes`: Users CRUD,
+generic role commands, invitations and tenant provisioning reject the protected
+role. Existing-account provisioning never promotes a global Spatie role
+silently, and the normalized-email backfill now runs in bounded chunks. See
+[system administration](https://padosoft.mintlify.app/system-administration),
+[ADR 0023](docs/adr/0023-v830-system-admin-boundary.md),
+[ADR 0024](docs/adr/0024-v830-membership-required-operational-tenants.md), and the
+[recovery runbook](docs/runbooks/system-admin-recovery.md).
+
 **v8.28.0 — In-app team (tenant) management: create a team + rename a team.**
 Operators can now **create a new team and rename a team from the admin UI**,
 not only via the `company:create` CLI. A "team" is a **tenant** (a `tenant_id`
 slug); its editable display **name** lives on the `tenants` registry row that the
 topbar **team switcher** already reads. A new **Teams** admin page
 (`/app/{team}/admin/teams`, `role:admin|super-admin`) lists the teams you may
-administer — your memberships plus every team when you hold `tenant.cross-access`,
-with the bootstrap **`default`** team read-only — and offers **Create** (name +
+administer from your real memberships, with the legacy **`default`** slug
+read-only when assigned — and offers **Create** (name +
 auto-slugged, immutable id) and **Rename**. Everything runs over ONE shared core
 **`TeamRegistryService`** (R44): **create** writes the `tenants` row + an initial
 project + a membership for you (so the team is usable and shows in your switcher
 immediately — mirrors `company:create` minus minting a new user, atomic);
 **rename** updates `tenants.name` and authorizes the **target** team by
-membership-or-`tenant.cross-access` **independently of the request's tenant
-scope** (a cross-tenant registry op — an unmanageable team 404s, IDOR-safe). The
+membership **independently of the request's tenant scope** (an unmanageable
+team 404s, IDOR-safe). Unassociated tenants are managed only through the
+global control plane. The
 same core backs the **`team:create` / `team:rename`** Artisan commands and
 `GET/POST /api/admin/teams` + `PATCH /api/admin/teams/{slug}`; after a create or
 rename the SPA refetches `/api/auth/me` so the switcher's list + label update
@@ -2009,6 +2123,24 @@ exception mirroring `ProjectController` — team governance is not an agent
 capability). When the optional `tenants` table is absent the endpoints degrade to
 a clean **503** (R14/R43), never a 500. See the
 [doc-site](https://padosoft.mintlify.app/team-management).
+
+**v8.27.0 — API Connector ("Connettore API"): endpoints as live LLM tools (in progress).**
+A NEW kind of connector. Where the existing connectors *ingest* documents into the
+vector store, the **API connector** (`padosoft/askmydocs-connector-api`) turns each
+configured HTTP **endpoint (Rotta)** into a **live tool the LLM can call during chat** —
+so a question about orders can pull the **fresh** status straight from the customer's
+ERP, on top of the indexed knowledge (RAG + real-time API data in parallel). A "Test
+connessione" call auto-infers the input/output schema and generates the tool
+definition; execution is **100% server-side** (the model only supplies the `llm`
+parameter values and never sees URLs, headers or secrets). Security: SSRF `UrlGuard`
+(private/loopback/link-local + cloud-metadata block, https-only, optional domain
+allowlist), `encrypted:array` credentials, per-route timeout/retry/rate-limit/cache and
+an output byte-cap. Auth: none / API key / Bearer / Basic / custom headers / OAuth2
+client-credentials. The four hybrid providers (OpenAI, OpenRouter, Anthropic, Gemini)
+can all drive the tool loop. Tri-surface (R44): artisan `api-connector:list`/`:test`,
+HTTP `/api/admin/api-connectors/*` (admin-gated), and the MCP `ApiConnectorsTool`.
+Fase 2 (bulk ingest from the same routes) is designed into the schema (`mode`) but not
+yet implemented.
 
 **v8.26.1 — Microsoft 365 app-only IMAP (OAuth2 client credentials) (GA, shipped 2026-07-02).**
 The IMAP connector gains a third authentication mode — **`xoauth2_client_credentials`** —
@@ -2157,6 +2289,39 @@ the Tauri → TestFlight desktop release flow. See
 genuine intermittent flake in the streaming / admin-kb-edit specs auto-recovers
 in-run instead of forcing a manual re-run, while a real regression still fails
 twice; local stays 0 for fast, honest feedback.
+
+**Email dataset v2 — deterministic bulk profiles.** The harness now preserves
+the 751 curated JSON messages as `gold` and can generate versioned, offline
+JSONL datasets from immutable catalogs under
+`database/seeders/email-dataset/catalogs/v1/`: `demo` (3,000), `large`
+(6,000; 2,000/company; 1,000/mailbox) and `stress` (30,000).
+`demo:generate-case-study-emails` publishes atomically, `--check` proves
+byte-determinism, and `demo:validate-case-study-emails` verifies checksums,
+identities, real thread chains, reserved domains, catalog references and
+cross-company canary phrases. Corpus-sized identities/thread indexes live in a
+temporary SQLite database rather than PHP arrays.
+`mail:seed-imap --profile=large` streams one RFC822 at a time with atomic
+checkpoints, a physical-mailbox lock and `--resume`; `--purge-dataset` cleans
+then re-appends, while `--purge-dataset --purge-only` only removes. Generated
+delivery reports lock/purge phases plus confirmed APPEND throughput and ETA;
+purge expunges bounded UIDPLUS batches instead of one message per round-trip. The
+30,000-message `stress` profile is for a disposable local IMAP server, not the
+shared Gmail account.
+
+Message-IDs are the trusted marker that skips Auto-Wiki/change-analysis. Before
+dispatch, the host requires `KB_DISK_THROW=true`, verifies the source and moves
+the parent from its UID path to a stable
+`.../datasets/<dataset_version>/<fixture_id>.md` path; an exact soft-deleted
+projection can be restored on re-delivery. IMAP syncs truncated at the upstream
+5,000-message cap persist a contiguous UID watermark and resume on the next
+run.
+
+The current `v1` catalogs contain 6 personas, 9 facts, 9 scenarios and 4
+canaries per company, and generate text/plain with no attachments. The static
+validator is not a semantic PII or near-duplicate scanner. Offline generation
+is complete; real IMAP, PostgreSQL/pgvector, retrieval, cost and performance
+certification remain separate. Full operator steps and rollback:
+[`docs/testing/email-ingest-e2e.md`](docs/testing/email-ingest-e2e.md).
 
 **v8.23.0 — PII-safe ingestion & reversible vault (GA, shipped 2026-06-25).**
 Ciclo 4 (the last) of the connectors / observability / config / PII roadmap.

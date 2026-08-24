@@ -1,4 +1,6 @@
 import type { IconName } from '../Icons';
+import type { SeedUser } from '../../lib/seed';
+import type { AuthFeatures } from '../../lib/auth-store';
 
 /**
  * Single source of truth for the unified admin navigation.
@@ -17,6 +19,8 @@ export type SidebarSection =
     | 'insights'
     | 'projects'
     | 'teams'
+    | 'tenant-control'
+    | 'super-admins'
     | 'users'
     | 'roles'
     | 'kb'
@@ -36,6 +40,7 @@ export type SidebarSection =
     | 'evidence-risk-review'
     | 'pii-redactor'
     | 'connectors'
+    | 'api-connectors'
     | 'ingestion'
     | 'invitations'
     | 'flows'
@@ -56,6 +61,12 @@ export interface NavItem {
     icon: IconName;
     /** Absolute SPA route this entry navigates to / highlights for. */
     route: string;
+    /** Omitted means visible to every authenticated role. */
+    roles?: SeedUser['role'][];
+    /** Optional server-delivered capability required to render this entry. */
+    feature?: keyof AuthFeatures;
+    /** System entries remain available without an operational tenant. */
+    scope?: 'tenant' | 'system';
 }
 
 export interface NavGroup {
@@ -77,8 +88,30 @@ export const NAV_GROUPS: NavGroup[] = [
         ],
     },
     {
-        id: 'administration',
-        label: 'Administration',
+        id: 'system-administration',
+        label: 'System administration',
+        items: [
+            {
+                id: 'tenant-control',
+                label: 'Tenants',
+                icon: 'Globe',
+                route: '/app/system/tenants',
+                feature: 'system_admin',
+                scope: 'system',
+            },
+            {
+                id: 'super-admins',
+                label: 'Super Admins',
+                icon: 'Shield',
+                route: '/app/system/super-admins',
+                feature: 'system_admin',
+                scope: 'system',
+            },
+        ],
+    },
+    {
+        id: 'tenant-administration',
+        label: 'Tenant administration',
         items: [
             { id: 'dashboard', label: 'Dashboard', icon: 'Grid', route: '/app/$teamHash/admin' },
             { id: 'engagement', label: 'Engagement', icon: 'Activity', route: '/app/$teamHash/admin/engagement' },
@@ -122,6 +155,7 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'Operations',
         items: [
             { id: 'connectors', label: 'Connectors', icon: 'Link', route: '/app/$teamHash/admin/connectors' },
+            { id: 'api-connectors', label: 'API Connectors', icon: 'Globe', route: '/app/$teamHash/admin/api-connectors' },
             { id: 'ingestion', label: 'Ingestion & Sync', icon: 'Activity', route: '/app/$teamHash/admin/ingestion' },
             { id: 'invitations', label: 'Invitations', icon: 'Users', route: '/app/$teamHash/admin/invitations' },
             { id: 'flows', label: 'Flows', icon: 'Bolt', route: '/app/$teamHash/admin/flows' },

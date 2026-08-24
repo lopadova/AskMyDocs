@@ -76,6 +76,7 @@ test.describe('Admin Maintenance command runner — Phase H2', () => {
         // have permission for. Admin HAS commands.run but NOT
         // commands.destructive — the preview path returns 403.
         const res = await request.post('/api/admin/commands/preview', {
+            headers: { 'X-Tenant-Id': 'a-demo' },
             data: { command: 'kb:prune-deleted', args: { days: 30 } },
         });
         expect([403, 422]).toContain(res.status());
@@ -83,6 +84,7 @@ test.describe('Admin Maintenance command runner — Phase H2', () => {
 
     test('failure — unknown command returns 404', async ({ request }) => {
         const res = await request.post('/api/admin/commands/run', {
+            headers: { 'X-Tenant-Id': 'a-demo' },
             data: { command: 'evil:exec', args: {} },
         });
         expect(res.status()).toBe(404);

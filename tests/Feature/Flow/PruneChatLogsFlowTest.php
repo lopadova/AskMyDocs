@@ -31,6 +31,7 @@ final class PruneChatLogsFlowTest extends TestCase
         $this->seedRow('tenant-b', 'old', 60);
 
         $cutoff = CarbonImmutable::now()->subDays(30);
+        $this->app->make(TenantContext::class)->set('tenant-a');
         $run = Flow::execute(
             PruneChatLogsFlow::NAME,
             ['tenant_id' => 'tenant-a', 'cutoff_iso' => $cutoff->toIso8601String()],
@@ -44,13 +45,13 @@ final class PruneChatLogsFlowTest extends TestCase
 
     public function test_dry_run_records_plan_without_deleting(): void
     {
-        $this->seedRow('default', 'old', 60);
+        $this->seedRow('test-tenant', 'old', 60);
         $cutoff = CarbonImmutable::now()->subDays(30);
 
         $run = Flow::dryRun(
             PruneChatLogsFlow::NAME,
-            ['tenant_id' => 'default', 'cutoff_iso' => $cutoff->toIso8601String()],
-            FlowExecutionOptions::make(correlationId: 'default'),
+            ['tenant_id' => 'test-tenant', 'cutoff_iso' => $cutoff->toIso8601String()],
+            FlowExecutionOptions::make(correlationId: 'test-tenant'),
         );
 
         $this->assertSame(FlowRun::STATUS_SUCCEEDED, $run->status);

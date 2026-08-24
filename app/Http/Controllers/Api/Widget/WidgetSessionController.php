@@ -6,17 +6,20 @@ namespace App\Http\Controllers\Api\Widget;
 
 use App\Http\Middleware\ResolveWidgetKey;
 use App\Models\WidgetKey;
+use App\Models\WidgetIdentity;
 use App\Models\WidgetSession;
 use App\Models\WidgetSessionStep;
 use App\Services\Widget\WidgetAiToolRegistry;
 use App\Services\Widget\WidgetOrchestratorService;
 use App\Services\Widget\WidgetPiiMasker;
+use App\Services\Widget\WidgetSessionResolver;
 use App\Services\Widget\WidgetSnapshotValidator;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use InvalidArgumentException;
+use App\Support\SupportedLocale;
 
 /**
  * Endpoint del loop ReAct del widget (gira dietro `widget.key`, quindi
@@ -35,6 +38,7 @@ final class WidgetSessionController extends Controller
     public function __construct(
         private readonly TenantContext $tenants,
         private readonly WidgetPiiMasker $piiMasker,
+        private readonly WidgetSessionResolver $sessions,
     ) {}
 
     public function start(
@@ -70,6 +74,8 @@ final class WidgetSessionController extends Controller
             userMessage: $this->nullableString($data['message'] ?? null),
             pageUrl: $this->nullableString($data['page_url'] ?? null) ?? $this->nullableString(data_get($snapshot, 'page.url')),
             origin: $this->nullableString($request->header('Origin')),
+            identity: $this->identity($request),
+            locale: $this->resolvedStartLocale($request, $snapshot),
         );
 
         return response()->json($payload);
@@ -297,20 +303,87 @@ final class WidgetSessionController extends Controller
         return response()->json(['steps' => $masked]);
     }
 
+    /** Paginated history is available only to an authenticated host identity. */
+    public function index(Request $request): JsonResponse
+    {
+        $identity = $this->identity($request);
+        if ($identity === null) {
+            return response()->json([
+                'error' => 'user_auth_required',
+                'message' => 'An authenticated widget user token is required.',
+            ], 401);
+        }
+
+        $perPage = min(max((int) $request->input('per_page', 20), 1), 100);
+        $key = $this->key($request);
+        $rows = WidgetSession::query()
+            ->forTenant($this->tenants->current())
+            ->where('widget_key_id', $key->id)
+            ->where('project_key', $key->project_key)
+            ->where('widget_identity_id', $identity->id)
+            ->orderByDesc('created_at')
+            ->paginate($perPage);
+
+        return response()->json([
+            'data' => collect($rows->items())
+                ->map(fn (WidgetSession $session): array => $this->serializeSession($session))
+                ->values(),
+            'meta' => [
+                'current_page' => $rows->currentPage(),
+                'last_page' => $rows->lastPage(),
+                'per_page' => $rows->perPage(),
+                'total' => $rows->total(),
+            ],
+        ]);
+    }
+
+    /**
+     * Return the newest open session for the authenticated host identity.
+     *
+     * This is intentionally independent from paginated history: a long list of
+     * newer closed sessions must not hide an older conversation that can still
+     * accept turns. No current session is represented by an empty 204 response.
+     */
+    public function current(Request $request): JsonResponse
+    {
+        $identity = $this->identity($request);
+        if ($identity === null) {
+            return response()->json([
+                'error' => 'user_auth_required',
+                'message' => 'An authenticated widget user token is required.',
+            ], 401);
+        }
+
+        $key = $this->key($request);
+        $session = WidgetSession::query()
+            ->forTenant($this->tenants->current())
+            ->where('widget_key_id', $key->id)
+            ->where('project_key', $key->project_key)
+            ->where('widget_identity_id', $identity->id)
+            ->whereIn('status', [
+                WidgetSession::STATUS_ACTIVE,
+                WidgetSession::STATUS_WAITING_USER,
+                WidgetSession::STATUS_WAITING_TOOL,
+            ])
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
+            ->first();
+
+        if ($session === null) {
+            return response()->json([], 204);
+        }
+
+        return response()->json([
+            'data' => $this->serializeSession($session),
+        ]);
+    }
+
     /**
      * Risolve la sessione SOLO se appartiene alla key chiamante (anti-IDOR, R30).
      */
     private function resolveSession(Request $request, string $publicId): WidgetSession
     {
-        // R30 — scope to the active tenant (set FROM the key by
-        // ResolveWidgetKey) AND to the calling key. forTenant() is the
-        // primary tenant boundary; widget_key_id is the anti-IDOR guard so
-        // one key can't drive another key's session within the same tenant.
-        return WidgetSession::query()
-            ->forTenant($this->tenants->current())
-            ->where('public_session_id', $publicId)
-            ->where('widget_key_id', $this->key($request)->id)
-            ->firstOrFail();
+        return $this->sessions->findOrFail($request, $publicId);
     }
 
     private function key(Request $request): WidgetKey
@@ -319,6 +392,36 @@ final class WidgetSessionController extends Controller
         $key = $request->attributes->get(ResolveWidgetKey::ATTR_KEY);
 
         return $key;
+    }
+
+    private function identity(Request $request): ?WidgetIdentity
+    {
+        $identity = $request->attributes->get(ResolveWidgetKey::ATTR_IDENTITY);
+
+        return $identity instanceof WidgetIdentity ? $identity : null;
+    }
+
+    /**
+     * @return array{
+     *     id: string,
+     *     status: string,
+     *     summary: string|null,
+     *     page_url: string|null,
+     *     created_at: string,
+     *     updated_at: string
+     * }
+     */
+    private function serializeSession(WidgetSession $session): array
+    {
+        return [
+            'id' => $session->public_session_id,
+            'status' => $session->status,
+            'summary' => $session->summary,
+            'page_url' => $session->page_url,
+            'locale' => SupportedLocale::normalize($session->locale),
+            'created_at' => $session->created_at->toIso8601String(),
+            'updated_at' => $session->updated_at->toIso8601String(),
+        ];
     }
 
     /**
@@ -341,5 +444,18 @@ final class WidgetSessionController extends Controller
     private function nullableString(mixed $value): ?string
     {
         return is_string($value) && $value !== '' ? $value : null;
+    }
+
+    /** @param array<string,mixed> $snapshot */
+    private function resolvedStartLocale(Request $request, array $snapshot): string
+    {
+        $signedLocale = $request->attributes->get(ResolveWidgetKey::ATTR_LOCALE);
+        if (is_string($signedLocale) && SupportedLocale::isSupported($signedLocale)) {
+            return SupportedLocale::normalize($signedLocale);
+        }
+
+        $pageLocale = data_get($snapshot, 'active_context.locale');
+
+        return SupportedLocale::normalize(is_string($pageLocale) ? $pageLocale : null);
     }
 }

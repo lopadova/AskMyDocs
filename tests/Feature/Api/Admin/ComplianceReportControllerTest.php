@@ -32,7 +32,7 @@ final class ComplianceReportControllerTest extends TestCase
     public function test_index_lists_only_active_tenant_reports(): void
     {
         // C4 (R30) — index ignores any ?tenant_id and scopes to the active
-        // tenant (a plain admin resolves to 'default'). The bystander
+        // tenant (the shared test helper resolves to 'test-tenant'). The bystander
         // 'tenant-other' report must NOT appear.
         $admin = $this->makeAdmin();
         $this->makeReport();
@@ -52,7 +52,7 @@ final class ComplianceReportControllerTest extends TestCase
             ->get('/api/admin/compliance/reports?tenant_id=tenant-other')
             ->assertOk()
             ->assertJsonCount(1, 'data')
-            ->assertJsonPath('data.0.tenant_id', 'default');
+            ->assertJsonPath('data.0.tenant_id', 'test-tenant');
     }
 
     public function test_store_generates_report_for_active_tenant_ignoring_payload(): void
@@ -71,7 +71,7 @@ final class ComplianceReportControllerTest extends TestCase
 
         $this->assertDatabaseHas('compliance_reports', [
             'id' => $response->json('data.id'),
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'period_start' => '2026-01-01 00:00:00',
             'period_end' => '2026-03-31 00:00:00',
         ]);
@@ -86,7 +86,7 @@ final class ComplianceReportControllerTest extends TestCase
         $payloadJson = json_encode($report->payload_json, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         $report->update([
             'hash_sha256' => hash('sha256', $payloadJson),
-            'hash_hmac' => hash_hmac('sha256', $payloadJson.'default2026-01-012026-03-31', 'test-compliance-secret'),
+            'hash_hmac' => hash_hmac('sha256', $payloadJson.'test-tenant2026-01-012026-03-31', 'test-compliance-secret'),
         ]);
 
         $this->actingAs($admin)
@@ -105,7 +105,7 @@ final class ComplianceReportControllerTest extends TestCase
             ->assertOk();
 
         $response->assertJsonPath('delta.added.0.doc_id', 'doc-1');
-        $this->assertStringContainsString('attachment; filename="compliance-report-default-2026-01-01-2026-03-31.json"', (string) $response->headers->get('Content-Disposition'));
+        $this->assertStringContainsString('attachment; filename="compliance-report-test-tenant-2026-01-01-2026-03-31.json"', (string) $response->headers->get('Content-Disposition'));
     }
 
     public function test_download_pdf_surfaces_failures_loudly_or_streams_non_empty_pdf(): void
@@ -142,7 +142,7 @@ final class ComplianceReportControllerTest extends TestCase
     private function makeReport(): ComplianceReport
     {
         return ComplianceReport::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'period_start' => '2026-01-01',
             'period_end' => '2026-03-31',
             'payload_json' => [
@@ -170,4 +170,3 @@ final class ComplianceReportControllerTest extends TestCase
         ]);
     }
 }
-

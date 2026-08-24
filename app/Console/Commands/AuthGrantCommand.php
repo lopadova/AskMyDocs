@@ -6,6 +6,7 @@ namespace App\Console\Commands;
 
 use App\Models\ProjectMembership;
 use App\Models\User;
+use App\Support\PlatformAccess;
 use Illuminate\Console\Command;
 use Spatie\Permission\Exceptions\RoleDoesNotExist;
 use Spatie\Permission\Models\Role;
@@ -40,6 +41,12 @@ class AuthGrantCommand extends Command
 
         if ($user === null) {
             $this->error("User with email {$email} not found.");
+            return self::FAILURE;
+        }
+
+        if ($roleName === PlatformAccess::SYSTEM_ADMIN_ROLE) {
+            $this->error('Use system-admin:grant for the protected platform role.');
+
             return self::FAILURE;
         }
 

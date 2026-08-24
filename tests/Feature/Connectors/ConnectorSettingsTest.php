@@ -36,7 +36,7 @@ final class ConnectorSettingsTest extends TestCase
         // Spatie's permission cache can survive RefreshDatabase rollbacks under
         // Testbench — flush it so role checks stay deterministic in suite order.
         Cache::flush();
-        app(TenantContext::class)->set('default');
+        app(TenantContext::class)->set('test-tenant');
     }
 
     public function test_index_exposes_the_full_settings_schema_and_current_values(): void
@@ -117,7 +117,7 @@ final class ConnectorSettingsTest extends TestCase
     {
         $admin = $this->makeSuperAdmin();
         $gdrive = ConnectorInstallation::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'connector_name' => 'google-drive',
             'label' => 'default',
             'config_json' => [],
@@ -137,7 +137,7 @@ final class ConnectorSettingsTest extends TestCase
     private function makeImapInstallation(array $extraConfig = []): ConnectorInstallation
     {
         return ConnectorInstallation::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'connector_name' => 'imap',
             'label' => 'mbox-'.uniqid(),
             'config_json' => array_merge([

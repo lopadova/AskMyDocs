@@ -2,9 +2,9 @@ name: tests
 
 on:
   push:
-    branches: [main, 'feature/v*', 'feature/v*/**']
+    branches: [main, develop, 'feature/v*', 'feature/v*/**']
   pull_request:
-    branches: [main, 'feature/v*', 'feature/v*/**']
+    branches: [main, develop, 'feature/v*', 'feature/v*/**']
     # `labeled` is added on top of the defaults (opened/synchronize/reopened)
     # so that adding the `run-e2e` label (R46 final-gate step) fires a fresh
     # workflow run with the label now present — which lights up the gated
@@ -96,11 +96,48 @@ jobs:
       - name: Validate security rule coverage
         run: npm run security:rules
 
+      - name: TypeScript typecheck
+        run: npm run typecheck
+
       - name: Run Vitest (react)
         run: npm test
 
       - name: Run Vitest (legacy rich-content)
         run: npm run test:legacy
+
+  # SEC-DEPS-001 / supply-chain-ci — dependency vulnerability visibility.
+  # REPORT-ONLY for now (continue-on-error): the default branch already carries
+  # a backlog of advisories, so a hard gate would block every PR before the
+  # backlog is triaged. Dependabot (.github/dependabot.yml) actively opens fix
+  # PRs; this job surfaces the current advisory set in the CI summary. Flip the
+  # `continue-on-error` to false — or add an expiring advisory baseline — once the
+  # existing advisories are triaged (dependency-regression-gate).
+  dependency-audit:
+    name: Dependency audit (report-only)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP 8.3
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+
+      - name: Composer audit
+        run: composer audit --no-interaction || true
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: npm audit (production deps)
+        run: |
+          npm ci
+          npm audit --omit=dev || true
 
   playwright:
     name: Playwright E2E
@@ -285,9 +322,9 @@ jobs:
           # or file). Spatie's permission migration calls
           # `forgetCachedPermissions()` at the end of its up(), which
           # would crash on `database` driver before the table exists.
-          # `array` is sufficient for migrations + a Playwright run;
-          # `file` persists session cookies across HTTP requests so
-          # login flows survive across page navigations.
+          # `array` keeps rate limits and locks isolated during the long E2E
+          # matrix. The authenticated widget demo explicitly uses the shared
+          # file store only for its cross-worker identity hand-off.
           set_env CACHE_STORE     array
           set_env SESSION_DRIVER  file
           # Database queue (async) + a dedicated worker started below.
@@ -463,6 +500,11 @@ jobs:
           # clean-404 landing is covered by GuardrailsAdminMountingTest (phpunit), per
           # R43 (both states tested).
           AI_GUARDRAILS_ADMIN_ENABLED: 'true'
+          # The native Invitations page exposes its authenticated Advanced
+          # launcher only while the cross-mounted package panel is enabled.
+          # admin-invitations.spec.ts asserts that ON path; the default-OFF
+          # branch remains covered by Vitest and PHPUnit.
+          INVITATIONS_ADMIN_ENABLED: 'true'
           # v8.17 — OFFLINE IMAP seam (CONNECTOR_IMAP_FAKE_PING) so
           # connectors-imap-super-admin.spec.ts drives the real credential-connector
           # flow without a live IMAP server (a BACKEND TCP dependency Playwright
@@ -470,6 +512,14 @@ jobs:
           # otherwise → ACTIVE. Default-OFF in production. Read at runtime (no
           # config:cache), so config('connectors.fake_imap_ping') resolves true.
           CONNECTOR_IMAP_FAKE_PING: 'true'
+          # v8.27 — API Connector route tests call the app's own deterministic
+          # JSON fixtures from the BACKEND. Playwright cannot intercept that
+          # server-to-server HTTP boundary, and CI skips playwright.config.ts's
+          # webServer block, so mirror the testing-only SSRF/HTTPS overrides on
+          # this explicitly-started server. Production defaults remain strict;
+          # UrlGuard + executor tests cover the protected path.
+          API_CONNECTOR_SSRF_ENABLED: 'false'
+          API_CONNECTOR_HTTPS_ONLY: 'false'
           # v8.18/W4 — gamification stays ON (default) so the badges/coaching
           # surfaces render, but the AI NARRATION layer is forced OFF for E2E.
           # The narrator resolves the named `openrouter` provider directly (NOT the
@@ -548,27 +598,37 @@ jobs:
           tail -200 storage/logs/artisan-serve.log || true
           exit 1
 
-      # KB UI upload progress reconciles ONLY via queue lifecycle events
+      # KB UI upload progress reconciles ONLY via queue lifecycle events,
+      # while durable chat/widget agent runs execute on the dedicated `agent`
+      # queue. The E2E agent retrieval scenarios wait on the real SSE stream,
+      # so CI must drain that queue as well as the ingestion queues.
       # (JobProcessing/Processed → App\Listeners\KbUploadBatchItemProgress).
       # With the async database queue (set above) a committed batch INSERTS
       # IngestDocumentJob rows; this worker drains them so the events fire and
       # the upload reaches data-done=1 — WITHOUT making KB saves synchronous
       # (that's why we don't use QUEUE_CONNECTION=sync; see the queue comment
       # + R38). Covers `kb-ingest` (IngestDocumentJob, via config('kb.ingest.
-      # queue')) and `default` (follow-on analyze/auto-wiki). OFFLINE AI so it
-      # never calls a real provider. `setsid -f` detaches it into its own
+      # queue')), `default` (follow-on analyze/auto-wiki), and `agent`
+      # (document + API tool loop). OFFLINE AI so it never calls a real
+      # provider. `setsid -f` detaches it into its own
       # session/PGID (same rationale as the artisan-serve start) so the
       # runner's per-step cleanup can't HUP it mid-run; PGID captured for the
       # "Stop queue worker" cleanup.
-      - name: Start KB ingest queue worker (testing)
+      - name: Start agent and KB queue worker (testing)
         env:
           APP_ENV: testing
           AI_PROVIDER: fake
           AI_EMBEDDINGS_PROVIDER: fake
+          # ExecuteAgentRunJob resolves the connector URL guard inside this
+          # long-lived worker process, not inside the HTTP server that queued
+          # it. Mirror the E2E-only server overrides here or loopback fixture
+          # routes are rejected as http/private before the first tool call.
+          API_CONNECTOR_SSRF_ENABLED: 'false'
+          API_CONNECTOR_HTTPS_ONLY: 'false'
         run: |
           mkdir -p storage/logs
           setsid -f php artisan queue:work database \
-              --queue=kb-ingest,default --sleep=1 --tries=3 --no-interaction \
+              --queue=agent,kb-ingest,default --sleep=1 --tries=3 --no-interaction \
               > storage/logs/queue-worker.log 2>&1
           for i in $(seq 1 10); do
             wpid=$(pgrep -f 'artisan queue:work' | head -1)
@@ -576,10 +636,10 @@ jobs:
               wpgid=$(ps -o pgid= -p "$wpid" 2>/dev/null | tr -d ' ')
               if [ -n "$wpgid" ]; then
                 echo "$wpgid" > /tmp/queue-worker.pgid
-                echo "KB ingest queue worker up (PID=$wpid, PGID=$wpgid)"
+                echo "Agent and KB queue worker up (PID=$wpid, PGID=$wpgid)"
               else
                 echo "$wpid" > /tmp/queue-worker.pid
-                echo "KB ingest queue worker up (PID=$wpid; no PGID)"
+                echo "Agent and KB queue worker up (PID=$wpid; no PGID)"
               fi
               exit 0
             fi
@@ -700,15 +760,16 @@ jobs:
           fi
 
       - name: Stop queue worker
-        # `if: always()` so the dedicated KB ingest worker started above is
+        # `if: always()` so the dedicated agent + KB worker started above is
         # reaped whether the run passed, failed, or was cancelled. Mirrors the
-        # PGID-then-PID teardown of the artisan-serve step.
+        # PGID-then-PID teardown of the artisan-serve step. Allow in-flight
+        # durable runs a short grace period to persist their terminal event.
         if: always()
         run: |
           term_then_kill() {
             local target="$1"
             kill -TERM -- "$target" 2>/dev/null || true
-            sleep 1
+            sleep 3
             if kill -0 -- "$target" 2>/dev/null; then
               kill -KILL -- "$target" 2>/dev/null || true
             fi
@@ -726,4 +787,3 @@ jobs:
           else
             echo "(no /tmp/queue-worker.pgid or .pid — worker step never ran)"
           fi
-

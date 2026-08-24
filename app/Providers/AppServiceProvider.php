@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Agent\DefaultAgentRunHandler;
+use App\Contracts\AgentRunHandler;
 use App\Compliance\AskMyDocsUserDataDeleter;
 use App\Compliance\AskMyDocsUserDataExporter;
 use App\Compliance\RagRefusalQualityMetric;
@@ -33,18 +35,24 @@ use Padosoft\AskMyDocsMcpPack\Contracts\McpHostBridgeContract;
 use Padosoft\AskMyDocsMcpPack\Contracts\McpServerRegistryContract;
 use Padosoft\AskMyDocsMcpPack\Contracts\McpToolAuthorizerContract;
 use App\Support\TenantContext;
+use App\ApiConnectors\AiResponseAnalyst;
+use App\ApiConnectors\AiToolDescriptionAssistant;
 use App\Evidence\AiManagerEvidenceReviewer;
 use Padosoft\AskMyDocsConnectorBase\Contracts\ConnectorIngestionContract;
 use Padosoft\AskMyDocsConnectorBase\Support\TenantContext as PackageTenantContext;
+use Padosoft\AskMyDocsConnectorApi\Contracts\ResponseAnalyst;
+use Padosoft\AskMyDocsConnectorApi\Contracts\ToolDescriptionAssistant;
 use Padosoft\EvidenceRiskReview\Contracts\EvidenceReviewerLlmContract;
 use Padosoft\EvidenceRiskReview\Contracts\TenantResolver as EvidenceTenantResolver;
 use App\Invitations\ProjectMembershipProvisioner;
+use App\Invitations\ProtectedRoleProvisioner;
 use Padosoft\Invitations\Contracts\TenantResolver as InvitationsTenantResolver;
 use Padosoft\Invitations\Services\AccountProvisioningService;
 use App\Policies\KnowledgeDocumentPolicy;
 use App\Services\Admin\Pdf\PdfRenderer;
 use App\Services\Admin\Pdf\PdfRendererFactory;
 use App\Services\Kb\Pipeline\PipelineRegistry;
+use App\Support\KbDiskWriteSafety;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -59,6 +67,8 @@ class AppServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        $this->app->bind(AgentRunHandler::class, DefaultAgentRunHandler::class);
+
         // PR11 / Phase G4 — PDF rendering strategy. The interface is
         // resolved through {@see PdfRendererFactory} so the controller
         // can type-hint `PdfRenderer` and let the container pick the
@@ -133,6 +143,11 @@ class AppServiceProvider extends ServiceProvider
             ConnectorIngestionContract::class,
             HostIngestionBridge::class,
         );
+        $this->app->singleton(\App\Connectors\Imap\ImapSyncProgressContext::class);
+        $this->app->bind(
+            \App\Connectors\Imap\Backfill\ImapBackfillClientProviderContract::class,
+            \App\Connectors\Imap\Backfill\ImapBackfillClientProvider::class,
+        );
 
         // v8.21 (Ciclo 2) — process-scoped holder for the in-flight connector
         // sync run; the bridge bumps its discovered-doc counter and the recorder
@@ -162,6 +177,12 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        // Connector UID checkpoints are only safe when a failed source write
+        // throws. Laravel Cloud injects its `private` S3 disk with throw=false,
+        // so make every configured canonical/project KB disk strict before the
+        // filesystem manager can resolve and cache an adapter.
+        KbDiskWriteSafety::enforce();
+
         // v7.0/W6.3 — bind the three host adapters that satisfy the
         // `padosoft/askmydocs-mcp-pack` contracts. Bindings live in
         // `boot()` (not `register()`) because `bootstrap/providers.php`
@@ -200,7 +221,9 @@ class AppServiceProvider extends ServiceProvider
         $this->registerFinOpsGates();
         $this->registerGuardrailsGates();
         $this->registerFakeImapFactory();
+        $this->registerImapBackfillFactory();
         $this->registerImapReconnect();
+        $this->registerImapSyncProgressTracking();
         $this->registerImapConnectionSerializer();
         $this->registerInvitationsIntegration();
         $this->registerInvitationsGates();
@@ -254,6 +277,15 @@ class AppServiceProvider extends ServiceProvider
      */
     private function registerInvitationsIntegration(): void
     {
+        // Replace the package's role provisioner binding with the host-aware
+        // adapter. The package tag keeps the vendor class as its service key,
+        // so overriding that key changes the resolved implementation without
+        // mutating vendor code.
+        $this->app->bind(
+            \Padosoft\Invitations\Provisioning\SpatiePermissionProvisioner::class,
+            ProtectedRoleProvisioner::class,
+        );
+
         $this->app->bind(InvitationsTenantResolver::class, function ($app): InvitationsTenantResolver {
             $ctx = $app->make(TenantContext::class);
 
@@ -344,6 +376,30 @@ class AppServiceProvider extends ServiceProvider
     }
 
     /**
+     * Extend the package factory with the host-only bounded/bulk operations used
+     * by durable backfills. This runs before reconnect + progress + serializer;
+     * all later decorators implement the same extension, so resolving the normal
+     * package factory yields one shared chain for every IMAP surface.
+     */
+    private function registerImapBackfillFactory(): void
+    {
+        if (! interface_exists(\Padosoft\AskMyDocsConnectorImap\Imap\ImapClientFactoryInterface::class)) {
+            return;
+        }
+
+        $this->app->extend(
+            \Padosoft\AskMyDocsConnectorImap\Imap\ImapClientFactoryInterface::class,
+            static function ($factory): \Padosoft\AskMyDocsConnectorImap\Imap\ImapClientFactoryInterface {
+                if ($factory instanceof \App\Connectors\Imap\Backfill\ImapBackfillClientFactory) {
+                    return $factory;
+                }
+
+                return new \App\Connectors\Imap\Backfill\ImapBackfillClientFactoryAdapter($factory);
+            },
+        );
+    }
+
+    /**
      * Absorb transient IMAP transport drops (the classic "fwrite(): SSL: Broken pipe"
      * / connection-reset / idle drop) with one close-and-retry, so a server closing a
      * live session mid-flight no longer hard-fails the sync run. DECORATES whatever
@@ -381,6 +437,33 @@ class AppServiceProvider extends ServiceProvider
                     $factory,
                     $maxAttempts,
                     $retryDelayMs,
+                );
+            },
+        );
+    }
+
+    /**
+     * Track a contiguous, successfully dispatched UID prefix during IMAP syncs.
+     *
+     * The offline fake remains the directly-resolved test seam. Real factories
+     * are wrapped and return the inner client unchanged unless
+     * SerializedConnectorSyncJob activated a progress session.
+     */
+    private function registerImapSyncProgressTracking(): void
+    {
+        if (
+            ! interface_exists(\Padosoft\AskMyDocsConnectorImap\Imap\ImapClientFactoryInterface::class)
+            || config('connectors.fake_imap_ping', false) === true
+        ) {
+            return;
+        }
+
+        $this->app->extend(
+            \Padosoft\AskMyDocsConnectorImap\Imap\ImapClientFactoryInterface::class,
+            static function ($factory, $app): \App\Connectors\Imap\ProgressTrackingImapClientFactory {
+                return new \App\Connectors\Imap\ProgressTrackingImapClientFactory(
+                    $factory,
+                    $app->make(\App\Connectors\Imap\ImapSyncProgressContext::class),
                 );
             },
         );
@@ -474,6 +557,12 @@ class AppServiceProvider extends ServiceProvider
         // Optional LLM semantic-review pass over AiManager — only invoked when
         // evidence-risk-review.llm.enabled is true (default-OFF, R43).
         $this->app->singleton(EvidenceReviewerLlmContract::class, AiManagerEvidenceReviewer::class);
+
+        // API-connector workbench + tool descriptions over AiManager. Both are
+        // gated by connector-api.llm_assist.enabled and best-effort (a provider
+        // error degrades to the deterministic reduced view / field-derived draft).
+        $this->app->singleton(ResponseAnalyst::class, AiResponseAnalyst::class);
+        $this->app->singleton(ToolDescriptionAssistant::class, AiToolDescriptionAssistant::class);
     }
 
     /**
@@ -753,6 +842,10 @@ class AppServiceProvider extends ServiceProvider
             \App\Console\Commands\KbReembedProjectCommand::class,
             // PR3 — RBAC
             AuthGrantCommand::class,
+            // Platform control plane — the ONLY supported workflow for
+            // granting/revoking the global system-admin role.
+            \App\Console\Commands\GrantSystemAdminCommand::class,
+            \App\Console\Commands\RevokeSystemAdminCommand::class,
             // Operator helper: seed a demo user inside a tenant in the
             // correct order. Lives in app code (not tinker) so it runs in
             // production under `composer install --no-dev`.
@@ -760,6 +853,10 @@ class AppServiceProvider extends ServiceProvider
             // Operator bootstrap: create a real company (tenant) + its admin
             // user in one shot (create-new semantics, fails if it exists).
             \App\Console\Commands\CreateCompanyCommand::class,
+            // Invite-only registration bootstrap. Codes without --tenant
+            // create an account that must complete company onboarding; codes
+            // with --tenant carry one explicit operational grant.
+            \App\Console\Commands\CreateRegistrationInviteCommand::class,
             // v8.28 — team (tenant) management PHP surface (R44), thin over
             // TeamRegistryService: create a team (registry + project +
             // membership, no new user) and rename a team.
@@ -831,6 +928,8 @@ class AppServiceProvider extends ServiceProvider
             \App\Console\Commands\ConnectorImapInstallCommand::class,
             \App\Console\Commands\DemoListCompaniesCommand::class,
             \App\Console\Commands\InitCaseStudiesCommand::class,
+            \App\Console\Commands\GenerateCaseStudyEmailsCommand::class,
+            \App\Console\Commands\ValidateCaseStudyEmailsCommand::class,
 
             // v8.20 — multi-account connectors PHP surface (R44): read roster +
             // interactive credential install, over ConnectorInstallationService /
@@ -1024,6 +1123,24 @@ class AppServiceProvider extends ServiceProvider
 
         RateLimiter::for('register', function (Request $request) {
             return Limit::perMinute(6)->by($request->ip());
+        });
+
+        // SEC-THROTTLE-001 (F-06): the authenticated /kb/chat endpoint drives an
+        // AI provider turn (real spend) but carried no rate limit — one tenant
+        // user could exhaust provider quota / DB capacity for everyone. Key the
+        // limiter by the effective identity AND tenant (not IP alone, which
+        // punishes shared-NAT tenants and is trivially rotated); fall back to IP
+        // for any unauthenticated caller. A zero/invalid config cannot silently
+        // disable it — it floors at 1/min.
+        RateLimiter::for('kb-chat', function (Request $request) {
+            $tenant = app(\App\Support\TenantContext::class)->current();
+            $user = $request->user();
+            $identity = $user !== null
+                ? 'u:'.$user->getAuthIdentifier()
+                : 'ip:'.$request->ip();
+            $max = max(1, (int) config('kb.chat.rate_limit_per_minute', 20));
+
+            return Limit::perMinute($max)->by($identity.'|t:'.$tenant);
         });
     }
 }

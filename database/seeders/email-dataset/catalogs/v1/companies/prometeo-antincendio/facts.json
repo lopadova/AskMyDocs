@@ -1,0 +1,50 @@
+{
+    "company_key": "prometeo-antincendio",
+    "facts": [
+        {
+            "fact_id": "prometeo.manutenzione.classi",
+            "statement": "La manutenzione distingue apparecchi, classi di fuoco e scadenze operative.",
+            "canonical_source": "case-studies/prometeo-antincendio/classi-estintori.md"
+        },
+        {
+            "fact_id": "prometeo.cpi.normativa",
+            "statement": "Le pratiche CPI e SCIA seguono requisiti documentali e verifiche tracciate.",
+            "canonical_source": "case-studies/prometeo-antincendio/normativa-cpi.md"
+        },
+        {
+            "fact_id": "prometeo.sopralluogo.pa12",
+            "statement": "Il sopralluogo usa il Modulo PA-12 per registrare rilievi e azioni.",
+            "canonical_source": "case-studies/prometeo-antincendio/modulo-pa-12-sopralluogo.md"
+        },
+        {
+            "fact_id": "prometeo.formazione.salamandra",
+            "statement": "Il Corso Salamandra prepara addetti e squadre alle procedure di emergenza.",
+            "canonical_source": "case-studies/prometeo-antincendio/formazione-corso-salamandra.md"
+        },
+        {
+            "fact_id": "prometeo.preventivi.controllo",
+            "statement": "Preventivi e contratti descrivono perimetro, frequenze e responsabilità.",
+            "canonical_source": "case-studies/prometeo-antincendio/_index.md"
+        },
+        {
+            "fact_id": "prometeo.incidenti.fenice7",
+            "statement": "Gli allarmi e le escalation seguono il Protocollo Fenice-7.",
+            "canonical_source": "case-studies/prometeo-antincendio/protocollo-fenice-7.md"
+        },
+        {
+            "fact_id": "prometeo.scadenze.software",
+            "statement": "Le scadenze sono governate dal sistema condiviso e non da registri cartacei.",
+            "canonical_source": "case-studies/prometeo-antincendio/decision-software-scadenze.md"
+        },
+        {
+            "fact_id": "prometeo.ricambi.compatibilita",
+            "statement": "I ricambi vengono verificati per compatibilità e tracciabilità.",
+            "canonical_source": "case-studies/prometeo-antincendio/classi-estintori.md"
+        },
+        {
+            "fact_id": "prometeo.qualita.correzioni",
+            "statement": "Ogni rilievo errato viene rettificato lasciando una traccia esplicita.",
+            "canonical_source": "case-studies/prometeo-antincendio/_index.md"
+        }
+    ]
+}

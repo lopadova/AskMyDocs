@@ -30,7 +30,7 @@ final class WikiExplorerTriSurfaceTest extends TestCase
     {
         parent::setUp();
         $this->seed(RbacSeeder::class);
-        app(TenantContext::class)->set('default');
+        app(TenantContext::class)->set('test-tenant');
     }
 
     private function bind(): \Mockery\MockInterface
@@ -44,7 +44,7 @@ final class WikiExplorerTriSurfaceTest extends TestCase
     private function autoDoc(): KnowledgeDocument
     {
         return KnowledgeDocument::create([
-            'tenant_id' => 'default', 'project_key' => 'eng', 'source_type' => 'markdown',
+            'tenant_id' => 'test-tenant', 'project_key' => 'eng', 'source_type' => 'markdown',
             'source_path' => 'decisions/auto-a.md', 'title' => 'Auto A', 'mime_type' => 'text/markdown',
             'status' => 'active', 'document_hash' => str_repeat('a', 64), 'version_hash' => bin2hex(random_bytes(16)),
             'is_canonical' => true, 'doc_id' => 'auto-a', 'slug' => 'auto-a', 'canonical_type' => 'decision',
@@ -77,7 +77,7 @@ final class WikiExplorerTriSurfaceTest extends TestCase
         $mock->shouldReceive('promote')->once()
             ->andReturn(['promoted' => true, 'slug' => 'auto-a']);
 
-        $this->artisan('kb:wiki-promote', ['document' => $doc->id])
+        $this->artisan('kb:wiki-promote', ['document' => $doc->id, '--tenant' => 'test-tenant'])
             ->expectsOutputToContain('Promoted auto-a')
             ->assertSuccessful();
     }
@@ -89,7 +89,11 @@ final class WikiExplorerTriSurfaceTest extends TestCase
         $mock->shouldReceive('discard')->once()
             ->andReturn(['discarded' => true, 'slug' => 'auto-a']);
 
-        $this->artisan('kb:wiki-promote', ['document' => $doc->id, '--discard' => true])
+        $this->artisan('kb:wiki-promote', [
+            'document' => $doc->id,
+            '--discard' => true,
+            '--tenant' => 'test-tenant',
+        ])
             ->expectsOutputToContain('Discarded auto page auto-a')
             ->assertSuccessful();
     }
@@ -109,7 +113,7 @@ final class WikiExplorerTriSurfaceTest extends TestCase
     {
         $mock = $this->bind();
         $mock->shouldReceive('list')->once()
-            ->with('default', 'eng', 'auto', 100)
+            ->with('test-tenant', 'eng', 'auto', 100)
             ->andReturn(['tier' => 'auto', 'project_key' => 'eng', 'total' => 1, 'pages' => [['slug' => 'auto-a']]]);
 
         $this->actingAs($this->admin())

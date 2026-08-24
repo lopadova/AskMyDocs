@@ -28,9 +28,12 @@ export const E2E_BASE_URL = process.env.E2E_BASE_URL ?? 'http://127.0.0.1:8000';
  *    user record they just authenticated with. The `super-admin-setup`
  *    project boots through DemoSeeder via the auto-fixture and stays
  *    on it for the duration of the suite.
+ *  - `system@demo.local` — DemoSeeder ONLY. It owns the protected
+ *    system-admin role plus companion super-admin and is reserved for
+ *    the chromium-system-admin control-plane scenarios.
  *
- * Setup projects (`setup`, `viewer-setup`, `super-admin-setup` —
- * driven by `auth.setup.ts`, `viewer.setup.ts`, `super-admin.setup.ts`)
+ * Setup projects (`setup`, `viewer-setup`, `super-admin-setup`,
+ * `system-admin-setup` — driven by the matching `*.setup.ts` files)
  * are not listed because they perform their own login flow against
  * the storageState at boot and don't reuse this map.
  */
@@ -38,6 +41,7 @@ export const PROJECT_CREDENTIALS: Record<string, { email: string; password: stri
     chromium: { email: 'admin@demo.local', password: 'password' },
     'chromium-viewer': { email: 'viewer@demo.local', password: 'password' },
     'chromium-super-admin': { email: 'super@demo.local', password: 'password' },
+    'chromium-system-admin': { email: 'system@demo.local', password: 'password' },
 };
 
 /**
@@ -51,7 +55,6 @@ type RequestTarget = Page | APIRequestContext;
 function asRequest(target: RequestTarget): APIRequestContext {
     return 'request' in target ? target.request : target;
 }
-
 /*
  * Setup-time helpers shared across the spec files `auth.setup.ts`,
  * `viewer.setup.ts`, and `super-admin.setup.ts` (project names in
@@ -289,7 +292,7 @@ export async function resetAndSeed(target: RequestTarget, seeder = 'DemoSeeder')
 export async function loginAsProjectUser(
     page: Page,
     context: BrowserContext,
-    request: APIRequestContext,
+    request: APIRequestContext | null,
     projectName: string,
 ): Promise<void> {
     const creds = PROJECT_CREDENTIALS[projectName];
@@ -306,7 +309,9 @@ export async function loginAsProjectUser(
     // pick its XSRF-TOKEN cookie by accident. `context.cookies(url)`
     // returns only the cookies that would be sent to that URL.
     const cookies = await context.cookies(E2E_BASE_URL);
-    const xsrfCookie = cookies.find((c) => c.name === 'XSRF-TOKEN');
+    const xsrfCookie = cookies
+        .filter((c) => c.name === 'XSRF-TOKEN')
+        .sort((left, right) => right.expires - left.expires)[0];
     if (!xsrfCookie) {
         throw new Error(
             `loginAsProjectUser: XSRF-TOKEN cookie missing on page context for ${E2E_BASE_URL} after /sanctum/csrf-cookie`,
@@ -340,9 +345,44 @@ export async function loginAsProjectUser(
         );
     }
 
+    // Some RBAC-only specs need a fresh browser session after another
+    // scenario recreated the users table, but never use Playwright's separate
+    // top-level request cookie jar. Allow them to avoid rotating that unrelated
+    // jar (which may still contain pre-reset host/domain cookie variants).
+    if (request === null) {
+        return;
+    }
+
     // Re-login on the top-level `request` fixture's cookie jar too —
     // see the long comment in fixtures.ts for the rationale (Playwright
-    // keeps `request` and `page.request` cookie jars separate).
+    // keeps `request` and `page.request` cookie jars separate). With the
+    // CI file-session driver, however, migrate:fresh does not remove the
+    // existing session file and the re-seeded user keeps the same id. In
+    // that case the request jar is already authenticated: rotating its CSRF
+    // cookie again can race Laravel's session regeneration and produce a
+    // false 419. Preserve the valid session and only perform the CSRF/login
+    // dance when the jar is actually unauthenticated.
+    const existingRequestMe = await request.get('/api/auth/me', {
+        headers: { Accept: 'application/json' },
+    });
+    if (existingRequestMe.ok()) {
+        const existingPayload = (await existingRequestMe.json()) as {
+            user?: { email?: string };
+        };
+        if (existingPayload.user?.email !== creds.email) {
+            throw new Error(
+                `loginAsProjectUser: top-level request context returned wrong user. expected ${creds.email}, got ${existingPayload.user?.email ?? '(no user)'}`,
+            );
+        }
+
+        return;
+    }
+    if (existingRequestMe.status() !== 401) {
+        throw new Error(
+            `loginAsProjectUser: top-level /api/auth/me failed before re-login: ${existingRequestMe.status()} ${await existingRequestMe.text()}`,
+        );
+    }
+
     const csrfResponse = await request.get('/sanctum/csrf-cookie');
     if (!csrfResponse.ok()) {
         throw new Error(
@@ -356,9 +396,16 @@ export async function loginAsProjectUser(
     // `context.cookies(url)`), so we match by hostname.
     const requestStorage = await request.storageState();
     const baseHost = new URL(E2E_BASE_URL).hostname;
-    const requestXsrf = requestStorage.cookies.find(
-        (c) => c.name === 'XSRF-TOKEN' && c.domain.replace(/^\./, '') === baseHost,
-    );
+    // A storageState created before SESSION_DOMAIN was normalised can carry
+    // both a host-only cookie (`127.0.0.1`) and the current domain cookie
+    // (`.127.0.0.1`). Laravel just rotated the latter, but Array.find() would
+    // pick the stale host-only token and make the login fail with 419. Select
+    // the newest matching cookie deterministically.
+    const requestXsrf = requestStorage.cookies
+        .filter(
+            (c) => c.name === 'XSRF-TOKEN' && c.domain.replace(/^\./, '') === baseHost,
+        )
+        .sort((left, right) => right.expires - left.expires)[0];
     if (!requestXsrf) {
         // Throwing instead of returning silently: a missing XSRF cookie
         // here means the top-level `request` context can't perform an

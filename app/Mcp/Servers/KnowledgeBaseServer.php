@@ -4,15 +4,18 @@ namespace App\Mcp\Servers;
 
 use App\Mcp\Methods\ListCollectionResources;
 use App\Mcp\Methods\ReadCollectionResource;
+use App\Mcp\Tools\ApiConnectorsTool;
 use App\Mcp\Tools\FinOpsBudgetStatusTool;
 use App\Mcp\Tools\ConnectorInstallationsTool;
 use App\Mcp\Tools\ConnectorSettingsTool;
 use App\Mcp\Tools\AppSettingsTool;
+use App\Mcp\Tools\WidgetIntroConfigTool;
 use App\Mcp\Tools\KbDetokenizeTool;
 use App\Mcp\Tools\KbEraseSubjectTool;
 use App\Mcp\Tools\KbReembedProjectTool;
 use App\Mcp\Tools\KbPiiPolicyTool;
 use App\Mcp\Tools\KbIngestionStatusTool;
+use App\Mcp\Tools\KbImapBackfillTool;
 use App\Mcp\Tools\FinOpsSpendSummaryTool;
 use App\Mcp\Tools\FinOpsTopModelsTool;
 use App\Mcp\Tools\KbApplySuggestionTool;
@@ -136,13 +139,30 @@ class KnowledgeBaseServer extends Server
         // resource + `connectors:configure` command.
         ConnectorSettingsTool::class,
 
+        // v8.27 — API connectors (Connettore API) read surface (R44 third
+        // surface): list this tenant's API connectors + routes (slug, method,
+        // status, mode, last test), tenant-scoped (R30), over the same core
+        // (ConnectorAdminService::listConnectors) as the HTTP index +
+        // `api-connector:list` command. The active+tool routes are the live
+        // chat tools.
+        ApiConnectorsTool::class,
+
         // v8.21 (Ciclo 2) — ingestion/sync observability read surface (R44):
         // queue depths + recent connector sync runs, tenant-scoped (R30).
         KbIngestionStatusTool::class,
 
+        // Durable IMAP full-history import status/start over the same manager as
+        // HTTP and PHP. This is a write-capable tool (no IsReadOnly annotation),
+        // so MCP scope + authorizer require mcp:tools:write + super-admin.
+        KbImapBackfillTool::class,
+
         // v8.22 (Ciclo 3) — runtime config governance read surface (R44):
         // governable settings with effective value + provenance, tenant-scoped (R30).
         AppSettingsTool::class,
+
+        // Widget presentation is readable by agents, while mutations stay on
+        // the authenticated admin HTTP API / operator CLI.
+        WidgetIntroConfigTool::class,
 
         // v8.23 (Ciclo 4) — PII ingestion policy read surface (R44): the
         // effective redact-on/off + strategy per (tenant, project), tenant-scoped (R30).

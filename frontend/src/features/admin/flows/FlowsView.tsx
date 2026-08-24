@@ -58,7 +58,7 @@ export function FlowsView() {
             credentials: 'same-origin',
             headers: {
                 Accept: 'application/json',
-                ...(team !== null && team !== 'default' ? { 'X-Tenant-Id': team } : {}),
+                ...(team !== null ? { 'X-Tenant-Id': team } : {}),
             },
             signal: controller.signal,
         })

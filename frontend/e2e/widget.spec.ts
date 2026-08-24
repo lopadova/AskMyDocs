@@ -34,8 +34,8 @@ test.describe('KITT widget — chat embeddabile', () => {
             /remote|remoto|knowledge base/i,
             { timeout: 15_000 },
         );
-        // Tornato idle a fine turno (stato osservabile, R14/R15).
-        await expect(panel).toHaveAttribute('data-state', 'idle', { timeout: 15_000 });
+        // Sessione nuovamente pronta a ricevere input (R14/R15).
+        await expect(panel).toHaveAttribute('data-state', 'ready', { timeout: 15_000 });
     });
 
     test('mostra un errore quando la key è rifiutata', async ({ page }) => {
@@ -85,7 +85,7 @@ test.describe('KITT widget — chat embeddabile', () => {
             /remote|remoto|knowledge base/i,
             { timeout: 15_000 },
         );
-        await expect(panel).toHaveAttribute('data-state', 'idle', { timeout: 15_000 });
+        await expect(panel).toHaveAttribute('data-state', 'ready', { timeout: 15_000 });
     });
 
     test('#3 — il valore di un campo password non lascia mai la pagina nello snapshot', async ({ page }) => {
@@ -111,6 +111,14 @@ test.describe('KITT widget — chat embeddabile', () => {
         const body = (await startReq).postData() ?? '';
         expect(body.length).toBeGreaterThan(0);
         expect(body).not.toContain(secret);
+
+        // Do not leave the real turn in flight: the next scenario resets the
+        // database and would otherwise race a late widget-step write.
+        await expect(page.getByTestId('askmydocs-widget-panel')).toHaveAttribute(
+            'data-state',
+            'ready',
+            { timeout: 15_000 },
+        );
     });
 });
 
@@ -145,8 +153,8 @@ test.describe('KITT widget — scenario agentico M4 (dati reali)', () => {
         await expect(page.locator('#full-name')).toHaveValue('Mario Rossi', { timeout: 15_000 });
         // …e cliccato Salva → il form della pagina ospite mostra "Form inviato".
         await expect(page.locator('#demo-result')).toContainText('Form inviato', { timeout: 15_000 });
-        // report_done chiude il turno → panel torna idle.
-        await expect(panel).toHaveAttribute('data-state', 'idle', { timeout: 15_000 });
+        // report_done chiude il turno → panel torna pronto.
+        await expect(panel).toHaveAttribute('data-state', 'ready', { timeout: 15_000 });
     });
 
     test('search_knowledge_base: il tool BE reale ritorna un artifact renderizzato in chat', async ({ page }) => {
@@ -170,7 +178,7 @@ test.describe('KITT widget — scenario agentico M4 (dati reali)', () => {
         // R12 — testid stabile, non selettore CSS.
         const artifact = page.getByTestId('askmydocs-widget-artifact-container').first();
         await expect(artifact).toBeVisible({ timeout: 15_000 });
-        // Il turno si chiude con la risposta testuale → panel idle.
-        await expect(panel).toHaveAttribute('data-state', 'idle', { timeout: 15_000 });
+        // Il turno si chiude con la risposta testuale → panel pronto.
+        await expect(panel).toHaveAttribute('data-state', 'ready', { timeout: 15_000 });
     });
 });

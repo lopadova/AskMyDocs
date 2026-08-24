@@ -33,12 +33,15 @@
           "connectors-credential",
           "connectors-multi-account",
           "connectors-sync-settings",
+          "connectors-imap-backfill",
           "connectors-imap-serialization",
+          "connectors-api",
           "kitt-widget",
           "admin-panel",
           "projects-registry",
           "team-switcher",
           "team-management",
+          "system-administration",
           "engagement-suite",
           "digests",
           "dashboards",
@@ -79,6 +82,7 @@
           "configuration",
           "runtime-config-governance",
           "self-hosting",
+          "case-study-email-datasets",
           "scheduler-and-maintenance",
           "troubleshooting"
         ]

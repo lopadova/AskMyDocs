@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Connectors;
 
+use App\Connectors\Imap\ProgressTrackingImapClientFactory;
 use App\Connectors\Testing\FakeImapClientFactory;
 use Padosoft\AskMyDocsConnectorImap\Imap\ImapClientFactory;
 use Padosoft\AskMyDocsConnectorImap\Imap\ImapClientFactoryInterface;
+use ReflectionObject;
 use Tests\TestCase;
 
 /**
@@ -33,7 +35,25 @@ final class FakeImapFactoryBindingTest extends TestCase
 
         $factory = $this->app->make(ImapClientFactoryInterface::class);
 
-        $this->assertInstanceOf(ImapClientFactory::class, $factory);
-        $this->assertNotInstanceOf(FakeImapClientFactory::class, $factory);
+        $this->assertInstanceOf(ProgressTrackingImapClientFactory::class, $factory);
+
+        // Production decorators are intentionally layered around the package
+        // factory. Walk that chain so this OFF-state test still proves the
+        // innermost implementation is real and no fake is hidden underneath.
+        $current = $factory;
+        for ($depth = 0; $depth < 10; $depth++) {
+            $this->assertNotInstanceOf(FakeImapClientFactory::class, $current);
+
+            $reflection = new ReflectionObject($current);
+            if (! $reflection->hasProperty('inner')) {
+                break;
+            }
+
+            $property = $reflection->getProperty('inner');
+            $current = $property->getValue($current);
+            $this->assertInstanceOf(ImapClientFactoryInterface::class, $current);
+        }
+
+        $this->assertInstanceOf(ImapClientFactory::class, $current);
     }
 }

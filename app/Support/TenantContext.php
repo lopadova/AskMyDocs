@@ -19,7 +19,12 @@ final class TenantContext
 {
     private const DEFAULT_TENANT = 'default';
 
-    private string $tenantId = self::DEFAULT_TENANT;
+    private string $tenantId;
+
+    public function __construct(private readonly string $resetTenant = self::DEFAULT_TENANT)
+    {
+        $this->set($resetTenant);
+    }
 
     public function set(string $tenantId): void
     {
@@ -51,6 +56,6 @@ final class TenantContext
 
     public function reset(): void
     {
-        $this->tenantId = self::DEFAULT_TENANT;
+        $this->tenantId = $this->resetTenant;
     }
 }

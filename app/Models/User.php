@@ -4,12 +4,14 @@ namespace App\Models;
 
 use App\Support\KbPath;
 use App\Support\TenantContext;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Laravel\Sanctum\HasApiTokens;
 use Padosoft\Invitations\Concerns\InteractsWithInvitations;
 use Padosoft\Invitations\Contracts\InvitedAccount;
@@ -45,12 +47,14 @@ class User extends Authenticatable implements InvitedAccount
         'email',
         'password',
         'is_active',
+        'registration_completed_at',
         // v8.0.1 / deep-review F5 — chat-level preferences (e.g.
         // `counterfactual_enabled`) persisted per user. Cross-tenant
         // by design — the same identity carries the same chat
         // ergonomics regardless of which tenant they are operating
         // in.
         'chat_preferences',
+        'locale',
     ];
 
     // Mirror the `default(true)` on the migration so newly created
@@ -64,12 +68,61 @@ class User extends Authenticatable implements InvitedAccount
     protected $hidden = [
         'password',
         'remember_token',
+        'email_normalized',
     ];
+
+    protected static function booted(): void
+    {
+        static::saving(function (User $user): void {
+            if (! $user->isDirty('email')) {
+                return;
+            }
+
+            $normalized = self::normalizeEmail((string) $user->email);
+            $user->email = $normalized;
+
+            // Deployment-safe during rolling releases: the application can
+            // boot before the additive migration has run. Once the column is
+            // present it becomes the case-insensitive uniqueness key used by
+            // every account-creation surface.
+            if (self::hasNormalizedEmailColumn()) {
+                $user->setAttribute('email_normalized', $normalized);
+            }
+        });
+    }
+
+    public static function hasNormalizedEmailColumn(): bool
+    {
+        return once(static fn (): bool => Schema::hasColumn('users', 'email_normalized'));
+    }
+
+    public static function normalizeEmail(string $email): string
+    {
+        return mb_strtolower(trim($email));
+    }
+
+    /**
+     * Apply the rolling-deployment-safe, case-insensitive identity lookup.
+     *
+     * @param  Builder<User>  $query
+     * @return Builder<User>
+     */
+    public function scopeWhereEmailIdentity(Builder $query, string $email): Builder
+    {
+        $normalized = self::normalizeEmail($email);
+
+        if (self::hasNormalizedEmailColumn()) {
+            return $query->where('email_normalized', $normalized);
+        }
+
+        return $query->whereRaw('LOWER(email) = ?', [$normalized]);
+    }
 
     protected function casts(): array
     {
         return [
             'email_verified_at' => 'datetime',
+            'registration_completed_at' => 'datetime',
             'password' => 'hashed',
             'is_active' => 'boolean',
             'chat_preferences' => 'array',

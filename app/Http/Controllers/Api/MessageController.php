@@ -40,7 +40,7 @@ class MessageController extends Controller
         }
 
         $messages = $conversation->messages()
-            ->orderBy('created_at')
+            ->orderBy('id')
             ->get(['id', 'role', 'content', 'metadata', 'rating', 'created_at']);
 
         return response()->json($messages);
@@ -89,7 +89,7 @@ class MessageController extends Controller
 
         // 2. Load conversation history
         $history = $conversation->messages()
-            ->orderBy('created_at')
+            ->orderBy('id')
             ->get(['role', 'content'])
             ->map(fn (Message $m) => ['role' => $m->role, 'content' => $m->content])
             ->all();
@@ -145,6 +145,7 @@ class MessageController extends Controller
             context: [
                 'conversation_id' => $conversation->id,
                 'message_id' => $userMessage->id,
+                'project_key' => $projectKey,
             ],
         ));
         $toolCalls = $this->summarizeToolCallsForMetadata($aiResponse->toolCalls);

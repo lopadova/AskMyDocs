@@ -19,6 +19,13 @@ return Application::configure(basePath: dirname(__DIR__))
         // when no header / claim is present (R31 backward-compat with v3).
         $middleware->prepend(\App\Http\Middleware\ResolveTenant::class);
 
+        // Security response headers (SEC-CSP-001 / SEC-TLS-001 / response-headers
+        // / csp-nonce-cache / request-correlation). Appended so it runs LAST on
+        // the way out and stamps the final response of every request — SPA, API,
+        // widget and SSE alike. No-op when config('security-headers.enabled') is
+        // false (R43 OFF path). CSP ships report-only by default.
+        $middleware->append(\App\Http\Middleware\SecurityHeaders::class);
+
         // Canale widget KITT: CORS dedicato per /api/widget/*. Prepended (come
         // ResolveTenant) così gestisce il preflight OPTIONS PRIMA del routing
         // e riflette l'Origin del sito ospite. Il gate reale resta `widget.key`
@@ -38,11 +45,10 @@ return Application::configure(basePath: dirname(__DIR__))
             'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
             'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
             'tenant.resolve' => \App\Http\Middleware\ResolveTenant::class,
-            // C1 (R30) — post-auth guard that rejects an X-Tenant-Id header
-            // pointing at a tenant the authenticated user does not own
-            // (unless they hold `tenant.cross-access`). Mounted after
-            // `auth:sanctum` on every authenticated route group; ResolveTenant
-            // runs too early (pre-auth) to validate the header itself.
+            // C1 (R30) — post-auth guard that requires a membership in the
+            // resolved tenant, with or without X-Tenant-Id. Mounted after
+            // `auth:sanctum` on operational route groups; ResolveTenant runs
+            // too early (pre-auth) to validate membership itself.
             'tenant.authorize' => \App\Http\Middleware\AuthorizeTenantHeader::class,
             // Canale pubblico del widget KITT embeddabile. Risolve la
             // WidgetKey dall'header X-Widget-Key (modalità A browser
@@ -130,6 +136,11 @@ return Application::configure(basePath: dirname(__DIR__))
         // not a general loosening.
         $middleware->validateCsrfTokens(except: [
             'testing/*',
+            // Browsers POST CSP violation reports as a native request with no
+            // CSRF token; without this exemption every real report would 419.
+            // The collector is unauthenticated, throttled and bounded, and
+            // performs no state-changing side effect from report contents.
+            'csp-report',
         ]);
 
         // (No custom api-stateful group — Laravel 11+ `$middleware->group()`
@@ -180,6 +191,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // mailbox re-queue instead of opening simultaneous connections
         // ("Too many simultaneous connections"). Same sweep/cadence.
         (new \App\Connectors\Scheduling\SerializedSyncScheduler)->registerSchedules($schedule);
+        (new \App\Connectors\Scheduling\ImapBackfillScheduler)->registerSchedules($schedule);
 
         // v4.3/W3 — Nightly eval-harness regression run. Two gates,
         // BOTH must be true for the cron to fire:

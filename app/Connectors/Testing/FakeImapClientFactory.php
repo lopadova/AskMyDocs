@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Connectors\Testing;
 
+use App\Connectors\Imap\Backfill\ImapBackfillClient;
+use App\Connectors\Imap\Backfill\ImapBackfillClientFactory;
+use App\Connectors\Imap\Backfill\ImapBackfillMailboxSnapshot;
 use Carbon\Carbon;
 use Padosoft\AskMyDocsConnectorImap\Imap\ImapClientFactoryInterface;
 use Padosoft\AskMyDocsConnectorImap\Imap\ImapClientInterface;
@@ -25,7 +28,7 @@ use Padosoft\AskMyDocsConnectorImap\Imap\MailboxState;
  * ping false (login failure → 422); any other host → ping true (→ ACTIVE).
  * Sync methods return empty results so a stray sync no-ops cleanly.
  */
-final class FakeImapClientFactory implements ImapClientFactoryInterface
+final class FakeImapClientFactory implements ImapClientFactoryInterface, ImapBackfillClientFactory
 {
     public function make(array $connection, string $secret, string $authMode): ImapClientInterface
     {
@@ -34,6 +37,67 @@ final class FakeImapClientFactory implements ImapClientFactoryInterface
 
         return new FakeImapClient($pingOk);
     }
+
+    public function makeBackfill(array $connection, string $secret, string $authMode): ImapBackfillClient
+    {
+        $host = strtolower((string) ($connection['host'] ?? ''));
+        $pingOk = ! str_contains($host, 'invalid') && ! str_contains($host, 'fail');
+
+        return new FakeImapBackfillClient($pingOk);
+    }
+}
+
+/** Offline bulk companion used by the real-data backfill E2E. */
+final class FakeImapBackfillClient implements ImapBackfillClient
+{
+    public function __construct(private readonly bool $pingOk) {}
+
+    public function mailboxes(): array
+    {
+        if (! $this->pingOk) {
+            throw new \RuntimeException('FakeImapBackfillClient: IMAP connect failed.');
+        }
+
+        return FakeImapClient::FAKE_FOLDERS;
+    }
+
+    public function selectMailbox(string $mailbox): MailboxState
+    {
+        return new MailboxState(uidValidity: 1, lastUid: 0);
+    }
+
+    public function snapshotMailbox(string $mailbox): ImapBackfillMailboxSnapshot
+    {
+        return new ImapBackfillMailboxSnapshot(uidValidity: 1, maxUid: 0, messageCount: 0);
+    }
+
+    public function uidsBetween(
+        string $mailbox,
+        Carbon $start,
+        Carbon $end,
+        int $afterUid = 0,
+        ?int $throughUid = null,
+        ?int $limit = null,
+    ): array {
+        return [];
+    }
+
+    public function fetchMessage(string $mailbox, int $uid): ImapMessage
+    {
+        throw new \LogicException('FakeImapBackfillClient has no messages.');
+    }
+
+    public function internalDate(string $mailbox, int $uid): Carbon
+    {
+        throw new \LogicException('FakeImapBackfillClient has no messages.');
+    }
+
+    public function fetchMessages(string $mailbox, array $uids): array
+    {
+        return [];
+    }
+
+    public function close(): void {}
 }
 
 /**

@@ -94,6 +94,7 @@ class ConversationController extends Controller
 
         $firstMessage = $conversation->messages()
             ->where('role', 'user')
+            ->orderBy('id')
             ->first();
 
         if (! $firstMessage) {

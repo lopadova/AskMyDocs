@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures';
 
 /*
  * PR6 — Phase F1. Admin Dashboard RBAC denial scenarios.

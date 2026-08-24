@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Widget;
 
+use App\Models\WidgetIdentity;
 use App\Models\WidgetKey;
 use App\Models\WidgetSession;
 use App\Models\WidgetSessionToken;
 use App\Services\Widget\WidgetSessionTokenService;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -78,6 +80,32 @@ final class WidgetSessionTokenServiceTest extends TestCase
         ]);
     }
 
+    public function test_mint_rejects_an_authenticated_session_without_its_matching_identity(): void
+    {
+        $identity = WidgetIdentity::query()->create([
+            'tenant_id' => $this->key->tenant_id,
+            'widget_key_id' => $this->key->id,
+            'project_key' => $this->key->project_key,
+            'subject_hash' => hash('sha256', 'owner'),
+        ]);
+        $session = WidgetSession::query()->create([
+            'tenant_id' => $this->key->tenant_id,
+            'widget_key_id' => $this->key->id,
+            'widget_identity_id' => $identity->id,
+            'project_key' => $this->key->project_key,
+            'public_session_id' => (string) \Illuminate\Support\Str::uuid(),
+            'status' => WidgetSession::STATUS_ACTIVE,
+            'skill' => $this->key->skill,
+        ]);
+
+        try {
+            $this->service->mint($this->key, $session, null);
+            $this->fail('Mint must reject an authenticated session without its owner identity.');
+        } catch (AuthorizationException) {
+            $this->assertDatabaseCount('widget_session_tokens', 0);
+        }
+    }
+
     // ─── Consume ───────────────────────────────────────────────────
 
     public function test_consume_valid_token_returns_key(): void
@@ -137,6 +165,19 @@ final class WidgetSessionTokenServiceTest extends TestCase
 
         $result = $this->service->consume($minted['token'], 'https://evil.test');
         $this->assertNull($result);
+    }
+
+    public function test_consume_rejects_an_origin_removed_from_the_current_key_allowlist(): void
+    {
+        $minted = $this->service->mint($this->key, null, 'https://allowed.test');
+        $this->key->forceFill(['allowed_origins' => ['https://replacement.test']])->save();
+
+        $this->assertNull($this->service->consume($minted['token'], 'https://allowed.test'));
+
+        $row = WidgetSessionToken::query()
+            ->where('token', hash('sha256', $minted['token']))
+            ->firstOrFail();
+        $this->assertNull($row->consumed_at, 'Revoking an origin must fail without consuming the token.');
     }
 
     public function test_consume_accepts_originless_token_from_any_origin(): void
@@ -228,14 +269,42 @@ final class WidgetSessionTokenServiceTest extends TestCase
         $this->assertSame($session->id, $result['session']->id);
     }
 
-    // ─── R21: Atomicità — no TOCTOU ───────────────────────────────
+    public function test_consume_rejects_a_token_whose_session_belongs_to_another_key(): void
+    {
+        $otherKey = $this->makeKey(['project_key' => 'other-project']);
+        $otherSession = WidgetSession::query()->create([
+            'tenant_id' => $otherKey->tenant_id,
+            'widget_key_id' => $otherKey->id,
+            'project_key' => $otherKey->project_key,
+            'public_session_id' => (string) \Illuminate\Support\Str::uuid(),
+            'status' => WidgetSession::STATUS_ACTIVE,
+            'skill' => $otherKey->skill,
+        ]);
+        $plain = 'wt_cross_key_session';
+        WidgetSessionToken::query()->create([
+            'tenant_id' => $this->key->tenant_id,
+            'token' => hash('sha256', $plain),
+            'widget_key_id' => $this->key->id,
+            'widget_session_id' => $otherSession->id,
+            'origin' => null,
+            'expires_at' => now()->addMinutes(5),
+        ]);
 
-    public function test_consume_is_atomic_no_double_consume_under_concurrency(): void
+        $this->assertNull($this->service->consume($plain, null));
+
+        $row = WidgetSessionToken::query()->where('token', hash('sha256', $plain))->firstOrFail();
+        $this->assertNull($row->consumed_at, 'A cross-key token must fail closed without being consumed.');
+    }
+
+    // ─── R21: replay contract (row-lock race requires PostgreSQL) ──
+
+    public function test_consume_rejects_a_second_attempt_after_the_first_commits(): void
     {
         $minted = $this->service->mint($this->key, null, null);
 
-        // Simulate two concurrent consume attempts using DB transactions
-        // The first lock will win; the second will see consumed_at set.
+        // This test verifies the externally observable replay contract. The
+        // cross-connection race is enforced in production by the transaction
+        // plus lockForUpdate in consume(); SQLite cannot model that row lock.
         $results = [];
 
         DB::transaction(function () use ($minted, &$results) {

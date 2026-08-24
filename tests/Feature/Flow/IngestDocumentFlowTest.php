@@ -67,10 +67,10 @@ final class IngestDocumentFlowTest extends TestCase
 
         $run = Flow::execute(
             IngestDocumentFlow::NAME,
-            $this->buildInput('default', 'demo', 'docs/intro.md'),
+            $this->buildInput('test-tenant', 'demo', 'docs/intro.md'),
             FlowExecutionOptions::make(
-                idempotencyKey: 'default:demo:docs/intro.md',
-                correlationId: 'default',
+                idempotencyKey: 'test-tenant:demo:docs/intro.md',
+                correlationId: 'test-tenant',
             ),
         );
 
@@ -80,7 +80,7 @@ final class IngestDocumentFlowTest extends TestCase
         // Persisted Flow rows live alongside the run id.
         $runRow = DB::table('flow_runs')->where('id', $run->id)->first();
         $this->assertNotNull($runRow);
-        $this->assertSame('default', $runRow->tenant_id);
+        $this->assertSame('test-tenant', $runRow->tenant_id);
         $this->assertSame('succeeded', $runRow->status);
         $this->assertSame(IngestDocumentFlow::NAME, $runRow->definition_name);
 
@@ -98,7 +98,7 @@ final class IngestDocumentFlowTest extends TestCase
             'maybe-dispatch-collections-evaluator',
         ], $stepNames);
         foreach ($stepRows as $stepRow) {
-            $this->assertSame('default', $stepRow->tenant_id);
+            $this->assertSame('test-tenant', $stepRow->tenant_id);
         }
 
         $auditCount = DB::table('flow_audit')->where('run_id', $run->id)->count();
@@ -112,19 +112,19 @@ final class IngestDocumentFlowTest extends TestCase
 
         $first = Flow::execute(
             IngestDocumentFlow::NAME,
-            $this->buildInput('default', 'demo', 'docs/intro.md'),
+            $this->buildInput('test-tenant', 'demo', 'docs/intro.md'),
             FlowExecutionOptions::make(
-                idempotencyKey: 'default:demo:docs/intro.md',
-                correlationId: 'default',
+                idempotencyKey: 'test-tenant:demo:docs/intro.md',
+                correlationId: 'test-tenant',
             ),
         );
 
         $second = Flow::execute(
             IngestDocumentFlow::NAME,
-            $this->buildInput('default', 'demo', 'docs/intro.md'),
+            $this->buildInput('test-tenant', 'demo', 'docs/intro.md'),
             FlowExecutionOptions::make(
-                idempotencyKey: 'default:demo:docs/intro.md',
-                correlationId: 'default',
+                idempotencyKey: 'test-tenant:demo:docs/intro.md',
+                correlationId: 'test-tenant',
             ),
         );
 
@@ -153,7 +153,7 @@ final class IngestDocumentFlowTest extends TestCase
             IngestDocumentFlow::NAME,
             $this->buildInput('tenant-a', 'demo', 'docs/intro.md'),
             FlowExecutionOptions::make(
-                idempotencyKey: 'tenant-a:demo:docs/intro.md',
+                idempotencyKey: 'shared-ingest-key',
                 correlationId: 'tenant-a',
             ),
         );
@@ -167,7 +167,7 @@ final class IngestDocumentFlowTest extends TestCase
             IngestDocumentFlow::NAME,
             $this->buildInput('tenant-b', 'demo', 'docs/intro.md'),
             FlowExecutionOptions::make(
-                idempotencyKey: 'tenant-b:demo:docs/intro.md',
+                idempotencyKey: 'shared-ingest-key',
                 correlationId: 'tenant-b',
             ),
         );
@@ -212,10 +212,10 @@ MD;
 
         $run = Flow::execute(
             IngestDocumentFlow::NAME,
-            $this->buildInput('default', 'demo', 'docs/dec.md'),
+            $this->buildInput('test-tenant', 'demo', 'docs/dec.md'),
             FlowExecutionOptions::make(
-                idempotencyKey: 'default:demo:docs/dec.md',
-                correlationId: 'default',
+                idempotencyKey: 'test-tenant:demo:docs/dec.md',
+                correlationId: 'test-tenant',
             ),
         );
 
@@ -264,18 +264,18 @@ MD;
 
         // Step 2: simulate the queue-worker boot context — the worker
         // process always boots with the default tenant. Without the fix
-        // the job would call Flow::execute() with tenant_id='default'
+        // the job would call Flow::execute() with the worker's test tenant
         // and ingest into the wrong tenant.
         $tenantContext->reset();
-        $this->assertSame('default', $tenantContext->current());
+        $this->assertSame('test-tenant', $tenantContext->current());
 
         // Sync queue (configured by TestCase) executed the job inline
         // when dispatchForCurrentTenant returned, so the run already
         // happened above. The reset() above proves we are now back on
-        // 'default' AFTER handle() completed.
+        // 'test-tenant' AFTER handle() completed.
         unset($pending);
 
-        // Assert: the doc landed under 'tenant-a', not 'default'.
+        // Assert: the doc landed under 'tenant-a', not the worker tenant.
         $this->assertSame(
             1,
             KnowledgeDocument::where('tenant_id', 'tenant-a')->count(),
@@ -284,7 +284,7 @@ MD;
         );
         $this->assertSame(
             0,
-            KnowledgeDocument::where('tenant_id', 'default')->count(),
+            KnowledgeDocument::where('tenant_id', 'test-tenant')->count(),
             'Job must NOT fall back to the worker process default tenant.',
         );
 

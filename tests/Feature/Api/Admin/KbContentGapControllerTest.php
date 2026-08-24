@@ -52,7 +52,7 @@ final class KbContentGapControllerTest extends TestCase
     private function seedGap(string $query, int $occurrences, array $extra = []): KbSearchFailure
     {
         return KbSearchFailure::create(array_merge([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'eng',
             'query_hash' => hash('sha256', $query),
             'normalized_query' => $query,

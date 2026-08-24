@@ -94,6 +94,7 @@ export function ConnectionActionsMenu({
     const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
     const triggerRef = useRef<HTMLButtonElement>(null);
     const panelRef = useRef<HTMLDivElement>(null);
+    const hasCoords = coords !== null;
 
     const { id, status, isCredential } = vm;
     const base = `connector-connection-${id}`;
@@ -104,13 +105,20 @@ export function ConnectionActionsMenu({
         const rect = triggerRef.current?.getBoundingClientRect();
         if (!rect) return;
         const left = Math.max(8, Math.min(rect.right - PANEL_WIDTH, window.innerWidth - PANEL_WIDTH - 8));
-        setCoords({ top: rect.bottom + 6, left });
+        const panelHeight = panelRef.current?.getBoundingClientRect().height ?? 0;
+        const below = rect.bottom + 6;
+        const top = panelHeight > 0 && below + panelHeight > window.innerHeight - 8
+            ? Math.max(8, rect.top - panelHeight - 6)
+            : Math.max(8, Math.min(below, window.innerHeight - panelHeight - 8));
+        setCoords((current) => current?.top === top && current.left === left
+            ? current
+            : { top, left });
     }, []);
 
     // Measure synchronously before paint so the panel never flashes at 0,0.
     useLayoutEffect(() => {
         if (isOpen) reposition();
-    }, [isOpen, reposition]);
+    }, [isOpen, hasCoords, confirmingRemove, reposition]);
 
     // Reset the destructive-confirm whenever the menu closes so re-opening starts
     // clean; focus the first item on open (R15).

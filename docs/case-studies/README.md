@@ -5,13 +5,13 @@ Questo pacchetto serve a **due cose**:
 1. **Documentare la SPA admin pannello per pannello** — cosa serve ogni voce
    della sidebar e come si collauda. → cartella [`panels/`](panels/).
 2. **Collaudare l'isolamento multi-azienda** — caricare i documenti di **tre
-   aziende di settori completamente diversi** in **tre progetti separati** e
+   aziende di settori completamente diversi** in **tre tenant/progetti separati** e
    verificare che, quando si interroga un'azienda, **i documenti delle altre
    non vengano mai mischiati** nelle risposte. → cartella [`data/`](data/) +
    [`ingest.sh`](ingest.sh).
 
 L'ambiente di sviluppo resta **uno solo**: la separazione tra le aziende è
-logica (per `project_key`), non per istanza.
+logica (`tenant_id = project_key`), non per istanza.
 
 ---
 
@@ -50,7 +50,8 @@ La separazione poggia su **due assi**, entrambi applicati nel percorso di
 retrieval:
 
 1. **`tenant_id`** — tutte le query KB passano da `forTenant($tenantId)`
-   (trait `BelongsToTenant`). In dev il tenant è `default`.
+   (trait `BelongsToTenant`). Nel setup corrente dei case study ogni azienda ha
+   il proprio tenant, con slug uguale al `project_key`.
    → `app/Services/Kb/KbSearchService.php`, regola **R30**.
 2. **`project_key`** — la ricerca filtra `where('knowledge_chunks.project_key', …)`
    sul progetto richiesto dalla chat.
@@ -68,7 +69,7 @@ comportamento corretto quando chiedo all'azienda A un fatto che vive solo in B.
 
 ---
 
-## 3. Setup — caricare i tre dataset (un comando)
+## 3. Setup — caricare i tre dataset
 
 **Prerequisiti**: DB migrato e raggiungibile; chiavi per gli **embeddings**
 configurate (`AI_EMBEDDINGS_PROVIDER` + relativa API key — l'ingest calcola gli
@@ -86,10 +87,54 @@ se ne crei dopo, rilancia `ingest.sh`: è idempotente); comandi lanciati dalla
 > `KB_CHANGE_ANALYSIS_ENABLED=false` in `.env` (le card di Doc Insights
 > resteranno semplicemente vuote).
 
+Il percorso raccomandato, coerente con l’isolamento per tenant, è:
+
 ```bash
-cd /path/to/AskMyDocs   # la root del repository
-docs/case-studies/ingest.sh
+php artisan demo:init-case-studies --skip-emails
 ```
+
+Per aggiungere anche il dataset email `large` usa il flusso descritto in
+[`../testing/email-ingest-e2e.md`](../testing/email-ingest-e2e.md):
+
+```bash
+php artisan demo:init-case-studies \
+  --profile=large \
+  --generate-email-dataset \
+  --ingest-emails
+```
+
+Il dataset `large` contiene 6.000 email (2.000 per azienda, 1.000 per mailbox).
+I cataloghi correnti sono versionati in
+`database/seeders/email-dataset/catalogs/v1/`; ogni azienda ha 6 personas, 9
+fatti, 9 scenari e 4 canarini. La versione corrente genera text/plain e nessun
+attachment.
+
+La generazione e il quality gate sono offline e deterministici. Il validator
+usa SQLite temporaneo per identità/thread corpus-sized e blocca anche le
+frasi-canary di un'altra azienda; non è però uno scanner PII e non misura
+near-duplicate.
+
+Per l'ingest IMAP il disco KB deve usare `KB_DISK_THROW=true`. I parent vengono
+spostati dal path UID transitorio a un path stabile che include
+`dataset_version + fixture_id`; una riconsegna della stessa versione può
+ripristinare la proiezione soft-deleted esatta.
+
+La rimozione IMAP di una versione, senza riappendere, richiede entrambi i flag:
+
+```bash
+php artisan mail:seed-imap \
+  --all \
+  --dataset-version=<versione> \
+  --purge-dataset \
+  --purge-only \
+  --summary-only
+```
+
+La generazione è validata offline; IMAP reale, PostgreSQL/pgvector, retrieval,
+costi e performance restano certificazioni live separate.
+
+`docs/case-studies/ingest.sh` resta un helper legacy per testare tre progetti
+nel tenant attivo; non rappresenta la topologia multi-tenant del dataset email.
 
 Lo script [`ingest.sh`](ingest.sh), per ciascuna azienda:
 
@@ -106,11 +151,12 @@ Lo script [`ingest.sh`](ingest.sh), per ciascuna azienda:
 ### Verifica rapida dopo l'ingest
 
 ```bash
-# 11 documenti per progetto, tenant 'default'
+# 11 documenti canonici per tenant/progetto
 php artisan tinker --execute='
   foreach (["rotta-logistics","prometeo-antincendio","passolibero-calzature"] as $k) {
-    $n = \App\Models\KnowledgeDocument::where("project_key",$k)->count();
-    echo "$k: $n documenti\n";
+    $n = \App\Models\KnowledgeDocument::query()
+      ->where("tenant_id",$k)->where("project_key",$k)->count();
+    echo "$k: $n documenti (prima delle email)\n";
   }'
 ```
 
@@ -126,10 +172,10 @@ Se hai girato `DemoSeeder`/`RbacSeeder`: `admin@demo.local` / `password`
 
 ### Utenti per l'isolamento per-utente (opzionale)
 
-`ingest.sh` concede a **tutti** gli utenti la membership su **tutti e tre** i
-progetti (serve al Project Switcher) — l'opposto di "l'utente di AziendaX vede
-solo X". Per collaudare anche l'**asse per-utente** crea tre account `viewer`,
-ciascuno membro **solo** della propria azienda:
+Il setup legacy `ingest.sh` concede a **tutti** gli utenti la membership sui
+tre progetti del tenant attivo. Il percorso raccomandato
+`demo:init-case-studies` crea invece tre account `viewer`, ciascuno membro
+**solo** del tenant/progetto della propria azienda:
 
 ```bash
 php artisan db:seed --class=Database\\Seeders\\CaseStudyUsersSeeder
@@ -390,10 +436,19 @@ stampa una tabella PASS/FAIL, con exit non-zero se qualcosa trapela. Non chiama
 l'LLM di chat (solo retrieval + rifiuto + citazioni → deterministico):
 
 ```bash
-php artisan case-study:verify-isolation                 # tutti e 3 i progetti, tenant 'default'
-php artisan case-study:verify-isolation --tenant=acme   # altro tenant
-php artisan case-study:verify-isolation --project=rotta-logistics
-php artisan case-study:verify-isolation --strict        # tratta anche i WARN come FAIL
+php artisan case-study:verify-isolation \
+  --tenant=rotta-logistics \
+  --project=rotta-logistics
+php artisan case-study:verify-isolation \
+  --tenant=prometeo-antincendio \
+  --project=prometeo-antincendio
+php artisan case-study:verify-isolation \
+  --tenant=passolibero-calzature \
+  --project=passolibero-calzature
+php artisan case-study:verify-isolation \
+  --tenant=rotta-logistics \
+  --project=rotta-logistics \
+  --strict                                      # tratta anche i WARN come FAIL
 ```
 
 **PASS / WARN / FAIL** — l'isolamento e il rifiuto sono due proprietà distinte:
@@ -438,11 +493,12 @@ Dettaglio completo nei file `panels/*.md`. In sintesi:
   senza risposta della sola azienda scelta.
 - **Synonyms**: crea un sinonimo su un progetto → non deve comparire negli
   altri progetti. **Collections**: sono per-tenant (nessuna dimensione
-  progetto): con i 3 dataset nello stesso tenant è atteso che l'anteprima
-  semantica possa contare documenti di più aziende — non è un difetto.
-- **Dashboard / AI Insights / Logs**: aggregano l'intero **tenant** → vedrai le
-  tre aziende insieme nei "Top projects" e nei log di chat (è corretto: lì
-  l'isolamento è a livello tenant, non progetto).
+  progetto): nel setup raccomandato ogni tenant contiene una sola azienda. Solo
+  il setup legacy `ingest.sh`, che mette i tre progetti nello stesso tenant,
+  consente a un’anteprima di contarne più di uno.
+- **Dashboard / AI Insights / Logs**: aggregano l'intero **tenant**. Nel setup
+  raccomandato mostrano quindi una sola azienda; nel setup legacy mostrano i
+  tre progetti insieme.
 - **Maintenance** (`/app/admin/maintenance`): puoi rilanciare in sicurezza
   `kb:rebuild-graph` (non distruttivo) o, da super-admin, provare il flusso
   confirm-token su un comando distruttivo.
@@ -471,9 +527,19 @@ Dettaglio completo nei file `panels/*.md`. In sintesi:
 ## 9. Pulizia
 
 ```bash
-docs/case-studies/teardown.sh               # rimuove documenti+chunk+grafo+file su disco
-docs/case-studies/teardown.sh --memberships # rimuove anche le ProjectMembership
+docs/case-studies/teardown.sh \
+  --tenant=rotta-logistics \
+  --project=rotta-logistics
+
+docs/case-studies/teardown.sh \
+  --tenant=rotta-logistics \
+  --project=rotta-logistics \
+  --memberships
 ```
+
+Ripetere con una coppia tenant/progetto esplicita per ogni azienda. Per il
+rollback soft di una sola versione email usare `--dataset-version=<versione>`;
+vedi il [runbook email](../testing/email-ingest-e2e.md#9-rollback-per-dataset-version).
 
 > **Cosa NON rimuove il teardown**: gli artefatti creati altrove durante i
 > test restano e vanno ripuliti a mano dalla SPA se vuoi l'ambiente
@@ -489,8 +555,8 @@ docs/case-studies/teardown.sh --memberships # rimuove anche le ProjectMembership
 ```
 docs/case-studies/
 ├── README.md                 ← questo file (setup + test pagina-per-pagina + isolamento)
-├── ingest.sh                 ← carica i 3 dataset come 3 progetti (un comando)
-├── teardown.sh               ← rimuove i 3 dataset
+├── ingest.sh                 ← helper legacy: 3 progetti nel tenant attivo
+├── teardown.sh               ← cleanup esplicito per tenant/progetto/versione
 ├── panels/                   ← documentazione pannello-per-pannello della sidebar
 │   ├── 01-workspace-chat.md
 │   ├── 02-administration.md

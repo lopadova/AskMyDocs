@@ -7,6 +7,7 @@ namespace App\Console\Commands;
 use App\Models\User;
 use App\Services\Admin\Exceptions\TeamRegistryUnavailableException;
 use App\Services\Admin\TeamRegistryService;
+use App\Support\PlatformAccess;
 use Illuminate\Console\Command;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
@@ -16,10 +17,9 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
  * `tenants.name`, over the SAME {@see TeamRegistryService} the HTTP
  * `PATCH /api/admin/teams/{slug}` uses. `slug` is the immutable tenant_id.
  *
- * Authorization runs through the service against the ACTOR (membership OR
- * tenant.cross-access); the default actor is the first super-admin (who has
- * cross-access), so an operator can rename any team. A team the actor may
- * not administer fails as "not found".
+ * Authorization runs through the service against the ACTOR's membership.
+ * The default actor is the first system-admin that is also a member of the
+ * target tenant. A team the actor may not administer fails as "not found".
  *
  *   php artisan team:rename acme "Acme Corporation"
  *   php artisan team:rename acme "Acme Corporation" --actor=admin@acme.com
@@ -29,7 +29,7 @@ class RenameTeamCommand extends Command
     protected $signature = 'team:rename
         {slug : The team slug (tenant_id) to rename}
         {name : The new display name}
-        {--actor= : Email or id of the operator (default: first super-admin)}';
+        {--actor= : Email or id of the operator (default: first system-admin member of the target tenant)}';
 
     protected $description = 'Rename a team (tenant): update its display name in the tenants registry.';
 
@@ -38,7 +38,7 @@ class RenameTeamCommand extends Command
         $slug = (string) $this->argument('slug');
         $name = (string) $this->argument('name');
 
-        $actor = $this->resolveActor();
+        $actor = $this->resolveActor($slug);
         if ($actor === null) {
             return self::FAILURE;
         }
@@ -68,7 +68,7 @@ class RenameTeamCommand extends Command
         return self::SUCCESS;
     }
 
-    private function resolveActor(): ?User
+    private function resolveActor(string $slug): ?User
     {
         $ref = trim((string) $this->option('actor'));
 
@@ -81,9 +81,14 @@ class RenameTeamCommand extends Command
             return $user;
         }
 
-        $user = User::role('super-admin', 'web')->first();
+        $user = User::role(PlatformAccess::SYSTEM_ADMIN_ROLE, 'web')
+            ->whereHas(
+                'projectMemberships',
+                fn ($memberships) => $memberships->where('tenant_id', $slug),
+            )
+            ->first();
         if ($user === null) {
-            $this->error('No super-admin found — pass --actor=<email|id>.');
+            $this->error("No system-admin member of '{$slug}' found — pass --actor=<email|id>.");
         }
 
         return $user;

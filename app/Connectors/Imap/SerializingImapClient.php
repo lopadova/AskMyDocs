@@ -8,6 +8,7 @@ use Carbon\Carbon;
 use Illuminate\Contracts\Cache\Lock;
 use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Contracts\Cache\LockTimeoutException;
+use Illuminate\Support\Facades\Log;
 use Padosoft\AskMyDocsConnectorImap\Imap\ImapClientInterface;
 use Padosoft\AskMyDocsConnectorImap\Imap\ImapMessage;
 use Padosoft\AskMyDocsConnectorImap\Imap\MailboxState;
@@ -119,6 +120,13 @@ final class SerializingImapClient implements ImapClientInterface
         // throwing or silently disabling serialization.
         $ttlSeconds = max(1, $this->ttlSeconds);
         $waitSeconds = max(0, $this->waitSeconds);
+        $startedAt = microtime(true);
+
+        Log::info('[imap-test-fetch-diag] waiting for shared mailbox lock', [
+            'mailbox_lock_key' => $this->lockKey,
+            'wait_seconds' => $waitSeconds,
+            'ttl_seconds' => $ttlSeconds,
+        ]);
 
         $lock = $this->lockProvider->lock($this->lockKey, $ttlSeconds);
 
@@ -126,6 +134,12 @@ final class SerializingImapClient implements ImapClientInterface
             // block() returns true on acquire, throws LockTimeoutException on timeout.
             $lock->block($waitSeconds);
         } catch (LockTimeoutException $e) {
+            Log::warning('[imap-test-fetch-diag] shared mailbox lock timed out', [
+                'mailbox_lock_key' => $this->lockKey,
+                'wait_seconds' => $waitSeconds,
+                'ttl_seconds' => $ttlSeconds,
+                'elapsed_ms' => Backfill\ImapBackfillDiagnostics::elapsedMs($startedAt),
+            ]);
             throw new MailboxBusyException(
                 'Mailbox busy: another connection to this account is already in progress.',
                 previous: $e,
@@ -134,6 +148,11 @@ final class SerializingImapClient implements ImapClientInterface
 
         $this->lock = $lock;
         $this->held = true;
+        Log::info('[imap-test-fetch-diag] shared mailbox lock acquired', [
+            'mailbox_lock_key' => $this->lockKey,
+            'ttl_seconds' => $ttlSeconds,
+            'elapsed_ms' => Backfill\ImapBackfillDiagnostics::elapsedMs($startedAt),
+        ]);
     }
 
     private function release(): void
@@ -149,7 +168,14 @@ final class SerializingImapClient implements ImapClientInterface
         // fatal "exception without a stack frame".
         try {
             $this->lock?->release();
-        } catch (\Throwable) {
+            Log::info('[imap-test-fetch-diag] shared mailbox lock released', [
+                'mailbox_lock_key' => $this->lockKey,
+            ]);
+        } catch (\Throwable $exception) {
+            Log::warning('[imap-test-fetch-diag] shared mailbox lock release failed', [
+                'mailbox_lock_key' => $this->lockKey,
+                'exception_chain' => Backfill\ImapBackfillDiagnostics::exceptionChain($exception),
+            ]);
             // ignore — the lock TTL is the backstop.
         } finally {
             $this->lock = null;

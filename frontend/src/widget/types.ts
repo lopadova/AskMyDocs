@@ -8,6 +8,21 @@
 export interface WidgetConfig {
     /** Chiave pubblica (pk_...). Obbligatoria. */
     key: string;
+    /**
+     * Short-lived authenticated user token (`wu_…`) minted server-to-server by
+     * the host application. Never place the host subject/email/internal id here.
+     * Backward-compatible static mode: the token stays in memory until it
+     * expires, but cannot be renewed automatically without `userTokenUrl`.
+     */
+    userToken?: string;
+    /**
+     * Same-origin host endpoint that returns `{ token: "wu_…", expires_at }`.
+     * The widget calls it with the host session cookie (`credentials:
+     * "same-origin"`) at boot and whenever the short-lived token needs renewal.
+     * The endpoint must authenticate the current host user server-side; never
+     * expose the identity secret or the host subject/email to the browser.
+     */
+    userTokenUrl?: string;
     /** Base URL dell'istanza AskMyDocs. Default: stessa origine ('' ). In
      *  modalità proxy (B) punta al backend del sito ospite. */
     apiBase?: string;
@@ -40,7 +55,8 @@ export interface WidgetConfig {
     /**
      * Modalità di resa del widget (precedenza sul `theme.mode` server):
      *   - `helper` (default) launcher flottante → pannello a comparsa;
-     *   - `inline`           blocco chat che riempie {@link WidgetConfig.mount}.
+     *   - `inline`           blocco chat che riempie {@link WidgetConfig.mount};
+     *   - `fullscreen`       esperienza chat che occupa l'intera viewport.
      * L'embed snippet la "congela" inline perché il mount è specifico del sito.
      */
     mode?: WidgetMode;
@@ -51,10 +67,41 @@ export interface WidgetConfig {
      */
     mount?: string;
     /**
-     * Tema grafico INLINE opzionale (precedenza massima: inline > server > default).
+     * Tema grafico INLINE opzionale. Precedenza effettiva:
+     * CSS host `--askmydocs-*` > inline > server > default.
      * Parziale: ogni campo assente cade sul tema server (/setup) o sul default.
      */
     theme?: Partial<WidgetTheme>;
+    /**
+     * Structured pre-conversation content. The host may override the per-key
+     * server default field-by-field, or pass `false` to disable it for a page.
+     * Arbitrary HTML is deliberately unsupported.
+     */
+    intro?: Partial<WidgetIntro> | false;
+}
+
+export type WidgetIntroVariant = 'compact' | 'card' | 'hero';
+export type WidgetIntroIcon = 'sparkles' | 'chat' | 'search' | 'help' | 'none';
+
+export interface WidgetIntroSuggestion {
+    label: string;
+    prompt: string;
+}
+
+export interface WidgetIntro {
+    enabled: boolean;
+    variant: WidgetIntroVariant;
+    eyebrow: string;
+    title: string;
+    subtitle: string;
+    body: string;
+    imageUrl: string;
+    imageAlt: string;
+    icon: WidgetIntroIcon;
+    bullets: string[];
+    suggestions: WidgetIntroSuggestion[];
+    dismissible: boolean;
+    hideAfterFirstMessage: boolean;
 }
 
 /**
@@ -93,13 +140,14 @@ export interface HostExecResponse {
  * comparsa (kitt). `inline` = blocco chat che riempie il container ospite (chat
  * legata a una pagina). Mirror di WidgetThemeService::MODES (PHP).
  */
-export type WidgetMode = 'helper' | 'inline';
+export type WidgetMode = 'helper' | 'inline' | 'fullscreen';
 
 /** Chiave di font ammessa (mappa su uno stack sicuro — vedi FONT_STACKS). */
 export type WidgetFontKey = 'system' | 'inter' | 'roboto' | 'georgia' | 'mono';
 export type LauncherSide = 'right' | 'left';
 export type LauncherShape = 'pill' | 'rounded' | 'circle';
 export type LauncherIcon = 'chat' | 'sparkles' | 'help' | 'none';
+export type WidgetShadow = 'none' | 'soft' | 'medium' | 'strong';
 
 /**
  * Identità grafica del widget. Forma piatta e tipizzata, speculare a
@@ -111,6 +159,7 @@ export interface WidgetTheme {
     mode: WidgetMode;
     // Colori (solo hex #rgb/#rrggbb/#rrggbbaa)
     accent: string;
+    accentForeground: string;
     background: string;
     foreground: string;
     muted: string;
@@ -123,6 +172,23 @@ export interface WidgetTheme {
     userBubbleForeground: string;
     assistantBubbleBackground: string;
     assistantBubbleForeground: string;
+    composerBackground: string;
+    inputBackground: string;
+    inputForeground: string;
+    inputPlaceholder: string;
+    citationBackground: string;
+    citationForeground: string;
+    focusRing: string;
+    systemBackground: string;
+    systemForeground: string;
+    errorBackground: string;
+    errorForeground: string;
+    confirmBackground: string;
+    confirmForeground: string;
+    confirmBorder: string;
+    sourceSidebarBackground: string;
+    sourceSidebarForeground: string;
+    sourceBackdrop: string;
     // Tipografia
     fontFamily: WidgetFontKey;
     fontSize: number;
@@ -132,12 +198,33 @@ export interface WidgetTheme {
     launcherLabel: string;
     launcherIcon: LauncherIcon;
     launcherIconUrl: string;
+    launcherOffsetX: number;
+    launcherOffsetY: number;
+    launcherSize: number;
+    launcherShadow: WidgetShadow;
     // Pannello
     panelWidth: number;
     panelHeight: number;
     panelRadius: number;
+    panelShadow: WidgetShadow;
     panelTitle: string;
     headerLogoUrl: string;
+    // Spaziatura e geometria
+    headerPaddingX: number;
+    headerPaddingY: number;
+    messagesPadding: number;
+    messageGap: number;
+    bubblePaddingX: number;
+    bubblePaddingY: number;
+    bubbleRadius: number;
+    bubbleMaxWidth: number;
+    composerPadding: number;
+    inputRadius: number;
+    buttonRadius: number;
+    logoHeight: number;
+    // Viewer fonti
+    sourceViewerWidth: number;
+    sourceViewerRadius: number;
 }
 
 export interface SnapshotField {
@@ -239,11 +326,42 @@ export interface ToolCall {
     is_host_tool?: boolean;
 }
 
+export interface CitationChunkEvidence {
+    chunk_id?: string | number | null;
+    heading?: string | null;
+    score?: number;
+    snippet?: string;
+    evidence_hash?: string | null;
+}
+
 export interface Citation {
     document_id: number | null;
     title: string;
     source_path: string | null;
-    origin?: string;
+    slug?: string | null;
+    project_key?: string | null;
+    source_type?: string | null;
+    generation_source?: 'auto' | 'human' | null;
+    headings?: string[];
+    chunks_used?: number;
+    origin?: 'primary' | 'related' | 'rejected' | string | null;
+    chunks?: CitationChunkEvidence[];
+}
+
+export interface WidgetDocumentSection {
+    heading_path: string | null;
+    content: string;
+}
+
+/** Session-scoped indexed document returned by the cited-source endpoint. */
+export interface WidgetDocumentPreview {
+    document_id: number;
+    title: string | null;
+    source_path: string | null;
+    source_type: string | null;
+    language: string | null;
+    source_updated_at: string | null;
+    sections: WidgetDocumentSection[];
 }
 
 /** Risposta del backend a start/step. */
@@ -257,6 +375,22 @@ export interface TurnResponse {
     bot_message?: string | null;
     reason?: string;
     meta?: Record<string, unknown>;
+}
+
+export interface WidgetAgentRun {
+    id: string;
+    status: string;
+    locale: string;
+    events_url: string;
+    cancel_url: string;
+    continue_url: string;
+    budget?: Record<string, unknown>;
+}
+
+export interface WidgetAgentTurnResponse {
+    session: { id: string; status: string; locale: string };
+    type: 'agent_run';
+    run: WidgetAgentRun;
 }
 
 export interface ToolResult {

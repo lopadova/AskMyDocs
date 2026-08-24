@@ -99,7 +99,7 @@ final class LoadCanonicalDocumentStepTest extends TestCase
         return new FlowContext(
             flowRunId: 'load-test-run',
             definitionName: 'kb.canonical-index',
-            input: array_merge(['tenant_id' => 'default'], $input),
+            input: array_merge(['tenant_id' => 'test-tenant'], $input),
             stepOutputs: [],
             dryRun: $dryRun,
         );

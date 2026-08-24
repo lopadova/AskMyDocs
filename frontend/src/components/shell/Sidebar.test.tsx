@@ -6,10 +6,12 @@ import { USERS } from '../../lib/seed';
 
 describe('Sidebar (unified rail)', () => {
     it('renders every admin section in the single rail — including the ones that used to live only in the AdminShell rail', () => {
-        render(<Sidebar active="chat" onNav={() => undefined} user={USERS[0]} projectCount={4} />);
+        render(<Sidebar active="chat" onNav={() => undefined} user={USERS[0]} projectCount={4} features={{ system_admin: true }} />);
         // Core + formerly-duplicated + formerly-rail-only sections all live here now.
         for (const id of [
             'chat',
+            'tenant-control',
+            'super-admins',
             'dashboard',
             'insights',
             'users',
@@ -36,6 +38,54 @@ describe('Sidebar (unified rail)', () => {
         ]) {
             expect(screen.getByTestId(`sidebar-nav-${id}`)).toBeInTheDocument();
         }
+    });
+
+    it('hides the global tenant control entry without the platform capability', () => {
+        render(
+            <Sidebar
+                active="chat"
+                onNav={() => undefined}
+                user={{ ...USERS[0], role: 'admin' }}
+                projectCount={4}
+                features={{ system_admin: false }}
+            />,
+        );
+
+        expect(screen.queryByTestId('sidebar-nav-tenant-control')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('sidebar-nav-super-admins')).not.toBeInTheDocument();
+    });
+
+    it('shows global tenant control from the server capability rather than the primary role label', () => {
+        render(
+            <Sidebar
+                active="chat"
+                onNav={() => undefined}
+                user={{ ...USERS[0], role: 'admin' }}
+                projectCount={4}
+                features={{ system_admin: true }}
+            />,
+        );
+
+        expect(screen.getByTestId('sidebar-nav-tenant-control')).toBeInTheDocument();
+        expect(screen.getByTestId('sidebar-nav-super-admins')).toBeInTheDocument();
+    });
+
+    it('hides tenant operations but keeps system administration when no tenant is assigned', () => {
+        render(
+            <Sidebar
+                active="tenant-control"
+                onNav={() => undefined}
+                user={USERS[0]}
+                projectCount={0}
+                features={{ system_admin: true }}
+                hasTenants={false}
+            />,
+        );
+
+        expect(screen.getByTestId('sidebar-nav-tenant-control')).toBeInTheDocument();
+        expect(screen.getByTestId('sidebar-nav-super-admins')).toBeInTheDocument();
+        expect(screen.queryByTestId('sidebar-nav-chat')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('sidebar-nav-users')).not.toBeInTheDocument();
     });
 
     it('fires onNav with the section id when an entry is clicked', async () => {

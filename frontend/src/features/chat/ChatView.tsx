@@ -11,8 +11,8 @@ import { useChatStore } from './chat.store';
 import { useAuthStore } from '../../lib/auth-store';
 import { selectCurrentHash, useTeamStore } from '../../lib/team-store';
 import { Icon } from '../../components/Icons';
-import { useChatStream } from './use-chat-stream';
-import type { RenderableMessage } from './message-shape-adapters';
+import { useAgentChat } from './use-agent-chat';
+import { AgentActivityBar } from './AgentActivityBar';
 import { SuggestedFollowups } from './SuggestedFollowups';
 import { CitationDocumentModal } from './CitationDocumentModal';
 import { chatPreferencesApi, CHAT_PREFERENCES_QUERY_KEY } from './chat-preferences.api';
@@ -350,7 +350,7 @@ export function ChatView(): ReactNode {
     // Drives the SuggestedFollowups refetch — never on every render.
     const [turnSettleId, setTurnSettleId] = useState(0);
 
-    const chat = useChatStream({
+    const chat = useAgentChat({
         conversationId: activeId,
         filters: effectiveFilters,
         initialMessages,
@@ -572,39 +572,10 @@ export function ChatView(): ReactNode {
 
     const isStreaming = chat.status === 'submitted' || chat.status === 'streaming';
 
-    // The SDK returns `messages: UIMessage[]` (string ids, no metadata).
-    // The TanStack history query returns `AppMessage[]` (numeric ids,
-    // full MessageMetadata).
-    //
-    // v4.5/W7 Tier 1 #3 + #5 — the branch button and the token-cost
-    // meter are both gated on data the SDK UIMessage doesn't carry
-    // (numeric id + token telemetry). Once the stream settles and
-    // `onFinish` invalidates the messages query, the refetched
-    // AppMessages cover the turns the SDK knows about — overlay them
-    // onto the SDK message tail by index-from-end so each assistant
-    // bubble surfaces the canonical persisted shape (numeric id +
-    // metadata) without losing any user turns the SDK still tracks
-    // but the GET stub / partial-history endpoint omitted. During
-    // the streaming window the SDK's live UIMessages remain
-    // exclusively in charge — they carry the in-flight tokens the
-    // user is watching accrue.
-    const persistedMessages = initialQuery.data;
-    const threadMessages: RenderableMessage[] = (() => {
-        if (isStreaming || !persistedMessages || persistedMessages.length === 0) {
-            return chat.messages;
-        }
-        // Merge: keep SDK-only head turns, overlay persisted tail.
-        // The persisted list aligns to the END of the SDK list (the
-        // BE returns the most recent N messages; the SDK may hold
-        // optimistic user turns the BE hasn't yet persisted).
-        const sdkLen = chat.messages.length;
-        const persistedLen = persistedMessages.length;
-        if (persistedLen >= sdkLen) {
-            return persistedMessages;
-        }
-        const headFromSdk = chat.messages.slice(0, sdkLen - persistedLen);
-        return [...headFromSdk, ...persistedMessages];
-    })();
+    // Agent runs materialize the final assistant row before their terminal
+    // event. The hook reloads that canonical history, so every rendered item
+    // already carries numeric ids, citations, API provenance and feedback.
+    const threadMessages = chat.messages;
 
     return (
         <div data-testid="chat-view" style={{ display: 'flex', height: '100%', flex: 1, minWidth: 0 }}>
@@ -616,57 +587,50 @@ export function ChatView(): ReactNode {
                 }
             />
             <div
+                className="chat-main-column"
                 style={{
                     flex: 1,
                     display: 'flex',
                     flexDirection: 'column',
                     minWidth: 0,
+                    minHeight: 0,
+                    overflow: 'hidden',
                     position: 'relative',
                 }}
             >
                 <header
                     data-testid="chat-header"
-                    style={{
-                        padding: '12px 24px',
-                        borderBottom: '1px solid var(--hairline)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 10,
-                    }}
+                    className="chat-header-shell"
                 >
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                        {activeId !== null ? (
-                            <ConversationTitle
-                                conversationId={activeId}
-                                title={
-                                    activeConversation?.title?.trim()
-                                        ? activeConversation.title
-                                        : `Conversation #${activeId}`
-                                }
-                            />
-                        ) : (
-                            <div style={{ fontSize: 13.5, fontWeight: 500, color: 'var(--fg-0)' }}>
-                                New chat
-                            </div>
-                        )}
-                        <div
-                            style={{
-                                fontSize: 11,
-                                color: 'var(--fg-3)',
-                                fontFamily: 'var(--font-mono)',
-                                marginTop: 2,
-                                display: 'flex',
-                                gap: 10,
-                            }}
-                        >
+                    <span className="chat-header-icon" aria-hidden="true">
+                        <Icon.Chat size={17} />
+                    </span>
+                    <div className="chat-header-content">
+                        <div className="chat-header-title-row">
+                            {activeId !== null ? (
+                                <ConversationTitle
+                                    conversationId={activeId}
+                                    title={
+                                        activeConversation?.title?.trim()
+                                            ? activeConversation.title
+                                            : `Conversation #${activeId}`
+                                    }
+                                />
+                            ) : (
+                                <div className="chat-header-new-title">New chat</div>
+                            )}
+                        </div>
+                        <div className="chat-header-meta">
+                            <span className="chat-header-meta-label">Project</span>
                             <ProjectSelector
                                 value={projectScopeValue}
                                 projects={teamProjectKeys}
                                 allowAll
                                 onChange={handleScopeChange}
                             />
-                            <span>·</span>
-                            <span>{headerMeta}</span>
+                            <span className="chat-header-meta-divider" aria-hidden="true" />
+                            <span className="chat-header-meta-label">Model</span>
+                            <span className="chat-model-chip">{headerMeta}</span>
                         </div>
                     </div>
                     <button
@@ -678,6 +642,14 @@ export function ChatView(): ReactNode {
                         <Icon.MoreH size={14} />
                     </button>
                 </header>
+
+                <AgentActivityBar
+                    events={chat.events}
+                    active={isStreaming}
+                    awaitingConfirmation={chat.confirmation !== null}
+                    onCancel={chat.stop}
+                    onContinue={() => void chat.continueRun()}
+                />
 
                 <MessageThread
                     conversationId={activeId}

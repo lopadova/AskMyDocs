@@ -174,23 +174,43 @@ class IngestDocumentJob implements ShouldQueue
                 'disk' => $this->disk,
             ]);
 
+            // Generated case-study email fixtures deliberately stop after the
+            // normal ingest/canonical pipeline. At large fixture volumes the
+            // two post-ingest AI jobs below would add cost without improving
+            // the synthetic corpus. Use a strict boolean marker: legacy/gold
+            // fixtures with no marker, false, or ambiguous string/integer
+            // values retain the existing behaviour.
+            //
+            // This gate is orthogonal to canonical state. The Flow above has
+            // already applied the normal canonical/non-canonical rules, and
+            // every non-generated document still reaches the job-specific
+            // canonical gates exactly as before.
+            $isGeneratedFixture = ($this->metadata['generated_fixture'] ?? null) === true;
+
             // v8.7/W3–W4 — dispatch the async AI deep-analysis now that the
             // document + chunks are committed (the analyzer reads chunks, so
             // it must run AFTER the flow's persist step, not from the
             // `KnowledgeDocument::created` hook which fires before chunks
             // exist). The job is itself config-gated (canonical-default ON /
-            // non-canonical opt-in) + debounced, so dispatching
-            // unconditionally here is cheap — the gate lives in one place.
-            if ($documentId !== null && (bool) config('kb.change_analysis.enabled', true)) {
+            // non-canonical opt-in) + debounced.
+            if (
+                $documentId !== null
+                && ! $isGeneratedFixture
+                && (bool) config('kb.change_analysis.enabled', true)
+            ) {
                 \App\Jobs\AnalyzeDocumentChangeJob::dispatch((int) $documentId, $this->tenantId);
             }
 
             // v8.11/P1 — dispatch the async Auto-Wiki frontmatter enrichment
             // (tags/summary/aliases/cross-refs into the auto tier). Like the
             // change-analysis job it is itself gated (AutoWikiGate) + version-
-            // idempotent, so dispatching unconditionally here is cheap. Default-ON
-            // (R43): KB_AUTOWIKI_ENABLED=false → no dispatch, behaviour unchanged.
-            if ($documentId !== null && (bool) config('kb.autowiki.enabled', true)) {
+            // idempotent. Default-ON (R43): KB_AUTOWIKI_ENABLED=false → no
+            // dispatch, behaviour unchanged.
+            if (
+                $documentId !== null
+                && ! $isGeneratedFixture
+                && (bool) config('kb.autowiki.enabled', true)
+            ) {
                 \App\Jobs\AutoWikiCompilerJob::dispatch((int) $documentId, $this->tenantId);
             }
         } finally {

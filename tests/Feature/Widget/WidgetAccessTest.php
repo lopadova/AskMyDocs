@@ -10,6 +10,8 @@ use App\Services\Widget\WidgetSessionTokenService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
+use Padosoft\AskMyDocsConnectorApi\Models\ApiConnector;
+use Padosoft\AskMyDocsConnectorApi\Models\ApiRoute;
 
 /**
  * M1 — gate del canale pubblico widget (`widget.key` + /api/widget/setup).
@@ -95,7 +97,9 @@ final class WidgetAccessTest extends TestCase
 
         $res->assertOk()
             ->assertJsonPath('skill', 'askmydocs-assistant@1')
-            ->assertJsonPath('project', 'hr-portal'); // R30: project dalla key
+            ->assertJsonPath('project', 'hr-portal') // R30: project dalla key
+            ->assertJsonPath('data_agent.enabled', false)
+            ->assertJsonPath('data_agent.tool_count', 0);
 
         $this->assertContains('click', $res->json('tools_enabled'));
         $this->assertContains('search_knowledge_base', $res->json('tools_enabled'));
@@ -103,7 +107,39 @@ final class WidgetAccessTest extends TestCase
         // Tema additivo (R27): key senza theme_config → default risolto.
         $res->assertJsonPath('theme.accent', '#2563eb')
             ->assertJsonPath('theme.fontFamily', 'system')
-            ->assertJsonPath('theme.launcherShape', 'pill');
+            ->assertJsonPath('theme.launcherShape', 'pill')
+            ->assertJsonPath('intro.enabled', false)
+            ->assertJsonPath('intro.variant', 'card');
+    }
+
+    public function test_setup_enables_the_data_agent_only_for_active_project_tools(): void
+    {
+        $key = $this->makeKey(['project_key' => 'orders']);
+        $connector = ApiConnector::create(['tenant_id' => 'default', 'name' => 'ERP', 'is_active' => true]);
+        ApiRoute::create([
+            'tenant_id' => 'default',
+            'api_connector_id' => $connector->id,
+            'project_key' => 'orders',
+            'name' => 'Orders',
+            'slug' => 'list_orders',
+            'http_method' => 'GET',
+            'url' => 'https://api.example.test/orders',
+            'mode' => 'tool',
+            'status' => 'active',
+            'tool_definition' => [
+                'name' => 'list_orders',
+                'description' => 'List orders',
+                'input_schema' => ['type' => 'object', 'properties' => []],
+            ],
+        ]);
+
+        $this->withHeaders([
+            'X-Widget-Key' => $key->public_key,
+            'Origin' => 'https://allowed.test',
+        ])->getJson('/api/widget/setup')
+            ->assertOk()
+            ->assertJsonPath('data_agent.enabled', true)
+            ->assertJsonPath('data_agent.tool_count', 1);
     }
 
     public function test_setup_returns_the_stored_theme_resolved_over_defaults(): void
@@ -121,6 +157,28 @@ final class WidgetAccessTest extends TestCase
             ->assertJsonPath('theme.accent', '#10b981')   // valore custom
             ->assertJsonPath('theme.launcherShape', 'circle')
             ->assertJsonPath('theme.background', '#ffffff'); // resto sui default
+    }
+
+    public function test_setup_returns_the_stored_intro_resolved_over_defaults(): void
+    {
+        $key = $this->makeKey([
+            'allowed_origins' => ['https://allowed.test'],
+            'intro_config' => [
+                'enabled' => true,
+                'title' => 'Product assistant',
+                'suggestions' => [['label' => 'Start', 'prompt' => 'Explain the product']],
+            ],
+        ]);
+
+        $this->withHeaders([
+            'X-Widget-Key' => $key->public_key,
+            'Origin' => 'https://allowed.test',
+        ])->getJson('/api/widget/setup')
+            ->assertOk()
+            ->assertJsonPath('intro.enabled', true)
+            ->assertJsonPath('intro.title', 'Product assistant')
+            ->assertJsonPath('intro.variant', 'card')
+            ->assertJsonPath('intro.suggestions.0.prompt', 'Explain the product');
     }
 
     public function test_proxy_mode_with_valid_secret_skips_the_origin_check(): void

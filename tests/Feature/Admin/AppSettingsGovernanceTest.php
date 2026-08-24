@@ -417,7 +417,7 @@ final class AppSettingsGovernanceTest extends TestCase
             ->assertOk();
 
         $this->assertDatabaseHas('app_settings', [
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => '*',
             'setting_key' => 'ai.provider',
         ]);
@@ -433,7 +433,7 @@ final class AppSettingsGovernanceTest extends TestCase
         // A tenant '*' override must surface as source=tenant even when the
         // caller passes an empty ?project_key= (normalised to the wildcard,
         // not resolved as a literal empty project scope).
-        app(AppSettingsResolver::class)->set('ai.provider', 'anthropic', 'default');
+        app(AppSettingsResolver::class)->set('ai.provider', 'anthropic', 'test-tenant');
 
         $resp = $this->actingAs($this->superAdmin())
             ->getJson('/api/admin/app-settings?project_key=')
@@ -452,7 +452,7 @@ final class AppSettingsGovernanceTest extends TestCase
             ->assertOk();
 
         $this->assertDatabaseHas('app_settings', [
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => '*',
             'setting_key' => 'ai.provider',
         ]);

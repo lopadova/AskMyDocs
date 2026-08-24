@@ -6,6 +6,7 @@ namespace Tests\Unit\Services\Demo;
 
 use App\Services\Demo\EmailMessageBuilder;
 use App\Services\Demo\MailboxTarget;
+use Carbon\Carbon;
 use Database\Seeders\TestEmailFixtures;
 use Tests\TestCase;
 
@@ -54,6 +55,9 @@ final class EmailMessageBuilderTest extends TestCase
         $this->assertMatchesRegularExpression('/^Date: .*2024/m', $raw);
         // Il "fatto-esca" sopravvive alla codifica del corpo (ASCII).
         $this->assertStringContainsString('RL-2024-0815', $raw);
+        // Il layer gold legacy resta fuori dal namespace riservato che abilita
+        // il gate AI delle fixture generate v2.
+        $this->assertStringContainsString('@gold-fixtures.askmydocs.invalid>', $raw);
     }
 
     public function test_seed_header_matches_the_target_mailbox_key(): void
@@ -84,5 +88,74 @@ final class EmailMessageBuilderTest extends TestCase
         // Header = mailbox_key (purge mailbox-scoped); To = indirizzo della casella.
         $this->assertStringContainsString(TestEmailFixtures::SEED_HEADER.': prometeo-antincendio-2', $raw);
         $this->assertStringContainsString('To: prometeo.test2.askmydocs@gmail.com', $raw);
+    }
+
+    public function test_schema_v2_message_is_deterministic_and_preserves_thread_headers(): void
+    {
+        Carbon::setTestNow('2026-07-23 12:34:56 UTC');
+        $fixtureId = str_repeat('a', 64);
+        $parentId = '<large-v1.'.str_repeat('b', 64).'@fixtures.askmydocs.invalid>';
+        $fixture = [
+            'dataset_version' => 'large-v1',
+            'fixture_id' => $fixtureId,
+            'message_id' => '<large-v1.'.$fixtureId.'@fixtures.askmydocs.invalid>',
+            'in_reply_to' => $parentId,
+            'references' => [$parentId],
+            'scenario_type' => 'shipment-delay',
+            'subject' => 'Re: ritardo spedizione RL-2042',
+            'from_name' => 'Mario Rossi',
+            'from_email' => 'mario.rossi@example.com',
+            'to' => ['operations@rotta.example.com'],
+            'cc' => ['support@rotta.example.com'],
+            'date' => '2026-05-02 10:30:00',
+            'internal_date' => '2026-05-02T10:31:00+00:00',
+            'body_text' => 'Confermo il ritardo della spedizione RL-2042.',
+            'headers' => ['Precedence' => 'bulk'],
+            'attachments' => [],
+        ];
+
+        $builder = new EmailMessageBuilder;
+        $first = $builder->prepare($this->target(), $fixture, 42);
+        $second = $builder->prepare($this->target(), $fixture, 42);
+
+        $this->assertSame($first->raw, $second->raw);
+        $this->assertSame('<large-v1.'.$fixtureId.'@fixtures.askmydocs.invalid>', $first->messageId);
+        $this->assertSame(42, $first->sequence);
+        $this->assertSame(
+            '2026-07-23T12:34:56+00:00',
+            $first->internalDate->format(DATE_ATOM),
+            'IMAP arrival time must be current even when the narrative fixture date is historical.',
+        );
+        $this->assertSame(
+            '23-Jul-2026 12:34:56 +0000',
+            $first->imapInternalDate(),
+            'Webklex must receive an RFC 2060 string instead of DateTimeImmutable.',
+        );
+        $this->assertStringContainsString('Message-ID: <large-v1.'.$fixtureId.'@fixtures.askmydocs.invalid>', $first->raw);
+        $this->assertStringContainsString('In-Reply-To: '.$parentId, $first->raw);
+        $this->assertStringContainsString('References: '.$parentId, $first->raw);
+        $this->assertStringContainsString('X-AskMyDocs-Dataset-Version: large-v1', $first->raw);
+        $this->assertStringContainsString('X-AskMyDocs-Fixture-Id: '.$fixtureId, $first->raw);
+        $this->assertStringContainsString('X-AskMyDocs-Scenario: shipment-delay', $first->raw);
+    }
+
+    public function test_rejects_header_injection_from_dataset_records(): void
+    {
+        $fixtureId = str_repeat('c', 64);
+        $fixture = [
+            'dataset_version' => 'large-v1',
+            'fixture_id' => $fixtureId,
+            'message_id' => '<large-v1.'.$fixtureId.'@fixtures.askmydocs.invalid>',
+            'subject' => 'Test',
+            'from_name' => 'X',
+            'from_email' => 'x@example.com',
+            'date' => '2026-01-01 00:00:00',
+            'body_text' => 'corpo',
+            'headers' => ['X-AskMyDocs-Trace' => "ok\r\nBcc: victim@example.com"],
+        ];
+
+        $this->expectException(\InvalidArgumentException::class);
+
+        (new EmailMessageBuilder)->prepare($this->target(), $fixture, 1);
     }
 }

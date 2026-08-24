@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace App\Services\Admin;
 
-use App\Http\Middleware\AuthorizeTenantHeader;
 use App\Models\Project;
 use App\Models\ProjectMembership;
 use App\Models\User;
 use App\Services\Admin\Exceptions\TeamRegistryUnavailableException;
 use App\Services\Auth\UserTeamsResolver;
+use App\Support\SystemTenantRegistry;
 use App\Support\TeamHash;
 use App\Support\TenantContext;
 use Illuminate\Support\Facades\DB;
@@ -21,12 +21,13 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 /**
  * TeamRegistryService — the single shared core (R44) behind team
- * (= tenant) create + rename, over the vendor `tenants` registry
+ * (= tenant) create + rename and the tenant/project/membership primitive used
+ * by full company provisioning, over the vendor `tenants` registry
  * (`Padosoft\AiActCompliance\MultiTenancy\Models\Tenant`: `slug`, `name`,
  * `status`). The HTTP {@see \App\Http\Controllers\Api\Admin\TeamController}
  * and the `team:create` / `team:rename` Artisan commands are thin adapters
- * over this class — all validation, authorization and the write ordering
- * live here so the two surfaces can never drift.
+ * over this class. TenantProvisioningService also delegates its tenant bundle
+ * here, so HTTP and `company:create` cannot drift on slug or write ordering.
  *
  * A "team" is a `tenant_id`/`slug` string; its editable display NAME lives
  * on the `tenants` row. That table is optional (it ships with the AI-Act
@@ -34,15 +35,14 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
  * degrade to {@see TeamRegistryUnavailableException} (HTTP 503) rather than
  * a 500 when it is absent (R14/R43).
  *
- * Authorization is cross-tenant by nature (you administer OTHER teams from
- * within your active one), so it is NOT the request's `X-Tenant-Id` scope:
+ * Authorization follows operational tenant membership:
  *   - anyone with the admin/super-admin route gate may CREATE a new team;
- *   - RENAME a team T requires a `project_memberships` row in T OR the
- *     `tenant.cross-access` permission — the exact rule
- *     {@see AuthorizeTenantHeader} enforces on the switcher path. A miss is
- *     a 404 (IDOR-safe — the team's existence stays hidden).
- * `default` is the reserved bootstrap sentinel (no `tenants` row): it is
- * never creatable and never renamable.
+ *   - RENAME a team T requires a `project_memberships` row in T.
+ *     A miss is a 404 (IDOR-safe — the team's existence stays hidden).
+ * System administrators manage unassociated tenants only through the global
+ * `/api/system-admin/tenants` control plane.
+ * `default` is a reserved, non-operational legacy fallback: it is never
+ * creatable, renamable or visible through membership.
  *
  * Team visibility for the list is delegated verbatim to
  * {@see UserTeamsResolver} — the same source the topbar switcher reads — so
@@ -50,29 +50,12 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
  */
 final class TeamRegistryService
 {
-    private const RESERVED_SLUG = 'default';
-
     /**
-     * Tenant-aware tables whose presence of a `tenant_id` proves the slug is
-     * already an existing tenant (so a create must NOT claim it). Includes the
-     * data-bearing tables that ingest can populate with NO registry row, not
-     * just projects/memberships — see {@see self::assertUnique()} (R30).
+     * Memoised list of every live schema table carrying `tenant_id`.
      *
-     * @var list<string>
+     * @var list<string>|null
      */
-    private const TENANT_DATA_TABLES = [
-        'projects',
-        'project_memberships',
-        'knowledge_documents',
-        'knowledge_chunks',
-        'chat_logs',
-        'conversations',
-        'messages',
-        'kb_nodes',
-        'kb_edges',
-        'kb_canonical_audit',
-        'kb_tags',
-    ];
+    private ?array $tenantScopedTables = null;
 
     public function __construct(
         private readonly TenantContext $tenantContext,
@@ -87,7 +70,7 @@ final class TeamRegistryService
     public function manageableTeams(User $user): array
     {
         // Visibility + name + hash come straight from the switcher resolver
-        // (membership ∪ cross-access ∪ default) so the two never diverge.
+        // (real memberships only) so the two never diverge.
         $teams = $this->teamsResolver->resolve($user);
         $slugs = array_map(static fn (array $t): string => $t['tenant_id'], $teams);
 
@@ -102,8 +85,8 @@ final class TeamRegistryService
                 'slug' => $slug,
                 'name' => $team['name'],
                 'hash' => $team['hash'],
-                'status' => $statuses[$slug] ?? ($slug === self::RESERVED_SLUG ? 'system' : 'active'),
-                'is_default' => $slug === self::RESERVED_SLUG,
+                'status' => $statuses[$slug] ?? ($slug === SystemTenantRegistry::LEGACY_DEFAULT ? 'system' : 'active'),
+                'is_default' => $slug === SystemTenantRegistry::LEGACY_DEFAULT,
                 // Only offer Rename when a `tenants` registry row actually
                 // exists (statuses() is populated only for such slugs) — rename()
                 // 404s without one, so the list must not present a team as
@@ -126,14 +109,71 @@ final class TeamRegistryService
      */
     public function create(?string $slug, string $name, User $actor): array
     {
-        $this->assertRegistryAvailable();
+        return $this->createForMember($slug, $name, $actor);
+    }
+
+    /**
+     * Validate and inspect a prospective tenant without writing anything.
+     *
+     * @return array{slug: string, available: bool}
+     */
+    public function newTeamAvailability(
+        ?string $slug,
+        string $name,
+        bool $requireRegistry = true,
+    ): array {
+        if ($requireRegistry) {
+            $this->assertRegistryAvailable();
+        }
 
         $name = trim($name);
         $this->assertValidName($name);
 
         $slug = $this->resolveSlug($slug, $name);
         $this->assertValidSlug($slug);
-        $this->assertUnique($slug);
+
+        try {
+            $this->assertUnique($slug);
+        } catch (ValidationException) {
+            return ['slug' => $slug, 'available' => false];
+        }
+
+        return ['slug' => $slug, 'available' => true];
+    }
+
+    /**
+     * Create a new tenant, its initial project and the target user's
+     * membership. This is the shared atomic primitive used by the regular
+     * Team UI, the system-admin provisioning flow and `company:create`.
+     *
+     * @return array{slug: string, name: string, hash: string, status: string, is_default: bool, can_manage: bool, project_count: int, member_count: int}
+     */
+    public function createForMember(
+        ?string $slug,
+        string $name,
+        User $member,
+        ?string $projectKey = null,
+        string $membershipRole = 'admin',
+        bool $requireRegistry = true,
+    ): array {
+        $availability = $this->newTeamAvailability($slug, $name, $requireRegistry);
+        $slug = $availability['slug'];
+        if (! $availability['available']) {
+            $this->rejectDuplicateSlug($slug);
+        }
+
+        $name = trim($name);
+        $projectKey = trim((string) $projectKey) ?: $slug;
+        if (! preg_match('/^[a-z0-9]+(?:[-_][a-z0-9]+)*$/', $projectKey) || mb_strlen($projectKey) > 120) {
+            throw ValidationException::withMessages([
+                'project_key' => ['The initial project key must use lowercase words separated by hyphens or underscores (maximum 120 characters).'],
+            ]);
+        }
+        if (! in_array($membershipRole, ['member', 'admin', 'owner'], true)) {
+            throw ValidationException::withMessages([
+                'membership_role' => ['The membership role must be member, admin, or owner.'],
+            ]);
+        }
 
         // Make the new team active so BelongsToTenant auto-fills tenant_id on
         // the writes below (we also pass it explicitly). Restore afterwards so
@@ -142,34 +182,36 @@ final class TeamRegistryService
         try {
             $this->tenantContext->set($slug);
 
-            DB::transaction(function () use ($slug, $name, $actor): void {
-                Tenant::create([
-                    'slug' => $slug,
-                    'name' => $name,
-                    'status' => 'active',
-                ]);
+            DB::transaction(function () use ($slug, $name, $member, $projectKey, $membershipRole): void {
+                if (Schema::hasTable('tenants')) {
+                    Tenant::create([
+                        'slug' => $slug,
+                        'name' => $name,
+                        'status' => 'active',
+                    ]);
+                }
 
                 Project::create([
                     'tenant_id' => $slug,
-                    'project_key' => $slug,
+                    'project_key' => $projectKey,
                     'name' => $name,
                     'description' => "{$name} knowledge base",
                 ]);
 
-                // The membership is what surfaces the team in the actor's
+                // The membership is what surfaces the team in the member's
                 // switcher (UserTeamsResolver groups memberships by tenant_id).
                 ProjectMembership::create([
                     'tenant_id' => $slug,
-                    'user_id' => $actor->id,
-                    'project_key' => $slug,
-                    'role' => 'admin',
+                    'user_id' => $member->id,
+                    'project_key' => $projectKey,
+                    'role' => $membershipRole,
                 ]);
             });
         } finally {
             $this->tenantContext->set($previous);
         }
 
-        return $this->teamPayload($slug, $actor);
+        return $this->teamPayload($slug, $member);
     }
 
     /**
@@ -186,7 +228,7 @@ final class TeamRegistryService
         $slug = Str::lower(trim($slug));
 
         // canManage() rejects the reserved `default` and any team the actor
-        // is neither a member of nor has cross-access to. 404, not 403, so a
+        // is not a member of. 404, not 403, so a
         // guessed slug never confirms a team's existence.
         if (! $this->canManage($actor, $slug)) {
             throw new NotFoundHttpException('Team not found.');
@@ -207,18 +249,12 @@ final class TeamRegistryService
 
     /**
      * True when the actor may administer (rename) the given team: never the
-     * reserved `default`, otherwise a membership in the team OR the
-     * `tenant.cross-access` permission — the same rule AuthorizeTenantHeader
-     * enforces for switching into a team.
+     * reserved `default`, otherwise a membership in the team.
      */
     private function canManage(User $user, string $slug): bool
     {
-        if ($slug === '' || $slug === self::RESERVED_SLUG) {
+        if ($slug === '' || SystemTenantRegistry::isReserved($slug)) {
             return false;
-        }
-
-        if ($user->can(AuthorizeTenantHeader::CROSS_ACCESS_PERMISSION)) {
-            return true;
         }
 
         return DB::table('project_memberships')
@@ -256,9 +292,9 @@ final class TeamRegistryService
 
     private function assertValidSlug(string $slug): void
     {
-        if ($slug === self::RESERVED_SLUG) {
+        if (SystemTenantRegistry::isReserved($slug)) {
             throw ValidationException::withMessages([
-                'slug' => ["'default' is reserved for the bootstrap team and cannot be used."],
+                'slug' => ["'{$slug}' is reserved for platform workflows and cannot be used."],
             ]);
         }
 
@@ -277,21 +313,52 @@ final class TeamRegistryService
      * (knowledge_documents/chunks, chat_logs, graph) with NO projects/
      * memberships/tenants row — connector ingest writes documents WITHOUT a
      * registry row — so claiming that slug here would mint the actor a
-     * membership in the victim tenant and grant it via AuthorizeTenantHeader.
-     * Each table is Schema::hasTable-guarded so an unmigrated optional table
-     * degrades cleanly.
+     * membership in the victim tenant and grant operational access.
+     *
+     * The scan set is derived from the live schema, not a literal list. Host
+     * and vendor packages continuously add tenant-aware tables (connectors,
+     * invitations, notifications, widgets); omitting any one of them reopens
+     * the same escalation hole.
      */
     private function assertUnique(string $slug): void
     {
-        if (Tenant::query()->where('slug', $slug)->exists()) {
+        if (Schema::hasTable('tenants') && Tenant::query()->where('slug', $slug)->exists()) {
             $this->rejectDuplicateSlug($slug);
         }
 
-        foreach (self::TENANT_DATA_TABLES as $table) {
-            if (Schema::hasTable($table) && DB::table($table)->where('tenant_id', $slug)->exists()) {
+        foreach ($this->tenantScopedTables() as $table) {
+            if (DB::table($table)->where('tenant_id', $slug)->exists()) {
                 $this->rejectDuplicateSlug($slug);
             }
         }
+    }
+
+    /**
+     * Every live table for which a bare tenant-id existence check is valid.
+     * Transitively-scoped children without their own `tenant_id` are correctly
+     * excluded because their parent row is present in a table that is scanned.
+     * The `tenants` registry uses `slug`, so {@see self::assertUnique()} handles
+     * it separately.
+     *
+     * @return list<string>
+     */
+    private function tenantScopedTables(): array
+    {
+        if ($this->tenantScopedTables !== null) {
+            return $this->tenantScopedTables;
+        }
+
+        $tables = [];
+        foreach (Schema::getTableListing() as $table) {
+            // PostgreSQL may return schema-qualified names while hasColumn()
+            // expects the table name in the active search path.
+            $name = str_contains($table, '.') ? Str::afterLast($table, '.') : $table;
+            if (Schema::hasColumn($name, 'tenant_id')) {
+                $tables[] = $name;
+            }
+        }
+
+        return $this->tenantScopedTables = array_values(array_unique($tables));
     }
 
     private function rejectDuplicateSlug(string $slug): void
@@ -373,8 +440,8 @@ final class TeamRegistryService
             'slug' => $slug,
             'name' => $tenant?->name ?? Str::headline($slug),
             'hash' => TeamHash::for($slug),
-            'status' => $tenant?->status ?? ($slug === self::RESERVED_SLUG ? 'system' : 'active'),
-            'is_default' => $slug === self::RESERVED_SLUG,
+            'status' => $tenant?->status ?? ($slug === SystemTenantRegistry::LEGACY_DEFAULT ? 'system' : 'active'),
+            'is_default' => $slug === SystemTenantRegistry::LEGACY_DEFAULT,
             'can_manage' => $this->canManage($user, $slug),
             'project_count' => (int) DB::table('projects')->where('tenant_id', $slug)->count(),
             'member_count' => (int) DB::table('project_memberships')->where('tenant_id', $slug)->distinct()->count('user_id'),

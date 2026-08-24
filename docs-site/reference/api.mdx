@@ -49,6 +49,10 @@ never immortal. Wrong/unknown credentials → `422`. Request fields: `email`
 (required), `password` (required), `device_name` (optional, max 120). See
 [Desktop client & token authentication](/desktop-client).
 
+Session login and bearer-token issuance both require an active account.
+Email input is trimmed/lower-cased and resolved through the case-insensitive
+global identity key.
+
 ## KB chat & search — `/api/kb`
 
 | Method | Path | Auth | Purpose |
@@ -167,12 +171,49 @@ group is pinned in the [authorization matrix](/architecture/security-and-threat-
 | Workflows | `/api/admin/workflows/*` | `can:viewWorkflows` |
 | PII strategy | `/api/admin/pii/strategy` | `can:viewPiiRedactorAdmin` |
 
+## System-admin tenant control — `/api/system-admin/tenants`
+
+These endpoints require `can:platform.admin` and are intentionally global (no
+active-tenant header). A tenant `super-admin` does not satisfy this capability:
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/system-admin/tenants` | Paginated registry; `search`, `status`, `page`, `per_page` |
+| `POST` | `/api/system-admin/tenants/availability` | Non-mutating slug + account + requested-role preflight |
+| `POST` | `/api/system-admin/tenants` | Atomic tenant + project + create/attach user + role + membership |
+| `GET` | `/api/system-admin/tenants/{slug}` | Tenant metadata plus paginated users, roles, permissions and project access |
+| `POST` | `/api/system-admin/tenants/{slug}/lifecycle-preview` | Single-use confirmation bound to the exact status transition |
+| `PATCH` | `/api/system-admin/tenants/{slug}` | Change display name and/or confirmed `active\|suspended\|archived` lifecycle |
+
+See [System administration](/system-administration) for bootstrap, request
+behavior, duplicate handling and lifecycle enforcement.
+
 ## Embeddable widget — `/api/widget`
 
-The KITT widget authenticates with a `widget.key` (`throttle:120,1`): `GET
-/api/widget/setup`, `POST /api/widget/session-token`, and the session lifecycle
-(`sessions/start`, `sessions/{id}/step`, `/exec-tool`, `/cancel`, `/replay`).
-See [KITT widget](/kitt-widget).
+The KITT widget authenticates with a `widget.key` (`throttle:120,1`):
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/widget/setup` | resolved skill/theme configuration |
+| `POST` | `/api/widget/user-token` | server-side `ik_` exchange for an origin-bound `wu_` |
+| `POST` | `/api/widget/session-token` | mint a single-use `wt_` |
+| `GET` | `/api/widget/sessions` | paginated identity history (`wu_` required) |
+| `GET` | `/api/widget/sessions/current` | newest open identity session, or `204` |
+| `POST` | `/api/widget/sessions/start` | start a conversation |
+| `POST` | `/api/widget/sessions/{id}/step` | continue a conversation |
+| `POST` | `/api/widget/sessions/{id}/exec-tool` | run an enabled backend tool |
+| `POST` | `/api/widget/sessions/{id}/cancel` | abort a conversation |
+| `GET` | `/api/widget/sessions/{id}/replay` | replay identity-scoped visible steps |
+
+`/sessions/current` filters `active`, `waiting_user` and `waiting_tool`, ordered
+by `updated_at DESC, id DESC`; tenant, key, project and pseudonymous identity
+are all resolved server-side.
+
+Admin identity mutations use `PATCH /api/admin/widget-keys/{id}` (enable/disable)
+or `POST /api/admin/widget-keys/{id}/rotate-identity-secret`. Both carry
+`identity_credential_version`; a stale version returns `409
+identity_credential_conflict`. Secrets are returned only once. See
+[KITT widget](/kitt-widget).
 
 ## MCP — `/mcp/kb`
 

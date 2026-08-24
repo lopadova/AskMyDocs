@@ -12,7 +12,9 @@ that are **multi-use or single-use or vanity**, **referrals** that reward the
 referrer when the invitee converts, a **waitlist** with queue-jumping, and an
 **anti-abuse** layer so a leaked code can't be farmed into thousands of free
 seats — all of it **multi-tenant**, because two customers may legitimately mint
-the same human-readable code.
+codes for different operational purposes. AskMyDocs additionally uses invitation
+codes as public registration credentials, so their normalized plaintext identity
+is globally unique even though every package row remains tenant-partitioned.
 
 AskMyDocs gets this from the standalone
 [`padosoft/laravel-invitations`](https://github.com/padosoft/laravel-invitations)
@@ -41,8 +43,10 @@ that behind two contracts and a tag:
   a concrete user class.
 - **`Provisioner`** (tagged `invitations.provisioners`) — `provision(Model
   $account, TenantGrant $grant): void`. The package ships
-  `SpatiePermissionProvisioner` (grants the role); a host adds more under the
-  same tag. Two invariants the contract mandates: **GRANT-never-REVOKE** (only
+  `SpatiePermissionProvisioner` (grants ordinary roles); AskMyDocs replaces its
+  service binding with `ProtectedRoleProvisioner` so neither `super-admin` nor
+  `system-admin` can be minted by redemption, and adds more provisioners under
+  the same tag. Two invariants the contract mandates: **GRANT-never-REVOKE** (only
   ever raise access) and **best-effort** (a fault is swallowed + logged, never
   thrown — the redemption is *already committed* when provisioning runs).
 
@@ -56,7 +60,7 @@ flowchart TD
     Redeem["POST /api/invitations/redeem<br/>(authenticated user)"] --> RS["RedemptionService<br/>(atomic claim)"]
     RS -->|"UPDATE … WHERE current_uses < max_uses<br/>+ UNIQUE(code_id, redeemer_id)"| DB[("invite_codes / invite_redemptions<br/>(tenant_id on every row)")]
     RS --> APS["AccountProvisioningService<br/>(fan-out per tenant grant)"]
-    APS --> P1["SpatiePermissionProvisioner<br/>(package — grants the role)"]
+    APS --> P1["ProtectedRoleProvisioner<br/>(host — ordinary roles only)"]
     APS --> P2["ProjectMembershipProvisioner<br/>(host — project_memberships, GRANT-never-REVOKE)"]
     TR["App\\Support\\TenantContext"] -.->|"bound to TenantResolver"| RS
     TR -.-> P2
@@ -64,6 +68,11 @@ flowchart TD
     MCP["Invite{ValidateCode,GenerateCodes,Metrics}Tool"] --> Core
     CLI["invite:* console"] --> Core
     Core --> DB
+    Guest["POST /api/auth/register<br/>(guest)"] --> Resolver["RegistrationCodeResolver<br/>(global opaque-code lookup)"]
+    Resolver -->|"company_bootstrap"| System["system-registration<br/>(reserved namespace)"]
+    Resolver -->|"tenant_join"| Grant["one explicit operational tenant grant"]
+    System --> Onboarding["POST /api/auth/onboarding/company<br/>tenant + project + owner membership"]
+    Grant --> RS
 ```
 
 Three things the host wires, all in `App\Providers\AppServiceProvider::boot()`
@@ -76,12 +85,17 @@ adapters):
    single-tenant default with `bindIf()`; an explicit `bind()` in `boot()`
    overrides it definitively. Result: every invite read/write is scoped to the
    tenant the request resolved (R30).
-2. **`App\Invitations\ProjectMembershipProvisioner` → the
-   `invitations.provisioners` tag.** Appended to the tag alongside the package's
-   `SpatiePermissionProvisioner`. The package's contextual
+2. **Protected role binding + `ProjectMembershipProvisioner`.** The package's
+   `SpatiePermissionProvisioner` service key resolves to
+   `App\Invitations\ProtectedRoleProvisioner`, which preserves
+   grant-never-revoke for ordinary roles while rejecting both protected admin
+   boundaries. `App\Invitations\ProjectMembershipProvisioner` is added to the
+   `invitations.provisioners` tag alongside the replaced package provisioner
+   service key. The package's contextual
    `giveTagged('invitations.provisioners')` for `AccountProvisioningService`
    resolves the tag lazily at redemption time, so both provisioners run: the
-   Spatie one raises the global role, ours raises per-project access.
+   protected adapter raises an ordinary application role, while the membership
+   adapter raises per-project access.
 3. **`manageInvitations` gate + `config/invitations.php`.** The package routes
    carry no internal authorization — admin gating is entirely the host
    `admin_middleware` config (R32). AskMyDocs sets it to its standard admin stack
@@ -104,13 +118,26 @@ enforced in its CI):
 | `invite_abuse_signals` | rolling fraud signals (HMAC'd subjects, never plaintext) |
 | `invite_analytics_events` | funnel + virality events |
 
-The host adds **nothing** to its own schema — an accepted invite writes into the
-existing `project_memberships` table (via the provisioner) and assigns an
-existing Spatie role.
+The host keeps the package tables as the invitation source of truth, but adds two
+database invariants required by public registration:
+
+- `invite_codes.code` has the global unique index
+  `uq_invite_codes_code_global`, because a guest has no tenant context from which
+  to begin lookup;
+- the existing `tenants` registry gains `is_system` (boolean, default `false`)
+  and an idempotently seeded `system-registration` row with `is_system=true`.
+
+An accepted tenant-linked invite writes into the existing
+`project_memberships` table (via the provisioner) and assigns an existing
+ordinary Spatie role. A company-bootstrap invite writes no membership at
+registration time.
 
 The **grant** is a pure value object (`TenantGrant`): `tenantId`, `role`,
 `projects[]`, `projectRole`, `scopeAllowlist`. An invite can carry several, so
 one code provisions across one *or more* tenants ("teams") at once.
+That remains true for the package's authenticated redemption surface. The public
+registration resolver is intentionally narrower: it accepts exactly one tenant
+grant for `tenant_join`, or an empty grant for `company_bootstrap`.
 
 ## Decision rationale
 
@@ -135,14 +162,19 @@ index](/architecture/decisions)):
   after. A provisioning fault is logged (with the exception class for triage) and
   swallowed — a transient DB hiccup while writing a membership must not roll back
   a redemption the user already sees as successful.
-- **`INVITE_REQUIRED` defaults OFF (R43 both-states).** Installing the package
-  does not silently turn AskMyDocs into a closed beta. The signup gate is strict
-  opt-in; both the OFF path (registration unchanged) and the ON path (code
-  required) are covered by tests.
+- **`INVITE_REQUIRED` defaults OFF (R43 both-states) at package level.**
+  Installing the package does not force its generic redemption middleware into
+  closed-beta mode. AskMyDocs's host `POST /api/auth/register` contract is
+  separately and always invite-only; this flag cannot open public signup.
 - **The 9 invite tables stay package-owned.** They are not added to the host
   `TenantIdMandatoryTest` enumeration (which only iterates `App\Models\*`) — the
   package enforces R30/R31 on its own models in its own CI, exactly as the
   `askmydocs-connector-base` tables do.
+- **A reserved slug, not a reserved numeric ID range.** Tenant-aware foreign
+  keys use the string slug as `tenant_id`; the optional registry's numeric
+  primary key carries no authorization meaning. `system-registration` therefore
+  provides a stable technical namespace without moving operational tenant IDs
+  or introducing a second invitation table. See ADR 0025.
 
 ## Worked example — a launch-wave campaign that grants editor + two projects
 
@@ -174,6 +206,51 @@ the user already owns at a higher role) changes nothing: GRANT-never-REVOKE.
 Read the funnel three ways (R44) — `GET /api/admin/invitations/metrics`, the
 `InviteMetricsTool` MCP tool, or `MetricsService::summary()` in PHP.
 
+## Worked example — public registration with or without an existing company
+
+The trusted public issuer is the `registration-invite:create` Artisan command.
+Omit `--tenant` to authorize creation of a new company:
+
+```bash
+php artisan registration-invite:create --uses=1
+```
+
+The returned code has the `company_bootstrap` intent and an empty grant. After
+registration the account session is valid, but `/api/auth/me` returns
+`onboarding.required=true` and no teams. `/app` routes to `/app/onboarding`.
+Submitting the company form calls:
+
+```http
+POST /api/auth/onboarding/company
+Content-Type: application/json
+
+{
+  "company_name": "Acme S.p.A.",
+  "tenant_slug": "acme",
+  "project_key": "acme-kb"
+}
+```
+
+One transaction creates the active tenant, initial project and `owner`
+membership; the creator receives the tenant `super-admin` role. Reloading or
+logging in again before this request succeeds returns to the same onboarding
+gate.
+
+To invite a person into an existing company instead:
+
+```bash
+php artisan registration-invite:create \
+  --tenant=acme \
+  --project=acme-kb \
+  --role=viewer \
+  --membership-role=member \
+  --uses=1
+```
+
+The issuer verifies that `acme` is active/non-system and that `acme-kb` belongs
+to it. Registration redeems the one-tenant grant and the SPA opens that tenant
+directly, without showing company onboarding.
+
 ## Admin UI — native, in-app
 
 The admin surface is a **native tabbed page** at `/app/{team}/admin/invitations`,
@@ -186,7 +263,7 @@ every read is tenant-scoped automatically (R30).
 | Tab | What it shows / does | Core endpoint(s) |
 |---|---|---|
 | **Overview** | all 11 live funnel KPIs (k-factor, acceptance / conversion rate, time-to-redeem p50/p90, distinct referrers…) + a proportional acquisition funnel; campaign + window filters | `GET …/metrics` |
-| **Campaigns** | list + create/edit with the **multi-tenant grant editor** (a Spatie role + KB projects across one or more tenants); `key` + `type` are immutable on edit; `super-admin` is rejected client- and server-side | `GET/POST …/campaigns`, `PATCH …/campaigns/{id}`, `GET …/tenants` |
+| **Campaigns** | list + create/edit with the **multi-tenant grant editor** (a Spatie role + KB projects across one or more tenants); `key` + `type` are immutable on edit; `super-admin` and `system-admin` are rejected client- and server-side/host-boundary | `GET/POST …/campaigns`, `PATCH …/campaigns/{id}`, `GET …/tenants` |
 | **Codes** | inventory + batch generation (count 1–1000, max-uses, length, expiry) with Copy-all + CSV export, and inline-confirm revoke | `GET/POST …/codes`, `POST …/codes/{id}/revoke` |
 | **Invite** | send a direct invitation (recipient / channel / role / context); session-scoped sent list, since the core API has no list endpoint | `POST …/invitations` |
 | **Referrals / Rewards / Waitlist / Anti-abuse** | filtered read tables; the waitlist email is masked and anti-abuse subjects stay server-hashed | `GET …/{referrals,rewards,waitlist,abuse-signals}` |
@@ -219,8 +296,10 @@ in `AppServiceProvider`) so it can't be used to brute-force invite codes. The
 controller is a thin HTTP adapter over the same invite core (R44) and follows a
 deliberate order so the invite-only invariant can never leak:
 
-1. **Pre-validate** the code with `CodeValidator` *before* touching `users` — an
-   invalid / expired / exhausted code never mints an orphan account.
+1. **Resolve and pre-validate** the globally unique opaque code with
+   `RegistrationCodeResolver`, which delegates state/capacity validation to
+   `CodeValidator`, *before* touching `users` — an invalid / expired / exhausted
+   code never mints an orphan account.
 2. **Create** the account (no role yet).
 3. **Redeem authoritatively** with `RedemptionService` (the atomic conditional
    `UPDATE … WHERE current_uses < max_uses` + the tagged Spatie-role / project
@@ -230,6 +309,19 @@ deliberate order so the invite-only invariant can never leak:
    exhausted-between-checks race the brand-new account is **force-deleted**.
 4. **Floor** the account at `viewer` (layered on any grant role redeem already
    provisioned — GRANT-never-revoke), open the SPA session, fire `Registered`.
+
+The resolver then determines the post-registration state:
+
+- `tenant_join` must contain exactly one explicit grant to an active
+  operational tenant and real projects. Redemption provisions the membership,
+  so `/app` opens the tenant directly.
+- `company_bootstrap` must contain an empty grant. The account remains without
+  memberships and `/app` forces resumable company onboarding.
+
+The technical namespace and the legacy literal `default` never appear as
+operational teams. A normal account with zero operational memberships receives
+the same onboarding requirement on every login; a `platform.admin` identity
+instead enters the global system control plane.
 
 Every invite-code failure is mapped to a **422 field error on `invite_code`**
 (R14 — never a 200 with an empty body) with a localized message
@@ -255,13 +347,17 @@ on AskMyDocs.
   membership after a successful redeem, check the logs for
   `invitations.provision.project_membership_failed` (it carries the exception
   class) — the redemption itself still succeeded by design.
-- **Flipping `INVITE_REQUIRED=true` is a product decision, not a deploy detail.**
-  With it on, registration *requires* a valid code. Verify your invite-issuing
-  flow is live before enabling it, or new signups are blocked.
-- **Campaign creation writes a grant — mind super-admin + immutability.** The
+- **`INVITE_REQUIRED` does not control host registration.** The host
+  `/api/auth/register` request always requires `invite_code`; the flag only
+  changes package-level generic invitation middleware.
+- **Do not issue public registration codes from `default`.** Use
+  `registration-invite:create`; its codes live in `system-registration`, carry a
+  validated intent and cannot accidentally grant access to the technical
+  namespace.
+- **Campaign creation writes a grant — protected admins stay out.** The
   campaign builder's grant editor provisions a Spatie role + KB projects across
-  one or more tenants on redemption; `super-admin` is rejected (client *and*
-  server) and a campaign's `key` + `type` are immutable after creation (the
+  one or more tenants on redemption; `super-admin` and `system-admin` are
+  rejected and a campaign's `key` + `type` are immutable after creation (the
   update rules don't accept them). The standalone
   `padosoft/laravel-invitations-admin` panel remains reachable via the gated
   **"Advanced"** launcher (`INVITATIONS_ADMIN_ENABLED=true`) for parity, but the

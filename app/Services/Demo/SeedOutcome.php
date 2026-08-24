@@ -18,5 +18,9 @@ final readonly class SeedOutcome
         public int $appended,
         public int $purged,
         public bool $dryRun,
+        public int $alreadyPresent = 0,
+        public int $expected = 0,
+        public int $resumed = 0,
+        public ?string $datasetVersion = null,
     ) {}
 }

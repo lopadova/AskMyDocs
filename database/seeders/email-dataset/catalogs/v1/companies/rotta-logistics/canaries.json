@@ -1,0 +1,25 @@
+{
+    "company_key": "rotta-logistics",
+    "canaries": [
+        {
+            "canary_id": "rotta.canary.orbita-ambra",
+            "phrase": "codice operativo sintetico ORBITA-AMBRA-71",
+            "scenario_types": ["orbita-incidenti"]
+        },
+        {
+            "canary_id": "rotta.canary.adr-vela",
+            "phrase": "riferimento sintetico ADR-VELA-29",
+            "scenario_types": ["dogana-adr"]
+        },
+        {
+            "canary_id": "rotta.canary.hub-cedro",
+            "phrase": "segnale sintetico HUB-CEDRO-44",
+            "scenario_types": ["hub-magazzino"]
+        },
+        {
+            "canary_id": "rotta.canary.sla-lince",
+            "phrase": "marcatore sintetico SLA-LINCE-83",
+            "scenario_types": ["commerciale-sla"]
+        }
+    ]
+}

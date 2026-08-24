@@ -19,7 +19,7 @@ namespace App\Support;
  * hosts, the collision probability is negligible (~10^-9 even at ten
  * thousand tenants). The hash is a ROUTING namespace, not a secret:
  * authorization stays on AuthorizeTenantHeader (membership /
- * cross-access), so guessing a hash discloses nothing and grants
+ * membership), so guessing a hash discloses nothing and grants
  * nothing.
  */
 final class TeamHash

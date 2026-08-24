@@ -29,14 +29,14 @@ final class ConnectorsCommandsTest extends TestCase
     {
         foreach (['support', 'sales'] as $label) {
             ConnectorInstallation::create([
-                'tenant_id' => 'default',
+                'tenant_id' => 'test-tenant',
                 'connector_name' => 'google-drive',
                 'label' => $label,
                 'status' => ConnectorInstallation::STATUS_ACTIVE,
             ]);
         }
 
-        $this->artisan('connectors:list', ['--tenant' => 'default'])
+        $this->artisan('connectors:list', ['--tenant' => 'test-tenant'])
             ->expectsOutputToContain('support')
             ->expectsOutputToContain('sales')
             ->assertExitCode(0);
@@ -51,7 +51,7 @@ final class ConnectorsCommandsTest extends TestCase
             'status' => ConnectorInstallation::STATUS_ACTIVE,
         ]);
 
-        $this->artisan('connectors:list', ['--tenant' => 'default'])
+        $this->artisan('connectors:list', ['--tenant' => 'test-tenant'])
             ->doesntExpectOutputToContain('secret-account')
             ->assertExitCode(0);
     }
@@ -63,7 +63,7 @@ final class ConnectorsCommandsTest extends TestCase
 
         $this->artisan('connectors:install', [
             'connector' => 'imap',
-            '--tenant' => 'default',
+            '--tenant' => 'test-tenant',
             '--label' => 'Support',
             '--project' => 'support-mailbox',
             '--set' => [
@@ -78,7 +78,7 @@ final class ConnectorsCommandsTest extends TestCase
             ->assertExitCode(0);
 
         $installation = ConnectorInstallation::query()
-            ->where('tenant_id', 'default')->where('connector_name', 'imap')->firstOrFail();
+            ->where('tenant_id', 'test-tenant')->where('connector_name', 'imap')->firstOrFail();
         $this->assertSame('Support', $installation->label);
         $this->assertSame('support-mailbox', $installation->project_key);
         $this->assertSame(ConnectorInstallation::STATUS_ACTIVE, $installation->status);
@@ -91,7 +91,7 @@ final class ConnectorsCommandsTest extends TestCase
     {
         $this->bindImapFactory(pingSucceeds: true);
         ConnectorInstallation::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'connector_name' => 'imap',
             'label' => 'Support',
             'status' => ConnectorInstallation::STATUS_ACTIVE,
@@ -99,7 +99,7 @@ final class ConnectorsCommandsTest extends TestCase
 
         $this->artisan('connectors:install', [
             'connector' => 'imap',
-            '--tenant' => 'default',
+            '--tenant' => 'test-tenant',
             '--label' => 'Support',
             '--set' => [
                 'host=imap.example.com',
@@ -124,7 +124,7 @@ final class ConnectorsCommandsTest extends TestCase
 
         $this->artisan('connectors:install', [
             'connector' => 'imap',
-            '--tenant' => 'default',
+            '--tenant' => 'test-tenant',
             '--label' => 'Support',
             '--project' => 'does-not-exist',
         ])
@@ -139,7 +139,7 @@ final class ConnectorsCommandsTest extends TestCase
 
         $this->artisan('connectors:install', [
             'connector' => 'imap',
-            '--tenant' => 'default',
+            '--tenant' => 'test-tenant',
             '--label' => 'bad/label',
         ])
             ->expectsOutputToContain('Invalid --label')
@@ -152,7 +152,7 @@ final class ConnectorsCommandsTest extends TestCase
     {
         $this->artisan('connectors:install', [
             'connector' => 'google-drive',
-            '--tenant' => 'default',
+            '--tenant' => 'test-tenant',
         ])
             ->expectsOutputToContain('OAuth-based')
             ->assertExitCode(1);

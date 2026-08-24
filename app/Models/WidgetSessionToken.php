@@ -33,6 +33,7 @@ class WidgetSessionToken extends Model
         'token',
         'widget_key_id',
         'widget_session_id',
+        'identity_access_epoch',
         'origin',
         'expires_at',
         'consumed_at',
@@ -41,6 +42,7 @@ class WidgetSessionToken extends Model
     protected $casts = [
         'expires_at' => 'datetime',
         'consumed_at' => 'datetime',
+        'identity_access_epoch' => 'integer',
     ];
 
     /** @return BelongsTo<WidgetKey, WidgetSessionToken> */

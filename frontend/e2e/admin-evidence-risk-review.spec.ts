@@ -8,7 +8,7 @@ import { seedDb } from './setup-helpers';
  *
  * R13: the happy path runs against the REAL /api/admin/evidence-risk-review/*
  * endpoints backed by the real DB (`EvidenceRiskReviewSeeder` inserts two review
- * rows for the `default` tenant). It exercises the data probe → mount, the
+ * rows for the primary demo tenant). It exercises the data probe → mount, the
  * reviews list + detail drill-down, the profiles list, and the taxonomy table.
  * The failure path injects a 503 on the data probe and asserts the clean
  * "unavailable" landing (R14 — degrade loudly but clean, never a crash).

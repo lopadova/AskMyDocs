@@ -24,7 +24,7 @@ final class WikiHealthSeeder extends Seeder
     public function run(): void
     {
         KnowledgeDocument::updateOrCreate(
-            ['tenant_id' => 'default', 'project_key' => 'eng', 'source_path' => 'decisions/dec-cache.md', 'version_hash' => 'wikihealth-v1'],
+            ['tenant_id' => DemoSeeder::PRIMARY_TENANT, 'project_key' => 'eng', 'source_path' => 'decisions/dec-cache.md', 'version_hash' => 'wikihealth-v1'],
             [
                 'source_type' => 'markdown', 'title' => 'Cache decision', 'mime_type' => 'text/markdown',
                 'status' => 'active', 'document_hash' => str_repeat('a', 64), 'is_canonical' => true,
@@ -34,13 +34,13 @@ final class WikiHealthSeeder extends Seeder
         );
 
         KbNode::updateOrCreate(
-            ['tenant_id' => 'default', 'project_key' => 'eng', 'node_uid' => 'dec-cache'],
+            ['tenant_id' => DemoSeeder::PRIMARY_TENANT, 'project_key' => 'eng', 'node_uid' => 'dec-cache'],
             ['node_type' => 'decision', 'label' => 'Cache decision', 'source_doc_id' => 'dec-cache', 'payload_json' => ['dangling' => false]],
         );
 
         // Leftover dangling node with no incoming edge → the safe auto-fix prunes it.
         KbNode::updateOrCreate(
-            ['tenant_id' => 'default', 'project_key' => 'eng', 'node_uid' => 'ghost-leftover'],
+            ['tenant_id' => DemoSeeder::PRIMARY_TENANT, 'project_key' => 'eng', 'node_uid' => 'ghost-leftover'],
             ['node_type' => 'unknown', 'label' => 'ghost-leftover', 'source_doc_id' => null, 'payload_json' => ['dangling' => true]],
         );
     }

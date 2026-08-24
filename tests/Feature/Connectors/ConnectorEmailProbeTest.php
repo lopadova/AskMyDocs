@@ -47,7 +47,7 @@ final class ConnectorEmailProbeTest extends TestCase
     {
         parent::setUp();
         $this->seed(RbacSeeder::class);
-        app(TenantContext::class)->set('default');
+        app(TenantContext::class)->set('test-tenant');
         Cache::flush();
     }
 
@@ -56,7 +56,7 @@ final class ConnectorEmailProbeTest extends TestCase
         Queue::fake();
         $admin = $this->makeSuperAdmin();
         $this->bindImapFactory(lastUid: 4211, message: $this->sampleMessage(4211));
-        $installation = $this->makeImapInstallation('default');
+        $installation = $this->makeImapInstallation('test-tenant');
 
         $resp = $this->actingAs($admin)->postJson("/api/admin/connectors/{$installation->id}/test-fetch");
 
@@ -75,7 +75,7 @@ final class ConnectorEmailProbeTest extends TestCase
     {
         $admin = $this->makeSuperAdmin();
         $this->bindImapFactory(lastUid: 7, message: $this->sampleMessage(7));
-        $installation = $this->makeImapInstallation('default', include: ['rotta-logistics-1', 'INBOX']);
+        $installation = $this->makeImapInstallation('test-tenant', include: ['rotta-logistics-1', 'INBOX']);
 
         $resp = $this->actingAs($admin)->postJson("/api/admin/connectors/{$installation->id}/test-fetch");
 
@@ -142,7 +142,7 @@ final class ConnectorEmailProbeTest extends TestCase
         };
         $this->app->instance(ImapClientFactoryInterface::class, $factory);
 
-        $installation = $this->makeImapInstallation('default');
+        $installation = $this->makeImapInstallation('test-tenant');
 
         $resp = $this->actingAs($admin)->postJson("/api/admin/connectors/{$installation->id}/test-fetch");
 
@@ -156,7 +156,7 @@ final class ConnectorEmailProbeTest extends TestCase
         // failure; the FE shows a "connected, nothing to preview" notice.
         $admin = $this->makeSuperAdmin();
         $this->bindImapFactory(lastUid: 0, message: null);
-        $installation = $this->makeImapInstallation('default');
+        $installation = $this->makeImapInstallation('test-tenant');
 
         $resp = $this->actingAs($admin)->postJson("/api/admin/connectors/{$installation->id}/test-fetch");
 
@@ -170,12 +170,13 @@ final class ConnectorEmailProbeTest extends TestCase
         // R14 — the caller must tell "couldn't connect" from "no messages".
         $admin = $this->makeSuperAdmin();
         $this->bindImapFactory(lastUid: 1, message: null, throw: true);
-        $installation = $this->makeImapInstallation('default');
+        $installation = $this->makeImapInstallation('test-tenant');
 
         $resp = $this->actingAs($admin)->postJson("/api/admin/connectors/{$installation->id}/test-fetch");
 
         $resp->assertStatus(503);
         $this->assertArrayHasKey('error', $resp->json());
+        $this->assertMatchesRegularExpression('/diag=[0-9a-f-]+ phase=fetch_newest/', (string) $resp->json('error'));
     }
 
     public function test_factory_build_failure_is_503_not_an_uncaught_500(): void
@@ -194,7 +195,7 @@ final class ConnectorEmailProbeTest extends TestCase
         };
         $this->app->instance(ImapClientFactoryInterface::class, $factory);
         $this->app->forgetInstance(ConnectorRegistry::class);
-        $installation = $this->makeImapInstallation('default');
+        $installation = $this->makeImapInstallation('test-tenant');
 
         $resp = $this->actingAs($admin)->postJson("/api/admin/connectors/{$installation->id}/test-fetch");
 
@@ -207,7 +208,7 @@ final class ConnectorEmailProbeTest extends TestCase
         // No ConnectorCredential row → the vault has no secret → the probe cannot run.
         $admin = $this->makeSuperAdmin();
         $this->bindImapFactory(lastUid: 1, message: $this->sampleMessage(1));
-        $installation = $this->makeImapInstallation('default', withCredential: false);
+        $installation = $this->makeImapInstallation('test-tenant', withCredential: false);
 
         $resp = $this->actingAs($admin)->postJson("/api/admin/connectors/{$installation->id}/test-fetch");
 
@@ -232,7 +233,7 @@ final class ConnectorEmailProbeTest extends TestCase
         $this->bindImapFactory(lastUid: 5, message: $this->sampleMessage(5));
 
         $installation = ConnectorInstallation::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'connector_name' => 'imap',
             'label' => 'gmail-1',
             'project_key' => null,
@@ -247,7 +248,7 @@ final class ConnectorEmailProbeTest extends TestCase
         ]);
         // Access token already expired; refresh token still present.
         ConnectorCredential::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'connector_installation_id' => $installation->id,
             'encrypted_access_token' => Crypt::encryptString('stale-access'),
             'encrypted_refresh_token' => Crypt::encryptString('refresh-token'),
@@ -274,7 +275,7 @@ final class ConnectorEmailProbeTest extends TestCase
         $admin = $this->makeSuperAdmin();
         $this->bindImapFactory(lastUid: 1, message: $this->sampleMessage(1));
         $drive = ConnectorInstallation::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'connector_name' => 'google-drive',
             'label' => 'default',
             'status' => ConnectorInstallation::STATUS_ACTIVE,
@@ -301,7 +302,7 @@ final class ConnectorEmailProbeTest extends TestCase
     {
         $viewer = $this->makeViewer();
         $this->bindImapFactory(lastUid: 1, message: $this->sampleMessage(1));
-        $installation = $this->makeImapInstallation('default');
+        $installation = $this->makeImapInstallation('test-tenant');
 
         $this->actingAs($viewer)
             ->postJson("/api/admin/connectors/{$installation->id}/test-fetch")
@@ -310,7 +311,7 @@ final class ConnectorEmailProbeTest extends TestCase
 
     public function test_guest_is_unauthorized(): void
     {
-        $installation = $this->makeImapInstallation('default');
+        $installation = $this->makeImapInstallation('test-tenant');
 
         $this->postJson("/api/admin/connectors/{$installation->id}/test-fetch")
             ->assertStatus(401);

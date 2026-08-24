@@ -71,8 +71,9 @@ final class KbChatFullStackComplianceTest extends TestCase
         config()->set('kb.reranking.enabled', false);
         config()->set('kb.graph.expansion_enabled', false);
         config()->set('kb.rejected.injection_enabled', false);
+        config()->set('kb.counterfactual.enabled', false);
 
-        app(TenantContext::class)->set('default');
+        app(TenantContext::class)->set('test-tenant');
 
         $this->stubKbAndAi();
     }
@@ -117,7 +118,7 @@ final class KbChatFullStackComplianceTest extends TestCase
         // read to the active tenant (R30) — ChatLog is tenant-aware and has no
         // global read scope, so an unscoped latest() could pick up a row from
         // another tenant if fixtures ever share the connection.
-        $log = ChatLog::query()->forTenant('default')->latest('id')->first();
+        $log = ChatLog::query()->forTenant('test-tenant')->latest('id')->first();
         self::assertNotNull($log, 'the chat turn must be logged to chat_logs');
 
         // 4 — PII the LLM echoed into the answer is masked in the persisted

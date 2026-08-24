@@ -4,15 +4,9 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
-use App\Models\Project;
-use App\Models\ProjectMembership;
-use App\Models\User;
-use App\Support\TenantContext;
+use App\Services\Admin\TenantProvisioningService;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
-use Padosoft\AiActCompliance\MultiTenancy\Models\Tenant;
 use Spatie\Permission\Models\Role;
 
 /**
@@ -30,10 +24,11 @@ use Spatie\Permission\Models\Role;
  *   - the writes run inside a DB transaction, so a mid-failure never leaves a
  *     half-created company.
  *
- * CLI-only by design (operator bootstrap — typically no admin exists yet to
- * drive an HTTP call). Intentionally NOT added to the admin command-runner
- * allowlist (config/admin.php): it mints a privileged account and must stay off
- * the HTTP surface.
+ * The write core is shared with the authenticated super-admin HTTP control
+ * plane. This command remains intentionally absent from the generic admin
+ * command-runner allowlist (config/admin.php): unauthenticated bootstrap is an
+ * operator concern, while browser provisioning is protected by its dedicated
+ * `role:super-admin` route.
  *
  *   php artisan company:create --company="Acme Corp" --email=admin@acme.com --password=secret123
  *
@@ -54,7 +49,7 @@ class CreateCompanyCommand extends Command
 
     protected $description = 'Create a new company (tenant) + its admin user (tenant → project → user → role → membership), non-interactive.';
 
-    public function handle(TenantContext $tenantCtx): int
+    public function handle(TenantProvisioningService $provisioning): int
     {
         $company = trim((string) $this->option('company'));
         $email = trim((string) $this->option('email'));
@@ -104,28 +99,6 @@ class CreateCompanyCommand extends Command
             return self::FAILURE;
         }
 
-        // 5) "Create new" — refuse to clobber an existing company or account.
-        $tenantsTable = Schema::hasTable('tenants');
-        if ($tenantsTable && Tenant::query()->where('slug', $slug)->exists()) {
-            $this->error("Company '{$slug}' already exists.");
-
-            return self::FAILURE;
-        }
-        // When the optional `tenants` table is absent, fall back to tenant-aware
-        // domain tables to preserve create-new semantics.
-        if (Project::query()->forTenant($slug)->exists() || ProjectMembership::query()->forTenant($slug)->exists()) {
-            $this->error("Company '{$slug}' already exists.");
-
-            return self::FAILURE;
-        }
-        // User has a SoftDeletes global scope, but the DB enforces UNIQUE on `users.email`
-        // regardless of deleted_at. Include trashed rows so we fail fast with a clear message.
-        if (User::withTrashed()->where('email', $email)->exists()) {
-            $this->error("Email already in use: {$email}");
-
-            return self::FAILURE;
-        }
-
         $name = trim((string) $this->option('name')) ?: Str::before($email, '@');
         $projectKey = trim((string) $this->option('project')) ?: $slug;
         if ($projectKey === '' || mb_strlen($projectKey) > 120) {
@@ -133,55 +106,30 @@ class CreateCompanyCommand extends Command
 
             return self::FAILURE;
         }
-        // 6) Make the new tenant the active one so BelongsToTenant auto-fills
-        //    tenant_id on the writes below (we also pass it explicitly). set()
-        //    re-validates the slug.
         try {
-            $tenantCtx->set($slug);
-        } catch (\InvalidArgumentException $e) {
-            $this->error($e->getMessage());
+            $result = $provisioning->provision([
+                'tenant_name' => $company,
+                'tenant_slug' => $slug,
+                'user_email' => $email,
+                'user_name' => $name,
+                'password' => $password,
+                'role' => $role,
+                'attach_existing' => false,
+                'project_key' => $projectKey,
+                // Preserve the historical CLI membership contract.
+                'membership_role' => 'member',
+            ], allowedRoles: null, requireRegistry: false);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            $errors = $e->errors();
+            if (isset($errors['tenant_slug']) || isset($errors['slug'])) {
+                $this->error("Company '{$slug}' already exists.");
+            } elseif (isset($errors['user_email']) || isset($errors['email'])) {
+                $this->error("Email already in use: {$email}");
+            } else {
+                $this->error(collect($errors)->flatten()->first() ?? 'Invalid company details.');
+            }
 
             return self::FAILURE;
-        }
-
-        // 7) Atomic create — a failure anywhere rolls the whole company back.
-        try {
-            $user = DB::transaction(function () use ($slug, $company, $projectKey, $name, $email, $password, $role, $tenantsTable): User {
-                if ($tenantsTable) {
-                    Tenant::create([
-                        'slug' => $slug,
-                        'name' => $company,
-                        'status' => 'active',
-                    ]);
-                }
-
-                Project::create([
-                    'tenant_id' => $slug,
-                    'project_key' => $projectKey,
-                    'name' => $company,
-                    'description' => "{$company} knowledge base",
-                ]);
-
-                // The User model's 'hashed' cast hashes the plaintext on assignment.
-                $user = User::create([
-                    'name' => $name,
-                    'email' => $email,
-                    'password' => $password,
-                    'is_active' => true,
-                ]);
-                $user->assignRole($role);
-
-                // The membership is what surfaces the tenant as a selectable team
-                // (UserTeamsResolver groups project_memberships by tenant_id).
-                ProjectMembership::create([
-                    'tenant_id' => $slug,
-                    'user_id' => $user->id,
-                    'project_key' => $projectKey,
-                    'role' => 'member',
-                ]);
-
-                return $user;
-            });
         } catch (\Throwable $e) {
             report($e);
             $this->error('Failed to create company due to an unexpected database error.');
@@ -189,16 +137,17 @@ class CreateCompanyCommand extends Command
             return self::FAILURE;
         }
 
-        if (! $tenantsTable) {
+        if (! $result['registry_created']) {
             $this->warn("'tenants' table absent (AI-Act package not migrated) — created the user + membership; the switcher will show the humanised slug.");
         }
 
+        $user = $result['user'];
         $this->info("Company '{$company}' created.");
         $this->table(['Field', 'Value'], [
             ['Company', $company],
             ['Tenant slug', $slug],
             ['Project', $projectKey],
-            ['Admin', "{$name} <{$email}> (#{$user->id})"],
+            ['Admin', "{$name} <{$email}> (#{$user['id']})"],
             ['Role', $role],
         ]);
 

@@ -7,11 +7,17 @@ namespace Tests\Feature\Notifications\Channels;
 use App\Jobs\SendExternalNotificationJob;
 use App\Models\NotificationEvent;
 use App\Models\User;
+use App\Notifications\ChannelRegistry;
 use App\Notifications\Channels\DiscordChannel;
+use App\Notifications\Channels\EmailChannel;
+use App\Notifications\Channels\InAppChannel;
 use App\Notifications\Channels\SlackChannel;
 use App\Notifications\Channels\TeamsChannel;
 use App\Notifications\Channels\WebhookChannel;
 use App\Notifications\Events\KbDocumentChanged;
+use App\Notifications\NotificationDispatcher;
+use App\Notifications\NotificationEventLogger;
+use App\Providers\NotificationServiceProvider;
 use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
@@ -48,7 +54,7 @@ final class ExternalChannelsTest extends TestCase
             'askmydocs.notifications.channels.discord.url' => 'https://discord.com/api/webhooks/123/abc',
             'askmydocs.notifications.channels.slack.url' => 'https://hooks.slack.com/services/T/B/X',
             'askmydocs.notifications.channels.teams.url' => 'https://example.webhook.office.com/webhookb2/abc/IncomingWebhook/xyz/123',
-            'askmydocs.notifications.channels.webhook.url' => 'https://example.test/inbox',
+            'askmydocs.notifications.channels.webhook.url' => 'https://webhook.example.invalid/inbox',
             'askmydocs.notifications.channels.webhook.secret' => 'shared-secret-32bytes-for-hmac-sha256',
             'askmydocs.notifications.hmac_secret' => 'fixed-test-secret-for-deterministic-tokens',
         ]);
@@ -62,7 +68,7 @@ final class ExternalChannelsTest extends TestCase
         $user = $this->makeUser('discord-tester');
         $event = $this->makeEvent(['slug' => 'dec-cache-v2', 'project_key' => 'proj-d']);
 
-        (new DiscordChannel())->send($event, $user, $row);
+        (new DiscordChannel)->send($event, $user, $row);
 
         Bus::assertDispatched(SendExternalNotificationJob::class, function (SendExternalNotificationJob $job) use ($row): bool {
             return $job->channelName === 'discord'
@@ -93,7 +99,7 @@ final class ExternalChannelsTest extends TestCase
         $user = $this->makeUser('slack-tester');
         $event = $this->makeEvent(['slug' => 'dec-cache-v3', 'project_key' => 'proj-s']);
 
-        (new SlackChannel())->send($event, $user, $row);
+        (new SlackChannel)->send($event, $user, $row);
 
         Bus::assertDispatched(SendExternalNotificationJob::class, function (SendExternalNotificationJob $job): bool {
             if ($job->channelName !== 'slack') {
@@ -103,6 +109,7 @@ final class ExternalChannelsTest extends TestCase
                 return false;
             }
             $blockTypes = array_column($job->payload['blocks'], 'type');
+
             return in_array('header', $blockTypes, true) && in_array('section', $blockTypes, true);
         });
     }
@@ -115,7 +122,7 @@ final class ExternalChannelsTest extends TestCase
         $user = $this->makeUser('teams-tester');
         $event = $this->makeEvent(['slug' => 'dec-cache-v4', 'project_key' => 'proj-t']);
 
-        (new TeamsChannel())->send($event, $user, $row);
+        (new TeamsChannel)->send($event, $user, $row);
 
         Bus::assertDispatched(SendExternalNotificationJob::class, function (SendExternalNotificationJob $job): bool {
             return $job->channelName === 'teams'
@@ -135,7 +142,7 @@ final class ExternalChannelsTest extends TestCase
         $user = $this->makeUser('webhook-tester');
         $event = $this->makeEvent(['slug' => 'dec-cache-v5', 'project_key' => 'proj-w']);
 
-        (new WebhookChannel())->send($event, $user, $row);
+        (new WebhookChannel)->send($event, $user, $row);
 
         Bus::assertDispatched(SendExternalNotificationJob::class, function (SendExternalNotificationJob $job) use ($user): bool {
             return $job->channelName === 'webhook'
@@ -160,7 +167,7 @@ final class ExternalChannelsTest extends TestCase
         $user = $this->makeUser('discord-skip');
         $event = $this->makeEvent(['slug' => 'x']);
 
-        (new DiscordChannel())->send($event, $user, $row);
+        (new DiscordChannel)->send($event, $user, $row);
 
         Bus::assertNotDispatched(SendExternalNotificationJob::class);
 
@@ -205,7 +212,7 @@ final class ExternalChannelsTest extends TestCase
     public function test_send_external_notification_job_signs_request_with_hmac_when_secret_present(): void
     {
         Http::fake([
-            'https://example.test/*' => Http::response('', 200),
+            'https://webhook.example.invalid/*' => Http::response('', 200),
         ]);
 
         $row = $this->makeRow();
@@ -215,7 +222,7 @@ final class ExternalChannelsTest extends TestCase
             channelName: 'webhook',
             eventRowId: (int) $row->id,
             tenantId: (string) $row->tenant_id,
-            url: 'https://example.test/inbox',
+            url: 'https://webhook.example.invalid/inbox',
             payload: $payload,
             hmacSecret: $secret,
         );
@@ -223,6 +230,7 @@ final class ExternalChannelsTest extends TestCase
 
         Http::assertSent(function ($request) use ($payload, $secret): bool {
             $expected = 'sha256='.hash_hmac('sha256', json_encode($payload, JSON_UNESCAPED_SLASHES), $secret);
+
             return $request->hasHeader('X-AskMyDocs-Signature', $expected);
         });
     }
@@ -318,7 +326,7 @@ final class ExternalChannelsTest extends TestCase
 
         // 2. The job (channel B) runs and appends through the atomic
         //    helper.
-        \App\Notifications\NotificationEventLogger::append(
+        NotificationEventLogger::append(
             eventRowId: (int) $row->id,
             tenantId: (string) $row->tenant_id,
             channel: 'discord',
@@ -328,7 +336,7 @@ final class ExternalChannelsTest extends TestCase
         // 3. Channel C (e.g. AbstractWebhookChannel.appendLog called
         //    after dispatch under sync) also appends through the
         //    helper, passing in the stale in-memory $row.
-        \App\Notifications\NotificationEventLogger::append(
+        NotificationEventLogger::append(
             eventRowId: (int) $row->id,
             tenantId: (string) $row->tenant_id,
             channel: 'discord',
@@ -365,7 +373,7 @@ final class ExternalChannelsTest extends TestCase
         // warning instead — the row stays pristine.
         $row = $this->makeRow();
 
-        \App\Notifications\NotificationEventLogger::append(
+        NotificationEventLogger::append(
             eventRowId: (int) $row->id,
             tenantId: 'attacker-tenant',
             channel: 'discord',
@@ -408,22 +416,22 @@ final class ExternalChannelsTest extends TestCase
         // registration. We assert against the live ChannelRegistry.
         config(['askmydocs.notifications.channels.discord.url' => '']);
 
-        $registry = $this->app->make(\App\Notifications\ChannelRegistry::class);
+        $registry = $this->app->make(ChannelRegistry::class);
         // The registry is a singleton seeded by NotificationServiceProvider
         // in boot(). Re-running boot is not exposed by Laravel; instead
         // we forget the instance and let the provider re-boot on
         // resolve.
-        $this->app->forgetInstance(\App\Notifications\ChannelRegistry::class);
-        $this->app->forgetInstance(\App\Notifications\NotificationDispatcher::class);
-        /** @var \App\Providers\NotificationServiceProvider $provider */
-        $provider = $this->app->getProvider(\App\Providers\NotificationServiceProvider::class);
+        $this->app->forgetInstance(ChannelRegistry::class);
+        $this->app->forgetInstance(NotificationDispatcher::class);
+        /** @var NotificationServiceProvider $provider */
+        $provider = $this->app->getProvider(NotificationServiceProvider::class);
         // Re-resolve the registry through the singleton; provider
         // boot does not re-run, so we manually register channels via
         // reflection of the provider's helper. Easier path: invoke
         // the provider's boot once on a fresh registry.
-        $registry = $this->app->make(\App\Notifications\ChannelRegistry::class);
-        $registry->register(new \App\Notifications\Channels\InAppChannel());
-        $registry->register(new \App\Notifications\Channels\EmailChannel());
+        $registry = $this->app->make(ChannelRegistry::class);
+        $registry->register(new InAppChannel);
+        $registry->register(new EmailChannel);
         $ref = new \ReflectionMethod($provider, 'registerExternalChannels');
         $ref->setAccessible(true);
         $ref->invoke($provider, $registry);

@@ -4,19 +4,24 @@ namespace Tests\Unit\Ai;
 
 use App\Ai\AiResponse;
 use App\Ai\Providers\AnthropicProvider;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 /**
- * AskMyDocs AnthropicProvider — thin adapter over the laravel/ai SDK
- * (native `anthropic` driver), migrated off raw Http:: in v8.16/W2.
+ * AskMyDocs AnthropicProvider — HYBRID adapter (v8.16/W2 SDK no-tools chat +
+ * a translated raw-Http `/messages` with-tools chat path added in the
+ * provider-extension step).
  *
- * Wire-level Anthropic behaviour (request shape, retry, error mapping) is
- * owned by the SDK's Anthropic gateway. These tests pin the AskMyDocs adapter
- * contract: the caller-facing `AiProviderInterface` keeps its shape and the SDK
- * response maps onto `AiResponse` without dropping a field. The SDK calls the
- * Anthropic API through Illuminate's HTTP client, so `Http::fake()` intercepts
- * it exactly as for the legacy provider.
+ * Wire-level no-tools behaviour (request shape, retry, error mapping) is owned
+ * by the SDK's Anthropic gateway. The MCP with-tools turn stays on raw `Http::`
+ * `/messages`: the SDK cannot host AskMyDocs's external MCP tool loop. These
+ * tests pin BOTH branches — the SDK path maps the SDK response onto `AiResponse`,
+ * and the Http path translates the OpenAI-shaped tools + history into the
+ * Anthropic Messages API (`input_schema`, `tool_use` / `tool_result` blocks,
+ * system as a top-level field) and maps `tool_use` blocks back to the normalized
+ * `{id,name,arguments}` shape. The SDK calls the Anthropic API through
+ * Illuminate's HTTP client, so `Http::fake()` intercepts every branch.
  */
 class AnthropicProviderTest extends TestCase
 {
@@ -35,6 +40,11 @@ class AnthropicProviderTest extends TestCase
                 'text' => ['default' => 'claude-sonnet-4-20250514'],
             ],
         ], $overrides));
+    }
+
+    private function provider(): AnthropicProvider
+    {
+        return new AnthropicProvider(config('ai.providers.anthropic'));
     }
 
     public function test_name_and_no_embedding_support(): void
@@ -238,6 +248,229 @@ class AnthropicProviderTest extends TestCase
         $this->assertSame('stop', $chunks[3]->payload['finishReason']);
         $this->assertSame(12, $chunks[3]->payload['usage']['promptTokens']);
         $this->assertSame(7, $chunks[3]->payload['usage']['completionTokens']);
+    }
+
+    // ---------------------------------------------------------------------
+    // HYBRID with-tools path — raw Http:: /messages (Anthropic Messages API).
+    // ---------------------------------------------------------------------
+
+    public function test_with_tools_chat_uses_raw_http_messages_and_normalizes_tool_calls(): void
+    {
+        $this->setupConfig();
+        Http::fake([
+            'api.anthropic.com/*' => Http::response([
+                'id' => 'msg_tool',
+                'type' => 'message',
+                'role' => 'assistant',
+                'model' => 'claude-sonnet-4-20250514',
+                'content' => [
+                    ['type' => 'text', 'text' => 'Let me look that up.'],
+                    ['type' => 'tool_use', 'id' => 'toolu_42', 'name' => 'kb_search', 'input' => ['q' => 'x']],
+                ],
+                'usage' => ['input_tokens' => 30, 'output_tokens' => 12],
+                'stop_reason' => 'tool_use',
+            ], 200),
+        ]);
+
+        $tools = [['type' => 'function', 'function' => ['name' => 'kb_search', 'description' => 'Search KB', 'parameters' => ['type' => 'object', 'properties' => ['q' => ['type' => 'string']]]]]];
+        $res = $this->provider()->chatWithHistory('You are helpful.', [
+            ['role' => 'user', 'content' => 'find x'],
+        ], ['tools' => $tools, 'tool_choice' => 'auto']);
+
+        // tool_use → normalized {id,name,arguments(JSON string)}.
+        $this->assertSame('Let me look that up.', $res->content);
+        $this->assertSame('tool_use', $res->finishReason);
+        $this->assertSame(30, $res->promptTokens);
+        $this->assertSame(12, $res->completionTokens);
+        $this->assertSame(42, $res->totalTokens);
+        $this->assertCount(1, $res->toolCalls);
+        $this->assertSame('toolu_42', $res->toolCalls[0]['id']);
+        $this->assertSame('kb_search', $res->toolCalls[0]['name']);
+        $this->assertSame('{"q":"x"}', $res->toolCalls[0]['arguments']);
+
+        Http::assertSent(function (Request $req) {
+            $body = $req->data();
+            return $req->url() === 'https://api.anthropic.com/v1/messages'
+                && $req->hasHeader('x-api-key', 'sk-ant-test')
+                && $req->hasHeader('anthropic-version', '2023-06-01')
+                // system is a TOP-LEVEL field, not a message.
+                && ($body['system'] ?? null) === 'You are helpful.'
+                && $body['messages'][0]['role'] === 'user'
+                && $body['messages'][0]['content'][0]['type'] === 'text'
+                && $body['messages'][0]['content'][0]['text'] === 'find x'
+                // tools translated to {name, description, input_schema}.
+                && $body['tools'][0]['name'] === 'kb_search'
+                && $body['tools'][0]['description'] === 'Search KB'
+                && ($body['tools'][0]['input_schema']['type'] ?? null) === 'object'
+                && ! array_key_exists('parameters', $body['tools'][0])
+                // tool_choice 'auto' → {type:'auto'}.
+                && $body['tool_choice'] === ['type' => 'auto'];
+        });
+    }
+
+    public function test_with_tools_chat_translates_assistant_tool_use_and_tool_result_replay(): void
+    {
+        // The MCP loop replays an assistant tool_calls turn + a role:'tool' result.
+        // The provider must translate those into Anthropic tool_use / tool_result
+        // content blocks. No `tools` here (final answer turn) → still routes to Http
+        // because the history carries a tool turn.
+        $this->setupConfig();
+        Http::fake([
+            'api.anthropic.com/*' => Http::response([
+                'model' => 'claude-sonnet-4-20250514',
+                'content' => [['type' => 'text', 'text' => 'done']],
+                'usage' => ['input_tokens' => 50, 'output_tokens' => 3],
+                'stop_reason' => 'end_turn',
+            ], 200),
+        ]);
+
+        $res = $this->provider()->chatWithHistory('sys', [
+            ['role' => 'user', 'content' => 'find x'],
+            ['role' => 'assistant', 'content' => '', 'tool_calls' => [['id' => 'toolu_1', 'type' => 'function', 'function' => ['name' => 'kb_search', 'arguments' => '{"q":"y"}']]]],
+            ['role' => 'tool', 'content' => '{"hits":2}', 'tool_call_id' => 'toolu_1', 'name' => 'kb_search'],
+        ], []);
+
+        $this->assertSame('done', $res->content);
+
+        Http::assertSent(function (Request $req) {
+            $body = $req->data();
+            $msgs = $body['messages'];
+
+            // [0] user text, [1] assistant tool_use, [2] user tool_result.
+            return $req->url() === 'https://api.anthropic.com/v1/messages'
+                && ! array_key_exists('tools', $body) // no tools offered on the final turn
+                && count($msgs) === 3
+                && $msgs[1]['role'] === 'assistant'
+                // empty assistant text is dropped — only the tool_use block remains.
+                && count($msgs[1]['content']) === 1
+                && $msgs[1]['content'][0]['type'] === 'tool_use'
+                && $msgs[1]['content'][0]['id'] === 'toolu_1'
+                && $msgs[1]['content'][0]['name'] === 'kb_search'
+                && $msgs[1]['content'][0]['input'] === ['q' => 'y']
+                && $msgs[2]['role'] === 'user'
+                && $msgs[2]['content'][0]['type'] === 'tool_result'
+                && $msgs[2]['content'][0]['tool_use_id'] === 'toolu_1'
+                && $msgs[2]['content'][0]['content'] === '{"hits":2}';
+        });
+    }
+
+    public function test_parallel_tool_results_coalesce_into_one_user_message(): void
+    {
+        // When the model calls TWO tools in one turn, the MCP loop replays one
+        // assistant message (two tool_calls) followed by TWO separate role:'tool'
+        // results. Anthropic requires alternating roles — the two tool_result
+        // blocks MUST land in a SINGLE user message, not two consecutive ones
+        // (which the API rejects with "roles must alternate").
+        $this->setupConfig();
+        Http::fake([
+            'api.anthropic.com/*' => Http::response([
+                'model' => 'claude-sonnet-4-20250514',
+                'content' => [['type' => 'text', 'text' => 'done']],
+                'usage' => ['input_tokens' => 70, 'output_tokens' => 4],
+                'stop_reason' => 'end_turn',
+            ], 200),
+        ]);
+
+        $res = $this->provider()->chatWithHistory('sys', [
+            ['role' => 'user', 'content' => 'compare x and y'],
+            ['role' => 'assistant', 'content' => '', 'tool_calls' => [
+                ['id' => 'toolu_1', 'type' => 'function', 'function' => ['name' => 'kb_search', 'arguments' => '{"q":"x"}']],
+                ['id' => 'toolu_2', 'type' => 'function', 'function' => ['name' => 'kb_search', 'arguments' => '{"q":"y"}']],
+            ]],
+            ['role' => 'tool', 'content' => '{"hits":1}', 'tool_call_id' => 'toolu_1', 'name' => 'kb_search'],
+            ['role' => 'tool', 'content' => '{"hits":2}', 'tool_call_id' => 'toolu_2', 'name' => 'kb_search'],
+        ], []);
+
+        $this->assertSame('done', $res->content);
+
+        Http::assertSent(function (Request $req) {
+            $body = $req->data();
+            $msgs = $body['messages'];
+
+            // [0] user text, [1] assistant with 2 tool_use, [2] ONE user with 2
+            // tool_result blocks — NOT [2] + [3] two consecutive user turns.
+            return count($msgs) === 3
+                && $msgs[1]['role'] === 'assistant'
+                && count($msgs[1]['content']) === 2
+                && $msgs[1]['content'][0]['type'] === 'tool_use'
+                && $msgs[1]['content'][1]['type'] === 'tool_use'
+                && $msgs[2]['role'] === 'user'
+                && count($msgs[2]['content']) === 2
+                && $msgs[2]['content'][0]['type'] === 'tool_result'
+                && $msgs[2]['content'][0]['tool_use_id'] === 'toolu_1'
+                && $msgs[2]['content'][0]['content'] === '{"hits":1}'
+                && $msgs[2]['content'][1]['type'] === 'tool_result'
+                && $msgs[2]['content'][1]['tool_use_id'] === 'toolu_2'
+                && $msgs[2]['content'][1]['content'] === '{"hits":2}';
+        });
+    }
+
+    public function test_mcp_final_turn_with_tool_history_and_no_tools_routes_to_http_not_sdk(): void
+    {
+        // No `tools` in options, but assistant tool_calls + role:'tool' history
+        // the SDK can't represent → must route to raw Http:: /messages. The SDK
+        // path would throw on the 'tool' role via mapHistoryToSdkMessages().
+        $this->setupConfig();
+        Http::fake([
+            'api.anthropic.com/*' => Http::response([
+                'model' => 'claude-sonnet-4-20250514',
+                'content' => [['type' => 'text', 'text' => 'final answer']],
+                'usage' => ['input_tokens' => 40, 'output_tokens' => 5],
+                'stop_reason' => 'end_turn',
+            ], 200),
+        ]);
+
+        $res = $this->provider()->chatWithHistory('sys', [
+            ['role' => 'user', 'content' => 'find x'],
+            ['role' => 'assistant', 'content' => '', 'tool_calls' => [['id' => 'c1', 'type' => 'function', 'function' => ['name' => 'kb', 'arguments' => '{}']]]],
+            ['role' => 'tool', 'tool_call_id' => 'c1', 'name' => 'kb', 'content' => '{"r":1}'],
+        ], []);
+
+        $this->assertSame('final answer', $res->content);
+        Http::assertSent(fn (Request $req) => $req->url() === 'https://api.anthropic.com/v1/messages');
+    }
+
+    public function test_with_tools_chat_throws_on_http_error(): void
+    {
+        $this->setupConfig();
+        Http::fake(['*' => Http::response(['error' => 'overloaded'], 529)]);
+
+        $this->expectException(\Illuminate\Http\Client\RequestException::class);
+        $this->provider()->chatWithHistory('s', [
+            ['role' => 'user', 'content' => 'u'],
+        ], ['tools' => [['type' => 'function', 'function' => ['name' => 'x']]]]);
+    }
+
+    public function test_no_tools_chat_still_routes_through_the_sdk_path(): void
+    {
+        // Regression guard: adding the with-tools routing must NOT divert a plain
+        // no-tools/no-tool-history turn. Both branches hit /v1/messages with a
+        // near-identical body, so prove SDK routing structurally: the with-tools
+        // branch NEVER sends `tools` / `tool_choice` and NEVER emits tool content
+        // blocks on a no-tools turn — and the SDK response still maps cleanly onto
+        // AiResponse. (The explicit with-tools tests above pin the Http branch.)
+        $this->setupConfig();
+        Http::fake([
+            'api.anthropic.com/*' => Http::response([
+                'model' => 'claude-sonnet-4-20250514',
+                'content' => [['type' => 'text', 'text' => 'plain']],
+                'usage' => ['input_tokens' => 5, 'output_tokens' => 2],
+                'stop_reason' => 'end_turn',
+            ], 200),
+        ]);
+
+        $res = $this->provider()->chat('sys', 'hi');
+
+        $this->assertSame('plain', $res->content);
+        $this->assertSame(5, $res->promptTokens);
+        $this->assertSame(2, $res->completionTokens);
+        $this->assertSame([], $res->toolCalls);
+
+        Http::assertSent(function (Request $req) {
+            $body = $req->data();
+            return ! array_key_exists('tools', $body)
+                && ! array_key_exists('tool_choice', $body);
+        });
     }
 
     public function test_chat_stream_with_empty_content_emits_only_finish_chunk(): void

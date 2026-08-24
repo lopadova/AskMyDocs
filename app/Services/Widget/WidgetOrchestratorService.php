@@ -15,6 +15,7 @@ use App\Services\Kb\Chat\ChatRetrievalService;
 use App\Services\Kb\Grounding\ConfidenceCalculator;
 use App\Services\Kb\Retrieval\SearchResult;
 use Illuminate\Support\Str;
+use App\Support\SupportedLocale;
 
 /**
  * WidgetOrchestratorService — il motore del loop ReAct del widget KITT
@@ -58,21 +59,38 @@ final class WidgetOrchestratorService
      * @param  array<string, mixed>  $snapshot
      * @return array<string, mixed>
      */
-    public function start(WidgetKey $key, array $snapshot, ?string $userMessage, ?string $pageUrl, ?string $origin): array
+    public function start(WidgetKey $key, array $snapshot, ?string $userMessage, ?string $pageUrl, ?string $origin, ?\App\Models\WidgetIdentity $identity = null, ?string $locale = null): array
     {
-        $session = WidgetSession::create([
+        $session = $this->openSession($key, $pageUrl, $origin, $identity, $locale);
+
+        return $this->runTurn($session, $snapshot, $userMessage, null);
+    }
+
+    /**
+     * Open a widget session without invoking the legacy synchronous DOM loop.
+     * The durable data-agent endpoint uses this factory so both paths pin the
+     * exact same key, project, identity and locale boundaries.
+     */
+    public function openSession(
+        WidgetKey $key,
+        ?string $pageUrl,
+        ?string $origin,
+        ?\App\Models\WidgetIdentity $identity = null,
+        ?string $locale = null,
+    ): WidgetSession {
+        return WidgetSession::create([
             // tenant_id auto-fill via BelongsToTenant (= tenant della key, R30).
             'widget_key_id' => $key->id,
+            'widget_identity_id' => $identity?->id,
             'project_key' => $key->project_key,
             'public_session_id' => (string) Str::uuid(),
             'status' => WidgetSession::STATUS_ACTIVE,
             'skill' => $key->skill,
             'page_url' => $pageUrl,
             'origin' => $origin,
+            'locale' => SupportedLocale::normalize($locale),
             'meta' => ['consecutive_errors' => 0],
         ]);
-
-        return $this->runTurn($session, $snapshot, $userMessage, null);
     }
 
     /**
@@ -144,6 +162,9 @@ final class WidgetOrchestratorService
             $retrieved = $this->retrieval->retrieve($userMessage, (string) $session->project_key, null);
             $result = $this->retrieval->shouldRefuse($retrieved) ? null : $retrieved;
         }
+        $citations = $result !== null
+            ? $this->retrieval->buildCitations($result)
+            : (is_array($toolResult) ? $this->citationsForLatestToolContinuation($session) : []);
 
         // #7/#15 — i tool si inviano SOLO se il provider attivo espone il
         // function-calling OpenAI-shape (openai/openrouter/fake). Mandare i tool
@@ -174,7 +195,7 @@ final class WidgetOrchestratorService
             $response = $this->ai->chatWithHistory($systemPrompt, array_merge($baseMessages, $extra), $options);
 
             if ($response->toolCalls === []) {
-                return $this->finishWithAnswer($session, $snapshot, $response, $result, $start, $userMessage);
+                return $this->finishWithAnswer($session, $snapshot, $response, $result, $citations, $start, $userMessage);
             }
 
             $call = $response->toolCalls[0];
@@ -186,12 +207,21 @@ final class WidgetOrchestratorService
             // server-side: si ritorna al FE marcato execution:"host" perché lo
             // esegua FE-proxied verso l'app ospite (spec §3.3).
             if (in_array($name, $hostToolNames, true)) {
-                return $this->finishWithToolCall($session, $snapshot, $name, $args, $response, $start, isHost: true);
+                return $this->finishWithToolCall(
+                    $session,
+                    $snapshot,
+                    $name,
+                    $args,
+                    $response,
+                    $start,
+                    citations: $citations,
+                    isHost: true,
+                );
             }
 
             $verdict = $this->toolValidator->validate($name, $args, $snapshot, $enabled, $navigateAllowlist);
             if ($verdict['ok']) {
-                return $this->finishWithToolCall($session, $snapshot, $name, $args, $response, $start);
+                return $this->finishWithToolCall($session, $snapshot, $name, $args, $response, $start, $citations);
             }
 
             $errors++;
@@ -210,10 +240,17 @@ final class WidgetOrchestratorService
      * @param  array<string, mixed>  $snapshot
      * @return array<string, mixed>
      */
-    private function finishWithAnswer(WidgetSession $session, array $snapshot, AiResponse $response, ?SearchResult $result, float $start, ?string $userMessage = null): array
+    private function finishWithAnswer(
+        WidgetSession $session,
+        array $snapshot,
+        AiResponse $response,
+        ?SearchResult $result,
+        array $citations,
+        float $start,
+        ?string $userMessage = null,
+    ): array
     {
         $latency = (int) ((microtime(true) - $start) * 1000);
-        $citations = $result !== null ? $this->retrieval->buildCitations($result) : [];
         $confidence = $result !== null
             ? $this->confidence->compute(
                 primaryChunks: $result->primary,
@@ -226,7 +263,10 @@ final class WidgetOrchestratorService
         $this->addStep(
             $session,
             WidgetSessionStep::KIND_BOT_MESSAGE,
-            args: ['content' => $response->content],
+            args: [
+                'content' => $response->content,
+                'citations' => $this->compactCitations($citations),
+            ],
             snapshotIn: $snapshot,
             tokensIn: $response->promptTokens,
             tokensOut: $response->completionTokens,
@@ -248,6 +288,92 @@ final class WidgetOrchestratorService
             'confidence' => $confidence,
             'meta' => $this->turnMeta($response, $latency),
         ];
+    }
+
+    /**
+     * Persist only the citation fields needed to replay source chips and open
+     * the source viewer. Scores and evidence hashes remain response-only;
+     * snippets/headings are retained and pass through addStep's PII masker.
+     *
+     * @param  list<array<string, mixed>>  $citations
+     * @return list<array<string, mixed>>
+     */
+    private function compactCitations(array $citations): array
+    {
+        return collect($citations)
+            ->filter(fn (mixed $citation): bool => is_array($citation))
+            ->map(static function (array $citation): array {
+                $chunks = collect((array) ($citation['chunks'] ?? []))
+                    ->filter(fn (mixed $chunk): bool => is_array($chunk))
+                    ->map(static fn (array $chunk): array => [
+                        'chunk_id' => $chunk['chunk_id'] ?? null,
+                        'heading' => is_string($chunk['heading'] ?? null) ? $chunk['heading'] : null,
+                        'snippet' => is_string($chunk['snippet'] ?? null) ? $chunk['snippet'] : '',
+                    ])
+                    ->values()
+                    ->all();
+
+                return [
+                    'document_id' => $citation['document_id'] ?? null,
+                    'title' => is_string($citation['title'] ?? null) ? $citation['title'] : 'Untitled',
+                    'source_path' => is_string($citation['source_path'] ?? null) ? $citation['source_path'] : null,
+                    'source_type' => is_string($citation['source_type'] ?? null) ? $citation['source_type'] : null,
+                    'slug' => is_string($citation['slug'] ?? null) ? $citation['slug'] : null,
+                    'project_key' => is_string($citation['project_key'] ?? null) ? $citation['project_key'] : null,
+                    'generation_source' => is_string($citation['generation_source'] ?? null)
+                        ? $citation['generation_source']
+                        : null,
+                    'headings' => collect((array) ($citation['headings'] ?? []))
+                        ->filter(fn (mixed $heading): bool => is_string($heading) && $heading !== '')
+                        ->unique()
+                        ->values()
+                        ->all(),
+                    'chunks_used' => is_int($citation['chunks_used'] ?? null)
+                        ? $citation['chunks_used']
+                        : count($chunks),
+                    'origin' => is_string($citation['origin'] ?? null) ? $citation['origin'] : null,
+                    'chunks' => $chunks,
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Carry the latest masked citation set across an automatic tool-result
+     * continuation. A fresh user message never inherits previous sources.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function citationsForLatestToolContinuation(WidgetSession $session): array
+    {
+        $toolCall = $session->steps()
+            ->where('kind', WidgetSessionStep::KIND_TOOL_CALL)
+            ->orderByDesc('step_index')
+            ->first(['step_index']);
+        if ($toolCall === null) {
+            return [];
+        }
+
+        // Only an uninterrupted tool-result tail belongs to that call. This
+        // prevents a later, ungrounded turn from inheriting an older answer's
+        // sources merely because they are the latest non-empty citations.
+        $tailKinds = $session->steps()
+            ->where('step_index', '>', $toolCall->step_index)
+            ->pluck('kind');
+        if ($tailKinds->contains(fn (string $kind): bool => $kind !== WidgetSessionStep::KIND_TOOL_RESULT)) {
+            return [];
+        }
+
+        $citationStep = $session->steps()
+            ->where('kind', WidgetSessionStep::KIND_BOT_MESSAGE)
+            ->where('step_index', $toolCall->step_index - 1)
+            ->first(['args_json']);
+        $citations = data_get($citationStep?->args_json, 'citations');
+
+        return is_array($citations)
+            ? array_values(array_filter($citations, 'is_array'))
+            : [];
     }
 
     /**
@@ -293,10 +419,35 @@ final class WidgetOrchestratorService
      * @param  array<string, mixed>  $args
      * @return array<string, mixed>
      */
-    private function finishWithToolCall(WidgetSession $session, array $snapshot, string $name, array $args, AiResponse $response, float $start, bool $isHost = false): array
+    private function finishWithToolCall(
+        WidgetSession $session,
+        array $snapshot,
+        string $name,
+        array $args,
+        AiResponse $response,
+        float $start,
+        array $citations = [],
+        bool $isHost = false,
+    ): array
     {
         $latency = (int) ((microtime(true) - $start) * 1000);
         $def = $isHost ? [] : ($this->catalog->definition($name) ?? []);
+
+        // A tool call may be grounded by the same retrieval as a normal
+        // answer. Persist a replayable, PII-masked citation-bearing bot step
+        // before the action so the viewer remains available throughout the
+        // automatic tool loop (including terminal report_* calls).
+        if ($citations !== []) {
+            $this->addStep(
+                $session,
+                WidgetSessionStep::KIND_BOT_MESSAGE,
+                args: [
+                    'content' => $response->content,
+                    'citations' => $this->compactCitations($citations),
+                ],
+                snapshotIn: $snapshot,
+            );
+        }
 
         $this->addStep(
             $session,
@@ -343,6 +494,7 @@ final class WidgetOrchestratorService
                 'execution' => $execution,
             ],
             'bot_message' => $response->content !== '' ? $response->content : null,
+            'citations' => $citations,
             'meta' => $this->turnMeta($response, $latency),
         ];
     }

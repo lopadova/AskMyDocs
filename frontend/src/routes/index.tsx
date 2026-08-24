@@ -18,6 +18,11 @@ import { UsersView } from '../features/admin/users/UsersView';
 import { RolesView } from '../features/admin/roles/RolesView';
 import { ProjectsList } from '../features/admin/projects/ProjectsList';
 import { TeamsList } from '../features/admin/teams/TeamsList';
+import { TenantControlView } from '../features/system-admin/tenants/TenantControlView';
+import { SuperAdminsView } from '../features/system-admin/super-admins/SuperAdminsView';
+import { NoTenantAssignedView } from '../features/tenant/NoTenantAssignedView';
+import { CompanyOnboardingView } from '../features/tenant/CompanyOnboardingView';
+import { TenantWelcomeView } from '../features/tenant/TenantWelcomeView';
 import { KbView } from '../features/admin/kb/KbView';
 import { KbHealthView } from '../features/admin/kb-health/KbHealthView';
 import { TagsList } from '../features/admin/tags/TagsList';
@@ -40,6 +45,7 @@ import { EvalHarnessView } from '../features/admin/eval-harness/EvalHarnessView'
 import { EvidenceRiskReviewView } from '../features/admin/evidence-risk-review/EvidenceRiskReviewView';
 import { ConnectorsView } from '../features/admin/connectors/ConnectorsView';
 import { ConnectorCallback } from '../features/admin/connectors/ConnectorCallback';
+import { ApiConnectorsView } from '../features/admin/api-connectors/ApiConnectorsView';
 import { IngestionView } from '../features/admin/ingestion/IngestionView';
 import { AppSettingsView } from '../features/admin/app-settings/AppSettingsView';
 import { AiActComplianceView } from '../features/admin/ai-act-compliance/AiActComplianceView';
@@ -59,7 +65,7 @@ import { GamificationInsightsPanel } from '../features/admin/engagement/Gamifica
 import { AdminNotificationDefaultsGrid } from '../features/notifications/AdminNotificationDefaultsGrid';
 import { WidgetAdminView } from '../features/admin/widget/WidgetAdminView';
 import { AdminShell } from '../features/admin/shell/AdminShell';
-import { RequireRole } from './role-guard';
+import { RequirePermission, RequireRole } from './role-guard';
 import { LoginPage } from '../features/auth/LoginPage';
 import { RegisterPage } from '../features/auth/RegisterPage';
 import { ForgotPasswordPage } from '../features/auth/ForgotPasswordPage';
@@ -67,7 +73,7 @@ import { ResetPasswordPage } from '../features/auth/ResetPasswordPage';
 import { RedirectIfAuth, RequireAuth, useAuthBootstrap } from './guards';
 import { useAuthStore } from '../lib/auth-store';
 import { selectCurrentHash, useTeamStore } from '../lib/team-store';
-import { useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 
 function RootLayout() {
     useAuthBootstrap();
@@ -106,10 +112,40 @@ const loginRoute = createRoute({
 
 function RegisterRoute() {
     const navigate = useNavigate();
+    const welcomeTeamHash = useRef<string | null>(null);
+    const redirectAuthenticated = useCallback(() => {
+        if (welcomeTeamHash.current !== null) {
+            navigate({
+                to: '/app/welcome/$teamHash',
+                params: { teamHash: welcomeTeamHash.current },
+            });
+            return;
+        }
+
+        navigate({ to: '/app' });
+    }, [navigate]);
+
     return (
-        <RedirectIfAuth>
+        <RedirectIfAuth onAuthenticated={redirectAuthenticated}>
             <RegisterPage
-                onSuccess={() => navigate({ to: '/app' })}
+                onSuccess={({ registration, me }) => {
+                    const team = registration.target_tenant === null
+                        ? undefined
+                        : me.teams?.find(
+                            (candidate) => candidate.tenant_id === registration.target_tenant,
+                        );
+
+                    if (registration.intent === 'tenant_join' && team) {
+                        // RedirectIfAuth wakes as soon as RegisterPage stores
+                        // `/me`. Record the intent-specific destination first
+                        // so its authenticated redirect cannot race us to the
+                        // generic bare `/app` route.
+                        welcomeTeamHash.current = team.hash;
+                        return;
+                    }
+
+                    welcomeTeamHash.current = null;
+                }}
                 onNavigateLogin={() => navigate({ to: '/login' })}
             />
         </RedirectIfAuth>
@@ -195,12 +231,20 @@ const appRoute = createRoute({
 function TeamRootRedirect() {
     const navigate = useNavigate();
     const hash = useTeamStore(selectCurrentHash);
+    const isSystemAdmin = useAuthStore((state) => state.features.system_admin === true);
+    const onboardingRequired = useAuthStore((state) => state.onboarding.required);
 
     useEffect(() => {
         if (hash !== null) {
             navigate({ to: '/app/$teamHash/chat', params: { teamHash: hash }, replace: true });
+        } else if (isSystemAdmin) {
+            navigate({ to: '/app/system/tenants', replace: true });
+        } else if (onboardingRequired) {
+            navigate({ to: '/app/onboarding', replace: true });
+        } else {
+            navigate({ to: '/app/no-tenant', replace: true });
         }
-    }, [hash, navigate]);
+    }, [hash, isSystemAdmin, onboardingRequired, navigate]);
 
     return null;
 }
@@ -227,6 +271,8 @@ function TeamGate() {
     const teams = useTeamStore((s) => s.teams);
     const currentTeam = useTeamStore((s) => s.currentTeam);
     const switchTeam = useTeamStore((s) => s.switchTeam);
+    const isSystemAdmin = useAuthStore((state) => state.features.system_admin === true);
+    const onboardingRequired = useAuthStore((state) => state.onboarding.required);
     const navigate = useNavigate();
 
     const team = teams.find((t) => t.hash === teamHash);
@@ -240,7 +286,15 @@ function TeamGate() {
         }
         const active = teams.find((t) => t.tenant_id === currentTeam) ?? teams[0];
         if (!active) {
-            return; // store not synced yet — RequireAuth still resolving
+            navigate({
+                to: isSystemAdmin
+                    ? '/app/system/tenants'
+                    : onboardingRequired
+                        ? '/app/onboarding'
+                        : '/app/no-tenant',
+                replace: true,
+            });
+            return;
         }
         const rest = window.location.pathname.replace(/^\/app\/?/, '');
         navigate({
@@ -248,7 +302,7 @@ function TeamGate() {
             search: true,
             replace: true,
         });
-    }, [team, teams, currentTeam, switchTeam, navigate]);
+    }, [team, teams, currentTeam, switchTeam, navigate, isSystemAdmin, onboardingRequired]);
 
     if (!team || team.tenant_id !== currentTeam) {
         return null; // redirecting (legacy URL) or syncing (deep link)
@@ -470,6 +524,108 @@ const adminTeamsRoute = createRoute({
     getParentRoute: () => teamRoute,
     path: 'admin/teams',
     component: AdminTeamsRoute,
+});
+
+function SystemAdminTenantControlRoute() {
+    return (
+        <AppShell tenantScoped={false}>
+            <RequirePermission permission="platform.admin">
+                <AdminShell section="tenant-control">
+                    <TenantControlView />
+                </AdminShell>
+            </RequirePermission>
+        </AppShell>
+    );
+}
+
+const systemAdminTenantControlRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'system/tenants',
+    component: SystemAdminTenantControlRoute,
+});
+
+function SystemAdminSuperAdminsRoute() {
+    return (
+        <AppShell tenantScoped={false}>
+            <RequirePermission permission="platform.admin">
+                <AdminShell section="super-admins">
+                    <SuperAdminsView />
+                </AdminShell>
+            </RequirePermission>
+        </AppShell>
+    );
+}
+
+const systemAdminSuperAdminsRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'system/super-admins',
+    component: SystemAdminSuperAdminsRoute,
+});
+
+function NoTenantAssignedRoute() {
+    return (
+        <AppShell tenantScoped={false}>
+            <NoTenantAssignedView />
+        </AppShell>
+    );
+}
+
+const noTenantAssignedRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'no-tenant',
+    component: NoTenantAssignedRoute,
+});
+
+function CompanyOnboardingRoute() {
+    const navigate = useNavigate();
+    const onboardingRequired = useAuthStore((state) => state.onboarding.required);
+
+    if (!onboardingRequired) {
+        return <Navigate to="/app" replace />;
+    }
+
+    return (
+        <AppShell tenantScoped={false}>
+            <CompanyOnboardingView
+                onSuccess={() => navigate({ to: '/app', replace: true })}
+            />
+        </AppShell>
+    );
+}
+
+const companyOnboardingRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'onboarding',
+    component: CompanyOnboardingRoute,
+});
+
+function TenantWelcomeRoute() {
+    const { teamHash } = tenantWelcomeRoute.useParams();
+    const team = useTeamStore((state) => state.teams.find(
+        (candidate) => candidate.hash === teamHash,
+    ));
+    const navigate = useNavigate();
+
+    if (!team) {
+        return <Navigate to="/app" replace />;
+    }
+
+    return (
+        <TenantWelcomeView
+            teamName={team.name}
+            onContinue={() => navigate({
+                to: '/app/$teamHash/chat',
+                params: { teamHash: team.hash },
+                replace: true,
+            })}
+        />
+    );
+}
+
+const tenantWelcomeRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'welcome/$teamHash',
+    component: TenantWelcomeRoute,
 });
 
 // PR7 / Phase F2 — flat admin children. Same shape as `chatRoute`
@@ -901,6 +1057,25 @@ const adminConnectorsRoute = createRoute({
     component: AdminConnectorsRoute,
 });
 
+// v8.27 — API Connector (Connettore API) admin route. Same flat-RBAC pattern as
+// the OAuth/credential connectors above: the BE Gate `manageConnectors` (admin +
+// super-admin) is the authoritative defence; the FE <RequireRole> guard short-
+// circuits to <AdminForbidden /> for unprivileged roles so a viewer hitting
+// /app/admin/api-connectors directly never triggers a 403 fetch storm.
+function AdminApiConnectorsRoute() {
+    return (
+        <RequireRole roles={['admin', 'super-admin']}>
+            <ApiConnectorsView />
+        </RequireRole>
+    );
+}
+
+const adminApiConnectorsRoute = createRoute({
+    getParentRoute: () => teamRoute,
+    path: 'admin/api-connectors',
+    component: AdminApiConnectorsRoute,
+});
+
 // v8.21 (Ciclo 2) — Ingestion & Sync observability. Same admin+super-admin gate
 // as connectors (the BE `manageConnectors` Gate is authoritative).
 function AdminIngestionRoute() {
@@ -1254,6 +1429,7 @@ const teamChildren = [
     adminAiActComplianceSplatRoute,
     adminConnectorsRoute,
     adminConnectorCallbackRoute,
+    adminApiConnectorsRoute,
     adminIngestionRoute,
     adminInvitationsRoute,
     adminAppSettingsRoute,
@@ -1279,6 +1455,11 @@ const routeTree = rootRoute.addChildren([
     resetRoute,
     appRoute.addChildren([
         appIndexRoute,
+        systemAdminTenantControlRoute,
+        systemAdminSuperAdminsRoute,
+        companyOnboardingRoute,
+        tenantWelcomeRoute,
+        noTenantAssignedRoute,
         teamRoute.addChildren(teamChildren),
         digestRoute,
         meDashboardRoute,

@@ -27,6 +27,7 @@ class WidgetSessionStep extends Model
     protected $fillable = [
         'tenant_id',
         'widget_session_id',
+        'agent_run_id',
         'step_index',
         'kind',
         'tool',
@@ -52,5 +53,11 @@ class WidgetSessionStep extends Model
     public function session(): BelongsTo
     {
         return $this->belongsTo(WidgetSession::class, 'widget_session_id');
+    }
+
+    /** @return BelongsTo<AgentRun, WidgetSessionStep> */
+    public function agentRun(): BelongsTo
+    {
+        return $this->belongsTo(AgentRun::class);
     }
 }

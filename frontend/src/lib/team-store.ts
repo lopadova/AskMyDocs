@@ -40,8 +40,8 @@ type TeamState = {
     clear: () => void;
 };
 
-function firstTeamId(teams: Team[]): string {
-    return teams[0]?.tenant_id ?? 'default';
+function firstTeamId(teams: Team[]): string | null {
+    return teams[0]?.tenant_id ?? null;
 }
 
 function isSelectable(tenantId: string | null, teams: Team[]): tenantId is string {

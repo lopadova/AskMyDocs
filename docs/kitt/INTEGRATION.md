@@ -95,9 +95,10 @@ All key management is **super-admin** only, tenant-scoped (`manageWidgetKeys` ga
 |---|---|
 | List keys | `GET /api/admin/widget-keys` |
 | Create | `POST /api/admin/widget-keys` |
-| Update (origins / rate limit / theme / skill / host-tools) | `PATCH /api/admin/widget-keys/{id}` |
+| Update (origins / rate limit / theme / skill / host-tools / user auth) | `PATCH /api/admin/widget-keys/{id}` |
 | Delete | `DELETE /api/admin/widget-keys/{id}` |
 | Rotate `pk_`+`sk_` (returns secret once) | `POST /api/admin/widget-keys/{id}/rotate` |
+| Rotate the server-only identity credential `ik_` | `POST /api/admin/widget-keys/{id}/rotate-identity-secret` |
 | Revoke (set `is_active=false`) | `POST /api/admin/widget-keys/{id}/revoke` |
 
 `POST` body fields:
@@ -110,7 +111,15 @@ All key management is **super-admin** only, tenant-scoped (`manageWidgetKeys` ga
 | `rate_limit` | – | Requests/min per key+IP. Default `60`. |
 | `skill` | – | `^[a-z0-9][a-z0-9-]*@[0-9]+$`, e.g. `askmydocs-assistant@1`. Default `askmydocs-assistant@1`. |
 | `host_tools_enabled` | – | Boolean, default `false`. Operator switch for HTP (see §9). |
-| `theme` | – | Theme object; validated + sanitised server-side (colours `#rgb`/`#rrggbb`/`#rrggbbaa`, allowlisted font stacks, `https://` logo URLs). |
+| `user_auth_enabled` | – | Boolean, default `false`. Creates a one-time `ik_` credential used by the host backend to mint short-lived user tokens. |
+| `theme` | – | Theme object; validated + sanitised server-side (hex colours, clamped dimensions, allowlisted font/shadow presets, `https://` image URLs). `PATCH` is partial and preserves omitted theme fields. |
+
+Changing `user_auth_enabled` and rotating `ik_` require the current
+`identity_credential_version`. A stale request returns `409
+identity_credential_conflict`. The shared lifecycle service applies tenant
+scope, a row lock, the hash/version update and allowlisted
+`admin_command_audit` rows in one transaction. Neither plaintext nor hashes are
+audited.
 
 ---
 
@@ -126,29 +135,72 @@ or from `data-*` attributes on the `<script>` tag (data-attrs win).
 | `key` | string | — (**required**) | Public key `pk_…`. |
 | `apiBase` | string | `''` (same origin) | AskMyDocs instance base URL. |
 | `skill` | string | key's skill | Override the skill id. |
-| `mode` | `'helper'` \| `'inline'` | `'helper'` | Floating launcher vs mounted block. |
+| `mode` | `'helper'` \| `'inline'` \| `'fullscreen'` | `'helper'` | Floating launcher, mounted block, or full viewport. |
 | `mount` | string | — | CSS selector of the container for `inline` mode. |
 | `title` | string | — | Panel title. |
 | `launcherLabel` | string | — | Launcher button label. |
 | `autoOpen` | boolean | `false` | Open the panel on load (helper mode). |
-| `theme` | object | key's theme | Inline theme overrides. |
+| `theme` | object | key's theme | Inline theme overrides. Effective precedence: host `--askmydocs-*` CSS variables → inline theme → key theme → defaults. See `frontend/src/widget/README.md` for the complete token/range table. |
+| `intro` | object \| `false` | key's intro | Structured welcome card shown before the first message. Inline fields override the per-key default; `false` disables it on the current page. Arbitrary HTML is not supported. |
 | `hostManifestUrl` | string | — | HTP manifest URL (see §9). |
 | `hostExecUrl` | string | — | HTP execution URL (see §9). |
 | `csrfToken` | string | `<meta name="csrf-token">` | CSRF token for same-origin host calls. |
+| `userToken` | string | — | Static short-lived `wu_…` bearer. Supported for server-rendered pages; cannot renew itself. |
+| `userTokenUrl` | string | — | Recommended same-origin host endpoint returning `{token:"wu_…", expires_at:"…"}`. The widget calls it with `credentials:"same-origin"` and renews before expiry. |
 
 **Equivalent `data-*` attributes** on the script tag: `data-public-key`,
 `data-api-base`, `data-skill`, `data-host-manifest-url`, `data-host-exec-url`,
-`data-csrf-token`.
+`data-csrf-token`, `data-user-token`, `data-user-token-url`.
 
 **Modes**
 - `helper` — a fixed floating launcher on `<body>` that slides out a chat panel.
 - `inline` — the chat renders as a full block inside `mount` (fills its width/height).
+- `fullscreen` — an always-open chat that fills the viewport; no mount container.
+
+### Pre-conversation welcome card
+
+The host backend can make the widget feel native to each page by emitting a
+structured `intro` object. Content is rendered as text nodes inside the widget's
+Shadow DOM; HTML, inline SVG and arbitrary CSS are deliberately rejected.
+
+```html
+<script>
+  window.AskMyDocsWidget = {
+    key: 'pk_live_…',
+    intro: {
+      enabled: true,
+      variant: 'hero', // compact | card | hero
+      eyebrow: 'Documentation assistant',
+      title: 'How can I help?',
+      subtitle: 'Answers from official sources',
+      body: 'Search manuals, procedures and product documentation.',
+      imageUrl: 'https://cdn.example.com/product-assistant.webp',
+      imageAlt: 'Product documentation assistant',
+      icon: 'sparkles', // sparkles | chat | search | help | none
+      bullets: ['Search official documentation', 'Open cited sources'],
+      suggestions: [
+        { label: 'Get started', prompt: 'Explain how to get started' },
+        { label: 'Browse procedures', prompt: 'Show the available procedures' }
+      ],
+      dismissible: true,
+      hideAfterFirstMessage: true
+    }
+  };
+</script>
+```
+
+The saved key configuration comes from `GET /api/widget/setup`; the host object
+overrides it field-by-field. An authenticated replay with existing messages does
+not show the card again. A suggestion is a real first user message, and the card
+collapses when that message is sent. Limits are four bullets, four suggestions,
+HTTPS-only images, and bounded plain text. Server-rendered applications should
+use their framework's safe JavaScript serializer (Laravel: `Js::from($config)`).
 
 ---
 
 ## 5. Authentication modes
 
-The `widget.key` middleware (`ResolveWidgetKey`) accepts three credential shapes.
+The widget channel accepts four credential shapes.
 In every case **tenant + project are taken from the key server-side** and written
 to `TenantContext` — the client cannot choose a tenant (R30).
 
@@ -171,16 +223,74 @@ Authorization: Bearer sk_live_…      # secret, verified via Hash::check
 ```
 
 ### Session token (optional, browser hardening)
-Mint a **single-use, origin-bound** token and use it as a bearer for the session.
+Mint a **single-use, origin-bound** token and use it for exactly the next request.
 Consumption is atomic (R21): two concurrent requests can never both consume it.
 
 ```
 POST /api/widget/session-token       # with Mode A or B credentials → { token: "wt_…", expires_at }
-Authorization: Bearer wt_…           # on subsequent calls (origin must match the mint origin)
+Authorization: Bearer wt_…           # on the next call (origin must match the mint origin)
 ```
 - TTL `WIDGET_SESSION_TOKEN_TTL` minutes (default 30).
 - Stored hashed at rest (never plaintext).
 - An expired/consumed token is rejected with `401`.
+- A public/anonymous caller cannot attach a token to a session owned by an
+  authenticated identity. An authenticated caller may attach only its own
+  identity-scoped session.
+
+### Authenticated host user (`ik_` → `wu_`)
+
+Enable **Authenticated host users** on the widget key. AskMyDocs returns a
+server-only `ik_…` credential once. The host backend — after authenticating its
+own user — exchanges an immutable subject for an origin-bound `wu_…`:
+
+```http
+POST /api/widget/user-token
+X-Widget-Key: pk_live_…
+Authorization: Bearer ik_live_…
+Content-Type: application/json
+
+{"subject":"stable-host-user-uuid","origin":"https://app.example.com"}
+```
+
+Use a UUID or an HMAC of the host's internal user id. Do not use a mutable email,
+and never accept `subject` from browser request input. AskMyDocs stores only an
+HMAC scoped to tenant + widget key + project.
+
+`wu_` is a reusable access bearer until `WIDGET_USER_TOKEN_TTL` (15 minutes by
+default), not a refresh token. Configure the browser with a same-origin endpoint
+on the host application:
+
+```html
+<script>
+  window.AskMyDocsWidget = {
+    key: 'pk_live_…',
+    apiBase: 'https://your-askmydocs.example.com',
+    userTokenUrl: '/api/askmydocs/widget-user-token'
+  };
+</script>
+```
+
+That host endpoint must require the application's normal login/session, derive
+the subject from `request.user`, perform the server-to-server exchange above,
+and return `{ "token": "wu_…", "expires_at": "ISO-8601" }`. The URL must be
+same-origin: the widget sends the host cookie, keeps `wu_` only in memory,
+requests it with `cache: "no-store"`, renews shortly before expiry, and retries
+one failed AskMyDocs request after renewal. The host should also return
+`Cache-Control: no-store`. If acquisition fails, authenticated mode fails
+closed rather than creating anonymous history.
+
+At boot, the widget calls `GET /api/widget/sessions/current`. The server scopes
+the query to tenant + key + project + pseudonymous identity, filters
+`active|waiting_user|waiting_tool`, and orders by `updated_at DESC, id DESC`.
+It returns one session or `204`; paginated history is never searched during
+restore.
+
+Rotation and disable have deliberately different semantics:
+
+- rotate `ik_`: old-secret minting stops immediately, but existing `wu_` tokens
+  remain valid until their TTL;
+- disable user auth: existing `wu_` and identity-bound `wt_` tokens are rejected
+  immediately because validators check the live key on each request.
 
 **Errors:** `401` (key missing/invalid), `403` (inactive key / origin not allowed),
 `429` (rate limit).
@@ -189,27 +299,36 @@ Authorization: Bearer wt_…           # on subsequent calls (origin must match 
 
 ## 6. HTTP API reference
 
-Base path `/api/widget/*`. No Sanctum — gated by `widget.key` + `throttle:120,1`,
-with CORS handled by `HandleWidgetCors` (reflects an allowed `Origin`, answers
-`OPTIONS` preflight).
+Base path `/api/widget/*`. No Sanctum: normal widget requests are gated by
+`widget.key` + `throttle:120,1`; the server-to-server user-token exchange
+validates its dedicated `ik_` credential. CORS is handled by
+`HandleWidgetCors` (reflects an allowed `Origin`, answers `OPTIONS` preflight).
 
 | Method | Path | Purpose |
 |---|---|---|
 | `GET` | `/api/widget/setup` | Fetch the resolved skill manifest (tools, policies, theme) for the key. |
+| `POST` | `/api/widget/user-token` | Server-to-server exchange of `pk_` + `ik_` + stable subject for a short-lived `wu_`. |
 | `POST` | `/api/widget/session-token` | Mint a single-use, origin-bound session token. |
+| `GET` | `/api/widget/sessions` | Paginated session history for the identity in a valid `wu_`. |
+| `GET` | `/api/widget/sessions/current` | Newest open session for the identity, or `204`; independent from pagination. |
 | `POST` | `/api/widget/sessions/start` | Open a session and run the first turn. |
 | `POST` | `/api/widget/sessions/{session}/step` | Run the next turn (snapshot + optional `tool_result` + optional `message`). |
 | `POST` | `/api/widget/sessions/{session}/exec-tool` | Execute a backend (BE) tool for the session. |
 | `POST` | `/api/widget/sessions/{session}/cancel` | Abort the session. |
 | `GET` | `/api/widget/sessions/{session}/replay` | Fetch the session's steps (PII-masked). |
+| `GET` | `/api/widget/sessions/{session}/documents/{documentId}/preview` | Reconstruct a document cited in this exact session from its ordered indexed chunks (`Cache-Control: no-store`). |
 
 - `{session}` is the opaque `public_session_id` (UUID); a session belonging to a
   different key/tenant resolves to `404` (anti-IDOR).
+- Source preview additionally requires the same project and optional widget
+  identity plus a persisted citation for `{documentId}`. Uncited, foreign,
+  missing and soft-deleted documents deliberately share one `404` response.
 - **`start` / `step` request body**: `{ snapshot: {…}, message?: string,
   tool_result?: {…} }`. `snapshot` is required and capped (see §12).
 - **Turn response** (`type` discriminates): `message` (grounded answer + `citations`
   + `confidence`), `tool_call` (a tool for the FE/host/BE to run, with an
-  `execution` of `fe` | `host` | `be`), or `blocked`.
+  `execution` of `fe` | `host` | `be`; grounded tool turns also carry
+  `bot_message` + `citations`), or `blocked`.
 - **Session statuses**: `active`, `waiting_user`, `waiting_tool`, `completed`,
   `blocked`, `aborted`, `error`. Only `active` / `waiting_user` / `waiting_tool`
   accept a new `step` (a closed/blocked/errored session returns `409`).
@@ -322,7 +441,8 @@ Under `/app/admin/widget` (React, `frontend/src/features/admin/widget/*`):
 | Allowed origins | super-admin | Manage `allowed_origins`. |
 | Appearance / theme | super-admin | Theme designer (validated + sanitised). |
 | Host-tools toggle | super-admin | Per-key `host_tools_enabled`. |
-| Embed code | super-admin | Copy-to-clipboard ready snippet. |
+| Authenticated-user toggle + identity rotation | super-admin | Enable `user_auth_enabled`; reveal/rotate the server-only `ik_` credential with optimistic version protection. |
+| Embed code | super-admin | Copy-to-clipboard snippet plus authenticated-host-user setup when enabled. |
 | Sessions browser + detail | admin + super-admin (`viewWidgetSessions`) | Read-only session list + step replay (PII-masked). |
 
 ---
@@ -331,10 +451,11 @@ Under `/app/admin/widget` (React, `frontend/src/features/admin/widget/*`):
 
 | Table | Key columns |
 |---|---|
-| `widget_keys` | `tenant_id`, `project_key`, `public_key` (unique), `secret_hash` (nullable, hashed), `allowed_origins` (json), `rate_limit`, `skill`, `host_tools_enabled`, `theme_config` (json), `is_active`, `label`, `last_used_at`. Unique `(tenant_id, project_key, label)`. |
-| `widget_sessions` | `tenant_id`, `widget_key_id` (FK cascade), `project_key`, `public_session_id` (uuid, unique), `status`, `skill`, `page_url`, `origin`, `summary`, `blocked_reason`, `meta` (json). Indexed `(tenant_id, created_at)`. |
+| `widget_keys` | `tenant_id`, `project_key`, `public_key` (unique), `secret_hash` (nullable, hashed), `identity_secret_hash` (nullable, hashed), `identity_credential_version`, `identity_access_epoch`, `user_auth_enabled`, `allowed_origins` (json), `rate_limit`, `skill`, `host_tools_enabled`, `theme_config` (json), `intro_config` (json), `is_active`, `label`, `last_used_at`. Unique `(tenant_id, project_key, label)`. |
+| `widget_identities` | `tenant_id`, `widget_key_id` (FK cascade), `project_key`, `subject_hash` (HMAC), `last_seen_at`. Unique `(widget_key_id, subject_hash)`. The raw host subject is never persisted. |
+| `widget_sessions` | `tenant_id`, `widget_key_id` (FK cascade), `widget_identity_id` (nullable FK), `project_key`, `public_session_id` (uuid, unique), `status`, `skill`, `page_url`, `origin`, `summary`, `blocked_reason`, `meta` (json). Indexed `(tenant_id, created_at)`. |
 | `widget_session_steps` | `tenant_id`, `widget_session_id` (FK cascade), `step_index`, `kind` (`snapshot`/`tool_call`/`tool_result`/`user_message`/`bot_message`), `tool`, `args_json` / `diagnostic_json` / `snapshot_in_json` (PII-masked), `tokens_in` / `tokens_out` / `latency_ms`. |
-| `widget_session_tokens` | `tenant_id`, `token` (unique, **sha-256 hash** of `wt_…`), `widget_key_id` (FK cascade), `widget_session_id` (FK cascade, nullable), `origin`, `expires_at`, `consumed_at`. |
+| `widget_session_tokens` | `tenant_id`, `token` (unique, **sha-256 hash** of `wt_…`), `widget_key_id` (FK cascade), `widget_session_id` (FK cascade, nullable), `identity_access_epoch` (identity-bound tokens), `origin`, `expires_at`, `consumed_at`. |
 
 Sessions + steps are pruned by `widget:prune-sessions` (daily) after
 `WIDGET_SESSION_RETENTION_DAYS`; expired tokens are pruned in the same command.
@@ -348,6 +469,7 @@ Sessions + steps are pruned by `widget:prune-sessions` (daily) after
 | Env var | Default | Purpose |
 |---|---|---|
 | `WIDGET_SESSION_TOKEN_TTL` | `30` | Session-token TTL (minutes). |
+| `WIDGET_USER_TOKEN_TTL` | `15` | Authenticated host-user `wu_` TTL (minutes). |
 | `WIDGET_SESSION_RATE_LIMIT` | `30` | Per-session rate limit (requests/min). |
 | `WIDGET_MAX_MESSAGE_LENGTH` | `10000` | Max user message length (else `422`). |
 | `WIDGET_MAX_STEPS_PER_SESSION` | `100` | Max ReAct steps per session (else the session is blocked). |
@@ -366,8 +488,9 @@ Sessions + steps are pruned by `widget:prune-sessions` (daily) after
 the widget) for local development. It is gated to **testing**, or **local** with
 `WIDGET_DEMO_ENABLED=true` — so a stray `APP_ENV=local` box never exposes a working
 credential to anonymous visitors. It auto-creates/reuses a permissive demo key
-(`pk_demo_local`, project `docs-v3`, localhost origins). Add `?mode=inline` for the
-inline layout.
+(`pk_demo_local`, project `docs-v3`, localhost origins). Add `?mode=inline` or
+`?mode=fullscreen`; local/testing can also exercise the real host-user boundary
+with `?mode=fullscreen&user_auth=1&subject=demo-user`.
 
 ---
 
@@ -387,12 +510,13 @@ host-site policy**, not by a code switch.
 |---|---|---|
 | **Tenant/project resolved server-side from the key** | The browser never names a tenant/project, so a client can't pivot to another customer's data. A session that doesn't belong to the calling key/tenant is `404` (anti-IDOR, not `403` — existence-hiding). | `ResolveWidgetKey` (R30), `WidgetSessionController::resolveSession` |
 | **Exact-match origin allowlist** | In browser mode the request is denied unless the browser-sent `Origin` is an *exact* normalized match. `https://allowed.test.evil.com` and substrings do **not** pass; an empty allowlist denies everything. | `WidgetKey::originAllowed()` |
-| **Secret never reaches the browser** | The `sk_` secret exists only in server-to-server (proxy) mode; `secret_hash` is `$hidden` (never serialized) and compared with `Hash::check` (constant-time). | `WidgetKey` |
+| **Secrets never reach the browser** | `sk_` (proxy) and `ik_` (identity exchange) remain on the host backend; their hashes are hidden and compared with `Hash::check`. The browser receives only public `pk_` plus short-lived `wu_`. | `WidgetKey`, `WidgetUserTokenController` |
+| **Pseudonymous authenticated history** | The host derives subject from its logged-in user. AskMyDocs stores only an HMAC scoped to tenant + widget key + project; list/replay/start are identity-scoped. `userTokenUrl` must be same-origin and a failed exchange cannot silently downgrade to anonymous history. | `WidgetUserTokenService`, `Transport`, `WidgetSessionController` |
 | **CORS can't leak a session** | The channel uses **no cookies** and the middleware **strips `Access-Control-Allow-Credentials`**, so reflecting the `Origin` is safe — there is no ambient session to ride (no CSRF surface on the widget API). | `HandleWidgetCors` |
 | **Answer & artifacts can't XSS the host page** | Every LLM answer and every BE artifact is written with `textContent` (never `innerHTML`), the component type is whitelisted, and the widget lives in a **closed shadow DOM** isolated from the host. | `panel.ts`, `UiArtifactRenderer`, `loader.ts` |
 | **Credential fields are never read or written** | `password` / `hidden` / `autocomplete=cc-*` / `current-password` / `new-password` inputs are auto-detected: their **value is never put in the snapshot**, and the executor **refuses to type** into them — even if a prompt-injected instruction asks. | `snapshot.ts` (`isSensitiveInput`), `executor.ts` (`type`) |
 | **No arbitrary form submit / no open-redirect** | `submit_form` acts only on the **focused** form or one inside an annotated `data-kitt-region` (no `document.forms[0]` fallback). `navigate_to` rejects `javascript:` / `data:` / `vbscript:`, protocol-relative `//host`, and backslash/`%5c` tricks; cross-origin targets are checked against the per-key allowlist **server-side**. | `executor.ts` (`submit`, `navigate`), `WidgetToolValidator` |
-| **Single-use, origin-bound session tokens** | `wt_` tokens are consumed atomically under a row lock (R21), bound to the mint origin, hashed at rest; the rate-limit is charged **before** the token is burned, so a `429` doesn't waste it. | `WidgetSessionTokenService` |
+| **Single-use, origin-bound session tokens** | `wt_` tokens are consumed atomically under a row lock (R21), bound to the mint origin and hashed at rest. A caller cannot attach a `wt_` to another identity's session. | `WidgetSessionTokenService`, `WidgetSessionTokenController` |
 | **PII masking on persistence** | Every persisted step (`args_json` / `diagnostic_json`) and the replay endpoint mask email / phone / IBAN / card / CF / checksum-validated VAT before storage. | `WidgetPiiMasker` |
 | **Bounded agency + rate limits** | Per-session step cap + consecutive-error cap (the session **blocks** instead of looping); per-key+IP and per-session rate buckets. | `WidgetSessionController`, `ResolveWidgetKey` |
 

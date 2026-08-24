@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\Admin\AdminInsightsController;
 use App\Http\Controllers\Api\Admin\AdminNotificationDefaultsController;
 use App\Http\Controllers\Api\Admin\ConnectorAdminController;
+use App\Http\Controllers\Api\Admin\AgentRunOverviewController;
 use App\Http\Controllers\Api\Admin\ComplianceReportController;
 use App\Http\Controllers\Api\Admin\EvernoteEnexController;
 use App\Http\Controllers\Api\Admin\DashboardMetricsController;
@@ -31,12 +32,14 @@ use App\Http\Controllers\Api\Admin\TabularReviewStreamController;
 use App\Http\Controllers\Api\Admin\UserController;
 use App\Http\Controllers\Api\Admin\WorkflowController;
 use App\Http\Controllers\Api\Auth\AuthController;
+use App\Http\Controllers\Api\Auth\CompanyOnboardingController;
 use App\Http\Controllers\Api\Auth\PasswordResetController as ApiPasswordResetController;
 use App\Http\Controllers\Api\Auth\RegisterController;
 use App\Http\Controllers\Api\Auth\TwoFactorController;
 use App\Http\Controllers\Api\ChatFilterPresetController;
 use App\Http\Controllers\Api\KbChatController;
 use App\Http\Controllers\Api\ChatPreferencesController;
+use App\Http\Controllers\Api\UserLocaleController;
 use App\Http\Controllers\Api\KbChunkFeedbackController;
 use App\Http\Controllers\Api\KbCollectionPickerController;
 use App\Http\Controllers\Api\KbDeleteController;
@@ -45,9 +48,12 @@ use App\Http\Controllers\Api\KbDocumentSearchController;
 use App\Http\Controllers\Api\KbIngestController;
 use App\Http\Controllers\Api\KbPromotionController;
 use App\Http\Controllers\Api\KbResolveWikilinkController;
+use App\Http\Controllers\Api\Widget\WidgetDocumentPreviewController;
 use App\Http\Controllers\Api\Widget\WidgetSessionController;
+use App\Http\Controllers\Api\Widget\WidgetAgentRunController;
 use App\Http\Controllers\Api\Widget\WidgetSessionTokenController;
 use App\Http\Controllers\Api\Widget\WidgetSetupController;
+use App\Http\Controllers\Api\Widget\WidgetUserTokenController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -93,6 +99,12 @@ Route::middleware('web')->prefix('auth')->group(function () {
 
         Route::get('/me', [AuthController::class, 'me'])
             ->name('api.auth.me');
+
+        // Resumable registration completion for a normal account with no
+        // operational memberships. Deliberately outside tenant.authorize:
+        // there is no tenant to authorize until this request creates one.
+        Route::post('/onboarding/company', CompanyOnboardingController::class)
+            ->name('api.auth.onboarding.company');
 
         Route::prefix('2fa')->group(function () {
             Route::post('/enable', [TwoFactorController::class, 'enable'])
@@ -152,7 +164,7 @@ Route::middleware([
     // and only constrains Bearer PATs (the desktop demo): a token not scoped
     // for chat is rejected before it can burn provider quota (EnforceTokenAbility).
     Route::post('/kb/chat', KbChatController::class)
-        ->middleware(array_merge($chatMiddleware, ['token.ability:kb:chat']));
+        ->middleware(array_merge($chatMiddleware, ['token.ability:kb:chat', 'throttle:kb-chat']));
     // v8.8.3 — anonymous-chat capability probe. Lets the SPA render the
     // "New anonymous chat" surface as a clean disabled landing (R14/R43)
     // when `kb.anonymous_chat.enabled` is off, instead of only learning
@@ -241,6 +253,10 @@ Route::middleware([
         ->name('api.me.chat-preferences.show');
     Route::patch('/me/chat-preferences', [ChatPreferencesController::class, 'update'])
         ->name('api.me.chat-preferences.update');
+    Route::get('/me/locale', [UserLocaleController::class, 'show'])
+        ->name('api.me.locale.show');
+    Route::patch('/me/locale', [UserLocaleController::class, 'update'])
+        ->name('api.me.locale.update');
 
     // v8.15/W3 — per-user rich-digest preferences + the in-app digest feed.
     Route::get('/me/digest-preferences', [\App\Http\Controllers\Api\DigestPreferenceController::class, 'show'])
@@ -475,8 +491,8 @@ Route::middleware([
         // team, over the vendor `tenants` registry. Bound by `slug` (the
         // tenant_id) — index + store + update only (no show/destroy; teams
         // are never hard-deleted from the switcher). Rename authorizes the
-        // TARGET team inside TeamRegistryService (membership OR
-        // tenant.cross-access), independent of the request's X-Tenant-Id.
+        // TARGET team inside TeamRegistryService (membership required),
+        // independent of the request's X-Tenant-Id.
         // R32 — covered by the AdminAuthorizationMatrix (`/api/admin/teams`).
         Route::apiResource('teams', \App\Http\Controllers\Api\Admin\TeamController::class)
             ->parameters(['teams' => 'slug'])
@@ -762,6 +778,47 @@ Route::middleware([
 
 /*
 |--------------------------------------------------------------------------
+| System administration — global tenant control plane
+|--------------------------------------------------------------------------
+|
+| Deliberately NOT tenant-scoped: the registry and its memberships are the
+| objects being administered. Authentication + the platform capability are
+| mandatory; every tenant-aware query inside the service carries its explicit
+| target tenant id. R32: represented in AdminAuthorizationMatrixTest.
+|
+*/
+Route::middleware([
+    \Illuminate\Cookie\Middleware\EncryptCookies::class,
+    \Illuminate\Session\Middleware\StartSession::class,
+    'auth:sanctum',
+    'can:platform.admin',
+])
+    ->prefix('system-admin')
+    ->group(function () {
+        Route::prefix('tenants')->group(function () {
+            Route::get('/', [\App\Http\Controllers\Api\SystemAdmin\TenantControlController::class, 'index'])
+                ->name('api.system-admin.tenants.index');
+            Route::post('/availability', [\App\Http\Controllers\Api\SystemAdmin\TenantControlController::class, 'availability'])
+                ->name('api.system-admin.tenants.availability');
+            Route::post('/', [\App\Http\Controllers\Api\SystemAdmin\TenantControlController::class, 'store'])
+                ->name('api.system-admin.tenants.store');
+            Route::get('/{slug}', [\App\Http\Controllers\Api\SystemAdmin\TenantControlController::class, 'show'])
+                ->name('api.system-admin.tenants.show');
+            Route::post('/{slug}/lifecycle-preview', [\App\Http\Controllers\Api\SystemAdmin\TenantControlController::class, 'lifecyclePreview'])
+                ->name('api.system-admin.tenants.lifecycle-preview');
+            Route::patch('/{slug}', [\App\Http\Controllers\Api\SystemAdmin\TenantControlController::class, 'update'])
+                ->name('api.system-admin.tenants.update');
+        });
+
+        Route::get('/super-admins', [\App\Http\Controllers\Api\SystemAdmin\SuperAdminController::class, 'index'])
+            ->name('api.system-admin.super-admins.index');
+        Route::get('/super-admins/{user}/tenants', [\App\Http\Controllers\Api\SystemAdmin\SuperAdminController::class, 'tenants'])
+            ->whereNumber('user')
+            ->name('api.system-admin.super-admins.tenants');
+    });
+
+/*
+|--------------------------------------------------------------------------
 | Admin — PII redactor strategy (gate-protected, role-permissive)
 |--------------------------------------------------------------------------
 |
@@ -905,6 +962,12 @@ Route::middleware([
         Route::get('/{installationId}/sync-runs', [\App\Http\Controllers\Api\Admin\IngestionController::class, 'syncRuns'])
             ->whereNumber('installationId')
             ->name('api.admin.connectors.sync-runs');
+        Route::get('/{installationId}/imap-backfill', [\App\Http\Controllers\Api\Admin\IngestionController::class, 'imapBackfill'])
+            ->whereNumber('installationId')
+            ->name('api.admin.connectors.imap-backfill');
+        Route::post('/{installationId}/imap-backfill', [\App\Http\Controllers\Api\Admin\IngestionController::class, 'startImapBackfill'])
+            ->whereNumber('installationId')
+            ->name('api.admin.connectors.imap-backfill.start');
         Route::post('/{installationId}/sync-now', [ConnectorAdminController::class, 'syncNow'])
             ->whereNumber('installationId')
             ->name('api.admin.connectors.sync-now');
@@ -953,6 +1016,19 @@ Route::middleware([
     ->group(function () {
         Route::get('/queue', [\App\Http\Controllers\Api\Admin\IngestionController::class, 'queue'])
             ->name('api.admin.ingestion.queue');
+    });
+
+Route::middleware([
+    \Illuminate\Cookie\Middleware\EncryptCookies::class,
+    \Illuminate\Session\Middleware\StartSession::class,
+    'auth:sanctum',
+    'tenant.authorize',
+    'can:manageConnectors',
+])
+    ->prefix('admin/agent-runs')
+    ->group(function () {
+        Route::get('/overview', AgentRunOverviewController::class)
+            ->name('api.admin.agent-runs.overview');
     });
 
 /*
@@ -1080,6 +1156,9 @@ Route::middleware([
         Route::post('/{id}/revoke', [WidgetKeyAdminController::class, 'revoke'])
             ->whereNumber('id')
             ->name('api.admin.widget-keys.revoke');
+        Route::post('/{id}/rotate-identity-secret', [WidgetKeyAdminController::class, 'rotateIdentitySecret'])
+            ->whereNumber('id')
+            ->name('api.admin.widget-keys.rotate-identity-secret');
     });
 
 /*
@@ -1236,6 +1315,16 @@ Route::middleware([
     \Illuminate\Cookie\Middleware\EncryptCookies::class,
     \Illuminate\Session\Middleware\StartSession::class,
     'auth.sse:sanctum',
+    // SECURITY (SEC-IDOR-001, F-04): tenant.authorize is REQUIRED here.
+    // ResolveTenant (global) honours an inbound X-Tenant-Id header WITHOUT a
+    // membership check, and the controller drives its query off
+    // TenantContext::current(). Without this guard an admin holding the global
+    // `viewTabularReviews` permission could send `X-Tenant-Id: victim` and
+    // stream another tenant's tabular-review data (confirmed: 200 + data leak).
+    // AuthorizeTenantHeader requires the authenticated user to have a membership
+    // in the resolved tenant, so a spoofed header now 403s. Mirrors every other
+    // operational /api group.
+    'tenant.authorize',
     'can:viewTabularReviews',
 ])->post(
     '/admin/tabular-reviews/{id}/generate-stream',
@@ -1409,8 +1498,22 @@ Route::middleware(['throttle:120,1', 'widget.key'])
         // dentro il controller (anti-IDOR, R30). /exec-tool + /replay in M4.
         Route::post('/sessions/start', [WidgetSessionController::class, 'start'])
             ->name('api.widget.sessions.start');
+        Route::post('/sessions/agent/start', [WidgetAgentRunController::class, 'start'])
+            ->name('api.widget.sessions.agent.start');
+        Route::get('/sessions', [WidgetSessionController::class, 'index'])
+            ->name('api.widget.sessions.index');
+        Route::get('/sessions/current', [WidgetSessionController::class, 'current'])
+            ->name('api.widget.sessions.current');
         Route::post('/sessions/{session}/step', [WidgetSessionController::class, 'step'])
             ->name('api.widget.sessions.step');
+        Route::post('/sessions/{session}/agent', [WidgetAgentRunController::class, 'store'])
+            ->name('api.widget.sessions.agent.store');
+        Route::get('/sessions/{session}/agent-runs/{run}/events', [WidgetAgentRunController::class, 'events'])
+            ->name('api.widget.sessions.agent.events');
+        Route::post('/sessions/{session}/agent-runs/{run}/cancel', [WidgetAgentRunController::class, 'cancel'])
+            ->name('api.widget.sessions.agent.cancel');
+        Route::post('/sessions/{session}/agent-runs/{run}/continue', [WidgetAgentRunController::class, 'resume'])
+            ->name('api.widget.sessions.agent.continue');
         // M4 — esecuzione BE AiTool. Il FE chiama questo quando l'orchestratore
         // emette una tool_call con is_be_tool=true.
         Route::post('/sessions/{session}/exec-tool', [WidgetSessionController::class, 'execTool'])
@@ -1420,4 +1523,14 @@ Route::middleware(['throttle:120,1', 'widget.key'])
         // M5.9 — replay endpoint: ritorna gli step con PII mascherata, scope per key.
         Route::get('/sessions/{session}/replay', [WidgetSessionController::class, 'replay'])
             ->name('api.widget.sessions.replay');
+        // Full source viewer: only documents cited by this exact session can
+        // be reconstructed, with the same tenant/key/project/identity scope.
+        Route::get('/sessions/{session}/documents/{documentId}/preview', WidgetDocumentPreviewController::class)
+            ->whereNumber('documentId')
+            ->name('api.widget.sessions.documents.preview');
     });
+
+// Server-to-server only: authenticates with the per-widget identity secret.
+Route::post('/widget/user-token', WidgetUserTokenController::class)
+    ->middleware('throttle:60,1')
+    ->name('api.widget.user-token');

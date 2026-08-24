@@ -119,7 +119,7 @@ final class PopulateCanonicalEdgesStepTest extends TestCase
         return new FlowContext(
             flowRunId: 'edges-test-run',
             definitionName: 'kb.canonical-index',
-            input: ['tenant_id' => 'default', 'document_id' => $doc->id],
+            input: ['tenant_id' => 'test-tenant', 'document_id' => $doc->id],
             stepOutputs: [
                 'load-document' => [
                     'indexable' => true,

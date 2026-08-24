@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { RequireRole, AdminForbidden } from './role-guard';
+import { RequirePermission, RequireRole, AdminForbidden } from './role-guard';
 import { useAuthStore } from '../lib/auth-store';
 
 describe('RequireRole', () => {
@@ -94,5 +94,44 @@ describe('RequireRole', () => {
     it('AdminForbidden carries the stable testid', () => {
         render(<AdminForbidden />);
         expect(screen.getByTestId('admin-forbidden')).toBeInTheDocument();
+    });
+});
+
+describe('RequirePermission', () => {
+    it('uses the platform permission rather than a super-admin role', () => {
+        useAuthStore.setState({
+            user: { id: 4, name: 'System', email: 'system@example.test' },
+            roles: ['super-admin'],
+            permissions: ['platform.admin'],
+            projects: [],
+            loading: false,
+        });
+
+        render(
+            <RequirePermission permission="platform.admin">
+                <div data-testid="system-control">ok</div>
+            </RequirePermission>,
+        );
+
+        expect(screen.getByTestId('system-control')).toBeInTheDocument();
+    });
+
+    it('denies a tenant super-admin without platform.admin', () => {
+        useAuthStore.setState({
+            user: { id: 5, name: 'Tenant super', email: 'tenant@example.test' },
+            roles: ['super-admin'],
+            permissions: [],
+            projects: [],
+            loading: false,
+        });
+
+        render(
+            <RequirePermission permission="platform.admin">
+                <div data-testid="system-control">hidden</div>
+            </RequirePermission>,
+        );
+
+        expect(screen.queryByTestId('system-control')).not.toBeInTheDocument();
+        expect(screen.getByText('System administration access required')).toBeInTheDocument();
     });
 });

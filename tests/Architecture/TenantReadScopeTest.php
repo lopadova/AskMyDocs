@@ -31,7 +31,8 @@ final class TenantReadScopeTest extends TestCase
      * this guard (Copilot caught ChatLogProvenance + 16 others missing).
      */
     private const TENANT_AWARE_MODELS = [
-        'AdminCommandAudit', 'AdminCommandNonce', 'AdminInsightsSnapshot',
+        'AdminCommandAudit', 'AdminCommandNonce', 'AdminInsightsSnapshot', 'AgentRun',
+        'EmailDatasetOperationNonce',
         'ChatFilterPreset', 'ChatLog', 'ChatLogProvenance', 'ComplianceReport', 'DigestPreference',
         'Conversation', 'HiddenWorkflow', 'KbAnalysisSetting', 'KbCanonicalAudit',
         'KbCanonicalHealthSnapshot', 'KbChunkFeedback', 'KbCollection',
@@ -40,9 +41,9 @@ final class TenantReadScopeTest extends TestCase
         'KnowledgeDocument', 'KnowledgeDocumentAcl', 'McpServer',
         'McpTenantToken', 'McpToolCallAudit', 'Message', 'NotificationDigest',
         'NotificationEvent', 'NotificationPreference', 'NotificationTenantDefault',
-        'AppSetting', 'ConnectorSyncRun',
+        'AppSetting', 'ConnectorSyncRun', 'ImapBackfill', 'ImapBackfillWindow',
         'Project', 'ProjectMembership', 'TabularCell', 'TabularReview',
-        'TenantSchedulerOverride', 'WidgetKey', 'WidgetSession',
+        'TenantSchedulerOverride', 'WidgetIdentity', 'WidgetKey', 'WidgetSession',
         'WidgetSessionStep', 'WidgetSessionToken', 'Workflow',
     ];
 
@@ -53,6 +54,9 @@ final class TenantReadScopeTest extends TestCase
      * @var array<string, string>
      */
     private const ALLOWLIST = [
+        // Scheduler sweep is intentionally cross-tenant; each queued job captures
+        // the row's tenant and rebinds both tenant contexts before any work.
+        'app/Connectors/Scheduling/ImapBackfillScheduler.php' => 'Cross-tenant scheduled dispatcher; jobs are tenant-captured.',
         // Cross-tenant by design: the embedding cache + the deleter's
         // legacy unscoped sweep both log/justify the cross-tenant access
         // inline, and DocumentDeleter applies forTenant CONDITIONALLY
@@ -82,12 +86,15 @@ final class TenantReadScopeTest extends TestCase
         // EVERY tenant a user touched (memberships, conversations, chat logs,
         // connectors). Inherently cross-tenant — the inverse of a leak.
         'app/Compliance/UserTenantResolver.php' => 'Resolves the full set of tenants a user belongs to (DSAR); cross-tenant by design.',
+        'app/Services/Auth/CompanyOnboardingEligibility.php' => 'Identity-level onboarding gate checks whether the user belongs to any operational tenant; cross-tenant by definition.',
 
         // CLI command that resolves a WidgetKey by public_key (globally unique);
         // no HTTP request context → tenant is derived from the key itself, not
         // from TenantContext. This is the same posture as the HTTP ResolveWidgetKey
         // middleware which does WidgetKey::query()->where('public_key', …).
         'app/Console/Commands/WidgetEmitSecretCommand.php' => 'Looks up WidgetKey by globally-unique public_key; no tenant context in CLI.',
+        'app/Http/Controllers/Api/Widget/WidgetUserTokenController.php' => 'Server exchange resolves the globally unique public_key, then derives tenant/project exclusively from that key.',
+        'app/Services/Widget/WidgetUserTokenService.php' => 'Validates an encrypted token by globally unique widget-key id, then scopes identity reads to the tenant derived from that key.',
     ];
 
     public function test_tenant_aware_reads_are_scoped(): void
@@ -155,7 +162,7 @@ final class TenantReadScopeTest extends TestCase
         $this->assertSame(
             [],
             $violations,
-            "These files query a tenant-aware model without forTenant() (R30). "
+            'These files query a tenant-aware model without forTenant() (R30). '
             ."Add ->forTenant(\$ctx->current()) or justify an ALLOWLIST entry:\n  - "
             .implode("\n  - ", $violations),
         );
@@ -184,7 +191,7 @@ final class TenantReadScopeTest extends TestCase
             $actual,
             $declared,
             'TENANT_AWARE_MODELS is out of sync with the BelongsToTenant models in app/Models. '
-            ."Missing from the list: ".implode(', ', array_diff($actual, $declared)).'. '
+            .'Missing from the list: '.implode(', ', array_diff($actual, $declared)).'. '
             .'Extra in the list: '.implode(', ', array_diff($declared, $actual)).'.',
         );
     }

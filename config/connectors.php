@@ -139,6 +139,28 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Generated case-study email provenance
+    |--------------------------------------------------------------------------
+    |
+    | IMAP only transports the stable dataset-version + fixture-id identity.
+    | The host resolves the remaining scenario/fact/truth metadata from the
+    | deterministic sharded index in this directory before it queues ingestion.
+    | Queue workers must see the same immutable artifact used for APPEND.
+    |
+    */
+    'case_study_email_dataset' => [
+        'root' => env(
+            'CASE_STUDY_EMAIL_DATASET_ROOT',
+            storage_path('app/demo-email-datasets'),
+        ),
+        'require_fixture_index' => (bool) env(
+            'CASE_STUDY_EMAIL_REQUIRE_FIXTURE_INDEX',
+            true,
+        ),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | IMAP connection serialization (per-mailbox mutex)
     |--------------------------------------------------------------------------
     |
@@ -171,25 +193,46 @@ return [
         'mailbox_lock' => [
             'wait_seconds' => (int) env('CONNECTOR_IMAP_MAILBOX_LOCK_WAIT', 15),
             'ttl_seconds' => (int) env('CONNECTOR_IMAP_MAILBOX_LOCK_TTL', 700),
+            // A bulk seed holds the same physical-mailbox lock across purge,
+            // checkpoint and the complete APPEND stream, so it needs a longer
+            // crash-expiry window than one connector sync job. The seeder
+            // refreshes it owner-safely before APPEND/purge and after every ACK.
+            // A PCNTL hard deadline fires before the safety boundary so blocking
+            // IMAP I/O cannot outlive ownership (margin must be >= 2 seconds).
+            'seed_ttl_seconds' => (int) env('CONNECTOR_IMAP_SEED_LOCK_TTL', 14400),
+            'seed_safety_margin_seconds' => (int) env('CONNECTOR_IMAP_SEED_LOCK_SAFETY_MARGIN', 30),
             'requeue_after_seconds' => (int) env('CONNECTOR_IMAP_MAILBOX_REQUEUE_AFTER', 60),
             // Wall-clock window a sync job keeps re-queuing on a busy mailbox before
             // giving up — decoupled from the failure-retry count (see
             // SerializedConnectorSyncJob::retryUntil).
             'requeue_window_minutes' => (int) env('CONNECTOR_IMAP_MAILBOX_REQUEUE_WINDOW_MIN', 30),
         ],
-
         // Reconnect-on-drop (host ReconnectingImapClient decorator). Gmail/Exchange
         // routinely close a live IMAP session mid-flight ("fwrite(): SSL: Broken
         // pipe" / "connection reset" / idle drop). When `enabled` (default) the host
         // wraps every client so such a TRANSIENT drop is absorbed by one
         // close-and-retry on a fresh connection instead of hard-failing the sync run.
         //   - max_attempts  : total tries per operation (1 = no retry; 2 = one retry).
+        //                     Hard-capped at 10 in code — the retry holds the
+        //                     per-mailbox lock, so it must never outlive its TTL.
         //   - retry_delay_ms: pause between the drop and the reconnect (server breather).
         // Auth failures are never retried; only transient transport drops are.
         'reconnect' => [
             'enabled' => (bool) env('CONNECTOR_IMAP_RECONNECT_ON_DROP', true),
             'max_attempts' => (int) env('CONNECTOR_IMAP_RECONNECT_MAX_ATTEMPTS', 2),
             'retry_delay_ms' => (int) env('CONNECTOR_IMAP_RECONNECT_RETRY_DELAY_MS', 500),
+        ],
+
+        // Full-history imports are split into durable date windows. Each job
+        // fetches a bounded UID batch, checkpoints it in SQL, then lets the
+        // separate kb-ingest workers perform conversion/embedding.
+        'backfill' => [
+            'enabled' => (bool) env('CONNECTOR_IMAP_BACKFILL_ENABLED', true),
+            'queue' => env('CONNECTOR_IMAP_BACKFILL_QUEUE', 'connectors'),
+            'batch_size' => (int) env('CONNECTOR_IMAP_BACKFILL_BATCH_SIZE', 100),
+            'fetch_size' => (int) env('CONNECTOR_IMAP_BACKFILL_FETCH_SIZE', 20),
+            'stale_after_minutes' => (int) env('CONNECTOR_IMAP_BACKFILL_STALE_MINUTES', 20),
+            'absolute_start' => env('CONNECTOR_IMAP_BACKFILL_ABSOLUTE_START', '1970-01-01'),
         ],
     ],
 

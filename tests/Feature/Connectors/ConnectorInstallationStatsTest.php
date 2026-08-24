@@ -36,25 +36,25 @@ final class ConnectorInstallationStatsTest extends TestCase
         parent::setUp();
         $this->seed(RbacSeeder::class);
         \Illuminate\Support\Facades\Cache::flush();
-        app(TenantContext::class)->set('default');
+        app(TenantContext::class)->set('test-tenant');
     }
 
     public function test_counts_only_this_installations_live_tenant_documents(): void
     {
         $admin = $this->makeSuperAdmin();
-        $installation = $this->makeInstallation('default', 'Support');
-        $other = $this->makeInstallation('default', 'Sales');
+        $installation = $this->makeInstallation('test-tenant', 'Support');
+        $other = $this->makeInstallation('test-tenant', 'Sales');
 
         // 2 live docs for this installation.
-        $this->makeDoc('default', $installation->id, 'a');
-        $this->makeDoc('default', $installation->id, 'b');
+        $this->makeDoc('test-tenant', $installation->id, 'a');
+        $this->makeDoc('test-tenant', $installation->id, 'b');
         // A soft-deleted doc for this installation — must NOT be counted.
-        $this->makeDoc('default', $installation->id, 'c')->delete();
+        $this->makeDoc('test-tenant', $installation->id, 'c')->delete();
         // A superseded prior VERSION (status=archived, not soft-deleted, same
         // installation) — must NOT be counted (would over-count one-per-version).
-        $this->makeDoc('default', $installation->id, 'f')->update(['status' => 'archived']);
+        $this->makeDoc('test-tenant', $installation->id, 'f')->update(['status' => 'archived']);
         // Another installation's doc — must NOT be counted.
-        $this->makeDoc('default', $other->id, 'd');
+        $this->makeDoc('test-tenant', $other->id, 'd');
         // Another tenant's doc for this same installation id — must NOT be counted (R30).
         $this->makeDoc('acme', $installation->id, 'e');
 
@@ -68,7 +68,7 @@ final class ConnectorInstallationStatsTest extends TestCase
     public function test_zero_documents_is_a_valid_200(): void
     {
         $admin = $this->makeSuperAdmin();
-        $installation = $this->makeInstallation('default', 'Fresh');
+        $installation = $this->makeInstallation('test-tenant', 'Fresh');
 
         $resp = $this->actingAs($admin)->getJson("/api/admin/connectors/{$installation->id}/stats");
 
@@ -78,7 +78,7 @@ final class ConnectorInstallationStatsTest extends TestCase
 
     public function test_cross_tenant_installation_id_404s(): void
     {
-        $admin = $this->makeSuperAdmin(); // acts under 'default'
+        $admin = $this->makeSuperAdmin(); // acts under the operational test tenant
         $foreign = $this->makeInstallation('acme', 'Foreign');
         $this->makeDoc('acme', $foreign->id, 'a');
 
@@ -89,7 +89,7 @@ final class ConnectorInstallationStatsTest extends TestCase
 
     public function test_viewer_is_forbidden_and_guest_unauthorized(): void
     {
-        $installation = $this->makeInstallation('default', 'Support');
+        $installation = $this->makeInstallation('test-tenant', 'Support');
 
         $this->getJson("/api/admin/connectors/{$installation->id}/stats")->assertUnauthorized();
 

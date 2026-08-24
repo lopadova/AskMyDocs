@@ -13,7 +13,7 @@ export interface AdminApiError {
 }
 
 export function toAdminError(err: unknown): AdminApiError {
-    const e = err as AxiosError<{ message?: string; errors?: Record<string, string[]> }>;
+    const e = err as AxiosError<{ message?: string; error?: string; errors?: Record<string, string[]> }>;
     const status = e?.response?.status ?? 0;
     const body = e?.response?.data;
     const raw = body?.errors ?? {};
@@ -25,6 +25,7 @@ export function toAdminError(err: unknown): AdminApiError {
     }
     const message =
         body?.message ||
+        body?.error ||
         (status === 0 ? 'Network error.' : `Request failed (${status}).`);
     return { status, message, fieldErrors };
 }

@@ -40,6 +40,14 @@ class PasswordResetController extends Controller
                     'remember_token' => Str::random(60),
                 ])->save();
 
+                // SEC-TOKEN-001 / dormant-access: a password reset must revoke
+                // every issued API token so a leaked/older token cannot outlive
+                // the credential change. (SPA session auth is separately
+                // invalidated by the remember_token regeneration above.)
+                if (method_exists($user, 'tokens')) {
+                    $user->tokens()->delete();
+                }
+
                 event(new PasswordResetEvent($user));
             }
         );

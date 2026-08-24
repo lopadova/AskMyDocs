@@ -1,5 +1,6 @@
 import { test as baseTest, expect } from '@playwright/test';
 import { test as seededTest } from './fixtures';
+import { loginAsProjectUser } from './setup-helpers';
 
 /*
  * v8.x — Native Invitations admin.
@@ -7,9 +8,10 @@ import { test as seededTest } from './fixtures';
  * The invitations admin is now an in-app tabbed surface over the core
  * `padosoft/laravel-invitations` API (Overview · Codes · Referrals · Rewards ·
  * Waitlist · Anti-abuse) — it no longer bounces to the standalone package panel
- * by default. The self-contained panel is only offered as an "Advanced" link
- * when INVITATIONS_ADMIN_ENABLED is true (false in CI → the link is absent, so
- * it never points at the unregistered /admin/invitations 404; R14/R43).
+ * by default. The self-contained panel is offered as an "Advanced" link when
+ * INVITATIONS_ADMIN_ENABLED is true. Playwright enables the mount so the link
+ * and its secured destination are both exercised; the OFF state remains covered
+ * by InvitationsView Vitest and InvitationsAdminDisabledTest (R14/R43).
  *
  * Two `test` instances on purpose (mirrors admin-flows.spec.ts):
  *   - `seededTest` runs the `seeded` auto-fixture (resetDb + DemoSeeder +
@@ -23,7 +25,7 @@ import { test as seededTest } from './fixtures';
  */
 
 seededTest.describe('Admin Invitations — native admin', () => {
-    seededTest('happy — sidebar opens the native tabbed page; overview settles ready; no dead Advanced link', async ({
+    seededTest('happy — sidebar opens the native tabbed page; overview settles ready; Advanced link is live', async ({
         page,
     }) => {
         await page.goto('/app/chat');
@@ -46,9 +48,13 @@ seededTest.describe('Admin Invitations — native admin', () => {
         await expect(page.getByTestId('kpi-card-codes-issued')).toBeVisible();
         await expect(page.getByTestId('admin-invitations-funnel')).toBeVisible();
 
-        // R43 OFF / R14: with INVITATIONS_ADMIN_ENABLED=false (the CI default) the
-        // package panel is unmounted, so the Advanced launcher must NOT render.
-        await expect(page.getByTestId('admin-invitations-open-panel')).toHaveCount(0);
+        // R43 ON / R14: Playwright enables the package mount, so the Advanced
+        // launcher must exist and resolve to a live, authorized destination.
+        const advancedLink = page.getByTestId('admin-invitations-open-panel');
+        await expect(advancedLink).toBeVisible();
+        await expect(advancedLink).toHaveAttribute('href', '/admin/invitations');
+        const advancedResponse = await page.request.get('/admin/invitations');
+        expect(advancedResponse.status()).toBe(200);
     });
 
     seededTest('codes — live generate writes real codes and offers CSV export (R13 real write)', async ({ page }) => {
@@ -138,11 +144,14 @@ seededTest.describe('Admin Invitations — native admin', () => {
         },
     );
 });
-
 baseTest.describe('Admin Invitations — viewer (RBAC denied)', () => {
     baseTest.use({ storageState: 'playwright/.auth/viewer.json' });
 
-    baseTest('viewer hitting /app/admin/invitations sees admin-forbidden', async ({ page }) => {
+    baseTest('viewer hitting /app/admin/invitations sees admin-forbidden', async ({ page, context }) => {
+        // Earlier seeded scenarios recreate the users table and invalidate the
+        // setup project's persisted session. Re-authenticate the viewer so the
+        // assertion measures RBAC, not an expired-cookie redirect.
+        await loginAsProjectUser(page, context, null, 'chromium-viewer');
         await page.goto('/app/admin/invitations');
         await expect(page.getByTestId('admin-forbidden')).toBeVisible({ timeout: 15_000 });
         await expect(page.getByTestId('admin-invitations')).toHaveCount(0);
@@ -155,10 +164,12 @@ baseTest.describe('Admin Invitations — viewer (RBAC denied)', () => {
      * stays unregistered) and env=true + non-allowed-role (403) without
      * branching on env.
      */
-    baseTest('viewer GET /admin/invitations rejects with 4xx (R13: failure injection on package mount URL)', async ({
-        request,
-    }) => {
-        const response = await request.get('/admin/invitations');
-        expect([403, 404]).toContain(response.status());
-    });
+    baseTest(
+        'viewer GET /admin/invitations rejects with 4xx (R13: failure injection on package mount URL)',
+        async ({ page, context }) => {
+            await loginAsProjectUser(page, context, null, 'chromium-viewer');
+            const response = await page.request.get('/admin/invitations');
+            expect([403, 404]).toContain(response.status());
+        },
+    );
 });

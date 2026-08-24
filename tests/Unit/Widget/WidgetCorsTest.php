@@ -54,6 +54,11 @@ final class WidgetCorsTest extends TestCase
         $this->assertSame(204, $response->getStatusCode());
         $this->assertFalse($response->headers->has('Access-Control-Allow-Credentials'));
         $this->assertSame('https://x.test', $response->headers->get('Access-Control-Allow-Origin'));
+        $this->assertStringContainsString(
+            'Last-Event-ID',
+            (string) $response->headers->get('Access-Control-Allow-Headers'),
+            'Il resume SSE del widget deve superare il preflight cross-origin.',
+        );
     }
 
     public function test_non_widget_path_is_left_untouched(): void

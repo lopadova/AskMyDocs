@@ -8,6 +8,8 @@ use App\Models\KnowledgeDocument;
 use App\Models\Project;
 use App\Models\ProjectMembership;
 use App\Models\User;
+use App\Models\WidgetKey;
+use App\Services\Admin\ProjectCatalogService;
 use App\Support\TenantContext;
 use Database\Seeders\RbacSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -71,7 +73,7 @@ final class ProjectControllerTest extends TestCase
         $resp->assertJsonPath('data.project_key', 'surface-kb')
             ->assertJsonPath('data.name', 'Surface KB');
         $this->assertDatabaseHas('projects', [
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'project_key' => 'surface-kb',
             'name' => 'Surface KB',
         ]);
@@ -174,10 +176,33 @@ final class ProjectControllerTest extends TestCase
         $this->assertDatabaseHas('projects', ['id' => $p->id]);
     }
 
+    public function test_destroy_is_blocked_while_a_revoked_widget_key_references_the_key(): void
+    {
+        $admin = $this->makeAdmin();
+        $p = Project::create(['project_key' => 'surface-kb', 'name' => 'Surface']);
+        $this->seedWidgetKey('surface-kb', active: false);
+
+        $this->actingAs($admin)->deleteJson("/api/admin/projects/{$p->id}")
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('project_key')
+            ->assertJsonPath(
+                'errors.project_key.0',
+                'Cannot delete: 0 document(s), 0 membership(s), and 1 widget key(s) still use this project. Reassign or remove them first.',
+            );
+
+        $this->assertDatabaseHas('projects', ['id' => $p->id]);
+    }
+
     public function test_destroy_succeeds_for_an_unused_project(): void
     {
         $admin = $this->makeAdmin();
         $p = Project::create(['project_key' => 'empty-kb', 'name' => 'Empty']);
+
+        // A same-named widget in another tenant must not block this tenant.
+        $ctx = app(TenantContext::class);
+        $ctx->set('acme');
+        $this->seedWidgetKey('empty-kb');
+        $ctx->reset();
 
         $this->actingAs($admin)->deleteJson("/api/admin/projects/{$p->id}")
             ->assertStatus(204);
@@ -205,20 +230,64 @@ final class ProjectControllerTest extends TestCase
             ->assertStatus(404);
     }
 
-    public function test_picker_unions_registry_documents_and_memberships(): void
+    public function test_picker_unions_every_tenant_project_source_including_trashed_docs_and_revoked_widgets(): void
     {
         $admin = $this->makeAdmin();
 
         Project::create(['project_key' => 'registry-only', 'name' => 'Registry Only']);
         $this->seedDoc('doc-only');
+        $trashed = $this->seedDoc('trashed-doc-only');
+        $trashed->delete();
         ProjectMembership::create(['user_id' => $admin->id, 'project_key' => 'membership-only', 'role' => 'admin']);
+        $this->seedWidgetKey('widget-only');
+        $this->seedWidgetKey('revoked-widget-only', active: false);
+
+        // Duplicate references collapse to one catalogue entry.
+        $this->seedWidgetKey('registry-only');
+
+        // R30: the same sources in another tenant stay invisible.
+        $ctx = app(TenantContext::class);
+        $ctx->set('acme');
+        $this->seedWidgetKey('foreign-widget');
+        $ctx->reset();
 
         $resp = $this->actingAs($admin)->getJson('/api/admin/kb/projects')->assertOk();
 
         $this->assertSame(
-            ['doc-only', 'membership-only', 'registry-only'],
+            [
+                'doc-only',
+                'membership-only',
+                'registry-only',
+                'revoked-widget-only',
+                'trashed-doc-only',
+                'widget-only',
+            ],
             $resp->json('projects'),
         );
+
+        $catalog = app(ProjectCatalogService::class);
+        $this->assertTrue($catalog->contains('widget-only'));
+        $this->assertTrue($catalog->contains('revoked-widget-only'));
+        $this->assertFalse($catalog->contains(' revoked-widget-only '));
+        $this->assertFalse($catalog->contains('foreign-widget'));
+        $this->assertFalse($catalog->contains('not-a-project'));
+    }
+
+    public function test_picker_preserves_numeric_equivalent_opaque_project_keys(): void
+    {
+        $admin = $this->makeAdmin();
+        Project::create(['project_key' => '01', 'name' => 'Leading zero']);
+        Project::create(['project_key' => '1', 'name' => 'Plain one']);
+
+        $projects = $this->actingAs($admin)
+            ->getJson('/api/admin/kb/projects')
+            ->assertOk()
+            ->json('projects');
+
+        $this->assertTrue(in_array('01', $projects, true));
+        $this->assertTrue(in_array('1', $projects, true));
+        $this->assertTrue(app(ProjectCatalogService::class)->contains('01'));
+        $this->assertTrue(app(ProjectCatalogService::class)->contains('1'));
     }
 
     public function test_non_admin_gets_403(): void
@@ -249,6 +318,16 @@ final class ProjectControllerTest extends TestCase
             'document_hash' => hash('sha256', uniqid('', true)),
             'version_hash' => hash('sha256', uniqid('', true)),
             'status' => 'indexed',
+        ]);
+    }
+
+    private function seedWidgetKey(string $projectKey, bool $active = true): WidgetKey
+    {
+        return WidgetKey::factory()->create([
+            'tenant_id' => app(TenantContext::class)->current(),
+            'project_key' => $projectKey,
+            'label' => 'widget-'.uniqid(),
+            'is_active' => $active,
         ]);
     }
 

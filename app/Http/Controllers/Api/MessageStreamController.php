@@ -150,7 +150,7 @@ class MessageStreamController extends Controller
         // Build conversation history INCLUDING the user message we
         // just saved (so the LLM sees the new turn).
         $history = $conversation->messages()
-            ->orderBy('created_at')
+            ->orderBy('id')
             ->get(['role', 'content'])
             ->map(fn (Message $m) => ['role' => $m->role, 'content' => $m->content])
             ->all();

@@ -49,7 +49,7 @@ final class ConnectorAdminControllerTest extends TestCase
 
         // Pre-install google-drive for the active (default) tenant.
         ConnectorInstallation::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'connector_name' => 'google-drive',
             'status' => ConnectorInstallation::STATUS_ACTIVE,
             'last_sync_at' => Carbon::parse('2026-05-15T10:00:00Z'),
@@ -83,7 +83,7 @@ final class ConnectorAdminControllerTest extends TestCase
 
         foreach (['support', 'sales'] as $label) {
             ConnectorInstallation::create([
-                'tenant_id' => 'default',
+                'tenant_id' => 'test-tenant',
                 'connector_name' => 'google-drive',
                 'label' => $label,
                 'status' => ConnectorInstallation::STATUS_ACTIVE,
@@ -175,7 +175,7 @@ final class ConnectorAdminControllerTest extends TestCase
 
         // Pre-create a pending installation but DON'T issue a state.
         $installation = ConnectorInstallation::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'connector_name' => 'google-drive',
             'status' => ConnectorInstallation::STATUS_PENDING,
             'created_by' => $admin->id,
@@ -209,7 +209,7 @@ final class ConnectorAdminControllerTest extends TestCase
         $admin = $this->makeSuperAdmin();
 
         $active = ConnectorInstallation::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'connector_name' => 'google-drive',
             'status' => ConnectorInstallation::STATUS_ACTIVE,
             'last_sync_at' => Carbon::parse('2026-05-15T10:00:00Z'),
@@ -240,7 +240,7 @@ final class ConnectorAdminControllerTest extends TestCase
         $admin = $this->makeSuperAdmin();
 
         $errored = ConnectorInstallation::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'connector_name' => 'google-drive',
             'status' => ConnectorInstallation::STATUS_ERRORED,
             'error_json' => ['message' => 'old failure'],
@@ -268,7 +268,7 @@ final class ConnectorAdminControllerTest extends TestCase
         $admin = $this->makeSuperAdmin();
 
         $installation = ConnectorInstallation::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'connector_name' => 'imap',
             'config_json' => ['connection' => ['host' => 'imap.x.test', 'username' => 'u@x.test']],
             'status' => ConnectorInstallation::STATUS_ACTIVE,
@@ -282,10 +282,35 @@ final class ConnectorAdminControllerTest extends TestCase
         $this->assertSame(true, $resp->json('data.queued'));
         Queue::assertPushed(SerializedConnectorSyncJob::class, function (SerializedConnectorSyncJob $job) use ($installation) {
             return $job->installationId === $installation->id
-                && $job->tenantId === 'default';
+                && $job->tenantId === 'test-tenant';
         });
         // Not the bare vendor job (QueueFake keys by exact class).
         Queue::assertNotPushed(ConnectorSyncJob::class);
+    }
+
+    public function test_sync_now_keeps_incremental_imap_sync_when_backfill_is_disabled(): void
+    {
+        Queue::fake();
+        config()->set('connectors.imap.backfill.enabled', false);
+        $admin = $this->makeSuperAdmin();
+
+        $installation = ConnectorInstallation::create([
+            'tenant_id' => 'test-tenant',
+            'connector_name' => 'imap',
+            'config_json' => [
+                'date_window_days' => 0,
+                'connection' => ['host' => 'imap.x.test', 'username' => 'u@x.test'],
+            ],
+            'status' => ConnectorInstallation::STATUS_ACTIVE,
+            'created_by' => $admin->id,
+        ]);
+
+        $response = $this->actingAs($admin)
+            ->postJson("/api/admin/connectors/{$installation->id}/sync-now");
+
+        $response->assertAccepted()->assertJsonPath('data.queued', true);
+        $this->assertNull($response->json('data.mode'));
+        Queue::assertPushed(SerializedConnectorSyncJob::class);
     }
 
     public function test_sync_now_dispatches_the_vendor_job_for_a_non_imap_connector(): void
@@ -298,7 +323,7 @@ final class ConnectorAdminControllerTest extends TestCase
         $admin = $this->makeSuperAdmin();
 
         $installation = ConnectorInstallation::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'connector_name' => 'google-drive',
             'status' => ConnectorInstallation::STATUS_ACTIVE,
             'created_by' => $admin->id,
@@ -309,21 +334,21 @@ final class ConnectorAdminControllerTest extends TestCase
             ->assertStatus(202);
 
         Queue::assertPushed(ConnectorSyncJob::class, function (ConnectorSyncJob $job) use ($installation) {
-            return $job->installationId === $installation->id && $job->tenantId === 'default';
+            return $job->installationId === $installation->id && $job->tenantId === 'test-tenant';
         });
         Queue::assertNotPushed(SerializedConnectorSyncJob::class);
     }
 
-    public function test_sync_now_dispatches_the_vendor_job_when_imap_serialization_is_disabled(): void
+    public function test_sync_now_keeps_the_progress_job_when_imap_serialization_is_disabled(): void
     {
-        // R43 OFF path — with the master switch off, even an IMAP account keeps the
-        // vendor ConnectorSyncJob (no altered retry envelope, no overlap middleware).
+        // R43 OFF path — the mutex is disabled, but resumable UID checkpointing is
+        // independent from serialization, so IMAP keeps the host progress job.
         Queue::fake();
         config()->set('connectors.imap.serialize_connections', false);
         $admin = $this->makeSuperAdmin();
 
         $installation = ConnectorInstallation::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'connector_name' => 'imap',
             'config_json' => ['connection' => ['host' => 'imap.x.test', 'username' => 'u@x.test']],
             'status' => ConnectorInstallation::STATUS_ACTIVE,
@@ -334,10 +359,9 @@ final class ConnectorAdminControllerTest extends TestCase
             ->postJson("/api/admin/connectors/{$installation->id}/sync-now")
             ->assertStatus(202);
 
-        Queue::assertPushed(ConnectorSyncJob::class, function (ConnectorSyncJob $job) use ($installation) {
-            return $job->installationId === $installation->id && $job->tenantId === 'default';
+        Queue::assertPushed(SerializedConnectorSyncJob::class, function (SerializedConnectorSyncJob $job) use ($installation) {
+            return $job->installationId === $installation->id && $job->tenantId === 'test-tenant';
         });
-        Queue::assertNotPushed(SerializedConnectorSyncJob::class);
     }
 
     public function test_sync_now_rearms_an_errored_account_then_dispatches(): void
@@ -351,7 +375,7 @@ final class ConnectorAdminControllerTest extends TestCase
         $admin = $this->makeSuperAdmin();
 
         $installation = ConnectorInstallation::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'connector_name' => 'imap',
             'label' => 'prometeo-1',
             'config_json' => ['connection' => ['host' => 'imap.x.test', 'username' => 'u@x.test']],
@@ -374,7 +398,7 @@ final class ConnectorAdminControllerTest extends TestCase
         // Dispatched as the serialized subclass (per-mailbox re-queue), not the bare
         // vendor job (QueueFake keys by exact class).
         Queue::assertPushed(SerializedConnectorSyncJob::class, function (SerializedConnectorSyncJob $job) use ($installation) {
-            return $job->installationId === $installation->id && $job->tenantId === 'default';
+            return $job->installationId === $installation->id && $job->tenantId === 'test-tenant';
         });
         Queue::assertNotPushed(ConnectorSyncJob::class);
     }
@@ -387,7 +411,7 @@ final class ConnectorAdminControllerTest extends TestCase
         $admin = $this->makeSuperAdmin();
 
         $installation = ConnectorInstallation::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'connector_name' => 'imap',
             'label' => 'prometeo-1',
             'status' => ConnectorInstallation::STATUS_DISABLED,
@@ -408,7 +432,7 @@ final class ConnectorAdminControllerTest extends TestCase
         $admin = $this->makeSuperAdmin();
 
         $installation = ConnectorInstallation::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'connector_name' => 'imap',
             'label' => 'prometeo-1',
             'status' => ConnectorInstallation::STATUS_PENDING,
@@ -429,7 +453,7 @@ final class ConnectorAdminControllerTest extends TestCase
         $admin = $this->makeSuperAdmin();
 
         $installation = ConnectorInstallation::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'connector_name' => 'imap',
             'label' => 'prometeo-1',
             'status' => ConnectorInstallation::STATUS_DISABLED,
@@ -437,7 +461,7 @@ final class ConnectorAdminControllerTest extends TestCase
             'created_by' => $admin->id,
         ]);
         ConnectorCredential::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'connector_installation_id' => $installation->id,
             'encrypted_access_token' => \Illuminate\Support\Facades\Crypt::encryptString('secret'),
         ]);
@@ -462,7 +486,7 @@ final class ConnectorAdminControllerTest extends TestCase
         $admin = $this->makeSuperAdmin();
 
         $installation = ConnectorInstallation::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'connector_name' => 'imap',
             'label' => 'prometeo-1',
             'status' => ConnectorInstallation::STATUS_ERRORED,
@@ -486,7 +510,7 @@ final class ConnectorAdminControllerTest extends TestCase
         $admin = $this->makeSuperAdmin();
 
         $installation = ConnectorInstallation::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'connector_name' => 'imap',
             'label' => 'prometeo-1',
             'status' => ConnectorInstallation::STATUS_PENDING,
@@ -505,13 +529,13 @@ final class ConnectorAdminControllerTest extends TestCase
         $admin = $this->makeSuperAdmin();
 
         $installation = ConnectorInstallation::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'connector_name' => 'google-drive',
             'status' => ConnectorInstallation::STATUS_ACTIVE,
             'created_by' => $admin->id,
         ]);
         ConnectorCredential::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'connector_installation_id' => $installation->id,
             'encrypted_access_token' => \Illuminate\Support\Facades\Crypt::encryptString('secret'),
         ]);
@@ -535,13 +559,13 @@ final class ConnectorAdminControllerTest extends TestCase
         $admin = $this->makeSuperAdmin();
 
         $installation = ConnectorInstallation::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'connector_name' => 'google-drive',
             'status' => ConnectorInstallation::STATUS_ACTIVE,
             'created_by' => $admin->id,
         ]);
         ConnectorCredential::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'connector_installation_id' => $installation->id,
             'encrypted_access_token' => \Illuminate\Support\Facades\Crypt::encryptString('secret'),
         ]);
@@ -569,7 +593,7 @@ final class ConnectorAdminControllerTest extends TestCase
         // surface 'default', not the alphabetically-first 'aaa'.
         foreach (['aaa', 'default'] as $label) {
             ConnectorInstallation::create([
-                'tenant_id' => 'default',
+                'tenant_id' => 'test-tenant',
                 'connector_name' => 'google-drive',
                 'label' => $label,
                 'status' => ConnectorInstallation::STATUS_ACTIVE,
@@ -655,7 +679,7 @@ final class ConnectorAdminControllerTest extends TestCase
         $admin = $this->makeSuperAdmin();
 
         $active = ConnectorInstallation::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'connector_name' => 'google-drive',
             'label' => 'support',
             'status' => ConnectorInstallation::STATUS_ACTIVE,
@@ -682,7 +706,7 @@ final class ConnectorAdminControllerTest extends TestCase
         Project::create(['project_key' => 'acme-hr', 'name' => 'Acme HR']);
 
         $bound = ConnectorInstallation::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'connector_name' => 'google-drive',
             'label' => 'support',
             'project_key' => 'acme-hr',
@@ -707,7 +731,7 @@ final class ConnectorAdminControllerTest extends TestCase
         Project::create(['project_key' => 'acme-hr', 'name' => 'Acme HR']);
 
         $installation = ConnectorInstallation::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'connector_name' => 'google-drive',
             'label' => 'support',
             'status' => ConnectorInstallation::STATUS_ACTIVE,
@@ -735,7 +759,7 @@ final class ConnectorAdminControllerTest extends TestCase
         $admin = $this->makeSuperAdmin();
 
         $installation = ConnectorInstallation::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'connector_name' => 'google-drive',
             'label' => 'support',
             'project_key' => null,
@@ -763,7 +787,7 @@ final class ConnectorAdminControllerTest extends TestCase
         // rest of config_json (connection / auth_mode / folders.exclude) survives.
         $admin = $this->makeSuperAdmin();
         $installation = ConnectorInstallation::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'connector_name' => 'imap',
             'label' => 'rotta-1',
             'config_json' => [
@@ -799,7 +823,7 @@ final class ConnectorAdminControllerTest extends TestCase
         // non-excluded folders), distinct from "untouched".
         $admin = $this->makeSuperAdmin();
         $installation = ConnectorInstallation::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'connector_name' => 'imap',
             'label' => 'rotta-1',
             'config_json' => ['folders' => ['include' => ['INBOX']]],
@@ -821,7 +845,7 @@ final class ConnectorAdminControllerTest extends TestCase
     {
         $admin = $this->makeSuperAdmin();
         $installation = ConnectorInstallation::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'connector_name' => 'imap',
             'label' => 'rotta-1',
             'status' => ConnectorInstallation::STATUS_ACTIVE,
@@ -842,7 +866,7 @@ final class ConnectorAdminControllerTest extends TestCase
     {
         $admin = $this->makeSuperAdmin();
         $installation = ConnectorInstallation::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'connector_name' => 'imap',
             'label' => 'rotta-1',
             'status' => ConnectorInstallation::STATUS_ACTIVE,
@@ -863,7 +887,7 @@ final class ConnectorAdminControllerTest extends TestCase
     {
         $admin = $this->makeSuperAdmin();
         $installation = ConnectorInstallation::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'connector_name' => 'imap',
             'label' => 'rotta-1',
             'status' => ConnectorInstallation::STATUS_ACTIVE,
@@ -888,7 +912,7 @@ final class ConnectorAdminControllerTest extends TestCase
         // test if any warning is emitted, so a green run proves no warning fired.
         $admin = $this->makeSuperAdmin();
         $installation = ConnectorInstallation::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'connector_name' => 'imap',
             'label' => 'rotta-1',
             'status' => ConnectorInstallation::STATUS_ACTIVE,
@@ -910,7 +934,7 @@ final class ConnectorAdminControllerTest extends TestCase
         // removed from config_json) rather than coercing to a real 0-day window.
         $admin = $this->makeSuperAdmin();
         $installation = ConnectorInstallation::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'connector_name' => 'imap',
             'label' => 'rotta-1',
             'config_json' => [
@@ -941,7 +965,7 @@ final class ConnectorAdminControllerTest extends TestCase
         // settings back so the FE edit form can pre-fill them.
         $admin = $this->makeSuperAdmin();
         ConnectorInstallation::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'connector_name' => 'imap',
             'label' => 'rotta-1',
             'config_json' => ['folders' => ['include' => ['rotta-logistics-1']], 'date_window_days' => 120],
@@ -963,12 +987,12 @@ final class ConnectorAdminControllerTest extends TestCase
         $admin = $this->makeSuperAdmin();
 
         ConnectorInstallation::create([
-            'tenant_id' => 'default', 'connector_name' => 'google-drive',
+            'tenant_id' => 'test-tenant', 'connector_name' => 'google-drive',
             'label' => 'support', 'status' => ConnectorInstallation::STATUS_ACTIVE,
             'created_by' => $admin->id,
         ]);
         $sales = ConnectorInstallation::create([
-            'tenant_id' => 'default', 'connector_name' => 'google-drive',
+            'tenant_id' => 'test-tenant', 'connector_name' => 'google-drive',
             'label' => 'sales', 'status' => ConnectorInstallation::STATUS_ACTIVE,
             'created_by' => $admin->id,
         ]);
@@ -1000,14 +1024,14 @@ final class ConnectorAdminControllerTest extends TestCase
         // account row removes its vault row, independent of the connector's own
         // best-effort disconnect(). Delete the model DIRECTLY to isolate the FK.
         $installation = ConnectorInstallation::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'connector_name' => 'google-drive',
             'label' => 'support',
             'status' => ConnectorInstallation::STATUS_ACTIVE,
             'created_by' => $this->makeSuperAdmin()->id,
         ]);
         ConnectorCredential::create([
-            'tenant_id' => 'default',
+            'tenant_id' => 'test-tenant',
             'connector_installation_id' => $installation->id,
             'encrypted_access_token' => \Illuminate\Support\Facades\Crypt::encryptString('secret'),
         ]);

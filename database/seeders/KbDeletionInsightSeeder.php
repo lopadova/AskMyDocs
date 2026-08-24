@@ -25,7 +25,7 @@ final class KbDeletionInsightSeeder extends Seeder
     {
         $doc = KnowledgeDocument::withTrashed()->updateOrCreate(
             [
-                'tenant_id' => 'default',
+                'tenant_id' => DemoSeeder::PRIMARY_TENANT,
                 'project_key' => 'eng',
                 'source_path' => 'decisions/dec-cache-v1.md',
             ],
@@ -54,7 +54,7 @@ final class KbDeletionInsightSeeder extends Seeder
 
         KbDocAnalysis::updateOrCreate(
             [
-                'tenant_id' => 'default',
+                'tenant_id' => DemoSeeder::PRIMARY_TENANT,
                 'knowledge_document_id' => $doc->id,
                 'trigger' => KbDocAnalysis::TRIGGER_DELETED,
             ],

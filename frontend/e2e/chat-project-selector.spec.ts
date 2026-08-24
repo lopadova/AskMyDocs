@@ -21,7 +21,7 @@ import { buildAssistantMessage, stubChatAssistantReply } from './helpers/stub-ch
  *      reachable list was injected.
  *
  * R13: only the AI provider call site is stubbed
- * (`/conversations/*​/messages/stream` — EXTERNAL_PROXY allowlist). The
+ * (`/conversations/*​/messages/agent` — EXTERNAL_PROXY allowlist). The
  * conversation-create POST hits the REAL backend + SQLite, so the bound
  * `project_key` and membership-derived selector options come from real
  * data. The admin DemoSeeder user has memberships in `engineering` +
@@ -59,7 +59,7 @@ test.describe('Chat project selector', () => {
         await send.click();
 
         await page.waitForResponse(
-            (r) => r.url().includes('/messages/stream') && r.request().method() === 'POST',
+            (r) => r.url().includes('/messages/agent') && r.request().method() === 'POST',
         );
         await waitForThreadReady(page);
 
@@ -106,7 +106,7 @@ test.describe('Chat project selector', () => {
         await send.click();
 
         await page.waitForResponse(
-            (r) => r.url().includes('/messages/stream') && r.request().method() === 'POST',
+            (r) => r.url().includes('/messages/agent') && r.request().method() === 'POST',
         );
 
         expect(capturedBody, 'stream POST body must be captured').not.toBeNull();

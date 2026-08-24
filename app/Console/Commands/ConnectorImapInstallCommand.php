@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Connectors\SerializedConnectorSyncJob;
 use App\Models\User;
 use App\Services\Admin\Connectors\ConfigureConnectorService;
 use App\Services\Demo\MailboxSelection;
 use App\Support\TenantContext;
 use Database\Seeders\TestEmailFixtures;
 use Illuminate\Console\Command;
-use Padosoft\AskMyDocsConnectorBase\ConnectorSyncJob;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
 use Padosoft\AskMyDocsConnectorBase\Support\TenantContext as PackageTenantContext;
 use Throwable;
@@ -25,9 +25,11 @@ use Throwable;
  * (non più config_json). Quindi ogni casella diventa una **installazione a sé**,
  * con `label` = mailbox_key e `project_key` = azienda. Niente più "una sola
  * installazione per tenant": le 6 caselle coesistono, ognuna sincronizza solo la
- * propria label e ingerisce nel proprio project_key. Re-eseguire è idempotente —
- * la riga con quella label viene rimossa e ricreata (le credenziali nel vault
- * cascadano via FK).
+ * propria label e ingerisce nel proprio project_key. Re-eseguire è idempotente:
+ * una riga già presente con la stessa label viene riconfigurata e verificata
+ * IN-PLACE, preservandone l'id (e quindi i source_path derivati dall'installation
+ * id). Se il nuovo ping fallisce, ConfigureConnectorService ripristina la config
+ * precedente e lascia intatte le credenziali valide nel vault.
  *
  * ConfigureConnectorService verifica DAVVERO le credenziali (ping IMAP) prima di
  * portare l'installazione ad ACTIVE; per i test offline usare
@@ -46,7 +48,7 @@ class ConnectorImapInstallCommand extends Command
         {--project=* : project_key: espande a TUTTE le caselle dell\'azienda (ripetibile)}
         {--all : Installa per tutte le caselle di test}
         {--actor= : Email dell\'utente registrato come created_by (default: primo utente)}
-        {--sync : Dispatcha un ConnectorSyncJob dopo ogni install}';
+        {--sync : Accoda il job host di sync serializzato dopo ogni install}';
 
     protected $description = 'Installa il connettore IMAP (multi-account) per le caselle di test (riusa ConfigureConnectorService).';
 
@@ -101,10 +103,14 @@ class ConnectorImapInstallCommand extends Command
                 }
 
                 if ($sync) {
-                    // Multi-account: ogni installazione è indipendente → basta
-                    // accodare il job per ciascuna (nel suo tenant).
-                    ConnectorSyncJob::dispatch($installation->id, $tenantId);
-                    $this->line(sprintf('  → ConnectorSyncJob accodato (installation #%d, tenant %s)', $installation->id, $tenantId));
+                    // Tutti i sync IMAP passano dal job host: serializzazione
+                    // per account fisico + checkpoint UID oltre il cap.
+                    SerializedConnectorSyncJob::dispatchFor($installation);
+                    $this->line(sprintf(
+                        '  → SerializedConnectorSyncJob accodato (installation #%d, tenant %s)',
+                        $installation->id,
+                        $tenantId,
+                    ));
                 }
             }
         } finally {
@@ -126,15 +132,16 @@ class ConnectorImapInstallCommand extends Command
         $connection = (array) ($config['connection'] ?? []);
         $projectKey = (string) $mailbox['project_key'];
 
-        // Idempotenza re-run: rimuovi l'eventuale installazione con questa label
-        // nel tenant dell'azienda (configure() è additivo e la unique
-        // (tenant,connector,label) rifiuterebbe il duplicato). La FK su
-        // connector_credentials cascada il segreto.
-        ConnectorInstallation::query()
+        // R30 — lookup sempre tenant-scoped. La reinstallazione di una stessa
+        // label NON deve fare delete+create: l'installation id è parte dei
+        // source_path prodotti dal connettore, quindi cambiarlo farebbe apparire
+        // le stesse e-mail come documenti nuovi. reconfigure() verifica prima le
+        // nuove credenziali e, su errore, ripristina config + secret validi.
+        $existing = ConnectorInstallation::query()
             ->where('tenant_id', $tenantId)
             ->where('connector_name', self::CONNECTOR)
             ->where('label', $mailboxKey)
-            ->delete();
+            ->first();
 
         // Payload: campi del form (connection.* / password→secret / auth_mode) +
         // le COLONNE v8.20 label/project_key.
@@ -150,17 +157,28 @@ class ConnectorImapInstallCommand extends Command
             'project_key' => $projectKey,
         ];
 
-        $result = $configurator->configure(self::CONNECTOR, $validated, $actorId);
+        $result = $existing === null
+            ? $configurator->configure(self::CONNECTOR, $validated, $actorId)
+            : $configurator->reconfigure($existing->id, $validated);
         $installation = $result->installation;
 
         // configure() persiste i campi del form + le colonne label/project_key.
-        // Rimettiamo le chiavi config_json extra che il connettore legge in sync
-        // (la label scoping + la finestra temporale).
+        // reconfigure() preserva le chiavi extra già presenti. In entrambi i casi
+        // riallineiamo esplicitamente i setting fixture e il binding di progetto
+        // solo DOPO un ping riuscito; una verifica fallita non modifica questi
+        // valori su un'installazione valida.
         $stored = (array) $installation->config_json;
         $stored['folders'] = $config['folders'];
         $stored['date_window_days'] = $config['date_window_days'];
-        $installation->config_json = $stored;
-        $installation->save();
+        $installation->forceFill([
+            'project_key' => $projectKey,
+            'config_json' => $stored,
+        ]);
+        if (! $installation->save()) {
+            throw new \RuntimeException(
+                "Impossibile salvare i setting IMAP dell'installazione #{$installation->id}.",
+            );
+        }
 
         $this->info(sprintf(
             '[%s] connettore IMAP su %s → project %s, label %s (installation #%d, status=%s)',

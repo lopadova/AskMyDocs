@@ -61,7 +61,11 @@ export class ApiError extends Error {
   }
 }
 
-function authHeaders(token?: string, tenantId?: string): Record<string, string> {
+function authHeaders(
+  token?: string,
+  tenantId?: string,
+  projectKey?: string,
+): Record<string, string> {
   const headers: Record<string, string> = {
     Accept: "application/json",
     "Content-Type": "application/json",
@@ -73,6 +77,12 @@ function authHeaders(token?: string, tenantId?: string): Record<string, string> 
   // memberships, then scopes retrieval to this tenant (R30).
   if (tenantId) {
     headers["X-Tenant-Id"] = tenantId;
+  }
+  // Keep the selected project explicit on every scoped request. Endpoints
+  // that consume a project from the payload/query still receive it there too;
+  // the header lets project-access middleware enforce the same context.
+  if (projectKey) {
+    headers["X-Project-Key"] = projectKey;
   }
   return headers;
 }
@@ -162,12 +172,13 @@ export async function fetchMe(token: string): Promise<MePayload> {
 export async function chat(
   token: string,
   question: string,
-  tenantId?: string,
+  tenantId: string,
+  projectKey: string,
 ): Promise<ChatResponse> {
   const res = await http(`${API_BASE}/api/kb/chat`, {
     method: "POST",
-    headers: authHeaders(token, tenantId),
-    body: JSON.stringify({ question }),
+    headers: authHeaders(token, tenantId, projectKey),
+    body: JSON.stringify({ question, project_key: projectKey }),
   });
   const body = await parseBody(res);
   if (!res.ok) {
@@ -179,10 +190,15 @@ export async function chat(
 export async function searchDocs(
   token: string,
   query: string,
-  tenantId?: string,
+  tenantId: string,
+  projectKey: string,
 ): Promise<DocSearchResult[]> {
-  const url = `${API_BASE}/api/kb/documents/search?q=${encodeURIComponent(query)}`;
-  const res = await http(url, { headers: authHeaders(token, tenantId) });
+  const params = new URLSearchParams({ q: query });
+  params.append("project_keys[]", projectKey);
+  const url = `${API_BASE}/api/kb/documents/search?${params.toString()}`;
+  const res = await http(url, {
+    headers: authHeaders(token, tenantId, projectKey),
+  });
   const body = await parseBody(res);
   if (!res.ok) {
     throw new ApiError(res.status, errorMessage(body, "Search failed"), body);
@@ -199,10 +215,11 @@ export async function searchDocs(
 export async function fetchDocumentPreview(
   token: string,
   documentId: number,
-  tenantId?: string,
+  tenantId: string,
+  projectKey: string,
 ): Promise<DocumentPreview> {
   const res = await http(`${API_BASE}/api/kb/documents/${documentId}/preview`, {
-    headers: authHeaders(token, tenantId),
+    headers: authHeaders(token, tenantId, projectKey),
   });
   const body = await parseBody(res);
   if (!res.ok) {

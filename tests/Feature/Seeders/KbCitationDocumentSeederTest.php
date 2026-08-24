@@ -6,8 +6,10 @@ namespace Tests\Feature\Seeders;
 
 use App\Models\Conversation;
 use App\Models\KnowledgeDocument;
+use App\Models\ProjectMembership;
 use App\Models\User;
 use App\Support\TenantContext;
+use Database\Seeders\DemoSeeder;
 use Database\Seeders\KbCitationDocumentSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
@@ -29,8 +31,14 @@ final class KbCitationDocumentSeederTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        app(TenantContext::class)->set('default');
+        app(TenantContext::class)->set(DemoSeeder::PRIMARY_TENANT);
         $this->admin = User::create(['name' => 'Admin', 'email' => 'admin@demo.local', 'password' => Hash::make('x')]);
+        ProjectMembership::create([
+            'tenant_id' => DemoSeeder::PRIMARY_TENANT,
+            'user_id' => $this->admin->id,
+            'project_key' => 'hr-portal',
+            'role' => 'admin',
+        ]);
 
         config()->set('rbac.enforced', false);
     }
@@ -39,13 +47,13 @@ final class KbCitationDocumentSeederTest extends TestCase
     {
         (new KbCitationDocumentSeeder())->run();
 
-        $conversation = Conversation::query()->forTenant('default')
+        $conversation = Conversation::query()->forTenant(DemoSeeder::PRIMARY_TENANT)
             ->where('title', 'Source modal demo')->sole();
         $assistant = $conversation->messages()->where('role', 'assistant')->sole();
         $citation = $assistant->metadata['citations'][0];
         $this->assertSame('dec-source-modal', $citation['slug']);
 
-        $doc = KnowledgeDocument::query()->forTenant('default')->where('slug', 'dec-source-modal')->sole();
+        $doc = KnowledgeDocument::query()->forTenant(DemoSeeder::PRIMARY_TENANT)->where('slug', 'dec-source-modal')->sole();
         $this->assertSame($doc->id, $citation['document_id']);
         $this->assertSame(2, $doc->chunks()->count());
 
@@ -74,11 +82,11 @@ final class KbCitationDocumentSeederTest extends TestCase
         (new KbCitationDocumentSeeder())->run();
         (new KbCitationDocumentSeeder())->run();
 
-        $this->assertSame(1, Conversation::query()->forTenant('default')->where('title', 'Source modal demo')->count());
-        $doc = KnowledgeDocument::query()->forTenant('default')->where('slug', 'dec-source-modal')->sole();
+        $this->assertSame(1, Conversation::query()->forTenant(DemoSeeder::PRIMARY_TENANT)->where('title', 'Source modal demo')->count());
+        $doc = KnowledgeDocument::query()->forTenant(DemoSeeder::PRIMARY_TENANT)->where('slug', 'dec-source-modal')->sole();
         // Chunks are reset each run — exactly the two source chunks, no dupes.
         $this->assertSame(2, $doc->chunks()->count());
-        $conversation = Conversation::query()->forTenant('default')->where('title', 'Source modal demo')->sole();
+        $conversation = Conversation::query()->forTenant(DemoSeeder::PRIMARY_TENANT)->where('title', 'Source modal demo')->sole();
         $this->assertSame(2, $conversation->messages()->count());
     }
 
@@ -87,7 +95,7 @@ final class KbCitationDocumentSeederTest extends TestCase
         // R16: the failure path actually fires. Without auth the preview must
         // 401, never leak the cited document body to an anonymous caller.
         (new KbCitationDocumentSeeder())->run();
-        $doc = KnowledgeDocument::query()->forTenant('default')->where('slug', 'dec-source-modal')->sole();
+        $doc = KnowledgeDocument::query()->forTenant(DemoSeeder::PRIMARY_TENANT)->where('slug', 'dec-source-modal')->sole();
 
         $this->getJson("/api/kb/documents/{$doc->id}/preview")
             ->assertUnauthorized();

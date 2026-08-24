@@ -26,7 +26,7 @@ final class KbChatGraphSeeder extends Seeder
 {
     public function run(): void
     {
-        app(TenantContext::class)->set('default');
+        app(TenantContext::class)->set(DemoSeeder::PRIMARY_TENANT);
 
         // Fail LOUDLY (not a silent early return) when the prerequisite admin
         // is missing: /testing/seed returns 200 on a no-op, so seedDb() would
@@ -39,7 +39,7 @@ final class KbChatGraphSeeder extends Seeder
         $this->seedCanonical('dec-redis-graph', 'Redis decision (graph)', $project);
 
         KbEdge::updateOrCreate(
-            ['tenant_id' => 'default', 'project_key' => $project, 'edge_uid' => 'dec-cache-graph->dec-redis-graph:depends_on'],
+            ['tenant_id' => DemoSeeder::PRIMARY_TENANT, 'project_key' => $project, 'edge_uid' => 'dec-cache-graph->dec-redis-graph:depends_on'],
             [
                 'from_node_uid' => 'dec-cache-graph', 'to_node_uid' => 'dec-redis-graph',
                 'edge_type' => 'depends_on', 'source_doc_id' => 'DEC-CACHE-GRAPH',
@@ -48,17 +48,17 @@ final class KbChatGraphSeeder extends Seeder
         );
 
         $conversation = Conversation::updateOrCreate(
-            ['tenant_id' => 'default', 'user_id' => $admin->id, 'title' => 'Cache architecture (graph demo)'],
+            ['tenant_id' => DemoSeeder::PRIMARY_TENANT, 'user_id' => $admin->id, 'title' => 'Cache architecture (graph demo)'],
             ['project_key' => $project],
         );
         // Reset its messages so the seeder is idempotent.
         $conversation->messages()->delete();
 
         $conversation->messages()->create([
-            'tenant_id' => 'default', 'role' => 'user', 'content' => 'What did we decide for caching?',
+            'tenant_id' => DemoSeeder::PRIMARY_TENANT, 'role' => 'user', 'content' => 'What did we decide for caching?',
         ]);
         $conversation->messages()->create([
-            'tenant_id' => 'default', 'role' => 'assistant',
+            'tenant_id' => DemoSeeder::PRIMARY_TENANT, 'role' => 'assistant',
             'content' => 'We chose a cache layer; see the cited decision.',
             'confidence' => 88,
             'metadata' => [
@@ -79,7 +79,7 @@ final class KbChatGraphSeeder extends Seeder
     private function seedCanonical(string $slug, string $title, string $project): KnowledgeDocument
     {
         $doc = KnowledgeDocument::withTrashed()->updateOrCreate(
-            ['tenant_id' => 'default', 'project_key' => $project, 'source_path' => "decisions/$slug.md"],
+            ['tenant_id' => DemoSeeder::PRIMARY_TENANT, 'project_key' => $project, 'source_path' => "decisions/$slug.md"],
             [
                 'source_type' => 'markdown', 'title' => $title, 'language' => 'en',
                 'access_scope' => 'internal', 'status' => 'active',
@@ -89,7 +89,7 @@ final class KbChatGraphSeeder extends Seeder
             ],
         );
         KbNode::updateOrCreate(
-            ['tenant_id' => 'default', 'project_key' => $project, 'node_uid' => $slug],
+            ['tenant_id' => DemoSeeder::PRIMARY_TENANT, 'project_key' => $project, 'node_uid' => $slug],
             ['node_type' => 'decision', 'label' => $title, 'source_doc_id' => strtoupper($slug), 'payload_json' => ['dangling' => false]],
         );
 

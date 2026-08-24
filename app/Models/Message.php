@@ -10,11 +10,12 @@ class Message extends Model
 {
     use BelongsToTenant;
 
-    public $timestamps = false;
+    public const UPDATED_AT = null;
 
     protected $fillable = [
         'tenant_id',
         'conversation_id',
+        'agent_run_id',
         'role',
         'content',
         'metadata',
@@ -33,5 +34,10 @@ class Message extends Model
     public function conversation(): BelongsTo
     {
         return $this->belongsTo(Conversation::class);
+    }
+
+    public function agentRun(): BelongsTo
+    {
+        return $this->belongsTo(AgentRun::class);
     }
 }

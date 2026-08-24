@@ -26,9 +26,9 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
  * rejects a key change with 422.
  *
  * Soft registry (no hard FK): deleting a project row is blocked with 422
- * while any knowledge_document or project_membership still references the
- * key, so the registry can never drift out of sync with real content by
- * silently removing an in-use project.
+ * while any knowledge_document, project_membership or widget_key still
+ * references the key, so the registry can never drift out of sync with real
+ * content or an embeddable integration by silently removing an in-use project.
  *
  * Auth: `auth:sanctum` + `tenant.authorize` + `role:admin|super-admin`
  * (route group). R30 — every read/write is tenant-scoped via
@@ -153,28 +153,44 @@ final class ProjectController extends Controller
     /**
      * DELETE /api/admin/projects/{id}
      *
-     * Blocked with 422 while any document or membership references the
-     * key — deleting would orphan those rows from the registry. The admin
-     * must move/remove the content first.
+     * Blocked with 422 while any document, membership or widget key references
+     * the key — deleting would orphan those rows from the registry. Revoked
+     * widget keys still count because they remain valid governance records.
      */
     public function destroy(int $id): JsonResponse
     {
-        $project = $this->findOr404($id);
+        DB::transaction(function () use ($id): void {
+            // This is the same registry-row lock acquired by widget-key
+            // creation. Counts and deletion therefore form one atomic guard:
+            // a concurrent create either commits first and is counted, or sees
+            // the deleted registry during its in-transaction catalogue recheck.
+            $project = Project::query()
+                ->forTenant($this->tenant->current())
+                ->whereKey($id)
+                ->lockForUpdate()
+                ->first();
 
-        $docs = $this->keyUsageCount('knowledge_documents', $project->tenant_id, $project->project_key, withTrashedGuard: true);
-        $members = $this->keyUsageCount('project_memberships', $project->tenant_id, $project->project_key);
+            if ($project === null) {
+                throw new NotFoundHttpException('Project not found.');
+            }
 
-        if ($docs > 0 || $members > 0) {
-            throw ValidationException::withMessages([
-                'project_key' => [sprintf(
-                    'Cannot delete: %d document(s) and %d membership(s) still use this project. Reassign or remove them first.',
-                    $docs,
-                    $members,
-                )],
-            ]);
-        }
+            $docs = $this->keyUsageCount('knowledge_documents', $project->tenant_id, $project->project_key, withTrashedGuard: true);
+            $members = $this->keyUsageCount('project_memberships', $project->tenant_id, $project->project_key);
+            $widgets = $this->keyUsageCount('widget_keys', $project->tenant_id, $project->project_key);
 
-        $project->delete();
+            if ($docs > 0 || $members > 0 || $widgets > 0) {
+                throw ValidationException::withMessages([
+                    'project_key' => [sprintf(
+                        'Cannot delete: %d document(s), %d membership(s), and %d widget key(s) still use this project. Reassign or remove them first.',
+                        $docs,
+                        $members,
+                        $widgets,
+                    )],
+                ]);
+            }
+
+            $project->delete();
+        });
 
         return response()->json(null, 204);
     }
