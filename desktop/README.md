@@ -84,6 +84,21 @@ Build a distributable bundle:
 npm run tauri build
 ```
 
+### App icons
+
+The source artwork and its reproducible Tauri manifest live in
+`src-tauri/icons/icon-master.png` and `src-tauri/icons/icon-manifest.json`.
+Regenerate the macOS, iOS, Windows, and Android icon sets after changing the
+master with:
+
+```bash
+npm run icons
+```
+
+The master is an opaque full-square App Store icon; Android launcher assets
+include adaptive and round variants with the navy background declared by the
+manifest.
+
 ---
 
 ## Run on iPhone (iOS)
