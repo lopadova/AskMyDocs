@@ -87,14 +87,15 @@ at-least-once and deterministic paths provide the idempotency key.
 | `discovering` | Snapshot/window creation is queued or running. | `running` after window rows commit; `failed` after terminal errors. |
 | `running` | The pump is claiming and importing bounded windows. | `completed` after every window completes; `failed` after an exhausted real failure. |
 | `completed` | All snapshot windows finished. | Terminal; a later incremental sync starts from `cutoff_at`. |
-| `failed` | Discovery or a window exhausted its real-error budget. | The UI starts a new campaign and fresh snapshot. |
+| `failed` | Discovery or a window exhausted its real-error budget. | Resume the same campaign from saved checkpoints; restart only when `UIDVALIDITY` invalidated the snapshot. |
 | `paused` | Reserved durable state; the scheduler does not pump it. | Operator-controlled. |
 
-`WithoutOverlapping` uses the same physical-mailbox key as folder listing and
-incremental sync. Lock contention releases discovery/import jobs back to the queue
-without consuming a fixed attempts budget; `retryUntil()` bounds those releases by
-the configured wall-clock requeue window, while `maxExceptions` still fails
-repeated real exceptions.
+`WithoutOverlapping` uses the same physical-mailbox key as incremental sync and
+explicitly shares that key across the sync, discovery, and import job classes.
+Lock contention therefore releases discovery/import jobs back to the queue before
+they open another IMAP connection, without consuming the real-exception budget;
+`retryUntil()` bounds those releases by the configured wall-clock requeue window,
+while `maxExceptions` still fails repeated real exceptions.
 
 Every minute `ImapBackfillScheduler`:
 
@@ -127,7 +128,13 @@ POST /api/admin/connectors/{installationId}/imap-backfill
 ```
 
 Starting is idempotent while a campaign is active: concurrent requests lock the
-installation row and return the existing `discovering` or `running` campaign.
+installation row and return the existing `discovering` or `running` campaign. If
+the latest campaign failed during discovery, the same campaign ID retries
+discovery. If it failed while importing, completed windows remain untouched,
+incomplete windows return to `pending`, aggregate counters are rebuilt from their
+durable rows, and the pump continues from each saved `last_uid`. Only an
+`UIDVALIDITY changed` failure creates a new snapshot because the old UIDs no
+longer identify the same mailbox contents.
 
 `BackfillStatus` contains:
 
@@ -136,6 +143,7 @@ installation row and return the existing `discovering` or `running` campaign.
   "id": 42,
   "installation_id": 17,
   "status": "running",
+  "retry_mode": null,
   "total_messages": 128000,
   "processed_messages": 26400,
   "dispatched_documents": 27155,
@@ -200,7 +208,9 @@ and its project is `autry`.
    UIDs, fetches at most five 20-message chunks, persists them and commits the next
    UID checkpoint.
 6. Poll the GET endpoint. Worker restarts do not reset completed windows; stale
-   work is recovered by the next scheduler sweep.
+   work is recovered by the next scheduler sweep. If a real failure exhausts its
+   retries, **Resume full import** reuses the same campaign and continues from the
+   last committed UID rather than returning to zero.
 7. When every window is complete, the campaign becomes `completed` and the
    installation watermark is set to the original cutoff. The normal incremental
    job then catches messages delivered after the snapshot.
@@ -242,10 +252,12 @@ configuration cache and restart long-lived workers so they load the new settings
   and messages may be outside the configured absolute start. Campaign/window
   statuses and heartbeats are authoritative.
 - **UIDVALIDITY changes invalidate the snapshot.** The current window fails rather
-  than applying an old UID checkpoint to a rebuilt mailbox; retry from the UI to
-  create a fresh campaign.
+  than applying an old UID checkpoint to a rebuilt mailbox; status exposes
+  `retry_mode: restart` and the UI creates a fresh campaign. Other failures expose
+  `retry_mode: resume` and retain the existing checkpoints.
 - **Folder selection is captured at start.** Changing include/exclude settings does
-  not rewrite an active campaign. Finish it or start a fresh campaign after failure.
+  not rewrite an active or ordinarily resumed campaign. A restart caused by an
+  invalidated UID namespace captures a new snapshot and current settings.
 - **Attachments remain policy-bound.** Full history imports every message, but an
   excluded, inline, oversized or disallowed attachment is intentionally not emitted.
 

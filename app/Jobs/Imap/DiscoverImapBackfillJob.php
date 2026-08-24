@@ -104,6 +104,7 @@ final class DiscoverImapBackfillJob implements ShouldQueue
         $middleware = [new TraceImapBackfillDiscovery($key, $releaseAfter, $ttl)];
         if ($key !== null) {
             $middleware[] = (new WithoutOverlapping($key))
+                ->shared()
                 ->releaseAfter($releaseAfter)
                 ->expireAfter($ttl);
         }

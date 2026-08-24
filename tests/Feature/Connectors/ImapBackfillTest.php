@@ -14,6 +14,7 @@ use App\Models\ImapBackfill;
 use App\Models\ImapBackfillWindow;
 use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Support\Facades\Queue;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
 use Padosoft\AskMyDocsConnectorBase\Support\TenantContext as PackageTenantContext;
@@ -44,6 +45,170 @@ final class ImapBackfillTest extends TestCase
         $this->assertFalse($first->settings_json['only_unseen']);
         $this->assertSame([], $first->settings_json['senders']['include']);
         Queue::assertPushed(DiscoverImapBackfillJob::class, 1);
+    }
+
+    public function test_start_resumes_the_latest_failed_campaign_from_its_saved_window_checkpoints(): void
+    {
+        Queue::fake();
+        $installation = $this->installation();
+        $cutoff = now()->subHour();
+        $backfill = ImapBackfill::create([
+            'tenant_id' => $this->tenantId(),
+            'connector_installation_id' => $installation->id,
+            'status' => ImapBackfill::STATUS_FAILED,
+            'batch_size' => 100,
+            'total_messages' => 128_199,
+            // Deliberately stale aggregates: resume must rebuild them from the
+            // durable per-window checkpoints instead of trusting a torn write.
+            'processed_messages' => 99_999,
+            'dispatched_documents' => 99_999,
+            'total_windows' => 3,
+            'completed_windows' => 0,
+            'cutoff_at' => $cutoff,
+            'completed_at' => now(),
+            'error_json' => ['message' => 'Exchange closed the connection'],
+        ]);
+        $completed = ImapBackfillWindow::create([
+            'tenant_id' => $this->tenantId(),
+            'imap_backfill_id' => $backfill->id,
+            'connector_installation_id' => $installation->id,
+            'mailbox' => 'INBOX',
+            'window_start' => '2025-01-01',
+            'window_end' => '2025-02-01',
+            'status' => ImapBackfillWindow::STATUS_COMPLETED,
+            'last_uid' => 5_000,
+            'processed_messages' => 5_000,
+            'dispatched_documents' => 5_200,
+            'finished_at' => now()->subMinutes(10),
+        ]);
+        $failed = ImapBackfillWindow::create([
+            'tenant_id' => $this->tenantId(),
+            'imap_backfill_id' => $backfill->id,
+            'connector_installation_id' => $installation->id,
+            'mailbox' => 'INBOX',
+            'window_start' => '2025-02-01',
+            'window_end' => '2025-03-01',
+            'status' => ImapBackfillWindow::STATUS_FAILED,
+            'last_uid' => 9_000,
+            'processed_messages' => 4_000,
+            'dispatched_documents' => 4_100,
+            'attempts' => 5,
+            'finished_at' => now(),
+            'error_json' => ['message' => 'Exchange closed the connection'],
+        ]);
+        $pending = ImapBackfillWindow::create([
+            'tenant_id' => $this->tenantId(),
+            'imap_backfill_id' => $backfill->id,
+            'connector_installation_id' => $installation->id,
+            'mailbox' => 'INBOX',
+            'window_start' => '2025-03-01',
+            'window_end' => '2025-04-01',
+            'status' => ImapBackfillWindow::STATUS_PENDING,
+            'next_attempt_at' => now()->addHour(),
+        ]);
+        $persistedCutoff = $backfill->fresh()->cutoff_at;
+
+        $manager = app(ImapBackfillManager::class);
+        $resumed = $manager->start($installation->id);
+        $sameActive = $manager->start($installation->id);
+
+        $this->assertSame($backfill->id, $resumed->id);
+        $this->assertSame($backfill->id, $sameActive->id);
+        $this->assertDatabaseCount('imap_backfills', 1);
+        $this->assertSame(ImapBackfill::STATUS_RUNNING, $resumed->status);
+        $this->assertSame(9_000, $resumed->processed_messages);
+        $this->assertSame(9_300, $resumed->dispatched_documents);
+        $this->assertSame(3, $resumed->total_windows);
+        $this->assertSame(1, $resumed->completed_windows);
+        $this->assertNull($resumed->completed_at);
+        $this->assertNull($resumed->error_json);
+        $this->assertTrue($resumed->cutoff_at->equalTo($persistedCutoff));
+
+        $this->assertSame(ImapBackfillWindow::STATUS_COMPLETED, $completed->fresh()->status);
+        $this->assertSame(5_000, $completed->fresh()->last_uid);
+        $this->assertSame(ImapBackfillWindow::STATUS_PENDING, $failed->fresh()->status);
+        $this->assertSame(9_000, $failed->fresh()->last_uid);
+        $this->assertSame(4_000, $failed->fresh()->processed_messages);
+        $this->assertSame(5, $failed->fresh()->attempts);
+        $this->assertNull($failed->fresh()->finished_at);
+        $this->assertNull($failed->fresh()->error_json);
+        $this->assertSame(ImapBackfillWindow::STATUS_PENDING, $pending->fresh()->status);
+        $this->assertTrue($pending->fresh()->next_attempt_at->lte(now()));
+
+        Queue::assertPushed(PumpImapBackfillJob::class, 1);
+        Queue::assertPushed(PumpImapBackfillJob::class, fn ($job): bool =>
+            $job->backfillId === $backfill->id && $job->tenantId === $this->tenantId()
+        );
+        Queue::assertNotPushed(DiscoverImapBackfillJob::class);
+    }
+
+    public function test_start_retries_discovery_on_the_same_failed_campaign_when_no_windows_exist(): void
+    {
+        Queue::fake();
+        $installation = $this->installation();
+        $backfill = ImapBackfill::create([
+            'tenant_id' => $this->tenantId(),
+            'connector_installation_id' => $installation->id,
+            'status' => ImapBackfill::STATUS_FAILED,
+            'batch_size' => 100,
+            'cutoff_at' => now()->subHour(),
+            'error_json' => ['message' => 'Discovery connection failed'],
+        ]);
+
+        $resumed = app(ImapBackfillManager::class)->start($installation->id);
+
+        $this->assertSame($backfill->id, $resumed->id);
+        $this->assertDatabaseCount('imap_backfills', 1);
+        $this->assertSame(ImapBackfill::STATUS_DISCOVERING, $resumed->status);
+        $this->assertNull($resumed->error_json);
+        Queue::assertPushed(DiscoverImapBackfillJob::class, fn ($job): bool =>
+            $job->backfillId === $backfill->id && $job->tenantId === $this->tenantId()
+        );
+        Queue::assertNotPushed(PumpImapBackfillJob::class);
+    }
+
+    public function test_start_creates_a_fresh_snapshot_only_when_uidvalidity_invalidates_the_failed_campaign(): void
+    {
+        Queue::fake();
+        $installation = $this->installation();
+        $failed = ImapBackfill::create([
+            'tenant_id' => $this->tenantId(),
+            'connector_installation_id' => $installation->id,
+            'status' => ImapBackfill::STATUS_FAILED,
+            'batch_size' => 100,
+            'total_messages' => 10_000,
+            'processed_messages' => 9_000,
+            'total_windows' => 1,
+            'cutoff_at' => now()->subHour(),
+            'error_json' => ['message' => 'UIDVALIDITY changed for INBOX'],
+        ]);
+        ImapBackfillWindow::create([
+            'tenant_id' => $this->tenantId(),
+            'imap_backfill_id' => $failed->id,
+            'connector_installation_id' => $installation->id,
+            'mailbox' => 'INBOX',
+            'window_start' => '2025-01-01',
+            'window_end' => '2025-02-01',
+            'status' => ImapBackfillWindow::STATUS_FAILED,
+            'last_uid' => 9_000,
+            'processed_messages' => 9_000,
+            'error_json' => ['message' => 'UIDVALIDITY changed for INBOX'],
+        ]);
+
+        $manager = app(ImapBackfillManager::class);
+        $this->assertSame('restart', $manager->status($installation->id)['retry_mode']);
+
+        $replacement = $manager->start($installation->id);
+
+        $this->assertNotSame($failed->id, $replacement->id);
+        $this->assertDatabaseCount('imap_backfills', 2);
+        $this->assertSame(ImapBackfill::STATUS_FAILED, $failed->fresh()->status);
+        $this->assertSame(ImapBackfill::STATUS_DISCOVERING, $replacement->status);
+        $this->assertSame(0, $replacement->processed_messages);
+        Queue::assertPushed(DiscoverImapBackfillJob::class, fn ($job): bool =>
+            $job->backfillId === $replacement->id && $job->tenantId === $this->tenantId()
+        );
+        Queue::assertNotPushed(PumpImapBackfillJob::class);
     }
 
     public function test_pump_claims_only_one_window_at_a_time(): void
@@ -79,6 +244,48 @@ final class ImapBackfillTest extends TestCase
         $this->assertSame(1, ImapBackfillWindow::query()->where('status', ImapBackfillWindow::STATUS_QUEUED)->count());
         $this->assertSame(1, ImapBackfillWindow::query()->where('status', ImapBackfillWindow::STATUS_PENDING)->count());
         Queue::assertPushed(ImportImapBackfillWindowJob::class, 1);
+    }
+
+    public function test_sync_discovery_and_import_jobs_share_one_queue_overlap_lock(): void
+    {
+        config()->set('connectors.imap.serialize_connections', true);
+        config()->set('cache.default', 'array');
+        $tenantId = $this->tenantId();
+        $installation = $this->installation();
+        $backfill = ImapBackfill::create([
+            'tenant_id' => $tenantId,
+            'connector_installation_id' => $installation->id,
+            'status' => ImapBackfill::STATUS_RUNNING,
+            'batch_size' => 100,
+            'cutoff_at' => now(),
+        ]);
+        $window = ImapBackfillWindow::create([
+            'tenant_id' => $tenantId,
+            'imap_backfill_id' => $backfill->id,
+            'connector_installation_id' => $installation->id,
+            'mailbox' => 'INBOX',
+            'window_start' => '2026-01-01',
+            'window_end' => '2026-02-01',
+            'status' => ImapBackfillWindow::STATUS_PENDING,
+        ]);
+
+        $syncJob = new \App\Connectors\SerializedConnectorSyncJob($installation->id, $tenantId);
+        $discoveryJob = new DiscoverImapBackfillJob($backfill->id, $tenantId);
+        $importJob = new ImportImapBackfillWindowJob($window->id, $tenantId);
+
+        $isOverlapLock = static fn (object $middleware): bool => $middleware instanceof WithoutOverlapping;
+        $syncLock = collect($syncJob->middleware())->first($isOverlapLock);
+        $discoveryLock = collect($discoveryJob->middleware())->first($isOverlapLock);
+        $importLock = collect($importJob->middleware())->first($isOverlapLock);
+
+        $this->assertInstanceOf(WithoutOverlapping::class, $syncLock);
+        $this->assertInstanceOf(WithoutOverlapping::class, $discoveryLock);
+        $this->assertInstanceOf(WithoutOverlapping::class, $importLock);
+        $this->assertTrue($syncLock->shareKey);
+        $this->assertTrue($discoveryLock->shareKey);
+        $this->assertTrue($importLock->shareKey);
+        $this->assertSame($syncLock->getLockKey($syncJob), $discoveryLock->getLockKey($discoveryJob));
+        $this->assertSame($syncLock->getLockKey($syncJob), $importLock->getLockKey($importJob));
     }
 
     public function test_pump_restores_both_worker_tenant_contexts_after_an_early_return(): void

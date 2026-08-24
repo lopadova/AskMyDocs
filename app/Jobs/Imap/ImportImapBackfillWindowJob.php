@@ -142,6 +142,7 @@ final class ImportImapBackfillWindowJob implements ShouldQueue
 
         return $key === null ? [] : [
             (new WithoutOverlapping($key))
+                ->shared()
                 ->releaseAfter((int) config('connectors.imap.mailbox_lock.requeue_after_seconds', 60))
                 ->expireAfter((int) config('connectors.imap.mailbox_lock.ttl_seconds', 700)),
         ];

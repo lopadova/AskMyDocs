@@ -41,7 +41,7 @@ final class ImapBackfillAlgorithmsTest extends TestCase
         $client->mailboxNames = ['INBOX'];
         $client->snapshot = new ImapBackfillMailboxSnapshot(uidValidity: 77, maxUid: 20, messageCount: 2);
         $client->betweenUidValues = [10, 20];
-        $client->singleMessages[10] = $this->message(10, Carbon::parse('2026-01-15'));
+        $client->internalDates[10] = Carbon::parse('2026-01-15');
 
         (new ImapBackfillDiscovery($this->provider($client)))->discover($installation, $backfill);
 
@@ -64,6 +64,7 @@ final class ImapBackfillAlgorithmsTest extends TestCase
         $this->assertSame(2, $backfill->fresh()->total_messages);
         $this->assertSame(ImapBackfill::STATUS_RUNNING, $backfill->fresh()->status);
         $this->assertSame(500, $client->requestedLimit);
+        $this->assertSame(0, $client->fetchMessageCalls, 'discovery must not parse RFC822 headers');
         $this->assertTrue($client->closed);
     }
 
@@ -315,9 +316,12 @@ final class AlgorithmFakeImapClient implements ImapBackfillClient
     public array $betweenUidValues = [];
     /** @var array<int,ImapMessage> */
     public array $singleMessages = [];
+    /** @var array<int,Carbon> */
+    public array $internalDates = [];
     /** @var array<int,ImapMessage> */
     public array $bulkMessages = [];
     public ?int $requestedLimit = null;
+    public int $fetchMessageCalls = 0;
     public bool $closed = false;
 
     public function __construct()
@@ -344,7 +348,13 @@ final class AlgorithmFakeImapClient implements ImapBackfillClient
 
     public function fetchMessage(string $mailbox, int $uid): ImapMessage
     {
+        $this->fetchMessageCalls++;
         return $this->singleMessages[$uid] ?? throw new RuntimeException("Missing fake UID {$uid}");
+    }
+
+    public function internalDate(string $mailbox, int $uid): Carbon
+    {
+        return $this->internalDates[$uid] ?? throw new RuntimeException("Missing fake INTERNALDATE for UID {$uid}");
     }
 
     public function fetchMessages(string $mailbox, array $uids): array

@@ -64,6 +64,12 @@ final class SerializingImapBackfillClient implements ImapBackfillClient
         return $this->inner->fetchMessage($mailbox, $uid);
     }
 
+    public function internalDate(string $mailbox, int $uid): Carbon
+    {
+        $this->acquire();
+        return $this->inner->internalDate($mailbox, $uid);
+    }
+
     public function fetchMessages(string $mailbox, array $uids): array
     {
         $this->acquire();

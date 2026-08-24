@@ -153,6 +153,11 @@ final class SerializedConnectorSyncJob extends ConnectorSyncJob
 
         return [
             (new WithoutOverlapping($key))
+                // Discovery and backfill import are different job classes but
+                // operate on the same physical mailbox. A shared key keeps all
+                // queue-owned IMAP connections behind one mutex; otherwise the
+                // client-level lock times out and consumes maxExceptions.
+                ->shared()
                 ->releaseAfter($releaseAfter)
                 ->expireAfter($ttlSeconds),
         ];

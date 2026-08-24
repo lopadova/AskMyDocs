@@ -87,6 +87,11 @@ final class FakeImapBackfillClient implements ImapBackfillClient
         throw new \LogicException('FakeImapBackfillClient has no messages.');
     }
 
+    public function internalDate(string $mailbox, int $uid): Carbon
+    {
+        throw new \LogicException('FakeImapBackfillClient has no messages.');
+    }
+
     public function fetchMessages(string $mailbox, array $uids): array
     {
         return [];
