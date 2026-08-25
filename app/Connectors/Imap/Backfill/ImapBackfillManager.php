@@ -45,11 +45,6 @@ final class ImapBackfillManager
             if ($installation === null) {
                 throw new NotFoundHttpException('IMAP installation not found.');
             }
-            if ($installation->status !== ConnectorInstallation::STATUS_ACTIVE) {
-                throw new UnprocessableEntityHttpException(
-                    'The IMAP account must be active before starting a full-history import.',
-                );
-            }
 
             $active = ImapBackfill::query()
                 ->forTenant($tenantId)
@@ -58,6 +53,8 @@ final class ImapBackfillManager
                 ->latest('id')
                 ->first();
             if ($active !== null) {
+                $this->ensureInstallationIsActive($installation);
+
                 return $active;
             }
 
@@ -71,6 +68,23 @@ final class ImapBackfillManager
                 ->latest('id')
                 ->lockForUpdate()
                 ->first();
+
+            // A transport failure can mark the installation ERRORED at the
+            // same time as the durable campaign fails. An explicit operator
+            // retry is the recovery boundary: re-arm only that failed campaign,
+            // in the same transaction, before resuming its saved checkpoints.
+            if (
+                $installation->status === ConnectorInstallation::STATUS_ERRORED
+                && $latest?->status === ImapBackfill::STATUS_FAILED
+            ) {
+                $installation->forceFill([
+                    'status' => ConnectorInstallation::STATUS_ACTIVE,
+                    'error_json' => null,
+                ])->saveOrFail();
+            }
+
+            $this->ensureInstallationIsActive($installation);
+
             if (
                 $latest?->status === ImapBackfill::STATUS_FAILED
                 && ! $this->requiresFreshSnapshot($latest)
@@ -177,6 +191,17 @@ final class ImapBackfillManager
     public function isEnabled(): bool
     {
         return config('connectors.imap.backfill.enabled', true) === true;
+    }
+
+    private function ensureInstallationIsActive(ConnectorInstallation $installation): void
+    {
+        if ($installation->status === ConnectorInstallation::STATUS_ACTIVE) {
+            return;
+        }
+
+        throw new UnprocessableEntityHttpException(
+            'The IMAP account must be active before starting a full-history import.',
+        );
     }
 
     public function hasCompletedBackfill(int $installationId): bool

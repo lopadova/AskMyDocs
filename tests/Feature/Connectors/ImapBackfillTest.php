@@ -142,6 +142,46 @@ final class ImapBackfillTest extends TestCase
         Queue::assertNotPushed(DiscoverImapBackfillJob::class);
     }
 
+    public function test_start_rearms_an_errored_installation_when_resuming_a_failed_campaign(): void
+    {
+        Queue::fake();
+        $installation = $this->installation();
+        $installation->forceFill([
+            'status' => ConnectorInstallation::STATUS_ERRORED,
+            'error_json' => ['message' => 'fwrite(): SSL: Broken pipe'],
+        ])->save();
+        $backfill = ImapBackfill::create([
+            'tenant_id' => $this->tenantId(),
+            'connector_installation_id' => $installation->id,
+            'status' => ImapBackfill::STATUS_FAILED,
+            'batch_size' => 100,
+            'total_windows' => 1,
+            'cutoff_at' => now()->subHour(),
+            'error_json' => ['message' => 'Mailbox busy'],
+        ]);
+        ImapBackfillWindow::create([
+            'tenant_id' => $this->tenantId(),
+            'imap_backfill_id' => $backfill->id,
+            'connector_installation_id' => $installation->id,
+            'mailbox' => 'INBOX',
+            'window_start' => '2025-01-01',
+            'window_end' => '2025-02-01',
+            'status' => ImapBackfillWindow::STATUS_FAILED,
+            'last_uid' => 17_517,
+            'processed_messages' => 17_517,
+            'error_json' => ['message' => 'Mailbox busy'],
+        ]);
+
+        $resumed = app(ImapBackfillManager::class)->start($installation->id);
+
+        $this->assertSame($backfill->id, $resumed->id);
+        $this->assertSame(ImapBackfill::STATUS_RUNNING, $resumed->status);
+        $this->assertSame(17_517, $resumed->processed_messages);
+        $this->assertSame(ConnectorInstallation::STATUS_ACTIVE, $installation->fresh()->status);
+        $this->assertNull($installation->fresh()->error_json);
+        Queue::assertPushed(PumpImapBackfillJob::class, 1);
+    }
+
     public function test_start_retries_discovery_on_the_same_failed_campaign_when_no_windows_exist(): void
     {
         Queue::fake();
