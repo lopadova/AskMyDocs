@@ -109,6 +109,43 @@ final class ImapBackfillAlgorithmsTest extends TestCase
         Queue::assertPushed(PumpImapBackfillJob::class, 1);
     }
 
+    public function test_import_splits_a_legacy_large_batch_at_the_current_per_job_cap(): void
+    {
+        Queue::fake();
+        Storage::fake('local');
+        config()->set('connectors.imap.backfill.max_messages_per_job', 10);
+        $installation = $this->installation();
+        $backfill = $this->backfill($installation, ImapBackfill::STATUS_RUNNING, [
+            'batch_size' => 100,
+            'total_messages' => 12,
+            'total_windows' => 1,
+            'settings_json' => ['skip_auto_generated' => false, 'attachments' => ['enabled' => false]],
+        ]);
+        $window = $this->window($installation, $backfill, [
+            'status' => ImapBackfillWindow::STATUS_QUEUED,
+            'snapshot_uid_validity' => 77,
+            'snapshot_max_uid' => 112,
+        ]);
+        $client = new AlgorithmFakeImapClient;
+        $client->state = new MailboxState(uidValidity: 77, lastUid: 112);
+        $client->betweenUidValues = range(101, 112);
+        foreach (range(101, 110) as $uid) {
+            $client->bulkMessages[$uid] = $this->message($uid, Carbon::parse('2026-01-10'));
+        }
+
+        $ingestion = new RecordingConnectorIngestion;
+        (new ImportImapBackfillWindowJob($window->id, $this->tenantId()))
+            ->handle(new ImapBackfillImporter($this->provider($client), $ingestion));
+
+        $freshWindow = $window->fresh();
+        $this->assertSame(11, $client->requestedLimit, 'the cap plus one is enough for the hasMore probe');
+        $this->assertSame(110, $freshWindow->last_uid);
+        $this->assertSame(10, $freshWindow->processed_messages);
+        $this->assertSame(ImapBackfillWindow::STATUS_PENDING, $freshWindow->status);
+        $this->assertCount(10, $ingestion->dispatched);
+        Queue::assertPushed(PumpImapBackfillJob::class, 1);
+    }
+
     public function test_import_requeues_a_busy_mailbox_without_failing_the_campaign(): void
     {
         Queue::fake();

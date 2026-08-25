@@ -29,7 +29,9 @@ final class ImportImapBackfillWindowJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 0;
-    public int $timeout = 600;
+    // Flex workers have a 90-second hard runtime ceiling. Import jobs are kept
+    // deliberately below it; the importer also caps each durable UID batch.
+    public int $timeout = 75;
     public int $maxExceptions = 5;
     public array $backoff = [30, 60, 120, 300];
 
