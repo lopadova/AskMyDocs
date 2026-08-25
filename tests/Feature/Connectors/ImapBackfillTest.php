@@ -31,6 +31,7 @@ final class ImapBackfillTest extends TestCase
     {
         Queue::fake();
         config()->set('connectors.imap.backfill.batch_size', 125);
+        config()->set('connectors.imap.backfill.max_messages_per_job', 10);
         $installation = $this->installation();
 
         $manager = app(ImapBackfillManager::class);
@@ -39,7 +40,7 @@ final class ImapBackfillTest extends TestCase
 
         $this->assertSame($first->id, $second->id);
         $this->assertSame(ImapBackfill::STATUS_DISCOVERING, $first->status);
-        $this->assertSame(125, $first->batch_size);
+        $this->assertSame(10, $first->batch_size);
         $this->assertSame(0, $first->settings_json['date_window_days']);
         $this->assertFalse($first->settings_json['skip_auto_generated']);
         $this->assertFalse($first->settings_json['only_unseen']);
@@ -116,6 +117,7 @@ final class ImapBackfillTest extends TestCase
         $this->assertSame($backfill->id, $sameActive->id);
         $this->assertDatabaseCount('imap_backfills', 1);
         $this->assertSame(ImapBackfill::STATUS_RUNNING, $resumed->status);
+        $this->assertSame(10, $resumed->batch_size);
         $this->assertSame(9_000, $resumed->processed_messages);
         $this->assertSame(9_300, $resumed->dispatched_documents);
         $this->assertSame(3, $resumed->total_windows);
@@ -474,6 +476,7 @@ final class ImapBackfillTest extends TestCase
         $now = now();
 
         $this->assertSame(0, $job->tries);
+        $this->assertLessThan(90, $job->timeout);
         $this->assertGreaterThan($now->copy()->addMinutes(29)->getTimestamp(), $job->retryUntil()->getTimestamp());
         $this->assertLessThanOrEqual($now->copy()->addMinutes(31)->getTimestamp(), $job->retryUntil()->getTimestamp());
     }

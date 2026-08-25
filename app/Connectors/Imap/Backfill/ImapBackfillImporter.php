@@ -31,7 +31,14 @@ final class ImapBackfillImporter
     ): ImapBackfillBatchResult {
         $client = $this->clients->forInstallation($installation);
         $config = $this->resolvedConfig((array) ($backfill->settings_json ?? []));
-        $limit = max(1, (int) $backfill->batch_size);
+        // Campaigns created before the Flex-worker guard may have persisted a
+        // much larger batch (historically 100). Clamp at execution time too, so
+        // deploying the guard immediately splits an already-running/resumed
+        // campaign without discarding its durable UID checkpoint.
+        $limit = max(1, min(
+            (int) $backfill->batch_size,
+            (int) config('connectors.imap.backfill.max_messages_per_job', 10),
+        ));
 
         try {
             $state = $client->selectMailbox($window->mailbox);

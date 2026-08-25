@@ -223,14 +223,16 @@ return [
             'retry_delay_ms' => (int) env('CONNECTOR_IMAP_RECONNECT_RETRY_DELAY_MS', 500),
         ],
 
-        // Full-history imports are split into durable date windows. Each job
-        // fetches a bounded UID batch, checkpoints it in SQL, then lets the
+        // Full-history imports are split into durable date windows and short
+        // UID jobs that fit Flex workers. The execution cap also applies to
+        // legacy campaigns whose persisted batch_size is larger, then the
         // separate kb-ingest workers perform conversion/embedding.
         'backfill' => [
             'enabled' => (bool) env('CONNECTOR_IMAP_BACKFILL_ENABLED', true),
             'queue' => env('CONNECTOR_IMAP_BACKFILL_QUEUE', 'connectors'),
-            'batch_size' => (int) env('CONNECTOR_IMAP_BACKFILL_BATCH_SIZE', 100),
-            'fetch_size' => (int) env('CONNECTOR_IMAP_BACKFILL_FETCH_SIZE', 20),
+            'batch_size' => (int) env('CONNECTOR_IMAP_BACKFILL_BATCH_SIZE', 10),
+            'max_messages_per_job' => (int) env('CONNECTOR_IMAP_BACKFILL_MAX_MESSAGES_PER_JOB', 10),
+            'fetch_size' => (int) env('CONNECTOR_IMAP_BACKFILL_FETCH_SIZE', 5),
             'stale_after_minutes' => (int) env('CONNECTOR_IMAP_BACKFILL_STALE_MINUTES', 20),
             'absolute_start' => env('CONNECTOR_IMAP_BACKFILL_ABSOLUTE_START', '1970-01-01'),
         ],
