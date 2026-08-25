@@ -137,6 +137,10 @@ final class ImapBackfillManager
 
                 $latest->forceFill([
                     'status' => ImapBackfill::STATUS_RUNNING,
+                    'batch_size' => min(
+                        max(1, (int) $latest->batch_size),
+                        $this->maxMessagesPerJob(),
+                    ),
                     'processed_messages' => (int) $totals->processed_messages,
                     'dispatched_documents' => (int) $totals->dispatched_documents,
                     'total_windows' => $totalWindows,
@@ -167,7 +171,10 @@ final class ImapBackfillManager
                 'connector_installation_id' => $installation->id,
                 'status' => ImapBackfill::STATUS_DISCOVERING,
                 'settings_json' => $settings,
-                'batch_size' => max(1, (int) config('connectors.imap.backfill.batch_size', 100)),
+                'batch_size' => min(
+                    max(1, (int) config('connectors.imap.backfill.batch_size', 10)),
+                    $this->maxMessagesPerJob(),
+                ),
                 'cutoff_at' => now(),
                 'started_at' => now(),
                 'heartbeat_at' => now(),
@@ -191,6 +198,11 @@ final class ImapBackfillManager
     public function isEnabled(): bool
     {
         return config('connectors.imap.backfill.enabled', true) === true;
+    }
+
+    private function maxMessagesPerJob(): int
+    {
+        return max(1, (int) config('connectors.imap.backfill.max_messages_per_job', 10));
     }
 
     private function ensureInstallationIsActive(ConnectorInstallation $installation): void
