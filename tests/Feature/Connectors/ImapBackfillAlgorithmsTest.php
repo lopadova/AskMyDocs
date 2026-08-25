@@ -9,15 +9,18 @@ use App\Connectors\Imap\Backfill\ImapBackfillClientProviderContract;
 use App\Connectors\Imap\Backfill\ImapBackfillDiscovery;
 use App\Connectors\Imap\Backfill\ImapBackfillImporter;
 use App\Connectors\Imap\Backfill\ImapBackfillMailboxSnapshot;
+use App\Connectors\Imap\MailboxBusyException;
 use App\Jobs\Imap\ImportImapBackfillWindowJob;
 use App\Jobs\Imap\PumpImapBackfillJob;
 use App\Models\ImapBackfill;
 use App\Models\ImapBackfillWindow;
 use App\Support\TenantContext;
 use Carbon\Carbon;
+use Illuminate\Contracts\Queue\Job as QueueJobContract;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
+use Mockery;
 use Padosoft\AskMyDocsConnectorBase\Contracts\ConnectorIngestionContract;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
 use Padosoft\AskMyDocsConnectorImap\Imap\ImapAttachment;
@@ -104,6 +107,38 @@ final class ImapBackfillAlgorithmsTest extends TestCase
         $this->assertSame(2, $backfill->fresh()->processed_messages);
         $this->assertCount(2, $ingestion->dispatched);
         Queue::assertPushed(PumpImapBackfillJob::class, 1);
+    }
+
+    public function test_import_requeues_a_busy_mailbox_without_failing_the_campaign(): void
+    {
+        Queue::fake();
+        Storage::fake('local');
+        config()->set('connectors.imap.mailbox_lock.requeue_after_seconds', 7);
+        $installation = $this->installation();
+        $backfill = $this->backfill($installation, ImapBackfill::STATUS_RUNNING, [
+            'total_windows' => 1,
+        ]);
+        $window = $this->window($installation, $backfill, [
+            'status' => ImapBackfillWindow::STATUS_QUEUED,
+        ]);
+        $client = new AlgorithmFakeImapClient;
+        $client->selectMailboxException = new MailboxBusyException(
+            'Mailbox busy: another connection to this account is already in progress.',
+        );
+        $importer = new ImapBackfillImporter($this->provider($client), new RecordingConnectorIngestion);
+        $queueJob = Mockery::mock(QueueJobContract::class);
+        $queueJob->shouldReceive('release')->once()->with(7);
+        $job = new ImportImapBackfillWindowJob($window->id, $this->tenantId());
+        $job->setJob($queueJob);
+
+        $job->handle($importer);
+
+        $this->assertSame(ImapBackfillWindow::STATUS_RUNNING, $window->fresh()->status);
+        $this->assertSame(1, $window->fresh()->attempts);
+        $this->assertSame(MailboxBusyException::class, $window->fresh()->error_json['type']);
+        $this->assertSame(ImapBackfill::STATUS_RUNNING, $backfill->fresh()->status);
+        $this->assertSame(MailboxBusyException::class, $backfill->fresh()->error_json['type']);
+        Queue::assertNotPushed(PumpImapBackfillJob::class);
     }
 
     public function test_import_rejects_a_changed_uidvalidity_snapshot(): void
@@ -323,6 +358,7 @@ final class AlgorithmFakeImapClient implements ImapBackfillClient
     public ?int $requestedLimit = null;
     public int $fetchMessageCalls = 0;
     public bool $closed = false;
+    public ?\Throwable $selectMailboxException = null;
 
     public function __construct()
     {
@@ -331,7 +367,14 @@ final class AlgorithmFakeImapClient implements ImapBackfillClient
     }
 
     public function mailboxes(): array { return $this->mailboxNames; }
-    public function selectMailbox(string $mailbox): MailboxState { return $this->state; }
+    public function selectMailbox(string $mailbox): MailboxState
+    {
+        if ($this->selectMailboxException !== null) {
+            throw $this->selectMailboxException;
+        }
+
+        return $this->state;
+    }
     public function snapshotMailbox(string $mailbox): ImapBackfillMailboxSnapshot { return $this->snapshot; }
 
     public function uidsBetween(
