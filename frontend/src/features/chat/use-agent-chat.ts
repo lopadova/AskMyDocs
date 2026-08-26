@@ -30,6 +30,10 @@ export interface AgentConfirmation {
     logicalExtension: number;
 }
 
+interface AgentMessageOptions {
+    mcpAppId?: string;
+}
+
 export interface UseAgentChatResult {
     messages: Message[];
     status: ChatStatus;
@@ -37,7 +41,7 @@ export interface UseAgentChatResult {
     events: AgentRunEvent[];
     activeRun: AgentTurnStarted | null;
     confirmation: AgentConfirmation | null;
-    sendMessage: (message: { text: string }) => Promise<void>;
+    sendMessage: (message: { text: string }, options?: AgentMessageOptions) => Promise<void>;
     stop: () => void;
     regenerate: () => void;
     continueRun: () => Promise<void>;
@@ -154,7 +158,10 @@ export function useAgentChat(options: UseAgentChatOptions): UseAgentChatResult {
         callbacksRef.current.onError?.(next);
     }, []);
 
-    const sendMessage = useCallback(async ({ text }: { text: string }): Promise<void> => {
+    const sendMessage = useCallback(async (
+        { text }: { text: string },
+        messageOptions?: AgentMessageOptions,
+    ): Promise<void> => {
         if (conversationId === null) throw new Error('A conversation is required.');
         const generation = ++generationRef.current;
         abortRef.current?.abort();
@@ -172,6 +179,7 @@ export function useAgentChat(options: UseAgentChatOptions): UseAgentChatResult {
                 conversationId,
                 text,
                 isFilterStateEmpty(liveFilters) ? undefined : liveFilters,
+                messageOptions?.mcpAppId,
             );
             if (generation !== generationRef.current) return;
             runRef.current = run;

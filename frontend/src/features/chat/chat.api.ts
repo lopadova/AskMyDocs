@@ -284,10 +284,15 @@ export const chatApi = {
         conversationId: number,
         content: string,
         filters?: FilterState,
+        mcpAppId?: string,
     ): Promise<AgentTurnStarted> {
-        const payload = filters && !isFilterStateEmpty(filters)
-            ? { content, filters }
-            : { content };
+        const payload: { content: string; filters?: FilterState; mcp_app_id?: string } = { content };
+        if (filters && !isFilterStateEmpty(filters)) {
+            payload.filters = filters;
+        }
+        if (mcpAppId && /^[0-9A-HJKMNP-TV-Z]{26}$/.test(mcpAppId)) {
+            payload.mcp_app_id = mcpAppId;
+        }
         const { data } = await api.post<AgentTurnStarted>(
             `/conversations/${conversationId}/messages/agent`,
             payload,

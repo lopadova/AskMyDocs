@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace App\Agent;
 
 use App\Models\AgentRun;
+use App\Support\TenantContext;
 use App\Support\SupportedLocale;
 use Illuminate\Support\Facades\App;
 use JsonSerializable;
+use Padosoft\AskMyDocsConnectorBase\Support\TenantContext as PackageTenantContext;
 
 /**
  * Immutable ownership and localization boundary for one agent execution.
@@ -57,6 +59,8 @@ final readonly class AgentExecutionContext implements JsonSerializable
     /** Restore request-local framework state at every job/continuation entry. */
     public function activate(): void
     {
+        app(TenantContext::class)->set($this->tenantId);
+        app(PackageTenantContext::class)->set($this->tenantId);
         App::setLocale(SupportedLocale::catalog($this->locale));
         date_default_timezone_set($this->timezone);
     }

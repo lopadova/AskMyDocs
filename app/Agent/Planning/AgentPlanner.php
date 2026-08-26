@@ -20,6 +20,7 @@ final readonly class AgentPlanner
         array $tools,
         AgentEvidenceEnvelope $evidence,
         array $completedActions = [],
+        ?string $turnContext = null,
     ): AgentPlan {
         $response = $this->ai->chatWithHistory(
             $this->systemPrompt($context),
@@ -27,6 +28,7 @@ final readonly class AgentPlanner
                 'role' => 'user',
                 'content' => json_encode([
                     'question' => $question,
+                    'mcp_app_context' => $turnContext,
                     'available_tools' => array_map(
                         static fn (AgentToolDefinition $tool): array => $tool->jsonSerialize(),
                         $tools,

@@ -23,6 +23,7 @@ const assistantMessage: Message = {
     created_at: '2026-08-08T12:00:01Z',
 };
 const emptyMessages: Message[] = [];
+const mcpAppId = '01M0Z3DKWB6QXBF5MKB3HZW4HJ';
 
 function completedEvent(): AgentRunEvent {
     return {
@@ -69,9 +70,17 @@ describe('useAgentChat', () => {
             onFinish,
         }));
 
-        await act(async () => result.current.sendMessage({ text: 'Dammi gli ordini' }));
+        await act(async () => result.current.sendMessage(
+            { text: 'Dammi gli ordini' },
+            { mcpAppId },
+        ));
 
-        expect(chatApi.startAgentTurn).toHaveBeenCalledWith(7, 'Dammi gli ordini', undefined);
+        expect(chatApi.startAgentTurn).toHaveBeenCalledWith(
+            7,
+            'Dammi gli ordini',
+            undefined,
+            mcpAppId,
+        );
         expect(result.current.messages).toEqual([userMessage, assistantMessage]);
         expect(result.current.events.at(-1)?.message).toBe('La risposta è pronta.');
         expect(result.current.status).toBe('ready');
