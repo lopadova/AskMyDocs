@@ -957,6 +957,35 @@ config MUST be loaded in `tests/TestCase.php::getEnvironmentSetUp`
 SECURE config, not the package default.
 → See `.claude/skills/rbac-authorization-matrix/SKILL.md`.
 
+### R33 — Authorization that must hold for retrieval belongs in SQL, not only in the policy
+An authorization arm enforced by a **policy** is enforced only for callers that
+go through the Gate. The RAG hot path does not: retrieval resolves chunks with
+`KnowledgeChunk::whereHas('document', …)` and never calls
+`KnowledgeDocumentPolicy`. Any arm of `User::hasDocumentAccess()` left out of
+`AccessScopeScope` is therefore **not enforced for grounding** — the model
+receives the chunks and cites them.
+
+So: every authorization arm that must hold for retrieval MUST be pushed into
+the global scope's SQL in the SAME PR that introduces it, with a regression
+test that queries **through the relationship** (`whereHas`) rather than through
+the controller — a controller test passes on the policy alone and proves
+nothing about the hot path.
+
+`User::hasDocumentAccess()` stays authoritative. The SQL must never be **wider**
+than it; where a construct cannot be expressed exactly in portable SQL it must
+narrow to a **superset** and say so in the code and the docs (see
+`ScopeAllowlistSql::isExact()`, which reports the one glob shape mixing
+single- and cross-segment wildcards). A subject with no restriction of this
+kind MUST generate the identical query as before, so the rule costs nothing on
+the paths it does not constrain.
+
+Graded on **blast radius**: this is the shape of the H8 finding (role-deny ACL
+ignored by the global scope — "only caught by the per-row policy check, which
+the hot retrieval path skips"), and the v8.31 scope-allowlist arm was the same
+bug one arm later — a member scoped to `hr/policies/**` still received
+`hr/salaries/**` chunks as grounding, with citations. Two arms of one method,
+the same omission, found two audits apart.
+→ See `app/Support/ScopeAllowlistSql.php` + `tests/Feature/Kb/RetrievalScopeAllowlistTest.php`.
 ### R37 — Branching strategy: `feature/v4.x` integration branches → main
 For AskMyDocs, `main` holds the **stable production release** (v3 today,
 v4.0 when v4.0 RC ships, v4.1 when v4.1 ships, etc.). Each major
@@ -1690,7 +1719,7 @@ change must keep that matrix synchronized and pass `npm run security:rules`.
   single helper for path normalization (`KbPath`), a single deletion service
   (`DocumentDeleter`), a single ingestion path (`DocumentIngestor`). Plug
   into those instead of cloning logic.
-- Follow **every R-rule above (R1–R32 + R36–R46 are the populated set; R33–R35 are intentionally unallocated)** before opening a PR —
+- Follow **every R-rule above (R1–R33 + R36–R46 are the populated set; R34–R35 are intentionally unallocated)** before opening a PR —
   R1..R21 exist because Copilot caught them the first time. R14..R21
   were distilled at PR16 from ~110 live Copilot findings across
   PRs #16..#31; see `docs/enhancement-plan/COPILOT-FINDINGS.md` for the

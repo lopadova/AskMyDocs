@@ -4,6 +4,7 @@ namespace App\Scopes;
 
 use App\Models\KnowledgeDocumentAcl;
 use App\Models\User;
+use App\Support\ScopeAllowlistSql;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Scope;
@@ -21,14 +22,23 @@ use Illuminate\Support\Facades\DB;
  *   3. Bypass for users who can read all projects (canReadAllProjects():
  *      `kb.read.any` when per-project isolation is OFF, `kb.read.all_projects`
  *      when it is ON — see config/kb.php `project_isolation.enabled`).
- *   4. Constrain project_key to the user's allowed project set.
+ *   4. Constrain project_key to the user's allowed project set, and within
+ *      each project to that membership's scope_allowlist (folder_globs /
+ *      tags) — see constrainByScopeAllowlist().
  *   5. Exclude rows that have a matching deny ACL row for subject=user /
  *      permission=view.
  *
- * The scope does NOT enforce scope_allowlist folder_globs / tags — that
- * is done by KnowledgeDocumentPolicy::view() so hot retrieval paths stay
- * a single SELECT without joins. For bulk listing endpoints that must
- * honour scope filters, paginate + filter in PHP using the policy.
+ * Layer 4's allowlist arm used to live only in
+ * KnowledgeDocumentPolicy::view(), on the reasoning that hot retrieval
+ * paths should stay a single SELECT without joins. The reasoning held for
+ * controller reads, which call the Gate; it did not hold for retrieval,
+ * which resolves chunks through `whereHas('document')` and never calls the
+ * policy — so the arm was simply absent where it mattered most. It is now
+ * SQL (see App\Support\ScopeAllowlistSql), exact for every glob shape but
+ * one, and costs a join only for memberships that actually carry a scope.
+ *
+ * The policy remains the authoritative per-row check and the only gate for
+ * the one inexact shape (a glob mixing `**` with a single-segment `*`).
  */
 class AccessScopeScope implements Scope
 {
@@ -65,7 +75,74 @@ class AccessScopeScope implements Scope
             return;
         }
 
-        $builder->whereIn($model->qualifyColumn('project_key'), $allowed);
+        $column = $model->qualifyColumn('project_key');
+
+        // The allowlist is per MEMBERSHIP, so it is per project: a user may
+        // hold `hr/**` in one project and no restriction in another.
+        // Collapsing to one `whereIn` would apply a single project's scope
+        // to all of them, so each project carries its own arm.
+        $builder->where(function ($outer) use ($allowed, $column, $model, $user): void {
+            foreach ($allowed as $projectKey) {
+                $outer->orWhere(function ($arm) use ($projectKey, $column, $model, $user): void {
+                    $arm->where($column, $projectKey);
+                    $this->constrainByScopeAllowlist($arm, $model, $user, (string) $projectKey);
+                });
+            }
+        });
+    }
+
+    /**
+     * The third arm of `User::hasDocumentAccess()`, pushed into SQL.
+     *
+     * This used to run only in `KnowledgeDocumentPolicy::view()`, which the
+     * RAG hot path never calls — so a membership scoped to `hr/policies/**`
+     * still retrieved `hr/salaries/**` chunks through
+     * `whereHas('document')` and handed them to the model as grounding.
+     * Exactly the shape H8 fixed for role-level denies, one arm later.
+     *
+     * `matchesScope()` is globs OR tags — a document outside every glob is
+     * still readable when it carries an allowlisted tag — so both arms are
+     * OR'd. An empty allowlist means "no further restriction" and leaves
+     * the query untouched, keeping the unscoped plan identical.
+     */
+    private function constrainByScopeAllowlist(
+        mixed $builder,
+        Model $model,
+        User $user,
+        string $projectKey,
+    ): void {
+        $scope = $user->allowedScopesFor($projectKey);
+
+        $globs = $scope['folder_globs'] ?? [];
+        $tags = $scope['tags'] ?? [];
+
+        if ($globs === [] && $tags === []) {
+            return;
+        }
+
+        $pathColumn = $model->qualifyColumn('source_path');
+        $idColumn = $model->qualifyColumn('id');
+        $tenantColumn = $model->qualifyColumn('tenant_id');
+
+        $builder->where(function ($q) use ($globs, $tags, $pathColumn, $idColumn, $tenantColumn): void {
+            foreach ($globs as $glob) {
+                ScopeAllowlistSql::apply($q, $pathColumn, (string) $glob);
+            }
+
+            if ($tags !== []) {
+                // Mirrors User::documentHasAnyTag(): slugs are unique only
+                // per (tenant_id, project_key), so the join stays inside
+                // the document's own tenant (R30).
+                $q->orWhereExists(function ($sub) use ($tags, $idColumn, $tenantColumn): void {
+                    $sub->from('knowledge_document_tags')
+                        ->join('kb_tags', 'kb_tags.id', '=', 'knowledge_document_tags.kb_tag_id')
+                        ->whereColumn('knowledge_document_tags.knowledge_document_id', $idColumn)
+                        ->whereColumn('kb_tags.tenant_id', $tenantColumn)
+                        ->whereIn('kb_tags.slug', $tags)
+                        ->selectRaw('1');
+                });
+            }
+        });
     }
 
     private function excludeDeniedDocuments(Builder $builder, Model $model, User $user): void

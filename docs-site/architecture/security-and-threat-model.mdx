@@ -103,6 +103,59 @@ their `project_memberships` rows, enforced uniformly across chat, search, and th
 admin KB surface. It is **default-off** so existing deployments keep their
 behaviour. See [multi-tenant isolation](/multi-tenant-isolation).
 
+### Scope allowlists reach the retrieval path (R33)
+
+A `project_memberships` row may carry a **scope allowlist** — folder globs
+and/or tags that narrow a member to part of a project (`hr/policies/**` but
+not `hr/salaries/**`). `User::hasDocumentAccess()` has always been the
+authoritative check and has always honoured it.
+
+The enforcement used to be split. `AccessScopeScope`, the global scope on
+every `KnowledgeDocument` query, pushed only two of that method's arms into
+SQL — the project constraint and deny-ACL rows — and left the allowlist arm
+to `KnowledgeDocumentPolicy::view()`, so hot paths stayed a single SELECT
+without joins.
+
+That split held for controller reads, which call the Gate. It did **not**
+hold for retrieval. The RAG path resolves chunks with
+`KnowledgeChunk::whereHas('document', …)` and never calls the policy, so a
+member scoped to `hr/policies/**` still retrieved `hr/salaries/**` chunks
+and the model received them as grounding — with citations. Same shape as the
+H8 role-deny fix ("only caught by the per-row policy check, which the hot
+retrieval path skips"), one arm later.
+
+The allowlist is now SQL, so it reaches every query that touches
+`KnowledgeDocument` — retrieval and FTS included — through the relationship
+subquery:
+
+- **Globs** are translated by `App\Support\ScopeAllowlistSql`. Because
+  `KbPath` gives one-star single-segment reach (`[^/]*`) and two-star
+  cross-segment reach (`.*`), a `LIKE` alone would be wrong — `%` crosses
+  `/`. Globs with no cross-segment wildcard therefore also carry an exact
+  separator count, which restores segment-aware matching in portable SQL.
+- **Tags** become a correlated `EXISTS`, joined inside the document's own
+  tenant because slugs are unique only per `(tenant_id, project_key)` (R30).
+- The two are **OR'd**, matching `matchesScope()`: a document outside every
+  glob is still readable when it carries an allowlisted tag.
+- Allowlists are **per membership**, so per project. Each allowed project
+  contributes its own arm; one project's scope never applies to another.
+
+<Warning>
+One glob shape is enforced as a *superset* rather than exactly: a glob that
+mixes a single-segment wildcard **and** a cross-segment wildcard. The
+single-segment bound cannot be expressed by a whole-string separator count.
+Such a glob narrows to its literal prefix — never hiding a document the
+member may read, but possibly admitting one they may not — and
+`User::hasDocumentAccess()` stays the authoritative gate for it. Prefer
+allowlist entries using one wildcard kind or the other;
+`ScopeAllowlistSql::isExact()` reports which shape you have.
+</Warning>
+
+A membership with **no** allowlist is untouched: an empty allowlist means
+"no further restriction within the project", and the generated query is the
+same one as before. Covered by `RetrievalScopeAllowlistTest`, which includes
+the regression guard for the unscoped case.
+
 ### Atomic single-use confirm tokens (R21)
 
 Destructive maintenance commands (`kb:delete`, `kb:prune-deleted`, …) require a
