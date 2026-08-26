@@ -6,6 +6,7 @@ namespace App\Agent\Tools;
 
 use App\Agent\AgentExecutionContext;
 use App\Agent\Budget\AgentBudgetTracker;
+use App\Ai\Tools\Sources\McpConnectorChatToolSource;
 use App\Mcp\Client\McpToolAuthorizer;
 use App\Mcp\Client\ToolInvoker;
 use App\Models\AgentRun;
@@ -22,6 +23,7 @@ final readonly class AgentServerToolRunner
         private ApiToolCollector $api,
         private ToolInvoker $mcp,
         private McpToolAuthorizer $mcpAuthorizer,
+        private McpConnectorChatToolSource $connectorMcp,
     ) {}
 
     /**
@@ -88,6 +90,21 @@ final readonly class AgentServerToolRunner
         AgentRun $run,
         AgentBudgetTracker $budget,
     ): AgentToolActionResult {
+        if (($tool->metadata['mcp_runtime'] ?? null) === 'connector') {
+            return $this->executeConnectorMcp($tool, $arguments, $context, $run, $budget);
+        }
+
+        return $this->executeLegacyMcp($tool, $arguments, $context, $run, $budget);
+    }
+
+    /** @param array<string,mixed> $arguments */
+    private function executeLegacyMcp(
+        AgentToolDefinition $tool,
+        array $arguments,
+        AgentExecutionContext $context,
+        AgentRun $run,
+        AgentBudgetTracker $budget,
+    ): AgentToolActionResult {
         $capacity = $budget->canIssuePhysical();
         if (! $capacity->allowed()) {
             return new AgentToolActionResult(['error' => $capacity->reason], 0, false, $capacity->reason);
@@ -113,6 +130,64 @@ final readonly class AgentServerToolRunner
             $budget->recordResult(1, $this->bytes($result), true);
 
             return new AgentToolActionResult($result, 1);
+        } catch (\Throwable $exception) {
+            $body = ['error' => $exception->getMessage()];
+            $budget->recordResult(1, $this->bytes($body), false);
+
+            return new AgentToolActionResult($body, 1, false, 'mcp_tool_error');
+        }
+    }
+
+    /** @param array<string,mixed> $arguments */
+    private function executeConnectorMcp(
+        AgentToolDefinition $tool,
+        array $arguments,
+        AgentExecutionContext $context,
+        AgentRun $run,
+        AgentBudgetTracker $budget,
+    ): AgentToolActionResult {
+        $capacity = $budget->canIssuePhysical();
+        if (! $capacity->allowed()) {
+            return new AgentToolActionResult(['error' => $capacity->reason], 0, false, $capacity->reason);
+        }
+
+        $user = $run->user;
+        if (! $user instanceof User || $run->conversation_id === null) {
+            throw new \DomainException('mcp_tool_scope_mismatch');
+        }
+
+        try {
+            $outcome = $this->connectorMcp->invoke(
+                ['name' => $tool->name],
+                $arguments,
+                $user,
+                [
+                    'conversation_id' => (string) $run->conversation_id,
+                    'project_key' => $context->projectKey,
+                    'locale' => $context->locale,
+                    'agent_run_id' => $run->id,
+                ],
+            );
+            $body = is_array($outcome->payload)
+                ? $outcome->payload
+                : ['result' => $outcome->payload];
+            $physicalRequests = $outcome->status === 'confirmation_required' ? 0 : 1;
+            $success = $outcome->status !== 'error' && $outcome->error === null;
+            if (! $success) {
+                $body = [
+                    'error' => $outcome->error ?? 'MCP tool returned an error.',
+                    'outcome' => $body,
+                ];
+            }
+            $budget->recordResult($physicalRequests, $this->bytes($body), $success);
+
+            return new AgentToolActionResult(
+                body: $body,
+                physicalRequests: $physicalRequests,
+                complete: ! $outcome->requiresInteraction(),
+                stopReason: $outcome->requiresInteraction() ? 'mcp_'.$outcome->status : null,
+                stats: ['mcp' => $outcome->metadata + ['status' => $outcome->status]],
+            );
         } catch (\Throwable $exception) {
             $body = ['error' => $exception->getMessage()];
             $budget->recordResult(1, $this->bytes($body), false);
