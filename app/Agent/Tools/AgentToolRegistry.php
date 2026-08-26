@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace App\Agent\Tools;
 
 use App\Agent\AgentExecutionContext;
+use App\Ai\Tools\Sources\McpConnectorChatToolSource;
 use App\Mcp\Client\McpToolAuthorizer;
 use App\Mcp\Client\Registry\McpServerRegistry;
+use App\Mcp\Runtime\McpRuntimeGate;
 use App\Models\McpServer;
 use App\Models\User;
 use Padosoft\AskMyDocsConnectorApi\Models\ApiRoute;
@@ -18,6 +20,8 @@ final readonly class AgentToolRegistry
         private ConnectorToolRegistry $connectors,
         private McpServerRegistry $mcpServers,
         private McpToolAuthorizer $mcpAuthorizer,
+        private McpConnectorChatToolSource $connectorMcp,
+        private McpRuntimeGate $mcpRuntime,
     ) {}
 
     /**
@@ -30,7 +34,7 @@ final readonly class AgentToolRegistry
         array $clientTools = [],
     ): array {
         $tools = ['search_knowledge_base' => $this->knowledgeTool()];
-        $this->mergeMcpTools($tools, $user);
+        $this->mergeMcpTools($tools, $context, $user);
         $this->mergeApiTools($tools, $context);
 
         foreach ($clientTools as $tool) {
@@ -128,9 +132,23 @@ final readonly class AgentToolRegistry
     }
 
     /** @param array<string,AgentToolDefinition> $tools */
-    private function mergeMcpTools(array &$tools, ?User $user): void
+    private function mergeMcpTools(
+        array &$tools,
+        AgentExecutionContext $context,
+        ?User $user,
+    ): void
     {
-        if (! $user instanceof User || ! (bool) config('mcp.enabled', false)) {
+        if (! $user instanceof User) {
+            return;
+        }
+
+        if ($this->mcpRuntime->usesConnector($context->tenantId)) {
+            $this->mergeConnectorMcpTools($tools, $context, $user);
+
+            return;
+        }
+
+        if (! (bool) config('mcp.enabled', false)) {
             return;
         }
 
@@ -163,8 +181,71 @@ final readonly class AgentToolRegistry
                     physicalLikely: 1,
                     physicalMaximum: 1,
                     executorReference: $server->id,
+                    metadata: [
+                        'mcp_runtime' => 'legacy',
+                        'server_id' => $server->id,
+                    ],
                 );
             }
+        }
+    }
+
+    /** @param array<string,AgentToolDefinition> $tools */
+    private function mergeConnectorMcpTools(
+        array &$tools,
+        AgentExecutionContext $context,
+        User $user,
+    ): void
+    {
+        foreach ($this->connectorMcp->catalog($user, $context->projectKey) as $definition) {
+            $name = is_string($definition['name'] ?? null) ? $definition['name'] : '';
+            if ($name === '' || isset($tools[$name])) {
+                continue;
+            }
+
+            $annotations = is_array($definition['annotations'] ?? null)
+                ? $definition['annotations']
+                : [];
+            $provenance = is_array($definition['provenance'] ?? null)
+                ? $definition['provenance']
+                : [];
+            $inputSchema = is_array($definition['inputSchema'] ?? null)
+                ? $definition['inputSchema']
+                : ['type' => 'object', 'properties' => []];
+            $inputSchema['type'] ??= 'object';
+            $inputSchema['properties'] ??= [];
+            $remoteName = is_string($provenance['tool_remote_name'] ?? null)
+                ? $provenance['tool_remote_name']
+                : $name;
+            $risk = is_string($definition['risk'] ?? null) ? $definition['risk'] : 'unknown';
+            $readOnly = (bool) ($annotations['readOnlyHint'] ?? ($risk === 'read'));
+            $idempotent = (bool) ($annotations['idempotentHint'] ?? $readOnly);
+
+            $tools[$name] = new AgentToolDefinition(
+                name: $name,
+                displayName: $remoteName,
+                description: is_string($definition['description'] ?? null)
+                    ? $definition['description']
+                    : $remoteName,
+                kind: 'mcp',
+                inputSchema: $inputSchema,
+                readOnly: $readOnly,
+                idempotent: $idempotent,
+                physicalMinimum: 1,
+                physicalLikely: 1,
+                physicalMaximum: 1,
+                executorReference: $name,
+                metadata: [
+                    'mcp_runtime' => 'connector',
+                    'risk' => $risk,
+                    'confirmation_required' => (bool) ($definition['confirmationRequired'] ?? false),
+                    'output_schema' => is_array($definition['outputSchema'] ?? null)
+                        ? $definition['outputSchema']
+                        : null,
+                    'provenance' => $provenance,
+                    'meta' => is_array($definition['_meta'] ?? null) ? $definition['_meta'] : null,
+                ],
+            );
         }
     }
 
