@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Agent\AgentExecutionContextFactory;
 use App\Agent\AgentRunDispatcher;
+use App\Mcp\Apps\McpAppTurnContext;
 use App\Models\Conversation;
 use App\Support\Canonical\CanonicalType;
 use App\Support\Kb\SourceType;
@@ -21,6 +22,7 @@ final class AgentMessageController extends Controller
         Conversation $conversation,
         AgentExecutionContextFactory $contexts,
         AgentRunDispatcher $runs,
+        McpAppTurnContext $mcpAppContext,
     ): JsonResponse {
         $user = $request->user();
         abort_if($user === null, 401);
@@ -29,19 +31,30 @@ final class AgentMessageController extends Controller
         }
 
         $validated = $request->validate(array_merge(
-            ['content' => ['required', 'string', 'max:10000']],
+            [
+                'content' => ['required', 'string', 'max:10000'],
+                'mcp_app_id' => ['sometimes', 'string', 'ulid'],
+            ],
             $this->retrievalFilterRules(),
         ));
+        $mcpAppId = is_string($validated['mcp_app_id'] ?? null)
+            ? $validated['mcp_app_id']
+            : null;
+        $appContext = $mcpAppContext->resolve($mcpAppId, $user, $conversation);
         $message = $conversation->messages()->create([
             'role' => 'user',
             'content' => $validated['content'],
         ]);
         $context = $contexts->forUser($user, $conversation->project_key);
-        $run = $runs->dispatch($context, [
+        $input = [
             'question' => $validated['content'],
             'filters' => is_array($validated['filters'] ?? null) ? $validated['filters'] : [],
             'user_message_id' => $message->id,
-        ], [
+        ];
+        if ($appContext !== null && $mcpAppId !== null) {
+            $input['mcp_app_id'] = $mcpAppId;
+        }
+        $run = $runs->dispatch($context, $input, [
             'user_id' => $user->id,
             'conversation_id' => $conversation->id,
         ]);

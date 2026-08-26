@@ -516,7 +516,7 @@ export function ChatView(): ReactNode {
         if (activeId === null || chat.status === 'submitted' || chat.status === 'streaming') {
             throw new Error('The conversation is not ready for an MCP App message.');
         }
-        await chat.sendMessage({ text: content }, { body: { mcp_app_id: appId } });
+        await chat.sendMessage({ text: content }, { mcpAppId: appId });
     };
 
     // v4.5/W7 Tier 1 #2 — regenerate the LAST assistant turn.

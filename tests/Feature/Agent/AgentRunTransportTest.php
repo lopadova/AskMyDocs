@@ -18,6 +18,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Queue;
+use Padosoft\AskMyDocsConnectorBase\Support\TenantContext as PackageTenantContext;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -55,26 +56,31 @@ final class AgentRunTransportTest extends TestCase
         $user = $this->user('worker-context@example.com');
         $run = $this->completedRun($user);
         $tenants = app(TenantContext::class);
+        $packageTenants = app(PackageTenantContext::class);
         $tenants->reset();
+        $packageTenants->reset();
         $resetTenant = $tenants->current();
+        $resetPackageTenant = $packageTenants->current();
         App::setLocale('en');
         date_default_timezone_set('UTC');
 
         $handler = \Mockery::mock(AgentRunHandler::class);
         $handler->shouldReceive('handle')
             ->once()
-            ->withArgs(function (AgentRun $handled) use ($run, $tenants): bool {
+            ->withArgs(function (AgentRun $handled) use ($run, $tenants, $packageTenants): bool {
                 $this->assertSame($run->id, $handled->id);
                 $this->assertSame('test-tenant', $tenants->current());
+                $this->assertSame('test-tenant', $packageTenants->current());
                 $this->assertSame('it', App::currentLocale());
                 $this->assertSame('Europe/Rome', date_default_timezone_get());
 
                 return true;
             });
 
-        (new ExecuteAgentRunJob($run->id, 'test-tenant'))->handle($handler, $tenants);
+        (new ExecuteAgentRunJob($run->id, 'test-tenant'))->handle($handler, $tenants, $packageTenants);
 
         $this->assertSame($resetTenant, $tenants->current());
+        $this->assertSame($resetPackageTenant, $packageTenants->current());
         $this->assertSame('en', App::currentLocale());
         $this->assertSame('UTC', date_default_timezone_get());
     }
@@ -89,7 +95,11 @@ final class AgentRunTransportTest extends TestCase
         $this->expectException(ModelNotFoundException::class);
 
         (new ExecuteAgentRunJob($run->id, 'other-tenant'))
-            ->handle($handler, app(TenantContext::class));
+            ->handle(
+                $handler,
+                app(TenantContext::class),
+                app(PackageTenantContext::class),
+            );
     }
 
     public function test_sse_replays_only_events_after_the_cursor_and_is_no_store(): void

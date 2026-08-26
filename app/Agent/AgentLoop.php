@@ -38,7 +38,11 @@ final readonly class AgentLoop
         private AgentRetrievalFiltersFactory $retrievalFilters,
     ) {}
 
-    public function run(AgentRun $run, AgentExecutionContext $context): AgentLoopOutcome
+    public function run(
+        AgentRun $run,
+        AgentExecutionContext $context,
+        ?string $turnContext = null,
+    ): AgentLoopOutcome
     {
         $question = trim((string) data_get($run->input_json, 'question', ''));
         if ($question === '') {
@@ -86,7 +90,14 @@ final readonly class AgentLoop
                 $completed === [] ? 'plan.created' : 'plan.updated',
                 $completed === [] ? 'plan.created' : 'plan.updated',
             );
-            $plan = $this->planner->decide($question, $context, $tools, $evidence, $this->plannerHistory($completed));
+            $plan = $this->planner->decide(
+                $question,
+                $context,
+                $tools,
+                $evidence,
+                $this->plannerHistory($completed),
+                $turnContext,
+            );
             $run->forceFill(['plan_json' => $plan->jsonSerialize()])->save();
             $this->events->publish(
                 $run,

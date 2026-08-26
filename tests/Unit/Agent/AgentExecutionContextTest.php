@@ -9,6 +9,7 @@ use App\Agent\AgentExecutionContextFactory;
 use App\Models\User;
 use App\Support\TenantContext;
 use Illuminate\Support\Facades\App;
+use Padosoft\AskMyDocsConnectorBase\Support\TenantContext as PackageTenantContext;
 use Tests\TestCase;
 
 final class AgentExecutionContextTest extends TestCase
@@ -62,6 +63,8 @@ final class AgentExecutionContextTest extends TestCase
         $context->activate();
 
         $this->assertSame('it', App::currentLocale());
+        $this->assertSame('acme', app(TenantContext::class)->current());
+        $this->assertSame('acme', app(PackageTenantContext::class)->current());
         $this->assertSame('Europe/Rome', date_default_timezone_get());
     }
 }

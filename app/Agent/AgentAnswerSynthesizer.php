@@ -19,6 +19,7 @@ final readonly class AgentAnswerSynthesizer
         string $question,
         AgentExecutionContext $context,
         AgentLoopOutcome $outcome,
+        ?string $turnContext = null,
     ): AgentAnswer {
         $evidence = $outcome->evidence->jsonSerialize();
         $response = $this->ai->chatWithHistory(
@@ -27,6 +28,7 @@ final readonly class AgentAnswerSynthesizer
                 'role' => 'user',
                 'content' => json_encode([
                     'question' => $question,
+                    'mcp_app_context' => $turnContext,
                     'retrieval_decision' => $outcome->decision,
                     'stop_reason' => $outcome->stopReason,
                     'evidence' => $evidence,

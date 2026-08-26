@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace App\Agent;
 
 use App\Contracts\AgentRunHandler;
+use App\Mcp\Apps\McpAppTurnContext;
 use App\Models\AgentRun;
+use App\Models\Conversation;
+use App\Models\User;
 use Throwable;
 
 /** Queue entry point that owns run lifecycle, collection and final synthesis. */
@@ -16,6 +19,7 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
         private AgentAnswerSynthesizer $synthesizer,
         private AgentEventPublisher $events,
         private AgentResultProjector $projector,
+        private McpAppTurnContext $mcpAppContext,
     ) {}
 
     public function handle(AgentRun $run): void
@@ -56,7 +60,8 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
         }
 
         try {
-            $outcome = $this->loop->run($run, $context);
+            $turnContext = $this->turnContext($run);
+            $outcome = $this->loop->run($run, $context, $turnContext);
             if ($outcome->awaitingConfirmation()) {
                 return;
             }
@@ -66,6 +71,7 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
                 trim((string) data_get($run->input_json, 'question', '')),
                 $context,
                 $outcome,
+                $turnContext,
             );
             $status = $outcome->decision === 'partial' || $answer->completeness === 'partial'
                 ? AgentRun::STATUS_PARTIAL
@@ -109,6 +115,28 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
                 data: ['error_code' => $run->error_code],
                 canCancel: false,
             );
+        }
+    }
+
+    private function turnContext(AgentRun $run): ?string
+    {
+        $appId = data_get($run->input_json, 'mcp_app_id');
+        $user = $run->user;
+        $conversation = $run->conversation;
+        if (! is_string($appId) || ! $user instanceof User || ! $conversation instanceof Conversation) {
+            return null;
+        }
+
+        $previousTimezone = date_default_timezone_get();
+        try {
+            // Connector timestamps are persisted in the application timezone.
+            // Agent runs use the actor's timezone for localized output, so use
+            // the storage timezone while authorizing expiry-bound app context.
+            date_default_timezone_set((string) config('app.timezone', 'UTC'));
+
+            return $this->mcpAppContext->resolve($appId, $user, $conversation);
+        } finally {
+            date_default_timezone_set($previousTimezone);
         }
     }
 

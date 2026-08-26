@@ -20,6 +20,11 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
+use Padosoft\AskMyDocsConnectorBase\Support\TenantContext as ConnectorTenantContext;
+use Padosoft\AskMyDocsConnectorMcp\Models\McpAppInstance;
+use Padosoft\AskMyDocsConnectorMcp\Models\McpConnection;
+use Padosoft\AskMyDocsConnectorMcp\Models\McpConnectionTool;
+use Padosoft\AskMyDocsConnectorMcp\Models\McpServerDefinition;
 use Tests\TestCase;
 
 final class AgentMessageControllerTest extends TestCase
@@ -86,6 +91,40 @@ final class AgentMessageControllerTest extends TestCase
         $this->assertSame(['it'], $filters->languages);
     }
 
+    public function test_authorized_mcp_app_context_is_attached_to_the_durable_run(): void
+    {
+        Queue::fake();
+        config()->set('connector-mcp.enabled', true);
+        config()->set('connector-mcp.runtime_mode', 'active');
+        config()->set('connector-mcp.apps.advanced_enabled', true);
+        app(TenantContext::class)->set('acme');
+        app(ConnectorTenantContext::class)->set('acme');
+        $user = $this->user('agent-mcp-app@example.com');
+        ProjectMembership::create([
+            'tenant_id' => 'acme',
+            'user_id' => $user->id,
+            'project_key' => 'crm',
+            'role' => 'member',
+        ]);
+        $conversation = Conversation::create([
+            'tenant_id' => 'acme',
+            'user_id' => $user->id,
+            'title' => 'MCP App',
+            'project_key' => 'crm',
+        ]);
+        $instance = $this->mcpAppInstance($user, $conversation);
+
+        $this->actingAs($user)->postJson(
+            '/test-conversations/'.$conversation->id.'/messages/agent',
+            [
+                'content' => 'Continua dalla selezione.',
+                'mcp_app_id' => $instance->public_id,
+            ],
+        )->assertAccepted();
+
+        $this->assertSame($instance->public_id, data_get(AgentRun::query()->sole()->input_json, 'mcp_app_id'));
+    }
+
     public function test_terminal_projection_is_idempotent_and_keeps_agent_sources(): void
     {
         app(TenantContext::class)->set('acme');
@@ -135,6 +174,53 @@ final class AgentMessageControllerTest extends TestCase
             'email' => $email,
             'password' => Hash::make('secret-pass-123'),
             'locale' => 'it-IT',
+        ]);
+    }
+
+    private function mcpAppInstance(User $user, Conversation $conversation): McpAppInstance
+    {
+        $server = McpServerDefinition::query()->create([
+            'tenant_id' => 'acme',
+            'name' => 'Agent MCP App',
+            'transport' => 'auto',
+            'auth_mode' => 'none',
+            'endpoint' => 'https://agent-app.example.test/mcp',
+            'status' => McpServerDefinition::STATUS_ACTIVE,
+        ]);
+        $connection = McpConnection::query()->create([
+            'tenant_id' => 'acme',
+            'mcp_connector_server_id' => $server->getKey(),
+            'mode' => 'shared',
+            'label' => 'Agent MCP App',
+            'status' => McpConnection::STATUS_ACTIVE,
+        ]);
+        $tool = McpConnectionTool::query()->create([
+            'tenant_id' => 'acme',
+            'mcp_connector_connection_id' => $connection->getKey(),
+            'remote_name' => 'reports.show',
+            'local_name' => 'agent_mcp_app_reports_show_12345678',
+            'input_schema_json' => ['type' => 'object'],
+            'risk' => 'read',
+            'policy' => 'disabled',
+            'enabled' => false,
+            'confirmation_required' => false,
+        ]);
+
+        return McpAppInstance::query()->create([
+            'tenant_id' => 'acme',
+            'mcp_connector_connection_id' => $connection->getKey(),
+            'mcp_connector_tool_id' => $tool->getKey(),
+            'actor_type' => $user->getMorphClass(),
+            'actor_id' => (string) $user->getKey(),
+            'conversation_id' => (string) $conversation->getKey(),
+            'resource_uri' => 'ui://reports/show.html',
+            'tool_input' => [],
+            'tool_result' => [],
+            'model_context' => [
+                'content' => [['type' => 'text', 'text' => 'The selected region is Europe.']],
+                'structuredContent' => ['region' => 'EU'],
+            ],
+            'expires_at' => now()->addHour(),
         ]);
     }
 }
