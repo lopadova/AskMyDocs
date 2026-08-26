@@ -82,6 +82,20 @@ the host *uses* them, never the reverse.
   One tenant-scoped, audited credential core; an explicit identity-scoped
   current-session query; and the security-motivated exception that keeps
   one-time `ik_` secrets out of MCP transcripts.
+- **[ADR 0028](https://github.com/lopadova/AskMyDocs/blob/main/docs/adr/0028-source-acl-mirroring-and-ingest-provenance.md) — Source ACL mirroring and ingest-time provenance** *(proposed — design only, nothing shipped)*.
+  The ingestion contract records what a document *is* and not where its authority
+  comes from, so a file shared with three people upstream becomes readable by
+  everyone with the project. The design mirrors source permissions through two
+  **opt-in** capability interfaces rather than a required argument — eleven
+  connectors and a public template consume that contract — and makes the
+  load-bearing choice that a principal which cannot be resolved to an internal
+  subject **fails closed** to `restricted-unmapped` instead of falling back to
+  project-wide visibility, since that fallback is the bug being fixed. It also
+  separates *authorship origin* (provenance) from *curation tier* (the Auto-Wiki
+  firewall of ADR 0014): a human-accepted page summarising an external email is
+  `accepted` and externally authored at once, and both facts matter. Enforcement
+  extends the R33 SQL seam described in the
+  [security & threat model](/architecture/security-and-threat-model).
 
 ## The autonomy arc: self-compiling knowledge, safely
 
@@ -104,6 +118,9 @@ flowchart LR
     A0013[0013 lifecycle intel] --> A0014
     A0023[0023 system-admin boundary] --> A0024[0024 membership required]
     A0024 --> A0025[0025 registration onboarding]
+    A0009 --> A0028[0028 source ACL + provenance]
+    A0024 --> A0028
+    A0014 -.- A0028
 ```
 
 ## Decision rationale (meta)
