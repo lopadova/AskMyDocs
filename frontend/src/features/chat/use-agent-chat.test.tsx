@@ -74,6 +74,7 @@ describe('useAgentChat', () => {
         expect(chatApi.startAgentTurn).toHaveBeenCalledWith(7, 'Dammi gli ordini', undefined);
         expect(result.current.messages).toEqual([userMessage, assistantMessage]);
         expect(result.current.events.at(-1)?.message).toBe('La risposta è pronta.');
+        expect(result.current.activityMessageId).toBe(userMessage.id);
         expect(result.current.status).toBe('ready');
         expect(onFinish).toHaveBeenCalledOnce();
     });

@@ -643,18 +643,20 @@ export function ChatView(): ReactNode {
                     </button>
                 </header>
 
-                <AgentActivityBar
-                    events={chat.events}
-                    active={isStreaming}
-                    awaitingConfirmation={chat.confirmation !== null}
-                    onCancel={chat.stop}
-                    onContinue={() => void chat.continueRun()}
-                />
-
                 <MessageThread
                     conversationId={activeId}
                     projectKey={projectKey}
                     messages={threadMessages}
+                    activityAfterMessageId={chat.activityMessageId}
+                    activity={chat.activityMessageId !== null ? (
+                        <AgentActivityBar
+                            events={chat.events}
+                            active={isStreaming}
+                            awaitingConfirmation={chat.confirmation !== null}
+                            onCancel={chat.stop}
+                            onContinue={() => void chat.continueRun()}
+                        />
+                    ) : null}
                     sdkStatus={chat.status}
                     isLoadingHistory={initialQuery.isLoading}
                     error={chat.error ?? toError(initialQuery.error)}

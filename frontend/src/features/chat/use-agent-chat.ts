@@ -36,6 +36,7 @@ export interface UseAgentChatResult {
     error: Error | null;
     events: AgentRunEvent[];
     activeRun: AgentTurnStarted | null;
+    activityMessageId: number | null;
     confirmation: AgentConfirmation | null;
     sendMessage: (message: { text: string }) => Promise<void>;
     stop: () => void;
@@ -51,6 +52,7 @@ export function useAgentChat(options: UseAgentChatOptions): UseAgentChatResult {
     const [error, setError] = useState<Error | null>(null);
     const [events, setEvents] = useState<AgentRunEvent[]>([]);
     const [activeRun, setActiveRun] = useState<AgentTurnStarted | null>(null);
+    const [activityMessageId, setActivityMessageId] = useState<number | null>(null);
     const [confirmation, setConfirmation] = useState<AgentConfirmation | null>(null);
     const abortRef = useRef<AbortController | null>(null);
     const runRef = useRef<AgentTurnStarted | null>(null);
@@ -73,6 +75,7 @@ export function useAgentChat(options: UseAgentChatOptions): UseAgentChatResult {
         turnInFlightRef.current = false;
         lastSequenceRef.current = 0;
         setActiveRun(null);
+        setActivityMessageId(null);
         setConfirmation(null);
         setEvents([]);
         setError(null);
@@ -162,6 +165,7 @@ export function useAgentChat(options: UseAgentChatOptions): UseAgentChatResult {
         abortRef.current = controller;
         setError(null);
         setEvents([]);
+        setActivityMessageId(null);
         setConfirmation(null);
         setStatus('submitted');
         turnInFlightRef.current = true;
@@ -176,6 +180,7 @@ export function useAgentChat(options: UseAgentChatOptions): UseAgentChatResult {
             if (generation !== generationRef.current) return;
             runRef.current = run;
             setActiveRun(run);
+            setActivityMessageId(run.user_message.id);
             setMessages((current) => current.some((item) => item.id === run.user_message.id)
                 ? current
                 : [...current, run.user_message]);
@@ -231,6 +236,7 @@ export function useAgentChat(options: UseAgentChatOptions): UseAgentChatResult {
         error,
         events,
         activeRun,
+        activityMessageId,
         confirmation,
         sendMessage,
         stop,

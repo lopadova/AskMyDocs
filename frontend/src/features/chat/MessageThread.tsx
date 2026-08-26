@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { Fragment, useEffect, useRef, type ReactNode } from 'react';
 import { MessageBubble } from './MessageBubble';
 import { Icon } from '../../components/Icons';
 import { mapStatusToDataState, type SdkStatus } from './map-status-to-data-state';
@@ -15,6 +15,13 @@ export interface MessageThreadProps {
      * shape) are accepted via the shape adapters in MessageBubble.
      */
     messages: RenderableMessage[];
+    /**
+     * Activity UI for the current agent run. It is inserted inside the
+     * transcript immediately after the user message that started the run,
+     * so the final assistant reply naturally follows it.
+     */
+    activity?: ReactNode;
+    activityAfterMessageId?: string | number | null;
     /**
      * SDK status from `useChatStream().status`. Drives the
      * `data-state` attribute via `mapStatusToDataState()`.
@@ -81,6 +88,8 @@ export function MessageThread({
     conversationId,
     projectKey,
     messages,
+    activity = null,
+    activityAfterMessageId = null,
     sdkStatus,
     isLoadingHistory = false,
     error = null,
@@ -208,19 +217,31 @@ export function MessageThread({
                             m.role === 'user' && !isStreaming && onEditUserMessage
                                 ? (newText: string) => onEditUserMessage(i, numericId, newText)
                                 : undefined;
+                        const showActivity = activity !== null
+                            && activityAfterMessageId !== null
+                            && String(mid) === String(activityAfterMessageId);
                         return (
-                            <MessageBubble
-                                key={getMessageId(m)}
-                                conversationId={conversationId}
-                                message={m}
-                                projectKey={projectKey}
-                                streaming={streaming}
-                                onRegenerate={regenerateHandler}
-                                onBranch={branchHandler}
-                                onEditSubmit={editHandler}
-                                showCounterfactual={showCounterfactual}
-                                onOpenSource={onOpenSource}
-                            />
+                            <Fragment key={mid}>
+                                <MessageBubble
+                                    conversationId={conversationId}
+                                    message={m}
+                                    projectKey={projectKey}
+                                    streaming={streaming}
+                                    onRegenerate={regenerateHandler}
+                                    onBranch={branchHandler}
+                                    onEditSubmit={editHandler}
+                                    showCounterfactual={showCounterfactual}
+                                    onOpenSource={onOpenSource}
+                                />
+                                {showActivity && (
+                                    <div
+                                        className="chat-activity-row popin"
+                                        data-testid="chat-activity-row"
+                                    >
+                                        {activity}
+                                    </div>
+                                )}
+                            </Fragment>
                         );
                     });
                 })()}

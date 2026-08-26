@@ -73,7 +73,7 @@ export function AgentActivityBar({
                         </strong>
                         <div className="agent-activity-metrics">
                             {likely > 0 && <span data-testid="agent-activity-calls">{completed} / ~{likely} {copy.calls}</span>}
-                            {progress?.eta_ms != null && <span>{Math.ceil(progress.eta_ms / 1000)} {copy.seconds}</span>}
+                            {active && progress?.eta_ms != null && <span>{Math.ceil(progress.eta_ms / 1000)} {copy.seconds}</span>}
                         </div>
                     </div>
                     <div data-testid="agent-activity-message" className="agent-activity-message">

@@ -431,19 +431,21 @@ textarea:focus-visible {
   border-top: 1px solid var(--hairline);
 }
 
-/* Agent activity card: compact summary first, chronological details on
-   demand. overflow:hidden keeps the progress bar and expanded timeline
-   inside the rounded border at every viewport width. */
+/* Agent activity lives in the transcript, between the user prompt and the
+   assistant reply. The left inset lines it up with assistant content while
+   keeping it visually secondary to the answer that follows. */
+.chat-activity-row {
+  width: min(620px, calc(100% - 42px));
+  margin: -8px 0 22px 42px;
+}
+
+/* Compact summary first, chronological details on demand. */
 .agent-activity-card {
-  flex: 0 0 auto;
-  width: auto;
-  max-width: calc(100% - 48px);
-  margin: 12px 24px;
+  width: 100%;
   color: var(--fg-1);
-  background: color-mix(in srgb, var(--panel-solid) 94%, var(--accent-a) 6%);
-  border: 1px solid var(--panel-border-strong);
-  border-radius: 14px;
-  box-shadow: var(--shadow-sm);
+  background: color-mix(in srgb, var(--panel-solid) 96%, var(--accent-a) 4%);
+  border: 1px solid var(--panel-border);
+  border-radius: 11px;
   overflow: hidden;
 }
 .agent-activity-card[data-state="active"] {
@@ -459,20 +461,20 @@ textarea:focus-visible {
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
+  gap: 9px;
+  padding: 9px 10px;
 }
 .agent-activity-icon {
-  width: 30px;
-  height: 30px;
-  flex: 0 0 30px;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   color: var(--accent-b);
   background: var(--grad-accent-soft);
   border: 1px solid color-mix(in srgb, var(--accent-a) 30%, transparent);
-  border-radius: 9px;
+  border-radius: 7px;
 }
 .agent-activity-card[data-state="settled"] .agent-activity-icon {
   color: var(--ok);
@@ -492,13 +494,13 @@ textarea:focus-visible {
   min-width: 0;
   display: flex;
   align-items: baseline;
-  gap: 12px;
+  gap: 9px;
 }
 .agent-activity-heading {
   flex: 1;
   min-width: 0;
   color: var(--fg-0);
-  font-size: 12.5px;
+  font-size: 11.5px;
   font-weight: 600;
 }
 .agent-activity-metrics {
@@ -509,15 +511,15 @@ textarea:focus-visible {
   font: 500 10px/1 var(--font-mono);
 }
 .agent-activity-message {
-  margin-top: 3px;
+  margin-top: 2px;
   color: var(--fg-2);
-  font-size: 11.5px;
+  font-size: 11px;
   line-height: 1.4;
   overflow-wrap: anywhere;
 }
 .agent-activity-progress-track {
-  height: 4px;
-  margin-top: 9px;
+  height: 3px;
+  margin-top: 7px;
   overflow: hidden;
   background: var(--bg-3);
   border: 1px solid var(--hairline);
@@ -529,17 +531,30 @@ textarea:focus-visible {
   border-radius: inherit;
   transition: width .25s ease;
 }
+.agent-activity-card[data-state="active"] .agent-activity-progress-value {
+  background-size: 180% 100%;
+  animation: agent-activity-shimmer 1.4s linear infinite;
+}
+@keyframes agent-activity-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: -80% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .agent-activity-card[data-state="active"] .agent-activity-progress-value {
+    animation: none;
+  }
+}
 .agent-activity-details {
   color: var(--fg-2);
   border-top: 1px solid var(--hairline);
   font-size: 11px;
 }
 .agent-activity-details summary {
-  min-height: 34px;
+  min-height: 30px;
   display: flex;
   align-items: center;
   gap: 7px;
-  padding: 0 14px;
+  padding: 0 10px;
   cursor: pointer;
   list-style: none;
   user-select: none;
@@ -567,7 +582,7 @@ textarea:focus-visible {
 .agent-activity-details ol {
   max-height: 220px;
   margin: 0;
-  padding: 8px 18px 12px 42px;
+  padding: 7px 14px 10px 34px;
   overflow: auto;
   border-top: 1px solid var(--hairline);
 }
@@ -584,12 +599,14 @@ textarea:focus-visible {
   .chat-header-meta-divider { display: none; }
   .chat-model-chip { max-width: 42vw; }
   .agent-activity-card {
-    max-width: calc(100% - 28px);
-    margin: 10px 14px;
+    border-radius: 10px;
   }
-  .agent-activity-main { align-items: flex-start; padding: 11px 12px; }
-  .agent-activity-icon { width: 28px; height: 28px; flex-basis: 28px; }
-  .agent-activity-heading-row { align-items: flex-start; flex-direction: column; gap: 4px; }
+  .chat-activity-row {
+    width: calc(100% - 34px);
+    margin-left: 34px;
+  }
+  .agent-activity-main { align-items: flex-start; padding: 9px; }
+  .agent-activity-heading-row { align-items: flex-start; flex-direction: column; gap: 3px; }
   .agent-activity-metrics { white-space: normal; }
   .chat-thread-scroll { padding: 20px 14px; }
   .chat-composer-shell { padding: 10px 14px 14px !important; }
