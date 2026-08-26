@@ -105,7 +105,31 @@ final class PumpImapBackfillJob implements ShouldQueue
                     ->where('imap_backfill_id', $backfill->id)
                     ->where('status', ImapBackfillWindow::STATUS_COMPLETED)
                     ->count();
-                if ($completed === (int) $backfill->total_windows) {
+                $failedWindows = ImapBackfillWindow::query()
+                    ->forTenant($this->tenantId)
+                    ->where('imap_backfill_id', $backfill->id)
+                    ->where('status', ImapBackfillWindow::STATUS_FAILED)
+                    ->latest('updated_at')
+                    ->get();
+                $failed = $failedWindows->count();
+
+                if ($completed + $failed === (int) $backfill->total_windows && $failed > 0) {
+                    // UIDVALIDITY invalidates the whole saved snapshot. Preserve
+                    // that recovery signal even if a newer failed window has a
+                    // less severe transport error, so Resume becomes Restart.
+                    $failedWindow = $failedWindows->first(static fn (ImapBackfillWindow $window): bool =>
+                        str_contains(
+                            strtolower((string) data_get($window->error_json, 'message')),
+                            'uidvalidity changed',
+                        )
+                    ) ?? $failedWindows->first();
+                    $backfill->forceFill([
+                        'status' => ImapBackfill::STATUS_FAILED,
+                        'completed_windows' => $completed,
+                        'heartbeat_at' => now(),
+                        'error_json' => $failedWindow?->error_json,
+                    ])->save();
+                } elseif ($completed === (int) $backfill->total_windows) {
                     $backfill->forceFill([
                         'status' => ImapBackfill::STATUS_COMPLETED,
                         'completed_windows' => $completed,
