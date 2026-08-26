@@ -72,6 +72,34 @@ final class DeleteDocumentFlowTest extends TestCase
         Storage::disk('kb')->assertMissing('docs/x.md');
     }
 
+    public function test_hard_delete_preserves_file_when_another_version_references_it(): void
+    {
+        $deleted = $this->seedDoc('test-tenant', 'acme', 'docs/shared.md');
+        $survivor = $this->seedDoc(
+            'test-tenant',
+            'acme',
+            'docs/shared.md',
+            version: 'survivor',
+        );
+        $survivor->update(['status' => 'archived']);
+        Storage::disk('kb')->put('docs/shared.md', '# current');
+
+        $run = Flow::execute(
+            DeleteDocumentFlow::NAME,
+            [
+                'tenant_id' => 'test-tenant',
+                'document_id' => $deleted->id,
+                'force' => true,
+            ],
+            FlowExecutionOptions::make(correlationId: 'test-tenant'),
+        );
+
+        $this->assertSame(FlowRun::STATUS_SUCCEEDED, $run->status);
+        $this->assertNull(KnowledgeDocument::withTrashed()->find($deleted->id));
+        $this->assertNotNull(KnowledgeDocument::find($survivor->id));
+        Storage::disk('kb')->assertExists('docs/shared.md');
+    }
+
     public function test_hard_delete_with_keep_file_preserves_disk(): void
     {
         $doc = $this->seedDoc('test-tenant', 'acme', 'docs/x.md');
@@ -120,6 +148,7 @@ final class DeleteDocumentFlowTest extends TestCase
 
         $tenants->set('tenant-b');
         $docB = $this->seedDoc('tenant-b', 'shared', 'docs/x.md');
+        Storage::disk('kb')->put('docs/x.md', '# shared source');
 
         // Delete tenant-a's doc by document_id.
         $tenants->set('tenant-a');
@@ -136,6 +165,7 @@ final class DeleteDocumentFlowTest extends TestCase
         // Tenant-b's doc must still exist.
         $this->assertNotNull(KnowledgeDocument::find($docB->id));
         $this->assertNull(KnowledgeDocument::withTrashed()->find($docA->id));
+        Storage::disk('kb')->assertExists('docs/x.md');
     }
 
     public function test_r30_cross_tenant_path_lookup_does_not_resolve_other_tenant_doc(): void
@@ -240,7 +270,12 @@ final class DeleteDocumentFlowTest extends TestCase
         $this->assertSame('tenant-x', $runRow->tenant_id);
     }
 
-    private function seedDoc(string $tenantId, string $projectKey, string $sourcePath): KnowledgeDocument
+    private function seedDoc(
+        string $tenantId,
+        string $projectKey,
+        string $sourcePath,
+        string $version = 'default',
+    ): KnowledgeDocument
     {
         $tenants = $this->app->make(TenantContext::class);
         $tenants->set($tenantId);
@@ -254,7 +289,7 @@ final class DeleteDocumentFlowTest extends TestCase
             'access_scope' => 'public',
             'status' => 'active',
             'document_hash' => hash('sha256', $tenantId.$projectKey.$sourcePath.'doc'),
-            'version_hash' => hash('sha256', $tenantId.$projectKey.$sourcePath.'ver'),
+            'version_hash' => hash('sha256', $tenantId.$projectKey.$sourcePath.$version.'ver'),
             'metadata' => null,
         ]);
     }
