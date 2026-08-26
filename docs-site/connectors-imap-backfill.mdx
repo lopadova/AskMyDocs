@@ -15,6 +15,7 @@ AskMyDocs instead treats the full mailbox import as a durable campaign:
 - discovery captures a fixed mailbox boundary and creates monthly date windows;
 - one short job imports one bounded UID batch and commits its checkpoint to SQL;
 - completed windows are never selected again;
+- a terminal window failure is isolated while the remaining windows continue;
 - the scheduler recovers stale discovery and import work after a worker or queue
   outage;
 - regular incremental sync resumes from the campaign cutoff after completion.
@@ -85,7 +86,7 @@ at-least-once and deterministic paths provide the idempotency key.
 | Campaign status | Meaning | Next transition |
 |---|---|---|
 | `discovering` | Snapshot/window creation is queued or running. | `running` after window rows commit; `failed` after terminal errors. |
-| `running` | The pump is claiming and importing bounded windows. | `completed` after every window completes; `failed` after an exhausted real failure. |
+| `running` | The pump is claiming and importing bounded windows, skipping any terminally failed window. | `completed` after every window completes; `failed` after all remaining windows finish when at least one window failed. |
 | `completed` | All snapshot windows finished. | Terminal; a later incremental sync starts from `cutoff_at`. |
 | `failed` | Discovery or a window exhausted its real-error budget. | Resume the same campaign from saved checkpoints; restart only when `UIDVALIDITY` invalidated the snapshot. |
 | `paused` | Reserved durable state; the scheduler does not pump it. | Operator-controlled. |
@@ -103,6 +104,11 @@ Every minute `ImapBackfillScheduler`:
    commit-before-queue-publish crash window;
 2. dispatches a pump for each `running` campaign;
 3. lets the pump reclaim stale `queued`/`running` windows as `pending`.
+
+When one import job exhausts its real-error budget, its window becomes `failed`
+and immediately dispatches the pump again. Other pending windows therefore keep
+advancing. The campaign becomes `failed` only after no pending or active window
+remains, preserving a complete list of the windows that need an operator resume.
 
 All queue entry points bind both host and connector-package tenant contexts only
 for their execution and restore the worker's previous contexts in `finally`.
@@ -210,8 +216,9 @@ and its project is `autry`.
    larger historical batch size.
 6. Poll the GET endpoint. Worker restarts do not reset completed windows; stale
    work is recovered by the next scheduler sweep. If a real failure exhausts its
-   retries, **Resume full import** reuses the same campaign and continues from the
-   last committed UID rather than returning to zero.
+   retries, that window is skipped while the other windows continue. After the
+   queue is drained, **Resume full import** reuses the same campaign and continues
+   failed windows from their last committed UID rather than returning to zero.
 7. When every window is complete, the campaign becomes `completed` and the
    installation watermark is set to the original cutoff. The normal incremental
    job then catches messages delivered after the snapshot.

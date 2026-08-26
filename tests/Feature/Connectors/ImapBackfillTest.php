@@ -439,18 +439,19 @@ final class ImapBackfillTest extends TestCase
         $this->assertSame(100.0, $manager->status($installation->id)['progress_percent']);
     }
 
-    public function test_exhausted_window_retries_fail_the_window_and_campaign(): void
+    public function test_exhausted_window_retries_fail_only_that_window_and_queue_the_next_one(): void
     {
+        Queue::fake();
         $installation = $this->installation();
         $backfill = ImapBackfill::create([
             'tenant_id' => $this->tenantId(),
             'connector_installation_id' => $installation->id,
             'status' => ImapBackfill::STATUS_RUNNING,
             'batch_size' => 100,
-            'total_windows' => 1,
+            'total_windows' => 2,
             'cutoff_at' => now(),
         ]);
-        $window = ImapBackfillWindow::create([
+        $failedWindow = ImapBackfillWindow::create([
             'tenant_id' => $this->tenantId(),
             'imap_backfill_id' => $backfill->id,
             'connector_installation_id' => $installation->id,
@@ -459,14 +460,116 @@ final class ImapBackfillTest extends TestCase
             'window_end' => '2026-02-01',
             'status' => ImapBackfillWindow::STATUS_RUNNING,
         ]);
+        $nextWindow = ImapBackfillWindow::create([
+            'tenant_id' => $this->tenantId(),
+            'imap_backfill_id' => $backfill->id,
+            'connector_installation_id' => $installation->id,
+            'mailbox' => 'INBOX',
+            'window_start' => '2026-02-01',
+            'window_end' => '2026-03-01',
+            'status' => ImapBackfillWindow::STATUS_PENDING,
+            'next_attempt_at' => now(),
+        ]);
 
-        (new ImportImapBackfillWindowJob($window->id, $this->tenantId()))
-            ->failed(new \RuntimeException('UIDVALIDITY changed'));
+        (new ImportImapBackfillWindowJob($failedWindow->id, $this->tenantId()))
+            ->failed(new \RuntimeException('Window transport failed'));
 
-        $this->assertSame(ImapBackfillWindow::STATUS_FAILED, $window->fresh()->status);
-        $this->assertNull($window->fresh()->next_attempt_at);
+        $this->assertSame(ImapBackfillWindow::STATUS_FAILED, $failedWindow->fresh()->status);
+        $this->assertNull($failedWindow->fresh()->next_attempt_at);
+        $this->assertSame(ImapBackfill::STATUS_RUNNING, $backfill->fresh()->status);
+        $this->assertSame('Window transport failed', $backfill->fresh()->error_json['message']);
+        Queue::assertPushed(PumpImapBackfillJob::class, 1);
+
+        (new PumpImapBackfillJob($backfill->id, $this->tenantId()))->handle();
+
+        $this->assertSame(ImapBackfillWindow::STATUS_QUEUED, $nextWindow->fresh()->status);
+        Queue::assertPushed(ImportImapBackfillWindowJob::class, fn (ImportImapBackfillWindowJob $job): bool =>
+            $job->windowId === $nextWindow->id
+        );
+    }
+
+    public function test_pump_fails_the_campaign_only_after_all_other_windows_are_terminal(): void
+    {
+        Queue::fake();
+        $installation = $this->installation();
+        $backfill = ImapBackfill::create([
+            'tenant_id' => $this->tenantId(),
+            'connector_installation_id' => $installation->id,
+            'status' => ImapBackfill::STATUS_RUNNING,
+            'batch_size' => 100,
+            'total_windows' => 2,
+            'completed_windows' => 1,
+            'cutoff_at' => now(),
+        ]);
+        ImapBackfillWindow::create([
+            'tenant_id' => $this->tenantId(),
+            'imap_backfill_id' => $backfill->id,
+            'connector_installation_id' => $installation->id,
+            'mailbox' => 'INBOX',
+            'window_start' => '2026-01-01',
+            'window_end' => '2026-02-01',
+            'status' => ImapBackfillWindow::STATUS_FAILED,
+            'error_json' => ['message' => 'Window transport failed'],
+        ]);
+        ImapBackfillWindow::create([
+            'tenant_id' => $this->tenantId(),
+            'imap_backfill_id' => $backfill->id,
+            'connector_installation_id' => $installation->id,
+            'mailbox' => 'INBOX',
+            'window_start' => '2026-02-01',
+            'window_end' => '2026-03-01',
+            'status' => ImapBackfillWindow::STATUS_COMPLETED,
+        ]);
+
+        (new PumpImapBackfillJob($backfill->id, $this->tenantId()))->handle();
+
         $this->assertSame(ImapBackfill::STATUS_FAILED, $backfill->fresh()->status);
-        $this->assertSame('UIDVALIDITY changed', $backfill->fresh()->error_json['message']);
+        $this->assertSame(1, $backfill->fresh()->completed_windows);
+        $this->assertSame('Window transport failed', $backfill->fresh()->error_json['message']);
+        $this->assertNull($installation->fresh()->last_sync_at);
+        Queue::assertNotPushed(ImportImapBackfillWindowJob::class);
+        Queue::assertNotPushed(\App\Connectors\SerializedConnectorSyncJob::class);
+    }
+
+    public function test_pump_preserves_uidvalidity_failure_when_a_newer_window_has_another_error(): void
+    {
+        Queue::fake();
+        $installation = $this->installation();
+        $backfill = ImapBackfill::create([
+            'tenant_id' => $this->tenantId(),
+            'connector_installation_id' => $installation->id,
+            'status' => ImapBackfill::STATUS_RUNNING,
+            'batch_size' => 100,
+            'total_windows' => 2,
+            'cutoff_at' => now(),
+        ]);
+        $invalidated = ImapBackfillWindow::create([
+            'tenant_id' => $this->tenantId(),
+            'imap_backfill_id' => $backfill->id,
+            'connector_installation_id' => $installation->id,
+            'mailbox' => 'INBOX',
+            'window_start' => '2026-01-01',
+            'window_end' => '2026-02-01',
+            'status' => ImapBackfillWindow::STATUS_FAILED,
+            'error_json' => ['message' => 'UIDVALIDITY changed for INBOX'],
+        ]);
+        $invalidated->forceFill(['updated_at' => now()->subMinute()])->save();
+        ImapBackfillWindow::create([
+            'tenant_id' => $this->tenantId(),
+            'imap_backfill_id' => $backfill->id,
+            'connector_installation_id' => $installation->id,
+            'mailbox' => 'Sent',
+            'window_start' => '2026-01-01',
+            'window_end' => '2026-02-01',
+            'status' => ImapBackfillWindow::STATUS_FAILED,
+            'error_json' => ['message' => 'Connection reset'],
+        ]);
+
+        (new PumpImapBackfillJob($backfill->id, $this->tenantId()))->handle();
+
+        $this->assertSame(ImapBackfill::STATUS_FAILED, $backfill->fresh()->status);
+        $this->assertSame('UIDVALIDITY changed for INBOX', $backfill->fresh()->error_json['message']);
+        $this->assertSame('restart', app(ImapBackfillManager::class)->status($installation->id)['retry_mode']);
     }
 
     public function test_import_job_lock_requeues_are_bounded_by_wall_clock_not_attempts(): void
