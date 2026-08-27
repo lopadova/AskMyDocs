@@ -56,6 +56,9 @@ final class AgentAnswerSynthesizerTest extends TestCase
                     'document_ids' => [12, 999],
                     'tool_execution_ids' => [55, 999],
                     'limitations' => ['Non mostrare Bearer eyJabcdefghijk.abcdefghijklmnopqrstu'],
+                    'requires_selection' => false,
+                    // Selection continuations still render a one-row collection if the model misses this.
+                    'render_table' => false,
                 ],
             ]],
         ));
@@ -68,6 +71,7 @@ final class AgentAnswerSynthesizerTest extends TestCase
             'Quali ordini ha Tizio?',
             $this->context(),
             new AgentLoopOutcome('answer', $evidence, []),
+            json_encode(['current_selection' => ['record' => ['id' => 77]]], JSON_THROW_ON_ERROR),
         );
 
         $this->assertSame('it-IT', $answer->locale);
@@ -79,6 +83,8 @@ final class AgentAnswerSynthesizerTest extends TestCase
         $this->assertStringContainsString('[EMAIL]', $answer->answer);
         $this->assertStringNotContainsString('admin@example.com', $answer->answer);
         $this->assertStringContainsString('Bearer [TOKEN]', $answer->limitations[0]);
+        $this->assertSame('view', data_get($answer->artifact, 'interaction_mode'));
+        $this->assertSame('A-100', data_get($answer->artifact, 'rows.0.values.number'));
     }
 
     public function test_it_marks_ambiguous_singular_results_as_a_selectable_table(): void
@@ -117,6 +123,7 @@ final class AgentAnswerSynthesizerTest extends TestCase
                     'limitations' => [],
                     // The runtime ambiguity guard must override a mistaken model classification.
                     'requires_selection' => false,
+                    'render_table' => true,
                 ],
             ]],
         ));

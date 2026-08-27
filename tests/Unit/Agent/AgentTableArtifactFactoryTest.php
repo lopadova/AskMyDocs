@@ -25,8 +25,8 @@ final class AgentTableArtifactFactoryTest extends TestCase
                     'structuredContent' => [
                         'data' => [
                             'items' => [
-                                ['id' => 101, 'name' => 'Riccardo Lorini', 'email' => 'one@example.test', 'api_key' => 'secret-one'],
-                                ['id' => 102, 'name' => 'Riccardo Lorini', 'email' => 'two@example.test', 'api_key' => 'secret-two'],
+                                ['id' => 101, 'display_name' => 'Riccardo Lorini', 'email' => 'one@example.test', 'api_key' => 'secret-one'],
+                                ['id' => 102, 'display_name' => 'Riccardo Lorini', 'email' => 'two@example.test', 'api_key' => 'secret-two'],
                             ],
                             'pagination' => ['page' => 1, 'per_page' => 2, 'total' => 108, 'last_page' => 54],
                         ],
@@ -57,10 +57,28 @@ final class AgentTableArtifactFactoryTest extends TestCase
         ]], false);
 
         $this->assertSame('view', $view['interaction_mode']);
-        $this->assertNull($factory->fromToolEvidence([[
+        $singleTool = [[
             'execution_id' => 6,
             'tool' => 'search-orders',
-            'result' => ['orders' => [['id' => 1]]],
-        ]], true));
+            'result' => ['data' => [
+                'items' => [[
+                    'id' => 1,
+                    'number' => 'I016426',
+                    'date' => '2025-12-10',
+                    'status' => ['id' => 17, 'code' => 'CONF', 'label' => 'CONFERMATO'],
+                    'total' => ['amount' => '513.00', 'currency' => 'EUR'],
+                ]],
+                'pagination' => ['total' => 1],
+            ]],
+        ]];
+        $this->assertNull($factory->fromToolEvidence($singleTool, true));
+        $this->assertNull($factory->fromToolEvidence($singleTool, false));
+        $singleView = $factory->fromToolEvidence($singleTool, false, true);
+        $this->assertSame('view', $singleView['interaction_mode']);
+        $this->assertSame('I016426', data_get($singleView, 'rows.0.label'));
+        $this->assertSame(
+            ['id', 'number', 'date', 'status.label', 'status.code', 'total.amount', 'total.currency'],
+            array_column($singleView['columns'], 'key'),
+        );
     }
 }

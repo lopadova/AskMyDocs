@@ -23,13 +23,18 @@ final class AgentTableArtifactFactory
      * @param  list<array<string, mixed>>  $tools
      * @return array<string, mixed>|null
      */
-    public function fromToolEvidence(array $tools, bool $requiresSelection): ?array
+    public function fromToolEvidence(
+        array $tools,
+        bool $requiresSelection,
+        bool $renderSingleRow = false,
+    ): ?array
     {
+        $minimumRows = ! $requiresSelection && $renderSingleRow ? 1 : 2;
         foreach (array_reverse($tools) as $tool) {
             $result = is_array($tool['result'] ?? null) ? $tool['result'] : [];
             $safeResult = $this->redactor->redact($result);
-            $rows = $this->structuredRows->best($safeResult);
-            if (count($rows) < 2) {
+            $rows = $this->structuredRows->best($safeResult, $minimumRows);
+            if (count($rows) < $minimumRows) {
                 continue;
             }
 
@@ -67,7 +72,7 @@ final class AgentTableArtifactFactory
                 'title' => $tool['display_name'] ?? $tool['tool'] ?? 'Results',
                 'columns' => array_map(static fn (string $key): array => [
                     'key' => $key,
-                    'label' => str($key)->afterLast('.')->replace('_', ' ')->title()->toString(),
+                    'label' => str($key)->replace(['.', '_'], ' ')->title()->toString(),
                 ], $columns),
                 'rows' => $normalizedRows,
                 'total_rows' => $totalRows,
@@ -88,16 +93,25 @@ final class AgentTableArtifactFactory
             }
         }
 
-        $priority = ['id', 'uuid', 'name', 'full_name', 'title', 'email', 'number', 'order_number', 'code', 'status', 'date', 'created_at'];
+        $priority = [
+            'id', 'uuid', 'number', 'order_number', 'name', 'full_name', 'display_name', 'title', 'email',
+            'date', 'status', 'status.label', 'status.code', 'total_amount', 'total.amount', 'total.currency',
+            'amount', 'currency', 'code', 'active', 'expected_delivery_at', 'fulfilled_at', 'created_at',
+        ];
         uksort($frequency, static function (string $a, string $b) use ($priority, $frequency): int {
-            $aName = str($a)->afterLast('.')->lower()->toString();
-            $bName = str($b)->afterLast('.')->lower()->toString();
-            $aRank = array_search($aName, $priority, true);
-            $bRank = array_search($bName, $priority, true);
-            $aRank = $aRank === false ? 100 : $aRank;
-            $bRank = $bRank === false ? 100 : $bRank;
+            $rank = static function (string $key) use ($priority): int {
+                $normalized = strtolower($key);
+                $exact = array_search($normalized, $priority, true);
+                if ($exact !== false) {
+                    return $exact;
+                }
 
-            return [$aRank, -$frequency[$a], $a] <=> [$bRank, -$frequency[$b], $b];
+                $last = array_search(str($normalized)->afterLast('.')->toString(), $priority, true);
+
+                return $last === false ? 1000 : 500 + $last;
+            };
+
+            return [$rank($a), -$frequency[$a], $a] <=> [$rank($b), -$frequency[$b], $b];
         });
 
         return array_slice(array_keys($frequency), 0, self::MAX_COLUMNS);
@@ -138,7 +152,14 @@ final class AgentTableArtifactFactory
     private function rowLabel(array $row, string $fallback): string
     {
         $fields = $this->scalarFields($row);
-        foreach (['name', 'full_name', 'title', 'label', 'email', 'order_number', 'number', 'code', 'id'] as $candidate) {
+        $candidates = ['name', 'full_name', 'display_name', 'title', 'order_number', 'number', 'label', 'code', 'email', 'id'];
+        foreach ($candidates as $candidate) {
+            $value = $fields[$candidate] ?? null;
+            if ($value !== null && $value !== '') {
+                return mb_substr((string) $value, 0, 160);
+            }
+        }
+        foreach ($candidates as $candidate) {
             foreach ($fields as $key => $value) {
                 if (strtolower(str($key)->afterLast('.')->toString()) === $candidate && $value !== null && $value !== '') {
                     return mb_substr((string) $value, 0, 160);

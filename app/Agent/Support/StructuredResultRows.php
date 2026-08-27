@@ -8,10 +8,10 @@ namespace App\Agent\Support;
 final class StructuredResultRows
 {
     /** @param array<string,mixed> $payload @return list<array<string,mixed>> */
-    public function best(array $payload): array
+    public function best(array $payload, int $minimumRows = 2): array
     {
         $candidates = [];
-        $this->collect($payload, '', 0, $candidates);
+        $this->collect($payload, '', 0, max(1, $minimumRows), $candidates);
         usort($candidates, static fn (array $a, array $b): int => $b['score'] <=> $a['score']);
 
         return $candidates[0]['rows'] ?? [];
@@ -30,7 +30,7 @@ final class StructuredResultRows
      * @param array<string, mixed>|list<mixed> $value
      * @param list<array{score:int,rows:list<array<string,mixed>>}> $candidates
      */
-    private function collect(array $value, string $path, int $depth, array &$candidates): void
+    private function collect(array $value, string $path, int $depth, int $minimumRows, array &$candidates): void
     {
         if ($depth > 8) {
             return;
@@ -38,24 +38,23 @@ final class StructuredResultRows
 
         if (array_is_list($value)) {
             $rows = array_values(array_filter($value, static fn (mixed $row): bool => is_array($row) && ! array_is_list($row)));
-            if (count($rows) >= 2 && count($rows) === count($value)) {
+            if (count($rows) >= $minimumRows && count($rows) === count($value)) {
                 $lowerPath = strtolower($path);
-                $score = count($rows);
-                if (preg_match('/(?:^|\.)(items|results|rows|customers|orders|users|records)$/', $lowerPath) === 1) {
-                    $score += 100;
+                if (preg_match('/(?:^|\.)(?:content|attachments|messages)(?:\.|$)/', $lowerPath) !== 1) {
+                    $score = count($rows);
+                    if (preg_match('/(?:^|\.)(items|results|rows|customers|orders|users|records)$/', $lowerPath) === 1) {
+                        $score += 100;
+                    }
+                    if (str_contains($lowerPath, 'structuredcontent')) {
+                        $score += 40;
+                    }
+                    $candidates[] = ['score' => $score, 'rows' => $rows];
                 }
-                if (str_contains($lowerPath, 'structuredcontent')) {
-                    $score += 40;
-                }
-                if (preg_match('/(?:content|attachments|messages)/', $lowerPath) === 1) {
-                    $score -= 100;
-                }
-                $candidates[] = ['score' => $score, 'rows' => $rows];
             }
 
             foreach ($value as $index => $nested) {
                 if (is_array($nested)) {
-                    $this->collect($nested, $path.'.'.$index, $depth + 1, $candidates);
+                    $this->collect($nested, $path.'.'.$index, $depth + 1, $minimumRows, $candidates);
                 }
             }
 
@@ -65,7 +64,7 @@ final class StructuredResultRows
         foreach ($value as $key => $nested) {
             if (is_array($nested)) {
                 $nextPath = $path === '' ? (string) $key : $path.'.'.$key;
-                $this->collect($nested, $nextPath, $depth + 1, $candidates);
+                $this->collect($nested, $nextPath, $depth + 1, $minimumRows, $candidates);
             }
         }
     }

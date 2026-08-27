@@ -55,7 +55,9 @@ final readonly class AgentAnswerSynthesizer
 
         $requiresSelection = $outcome->stopReason === 'ambiguous_selection_required'
             || (bool) ($payload['requires_selection'] ?? false);
-        $artifact = $this->artifacts->fromToolEvidence($evidence['api_tools'], $requiresSelection);
+        $renderTable = (bool) ($payload['render_table'] ?? false)
+            || $this->continuesFromSelection($turnContext);
+        $artifact = $this->artifacts->fromToolEvidence($evidence['api_tools'], $requiresSelection, $renderTable);
         $requiresSelection = $requiresSelection && $artifact !== null;
 
         return new AgentAnswer(
@@ -84,6 +86,7 @@ Do not invent missing facts, sources, totals or relationships. State uncertainty
 Never choose an arbitrary record (including the first, last, newest or oldest) when the evidence contains multiple plausible matches for an entity needed to answer. In that case ask the user to choose and set requires_selection=true.
 An explicit request for a list makes requires_selection=false only when the multi-row evidence is the requested collection itself. If the rows are ambiguous parent entities needed before that collection can be loaded (for example many customers before loading one customer's orders), requires_selection must be true.
 When stop_reason is ambiguous_selection_required, explicitly ask the user to choose from the rendered table and set requires_selection=true. A table is rendered separately whenever structured multi-row evidence is available.
+Set render_table=true whenever the user asked to see, list or search a collection, even if the collection contains exactly one row. This also applies when the current turn is a row selection that continues an earlier collection request. Set it false for a detail request about one item.
 The turn_context contains prior conversation messages, prior structured tool results and any explicit row selection. Treat a current_selection as authoritative user context. Reuse resolved customer, user and order identifiers for follow-up questions instead of searching for the same entity again.
 Select only document_id and execution_id values that exist in the supplied evidence.
 Return the result only through submit_agent_answer. The answer supports CommonMark; do not emit raw HTML.
@@ -110,12 +113,27 @@ PROMPT;
                             'type' => 'boolean',
                             'description' => 'True only when one entity was requested but multiple plausible records require a user choice.',
                         ],
+                        'render_table' => [
+                            'type' => 'boolean',
+                            'description' => 'True when the requested answer is a collection that should be rendered as a table, including a one-row collection.',
+                        ],
                     ],
-                    'required' => ['answer', 'completeness', 'document_ids', 'tool_execution_ids', 'limitations', 'requires_selection'],
+                    'required' => ['answer', 'completeness', 'document_ids', 'tool_execution_ids', 'limitations', 'requires_selection', 'render_table'],
                     'additionalProperties' => false,
                 ],
             ],
         ];
+    }
+
+    private function continuesFromSelection(?string $turnContext): bool
+    {
+        if (! is_string($turnContext) || $turnContext === '') {
+            return false;
+        }
+
+        $decoded = json_decode($turnContext, true);
+
+        return is_array($decoded) && is_array($decoded['current_selection'] ?? null);
     }
 
     /** @param list<array<string,mixed>> $documents @param mixed $selected @return list<array<string,mixed>> */
