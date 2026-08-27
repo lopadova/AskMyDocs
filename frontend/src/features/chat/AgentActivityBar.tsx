@@ -31,6 +31,12 @@ export function AgentActivityBar({
             proceed: 'Continua la ricerca',
             calls: 'chiamate',
             seconds: 's rimanenti',
+            mcpDetails: 'Dettagli chiamata MCP',
+            parameters: 'Parametri',
+            response: 'Risposta',
+            error: 'Errore',
+            server: 'Server',
+            runtime: 'Runtime',
         }
         : {
             active: 'Search in progress',
@@ -42,6 +48,12 @@ export function AgentActivityBar({
             proceed: 'Continue search',
             calls: 'calls',
             seconds: 's remaining',
+            mcpDetails: 'MCP call details',
+            parameters: 'Parameters',
+            response: 'Response',
+            error: 'Error',
+            server: 'Server',
+            runtime: 'Runtime',
         };
     const progress = latest?.progress;
     const physical = progress?.physical;
@@ -111,10 +123,113 @@ export function AgentActivityBar({
                         <span className="agent-activity-count">{messages.length}</span>
                     </summary>
                     <ol>
-                        {messages.map((event) => <li key={event.sequence}>{event.message}</li>)}
+                        {messages.map((event) => {
+                            const debug = mcpDebugData(event);
+
+                            return (
+                                <li key={event.sequence} className={debug ? 'agent-activity-event has-mcp-debug' : undefined}>
+                                    <span>{event.message}</span>
+                                    {debug && (
+                                        <details className="agent-mcp-debug" data-testid={`agent-mcp-debug-${event.sequence}`}>
+                                            <summary>
+                                                <span className="agent-mcp-debug-title">{copy.mcpDetails}</span>
+                                                <span className="agent-mcp-debug-tool">{debug.tool_remote_name}</span>
+                                                <span className="agent-mcp-debug-status" data-status={debug.status}>
+                                                    {debug.status} · {debug.duration_ms} ms
+                                                </span>
+                                            </summary>
+                                            <div className="agent-mcp-debug-body">
+                                                <dl className="agent-mcp-debug-meta">
+                                                    <div>
+                                                        <dt>{copy.server}</dt>
+                                                        <dd>{debug.server_name ?? debug.connection_id ?? '—'}</dd>
+                                                    </div>
+                                                    <div>
+                                                        <dt>{copy.runtime}</dt>
+                                                        <dd>{debug.runtime}</dd>
+                                                    </div>
+                                                    <div>
+                                                        <dt>Method</dt>
+                                                        <dd>{debug.method}</dd>
+                                                    </div>
+                                                    <div>
+                                                        <dt>Tool</dt>
+                                                        <dd>{debug.tool_local_name}</dd>
+                                                    </div>
+                                                </dl>
+                                                <DebugJson label={copy.parameters} value={debug.parameters} />
+                                                <DebugJson label={copy.response} value={debug.response} />
+                                                {debug.error != null && <DebugJson label={copy.error} value={debug.error} />}
+                                            </div>
+                                        </details>
+                                    )}
+                                </li>
+                            );
+                        })}
                     </ol>
                 </details>
             )}
         </aside>
     );
+}
+
+interface McpDebugData {
+    method: string;
+    runtime: string;
+    server_name: string | null;
+    connection_id: string | null;
+    tool_local_name: string;
+    tool_remote_name: string;
+    status: string;
+    duration_ms: number;
+    parameters: unknown;
+    response: unknown;
+    error: unknown;
+}
+
+function mcpDebugData(event: AgentRunEvent): McpDebugData | null {
+    const candidate = event.data.mcp_debug;
+    if (candidate === null || typeof candidate !== 'object' || Array.isArray(candidate)) return null;
+    const debug = candidate as Record<string, unknown>;
+    if (
+        typeof debug.method !== 'string'
+        || typeof debug.runtime !== 'string'
+        || typeof debug.tool_local_name !== 'string'
+        || typeof debug.tool_remote_name !== 'string'
+        || typeof debug.status !== 'string'
+        || typeof debug.duration_ms !== 'number'
+    ) return null;
+
+    return {
+        method: debug.method,
+        runtime: debug.runtime,
+        server_name: typeof debug.server_name === 'string' ? debug.server_name : null,
+        connection_id: typeof debug.connection_id === 'string' ? debug.connection_id : null,
+        tool_local_name: debug.tool_local_name,
+        tool_remote_name: debug.tool_remote_name,
+        status: debug.status,
+        duration_ms: debug.duration_ms,
+        parameters: debug.parameters,
+        response: debug.response,
+        error: debug.error,
+    };
+}
+
+function DebugJson({ label, value }: { label: string; value: unknown }): ReactNode {
+    return (
+        <section className="agent-mcp-debug-json">
+            <h4>{label}</h4>
+            <pre>{prettyJson(value)}</pre>
+        </section>
+    );
+}
+
+function prettyJson(value: unknown): string {
+    if (value === undefined) return 'null';
+
+    try {
+        return JSON.stringify(value, null, 2) ?? 'null';
+    } catch {
+        return String(value);
+    }
 }

@@ -534,7 +534,7 @@ textarea:focus-visible {
   border-top: 1px solid var(--hairline);
   font-size: 11px;
 }
-.agent-activity-details summary {
+.agent-activity-details > summary {
   min-height: 34px;
   display: flex;
   align-items: center;
@@ -544,16 +544,16 @@ textarea:focus-visible {
   list-style: none;
   user-select: none;
 }
-.agent-activity-details summary::-webkit-details-marker { display: none; }
-.agent-activity-details summary::before {
+.agent-activity-details > summary::-webkit-details-marker { display: none; }
+.agent-activity-details > summary::before {
   content: "›";
   color: var(--fg-3);
   font-size: 15px;
   transform: rotate(0deg);
   transition: transform .16s ease;
 }
-.agent-activity-details[open] summary::before { transform: rotate(90deg); }
-.agent-activity-details summary:hover { color: var(--fg-1); background: var(--bg-2); }
+.agent-activity-details[open] > summary::before { transform: rotate(90deg); }
+.agent-activity-details > summary:hover { color: var(--fg-1); background: var(--bg-2); }
 .agent-activity-count {
   min-width: 20px;
   padding: 2px 6px;
@@ -565,7 +565,7 @@ textarea:focus-visible {
   text-align: center;
 }
 .agent-activity-details ol {
-  max-height: 220px;
+  max-height: min(58vh, 640px);
   margin: 0;
   padding: 8px 18px 12px 42px;
   overflow: auto;
@@ -574,6 +574,107 @@ textarea:focus-visible {
 .agent-activity-details li {
   padding: 3px 0;
   line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.agent-activity-event.has-mcp-debug {
+  padding: 5px 0 7px;
+}
+.agent-mcp-debug {
+  margin-top: 6px;
+  color: var(--fg-2);
+  background: color-mix(in srgb, var(--bg-0) 88%, var(--accent-a) 12%);
+  border: 1px solid var(--panel-border);
+  border-radius: 9px;
+  overflow: hidden;
+}
+.agent-mcp-debug > summary {
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  color: var(--fg-1);
+  cursor: pointer;
+  list-style: none;
+}
+.agent-mcp-debug > summary::-webkit-details-marker { display: none; }
+.agent-mcp-debug > summary::before {
+  content: "›";
+  color: var(--accent-b);
+  font-size: 15px;
+  transform: rotate(0deg);
+  transition: transform .16s ease;
+}
+.agent-mcp-debug[open] > summary::before { transform: rotate(90deg); }
+.agent-mcp-debug > summary:hover { background: var(--bg-2); }
+.agent-mcp-debug-title {
+  font-weight: 600;
+}
+.agent-mcp-debug-tool {
+  min-width: 0;
+  color: var(--fg-3);
+  font: 500 10px/1.2 var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-mcp-debug-status {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: var(--ok);
+  font: 600 9.5px/1 var(--font-mono);
+  text-transform: uppercase;
+}
+.agent-mcp-debug-status:not([data-status="ok"]) { color: var(--err); }
+.agent-mcp-debug-body {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 10px;
+  border-top: 1px solid var(--hairline);
+}
+.agent-mcp-debug-meta {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+.agent-mcp-debug-meta div {
+  min-width: 0;
+  padding: 7px 8px;
+  background: var(--bg-2);
+  border: 1px solid var(--hairline);
+  border-radius: 7px;
+}
+.agent-mcp-debug-meta dt,
+.agent-mcp-debug-json h4 {
+  margin: 0 0 5px;
+  color: var(--fg-3);
+  font: 600 9px/1 var(--font-mono);
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.agent-mcp-debug-meta dd {
+  margin: 0;
+  color: var(--fg-1);
+  font: 500 10px/1.35 var(--font-mono);
+  overflow-wrap: anywhere;
+}
+.agent-mcp-debug-json {
+  min-width: 0;
+}
+.agent-mcp-debug-json pre {
+  max-height: 260px;
+  margin: 0;
+  padding: 10px;
+  color: var(--fg-1);
+  background: var(--bg-0);
+  border: 1px solid var(--hairline);
+  border-radius: 7px;
+  overflow: auto;
+  font: 500 10px/1.5 var(--font-mono);
+  white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
@@ -591,6 +692,8 @@ textarea:focus-visible {
   .agent-activity-icon { width: 28px; height: 28px; flex-basis: 28px; }
   .agent-activity-heading-row { align-items: flex-start; flex-direction: column; gap: 4px; }
   .agent-activity-metrics { white-space: normal; }
+  .agent-mcp-debug-body,
+  .agent-mcp-debug-meta { grid-template-columns: 1fr; }
   .chat-thread-scroll { padding: 20px 14px; }
   .chat-composer-shell { padding: 10px 14px 14px !important; }
 }
