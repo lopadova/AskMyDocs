@@ -15,6 +15,7 @@ use App\Agent\Tools\AgentServerToolRunner;
 use App\Agent\Tools\AgentToolActionResult;
 use App\Agent\Tools\AgentToolDefinition;
 use App\Agent\Tools\AgentToolRegistry;
+use App\Mcp\Debug\McpActivityDebugPayload;
 use App\Models\AgentRun;
 use App\Models\AgentToolExecution;
 use App\Models\User;
@@ -36,6 +37,7 @@ final readonly class AgentLoop
         private AgentRunControl $control,
         private WidgetPiiMasker $masker,
         private AgentRetrievalFiltersFactory $retrievalFilters,
+        private McpActivityDebugPayload $mcpDebug,
     ) {}
 
     public function run(
@@ -184,18 +186,30 @@ final readonly class AgentLoop
                         $evidence->addWarning($result->stopReason, $tool->name);
                     }
 
+                    $eventData = [
+                        'tool' => $tool->name,
+                        'action_id' => $action->id,
+                        'physical_requests' => $result->physicalRequests,
+                        'complete' => $result->complete,
+                        'stop_reason' => $result->stopReason,
+                    ];
+                    $debug = $this->mcpDebug->capture(
+                        $tool,
+                        $resolved,
+                        $result->body,
+                        (int) round((microtime(true) - $started) * 1000),
+                        $result->successful() ? 'ok' : 'error',
+                    );
+                    if ($debug !== null) {
+                        $eventData['mcp_debug'] = $debug;
+                    }
+
                     $this->events->publish(
                         $run,
                         $result->successful() ? 'tool.completed' : 'tool.failed',
                         $result->successful() ? 'tool.completed' : 'tool.failed',
                         ['tool' => $tool->displayName],
-                        [
-                            'tool' => $tool->name,
-                            'action_id' => $action->id,
-                            'physical_requests' => $result->physicalRequests,
-                            'complete' => $result->complete,
-                            'stop_reason' => $result->stopReason,
-                        ],
+                        $eventData,
                         $this->progress($budget, $plan),
                     );
                     $this->checkpoint($run, $evidence, $completed, $results, $retrieved);
@@ -218,12 +232,29 @@ final readonly class AgentLoop
                         'status' => 'failed',
                         'error_code' => $this->errorCode($exception),
                     ];
+                    $eventData = [
+                        'tool' => $tool->name,
+                        'action_id' => $action->id,
+                        'error_code' => $this->errorCode($exception),
+                    ];
+                    $debug = $this->mcpDebug->capture(
+                        $tool,
+                        $resolved,
+                        null,
+                        (int) round((microtime(true) - $started) * 1000),
+                        'error',
+                        $exception,
+                    );
+                    if ($debug !== null) {
+                        $eventData['mcp_debug'] = $debug;
+                    }
+
                     $this->events->publish(
                         $run,
                         'tool.failed',
                         'tool.failed',
                         ['tool' => $tool->displayName],
-                        ['tool' => $tool->name, 'action_id' => $action->id, 'error_code' => $this->errorCode($exception)],
+                        $eventData,
                         $this->progress($budget, $plan),
                     );
                     $this->checkpoint($run, $evidence, $completed, $results, $retrieved);

@@ -64,4 +64,44 @@ describe('AgentActivityBar', () => {
         expect(screen.getByText('2')).toBeInTheDocument();
         expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '100');
     });
+
+    it('shows local MCP request and response details inside the matching activity event', () => {
+        const mcpEvent: AgentRunEvent = {
+            ...progressEvent,
+            sequence: 3,
+            type: 'tool.completed',
+            message: 'list-my-orders completato.',
+            data: {
+                tool: 'mcp_gescat_list_my_orders',
+                mcp_debug: {
+                    protocol: 'MCP',
+                    method: 'tools/call',
+                    runtime: 'connector',
+                    server_name: 'Gescat',
+                    connection_id: 'connection-1',
+                    tool_local_name: 'mcp_gescat_list_my_orders',
+                    tool_remote_name: 'list-my-orders',
+                    status: 'ok',
+                    duration_ms: 42,
+                    parameters: { customer_id: 17 },
+                    response: { orders: [{ id: 123 }] },
+                    error: null,
+                },
+            },
+        };
+
+        render(<AgentActivityBar events={[progressEvent, mcpEvent]} active={false} awaitingConfirmation={false} onCancel={() => undefined} onContinue={() => undefined} />);
+
+        expect(screen.getByText('Dettagli chiamata MCP')).toBeInTheDocument();
+        expect(screen.getByText('list-my-orders')).toBeInTheDocument();
+        expect(screen.getByText('ok · 42 ms')).toBeInTheDocument();
+        expect(screen.getByText(/"customer_id": 17/)).toBeInTheDocument();
+        expect(screen.getByText(/"id": 123/)).toBeInTheDocument();
+    });
+
+    it('does not render MCP debug controls when the backend omits the local-only payload', () => {
+        render(<AgentActivityBar events={[progressEvent]} active={false} awaitingConfirmation={false} onCancel={() => undefined} onContinue={() => undefined} />);
+
+        expect(screen.queryByText('Dettagli chiamata MCP')).not.toBeInTheDocument();
+    });
 });
