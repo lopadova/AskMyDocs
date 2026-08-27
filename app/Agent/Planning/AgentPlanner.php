@@ -67,6 +67,7 @@ Use documents and API tools together when both can contribute. Plans may contain
 For a value produced by an earlier action use {"\$from":"step_id","path":"items.0.id"} as the argument value.
 Use turn_context to resolve follow-up references such as "that customer", "their orders", "the last order" and "its details". Reuse exact identifiers from current_selection or previous structured tool results; do not repeat a broad entity search when the needed ID is already present.
 When a tool returns multiple plausible matches for a request about one specific entity, do not plan downstream actions against items.0, the first row, the last row or any arbitrary row. Stop with answer so the synthesizer can ask the user to choose.
+When a named entity has no stable identifier in turn_context, retrieve candidates first. Do not continue to a dependent resource such as orders or details until the candidate result proves unique or current_selection identifies the row.
 The purpose field is a short user-visible operational label, not private reasoning or chain-of-thought.
 Choose answer only when current evidence is sufficient; choose insufficient only after useful tools are exhausted.
 When decision is answer or insufficient, actions must be an empty array. Never invent an answer tool.
