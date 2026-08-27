@@ -193,6 +193,52 @@ final class AgentLoopTest extends TestCase
         Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/orders'));
     }
 
+    public function test_current_selection_is_a_resolvable_dependency_source(): void
+    {
+        $getOrders = $this->route('get_orders', 'http://erp.example.test/customers/{customer_id}/orders');
+        $this->parameter($getOrders, 'customer_id', 'path', 'integer');
+        Http::fake(['*' => Http::response(['orders' => [['number' => 'I016426']]])]);
+
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->twice()->andReturn(
+            $this->planResponse([
+                'decision' => 'tools',
+                'actions' => [[
+                    'id' => 'get_customer_orders',
+                    'tool' => 'get_orders',
+                    'arguments' => [
+                        'customer_id' => ['$from' => 'current_selection', 'path' => 'id'],
+                    ],
+                    'depends_on' => [],
+                    'purpose' => 'Recupero gli ordini del cliente selezionato',
+                ]],
+            ]),
+            $this->planResponse(['decision' => 'answer', 'actions' => []]),
+        );
+        $this->app->instance(AiManager::class, $ai);
+        $retrieval = Mockery::mock(ChatRetrievalService::class)->makePartial();
+        $retrieval->shouldReceive('retrieve')->once()->andReturn(new SearchResult(collect(), collect(), collect()));
+        $this->app->instance(ChatRetrievalService::class, $retrieval);
+
+        $run = $this->makeRun();
+        $run->forceFill(['input_json' => [
+            'question' => 'Ho selezionato questa riga. Continua la richiesta precedente.',
+            'selection' => [
+                'tool' => 'search-customers',
+                'row_key' => '147762',
+                'record' => ['id' => 147762, 'display_name' => 'Ioanne Cro'],
+            ],
+        ]])->save();
+
+        $outcome = app(AgentLoop::class)->run($run, $this->context($run));
+
+        $this->assertSame('answer', $outcome->decision);
+        $execution = $run->toolExecutions()->sole();
+        $this->assertSame('completed', $execution->status);
+        $this->assertSame(147762, $execution->arguments_json['customer_id']);
+        Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/customers/147762/orders'));
+    }
+
     /** @param array<string,mixed> $payload */
     private function planResponse(array $payload): AiResponse
     {

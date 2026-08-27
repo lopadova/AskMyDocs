@@ -31,18 +31,27 @@ describe('AgentTableArtifact', () => {
         expect(screen.getAllByText('Riccardo Lorini')).toHaveLength(2);
         fireEvent.click(screen.getByTestId('agent-table-select-102'));
 
-        await waitFor(() => expect(onSelect).toHaveBeenCalledWith({
-            messageId: 90,
-            rowKey: '102',
-            label: 'Riccardo Lorini',
-            content: 'Ho scelto: Riccardo Lorini. Continua usando questa selezione.',
-        }));
+        await waitFor(() => expect(onSelect).toHaveBeenCalledOnce());
+        const selection = onSelect.mock.calls[0]?.[0];
+        expect(selection).toMatchObject({ messageId: 90, rowKey: '102', label: 'Riccardo Lorini' });
+        expect(selection?.content).toContain('Ho selezionato questa riga (Riccardo Lorini)');
+        expect(selection?.content).toContain('"id": 102');
+        expect(selection?.content).toContain('"email": "two@example.test"');
     });
 
-    it('renders list results without selection controls in view mode', () => {
-        render(<AgentTableArtifact artifact={{ ...artifact, interaction_mode: 'view' }} messageId={91} locale="it-IT" />);
+    it('lets the user select a row for inspection in view mode', () => {
+        const onSelect = vi.fn().mockResolvedValue(undefined);
+        render(
+            <AgentTableArtifact
+                artifact={{ ...artifact, interaction_mode: 'view' }}
+                messageId={91}
+                locale="it-IT"
+                onSelect={onSelect}
+            />,
+        );
 
         expect(screen.queryByText('Scegli una riga per continuare')).not.toBeInTheDocument();
-        expect(screen.queryByRole('button', { name: 'Scegli' })).not.toBeInTheDocument();
+        expect(screen.getByText('Seleziona una riga per approfondire')).toBeInTheDocument();
+        expect(screen.getAllByRole('button', { name: 'Scegli' })).toHaveLength(2);
     });
 });

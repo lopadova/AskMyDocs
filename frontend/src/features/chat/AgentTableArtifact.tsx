@@ -24,7 +24,8 @@ export function AgentTableArtifact({
     const [submitting, setSubmitting] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const italian = locale.toLowerCase().startsWith('it');
-    const selectable = artifact.interaction_mode === 'selection' && onSelect !== undefined;
+    const selectable = onSelect !== undefined;
+    const selectionRequired = artifact.interaction_mode === 'selection';
 
     async function select(rowKey: string, label: string): Promise<void> {
         if (!onSelect || submitting !== null) return;
@@ -35,9 +36,7 @@ export function AgentTableArtifact({
                 messageId,
                 rowKey,
                 label,
-                content: italian
-                    ? `Ho scelto: ${label}. Continua usando questa selezione.`
-                    : `I selected: ${label}. Continue using this selection.`,
+                content: selectionContent(label, rowValues(artifact, rowKey), italian),
             });
         } catch (cause) {
             setError(cause instanceof Error ? cause.message : (italian ? 'Selezione non riuscita.' : 'Selection failed.'));
@@ -62,7 +61,9 @@ export function AgentTableArtifact({
                 </div>
                 {selectable && (
                     <span className="agent-table-artifact-hint">
-                        {italian ? 'Scegli una riga per continuare' : 'Choose a row to continue'}
+                        {selectionRequired
+                            ? (italian ? 'Scegli una riga per continuare' : 'Choose a row to continue')
+                            : (italian ? 'Seleziona una riga per approfondire' : 'Select a row to inspect')}
                     </span>
                 )}
             </div>
@@ -103,6 +104,22 @@ export function AgentTableArtifact({
             {error && <div className="agent-table-artifact-error" role="alert">{error}</div>}
         </section>
     );
+}
+
+function rowValues(artifact: AgentTableArtifactData, rowKey: string): Record<string, string | number | boolean | null> {
+    return artifact.rows.find((row) => row.key === rowKey)?.values ?? {};
+}
+
+function selectionContent(
+    label: string,
+    values: Record<string, string | number | boolean | null>,
+    italian: boolean,
+): string {
+    const row = JSON.stringify(values, null, 2);
+
+    return italian
+        ? `Ho selezionato questa riga (${label}):\n\n${row}\n\nContinua usando tutti i dati della riga nel contesto della richiesta precedente.`
+        : `I selected this row (${label}):\n\n${row}\n\nContinue using all row data in the context of the previous request.`;
 }
 
 function displayValue(value: string | number | boolean | null | undefined): string {

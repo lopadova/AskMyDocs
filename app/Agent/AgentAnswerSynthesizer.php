@@ -88,6 +88,7 @@ An explicit request for a list makes requires_selection=false only when the mult
 When stop_reason is ambiguous_selection_required, explicitly ask the user to choose from the rendered table and set requires_selection=true. A table is rendered separately whenever structured multi-row evidence is available.
 Set render_table=true whenever the user asked to see, list or search a collection, even if the collection contains exactly one row. This also applies when the current turn is a row selection that continues an earlier collection request. Set it false for a detail request about one item.
 The turn_context contains prior conversation messages, prior structured tool results and any explicit row selection. Treat a current_selection as authoritative user context. Reuse resolved customer, user and order identifiers for follow-up questions instead of searching for the same entity again.
+When a selected record's fields disagree with a name or identifier in an earlier request, describe and continue with the selected record; do not relabel it as the earlier candidate.
 Select only document_id and execution_id values that exist in the supplied evidence.
 Return the result only through submit_agent_answer. The answer supports CommonMark; do not emit raw HTML.
 PROMPT;

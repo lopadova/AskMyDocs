@@ -49,14 +49,17 @@ final class AgentMessageController extends Controller
             $conversation,
             is_array($validated['selection'] ?? null) ? $validated['selection'] : null,
         );
+        $context = $contexts->forUser($user, $conversation->project_key);
+        $content = $selection === null
+            ? $validated['content']
+            : $this->selectionMessage($selection, $context->locale);
         $message = $conversation->messages()->create([
             'role' => 'user',
-            'content' => $validated['content'],
+            'content' => $content,
             'metadata' => $selection === null ? null : ['agent_selection' => $selection],
         ]);
-        $context = $contexts->forUser($user, $conversation->project_key);
         $input = [
-            'question' => $validated['content'],
+            'question' => $content,
             'filters' => is_array($validated['filters'] ?? null) ? $validated['filters'] : [],
             'user_message_id' => $message->id,
         ];
@@ -111,7 +114,7 @@ final class AgentMessageController extends Controller
         $artifact = is_array(data_get($source?->metadata, 'agent_artifact'))
             ? data_get($source?->metadata, 'agent_artifact')
             : null;
-        if (! is_array($artifact) || ($artifact['interaction_mode'] ?? null) !== 'selection') {
+        if (! is_array($artifact) || ! in_array($artifact['interaction_mode'] ?? null, ['selection', 'view'], true)) {
             throw ValidationException::withMessages([
                 'selection' => 'The selected artifact is not available in this conversation.',
             ]);
@@ -137,6 +140,23 @@ final class AgentMessageController extends Controller
             'label' => $row['label'] ?? $rowKey,
             'record' => $row['record'],
         ];
+    }
+
+    /** @param array<string,mixed> $selection */
+    private function selectionMessage(array $selection, string $locale): string
+    {
+        $record = is_array($selection['record'] ?? null) ? $selection['record'] : [];
+        $json = json_encode(
+            $record,
+            JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES,
+        );
+        $italian = str_starts_with(strtolower($locale), 'it');
+
+        return ($italian ? 'Ho selezionato questa riga:' : 'I selected this row:')
+            ."\n\n```json\n{$json}\n```\n\n"
+            .($italian
+                ? 'Continua usando tutti i dati della riga nel contesto della richiesta precedente.'
+                : 'Continue using all row data in the context of the previous request.');
     }
 
     /** @return array<string,array<int,string>> */
