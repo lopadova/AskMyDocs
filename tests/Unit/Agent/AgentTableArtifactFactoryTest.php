@@ -28,6 +28,7 @@ final class AgentTableArtifactFactoryTest extends TestCase
                                 ['id' => 101, 'name' => 'Riccardo Lorini', 'email' => 'one@example.test', 'api_key' => 'secret-one'],
                                 ['id' => 102, 'name' => 'Riccardo Lorini', 'email' => 'two@example.test', 'api_key' => 'secret-two'],
                             ],
+                            'pagination' => ['page' => 1, 'per_page' => 2, 'total' => 108, 'last_page' => 54],
                         ],
                     ],
                 ],
@@ -42,6 +43,8 @@ final class AgentTableArtifactFactoryTest extends TestCase
         $this->assertSame('[EMAIL]', data_get($artifact, 'rows.0.values.email'));
         $this->assertSame('[REDACTED]', data_get($artifact, 'rows.0.record.api_key'));
         $this->assertNotContains('type', array_column($artifact['columns'], 'key'));
+        $this->assertSame(108, $artifact['total_rows']);
+        $this->assertTrue($artifact['truncated']);
     }
 
     public function test_it_uses_view_mode_for_an_explicit_list_and_ignores_single_records(): void

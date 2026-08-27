@@ -8,6 +8,7 @@ use App\Agent\Budget\AgentBudgetTracker;
 use App\Agent\Evidence\AgentEvidenceEnvelope;
 use App\Agent\Evidence\AgentEvidenceFactory;
 use App\Agent\Planning\AgentArgumentResolver;
+use App\Agent\Planning\AgentAmbiguousSelectionGuard;
 use App\Agent\Planning\AgentPlan;
 use App\Agent\Planning\AgentPlannedAction;
 use App\Agent\Planning\AgentPlanner;
@@ -30,6 +31,7 @@ final readonly class AgentLoop
         private AgentPlanner $planner,
         private AgentToolRegistry $registry,
         private AgentArgumentResolver $arguments,
+        private AgentAmbiguousSelectionGuard $ambiguousSelection,
         private AgentServerToolRunner $serverTools,
         private ChatRetrievalService $retrieval,
         private AgentEvidenceFactory $evidenceFactory,
@@ -139,6 +141,17 @@ final readonly class AgentLoop
                     );
                     $this->checkpoint($run, $evidence, $completed, $results, $retrieved);
                     continue;
+                }
+                $selection = data_get($run->input_json, 'selection');
+                if ($this->ambiguousSelection->blocks(
+                    $evidence->apiTools(),
+                    $resolved,
+                    is_array($selection) ? $selection : null,
+                )) {
+                    $evidence->addWarning('ambiguous_selection_required', $tool->name);
+                    $this->checkpoint($run, $evidence, $completed, $results, $retrieved);
+
+                    return $this->outcome('answer', $evidence, $completed, 'ambiguous_selection_required');
                 }
                 $decision = $budget->reserve($tool, $resolved, $tool->physicalLikely);
                 if ($decision->requiresConfirmation()) {

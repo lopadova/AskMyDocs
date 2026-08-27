@@ -134,6 +134,65 @@ final class AgentLoopTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_it_stops_before_using_the_first_of_multiple_customers_for_orders(): void
+    {
+        $findCustomer = $this->route('find_customer', 'http://erp.example.test/customers');
+        $this->parameter($findCustomer, 'name', 'query');
+        $getOrders = $this->route('get_orders', 'http://erp.example.test/customers/{customer_id}/orders');
+        $this->parameter($getOrders, 'customer_id', 'path', 'integer');
+
+        Http::fake(function (Request $request) {
+            if (str_contains($request->url(), '/customers?')) {
+                return Http::response(['items' => [
+                    ['id' => 147768, 'name' => 'Riccardo Lorini'],
+                    ['id' => 147767, 'name' => 'Riccardo Lorini'],
+                ]]);
+            }
+
+            return Http::response(['orders' => [['number' => 'must-not-be-loaded']]]);
+        });
+
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->twice()->andReturn(
+            $this->planResponse([
+                'decision' => 'tools',
+                'actions' => [[
+                    'id' => 'find_customer',
+                    'tool' => 'find_customer',
+                    'arguments' => ['name' => 'Riccardo Lorini'],
+                    'depends_on' => [],
+                    'purpose' => 'Cerco il cliente richiesto',
+                ]],
+            ]),
+            $this->planResponse([
+                'decision' => 'tools',
+                'actions' => [[
+                    'id' => 'load_orders',
+                    'tool' => 'get_orders',
+                    'arguments' => ['customer_id' => 147768],
+                    'depends_on' => [],
+                    'purpose' => 'Recupero gli ordini del cliente',
+                ]],
+            ]),
+        );
+        $this->app->instance(AiManager::class, $ai);
+
+        $retrieval = Mockery::mock(ChatRetrievalService::class)->makePartial();
+        $retrieval->shouldReceive('retrieve')->once()->andReturn(new SearchResult(collect(), collect(), collect()));
+        $this->app->instance(ChatRetrievalService::class, $retrieval);
+
+        $run = $this->makeRun();
+        $outcome = app(AgentLoop::class)->run($run, $this->context($run));
+
+        $this->assertSame('answer', $outcome->decision);
+        $this->assertSame('ambiguous_selection_required', $outcome->stopReason);
+        $this->assertCount(1, $outcome->evidence->apiTools());
+        $this->assertSame('ambiguous_selection_required', data_get($outcome->evidence->jsonSerialize(), 'warnings.0.code'));
+        $this->assertSame(1, $run->toolExecutions()->count());
+        Http::assertSentCount(1);
+        Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/orders'));
+    }
+
     /** @param array<string,mixed> $payload */
     private function planResponse(array $payload): AiResponse
     {

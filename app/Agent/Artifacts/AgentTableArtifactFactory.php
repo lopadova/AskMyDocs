@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Agent\Artifacts;
 
+use App\Agent\Support\StructuredResultRows;
 use App\Support\SensitivePayloadRedactor;
 
 /** Turns a structured multi-record tool result into a generic chat table. */
@@ -13,7 +14,10 @@ final class AgentTableArtifactFactory
 
     private const MAX_COLUMNS = 7;
 
-    public function __construct(private readonly SensitivePayloadRedactor $redactor) {}
+    public function __construct(
+        private readonly SensitivePayloadRedactor $redactor,
+        private readonly StructuredResultRows $structuredRows,
+    ) {}
 
     /**
      * @param  list<array<string, mixed>>  $tools
@@ -23,7 +27,8 @@ final class AgentTableArtifactFactory
     {
         foreach (array_reverse($tools) as $tool) {
             $result = is_array($tool['result'] ?? null) ? $tool['result'] : [];
-            $rows = $this->bestRowSet($this->redactor->redact($result));
+            $safeResult = $this->redactor->redact($result);
+            $rows = $this->structuredRows->best($safeResult);
             if (count($rows) < 2) {
                 continue;
             }
@@ -52,6 +57,8 @@ final class AgentTableArtifactFactory
                 ];
             }
 
+            $totalRows = $this->structuredRows->paginationTotal($safeResult, count($rows));
+
             return [
                 'component_type' => 'ui-data-table',
                 'interaction_mode' => $requiresSelection ? 'selection' : 'view',
@@ -63,66 +70,12 @@ final class AgentTableArtifactFactory
                     'label' => str($key)->afterLast('.')->replace('_', ' ')->title()->toString(),
                 ], $columns),
                 'rows' => $normalizedRows,
-                'total_rows' => count($rows),
-                'truncated' => count($rows) > self::MAX_ROWS,
+                'total_rows' => $totalRows,
+                'truncated' => $totalRows > count($normalizedRows),
             ];
         }
 
         return null;
-    }
-
-    /** @param array<string, mixed> $payload @return list<array<string, mixed>> */
-    private function bestRowSet(array $payload): array
-    {
-        $candidates = [];
-        $this->collectRowSets($payload, '', 0, $candidates);
-        usort($candidates, static fn (array $a, array $b): int => $b['score'] <=> $a['score']);
-
-        return $candidates[0]['rows'] ?? [];
-    }
-
-    /**
-     * @param array<string, mixed>|list<mixed> $value
-     * @param list<array{score:int,rows:list<array<string,mixed>>}> $candidates
-     */
-    private function collectRowSets(array $value, string $path, int $depth, array &$candidates): void
-    {
-        if ($depth > 8) {
-            return;
-        }
-
-        if (array_is_list($value)) {
-            $rows = array_values(array_filter($value, static fn (mixed $row): bool => is_array($row) && ! array_is_list($row)));
-            if (count($rows) >= 2 && count($rows) === count($value)) {
-                $lowerPath = strtolower($path);
-                $score = count($rows);
-                if (preg_match('/(?:^|\.)(items|results|rows|customers|orders|users|records)$/', $lowerPath) === 1) {
-                    $score += 100;
-                }
-                if (str_contains($lowerPath, 'structuredcontent')) {
-                    $score += 40;
-                }
-                if (preg_match('/(?:content|attachments|messages)/', $lowerPath) === 1) {
-                    $score -= 100;
-                }
-                $candidates[] = ['score' => $score, 'rows' => $rows];
-            }
-
-            foreach ($value as $index => $nested) {
-                if (is_array($nested)) {
-                    $this->collectRowSets($nested, $path.'.'.$index, $depth + 1, $candidates);
-                }
-            }
-
-            return;
-        }
-
-        foreach ($value as $key => $nested) {
-            if (is_array($nested)) {
-                $nextPath = $path === '' ? (string) $key : $path.'.'.$key;
-                $this->collectRowSets($nested, $nextPath, $depth + 1, $candidates);
-            }
-        }
     }
 
     /** @param list<array<string,mixed>> $rows @return list<string> */

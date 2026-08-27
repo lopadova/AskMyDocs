@@ -115,7 +115,8 @@ final class AgentAnswerSynthesizerTest extends TestCase
                     'document_ids' => [],
                     'tool_execution_ids' => [56],
                     'limitations' => [],
-                    'requires_selection' => true,
+                    // The runtime ambiguity guard must override a mistaken model classification.
+                    'requires_selection' => false,
                 ],
             ]],
         ));
@@ -127,7 +128,7 @@ final class AgentAnswerSynthesizerTest extends TestCase
         ))->synthesize(
             'Cerca Riccardo Lorini',
             $this->context(),
-            new AgentLoopOutcome('answer', $evidence, []),
+            new AgentLoopOutcome('answer', $evidence, [], 'ambiguous_selection_required'),
         );
 
         $this->assertTrue($answer->requiresSelection);
