@@ -1,5 +1,5 @@
 import type { UIMessage } from 'ai';
-import type { CounterfactualPanel, Message as AppMessage, MessageCitation, RunnerUpChunk } from './chat.api';
+import type { AgentTableArtifact, CounterfactualPanel, Message as AppMessage, MessageCitation, RunnerUpChunk } from './chat.api';
 
 /**
  * v4.0/W3.2 — shape adapters that let the chat renderer consume BOTH
@@ -445,6 +445,23 @@ export function getCounterfactual(m: RenderableMessage): CounterfactualPanel[] {
     }
     const rows = m.metadata?.counterfactual;
     return Array.isArray(rows) ? rows : [];
+}
+
+export function getAgentArtifact(m: RenderableMessage): AgentTableArtifact | null {
+    if (isUiMessage(m)) {
+        return null;
+    }
+    const artifact = m.metadata?.agent_artifact;
+    if (
+        !artifact
+        || artifact.component_type !== 'ui-data-table'
+        || !Array.isArray(artifact.columns)
+        || !Array.isArray(artifact.rows)
+    ) {
+        return null;
+    }
+
+    return artifact;
 }
 
 /**

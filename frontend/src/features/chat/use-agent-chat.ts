@@ -11,6 +11,7 @@ import {
     chatApi,
     isFilterStateEmpty,
     type AgentTurnStarted,
+    type AgentSelectionRequest,
     type FilterState,
     type Message,
 } from './chat.api';
@@ -32,6 +33,7 @@ export interface AgentConfirmation {
 
 interface AgentMessageOptions {
     mcpAppId?: string;
+    selection?: AgentSelectionRequest;
 }
 
 export interface UseAgentChatResult {
@@ -180,6 +182,7 @@ export function useAgentChat(options: UseAgentChatOptions): UseAgentChatResult {
                 text,
                 isFilterStateEmpty(liveFilters) ? undefined : liveFilters,
                 messageOptions?.mcpAppId,
+                messageOptions?.selection,
             );
             if (generation !== generationRef.current) return;
             runRef.current = run;

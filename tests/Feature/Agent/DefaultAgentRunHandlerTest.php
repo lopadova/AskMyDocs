@@ -201,8 +201,9 @@ final class DefaultAgentRunHandlerTest extends TestCase
         $this->assertSame('it-IT', data_get($run->result_json, 'response.locale'));
         $this->assertSame('insufficient', data_get($run->result_json, 'response.completeness'));
         $this->assertSame('Non risultano ordini disponibili per il cliente richiesto.', data_get($run->result_json, 'response.answer'));
-        $this->assertStringContainsString('The selected region is Europe.', (string) $requests[0]['mcp_app_context']);
-        $this->assertStringContainsString('"region":"EU"', (string) $requests[1]['mcp_app_context']);
+        $this->assertStringContainsString('The selected region is Europe.', (string) $requests[0]['turn_context']);
+        $turnContext = json_decode((string) $requests[1]['turn_context'], true, flags: JSON_THROW_ON_ERROR);
+        $this->assertStringContainsString('"region":"EU"', (string) data_get($turnContext, 'mcp_app'));
         $this->assertNotNull($run->completed_at);
         $this->assertSame('La risposta è pronta.', $run->events()->where('type', 'run.completed')->sole()->message);
         $this->assertFalse((bool) data_get(

@@ -80,6 +80,7 @@ describe('useAgentChat', () => {
             'Dammi gli ordini',
             undefined,
             mcpAppId,
+            undefined,
         );
         expect(result.current.messages).toEqual([userMessage, assistantMessage]);
         expect(result.current.events.at(-1)?.message).toBe('La risposta è pronta.');
@@ -117,6 +118,38 @@ describe('useAgentChat', () => {
         expect(eventFetch).toHaveBeenCalledOnce();
         expect(result.current.messages).toEqual([userMessage, assistantMessage]);
         expect(result.current.events.at(-1)?.type).toBe('run.completed');
+    });
+
+    it('passes a structured artifact selection to the agent endpoint', async () => {
+        vi.spyOn(chatApi, 'startAgentTurn').mockResolvedValue({
+            run_id: 'run-selection',
+            status: 'queued',
+            locale: 'it-IT',
+            events_url: '/agent-runs/run-selection/events',
+            cancel_url: '/agent-runs/run-selection/cancel',
+            continue_url: '/agent-runs/run-selection/continue',
+            user_message: userMessage,
+        });
+        vi.spyOn(chatApi, 'listMessages').mockResolvedValue([userMessage, assistantMessage]);
+        vi.stubGlobal('fetch', vi.fn(async () => eventResponse(completedEvent())));
+        const { result } = renderHook(() => useAgentChat({
+            conversationId: 7,
+            filters: {},
+            initialMessages: emptyMessages,
+        }));
+
+        await act(async () => result.current.sendMessage(
+            { text: 'Ho scelto Riccardo Lorini.' },
+            { selection: { message_id: 90, row_key: '102' } },
+        ));
+
+        expect(chatApi.startAgentTurn).toHaveBeenCalledWith(
+            7,
+            'Ho scelto Riccardo Lorini.',
+            undefined,
+            undefined,
+            { message_id: 90, row_key: '102' },
+        );
     });
 
     it('cancels the current backend run when stopped', async () => {

@@ -125,6 +125,87 @@ final class AgentMessageControllerTest extends TestCase
         $this->assertSame($instance->public_id, data_get(AgentRun::query()->sole()->input_json, 'mcp_app_id'));
     }
 
+    public function test_table_selection_is_resolved_from_the_server_artifact_and_attached_to_the_run(): void
+    {
+        Queue::fake();
+        app(TenantContext::class)->set('acme');
+        $user = $this->user('agent-selection@example.com');
+        ProjectMembership::create([
+            'tenant_id' => 'acme',
+            'user_id' => $user->id,
+            'project_key' => 'crm',
+            'role' => 'member',
+        ]);
+        $conversation = Conversation::create([
+            'tenant_id' => 'acme',
+            'user_id' => $user->id,
+            'title' => 'Disambiguation',
+            'project_key' => 'crm',
+        ]);
+        $assistant = $conversation->messages()->create([
+            'role' => 'assistant',
+            'content' => 'Quale Riccardo Lorini vuoi usare?',
+            'metadata' => [
+                'agent_artifact' => [
+                    'component_type' => 'ui-data-table',
+                    'interaction_mode' => 'selection',
+                    'source_execution_id' => 44,
+                    'tool' => 'search-customers',
+                    'rows' => [
+                        ['key' => '101', 'label' => 'Riccardo Lorini', 'record' => ['id' => 101, 'email' => 'first@example.test']],
+                        ['key' => '102', 'label' => 'Riccardo Lorini', 'record' => ['id' => 102, 'email' => 'second@example.test']],
+                    ],
+                ],
+            ],
+        ]);
+
+        $this->actingAs($user)->postJson(
+            '/test-conversations/'.$conversation->id.'/messages/agent',
+            [
+                'content' => 'Ho scelto Riccardo Lorini.',
+                'selection' => ['message_id' => $assistant->id, 'row_key' => '102'],
+            ],
+        )->assertAccepted();
+
+        $run = AgentRun::query()->sole();
+        $this->assertSame(102, data_get($run->input_json, 'selection.record.id'));
+        $this->assertSame(44, data_get($run->input_json, 'selection.source_execution_id'));
+        $this->assertSame('search-customers', data_get($run->input_json, 'selection.tool'));
+        $this->assertSame(102, data_get($conversation->messages()->where('role', 'user')->sole()->metadata, 'agent_selection.record.id'));
+    }
+
+    public function test_selection_cannot_reference_an_artifact_from_another_conversation(): void
+    {
+        Queue::fake();
+        app(TenantContext::class)->set('acme');
+        $user = $this->user('agent-selection-scope@example.com');
+        ProjectMembership::create([
+            'tenant_id' => 'acme',
+            'user_id' => $user->id,
+            'project_key' => 'crm',
+            'role' => 'member',
+        ]);
+        $conversation = Conversation::create(['tenant_id' => 'acme', 'user_id' => $user->id, 'project_key' => 'crm']);
+        $other = Conversation::create(['tenant_id' => 'acme', 'user_id' => $user->id, 'project_key' => 'crm']);
+        $foreignMessage = $other->messages()->create([
+            'role' => 'assistant',
+            'content' => 'Choose',
+            'metadata' => ['agent_artifact' => ['interaction_mode' => 'selection', 'rows' => [
+                ['key' => '101', 'record' => ['id' => 101]],
+            ]]],
+        ]);
+
+        $this->actingAs($user)->postJson(
+            '/test-conversations/'.$conversation->id.'/messages/agent',
+            [
+                'content' => 'Scelgo questo.',
+                'selection' => ['message_id' => $foreignMessage->id, 'row_key' => '101'],
+            ],
+        )->assertUnprocessable()->assertJsonValidationErrors('selection');
+
+        $this->assertDatabaseCount('agent_runs', 0);
+    }
+
     public function test_terminal_projection_is_idempotent_and_keeps_agent_sources(): void
     {
         app(TenantContext::class)->set('acme');
@@ -154,6 +235,11 @@ final class AgentMessageControllerTest extends TestCase
             completeness: 'complete',
             citations: [['document_id' => 12, 'title' => 'Policy']],
             toolSources: [['execution_id' => 55, 'tool' => 'get_orders']],
+            artifact: [
+                'component_type' => 'ui-data-table',
+                'interaction_mode' => 'view',
+                'rows' => [['key' => 'A-100']],
+            ],
         );
 
         $projector = app(AgentResultProjector::class);
@@ -165,6 +251,7 @@ final class AgentMessageControllerTest extends TestCase
         $this->assertSame('Ordine A-100 trovato.', $message->content);
         $this->assertSame(12, data_get($message->metadata, 'citations.0.document_id'));
         $this->assertSame('get_orders', data_get($message->metadata, 'tool_sources.0.tool'));
+        $this->assertSame('ui-data-table', data_get($message->metadata, 'agent_artifact.component_type'));
     }
 
     private function user(string $email): User

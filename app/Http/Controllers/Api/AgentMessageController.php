@@ -13,6 +13,7 @@ use App\Support\Kb\SourceType;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Validation\ValidationException;
 
 /** Starts the durable agent path for an authenticated conversation turn. */
 final class AgentMessageController extends Controller
@@ -34,6 +35,9 @@ final class AgentMessageController extends Controller
             [
                 'content' => ['required', 'string', 'max:10000'],
                 'mcp_app_id' => ['sometimes', 'string', 'ulid'],
+                'selection' => ['sometimes', 'array'],
+                'selection.message_id' => ['required_with:selection', 'integer', 'min:1'],
+                'selection.row_key' => ['required_with:selection', 'string', 'max:128'],
             ],
             $this->retrievalFilterRules(),
         ));
@@ -41,9 +45,14 @@ final class AgentMessageController extends Controller
             ? $validated['mcp_app_id']
             : null;
         $appContext = $mcpAppContext->resolve($mcpAppId, $user, $conversation);
+        $selection = $this->resolveSelection(
+            $conversation,
+            is_array($validated['selection'] ?? null) ? $validated['selection'] : null,
+        );
         $message = $conversation->messages()->create([
             'role' => 'user',
             'content' => $validated['content'],
+            'metadata' => $selection === null ? null : ['agent_selection' => $selection],
         ]);
         $context = $contexts->forUser($user, $conversation->project_key);
         $input = [
@@ -54,11 +63,17 @@ final class AgentMessageController extends Controller
         if ($appContext !== null && $mcpAppId !== null) {
             $input['mcp_app_id'] = $mcpAppId;
         }
+        if ($selection !== null) {
+            $input['selection'] = $selection;
+        }
         $run = $runs->dispatch($context, $input, [
             'user_id' => $user->id,
             'conversation_id' => $conversation->id,
         ]);
-        $message->forceFill(['metadata' => ['agent_run_id' => $run->run_id]])->save();
+        $message->forceFill(['metadata' => array_merge(
+            is_array($message->metadata) ? $message->metadata : [],
+            ['agent_run_id' => $run->run_id],
+        )])->save();
 
         return response()->json([
             'run_id' => $run->run_id,
@@ -75,6 +90,53 @@ final class AgentMessageController extends Controller
                 'created_at' => $message->created_at,
             ],
         ], 202);
+    }
+
+    /**
+     * Resolve a client row key against a server-produced selection artifact.
+     *
+     * @param  array<string,mixed>|null  $requested
+     * @return array<string,mixed>|null
+     */
+    private function resolveSelection(Conversation $conversation, ?array $requested): ?array
+    {
+        if ($requested === null) {
+            return null;
+        }
+
+        $source = $conversation->messages()
+            ->whereKey((int) ($requested['message_id'] ?? 0))
+            ->where('role', 'assistant')
+            ->first();
+        $artifact = is_array(data_get($source?->metadata, 'agent_artifact'))
+            ? data_get($source?->metadata, 'agent_artifact')
+            : null;
+        if (! is_array($artifact) || ($artifact['interaction_mode'] ?? null) !== 'selection') {
+            throw ValidationException::withMessages([
+                'selection' => 'The selected artifact is not available in this conversation.',
+            ]);
+        }
+
+        $rowKey = (string) ($requested['row_key'] ?? '');
+        $rows = is_array($artifact['rows'] ?? null) ? $artifact['rows'] : [];
+        $row = collect($rows)->first(
+            static fn (mixed $candidate): bool => is_array($candidate)
+                && hash_equals((string) ($candidate['key'] ?? ''), $rowKey),
+        );
+        if (! is_array($row) || ! is_array($row['record'] ?? null)) {
+            throw ValidationException::withMessages([
+                'selection.row_key' => 'The selected row no longer exists.',
+            ]);
+        }
+
+        return [
+            'source_message_id' => $source->id,
+            'source_execution_id' => $artifact['source_execution_id'] ?? null,
+            'tool' => $artifact['tool'] ?? null,
+            'row_key' => $rowKey,
+            'label' => $row['label'] ?? $rowKey,
+            'record' => $row['record'],
+        ];
     }
 
     /** @return array<string,array<int,string>> */

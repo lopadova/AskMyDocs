@@ -60,6 +60,8 @@ final class AgentResultProjector
                     'completeness' => $answer->completeness,
                     'limitations' => $answer->limitations,
                     'locale' => $answer->locale,
+                    'agent_artifact' => $answer->artifact,
+                    'requires_selection' => $answer->requiresSelection,
                 ],
                 'created_at' => now(),
             ],
