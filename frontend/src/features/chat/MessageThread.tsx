@@ -4,6 +4,7 @@ import { Icon } from '../../components/Icons';
 import { mapStatusToDataState, type SdkStatus } from './map-status-to-data-state';
 import type { RenderableMessage } from './message-shape-adapters';
 import { getMessageId, getTextContent } from './message-shape-adapters';
+import type { AgentArtifactSelection } from './AgentTableArtifact';
 
 export interface MessageThreadProps {
     conversationId: number | null;
@@ -61,6 +62,7 @@ export interface MessageThreadProps {
      */
     onOpenSource?: (citation: import('./chat.api').MessageCitation) => void;
     onMcpAppMessage?: (content: string, appId: string) => Promise<void>;
+    onAgentArtifactSelection?: (selection: AgentArtifactSelection) => Promise<void>;
 }
 
 /**
@@ -91,6 +93,7 @@ export function MessageThread({
     showCounterfactual = true,
     onOpenSource,
     onMcpAppMessage,
+    onAgentArtifactSelection,
 }: MessageThreadProps): ReactNode {
     const threadRef = useRef<HTMLDivElement>(null);
 
@@ -223,6 +226,7 @@ export function MessageThread({
                                 showCounterfactual={showCounterfactual}
                                 onOpenSource={onOpenSource}
                                 onMcpAppMessage={onMcpAppMessage}
+                                onAgentArtifactSelection={onAgentArtifactSelection}
                             />
                         );
                     });

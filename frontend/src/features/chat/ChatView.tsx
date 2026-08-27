@@ -16,6 +16,7 @@ import { AgentActivityBar } from './AgentActivityBar';
 import { SuggestedFollowups } from './SuggestedFollowups';
 import { CitationDocumentModal } from './CitationDocumentModal';
 import { chatPreferencesApi, CHAT_PREFERENCES_QUERY_KEY } from './chat-preferences.api';
+import type { AgentArtifactSelection } from './AgentTableArtifact';
 
 const COLLECTION_SCOPE_PREF_PREFIX = 'askmydocs.chat.collection_scope.';
 
@@ -519,6 +520,16 @@ export function ChatView(): ReactNode {
         await chat.sendMessage({ text: content }, { mcpAppId: appId });
     };
 
+    const handleAgentArtifactSelection = async (selection: AgentArtifactSelection): Promise<void> => {
+        if (activeId === null || chat.status === 'submitted' || chat.status === 'streaming') {
+            throw new Error('The conversation is not ready for a selection.');
+        }
+        await chat.sendMessage(
+            { text: selection.content },
+            { selection: { message_id: selection.messageId, row_key: selection.rowKey } },
+        );
+    };
+
     // v4.5/W7 Tier 1 #2 — regenerate the LAST assistant turn.
     const handleRegenerate = () => {
         chat.regenerate();
@@ -671,6 +682,7 @@ export function ChatView(): ReactNode {
                     showCounterfactual={showCounterfactual}
                     onOpenSource={handleOpenSource}
                     onMcpAppMessage={handleMcpAppMessage}
+                    onAgentArtifactSelection={handleAgentArtifactSelection}
                 />
 
                 <SuggestedFollowups

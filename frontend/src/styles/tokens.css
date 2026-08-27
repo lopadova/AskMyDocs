@@ -678,6 +678,92 @@ textarea:focus-visible {
   overflow-wrap: anywhere;
 }
 
+.agent-table-artifact {
+  margin-top: 12px;
+  background: color-mix(in srgb, var(--panel-solid) 92%, var(--accent-a) 8%);
+  border: 1px solid var(--panel-border-strong);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+.agent-table-artifact[data-interaction-mode="selection"] {
+  border-color: color-mix(in srgb, var(--accent-a) 45%, var(--panel-border));
+}
+.agent-table-artifact-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--hairline);
+}
+.agent-table-artifact-header > div {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.agent-table-artifact-header strong {
+  color: var(--fg-0);
+  font-size: 12px;
+}
+.agent-table-artifact-header span {
+  color: var(--fg-3);
+  font: 500 10px/1.3 var(--font-mono);
+}
+.agent-table-artifact-hint {
+  flex: 0 0 auto;
+  padding: 4px 7px;
+  color: var(--accent-b) !important;
+  background: color-mix(in srgb, var(--accent-b) 9%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-b) 22%, transparent);
+  border-radius: 99px;
+}
+.agent-table-artifact-scroll {
+  max-height: min(46vh, 440px);
+  overflow: auto;
+}
+.agent-table-artifact table {
+  width: 100%;
+  min-width: 560px;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+.agent-table-artifact th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 8px 10px;
+  color: var(--fg-3);
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--panel-border);
+  font: 600 9px/1.2 var(--font-mono);
+  letter-spacing: .04em;
+  text-align: left;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.agent-table-artifact td {
+  max-width: 260px;
+  padding: 8px 10px;
+  color: var(--fg-1);
+  border-bottom: 1px solid var(--hairline);
+  overflow-wrap: anywhere;
+}
+.agent-table-artifact tbody tr:last-child td { border-bottom: 0; }
+.agent-table-artifact tbody tr:hover td { background: color-mix(in srgb, var(--accent-a) 5%, transparent); }
+.agent-table-artifact-action {
+  width: 1%;
+  text-align: right;
+  white-space: nowrap;
+}
+.agent-table-artifact-error {
+  padding: 8px 12px;
+  color: var(--err);
+  border-top: 1px solid color-mix(in srgb, var(--err) 30%, transparent);
+  font-size: 11px;
+}
+
 @media (max-width: 720px) {
   .chat-header-shell { padding: 11px 14px; }
   .chat-header-icon { display: none; }

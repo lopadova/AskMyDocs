@@ -20,6 +20,7 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
         private AgentEventPublisher $events,
         private AgentResultProjector $projector,
         private McpAppTurnContext $mcpAppContext,
+        private AgentTurnContextBuilder $turnContextBuilder,
     ) {}
 
     public function handle(AgentRun $run): void
@@ -123,21 +124,27 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
         $appId = data_get($run->input_json, 'mcp_app_id');
         $user = $run->user;
         $conversation = $run->conversation;
-        if (! is_string($appId) || ! $user instanceof User || ! $conversation instanceof Conversation) {
-            return null;
+        $mcpAppContext = null;
+
+        if (is_string($appId) && $user instanceof User && $conversation instanceof Conversation) {
+            $previousTimezone = date_default_timezone_get();
+            try {
+                // Connector timestamps are persisted in the application timezone.
+                // Agent runs use the actor's timezone for localized output, so use
+                // the storage timezone while authorizing expiry-bound app context.
+                date_default_timezone_set((string) config('app.timezone', 'UTC'));
+
+                $mcpAppContext = $this->mcpAppContext->resolve($appId, $user, $conversation);
+            } finally {
+                date_default_timezone_set($previousTimezone);
+            }
         }
 
-        $previousTimezone = date_default_timezone_get();
-        try {
-            // Connector timestamps are persisted in the application timezone.
-            // Agent runs use the actor's timezone for localized output, so use
-            // the storage timezone while authorizing expiry-bound app context.
-            date_default_timezone_set((string) config('app.timezone', 'UTC'));
+        $context = $this->turnContextBuilder->build($run, $mcpAppContext);
 
-            return $this->mcpAppContext->resolve($appId, $user, $conversation);
-        } finally {
-            date_default_timezone_set($previousTimezone);
-        }
+        return $context === []
+            ? null
+            : json_encode($context, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
 
     private function context(AgentRun $run): AgentExecutionContext

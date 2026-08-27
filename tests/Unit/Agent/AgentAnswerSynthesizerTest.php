@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Unit\Agent;
 
 use App\Agent\AgentAnswerSynthesizer;
+use App\Agent\Artifacts\AgentTableArtifactFactory;
 use App\Agent\AgentExecutionContext;
 use App\Agent\AgentLoopOutcome;
 use App\Agent\Evidence\AgentEvidenceFactory;
@@ -59,7 +60,11 @@ final class AgentAnswerSynthesizerTest extends TestCase
             ]],
         ));
 
-        $answer = (new AgentAnswerSynthesizer($ai, app(WidgetPiiMasker::class)))->synthesize(
+        $answer = (new AgentAnswerSynthesizer(
+            $ai,
+            app(WidgetPiiMasker::class),
+            app(AgentTableArtifactFactory::class),
+        ))->synthesize(
             'Quali ordini ha Tizio?',
             $this->context(),
             new AgentLoopOutcome('answer', $evidence, []),
@@ -74,6 +79,60 @@ final class AgentAnswerSynthesizerTest extends TestCase
         $this->assertStringContainsString('[EMAIL]', $answer->answer);
         $this->assertStringNotContainsString('admin@example.com', $answer->answer);
         $this->assertStringContainsString('Bearer [TOKEN]', $answer->limitations[0]);
+    }
+
+    public function test_it_marks_ambiguous_singular_results_as_a_selectable_table(): void
+    {
+        $evidence = app(AgentEvidenceFactory::class)->empty();
+        $tool = new AgentToolDefinition(
+            name: 'search_customers',
+            displayName: 'Search customers',
+            description: 'Search matching customers',
+            kind: 'api',
+            inputSchema: ['type' => 'object'],
+            readOnly: true,
+            idempotent: true,
+            physicalMinimum: 1,
+            physicalLikely: 1,
+            physicalMaximum: 1,
+            executorReference: 10,
+        );
+        $evidence->addToolResult($tool, ['query' => 'Riccardo Lorini'], ['items' => [
+            ['id' => 101, 'name' => 'Riccardo Lorini'],
+            ['id' => 102, 'name' => 'Riccardo Lorini'],
+        ]], 56);
+
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->once()->andReturn(new AiResponse(
+            content: '',
+            provider: 'fake',
+            model: 'fake-agent',
+            toolCalls: [[
+                'name' => 'submit_agent_answer',
+                'arguments' => [
+                    'answer' => 'Ho trovato più utenti con questo nome. Quale vuoi scegliere?',
+                    'completeness' => 'complete',
+                    'document_ids' => [],
+                    'tool_execution_ids' => [56],
+                    'limitations' => [],
+                    'requires_selection' => true,
+                ],
+            ]],
+        ));
+
+        $answer = (new AgentAnswerSynthesizer(
+            $ai,
+            app(WidgetPiiMasker::class),
+            app(AgentTableArtifactFactory::class),
+        ))->synthesize(
+            'Cerca Riccardo Lorini',
+            $this->context(),
+            new AgentLoopOutcome('answer', $evidence, []),
+        );
+
+        $this->assertTrue($answer->requiresSelection);
+        $this->assertSame('selection', data_get($answer->artifact, 'interaction_mode'));
+        $this->assertSame(['101', '102'], array_column(data_get($answer->artifact, 'rows'), 'key'));
     }
 
     private function context(): AgentExecutionContext

@@ -14,6 +14,7 @@ import { RetrievalRunnerUpPanel } from './RetrievalRunnerUpPanel';
 import { CounterfactualPanel } from './CounterfactualPanel';
 import {
     getCitations,
+    getAgentArtifact,
     getConfidence,
     getCounterfactual,
     getMessageId,
@@ -27,6 +28,7 @@ import {
     type RenderableMessage,
 } from './message-shape-adapters';
 import { ToolCallBubble } from './tool-call-renderer/ToolCallBubble';
+import { AgentTableArtifact, type AgentArtifactSelection } from './AgentTableArtifact';
 
 export interface MessageBubbleProps {
     conversationId: number;
@@ -63,6 +65,7 @@ export interface MessageBubbleProps {
      */
     onOpenSource?: (citation: import('./chat.api').MessageCitation) => void;
     onMcpAppMessage?: (content: string, appId: string) => Promise<void>;
+    onAgentArtifactSelection?: (selection: AgentArtifactSelection) => Promise<void>;
 }
 
 /**
@@ -97,6 +100,7 @@ export function MessageBubble({
     showCounterfactual = true,
     onOpenSource,
     onMcpAppMessage,
+    onAgentArtifactSelection,
 }: MessageBubbleProps): ReactNode {
     const isUser = message.role === 'user';
     const thinking = getReasoningSteps(message);
@@ -191,6 +195,7 @@ export function MessageBubble({
     const toolCalls = getToolCalls(message);
     const runnerUp = getRunnerUp(message);
     const counterfactual = getCounterfactual(message);
+    const agentArtifact = getAgentArtifact(message);
 
     return (
         <div
@@ -244,6 +249,14 @@ export function MessageBubble({
                         <Markdown source={textContent} project={projectKey ?? undefined} />
                         {streaming && <span className="caret" />}
                     </div>
+                )}
+                {!streaming && !isRefusal && agentArtifact && typeof messageId === 'number' && (
+                    <AgentTableArtifact
+                        artifact={agentArtifact}
+                        messageId={messageId}
+                        locale={typeof meta.locale === 'string' ? meta.locale : 'en'}
+                        onSelect={onAgentArtifactSelection}
+                    />
                 )}
                 {/*
                   * Citations are skipped on the refusal path — the BE

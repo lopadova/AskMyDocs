@@ -173,6 +173,37 @@ export interface MessageMetadata {
     runner_up_count?: number;
     counterfactual?: CounterfactualPanel[];
     counterfactual_count?: number;
+    agent_artifact?: AgentTableArtifact | null;
+    requires_selection?: boolean;
+    locale?: string;
+}
+
+export interface AgentTableArtifactColumn {
+    key: string;
+    label: string;
+}
+
+export interface AgentTableArtifactRow {
+    key: string;
+    label: string;
+    values: Record<string, string | number | boolean | null>;
+}
+
+export interface AgentTableArtifact {
+    component_type: 'ui-data-table';
+    interaction_mode: 'view' | 'selection';
+    source_execution_id: number | null;
+    tool: string | null;
+    title: string;
+    columns: AgentTableArtifactColumn[];
+    rows: AgentTableArtifactRow[];
+    total_rows: number;
+    truncated: boolean;
+}
+
+export interface AgentSelectionRequest {
+    message_id: number;
+    row_key: string;
 }
 
 export interface Message {
@@ -285,13 +316,17 @@ export const chatApi = {
         content: string,
         filters?: FilterState,
         mcpAppId?: string,
+        selection?: AgentSelectionRequest,
     ): Promise<AgentTurnStarted> {
-        const payload: { content: string; filters?: FilterState; mcp_app_id?: string } = { content };
+        const payload: { content: string; filters?: FilterState; mcp_app_id?: string; selection?: AgentSelectionRequest } = { content };
         if (filters && !isFilterStateEmpty(filters)) {
             payload.filters = filters;
         }
         if (mcpAppId && /^[0-9A-HJKMNP-TV-Z]{26}$/.test(mcpAppId)) {
             payload.mcp_app_id = mcpAppId;
+        }
+        if (selection) {
+            payload.selection = selection;
         }
         const { data } = await api.post<AgentTurnStarted>(
             `/conversations/${conversationId}/messages/agent`,
