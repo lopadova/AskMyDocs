@@ -56,6 +56,13 @@ final readonly class AgentLoop
         $budget = new AgentBudgetTracker($run);
         $filters = $this->retrievalFilters->forRun($run, $context);
         [$evidence, $completed, $results, $retrieved] = $this->restore($run);
+        $selectedRecord = data_get($run->input_json, 'selection.record');
+        if (is_array($selectedRecord)) {
+            // A row selected in a prior turn is a first-class dependency source.
+            // The planner may refer to it as {"$from":"current_selection","path":"id"}.
+            $results['current_selection'] = $selectedRecord;
+            $results['selected_row'] = $selectedRecord;
+        }
         $user = $run->user;
         $tools = $this->registry->forContext($context, $user instanceof User ? $user : null);
 

@@ -172,6 +172,56 @@ final class AgentMessageControllerTest extends TestCase
         $this->assertSame(44, data_get($run->input_json, 'selection.source_execution_id'));
         $this->assertSame('search-customers', data_get($run->input_json, 'selection.tool'));
         $this->assertSame(102, data_get($conversation->messages()->where('role', 'user')->sole()->metadata, 'agent_selection.record.id'));
+        $this->assertStringContainsString('Ho selezionato questa riga:', data_get($run->input_json, 'question'));
+        $this->assertStringContainsString('"id": 102', data_get($run->input_json, 'question'));
+        $this->assertStringContainsString('"email": "second@example.test"', data_get($run->input_json, 'question'));
+    }
+
+    public function test_a_row_from_a_view_table_can_continue_the_conversation(): void
+    {
+        Queue::fake();
+        app(TenantContext::class)->set('acme');
+        $user = $this->user('agent-view-selection@example.com');
+        ProjectMembership::create([
+            'tenant_id' => 'acme',
+            'user_id' => $user->id,
+            'project_key' => 'crm',
+            'role' => 'member',
+        ]);
+        $conversation = Conversation::create([
+            'tenant_id' => 'acme',
+            'user_id' => $user->id,
+            'title' => 'Orders',
+            'project_key' => 'crm',
+        ]);
+        $assistant = $conversation->messages()->create([
+            'role' => 'assistant',
+            'content' => 'Ecco gli ordini.',
+            'metadata' => ['agent_artifact' => [
+                'component_type' => 'ui-data-table',
+                'interaction_mode' => 'view',
+                'source_execution_id' => 55,
+                'tool' => 'search-orders',
+                'rows' => [[
+                    'key' => 'I016426',
+                    'label' => 'I016426',
+                    'record' => ['id' => 16310, 'number' => 'I016426', 'status' => ['code' => 'CONF']],
+                ]],
+            ]],
+        ]);
+
+        $this->actingAs($user)->postJson(
+            '/test-conversations/'.$conversation->id.'/messages/agent',
+            [
+                'content' => 'Approfondisci questo ordine.',
+                'selection' => ['message_id' => $assistant->id, 'row_key' => 'I016426'],
+            ],
+        )->assertAccepted();
+
+        $run = AgentRun::query()->sole();
+        $this->assertSame(16310, data_get($run->input_json, 'selection.record.id'));
+        $this->assertStringContainsString('"number": "I016426"', data_get($run->input_json, 'question'));
+        $this->assertStringContainsString('"code": "CONF"', data_get($run->input_json, 'question'));
     }
 
     public function test_selection_cannot_reference_an_artifact_from_another_conversation(): void
