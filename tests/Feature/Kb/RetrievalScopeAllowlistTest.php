@@ -182,7 +182,11 @@ final class RetrievalScopeAllowlistTest extends TestCase
             'label' => $slug,
         ]);
 
+        // R30/R31 — the pivot is tenant-aware, and the suite pins
+        // TenantContext to a non-default tenant. Letting the column fall back
+        // to its 'default' DB default would seed a cross-tenant pivot row.
         \DB::table('knowledge_document_tags')->insert([
+            'tenant_id' => $this->tenantId,
             'knowledge_document_id' => $doc->id,
             'kb_tag_id' => $tagId,
         ]);

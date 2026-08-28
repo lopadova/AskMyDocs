@@ -101,18 +101,25 @@ final class ScopeAllowlistSql
     }
 
     /**
-     * `LIKE ? ESCAPE '\'` — spelled out because SQLite has no default
-     * escape character, so an unescaped clause would read the backslashes
-     * {@see escapeLike()} adds as literal text and silently *deny* a path
-     * containing `_` (which is most of them). PostgreSQL accepts the same
-     * clause, so one expression serves tests and production.
+     * `LIKE ?` plus an explicit escape clause — spelled out because SQLite
+     * has no default escape character, so an unescaped clause would read the
+     * escapes {@see escapeLike()} adds as literal text and silently *deny* a
+     * path containing `_` (which is most of them). PostgreSQL accepts the
+     * same clause, so one expression serves tests and production.
+     *
+     * R19 — the escape character is `~`, never a backslash: a backslash one
+     * survives SQLite but dies on PostgreSQL via PDO with `SQLSTATE[HY093]`
+     * once another bound `?` follows in the same query, which is exactly
+     * this class's shape (the separator-count predicate binds a second
+     * placeholder). Enforced by the NoBackslashLikeEscapeTest architecture
+     * test.
      *
      * `$column` is always a qualified column name supplied by the caller,
      * never user input.
      */
     private static function likeExpression(string $column): string
     {
-        return "{$column} LIKE ? ESCAPE '\\'";
+        return "{$column} LIKE ? ".LikeEscaper::ESCAPE_SQL;
     }
 
     /**
@@ -150,11 +157,12 @@ final class ScopeAllowlistSql
 
     /**
      * Neutralise LIKE metacharacters that appear literally in the glob.
-     * `*` and `?` are deliberately left alone — the caller maps them after.
+     * `*` and `?` are deliberately left alone — the caller maps them after,
+     * and {@see LikeEscaper::escape()} touches neither.
      */
     private static function escapeLike(string $literal): string
     {
-        return str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $literal);
+        return LikeEscaper::escape($literal);
     }
 
     private static function literalPrefix(string $glob): string

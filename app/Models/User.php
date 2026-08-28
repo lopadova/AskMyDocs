@@ -215,6 +215,43 @@ class User extends Authenticatable implements InvitedAccount
     }
 
     /**
+     * Every tenant-scoped membership as a `project_key => scope_allowlist`
+     * map, resolved in ONE query.
+     *
+     * `allowedProjects()` plus a per-project `allowedScopesFor()` answers the
+     * same question at a cost of 1 + N queries. AccessScopeScope needs the
+     * whole set on EVERY KnowledgeDocument query -- retrieval's
+     * `whereHas('document')` included -- so on the RAG hot path that N is
+     * paid per search, per user, per membership. This resolves it once.
+     *
+     * Duplicate memberships for one project keep the FIRST row's scope, which
+     * is what `allowedScopesFor()`'s `->first()` already returns.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    public function allowedProjectScopes(): array
+    {
+        // R30 - scope to the active tenant (see allowedProjects()).
+        $memberships = $this->projectMemberships()
+            ->forTenant(app(TenantContext::class)->current())
+            ->get(['project_key', 'scope_allowlist']);
+
+        $scopes = [];
+
+        foreach ($memberships as $membership) {
+            $projectKey = (string) $membership->project_key;
+
+            if (array_key_exists($projectKey, $scopes)) {
+                continue;
+            }
+
+            $scopes[$projectKey] = $membership->scope_allowlist ?? [];
+        }
+
+        return $scopes;
+    }
+
+    /**
      * Authoritative per-document access check.
      *
      *   1. Global `kb.{permission}.any` permission → allow.

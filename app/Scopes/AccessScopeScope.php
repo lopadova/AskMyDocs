@@ -64,14 +64,19 @@ class AccessScopeScope implements Scope
 
     private function constrainByProject(Builder $builder, Model $model, User $user): void
     {
-        $allowed = $user->allowedProjects();
+        // ONE query for the whole membership set. Asking for the project list
+        // and then each project's scope separately costs 1 + N queries, and
+        // this scope runs on EVERY KnowledgeDocument query -- including the
+        // retrieval hot path, which reaches documents through
+        // `whereHas('document')`.
+        $scopes = $user->allowedProjectScopes();
 
-        if ($allowed === []) {
+        if ($scopes === []) {
             $builder->whereRaw('1=0');
             return;
         }
 
-        if (in_array(User::PROJECT_WILDCARD, $allowed, true)) {
+        if (array_key_exists(User::PROJECT_WILDCARD, $scopes)) {
             return;
         }
 
@@ -81,11 +86,11 @@ class AccessScopeScope implements Scope
         // hold `hr/**` in one project and no restriction in another.
         // Collapsing to one `whereIn` would apply a single project's scope
         // to all of them, so each project carries its own arm.
-        $builder->where(function ($outer) use ($allowed, $column, $model, $user): void {
-            foreach ($allowed as $projectKey) {
-                $outer->orWhere(function ($arm) use ($projectKey, $column, $model, $user): void {
-                    $arm->where($column, $projectKey);
-                    $this->constrainByScopeAllowlist($arm, $model, $user, (string) $projectKey);
+        $builder->where(function ($outer) use ($scopes, $column, $model): void {
+            foreach ($scopes as $projectKey => $scope) {
+                $outer->orWhere(function ($arm) use ($projectKey, $scope, $column, $model): void {
+                    $arm->where($column, (string) $projectKey);
+                    $this->constrainByScopeAllowlist($arm, $model, $scope);
                 });
             }
         });
@@ -104,15 +109,16 @@ class AccessScopeScope implements Scope
      * still readable when it carries an allowlisted tag — so both arms are
      * OR'd. An empty allowlist means "no further restriction" and leaves
      * the query untouched, keeping the unscoped plan identical.
+     *
+     * @param  array<string, mixed>  $scope  The membership's decoded
+     *                                       `scope_allowlist`, resolved once
+     *                                       by `User::allowedProjectScopes()`.
      */
     private function constrainByScopeAllowlist(
         mixed $builder,
         Model $model,
-        User $user,
-        string $projectKey,
+        array $scope,
     ): void {
-        $scope = $user->allowedScopesFor($projectKey);
-
         $globs = $scope['folder_globs'] ?? [];
         $tags = $scope['tags'] ?? [];
 
