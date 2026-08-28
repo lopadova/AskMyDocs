@@ -141,14 +141,20 @@ subquery:
   contributes its own arm; one project's scope never applies to another.
 
 <Warning>
-One glob shape is enforced as a *superset* rather than exactly: a glob that
-mixes a single-segment wildcard **and** a cross-segment wildcard. The
-single-segment bound cannot be expressed by a whole-string separator count.
-Such a glob narrows to its literal prefix — never hiding a document the
-member may read, but possibly admitting one they may not — and
-`User::hasDocumentAccess()` stays the authoritative gate for it. Prefer
-allowlist entries using one wildcard kind or the other;
-`ScopeAllowlistSql::isExact()` reports which shape you have.
+One glob shape has no exact translation: a glob that mixes a single-segment
+wildcard **and** a cross-segment wildcard. The single-segment bound cannot be
+expressed by a whole-string separator count.
+
+Such a glob **grants nothing**. Widening it to its literal prefix would be the
+wrong direction here — a superset is harmless only when a later gate narrows
+it, and retrieval has none, so the extra documents would reach the model as
+grounding and be cited. Failing closed can hide a document the member may
+legitimately read, which is the side to err on when the control cannot be
+expressed at all.
+
+Prefer allowlist entries using one wildcard kind or the other, or split the
+glob into exactly-expressible entries; `ScopeAllowlistSql::isExact()` reports
+which shape you have.
 </Warning>
 
 A membership with **no** allowlist is untouched: an empty allowlist means

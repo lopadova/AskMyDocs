@@ -30,12 +30,24 @@ use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
  *
  * The one shape it cannot pin exactly mixes both: a one-star segment AND a
  * two-star segment in the same glob. The one-star needs a per-segment
- * bound that a whole-string separator count cannot express. There it falls
- * back to the literal prefix before the first wildcard, which is a
- * *superset* — it never hides a document the user may read, but may admit
- * one they may not, so for that shape `User::hasDocumentAccess()` remains
- * the authoritative gate. Callers needing certainty for exotic globs
- * should check {@see self::isExact()}.
+ * bound that a whole-string separator count cannot express.
+ *
+ * That shape therefore grants NOTHING here — it contributes an arm that is
+ * always false. Falling back to a *superset* (the literal prefix before the
+ * first wildcard) would be the wrong direction for the very reason this
+ * class exists: a superset is harmless only when something narrows it
+ * afterwards, and on the retrieval path nothing does. `KbSearchService`
+ * reaches documents through `whereHas('document')` and never calls
+ * `KnowledgeDocumentPolicy`, so whatever this scope admits is handed to the
+ * model as grounding and cited. A "hr slash one-star slash reports slash
+ * two-star" membership would have admitted every sibling folder — salaries
+ * included — under a `hr/%` prefix match.
+ *
+ * Failing closed can hide a document the subject may legitimately read
+ * (SEC-FAILCLOSED-001 — when a control cannot be expressed, choose the
+ * authorization-preserving side). Callers can test a glob ahead of time
+ * with {@see self::isExact()}; an operator who needs one of these shapes
+ * should split it into exactly-expressible globs.
  *
  * (Glob examples are spelled out in words above rather than written
  * literally: a star immediately followed by a slash would close this
@@ -47,8 +59,8 @@ use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 final class ScopeAllowlistSql
 {
     /**
-     * True when {@see apply()} enforces `$glob` exactly rather than as a
-     * superset.
+     * True when {@see apply()} can enforce `$glob` exactly. A glob that is
+     * not exact grants nothing at all — see the class docblock.
      */
     public static function isExact(string $glob): bool
     {
@@ -68,11 +80,12 @@ final class ScopeAllowlistSql
         $hasDoubleStar = count($tokens) > 1;
 
         if ($hasDoubleStar && self::hasSingleSegmentWildcard($tokens)) {
-            // Not exactly expressible — narrow to the literal prefix.
-            $builder->orWhereRaw(
-                self::likeExpression($column),
-                [self::escapeLike(self::literalPrefix($glob)).'%'],
-            );
+            // Not exactly expressible, so grant nothing rather than admit a
+            // superset the retrieval path has no second gate to narrow.
+            // The arm is still emitted: callers OR these together inside one
+            // group, and an empty group would be dropped by the query
+            // builder — which reads as "no restriction", the exact opposite.
+            $builder->orWhereRaw('1 = 0');
 
             return;
         }
@@ -165,10 +178,4 @@ final class ScopeAllowlistSql
         return LikeEscaper::escape($literal);
     }
 
-    private static function literalPrefix(string $glob): string
-    {
-        $cut = strcspn($glob, '*?');
-
-        return substr($glob, 0, $cut);
-    }
 }

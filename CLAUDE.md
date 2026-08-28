@@ -971,13 +971,18 @@ test that queries **through the relationship** (`whereHas`) rather than through
 the controller — a controller test passes on the policy alone and proves
 nothing about the hot path.
 
-`User::hasDocumentAccess()` stays authoritative. The SQL must never be **wider**
-than it; where a construct cannot be expressed exactly in portable SQL it must
-narrow to a **superset** and say so in the code and the docs (see
-`ScopeAllowlistSql::isExact()`, which reports the one glob shape mixing
-single- and cross-segment wildcards). A subject with no restriction of this
-kind MUST generate the identical query as before, so the rule costs nothing on
-the paths it does not constrain.
+`User::hasDocumentAccess()` stays authoritative, and the SQL must never be
+**wider** than it. A superset is not an acceptable fallback here: it is safe
+only when something narrows it afterwards, and the retrieval path has nothing
+— that is the whole premise of this rule. So where a construct cannot be
+expressed exactly in portable SQL it MUST **fail closed** (grant nothing) and
+say so in the code and the docs; see `ScopeAllowlistSql::isExact()`, which
+reports the one glob shape mixing single- and cross-segment wildcards.
+Emit an always-false arm rather than no arm — an empty `where` group is
+dropped by the query builder and reads as "no restriction", inverting the
+control. A subject with no restriction of this kind MUST generate the
+identical query as before, so the rule costs nothing on the paths it does not
+constrain.
 
 Graded on **blast radius**: this is the shape of the H8 finding (role-deny ACL
 ignored by the global scope — "only caught by the per-row policy check, which

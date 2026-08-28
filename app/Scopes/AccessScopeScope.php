@@ -37,8 +37,11 @@ use Illuminate\Support\Facades\DB;
  * SQL (see App\Support\ScopeAllowlistSql), exact for every glob shape but
  * one, and costs a join only for memberships that actually carry a scope.
  *
- * The policy remains the authoritative per-row check and the only gate for
- * the one inexact shape (a glob mixing `**` with a single-segment `*`).
+ * The one shape it cannot express exactly — a glob mixing `**` with a
+ * single-segment `*` — grants nothing rather than widening to a prefix
+ * match, because there is no second gate on this path to narrow a superset.
+ *
+ * The policy remains the authoritative per-row check everywhere it runs.
  */
 class AccessScopeScope implements Scope
 {

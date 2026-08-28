@@ -92,6 +92,58 @@ final class RetrievalScopeAllowlistTest extends TestCase
         $this->assertSame(['hr/handbook.md'], $paths);
     }
 
+    public function test_glob_mixing_cross_and_single_segment_wildcards_grants_nothing(): void
+    {
+        // A glob carrying BOTH a cross-segment and a single-segment wildcard
+        // has no exact LIKE translation: the whole-string separator count
+        // that pins a single-segment wildcard cannot coexist with a
+        // cross-segment one. Translating it to the literal prefix before the
+        // first wildcard would WIDEN the query — every sibling folder under
+        // `hr/` would match `hr/%`, salaries included — and on the retrieval
+        // path nothing narrows it afterwards, so those chunks would become
+        // grounding. ScopeAllowlistSql therefore grants nothing for the
+        // shape; this test pins BOTH halves of that contract.
+        $this->makeDocumentWithChunk('hr/eng/reports/q1.md', 'Engineering shipped 12 features.');
+
+        $this->actingAs($this->scopedUser(['folder_globs' => ['hr/*/reports/**']]));
+
+        $paths = KnowledgeDocument::query()->pluck('source_path')->all();
+
+        $this->assertNotContains(
+            self::OUT_OF_SCOPE,
+            $paths,
+            'An inexpressible glob widened the scope to a sibling folder.',
+        );
+        $this->assertSame(
+            [],
+            $paths,
+            'An inexpressible glob must grant nothing rather than a superset.',
+        );
+
+        // The retrieval shape must fail closed identically — that is the
+        // path with no policy behind it.
+        $texts = KnowledgeChunk::query()
+            ->whereHas('document', fn ($q) => $q->where('status', '!=', 'archived'))
+            ->pluck('chunk_text')
+            ->all();
+
+        $this->assertSame([], $texts);
+    }
+
+    public function test_exact_globs_still_grant_when_listed_beside_an_inexpressible_one(): void
+    {
+        // Failing closed is per GLOB, not per membership: an allowlist that
+        // mixes an expressible glob with an inexpressible one must still
+        // grant everything the expressible one covers.
+        $this->actingAs($this->scopedUser([
+            'folder_globs' => ['hr/*/reports/**', 'hr/policies/**'],
+        ]));
+
+        $paths = KnowledgeDocument::query()->pluck('source_path')->all();
+
+        $this->assertSame([self::IN_SCOPE], $paths);
+    }
+
     public function test_tag_arm_of_the_allowlist_still_grants_access(): void
     {
         // `matchesScope()` is globs OR tags — a doc outside every glob is
