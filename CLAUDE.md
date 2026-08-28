@@ -991,6 +991,7 @@ bug one arm later — a member scoped to `hr/policies/**` still received
 `hr/salaries/**` chunks as grounding, with citations. Two arms of one method,
 the same omission, found two audits apart.
 → See `app/Support/ScopeAllowlistSql.php` + `tests/Feature/Kb/RetrievalScopeAllowlistTest.php`.
+
 ### R37 — Branching strategy: `feature/v4.x` integration branches → main
 For AskMyDocs, `main` holds the **stable production release** (v3 today,
 v4.0 when v4.0 RC ships, v4.1 when v4.1 ships, etc.). Each major
