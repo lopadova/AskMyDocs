@@ -163,6 +163,30 @@ export const Icon = {
     Activity: (p: IconProps) => (
         <I {...p} d={<path d="M3 12h4l2-7 4 14 2-7h6" />} />
     ),
+    Api: (p: IconProps) => (
+        <I
+            {...p}
+            d={
+                <>
+                    <path d="m8 8-4 4 4 4M16 8l4 4-4 4M14 4l-4 16" />
+                </>
+            }
+        />
+    ),
+    Mcp: (p: IconProps) => (
+        <I
+            {...p}
+            d={
+                <>
+                    <circle cx="12" cy="12" r="2.5" />
+                    <circle cx="5" cy="5" r="2" />
+                    <circle cx="19" cy="5" r="2" />
+                    <circle cx="12" cy="20" r="2" />
+                    <path d="m10.2 10.2-3.8-3.8M13.8 10.2l3.8-3.8M12 14.5V18" />
+                </>
+            }
+        />
+    ),
     Bell: (p: IconProps) => (
         <I
             {...p}

@@ -95,7 +95,10 @@ final class AgentLoopTest extends TestCase
         $this->assertSame(['completed', 'completed'], array_column($outcome->completedActions, 'status'));
         $this->assertSame(77, $run->toolExecutions()->orderBy('logical_index')->get()[1]->arguments_json['customer_id']);
         $this->assertSame(2, $run->fresh()->counters_json['physical_calls']);
-        $this->assertSame('it-IT', $run->events()->where('type', 'tool.started')->first()->locale);
+        $startedEvent = $run->events()->where('type', 'tool.started')->first();
+        $this->assertSame('it-IT', $startedEvent->locale);
+        $this->assertSame('api', data_get($startedEvent->payload_json, 'data.tool_kind'));
+        $this->assertSame('find_customer', data_get($startedEvent->payload_json, 'data.tool_display_name'));
         $this->assertSame(2, $run->toolExecutions()->count());
         Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/customers/77/orders'));
     }

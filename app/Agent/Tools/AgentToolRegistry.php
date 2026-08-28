@@ -184,6 +184,7 @@ final readonly class AgentToolRegistry
                     metadata: [
                         'mcp_runtime' => 'legacy',
                         'server_id' => $server->id,
+                        'server_name' => (string) $server->name,
                     ],
                 );
             }

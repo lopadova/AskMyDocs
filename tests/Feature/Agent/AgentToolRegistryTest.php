@@ -75,6 +75,7 @@ final class AgentToolRegistryTest extends TestCase
         $this->assertTrue($definition->idempotent);
         $this->assertSame('connector', $definition->metadata['mcp_runtime']);
         $this->assertSame($tool->connection->public_id, data_get($definition->metadata, 'provenance.connection_id'));
+        $this->assertSame('list_my_orders_12345678', data_get($definition->metadata, 'provenance.server_name'));
     }
 
     public function test_off_mcp_connector_runtime_does_not_leak_new_catalog_tools(): void

@@ -18,7 +18,7 @@ const progressEvent: AgentRunEvent = {
         eta_ms: 4200,
     },
     can_cancel: true,
-    data: { tool: 'list_orders' },
+    data: { tool: 'list_orders', tool_kind: 'api', tool_display_name: 'list-orders' },
     created_at: null,
 };
 
@@ -27,10 +27,11 @@ describe('AgentActivityBar', () => {
         const cancel = vi.fn();
         render(<AgentActivityBar events={[progressEvent]} active awaitingConfirmation={false} onCancel={cancel} onContinue={() => undefined} />);
 
-        expect(screen.getByTestId('agent-activity-heading')).toHaveTextContent('Ricerca in corso');
-        expect(screen.getByTestId('agent-activity-message')).toHaveTextContent('Completate 3 richieste API');
+        expect(screen.getByTestId('agent-activity-heading')).toHaveTextContent('Chiamata API');
+        expect(screen.getByTestId('agent-activity-message')).toHaveTextContent('list-orders');
         expect(screen.getByTestId('agent-activity-calls')).toHaveTextContent('3 / ~10 chiamate');
-        expect(screen.getByTestId('agent-activity-progress')).toHaveStyle({ width: '30%' });
+        expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '30');
+        expect(screen.getByRole('progressbar')).toHaveAttribute('data-kind', 'api');
         fireEvent.click(screen.getByTestId('agent-activity-cancel'));
         expect(cancel).toHaveBeenCalledOnce();
     });
@@ -42,7 +43,7 @@ describe('AgentActivityBar', () => {
         fireEvent.click(screen.getByTestId('agent-activity-continue'));
         expect(proceed).toHaveBeenCalledOnce();
         expect(screen.getByTestId('agent-activity-bar')).toHaveAttribute('data-state', 'confirmation');
-        expect(screen.getByTestId('agent-activity-heading')).toHaveTextContent('Conferma necessaria');
+        expect(screen.getByTestId('agent-activity-heading')).toHaveTextContent('Serve una conferma');
     });
 
     it('keeps a settled summary compact and exposes the chronological timeline on demand', () => {
@@ -59,10 +60,52 @@ describe('AgentActivityBar', () => {
 
         render(<AgentActivityBar events={[progressEvent, completedEvent]} active={false} awaitingConfirmation={false} onCancel={() => undefined} onContinue={() => undefined} />);
 
-        expect(screen.getByTestId('agent-activity-heading')).toHaveTextContent('Attività completata');
+        expect(screen.getByTestId('agent-activity-heading')).toHaveTextContent('Risultato pronto');
         expect(screen.getByText('Cronologia attività')).toBeInTheDocument();
         expect(screen.getByText('2')).toBeInTheDocument();
         expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '100');
+        expect(screen.queryByTestId('agent-activity-timeline')).not.toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Mostra attività' }));
+        expect(screen.getByTestId('agent-activity-timeline')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Nascondi attività' })).toHaveAttribute('aria-expanded', 'true');
+    });
+
+    it('identifies the active MCP server and tool at a glance', () => {
+        const mcpStarted: AgentRunEvent = {
+            ...progressEvent,
+            type: 'tool.started',
+            message: 'Sto chiamando search-customers.',
+            message_params: { tool: 'search-customers' },
+            data: {
+                tool: 'mcp_01m113xm_search_customers_60ededa1',
+                tool_kind: 'mcp',
+                tool_display_name: 'search-customers',
+                mcp_server_name: 'Gescat',
+                mcp_tool_name: 'search-customers',
+            },
+        };
+
+        render(<AgentActivityBar events={[mcpStarted]} active awaitingConfirmation={false} onCancel={() => undefined} onContinue={() => undefined} />);
+
+        expect(screen.getByTestId('agent-activity-heading')).toHaveTextContent('Chiamata MCP');
+        expect(screen.getByTestId('agent-activity-message')).toHaveTextContent('Gescat · search-customers');
+        expect(screen.getByRole('progressbar')).toHaveAttribute('data-kind', 'mcp');
+    });
+
+    it('switches to result analysis after a tool responds', () => {
+        render(
+            <AgentActivityBar
+                events={[{ ...progressEvent, type: 'tool.completed', message: 'list-orders completato.' }]}
+                active
+                awaitingConfirmation={false}
+                onCancel={() => undefined}
+                onContinue={() => undefined}
+            />,
+        );
+
+        expect(screen.getByTestId('agent-activity-heading')).toHaveTextContent('Analisi del risultato');
+        expect(screen.getByRole('progressbar')).toHaveAttribute('data-kind', 'analyzing');
     });
 
     it('shows local MCP request and response details inside the matching activity event', async () => {
@@ -92,8 +135,10 @@ describe('AgentActivityBar', () => {
 
         render(<AgentActivityBar events={[progressEvent, mcpEvent]} active={false} awaitingConfirmation={false} onCancel={() => undefined} onContinue={() => undefined} />);
 
+        expect(screen.queryByText('Dettagli chiamata MCP')).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Mostra attività' }));
         expect(screen.getByText('Dettagli chiamata MCP')).toBeInTheDocument();
-        expect(screen.getByText('list-my-orders')).toBeInTheDocument();
+        expect(screen.getAllByText('list-my-orders').length).toBeGreaterThan(0);
         expect(screen.getByText('ok · 42 ms')).toBeInTheDocument();
         expect(screen.getByText(/"customer_id": 17/)).toBeInTheDocument();
         expect(screen.getByText(/"id": 123/)).toBeInTheDocument();
@@ -133,6 +178,7 @@ describe('AgentActivityBar', () => {
             />,
         );
 
+        fireEvent.click(screen.getByRole('button', { name: 'Mostra attività' }));
         expect(screen.getByText('Dettagli chiamata MCP')).toBeInTheDocument();
     });
 
