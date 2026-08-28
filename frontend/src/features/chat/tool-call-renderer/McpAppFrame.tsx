@@ -7,6 +7,7 @@ import type {
 } from '@modelcontextprotocol/ext-apps/app-bridge';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
+import { Icon } from '../../../components/Icons';
 import { api } from '../../../lib/api';
 import { ToolResultPreview } from './ToolResultPreview';
 
@@ -70,6 +71,7 @@ export function McpAppFrame({ app, conversationId, onSendMessage }: McpAppFrameP
     const [inputJson, setInputJson] = useState('{}');
     const [submitting, setSubmitting] = useState(false);
     const [displayMode, setDisplayMode] = useState<'inline' | 'fullscreen'>('inline');
+    const [reloadToken, setReloadToken] = useState(0);
 
     useEffect(() => {
         onSendMessageRef.current = onSendMessage;
@@ -95,7 +97,23 @@ export function McpAppFrame({ app, conversationId, onSendMessage }: McpAppFrameP
         return () => {
             disposed = true;
         };
-    }, [app.id, conversationId]);
+    }, [app.id, conversationId, reloadToken]);
+
+    useEffect(() => {
+        if (displayMode !== 'fullscreen') return;
+
+        const exitOnEscape = (event: KeyboardEvent) => {
+            if (event.key !== 'Escape') return;
+            setDisplayMode('inline');
+            bridgeRef.current?.setHostContext({
+                displayMode: 'inline',
+                availableDisplayModes: ['inline', 'fullscreen'],
+            });
+        };
+        window.addEventListener('keydown', exitOnEscape);
+
+        return () => window.removeEventListener('keydown', exitOnEscape);
+    }, [displayMode]);
 
     useEffect(() => {
         const iframe = iframeRef.current;
@@ -343,51 +361,76 @@ export function McpAppFrame({ app, conversationId, onSendMessage }: McpAppFrameP
 
     const fallback = resource?.fallback ?? app.fallback ?? 'This MCP tool returned an interactive app.';
     const iframeAllow = permissionAllowAttribute(resource?.permissions);
+    const appTitle = resource?.description ?? 'Interactive MCP App';
 
     return (
         <div
             data-testid={`mcp-app-${app.id}`}
-            style={{
-                marginTop: 10,
-                overflow: 'hidden',
-                border: resource?.prefers_border === false ? 0 : '1px solid var(--border-2)',
-                borderRadius: 10,
-                background: 'var(--bg-2)',
-                ...(displayMode === 'fullscreen'
-                    ? {
-                          position: 'fixed',
-                          inset: 16,
-                          zIndex: 1000,
-                          display: 'flex',
-                          flexDirection: 'column',
-                          boxShadow: '0 24px 80px rgba(0,0,0,.45)',
-                      }
-                    : {}),
-            }}
+            className="mcp-app-frame"
+            data-display-mode={displayMode}
+            data-prefers-border={resource?.prefers_border !== false}
         >
-            {displayMode === 'fullscreen' ? (
-                <button
-                    type="button"
-                    onClick={() => changeDisplayMode('inline')}
-                    style={{ ...buttonStyle, margin: 8, marginLeft: 'auto' }}
+            <header className="mcp-app-frame-header">
+                <span className="mcp-app-frame-icon" aria-hidden="true"><Icon.Grid size={14} /></span>
+                <div className="mcp-app-frame-heading">
+                    <strong>{appTitle}</strong>
+                    <span>MCP App</span>
+                </div>
+                <span
+                    className="mcp-app-frame-status"
+                    data-ready={ready || undefined}
+                    data-error={error ? true : undefined}
                 >
-                    Exit fullscreen
-                </button>
+                    {loading ? 'Loading' : error ? 'Error' : ready ? 'Ready' : resource?.available ? 'Starting' : 'Unavailable'}
+                </span>
+                {resource?.advanced_enabled && displayMode === 'inline' ? (
+                    <button
+                        type="button"
+                        className="mcp-app-frame-action"
+                        onClick={() => changeDisplayMode('fullscreen')}
+                    >
+                        Fullscreen
+                    </button>
+                ) : null}
+                {displayMode === 'fullscreen' ? (
+                    <button
+                        type="button"
+                        className="mcp-app-frame-action"
+                        onClick={() => changeDisplayMode('inline')}
+                    >
+                        <Icon.Close size={12} /> Exit fullscreen
+                    </button>
+                ) : null}
+            </header>
+            {loading ? (
+                <div className="mcp-app-frame-notice" role="status">
+                    <span className="mcp-app-frame-loader" aria-hidden="true" />
+                    Loading interactive MCP App…
+                </div>
             ) : null}
-            {loading ? <div style={noticeStyle}>Loading interactive MCP App…</div> : null}
             {!loading && !resource?.available ? (
-                <div style={noticeStyle}>
+                <div className="mcp-app-frame-empty">
+                    <strong>Interactive view unavailable</strong>
                     <div>{fallback}</div>
-                    {error ? <div role="alert" style={{ color: 'var(--danger-fg)', marginTop: 6 }}>{error}</div> : null}
+                    {error ? <div role="alert" className="mcp-app-frame-error">{error}</div> : null}
+                    {error ? (
+                        <button type="button" className="mcp-app-frame-action" onClick={() => setReloadToken((value) => value + 1)}>
+                            Try again
+                        </button>
+                    ) : null}
                 </div>
             ) : null}
             {resource?.available ? (
                 <>
-                    {resource.description ? <div style={descriptionStyle}>{resource.description}</div> : null}
-                    {!ready ? <div style={noticeStyle}>Starting secure app…</div> : null}
+                    {!loading && !ready && !error ? (
+                        <div className="mcp-app-frame-notice" role="status">
+                            <span className="mcp-app-frame-loader" aria-hidden="true" />
+                            Starting secure app…
+                        </div>
+                    ) : null}
                     <iframe
                         ref={iframeRef}
-                        title={resource.description ?? 'Interactive MCP App'}
+                        title={appTitle}
                         src="about:blank"
                         sandbox="allow-scripts allow-same-origin"
                         allow={iframeAllow || undefined}
@@ -404,20 +447,28 @@ export function McpAppFrame({ app, conversationId, onSendMessage }: McpAppFrameP
                 </>
             ) : null}
             {resource?.available && error ? (
-                <div role="alert" style={{ ...noticeStyle, color: 'var(--danger-fg)' }}>{error}</div>
+                <div role="alert" className="mcp-app-frame-error mcp-app-frame-error-block">
+                    <span>{error}</span>
+                    <button type="button" className="mcp-app-frame-action" onClick={() => setReloadToken((value) => value + 1)}>
+                        Restart app
+                    </button>
+                </div>
             ) : null}
             {pendingInteraction ? (
-                <div data-testid={`mcp-app-${app.id}-interaction`} style={interactionStyle}>
-                    <div style={{ fontWeight: 600 }}>
-                        {pendingInteraction.kind === 'confirmation_required' ? 'Confirmation required' : 'Additional input required'}
+                <div data-testid={`mcp-app-${app.id}-interaction`} className="mcp-app-interaction">
+                    <div className="mcp-app-interaction-heading">
+                        <span className="mcp-app-interaction-icon" aria-hidden="true"><Icon.Bolt size={13} /></span>
+                        <strong>
+                            {pendingInteraction.kind === 'confirmation_required' ? 'Confirmation required' : 'Additional input required'}
+                        </strong>
                     </div>
                     {typeof pendingInteraction.prompt?.message === 'string'
                         ? <div>{pendingInteraction.prompt.message}</div>
                         : null}
                     {pendingInteraction.kind === 'confirmation_required' ? (
-                        <div style={{ display: 'flex', gap: 8 }}>
-                            <button type="button" disabled={submitting} onClick={() => void respondToInteraction({ confirmed: true })} style={buttonStyle}>Confirm</button>
-                            <button type="button" disabled={submitting} onClick={() => void respondToInteraction({ confirmed: false })} style={buttonStyle}>Decline</button>
+                        <div className="mcp-app-interaction-actions">
+                            <button type="button" className="btn sm primary" disabled={submitting} onClick={() => void respondToInteraction({ confirmed: true })}>Confirm</button>
+                            <button type="button" className="btn sm ghost" disabled={submitting} onClick={() => void respondToInteraction({ confirmed: false })}>Decline</button>
                         </div>
                     ) : (
                         <>
@@ -429,9 +480,9 @@ export function McpAppFrame({ app, conversationId, onSendMessage }: McpAppFrameP
                                 value={inputJson}
                                 onChange={(event) => setInputJson(event.target.value)}
                                 rows={4}
-                                style={inputStyle}
+                                className="mcp-app-interaction-input"
                             />
-                            <button type="button" disabled={submitting} onClick={submitInput} style={buttonStyle}>Send input</button>
+                            <button type="button" className="btn sm primary" disabled={submitting} onClick={submitInput}>Send input</button>
                         </>
                     )}
                 </div>
@@ -531,45 +582,3 @@ function currentTimeZone(): string | undefined {
         return undefined;
     }
 }
-
-const noticeStyle: React.CSSProperties = {
-    padding: '12px 14px',
-    color: 'var(--fg-2)',
-};
-
-const descriptionStyle: React.CSSProperties = {
-    padding: '8px 12px',
-    borderBottom: '1px solid var(--border-2)',
-    color: 'var(--fg-2)',
-    fontSize: 12,
-};
-
-const interactionStyle: React.CSSProperties = {
-    display: 'grid',
-    gap: 8,
-    padding: 12,
-    borderTop: '1px solid var(--border-2)',
-};
-
-const buttonStyle: React.CSSProperties = {
-    width: 'fit-content',
-    border: '1px solid rgba(245,158,11,.4)',
-    borderRadius: 7,
-    background: 'rgba(245,158,11,.12)',
-    color: 'var(--fg-0)',
-    padding: '6px 10px',
-    cursor: 'pointer',
-    font: 'inherit',
-};
-
-const inputStyle: React.CSSProperties = {
-    width: '100%',
-    boxSizing: 'border-box',
-    border: '1px solid var(--border-2)',
-    borderRadius: 7,
-    background: 'var(--bg-1)',
-    color: 'var(--fg-0)',
-    padding: 8,
-    fontFamily: 'var(--font-mono, ui-monospace)',
-    fontSize: 12,
-};

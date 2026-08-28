@@ -145,6 +145,7 @@ describe('McpAppFrame', () => {
             _meta: { widgetState: 'private' },
         })));
         await waitFor(() => expect(frame).toHaveStyle({ display: 'block' }));
+        expect(screen.getByText('Ready')).toBeInTheDocument();
 
         act(() => bridge.onsizechange?.({ height: 5_000 }));
         await waitFor(() => expect(frame).toHaveStyle({ height: '900px' }));
@@ -228,6 +229,20 @@ describe('McpAppFrame', () => {
         expect(bridgeInstances).toHaveLength(0);
     });
 
+    it('lets the user retry when loading the app resource fails', async () => {
+        getMock
+            .mockRejectedValueOnce(new Error('offline'))
+            .mockResolvedValueOnce({ data: appResource() });
+
+        render(<McpAppFrame app={handle} conversationId={17} />);
+
+        expect(await screen.findByRole('alert')).toHaveTextContent('Could not load this MCP App.');
+        fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+
+        await waitFor(() => expect(getMock).toHaveBeenCalledTimes(2));
+        expect(await screen.findByTestId('mcp-app-01MCPAPP-frame')).toBeInTheDocument();
+    });
+
     it('enables advanced message, model-context, download and fullscreen capabilities only when advertised', async () => {
         getMock.mockResolvedValueOnce({
             data: appResource({ advanced_enabled: true }),
@@ -255,6 +270,7 @@ describe('McpAppFrame', () => {
             message: { text: {} },
             updateModelContext: { text: {}, structuredContent: {} },
         });
+        expect(screen.getByRole('button', { name: 'Fullscreen' })).toBeInTheDocument();
 
         await expect(
             bridge.onupdatemodelcontext?.({
@@ -291,6 +307,13 @@ describe('McpAppFrame', () => {
         expect(await screen.findByRole('button', { name: 'Exit fullscreen' })).toBeInTheDocument();
         expect(bridge.setHostContext).toHaveBeenCalledWith({
             displayMode: 'fullscreen',
+            availableDisplayModes: ['inline', 'fullscreen'],
+        });
+
+        fireEvent.keyDown(window, { key: 'Escape' });
+        expect(await screen.findByRole('button', { name: 'Fullscreen' })).toBeInTheDocument();
+        expect(bridge.setHostContext).toHaveBeenLastCalledWith({
+            displayMode: 'inline',
             availableDisplayModes: ['inline', 'fullscreen'],
         });
 
