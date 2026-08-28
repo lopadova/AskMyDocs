@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { Icon } from '../../components/Icons';
 import type { AgentTableArtifact as AgentTableArtifactData } from './chat.api';
 
 export interface AgentArtifactSelection {
@@ -22,13 +23,14 @@ export function AgentTableArtifact({
     onSelect,
 }: AgentTableArtifactProps): ReactNode {
     const [submitting, setSubmitting] = useState<string | null>(null);
+    const [selected, setSelected] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const italian = locale.toLowerCase().startsWith('it');
     const selectable = onSelect !== undefined;
     const selectionRequired = artifact.interaction_mode === 'selection';
 
     async function select(rowKey: string, label: string): Promise<void> {
-        if (!onSelect || submitting !== null) return;
+        if (!onSelect || submitting !== null || selected !== null) return;
         setSubmitting(rowKey);
         setError(null);
         try {
@@ -38,6 +40,7 @@ export function AgentTableArtifact({
                 label,
                 content: selectionContent(label, rowValues(artifact, rowKey), italian),
             });
+            setSelected(rowKey);
         } catch (cause) {
             setError(cause instanceof Error ? cause.message : (italian ? 'Selezione non riuscita.' : 'Selection failed.'));
         } finally {
@@ -76,31 +79,52 @@ export function AgentTableArtifact({
                         </tr>
                     </thead>
                     <tbody>
-                        {artifact.rows.map((row) => (
-                            <tr key={row.key}>
-                                {artifact.columns.map((column) => (
-                                    <td key={column.key}>{displayValue(row.values[column.key])}</td>
-                                ))}
-                                {selectable && (
-                                    <td className="agent-table-artifact-action">
-                                        <button
-                                            type="button"
-                                            className="btn sm primary"
-                                            disabled={submitting !== null}
-                                            onClick={() => void select(row.key, row.label)}
-                                            data-testid={`agent-table-select-${row.key}`}
-                                        >
-                                            {submitting === row.key
-                                                ? (italian ? 'Scelgo…' : 'Selecting…')
-                                                : (italian ? 'Scegli' : 'Select')}
-                                        </button>
-                                    </td>
-                                )}
-                            </tr>
-                        ))}
+                        {artifact.rows.map((row) => {
+                            const isSelected = selected === row.key;
+
+                            return (
+                                <tr
+                                    key={row.key}
+                                    className={selectable ? 'is-selectable' : undefined}
+                                    data-selected={isSelected || undefined}
+                                    aria-selected={selectable ? isSelected : undefined}
+                                    onClick={selectable ? () => void select(row.key, row.label) : undefined}
+                                >
+                                    {artifact.columns.map((column) => (
+                                        <td key={column.key}>{displayValue(row.values[column.key])}</td>
+                                    ))}
+                                    {selectable && (
+                                        <td className="agent-table-artifact-action">
+                                            <button
+                                                type="button"
+                                                className={`btn sm ${isSelected ? 'ghost' : 'primary'} agent-table-artifact-select`}
+                                                disabled={submitting !== null || selected !== null}
+                                                onClick={(event) => {
+                                                    event.stopPropagation();
+                                                    void select(row.key, row.label);
+                                                }}
+                                                data-testid={`agent-table-select-${row.key}`}
+                                            >
+                                                {submitting === row.key
+                                                    ? (italian ? 'Scelgo…' : 'Selecting…')
+                                                    : isSelected
+                                                        ? <><Icon.Check size={12} /> {italian ? 'Selezionata' : 'Selected'}</>
+                                                        : (italian ? 'Usa questa riga' : 'Use this row')}
+                                            </button>
+                                        </td>
+                                    )}
+                                </tr>
+                            );
+                        })}
                     </tbody>
                 </table>
             </div>
+            {selected && (
+                <div className="agent-table-artifact-success" role="status">
+                    <Icon.Check size={13} />
+                    {italian ? 'Scelta inviata alla chat.' : 'Selection sent to the chat.'}
+                </div>
+            )}
             {error && <div className="agent-table-artifact-error" role="alert">{error}</div>}
         </section>
     );

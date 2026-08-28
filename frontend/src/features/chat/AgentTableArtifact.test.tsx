@@ -29,7 +29,7 @@ describe('AgentTableArtifact', () => {
 
         expect(screen.getByText('Scegli una riga per continuare')).toBeInTheDocument();
         expect(screen.getAllByText('Riccardo Lorini')).toHaveLength(2);
-        fireEvent.click(screen.getByTestId('agent-table-select-102'));
+        fireEvent.click(screen.getByText('two@example.test').closest('tr')!);
 
         await waitFor(() => expect(onSelect).toHaveBeenCalledOnce());
         const selection = onSelect.mock.calls[0]?.[0];
@@ -37,6 +37,11 @@ describe('AgentTableArtifact', () => {
         expect(selection?.content).toContain('Ho selezionato questa riga (Riccardo Lorini)');
         expect(selection?.content).toContain('"id": 102');
         expect(selection?.content).toContain('"email": "two@example.test"');
+        expect(await screen.findByText('Scelta inviata alla chat.')).toBeInTheDocument();
+        expect(screen.getByTestId('agent-table-select-102')).toHaveTextContent('Selezionata');
+
+        fireEvent.click(screen.getByText('one@example.test').closest('tr')!);
+        expect(onSelect).toHaveBeenCalledOnce();
     });
 
     it('lets the user select a row for inspection in view mode', () => {
@@ -52,6 +57,6 @@ describe('AgentTableArtifact', () => {
 
         expect(screen.queryByText('Scegli una riga per continuare')).not.toBeInTheDocument();
         expect(screen.getByText('Seleziona una riga per approfondire')).toBeInTheDocument();
-        expect(screen.getAllByRole('button', { name: 'Scegli' })).toHaveLength(2);
+        expect(screen.getAllByRole('button', { name: 'Usa questa riga' })).toHaveLength(2);
     });
 });

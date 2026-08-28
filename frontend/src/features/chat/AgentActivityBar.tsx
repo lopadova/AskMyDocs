@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { AgentRunEvent } from '../../lib/agent-run-events';
 import { Icon } from '../../components/Icons';
 
@@ -37,6 +37,9 @@ export function AgentActivityBar({
             error: 'Errore',
             server: 'Server',
             runtime: 'Runtime',
+            copy: 'Copia',
+            copied: 'Copiato',
+            copyFailed: 'Copia non riuscita',
         }
         : {
             active: 'Search in progress',
@@ -54,6 +57,9 @@ export function AgentActivityBar({
             error: 'Error',
             server: 'Server',
             runtime: 'Runtime',
+            copy: 'Copy',
+            copied: 'Copied',
+            copyFailed: 'Copy failed',
         };
     const progress = latest?.progress;
     const physical = progress?.physical;
@@ -62,7 +68,9 @@ export function AgentActivityBar({
     const completed = metric?.completed ?? 0;
     const likely = Math.max(completed, metric?.estimated.likely ?? 0);
     const percent = likely > 0 ? Math.min(100, Math.round((completed / likely) * 100)) : (active ? 12 : 100);
-    const messages = events.filter((event) => typeof event.message === 'string' && event.message !== '');
+    const timelineEvents = events.filter((event) => (
+        (typeof event.message === 'string' && event.message !== '') || mcpDebugData(event) !== null
+    ));
     const state = awaitingConfirmation ? 'confirmation' : active ? 'active' : 'settled';
     const heading = copy[state];
 
@@ -116,19 +124,19 @@ export function AgentActivityBar({
                     </button>
                 )}
             </div>
-            {messages.length > 1 && (
+            {(timelineEvents.length > 1 || timelineEvents.some((event) => mcpDebugData(event) !== null)) && (
                 <details className="agent-activity-details">
                     <summary>
                         <span>{copy.details}</span>
-                        <span className="agent-activity-count">{messages.length}</span>
+                        <span className="agent-activity-count">{timelineEvents.length}</span>
                     </summary>
                     <ol>
-                        {messages.map((event) => {
+                        {timelineEvents.map((event) => {
                             const debug = mcpDebugData(event);
 
                             return (
                                 <li key={event.sequence} className={debug ? 'agent-activity-event has-mcp-debug' : undefined}>
-                                    <span>{event.message}</span>
+                                    {event.message && <span>{event.message}</span>}
                                     {debug && (
                                         <details className="agent-mcp-debug" data-testid={`agent-mcp-debug-${event.sequence}`}>
                                             <summary>
@@ -157,9 +165,29 @@ export function AgentActivityBar({
                                                         <dd>{debug.tool_local_name}</dd>
                                                     </div>
                                                 </dl>
-                                                <DebugJson label={copy.parameters} value={debug.parameters} />
-                                                <DebugJson label={copy.response} value={debug.response} />
-                                                {debug.error != null && <DebugJson label={copy.error} value={debug.error} />}
+                                                <DebugJson
+                                                    label={copy.parameters}
+                                                    value={debug.parameters}
+                                                    copyLabel={copy.copy}
+                                                    copiedLabel={copy.copied}
+                                                    copyFailedLabel={copy.copyFailed}
+                                                />
+                                                <DebugJson
+                                                    label={copy.response}
+                                                    value={debug.response}
+                                                    copyLabel={copy.copy}
+                                                    copiedLabel={copy.copied}
+                                                    copyFailedLabel={copy.copyFailed}
+                                                />
+                                                {debug.error != null && (
+                                                    <DebugJson
+                                                        label={copy.error}
+                                                        value={debug.error}
+                                                        copyLabel={copy.copy}
+                                                        copiedLabel={copy.copied}
+                                                        copyFailedLabel={copy.copyFailed}
+                                                    />
+                                                )}
                                             </div>
                                         </details>
                                     )}
@@ -215,11 +243,58 @@ function mcpDebugData(event: AgentRunEvent): McpDebugData | null {
     };
 }
 
-function DebugJson({ label, value }: { label: string; value: unknown }): ReactNode {
+function DebugJson({
+    label,
+    value,
+    copyLabel,
+    copiedLabel,
+    copyFailedLabel,
+}: {
+    label: string;
+    value: unknown;
+    copyLabel: string;
+    copiedLabel: string;
+    copyFailedLabel: string;
+}): ReactNode {
+    const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
+    const formatted = prettyJson(value);
+
+    async function copyJson(): Promise<void> {
+        if (!navigator.clipboard?.writeText) {
+            setCopyState('failed');
+            return;
+        }
+        try {
+            await navigator.clipboard.writeText(formatted);
+            setCopyState('copied');
+            window.setTimeout(() => setCopyState('idle'), 1600);
+        } catch {
+            setCopyState('failed');
+        }
+    }
+
+    const buttonLabel = copyState === 'copied'
+        ? copiedLabel
+        : copyState === 'failed'
+            ? copyFailedLabel
+            : copyLabel;
+
     return (
         <section className="agent-mcp-debug-json">
-            <h4>{label}</h4>
-            <pre>{prettyJson(value)}</pre>
+            <div className="agent-mcp-debug-json-heading">
+                <h4>{label}</h4>
+                <button
+                    type="button"
+                    className="agent-mcp-debug-copy"
+                    aria-label={`${buttonLabel}: ${label}`}
+                    onClick={() => void copyJson()}
+                    data-state={copyState}
+                >
+                    {copyState === 'copied' ? <Icon.Check size={11} /> : <Icon.Copy size={11} />}
+                    {buttonLabel}
+                </button>
+            </div>
+            <pre>{formatted}</pre>
         </section>
     );
 }

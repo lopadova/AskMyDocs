@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { AgentRunEvent } from '../../lib/agent-run-events';
 import { AgentActivityBar } from './AgentActivityBar';
@@ -65,7 +65,7 @@ describe('AgentActivityBar', () => {
         expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '100');
     });
 
-    it('shows local MCP request and response details inside the matching activity event', () => {
+    it('shows local MCP request and response details inside the matching activity event', async () => {
         const mcpEvent: AgentRunEvent = {
             ...progressEvent,
             sequence: 3,
@@ -97,6 +97,43 @@ describe('AgentActivityBar', () => {
         expect(screen.getByText('ok · 42 ms')).toBeInTheDocument();
         expect(screen.getByText(/"customer_id": 17/)).toBeInTheDocument();
         expect(screen.getByText(/"id": 123/)).toBeInTheDocument();
+
+        const writeText = vi.fn().mockResolvedValue(undefined);
+        Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+        fireEvent.click(screen.getByRole('button', { name: 'Copia: Parametri' }));
+        await waitFor(() => expect(writeText).toHaveBeenCalledWith('{\n  "customer_id": 17\n}'));
+        expect(screen.getByRole('button', { name: 'Copiato: Parametri' })).toBeInTheDocument();
+    });
+
+    it('keeps MCP debug reachable even when it is the only activity event', () => {
+        render(
+            <AgentActivityBar
+                events={[{
+                    ...progressEvent,
+                    data: {
+                        mcp_debug: {
+                            method: 'tools/call',
+                            runtime: 'connector',
+                            server_name: 'Gescat',
+                            connection_id: null,
+                            tool_local_name: 'mcp_gescat_get_order',
+                            tool_remote_name: 'get-order',
+                            status: 'ok',
+                            duration_ms: 18,
+                            parameters: { id: 10 },
+                            response: { id: 10 },
+                            error: null,
+                        },
+                    },
+                }]}
+                active={false}
+                awaitingConfirmation={false}
+                onCancel={() => undefined}
+                onContinue={() => undefined}
+            />,
+        );
+
+        expect(screen.getByText('Dettagli chiamata MCP')).toBeInTheDocument();
     });
 
     it('does not render MCP debug controls when the backend omits the local-only payload', () => {
