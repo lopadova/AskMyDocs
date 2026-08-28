@@ -143,7 +143,11 @@ final readonly class AgentLoop
                         'tool.failed',
                         'tool.failed',
                         ['tool' => $tool->displayName],
-                        ['tool' => $tool->name, 'action_id' => $action->id, 'error_code' => $code],
+                        [
+                            'tool' => $tool->name,
+                            'action_id' => $action->id,
+                            'error_code' => $code,
+                        ] + $this->activityToolData($tool),
                         $this->progress($budget, $plan),
                     );
                     $this->checkpoint($run, $evidence, $completed, $results, $retrieved);
@@ -212,7 +216,7 @@ final readonly class AgentLoop
                         'physical_requests' => $result->physicalRequests,
                         'complete' => $result->complete,
                         'stop_reason' => $result->stopReason,
-                    ];
+                    ] + $this->activityToolData($tool);
                     $debug = $this->mcpDebug->capture(
                         $tool,
                         $resolved,
@@ -256,7 +260,7 @@ final readonly class AgentLoop
                         'tool' => $tool->name,
                         'action_id' => $action->id,
                         'error_code' => $this->errorCode($exception),
-                    ];
+                    ] + $this->activityToolData($tool);
                     $debug = $this->mcpDebug->capture(
                         $tool,
                         $resolved,
@@ -322,7 +326,9 @@ final readonly class AgentLoop
                     'tool.progress',
                     'tool.progress',
                     ['completed' => $completed, 'estimated' => $estimated],
-                    ['tool' => $tool->name, 'action_id' => $action->id] + $event,
+                    ['tool' => $tool->name, 'action_id' => $action->id]
+                        + $this->activityToolData($tool)
+                        + $event,
                     $this->progress($budget, $plan),
                 );
                 $this->control->ensureActive($run);
@@ -354,7 +360,11 @@ final readonly class AgentLoop
             'tool.started',
             'tool.started',
             ['tool' => $tool->displayName],
-            ['tool' => $tool->name, 'action_id' => $action->id, 'purpose' => $action->purpose],
+            [
+                'tool' => $tool->name,
+                'action_id' => $action->id,
+                'purpose' => $action->purpose,
+            ] + $this->activityToolData($tool),
             $this->progress($budget, $plan),
         );
 
@@ -386,6 +396,32 @@ final readonly class AgentLoop
             'latency_ms' => (int) round((microtime(true) - $started) * 1000),
             'completed_at' => now(),
         ])->save();
+    }
+
+    /** @return array<string,string> */
+    private function activityToolData(AgentToolDefinition $tool): array
+    {
+        $data = [
+            'tool_kind' => $tool->kind,
+            'tool_display_name' => $tool->displayName,
+        ];
+        if ($tool->kind !== 'mcp') {
+            return $data;
+        }
+
+        $provenance = is_array($tool->metadata['provenance'] ?? null)
+            ? $tool->metadata['provenance']
+            : [];
+        $serverName = $provenance['server_name'] ?? $tool->metadata['server_name'] ?? null;
+        $remoteName = $provenance['tool_remote_name'] ?? $tool->displayName;
+        if (is_string($serverName) && $serverName !== '') {
+            $data['mcp_server_name'] = $serverName;
+        }
+        if (is_string($remoteName) && $remoteName !== '') {
+            $data['mcp_tool_name'] = $remoteName;
+        }
+
+        return $data;
     }
 
     private function recordSkippedExecution(
