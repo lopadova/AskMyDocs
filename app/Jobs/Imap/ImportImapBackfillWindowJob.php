@@ -175,14 +175,14 @@ final class ImportImapBackfillWindowJob implements ShouldQueue
 
     private function markFailed(?Throwable $exception): void
     {
-        DB::transaction(function () use ($exception): void {
+        $backfillId = DB::transaction(function () use ($exception): ?int {
             $window = ImapBackfillWindow::query()
                 ->forTenant($this->tenantId)
                 ->where('id', $this->windowId)
                 ->lockForUpdate()
                 ->first();
             if ($window === null || $window->status === ImapBackfillWindow::STATUS_COMPLETED) {
-                return;
+                return null;
             }
 
             $error = [
@@ -198,17 +198,32 @@ final class ImportImapBackfillWindowJob implements ShouldQueue
                 'error_json' => $error,
             ])->save();
 
-            ImapBackfill::query()
+            $backfill = ImapBackfill::query()
                 ->forTenant($this->tenantId)
                 ->where('id', $window->imap_backfill_id)
                 ->whereIn('status', ImapBackfill::ACTIVE_STATUSES)
-                ->update([
-                    'status' => ImapBackfill::STATUS_FAILED,
-                    'heartbeat_at' => now(),
-                    'error_json' => json_encode($error, JSON_THROW_ON_ERROR),
-                    'updated_at' => now(),
-                ]);
+                ->lockForUpdate()
+                ->first();
+            if ($backfill === null) {
+                return null;
+            }
+
+            // A terminal job failure belongs to this durable window. Keep the
+            // campaign active so the pump can skip it and claim the remaining
+            // pending windows. Once every window is terminal, the pump settles
+            // the campaign as failed if any window failed.
+            $backfill->forceFill([
+                'heartbeat_at' => now(),
+                'error_json' => $error,
+            ])->save();
+
+            return $backfill->id;
         });
+
+        if ($backfillId !== null) {
+            PumpImapBackfillJob::dispatch($backfillId, $this->tenantId)
+                ->onQueue((string) config('connectors.imap.backfill.queue', 'connectors'));
+        }
     }
 
     private function runInTenant(callable $callback): mixed

@@ -561,6 +561,55 @@ class DocumentDeleter
     private function removeFile(string $disk, string $fullPath, int $documentId, string $sourcePath): bool
     {
         try {
+            $referencingDocumentId = $this->firstDocumentReferencingStorageKey(
+                $disk,
+                $fullPath,
+                $sourcePath,
+            );
+        } catch (\InvalidArgumentException $e) {
+            Log::warning('DocumentDeleter: refusing file delete while checking shared references', [
+                'document_id' => $documentId,
+                'source_path' => $sourcePath,
+                'disk' => $disk,
+                'full_path' => $fullPath,
+                'reason' => $e->getMessage(),
+            ]);
+
+            return false;
+        } catch (\Throwable $e) {
+            // Reference discovery is a safety gate. If it cannot complete,
+            // keep the shared object rather than risk deleting bytes still
+            // owned by another version; the database deletion has already
+            // committed and must remain best-effort with respect to storage.
+            Log::warning('DocumentDeleter: failed to check shared file references', [
+                'document_id' => $documentId,
+                'source_path' => $sourcePath,
+                'disk' => $disk,
+                'full_path' => $fullPath,
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
+
+        if ($referencingDocumentId !== null) {
+            // Different document versions share one physical source object:
+            // `(disk, prefix/source_path)` identifies the file, while every
+            // re-ingest gets its own knowledge_documents row. Deleting an old
+            // or soft-deleted version must therefore never remove the object
+            // while a live/archived/trashed sibling still references it.
+            Log::info('DocumentDeleter: preserving physical file still referenced by another document', [
+                'deleted_document_id' => $documentId,
+                'referencing_document_id' => $referencingDocumentId,
+                'source_path' => $sourcePath,
+                'disk' => $disk,
+                'full_path' => $fullPath,
+            ]);
+
+            return false;
+        }
+
+        try {
             $storage = Storage::disk($disk);
             if (! $storage->exists($fullPath)) {
                 return false;
@@ -580,5 +629,48 @@ class DocumentDeleter
 
             return false;
         }
+    }
+
+    /**
+     * Return the first remaining row that resolves to the same physical
+     * storage object. The lookup deliberately crosses tenant/access/soft-delete
+     * scopes: a shared bucket key is global infrastructure state, so deleting
+     * tenant A's row must not remove bytes still referenced by tenant B.
+     *
+     * Rows are narrowed by the logical source path in SQL, then streamed so a
+     * long version history stays memory-safe. Disk + prefix are resolved from
+     * the immutable ingest metadata with the same fallbacks used by deletion.
+     */
+    private function firstDocumentReferencingStorageKey(
+        string $disk,
+        string $fullPath,
+        string $sourcePath,
+    ): ?int {
+        $normalizedSourcePath = KbPath::normalize($sourcePath);
+        $normalizedFullPath = KbPath::normalize($fullPath);
+
+        $documents = KnowledgeDocument::query()
+            ->withoutGlobalScopes()
+            ->where('source_path', $normalizedSourcePath)
+            ->select(['id', 'source_path', 'metadata'])
+            ->cursor();
+
+        foreach ($documents as $document) {
+            $metadata = is_array($document->metadata) ? $document->metadata : [];
+            $candidateDisk = (string) ($metadata['disk'] ?? config('kb.sources.disk', 'kb'));
+            $candidatePrefix = array_key_exists('prefix', $metadata)
+                ? (string) $metadata['prefix']
+                : (string) config('kb.sources.path_prefix', '');
+            $candidateFullPath = $this->resolveFullPath(
+                $candidatePrefix,
+                (string) $document->source_path,
+            );
+
+            if ($candidateDisk === $disk && $candidateFullPath === $normalizedFullPath) {
+                return (int) $document->id;
+            }
+        }
+
+        return null;
     }
 }
