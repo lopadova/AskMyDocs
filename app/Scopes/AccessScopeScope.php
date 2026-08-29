@@ -86,17 +86,59 @@ class AccessScopeScope implements Scope
         $column = $model->qualifyColumn('project_key');
 
         // The allowlist is per MEMBERSHIP, so it is per project: a user may
-        // hold `hr/**` in one project and no restriction in another.
-        // Collapsing to one `whereIn` would apply a single project's scope
-        // to all of them, so each project carries its own arm.
-        $builder->where(function ($outer) use ($scopes, $column, $model): void {
-            foreach ($scopes as $projectKey => $scope) {
+        // hold `hr/**` in one project and no restriction in another. Only the
+        // projects that actually carry a scope need their own arm; collapsing
+        // those would apply one project's scope to all of them.
+        //
+        // Everything else collapses back into a single `whereIn`. Emitting an
+        // arm per project regardless would turn the pre-R33 plan into a long
+        // OR chain for the common subject who has several memberships and no
+        // allowlist at all -- the case this rule promises to leave untouched.
+        [$unrestricted, $restricted] = $this->partitionByScope($scopes);
+
+        if ($restricted === []) {
+            $builder->whereIn($column, $unrestricted);
+            return;
+        }
+
+        $builder->where(function ($outer) use ($unrestricted, $restricted, $column, $model): void {
+            if ($unrestricted !== []) {
+                $outer->orWhereIn($column, $unrestricted);
+            }
+
+            foreach ($restricted as $projectKey => $scope) {
                 $outer->orWhere(function ($arm) use ($projectKey, $scope, $column, $model): void {
                     $arm->where($column, (string) $projectKey);
                     $this->constrainByScopeAllowlist($arm, $model, $scope);
                 });
             }
         });
+    }
+
+    /**
+     * Split the membership map into the projects that carry no scope at all
+     * and the ones that do.
+     *
+     * @param  array<string, array<string, mixed>>  $scopes
+     * @return array{0: list<string>, 1: array<string, array<string, mixed>>}
+     */
+    private function partitionByScope(array $scopes): array
+    {
+        $unrestricted = [];
+        $restricted = [];
+
+        foreach ($scopes as $projectKey => $scope) {
+            $hasScope = ($scope['folder_globs'] ?? []) !== [] || ($scope['tags'] ?? []) !== [];
+
+            if ($hasScope) {
+                $restricted[(string) $projectKey] = $scope;
+                continue;
+            }
+
+            $unrestricted[] = (string) $projectKey;
+        }
+
+        return [$unrestricted, $restricted];
     }
 
     /**

@@ -144,6 +144,46 @@ final class RetrievalScopeAllowlistTest extends TestCase
         $this->assertSame([self::IN_SCOPE], $paths);
     }
 
+    public function test_memberships_without_an_allowlist_collapse_into_one_in_clause(): void
+    {
+        // R33 promises a subject with no restriction of this kind generates
+        // the identical query as before. Emitting one OR arm per project
+        // regardless would quietly break that for the common subject who
+        // holds several memberships and no allowlist at all.
+        $user = $this->scopedUser([]);
+        $this->addMembership($user, 'engineering', []);
+        $this->addMembership($user, 'marketing', []);
+
+        $this->actingAs($user->fresh());
+
+        $sql = KnowledgeDocument::query()->toSql();
+
+        $this->assertStringContainsString('project_key" in (', $sql);
+        $this->assertStringNotContainsString(
+            'project_key" = ?',
+            $sql,
+            'Unscoped memberships were expanded into an OR chain instead of an IN list.',
+        );
+    }
+
+    public function test_a_scoped_project_does_not_constrain_an_unscoped_sibling(): void
+    {
+        // The allowlist is per membership. A scope held in one project must
+        // never reach across into another project the subject joined without
+        // one, and the unscoped project must stay fully readable.
+        $this->makeDocumentWithChunk('reports/roadmap.md', 'Roadmap for next quarter.', 'engineering');
+
+        $user = $this->scopedUser(['folder_globs' => ['hr/policies/**']]);
+        $this->addMembership($user, 'engineering', []);
+
+        $this->actingAs($user->fresh());
+
+        $paths = KnowledgeDocument::query()->pluck('source_path')->all();
+        sort($paths);
+
+        $this->assertSame(['hr/policies/remote-work.md', 'reports/roadmap.md'], $paths);
+    }
+
     public function test_tag_arm_of_the_allowlist_still_grants_access(): void
     {
         // `matchesScope()` is globs OR tags — a doc outside every glob is
@@ -193,11 +233,16 @@ final class RetrievalScopeAllowlistTest extends TestCase
         return $user->fresh();
     }
 
-    private function makeDocumentWithChunk(string $sourcePath, string $text): KnowledgeDocument
-    {
+    private function makeDocumentWithChunk(
+        string $sourcePath,
+        string $text,
+        ?string $projectKey = null,
+    ): KnowledgeDocument {
+        $projectKey ??= $this->projectKey;
+
         $doc = KnowledgeDocument::withoutGlobalScopes()->create([
             'tenant_id' => $this->tenantId,
-            'project_key' => $this->projectKey,
+            'project_key' => $projectKey,
             'source_type' => 'upload',
             'title' => basename($sourcePath),
             'source_path' => $sourcePath,
@@ -211,7 +256,7 @@ final class RetrievalScopeAllowlistTest extends TestCase
         KnowledgeChunk::create([
             'tenant_id' => $this->tenantId,
             'knowledge_document_id' => $doc->id,
-            'project_key' => $this->projectKey,
+            'project_key' => $projectKey,
             'chunk_order' => 0,
             'chunk_hash' => hash('sha256', $text),
             'heading_path' => '',
@@ -219,6 +264,17 @@ final class RetrievalScopeAllowlistTest extends TestCase
         ]);
 
         return $doc;
+    }
+
+    private function addMembership(User $user, string $projectKey, array $scopeAllowlist): void
+    {
+        ProjectMembership::create([
+            'tenant_id' => $this->tenantId,
+            'user_id' => $user->id,
+            'project_key' => $projectKey,
+            'role' => 'member',
+            'scope_allowlist' => $scopeAllowlist === [] ? null : $scopeAllowlist,
+        ]);
     }
 
     private function tagDocument(string $sourcePath, string $slug): void
