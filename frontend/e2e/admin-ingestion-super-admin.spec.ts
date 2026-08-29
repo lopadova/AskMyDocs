@@ -3,14 +3,18 @@ import { test as baseTest, expect } from './fixtures';
  * Uses the `seeded` auto-fixture (reset -> DemoSeeder -> project login)
  * rather than raw @playwright/test.
  *
- * These scenarios authenticate purely through the super-admin storage state
- * the setup project persists. Any other spec that reseeds regenerates the
- * users table, and `User::firstOrCreate()` mints a fresh bcrypt hash, which
- * invalidates that persisted session -- every request then answers 401
+ * These scenarios USED to authenticate purely through the super-admin storage
+ * state the setup project persists. Any other spec that reseeds regenerates
+ * the users table, and `User::firstOrCreate()` mints a fresh bcrypt hash,
+ * which invalidated that persisted session -- every request then answered 401
  * "Unauthenticated". Whether that happened depended entirely on execution
  * order, so the suite passed or failed by luck of scheduling; sharding made
- * the luck run out. The fixture re-establishes the session per test, which
- * is order-independent by construction.
+ * the luck run out.
+ *
+ * They now re-authenticate per test: the `seeded` auto-fixture resets, seeds
+ * DemoSeeder and logs in for this project's role before each scenario. That
+ * per-test re-login is what makes them order-independent -- not the storage
+ * state, which is only the starting point the fixture then refreshes.
  */
 
 /*

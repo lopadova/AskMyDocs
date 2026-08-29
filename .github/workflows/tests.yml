@@ -807,16 +807,6 @@ jobs:
           lsof -ti tcp:8001 -sTCP:LISTEN || echo "(none)"
           echo "php process count: $(pgrep -c php || echo 0)"
           echo ""
-          echo "=== can PHP itself reach the target? ==="
-          # The runner's curl reaches it, the application does not. These two
-          # probes split that: raw PHP cURL, then the very client the app uses
-          # (Laravel's Http facade over Guzzle), both from the CLI. If both
-          # succeed here, the difference is not the client and not the target
-          # but the context -- an outbound call issued from INSIDE a request
-          # served by php's built-in server.
-          php -r '$ch = curl_init("http://127.0.0.1:8001/healthz"); curl_setopt($ch, CURLOPT_RETURNTRANSFER, true); $r = curl_exec($ch); echo "raw php curl: ", ($r === false ? "ERR(".curl_errno($ch).") ".curl_error($ch) : "OK ".strlen($r)." bytes"), PHP_EOL; curl_close($ch);' || echo "raw php curl: script failed"
-          php -r 'require "vendor/autoload.php"; $app = require "bootstrap/app.php"; $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap(); try { $r = Illuminate\Support\Facades\Http::acceptJson()->timeout(10)->get("http://127.0.0.1:8001/healthz"); echo "laravel http: HTTP ", $r->status(), " ", strlen($r->body()), " bytes", PHP_EOL; } catch (Throwable $e) { echo "laravel http: ERR ", get_class($e), " ", $e->getMessage(), PHP_EOL; }' || echo "laravel http: script failed"
-          echo ""
           echo "=== storage/logs/queue-worker.log (last 200 lines) ==="
           if [ -f storage/logs/queue-worker.log ]; then
             tail -200 storage/logs/queue-worker.log
