@@ -37,8 +37,15 @@ export function useCreateRole() {
     const qc = useQueryClient();
     return useMutation({
         mutationFn: (input: AdminRoleInput) => adminRolesApi.create(input),
-        onSuccess: () => {
-            qc.invalidateQueries({ queryKey: ROLES_KEY });
+        // Awaited on purpose. `invalidateQueries` marks the list stale and
+        // starts a refetch, but resolving the mutation before that refetch
+        // lands leaves the cache holding the pre-save role. The dialog closes
+        // on success and reopens from exactly that cached object, so a
+        // permission just granted reads back as ungranted — the change looks
+        // lost even though the server stored it. Awaiting makes the mutation
+        // mean "saved AND the list reflects it".
+        onSuccess: async () => {
+            await qc.invalidateQueries({ queryKey: ROLES_KEY });
         },
     });
 }
@@ -48,8 +55,15 @@ export function useUpdateRole() {
     return useMutation({
         mutationFn: (v: { id: number; input: Partial<AdminRoleInput> }) =>
             adminRolesApi.update(v.id, v.input),
-        onSuccess: () => {
-            qc.invalidateQueries({ queryKey: ROLES_KEY });
+        // Awaited on purpose. `invalidateQueries` marks the list stale and
+        // starts a refetch, but resolving the mutation before that refetch
+        // lands leaves the cache holding the pre-save role. The dialog closes
+        // on success and reopens from exactly that cached object, so a
+        // permission just granted reads back as ungranted — the change looks
+        // lost even though the server stored it. Awaiting makes the mutation
+        // mean "saved AND the list reflects it".
+        onSuccess: async () => {
+            await qc.invalidateQueries({ queryKey: ROLES_KEY });
         },
     });
 }
@@ -58,8 +72,15 @@ export function useDeleteRole() {
     const qc = useQueryClient();
     return useMutation({
         mutationFn: (id: number) => adminRolesApi.destroy(id),
-        onSuccess: () => {
-            qc.invalidateQueries({ queryKey: ROLES_KEY });
+        // Awaited on purpose. `invalidateQueries` marks the list stale and
+        // starts a refetch, but resolving the mutation before that refetch
+        // lands leaves the cache holding the pre-save role. The dialog closes
+        // on success and reopens from exactly that cached object, so a
+        // permission just granted reads back as ungranted — the change looks
+        // lost even though the server stored it. Awaiting makes the mutation
+        // mean "saved AND the list reflects it".
+        onSuccess: async () => {
+            await qc.invalidateQueries({ queryKey: ROLES_KEY });
         },
     });
 }

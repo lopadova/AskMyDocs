@@ -43,13 +43,32 @@ final class E2eAgentRetrievalSeeder extends Seeder
         );
     }
 
+    /**
+     * Where the API tools seeded here should send their outbound requests.
+     *
+     * These tools make the APPLICATION the client: the agent calls them and
+     * the server issues a real HTTP request to the URL below. Pointing that at
+     * the app's own address made it the client of itself, which PHP's built-in
+     * dev server answers with an empty reply (cURL 52) whenever the worker
+     * that would serve it is the one already busy issuing it — the tool calls
+     * then fail and the agent reports an incomplete search.
+     *
+     * The E2E environment therefore runs a second instance of the application
+     * on another port and sets this variable to it. The default keeps the
+     * previous behaviour for anyone running the seeder without that setup.
+     */
+    private function outboundBase(): string
+    {
+        return rtrim((string) env('E2E_OUTBOUND_BASE_URL', 'http://127.0.0.1:8000'), '/');
+    }
+
     private function seedScope(string $tenant, string $project, string $name): void
     {
         $connector = ApiConnector::query()->updateOrCreate(
             ['tenant_id' => $tenant, 'project_key' => $project, 'name' => $name],
             [
                 'description' => 'Deterministic customer and order lookup for the agent E2E.',
-                'base_url' => 'http://127.0.0.1:8000',
+                'base_url' => $this->outboundBase(),
                 'headers' => [],
                 'is_active' => true,
             ],
@@ -62,7 +81,7 @@ final class E2eAgentRetrievalSeeder extends Seeder
                 'name' => 'Cerca cliente',
                 'description' => 'Find a customer by name before loading their orders.',
                 'http_method' => 'GET',
-                'url' => 'http://127.0.0.1:8000/testing/api-fixture/customers',
+                'url' => $this->outboundBase().'/testing/api-fixture/customers',
                 'input_schema' => $this->schema(['name' => ['type' => 'string']]),
                 'tool_definition' => [
                     'name' => 'find_customer',
@@ -85,7 +104,7 @@ final class E2eAgentRetrievalSeeder extends Seeder
                 'name' => 'Recupera ordini',
                 'description' => 'Load every order for a known customer id.',
                 'http_method' => 'GET',
-                'url' => 'http://127.0.0.1:8000/testing/api-fixture/customers/{customer_id}/orders',
+                'url' => $this->outboundBase().'/testing/api-fixture/customers/{customer_id}/orders',
                 'input_schema' => $this->schema(['customer_id' => ['type' => 'integer']]),
                 'tool_definition' => [
                     'name' => 'get_orders',
