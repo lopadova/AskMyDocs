@@ -591,6 +591,13 @@ Route::middleware([
         Route::patch('/kb/documents/{id}/evidence-tier', [\App\Http\Controllers\Api\Admin\KbEvidenceTierController::class, 'update'])
             ->whereNumber('id')->name('api.admin.kb.documents.evidence-tier.update');
 
+        // v8.32 / ADR 0028 phase 1 — corpus provenance read-out: how much of
+        // the knowledge base was authored outside the organisation. R32 —
+        // covered by the AdminAuthorizationMatrix
+        // (`/api/admin/kb/provenance`).
+        Route::get('/kb/provenance', [\App\Http\Controllers\Api\Admin\KbProvenanceController::class, 'index'])
+            ->name('api.admin.kb.provenance.index');
+
         // v8.11/P2 — auto-wiki graph canonicalization (AutoSci edges): rebuild a
         // doc's navigable graph (nodes + inferred edges). R32 — same admin KB
         // group gate as the representative `/api/admin/kb/evidence-tiers` row.
