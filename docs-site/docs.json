@@ -33,7 +33,7 @@
           "connectors-credential",
           "connectors-multi-account",
           "connectors-sync-settings",
-                        "ingest-provenance",
+          "ingest-provenance",
           "connectors-imap-backfill",
           "connectors-imap-serialization",
           "connectors-api",
