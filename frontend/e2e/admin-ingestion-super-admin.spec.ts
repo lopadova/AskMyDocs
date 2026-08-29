@@ -1,4 +1,21 @@
-import { test as baseTest, expect } from '@playwright/test';
+import { test as baseTest, expect } from './fixtures';
+/*
+ * Uses the `seeded` auto-fixture (reset -> DemoSeeder -> project login)
+ * rather than raw @playwright/test.
+ *
+ * These scenarios USED to authenticate purely through the super-admin storage
+ * state the setup project persists. Any other spec that reseeds regenerates
+ * the users table, and `User::firstOrCreate()` mints a fresh bcrypt hash,
+ * which invalidated that persisted session -- every request then answered 401
+ * "Unauthenticated". Whether that happened depended entirely on execution
+ * order, so the suite passed or failed by luck of scheduling; sharding made
+ * the luck run out.
+ *
+ * They now re-authenticate per test: the `seeded` auto-fixture resets, seeds
+ * DemoSeeder and logs in for this project's role before each scenario. That
+ * per-test re-login is what makes them order-independent -- not the storage
+ * state, which is only the starting point the fixture then refreshes.
+ */
 
 /*
  * v8.21 (Ciclo 2) — "Ingestion & Sync" admin screen + observability endpoints.
@@ -46,7 +63,13 @@ baseTest.describe('Admin Ingestion & Sync — super-admin', () => {
     });
 
     baseTest('BE contract — queue endpoint returns the three logical roles', async ({ page }) => {
-        const resp = await page.request.get('/api/admin/ingestion/queue');
+        // The super-admin's demo data lives in the `a-demo` tenant, and a
+        // session opened by /api/auth/login does not default to it, so the
+        // tenant middleware answers 403 tenant_forbidden. Addressing the
+        // tenant explicitly is what the sibling super-admin specs already do.
+        const resp = await page.request.get('/api/admin/ingestion/queue', {
+            headers: { 'X-Tenant-Id': 'a-demo' },
+        });
         if (!resp.ok()) {
             throw new Error(`GET queue returned ${resp.status()}: ${await resp.text()}`);
         }
@@ -59,7 +82,9 @@ baseTest.describe('Admin Ingestion & Sync — super-admin', () => {
     baseTest('failure — sync-runs for a non-existent installation 404s (R14)', async ({ page }) => {
         // A bogus installation id must not leak data — the endpoint 404s rather
         // than returning an empty 200 that reads as "no runs".
-        const resp = await page.request.get('/api/admin/connectors/99999999/sync-runs');
+        const resp = await page.request.get('/api/admin/connectors/99999999/sync-runs', {
+            headers: { 'X-Tenant-Id': 'a-demo' },
+        });
         expect(resp.status()).toBe(404);
     });
 
