@@ -22,6 +22,143 @@ import { defineConfig, devices } from '@playwright/test';
 const baseURL = process.env.E2E_BASE_URL ?? 'http://127.0.0.1:8000';
 const skipWebServer = process.env.E2E_SKIP_WEBSERVER === '1';
 
+/**
+ * Environment for the dev-spawned `php artisan serve` processes.
+ *
+ * Hoisted so the SECOND server (see `webServer` below) runs with exactly
+ * the same configuration as the first. Two servers that disagree about the
+ * database or the SSRF policy would be worse than one.
+ */
+const serveEnv = {
+    APP_ENV: 'testing',
+    // SAFETY (local-only — CI sets E2E_SKIP_WEBSERVER=1 and skips this
+    // whole block): point the dev-spawned `php artisan serve` at a
+    // DEDICATED test database, NEVER the dev DB from `.env`.
+    // `/testing/reset` runs `migrate:fresh`, which DROPS every table — without this override a local
+    // `playwright test` would wipe the developer's data. Matches the
+    // CI test DB name so migrations behave identically. Create it once:
+    // `createdb askmydocs_test` (see .env.example). The TestingController guard enforces this too.
+    DB_DATABASE: 'askmydocs_test',
+    // Never inherit the local Valet/Herd cookie domain
+    // (`askmydocs.test`) while the Playwright server runs on
+    // 127.0.0.1. A mismatched Domain silently discards both the
+    // XSRF and session cookies, making successful registration
+    // look unauthenticated on the immediately-following /me.
+    SESSION_DOMAIN: '127.0.0.1',
+    SESSION_DRIVER: 'database',
+    // Keep rate limits and locks process-local throughout the
+    // long test matrix. The authenticated widget demo selects
+    // the shared file store explicitly for its credential only.
+    CACHE_STORE: 'array',
+    SANCTUM_STATEFUL_DOMAINS: '127.0.0.1,127.0.0.1:8000,localhost,localhost:8000',
+    // Local E2E has no long-running queue worker. Pin the
+    // connection explicitly instead of inheriting a developer
+    // `.env` value such as `database`, otherwise KB ingest jobs
+    // remain queued forever and the upload progress gate stalls.
+    // CI skips this webServer block and keeps its dedicated
+    // database worker (see .github/workflows/tests.yml).
+    QUEUE_CONNECTION: 'sync',
+    // drives the real /messages/stream SSE through the real
+    // @ai-sdk transport. The fake provider streams a canned
+    // answer + a constant embedding vector (so retrieval always
+    // returns the ingested chunk → the real `source-url` citation
+    // frame is exercised). No external LLM call, no API key.
+    AI_PROVIDER: 'fake',
+    AI_EMBEDDINGS_PROVIDER: 'fake',
+    // v8.8.3 — anonymous chat ON for E2E so the happy-path
+    // spec (anonymous-chat.spec.ts) exercises the real
+    // stateless /api/kb/chat turn end-to-end. The OFF /
+    // 422-reject state is covered by KbChatAnonymousTest
+    // (phpunit) + the AnonymousChatView Vitest disabled
+    // landing, per R43 (both states tested).
+    KB_ANONYMOUS_CHAT_ENABLED: 'true',
+    // v8.13/P11 — light up the Evidence & Risk Review admin
+    // surface so its happy-path spec exercises the real enabled
+    // dashboards against seeded review rows (R13). The default-OFF
+    // "unavailable" landing (flag off) is covered by the
+    // EvidenceRiskReviewView Vitest (R43 both states).
+    EVIDENCE_RISK_REVIEW_ADMIN_ENABLED: 'true',
+    // v8.16/W4 — light up the AI FinOps admin SPA so its
+    // happy-path spec (admin-ai-finops.spec.ts) reaches the real
+    // package-served Blade SPA shell under /admin/ai-finops and
+    // proves the viewAiFinOps gate (admin allowed, viewer 403).
+    // The default-OFF clean-404 landing (flag off) is covered by
+    // FinOpsDisabledTest (phpunit), per R43 (both states tested).
+    AI_FINOPS_ADMIN_ENABLED: 'true',
+    // v8.19/W3 — light up the AI Guardrails admin SPA so
+    // admin-ai-guardrails.spec.ts reaches the real package-served
+    // Blade shell under /admin/ai-guardrails and proves the
+    // viewAiGuardrails gate (admin allowed, viewer 403). Default-OFF
+    // clean-404 is covered by GuardrailsAdminMountingTest (phpunit), R43.
+    AI_GUARDRAILS_ADMIN_ENABLED: 'true',
+    // v8.x — light up the Invitations admin SPA so
+    // admin-invitations.spec.ts reaches the real package-served
+    // Blade panel under /admin/invitations and proves the
+    // manageInvitations gate (admin allowed; viewer 403 on the
+    // package mount URL, not just the env=false 404). The
+    // default-OFF clean-404 landing is covered by
+    // InvitationsAdminDisabledTest (phpunit), per R43 (both states).
+    INVITATIONS_ADMIN_ENABLED: 'true',
+    // v8.17 — OFFLINE IMAP seam so connectors-imap-super-admin.spec.ts
+    // can drive the real credential-connector flow end-to-end (the IMAP
+    // server is a BACKEND TCP dependency Playwright can't stub). The fake
+    // ping is input-driven: host containing `invalid`/`fail` → 422,
+    // otherwise → ACTIVE. Default-OFF in production.
+    CONNECTOR_IMAP_FAKE_PING: 'true',
+    // v8.27 — API Connector (Connettore API): the "Test connessione"
+    // / "Prova tool" calls are made BY THE BACKEND over HTTP (like the
+    // IMAP TCP dependency), so Playwright cannot page.route them.
+    // Relax the SSRF guard for E2E so admin-api-connectors.spec.ts can
+    // point a route at the app's OWN local /healthz endpoint and drive
+    // the real create → test → activate flow end-to-end against a
+    // deterministic 200 (no external network, no flake). Production
+    // keeps the guard ON (https-only + loopback/private blocked) by
+    // default; the guarded paths are covered by ApiToolExecutorTest +
+    // the package's UrlGuard tests (phpunit), per R43 (both states).
+    API_CONNECTOR_SSRF_ENABLED: 'false',
+    API_CONNECTOR_HTTPS_ONLY: 'false',
+    // v8.18/W4 — gamification stays ON (default) so the badges +
+    // coaching surfaces render, but the AI NARRATION layer is forced
+    // OFF for E2E: the narrator resolves the named `openrouter`
+    // provider directly (not the `fake` default), so an enabled
+    // narrate/regenerate would make a real OpenRouter HTTP call with a
+    // 120s timeout and flake CI (R13/R38). With it off the deterministic
+    // copy is used — the on-path the admin-gamification spec exercises.
+    // The AI-ON path is covered by GamificationInsightsTest (phpunit,
+    // mocked AiManager), per R43.
+    KB_GAMIFICATION_AI_ENABLED: 'false',
+    // PHP_CLI_SERVER_WORKERS spawns N worker children for
+    // the PHP built-in dev server (PHP 7.4+). Without
+    // this env var (AND `--no-reload` above so the var
+    // is actually honoured by ServeCommand), `php artisan
+    // serve` falls back to its default single-process /
+    // single-accept-loop mode and stalls during a long
+    // migrate:fresh request, causing every concurrent /
+    // immediately-following request to ECONNREFUSED for
+    // ≥12s — the root of the recurring auth.setup flake.
+    // With both knobs set the server runs four worker
+    // children in parallel — enough headroom for
+    // healthz + reset + seed + login to land at the
+    // same time.
+    PHP_CLI_SERVER_WORKERS: '4',
+};
+
+/**
+ * Base URL for outbound HTTP the APPLICATION makes during a test.
+ *
+ * The API-connector specs configure a connector whose routes point at a
+ * real HTTP endpoint and then ask the app to call it. Pointing that at the
+ * app's own address made the server the client of itself, and PHP's
+ * built-in dev server answers such a call with an empty reply — cURL 52 —
+ * whenever the worker that would serve it is the one already busy issuing
+ * it. That is not something the specs can retry their way out of.
+ *
+ * So the app calls a SECOND instance of itself on another port: a separate
+ * process, a real HTTP round trip, the same application and database. No
+ * route is mocked, so R13 still holds.
+ */
+const outboundBaseURL = process.env.E2E_OUTBOUND_BASE_URL ?? 'http://127.0.0.1:8001';
+
 export default defineConfig({
     testDir: './frontend/e2e',
     fullyParallel: true,
@@ -70,7 +207,8 @@ export default defineConfig({
     },
     webServer: skipWebServer
         ? undefined
-        : {
+        : [
+          {
               // `--no-reload` is required to honour PHP_CLI_SERVER_WORKERS
               // — without it Laravel's `ServeCommand` silently drops the
               // env var and runs single-threaded again. The handling
@@ -90,122 +228,23 @@ export default defineConfig({
               url: `${baseURL}/healthz`,
               reuseExistingServer: !process.env.CI,
               timeout: 120_000,
-              env: {
-                  APP_ENV: 'testing',
-                  // SAFETY (local-only — CI sets E2E_SKIP_WEBSERVER=1 and skips this
-                  // whole block): point the dev-spawned `php artisan serve` at a
-                  // DEDICATED test database, NEVER the dev DB from `.env`.
-                  // `/testing/reset` runs `migrate:fresh`, which DROPS every table — without this override a local
-                  // `playwright test` would wipe the developer's data. Matches the
-                  // CI test DB name so migrations behave identically. Create it once:
-                  // `createdb askmydocs_test` (see .env.example). The TestingController guard enforces this too.
-                  DB_DATABASE: 'askmydocs_test',
-                  // Never inherit the local Valet/Herd cookie domain
-                  // (`askmydocs.test`) while the Playwright server runs on
-                  // 127.0.0.1. A mismatched Domain silently discards both the
-                  // XSRF and session cookies, making successful registration
-                  // look unauthenticated on the immediately-following /me.
-                  SESSION_DOMAIN: '127.0.0.1',
-                  SESSION_DRIVER: 'database',
-                  // Keep rate limits and locks process-local throughout the
-                  // long test matrix. The authenticated widget demo selects
-                  // the shared file store explicitly for its credential only.
-                  CACHE_STORE: 'array',
-                  SANCTUM_STATEFUL_DOMAINS: '127.0.0.1,127.0.0.1:8000,localhost,localhost:8000',
-                  // Local E2E has no long-running queue worker. Pin the
-                  // connection explicitly instead of inheriting a developer
-                  // `.env` value such as `database`, otherwise KB ingest jobs
-                  // remain queued forever and the upload progress gate stalls.
-                  // CI skips this webServer block and keeps its dedicated
-                  // database worker (see .github/workflows/tests.yml).
-                  QUEUE_CONNECTION: 'sync',
-                  // drives the real /messages/stream SSE through the real
-                  // @ai-sdk transport. The fake provider streams a canned
-                  // answer + a constant embedding vector (so retrieval always
-                  // returns the ingested chunk → the real `source-url` citation
-                  // frame is exercised). No external LLM call, no API key.
-                  AI_PROVIDER: 'fake',
-                  AI_EMBEDDINGS_PROVIDER: 'fake',
-                  // v8.8.3 — anonymous chat ON for E2E so the happy-path
-                  // spec (anonymous-chat.spec.ts) exercises the real
-                  // stateless /api/kb/chat turn end-to-end. The OFF /
-                  // 422-reject state is covered by KbChatAnonymousTest
-                  // (phpunit) + the AnonymousChatView Vitest disabled
-                  // landing, per R43 (both states tested).
-                  KB_ANONYMOUS_CHAT_ENABLED: 'true',
-                  // v8.13/P11 — light up the Evidence & Risk Review admin
-                  // surface so its happy-path spec exercises the real enabled
-                  // dashboards against seeded review rows (R13). The default-OFF
-                  // "unavailable" landing (flag off) is covered by the
-                  // EvidenceRiskReviewView Vitest (R43 both states).
-                  EVIDENCE_RISK_REVIEW_ADMIN_ENABLED: 'true',
-                  // v8.16/W4 — light up the AI FinOps admin SPA so its
-                  // happy-path spec (admin-ai-finops.spec.ts) reaches the real
-                  // package-served Blade SPA shell under /admin/ai-finops and
-                  // proves the viewAiFinOps gate (admin allowed, viewer 403).
-                  // The default-OFF clean-404 landing (flag off) is covered by
-                  // FinOpsDisabledTest (phpunit), per R43 (both states tested).
-                  AI_FINOPS_ADMIN_ENABLED: 'true',
-                  // v8.19/W3 — light up the AI Guardrails admin SPA so
-                  // admin-ai-guardrails.spec.ts reaches the real package-served
-                  // Blade shell under /admin/ai-guardrails and proves the
-                  // viewAiGuardrails gate (admin allowed, viewer 403). Default-OFF
-                  // clean-404 is covered by GuardrailsAdminMountingTest (phpunit), R43.
-                  AI_GUARDRAILS_ADMIN_ENABLED: 'true',
-                  // v8.x — light up the Invitations admin SPA so
-                  // admin-invitations.spec.ts reaches the real package-served
-                  // Blade panel under /admin/invitations and proves the
-                  // manageInvitations gate (admin allowed; viewer 403 on the
-                  // package mount URL, not just the env=false 404). The
-                  // default-OFF clean-404 landing is covered by
-                  // InvitationsAdminDisabledTest (phpunit), per R43 (both states).
-                  INVITATIONS_ADMIN_ENABLED: 'true',
-                  // v8.17 — OFFLINE IMAP seam so connectors-imap-super-admin.spec.ts
-                  // can drive the real credential-connector flow end-to-end (the IMAP
-                  // server is a BACKEND TCP dependency Playwright can't stub). The fake
-                  // ping is input-driven: host containing `invalid`/`fail` → 422,
-                  // otherwise → ACTIVE. Default-OFF in production.
-                  CONNECTOR_IMAP_FAKE_PING: 'true',
-                  // v8.27 — API Connector (Connettore API): the "Test connessione"
-                  // / "Prova tool" calls are made BY THE BACKEND over HTTP (like the
-                  // IMAP TCP dependency), so Playwright cannot page.route them.
-                  // Relax the SSRF guard for E2E so admin-api-connectors.spec.ts can
-                  // point a route at the app's OWN local /healthz endpoint and drive
-                  // the real create → test → activate flow end-to-end against a
-                  // deterministic 200 (no external network, no flake). Production
-                  // keeps the guard ON (https-only + loopback/private blocked) by
-                  // default; the guarded paths are covered by ApiToolExecutorTest +
-                  // the package's UrlGuard tests (phpunit), per R43 (both states).
-                  API_CONNECTOR_SSRF_ENABLED: 'false',
-                  API_CONNECTOR_HTTPS_ONLY: 'false',
-                  // v8.18/W4 — gamification stays ON (default) so the badges +
-                  // coaching surfaces render, but the AI NARRATION layer is forced
-                  // OFF for E2E: the narrator resolves the named `openrouter`
-                  // provider directly (not the `fake` default), so an enabled
-                  // narrate/regenerate would make a real OpenRouter HTTP call with a
-                  // 120s timeout and flake CI (R13/R38). With it off the deterministic
-                  // copy is used — the on-path the admin-gamification spec exercises.
-                  // The AI-ON path is covered by GamificationInsightsTest (phpunit,
-                  // mocked AiManager), per R43.
-                  KB_GAMIFICATION_AI_ENABLED: 'false',
-                  // PHP_CLI_SERVER_WORKERS spawns N worker children for
-                  // the PHP built-in dev server (PHP 7.4+). Without
-                  // this env var (AND `--no-reload` above so the var
-                  // is actually honoured by ServeCommand), `php artisan
-                  // serve` falls back to its default single-process /
-                  // single-accept-loop mode and stalls during a long
-                  // migrate:fresh request, causing every concurrent /
-                  // immediately-following request to ECONNREFUSED for
-                  // ≥12s — the root of the recurring auth.setup flake.
-                  // With both knobs set the server runs four worker
-                  // children in parallel — enough headroom for
-                  // healthz + reset + seed + login to land at the
-                  // same time.
-                  PHP_CLI_SERVER_WORKERS: '4',
-              },
+              env: serveEnv,
               stdout: 'pipe',
               stderr: 'pipe',
           },
+          {
+              // The outbound target. Same application, same database, its own
+              // process — so a request the app makes to it is served by a
+              // worker that is not the one waiting on the response.
+              command: 'php artisan serve --no-reload --host=127.0.0.1 --port=8001',
+              url: `${outboundBaseURL}/healthz`,
+              reuseExistingServer: !process.env.CI,
+              timeout: 120_000,
+              env: serveEnv,
+              stdout: 'pipe',
+              stderr: 'pipe',
+          },
+        ],
     projects: [
         // Setup projects are chained sequentially via `dependencies` so
         // they don't all hammer /testing/reset (migrate:fresh on real

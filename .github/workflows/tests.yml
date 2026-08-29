@@ -641,6 +641,63 @@ jobs:
       # session/PGID (same rationale as the artisan-serve start) so the
       # runner's per-step cleanup can't HUP it mid-run; PGID captured for the
       # "Stop queue worker" cleanup.
+      - name: Start outbound-target Laravel server (testing)
+        env:
+          APP_ENV: testing
+          APP_DEBUG: 'false'
+          DB_CONNECTION: pgsql
+          DB_HOST: 127.0.0.1
+          DB_PORT: '5432'
+          DB_DATABASE: askmydocs_test
+          DB_USERNAME: askmydocs
+          DB_PASSWORD: askmydocs
+          API_CONNECTOR_SSRF_ENABLED: 'false'
+          API_CONNECTOR_HTTPS_ONLY: 'false'
+          PHP_CLI_SERVER_WORKERS: '4'
+        # The API-connector scenarios configure a connector whose routes point
+        # at a real endpoint and then ask the app to CALL it. Aimed at the
+        # app's own address, the server became the client of itself, and PHP's
+        # built-in dev server answers such a request with an empty reply
+        # (cURL 52) whenever the worker that would serve it is the one already
+        # busy issuing it. Four scenarios failed on that, deterministically,
+        # and no retry escapes it.
+        #
+        # This is the same application against the same database, in its own
+        # process on its own port, so the outbound call is a real HTTP round
+        # trip served by a worker that is not waiting on itself. Nothing is
+        # mocked, so R13 still holds. Mirrors the second `webServer` entry in
+        # playwright.config.ts, which covers the local `npm run e2e` path.
+        run: |
+          mkdir -p storage/logs
+          setsid -f php artisan serve --no-reload --host=127.0.0.1 --port=8001 \
+            > storage/logs/artisan-serve-outbound.log 2>&1
+          echo "outbound artisan-serve dispatched via setsid -f"
+
+      - name: Wait for outbound target
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8001/healthz >/dev/null; then
+              echo "Outbound target is up after ${i}s"
+              # Same PGID capture as the primary server: with four worker
+              # children a single listener PID is not enough to clean up.
+              pid=$(lsof -ti tcp:8001 -sTCP:LISTEN | head -1)
+              if [ -n "$pid" ]; then
+                pgid=$(ps -o pgid= -p "$pid" 2>/dev/null | tr -d ' ')
+                if [ -n "$pgid" ]; then
+                  echo "$pgid" > /tmp/artisan-serve-outbound.pgid
+                  echo "Captured outbound PGID=$pgid (sample listener PID=$pid)"
+                else
+                  echo "$pid" > /tmp/artisan-serve-outbound.pid
+                fi
+              fi
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Outbound target never came up on 127.0.0.1:8001"
+          tail -100 storage/logs/artisan-serve-outbound.log || true
+          exit 1
+
       - name: Start agent and KB queue worker (testing)
         env:
           APP_ENV: testing
@@ -691,6 +748,10 @@ jobs:
           # 127.0.0.1:8000 during the setup phase. See R38 + the
           # `ci-failure-investigation` skill rabbit-hole section.
           E2E_SKIP_HTTP_RESET: '1'
+          # Where the APPLICATION should send outbound HTTP during the
+          # API-connector scenarios. Never the app's own port — see the
+          # "Start outbound-target Laravel server" step.
+          E2E_OUTBOUND_BASE_URL: 'http://127.0.0.1:8001'
         # `--` forwards the flag through the npm script to `playwright test`.
         # Playwright splits the test list deterministically, so a given test
         # lands on the same shard on every run and a failure is reproducible
@@ -791,6 +852,22 @@ jobs:
               kill -KILL "$pid" 2>/dev/null || true
             done
           fi
+
+      - name: Stop outbound-target Laravel server
+        if: always()
+        run: |
+          if [ -f /tmp/artisan-serve-outbound.pgid ]; then
+            pgid=$(cat /tmp/artisan-serve-outbound.pgid)
+            kill -- -"$pgid" 2>/dev/null || true
+            echo "Stopped outbound target PGID=$pgid"
+          elif [ -f /tmp/artisan-serve-outbound.pid ]; then
+            kill "$(cat /tmp/artisan-serve-outbound.pid)" 2>/dev/null || true
+          else
+            echo "(no outbound-target pgid/pid file — server step never ran)"
+          fi
+          # Belt and braces: anything still holding 8001 would fail the next
+          # run on a reused runner.
+          lsof -ti tcp:8001 -sTCP:LISTEN | xargs -r kill 2>/dev/null || true
 
       - name: Stop queue worker
         # `if: always()` so the dedicated agent + KB worker started above is
