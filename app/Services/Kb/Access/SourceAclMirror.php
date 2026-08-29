@@ -76,11 +76,19 @@ final class SourceAclMirror
             // restrict TO. Dropping the mirror returns the document to
             // ordinary project visibility rather than leaving it pinned to
             // whoever happened to be named on the previous sync.
-            $revoked = $this->clearMirroredRows($document);
-            $this->clearQueue($document);
-            $this->markRestricted($document, false);
+            //
+            // All three writes happen in the SAME transaction as the
+            // reconciliation branch below (R21): a partial apply here would
+            // leave `source_acl_enforced_at` set with zero mirrored rows,
+            // which hides the document from the whole project until the next
+            // successful sync.
+            return DB::transaction(function () use ($document, $tenantId): MirrorOutcome {
+                $revoked = $this->clearMirroredRows($document, $tenantId);
+                $this->clearQueue($document, $tenantId);
+                $this->markRestricted($document, $tenantId, false);
 
-            return MirrorOutcome::applied(0, 0, $revoked, 0);
+                return MirrorOutcome::applied(0, 0, $revoked, 0);
+            });
         }
 
         return DB::transaction(function () use ($document, $access, $tenantId): MirrorOutcome {
@@ -114,7 +122,7 @@ final class SourceAclMirror
                 ];
             }
 
-            $revoked = $this->clearMirroredRows($document);
+            $revoked = $this->clearMirroredRows($document, $tenantId);
 
             foreach ($rows as $row) {
                 KnowledgeDocumentAcl::query()->create($row);
@@ -127,7 +135,7 @@ final class SourceAclMirror
             // place produces zero rows, and reading that as "unrestricted"
             // would leave precisely those documents open to the whole
             // project.
-            $this->markRestricted($document, true);
+            $this->markRestricted($document, $tenantId, true);
 
             $granted = count(array_filter(
                 $rows,
@@ -167,9 +175,10 @@ final class SourceAclMirror
     /**
      * Delete every mirrored row for this document, leaving manual ones alone.
      */
-    private function clearMirroredRows(KnowledgeDocument $document): int
+    private function clearMirroredRows(KnowledgeDocument $document, string $tenantId): int
     {
         return KnowledgeDocumentAcl::query()
+            ->where('tenant_id', $tenantId)
             ->where('knowledge_document_id', $document->getKey())
             ->where('origin', KnowledgeDocumentAcl::ORIGIN_SOURCE_MIRROR)
             ->delete();
@@ -228,6 +237,7 @@ final class SourceAclMirror
         }
 
         $stale = UnmappedSourcePrincipal::query()
+            ->where('tenant_id', $tenantId)
             ->where('knowledge_document_id', $document->getKey())
             ->get(['id', 'principal_type', 'principal_external_id'])
             ->reject(fn (UnmappedSourcePrincipal $row): bool => in_array(
@@ -246,7 +256,7 @@ final class SourceAclMirror
     /**
      * Record whether a source currently dictates this document's readers.
      */
-    private function markRestricted(KnowledgeDocument $document, bool $restricted): void
+    private function markRestricted(KnowledgeDocument $document, string $tenantId, bool $restricted): void
     {
         $value = $restricted ? now() : null;
 
@@ -254,15 +264,17 @@ final class SourceAclMirror
         // about how the document is governed, not an edit to it, and the
         // ingest path has just written the row.
         KnowledgeDocument::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
             ->whereKey($document->getKey())
             ->update(['source_acl_enforced_at' => $value]);
 
         $document->setAttribute('source_acl_enforced_at', $value);
     }
 
-    private function clearQueue(KnowledgeDocument $document): void
+    private function clearQueue(KnowledgeDocument $document, string $tenantId): void
     {
         UnmappedSourcePrincipal::query()
+            ->where('tenant_id', $tenantId)
             ->where('knowledge_document_id', $document->getKey())
             ->delete();
     }
