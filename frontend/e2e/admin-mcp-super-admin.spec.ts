@@ -33,7 +33,12 @@ test.describe('Admin MCP — super-admin', () => {
         await page.goto('/app/admin/maintenance');
         await expect(page.getByTestId('admin-shell')).toBeVisible({ timeout: 15_000 });
 
+        // The super-admin's demo data lives in the `a-demo` tenant, and a
+        // session opened by /api/auth/login does not default to it, so the
+        // tenant middleware answers 403 tenant_forbidden. Addressing the
+        // tenant explicitly is what the sibling super-admin specs already do.
         const create = await request.post('/api/admin/mcp-servers', {
+            headers: { 'X-Tenant-Id': 'a-demo' },
             data: {
                 name: `pw-mcp-${Date.now()}`,
                 transport: 'http',
@@ -46,7 +51,9 @@ test.describe('Admin MCP — super-admin', () => {
         const created = await create.json();
         const id = created.data.id as number;
 
-        const list = await request.get('/api/admin/mcp-servers');
+        const list = await request.get('/api/admin/mcp-servers', {
+            headers: { 'X-Tenant-Id': 'a-demo' },
+        });
         expect(list.ok()).toBeTruthy();
         const listing = await list.json();
         expect(Array.isArray(listing.data)).toBeTruthy();
@@ -64,7 +71,9 @@ test.describe('Admin MCP — super-admin', () => {
         });
         expect(credentials.status()).toBe(404);
 
-        const disable = await request.post(`/api/admin/mcp-servers/${id}/disable`);
+        const disable = await request.post(`/api/admin/mcp-servers/${id}/disable`, {
+            headers: { 'X-Tenant-Id': 'a-demo' },
+        });
         expect(disable.ok()).toBeTruthy();
     });
 });

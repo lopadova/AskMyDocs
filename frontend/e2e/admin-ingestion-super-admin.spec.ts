@@ -59,7 +59,13 @@ baseTest.describe('Admin Ingestion & Sync — super-admin', () => {
     });
 
     baseTest('BE contract — queue endpoint returns the three logical roles', async ({ page }) => {
-        const resp = await page.request.get('/api/admin/ingestion/queue');
+        // The super-admin's demo data lives in the `a-demo` tenant, and a
+        // session opened by /api/auth/login does not default to it, so the
+        // tenant middleware answers 403 tenant_forbidden. Addressing the
+        // tenant explicitly is what the sibling super-admin specs already do.
+        const resp = await page.request.get('/api/admin/ingestion/queue', {
+            headers: { 'X-Tenant-Id': 'a-demo' },
+        });
         if (!resp.ok()) {
             throw new Error(`GET queue returned ${resp.status()}: ${await resp.text()}`);
         }
@@ -72,7 +78,9 @@ baseTest.describe('Admin Ingestion & Sync — super-admin', () => {
     baseTest('failure — sync-runs for a non-existent installation 404s (R14)', async ({ page }) => {
         // A bogus installation id must not leak data — the endpoint 404s rather
         // than returning an empty 200 that reads as "no runs".
-        const resp = await page.request.get('/api/admin/connectors/99999999/sync-runs');
+        const resp = await page.request.get('/api/admin/connectors/99999999/sync-runs', {
+            headers: { 'X-Tenant-Id': 'a-demo' },
+        });
         expect(resp.status()).toBe(404);
     });
 
