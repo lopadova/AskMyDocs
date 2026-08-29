@@ -134,6 +134,28 @@ final class ProvenanceToolFirewallTest extends TestCase
         $this->assertFalse($verdict->toolsAllowed);
     }
 
+    public function test_it_still_blocks_when_the_tenant_context_has_drifted(): void
+    {
+        // The reason this query is keyed on the primary key alone and NOT
+        // scoped by tenant, which is a deliberate departure from R30.
+        //
+        // R30 exists to stop a query returning another tenant's rows. This
+        // query is a DETECTION: narrowing it cannot leak anything, it can only
+        // fail to FIND an untrusted document -- and a miss returns "allowed"
+        // and hands over the tools. A tenant filter would buy no
+        // confidentiality and sell a way to fail OPEN, on any path where the
+        // context has drifted: a queued job, a CLI caller, a future entry
+        // point.
+        $doc = $this->document('inbox/vendor-invoice.md', ProvenanceTier::UntrustedExternal);
+
+        app(TenantContext::class)->set('some-other-tenant');
+
+        $this->assertFalse(
+            $this->firewall()->assess($this->resultFor($doc))->toolsAllowed,
+            'A drifted tenant context made the firewall miss an untrusted document and grant the tools.',
+        );
+    }
+
     public function test_the_firewall_can_be_switched_off(): void
     {
         // R43 — the OFF path restores the pre-v8.34 behaviour exactly, and is

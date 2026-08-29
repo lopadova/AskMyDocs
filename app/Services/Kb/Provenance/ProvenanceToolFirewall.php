@@ -61,6 +61,22 @@ final class ProvenanceToolFirewall
             return ToolFirewallVerdict::allowed();
         }
 
+        // Keyed on the primary key alone, and NOT scoped by tenant. That is a
+        // deliberate departure from R30, for the same reason the IMAP mailbox
+        // lock omits the tenant: the usual argument does not point this way
+        // here.
+        //
+        // R30 exists to stop a query returning rows from another tenant. This
+        // query is a DETECTION, so narrowing it cannot leak anything - it can
+        // only fail to FIND an untrusted document, and a miss here returns
+        // "allowed" and hands over the tools. A tenant filter would add a way
+        // to fail OPEN in exchange for no confidentiality it protects.
+        //
+        // The ids arrive from a retrieval result that AccessScopeScope already
+        // scoped, and `id` is a globally unique auto-increment key, so the
+        // filter would be redundant on the happy path and harmful on any path
+        // where TenantContext has drifted - a queued job, a CLI caller, a
+        // future entry point.
         $untrusted = DB::table('knowledge_documents')
             ->whereIn('id', $documentIds)
             ->where('provenance_tier', ProvenanceTier::UntrustedExternal->value)
