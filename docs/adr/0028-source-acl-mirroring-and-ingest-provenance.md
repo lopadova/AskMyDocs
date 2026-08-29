@@ -10,7 +10,7 @@
 
 ## Context
 
-Eleven connectors ingest into the KB. Every source they read from has its own
+Eight connectors ingest into the KB. Every source they read from has its own
 permission model — Drive sharing, Confluence space restrictions, Jira issue
 security levels, Notion page permissions, OneDrive/SharePoint scopes. None of
 it survives ingestion:
@@ -27,7 +27,7 @@ This is the failure that made *oversharing* the headline problem of enterprise
 assistant rollouts, and mirroring source permissions is the one capability the
 category leader's moat is actually built on.
 
-A second gap runs alongside it. Ten connectors ingest content written by
+A second gap runs alongside it. Seven connectors ingest content written by
 someone inside the organisation. **IMAP ingests content written by anyone who
 can send an email.** That mail becomes a document, the document becomes chunks,
 the chunks are retrieved as grounding, and the same platform exposes MCP tools
@@ -42,9 +42,13 @@ be designed together and shipped separately.
 Two pieces of groundwork already exist and should be reused rather than
 reinvented:
 
-- `knowledge_documents.provenance` is already a column, and the Auto-Wiki tier
-  already enforces a trust ordering (human `accepted` > `auto` > raw) in the
-  reranker. Trust tiers are an established idea here.
+- The Auto-Wiki tier already enforces a trust ordering (human `accepted` >
+  `auto` > raw) in the reranker, so trust tiers are an established idea here.
+  Provenance itself has no home yet, though: the `provenance` columns that do
+  exist — `kb_edges.provenance` (how an edge was derived) and the
+  `chat_log_provenance` table (which answer tokens came from which chunk) —
+  record different facts. `knowledge_documents` has no provenance column, so
+  Phase 1 adds one rather than reusing anything.
 - R33 just pushed the membership scope allowlist into SQL, establishing the
   pattern for enforcing per-document authorization inside the query rather than
   after it — including on the retrieval hot path, which never calls the policy.
@@ -64,7 +68,7 @@ interface DeclaresProvenance     { public function provenanceTier(): ProvenanceT
 
 `dispatchIngestion()` gains one optional `?SourceAccess $access = null`
 parameter. A connector that implements neither interface behaves exactly as it
-does today. This is non-negotiable: eleven connectors and a **public
+does today. This is non-negotiable: eight connectors and a **public
 template** consume this contract, and a breaking signature would strand every
 third-party connector built on it.
 
