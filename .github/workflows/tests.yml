@@ -563,6 +563,11 @@ jobs:
           # the flag, Laravel's ServeCommand silently drops the env var and
           # runs the built-in PHP server single-threaded.
           PHP_CLI_SERVER_WORKERS: '4'
+          # Seeders that install API tools (E2eAgentRetrievalSeeder) run INSIDE
+          # the app, so the outbound target must be readable from the server's
+          # own environment. Aimed at this server's own port, those tools made
+          # the app the client of itself and the calls failed with cURL 52.
+          E2E_OUTBOUND_BASE_URL: 'http://127.0.0.1:8001'
         # `setsid -f` runs `php artisan serve` DIRECTLY in a new session
         # (no `bash -c` wrapper). Earlier attempt with `setsid -f bash -c
         # '...'` detached the BASH wrapper, but PHP remained a child of

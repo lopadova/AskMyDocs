@@ -141,6 +141,10 @@ const serveEnv = {
     // healthz + reset + seed + login to land at the
     // same time.
     PHP_CLI_SERVER_WORKERS: '4',
+    // Seeders that install API tools (E2eAgentRetrievalSeeder) run INSIDE the
+    // app, so the outbound target has to be readable from the server's own
+    // environment, not just from the spec process.
+    E2E_OUTBOUND_BASE_URL: process.env.E2E_OUTBOUND_BASE_URL ?? 'http://127.0.0.1:8001',
 };
 
 /**
