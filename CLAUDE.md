@@ -783,9 +783,13 @@ full failure context first. Four sources, in order:
    the `✘` lines, the spec:line that failed, and the error excerpt.
    60% of the time this clusters the failures by root cause already.
 2. **Playwright HTML report artefact** — `tests.yml` uploads
-   `playwright-report/` on failure (retention 7d). Either:
-   - GitHub UI: PR → failed job → Artifacts → `playwright-report.zip`
-   - Or `gh run download <run-id> --name playwright-report --dir /tmp/...`
+   the report on failure (retention 7d). The job is sharded, so each shard
+   uploads its own artefact named `playwright-report-shard-<n>` — a failing
+   test lives in exactly one of them, and the failed-job log names the shard.
+   Either:
+   - GitHub UI: PR → failed job → Artifacts → `playwright-report-shard-<n>.zip`
+   - One shard: `gh run download <run-id> --name playwright-report-shard-2 --dir /tmp/...`
+   - All of them: `gh run download <run-id> --pattern 'playwright-report-shard-*' --dir /tmp/...`
    Inside the zip, `data/<hash>.md` files are the per-test error
    contexts (locator, timeout, page snapshot URL, screenshot path).
    Read them BEFORE diffing code — the snapshot often shows the page
