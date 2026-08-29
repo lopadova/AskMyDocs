@@ -65,7 +65,7 @@ jobs:
 
       - name: Upload recorded fixtures
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: recorded-fixtures
           path: tests/Fixtures/connectors/**/recorded/*.json

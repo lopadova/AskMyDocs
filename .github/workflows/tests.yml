@@ -819,7 +819,7 @@ jobs:
 
       - name: Upload report on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           # Artifact names must be unique across matrix jobs; a shared name
           # makes the upload of the second shard collide with the first.
