@@ -1,4 +1,17 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures';
+/*
+ * Uses the `seeded` auto-fixture (reset -> DemoSeeder -> project login)
+ * rather than raw @playwright/test.
+ *
+ * These scenarios authenticate purely through the super-admin storage state
+ * the setup project persists. Any other spec that reseeds regenerates the
+ * users table, and `User::firstOrCreate()` mints a fresh bcrypt hash, which
+ * invalidates that persisted session -- every request then answers 401
+ * "Unauthenticated". Whether that happened depended entirely on execution
+ * order, so the suite passed or failed by luck of scheduling; sharding made
+ * the luck run out. The fixture re-establishes the session per test, which
+ * is order-independent by construction.
+ */
 
 /*
  * PR13 — Phase H2. Admin Maintenance destructive command flow under
