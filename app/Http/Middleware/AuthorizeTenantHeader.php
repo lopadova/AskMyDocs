@@ -11,6 +11,7 @@ use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
 use Padosoft\AiActCompliance\MultiTenancy\Models\Tenant;
+use Padosoft\AskMyDocsConnectorBase\Support\TenantContext as ConnectorTenantContext;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -48,7 +49,10 @@ final class AuthorizeTenantHeader
 {
     private const ACTIVE_TENANT_SESSION_KEY = 'askmydocs.active_tenant';
 
-    public function __construct(private readonly TenantContext $tenants) {}
+    public function __construct(
+        private readonly TenantContext $tenants,
+        private readonly ConnectorTenantContext $connectorTenants,
+    ) {}
 
     public function handle(Request $request, Closure $next): Response
     {
@@ -73,6 +77,12 @@ final class AuthorizeTenantHeader
                     && $this->hasMembershipInTenant($user, $rememberedTenant)
                 ) {
                     $this->tenants->set($rememberedTenant);
+                    // ResolveTenant runs before the authenticated user is
+                    // available, so browser redirects (for example OAuth
+                    // callbacks) initially resolve to the reserved fallback.
+                    // Keep the connector-package context in lockstep when the
+                    // session restores the already-authorised tenant.
+                    $this->connectorTenants->set($rememberedTenant);
                     $tenantId = $rememberedTenant;
                 } else {
                     $this->forgetRememberedTenant($request, $rememberedTenant);

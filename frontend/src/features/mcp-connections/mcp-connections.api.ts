@@ -1,6 +1,7 @@
 import { api } from '../../lib/api';
 
 export type McpConnectionScope = 'shared' | 'personal';
+export type McpAuthenticationMethod = 'oauth' | 'bearer' | 'none';
 export type McpConnectionStatus = 'pending' | 'active' | 'disabled' | 'errored' | 'reauthorization_required';
 
 export interface McpConnectionToolDto {
@@ -61,7 +62,19 @@ export interface CreateMcpConnectionPayload {
     endpoint: string;
     transport: 'auto' | 'streamable_http' | 'legacy_sse';
     project_key?: string | null;
+    auth_method: McpAuthenticationMethod;
     bearer?: string;
+    ui_destination?: string;
+}
+
+export interface CreateMcpConnectionResult {
+    connection: McpConnectionDto;
+    authorization_required?: boolean;
+    next_action?: {
+        type: 'oauth_redirect';
+        authorization_url: string;
+        expires_at: string;
+    };
 }
 
 function base(scope: McpConnectionScope): string {
@@ -74,8 +87,9 @@ export const mcpConnectionsApi = {
         return data;
     },
 
-    async create(scope: McpConnectionScope, payload: CreateMcpConnectionPayload): Promise<void> {
-        await api.post(base(scope), payload);
+    async create(scope: McpConnectionScope, payload: CreateMcpConnectionPayload): Promise<CreateMcpConnectionResult> {
+        const { data } = await api.post<CreateMcpConnectionResult>(base(scope), payload);
+        return data;
     },
 
     async discover(scope: McpConnectionScope, connectionId: string): Promise<void> {

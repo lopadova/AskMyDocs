@@ -44,6 +44,8 @@ return [
     ],
 
     'oauth' => [
+        'enabled' => (bool) env('MCP_CONNECTOR_OAUTH_ENABLED', true),
+        'allow_insecure_local' => (bool) env('MCP_CONNECTOR_OAUTH_ALLOW_INSECURE_LOCAL', false),
         'callback_path' => '/api/connectors/mcp/oauth/callback',
         'state_ttl_seconds' => (int) env('MCP_CONNECTOR_OAUTH_STATE_TTL', 600),
         'pkce' => true,
@@ -52,6 +54,11 @@ return [
         'client_name' => env('APP_NAME', 'AskMyDocs'),
         'client_uri' => env('APP_URL'),
         'default_scopes' => [],
+        'clients' => (static function (): array {
+            $decoded = json_decode((string) env('MCP_CONNECTOR_OAUTH_CLIENTS_JSON', '[]'), true);
+
+            return is_array($decoded) ? $decoded : [];
+        })(),
     ],
 
     'tool_policy' => [
