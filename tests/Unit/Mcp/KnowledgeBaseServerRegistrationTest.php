@@ -39,7 +39,7 @@ class KnowledgeBaseServerRegistrationTest extends TestCase
         // with the durable IMAP backfill workflow; the assertion had been left
         // at 47, so this lock failed on every branch instead of guarding them.
         // + 1 KbProvenanceTool (v8.32 / ADR 0028 phase 1).
-        $this->assertCount(49, $this->registeredTools());
+        $this->assertCount(50, $this->registeredTools());
     }
 
     public function test_server_registers_the_provenance_tool(): void

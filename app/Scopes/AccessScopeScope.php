@@ -63,6 +63,7 @@ class AccessScopeScope implements Scope
 
         $this->constrainByProject($builder, $model, $user);
         $this->excludeDeniedDocuments($builder, $model, $user);
+        $this->excludeSourceRestrictedDocuments($builder, $model, $user);
     }
 
     private function constrainByProject(Builder $builder, Model $model, User $user): void
@@ -236,5 +237,66 @@ class AccessScopeScope implements Scope
                 })
                 ->select('knowledge_document_id'),
         );
+    }
+
+    /**
+     * Hide documents whose SOURCE stated who may read them, from everyone it
+     * did not name (ADR 0028 phase 2, R33).
+     *
+     * A file shared with three people upstream used to become visible to the
+     * whole project on ingest, because project membership was the only gate
+     * and it is far coarser than what the source said. Once a permission list
+     * has been mirrored, membership stops being sufficient on its own: the
+     * reader also needs a matching allow.
+     *
+     * This has to live in SQL and not only in the policy. Retrieval reaches
+     * chunks through `whereHas('document')` and never calls
+     * KnowledgeDocumentPolicy, so an arm implemented only there would let the
+     * model receive the document as grounding and cite it -- exactly the H8
+     * shape, and exactly why R33 exists.
+     *
+     * Restriction is read from `source_acl_enforced_at` on the document, not
+     * inferred from the presence of mirrored rows. A complete list naming
+     * only people this application cannot place produces zero rows, and
+     * treating that as "no restriction" would leave open precisely the
+     * documents whose readers are least likely to be colleagues.
+     *
+     * Manual grants count. An operator resolving a triage entry writes an
+     * ordinary ACL row, and it must be enough on its own; the subquery
+     * therefore looks for ANY allow, not only a mirrored one.
+     *
+     * Users who can read every project never reach this code -- apply()
+     * returns early for them -- so oversight roles keep working unchanged.
+     */
+    private function excludeSourceRestrictedDocuments(Builder $builder, Model $model, User $user): void
+    {
+        $roleNames = $user->getRoleNames()->all();
+        $idColumn = $model->qualifyColumn('id');
+
+        $builder->where(function ($outer) use ($model, $idColumn, $user, $roleNames) {
+            // The overwhelmingly common branch, and a plain NULL check on an
+            // indexed column: no source has ever spoken for this document.
+            $outer->whereNull($model->qualifyColumn('source_acl_enforced_at'))
+                ->orWhereExists(function ($sub) use ($idColumn, $user, $roleNames) {
+                    $sub->from('knowledge_document_acl as granted')
+                        ->whereColumn('granted.knowledge_document_id', $idColumn)
+                        ->where('granted.permission', KnowledgeDocumentAcl::PERMISSION_VIEW)
+                        ->where('granted.effect', KnowledgeDocumentAcl::EFFECT_ALLOW)
+                        ->where(function ($q) use ($user, $roleNames) {
+                            $q->where(function ($s) use ($user) {
+                                $s->where('granted.subject_type', KnowledgeDocumentAcl::SUBJECT_USER)
+                                    ->where('granted.subject_id', (string) $user->getKey());
+                            });
+
+                            if ($roleNames !== []) {
+                                $q->orWhere(function ($s) use ($roleNames) {
+                                    $s->where('granted.subject_type', KnowledgeDocumentAcl::SUBJECT_ROLE)
+                                        ->whereIn('granted.subject_id', $roleNames);
+                                });
+                            }
+                        })
+                        ->selectRaw('1');
+                });
+        });
     }
 }

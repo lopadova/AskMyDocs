@@ -32,6 +32,7 @@ use App\Mcp\Tools\KbGuardrailsInsightsTool;
 use App\Mcp\Tools\KbListDanglingWikilinksTool;
 use App\Mcp\Tools\KbProposeCanonicalEditTool;
 use App\Mcp\Tools\KbProvenanceTool;
+use App\Mcp\Tools\KbSourceAclTool;
 use App\Mcp\Tools\KbPromotionSuggestTool;
 use App\Mcp\Tools\KbReadChunkTool;
 use App\Mcp\Tools\KbBuildWikiIndexTool;
@@ -155,6 +156,7 @@ class KnowledgeBaseServer extends Server
         // v8.32 / ADR 0028 phase 1 — corpus provenance read-out: how much of
         // this tenant's knowledge base was authored outside the organisation.
         KbProvenanceTool::class,
+        KbSourceAclTool::class,
 
         // Durable IMAP full-history import status/start over the same manager as
         // HTTP and PHP. This is a write-capable tool (no IsReadOnly annotation),
