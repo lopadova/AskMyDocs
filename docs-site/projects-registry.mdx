@@ -66,6 +66,12 @@ tags), and `PATCH` / `DELETE /api/admin/memberships/{membership}` manage it. A
 membership row is exactly what the tenant-authorize middleware checks when a user
 sends an `X-Tenant-Id` for a team they don't own (see [admin cockpit](/admin-panel)).
 
+The scope allowlist is enforced in SQL, so it constrains **retrieval** as well as
+listing — a member scoped to `hr/policies/**` cannot receive `hr/salaries/**`
+chunks as chat grounding. See
+[scope allowlists reach the retrieval path](/architecture/security-and-threat-model)
+for the glob translation and its one inexact shape.
+
 ## Design rationale (ADR-style)
 
 - **Why a soft registry, not a hard FK.** AskMyDocs treats canonical markdown as
