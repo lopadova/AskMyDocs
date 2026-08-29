@@ -288,7 +288,42 @@ class User extends Authenticatable implements InvitedAccount
             return true;
         }
 
+        // ADR 0028 phase 2 — once a source has stated who may read a
+        // document, project membership stops being sufficient on its own.
+        // Before this, a file shared with three people upstream became
+        // visible to everyone in the project the moment it was ingested.
+        //
+        // Scoped to `view` because that is the only permission the mirror
+        // ever asserts: the source described who can READ the file, and
+        // inferring an editing restriction from that would be inventing a
+        // fact it never reported.
+        //
+        // AccessScopeScope carries the same arm in SQL (R33). It has to:
+        // retrieval reaches chunks through `whereHas('document')` and never
+        // calls the policy, so an arm implemented only here would still hand
+        // the document to the model as grounding.
+        if ($permission === 'view' && $this->documentIsSourceRestricted($doc)) {
+            return false;
+        }
+
         return $this->hasProjectAndScopeAccess($doc);
+    }
+
+    /**
+     * Whether a source reported this document's readers.
+     *
+     * Read from the document rather than counted from mirrored ACL rows. A
+     * complete list naming only people this application cannot place -- an
+     * external collaborator, a group with no internal counterpart -- produces
+     * zero rows, and inferring "unrestricted" from that would leave exactly
+     * those documents open to the whole project.
+     *
+     * Null means no source has ever spoken for the document, which is every
+     * corpus whose connectors do not read permissions.
+     */
+    private function documentIsSourceRestricted(KnowledgeDocument $doc): bool
+    {
+        return $doc->source_acl_enforced_at !== null;
     }
 
     /**

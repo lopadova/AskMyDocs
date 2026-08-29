@@ -29,6 +29,7 @@ export type SidebarSection =
     | 'kb-insights'
     | 'analysis-settings'
     | 'content-gaps'
+    | 'source-acl'
     | 'wiki-health'
     | 'wiki-indices'
     | 'wiki-explorer'
@@ -132,6 +133,7 @@ export const NAV_GROUPS: NavGroup[] = [
             { id: 'kb-insights', label: 'Doc Insights', icon: 'Eye', route: '/app/$teamHash/admin/kb/insights' },
             { id: 'analysis-settings', label: 'Analysis Gate', icon: 'Sliders', route: '/app/$teamHash/admin/kb/analysis-settings' },
             { id: 'content-gaps', label: 'Content Gaps', icon: 'Search', route: '/app/$teamHash/admin/kb/content-gaps' },
+            { id: 'source-acl', label: 'Source Permissions', icon: 'Shield', route: '/app/$teamHash/admin/kb/source-acl' },
             { id: 'wiki-health', label: 'Wiki Health', icon: 'Activity', route: '/app/$teamHash/admin/kb/wiki-health' },
             { id: 'wiki-indices', label: 'Wiki Indices', icon: 'Book', route: '/app/$teamHash/admin/kb/wiki-indices' },
             { id: 'wiki-explorer', label: 'Wiki Explorer', icon: 'Folder', route: '/app/$teamHash/admin/kb/wiki-explorer' },

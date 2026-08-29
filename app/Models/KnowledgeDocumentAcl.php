@@ -19,6 +19,7 @@ class KnowledgeDocumentAcl extends Model
         'subject_id',
         'permission',
         'effect',
+        'origin',
     ];
 
     // Subject type (polymorphic via subject_id; kept simple to avoid the
@@ -35,6 +36,40 @@ class KnowledgeDocumentAcl extends Model
 
     public const EFFECT_ALLOW = 'allow';
     public const EFFECT_DENY = 'deny';
+
+    /*
+     * Who owns this row (ADR 0028 phase 2).
+     *
+     * Reconciliation must be able to DELETE mirrored rows — a mirror that
+     * only ever adds permissions is a slow leak, because a share revoked
+     * upstream would stay granted here. It must equally never touch what a
+     * person set by hand.
+     *
+     * `origin` is the whole basis for that distinction, which is why the
+     * column defaults to ORIGIN_MANUAL: an unlabelled row is treated as
+     * somebody's deliberate decision, never as sweepable. The safe direction
+     * for a wrong guess is leaving a grant in place for a human to remove,
+     * not deleting one nobody meant to lose.
+     */
+    public const ORIGIN_MANUAL = 'manual';
+
+    public const ORIGIN_SOURCE_MIRROR = 'source-mirror';
+
+    public const ORIGINS = [
+        self::ORIGIN_MANUAL,
+        self::ORIGIN_SOURCE_MIRROR,
+    ];
+
+    /**
+     * Rows a sync owns, and may therefore remove.
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder<self>  $query
+     * @return \Illuminate\Database\Eloquent\Builder<self>
+     */
+    public function scopeMirrored($query)
+    {
+        return $query->where('origin', self::ORIGIN_SOURCE_MIRROR);
+    }
 
     public function document(): BelongsTo
     {

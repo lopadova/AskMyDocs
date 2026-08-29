@@ -66,11 +66,35 @@ interface SupportsSourceAcl      { public function readAcl(string $remoteId): So
 interface DeclaresProvenance     { public function provenanceTier(): ProvenanceTier; }
 ```
 
-`dispatchIngestion()` gains one optional `?SourceAccess $access = null`
-parameter. A connector that implements neither interface behaves exactly as it
-does today. This is non-negotiable: eight connectors and a **public
-template** consume this contract, and a breaking signature would strand every
+A connector that implements neither interface behaves exactly as it does
+today. This is non-negotiable: eight connectors and a **public template**
+consume this contract, and a breaking signature would strand every
 third-party connector built on it.
+
+> **Correction (v8.33 implementation).** This decision originally read
+> "`dispatchIngestion()` gains one optional `?SourceAccess $access = null`
+> parameter", on the assumption that an optional trailing parameter is
+> additive. **It is not, and the ADR was wrong.** PHP rejects an
+> implementation declaring fewer parameters than its interface, optional or
+> not:
+>
+> ```
+> Fatal error: Declaration of Impl::f(string $a): void must be compatible
+> with C::f(string $a, ?string $b = null): void
+> ```
+>
+> The reasoning had connectors in mind, and connectors are *callers* of
+> `ConnectorIngestionContract` — they would indeed have been fine. Hosts are
+> *implementers*, and a host binding its own implementation would have
+> fatalled at class-declaration time on upgrade, before a line of its own
+> code ran. The very compatibility this section calls non-negotiable would
+> have been broken by the mechanism chosen to preserve it.
+>
+> The contract is therefore **unchanged**. The DTO travels inside
+> `$metadata` under `SourceAccess::METADATA_KEY`, written by
+> `BaseConnector::withSourceAccess()` so no call site handles the key by
+> hand, and rebuilt with `SourceAccess::fromArray()`. `$metadata` is already
+> the extension channel for per-document facts of this kind.
 
 ### 2. `SourceAccess` carries principals, not decisions
 

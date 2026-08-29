@@ -41,12 +41,14 @@ class KnowledgeDocument extends Model
         'generation_source',
         'evidence_tier',
         'provenance_tier',
+        'source_acl_enforced_at',
         'retrieval_priority',
         'source_of_truth',
         'frontmatter_json',
     ];
 
     protected $casts = [
+        'source_acl_enforced_at' => 'datetime',
         'metadata' => 'array',
         'source_updated_at' => 'datetime',
         'indexed_at' => 'datetime',

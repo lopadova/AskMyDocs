@@ -57,6 +57,11 @@ class TestingController extends Controller
         // v8.8/W4 — content-gap rows for the Content Gaps happy-path E2E
         // (admin-content-gaps.spec.ts).
         'KbContentGapSeeder' => \Database\Seeders\KbContentGapSeeder::class,
+
+        // v8.33 / ADR 0028 phase 2 — a source-restricted document plus the
+        // principals its source named that cannot be placed, for the Source
+        // Permissions triage scenario.
+        'SourceAclTriageSeeder' => \Database\Seeders\SourceAclTriageSeeder::class,
         // v8.8/W6 — a persisted conversation citing a canonical doc + its
         // graph neighbour for the chat-side Related-panel E2E.
         'KbChatGraphSeeder' => \Database\Seeders\KbChatGraphSeeder::class,
