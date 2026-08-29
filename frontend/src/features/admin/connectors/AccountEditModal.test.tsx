@@ -107,7 +107,12 @@ describe('AccountEditModal', () => {
         // Details tab body: the metadata form, pre-filled with the label.
         expect(screen.getByTestId('connector-imap-account-form-label')).toHaveValue('Date');
         // v8.31 — the redesigned Details tab shows the two stat cards.
-        expect(screen.getByTestId('connector-account-7-edit-stat-documents')).toHaveTextContent('4,182');
+        // Locale-independent for the same reason as the sibling assertion in
+        // IngestionView.test.tsx: the component uses `toLocaleString()`, so a
+        // literal '4,182' only passes where the machine locale groups with
+        // commas.
+        expect(screen.getByTestId('connector-account-7-edit-stat-documents'))
+            .toHaveTextContent((4182).toLocaleString());
         expect(screen.getByTestId('connector-account-7-edit-stat-last-sync')).toHaveTextContent('Never');
     });
 
