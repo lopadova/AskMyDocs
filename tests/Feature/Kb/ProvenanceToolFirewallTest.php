@@ -256,6 +256,76 @@ final class ProvenanceToolFirewallTest extends TestCase
         $this->assertArrayNotHasKey('tools', $captured, 'Tools were offered on a turn grounded in external content.');
     }
 
+    public function test_a_blocked_turn_strips_tool_options_the_caller_passed(): void
+    {
+        // No caller passes these today, so this asserts a property rather than
+        // a behaviour anyone relies on: "withheld" has to mean withheld
+        // regardless of what a future call site hands in. A control that
+        // depends on every present and future caller choosing not to pass
+        // `tools` is not a control, and the failure would be silent -- a turn
+        // that quietly kept its tools looks exactly like one never blocked.
+        config()->set('mcp.enabled', true);
+
+        $provider = Mockery::mock(\App\Ai\AiProviderInterface::class);
+        $provider->shouldReceive('name')->andReturn('openai');
+
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('provider')->andReturn($provider);
+
+        $captured = null;
+        $ai->shouldReceive('chatWithHistory')
+            ->once()
+            ->andReturnUsing(function (string $p, array $m, array $options) use (&$captured): AiResponse {
+                $captured = $options;
+
+                return new AiResponse(content: 'ok', provider: 'openai', model: 'gpt-4o');
+            });
+
+        $this->app->instance(AiManager::class, $ai);
+
+        app(McpToolCallingService::class)->chatWithTools(
+            systemPrompt: 'system',
+            messages: [['role' => 'user', 'content' => 'q']],
+            options: [
+                'tools' => [['type' => 'function', 'function' => ['name' => 'wire_transfer']]],
+                'tool_choice' => 'auto',
+                'functions' => [['name' => 'legacy_wire_transfer']],
+                'function_call' => 'auto',
+                'temperature' => 0.2,
+            ],
+            user: $this->member(),
+            context: ['provenance_firewall' => ToolFirewallVerdict::blocked([1])->toArray()],
+        );
+
+        foreach (['tools', 'tool_choice', 'functions', 'function_call'] as $key) {
+            $this->assertArrayNotHasKey($key, $captured, $key.' reached the provider on a blocked turn.');
+        }
+
+        // Everything unrelated is left alone -- this strips tools, not options.
+        $this->assertSame(0.2, $captured['temperature']);
+    }
+
+    public function test_an_explicit_block_is_honoured_even_with_unusable_diagnostics(): void
+    {
+        // Copilot proposed downgrading this to "allowed", on the grounds that
+        // malformed input reads as allowed. That inverts the reasoning.
+        //
+        // "Absent reads as allowed" is about ABSENCE: a turn must not lose its
+        // tools because the verdict never arrived. Here the decision IS
+        // present and explicit -- tools_allowed is false -- and the id list is
+        // diagnostics, not the decision. Letting a glitch in a non-load-bearing
+        // field switch off a security control is the wrong direction; the safe
+        // reading of a present block with unusable diagnostics is to keep the
+        // block and lose the diagnostics.
+        $restored = ToolFirewallVerdict::fromArray([
+            'tools_allowed' => false,
+            'untrusted_document_ids' => 'not-a-list',
+        ]);
+
+        $this->assertFalse($restored->toolsAllowed);
+        $this->assertSame([], $restored->untrustedDocumentIds);
+    }
+
     private function resultFor(KnowledgeDocument $doc): SearchResult
     {
         return new SearchResult(

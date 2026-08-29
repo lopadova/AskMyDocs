@@ -88,7 +88,11 @@ final class McpToolCallingService
         );
 
         if (! $verdict->toolsAllowed) {
-            return $this->ai->chatWithHistory($systemPrompt, $messages, $options);
+            return $this->ai->chatWithHistory(
+                $systemPrompt,
+                $messages,
+                $this->withoutToolOptions($options),
+            );
         }
 
         $projectKey = isset($context['project_key']) && is_string($context['project_key'])
@@ -424,6 +428,35 @@ final class McpToolCallingService
      * @param  array<string, array{server: McpServer, schema: array<string, mixed>}>  $toolIndex
      * @return array<string, mixed>
      */
+    /**
+     * Strip every option that could put tools on the wire.
+     *
+     * No caller passes these today -- both chat controllers send an empty
+     * options array -- so this changes nothing now. It is here because
+     * "withheld" has to mean withheld regardless of what a future caller
+     * hands in: a control that depends on every present and future call site
+     * choosing not to pass `tools` is not a control, and the failure would be
+     * silent, since a turn that quietly kept its tools looks exactly like one
+     * that was never blocked.
+     *
+     * Both the OpenAI-shaped keys and their deprecated predecessors, because
+     * a provider that still honours `functions` would honour it here too.
+     *
+     * @param  array<string, mixed>  $options
+     * @return array<string, mixed>
+     */
+    private function withoutToolOptions(array $options): array
+    {
+        unset(
+            $options['tools'],
+            $options['tool_choice'],
+            $options['functions'],
+            $options['function_call'],
+        );
+
+        return $options;
+    }
+
     private function toolTurnOptions(array $options, array $toolIndex): array
     {
         $toolsPayload = array_map(
