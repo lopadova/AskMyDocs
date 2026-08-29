@@ -22,7 +22,7 @@
     "security:rules": "node .github/scripts/security-rules/validate-security-rule-coverage.mjs"
   },
   "dependencies": {
-    "@ai-sdk/react": "^3.0.173",
+    "@ai-sdk/react": "^4.0.85",
     "@codemirror/lang-markdown": "^6.3.0",
     "@codemirror/state": "^6.4.1",
     "@codemirror/view": "^6.34.0",
