@@ -313,9 +313,11 @@ export default defineConfig({
             // R32 — per-role access-control gate. Runs role-access.spec.ts in a
             // CLEAN (unauthenticated) context: the spec logs in as each of the
             // six roles inline + asserts the API allow-set, plus a guest case.
-            // No pre-auth storage state may leak in. Depends on `setup` only to
-            // serialise the boot-time DB migrate; the spec's own beforeEach
-            // reseeds via resetAndSeed.
+            // No pre-auth storage state may leak in, which the explicit empty
+            // `storageState` below guarantees regardless of what the setup
+            // chain wrote. It depends on the chain's tail purely to serialise
+            // the boot-time DB migrate; the spec's own beforeEach reseeds via
+            // resetAndSeed.
             name: 'chromium-role-access',
             use: {
                 ...devices['Desktop Chrome'],
