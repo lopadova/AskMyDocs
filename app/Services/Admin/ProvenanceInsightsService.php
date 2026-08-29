@@ -123,17 +123,44 @@ final class ProvenanceInsightsService
      */
     public function byProject(int $limit = 50): array
     {
+        // "Externally authored" has to mean the same thing here as in
+        // summary(), which resolves every stored value through
+        // ProvenanceTier::fromStorage() -- and that maps an UNRECOGNISED
+        // value to UntrustedExternal rather than to the trusted default.
+        // Matching only the literal 'untrusted-external' would count a tier
+        // written by a newer version as external in the headline and as
+        // internal here, so the breakdown would contradict the number above
+        // it and mis-order the projects on exactly the rows that deserve
+        // attention.
+        //
+        // So the predicate is the inverse: anything that is neither absent
+        // nor a recognised non-external tier. Derived from the enum, so a
+        // tier added later is covered without touching this query.
+        $internalTiers = array_values(array_map(
+            static fn (ProvenanceTier $tier): string => $tier->value,
+            array_filter(
+                ProvenanceTier::cases(),
+                static fn (ProvenanceTier $tier): bool => ! $tier->isExternallyAuthored(),
+            ),
+        ));
+
+        $placeholders = implode(', ', array_fill(0, count($internalTiers), '?'));
+
         $rows = $this->baseQuery(null)
             ->select(
                 'project_key',
                 DB::raw('count(*) as total'),
-                DB::raw('sum(case when provenance_tier = ? then 1 else 0 end) as external_total'),
+                DB::raw(
+                    'sum(case when provenance_tier is not null'
+                    ." and provenance_tier not in ({$placeholders})"
+                    .' then 1 else 0 end) as external_total'
+                ),
             )
-            ->addBinding(ProvenanceTier::UntrustedExternal->value, 'select')
+            ->addBinding($internalTiers, 'select')
             ->groupBy('project_key')
             ->orderByDesc('external_total')
             ->orderBy('project_key')
-            ->limit(max(1, $limit))
+            ->limit(max(1, min(200, $limit)))
             ->get();
 
         return $rows->map(function ($row): array {

@@ -41,7 +41,10 @@ final class ProvenanceReportCommand extends Command
         try {
             $summary = $service->summary($project);
             $perProject = $this->option('per-project')
-                ? $service->byProject(max(1, (int) $this->option('limit')))
+                // Clamped like the HTTP and MCP surfaces: the same core,
+                // asked the same way, so an operator cannot pull the whole
+                // project table through the one surface that forgot to say no.
+                ? $service->byProject(max(1, min(200, (int) $this->option('limit'))))
                 : [];
         } finally {
             $tenants->set($previous);

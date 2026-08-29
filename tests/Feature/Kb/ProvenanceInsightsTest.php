@@ -163,6 +163,41 @@ final class ProvenanceInsightsTest extends TestCase
         $this->assertSame('support', array_key_first($rows->all()));
     }
 
+    public function test_an_unrecognised_tier_counts_the_same_way_in_both_views(): void
+    {
+        // A value written by a newer version, read here by an older one.
+        // summary() resolves it through fromStorage(), which fails closed to
+        // untrusted. If byProject() matched only the literal
+        // 'untrusted-external' it would call the same row internal, and the
+        // breakdown would contradict the headline directly above it — on
+        // exactly the rows an operator is looking for.
+        $this->makeDocument('mail/future.md', 'tier-from-a-newer-release', 'support');
+        $this->makeDocument('wiki/a.md', ProvenanceTier::TrustedInternal->value, 'support');
+
+        $summary = $this->service()->summary('support');
+        $rows = collect($this->service()->byProject())->keyBy('project_key');
+
+        $this->assertSame(1, $summary['externally_authored']);
+        $this->assertSame(
+            $summary['externally_authored'],
+            $rows['support']['externally_authored'],
+            'The per-project breakdown must agree with the headline it sits under.',
+        );
+    }
+
+    public function test_the_per_project_breakdown_is_bounded_on_every_surface(): void
+    {
+        // The HTTP and MCP surfaces cap at 200; the command has to as well,
+        // or the one surface that forgot becomes the way to pull the whole
+        // project table.
+        foreach (range(1, 5) as $i) {
+            $this->makeDocument("p{$i}/a.md", ProvenanceTier::TrustedInternal->value, "project-{$i}");
+        }
+
+        $this->assertLessThanOrEqual(200, count($this->service()->byProject(100000)));
+        $this->assertCount(1, $this->service()->byProject(1));
+    }
+
     public function test_the_http_surface_returns_the_same_core_answer(): void
     {
         $this->seed(RbacSeeder::class);
