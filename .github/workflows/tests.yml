@@ -140,8 +140,27 @@ jobs:
           npm audit --omit=dev || true
 
   playwright:
-    name: Playwright E2E
+    name: Playwright E2E (shard ${{ matrix.shard }}/${{ strategy.job-total }})
     runs-on: ubuntu-latest
+    # Sharded across independent jobs, NOT across workers inside one job.
+    # `playwright.config.ts` pins `workers: 1` in CI because the suite shares
+    # one database, so parallelism has to come from somewhere that does not
+    # share it. Each shard is its own runner with its own Postgres service,
+    # its own `migrate:fresh`, its own `artisan serve` and its own queue
+    # worker, so the single-worker invariant holds inside every shard while
+    # the wall clock divides.
+    #
+    # Playwright re-runs the `setup` project chain (auth -> viewer ->
+    # super-admin -> system-admin) in every shard because the browser
+    # projects declare it as a dependency. That is four extra tests per
+    # shard, and it is what makes each shard self-sufficient.
+    strategy:
+      # One shard failing must not cancel the others: a red shard is a
+      # result, and cancelling the rest throws away the evidence needed to
+      # tell a real regression from a flake confined to one slice.
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     # R46 — deferred-E2E fast loop. Playwright (~18-20 min) is the most
     # expensive gate and Copilot reviews the DIFF, not E2E results, so
     # running it on every Copilot round is pure waste. It is therefore
@@ -163,13 +182,21 @@ jobs:
     if: >-
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
       (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-e2e'))
-    # Cap the whole job so Playwright's per-test retry + per-test timeout
-    # can't compound to hours when a setup test consistently hits a slow
-    # failure. The full suite legitimately runs ~18-20 min (the green
-    # baseline was 18m24s), so a 20-min cap cancelled passing runs on
-    # slower runner instances purely by timing variance (observed: 20m18s
-    # cancelled with ZERO test failures). 30 min gives ~10 min of headroom
-    # over the real runtime while still turning a runaway into a sharp loop.
+    # Cap each shard so Playwright's per-test retry + per-test timeout can't
+    # compound to hours when a setup test consistently hits a slow failure.
+    #
+    # This cap used to apply to the WHOLE suite, sized when it was ~18-20 min
+    # (the green baseline was 18m24s). The suite has since grown to 355 tests
+    # and, at the ~10 tests/min a single worker sustains, needs ~36 min — so
+    # every run was being cancelled at exactly 30m2xs having completed
+    # roughly four fifths of the tests, with ZERO failures. A cancelled job
+    # reports neither pass nor fail, so the R46 merge gate could not be
+    # satisfied on any pull request, including on `main` itself.
+    #
+    # Raising the cap alone would have kept a 36-minute gate that grows with
+    # every spec added. Sharding puts each slice at ~9-10 min, so 30 minutes
+    # is now roughly three times the expected runtime: ample headroom for a
+    # slow runner, still sharp enough to cut a genuine runaway.
     timeout-minutes: 30
     # Depends on phpunit+vitest so E2E only spins up after core gates
     # are green.
@@ -664,7 +691,11 @@ jobs:
           # 127.0.0.1:8000 during the setup phase. See R38 + the
           # `ci-failure-investigation` skill rabbit-hole section.
           E2E_SKIP_HTTP_RESET: '1'
-        run: npm run e2e
+        # `--` forwards the flag through the npm script to `playwright test`.
+        # Playwright splits the test list deterministically, so a given test
+        # lands on the same shard on every run and a failure is reproducible
+        # by re-running that shard alone.
+        run: npm run e2e -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}
 
       - name: Dump Laravel log on failure
         if: failure()
@@ -697,7 +728,9 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report
+          # Artifact names must be unique across matrix jobs; a shared name
+          # makes the upload of the second shard collide with the first.
+          name: playwright-report-shard-${{ matrix.shard }}
           path: playwright-report/
           retention-days: 7
 
