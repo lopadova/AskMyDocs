@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "46f27f015b768d85d4a7df541bee2fcb",
+    "content-hash": "daf6e598f99f3aafced117dc0e72da2b",
     "packages": [
         {
             "name": "aws/aws-crt-php",
@@ -2998,16 +2998,16 @@
         },
         {
             "name": "padosoft/askmydocs-connector-base",
-            "version": "v1.5.0",
+            "version": "v1.6.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/padosoft/askmydocs-connector-base.git",
-                "reference": "00c2d32e8f2b9252239a8e61eb952a80d1a7b97f"
+                "reference": "8e44f55c1c7a7d1fb08c7efb4d75c182db02813a"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/padosoft/askmydocs-connector-base/zipball/00c2d32e8f2b9252239a8e61eb952a80d1a7b97f",
-                "reference": "00c2d32e8f2b9252239a8e61eb952a80d1a7b97f",
+                "url": "https://api.github.com/repos/padosoft/askmydocs-connector-base/zipball/8e44f55c1c7a7d1fb08c7efb4d75c182db02813a",
+                "reference": "8e44f55c1c7a7d1fb08c7efb4d75c182db02813a",
                 "shasum": ""
             },
             "require": {
@@ -3076,10 +3076,10 @@
                 "rag"
             ],
             "support": {
-                "source": "https://github.com/padosoft/askmydocs-connector-base/tree/v1.5.0",
+                "source": "https://github.com/padosoft/askmydocs-connector-base/tree/v1.6.0",
                 "issues": "https://github.com/padosoft/askmydocs-connector-base/issues"
             },
-            "time": "2026-08-29T01:14:18+00:00"
+            "time": "2026-08-29T19:22:19+00:00"
         },
         {
             "name": "padosoft/askmydocs-connector-confluence",
