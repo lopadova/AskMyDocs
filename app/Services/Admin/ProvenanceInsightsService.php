@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Admin;
 
+use App\Services\Kb\Provenance\ProvenanceToolFirewall;
 use App\Support\TenantContext;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
@@ -24,7 +25,28 @@ use Padosoft\AskMyDocsConnectorBase\ProvenanceTier;
  */
 final class ProvenanceInsightsService
 {
-    public function __construct(private readonly TenantContext $tenant) {}
+    public function __construct(
+        private readonly TenantContext $tenant,
+        private readonly ProvenanceToolFirewall $firewall,
+    ) {}
+
+    /**
+     * What the corpus composition MEANS for this deployment (v8.34).
+     *
+     * Reported alongside the counts on all three surfaces, because the
+     * externally-authored count only tells an operator something once they
+     * know whether it changes behaviour. "41 documents were written outside
+     * the organisation" reads very differently depending on whether those
+     * documents can drive a tool call.
+     *
+     * @return array<string, bool>
+     */
+    public function policy(): array
+    {
+        return [
+            'tool_firewall_enabled' => $this->firewall->enabled(),
+        ];
+    }
 
     /**
      * Corpus composition by provenance tier.

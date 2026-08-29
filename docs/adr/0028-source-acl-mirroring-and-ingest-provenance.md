@@ -220,6 +220,9 @@ them?). A human-accepted page summarising an external email is `accepted` and
 2. **v8.33** — `SourceAccess`, resolver, mirrored ACL rows, reconciliation,
    triage UI, `AccessScopeScope` extension. Feature 13, default OFF.
 3. **v8.34** — provenance enforcement in the tool firewall. Phase 2 of 14,
-   default OFF.
+   default OFF. *(Shipped 2026-08-29. The default was kept OFF as specified:
+   switching it on stops turns grounded in email from acting, which is a
+   product decision for a deployment to take deliberately rather than one to
+   inherit from a release.)*
 
 Each phase updates `README.md` and the doc site in the same PR, per house rule.

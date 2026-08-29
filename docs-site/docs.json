@@ -35,6 +35,7 @@
           "connectors-sync-settings",
           "ingest-provenance",
           "source-permissions",
+          "tool-firewall",
           "connectors-imap-backfill",
           "connectors-imap-serialization",
           "connectors-api",

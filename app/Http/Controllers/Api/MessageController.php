@@ -14,6 +14,7 @@ use App\Services\ChatLog\ChatLogManager;
 use App\Services\Kb\Chat\ChatRetrievalService;
 use App\Services\Kb\FewShotService;
 use App\Services\Kb\Grounding\ConfidenceCalculator;
+use App\Services\Kb\Provenance\ProvenanceToolFirewall;
 use App\Services\Kb\Retrieval\RetrievalFilters;
 use App\Support\Canonical\CanonicalType;
 use App\Support\Kb\SourceType;
@@ -146,6 +147,11 @@ class MessageController extends Controller
                 'conversation_id' => $conversation->id,
                 'message_id' => $userMessage->id,
                 'project_key' => $projectKey,
+                // ADR 0028 phase 3 - the firewall verdict is computed HERE
+                // because this is the only layer that has seen the retrieval
+                // result. Externally-authored grounding is still quoted and
+                // cited; it just does not get to reach the tool loop.
+                'provenance_firewall' => app(ProvenanceToolFirewall::class)->assess($result)->toArray(),
             ],
         ));
         $toolCalls = $this->summarizeToolCallsForMetadata($aiResponse->toolCalls);
