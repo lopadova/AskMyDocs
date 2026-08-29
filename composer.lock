@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "cb54111988e73475074c79a60c565db6",
+    "content-hash": "2aa55a15e49c79598821a6c6d61cfb5e",
     "packages": [
         {
             "name": "aws/aws-crt-php",
@@ -1121,16 +1121,16 @@
         },
         {
             "name": "guzzlehttp/uri-template",
-            "version": "v2.0.0",
+            "version": "v2.0.1",
             "source": {
                 "type": "git",
                 "url": "https://github.com/guzzle/uri-template.git",
-                "reference": "516c3bf2af176c532d5b59b3430292f7e9ecccb1"
+                "reference": "7a466ad606491eb6528c717482f7cca77f1851f3"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/guzzle/uri-template/zipball/516c3bf2af176c532d5b59b3430292f7e9ecccb1",
-                "reference": "516c3bf2af176c532d5b59b3430292f7e9ecccb1",
+                "url": "https://api.github.com/repos/guzzle/uri-template/zipball/7a466ad606491eb6528c717482f7cca77f1851f3",
+                "reference": "7a466ad606491eb6528c717482f7cca77f1851f3",
                 "shasum": ""
             },
             "require": {
@@ -1187,7 +1187,7 @@
             ],
             "support": {
                 "issues": "https://github.com/guzzle/uri-template/issues",
-                "source": "https://github.com/guzzle/uri-template/tree/v2.0.0"
+                "source": "https://github.com/guzzle/uri-template/tree/v2.0.1"
             },
             "funding": [
                 {
@@ -1203,7 +1203,7 @@
                     "type": "tidelift"
                 }
             ],
-            "time": "2026-07-20T13:40:43+00:00"
+            "time": "2026-08-24T17:13:02+00:00"
         },
         {
             "name": "laravel/ai",
@@ -1281,16 +1281,16 @@
         },
         {
             "name": "laravel/framework",
-            "version": "v13.26.1",
+            "version": "v13.29.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/laravel/framework.git",
-                "reference": "e4a1bc52ef551d52e60244bb004256d6861da7ab"
+                "reference": "6e2c363716964d8238cee7097b258119a984f0cf"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/laravel/framework/zipball/e4a1bc52ef551d52e60244bb004256d6861da7ab",
-                "reference": "e4a1bc52ef551d52e60244bb004256d6861da7ab",
+                "url": "https://api.github.com/repos/laravel/framework/zipball/6e2c363716964d8238cee7097b258119a984f0cf",
+                "reference": "6e2c363716964d8238cee7097b258119a984f0cf",
                 "shasum": ""
             },
             "require": {
@@ -1412,7 +1412,7 @@
                 "phpstan/phpstan": "^2.0",
                 "phpunit/phpunit": "^11.5.50 || ^12.5.8 || ^13.0.3",
                 "predis/predis": "^2.3 || ^3.0",
-                "rector/rector": "^2.3",
+                "rector/rector": "2.6.3",
                 "resend/resend-php": "^1.0",
                 "symfony/cache": "^7.4.0 || ^8.0.0",
                 "symfony/http-client": "^7.4.0 || ^8.0.0",
@@ -1504,20 +1504,20 @@
                 "issues": "https://github.com/laravel/framework/issues",
                 "source": "https://github.com/laravel/framework"
             },
-            "time": "2026-08-18T20:31:28+00:00"
+            "time": "2026-08-25T20:57:16+00:00"
         },
         {
             "name": "laravel/prompts",
-            "version": "v0.3.23",
+            "version": "v0.3.24",
             "source": {
                 "type": "git",
                 "url": "https://github.com/laravel/prompts.git",
-                "reference": "b7b4c35e5bc47450f6b6238c6cc9c47ba19b2221"
+                "reference": "5d3cdef29e93ca3b62b1871359db3078cd99908b"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/laravel/prompts/zipball/b7b4c35e5bc47450f6b6238c6cc9c47ba19b2221",
-                "reference": "b7b4c35e5bc47450f6b6238c6cc9c47ba19b2221",
+                "url": "https://api.github.com/repos/laravel/prompts/zipball/5d3cdef29e93ca3b62b1871359db3078cd99908b",
+                "reference": "5d3cdef29e93ca3b62b1871359db3078cd99908b",
                 "shasum": ""
             },
             "require": {
@@ -1561,9 +1561,9 @@
             "description": "Add beautiful and user-friendly forms to your command-line applications.",
             "support": {
                 "issues": "https://github.com/laravel/prompts/issues",
-                "source": "https://github.com/laravel/prompts/tree/v0.3.23"
+                "source": "https://github.com/laravel/prompts/tree/v0.3.24"
             },
-            "time": "2026-08-11T18:58:24+00:00"
+            "time": "2026-08-20T12:55:36+00:00"
         },
         {
             "name": "laravel/sanctum",
@@ -1630,16 +1630,16 @@
         },
         {
             "name": "laravel/serializable-closure",
-            "version": "v2.0.15",
+            "version": "v2.0.16",
             "source": {
                 "type": "git",
                 "url": "https://github.com/laravel/serializable-closure.git",
-                "reference": "dccd8bcb851bb03fcc005df650b708b57cc52661"
+                "reference": "7cfc24e4fa2cca045fb8dd2a797a2b2b13b655ed"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/laravel/serializable-closure/zipball/dccd8bcb851bb03fcc005df650b708b57cc52661",
-                "reference": "dccd8bcb851bb03fcc005df650b708b57cc52661",
+                "url": "https://api.github.com/repos/laravel/serializable-closure/zipball/7cfc24e4fa2cca045fb8dd2a797a2b2b13b655ed",
+                "reference": "7cfc24e4fa2cca045fb8dd2a797a2b2b13b655ed",
                 "shasum": ""
             },
             "require": {
@@ -1687,7 +1687,7 @@
                 "issues": "https://github.com/laravel/serializable-closure/issues",
                 "source": "https://github.com/laravel/serializable-closure"
             },
-            "time": "2026-07-21T16:49:22+00:00"
+            "time": "2026-08-18T20:28:54+00:00"
         },
         {
             "name": "league/commonmark",
@@ -3851,16 +3851,16 @@
         },
         {
             "name": "padosoft/eval-harness",
-            "version": "v1.5.0",
+            "version": "v1.6.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/padosoft/eval-harness.git",
-                "reference": "db41b2defad4692179f521f70603375ac879efed"
+                "reference": "81fea4588a82deb66000a2bcfbdbd5974ac89f54"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/padosoft/eval-harness/zipball/db41b2defad4692179f521f70603375ac879efed",
-                "reference": "db41b2defad4692179f521f70603375ac879efed",
+                "url": "https://api.github.com/repos/padosoft/eval-harness/zipball/81fea4588a82deb66000a2bcfbdbd5974ac89f54",
+                "reference": "81fea4588a82deb66000a2bcfbdbd5974ac89f54",
                 "shasum": ""
             },
             "require": {
@@ -3914,7 +3914,7 @@
                     "email": "lorenzo.padovani@padosoft.com"
                 }
             ],
-            "description": "Laravel evaluation framework for RAG / LLM applications: golden datasets, exact-match + cosine-embedding + LLM-as-judge metrics, JSON + Markdown reports, Artisan-driven CI gate.",
+            "description": "Laravel evaluation framework for RAG / LLM applications: golden datasets, twenty-two metrics including agent trajectories, repeated sampling with real statistics, per-row regression gates on content hashes, run briefings, cost budgets, JSON + Markdown reports, Artisan-driven CI gate.",
             "keywords": [
                 "Evaluation",
                 "ai",
@@ -3929,22 +3929,22 @@
             ],
             "support": {
                 "issues": "https://github.com/padosoft/eval-harness/issues",
-                "source": "https://github.com/padosoft/eval-harness/tree/v1.5.0"
+                "source": "https://github.com/padosoft/eval-harness/tree/v1.6.0"
             },
-            "time": "2026-07-24T13:12:45+00:00"
+            "time": "2026-08-24T21:53:56+00:00"
         },
         {
             "name": "padosoft/laravel-ai-act-compliance",
-            "version": "v1.8.1",
+            "version": "v1.9.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/padosoft/laravel-ai-act-compliance.git",
-                "reference": "cc49083a55ece7141c68721fb6a15615c60b7fe6"
+                "reference": "fedea437123de23764f9029b078d0f35f2775cb8"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/padosoft/laravel-ai-act-compliance/zipball/cc49083a55ece7141c68721fb6a15615c60b7fe6",
-                "reference": "cc49083a55ece7141c68721fb6a15615c60b7fe6",
+                "url": "https://api.github.com/repos/padosoft/laravel-ai-act-compliance/zipball/fedea437123de23764f9029b078d0f35f2775cb8",
+                "reference": "fedea437123de23764f9029b078d0f35f2775cb8",
                 "shasum": ""
             },
             "require": {
@@ -3962,11 +3962,13 @@
                 "php": "^8.2"
             },
             "require-dev": {
+                "laravel/ai": "^0.11",
                 "orchestra/testbench": "^10.0|^11.0",
                 "padosoft/laravel-iam-agents": "^1.1",
                 "phpunit/phpunit": "^10.5|^11.0|^12.0"
             },
             "suggest": {
+                "laravel/ai": "Turns AI run events into compliance evidence: per-action tool approvals as Art. 14 human-oversight records, terminal run and tool failures as Art. 15 incidents (^0.11, where those events were added).",
                 "padosoft/laravel-iam-agents": "Wires delegated AI-agent access into AI Act compliance: delegation grants as Art. 14 human-oversight items, approved agents in the Art. 6 risk register (^1.1)."
             },
             "type": "library",
@@ -3994,22 +3996,22 @@
             "description": "AI Act compliance bundle for Laravel AI applications",
             "support": {
                 "issues": "https://github.com/padosoft/laravel-ai-act-compliance/issues",
-                "source": "https://github.com/padosoft/laravel-ai-act-compliance/tree/v1.8.1"
+                "source": "https://github.com/padosoft/laravel-ai-act-compliance/tree/v1.9.0"
             },
-            "time": "2026-08-24T14:53:52+00:00"
+            "time": "2026-08-25T16:39:00+00:00"
         },
         {
             "name": "padosoft/laravel-ai-act-compliance-admin",
-            "version": "v1.7.0",
+            "version": "v1.8.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/padosoft/laravel-ai-act-compliance-admin.git",
-                "reference": "869ec66bc02c72d579c165a6196ea24c9053924b"
+                "reference": "df80d1e57e638af5100631c4a89b68233613b8e8"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/padosoft/laravel-ai-act-compliance-admin/zipball/869ec66bc02c72d579c165a6196ea24c9053924b",
-                "reference": "869ec66bc02c72d579c165a6196ea24c9053924b",
+                "url": "https://api.github.com/repos/padosoft/laravel-ai-act-compliance-admin/zipball/df80d1e57e638af5100631c4a89b68233613b8e8",
+                "reference": "df80d1e57e638af5100631c4a89b68233613b8e8",
                 "shasum": ""
             },
             "require": {
@@ -4036,22 +4038,22 @@
             "description": "Cross-mount React admin panel for laravel-ai-act-compliance",
             "support": {
                 "issues": "https://github.com/padosoft/laravel-ai-act-compliance-admin/issues",
-                "source": "https://github.com/padosoft/laravel-ai-act-compliance-admin/tree/v1.7.0"
+                "source": "https://github.com/padosoft/laravel-ai-act-compliance-admin/tree/v1.8.0"
             },
-            "time": "2026-08-24T11:18:05+00:00"
+            "time": "2026-08-25T17:00:51+00:00"
         },
         {
             "name": "padosoft/laravel-ai-finops",
-            "version": "v1.6.2",
+            "version": "v1.7.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/padosoft/laravel-ai-finops.git",
-                "reference": "6a588f1428724b3e548fd8e2084fed0cd850cb10"
+                "reference": "d058553192215cd965a06bcbd6082b35e0d12f78"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/padosoft/laravel-ai-finops/zipball/6a588f1428724b3e548fd8e2084fed0cd850cb10",
-                "reference": "6a588f1428724b3e548fd8e2084fed0cd850cb10",
+                "url": "https://api.github.com/repos/padosoft/laravel-ai-finops/zipball/d058553192215cd965a06bcbd6082b35e0d12f78",
+                "reference": "d058553192215cd965a06bcbd6082b35e0d12f78",
                 "shasum": ""
             },
             "require": {
@@ -4065,7 +4067,7 @@
                 "php": "^8.3"
             },
             "require-dev": {
-                "laravel/ai": "^0.6.8 || ^0.7",
+                "laravel/ai": "^0.11",
                 "laravel/pint": "^1.18",
                 "mockery/mockery": "^1.6",
                 "orchestra/testbench": "^10.0 || ^11.0",
@@ -4073,7 +4075,7 @@
                 "phpunit/phpunit": "^11.0 || ^12.0"
             },
             "suggest": {
-                "laravel/ai": "Required to meter real AI calls via the laravel/ai request/response lifecycle (^0.6.8 || ^0.7).",
+                "laravel/ai": "Meters real AI calls through the laravel/ai lifecycle. Run-level metering works on ^0.6.8 || ^0.7 || ^0.11; per-step cost, failed-run spend and tool timing need ^0.11, which is where those events were added.",
                 "padosoft/laravel-iam-contracts": "Enables the delegated-budget guard: bind LedgerDelegationBudgetGuard so IAM token exchanges are refused when a delegation grant budget is exhausted (^1.4).",
                 "yethee/tiktoken": "Exact token counting for OpenAI / OpenAI-compatible models (FinOps cost-estimation case c); a heuristic estimator is used when absent."
             },
@@ -4125,20 +4127,20 @@
                 "issues": "https://github.com/padosoft/laravel-ai-finops/issues",
                 "source": "https://github.com/padosoft/laravel-ai-finops"
             },
-            "time": "2026-08-24T14:53:49+00:00"
+            "time": "2026-08-25T16:38:54+00:00"
         },
         {
             "name": "padosoft/laravel-ai-finops-admin",
-            "version": "v1.4.0",
+            "version": "v1.5.1",
             "source": {
                 "type": "git",
                 "url": "https://github.com/padosoft/laravel-ai-finops-admin.git",
-                "reference": "af4c4273d06ec162f94726f6955c4a8bf5704010"
+                "reference": "1c200dc0e95c91be214cc9df57b9d4dfd18d01fa"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/padosoft/laravel-ai-finops-admin/zipball/af4c4273d06ec162f94726f6955c4a8bf5704010",
-                "reference": "af4c4273d06ec162f94726f6955c4a8bf5704010",
+                "url": "https://api.github.com/repos/padosoft/laravel-ai-finops-admin/zipball/1c200dc0e95c91be214cc9df57b9d4dfd18d01fa",
+                "reference": "1c200dc0e95c91be214cc9df57b9d4dfd18d01fa",
                 "shasum": ""
             },
             "require": {
@@ -4146,7 +4148,7 @@
                 "illuminate/routing": "^12.0 || ^13.0",
                 "illuminate/support": "^12.0 || ^13.0",
                 "illuminate/view": "^12.0 || ^13.0",
-                "padosoft/laravel-ai-finops": "^1.2.1",
+                "padosoft/laravel-ai-finops": "^1.7",
                 "php": "^8.3"
             },
             "require-dev": {
@@ -4200,7 +4202,7 @@
                 "issues": "https://github.com/padosoft/laravel-ai-finops-admin/issues",
                 "source": "https://github.com/padosoft/laravel-ai-finops-admin"
             },
-            "time": "2026-08-24T11:17:35+00:00"
+            "time": "2026-08-25T18:22:08+00:00"
         },
         {
             "name": "padosoft/laravel-ai-guardrails",
@@ -4410,16 +4412,16 @@
         },
         {
             "name": "padosoft/laravel-evidence-risk-review",
-            "version": "v1.3.0",
+            "version": "v1.4.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/padosoft/laravel-evidence-risk-review.git",
-                "reference": "ae4a013037381b778493538a55deccbb6dee3ff7"
+                "reference": "1f69ba7ee756b39e47f1a4220a290d0d0d0ee64a"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/padosoft/laravel-evidence-risk-review/zipball/ae4a013037381b778493538a55deccbb6dee3ff7",
-                "reference": "ae4a013037381b778493538a55deccbb6dee3ff7",
+                "url": "https://api.github.com/repos/padosoft/laravel-evidence-risk-review/zipball/1f69ba7ee756b39e47f1a4220a290d0d0d0ee64a",
+                "reference": "1f69ba7ee756b39e47f1a4220a290d0d0d0ee64a",
                 "shasum": ""
             },
             "require": {
@@ -4434,8 +4436,12 @@
             "require-dev": {
                 "laravel/pint": "^1.18",
                 "orchestra/testbench": "^11.0",
+                "padosoft/eval-harness": "^1.0",
                 "phpstan/phpstan": "^2.0",
                 "phpunit/phpunit": "^12.5"
+            },
+            "suggest": {
+                "padosoft/eval-harness": "Score answer groundedness inside a golden-dataset eval with the zero-token `evidence-risk` metric (Padosoft\\EvidenceRiskReview\\Eval\\EvidenceRiskMetric)."
             },
             "type": "library",
             "extra": {
@@ -4470,7 +4476,7 @@
                 "issues": "https://github.com/padosoft/laravel-evidence-risk-review/issues",
                 "source": "https://github.com/padosoft/laravel-evidence-risk-review"
             },
-            "time": "2026-07-24T13:13:48+00:00"
+            "time": "2026-08-25T07:25:26+00:00"
         },
         {
             "name": "padosoft/laravel-evidence-risk-review-admin",
@@ -8925,23 +8931,23 @@
         },
         {
             "name": "vlucas/phpdotenv",
-            "version": "v5.6.4",
+            "version": "v5.7.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/vlucas/phpdotenv.git",
-                "reference": "416df702837983f8d5ff48c9c3fee4f5f57b980b"
+                "reference": "301c07936b16d88628b126b01d082ba153cf4c40"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/vlucas/phpdotenv/zipball/416df702837983f8d5ff48c9c3fee4f5f57b980b",
-                "reference": "416df702837983f8d5ff48c9c3fee4f5f57b980b",
+                "url": "https://api.github.com/repos/vlucas/phpdotenv/zipball/301c07936b16d88628b126b01d082ba153cf4c40",
+                "reference": "301c07936b16d88628b126b01d082ba153cf4c40",
                 "shasum": ""
             },
             "require": {
                 "ext-pcre": "*",
-                "graham-campbell/result-type": "^1.1.4",
+                "graham-campbell/result-type": "^1.2",
                 "php": "^7.2.5 || ^8.0",
-                "phpoption/phpoption": "^1.9.5",
+                "phpoption/phpoption": "^1.10",
                 "symfony/polyfill-ctype": "^1.26",
                 "symfony/polyfill-mbstring": "^1.26",
                 "symfony/polyfill-php80": "^1.26"
@@ -8985,7 +8991,7 @@
                     "homepage": "https://github.com/vlucas"
                 }
             ],
-            "description": "Loads environment variables from `.env` to `getenv()`, `$_ENV` and `$_SERVER` automagically.",
+            "description": "Loads environment variables from `.env` to `$_ENV` and `$_SERVER` automagically, and optionally to `getenv()`.",
             "keywords": [
                 "dotenv",
                 "env",
@@ -8993,7 +8999,7 @@
             ],
             "support": {
                 "issues": "https://github.com/vlucas/phpdotenv/issues",
-                "source": "https://github.com/vlucas/phpdotenv/tree/v5.6.4"
+                "source": "https://github.com/vlucas/phpdotenv/tree/v5.7.0"
             },
             "funding": [
                 {
@@ -9005,7 +9011,7 @@
                     "type": "tidelift"
                 }
             ],
-            "time": "2026-07-06T19:11:50+00:00"
+            "time": "2026-08-24T18:07:49+00:00"
         },
         {
             "name": "voku/portable-ascii",
@@ -9432,16 +9438,16 @@
         },
         {
             "name": "laravel/mcp",
-            "version": "v0.7.2",
+            "version": "v0.9.4",
             "source": {
                 "type": "git",
                 "url": "https://github.com/laravel/mcp.git",
-                "reference": "08962a276357f89164f78b38407c08187ab26cfe"
+                "reference": "7ca5b923630118696602d14348cd0466a5e853ec"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/laravel/mcp/zipball/08962a276357f89164f78b38407c08187ab26cfe",
-                "reference": "08962a276357f89164f78b38407c08187ab26cfe",
+                "url": "https://api.github.com/repos/laravel/mcp/zipball/7ca5b923630118696602d14348cd0466a5e853ec",
+                "reference": "7ca5b923630118696602d14348cd0466a5e853ec",
                 "shasum": ""
             },
             "require": {
@@ -9469,7 +9475,7 @@
             "extra": {
                 "laravel": {
                     "aliases": {
-                        "Mcp": "Laravel\\Mcp\\Server\\Facades\\Mcp"
+                        "Mcp": "Laravel\\Mcp\\Facades\\Mcp"
                     },
                     "providers": [
                         "Laravel\\Mcp\\Server\\McpServiceProvider"
@@ -9502,7 +9508,7 @@
                 "issues": "https://github.com/laravel/mcp/issues",
                 "source": "https://github.com/laravel/mcp"
             },
-            "time": "2026-05-22T11:45:29+00:00"
+            "time": "2026-08-13T15:01:07+00:00"
         },
         {
             "name": "laravel/pail",
@@ -10361,16 +10367,16 @@
         },
         {
             "name": "padosoft/eval-harness-ui",
-            "version": "v1.2.0",
+            "version": "v1.3.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/padosoft/eval-harness-admin.git",
-                "reference": "9c874994e703fb4af0b487bec638287f898c1b35"
+                "reference": "28f20d836f4a3e7b2d50655f5cbe1234fec20e7d"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/padosoft/eval-harness-admin/zipball/9c874994e703fb4af0b487bec638287f898c1b35",
-                "reference": "9c874994e703fb4af0b487bec638287f898c1b35",
+                "url": "https://api.github.com/repos/padosoft/eval-harness-admin/zipball/28f20d836f4a3e7b2d50655f5cbe1234fec20e7d",
+                "reference": "28f20d836f4a3e7b2d50655f5cbe1234fec20e7d",
                 "shasum": ""
             },
             "require": {
@@ -10424,7 +10430,7 @@
                 "issues": "https://github.com/padosoft/eval-harness-ui/issues",
                 "source": "https://github.com/padosoft/eval-harness-ui"
             },
-            "time": "2026-07-24T14:01:26+00:00"
+            "time": "2026-08-25T07:25:16+00:00"
         },
         {
             "name": "phar-io/manifest",
