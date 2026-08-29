@@ -65,14 +65,20 @@ seededTest.describe('Admin AI Guardrails — admin (package-served SPA shell)', 
         await expect(page.getByTestId('agr-assets-missing')).toHaveCount(0, { timeout: 15_000 });
 
         // Real-data (R13): the dashboard fetches the core API
-        // (GET /api/admin/ai-guardrails/overview) and renders the FOUR control
-        // cards (input screen / output handler / tool firewall / HITL). Asserting
-        // the exact count proves assets + hydration + the secured core API
-        // end-to-end — and would catch 3/4 cards silently failing to render (R16).
+        // (GET /api/admin/ai-guardrails/overview) and renders its control cards
+        // (input screen / output handler / tool firewall / HITL / …). Asserting
+        // a FLOOR rather than an exact count keeps what the assertion was for —
+        // catching 3-of-4 cards silently failing to render, which a
+        // `.first()` visibility check alone would miss (R16) — without the host
+        // test encoding a number the PACKAGE owns. It was `toHaveCount(4)`, and
+        // a guardrails release that added a fifth control turned a green host
+        // suite red without anything in this repository changing.
         await expect(page.getByTestId('agr-control-card').first()).toBeVisible({ timeout: 15_000 });
         // Same explicit timeout as the visibility wait above — the default
         // (shorter) timeout could flake on a slow CI runner mid-hydration.
-        await expect(page.getByTestId('agr-control-card')).toHaveCount(4, { timeout: 15_000 });
+        await expect
+            .poll(() => page.getByTestId('agr-control-card').count(), { timeout: 15_000 })
+            .toBeGreaterThanOrEqual(4);
     });
 });
 
