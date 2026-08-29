@@ -780,6 +780,26 @@ jobs:
             echo "(no artisan-serve.log file present)"
           fi
           echo ""
+          echo "=== storage/logs/artisan-serve-outbound.log (last 200 lines) ==="
+          if [ -f storage/logs/artisan-serve-outbound.log ]; then
+            tail -200 storage/logs/artisan-serve-outbound.log
+          else
+            echo "(no artisan-serve-outbound.log file present)"
+          fi
+          echo ""
+          echo "=== outbound target liveness at failure time ==="
+          # An empty reply (cURL 52) means the listener accepted the
+          # connection but no worker answered. Probing the same target from
+          # the runner separates "the server died" from "the server is
+          # wedged" -- a distinction the app-side error cannot make.
+          curl -sS -m 5 -o /dev/null -w "healthz: HTTP %{http_code} in %{time_total}s"             http://127.0.0.1:8001/healthz || echo "healthz: curl failed"
+          echo ""
+          curl -sS -m 5 -o /dev/null -w "fixture: HTTP %{http_code} in %{time_total}s"             "http://127.0.0.1:8001/testing/api-fixture/users" || echo "fixture: curl failed"
+          echo ""
+          echo "listeners on 8001:"
+          lsof -ti tcp:8001 -sTCP:LISTEN || echo "(none)"
+          echo "php process count: $(pgrep -c php || echo 0)"
+          echo ""
           echo "=== storage/logs/queue-worker.log (last 200 lines) ==="
           if [ -f storage/logs/queue-worker.log ]; then
             tail -200 storage/logs/queue-worker.log
