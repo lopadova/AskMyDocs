@@ -559,24 +559,17 @@ jobs:
           # the AI-ON path is covered by GamificationInsightsTest (phpunit, mocked
           # AiManager), per R43.
           KB_GAMIFICATION_AI_ENABLED: 'false'
-          # Deliberately ONE worker on the server that makes outbound calls.
+          # Honoured because we explicitly run `--no-reload` below — without
+          # the flag, Laravel's ServeCommand silently drops the env var and
+          # runs the built-in PHP server single-threaded.
           #
-          # The API-connector scenarios ask the app to issue an HTTP request.
-          # Those requests fail with cURL 52 "Empty reply", while at the same
-          # moment the runner's curl gets HTTP 200 from the same URL in 48ms,
-          # and both raw PHP cURL and Laravel's own Http client reach it from
-          # the CLI. Target healthy, client fine, CLI fine: the only thing
-          # left is the context — an outbound call issued from inside a
-          # request served by a FORKED built-in-server worker.
-          #
-          # The workers were belt-and-braces for a stall that R38 already
-          # fixed properly by moving migrate:fresh to a CLI step, and
-          # Playwright runs `workers: 1` here, so requests arrive one at a
-          # time regardless. Trading the redundant protection for outbound
-          # calls that work is the right way round. `--no-reload` stays: it is
-          # what makes the variable honoured at all, and dropping it would
-          # silently re-enable the file watcher.
-          PHP_CLI_SERVER_WORKERS: '1'
+          # Briefly dropped to 1 while chasing outbound requests that failed
+          # with cURL 52. That was the wrong suspect: the requests were being
+          # rejected as malformed because the connector package lowercased the
+          # HTTP method (fixed in askmydocs-connector-api v1.0.0-beta.2). The
+          # four workers are back, since the stall protection they provide is
+          # real and unrelated.
+          PHP_CLI_SERVER_WORKERS: '4'
           # Seeders that install API tools (E2eAgentRetrievalSeeder) run INSIDE
           # the app, so the outbound target must be readable from the server's
           # own environment. Aimed at this server's own port, those tools made
