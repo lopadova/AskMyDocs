@@ -176,6 +176,50 @@ final class SourceAclTriageTest extends TestCase
             ->assertStatus(404);
     }
 
+    public function test_mirroring_does_not_make_the_document_look_edited(): void
+    {
+        // `updated_at` is what a staleness report, a digest or a reviewer
+        // reads as "the content changed". A permission sync changes how the
+        // document is GOVERNED, not what it says, and bumping the timestamp
+        // on every sync would make every synced document permanently look
+        // freshly edited.
+        $before = $this->document->fresh()->updated_at;
+
+        $this->travelTo(now()->addHour());
+        $this->mirror([SourcePrincipal::user('contractor@agency.example')]);
+        $this->travelBack();
+
+        $this->assertEquals(
+            $before?->toDateTimeString(),
+            $this->document->fresh()->updated_at?->toDateTimeString(),
+            'The permission sync bumped updated_at, so the document now reads as edited.',
+        );
+        $this->assertNotNull(
+            $this->document->fresh()->source_acl_enforced_at,
+            'Precondition: the sync did happen.',
+        );
+    }
+
+    public function test_the_queue_never_exposes_another_tenants_document(): void
+    {
+        // R30 defence in depth. BelongsToTenant adds no global READ scope, so
+        // a row whose document id pointed elsewhere -- corruption, or a
+        // crafted write -- would otherwise load that document's title and
+        // path straight into the response.
+        $this->mirror([SourcePrincipal::user('contractor@agency.example')]);
+
+        $foreign = $this->makeDocument('other/tenant/secret-roadmap.md');
+        $foreign->forceFill(['tenant_id' => 'other-tenant'])->save();
+
+        UnmappedSourcePrincipal::query()->update(['knowledge_document_id' => $foreign->id]);
+
+        $this->actingAs($this->adminUser())
+            ->getJson('/api/admin/kb/source-acl')
+            ->assertOk()
+            ->assertJsonPath('data.0.document_title', null)
+            ->assertJsonPath('data.0.source_path', null);
+    }
+
     /**
      * @param  list<SourcePrincipal>  $principals
      */

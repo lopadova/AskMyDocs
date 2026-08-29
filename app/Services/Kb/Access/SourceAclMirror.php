@@ -260,12 +260,16 @@ final class SourceAclMirror
     {
         $value = $restricted ? now() : null;
 
-        // Written unscoped and without touching `updated_at`: this is a fact
-        // about how the document is governed, not an edit to it, and the
-        // ingest path has just written the row.
-        KnowledgeDocument::withoutGlobalScopes()
+        // The query builder rather than Eloquent, because Eloquent's update()
+        // bumps `updated_at` when timestamps are on. This is a fact about how
+        // the document is GOVERNED, not an edit to it: letting it touch the
+        // timestamp would make every document look freshly edited after each
+        // permission sync, and anything reading `updated_at` as "content
+        // changed" -- a reviewer, a digest, a staleness report -- would be
+        // reading a lie.
+        DB::table('knowledge_documents')
             ->where('tenant_id', $tenantId)
-            ->whereKey($document->getKey())
+            ->where('id', $document->getKey())
             ->update(['source_acl_enforced_at' => $value]);
 
         $document->setAttribute('source_acl_enforced_at', $value);

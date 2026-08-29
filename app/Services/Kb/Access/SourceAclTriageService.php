@@ -65,9 +65,18 @@ final class SourceAclTriageService
         string $status = UnmappedSourcePrincipal::STATUS_PENDING,
         int $limit = 50,
     ): Collection {
+        $tenantId = $this->tenant->current();
+
         $query = UnmappedSourcePrincipal::query()
-            ->forTenant($this->tenant->current())
-            ->with('document:id,title,source_path,project_key')
+            ->forTenant($tenantId)
+            // The relationship is constrained too, not just the parent rows.
+            // BelongsToTenant adds no global READ scope, so a row whose
+            // knowledge_document_id pointed at another tenant's document --
+            // corruption, or a crafted write -- would otherwise load that
+            // document's title and path straight into this response (R30).
+            ->with(['document' => fn ($q) => $q
+                ->select('id', 'title', 'source_path', 'project_key')
+                ->where('tenant_id', $tenantId)])
             ->where('status', $status);
 
         if ($projectKey !== null && $projectKey !== '') {

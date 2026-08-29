@@ -48,6 +48,7 @@ class KnowledgeDocument extends Model
     ];
 
     protected $casts = [
+        'source_acl_enforced_at' => 'datetime',
         'metadata' => 'array',
         'source_updated_at' => 'datetime',
         'indexed_at' => 'datetime',
