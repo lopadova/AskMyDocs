@@ -10,6 +10,7 @@ use App\Ai\AiResponse;
 use App\Mcp\Client\Registry\McpServerRegistry;
 use App\Models\McpServer;
 use App\Models\User;
+use App\Services\Kb\Provenance\ToolFirewallVerdict;
 use App\Support\TenantContext;
 use App\Support\SupportedLocale;
 use Padosoft\AskMyDocsConnectorApi\Models\ApiRoute;
@@ -64,6 +65,29 @@ final class McpToolCallingService
         array $context = [],
     ): AiResponse {
         if (! $this->meetsToolCallingPrerequisites($user)) {
+            return $this->ai->chatWithHistory($systemPrompt, $messages, $options);
+        }
+
+        // ADR 0028 phase 3 - externally-authored grounding may be QUOTED but
+        // must never influence a tool call. IMAP ingests content written by
+        // anyone who can send an email; that content becomes grounding on a
+        // platform that also exposes tools to the model, and nothing in
+        // between distinguishes a colleague's runbook from a stranger's
+        // instructions.
+        //
+        // The turn still gets its answer from the same context and the same
+        // citations. Only the tools are withheld, because quoting is what the
+        // corpus is for and acting is what an attacker wants.
+        //
+        // The verdict is computed by the caller, the only layer that has seen
+        // the retrieval result. An absent or unrecognised verdict reads as
+        // ALLOWED, so a deployment that has not wired it through behaves
+        // exactly as it did before (R43).
+        $verdict = ToolFirewallVerdict::fromArray(
+            is_array($context['provenance_firewall'] ?? null) ? $context['provenance_firewall'] : null,
+        );
+
+        if (! $verdict->toolsAllowed) {
             return $this->ai->chatWithHistory($systemPrompt, $messages, $options);
         }
 

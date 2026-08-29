@@ -54,6 +54,10 @@ class KbProvenanceTool extends Tool
         $payload = [
             'tenant_id' => $tenants->current(),
             'summary' => $service->summary($projectKey),
+            // v8.34, R27 additive: the counts only mean something once a
+            // reader knows whether externally-authored content can drive a
+            // tool call.
+            'policy' => $service->policy(),
         ];
 
         if ((bool) $request->get('per_project') === true) {

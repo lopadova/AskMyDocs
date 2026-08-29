@@ -94,6 +94,16 @@ final class ProvenanceReportCommand extends Command
             $summary['undeclared'],
         ));
 
+        // v8.34 — the count only means something once a reader knows whether
+        // it changes behaviour. "41 externally authored" reads very
+        // differently depending on whether those documents can drive a tool
+        // call.
+        $this->line(
+            $service->policy()['tool_firewall_enabled']
+                ? 'Tool firewall: ON — externally authored grounding is quoted but cannot reach the tool loop.'
+                : 'Tool firewall: OFF — externally authored grounding can drive tool calls.'
+        );
+
         if ($summary['declared'] === 0) {
             $this->warn(
                 'No document carries a connector declaration yet, so every figure above is '
