@@ -10,7 +10,8 @@ test.describe('MCP connector — super-admin', () => {
         const form = page.getByTestId('mcp-connection-form-shared');
         await form.getByLabel('Name').fill('E2E MCP fixture');
         await form.getByLabel('Label').fill('Live fixture');
-        await form.getByLabel('MCP endpoint').fill('http://127.0.0.1:3536/mcp');
+        await form.getByLabel('MCP endpoint', { exact: true }).fill('http://127.0.0.1:3536/mcp');
+        await form.getByRole('radio', { name: /^No authentication/ }).check();
         await form.getByRole('button', { name: 'Connect and discover' }).click();
 
         const card = panel.locator('article').filter({ hasText: 'Live fixture' });
@@ -30,5 +31,25 @@ test.describe('MCP connector — super-admin', () => {
         await resource.click();
         await expect(resource).toBeChecked();
         await expect(card.getByRole('button', { name: 'Sync resources' })).toBeVisible();
+    });
+
+    test('connects a protected MCP server through OAuth without exposing a token', async ({ page }) => {
+        await page.goto('/app/admin/connectors');
+        const panel = page.getByTestId('mcp-connections-shared');
+        await expect(panel).toBeVisible({ timeout: 15_000 });
+
+        await panel.getByRole('button', { name: 'Add MCP connection' }).click();
+        const form = page.getByTestId('mcp-connection-form-shared');
+        await form.getByLabel('Name').fill('OAuth E2E MCP');
+        await form.getByLabel('Label').fill('Protected live fixture');
+        await form.getByLabel('MCP endpoint', { exact: true }).fill('http://127.0.0.1:3536/oauth/mcp');
+        await form.getByRole('button', { name: 'Continue with OAuth' }).click();
+
+        await expect(page.getByTestId('mcp-oauth-result')).toContainText('OAuth connection completed', { timeout: 15_000 });
+        const card = panel.locator('article').filter({ hasText: 'Protected live fixture' });
+        await expect(card).toContainText('active');
+        await expect(card).toContainText('Search documents');
+        await expect(page).not.toHaveURL(/access_token|refresh_token|authorization-code/);
+        await expect(page.locator('body')).not.toContainText('e2e-access-token');
     });
 });

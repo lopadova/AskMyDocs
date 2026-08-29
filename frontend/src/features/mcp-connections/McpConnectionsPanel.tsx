@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toAdminError } from '../admin/shared/errors';
 import {
@@ -14,6 +14,7 @@ const blankForm: CreateMcpConnectionPayload = {
     endpoint: '',
     transport: 'auto',
     project_key: null,
+    auth_method: 'oauth',
     bearer: '',
 };
 
@@ -23,7 +24,12 @@ export function McpConnectionsPanel({ scope }: { scope: McpConnectionScope }) {
     const [form, setForm] = useState<CreateMcpConnectionPayload>(blankForm);
     const [formOpen, setFormOpen] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const oauthResult = typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('mcp');
+    // Capture the callback result once. The URL is cleaned immediately below,
+    // while the connections query can still trigger additional renders; reading
+    // location.search on every render would make the confirmation disappear.
+    const [oauthResult] = useState(() =>
+        typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('mcp'),
+    );
     const query = useQuery({
         queryKey,
         queryFn: () => mcpConnectionsApi.list(scope),
@@ -33,7 +39,11 @@ export function McpConnectionsPanel({ scope }: { scope: McpConnectionScope }) {
     const refresh = async () => queryClient.invalidateQueries({ queryKey });
     const create = useMutation({
         mutationFn: (payload: CreateMcpConnectionPayload) => mcpConnectionsApi.create(scope, payload),
-        onSuccess: async () => {
+        onSuccess: async (result) => {
+            if (result.next_action?.type === 'oauth_redirect') {
+                window.location.assign(result.next_action.authorization_url);
+                return;
+            }
             setForm(blankForm);
             setFormOpen(false);
             setError(null);
@@ -69,6 +79,14 @@ export function McpConnectionsPanel({ scope }: { scope: McpConnectionScope }) {
         onError: (cause) => setError(toAdminError(cause).message),
     });
 
+    useEffect(() => {
+        if (!oauthResult) return;
+        const url = new URL(window.location.href);
+        url.searchParams.delete('mcp');
+        url.searchParams.delete('mcp_connection');
+        window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+    }, [oauthResult]);
+
     const connections = useMemo(() => query.data ?? [], [query.data]);
     const state = query.isLoading ? 'loading' : query.isError ? 'error' : 'ready';
     const title = scope === 'shared' ? 'MCP live connections' : 'Connected Apps';
@@ -83,7 +101,8 @@ export function McpConnectionsPanel({ scope }: { scope: McpConnectionScope }) {
             ...form,
             label: form.label?.trim() || form.name,
             project_key: form.project_key?.trim() || null,
-            bearer: form.bearer?.trim() || undefined,
+            bearer: form.auth_method === 'bearer' ? form.bearer?.trim() || undefined : undefined,
+            ui_destination: window.location.pathname,
         });
     }
 
@@ -100,8 +119,12 @@ export function McpConnectionsPanel({ scope }: { scope: McpConnectionScope }) {
             </div>
 
             {oauthResult && (
-                <div role="status" data-testid="mcp-oauth-result" style={successStyle}>
-                    {oauthResult === 'connected' ? 'OAuth connection completed.' : 'OAuth completed, but tool discovery needs attention.'}
+                <div
+                    role={oauthResult === 'connected' ? 'status' : 'alert'}
+                    data-testid="mcp-oauth-result"
+                    style={oauthResult === 'connected' ? successStyle : oauthResult === 'oauth_denied' ? noticeStyle : errorStyle}
+                >
+                    {oauthMessage(oauthResult)}
                 </div>
             )}
 
@@ -128,11 +151,34 @@ export function McpConnectionsPanel({ scope }: { scope: McpConnectionScope }) {
                     <Field label="Project (optional)">
                         <input value={form.project_key ?? ''} onChange={(event) => setForm({ ...form, project_key: event.target.value })} style={inputStyle} />
                     </Field>
-                    <Field label="Bearer token (optional)">
-                        <input type="password" autoComplete="new-password" value={form.bearer ?? ''} onChange={(event) => setForm({ ...form, bearer: event.target.value })} style={inputStyle} />
-                    </Field>
+                    <fieldset style={authFieldsetStyle}>
+                        <legend style={authLegendStyle}>Authentication</legend>
+                        <AuthChoice
+                            checked={form.auth_method === 'oauth'}
+                            label="OAuth"
+                            description="Sign in securely. Tokens stay on the server."
+                            onChange={() => setForm({ ...form, auth_method: 'oauth', bearer: '' })}
+                        />
+                        <AuthChoice
+                            checked={form.auth_method === 'bearer'}
+                            label="Bearer token"
+                            description="Paste a token you already have."
+                            onChange={() => setForm({ ...form, auth_method: 'bearer' })}
+                        />
+                        <AuthChoice
+                            checked={form.auth_method === 'none'}
+                            label="No authentication"
+                            description="For public MCP endpoints only."
+                            onChange={() => setForm({ ...form, auth_method: 'none', bearer: '' })}
+                        />
+                    </fieldset>
+                    {form.auth_method === 'bearer' && (
+                        <Field label="Bearer token">
+                            <input required type="password" autoComplete="new-password" value={form.bearer ?? ''} onChange={(event) => setForm({ ...form, bearer: event.target.value })} style={inputStyle} />
+                        </Field>
+                    )}
                     <button type="submit" disabled={create.isPending} style={primaryButtonStyle}>
-                        {create.isPending ? 'Connecting…' : 'Connect and discover'}
+                        {create.isPending ? 'Connecting…' : form.auth_method === 'oauth' ? 'Continue with OAuth' : 'Connect and discover'}
                     </button>
                 </form>
             )}
@@ -198,7 +244,11 @@ function ConnectionCard({
                     </div>
                 </div>
                 <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
-                    {oauthRequired && <button type="button" disabled={busy} onClick={onOAuth} style={smallButtonStyle}>Connect OAuth</button>}
+                    {oauthRequired && (
+                        <button type="button" disabled={busy} onClick={onOAuth} style={smallButtonStyle}>
+                            {connection.status === 'active' ? 'Reconnect OAuth' : 'Connect OAuth'}
+                        </button>
+                    )}
                     <button type="button" disabled={busy} onClick={() => onAction('discover')} style={smallButtonStyle}>Discover</button>
                     {connection.mode === 'shared' && connection.resources.some((resource) => resource.enabled) && (
                         <button type="button" disabled={busy || connection.connector_installation_id === null} onClick={() => onAction('sync-resources')} style={smallButtonStyle}>
@@ -258,6 +308,25 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     return <label style={{ display: 'grid', gap: 5, color: 'var(--fg-2)', fontSize: 12 }}>{label}{children}</label>;
 }
 
+function AuthChoice({ checked, label, description, onChange }: { checked: boolean; label: string; description: string; onChange: () => void }) {
+    return (
+        <label style={{ ...authChoiceStyle, ...(checked ? authChoiceSelectedStyle : {}) }}>
+            <input type="radio" name="mcp-auth-method" checked={checked} onChange={onChange} />
+            <span>
+                <strong style={{ display: 'block', color: 'var(--fg-1)', fontSize: 12.5 }}>{label}</strong>
+                <span style={{ display: 'block', marginTop: 2, color: 'var(--fg-3)', fontSize: 11.5, lineHeight: 1.35 }}>{description}</span>
+            </span>
+        </label>
+    );
+}
+
+function oauthMessage(status: string): string {
+    if (status === 'connected') return 'OAuth connection completed. Tools and resources are ready.';
+    if (status === 'discovery_failed') return 'Sign-in completed, but the MCP catalog could not be loaded. You can retry discovery from the connection.';
+    if (status === 'oauth_denied') return 'OAuth sign-in was cancelled. No credentials were saved.';
+    return 'OAuth sign-in could not be completed. Please try again.';
+}
+
 function StatusBadge({ status }: { status: string }) {
     return <span style={{ ...mutedBadgeStyle, color: status === 'active' ? '#86efac' : status === 'errored' ? '#fca5a5' : '#fde68a' }}>{status}</span>;
 }
@@ -273,6 +342,11 @@ const linkButtonStyle: CSSProperties = { border: 0, background: 'transparent', c
 const emptyStyle: CSSProperties = { padding: 18, textAlign: 'center', color: 'var(--fg-3)', border: '1px dashed var(--hairline)', borderRadius: 10, fontSize: 12.5 };
 const errorStyle: CSSProperties = { padding: 10, color: '#fca5a5', background: 'rgba(239,68,68,.08)', border: '1px solid rgba(239,68,68,.3)', borderRadius: 8, fontSize: 12.5 };
 const successStyle: CSSProperties = { padding: 10, color: '#86efac', background: 'rgba(34,197,94,.08)', border: '1px solid rgba(34,197,94,.3)', borderRadius: 8, fontSize: 12.5 };
+const noticeStyle: CSSProperties = { padding: 10, color: '#fde68a', background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.3)', borderRadius: 8, fontSize: 12.5 };
 const mutedBadgeStyle: CSSProperties = { border: '1px solid var(--hairline)', borderRadius: 999, padding: '2px 7px', color: 'var(--fg-3)', fontSize: 10.5, whiteSpace: 'nowrap' };
 const toolRowStyle: CSSProperties = { display: 'flex', alignItems: 'center', gap: 9, padding: '8px 0', borderTop: '1px solid color-mix(in srgb, var(--hairline) 65%, transparent)' };
+const authFieldsetStyle: CSSProperties = { display: 'grid', gap: 7, minWidth: 0, margin: 0, padding: 0, border: 0 };
+const authLegendStyle: CSSProperties = { marginBottom: 5, padding: 0, color: 'var(--fg-2)', fontSize: 12 };
+const authChoiceStyle: CSSProperties = { display: 'flex', alignItems: 'flex-start', gap: 8, padding: '9px 10px', border: '1px solid var(--hairline)', borderRadius: 8, background: 'var(--bg-2)', cursor: 'pointer' };
+const authChoiceSelectedStyle: CSSProperties = { borderColor: 'rgba(99,102,241,.65)', background: 'rgba(99,102,241,.1)', boxShadow: '0 0 0 1px rgba(99,102,241,.12)' };
 function riskStyle(risk: string): CSSProperties { return { ...mutedBadgeStyle, color: risk === 'read' ? '#86efac' : risk === 'destructive' ? '#fca5a5' : '#fde68a' }; }

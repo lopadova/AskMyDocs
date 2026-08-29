@@ -21,6 +21,9 @@ import { defineConfig, devices } from '@playwright/test';
  */
 const baseURL = process.env.E2E_BASE_URL ?? 'http://127.0.0.1:8000';
 const skipWebServer = process.env.E2E_SKIP_WEBSERVER === '1';
+const localWebServerUrl = new URL(baseURL);
+const localWebServerHost = localWebServerUrl.hostname;
+const localWebServerPort = localWebServerUrl.port || (localWebServerUrl.protocol === 'https:' ? '443' : '80');
 
 /**
  * Environment for the dev-spawned `php artisan serve` processes.
@@ -146,6 +149,8 @@ const serveEnv = {
     // environment, not just from the spec process.
     E2E_OUTBOUND_BASE_URL: process.env.E2E_OUTBOUND_BASE_URL ?? 'http://127.0.0.1:8001',
     MCP_CONNECTOR_ENABLED: 'true',
+    MCP_CONNECTOR_OAUTH_ENABLED: 'true',
+    MCP_CONNECTOR_OAUTH_ALLOW_INSECURE_LOCAL: 'true',
     MCP_CONNECTOR_RUNTIME_MODE: 'active',
     MCP_CONNECTOR_INTERNAL_ENDPOINT_ALLOWLIST: '127.0.0.1',
 };
@@ -226,7 +231,7 @@ export default defineConfig({
               // drifts across patch / minor framework upgrades. PR #82
               // set the env var without the flag, so the workers
               // configuration was never actually applied.
-              command: 'php artisan serve --no-reload --host=127.0.0.1 --port=8000',
+              command: `php artisan serve --no-reload --host=${localWebServerHost} --port=${localWebServerPort}`,
               // `/healthz` returns a plain 200 with no auth / no DB hit.
               // The previous `baseURL` poll on `/` was hitting the home
               // route (auth middleware → 302 to /login) which CI's webServer
