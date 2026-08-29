@@ -215,6 +215,31 @@ export default defineConfig({
         // queue + sometimes lock the server long enough for downstream
         // requests to ECONNREFUSED. Chaining keeps the API surface
         // exercised one-at-a-time during boot.
+        //
+        // Every BROWSER project below depends on `system-admin-setup`, the
+        // tail of that chain, rather than on the one setup it appears to
+        // need. That is deliberate and it is about correctness, not
+        // convenience.
+        //
+        // Specs in the `chromium` project routinely opt into another role's
+        // credentials inline:
+        //
+        //     baseTest.use({ storageState: 'playwright/.auth/viewer.json' })
+        //
+        // (admin-pii-redactor, admin-eval-harness, admin-flows,
+        // admin-invitations, ... — every "RBAC denied" describe block). That
+        // file is produced by `viewer-setup`, which `chromium` did not
+        // declare. It worked only because a full run always executed every
+        // setup: `chromium-viewer` had tests somewhere, so viewer.json
+        // existed by the time anything looked for it.
+        //
+        // Sharding removed that accident. A shard holding `chromium` tests
+        // but no `chromium-viewer` test ran `setup` alone, and those specs
+        // died in milliseconds on "Error reading storage state from
+        // playwright/.auth/viewer.json". Depending on the tail of the chain
+        // makes the real requirement explicit: any shard that runs any
+        // browser test first materialises all four storage states, in the
+        // same one-at-a-time order as before.
         { name: 'setup', testMatch: /auth\.setup\.ts/ },
         { name: 'viewer-setup', testMatch: /viewer\.setup\.ts/, dependencies: ['setup'] },
         // PR13 / Phase H2 — super-admin setup. Seeds super@demo.local
@@ -238,7 +263,7 @@ export default defineConfig({
                 ...devices['Desktop Chrome'],
                 storageState: 'playwright/.auth/admin.json',
             },
-            dependencies: ['setup'],
+            dependencies: ['system-admin-setup'],
             // Every *-viewer.spec.ts file runs under the viewer storage
             // state; every *-super-admin.spec.ts under the super-admin
             // one. Keep the ignore list a single regex so new RBAC
@@ -260,7 +285,7 @@ export default defineConfig({
                 ...devices['Desktop Chrome'],
                 storageState: 'playwright/.auth/viewer.json',
             },
-            dependencies: ['viewer-setup'],
+            dependencies: ['system-admin-setup'],
             testMatch: /.*-viewer\.spec\.ts/,
         },
         {
@@ -272,7 +297,7 @@ export default defineConfig({
                 ...devices['Desktop Chrome'],
                 storageState: 'playwright/.auth/super-admin.json',
             },
-            dependencies: ['super-admin-setup'],
+            dependencies: ['system-admin-setup'],
             testMatch: /.*-super-admin\.spec\.ts/,
         },
         {
@@ -296,7 +321,7 @@ export default defineConfig({
                 ...devices['Desktop Chrome'],
                 storageState: { cookies: [], origins: [] },
             },
-            dependencies: ['setup'],
+            dependencies: ['system-admin-setup'],
             testMatch: /role-access\.spec\.ts/,
         },
     ],
