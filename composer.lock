@@ -2913,16 +2913,16 @@
         },
         {
             "name": "padosoft/askmydocs-connector-api",
-            "version": "v1.0.0-beta.2",
+            "version": "v1.0.0-beta.3",
             "source": {
                 "type": "git",
                 "url": "https://github.com/padosoft/askmydocs-connector-api.git",
-                "reference": "0928ee16f1a80b87ee887abef566f59dcff10476"
+                "reference": "0d110920eff64de36b726505b9a15c472a20d9f6"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/padosoft/askmydocs-connector-api/zipball/0928ee16f1a80b87ee887abef566f59dcff10476",
-                "reference": "0928ee16f1a80b87ee887abef566f59dcff10476",
+                "url": "https://api.github.com/repos/padosoft/askmydocs-connector-api/zipball/0d110920eff64de36b726505b9a15c472a20d9f6",
+                "reference": "0d110920eff64de36b726505b9a15c472a20d9f6",
                 "shasum": ""
             },
             "require": {
@@ -2991,10 +2991,10 @@
                 "tool-calling"
             ],
             "support": {
-                "source": "https://github.com/padosoft/askmydocs-connector-api/tree/v1.0.0-beta.2",
+                "source": "https://github.com/padosoft/askmydocs-connector-api/tree/v1.0.0-beta.3",
                 "issues": "https://github.com/padosoft/askmydocs-connector-api/issues"
             },
-            "time": "2026-08-29T14:42:45+00:00"
+            "time": "2026-08-29T15:05:11+00:00"
         },
         {
             "name": "padosoft/askmydocs-connector-base",
