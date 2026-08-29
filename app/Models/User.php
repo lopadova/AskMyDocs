@@ -391,13 +391,23 @@ class User extends Authenticatable implements InvitedAccount
      */
     private function documentHasAnyTag(KnowledgeDocument $doc, array $tagSlugs): bool
     {
-        // R30 — tag slugs are unique only per (tenant_id, project_key); a
-        // same-named slug in another tenant must not satisfy this access
-        // check, so constrain the join to the document's own tenant.
+        // R30 — a tag slug is unique only per (tenant_id, project_key), so
+        // every part of that key has to be correlated or a same-named slug
+        // somewhere else satisfies the check and widens access:
+        //
+        //   - kb_tags.tenant_id      — another customer's tag must not match.
+        //   - kb_tags.project_key    — the allowlist names slugs within the
+        //     membership's project; the identically-named tag in a sibling
+        //     project is a different tag and grants nothing here.
+        //   - the pivot's own tenant_id — the join reaches kb_tags through it,
+        //     so a pivot row stamped for another tenant would otherwise be
+        //     enough to carry a document across the boundary.
         return DB::table('knowledge_document_tags')
             ->join('kb_tags', 'kb_tags.id', '=', 'knowledge_document_tags.kb_tag_id')
             ->where('knowledge_document_tags.knowledge_document_id', $doc->getKey())
+            ->where('knowledge_document_tags.tenant_id', $doc->tenant_id)
             ->where('kb_tags.tenant_id', $doc->tenant_id)
+            ->where('kb_tags.project_key', $doc->project_key)
             ->whereIn('kb_tags.slug', $tagSlugs)
             ->exists();
     }

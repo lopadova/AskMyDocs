@@ -174,8 +174,9 @@ class AccessScopeScope implements Scope
         $pathColumn = $model->qualifyColumn('source_path');
         $idColumn = $model->qualifyColumn('id');
         $tenantColumn = $model->qualifyColumn('tenant_id');
+        $projectColumn = $model->qualifyColumn('project_key');
 
-        $builder->where(function ($q) use ($globs, $tags, $pathColumn, $idColumn, $tenantColumn): void {
+        $builder->where(function ($q) use ($globs, $tags, $pathColumn, $idColumn, $tenantColumn, $projectColumn): void {
             foreach ($globs as $glob) {
                 ScopeAllowlistSql::apply($q, $pathColumn, (string) $glob);
             }
@@ -184,11 +185,20 @@ class AccessScopeScope implements Scope
                 // Mirrors User::documentHasAnyTag(): slugs are unique only
                 // per (tenant_id, project_key), so the join stays inside
                 // the document's own tenant (R30).
-                $q->orWhereExists(function ($sub) use ($tags, $idColumn, $tenantColumn): void {
+                $q->orWhereExists(function ($sub) use ($tags, $idColumn, $tenantColumn, $projectColumn): void {
                     $sub->from('knowledge_document_tags')
                         ->join('kb_tags', 'kb_tags.id', '=', 'knowledge_document_tags.kb_tag_id')
                         ->whereColumn('knowledge_document_tags.knowledge_document_id', $idColumn)
+                        // Every part of the slug's uniqueness key is
+                        // correlated, or a same-named tag elsewhere satisfies
+                        // the subquery: the pivot's tenant (the join reaches
+                        // kb_tags through it), the tag's tenant, and the tag's
+                        // project — an allowlist names slugs within its own
+                        // membership's project, and the identically-named tag
+                        // in a sibling project is a different tag.
+                        ->whereColumn('knowledge_document_tags.tenant_id', $tenantColumn)
                         ->whereColumn('kb_tags.tenant_id', $tenantColumn)
+                        ->whereColumn('kb_tags.project_key', $projectColumn)
                         ->whereIn('kb_tags.slug', $tags)
                         ->selectRaw('1');
                 });

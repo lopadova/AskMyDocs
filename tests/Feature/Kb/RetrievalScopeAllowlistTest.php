@@ -92,6 +92,50 @@ final class RetrievalScopeAllowlistTest extends TestCase
         $this->assertSame(['hr/handbook.md'], $paths);
     }
 
+    public function test_a_same_named_tag_in_another_project_does_not_grant_access(): void
+    {
+        // A tag slug is unique only per (tenant_id, project_key). If the
+        // subquery correlates on the slug alone, an identically-named tag
+        // belonging to a sibling project satisfies the allowlist and widens
+        // access — the document is in scope for a tag its own project never
+        // defined.
+        $this->tagDocument(self::OUT_OF_SCOPE, 'board-approved', 'another-project');
+
+        $this->actingAs($this->scopedUser([
+            'folder_globs' => ['hr/policies/**'],
+            'tags' => ['board-approved'],
+        ]));
+
+        $paths = KnowledgeDocument::query()->pluck('source_path')->all();
+
+        $this->assertSame(
+            [self::IN_SCOPE],
+            $paths,
+            'A tag from a sibling project must not satisfy the allowlist of this one.',
+        );
+    }
+
+    public function test_a_cross_tenant_pivot_row_does_not_grant_access(): void
+    {
+        // The join reaches kb_tags through the pivot, so a pivot row stamped
+        // for another tenant would be enough to carry the document across the
+        // boundary if only the tag's tenant were checked.
+        // The TAG is in this tenant and this project — perfectly ordinary.
+        // Only the PIVOT row is stamped for another tenant, which is exactly
+        // the malformed row the correlation exists to reject; correlating the
+        // tag alone would let it through.
+        $this->tagDocument(self::OUT_OF_SCOPE, 'board-approved', null, 'other-tenant', $this->tenantId);
+
+        $this->actingAs($this->scopedUser([
+            'folder_globs' => ['hr/policies/**'],
+            'tags' => ['board-approved'],
+        ]));
+
+        $paths = KnowledgeDocument::query()->pluck('source_path')->all();
+
+        $this->assertSame([self::IN_SCOPE], $paths);
+    }
+
     public function test_glob_mixing_cross_and_single_segment_wildcards_grants_nothing(): void
     {
         // A glob carrying BOTH a cross-segment and a single-segment wildcard
@@ -277,15 +321,20 @@ final class RetrievalScopeAllowlistTest extends TestCase
         ]);
     }
 
-    private function tagDocument(string $sourcePath, string $slug): void
-    {
+    private function tagDocument(
+        string $sourcePath,
+        string $slug,
+        ?string $tagProjectKey = null,
+        ?string $pivotTenantId = null,
+        ?string $tagTenantId = null,
+    ): void {
         $doc = KnowledgeDocument::withoutGlobalScopes()
             ->where('source_path', $sourcePath)
             ->firstOrFail();
 
         $tagId = \DB::table('kb_tags')->insertGetId([
-            'tenant_id' => $this->tenantId,
-            'project_key' => $this->projectKey,
+            'tenant_id' => $tagTenantId ?? $this->tenantId,
+            'project_key' => $tagProjectKey ?? $this->projectKey,
             'slug' => $slug,
             'label' => $slug,
         ]);
@@ -294,7 +343,7 @@ final class RetrievalScopeAllowlistTest extends TestCase
         // TenantContext to a non-default tenant. Letting the column fall back
         // to its 'default' DB default would seed a cross-tenant pivot row.
         \DB::table('knowledge_document_tags')->insert([
-            'tenant_id' => $this->tenantId,
+            'tenant_id' => $pivotTenantId ?? $this->tenantId,
             'knowledge_document_id' => $doc->id,
             'kb_tag_id' => $tagId,
         ]);
