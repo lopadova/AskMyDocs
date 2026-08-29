@@ -34,6 +34,7 @@
           "connectors-multi-account",
           "connectors-sync-settings",
           "ingest-provenance",
+          "source-permissions",
           "connectors-imap-backfill",
           "connectors-imap-serialization",
           "connectors-api",
