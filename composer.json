@@ -10,7 +10,7 @@
         "laravel/sanctum": "^4.2",
         "league/flysystem-aws-s3-v3": "^3.34",
         "padosoft/askmydocs-connector-api": "^1.0@beta",
-        "padosoft/askmydocs-connector-base": "^1.4",
+        "padosoft/askmydocs-connector-base": "^1.5",
         "padosoft/askmydocs-connector-confluence": "^1.0",
         "padosoft/askmydocs-connector-evernote": "^1.0",
         "padosoft/askmydocs-connector-fabric": "^1.0",

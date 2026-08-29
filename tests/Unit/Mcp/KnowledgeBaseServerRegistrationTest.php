@@ -29,7 +29,7 @@ class KnowledgeBaseServerRegistrationTest extends TestCase
         return $property->getDefaultValue();
     }
 
-    public function test_server_registers_exactly_forty_eight_tools(): void
+    public function test_server_registers_exactly_forty_nine_tools(): void
     {
         // 36 (v8.21) + 3 invitations tools (v8.x) + 1 AppSettingsTool (v8.22)
         // + 1 KbPiiPolicyTool + 1 KbDetokenizeTool + 1 KbEraseSubjectTool
@@ -38,7 +38,14 @@ class KnowledgeBaseServerRegistrationTest extends TestCase
         // The breakdown above has summed to 48 since KbImapBackfillTool landed
         // with the durable IMAP backfill workflow; the assertion had been left
         // at 47, so this lock failed on every branch instead of guarding them.
-        $this->assertCount(48, $this->registeredTools());
+        // + 1 KbProvenanceTool (v8.32 / ADR 0028 phase 1).
+        $this->assertCount(49, $this->registeredTools());
+    }
+
+    public function test_server_registers_the_provenance_tool(): void
+    {
+        // v8.32 / ADR 0028 phase 1 — the corpus provenance read surface.
+        $this->assertContains(\App\Mcp\Tools\KbProvenanceTool::class, $this->registeredTools());
     }
 
     public function test_server_registers_the_widget_intro_config_tool(): void

@@ -40,6 +40,7 @@ class KnowledgeDocument extends Model
         'is_canonical',
         'generation_source',
         'evidence_tier',
+        'provenance_tier',
         'retrieval_priority',
         'source_of_truth',
         'frontmatter_json',

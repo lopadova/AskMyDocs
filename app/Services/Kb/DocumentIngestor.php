@@ -10,6 +10,7 @@ use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
 use App\Services\Kb\Canonical\CanonicalParsedDocument;
 use App\Services\Kb\Canonical\CanonicalParser;
+use App\Services\Kb\Provenance\ProvenanceResolver;
 use App\Services\Kb\Pii\ChunkRedactor;
 use App\Services\Kb\Pipeline\ChunkDraft;
 use App\Services\Kb\Pipeline\PipelineRegistry;
@@ -42,15 +43,22 @@ class DocumentIngestor
 {
     protected CanonicalParser $canonicalParser;
 
+    protected ProvenanceResolver $provenanceResolver;
+
     public function __construct(
         protected PipelineRegistry $registry,
         protected EmbeddingCacheService $embeddingCache,
         ?CanonicalParser $canonicalParser = null,
+        ?ProvenanceResolver $provenanceResolver = null,
     ) {
         // CanonicalParser is stateless and has no deps of its own, so we
         // can default-instantiate it when callers don't wire it explicitly
         // (e.g. legacy unit tests built before Phase 2).
         $this->canonicalParser = $canonicalParser ?? new CanonicalParser();
+        // Same reason, plus: the resolver only needs the connector registry,
+        // which the container already builds. Defaulting keeps every existing
+        // direct-construction call site working unchanged.
+        $this->provenanceResolver = $provenanceResolver ?? app(ProvenanceResolver::class);
     }
 
     /**
@@ -535,6 +543,12 @@ class DocumentIngestor
             // intended defaults / domain invariants (`'it'`, `'internal'`).
             'language' => $this->normalizeStringMeta($metadata['language'] ?? null, 'it'),
             'access_scope' => $this->normalizeStringMeta($metadata['access_scope'] ?? null, 'internal'),
+            // ADR 0028 phase 1 — who authored this. Asked of the connector
+            // that produced the metadata, never inferred from the content.
+            // null means no connector declared anything (the CLI walker, the
+            // HTTP batch endpoint, a connector predating the capability), and
+            // readers resolve that to the trusted default.
+            'provenance_tier' => $this->provenanceResolver->forIngestionMetadata($metadata)?->value,
             'status' => 'active',
             'document_hash' => $documentHash,
             'metadata' => $metadata,
