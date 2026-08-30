@@ -81,6 +81,7 @@ describe('useAgentChat', () => {
             undefined,
             mcpAppId,
             undefined,
+            undefined,
         );
         expect(result.current.messages).toEqual([userMessage, assistantMessage]);
         expect(result.current.events.at(-1)?.message).toBe('La risposta è pronta.');
@@ -149,6 +150,34 @@ describe('useAgentChat', () => {
             undefined,
             undefined,
             { message_id: 90, row_key: '102' },
+            undefined,
+        );
+    });
+
+    it('passes the current live-source allowlist to every new run', async () => {
+        vi.spyOn(chatApi, 'startAgentTurn').mockResolvedValue({
+            run_id: 'run-sources', status: 'queued', locale: 'it-IT',
+            events_url: '/events', cancel_url: '/cancel', continue_url: '/continue', user_message: userMessage,
+        });
+        vi.spyOn(chatApi, 'listMessages').mockResolvedValue([userMessage, assistantMessage]);
+        vi.stubGlobal('fetch', vi.fn(async () => eventResponse(completedEvent())));
+        const liveSources = { api: [], mcp: ['mcp:hubhive'] };
+        const { result } = renderHook(() => useAgentChat({
+            conversationId: 7,
+            filters: {},
+            liveSources,
+            initialMessages: emptyMessages,
+        }));
+
+        await act(async () => result.current.sendMessage({ text: 'Usa solo HubHive' }));
+
+        expect(chatApi.startAgentTurn).toHaveBeenCalledWith(
+            7,
+            'Usa solo HubHive',
+            undefined,
+            undefined,
+            undefined,
+            liveSources,
         );
     });
 

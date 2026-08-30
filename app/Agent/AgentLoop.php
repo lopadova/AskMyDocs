@@ -13,6 +13,7 @@ use App\Agent\Planning\AgentAmbiguousSelectionGuard;
 use App\Agent\Planning\AgentPlan;
 use App\Agent\Planning\AgentPlannedAction;
 use App\Agent\Planning\AgentPlanningCoordinator;
+use App\Agent\Tools\AgentLiveSourceSelection;
 use App\Agent\Tools\AgentServerToolRunner;
 use App\Agent\Tools\AgentToolActionResult;
 use App\Agent\Tools\AgentToolDefinition;
@@ -32,6 +33,7 @@ final readonly class AgentLoop
         private AgentPlanningCoordinator $planner,
         private AgentCapabilitySnapshotBuilder $capabilities,
         private AgentToolRegistry $registry,
+        private AgentLiveSourceSelection $liveSources,
         private AgentArgumentResolver $arguments,
         private AgentAmbiguousSelectionGuard $ambiguousSelection,
         private AgentServerToolRunner $serverTools,
@@ -71,6 +73,7 @@ final readonly class AgentLoop
             static fn (AgentToolDefinition $tool): bool => $tool->readOnly
                 && ! (bool) ($tool->metadata['confirmation_required'] ?? false),
         );
+        $tools = $this->liveSources->apply($tools, data_get($run->input_json, 'live_sources'));
         $capabilitySnapshot = $this->capabilities->build($tools);
 
         if (! $retrieved) {

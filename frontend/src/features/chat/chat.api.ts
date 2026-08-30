@@ -50,6 +50,28 @@ export interface FilterState {
     languages?: string[];
 }
 
+export type LiveSourceKind = 'api' | 'mcp';
+
+export interface LiveSourceOption {
+    key: string;
+    kind: LiveSourceKind;
+    name: string;
+    description: string | null;
+    project_key: string | null;
+    tool_count: number;
+}
+
+export interface LiveSourceCatalog {
+    api: LiveSourceOption[];
+    mcp: LiveSourceOption[];
+}
+
+/** Explicit per-turn allowlist. Empty arrays disable that live-source kind. */
+export interface LiveSourceSelection {
+    api: string[];
+    mcp: string[];
+}
+
 /**
  * Returns true when EVERY filter dimension is empty / undefined.
  * Used by the composer to skip the `filters` payload key entirely
@@ -340,8 +362,9 @@ export const chatApi = {
         filters?: FilterState,
         mcpAppId?: string,
         selection?: AgentSelectionRequest,
+        liveSources?: LiveSourceSelection,
     ): Promise<AgentTurnStarted> {
-        const payload: { content: string; filters?: FilterState; mcp_app_id?: string; selection?: AgentSelectionRequest } = { content };
+        const payload: { content: string; filters?: FilterState; mcp_app_id?: string; selection?: AgentSelectionRequest; live_sources?: LiveSourceSelection } = { content };
         if (filters && !isFilterStateEmpty(filters)) {
             payload.filters = filters;
         }
@@ -351,12 +374,22 @@ export const chatApi = {
         if (selection) {
             payload.selection = selection;
         }
+        if (liveSources) {
+            payload.live_sources = liveSources;
+        }
         const { data } = await api.post<AgentTurnStarted>(
             `/conversations/${conversationId}/messages/agent`,
             payload,
         );
 
         return data;
+    },
+
+    async listLiveSources(projectKey?: string | null): Promise<LiveSourceCatalog> {
+        const { data } = await api.get<{ data: LiveSourceCatalog }>('/api/chat/live-sources', {
+            params: projectKey ? { project_key: projectKey } : undefined,
+        });
+        return data.data;
     },
 
     async cancelAgentRun(url: string): Promise<void> {

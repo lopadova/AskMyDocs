@@ -1,17 +1,18 @@
 <?php
 
-use App\Http\Controllers\Auth\LoginController;
-use App\Http\Controllers\ChatController;
-use App\Http\Controllers\SpaController;
-use App\Http\Controllers\TestingController;
+use App\Http\Controllers\Api\AgentLiveSourceController;
 use App\Http\Controllers\Api\AgentMessageController;
+use App\Http\Controllers\Api\AgentRunControlController;
+use App\Http\Controllers\Api\AgentRunEventController;
 use App\Http\Controllers\Api\ChatExtrasController;
 use App\Http\Controllers\Api\ConversationController;
 use App\Http\Controllers\Api\FeedbackController;
 use App\Http\Controllers\Api\MessageController;
 use App\Http\Controllers\Api\MessageStreamController;
-use App\Http\Controllers\Api\AgentRunEventController;
-use App\Http\Controllers\Api\AgentRunControlController;
+use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\ChatController;
+use App\Http\Controllers\SpaController;
+use App\Http\Controllers\TestingController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -68,6 +69,8 @@ Route::middleware('auth')->group(function () {
         return redirect('/app/chat'.($conversation ? '/'.$conversation : ''));
     })->name('chat');
     Route::get('/chat-legacy/{conversation?}', [ChatController::class, 'index'])->name('chat.legacy');
+    Route::get('/api/chat/live-sources', AgentLiveSourceController::class)
+        ->middleware('tenant.authorize');
 
     // v8.0.2 — AI Act gates (R-deep-review B): the same stack
     // applied to `POST /api/kb/chat` (routes/api.php) must hold on

@@ -86,7 +86,7 @@ final readonly class AgentToolRegistry
             ->where('status', RouteStatus::Active->value)
             ->whereIn('mode', [RouteMode::Tool->value, RouteMode::Both->value])
             ->whereIn('project_key', $scopes)
-            ->with(['listRelations.detailRoute'])
+            ->with(['connector:id,name,description,project_key', 'listRelations.detailRoute'])
             ->get()
             ->sortBy('id');
 
@@ -137,6 +137,10 @@ final readonly class AgentToolRegistry
                 physicalMaximum: $physicalMaximum,
                 executorReference: $route->id,
                 metadata: [
+                    'source_key' => 'api:'.$route->api_connector_id,
+                    'source_name' => (string) ($route->connector?->name ?? $route->name),
+                    'source_description' => $route->connector?->description,
+                    'source_project_key' => $route->connector?->project_key,
                     'endpoint_type' => $route->endpoint_type->value,
                     'items_path' => $route->items_path,
                     'output_schema' => is_array($route->output_schema) ? $route->output_schema : null,
@@ -199,6 +203,8 @@ final readonly class AgentToolRegistry
                     physicalMaximum: 1,
                     executorReference: $server->id,
                     metadata: [
+                        'source_key' => 'mcp:legacy:'.$server->id,
+                        'source_name' => (string) $server->name,
                         'mcp_runtime' => 'legacy',
                         'server_id' => $server->id,
                         'server_name' => (string) $server->name,
@@ -258,6 +264,8 @@ final readonly class AgentToolRegistry
                 physicalMaximum: 1,
                 executorReference: $name,
                 metadata: [
+                    'source_key' => 'mcp:'.(string) ($provenance['connection_id'] ?? ''),
+                    'source_name' => (string) ($provenance['server_name'] ?? $remoteName),
                     'mcp_runtime' => 'connector',
                     'risk' => $risk,
                     'confirmation_required' => (bool) ($definition['confirmationRequired'] ?? false),
