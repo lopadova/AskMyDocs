@@ -322,12 +322,35 @@ final readonly class CatalogLoader
 
     private function snapshotLabel(string $path): string
     {
-        $projectPrefix = rtrim($this->projectRoot(), DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR;
+        // Compared with separators normalised, because the two sides are built
+        // differently: the prefixes come from `dirname(__DIR__, 4)` -- native
+        // separators, so backslashes on Windows -- while the paths themselves
+        // are assembled with literal '/' throughout this class. On Linux the
+        // two coincide and the comparison works by accident; on Windows the
+        // path reads `C:\...\AskMyDocs/database/...` and every containment
+        // check fails, so a guard that is supposed to REJECT paths outside the
+        // approved roots instead rejects the approved ones too.
+        //
+        // A containment check that depends on which platform runs it is not a
+        // containment check.
+        //
+        // Backslashes are folded UNCONDITIONALLY rather than only when
+        // DIRECTORY_SEPARATOR is one, so the rule is the same everywhere and a
+        // Windows-shaped path is still evaluated correctly by CI on Linux --
+        // otherwise the fix would be untested on the only platform that needed
+        // it. This cannot open an escape: folding a backslash into a separator
+        // can only make a path look DEEPER, and a path still has to begin with
+        // the approved prefix to be accepted at all.
+        $normalise = static fn (string $value): string => str_replace('\\', '/', $value);
+
+        $path = $normalise($path);
+
+        $projectPrefix = rtrim($normalise($this->projectRoot()), '/').'/';
         if (str_starts_with($path, $projectPrefix)) {
             return substr($path, strlen($projectPrefix));
         }
 
-        $catalogPrefix = rtrim($this->root(), DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR;
+        $catalogPrefix = rtrim($normalise($this->root()), '/').'/';
         if (str_starts_with($path, $catalogPrefix)) {
             return 'email-dataset/'.substr($path, strlen($catalogPrefix));
         }
