@@ -105,40 +105,20 @@ export function UserMenu() {
     };
 
     return (
-        <div ref={ref} style={{ position: 'relative' }}>
+        <div ref={ref} className="shell-menu-anchor shell-user-menu">
             <button
                 ref={triggerRef}
                 type="button"
-                className="focus-ring"
+                className="focus-ring shell-user-trigger"
                 data-testid="user-menu-trigger"
                 onClick={() => (open ? close() : setOpen(true))}
                 aria-haspopup="menu"
                 aria-expanded={open}
                 aria-controls={open ? menuId : undefined}
                 aria-label={`Account menu for ${user.name}`}
-                style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    padding: '4px 8px 4px 4px',
-                    background: 'var(--bg-2)',
-                    border: '1px solid var(--panel-border)',
-                    borderRadius: 999,
-                    cursor: 'pointer',
-                    color: 'var(--fg-0)',
-                    fontSize: 12.5,
-                    fontWeight: 500,
-                }}
             >
-                <Avatar user={{ name: user.name }} size={24} />
-                <span
-                    style={{
-                        maxWidth: 140,
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                    }}
-                >
+                <Avatar user={{ name: user.name }} size={26} />
+                <span className="shell-user-name">
                     {user.name}
                 </span>
                 <Icon.ChevronDown size={13} style={{ color: 'var(--fg-3)' }} />

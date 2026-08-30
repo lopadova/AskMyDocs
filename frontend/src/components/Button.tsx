@@ -29,6 +29,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
         iconOnly = false,
         caps = false,
         disabled,
+        'aria-busy': ariaBusy,
         className,
         children,
         type = 'button',
@@ -52,7 +53,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
             data-variant={variant}
             data-size={size}
             data-busy={busy ? 'true' : 'false'}
-            aria-busy={busy || undefined}
+            aria-busy={busy ? true : ariaBusy}
             disabled={disabled || busy}
         >
             {busy ? (

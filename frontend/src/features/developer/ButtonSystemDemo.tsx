@@ -15,13 +15,13 @@ export function ButtonSystemDemo(): ReactNode {
     return (
         <main className="button-demo" data-testid="button-system-demo">
             <header className="button-demo-hero">
-                <span className="button-demo-eyebrow">Interface foundations · Buttons</span>
+                <span className="button-demo-eyebrow">Super-admin · UI Foundations</span>
                 <div className="button-demo-hero-copy">
                     <div>
-                        <h1>Quiet precision, tactile response.</h1>
+                        <h1>A quiet system for every surface.</h1>
                         <p>
-                            One disciplined action language for light and dark surfaces. The double
-                            hairline gives definition; light confirms intent without competing with content.
+                            Review application chrome, typography, controls and interaction states here
+                            before applying visual changes across the product.
                         </p>
                     </div>
                     <Button variant="primary" size="lg" leadingIcon={<Icon.Plus size={16} />}>
@@ -30,9 +30,45 @@ export function ButtonSystemDemo(): ReactNode {
                 </div>
             </header>
 
-            <section className="button-demo-section" aria-labelledby="hierarchy-title">
+            <section className="button-demo-section" aria-labelledby="chrome-title">
                 <DemoHeading
                     index="01"
+                    title="Application chrome"
+                    description="Context, system health, tools and identity breathe as separate groups."
+                    id="chrome-title"
+                />
+                <div className="ui-foundations-chrome-preview">
+                    <div className="ui-foundations-chrome-leading">
+                        <div className="ui-foundations-context">
+                            <span aria-hidden="true" />
+                            <strong>Date</strong>
+                        </div>
+                        <div className="ui-foundations-crumb">
+                            <Icon.Chevron size={12} />
+                            <span>Chat</span>
+                        </div>
+                    </div>
+                    <div className="ui-foundations-chrome-actions">
+                        <div className="app-topbar-status">
+                            <span className="pulse-dot" aria-hidden="true" />
+                            <span>All systems operational</span>
+                        </div>
+                        <div className="app-topbar-tools">
+                            <Button variant="quiet" size="sm" iconOnly className="app-topbar-icon-button notification-bell-trigger" aria-label="Notifications demo">
+                                <Icon.Bell size={15} />
+                                <span className="notification-bell-badge" aria-hidden="true">3</span>
+                            </Button>
+                            <Button variant="quiet" size="sm" iconOnly className="app-topbar-icon-button" aria-label="Theme demo"><Icon.Moon size={15} /></Button>
+                            <Button variant="quiet" size="sm" iconOnly className="app-topbar-icon-button" aria-label="Settings demo"><Icon.Sliders size={15} /></Button>
+                        </div>
+                        <div className="ui-foundations-user"><span>DS</span><strong>Demo Super-Admin</strong><Icon.ChevronDown size={12} /></div>
+                    </div>
+                </div>
+            </section>
+
+            <section className="button-demo-section" aria-labelledby="hierarchy-title">
+                <DemoHeading
+                    index="02"
                     title="Action hierarchy"
                     description="Use weight to express priority, never decoration alone."
                     id="hierarchy-title"
@@ -56,7 +92,7 @@ export function ButtonSystemDemo(): ReactNode {
 
             <section className="button-demo-section" aria-labelledby="size-title">
                 <DemoHeading
-                    index="02"
+                    index="03"
                     title="Scale and composition"
                     description="Three sizes, predictable icon rhythm, no one-off geometry."
                     id="size-title"
@@ -104,7 +140,7 @@ export function ButtonSystemDemo(): ReactNode {
 
             <section className="button-demo-section" aria-labelledby="states-title">
                 <DemoHeading
-                    index="03"
+                    index="04"
                     title="Interaction states"
                     description="Every state remains legible, stable and keyboard-visible."
                     id="states-title"
@@ -116,6 +152,44 @@ export function ButtonSystemDemo(): ReactNode {
                     <State label="Keyboard focus"><Button data-demo-state="focus">Review result</Button></State>
                     <State label="Disabled"><Button disabled>Review result</Button></State>
                     <State label="Working"><Button busy>Connecting</Button></State>
+                </div>
+            </section>
+
+            <section className="button-demo-section" aria-labelledby="foundations-title">
+                <DemoHeading
+                    index="05"
+                    title="Core foundations"
+                    description="Type, fields, status and surfaces share the same optical rhythm."
+                    id="foundations-title"
+                />
+                <div className="ui-foundations-grid">
+                    <DemoCard label="Typography">
+                        <div className="ui-foundations-type">
+                            <strong>Interface heading</strong>
+                            <p>Readable product copy with a quiet supporting hierarchy.</p>
+                            <code>metadata · 12:42 PM</code>
+                        </div>
+                    </DemoCard>
+                    <DemoCard label="Form field">
+                        <label className="ui-foundations-field">
+                            <span>Connection name</span>
+                            <input className="input" value="Production MCP" readOnly />
+                            <small>Use a name your team will recognise.</small>
+                        </label>
+                    </DemoCard>
+                    <DemoCard label="Status language">
+                        <div className="button-demo-row">
+                            <span className="pill ok">Connected</span>
+                            <span className="pill warn">Needs review</span>
+                            <span className="pill err">Unavailable</span>
+                        </div>
+                    </DemoCard>
+                    <DemoCard label="Surface">
+                        <div className="ui-foundations-surface">
+                            <Icon.Sparkles size={16} />
+                            <div><strong>Quiet depth</strong><small>Hairlines define structure before shadows do.</small></div>
+                        </div>
+                    </DemoCard>
                 </div>
             </section>
 
@@ -135,6 +209,8 @@ export function ButtonSystemDemo(): ReactNode {
         </main>
     );
 }
+
+export const UiFoundationsDemo = ButtonSystemDemo;
 
 function DemoHeading({ index, title, description, id }: {
     index: string;
