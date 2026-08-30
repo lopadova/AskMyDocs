@@ -250,24 +250,25 @@ textarea:focus-visible {
 :root[data-theme="light"] .pill.err { color: #b91c1c; }
 
 /* AskMyDocs button system -------------------------------------------------
-   Two restrained border layers, a one-pixel top highlight and a compressed
-   active shadow create tactile depth without glossy skeuomorphism. `.btn`
-   is the compatibility surface; new work should use <Button />. */
+   Two restrained border layers, a soft light response and a compressed
+   active shadow create definition without glossy skeuomorphism. `.btn` is
+   the compatibility surface; new work should use <Button />. */
 .btn,
 .ui-button {
-  --button-height: 34px;
-  --button-radius: 9px;
-  --button-padding: 13px;
-  --button-gap: 7px;
-  --button-bg: linear-gradient(180deg, color-mix(in srgb, var(--bg-3) 82%, white 2%), var(--bg-3));
-  --button-bg-hover: linear-gradient(180deg, var(--bg-4), color-mix(in srgb, var(--bg-4) 88%, black 4%));
+  --button-height: 40px;
+  --button-radius: 8px;
+  --button-padding: 17px;
+  --button-gap: 8px;
+  --button-bg: linear-gradient(180deg, color-mix(in srgb, var(--bg-3) 88%, white 1.5%), var(--bg-3));
+  --button-bg-hover: linear-gradient(180deg, color-mix(in srgb, var(--bg-4) 94%, white 3%), var(--bg-4));
   --button-border: var(--panel-border-strong);
-  --button-inner: color-mix(in srgb, var(--fg-0) 8%, transparent);
+  --button-inner: color-mix(in srgb, var(--fg-0) 7%, transparent);
+  --button-glow: color-mix(in srgb, var(--fg-0) 13%, transparent);
   --button-color: var(--fg-0);
   --button-shadow:
-    0 1px 0 color-mix(in srgb, var(--fg-0) 5%, transparent),
-    0 2px 3px -2px rgba(5, 5, 14, .46),
-    0 7px 15px -12px rgba(5, 5, 14, .7);
+    inset 0 1px 0 color-mix(in srgb, var(--fg-0) 4%, transparent),
+    0 1px 2px -1px rgba(5, 5, 14, .34),
+    0 5px 12px -11px rgba(5, 5, 14, .58);
   position: relative;
   isolation: isolate;
   height: var(--button-height);
@@ -283,20 +284,19 @@ textarea:focus-visible {
   appearance: none;
   background: var(--button-bg);
   box-shadow: var(--button-shadow);
-  font: 590 12px/1 var(--font-sans);
-  letter-spacing: -.006em;
+  font: 610 13px/1 var(--font-sans);
+  letter-spacing: -.004em;
   text-decoration: none;
   white-space: nowrap;
   cursor: pointer;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
   transition:
-    transform .14s cubic-bezier(.2, .8, .2, 1),
-    box-shadow .14s ease,
-    border-color .14s ease,
-    color .14s ease,
-    background .14s ease,
-    opacity .14s ease;
+    box-shadow .16s ease,
+    border-color .16s ease,
+    color .16s ease,
+    background .16s ease,
+    opacity .16s ease;
 }
 
 .btn::before,
@@ -318,10 +318,10 @@ textarea:focus-visible {
   background: var(--button-bg-hover);
   border-color: color-mix(in srgb, var(--button-border) 76%, var(--fg-2));
   box-shadow:
-    0 1px 0 color-mix(in srgb, var(--fg-0) 7%, transparent),
-    0 4px 7px -5px rgba(5, 5, 14, .7),
-    0 10px 22px -16px rgba(5, 5, 14, .82);
-  transform: translateY(-1px);
+    inset 0 1px 0 color-mix(in srgb, white 9%, transparent),
+    0 0 0 1px var(--button-glow),
+    0 0 18px -9px var(--button-glow),
+    0 4px 10px -9px rgba(5, 5, 14, .56);
 }
 
 .btn:active:not(:disabled),
@@ -356,15 +356,16 @@ textarea:focus-visible {
 
 .btn.primary,
 .ui-button[data-variant="primary"] {
-  --button-bg: linear-gradient(180deg, #765ee9 0%, #5d47d2 100%);
-  --button-bg-hover: linear-gradient(180deg, #8069ed 0%, #644ddb 100%);
+  --button-bg: linear-gradient(180deg, #725be2 0%, #624bd4 100%);
+  --button-bg-hover: linear-gradient(180deg, #8069eb 0%, #6b53dc 100%);
   --button-border: #4e3ab7;
-  --button-inner: rgba(255, 255, 255, .24);
+  --button-inner: rgba(255, 255, 255, .19);
+  --button-glow: rgba(125, 99, 239, .46);
   --button-color: #fff;
   --button-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, .14),
-    0 1px 0 rgba(33, 23, 93, .72),
-    0 6px 14px -8px rgba(94, 71, 210, .78);
+    inset 0 1px 0 rgba(255, 255, 255, .11),
+    0 1px 1px rgba(33, 23, 93, .5),
+    0 5px 12px -9px rgba(94, 71, 210, .64);
 }
 
 .btn.ghost,
@@ -373,6 +374,7 @@ textarea:focus-visible {
   --button-bg-hover: color-mix(in srgb, var(--bg-3) 78%, transparent);
   --button-border: transparent;
   --button-inner: transparent;
+  --button-glow: color-mix(in srgb, var(--accent-a) 20%, transparent);
   --button-color: var(--fg-2);
   --button-shadow: none;
 }
@@ -381,29 +383,30 @@ textarea:focus-visible {
   --button-bg: linear-gradient(180deg, #dc4b54 0%, #b93242 100%);
   --button-bg-hover: linear-gradient(180deg, #e35860 0%, #c23a49 100%);
   --button-border: #9f2837;
-  --button-inner: rgba(255, 255, 255, .22);
+  --button-inner: rgba(255, 255, 255, .18);
+  --button-glow: rgba(220, 75, 84, .4);
   --button-color: #fff;
   --button-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, .12),
-    0 1px 0 rgba(87, 17, 27, .72),
-    0 6px 14px -9px rgba(185, 50, 66, .72);
+    inset 0 1px 0 rgba(255, 255, 255, .1),
+    0 1px 1px rgba(87, 17, 27, .5),
+    0 5px 12px -10px rgba(185, 50, 66, .64);
 }
 
 .btn.sm,
 .ui-button[data-size="sm"] {
-  --button-height: 28px;
-  --button-radius: 8px;
-  --button-padding: 9px;
-  --button-gap: 5px;
-  font-size: 10.5px;
+  --button-height: 32px;
+  --button-radius: 7px;
+  --button-padding: 12px;
+  --button-gap: 7px;
+  font-size: 11.5px;
 }
 
 .ui-button[data-size="lg"] {
-  --button-height: 40px;
-  --button-radius: 11px;
-  --button-padding: 17px;
-  --button-gap: 8px;
-  font-size: 13px;
+  --button-height: 46px;
+  --button-radius: 9px;
+  --button-padding: 22px;
+  --button-gap: 9px;
+  font-size: 14px;
 }
 
 .btn.icon,
@@ -412,10 +415,10 @@ textarea:focus-visible {
   flex: 0 0 var(--button-height);
   padding: 0;
 }
-.btn.icon.sm { width: 28px; }
+.btn.icon.sm { width: 32px; }
 
 .ui-button.is-caps {
-  font-size: 10px;
+  font-size: 10.5px;
   font-weight: 680;
   letter-spacing: .075em;
   text-transform: uppercase;
@@ -427,14 +430,20 @@ textarea:focus-visible {
   display: block;
   flex: 0 0 auto;
 }
+.ui-button-icon > svg,
+.ui-button.is-icon-only > svg { width: 15px; height: 15px; }
+.ui-button[data-size="sm"] .ui-button-icon > svg,
+.ui-button[data-size="sm"].is-icon-only > svg { width: 14px; height: 14px; }
+.ui-button[data-size="lg"] .ui-button-icon > svg,
+.ui-button[data-size="lg"].is-icon-only > svg { width: 17px; height: 17px; }
 .ui-button-icon { color: currentColor; opacity: .88; }
 .ui-button-label { overflow: hidden; text-overflow: ellipsis; }
 
 @keyframes ui-button-spin { to { transform: rotate(360deg); } }
 .ui-button-spinner {
-  width: 13px;
-  height: 13px;
-  flex: 0 0 13px;
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
   border: 1.5px solid color-mix(in srgb, currentColor 28%, transparent);
   border-top-color: currentColor;
   border-radius: 50%;
@@ -2490,8 +2499,6 @@ textarea:focus-visible {
 
 .chat-conversation-actions .ui-button {
   width: 100%;
-  height: 36px;
-  --button-radius: 10px;
 }
 
 .chat-conversation-new {
