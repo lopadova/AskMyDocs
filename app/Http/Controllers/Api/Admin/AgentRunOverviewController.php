@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Models\AgentRun;
+use App\Models\AgentPlannerShadowReport;
 use App\Models\AgentToolExecution;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
@@ -34,6 +35,19 @@ final class AgentRunOverviewController extends Controller
             ->filter(fn (AgentRun $run): bool => $run->started_at !== null && $run->completed_at !== null)
             ->map(fn (AgentRun $run): int => (int) $run->started_at->diffInMilliseconds($run->completed_at));
         $successful = $runs->whereIn('status', [AgentRun::STATUS_COMPLETED, AgentRun::STATUS_PARTIAL])->count();
+        $plannerReports = AgentPlannerShadowReport::query()
+            ->forTenant($tenantId)
+            ->where('created_at', '>=', $since)
+            ->get();
+        $shadowReports = $plannerReports->where('mode', 'shadow');
+        $invalidShadowReports = $shadowReports->filter(
+            fn (AgentPlannerShadowReport $report): bool => (int) data_get($report->comparison_json, 'validation_corrections', 0) > 0
+                || in_array($report->error_code, [
+                    'unknown_tool', 'write_tool_forbidden', 'arguments_schema_invalid',
+                    'reference_path_invalid', 'reference_dependency_missing', 'reference_value_missing',
+                    'reference_source_invalid', 'speculative_reference_path', 'premature_insufficient',
+                ], true),
+        );
 
         $recent = AgentRun::query()
             ->forTenant($tenantId)
@@ -71,6 +85,35 @@ final class AgentRunOverviewController extends Controller
                 'average_duration_ms' => $terminalDurations->isEmpty() ? null : (int) round($terminalDurations->average()),
             ],
             'status_counts' => $runs->countBy('status')->all(),
+            'planner_shadow' => [
+                'reports' => $plannerReports->count(),
+                'agreement_rate' => $shadowReports->isEmpty()
+                    ? null
+                    : round(($shadowReports->where('status', 'agreement')->count() / $shadowReports->count()) * 100, 1),
+                'agreements' => $shadowReports->where('status', 'agreement')->count(),
+                'disagreements' => $shadowReports->where('status', 'disagreement')->count(),
+                'invalid_plan_rate' => $shadowReports->isEmpty()
+                    ? null
+                    : round(($invalidShadowReports->count() / $shadowReports->count()) * 100, 1),
+                'errors' => $plannerReports->where('status', 'error')->count(),
+                'fallbacks' => $plannerReports->where('fallback_used', true)->count(),
+                'validation_corrections' => $plannerReports->sum(
+                    fn (AgentPlannerShadowReport $report): int => (int) data_get($report->comparison_json, 'validation_corrections', 0),
+                ),
+                'premature_insufficient_avoided' => $plannerReports->filter(
+                    fn (AgentPlannerShadowReport $report): bool => (bool) data_get($report->comparison_json, 'premature_insufficient_avoided', false),
+                )->count(),
+                'average_candidates' => $plannerReports->isEmpty() ? null : round($plannerReports->avg(
+                    fn (AgentPlannerShadowReport $report): int => count($report->candidate_tools_json ?? []),
+                ), 1),
+                'average_router_latency_ms' => $this->averagePresent($plannerReports->pluck('router_latency_ms')->all()),
+                'average_planner_latency_ms' => $this->averagePresent($plannerReports->pluck('planner_latency_ms')->all()),
+                'average_tokens' => $this->averagePresent($plannerReports->map(
+                    fn (AgentPlannerShadowReport $report): ?int => $report->prompt_tokens === null && $report->completion_tokens === null
+                        ? null
+                        : (int) $report->prompt_tokens + (int) $report->completion_tokens,
+                )->all()),
+            ],
             'policy' => $this->policy(),
             'recent_runs' => $recent,
         ]]);
@@ -87,5 +130,13 @@ final class AgentRunOverviewController extends Controller
         ])->mapWithKeys(static fn (string $key): array => [
             $key => (int) config('agent.limits.'.$key),
         ])->all();
+    }
+
+    /** @param list<mixed> $values */
+    private function averagePresent(array $values): ?int
+    {
+        $present = array_values(array_filter($values, static fn (mixed $value): bool => is_int($value) || is_float($value)));
+
+        return $present === [] ? null : (int) round(array_sum($present) / count($present));
     }
 }

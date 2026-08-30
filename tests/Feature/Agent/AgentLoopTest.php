@@ -242,6 +242,87 @@ final class AgentLoopTest extends TestCase
         Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/customers/147762/orders'));
     }
 
+    public function test_shadow_mode_records_capability_proposal_without_executing_tools(): void
+    {
+        config()->set('agent.planner.mode', 'shadow');
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->times(3)->andReturn(
+            $this->planResponse(['decision' => 'answer', 'actions' => []]),
+            new AiResponse(
+                content: '', provider: 'fake', model: 'fake-agent',
+                toolCalls: [['name' => 'submit_capability_route', 'arguments' => [
+                    'live_data_required' => false,
+                    'entity' => 'knowledge',
+                    'operation' => 'search',
+                    'candidate_tools' => ['search_knowledge_base'],
+                    'reason_codes' => ['policy_question'],
+                ]]],
+            ),
+            $this->planResponse(['decision' => 'answer', 'actions' => []]),
+        );
+        $this->app->instance(AiManager::class, $ai);
+        $retrieval = Mockery::mock(ChatRetrievalService::class)->makePartial();
+        $retrieval->shouldReceive('retrieve')->once()->andReturn(new SearchResult(collect(), collect(), collect()));
+        $this->app->instance(ChatRetrievalService::class, $retrieval);
+
+        $run = $this->makeRun();
+        $outcome = app(AgentLoop::class)->run($run, $this->context($run));
+
+        $this->assertSame('answer', $outcome->decision);
+        $this->assertCount(0, $run->toolExecutions);
+        $report = $run->plannerShadowReports()->sole();
+        $this->assertSame('shadow', $report->mode);
+        $this->assertSame('agreement', $report->status);
+        $this->assertSame(['policy_question'], $report->route_json['reason_codes']);
+        $this->assertFalse($report->fallback_used);
+    }
+
+    public function test_capability_mode_routes_a_live_product_question_before_answering(): void
+    {
+        config()->set('agent.planner.mode', 'capability');
+        $route = $this->route('search_products', 'http://erp.example.test/products');
+        $this->parameter($route, 'query', 'query');
+        Http::fake(['*' => Http::response(['items' => [['id' => 9, 'name' => 'Botanical Candle']]])]);
+
+        $routerResponse = new AiResponse(
+            content: '', provider: 'fake', model: 'fake-agent',
+            toolCalls: [['name' => 'submit_capability_route', 'arguments' => [
+                'live_data_required' => true,
+                'entity' => 'products',
+                'operation' => 'search',
+                'candidate_tools' => ['search_products'],
+                'reason_codes' => ['live_product_lookup'],
+            ]]],
+        );
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->times(4)->andReturn(
+            $routerResponse,
+            $this->planResponse(['decision' => 'tools', 'actions' => [[
+                'id' => 'products',
+                'tool' => 'search_products',
+                'arguments' => ['query' => 'Botanical Candle'],
+                'depends_on' => [],
+                'purpose' => 'Cerco il prodotto nel catalogo live',
+            ]]]),
+            $routerResponse,
+            $this->planResponse(['decision' => 'answer', 'actions' => []]),
+        );
+        $this->app->instance(AiManager::class, $ai);
+        $retrieval = Mockery::mock(ChatRetrievalService::class)->makePartial();
+        $retrieval->shouldReceive('retrieve')->once()->andReturn(new SearchResult(collect(), collect(), collect()));
+        $this->app->instance(ChatRetrievalService::class, $retrieval);
+
+        $run = $this->makeRun();
+        $run->forceFill(['input_json' => ['question' => 'Esiste il prodotto Botanical Candle?']])->save();
+        $outcome = app(AgentLoop::class)->run($run, $this->context($run));
+
+        $this->assertSame('answer', $outcome->decision);
+        $this->assertSame('search_products', $run->toolExecutions()->sole()->tool_name);
+        $this->assertCount(2, $run->plannerShadowReports);
+        $this->assertTrue($run->plannerShadowReports->every(fn ($report): bool => ! $report->fallback_used));
+        Http::assertSentCount(1);
+    }
+
     /** @param array<string,mixed> $payload */
     private function planResponse(array $payload): AiResponse
     {

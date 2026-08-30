@@ -74,6 +74,17 @@ final class AppSettingsGovernanceTest extends TestCase
         $this->assertSame(60, $resolver->effective('connector.sync_cadence_minutes', 'default', 'sales'));
     }
 
+    public function test_agent_planner_rollout_mode_can_be_overridden_per_project(): void
+    {
+        config()->set('agent.planner.mode', 'classic');
+        $resolver = new AppSettingsResolver;
+        $resolver->set('agent.planner.mode', 'shadow', 'default');
+        $resolver->set('agent.planner.mode', 'capability', 'default', 'orders');
+
+        $this->assertSame('capability', $resolver->effective('agent.planner.mode', 'default', 'orders'));
+        $this->assertSame('shadow', $resolver->effective('agent.planner.mode', 'default', 'billing'));
+    }
+
     public function test_tenant_scoped_key_ignores_a_stray_project_row_on_read(): void
     {
         // ai.provider is scope=tenant: even a manually-inserted/legacy project

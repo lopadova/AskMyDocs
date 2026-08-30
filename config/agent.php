@@ -5,7 +5,10 @@ declare(strict_types=1);
 return [
     'queue' => env('AGENT_QUEUE', 'agent'),
     'planner' => [
+        'mode' => env('AGENT_PLANNER_MODE', 'classic'),
         'max_actions_per_plan' => (int) env('AGENT_MAX_ACTIONS_PER_PLAN', 8),
+        'router_catalog_limit' => (int) env('AGENT_ROUTER_CATALOG_LIMIT', 40),
+        'candidate_limit' => (int) env('AGENT_PLANNER_CANDIDATE_LIMIT', 8),
     ],
     'events' => [
         'poll_ms' => (int) env('AGENT_EVENT_POLL_MS', 100),

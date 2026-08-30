@@ -5,13 +5,14 @@ declare(strict_types=1);
 namespace App\Agent;
 
 use App\Agent\Budget\AgentBudgetTracker;
+use App\Agent\Capabilities\AgentCapabilitySnapshotBuilder;
 use App\Agent\Evidence\AgentEvidenceEnvelope;
 use App\Agent\Evidence\AgentEvidenceFactory;
 use App\Agent\Planning\AgentArgumentResolver;
 use App\Agent\Planning\AgentAmbiguousSelectionGuard;
 use App\Agent\Planning\AgentPlan;
 use App\Agent\Planning\AgentPlannedAction;
-use App\Agent\Planning\AgentPlanner;
+use App\Agent\Planning\AgentPlanningCoordinator;
 use App\Agent\Tools\AgentServerToolRunner;
 use App\Agent\Tools\AgentToolActionResult;
 use App\Agent\Tools\AgentToolDefinition;
@@ -28,7 +29,8 @@ use Throwable;
 final readonly class AgentLoop
 {
     public function __construct(
-        private AgentPlanner $planner,
+        private AgentPlanningCoordinator $planner,
+        private AgentCapabilitySnapshotBuilder $capabilities,
         private AgentToolRegistry $registry,
         private AgentArgumentResolver $arguments,
         private AgentAmbiguousSelectionGuard $ambiguousSelection,
@@ -64,7 +66,12 @@ final readonly class AgentLoop
             $results['selected_row'] = $selectedRecord;
         }
         $user = $run->user;
-        $tools = $this->registry->forContext($context, $user instanceof User ? $user : null);
+        $tools = array_filter(
+            $this->registry->forContext($context, $user instanceof User ? $user : null),
+            static fn (AgentToolDefinition $tool): bool => $tool->readOnly
+                && ! (bool) ($tool->metadata['confirmation_required'] ?? false),
+        );
+        $capabilitySnapshot = $this->capabilities->build($tools);
 
         if (! $retrieved) {
             $this->control->ensureActive($run);
@@ -102,11 +109,15 @@ final readonly class AgentLoop
                 $completed === [] ? 'plan.created' : 'plan.updated',
             );
             $plan = $this->planner->decide(
+                $run,
+                (int) ($budget->snapshot()['iterations'] ?? 1),
                 $question,
                 $context,
                 $tools,
+                $capabilitySnapshot,
                 $evidence,
                 $this->plannerHistory($completed),
+                $results,
                 $turnContext,
             );
             $run->forceFill(['plan_json' => $plan->jsonSerialize()])->save();
@@ -217,6 +228,9 @@ final readonly class AgentLoop
                         'complete' => $result->complete,
                         'stop_reason' => $result->stopReason,
                     ] + $this->activityToolData($tool);
+                    if (! $result->complete && is_array($result->stats['mcp'] ?? null)) {
+                        $eventData['mcp_interaction'] = $result->stats['mcp'];
+                    }
                     $debug = $this->mcpDebug->capture(
                         $tool,
                         $resolved,
@@ -237,6 +251,22 @@ final readonly class AgentLoop
                         $this->progress($budget, $plan),
                     );
                     $this->checkpoint($run, $evidence, $completed, $results, $retrieved);
+
+                    if (in_array($result->stopReason, [
+                        'mcp_confirmation_required',
+                        'mcp_input_required',
+                        'mcp_task_accepted',
+                    ], true)) {
+                        $interaction = is_array($result->stats['mcp'] ?? null) ? $result->stats['mcp'] : [];
+                        $this->control->awaitMcpInteraction($run, $result->stopReason, $interaction);
+                        $decision = match ($result->stopReason) {
+                            'mcp_confirmation_required' => 'awaiting_mcp_confirmation',
+                            'mcp_input_required' => 'awaiting_mcp_input',
+                            default => 'waiting_mcp_task',
+                        };
+
+                        return $this->outcome($decision, $evidence, $completed, $result->stopReason);
+                    }
 
                     if ($result->stopReason === 'physical_hard_limit') {
                         $this->control->awaitConfirmation($run, $this->extensionFor($result->stopReason));
@@ -485,9 +515,9 @@ final readonly class AgentLoop
             'id' => $action['id'] ?? null,
             'tool' => $action['tool'] ?? null,
             'status' => $action['status'] ?? null,
-            'result_summary' => is_array($action['result'] ?? null)
-                ? array_slice($action['result'], 0, 10, true)
-                : null,
+            'result_top_level_keys' => is_array($action['result'] ?? null)
+                ? array_slice(array_keys($action['result']), 0, 20)
+                : [],
             'error_code' => $action['error_code'] ?? null,
         ], array_slice($completed, -20));
     }

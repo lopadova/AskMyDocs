@@ -58,6 +58,34 @@ final readonly class AgentRunControl
         return $run->refresh();
     }
 
+    /** @param array<string,mixed> $interaction */
+    public function awaitMcpInteraction(AgentRun $run, string $reason, array $interaction): AgentRun
+    {
+        $status = match ($reason) {
+            'mcp_confirmation_required' => AgentRun::STATUS_AWAITING_MCP_CONFIRMATION,
+            'mcp_input_required' => AgentRun::STATUS_AWAITING_MCP_INPUT,
+            'mcp_task_accepted' => AgentRun::STATUS_WAITING_MCP_TASK,
+            default => throw new \InvalidArgumentException("Unsupported MCP interaction [{$reason}]."),
+        };
+        $checkpoint = is_array($run->result_json) ? $run->result_json : [];
+        $run->forceFill([
+            'status' => $status,
+            'result_json' => array_merge($checkpoint, [
+                'pending_mcp_interaction' => $interaction + ['reason' => $reason],
+            ]),
+        ])->save();
+
+        $this->events->publish(
+            $run,
+            'run.mcp_interaction_required',
+            null,
+            data: ['status' => $status, 'reason' => $reason, 'interaction' => $interaction],
+            canCancel: true,
+        );
+
+        return $run->refresh();
+    }
+
     public function resume(AgentRun $run, int $logicalExtension, int $physicalExtension): AgentRun
     {
         $logicalMax = max(1, (int) config('agent.limits.confirmation_logical_extension_max', 25));

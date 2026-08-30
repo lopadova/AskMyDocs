@@ -20,4 +20,13 @@ final readonly class AgentLoopOutcome
     {
         return $this->decision === 'awaiting_confirmation';
     }
+
+    public function requiresInteraction(): bool
+    {
+        return $this->awaitingConfirmation() || in_array($this->decision, [
+            'awaiting_mcp_confirmation',
+            'awaiting_mcp_input',
+            'waiting_mcp_task',
+        ], true);
+    }
 }

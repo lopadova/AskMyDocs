@@ -47,6 +47,19 @@ final class AgentToolRegistryTest extends TestCase
         $this->assertSame(['search_knowledge_base'], array_keys($tools));
     }
 
+    public function test_capability_catalog_indexes_all_active_api_routes_beyond_legacy_prompt_cap(): void
+    {
+        config()->set('connector-api.tools.max_per_conversation', 16);
+        for ($index = 1; $index <= 25; $index++) {
+            $this->route('acme', 'orders', 'orders_tool_'.$index);
+        }
+
+        $tools = app(AgentToolRegistry::class)->forContext($this->context('acme', 'orders'));
+
+        $this->assertCount(26, $tools);
+        $this->assertArrayHasKey('orders_tool_25', $tools);
+    }
+
     public function test_active_mcp_connector_tools_are_exposed_to_the_agent_with_runtime_metadata(): void
     {
         config()->set('connector-mcp.enabled', true);

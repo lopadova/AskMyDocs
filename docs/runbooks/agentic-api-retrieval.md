@@ -30,11 +30,15 @@ sequenceDiagram
     Q-->>UI: run.completed o run.partial + risposta e provenienza
 ```
 
-Il planner può creare azioni indipendenti o sequenziali. Per esempio, alla
+Il planner può creare azioni indipendenti o sequenziali. Prima del piano, un
+router semantico seleziona al massimo otto capacità fra Knowledge Base, API e
+MCP usando un manifest strutturale privo di istruzioni remote. Per esempio, alla
 domanda «dammi gli ordini di Mario Rossi» può prima chiamare `find_customer`,
 poi usare l'identificativo restituito in `list_orders`. I riferimenti tra azioni
-hanno la forma chiusa `{"$from":"find_customer","path":"items.0.id"}`: non
-vengono valutate espressioni o path arbitrari. Dopo ogni gruppo di azioni il
+hanno la forma chiusa `{"$from":"find_customer","path":"items.0.id"}` e il
+path deve essere dichiarato dallo schema di output; quando lo schema non è noto,
+il planner esegue il primo passo e ripianifica sul risultato reale. Non vengono
+valutate espressioni o path arbitrari. Dopo ogni gruppo di azioni il
 planner riceve soltanto il riepilogo delle evidenze e decide se rispondere,
 chiamare altri tool oppure fermarsi per dati insufficienti.
 
@@ -95,7 +99,25 @@ Le estensioni massime sono controllate da
 Per cambiare i default vedere il blocco `AGENT_*` in `.env.example`. In
 produzione lasciare sempre limiti finiti. Il pannello **Admin → API Connectors**
 mostra la policy effettiva, le metriche tenant-scoped delle ultime 24 ore e i
-run recenti senza prompt, risultati, argomenti o segreti.
+run recenti senza prompt, risultati, argomenti o segreti. Lo stesso pannello
+mostra confronti, divergenze, correzioni e fallback del capability planner.
+
+## Rollout del capability planner
+
+La chiave governabile `agent.planner.mode` può essere impostata per tenant o
+progetto e accetta:
+
+- `classic`: esegue soltanto il planner attuale;
+- `shadow`: esegue il piano classico e genera un piano capability non eseguito;
+- `capability`: esegue il nuovo router e planner, con fallback automatico al
+  classico in caso di errore.
+
+In shadow non vengono duplicate chiamate API/MCP. Il confronto mascherato viene
+salvato per iterazione in `agent_planner_shadow_reports`. La prima release
+espone al loop soltanto tool read-only che non richiedono conferma. Per avviare
+il collaudo, lasciare `AGENT_PLANNER_MODE=classic` come default globale e
+impostare `shadow` tramite App Settings sul tenant/progetto pilota; passare a
+`capability` soltanto dopo la revisione delle metriche.
 
 ## Protocollo tra backend e frontend
 
@@ -134,6 +156,9 @@ Gli eventi principali sono `run.started`, `retrieval.started`,
 `tool.started`, `tool.progress`, `tool.completed`, `tool.failed`,
 `budget.extended`, `synthesis.started` e i terminali `run.completed`,
 `run.partial`, `run.failed`, `run.cancelled`, `run.awaiting_confirmation`.
+Le risposte MCP interattive emettono `run.mcp_interaction_required` e sospendono
+il run in `awaiting_mcp_confirmation`, `awaiting_mcp_input` o
+`waiting_mcp_task`, senza eseguire ulteriori azioni del piano.
 Il client deduplica tramite `sequence` e si riconnette dopo una chiusura pulita
 dello stream. La UI presenta l'attività in una barra separata dai messaggi, sia
 nella chat sia nel widget. Il widget mantiene il vecchio flusso DOM/RAG quando
