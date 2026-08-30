@@ -6,6 +6,7 @@ import { toAdminError } from '../admin/shared/errors';
 import {
     mcpConnectionsApi,
     type CreateMcpConnectionPayload,
+    type McpAuthenticationMethod,
     type McpConnectionDto,
     type McpConnectionScope,
 } from './mcp-connections.api';
@@ -284,18 +285,21 @@ export function McpConnectionsPanel({
                                 <legend style={authLegendStyle}>Authentication</legend>
                                 <div style={authGridStyle}>
                                     <AuthChoice
+                                        kind="oauth"
                                         checked={form.auth_method === 'oauth'}
                                         label="OAuth"
                                         description="Sign in securely"
                                         onChange={() => setForm({ ...form, auth_method: 'oauth', bearer: '' })}
                                     />
                                     <AuthChoice
+                                        kind="bearer"
                                         checked={form.auth_method === 'bearer'}
                                         label="Bearer token"
                                         description="Use an existing token"
                                         onChange={() => setForm({ ...form, auth_method: 'bearer' })}
                                     />
                                     <AuthChoice
+                                        kind="none"
                                         checked={form.auth_method === 'none'}
                                         label="No authentication"
                                         description="Public endpoints only"
@@ -311,16 +315,43 @@ export function McpConnectionsPanel({
                             )}
 
                             <details style={advancedStyle}>
-                                <summary style={advancedSummaryStyle}>Advanced settings</summary>
-                                <div style={{ marginTop: 12, maxWidth: 330 }}>
-                                    <Field label="Transport">
-                                        <select value={form.transport} onChange={(event) => setForm({ ...form, transport: event.target.value as CreateMcpConnectionPayload['transport'] })} style={inputStyle}>
-                                            <option value="auto">Auto (recommended)</option>
-                                            <option value="streamable_http">Streamable HTTP</option>
-                                            <option value="legacy_sse">Legacy SSE</option>
-                                        </select>
-                                    </Field>
-                                </div>
+                                <summary style={advancedSummaryStyle} className="focus-ring">
+                                    <span style={advancedSummaryLabelStyle}>
+                                        <AdvancedSettingsIcon />
+                                        Advanced settings
+                                    </span>
+                                    <span style={advancedSummaryValueStyle}>{transportLabel(form.transport)}</span>
+                                </summary>
+                                <fieldset style={transportFieldsetStyle}>
+                                    <legend style={transportLegendStyle}>Transport</legend>
+                                    <div style={transportGridStyle}>
+                                        <TransportChoice
+                                            kind="auto"
+                                            value="auto"
+                                            checked={form.transport === 'auto'}
+                                            label="Auto"
+                                            description="Choose the best protocol"
+                                            badge="Recommended"
+                                            onChange={() => setForm({ ...form, transport: 'auto' })}
+                                        />
+                                        <TransportChoice
+                                            kind="streamable_http"
+                                            value="streamable_http"
+                                            checked={form.transport === 'streamable_http'}
+                                            label="Streamable HTTP"
+                                            description="Modern bidirectional HTTP"
+                                            onChange={() => setForm({ ...form, transport: 'streamable_http' })}
+                                        />
+                                        <TransportChoice
+                                            kind="legacy_sse"
+                                            value="legacy_sse"
+                                            checked={form.transport === 'legacy_sse'}
+                                            label="Legacy SSE"
+                                            description="Older event-stream servers"
+                                            onChange={() => setForm({ ...form, transport: 'legacy_sse' })}
+                                        />
+                                    </div>
+                                </fieldset>
                             </details>
                         </div>
 
@@ -508,16 +539,88 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
     );
 }
 
-function AuthChoice({ checked, label, description, onChange }: { checked: boolean; label: string; description: string; onChange: () => void }) {
+function AuthChoice({
+    kind,
+    checked,
+    label,
+    description,
+    onChange,
+}: {
+    kind: McpAuthenticationMethod;
+    checked: boolean;
+    label: string;
+    description: string;
+    onChange: () => void;
+}) {
     return (
         <label style={{ ...authChoiceStyle, ...(checked ? authChoiceSelectedStyle : {}) }}>
-            <input type="radio" name="mcp-auth-method" checked={checked} onChange={onChange} />
-            <span>
-                <strong style={{ display: 'block', color: 'var(--fg-1)', fontSize: 12.5 }}>{label}</strong>
-                <span style={{ display: 'block', marginTop: 2, color: 'var(--fg-3)', fontSize: 11, lineHeight: 1.35 }}>{description}</span>
+            <span aria-hidden="true" style={{ ...choiceIconStyle, ...(checked ? choiceIconSelectedStyle : {}) }}>
+                <AuthenticationIcon kind={kind} />
             </span>
+            <span style={choiceCopyStyle}>
+                <strong style={choiceLabelStyle}>{label}</strong>
+                <span style={choiceDescriptionStyle}>{description}</span>
+            </span>
+            <input
+                type="radio"
+                name="mcp-auth-method"
+                checked={checked}
+                onChange={onChange}
+                className="focus-ring"
+                style={{ ...choiceRadioStyle, ...(checked ? choiceRadioCheckedStyle : {}) }}
+            />
         </label>
     );
+}
+
+type McpTransport = CreateMcpConnectionPayload['transport'];
+
+function TransportChoice({
+    kind,
+    value,
+    checked,
+    label,
+    description,
+    badge,
+    onChange,
+}: {
+    kind: McpTransport;
+    value: McpTransport;
+    checked: boolean;
+    label: string;
+    description: string;
+    badge?: string;
+    onChange: () => void;
+}) {
+    return (
+        <label style={{ ...transportChoiceStyle, ...(checked ? transportChoiceSelectedStyle : {}) }}>
+            <span aria-hidden="true" style={{ ...transportIconStyle, ...(checked ? transportIconSelectedStyle : {}) }}>
+                <TransportIcon kind={kind} />
+            </span>
+            <span style={choiceCopyStyle}>
+                <span style={transportLabelRowStyle}>
+                    <strong style={choiceLabelStyle}>{label}</strong>
+                    {badge && <span style={recommendedBadgeStyle}>{badge}</span>}
+                </span>
+                <span style={choiceDescriptionStyle}>{description}</span>
+            </span>
+            <input
+                type="radio"
+                name="mcp-transport"
+                value={value}
+                checked={checked}
+                onChange={onChange}
+                className="focus-ring"
+                style={{ ...choiceRadioStyle, ...(checked ? choiceRadioCheckedStyle : {}) }}
+            />
+        </label>
+    );
+}
+
+function transportLabel(transport: McpTransport): string {
+    if (transport === 'streamable_http') return 'Streamable HTTP';
+    if (transport === 'legacy_sse') return 'Legacy SSE';
+    return 'Auto';
 }
 
 function oauthMessage(status: string): string {
@@ -547,6 +650,69 @@ function McpIcon() {
             <circle cx="18" cy="7" r="2.5" />
             <circle cx="12" cy="17" r="2.5" />
             <path d="m8.2 8.2 2.6 6.5M15.8 8.2l-2.6 6.5M8.5 7h7" />
+        </svg>
+    );
+}
+
+function AuthenticationIcon({ kind }: { kind: McpAuthenticationMethod }) {
+    if (kind === 'oauth') {
+        return (
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 3 5.5 5.7v5.4c0 4.1 2.6 7.8 6.5 9.9 3.9-2.1 6.5-5.8 6.5-9.9V5.7L12 3Z" />
+                <path d="m9.2 12 1.9 1.9 3.8-4.1" />
+            </svg>
+        );
+    }
+
+    if (kind === 'bearer') {
+        return (
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="8.2" cy="12" r="4.2" />
+                <path d="M12.4 12H21m-3 0v3m-3-3v2" />
+            </svg>
+        );
+    }
+
+    return (
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="9" />
+            <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" />
+        </svg>
+    );
+}
+
+function TransportIcon({ kind }: { kind: McpTransport }) {
+    if (kind === 'auto') {
+        return (
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="m4 20 8.8-8.8M14.4 9.6l-2-2 2.9-2.9 2 2-2.9 2.9Z" />
+                <path d="M18.5 3.5v3M20 5h-3M6.5 5v4M8.5 7h-4M18 15v4M20 17h-4" />
+            </svg>
+        );
+    }
+
+    if (kind === 'streamable_http') {
+        return (
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 8h15m-3-3 3 3-3 3M20 16H5m3 3-3-3 3-3" />
+            </svg>
+        );
+    }
+
+    return (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
+            <path d="M8.5 8.5a5 5 0 0 0 0 7M15.5 8.5a5 5 0 0 1 0 7M5.5 5.5a9.2 9.2 0 0 0 0 13M18.5 5.5a9.2 9.2 0 0 1 0 13" />
+        </svg>
+    );
+}
+
+function AdvancedSettingsIcon() {
+    return (
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+            <path d="M4 7h9M17 7h3M4 17h3M11 17h9" />
+            <circle cx="15" cy="7" r="2" />
+            <circle cx="9" cy="17" r="2" />
         </svg>
     );
 }
@@ -593,15 +759,33 @@ const rowTitleStyle: CSSProperties = { display: 'block', color: 'var(--fg-1)', f
 const rowSubtitleStyle: CSSProperties = { display: 'block', marginTop: 2, color: 'var(--fg-3)', fontSize: 11 };
 const authFieldsetStyle: CSSProperties = { display: 'grid', gap: 7, minWidth: 0, margin: 0, padding: 0, border: 0 };
 const authLegendStyle: CSSProperties = { marginBottom: 5, padding: 0, color: 'var(--fg-2)', fontSize: 12 };
-const authGridStyle: CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 8 };
-const authChoiceStyle: CSSProperties = { display: 'flex', alignItems: 'flex-start', gap: 8, padding: '10px', border: '1px solid var(--hairline)', borderRadius: 9, background: 'var(--bg-2)', cursor: 'pointer' };
-const authChoiceSelectedStyle: CSSProperties = { borderColor: 'rgba(99,102,241,.65)', background: 'rgba(99,102,241,.1)', boxShadow: '0 0 0 1px rgba(99,102,241,.12)' };
+const authGridStyle: CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 8 };
+const authChoiceStyle: CSSProperties = { minWidth: 0, display: 'grid', gridTemplateColumns: '36px minmax(0, 1fr) 18px', alignItems: 'center', gap: 10, minHeight: 62, boxSizing: 'border-box', padding: '9px 11px', border: '1px solid var(--hairline)', borderRadius: 11, background: 'color-mix(in srgb, var(--bg-2) 86%, transparent)', cursor: 'pointer', transition: 'border-color .16s ease, background .16s ease, box-shadow .16s ease, transform .16s ease' };
+const authChoiceSelectedStyle: CSSProperties = { borderColor: 'color-mix(in srgb, var(--accent-a) 62%, var(--hairline))', background: 'linear-gradient(135deg, color-mix(in srgb, var(--accent-a) 13%, var(--bg-2)), color-mix(in srgb, var(--accent-b) 5%, var(--bg-2)))', boxShadow: '0 8px 24px -20px rgba(var(--accent-glow), .95), inset 0 1px rgba(255,255,255,.025)' };
+const choiceIconStyle: CSSProperties = { width: 34, height: 34, display: 'grid', placeItems: 'center', border: '1px solid var(--hairline)', borderRadius: 9, color: 'var(--fg-3)', background: 'color-mix(in srgb, var(--bg-0) 75%, transparent)', transition: 'color .16s ease, border-color .16s ease, background .16s ease' };
+const choiceIconSelectedStyle: CSSProperties = { color: 'var(--accent-b)', borderColor: 'color-mix(in srgb, var(--accent-b) 28%, var(--hairline))', background: 'color-mix(in srgb, var(--accent-b) 9%, var(--bg-0))' };
+const choiceCopyStyle: CSSProperties = { display: 'grid', alignContent: 'center', minWidth: 0, gap: 3 };
+const choiceLabelStyle: CSSProperties = { display: 'block', color: 'var(--fg-1)', fontSize: 12.5, lineHeight: 1.25, fontWeight: 650 };
+const choiceDescriptionStyle: CSSProperties = { display: 'block', color: 'var(--fg-3)', fontSize: 10.75, lineHeight: 1.35 };
+const choiceRadioStyle: CSSProperties = { WebkitAppearance: 'none', appearance: 'none', width: 17, height: 17, margin: 0, border: '1px solid color-mix(in srgb, var(--fg-3) 70%, transparent)', borderRadius: '50%', background: 'transparent', cursor: 'pointer', transition: 'border-color .16s ease, background .16s ease, box-shadow .16s ease' };
+const choiceRadioCheckedStyle: CSSProperties = { borderColor: 'var(--accent-a)', background: 'radial-gradient(circle, white 0 2.5px, var(--accent-a) 3px 100%)', boxShadow: '0 0 0 3px color-mix(in srgb, var(--accent-a) 13%, transparent)' };
 const modalHeaderStyle: CSSProperties = { display: 'flex', alignItems: 'flex-start', gap: 12, padding: '18px 20px', borderBottom: '1px solid var(--hairline)' };
 const modalBodyStyle: CSSProperties = { display: 'grid', gap: 14, padding: 20, overflowY: 'auto' };
 const modalFooterStyle: CSSProperties = { display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '13px 20px', borderTop: '1px solid var(--hairline)', background: 'color-mix(in srgb, var(--bg-2) 50%, transparent)' };
 const twoColumnStyle: CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 };
-const advancedStyle: CSSProperties = { border: '1px solid var(--hairline)', borderRadius: 9, padding: '10px 12px', background: 'var(--bg-1)' };
-const advancedSummaryStyle: CSSProperties = { color: 'var(--fg-2)', fontSize: 12, fontWeight: 600, cursor: 'pointer' };
+const advancedStyle: CSSProperties = { border: '1px solid var(--hairline)', borderRadius: 11, padding: '0 12px', background: 'color-mix(in srgb, var(--bg-1) 82%, var(--bg-0))' };
+const advancedSummaryStyle: CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 42, listStyle: 'none', color: 'var(--fg-2)', fontSize: 12, fontWeight: 600, cursor: 'pointer', borderRadius: 8 };
+const advancedSummaryLabelStyle: CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 7 };
+const advancedSummaryValueStyle: CSSProperties = { border: '1px solid var(--hairline)', borderRadius: 999, padding: '3px 8px', color: 'var(--fg-3)', background: 'var(--bg-2)', fontSize: 10.5, fontWeight: 550 };
+const transportFieldsetStyle: CSSProperties = { display: 'grid', gap: 8, minWidth: 0, margin: 0, padding: '2px 0 12px', border: 0, borderTop: '1px solid color-mix(in srgb, var(--hairline) 75%, transparent)' };
+const transportLegendStyle: CSSProperties = { padding: '11px 0 0', color: 'var(--fg-3)', fontSize: 10.5, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.055em' };
+const transportGridStyle: CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8 };
+const transportChoiceStyle: CSSProperties = { minWidth: 0, display: 'grid', gridTemplateColumns: '31px minmax(0, 1fr) 17px', alignItems: 'center', gap: 9, minHeight: 56, boxSizing: 'border-box', padding: '8px 10px', border: '1px solid var(--hairline)', borderRadius: 10, color: 'var(--fg-2)', background: 'var(--bg-2)', cursor: 'pointer', transition: 'border-color .16s ease, background .16s ease, box-shadow .16s ease' };
+const transportChoiceSelectedStyle: CSSProperties = { borderColor: 'color-mix(in srgb, var(--accent-b) 48%, var(--hairline))', background: 'linear-gradient(135deg, color-mix(in srgb, var(--accent-b) 9%, var(--bg-2)), color-mix(in srgb, var(--accent-a) 5%, var(--bg-2)))', boxShadow: 'inset 0 1px rgba(255,255,255,.025)' };
+const transportIconStyle: CSSProperties = { width: 29, height: 29, display: 'grid', placeItems: 'center', borderRadius: 8, color: 'var(--fg-3)', background: 'color-mix(in srgb, var(--bg-0) 76%, transparent)' };
+const transportIconSelectedStyle: CSSProperties = { color: 'var(--accent-b)', background: 'color-mix(in srgb, var(--accent-b) 9%, var(--bg-0))' };
+const transportLabelRowStyle: CSSProperties = { display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, flexWrap: 'wrap' };
+const recommendedBadgeStyle: CSSProperties = { borderRadius: 999, padding: '1px 5px', color: 'var(--accent-b)', background: 'color-mix(in srgb, var(--accent-b) 9%, transparent)', fontSize: 8.5, fontWeight: 700, letterSpacing: '.02em' };
 const menuStyle: CSSProperties = { position: 'absolute', zIndex: 20, top: 36, right: 0, width: 175, display: 'grid', padding: 5, border: '1px solid var(--hairline)', borderRadius: 9, background: 'var(--panel-solid, var(--bg-1))', boxShadow: '0 12px 30px rgba(0,0,0,.25)' };
 const menuButtonStyle: CSSProperties = { width: '100%', border: 0, borderRadius: 6, padding: '7px 9px', background: 'transparent', color: 'var(--fg-1)', textAlign: 'left', fontSize: 11.5, cursor: 'pointer' };
 function riskStyle(risk: string): CSSProperties { return { ...mutedBadgeStyle, color: risk === 'read' ? '#86efac' : risk === 'destructive' ? '#fca5a5' : '#fde68a' }; }
