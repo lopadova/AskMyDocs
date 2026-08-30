@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { AgentRunEvent } from '../../lib/agent-run-events';
 import { AgentActivityBar } from './AgentActivityBar';
@@ -140,14 +140,59 @@ describe('AgentActivityBar', () => {
         expect(screen.getByText('Dettagli chiamata MCP')).toBeInTheDocument();
         expect(screen.getAllByText('list-my-orders').length).toBeGreaterThan(0);
         expect(screen.getByText('ok · 42 ms')).toBeInTheDocument();
-        expect(screen.getByText(/"customer_id": 17/)).toBeInTheDocument();
-        expect(screen.getByText(/"id": 123/)).toBeInTheDocument();
+        const parameters = screen.getByTestId('agent-mcp-debug-parameters');
+        const response = screen.getByTestId('agent-mcp-debug-response');
+        expect(within(parameters).getByText('customer_id')).toBeInTheDocument();
+        expect(within(parameters).getByText('17')).toBeInTheDocument();
+        expect(within(response).getByText('orders')).toBeInTheDocument();
+        expect(within(response).getByText('123')).toBeInTheDocument();
+        expect(screen.getAllByText('JSON grezzo')).toHaveLength(2);
 
         const writeText = vi.fn().mockResolvedValue(undefined);
         Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
         fireEvent.click(screen.getByRole('button', { name: 'Copia: Parametri' }));
         await waitFor(() => expect(writeText).toHaveBeenCalledWith('{\n  "customer_id": 17\n}'));
         expect(screen.getByRole('button', { name: 'Copiato: Parametri' })).toBeInTheDocument();
+    });
+
+    it('turns embedded JSON strings into navigable fields instead of escaped text', () => {
+        const mcpEvent: AgentRunEvent = {
+            ...progressEvent,
+            sequence: 4,
+            type: 'tool.completed',
+            data: {
+                mcp_debug: {
+                    method: 'tools/call',
+                    runtime: 'connector',
+                    server_name: 'HubHive',
+                    connection_id: 'connection-2',
+                    tool_local_name: 'mcp_hubhive_orders_get',
+                    tool_remote_name: 'orders_get',
+                    status: 'ok',
+                    duration_ms: 58,
+                    parameters: { public_id: 'ORDER-3007' },
+                    response: {
+                        status: 'completed',
+                        artifact: {
+                            text: '{"data":{"public_id":"ORDER-3007","total":8990}}\n\n{"data":{"status":"paid"}}',
+                        },
+                    },
+                    error: null,
+                },
+            },
+        };
+
+        render(<AgentActivityBar events={[mcpEvent]} active={false} awaitingConfirmation={false} onCancel={() => undefined} onContinue={() => undefined} />);
+        fireEvent.click(screen.getByRole('button', { name: 'Mostra attività' }));
+
+        const inspector = screen.getByTestId('agent-mcp-debug-response');
+        expect(within(inspector).getByText('artifact')).toBeInTheDocument();
+        expect(within(inspector).getByText('public_id')).toBeInTheDocument();
+        expect(within(inspector).getByText('ORDER-3007')).toBeInTheDocument();
+        expect(within(inspector).getByText('total')).toBeInTheDocument();
+        expect(within(inspector).getByText('8990')).toBeInTheDocument();
+        expect(within(inspector).getByText('paid')).toBeInTheDocument();
+        expect(inspector).not.toHaveTextContent('\\"public_id\\"');
     });
 
     it('keeps MCP debug reachable even when it is the only activity event', () => {
