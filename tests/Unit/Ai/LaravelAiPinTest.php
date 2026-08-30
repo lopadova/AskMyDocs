@@ -8,9 +8,9 @@ use Composer\InstalledVersions;
 use PHPUnit\Framework\TestCase;
 
 /**
- * v8.19/W1 — PLATFORM-PIN GUARD for the `laravel/ai` 0.8 migration.
+ * PLATFORM-PIN GUARD for `laravel/ai`. Currently locks the 0.11 line.
  *
- * History: the 0.7/0.8 bump was deferred through v8.16–v8.18 (the SDK surface
+ * History (v8.19/W1): the 0.7/0.8 bump was deferred through v8.16–v8.18 (the SDK surface
  * was untested across all five providers, and `padosoft/laravel-ai-regolo`
  * originally pinned `^0.6`). In v8.19 the migration was done **totally**: regolo
  * was released on `^0.6|^0.7|^0.8.1` (v1.2.1), finops on the 0.8 line (v1.4.0),
@@ -41,7 +41,7 @@ final class LaravelAiPinTest extends TestCase
 {
     public function test_host_is_on_the_laravel_ai_0_11_line(): void
     {
-        // The installed laravel/ai must resolve to the 0.8 line.
+        // The installed laravel/ai must resolve to the 0.11 line.
         $installed = (string) InstalledVersions::getPrettyVersion('laravel/ai');
         $this->assertMatchesRegularExpression(
             '/^v?0\.11\./',
@@ -50,14 +50,14 @@ final class LaravelAiPinTest extends TestCase
             'A different line means the pin drifted — revisit the provider compatibility surface before re-pinning.',
         );
 
-        // The host composer.json must caret-pin the 0.8 line (e.g. "^0.8.1").
+        // The host composer.json must caret-pin the 0.11 line (e.g. "^0.11").
         $hostComposer = __DIR__.'/../../../composer.json';
         $manifest = json_decode((string) file_get_contents($hostComposer), true, 512, JSON_THROW_ON_ERROR);
         $constraint = (string) ($manifest['require']['laravel/ai'] ?? '');
 
         // Must be an EXACT single caret-pin on the 0.11 line (e.g. "^0.11") —
-        // anchored, so any OR-widening ("^0.8.1 || ^0.9.0"), a forward bump
-        // ("^0.9"/"^1."), or a downgrade ("^0.6.8"/"^0.7") all fail
+        // anchored, so any OR-widening ("^0.11 || ^0.12"), a forward bump
+        // ("^0.12"/"^1."), or a downgrade ("^0.8.1"/"^0.9") all fail
         // deterministically and force a fresh provider compatibility pass
         // before the pin moves.
         $this->assertMatchesRegularExpression(
