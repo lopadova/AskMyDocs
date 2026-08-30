@@ -54,7 +54,7 @@
         "predis/predis": "^2.0 — required when QUEUE_CONNECTION=redis (used by kb:ingest-folder and POST /api/kb/ingest)",
         "laravel/horizon": "^5.0 — optional Redis queue dashboard for monitoring ingestion workers",
         "league/flysystem-aws-s3-v3": "^3.0 — required when KB_FILESYSTEM_DISK=s3",
-        "laravel/mcp": "^0.7 — required when exposing the enterprise-kb MCP server (app/Mcp/Servers/KnowledgeBaseServer.php + a 50-tool roster: 47 under app/Mcp/Tools/ plus 3 vendor-namespaced invitations tools; the roster is derived from the files on disk by tests/Unit/Mcp/KnowledgeBaseServerRegistrationTest.php rather than locked to a number)",
+        "laravel/mcp": "^0.9 — required when exposing the enterprise-kb MCP server (app/Mcp/Servers/KnowledgeBaseServer.php). The roster is whatever lives under app/Mcp/Tools/ plus the vendor-namespaced invitations tools; tests/Unit/Mcp/KnowledgeBaseServerRegistrationTest.php derives it from the files on disk rather than asserting a total, so no count is repeated here to go stale.",
         "dompdf/dompdf": "^3.0 — required when ADMIN_PDF_ENGINE=dompdf (Phase G4 PDF export strategy)",
         "spatie/browsershot": "^4.0 — required when ADMIN_PDF_ENGINE=browsershot (Phase G4 PDF export strategy; also needs Node.js + Chromium on the host)"
     },
