@@ -6,7 +6,7 @@ test.describe('MCP connector — super-admin', () => {
         const panel = page.getByTestId('mcp-connections-shared');
         await expect(panel).toBeVisible({ timeout: 15_000 });
 
-        await panel.getByRole('button', { name: 'Add MCP connection' }).click();
+        await page.getByTestId('connector-mcp-add-connection').click();
         const form = page.getByTestId('mcp-connection-form-shared');
         await form.getByLabel('Name').fill('E2E MCP fixture');
         await form.getByLabel('Label').fill('Live fixture');
@@ -16,6 +16,7 @@ test.describe('MCP connector — super-admin', () => {
 
         const card = panel.locator('article').filter({ hasText: 'Live fixture' });
         await expect(card).toBeVisible({ timeout: 15_000 });
+        await card.getByRole('button', { name: 'Expand Live fixture' }).click();
         await expect(card).toContainText('Protocol 2026-07-28');
         await expect(card).toContainText('Search documents');
         await expect(card).toContainText('Update document');
@@ -30,7 +31,8 @@ test.describe('MCP connector — super-admin', () => {
         const resource = card.getByText('Employee handbook').locator('..').locator('..').getByRole('checkbox');
         await resource.click();
         await expect(resource).toBeChecked();
-        await expect(card.getByRole('button', { name: 'Sync resources' })).toBeVisible();
+        await card.getByRole('button', { name: 'More actions for Live fixture' }).click();
+        await expect(card.getByRole('menuitem', { name: 'Sync resources' })).toBeVisible();
     });
 
     test('connects a protected MCP server through OAuth without exposing a token', async ({ page }) => {
@@ -38,7 +40,7 @@ test.describe('MCP connector — super-admin', () => {
         const panel = page.getByTestId('mcp-connections-shared');
         await expect(panel).toBeVisible({ timeout: 15_000 });
 
-        await panel.getByRole('button', { name: 'Add MCP connection' }).click();
+        await page.getByTestId('connector-mcp-add-connection').click();
         const form = page.getByTestId('mcp-connection-form-shared');
         await form.getByLabel('Name').fill('OAuth E2E MCP');
         await form.getByLabel('Label').fill('Protected live fixture');
@@ -48,6 +50,7 @@ test.describe('MCP connector — super-admin', () => {
         await expect(page.getByTestId('mcp-oauth-result')).toContainText('OAuth connection completed', { timeout: 15_000 });
         const card = panel.locator('article').filter({ hasText: 'Protected live fixture' });
         await expect(card).toContainText('active');
+        await card.getByRole('button', { name: 'Expand Protected live fixture' }).click();
         await expect(card).toContainText('Search documents');
         await expect(page).not.toHaveURL(/access_token|refresh_token|authorization-code/);
         await expect(page.locator('body')).not.toContainText('e2e-access-token');

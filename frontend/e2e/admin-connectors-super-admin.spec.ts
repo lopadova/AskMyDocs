@@ -50,11 +50,11 @@ baseTest.describe('Admin Connectors — super-admin', () => {
         await expect(page.getByTestId('connector-google-drive-add-account')).toBeVisible();
         await expect(page.getByTestId('connector-notion-add-account')).toBeVisible();
 
-        // Fresh tenant → zero connections → the Connections section shows its
-        // observable empty state (R14 — not a blank panel).
+        // Fresh tenant → zero source accounts → the unified Connections hub
+        // shows its observable group-level empty state (R14 — not a blank panel).
         const empty = page.getByTestId('connector-connections-empty');
         await expect(empty).toBeVisible();
-        await expect(empty).toContainText('No connections yet');
+        await expect(empty).toContainText('No source accounts yet');
         await expect(page.getByTestId('connector-connections-count')).toHaveText('0');
     });
 
@@ -159,8 +159,8 @@ baseTest.describe('Admin Connectors — super-admin', () => {
         const section = page.getByTestId('api-connections-section');
         await expect(section).toBeVisible();
 
-        // Create inline via the section's "+ New API connection".
-        await page.getByTestId('api-connector-gallery-create').click();
+        // API and MCP are first-class choices in the shared connection gallery.
+        await page.getByTestId('connector-api-add-connection').click();
         await expect(page.getByTestId('api-connector-form')).toBeVisible();
         await page.getByTestId('api-connector-form-name').fill('E2E Gallery API');
         await page.getByTestId('api-connector-form-base_url').fill('http://127.0.0.1:8000');
