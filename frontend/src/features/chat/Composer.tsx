@@ -1,6 +1,14 @@
-import { useRef, useState, type ChangeEvent, type KeyboardEvent, type ReactNode } from 'react';
+import {
+    useEffect,
+    useRef,
+    useState,
+    type ChangeEvent,
+    type KeyboardEvent,
+    type ReactNode,
+} from 'react';
 import { Button } from '../../components/Button';
 import { Icon } from '../../components/Icons';
+import { Alert, AlertDescription, AlertIcon, AlertTitle } from '../../components/ui/alert';
 import { FilterBar } from './FilterBar';
 import { MentionPopover } from './MentionPopover';
 import { useChatStore } from './chat.store';
@@ -380,6 +388,11 @@ export function Composer({
                     <span className="mono" style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>
                         {draft.length > 0 ? `${draft.length} chars` : ''}
                     </span>
+                    <ComposerErrorControl
+                        error={serverError ?? visibleLocalError}
+                        testId={serverError ? 'chat-composer-error' : 'message-error'}
+                        autoOpen={serverError === null && visibleLocalError !== null}
+                    />
                     {/*
                       * v4.0/W3.2 — Send / Stop morph: while a stream
                       * is in flight (`isStreaming`), render
@@ -418,25 +431,79 @@ export function Composer({
                     )}
                 </div>
                 </form>
-                {visibleLocalError && (
-                    <div
-                        data-testid="message-error"
-                        role="alert"
-                        style={{ marginTop: 8, fontSize: 12, color: 'var(--err)' }}
-                    >
-                        {visibleLocalError}
-                    </div>
-                )}
-                {serverError && (
-                    <div
-                        data-testid="chat-composer-error"
-                        role="alert"
-                        style={{ marginTop: 8, fontSize: 12, color: 'var(--err)' }}
-                    >
-                        {serverError}
-                    </div>
-                )}
             </div>
+        </div>
+    );
+}
+
+function ComposerErrorControl({
+    error,
+    testId,
+    autoOpen,
+}: {
+    error: string | null;
+    testId: 'chat-composer-error' | 'message-error';
+    autoOpen: boolean;
+}): ReactNode {
+    const [open, setOpen] = useState(false);
+    const rootRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        setOpen(Boolean(error && autoOpen));
+    }, [autoOpen, error]);
+
+    useEffect(() => {
+        if (!open) return;
+
+        const onKeyDown = (event: globalThis.KeyboardEvent) => {
+            if (event.key === 'Escape') setOpen(false);
+        };
+        const onPointerDown = (event: MouseEvent) => {
+            if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false);
+        };
+        document.addEventListener('keydown', onKeyDown);
+        document.addEventListener('mousedown', onPointerDown, true);
+
+        return () => {
+            document.removeEventListener('keydown', onKeyDown);
+            document.removeEventListener('mousedown', onPointerDown, true);
+        };
+    }, [open]);
+
+    if (!error) return null;
+
+    return (
+        <div className="chat-composer-error-control" ref={rootRef}>
+            <Button
+                variant="quiet"
+                size="sm"
+                className="chat-composer-error-trigger"
+                data-testid={`${testId}-trigger`}
+                aria-label="Show error details"
+                aria-expanded={open}
+                aria-haspopup="dialog"
+                title="Show error details"
+                leadingIcon={<Icon.Alert size={13} />}
+                onClick={() => setOpen((current) => !current)}
+            >
+                Issue
+            </Button>
+            {open && (
+                <div
+                    className="chat-composer-error-popover"
+                    data-testid={testId}
+                    role="dialog"
+                    aria-label="Request error details"
+                >
+                    <Alert variant="destructive">
+                        <AlertIcon>
+                            <Icon.Alert size={15} />
+                        </AlertIcon>
+                        <AlertTitle>Request not completed</AlertTitle>
+                        <AlertDescription>{error}</AlertDescription>
+                    </Alert>
+                </div>
+            )}
         </div>
     );
 }

@@ -249,6 +249,76 @@ textarea:focus-visible {
 :root[data-theme="light"] .pill.warn { color: #b45309; }
 :root[data-theme="light"] .pill.err { color: #b91c1c; }
 
+/* Feedback system ---------------------------------------------------------
+   Alerts share one calm structure across product surfaces. Severity is
+   communicated through a narrow tonal layer, never a saturated error slab. */
+.ui-alert {
+  --alert-tone: var(--fg-2);
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 3px 11px;
+  padding: 12px 14px;
+  color: var(--fg-1);
+  border: 1px solid color-mix(in srgb, var(--alert-tone) 25%, var(--panel-border));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--alert-tone) 5%, var(--panel-solid));
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--fg-0) 5%, transparent),
+    var(--shadow-sm);
+}
+.ui-alert[data-variant="info"] { --alert-tone: var(--info); }
+.ui-alert[data-variant="success"] { --alert-tone: var(--ok); }
+.ui-alert[data-variant="warning"] { --alert-tone: var(--warn); }
+.ui-alert[data-variant="destructive"] { --alert-tone: var(--err); }
+.ui-alert:has(> [data-slot="alert-icon"]),
+.ui-alert:has(> svg) { grid-template-columns: 34px minmax(0, 1fr); }
+.ui-alert-icon,
+.ui-alert > svg {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  align-self: center;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  padding: 7px;
+  color: var(--alert-tone);
+  border: 1px solid color-mix(in srgb, var(--alert-tone) 24%, var(--panel-border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--alert-tone) 9%, transparent);
+}
+.ui-alert-icon { padding: 0; }
+.ui-alert-icon > svg { display: block; }
+.ui-alert-title {
+  grid-column: 1;
+  min-width: 0;
+  color: var(--fg-0);
+  font: 650 12.5px/1.32 var(--font-sans);
+  letter-spacing: -.008em;
+}
+.ui-alert-description {
+  grid-column: 1;
+  min-width: 0;
+  color: var(--fg-2);
+  font: 450 11.5px/1.48 var(--font-sans);
+  overflow-wrap: anywhere;
+}
+.ui-alert:has(> [data-slot="alert-icon"]) .ui-alert-title,
+.ui-alert:has(> [data-slot="alert-icon"]) .ui-alert-description,
+.ui-alert:has(> svg) .ui-alert-title,
+.ui-alert:has(> svg) .ui-alert-description { grid-column: 2; }
+.ui-alert-description p { margin: 0; }
+
+.chat-thread-alert { margin: 5px 0 24px; }
+.ui-foundations-alerts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
 /* AskMyDocs button system -------------------------------------------------
    Two restrained border layers, a soft light response and a compressed
    active shadow create definition without glossy skeuomorphism. `.btn` is
@@ -1042,7 +1112,8 @@ textarea:focus-visible {
   .button-demo-hierarchy,
   .button-demo-grid,
   .button-demo-state-grid,
-  .ui-foundations-grid { grid-template-columns: 1fr; }
+  .ui-foundations-grid,
+  .ui-foundations-alerts { grid-template-columns: 1fr; }
   .button-demo-anatomy li { grid-template-columns: 24px 1fr; }
   .button-demo-anatomy li span { grid-column: 2; }
   .ui-foundations-chrome-preview { padding-inline: 10px; }
@@ -1500,6 +1571,35 @@ textarea:focus-visible {
   gap: 8px;
   padding: 6px 10px 10px;
 }
+.chat-composer-error-control {
+  position: relative;
+  flex: 0 0 auto;
+}
+.chat-composer-error-trigger {
+  --button-bg-hover: color-mix(in srgb, var(--err) 8%, var(--bg-3));
+  --button-border: color-mix(in srgb, var(--err) 24%, var(--panel-border));
+  --button-color: var(--err);
+  --button-glow: color-mix(in srgb, var(--err) 22%, transparent);
+}
+.chat-composer-error-trigger[aria-expanded="true"] {
+  --button-bg: color-mix(in srgb, var(--err) 8%, var(--bg-2));
+  --button-border: color-mix(in srgb, var(--err) 34%, var(--panel-border));
+}
+.chat-composer-error-popover {
+  position: absolute;
+  z-index: 85;
+  right: 0;
+  bottom: calc(100% + 10px);
+  width: min(340px, calc(100vw - 32px));
+  padding: 6px;
+  color: var(--fg-1);
+  border: 1px solid var(--panel-border-strong);
+  border-radius: 12px;
+  background: var(--panel-solid);
+  box-shadow: var(--shadow-lg);
+  animation: chat-live-source-enter .16s ease-out both;
+}
+.chat-composer-error-popover .ui-alert { box-shadow: none; }
 .chat-composer-tools { display: inline-flex; align-items: center; gap: 8px; }
 .chat-composer-tool-button { color: var(--fg-2); }
 .chat-composer-voice { position: relative; }
@@ -2838,6 +2938,18 @@ textarea:focus-visible {
   .chat-composer-shell { padding: 10px 14px 14px !important; }
   .chat-composer { border-radius: 10px; }
   .chat-composer-shortcut { display: none; }
+  .chat-composer-error-trigger .ui-button-label { display: none; }
+  .chat-composer-error-trigger {
+    width: var(--button-height);
+    padding: 0;
+  }
+  .chat-composer-error-popover {
+    position: fixed;
+    left: 14px;
+    right: 14px;
+    bottom: 92px;
+    width: auto;
+  }
   .chat-live-source-popover {
     position: fixed;
     left: 14px;
@@ -2856,7 +2968,8 @@ textarea:focus-visible {
   .agent-activity-live,
   .agent-activity-details,
   .agent-table-artifact-spinner,
-  .chat-live-source-popover { animation: none; }
+  .chat-live-source-popover,
+  .chat-composer-error-popover { animation: none; }
 }
 
 /* Chat conversation rail --------------------------------------------------

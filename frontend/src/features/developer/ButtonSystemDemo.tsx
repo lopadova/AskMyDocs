@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { Button } from '../../components/Button';
 import { Icon } from '../../components/Icons';
+import { Alert, AlertDescription, AlertIcon, AlertTitle } from '../../components/ui/alert';
 
 const hierarchy = [
     { variant: 'primary' as const, label: 'Primary action', note: 'One per action group' },
@@ -190,6 +191,45 @@ export function ButtonSystemDemo(): ReactNode {
                             <div><strong>Quiet depth</strong><small>Hairlines define structure before shadows do.</small></div>
                         </div>
                     </DemoCard>
+                </div>
+            </section>
+
+            <section className="button-demo-section" aria-labelledby="feedback-title">
+                <DemoHeading
+                    index="06"
+                    title="Feedback & alerts"
+                    description="One structure communicates severity without turning technical details into raw terminal output."
+                    id="feedback-title"
+                />
+                <div className="ui-foundations-alerts">
+                    <Alert variant="info">
+                        <AlertIcon>
+                            <Icon.Info size={16} />
+                        </AlertIcon>
+                        <AlertTitle>Helpful context</AlertTitle>
+                        <AlertDescription>This information can make the next step clearer.</AlertDescription>
+                    </Alert>
+                    <Alert variant="success">
+                        <AlertIcon>
+                            <Icon.Check size={16} />
+                        </AlertIcon>
+                        <AlertTitle>Changes saved</AlertTitle>
+                        <AlertDescription>The latest configuration is now active.</AlertDescription>
+                    </Alert>
+                    <Alert variant="warning">
+                        <AlertIcon>
+                            <Icon.Alert size={16} />
+                        </AlertIcon>
+                        <AlertTitle>Review recommended</AlertTitle>
+                        <AlertDescription>One setting may need your attention before continuing.</AlertDescription>
+                    </Alert>
+                    <Alert variant="destructive">
+                        <AlertIcon>
+                            <Icon.Alert size={16} />
+                        </AlertIcon>
+                        <AlertTitle>Request not completed</AlertTitle>
+                        <AlertDescription>Open the details to understand what happened and try again.</AlertDescription>
+                    </Alert>
                 </div>
             </section>
 
