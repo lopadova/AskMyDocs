@@ -29,13 +29,18 @@ class KnowledgeBaseServerRegistrationTest extends TestCase
         return $property->getDefaultValue();
     }
 
-    public function test_server_registers_exactly_forty_seven_tools(): void
+    public function test_server_registers_exactly_forty_eight_tools(): void
     {
         // 36 (v8.21) + 3 invitations tools (v8.x) + 1 AppSettingsTool (v8.22)
         // + 1 KbPiiPolicyTool + 1 KbDetokenizeTool + 1 KbEraseSubjectTool
         // + 1 KbReembedProjectTool (v8.23/Ciclo 4) + 1 ConnectorSettingsTool (v8.25)
         // + 1 ApiConnectorsTool (v8.27 Connettore API) + 1 WidgetIntroConfigTool + 1 KbImapBackfillTool.
-        $this->assertCount(47, $this->registeredTools());
+        //
+        // That breakdown sums to 48 and always did; the assertion said 47. The
+        // roster grew and the number was not moved with it, so this test has
+        // been failing on develop independently of any pull request -- the
+        // comment above was the accurate half all along.
+        $this->assertCount(48, $this->registeredTools());
     }
 
     public function test_server_registers_the_widget_intro_config_tool(): void
