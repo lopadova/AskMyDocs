@@ -45,7 +45,7 @@ export function ConversationList({ projectKey, onSelect, onNewAnonymous }: Conve
         return conversations.filter((c) => (c.title ?? '').toLowerCase().includes(q));
     }, [conversations, filter]);
 
-    const { today, earlier } = splitByFreshness(filtered);
+    const { today, recent, earlier } = splitByFreshness(filtered);
 
     const state = isLoading ? 'loading' : isError ? 'error' : conversations.length === 0 ? 'empty' : 'ready';
 
@@ -54,87 +54,112 @@ export function ConversationList({ projectKey, onSelect, onNewAnonymous }: Conve
             data-testid="chat-sidebar"
             data-state={state}
             aria-label="Conversations"
-            style={{
-                width: 272,
-                flex: '0 0 272px',
-                borderRight: '1px solid var(--hairline)',
-                background: 'var(--bg-1)',
-                display: 'flex',
-                flexDirection: 'column',
-            }}
+            className="chat-conversation-sidebar"
         >
-            <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <button
-                    type="button"
-                    className="btn primary"
-                    data-testid="chat-new-conversation"
-                    onClick={() => createMutation.mutate()}
-                    disabled={createMutation.isPending}
-                    aria-busy={createMutation.isPending}
-                    style={{ width: '100%', justifyContent: 'center' }}
-                >
-                    <Icon.Plus size={13} />
-                    New chat
-                </button>
-                <button
-                    type="button"
-                    className="btn"
-                    data-testid="chat-new-anonymous-chat"
-                    onClick={onNewAnonymous}
-                    style={{ width: '100%', justifyContent: 'center' }}
-                >
-                    <Icon.Eye size={13} />
-                    New anonymous chat
-                </button>
-            </div>
-            <div style={{ padding: '0 12px 10px' }}>
-                <div style={{ position: 'relative' }}>
-                    <Icon.Search
-                        size={12}
-                        style={{ position: 'absolute', left: 10, top: 9.5, color: 'var(--fg-3)' }}
-                    />
+            <div className="chat-conversation-sidebar-head">
+                <div className="chat-conversation-sidebar-heading">
+                    <span className="chat-conversation-sidebar-heading-icon" aria-hidden="true">
+                        <Icon.Chat size={14} />
+                    </span>
+                    <span className="chat-conversation-sidebar-heading-copy">
+                        <strong>Conversations</strong>
+                        <small aria-live="polite">
+                            {isLoading
+                                ? 'Loading history…'
+                                : filter.trim() !== ''
+                                  ? `${filtered.length} ${filtered.length === 1 ? 'result' : 'results'}`
+                                  : `${conversations.length} ${conversations.length === 1 ? 'chat' : 'chats'}`}
+                        </small>
+                    </span>
+                </div>
+
+                <div className="chat-conversation-actions">
+                    <button
+                        type="button"
+                        className="chat-conversation-new"
+                        data-testid="chat-new-conversation"
+                        onClick={() => createMutation.mutate()}
+                        disabled={createMutation.isPending}
+                        aria-busy={createMutation.isPending}
+                    >
+                        <span className="chat-conversation-action-icon" aria-hidden="true">
+                            <Icon.Plus size={14} />
+                        </span>
+                        <span>{createMutation.isPending ? 'Creating…' : 'New chat'}</span>
+                    </button>
+                    <button
+                        type="button"
+                        className="chat-conversation-anonymous"
+                        data-testid="chat-new-anonymous-chat"
+                        onClick={onNewAnonymous}
+                        title="Start a chat that is not saved"
+                    >
+                        <Icon.Eye size={13} />
+                        <span>Anonymous</span>
+                    </button>
+                </div>
+
+                <label className="chat-conversation-search">
+                    <span aria-hidden="true"><Icon.Search size={13} /></span>
                     <input
                         type="search"
                         data-testid="chat-sidebar-search"
                         aria-label="Search conversations"
-                        className="input"
                         value={filter}
                         onChange={(e) => setFilter(e.target.value)}
                         placeholder="Search conversations"
-                        style={{ paddingLeft: 30, height: 30, fontSize: 12, width: '100%' }}
                     />
-                </div>
+                    {filter !== '' && (
+                        <button
+                            type="button"
+                            className="chat-conversation-search-clear"
+                            aria-label="Clear conversation search"
+                            onClick={() => setFilter('')}
+                        >
+                            <Icon.Close size={11} />
+                        </button>
+                    )}
+                </label>
             </div>
 
-            <div style={{ flex: 1, overflow: 'auto', padding: '4px 10px 10px' }}>
+            <div className="chat-conversation-list" data-testid="chat-conversation-list">
                 {state === 'loading' && <SidebarSkeleton />}
                 {state === 'empty' && (
                     <div
                         data-testid="chat-sidebar-empty"
-                        style={{ fontSize: 12, color: 'var(--fg-3)', padding: '10px 6px', lineHeight: 1.6 }}
+                        className="chat-conversation-empty"
                     >
-                        No conversations yet. Click <strong>New chat</strong> to start.
+                        <span aria-hidden="true"><Icon.Chat size={18} /></span>
+                        <strong>Your conversations will appear here</strong>
+                        <small>Start a new chat to begin.</small>
                     </div>
                 )}
                 {state === 'error' && (
-                    <div data-testid="chat-sidebar-error" role="alert" style={{ padding: 10, fontSize: 12, color: 'var(--err)' }}>
-                        Failed to load conversations.
+                    <div data-testid="chat-sidebar-error" role="alert" className="chat-conversation-error">
+                        <Icon.Alert size={14} />
+                        <span>Failed to load conversations.</span>
                     </div>
                 )}
-                {today.length > 0 && <SectionHeader label="Today" />}
+                {today.length > 0 && <SectionHeader label="Today" count={today.length} />}
                 {today.map((c) => (
                     <ConversationRow key={c.id} c={c} active={c.id === activeId} onSelect={onSelect} />
                 ))}
-                {earlier.length > 0 && <SectionHeader label="Earlier" />}
+                {recent.length > 0 && <SectionHeader label="Previous 7 days" count={recent.length} />}
+                {recent.map((c) => (
+                    <ConversationRow key={c.id} c={c} active={c.id === activeId} onSelect={onSelect} />
+                ))}
+                {earlier.length > 0 && <SectionHeader label="Earlier" count={earlier.length} />}
                 {earlier.map((c) => (
                     <ConversationRow key={c.id} c={c} active={c.id === activeId} onSelect={onSelect} />
                 ))}
                 {state === 'ready' && filter.trim() !== '' && filtered.length === 0 && (
                     <div
                         data-testid="chat-sidebar-no-results"
-                        style={{ fontSize: 12, color: 'var(--fg-3)', padding: '10px 6px', lineHeight: 1.6 }}
+                        className="chat-conversation-empty is-search"
                     >
-                        No conversations match “<strong>{filter.trim()}</strong>”.
+                        <span aria-hidden="true"><Icon.Search size={18} /></span>
+                        <strong>No matching conversations</strong>
+                        <small>Try another title or clear the search.</small>
                     </div>
                 )}
             </div>
@@ -143,9 +168,10 @@ export function ConversationList({ projectKey, onSelect, onNewAnonymous }: Conve
                 <div
                     data-testid="chat-new-conversation-error"
                     role="alert"
-                    style={{ padding: 10, fontSize: 12, color: 'var(--err)' }}
+                    className="chat-conversation-create-error"
                 >
-                    Could not create a conversation.
+                    <Icon.Alert size={13} />
+                    <span>Could not create a conversation.</span>
                 </div>
             )}
         </aside>
@@ -156,30 +182,25 @@ function SidebarSkeleton(): ReactNode {
     // Placeholder rows shown while the conversation list loads, so the
     // sidebar shows shape instead of a blank panel (perceived speed).
     return (
-        <div data-testid="chat-sidebar-loading" aria-hidden="true" style={{ padding: '6px 0' }}>
+        <div data-testid="chat-sidebar-loading" aria-hidden="true" className="chat-conversation-skeleton">
             {[0, 1, 2, 3, 4].map((i) => (
-                <div key={i} style={{ padding: '8px 10px', marginBottom: 2 }}>
-                    <div className="shimmer" style={{ height: 11, borderRadius: 4, width: `${72 - i * 7}%` }} />
-                    <div className="shimmer" style={{ height: 8, borderRadius: 4, width: '42%', marginTop: 6 }} />
+                <div key={i} className="chat-conversation-skeleton-row">
+                    <span className="shimmer" />
+                    <div>
+                        <span className="shimmer" style={{ width: `${72 - i * 7}%` }} />
+                        <span className="shimmer" />
+                    </div>
                 </div>
             ))}
         </div>
     );
 }
 
-function SectionHeader({ label }: { label: string }): ReactNode {
+function SectionHeader({ label, count }: { label: string; count: number }): ReactNode {
     return (
-        <div
-            style={{
-                fontSize: 10,
-                color: 'var(--fg-3)',
-                textTransform: 'uppercase',
-                letterSpacing: '.08em',
-                padding: '10px 6px 4px',
-                fontFamily: 'var(--font-mono)',
-            }}
-        >
-            {label}
+        <div className="chat-conversation-section-heading">
+            <span>{label}</span>
+            <span aria-label={`${count} ${count === 1 ? 'conversation' : 'conversations'}`}>{count}</span>
         </div>
     );
 }
@@ -199,37 +220,33 @@ function ConversationRow({ c, active, onSelect }: ConversationRowProps): ReactNo
             data-active={active ? 'true' : 'false'}
             aria-current={active ? 'true' : undefined}
             onClick={() => onSelect(c.id)}
+            title={c.title ?? 'Untitled chat'}
         >
-            <div style={{ flex: 1, minWidth: 0 }}>
-                <div
-                    style={{
-                        fontSize: 12.5,
-                        color: 'var(--fg-0)',
-                        fontWeight: active ? 500 : 400,
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                    }}
-                >
+            <span className="conv-row-icon" aria-hidden="true">
+                <Icon.Chat size={13} />
+            </span>
+            <span className="conv-row-copy">
+                <span className="conv-row-title">
                     {c.title ?? 'Untitled chat'}
-                </div>
-                <div
-                    style={{
-                        fontSize: 10.5,
-                        color: 'var(--fg-3)',
-                        fontFamily: 'var(--font-mono)',
-                        marginTop: 1,
-                    }}
-                >
-                    {c.project_key ?? 'any'} · {humaniseDate(c.updated_at)}
-                </div>
-            </div>
+                </span>
+                <span className="conv-row-meta">
+                    <span className="conv-row-project">
+                        <span aria-hidden="true" />
+                        {c.project_key ?? 'All projects'}
+                    </span>
+                    <time dateTime={c.updated_at}>{humaniseDate(c.updated_at)}</time>
+                </span>
+            </span>
+            <span className="conv-row-chevron" aria-hidden="true">
+                <Icon.Chevron size={11} />
+            </span>
         </button>
     );
 }
 
-function splitByFreshness(list: Conversation[]): { today: Conversation[]; earlier: Conversation[] } {
+function splitByFreshness(list: Conversation[]): { today: Conversation[]; recent: Conversation[]; earlier: Conversation[] } {
     const today: Conversation[] = [];
+    const recent: Conversation[] = [];
     const earlier: Conversation[] = [];
     const now = Date.now();
     for (const c of list) {
@@ -238,9 +255,13 @@ function splitByFreshness(list: Conversation[]): { today: Conversation[]; earlie
             today.push(c);
             continue;
         }
+        if (now - updated < 7 * 24 * 60 * 60 * 1000) {
+            recent.push(c);
+            continue;
+        }
         earlier.push(c);
     }
-    return { today, earlier };
+    return { today, recent, earlier };
 }
 
 function humaniseDate(iso: string): string {
@@ -250,12 +271,12 @@ function humaniseDate(iso: string): string {
         return 'just now';
     }
     if (diffMin < 60) {
-        return `${diffMin}m ago`;
+        return `${diffMin}m`;
     }
     const diffH = Math.round(diffMin / 60);
     if (diffH < 24) {
-        return `${diffH}h ago`;
+        return `${diffH}h`;
     }
     const diffD = Math.round(diffH / 24);
-    return `${diffD}d ago`;
+    return `${diffD}d`;
 }
