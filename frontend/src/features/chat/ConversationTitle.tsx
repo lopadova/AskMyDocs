@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '../../components/Icons';
+import { Button } from '../../components/Button';
 import { chatApi, type Conversation } from './chat.api';
 
 export interface ConversationTitleProps {
@@ -84,17 +85,22 @@ export function ConversationTitle({ conversationId, title }: ConversationTitlePr
                     }}
                     disabled={mutation.isPending}
                 />
-                <button
+                <Button
                     type="submit"
+                    variant="secondary"
+                    size="sm"
+                    iconOnly
                     className="chat-title-edit-action is-save"
                     data-testid="chat-title-save"
                     aria-label="Save title"
                     disabled={mutation.isPending}
                 >
                     <Icon.Check size={12} />
-                </button>
-                <button
-                    type="button"
+                </Button>
+                <Button
+                    variant="quiet"
+                    size="sm"
+                    iconOnly
                     className="chat-title-edit-action"
                     data-testid="chat-title-cancel"
                     aria-label="Cancel rename"
@@ -102,7 +108,7 @@ export function ConversationTitle({ conversationId, title }: ConversationTitlePr
                     disabled={mutation.isPending}
                 >
                     <Icon.Close size={12} />
-                </button>
+                </Button>
                 {mutation.isError && (
                     <span
                         role="alert"
@@ -125,15 +131,17 @@ export function ConversationTitle({ conversationId, title }: ConversationTitlePr
             >
                 {title}
             </span>
-            <button
-                type="button"
+            <Button
+                variant="quiet"
+                size="sm"
+                iconOnly
                 className="chat-title-rename"
                 data-testid="chat-title-rename"
                 aria-label="Rename conversation"
                 onClick={() => setEditing(true)}
             >
                 <Icon.Edit size={12} />
-            </button>
+            </Button>
         </div>
     );
 }

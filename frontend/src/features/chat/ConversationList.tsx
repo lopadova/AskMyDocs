@@ -1,6 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '../../components/Icons';
+import { Button } from '../../components/Button';
 import { chatApi, type Conversation } from './chat.api';
 import { useChatStore } from './chat.store';
 
@@ -74,29 +75,28 @@ export function ConversationList({ projectKey, onSelect, onNewAnonymous }: Conve
                 </div>
 
                 <div className="chat-conversation-actions">
-                    <button
-                        type="button"
+                    <Button
+                        variant="primary"
+                        size="md"
                         className="chat-conversation-new"
                         data-testid="chat-new-conversation"
                         onClick={() => createMutation.mutate()}
-                        disabled={createMutation.isPending}
-                        aria-busy={createMutation.isPending}
+                        busy={createMutation.isPending}
+                        leadingIcon={<Icon.Plus size={14} />}
                     >
-                        <span className="chat-conversation-action-icon" aria-hidden="true">
-                            <Icon.Plus size={14} />
-                        </span>
-                        <span>{createMutation.isPending ? 'Creating…' : 'New chat'}</span>
-                    </button>
-                    <button
-                        type="button"
+                        {createMutation.isPending ? 'Creating…' : 'New chat'}
+                    </Button>
+                    <Button
+                        variant="secondary"
+                        size="md"
                         className="chat-conversation-anonymous"
                         data-testid="chat-new-anonymous-chat"
                         onClick={onNewAnonymous}
                         title="Start a chat that is not saved"
+                        leadingIcon={<Icon.Eye size={13} />}
                     >
-                        <Icon.Eye size={13} />
-                        <span>Anonymous</span>
-                    </button>
+                        Anonymous
+                    </Button>
                 </div>
 
                 <label className="chat-conversation-search">
