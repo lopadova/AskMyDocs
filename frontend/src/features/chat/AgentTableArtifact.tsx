@@ -28,6 +28,9 @@ export function AgentTableArtifact({
     const italian = locale.toLowerCase().startsWith('it');
     const selectable = onSelect !== undefined;
     const selectionRequired = artifact.interaction_mode === 'selection';
+    const actionLabel = selectionRequired
+        ? (italian ? 'Seleziona' : 'Select')
+        : (italian ? 'Apri' : 'Open');
 
     async function select(rowKey: string, label: string): Promise<void> {
         if (!onSelect || submitting !== null || selected !== null) return;
@@ -55,23 +58,26 @@ export function AgentTableArtifact({
             data-interaction-mode={artifact.interaction_mode}
         >
             <div className="agent-table-artifact-header">
-                <div>
-                    <strong>{artifact.title}</strong>
-                    <span>
-                        {artifact.total_rows} {italian ? 'risultati' : 'results'}
-                        {artifact.truncated ? ` · ${italian ? 'primi' : 'first'} ${artifact.rows.length}` : ''}
+                <div className="agent-table-artifact-identity">
+                    <span className="agent-table-artifact-icon" aria-hidden="true">
+                        <Icon.Grid size={13} />
                     </span>
+                    <div className="agent-table-artifact-heading">
+                        <strong>{displayTitle(artifact.title)}</strong>
+                        <span>{resultSummary(artifact.total_rows, artifact.rows.length, artifact.truncated, italian)}</span>
+                    </div>
                 </div>
                 {selectable && (
                     <span className="agent-table-artifact-hint">
+                        <Icon.Eye size={12} />
                         {selectionRequired
-                            ? (italian ? 'Scegli una riga per continuare' : 'Choose a row to continue')
-                            : (italian ? 'Seleziona una riga per approfondire' : 'Select a row to inspect')}
+                            ? (italian ? 'Scegli un risultato' : 'Choose a result')
+                            : (italian ? 'Apri una riga per i dettagli' : 'Open a row for details')}
                     </span>
                 )}
             </div>
             <div className="agent-table-artifact-scroll">
-                <table>
+                <table aria-label={`${displayTitle(artifact.title)} · ${artifact.total_rows} ${italian ? 'risultati' : 'results'}`}>
                     <thead>
                         <tr>
                             {artifact.columns.map((column) => <th key={column.key}>{column.label}</th>)}
@@ -90,15 +96,24 @@ export function AgentTableArtifact({
                                     aria-selected={selectable ? isSelected : undefined}
                                     onClick={selectable ? () => void select(row.key, row.label) : undefined}
                                 >
-                                    {artifact.columns.map((column) => (
-                                        <td key={column.key}>{displayValue(row.values[column.key])}</td>
-                                    ))}
+                                    {artifact.columns.map((column) => {
+                                        const rawValue = row.values[column.key];
+                                        const value = displayValue(rawValue, locale);
+
+                                        return (
+                                            <td key={column.key} title={value !== String(rawValue ?? '') ? String(rawValue ?? '') : undefined}>
+                                                <span data-empty={value === '—' || undefined}>{value}</span>
+                                            </td>
+                                        );
+                                    })}
                                     {selectable && (
                                         <td className="agent-table-artifact-action">
                                             <button
                                                 type="button"
-                                                className={`btn sm ${isSelected ? 'ghost' : 'primary'} agent-table-artifact-select`}
+                                                className="agent-table-artifact-select"
+                                                data-state={submitting === row.key ? 'loading' : isSelected ? 'selected' : 'idle'}
                                                 disabled={submitting !== null || selected !== null}
+                                                aria-label={`${isSelected ? (italian ? 'Selezionata' : 'Selected') : actionLabel}: ${row.label}`}
                                                 onClick={(event) => {
                                                     event.stopPropagation();
                                                     void select(row.key, row.label);
@@ -106,10 +121,10 @@ export function AgentTableArtifact({
                                                 data-testid={`agent-table-select-${row.key}`}
                                             >
                                                 {submitting === row.key
-                                                    ? (italian ? 'Scelgo…' : 'Selecting…')
+                                                    ? <><span className="agent-table-artifact-spinner" aria-hidden="true" /> {italian ? 'Attendi' : 'Wait'}</>
                                                     : isSelected
                                                         ? <><Icon.Check size={12} /> {italian ? 'Selezionata' : 'Selected'}</>
-                                                        : (italian ? 'Usa questa riga' : 'Use this row')}
+                                                        : <>{actionLabel}<Icon.Chevron size={11} /></>}
                                             </button>
                                         </td>
                                     )}
@@ -146,9 +161,40 @@ function selectionContent(
         : `I selected this row (${label}):\n\n${row}\n\nContinue using all row data in the context of the previous request.`;
 }
 
-function displayValue(value: string | number | boolean | null | undefined): string {
+function displayTitle(title: string): string {
+    const trimmed = title.trim();
+    if (trimmed === '' || /\s/.test(trimmed)) return trimmed;
+
+    const readable = trimmed.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ');
+
+    return readable.charAt(0).toUpperCase() + readable.slice(1);
+}
+
+function resultSummary(total: number, visible: number, truncated: boolean, italian: boolean): string {
+    const noun = italian
+        ? (total === 1 ? 'risultato' : 'risultati')
+        : (total === 1 ? 'result' : 'results');
+    const base = `${total} ${noun}`;
+
+    return truncated ? `${base} · ${italian ? 'mostrati' : 'showing'} ${visible}` : base;
+}
+
+function displayValue(value: string | number | boolean | null | undefined, locale: string): string {
     if (value === null || value === undefined || value === '') return '—';
     if (typeof value === 'boolean') return value ? '✓' : '✕';
+    if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value)) {
+        const date = new Date(value);
+        if (!Number.isNaN(date.getTime())) {
+            try {
+                return new Intl.DateTimeFormat(locale, {
+                    dateStyle: 'medium',
+                    timeStyle: 'short',
+                }).format(date);
+            } catch {
+                return value;
+            }
+        }
+    }
 
     return String(value);
 }

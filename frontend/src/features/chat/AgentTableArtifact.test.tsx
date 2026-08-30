@@ -27,7 +27,7 @@ describe('AgentTableArtifact', () => {
         const onSelect = vi.fn().mockResolvedValue(undefined);
         render(<AgentTableArtifact artifact={artifact} messageId={90} locale="it-IT" onSelect={onSelect} />);
 
-        expect(screen.getByText('Scegli una riga per continuare')).toBeInTheDocument();
+        expect(screen.getByText('Scegli un risultato')).toBeInTheDocument();
         expect(screen.getAllByText('Riccardo Lorini')).toHaveLength(2);
         fireEvent.click(screen.getByText('two@example.test').closest('tr')!);
 
@@ -55,8 +55,29 @@ describe('AgentTableArtifact', () => {
             />,
         );
 
-        expect(screen.queryByText('Scegli una riga per continuare')).not.toBeInTheDocument();
-        expect(screen.getByText('Seleziona una riga per approfondire')).toBeInTheDocument();
-        expect(screen.getAllByRole('button', { name: 'Usa questa riga' })).toHaveLength(2);
+        expect(screen.queryByText('Scegli un risultato')).not.toBeInTheDocument();
+        expect(screen.getByText('Apri una riga per i dettagli')).toBeInTheDocument();
+        expect(screen.getAllByRole('button', { name: /^Apri:/ })).toHaveLength(2);
+    });
+
+    it('humanizes technical titles and formats ISO timestamps for readability', () => {
+        render(
+            <AgentTableArtifact
+                artifact={{
+                    ...artifact,
+                    title: 'orders_get',
+                    columns: [{ key: 'occurred_at', label: 'Occurred at' }],
+                    rows: [{ key: 'order-1', label: 'Order 1', values: { occurred_at: '2026-08-20T09:00:00+00:00' } }],
+                    total_rows: 1,
+                    interaction_mode: 'view',
+                }}
+                messageId={92}
+                locale="it-IT"
+            />,
+        );
+
+        expect(screen.getByText('Orders get')).toBeInTheDocument();
+        expect(screen.getByText('1 risultato')).toBeInTheDocument();
+        expect(screen.queryByText('2026-08-20T09:00:00+00:00')).not.toBeInTheDocument();
     });
 });
