@@ -75,6 +75,26 @@ describe('Composer', () => {
         expect(onSend).toHaveBeenCalledWith('Hello');
     });
 
+    it('uses a restrained container focus state and canonical action buttons', () => {
+        renderWithClient(<Composer {...makeProps()} />);
+
+        const form = screen.getByTestId('chat-composer');
+        const input = screen.getByTestId('chat-composer-input');
+        const attach = screen.getByTestId('chat-composer-attach');
+        const voice = screen.getByTestId('chat-composer-voice');
+        const send = screen.getByTestId('chat-composer-send');
+
+        expect(form).not.toHaveClass('glow-frame');
+        fireEvent.focus(input);
+        expect(form).toHaveClass('is-focused');
+        fireEvent.blur(input);
+        expect(form).not.toHaveClass('is-focused');
+        expect(attach).toHaveClass('ui-button');
+        expect(voice).toHaveClass('ui-button');
+        expect(send).toHaveClass('ui-button');
+        expect(send).toHaveAttribute('data-variant', 'primary');
+    });
+
     it('renders chat-composer-stop instead of chat-composer-send while isStreaming', () => {
         const props = makeProps({ isStreaming: true });
         renderWithClient(<Composer {...props} />);

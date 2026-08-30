@@ -1,4 +1,5 @@
 import { useRef, useState, type ChangeEvent, type KeyboardEvent, type ReactNode } from 'react';
+import { Button } from '../../components/Button';
 import { Icon } from '../../components/Icons';
 import { FilterBar } from './FilterBar';
 import { MentionPopover } from './MentionPopover';
@@ -261,7 +262,7 @@ export function Composer({
                         e.preventDefault();
                         void send();
                     }}
-                    className={`chat-composer glow-frame ${focused ? 'on' : ''}`}
+                    className={`chat-composer ${focused ? 'is-focused' : ''}`}
                 >
                 {/*
                   * T2.7 — FilterBar renders ABOVE the legacy context-chip
@@ -324,53 +325,57 @@ export function Composer({
                   * to render ABOVE the textarea. The popover is conditional
                   * on `mentionQuery !== null`, so when no @-token is
                   * active under the cursor the popover doesn't even mount.
-                  */}
+                */}
                 <div className="chat-composer-input-wrap">
-                <textarea
-                    name="message"
-                    data-testid="chat-composer-input"
-                    aria-label="Your message"
-                    aria-invalid={Boolean(localError)}
-                    aria-autocomplete={mentionQuery !== null ? 'list' : undefined}
-                    aria-expanded={mentionQuery !== null}
-                    aria-controls={mentionQuery !== null ? 'mention-popover' : undefined}
-                    ref={textareaRef}
-                    className="chat-composer-input"
-                    value={draft}
-                    disabled={isStreaming}
-                    onChange={onChange}
-                    onFocus={() => setFocused(true)}
-                    onBlur={() => setFocused(false)}
-                    onKeyDown={onKeyDown}
-                    placeholder="Ask anything grounded in your knowledge base…"
-                    rows={2}
-                />
-                {mentionQuery !== null && (
-                    <MentionPopover
-                        query={mentionQuery}
-                        projectKeys={projectKey ? [projectKey] : undefined}
-                        excludeIds={filters.doc_ids ?? []}
-                        open={mentionQuery !== null}
-                        onSelect={onMentionSelect}
-                        onClose={() => {
-                            setMentionQuery(null);
-                            mentionAnchorRef.current = null;
-                        }}
+                    <textarea
+                        name="message"
+                        data-testid="chat-composer-input"
+                        aria-label="Your message"
+                        aria-invalid={Boolean(localError)}
+                        aria-autocomplete={mentionQuery !== null ? 'list' : undefined}
+                        aria-expanded={mentionQuery !== null}
+                        aria-controls={mentionQuery !== null ? 'mention-popover' : undefined}
+                        ref={textareaRef}
+                        className="chat-composer-input"
+                        value={draft}
+                        disabled={isStreaming}
+                        onChange={onChange}
+                        onFocus={() => setFocused(true)}
+                        onBlur={() => setFocused(false)}
+                        onKeyDown={onKeyDown}
+                        placeholder="Ask anything grounded in your knowledge base…"
+                        rows={2}
                     />
-                )}
+                    {mentionQuery !== null && (
+                        <MentionPopover
+                            query={mentionQuery}
+                            projectKeys={projectKey ? [projectKey] : undefined}
+                            excludeIds={filters.doc_ids ?? []}
+                            open={mentionQuery !== null}
+                            onSelect={onMentionSelect}
+                            onClose={() => {
+                                setMentionQuery(null);
+                                mentionAnchorRef.current = null;
+                            }}
+                        />
+                    )}
                 </div>
                 <div className="chat-composer-actions">
-                    <button
-                        type="button"
-                        className="btn icon sm ghost"
-                        data-testid="chat-composer-attach"
-                        aria-label="Attach file"
-                    >
-                        <Icon.Plus size={13} />
-                    </button>
-                    {!isStreaming && (
-                        <VoiceInput onTranscript={(t) => appendToDraft((draft ? ' ' : '') + t)} />
-                    )}
+                    <div className="chat-composer-tools" aria-label="Message tools">
+                        <Button
+                            variant="secondary"
+                            size="sm"
+                            iconOnly
+                            className="chat-composer-tool-button"
+                            data-testid="chat-composer-attach"
+                            aria-label="Attach file"
+                        >
+                            <Icon.Plus size={13} />
+                        </Button>
+                        {!isStreaming && (
+                            <VoiceInput onTranscript={(t) => appendToDraft((draft ? ' ' : '') + t)} />
+                        )}
+                    </div>
                     <span style={{ flex: 1 }} />
                     <span className="mono" style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>
                         {draft.length > 0 ? `${draft.length} chars` : ''}
@@ -388,47 +393,28 @@ export function Composer({
                       * button so Enter still works pre-stream;
                       * `chat-composer-stop` is `type="button"` so it
                       * doesn't accidentally fire form submit.
-                      */}
+                    */}
                     {isStreaming ? (
-                        <button
-                            type="button"
-                            className="btn primary sm"
+                        <Button
+                            variant="secondary"
+                            size="sm"
                             data-testid="chat-composer-stop"
                             onClick={() => onStop?.()}
                             aria-label="Stop streaming"
+                            leadingIcon={<Icon.Close size={12} />}
                         >
-                            <Icon.Close size={12} />
                             Stop
-                        </button>
+                        </Button>
                     ) : (
-                        <button
+                        <Button
                             type="submit"
-                            className="btn primary sm"
+                            variant="primary"
+                            size="sm"
                             data-testid="chat-composer-send"
-                            style={{ gap: 7 }}
+                            leadingIcon={<Icon.Send size={12} />}
                         >
-                            <Icon.Send size={12} />
                             Send
-                            {/*
-                              * Enter-key affordance. A flat, faded glyph
-                              * behind a hairline divider — NOT the boxed
-                              * `.kbd` keycap, which on the bright primary
-                              * gradient reads as a second, separate button.
-                              */}
-                            <span
-                                aria-hidden="true"
-                                style={{
-                                    paddingLeft: 7,
-                                    borderLeft: '1px solid rgba(10,10,20,.18)',
-                                    fontSize: 11,
-                                    lineHeight: 1,
-                                    color: 'rgba(10,10,20,.5)',
-                                    fontFamily: 'var(--font-mono)',
-                                }}
-                            >
-                                ⏎
-                            </span>
-                        </button>
+                        </Button>
                     )}
                 </div>
                 </form>
