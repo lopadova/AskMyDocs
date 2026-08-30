@@ -103,19 +103,25 @@ window.
 ## Configuration
 
 ```bash
-# Default OFF.
-KB_PROVENANCE_TOOL_FIREWALL=false
+# Default ON.
+KB_PROVENANCE_TOOL_FIREWALL=true
 ```
 
-**It ships off**, as ADR 0028 specifies for this phase, and that is worth
-being explicit about rather than quietly shipping a control nobody has
-switched on.
+**It ships on.** ADR 0028 specified `OFF` for this phase and the product owner
+reversed that, which is recorded in the ADR rather than left as a discrepancy
+between a document and a config file.
 
-Turning it on changes agent behaviour on upgrade for anyone already ingesting
-email: turns grounded in a message stop being able to act. That is a product
-decision — it trades some agentic capability for closing an injection chain —
-and it belongs to whoever runs the deployment, not to a default inherited from
-a release.
+The ADR's caution stands and is worth knowing before you upgrade: a deployment
+already ingesting email will find that **turns grounded in a message stop being
+able to act**. What decided it the other way is that a security control shipping
+off protects nobody until somebody remembers to switch it on — and the chain
+above is not hypothetical, it is three ordinary facts about the product with no
+boundary between them.
+
+The failure direction is the safe one: the turn declines to act rather than
+acting on a stranger's instructions, and the answer still comes back from the
+same context with the same citations. Setting the variable to `false` restores
+the previous behaviour exactly.
 
 Switching it on costs nothing on a corpus with no externally-authored
 documents, which is every corpus that has not configured a connector declaring
