@@ -1,4 +1,5 @@
 import type { UIMessage } from 'ai';
+import type { AgentRunEvent } from '../../lib/agent-run-events';
 import type {
     AgentSelectionMetadata,
     AgentTableArtifact,
@@ -493,6 +494,28 @@ export function getAgentSelection(m: RenderableMessage): AgentSelectionMetadata 
     }
 
     return selection;
+}
+
+export function getAgentRunId(m: RenderableMessage): string | null {
+    if (isUiMessage(m)) return null;
+    const value = m.metadata?.agent_run_id;
+
+    return typeof value === 'string' && value.trim() !== '' ? value : null;
+}
+
+export function getAgentActivity(m: RenderableMessage): AgentRunEvent[] {
+    if (isUiMessage(m)) return [];
+    const events = m.metadata?.agent_activity;
+    if (!Array.isArray(events)) return [];
+
+    return events.filter((event) => (
+        event !== null
+        && typeof event === 'object'
+        && typeof event.run_id === 'string'
+        && Number.isInteger(event.sequence)
+        && typeof event.type === 'string'
+        && typeof event.locale === 'string'
+    ));
 }
 
 /**

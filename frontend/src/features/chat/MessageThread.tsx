@@ -1,10 +1,19 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { Fragment, useEffect, useRef, type ReactNode } from 'react';
 import { MessageBubble } from './MessageBubble';
+import { AgentActivityBar } from './AgentActivityBar';
 import { Icon } from '../../components/Icons';
+import type { AgentRunEvent } from '../../lib/agent-run-events';
 import { mapStatusToDataState, type SdkStatus } from './map-status-to-data-state';
 import type { RenderableMessage } from './message-shape-adapters';
-import { getMessageId, getTextContent } from './message-shape-adapters';
+import {
+    getAgentActivity,
+    getAgentRunId,
+    getMessageId,
+    getTextContent,
+} from './message-shape-adapters';
 import type { AgentArtifactSelection } from './AgentTableArtifact';
+
+const noop = (): void => undefined;
 
 export interface MessageThreadProps {
     conversationId: number | null;
@@ -63,6 +72,11 @@ export interface MessageThreadProps {
     onOpenSource?: (citation: import('./chat.api').MessageCitation) => void;
     onMcpAppMessage?: (content: string, appId: string) => Promise<void>;
     onAgentArtifactSelection?: (selection: AgentArtifactSelection) => Promise<void>;
+    agentEvents?: AgentRunEvent[];
+    activeAgentRunId?: string | null;
+    awaitingAgentConfirmation?: boolean;
+    onCancelAgent?: () => void;
+    onContinueAgent?: () => void;
 }
 
 /**
@@ -94,6 +108,11 @@ export function MessageThread({
     onOpenSource,
     onMcpAppMessage,
     onAgentArtifactSelection,
+    agentEvents = [],
+    activeAgentRunId = null,
+    awaitingAgentConfirmation = false,
+    onCancelAgent,
+    onContinueAgent,
 }: MessageThreadProps): ReactNode {
     const threadRef = useRef<HTMLDivElement>(null);
 
@@ -133,7 +152,14 @@ export function MessageThread({
             top: threadRef.current.scrollHeight,
             behavior: isStreaming ? 'auto' : 'smooth',
         });
-    }, [messages.length, sdkStatus, totalTextLength, isStreaming]);
+    }, [
+        messages.length,
+        sdkStatus,
+        totalTextLength,
+        isStreaming,
+        agentEvents.length,
+        agentEvents.at(-1)?.sequence,
+    ]);
 
     const state = mapStatusToDataState({
         conversationId,
@@ -188,6 +214,10 @@ export function MessageThread({
                             break;
                         }
                     }
+                    const activeRunHasPersistedActivity = activeAgentRunId !== null && messages.some((message) => (
+                        getAgentRunId(message) === activeAgentRunId && getAgentActivity(message).length > 0
+                    ));
+
                     return messages.map((m, i) => {
                         const isLast = i === messages.length - 1;
                         const streaming = isStreaming && isLast && m.role === 'assistant';
@@ -213,21 +243,52 @@ export function MessageThread({
                             m.role === 'user' && !isStreaming && onEditUserMessage
                                 ? (newText: string) => onEditUserMessage(i, numericId, newText)
                                 : undefined;
+                        const persistedActivity = m.role === 'assistant' ? getAgentActivity(m) : [];
+                        const messageRunId = getAgentRunId(m);
+                        const showLiveActivityAfterMessage = m.role === 'user'
+                            && activeAgentRunId !== null
+                            && messageRunId === activeAgentRunId
+                            && !activeRunHasPersistedActivity
+                            && (isStreaming || awaitingAgentConfirmation || agentEvents.length > 0);
+
                         return (
-                            <MessageBubble
-                                key={getMessageId(m)}
-                                conversationId={conversationId}
-                                message={m}
-                                projectKey={projectKey}
-                                streaming={streaming}
-                                onRegenerate={regenerateHandler}
-                                onBranch={branchHandler}
-                                onEditSubmit={editHandler}
-                                showCounterfactual={showCounterfactual}
-                                onOpenSource={onOpenSource}
-                                onMcpAppMessage={onMcpAppMessage}
-                                onAgentArtifactSelection={onAgentArtifactSelection}
-                            />
+                            <Fragment key={getMessageId(m)}>
+                                {persistedActivity.length > 0 && (
+                                    <AgentActivityBar
+                                        events={persistedActivity}
+                                        active={false}
+                                        awaitingConfirmation={false}
+                                        onCancel={noop}
+                                        onContinue={noop}
+                                        instanceId={`message-${String(mid)}`}
+                                        embedded
+                                    />
+                                )}
+                                <MessageBubble
+                                    conversationId={conversationId}
+                                    message={m}
+                                    projectKey={projectKey}
+                                    streaming={streaming}
+                                    onRegenerate={regenerateHandler}
+                                    onBranch={branchHandler}
+                                    onEditSubmit={editHandler}
+                                    showCounterfactual={showCounterfactual}
+                                    onOpenSource={onOpenSource}
+                                    onMcpAppMessage={onMcpAppMessage}
+                                    onAgentArtifactSelection={onAgentArtifactSelection}
+                                />
+                                {showLiveActivityAfterMessage && (
+                                    <AgentActivityBar
+                                        events={agentEvents}
+                                        active={isStreaming}
+                                        awaitingConfirmation={awaitingAgentConfirmation}
+                                        onCancel={onCancelAgent ?? noop}
+                                        onContinue={onContinueAgent ?? noop}
+                                        instanceId={`run-${activeAgentRunId}`}
+                                        embedded
+                                    />
+                                )}
+                            </Fragment>
                         );
                     });
                 })()}

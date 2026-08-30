@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Api;
 
 use App\Http\Controllers\Api\MessageController;
+use App\Models\AgentRun;
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Models\User;
@@ -15,6 +16,7 @@ use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Str;
 use Mockery;
 use Tests\TestCase;
 
@@ -239,5 +241,85 @@ final class MessageControllerTest extends TestCase
             ['user', 'assistant', 'user', 'assistant'],
             array_column($response->json(), 'role'),
         );
+    }
+
+    public function test_history_attaches_each_persisted_agent_activity_to_its_assistant_message(): void
+    {
+        $run = AgentRun::create([
+            'run_id' => Str::uuid()->toString(),
+            'tenant_id' => 'default',
+            'project_key' => 'hr-portal',
+            'user_id' => $this->user->id,
+            'conversation_id' => $this->conversation->id,
+            'channel' => 'chat',
+            'actor_type' => 'user',
+            'actor_id' => (string) $this->user->id,
+            'locale' => 'it-IT',
+            'timezone' => 'Europe/Rome',
+            'status' => AgentRun::STATUS_COMPLETED,
+            'last_sequence' => 2,
+            'completed_at' => now(),
+        ]);
+        $run->events()->create([
+            'sequence' => 1,
+            'type' => 'tool.completed',
+            'phase' => 'tool',
+            'locale' => 'it-IT',
+            'message_key' => 'tool.completed',
+            'message_params' => ['tool' => 'shipments-get'],
+            'message' => 'shipments-get completato.',
+            'payload_json' => [
+                'progress' => null,
+                'can_cancel' => true,
+                'data' => [
+                    'tool_kind' => 'mcp',
+                    'mcp_server_name' => 'HubHive',
+                    'mcp_tool_name' => 'shipments-get',
+                    'mcp_debug' => [
+                        'method' => 'tools/call',
+                        'runtime' => 'connector',
+                        'tool_local_name' => 'mcp_hubhive_shipments_get',
+                        'tool_remote_name' => 'shipments-get',
+                        'status' => 'ok',
+                        'duration_ms' => 24,
+                        'parameters' => ['shipment_id' => 77],
+                        'response' => ['status' => 'delivered'],
+                    ],
+                ],
+            ],
+        ]);
+        $run->events()->create([
+            'sequence' => 2,
+            'type' => 'run.completed',
+            'phase' => 'run',
+            'locale' => 'it-IT',
+            'message_key' => 'run.completed',
+            'message_params' => [],
+            'message' => 'La risposta è pronta.',
+            'payload_json' => [
+                'progress' => null,
+                'can_cancel' => false,
+                'data' => ['response' => ['answer' => 'payload duplicato']],
+            ],
+        ]);
+        Message::create([
+            'conversation_id' => $this->conversation->id,
+            'agent_run_id' => $run->id,
+            'role' => 'assistant',
+            'content' => 'La spedizione è stata consegnata.',
+            'metadata' => ['agent_run_id' => $run->run_id, 'provider' => 'agent'],
+        ]);
+
+        $message = $this->actingAs($this->user)
+            ->getJson('/conversations/'.$this->conversation->id.'/messages')
+            ->assertOk()
+            ->json('0');
+
+        $this->assertSame('tool.completed', data_get($message, 'metadata.agent_activity.0.type'));
+        $this->assertSame('HubHive', data_get($message, 'metadata.agent_activity.0.data.mcp_server_name'));
+        $this->assertSame(77, data_get($message, 'metadata.agent_activity.0.data.mcp_debug.parameters.shipment_id'));
+        $this->assertSame('run.completed', data_get($message, 'metadata.agent_activity.1.type'));
+        $this->assertSame([], data_get($message, 'metadata.agent_activity.1.data'));
+        $this->assertArrayNotHasKey('agent_run_id', $message);
     }
 }
