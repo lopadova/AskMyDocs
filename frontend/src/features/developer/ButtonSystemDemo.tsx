@@ -21,7 +21,7 @@ export function ButtonSystemDemo(): ReactNode {
                         <h1>Quiet precision, tactile response.</h1>
                         <p>
                             One disciplined action language for light and dark surfaces. The double
-                            hairline gives definition; motion confirms intent without competing with content.
+                            hairline gives definition; light confirms intent without competing with content.
                         </p>
                     </div>
                     <Button variant="primary" size="lg" leadingIcon={<Icon.Plus size={16} />}>
@@ -129,7 +129,7 @@ export function ButtonSystemDemo(): ReactNode {
                     <li><strong>Outer edge</strong><span>Separates the control from any surface.</span></li>
                     <li><strong>Inner hairline</strong><span>Adds tactile definition without gloss.</span></li>
                     <li><strong>Optical type</strong><span>Sentence case, compact weight, stable line height.</span></li>
-                    <li><strong>Measured motion</strong><span>One pixel of travel confirms interaction.</span></li>
+                    <li><strong>Light response</strong><span>Hover changes luminance without moving the control.</span></li>
                 </ol>
             </section>
         </main>
