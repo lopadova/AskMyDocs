@@ -1,9 +1,17 @@
 import { render, screen } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import type { Message } from './chat.api';
 import { MessageBubble } from './MessageBubble';
 
-describe('MessageBubble artifact selections', () => {
+function renderWithClient(ui: ReactElement) {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+}
+
+describe('MessageBubble', () => {
     it('hides the model JSON and renders a readable selection receipt', () => {
         const message: Message = {
             id: 120,
@@ -71,11 +79,27 @@ describe('MessageBubble artifact selections', () => {
             created_at: '2026-08-21T09:00:00+00:00',
         };
 
-        render(<MessageBubble conversationId={8} message={message} />);
+        renderWithClient(<MessageBubble conversationId={8} message={message} />);
 
         expect(screen.getByText('Selection saved')).toBeInTheDocument();
         expect(screen.getByText('alice@example.test')).toBeInTheDocument();
         expect(screen.queryByText('[REDACTED]')).not.toBeInTheDocument();
         expect(screen.queryByText(/api_key/)).not.toBeInTheDocument();
+    });
+
+    it('uses a semantic, neutral agent avatar for assistant replies', () => {
+        const message: Message = {
+            id: 122,
+            role: 'assistant',
+            content: 'Done.',
+            metadata: null,
+            rating: null,
+            created_at: '2026-08-21T09:00:00+00:00',
+        };
+
+        renderWithClient(<MessageBubble conversationId={8} message={message} />);
+
+        expect(screen.getByTestId('chat-agent-avatar')).toHaveClass('chat-agent-avatar');
+        expect(screen.getByTestId('chat-agent-avatar').querySelector('svg')).toBeInTheDocument();
     });
 });

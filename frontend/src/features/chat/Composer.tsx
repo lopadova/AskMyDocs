@@ -242,6 +242,7 @@ export function Composer({
     };
 
     const serverError = error ? (error.message ?? 'Provider returned an error.') : null;
+    const visibleLocalError = localError?.trim() === serverError?.trim() ? null : localError;
 
     return (
         <div className="chat-composer-shell" style={{ padding: '12px 24px 18px' }}>
@@ -433,13 +434,13 @@ export function Composer({
                     )}
                 </div>
                 </form>
-                {localError && (
+                {visibleLocalError && (
                     <div
                         data-testid="message-error"
                         role="alert"
                         style={{ marginTop: 8, fontSize: 12, color: 'var(--err)' }}
                     >
-                        {localError}
+                        {visibleLocalError}
                     </div>
                 )}
                 {serverError && (
