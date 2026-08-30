@@ -100,6 +100,7 @@ describe('MessageBubble', () => {
         renderWithClient(<MessageBubble conversationId={8} message={message} />);
 
         expect(screen.getByTestId('chat-agent-avatar')).toHaveClass('chat-agent-avatar');
+        expect(screen.getByTestId('chat-agent-avatar')).toHaveAttribute('data-agent-mark', 'sparkles');
         expect(screen.getByTestId('chat-agent-avatar').querySelector('svg')).toBeInTheDocument();
     });
 });

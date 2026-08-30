@@ -62,6 +62,10 @@ describe('MessageThread agent activity', () => {
         const assistant = message(11, 'assistant', 'La spedizione è stata consegnata.', {
             agent_run_id: 'run-1',
             agent_activity: [completedEvent],
+            tool_calls: [
+                { id: 'tool-orders', name: 'mcp_hubhive_orders_list', status: 'completed' },
+                { id: 'tool-orders', name: 'mcp_hubhive_orders_list', status: 'completed' },
+            ],
         });
 
         const { container } = renderThread(
@@ -79,6 +83,8 @@ describe('MessageThread agent activity', () => {
         ))).toEqual(['user', 'agent-activity-bar', 'assistant']);
         expect(screen.getByTestId('agent-activity-heading')).toHaveTextContent('Risultato pronto');
         expect(screen.getByText('La spedizione è stata consegnata.')).toBeInTheDocument();
+        expect(screen.queryByTestId('chat-message-11-tool-calls')).not.toBeInTheDocument();
+        expect(screen.queryByText('mcp_hubhive_orders_list')).not.toBeInTheDocument();
     });
 
     it('shows the live activity immediately after the active user request', () => {

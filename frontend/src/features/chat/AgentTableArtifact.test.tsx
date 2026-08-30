@@ -56,7 +56,12 @@ describe('AgentTableArtifact', () => {
 
         expect(screen.queryByText('Scegli un risultato')).not.toBeInTheDocument();
         expect(screen.getByText('Apri una riga per i dettagli')).toBeInTheDocument();
-        expect(screen.getAllByRole('button', { name: /^Apri:/ })).toHaveLength(2);
+        expect(screen.getByRole('columnheader', { name: 'Azione' })).toHaveClass('agent-table-artifact-action-heading');
+        const actions = screen.getAllByRole('button', { name: /^Apri:/ });
+        expect(actions).toHaveLength(2);
+        expect(actions[0]).toHaveAttribute('data-variant', 'secondary');
+        expect(actions[0]).toHaveAttribute('data-size', 'sm');
+        expect(actions[0].closest('td')).toHaveClass('agent-table-artifact-action');
     });
 
     it('humanizes technical titles and formats ISO timestamps for readability', () => {

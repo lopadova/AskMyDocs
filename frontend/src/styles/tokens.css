@@ -1172,18 +1172,32 @@ textarea:focus-visible {
 @media (hover: none) { .chat-user-edit { opacity: 1; } }
 
 .chat-agent-avatar {
-  width: 30px;
-  height: 30px;
-  flex: 0 0 30px;
+  position: relative;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
   display: grid;
   place-items: center;
-  color: var(--accent-a);
-  background: color-mix(in srgb, var(--panel-solid) 92%, var(--accent-a) 8%);
-  border: 1px solid color-mix(in srgb, var(--accent-a) 24%, var(--panel-border));
+  color: color-mix(in srgb, var(--accent-a) 62%, var(--fg-1));
+  background:
+    radial-gradient(circle at 34% 28%, color-mix(in srgb, white 34%, transparent), transparent 38%),
+    color-mix(in srgb, var(--panel-solid) 95%, var(--accent-a) 5%);
+  border: 1px solid color-mix(in srgb, var(--accent-a) 18%, var(--panel-border-strong));
   border-radius: 50%;
-  box-shadow: inset 0 1px 0 color-mix(in srgb, white 26%, transparent), var(--shadow-sm);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, white 18%, transparent), 0 4px 12px -10px rgba(var(--accent-glow), .72);
 }
-.chat-agent-avatar svg { display: block; }
+.chat-agent-avatar::after {
+  content: "";
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  width: 4px;
+  height: 4px;
+  background: var(--ok);
+  border: 1.5px solid var(--panel-solid);
+  border-radius: 50%;
+}
+.chat-agent-avatar svg { display: block; transform: translate(-.25px, -.25px); }
 
 /* Chat shell: every vertical region owns its space. min-height: 0 is
    essential for the message thread to scroll inside the viewport instead
@@ -2535,59 +2549,48 @@ textarea:focus-visible {
   box-shadow: inset 2px 0 0 color-mix(in srgb, var(--ok) 70%, transparent);
 }
 .agent-table-artifact-action {
-  width: 1%;
+  position: sticky;
+  right: 0;
+  z-index: 3;
+  width: 104px;
+  min-width: 104px;
+  max-width: 104px;
+  background: var(--panel-solid);
+  box-shadow: -14px 0 18px -18px rgba(0,0,0,.68), -1px 0 0 var(--hairline);
   text-align: right;
   white-space: nowrap;
 }
+.agent-table-artifact-action-heading {
+  right: 0;
+  z-index: 4 !important;
+  width: 104px;
+  min-width: 104px;
+  max-width: 104px;
+  background: color-mix(in srgb, var(--bg-2) 96%, var(--panel-solid) 4%) !important;
+  box-shadow: -14px 0 18px -18px rgba(0,0,0,.68), -1px 0 0 var(--hairline);
+  text-align: right !important;
+}
+.agent-table-artifact tbody tr:nth-child(even) .agent-table-artifact-action {
+  background: color-mix(in srgb, var(--bg-2) 35%, var(--panel-solid));
+}
+.agent-table-artifact tbody tr.is-selectable:hover .agent-table-artifact-action {
+  background: color-mix(in srgb, var(--accent-a) 6%, var(--bg-2));
+}
+.agent-table-artifact tbody tr[data-selected="true"] .agent-table-artifact-action {
+  background: color-mix(in srgb, var(--ok) 7%, var(--panel-solid));
+}
 .agent-table-artifact-select {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  min-width: 76px;
-  height: 29px;
-  padding: 0 9px 0 10px;
-  color: var(--fg-1);
-  background: var(--bg-2);
-  border: 1px solid var(--panel-border-strong);
-  border-radius: 8px;
-  box-shadow: 0 1px 1px rgba(0,0,0,.08);
-  cursor: pointer;
-  font: 620 11px/1 var(--font-sans);
-  white-space: nowrap;
-  transition: color .15s ease, background .15s ease, border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+  min-width: 80px;
 }
 .agent-table-artifact[data-interaction-mode="selection"] .agent-table-artifact-select[data-state="idle"] {
   color: color-mix(in srgb, var(--fg-0) 84%, var(--accent-mid));
-  background: color-mix(in srgb, var(--accent-a) 8%, var(--bg-2));
   border-color: color-mix(in srgb, var(--accent-a) 28%, var(--panel-border));
 }
-.agent-table-artifact-select:hover:not(:disabled),
-.agent-table-artifact-select:focus-visible {
-  color: var(--fg-0);
-  background: var(--bg-3);
-  border-color: color-mix(in srgb, var(--accent-a) 35%, var(--panel-border-strong));
-  box-shadow: 0 4px 12px -8px rgba(var(--accent-glow), .65);
-  outline: none;
-  transform: translateY(-1px);
-}
-.agent-table-artifact-select:focus-visible {
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-a) 15%, transparent);
-}
-.agent-table-artifact-select:disabled { cursor: default; opacity: .48; }
 .agent-table-artifact-select[data-state="selected"] {
   color: var(--ok);
   background: color-mix(in srgb, var(--ok) 7%, var(--bg-2));
   border-color: color-mix(in srgb, var(--ok) 24%, var(--panel-border));
   opacity: 1;
-}
-.agent-table-artifact-spinner {
-  width: 11px;
-  height: 11px;
-  border: 1.5px solid color-mix(in srgb, currentColor 28%, transparent);
-  border-top-color: currentColor;
-  border-radius: 50%;
-  animation: agent-table-spin .65s linear infinite;
 }
 .agent-table-artifact-success,
 .agent-table-artifact-error {
@@ -2606,16 +2609,11 @@ textarea:focus-visible {
   color: var(--err);
   border-top: 1px solid color-mix(in srgb, var(--err) 30%, transparent);
 }
-@keyframes agent-table-spin { to { transform: rotate(360deg); } }
-
 :root[data-theme="light"] .agent-table-artifact {
   box-shadow: 0 8px 24px -20px rgba(25,25,55,.28), 0 1px 2px rgba(25,25,55,.05);
 }
 :root[data-theme="light"] .agent-table-artifact-header {
   background: color-mix(in srgb, var(--panel-solid) 97%, var(--accent-a) 3%);
-}
-:root[data-theme="light"] .agent-table-artifact-select {
-  box-shadow: 0 1px 2px rgba(25,25,55,.06);
 }
 
 .chat-user-row > [data-selection-receipt="true"] {
@@ -2967,7 +2965,6 @@ textarea:focus-visible {
   .agent-activity-stage-icon[data-live="true"] svg,
   .agent-activity-live,
   .agent-activity-details,
-  .agent-table-artifact-spinner,
   .chat-live-source-popover,
   .chat-composer-error-popover { animation: none; }
 }
