@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "7b529fe5bbf9cdfc917b846392ac383d",
+    "content-hash": "bc8ccd1ba0e9ff3996a271c978907cf3",
     "packages": [
         {
             "name": "aws/aws-crt-php",
@@ -1207,20 +1207,20 @@
         },
         {
             "name": "laravel/ai",
-            "version": "v0.8.1",
+            "version": "v0.11.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/laravel/ai.git",
-                "reference": "b23bc857576d7c4b3bb52ffd8be936ae74005d23"
+                "reference": "dd08142f0c4dc4d5544521ce3fc4a1b9c2fe748c"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/laravel/ai/zipball/b23bc857576d7c4b3bb52ffd8be936ae74005d23",
-                "reference": "b23bc857576d7c4b3bb52ffd8be936ae74005d23",
+                "url": "https://api.github.com/repos/laravel/ai/zipball/dd08142f0c4dc4d5544521ce3fc4a1b9c2fe748c",
+                "reference": "dd08142f0c4dc4d5544521ce3fc4a1b9c2fe748c",
                 "shasum": ""
             },
             "require": {
-                "aws/aws-sdk-php": "^3.339",
+                "aws/aws-sdk-php": "^3.369.1",
                 "illuminate/console": "^12.0|^13.0",
                 "illuminate/container": "^12.0|^13.0",
                 "illuminate/contracts": "^12.0|^13.0",
@@ -1233,13 +1233,15 @@
                 "php": "^8.3"
             },
             "require-dev": {
+                "driftingly/rector-laravel": "^2.5",
                 "laravel/mcp": "^0.8",
                 "laravel/pint": "^1.26",
                 "mockery/mockery": "^1.6.12",
                 "orchestra/testbench": "^10.6|^11.0",
                 "pestphp/pest": "^3.0|^4.0",
                 "pestphp/pest-plugin-laravel": "^3.0|^4.0",
-                "phpstan/phpstan": "^2.1"
+                "phpstan/phpstan": "^2.1",
+                "rector/rector": "^2.5"
             },
             "suggest": {
                 "laravel/mcp": "Required to use MCP client tools or MCP server tools with Laravel AI agents."
@@ -1277,7 +1279,7 @@
                 "issues": "https://github.com/laravel/ai/issues",
                 "source": "https://github.com/laravel/ai"
             },
-            "time": "2026-06-10T11:23:35+00:00"
+            "time": "2026-08-19T03:03:13+00:00"
         },
         {
             "name": "laravel/framework",
@@ -4206,16 +4208,16 @@
         },
         {
             "name": "padosoft/laravel-ai-guardrails",
-            "version": "v1.5.0",
+            "version": "v1.6.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/padosoft/laravel-ai-guardrails.git",
-                "reference": "b272f6f342dd3bcd2aa80faed267b4d55a6364f5"
+                "reference": "4992e1025662f8c811dec25637ff284b6db3f464"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/padosoft/laravel-ai-guardrails/zipball/b272f6f342dd3bcd2aa80faed267b4d55a6364f5",
-                "reference": "b272f6f342dd3bcd2aa80faed267b4d55a6364f5",
+                "url": "https://api.github.com/repos/padosoft/laravel-ai-guardrails/zipball/4992e1025662f8c811dec25637ff284b6db3f464",
+                "reference": "4992e1025662f8c811dec25637ff284b6db3f464",
                 "shasum": ""
             },
             "require": {
@@ -4224,7 +4226,7 @@
                 "illuminate/contracts": "^13.0",
                 "illuminate/database": "^13.0",
                 "illuminate/support": "^13.0",
-                "laravel/ai": "^0.8",
+                "laravel/ai": "^0.8|^0.9|^0.10|^0.11",
                 "php": "^8.3"
             },
             "require-dev": {
@@ -4278,7 +4280,7 @@
                 "issues": "https://github.com/padosoft/laravel-ai-guardrails/issues",
                 "source": "https://github.com/padosoft/laravel-ai-guardrails"
             },
-            "time": "2026-08-26T11:32:47+00:00"
+            "time": "2026-08-30T14:11:48+00:00"
         },
         {
             "name": "padosoft/laravel-ai-guardrails-admin",
@@ -4342,22 +4344,22 @@
         },
         {
             "name": "padosoft/laravel-ai-regolo",
-            "version": "v1.3.0",
+            "version": "v2.0.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/padosoft/laravel-ai-regolo.git",
-                "reference": "e0bf3663f34902ce07411d29237d2a2893022bc6"
+                "reference": "a4eb04425fe08b3a84bb0edf25927cdbb2f9099c"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/padosoft/laravel-ai-regolo/zipball/e0bf3663f34902ce07411d29237d2a2893022bc6",
-                "reference": "e0bf3663f34902ce07411d29237d2a2893022bc6",
+                "url": "https://api.github.com/repos/padosoft/laravel-ai-regolo/zipball/a4eb04425fe08b3a84bb0edf25927cdbb2f9099c",
+                "reference": "a4eb04425fe08b3a84bb0edf25927cdbb2f9099c",
                 "shasum": ""
             },
             "require": {
                 "illuminate/http": "^12.0|^13.0",
                 "illuminate/support": "^12.0|^13.0",
-                "laravel/ai": "^0.6|^0.7|^0.8.1",
+                "laravel/ai": "^0.11",
                 "php": "^8.3"
             },
             "require-dev": {
@@ -4406,9 +4408,9 @@
             ],
             "support": {
                 "issues": "https://github.com/padosoft/laravel-ai-regolo/issues",
-                "source": "https://github.com/padosoft/laravel-ai-regolo/tree/v1.3.0"
+                "source": "https://github.com/padosoft/laravel-ai-regolo/tree/v2.0.0"
             },
-            "time": "2026-07-24T14:00:10+00:00"
+            "time": "2026-08-30T14:15:51+00:00"
         },
         {
             "name": "padosoft/laravel-evidence-risk-review",
