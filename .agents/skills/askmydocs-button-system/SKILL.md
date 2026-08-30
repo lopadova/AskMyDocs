@@ -13,7 +13,7 @@ Create buttons that feel precise and quiet: obvious hierarchy, compact geometry,
 - Treat the global `.btn` class as a compatibility layer for legacy call sites, not the preferred API.
 - Use the shared variants (`primary`, `secondary`, `quiet`, `danger`) and sizes (`sm`, `md`, `lg`) before adding contextual classes.
 - Keep contextual CSS limited to layout or exceptional semantic color. Do not redefine radius, shadow, padding, or interaction motion per screen.
-- Review the live specimen at `/app/{teamHash}/developer/buttons` when visual judgment is needed.
+- Review the super-admin UI Foundations specimen at `/app/{teamHash}/developer/ui` when visual judgment is needed (`/developer/buttons` remains a compatibility alias).
 
 ## Establish hierarchy before styling
 
