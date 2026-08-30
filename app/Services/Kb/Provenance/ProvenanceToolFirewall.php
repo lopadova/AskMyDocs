@@ -51,7 +51,7 @@ final class ProvenanceToolFirewall
      */
     public function assess(SearchResult $result): ToolFirewallVerdict
     {
-        if (! (bool) config('kb.provenance.tool_firewall.enabled', false)) {
+        if (! (bool) config('kb.provenance.tool_firewall.enabled', true)) {
             return ToolFirewallVerdict::disabled();
         }
 
@@ -105,7 +105,7 @@ final class ProvenanceToolFirewall
      */
     public function enabled(): bool
     {
-        return (bool) config('kb.provenance.tool_firewall.enabled', false);
+        return (bool) config('kb.provenance.tool_firewall.enabled', true);
     }
 
     /**

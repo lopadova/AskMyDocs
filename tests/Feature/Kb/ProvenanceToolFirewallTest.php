@@ -46,25 +46,29 @@ final class ProvenanceToolFirewallTest extends TestCase
 
         $this->tenantId = app(TenantContext::class)->current();
 
-        // The firewall ships OFF (ADR 0028), so every test that exercises it
-        // has to switch it on explicitly. The default is asserted separately
-        // below, rather than left as an implicit property of the other tests.
+        // Set explicitly rather than relying on the default, so these tests
+        // keep exercising the firewall even if the shipped default is ever
+        // changed again. The default itself is asserted on its own below.
         config()->set('kb.provenance.tool_firewall.enabled', true);
     }
 
-    public function test_it_ships_switched_off(): void
+    public function test_it_ships_switched_on(): void
     {
-        // R43 — the OFF path is what every fresh deploy runs, and the state
-        // ADR 0028 specifies for this phase: switching it on changes agent
-        // behaviour on upgrade for anyone already ingesting email, which is a
-        // product decision rather than a deployment detail.
+        // R43 — the ON path is what every fresh deploy now runs, and that is a
+        // deliberate departure from ADR 0028's "default OFF" taken by the
+        // product owner: a security control that ships off protects nobody
+        // until somebody remembers to switch it on.
+        //
+        // Asserted rather than assumed, because the default IS the decision.
+        // The OFF path is covered separately below, so both states are
+        // exercised whichever way a deployment sets it.
         config()->offsetUnset('kb.provenance');
         $this->refreshApplication();
         config()->set('mcp.enabled', true);
 
-        $this->assertFalse(
+        $this->assertTrue(
             config('kb.provenance.tool_firewall.enabled'),
-            'The firewall default changed without the ADR changing with it.',
+            'The firewall default changed without the decision changing with it.',
         );
     }
 

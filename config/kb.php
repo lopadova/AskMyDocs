@@ -1148,19 +1148,30 @@ return [
             | usual -- but the tool loop is withheld for that turn. Quoting is
             | what the corpus is for; acting is what an attacker wants.
             |
-            | Default OFF, as ADR 0028 specifies for this phase. Switching it
-            | on changes agent behaviour on upgrade for anyone already
-            | ingesting email -- turns grounded in a message stop being able
-            | to act -- and that is a product decision rather than a
-            | deployment detail, so it is made deliberately rather than
-            | inherited.
+            | Default ON, which DEPARTS from ADR 0028's "default OFF" for this
+            | phase. The departure is deliberate and was taken by the product
+            | owner rather than inherited from a release.
             |
-            | It costs nothing on a corpus with no externally authored
+            | The ADR's caution was about behaviour change on upgrade, and it
+            | is real: for a deployment already ingesting email, turns grounded
+            | in a message stop being able to act. But a security control that
+            | ships off protects nobody until somebody remembers to switch it
+            | on, and the chain it closes is not hypothetical -- it is three
+            | ordinary facts about this product composing into an injection
+            | path with no boundary in between.
+            |
+            | The cost is bounded and the direction is safe: the answer is
+            | still produced from the same context with the same citations,
+            | only the tools are withheld, and the turn fails closed rather
+            | than acting on a stranger's instructions.
+            |
+            | It costs nothing at all on a corpus with no externally authored
             | documents, which is every corpus that has not configured a
             | connector declaring one: the check is a NULL test on an indexed
-            | column.
+            | column. Set the env var to false to restore the pre-v8.34
+            | behaviour exactly.
             */
-            'enabled' => (bool) env('KB_PROVENANCE_TOOL_FIREWALL', false),
+            'enabled' => (bool) env('KB_PROVENANCE_TOOL_FIREWALL', true),
         ],
     ],
 ];
