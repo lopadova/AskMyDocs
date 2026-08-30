@@ -91,6 +91,9 @@ final class AdminAuthorizationMatrixTest extends TestCase
             '/api/admin/kb/autowiki-settings' => ['admin', 'super-admin'],
             '/api/admin/kb/content-gaps' => ['admin', 'super-admin'],
             '/api/admin/kb/evidence-tiers' => ['admin', 'super-admin'],
+            // v8.32 / ADR 0028 phase 1 — corpus provenance read-out.
+            '/api/admin/kb/provenance' => ['admin', 'super-admin'],
+            '/api/admin/kb/source-acl' => ['admin', 'super-admin'],
             '/api/admin/kb/wiki-index' => ['admin', 'super-admin'],
             '/api/admin/kb/wiki-operations' => ['admin', 'super-admin'],
             '/api/admin/kb/wiki-lint' => ['admin', 'super-admin'],

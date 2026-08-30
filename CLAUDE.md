@@ -94,7 +94,7 @@ kb:delete / DELETE /api/kb/documents / --prune-orphans / kb:prune-deleted
 | HTTP entrypoints | `app/Http/Controllers/Api/*.php` |
 | Artisan | `app/Console/Commands/*.php` |
 | Chat logging | `app/Services/ChatLog/*` + `app/Models/ChatLog.php` |
-| MCP | `app/Mcp/Servers/KnowledgeBaseServer.php`, `app/Mcp/Tools/*` (47 tools: retrieval + canonical/promote + auto-wiki + engagement + the v8.16/W4 AI FinOps read surfaces `FinOps{SpendSummary,TopModels,BudgetStatus}Tool` + the v8.18/W4 AI gamification read surface `KbGamificationInsightsTool` + the v8.19/W4 Agentic Knowledge Reports read surface `KbRunReportTool` + the v8.20 multi-account connectors read surface `ConnectorInstallationsTool` + the v8.21 ingestion/sync observability read surface `KbIngestionStatusTool` + the v8.22 runtime config governance read surface `AppSettingsTool` + the v8.23 PII tri-surface `Kb{PiiPolicy,Detokenize,EraseSubject,ReembedProject}Tool` + the v8.25 connector sync-settings read surface `ConnectorSettingsTool` + the v8.27 API-connector read surface `ApiConnectorsTool` + the widget welcome read surface `WidgetIntroConfigTool` + the `padosoft/laravel-invitations` tri-surface `Invite{ValidateCode,GenerateCodes,Metrics}Tool` (vendor-namespaced, registered on the host server); count locked by `tests/Unit/Mcp/KnowledgeBaseServerRegistrationTest.php`) |
+| MCP | `app/Mcp/Servers/KnowledgeBaseServer.php`, `app/Mcp/Tools/*` (48 tools: retrieval + canonical/promote + auto-wiki + engagement + the v8.16/W4 AI FinOps read surfaces `FinOps{SpendSummary,TopModels,BudgetStatus}Tool` + the v8.18/W4 AI gamification read surface `KbGamificationInsightsTool` + the v8.19/W4 Agentic Knowledge Reports read surface `KbRunReportTool` + the v8.20 multi-account connectors read surface `ConnectorInstallationsTool` + the v8.21 ingestion/sync observability read surface `KbIngestionStatusTool` + the durable windowed IMAP backfill control surface `KbImapBackfillTool` + the v8.22 runtime config governance read surface `AppSettingsTool` + the v8.23 PII tri-surface `Kb{PiiPolicy,Detokenize,EraseSubject,ReembedProject}Tool` + the v8.25 connector sync-settings read surface `ConnectorSettingsTool` + the v8.27 API-connector read surface `ApiConnectorsTool` + the widget welcome read surface `WidgetIntroConfigTool` + the `padosoft/laravel-invitations` tri-surface `Invite{ValidateCode,GenerateCodes,Metrics}Tool` (vendor-namespaced, registered on the host server); count locked by `tests/Unit/Mcp/KnowledgeBaseServerRegistrationTest.php`) |
 | API connector (`padosoft/askmydocs-connector-api`, v8.27 — "Connettore API") | A NEW connector paradigm: instead of ingesting, each configured HTTP **endpoint (Rotta)** becomes a **live LLM tool** callable during chat (RAG + fresh API data in parallel). Package distributed from `padosoft/askmydocs-connector-api`: 5 tenant-aware tables (`api_connectors`, `api_auth_profiles` [`credentials` `encrypted:array`], `api_routes`, `api_route_parameters`, `api_tool_call_logs`), services `UrlGuard` (SSRF — the host's only outbound-URL guard), `ApiRouteTester`, `SchemaInferrer`, `ToolDefinitionGenerator` (+ host-bound `ToolDescriptionAssistant`), `ApiToolExecutor` (retry/cache/rate-limit/output-cap/sanitised log), `ApiToolRegistry`, auth strategies (none/api_key/bearer/basic/custom/oauth2_cc), and the admin HTTP surface. **Host integration**: `McpToolCallingService::buildToolIndex()` merges API tools (kind=api, gated by `connector-api.chat_tools.enabled`, R43) and dispatches them to `ApiToolExecutor`; routes mounted with the authenticated admin stack via `config/connector-api.php` (`can:manageConnectors`, R32 matrix row). Tri-surface (R44): artisan `api-connector:list`/`:test` + HTTP `/api/admin/api-connectors/*` + MCP `ApiConnectorsTool`, all over `ConnectorAdminService`. Fase 2 (ingest) is reserved via the `mode` column. |
 | Admin RBAC + auth | `app/Http/Controllers/Api/Admin/*.php`, `app/Services/Admin/*.php`, `app/Http/Requests/Admin/*.php`, `app/Http/Resources/Admin/*.php` |
 | Team (tenant) management (v8.28 — "Teams") | A "team" = a tenant (a `tenant_id`/`slug` string); its editable display **name** lives on the OPTIONAL vendor `tenants` row (`Padosoft\AiActCompliance\MultiTenancy\Models\Tenant` — `slug`, `name`, `status`), the same table `UserTeamsResolver` reads for the topbar switcher. Core: `app/Services/Admin/TeamRegistryService.php` (single shared core — `manageableTeams` / `create` [tenants row + initial project + membership for the acting user, atomic, `TenantContext` swapped around the writes; NO new user — that stays `company:create`] / `rename` [updates `tenants.name`, authorizes the TARGET team by explicit membership independently of the request `X-Tenant-Id`, 404 IDOR-safe]; `default` is reserved, non-operational and never selectable/creatable/renamable). Tri-surface **minus MCP by design (R44 exception, mirrors `ProjectController`)**: HTTP `app/Http/Controllers/Api/Admin/TeamController.php` (`GET/POST /api/admin/teams`, `PATCH /api/admin/teams/{slug}`, in the `role:admin|super-admin` group, R32 matrix row) + Artisan `CreateTeamCommand`/`RenameTeamCommand` (`team:create`/`team:rename`). OFF-path (R14/R43): `tenants` table absent → `TeamRegistryUnavailableException` → **503**, never a 500. FE `frontend/src/features/admin/teams/*` (route `admin/teams`, nav `Teams`); create/rename refetch `/api/auth/me` → `useAuthStore.setMe` to re-sync the switcher. |
@@ -783,9 +783,13 @@ full failure context first. Four sources, in order:
    the `✘` lines, the spec:line that failed, and the error excerpt.
    60% of the time this clusters the failures by root cause already.
 2. **Playwright HTML report artefact** — `tests.yml` uploads
-   `playwright-report/` on failure (retention 7d). Either:
-   - GitHub UI: PR → failed job → Artifacts → `playwright-report.zip`
-   - Or `gh run download <run-id> --name playwright-report --dir /tmp/...`
+   the report on failure (retention 7d). The job is sharded, so each shard
+   uploads its own artefact named `playwright-report-shard-<n>` — a failing
+   test lives in exactly one of them, and the failed-job log names the shard.
+   Either:
+   - GitHub UI: PR → failed job → Artifacts → `playwright-report-shard-<n>.zip`
+   - One shard: `gh run download <run-id> --name playwright-report-shard-2 --dir /tmp/...`
+   - All of them: `gh run download <run-id> --pattern 'playwright-report-shard-*' --dir /tmp/...`
    Inside the zip, `data/<hash>.md` files are the per-test error
    contexts (locator, timeout, page snapshot URL, screenshot path).
    Read them BEFORE diffing code — the snapshot often shows the page
@@ -956,6 +960,41 @@ config MUST be loaded in `tests/TestCase.php::getEnvironmentSetUp`
 (Testbench does NOT auto-load host `config/`) so the matrix verifies the
 SECURE config, not the package default.
 → See `.claude/skills/rbac-authorization-matrix/SKILL.md`.
+
+### R33 — Authorization that must hold for retrieval belongs in SQL, not only in the policy
+An authorization arm enforced by a **policy** is enforced only for callers that
+go through the Gate. The RAG hot path does not: retrieval resolves chunks with
+`KnowledgeChunk::whereHas('document', …)` and never calls
+`KnowledgeDocumentPolicy`. Any arm of `User::hasDocumentAccess()` left out of
+`AccessScopeScope` is therefore **not enforced for grounding** — the model
+receives the chunks and cites them.
+
+So: every authorization arm that must hold for retrieval MUST be pushed into
+the global scope's SQL in the SAME PR that introduces it, with a regression
+test that queries **through the relationship** (`whereHas`) rather than through
+the controller — a controller test passes on the policy alone and proves
+nothing about the hot path.
+
+`User::hasDocumentAccess()` stays authoritative, and the SQL must never be
+**wider** than it. A superset is not an acceptable fallback here: it is safe
+only when something narrows it afterwards, and the retrieval path has nothing
+— that is the whole premise of this rule. So where a construct cannot be
+expressed exactly in portable SQL it MUST **fail closed** (grant nothing) and
+say so in the code and the docs; see `ScopeAllowlistSql::isExact()`, which
+reports the one glob shape mixing single- and cross-segment wildcards.
+Emit an always-false arm rather than no arm — an empty `where` group is
+dropped by the query builder and reads as "no restriction", inverting the
+control. A subject with no restriction of this kind MUST generate the
+identical query as before, so the rule costs nothing on the paths it does not
+constrain.
+
+Graded on **blast radius**: this is the shape of the H8 finding (role-deny ACL
+ignored by the global scope — "only caught by the per-row policy check, which
+the hot retrieval path skips"), and the v8.31 scope-allowlist arm was the same
+bug one arm later — a member scoped to `hr/policies/**` still received
+`hr/salaries/**` chunks as grounding, with citations. Two arms of one method,
+the same omission, found two audits apart.
+→ See `app/Support/ScopeAllowlistSql.php` + `tests/Feature/Kb/RetrievalScopeAllowlistTest.php`.
 
 ### R37 — Branching strategy: `feature/v4.x` integration branches → main
 For AskMyDocs, `main` holds the **stable production release** (v3 today,
@@ -1690,7 +1729,7 @@ change must keep that matrix synchronized and pass `npm run security:rules`.
   single helper for path normalization (`KbPath`), a single deletion service
   (`DocumentDeleter`), a single ingestion path (`DocumentIngestor`). Plug
   into those instead of cloning logic.
-- Follow **every R-rule above (R1–R32 + R36–R46 are the populated set; R33–R35 are intentionally unallocated)** before opening a PR —
+- Follow **every R-rule above (R1–R33 + R36–R46 are the populated set; R34–R35 are intentionally unallocated)** before opening a PR —
   R1..R21 exist because Copilot caught them the first time. R14..R21
   were distilled at PR16 from ~110 live Copilot findings across
   PRs #16..#31; see `docs/enhancement-plan/COPILOT-FINDINGS.md` for the

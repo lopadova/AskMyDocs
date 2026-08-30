@@ -39,6 +39,7 @@ final class TenantReadScopeTest extends TestCase
         'EngagementDigestFeedEntry', 'KbCollectionMember', 'KbContributionEvent', 'KbDocAnalysis', 'KbDocAnalysisApplication', 'KbEdge', 'KbEngagementSnapshot', 'KbGamificationInsight', 'KbIngestBatch',
         'KbIngestBatchItem', 'KbNode', 'KbPiiSetting', 'KbSearchFailure', 'KbSynonym', 'KbTag', 'KbUserBadge', 'KbWikiIndex', 'KnowledgeChunk',
         'KnowledgeDocument', 'KnowledgeDocumentAcl', 'McpServer',
+        'UnmappedSourcePrincipal',
         'McpTenantToken', 'McpToolCallAudit', 'Message', 'NotificationDigest',
         'NotificationEvent', 'NotificationPreference', 'NotificationTenantDefault',
         'AppSetting', 'ConnectorSyncRun', 'ImapBackfill', 'ImapBackfillWindow',

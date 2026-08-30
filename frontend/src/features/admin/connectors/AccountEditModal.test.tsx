@@ -1,3 +1,4 @@
+import type { ComponentProps } from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -81,7 +82,16 @@ function renderModal(h: Handlers = {}) {
             account={account()}
             projects={[]}
             initialTab={h.initialTab}
-            {...handlers}
+            // vitest 4 types a bare `vi.fn()` as Mock<Constructable | Procedure>
+            // rather than an any-shaped callable, so it no longer satisfies a
+            // specific prop signature. Every caller builds its spies with
+            // `vi.fn()`, and typing each one to its prop would obscure the
+            // tests for no benefit -- the assertions are about behaviour, and
+            // a wrong signature would fail them immediately.
+            {...(handlers as unknown as Pick<
+                ComponentProps<typeof AccountEditModal>,
+                'onSubmitDetails' | 'onSubmitConnection' | 'onTestConnection' | 'onSubmitSettings' | 'onClose'
+            >)}
         />,
     );
     return handlers;
@@ -107,7 +117,12 @@ describe('AccountEditModal', () => {
         // Details tab body: the metadata form, pre-filled with the label.
         expect(screen.getByTestId('connector-imap-account-form-label')).toHaveValue('Date');
         // v8.31 — the redesigned Details tab shows the two stat cards.
-        expect(screen.getByTestId('connector-account-7-edit-stat-documents')).toHaveTextContent('4,182');
+        // Locale-independent for the same reason as the sibling assertion in
+        // IngestionView.test.tsx: the component uses `toLocaleString()`, so a
+        // literal '4,182' only passes where the machine locale groups with
+        // commas.
+        expect(screen.getByTestId('connector-account-7-edit-stat-documents'))
+            .toHaveTextContent((4182).toLocaleString());
         expect(screen.getByTestId('connector-account-7-edit-stat-last-sync')).toHaveTextContent('Never');
     });
 
