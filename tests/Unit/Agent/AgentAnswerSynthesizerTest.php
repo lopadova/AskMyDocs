@@ -79,8 +79,11 @@ final class AgentAnswerSynthesizerTest extends TestCase
         $this->assertSame([12], array_column($answer->citations, 'document_id'));
         $this->assertSame([55], array_column($answer->toolSources, 'execution_id'));
         $this->assertArrayNotHasKey('result', $answer->toolSources[0]);
-        $this->assertStringContainsString('A-100', $answer->answer);
-        $this->assertStringContainsString('[EMAIL]', $answer->answer);
+        $this->assertSame(
+            'Ho organizzato i risultati nella tabella qui sotto: apri una riga per vedere i dettagli.',
+            $answer->answer,
+        );
+        $this->assertStringNotContainsString('A-100', $answer->answer);
         $this->assertStringNotContainsString('admin@example.com', $answer->answer);
         $this->assertStringContainsString('Bearer [TOKEN]', $answer->limitations[0]);
         $this->assertSame('view', data_get($answer->artifact, 'interaction_mode'));
@@ -139,8 +142,71 @@ final class AgentAnswerSynthesizerTest extends TestCase
         );
 
         $this->assertTrue($answer->requiresSelection);
+        $this->assertSame(
+            'Ho trovato più risultati possibili: scegli una riga per continuare.',
+            $answer->answer,
+        );
         $this->assertSame('selection', data_get($answer->artifact, 'interaction_mode'));
         $this->assertSame(['101', '102'], array_column(data_get($answer->artifact, 'rows'), 'key'));
+    }
+
+    public function test_it_never_repeats_collection_rows_in_text_when_an_artifact_is_rendered(): void
+    {
+        $evidence = app(AgentEvidenceFactory::class)->empty();
+        $tool = new AgentToolDefinition(
+            name: 'list_orders',
+            displayName: 'Orders list',
+            description: 'Latest orders',
+            kind: 'mcp',
+            inputSchema: ['type' => 'object'],
+            readOnly: true,
+            idempotent: true,
+            physicalMinimum: 1,
+            physicalLikely: 1,
+            physicalMaximum: 1,
+            executorReference: 11,
+        );
+        $evidence->addToolResult($tool, [], ['orders' => [
+            ['public_id' => 'ORDER-100', 'status' => 'paid', 'total' => 120],
+            ['public_id' => 'ORDER-101', 'status' => 'pending', 'total' => 80],
+        ]], 57);
+
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->once()->andReturn(new AiResponse(
+            content: '',
+            provider: 'fake',
+            model: 'fake-agent',
+            toolCalls: [[
+                'name' => 'submit_agent_answer',
+                'arguments' => [
+                    'answer' => "Ecco gli ultimi ordini:\n\n| ID | Stato | Totale |\n|---|---|---|\n| ORDER-100 | paid | 120 |\n| ORDER-101 | pending | 80 |",
+                    'completeness' => 'complete',
+                    'document_ids' => [],
+                    'tool_execution_ids' => [57],
+                    'limitations' => [],
+                    'requires_selection' => false,
+                    'render_table' => true,
+                ],
+            ]],
+        ));
+
+        $answer = (new AgentAnswerSynthesizer(
+            $ai,
+            app(WidgetPiiMasker::class),
+            app(AgentTableArtifactFactory::class),
+        ))->synthesize(
+            'Mostrami gli ultimi ordini',
+            $this->context(),
+            new AgentLoopOutcome('answer', $evidence, []),
+        );
+
+        $this->assertSame(
+            'Ho organizzato i risultati nella tabella qui sotto: apri una riga per vedere i dettagli.',
+            $answer->answer,
+        );
+        $this->assertStringNotContainsString('ORDER-100', $answer->answer);
+        $this->assertSame('view', data_get($answer->artifact, 'interaction_mode'));
+        $this->assertSame('ORDER-100', data_get($answer->artifact, 'rows.0.values.public_id'));
     }
 
     private function context(): AgentExecutionContext
