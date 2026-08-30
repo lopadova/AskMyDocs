@@ -67,14 +67,14 @@ export function ConversationTitle({ conversationId, title }: ConversationTitlePr
                     e.preventDefault();
                     save();
                 }}
-                style={{ display: 'flex', gap: 6, alignItems: 'center', minWidth: 0 }}
+                className="chat-title-edit"
             >
                 <input
                     ref={inputRef}
                     type="text"
                     data-testid="chat-title-input"
                     aria-label="Conversation title"
-                    className="input"
+                    className="chat-title-input"
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
                     onKeyDown={(e) => {
@@ -83,11 +83,10 @@ export function ConversationTitle({ conversationId, title }: ConversationTitlePr
                         }
                     }}
                     disabled={mutation.isPending}
-                    style={{ height: 26, fontSize: 13.5, minWidth: 220, maxWidth: 420 }}
                 />
                 <button
                     type="submit"
-                    className="btn icon sm ghost"
+                    className="chat-title-edit-action is-save"
                     data-testid="chat-title-save"
                     aria-label="Save title"
                     disabled={mutation.isPending}
@@ -96,7 +95,7 @@ export function ConversationTitle({ conversationId, title }: ConversationTitlePr
                 </button>
                 <button
                     type="button"
-                    className="btn icon sm ghost"
+                    className="chat-title-edit-action"
                     data-testid="chat-title-cancel"
                     aria-label="Cancel rename"
                     onClick={() => setEditing(false)}
@@ -108,7 +107,7 @@ export function ConversationTitle({ conversationId, title }: ConversationTitlePr
                     <span
                         role="alert"
                         data-testid="chat-title-error"
-                        style={{ fontSize: 11, color: 'var(--err)' }}
+                        className="chat-title-error"
                     >
                         Rename failed.
                     </span>
@@ -118,28 +117,20 @@ export function ConversationTitle({ conversationId, title }: ConversationTitlePr
     }
 
     return (
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center', minWidth: 0 }}>
+        <div className="chat-title-display">
             <span
                 data-testid="chat-title"
-                style={{
-                    fontSize: 13.5,
-                    fontWeight: 500,
-                    color: 'var(--fg-0)',
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    maxWidth: 360,
-                }}
+                className="chat-title-text"
+                title={title}
             >
                 {title}
             </span>
             <button
                 type="button"
-                className="btn icon sm ghost"
+                className="chat-title-rename"
                 data-testid="chat-title-rename"
                 aria-label="Rename conversation"
                 onClick={() => setEditing(true)}
-                style={{ padding: 3, flex: '0 0 auto' }}
             >
                 <Icon.Edit size={12} />
             </button>

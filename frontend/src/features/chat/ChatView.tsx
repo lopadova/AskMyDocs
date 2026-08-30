@@ -682,23 +682,33 @@ export function ChatView(): ReactNode {
                             )}
                         </div>
                         <div className="chat-header-meta">
-                            <span className="chat-header-meta-label">Project</span>
-                            <ProjectSelector
-                                value={projectScopeValue}
-                                projects={teamProjectKeys}
-                                allowAll
-                                onChange={handleScopeChange}
-                            />
-                            <span className="chat-header-meta-divider" aria-hidden="true" />
-                            <span className="chat-header-meta-label">Model</span>
-                            <span className="chat-model-chip">{headerMeta}</span>
+                            <div className="chat-header-context-pill" data-kind="project">
+                                <span className="chat-header-context-icon" aria-hidden="true">
+                                    <Icon.Folder size={11} />
+                                </span>
+                                <span className="chat-header-context-label">Project</span>
+                                <ProjectSelector
+                                    value={projectScopeValue}
+                                    projects={teamProjectKeys}
+                                    allowAll
+                                    onChange={handleScopeChange}
+                                />
+                            </div>
+                            <div className="chat-header-context-pill" data-kind="model">
+                                <span className="chat-header-context-icon" aria-hidden="true">
+                                    <Icon.Brain size={11} />
+                                </span>
+                                <span className="chat-header-context-label">Model</span>
+                                <span className="chat-model-chip">{headerMeta}</span>
+                            </div>
                         </div>
                     </div>
                     <button
                         type="button"
-                        className="btn icon sm ghost"
+                        className="chat-header-more"
                         data-testid="chat-header-more"
                         aria-label="Conversation actions"
+                        title="Conversation actions"
                     >
                         <Icon.MoreH size={14} />
                     </button>
