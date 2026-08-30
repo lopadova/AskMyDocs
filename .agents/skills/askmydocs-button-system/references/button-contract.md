@@ -8,7 +8,7 @@ Every button uses five deliberate layers:
 2. **Inner hairline** — a subtle highlight inset by one pixel; it supplies tactile definition without a glossy effect.
 3. **Surface** — a restrained vertical tone change, never a decorative rainbow gradient.
 4. **Content** — optically centered label and optional icon with no layout jump between states.
-5. **Elevation** — a short ambient shadow at rest, slightly stronger on hover, compressed on press.
+5. **Elevation** — a short ambient shadow at rest, a soft light response on hover, compressed on press.
 
 ## Hierarchy
 
@@ -23,18 +23,18 @@ Every button uses five deliberate layers:
 
 | Size | Height | Radius | Horizontal padding | Typical use |
 | --- | ---: | ---: | ---: | --- |
-| `sm` | 28 px | 8 px | 9 px | Dense toolbars, title actions |
-| `md` | 34 px | 9 px | 13 px | Default application actions |
-| `lg` | 40 px | 11 px | 17 px | Dialog confirmations, focused CTAs |
+| `sm` | 32 px | 7 px | 12 px | Dense toolbars, title actions |
+| `md` | 40 px | 8 px | 17 px | Default application actions |
+| `lg` | 46 px | 9 px | 22 px | Dialog confirmations, focused CTAs |
 
 - Icon-only buttons are square and use the selected size as both dimensions.
-- The default icon gap is 7 px; compact controls use 5 px.
-- Icons normally measure 12–16 px and inherit the label color.
+- The default icon gap is 8 px; compact controls use 7 px.
+- Icons normally measure 13–17 px and inherit the label color.
 - Preserve at least 8 px between adjacent independent buttons.
 
 ## Typography
 
-- Use the product sans font at approximately 590 weight.
+- Use the product sans font at approximately 610 weight and 13 px for the default size.
 - Use sentence case for ordinary actions: `New chat`, `Save changes`, `Review result`.
 - Labels should name the action, not the widget: prefer `Delete connection` over `Yes`.
 - Uppercase is an exception for short technical/status controls such as `API LIVE`; use tracking and keep labels concise.
@@ -42,7 +42,7 @@ Every button uses five deliberate layers:
 
 ## States
 
-- **Hover:** raise by one pixel and slightly clarify the edge.
+- **Hover:** do not move the control; increase luminance, edge clarity and ambient glow.
 - **Pressed:** lower by one pixel and compress the shadow.
 - **Focus-visible:** show a two-stage ring that is visible in both themes and does not rely on color alone.
 - **Disabled:** remove elevation, reduce saturation and block pointer activation.

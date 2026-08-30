@@ -36,7 +36,8 @@ Create buttons that feel precise and quiet: obvious hierarchy, compact geometry,
 - Support default, hover, active, focus-visible, disabled, and busy states.
 - Keep the layout stable while busy. Use the component `busy` prop rather than swapping in arbitrary loaders.
 - Retain the two-edge construction: an outer boundary plus a restrained inner hairline.
-- Keep motion to one optical pixel and remove it under `prefers-reduced-motion`.
+- Never translate a button on hover; use luminance, edge and glow changes instead.
+- Reserve at most one optical pixel of movement for the active press, and remove it under `prefers-reduced-motion`.
 - Verify contrast and edge definition in both light and dark themes.
 
 ## Audit nearby buttons
