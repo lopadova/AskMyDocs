@@ -151,9 +151,23 @@ final class AgentMessageControllerTest extends TestCase
                     'interaction_mode' => 'selection',
                     'source_execution_id' => 44,
                     'tool' => 'search-customers',
+                    'columns' => [
+                        ['key' => 'id', 'label' => 'ID'],
+                        ['key' => 'email', 'label' => 'Email'],
+                    ],
                     'rows' => [
-                        ['key' => '101', 'label' => 'Riccardo Lorini', 'record' => ['id' => 101, 'email' => 'first@example.test']],
-                        ['key' => '102', 'label' => 'Riccardo Lorini', 'record' => ['id' => 102, 'email' => 'second@example.test']],
+                        [
+                            'key' => '101',
+                            'label' => 'Riccardo Lorini',
+                            'values' => ['id' => 101, 'email' => 'first@example.test'],
+                            'record' => ['id' => 101, 'email' => 'first@example.test'],
+                        ],
+                        [
+                            'key' => '102',
+                            'label' => 'Riccardo Lorini',
+                            'values' => ['id' => 102, 'email' => 'second@example.test'],
+                            'record' => ['id' => 102, 'email' => 'second@example.test'],
+                        ],
                     ],
                 ],
             ],
@@ -171,7 +185,13 @@ final class AgentMessageControllerTest extends TestCase
         $this->assertSame(102, data_get($run->input_json, 'selection.record.id'));
         $this->assertSame(44, data_get($run->input_json, 'selection.source_execution_id'));
         $this->assertSame('search-customers', data_get($run->input_json, 'selection.tool'));
-        $this->assertSame(102, data_get($conversation->messages()->where('role', 'user')->sole()->metadata, 'agent_selection.record.id'));
+        $userMessage = $conversation->messages()->where('role', 'user')->sole();
+        $this->assertSame(102, data_get($userMessage->metadata, 'agent_selection.record.id'));
+        $this->assertSame('Email', data_get($userMessage->metadata, 'agent_selection.display.fields.1.label'));
+        $this->assertSame('second@example.test', data_get($userMessage->metadata, 'agent_selection.display.fields.1.value'));
+        $this->assertSame('Ho selezionato “Riccardo Lorini”.', $userMessage->content);
+        $this->assertStringNotContainsString('```json', $userMessage->content);
+        $this->assertStringNotContainsString('second@example.test', $userMessage->content);
         $this->assertStringContainsString('Ho selezionato questa riga:', data_get($run->input_json, 'question'));
         $this->assertStringContainsString('"id": 102', data_get($run->input_json, 'question'));
         $this->assertStringContainsString('"email": "second@example.test"', data_get($run->input_json, 'question'));

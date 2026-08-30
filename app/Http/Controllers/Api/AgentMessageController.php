@@ -52,14 +52,20 @@ final class AgentMessageController extends Controller
         $context = $contexts->forUser($user, $conversation->project_key);
         $content = $selection === null
             ? $validated['content']
-            : $this->selectionMessage($selection, $context->locale);
+            : $this->selectionDisplayMessage($selection, $context->locale);
+        $question = $selection === null
+            ? $content
+            : $this->selectionModelMessage($selection, $context->locale);
         $message = $conversation->messages()->create([
             'role' => 'user',
             'content' => $content,
-            'metadata' => $selection === null ? null : ['agent_selection' => $selection],
+            'metadata' => $selection === null ? null : [
+                'agent_selection' => $selection,
+                'locale' => $context->locale,
+            ],
         ]);
         $input = [
-            'question' => $content,
+            'question' => $question,
             'filters' => is_array($validated['filters'] ?? null) ? $validated['filters'] : [],
             'user_message_id' => $message->id,
         ];
@@ -139,11 +145,29 @@ final class AgentMessageController extends Controller
             'row_key' => $rowKey,
             'label' => $row['label'] ?? $rowKey,
             'record' => $row['record'],
+            'display' => [
+                'title' => $row['label'] ?? $rowKey,
+                'fields' => $this->selectionDisplayFields($artifact, $row),
+            ],
         ];
     }
 
     /** @param array<string,mixed> $selection */
-    private function selectionMessage(array $selection, string $locale): string
+    private function selectionDisplayMessage(array $selection, string $locale): string
+    {
+        $label = trim((string) ($selection['label'] ?? ''));
+        $italian = str_starts_with(strtolower($locale), 'it');
+        if ($label === '') {
+            return $italian ? 'Ho effettuato una selezione.' : 'I made a selection.';
+        }
+
+        return $italian
+            ? "Ho selezionato “{$label}”."
+            : "I selected “{$label}”.";
+    }
+
+    /** @param array<string,mixed> $selection */
+    private function selectionModelMessage(array $selection, string $locale): string
     {
         $record = is_array($selection['record'] ?? null) ? $selection['record'] : [];
         $json = json_encode(
@@ -157,6 +181,47 @@ final class AgentMessageController extends Controller
             .($italian
                 ? 'Continua usando tutti i dati della riga nel contesto della richiesta precedente.'
                 : 'Continue using all row data in the context of the previous request.');
+    }
+
+    /**
+     * Keep the UI receipt limited to the same redacted scalar fields that were
+     * visible in the server-produced artifact. The complete record remains in
+     * agent_selection.record for the planner, but is never rendered blindly.
+     *
+     * @param  array<string,mixed>  $artifact
+     * @param  array<string,mixed>  $row
+     * @return list<array{key:string,label:string,value:scalar|null}>
+     */
+    private function selectionDisplayFields(array $artifact, array $row): array
+    {
+        $columns = is_array($artifact['columns'] ?? null) ? $artifact['columns'] : [];
+        $values = is_array($row['values'] ?? null) ? $row['values'] : [];
+        $fields = [];
+
+        foreach (array_slice($columns, 0, 7) as $column) {
+            if (! is_array($column)) {
+                continue;
+            }
+
+            $key = trim((string) ($column['key'] ?? ''));
+            $value = $values[$key] ?? null;
+            if (
+                $key === ''
+                || ! array_key_exists($key, $values)
+                || (! is_scalar($value) && $value !== null)
+            ) {
+                continue;
+            }
+
+            $label = trim((string) ($column['label'] ?? ''));
+            $fields[] = [
+                'key' => $key,
+                'label' => $label !== '' ? $label : str($key)->replace(['.', '_'], ' ')->title()->toString(),
+                'value' => $value,
+            ];
+        }
+
+        return $fields;
     }
 
     /** @return array<string,array<int,string>> */

@@ -6,7 +6,7 @@ export interface AgentArtifactSelection {
     messageId: number;
     rowKey: string;
     label: string;
-    content: string;
+    displayText: string;
 }
 
 interface AgentTableArtifactProps {
@@ -41,7 +41,7 @@ export function AgentTableArtifact({
                 messageId,
                 rowKey,
                 label,
-                content: selectionContent(label, rowValues(artifact, rowKey), italian),
+                displayText: italian ? `Ho selezionato “${label}”.` : `I selected “${label}”.`,
             });
             setSelected(rowKey);
         } catch (cause) {
@@ -143,22 +143,6 @@ export function AgentTableArtifact({
             {error && <div className="agent-table-artifact-error" role="alert">{error}</div>}
         </section>
     );
-}
-
-function rowValues(artifact: AgentTableArtifactData, rowKey: string): Record<string, string | number | boolean | null> {
-    return artifact.rows.find((row) => row.key === rowKey)?.values ?? {};
-}
-
-function selectionContent(
-    label: string,
-    values: Record<string, string | number | boolean | null>,
-    italian: boolean,
-): string {
-    const row = JSON.stringify(values, null, 2);
-
-    return italian
-        ? `Ho selezionato questa riga (${label}):\n\n${row}\n\nContinua usando tutti i dati della riga nel contesto della richiesta precedente.`
-        : `I selected this row (${label}):\n\n${row}\n\nContinue using all row data in the context of the previous request.`;
 }
 
 function displayTitle(title: string): string {

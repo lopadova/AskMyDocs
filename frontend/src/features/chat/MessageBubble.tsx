@@ -15,6 +15,7 @@ import { CounterfactualPanel } from './CounterfactualPanel';
 import {
     getCitations,
     getAgentArtifact,
+    getAgentSelection,
     getConfidence,
     getCounterfactual,
     getMessageId,
@@ -29,6 +30,7 @@ import {
 } from './message-shape-adapters';
 import { ToolCallBubble } from './tool-call-renderer/ToolCallBubble';
 import { AgentTableArtifact, type AgentArtifactSelection } from './AgentTableArtifact';
+import { AgentSelectionReceipt } from './AgentSelectionReceipt';
 
 export interface MessageBubbleProps {
     conversationId: number;
@@ -106,6 +108,10 @@ export function MessageBubble({
     const thinking = getReasoningSteps(message);
     const messageId = getMessageId(message);
     const textContent = getTextContent(message);
+    const agentSelection = getAgentSelection(message);
+    const messageLocale = !isUiMessage(message) && typeof message.metadata?.locale === 'string'
+        ? message.metadata.locale
+        : 'en';
     const [editing, setEditing] = useState(false);
 
     if (isUser) {
@@ -143,7 +149,7 @@ export function MessageBubble({
                   * focused (`.chat-user-edit` in tokens.css) so it stays
                   * keyboard-reachable without cluttering the thread.
                   */}
-                {onEditSubmit && !streaming && (
+                {onEditSubmit && !streaming && !agentSelection && (
                     <button
                         type="button"
                         className="btn icon sm ghost chat-user-edit"
@@ -155,9 +161,10 @@ export function MessageBubble({
                     </button>
                 )}
                 <div
+                    data-selection-receipt={agentSelection ? 'true' : undefined}
                     style={{
                         maxWidth: '70%',
-                        padding: '10px 14px',
+                        padding: agentSelection ? 0 : '10px 14px',
                         background: 'var(--bg-3)',
                         border: '1px solid var(--panel-border)',
                         borderRadius: '14px 14px 4px 14px',
@@ -167,7 +174,9 @@ export function MessageBubble({
                         whiteSpace: 'pre-wrap',
                     }}
                 >
-                    {textContent}
+                    {agentSelection
+                        ? <AgentSelectionReceipt selection={agentSelection} locale={messageLocale} />
+                        : textContent}
                 </div>
             </div>
         );
