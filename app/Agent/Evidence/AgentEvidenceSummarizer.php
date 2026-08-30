@@ -48,6 +48,7 @@ final class AgentEvidenceSummarizer
                 'row_count' => is_array($collection) ? count($collection) : null,
                 'identity_fields' => $identityFields,
                 'identifier_samples' => $this->identifierSamples($collection, $identityFields),
+                'record_preview' => $this->recordPreview($result, $collection),
                 'sample_keys' => is_array($collection) && is_array($collection[0] ?? null)
                     ? array_slice(array_keys($collection[0]), 0, 20)
                     : [],
@@ -103,6 +104,55 @@ final class AgentEvidenceSummarizer
         }
 
         return null;
+    }
+
+    /** @param list<mixed>|null $collection @return array<string,mixed>|null */
+    private function recordPreview(array $result, ?array $collection): ?array
+    {
+        if ($collection !== null) {
+            return null;
+        }
+
+        $candidate = $result['data'] ?? data_get($result, 'artifact.structuredContent.data');
+        if (! is_array($candidate) || array_is_list($candidate)) {
+            return null;
+        }
+
+        return $this->previewArray($candidate);
+    }
+
+    /** @param array<string,mixed> $value @return array<string,mixed> */
+    private function previewArray(array $value, int $depth = 0): array
+    {
+        $preview = [];
+        foreach (array_slice($value, 0, 12, true) as $key => $nested) {
+            $preview[$key] = $this->previewValue($nested, $depth + 1);
+        }
+
+        return $preview;
+    }
+
+    private function previewValue(mixed $value, int $depth): mixed
+    {
+        if (is_string($value)) {
+            return mb_substr($value, 0, 180);
+        }
+        if (! is_array($value)) {
+            return is_scalar($value) || $value === null ? $value : get_debug_type($value);
+        }
+        if ($depth >= 2) {
+            return array_is_list($value)
+                ? ['count' => count($value)]
+                : ['keys' => array_slice(array_keys($value), 0, 12)];
+        }
+        if (array_is_list($value)) {
+            return array_map(
+                fn (mixed $nested): mixed => $this->previewValue($nested, $depth + 1),
+                array_slice($value, 0, 5),
+            );
+        }
+
+        return $this->previewArray($value, $depth);
     }
 
     private function bounded(mixed $value, int $depth = 0): mixed

@@ -242,6 +242,128 @@ final class AgentLoopTest extends TestCase
         Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/customers/147762/orders'));
     }
 
+    public function test_it_reuses_a_successful_observation_instead_of_repeating_the_same_call(): void
+    {
+        $this->route('get_order', 'http://erp.example.test/orders/DEMO-3007');
+        Http::fake(['*' => Http::response([
+            'status' => 'completed',
+            'data' => [
+                'public_id' => 'DEMO-3007',
+                'commercial_status' => 'completed',
+                'total' => ['amount_minor' => 8990, 'currency' => 'EUR'],
+            ],
+        ])]);
+
+        $requests = [];
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')
+            ->twice()
+            ->withArgs(function (string $system, array $history) use (&$requests): bool {
+                $requests[] = json_decode(
+                    (string) data_get($history, '0.content'),
+                    true,
+                    flags: JSON_THROW_ON_ERROR,
+                );
+
+                return true;
+            })
+            ->andReturn(
+                $this->planResponse([
+                    'decision' => 'tools',
+                    'actions' => [[
+                        'id' => 'load_order',
+                        'tool' => 'get_order',
+                        'arguments' => [],
+                        'depends_on' => [],
+                        'purpose' => 'Recupero il dettaglio ordine',
+                    ]],
+                ]),
+                $this->planResponse([
+                    'decision' => 'tools',
+                    'actions' => [[
+                        'id' => 'load_order_again',
+                        'tool' => 'get_order',
+                        'arguments' => [],
+                        'depends_on' => [],
+                        'purpose' => 'Recupero nuovamente il dettaglio ordine',
+                    ]],
+                ]),
+            );
+        $this->app->instance(AiManager::class, $ai);
+        $retrieval = Mockery::mock(ChatRetrievalService::class)->makePartial();
+        $retrieval->shouldReceive('retrieve')->once()->andReturn(new SearchResult(collect(), collect(), collect()));
+        $this->app->instance(ChatRetrievalService::class, $retrieval);
+
+        $run = $this->makeRun();
+        $outcome = app(AgentLoop::class)->run($run, $this->context($run));
+
+        $this->assertSame('answer', $outcome->decision);
+        $this->assertSame('duplicate_call_avoided', $outcome->stopReason);
+        $this->assertCount(1, $outcome->completedActions);
+        $this->assertSame('DEMO-3007', data_get(
+            $requests,
+            '1.evidence_summary.tool_results.0.record_preview.public_id',
+        ));
+        $this->assertSame('duplicate_call_avoided', data_get(
+            $outcome->evidence->jsonSerialize(),
+            'warnings.0.code',
+        ));
+        $this->assertSame(1, $run->toolExecutions()->count());
+        Http::assertSentCount(1);
+    }
+
+    public function test_it_preserves_collected_evidence_when_replanning_fails(): void
+    {
+        $this->route('get_order', 'http://erp.example.test/orders/DEMO-3007');
+        Http::fake(['*' => Http::response([
+            'status' => 'completed',
+            'data' => ['public_id' => 'DEMO-3007', 'commercial_status' => 'completed'],
+        ])]);
+
+        $calls = 0;
+        $firstPlan = $this->planResponse([
+            'decision' => 'tools',
+            'actions' => [[
+                'id' => 'load_order',
+                'tool' => 'get_order',
+                'arguments' => [],
+                'depends_on' => [],
+                'purpose' => 'Recupero il dettaglio ordine',
+            ]],
+        ]);
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->twice()->andReturnUsing(
+            function () use (&$calls, $firstPlan): AiResponse {
+                if ($calls++ === 0) {
+                    return $firstPlan;
+                }
+
+                throw new \RuntimeException('Planner did not return structured JSON.');
+            },
+        );
+        $this->app->instance(AiManager::class, $ai);
+        $retrieval = Mockery::mock(ChatRetrievalService::class)->makePartial();
+        $retrieval->shouldReceive('retrieve')->once()->andReturn(new SearchResult(collect(), collect(), collect()));
+        $this->app->instance(ChatRetrievalService::class, $retrieval);
+
+        $run = $this->makeRun();
+        $outcome = app(AgentLoop::class)->run($run, $this->context($run));
+
+        $this->assertSame('partial', $outcome->decision);
+        $this->assertSame('planner_recovery', $outcome->stopReason);
+        $this->assertCount(1, $outcome->completedActions);
+        $this->assertSame('planner_recovery', data_get(
+            $outcome->evidence->jsonSerialize(),
+            'warnings.0.code',
+        ));
+        $this->assertSame('DEMO-3007', data_get(
+            $outcome->evidence->jsonSerialize(),
+            'api_tools.0.result.data.public_id',
+        ));
+        $this->assertSame(1, $run->toolExecutions()->count());
+        Http::assertSentCount(1);
+    }
+
     public function test_shadow_mode_records_capability_proposal_without_executing_tools(): void
     {
         config()->set('agent.planner.mode', 'shadow');

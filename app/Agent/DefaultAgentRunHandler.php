@@ -9,6 +9,8 @@ use App\Mcp\Apps\McpAppTurnContext;
 use App\Models\AgentRun;
 use App\Models\Conversation;
 use App\Models\User;
+use App\Services\Widget\WidgetPiiMasker;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /** Queue entry point that owns run lifecycle, collection and final synthesis. */
@@ -21,6 +23,7 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
         private AgentResultProjector $projector,
         private McpAppTurnContext $mcpAppContext,
         private AgentTurnContextBuilder $turnContextBuilder,
+        private WidgetPiiMasker $masker,
     ) {}
 
     public function handle(AgentRun $run): void
@@ -109,6 +112,15 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
             if ($run->status === AgentRun::STATUS_CANCELLED) {
                 return;
             }
+            Log::error('Agent run failed.', [
+                'run_id' => $run->run_id,
+                'tenant_id' => $run->tenant_id,
+                'project_key' => $run->project_key,
+                'status_before_failure' => $run->status,
+                'exception_class' => $exception::class,
+                'exception_message' => $this->masker->maskString(mb_substr($exception->getMessage(), 0, 1000)),
+                'exception_trace' => $exception->getTraceAsString(),
+            ]);
             $run->forceFill([
                 'status' => AgentRun::STATUS_FAILED,
                 'error_code' => $this->errorCode($exception),
