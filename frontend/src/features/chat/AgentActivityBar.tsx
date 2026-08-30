@@ -245,6 +245,8 @@ export function AgentActivityBar({
                                                     <DebugJson
                                                         label={copy.parameters}
                                                         value={debug.parameters}
+                                                        variant="parameters"
+                                                        locale={locale}
                                                         copyLabel={copy.copy}
                                                         copiedLabel={copy.copied}
                                                         copyFailedLabel={copy.copyFailed}
@@ -252,6 +254,8 @@ export function AgentActivityBar({
                                                     <DebugJson
                                                         label={copy.response}
                                                         value={debug.response}
+                                                        variant="response"
+                                                        locale={locale}
                                                         copyLabel={copy.copy}
                                                         copiedLabel={copy.copied}
                                                         copyFailedLabel={copy.copyFailed}
@@ -260,6 +264,8 @@ export function AgentActivityBar({
                                                         <DebugJson
                                                             label={copy.error}
                                                             value={debug.error}
+                                                            variant="error"
+                                                            locale={locale}
                                                             copyLabel={copy.copy}
                                                             copiedLabel={copy.copied}
                                                             copyFailedLabel={copy.copyFailed}
@@ -492,18 +498,26 @@ function mcpDebugData(event: AgentRunEvent): McpDebugData | null {
 function DebugJson({
     label,
     value,
+    variant,
+    locale,
     copyLabel,
     copiedLabel,
     copyFailedLabel,
 }: {
     label: string;
     value: unknown;
+    variant: 'parameters' | 'response' | 'error';
+    locale: 'it' | 'en';
     copyLabel: string;
     copiedLabel: string;
     copyFailedLabel: string;
 }): ReactNode {
     const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
     const formatted = prettyJson(value);
+    const normalized = normalizeDebugValue(value);
+    const inspectorCopy = locale === 'it'
+        ? { fields: 'campi', items: 'elementi', empty: 'Vuoto', raw: 'JSON grezzo', more: 'altri valori' }
+        : { fields: 'fields', items: 'items', empty: 'Empty', raw: 'Raw JSON', more: 'more values' };
 
     async function copyJson(): Promise<void> {
         if (!navigator.clipboard?.writeText) {
@@ -526,9 +540,19 @@ function DebugJson({
             : copyLabel;
 
     return (
-        <section className="agent-mcp-debug-json">
+        <section className="agent-mcp-debug-json" data-variant={variant}>
             <div className="agent-mcp-debug-json-heading">
-                <h4>{label}</h4>
+                <div className="agent-mcp-debug-json-title">
+                    <span className="agent-mcp-debug-json-icon" aria-hidden="true">
+                        {variant === 'parameters'
+                            ? <Icon.Api size={12} />
+                            : variant === 'response'
+                                ? <Icon.Activity size={12} />
+                                : <Icon.Alert size={12} />}
+                    </span>
+                    <h4>{label}</h4>
+                    <span className="agent-mcp-debug-json-summary">{debugValueSummary(normalized, inspectorCopy)}</span>
+                </div>
                 <button
                     type="button"
                     className="agent-mcp-debug-copy"
@@ -540,9 +564,160 @@ function DebugJson({
                     {buttonLabel}
                 </button>
             </div>
-            <pre>{formatted}</pre>
+            <div className="agent-mcp-debug-inspector" data-testid={`agent-mcp-debug-${variant}`}>
+                <DebugValueRoot value={normalized} copy={inspectorCopy} />
+            </div>
+            <details className="agent-mcp-debug-raw">
+                <summary>{inspectorCopy.raw}</summary>
+                <pre>{formatted}</pre>
+            </details>
         </section>
     );
+}
+
+interface DebugInspectorCopy {
+    fields: string;
+    items: string;
+    empty: string;
+    raw: string;
+    more: string;
+}
+
+const MAX_DEBUG_ENTRIES = 100;
+
+function DebugValueRoot({ value, copy }: { value: unknown; copy: DebugInspectorCopy }): ReactNode {
+    if (Array.isArray(value)) {
+        return <DebugEntries entries={value.map((item, index) => [String(index), item])} depth={0} copy={copy} />;
+    }
+    if (isDebugRecord(value)) {
+        return <DebugEntries entries={Object.entries(value)} depth={0} copy={copy} />;
+    }
+
+    return <DebugPrimitive value={value} copy={copy} />;
+}
+
+function DebugEntries({
+    entries,
+    depth,
+    copy,
+}: {
+    entries: Array<[string, unknown]>;
+    depth: number;
+    copy: DebugInspectorCopy;
+}): ReactNode {
+    if (entries.length === 0) return <span className="agent-mcp-debug-empty">{copy.empty}</span>;
+    const visible = entries.slice(0, MAX_DEBUG_ENTRIES);
+    const remaining = entries.length - visible.length;
+
+    return (
+        <div className="agent-mcp-debug-entries">
+            {visible.map(([key, entryValue]) => (
+                <div className="agent-mcp-debug-entry" key={`${depth}-${key}`}>
+                    <span className="agent-mcp-debug-key" title={key}>{key}</span>
+                    <div className="agent-mcp-debug-value">
+                        <DebugValue value={entryValue} depth={depth + 1} copy={copy} />
+                    </div>
+                </div>
+            ))}
+            {remaining > 0 && (
+                <div className="agent-mcp-debug-more">+{remaining} {copy.more}</div>
+            )}
+        </div>
+    );
+}
+
+function DebugValue({
+    value,
+    depth,
+    copy,
+}: {
+    value: unknown;
+    depth: number;
+    copy: DebugInspectorCopy;
+}): ReactNode {
+    const entries = Array.isArray(value)
+        ? value.map((item, index): [string, unknown] => [String(index), item])
+        : isDebugRecord(value)
+            ? Object.entries(value)
+            : null;
+    if (entries === null) return <DebugPrimitive value={value} copy={copy} />;
+
+    const isArray = Array.isArray(value);
+    return (
+        <details className="agent-mcp-debug-node" open={depth < 2}>
+            <summary>
+                <span className="agent-mcp-debug-node-kind">{isArray ? 'Array' : 'Object'}</span>
+                <span>{entries.length} {isArray ? copy.items : copy.fields}</span>
+            </summary>
+            <DebugEntries entries={entries} depth={depth} copy={copy} />
+        </details>
+    );
+}
+
+function DebugPrimitive({ value, copy }: { value: unknown; copy: DebugInspectorCopy }): ReactNode {
+    if (value === null || value === undefined) {
+        return <span className="agent-mcp-debug-primitive" data-type="null">null</span>;
+    }
+    if (typeof value === 'boolean' || typeof value === 'number') {
+        return <span className="agent-mcp-debug-primitive" data-type={typeof value}>{String(value)}</span>;
+    }
+    if (typeof value === 'string') {
+        return (
+            <span className="agent-mcp-debug-primitive" data-type="string">
+                {value === '' ? copy.empty : value}
+            </span>
+        );
+    }
+
+    return <span className="agent-mcp-debug-primitive" data-type="unknown">{String(value)}</span>;
+}
+
+function debugValueSummary(value: unknown, copy: DebugInspectorCopy): string {
+    if (Array.isArray(value)) return `${value.length} ${copy.items}`;
+    if (isDebugRecord(value)) return `${Object.keys(value).length} ${copy.fields}`;
+    if (value === null || value === undefined || value === '') return copy.empty;
+
+    return typeof value;
+}
+
+function normalizeDebugValue(value: unknown, depth = 0): unknown {
+    if (depth >= 12) return value;
+    if (typeof value === 'string') {
+        const parsed = parseEmbeddedJson(value);
+        return parsed === value ? value : normalizeDebugValue(parsed, depth + 1);
+    }
+    if (Array.isArray(value)) {
+        return value.map((item) => normalizeDebugValue(item, depth + 1));
+    }
+    if (isDebugRecord(value)) {
+        return Object.fromEntries(
+            Object.entries(value).map(([key, entryValue]) => [key, normalizeDebugValue(entryValue, depth + 1)]),
+        );
+    }
+
+    return value;
+}
+
+function parseEmbeddedJson(value: string): unknown {
+    const trimmed = value.trim();
+    if (! ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']')))) {
+        return value;
+    }
+    try {
+        return JSON.parse(trimmed) as unknown;
+    } catch {
+        const documents = trimmed.split(/\n\s*\n(?=\s*[\[{])/);
+        if (documents.length < 2) return value;
+        try {
+            return documents.map((document) => JSON.parse(document) as unknown);
+        } catch {
+            return value;
+        }
+    }
+}
+
+function isDebugRecord(value: unknown): value is Record<string, unknown> {
+    return value !== null && typeof value === 'object' && ! Array.isArray(value);
 }
 
 function prettyJson(value: unknown): string {
