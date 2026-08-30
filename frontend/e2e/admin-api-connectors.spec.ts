@@ -22,17 +22,32 @@ import type { Page } from '@playwright/test';
  * failure path (422 on an invalid route create).
  */
 
-const HEALTHZ = 'http://127.0.0.1:8000/healthz';
-const LIST_FIXTURE = 'http://127.0.0.1:8000/testing/api-fixture/users';
-const DETAIL_FIXTURE = 'http://127.0.0.1:8000/testing/api-fixture/users/{id}';
-const PAGED_FIXTURE = 'http://127.0.0.1:8000/testing/api-fixture/paged';
+/*
+ * The app under test is the CLIENT here: these scenarios configure a
+ * connector whose routes point at a real endpoint and then ask the server to
+ * call it. Aiming that at the server's own address made it the client of
+ * itself, and PHP's built-in dev server answers such a request with an empty
+ * reply (cURL 52) whenever the worker that would serve it is the one already
+ * busy issuing it. It is not a flake and no retry escapes it.
+ *
+ * So the outbound target is a SECOND instance of the same application on
+ * another port (see `webServer` in playwright.config.ts, and the matching
+ * step in tests.yml for CI). Separate process, real HTTP round trip, same
+ * app and database — no route is mocked, so R13 still holds.
+ */
+const OUTBOUND_BASE = process.env.E2E_OUTBOUND_BASE_URL ?? 'http://127.0.0.1:8001';
+
+const HEALTHZ = `${OUTBOUND_BASE}/healthz`;
+const LIST_FIXTURE = `${OUTBOUND_BASE}/testing/api-fixture/users`;
+const DETAIL_FIXTURE = `${OUTBOUND_BASE}/testing/api-fixture/users/{id}`;
+const PAGED_FIXTURE = `${OUTBOUND_BASE}/testing/api-fixture/paged`;
 
 async function createConnector(page: Page, name: string): Promise<void> {
     await page.getByTestId('api-connector-create').click();
     const form = page.getByTestId('api-connector-form');
     await expect(form).toBeVisible();
     await page.getByTestId('api-connector-form-name').fill(name);
-    await page.getByTestId('api-connector-form-base_url').fill('http://127.0.0.1:8000');
+    await page.getByTestId('api-connector-form-base_url').fill(OUTBOUND_BASE);
     await page.getByTestId('api-connector-form-submit').click();
     await expect(page.getByTestId('toast-api-connector-created')).toBeVisible({ timeout: 15_000 });
 }

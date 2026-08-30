@@ -431,7 +431,9 @@ fixes from the test name alone. Always pull the failure context first:
    `✘` lines and the failing spec:line.
 2. **Playwright HTML report** — `tests.yml` uploads `playwright-report/`
    on failure (retention 7d). Download via the GitHub UI or
-   `gh run download <run-id> --name playwright-report`. Each
+   `gh run download <run-id> --pattern 'playwright-report-shard-*'`
+   (the job is sharded, so each shard uploads its own artefact named
+   `playwright-report-shard-<n>`; the failed-job log names the shard). Each
    `data/<hash>.md` carries the locator, timeout, page snapshot URL,
    and screenshot path. Read these BEFORE diffing code.
 3. **Laravel log tail** — the workflow's "Dump Laravel log on failure"

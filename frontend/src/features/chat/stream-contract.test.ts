@@ -49,7 +49,13 @@ const BE_FRAMES: Record<string, unknown> = {
     'data-confidence': { type: 'data-confidence', data: { confidence: 82, tier: 'high' } },
     'data-refusal': { type: 'data-refusal', data: { reason: 'no_relevant_context', body: 'No grounded answer.', hint: null } },
     'data-tool-call': { type: 'data-tool-call', data: { id: 'call_1', name: 'kb.search', status: 'ok' } },
-    // finish carries finishReason ONLY — no `usage` (SDK rejects it).
+    // finish carries finishReason ONLY — no `usage`.
+    //
+    // ai v7 narrowed this chunk to `{ type: 'finish' }` and strips anything
+    // else, so the SDK no longer REJECTS a usage field the way v6 did; it
+    // just ignores it. The BE frame stays as it is because nothing reads
+    // usage off this frame, and sending a field the schema discards would
+    // be wire noise pretending to be data.
     finish: { type: 'finish', finishReason: 'stop' },
 };
 
@@ -67,9 +73,22 @@ describe('SSE wire contract — every BE frame validates against the real @ai-sd
     }
 
     it('the legacy BUGGY shapes are correctly REJECTED (proves the guard has teeth)', async () => {
-        // flat providerMetadata (the first crash) and finish.usage (the second)
+        // The first historical crash: flat providerMetadata on source-url.
         expect((await validateChunk({ type: 'source-url', sourceId: 'd', url: '/u', providerMetadata: { origin: 'primary' } })).success).toBe(false);
-        expect((await validateChunk({ type: 'finish', finishReason: 'stop', usage: { promptTokens: 0, completionTokens: 0 } })).success).toBe(false);
+
+        // The second historical crash was `finish` carrying `usage`, and it is
+        // deliberately NOT asserted here any more. ai v7 narrowed that chunk to
+        // `{ type: 'finish' }` and strips unknown keys, so the old shape now
+        // validates — not because the guard weakened, but because the frame it
+        // described no longer exists. Keeping the assertion would have made a
+        // green test out of a schema change nobody reviewed.
+        //
+        // These stand in its place: still-invalid shapes, each a plausible BE
+        // regression, proving the validator rejects malformed frames rather
+        // than accepting whatever it is handed.
+        expect((await validateChunk({ type: 'not-a-real-chunk' })).success).toBe(false);
+        expect((await validateChunk({ type: 'source-url', sourceId: 'd' })).success).toBe(false);
+        expect((await validateChunk({ type: 'text-delta', id: 'text_abc' })).success).toBe(false);
     });
 
     it('a full grounded stream is consumed by readUIMessageStream and round-trips citation + text', async () => {
