@@ -1,4 +1,5 @@
 import { api } from '../../lib/api';
+import type { AgentRunEvent } from '../../lib/agent-run-events';
 
 /*
  * Chat HTTP layer. Thin typed wrappers over the existing Laravel
@@ -175,6 +176,8 @@ export interface MessageMetadata {
     counterfactual_count?: number;
     agent_artifact?: AgentTableArtifact | null;
     agent_selection?: AgentSelectionMetadata | null;
+    agent_run_id?: string | null;
+    agent_activity?: AgentRunEvent[];
     requires_selection?: boolean;
     locale?: string;
 }

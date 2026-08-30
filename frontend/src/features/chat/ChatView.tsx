@@ -12,7 +12,6 @@ import { useAuthStore } from '../../lib/auth-store';
 import { selectCurrentHash, useTeamStore } from '../../lib/team-store';
 import { Icon } from '../../components/Icons';
 import { useAgentChat } from './use-agent-chat';
-import { AgentActivityBar } from './AgentActivityBar';
 import { SuggestedFollowups } from './SuggestedFollowups';
 import { CitationDocumentModal } from './CitationDocumentModal';
 import { chatPreferencesApi, CHAT_PREFERENCES_QUERY_KEY } from './chat-preferences.api';
@@ -661,14 +660,6 @@ export function ChatView(): ReactNode {
                     </button>
                 </header>
 
-                <AgentActivityBar
-                    events={chat.events}
-                    active={isStreaming}
-                    awaitingConfirmation={chat.confirmation !== null}
-                    onCancel={chat.stop}
-                    onContinue={() => void chat.continueRun()}
-                />
-
                 <MessageThread
                     conversationId={activeId}
                     projectKey={projectKey}
@@ -683,6 +674,11 @@ export function ChatView(): ReactNode {
                     onOpenSource={handleOpenSource}
                     onMcpAppMessage={handleMcpAppMessage}
                     onAgentArtifactSelection={handleAgentArtifactSelection}
+                    agentEvents={chat.events}
+                    activeAgentRunId={chat.activeRun?.run_id ?? null}
+                    awaitingAgentConfirmation={chat.confirmation !== null}
+                    onCancelAgent={chat.stop}
+                    onContinueAgent={() => void chat.continueRun()}
                 />
 
                 <SuggestedFollowups

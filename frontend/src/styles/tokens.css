@@ -417,6 +417,7 @@ textarea:focus-visible {
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
+  scrollbar-gutter: stable both-edges;
   padding: 28px clamp(18px, 3vw, 40px);
   border-top: 1px solid var(--hairline);
 }
@@ -429,6 +430,11 @@ textarea:focus-visible {
   flex: 0 0 auto;
   background: color-mix(in srgb, var(--bg-0) 96%, var(--accent-a) 4%);
   border-top: 1px solid var(--hairline);
+}
+.chat-composer-inner {
+  width: 100%;
+  max-width: 860px;
+  margin: 0 auto;
 }
 
 /* Agent live status: one compact, glanceable capsule. The execution trace and
@@ -445,6 +451,24 @@ textarea:focus-visible {
   box-shadow: var(--shadow-sm);
   overflow: hidden;
   transition: border-color .25s ease, box-shadow .25s ease, background .25s ease;
+}
+.agent-activity-card.is-embedded {
+  width: 100%;
+  max-width: none;
+  margin: 2px 0 18px;
+  border-radius: 14px;
+}
+.agent-activity-card.is-embedded .agent-activity-main {
+  min-height: 58px;
+  padding: 8px 10px;
+}
+.agent-activity-card.is-embedded .agent-activity-ring {
+  width: 42px;
+  height: 42px;
+  flex-basis: 42px;
+}
+.agent-activity-card.is-embedded .agent-activity-ring svg {
+  inset: -1px;
 }
 .agent-activity-card[data-state="active"] {
   border-color: color-mix(in srgb, var(--accent-a) 42%, var(--panel-border));
@@ -1346,6 +1370,10 @@ textarea:focus-visible {
     width: calc(100% - 28px);
     max-width: none;
     margin: 10px auto;
+  }
+  .agent-activity-card.is-embedded {
+    width: 100%;
+    margin: 2px 0 16px;
   }
   .agent-activity-main { padding: 9px 10px; }
   .agent-activity-ring { width: 42px; height: 42px; flex-basis: 42px; }

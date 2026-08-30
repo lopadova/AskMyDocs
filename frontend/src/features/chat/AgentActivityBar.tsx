@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import type { AgentRunEvent } from '../../lib/agent-run-events';
 import { Icon } from '../../components/Icons';
 
@@ -8,6 +8,8 @@ export interface AgentActivityBarProps {
     awaitingConfirmation: boolean;
     onCancel: () => void;
     onContinue: () => void;
+    instanceId?: string;
+    embedded?: boolean;
 }
 
 type ActivityState = 'active' | 'settled' | 'confirmation' | 'failed';
@@ -28,8 +30,12 @@ export function AgentActivityBar({
     awaitingConfirmation,
     onCancel,
     onContinue,
+    instanceId,
+    embedded = false,
 }: AgentActivityBarProps): ReactNode {
     const [expanded, setExpanded] = useState(false);
+    const generatedId = useId();
+    const timelineId = `agent-activity-timeline-${instanceId ?? generatedId}`;
     if (events.length === 0 && !active && !awaitingConfirmation) return null;
     const latest = events[events.length - 1];
     const locale = latest?.locale?.toLowerCase().startsWith('it') ? 'it' : 'en';
@@ -101,7 +107,7 @@ export function AgentActivityBar({
             data-state={state}
             aria-live="polite"
             aria-busy={active}
-            className="agent-activity-card"
+            className={embedded ? 'agent-activity-card is-embedded' : 'agent-activity-card'}
         >
             <div className="agent-activity-main">
                 <div
@@ -150,7 +156,7 @@ export function AgentActivityBar({
                         type="button"
                         className="agent-activity-details-toggle"
                         aria-expanded={expanded}
-                        aria-controls="agent-activity-timeline"
+                        aria-controls={timelineId}
                         aria-label={expanded ? copy.hideDetails : copy.showDetails}
                         onClick={() => setExpanded((value) => !value)}
                     >
@@ -178,7 +184,7 @@ export function AgentActivityBar({
                 )}
             </div>
             {expanded && timelineEvents.length > 0 && (
-                <section className="agent-activity-details" id="agent-activity-timeline" data-testid="agent-activity-timeline">
+                <section className="agent-activity-details" id={timelineId} data-testid="agent-activity-timeline">
                     <div className="agent-activity-details-header">
                         <strong>{copy.details}</strong>
                         <span>{timelineEvents.length} {copy.events}</span>

@@ -245,22 +245,23 @@ export function Composer({
 
     return (
         <div className="chat-composer-shell" style={{ padding: '12px 24px 18px' }}>
-            <form
-                data-testid="chat-composer"
-                aria-label="Message composer"
-                onSubmit={(e) => {
-                    e.preventDefault();
-                    void send();
-                }}
-                className={`glow-frame ${focused ? 'on' : ''}`}
-                style={{
-                    background: 'var(--panel-solid)',
-                    border: '1px solid var(--panel-border-strong)',
-                    borderRadius: 14,
-                    boxShadow: focused ? 'var(--glow)' : 'var(--shadow)',
-                    transition: 'box-shadow .25s',
-                }}
-            >
+            <div className="chat-composer-inner">
+                <form
+                    data-testid="chat-composer"
+                    aria-label="Message composer"
+                    onSubmit={(e) => {
+                        e.preventDefault();
+                        void send();
+                    }}
+                    className={`glow-frame ${focused ? 'on' : ''}`}
+                    style={{
+                        background: 'var(--panel-solid)',
+                        border: '1px solid var(--panel-border-strong)',
+                        borderRadius: 14,
+                        boxShadow: focused ? 'var(--glow)' : 'var(--shadow)',
+                        transition: 'box-shadow .25s',
+                    }}
+                >
                 {/*
                   * T2.7 — FilterBar renders ABOVE the legacy context-chip
                   * row. Together they form the "what's constraining this
@@ -431,25 +432,26 @@ export function Composer({
                         </button>
                     )}
                 </div>
-            </form>
-            {localError && (
-                <div
-                    data-testid="message-error"
-                    role="alert"
-                    style={{ marginTop: 8, fontSize: 12, color: 'var(--err)' }}
-                >
-                    {localError}
-                </div>
-            )}
-            {serverError && (
-                <div
-                    data-testid="chat-composer-error"
-                    role="alert"
-                    style={{ marginTop: 8, fontSize: 12, color: 'var(--err)' }}
-                >
-                    {serverError}
-                </div>
-            )}
+                </form>
+                {localError && (
+                    <div
+                        data-testid="message-error"
+                        role="alert"
+                        style={{ marginTop: 8, fontSize: 12, color: 'var(--err)' }}
+                    >
+                        {localError}
+                    </div>
+                )}
+                {serverError && (
+                    <div
+                        data-testid="chat-composer-error"
+                        role="alert"
+                        style={{ marginTop: 8, fontSize: 12, color: 'var(--err)' }}
+                    >
+                        {serverError}
+                    </div>
+                )}
+            </div>
         </div>
     );
 }

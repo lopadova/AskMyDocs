@@ -187,4 +187,18 @@ describe('AgentActivityBar', () => {
 
         expect(screen.queryByText('Dettagli chiamata MCP')).not.toBeInTheDocument();
     });
+
+    it('uses a distinct timeline target for every embedded turn', () => {
+        render(
+            <>
+                <AgentActivityBar events={[progressEvent]} active={false} awaitingConfirmation={false} onCancel={() => undefined} onContinue={() => undefined} instanceId="turn-1" embedded />
+                <AgentActivityBar events={[progressEvent]} active={false} awaitingConfirmation={false} onCancel={() => undefined} onContinue={() => undefined} instanceId="turn-2" embedded />
+            </>,
+        );
+
+        const toggles = screen.getAllByRole('button', { name: 'Mostra attività' });
+        expect(toggles[0]).toHaveAttribute('aria-controls', 'agent-activity-timeline-turn-1');
+        expect(toggles[1]).toHaveAttribute('aria-controls', 'agent-activity-timeline-turn-2');
+        expect(toggles[0].getAttribute('aria-controls')).not.toBe(toggles[1].getAttribute('aria-controls'));
+    });
 });
