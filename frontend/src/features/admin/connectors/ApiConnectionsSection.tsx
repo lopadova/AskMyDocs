@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { ConnectorForm } from '../api-connectors/ConnectorForm';
 import {
@@ -43,7 +43,7 @@ const headingStyle: React.CSSProperties = {
     color: 'var(--fg-3)',
 };
 
-export function ApiConnectionsSection() {
+export function ApiConnectionsSection({ createRequest = 0, embedded = false }: { createRequest?: number; embedded?: boolean }) {
     const toast = useToast();
     const navigate = useNavigate();
     const { teamHash } = useParams({ strict: false }) as { teamHash?: string };
@@ -57,6 +57,7 @@ export function ApiConnectionsSection() {
     const [modal, setModal] = useState<ApiModal>(null);
     const [modalError, setModalError] = useState<string | null>(null);
     const [modalFieldErrors, setModalFieldErrors] = useState<Record<string, string>>({});
+    const previousCreateRequest = useRef(createRequest);
 
     const connectors = listQuery.data ?? [];
     const projects = projectsQuery.data ?? [];
@@ -68,6 +69,12 @@ export function ApiConnectionsSection() {
           : connectors.length === 0
             ? 'empty'
             : 'ready';
+
+    useEffect(() => {
+        if (createRequest === previousCreateRequest.current) return;
+        previousCreateRequest.current = createRequest;
+        openModal({ kind: 'create' });
+    }, [createRequest]);
 
     function openModal(next: ApiModal) {
         setModalError(null);
@@ -131,25 +138,29 @@ export function ApiConnectionsSection() {
                 >
                     {connectors.length}
                 </span>
-                <div style={{ flex: 1, minWidth: 12 }} />
-                <button
-                    type="button"
-                    data-testid="api-connector-gallery-create"
-                    className="focus-ring"
-                    onClick={() => openModal({ kind: 'create' })}
-                    style={{
-                        fontSize: 12.5,
-                        fontWeight: 600,
-                        padding: '7px 12px',
-                        borderRadius: 8,
-                        border: '1px solid var(--hairline)',
-                        background: 'var(--bg-2)',
-                        color: 'var(--fg-0)',
-                        cursor: 'pointer',
-                    }}
-                >
-                    + New API connection
-                </button>
+                {!embedded && (
+                    <>
+                        <div style={{ flex: 1, minWidth: 12 }} />
+                        <button
+                            type="button"
+                            data-testid="api-connector-gallery-create"
+                            className="focus-ring"
+                            onClick={() => openModal({ kind: 'create' })}
+                            style={{
+                                fontSize: 12.5,
+                                fontWeight: 600,
+                                padding: '7px 12px',
+                                borderRadius: 8,
+                                border: '1px solid var(--hairline)',
+                                background: 'var(--bg-2)',
+                                color: 'var(--fg-0)',
+                                cursor: 'pointer',
+                            }}
+                        >
+                            + New API connection
+                        </button>
+                    </>
+                )}
             </div>
 
             {state === 'loading' && (
@@ -189,7 +200,7 @@ export function ApiConnectionsSection() {
 
             {state === 'empty' && (
                 <div data-testid="api-connections-empty" role="status" style={dashedBox()}>
-                    No API connections yet — turn any HTTP endpoint into a live chat tool.
+                    No API connections yet. Add one from the connection gallery above.
                 </div>
             )}
 
@@ -198,7 +209,7 @@ export function ApiConnectionsSection() {
                     data-testid="api-connections-grid"
                     style={{
                         display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+                        gridTemplateColumns: embedded ? '1fr' : 'repeat(auto-fill, minmax(320px, 1fr))',
                         gap: 12,
                     }}
                 >
@@ -206,6 +217,7 @@ export function ApiConnectionsSection() {
                         <ApiConnectionTile
                             key={c.id}
                             connector={c}
+                            compact={embedded}
                             onManage={goToManage}
                             onEdit={(conn) => openModal({ kind: 'edit', connector: conn })}
                             onRemove={(conn) => openModal({ kind: 'remove', connector: conn })}
