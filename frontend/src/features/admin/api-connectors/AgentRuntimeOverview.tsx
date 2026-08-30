@@ -22,7 +22,7 @@ export function AgentRuntimeOverview(): ReactNode {
         );
     }
 
-    const { metrics, policy, recent_runs: recent } = query.data;
+    const { metrics, planner_shadow: plannerShadow, policy, recent_runs: recent } = query.data;
     return (
         <section data-testid="agent-runtime-overview" data-state="ready" aria-labelledby="agent-runtime-title" style={shellStyle}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
@@ -34,6 +34,22 @@ export function AgentRuntimeOverview(): ReactNode {
                     soft {policy.logical_soft} · hard {policy.logical_hard} logical · {policy.physical_hard} HTTP
                 </span>
             </div>
+
+            {plannerShadow.reports > 0 && (
+                <details data-testid="agent-planner-shadow" style={{ marginTop: 10, border: '1px solid var(--hairline)', borderRadius: 8, background: 'var(--bg-2)' }}>
+                    <summary style={{ padding: '9px 10px', cursor: 'pointer', color: 'var(--fg-1)', fontSize: 11.5 }}>
+                        Capability planner shadow · {plannerShadow.agreement_rate ?? 0}% agreement · {plannerShadow.reports} comparisons
+                    </summary>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, padding: '0 10px 10px' }}>
+                        <Metric label="Disagreements" value={plannerShadow.disagreements} detail={`${plannerShadow.errors} errors`} testId="agent-planner-disagreements" />
+                        <Metric label="Invalid plans" value={plannerShadow.invalid_plan_rate == null ? '—' : `${plannerShadow.invalid_plan_rate}%`} detail={`${plannerShadow.validation_corrections} corrected`} testId="agent-planner-invalid" />
+                        <Metric label="Avoided insufficient" value={plannerShadow.premature_insufficient_avoided} detail="live routes recovered" testId="agent-planner-corrections" />
+                        <Metric label="Candidates" value={plannerShadow.average_candidates ?? '—'} detail="average shortlist" testId="agent-planner-candidates" />
+                        <Metric label="Planner latency" value={plannerShadow.average_planner_latency_ms == null ? '—' : `${plannerShadow.average_planner_latency_ms}ms`} detail={`${plannerShadow.fallbacks} fallbacks`} testId="agent-planner-latency" />
+                        <Metric label="Planner tokens" value={plannerShadow.average_tokens ?? '—'} detail="average router + planner" testId="agent-planner-tokens" />
+                    </div>
+                </details>
+            )}
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(135px, 1fr))', gap: 8, marginTop: 12 }}>
                 <Metric label="Runs" value={metrics.runs} testId="agent-runtime-runs" />
@@ -77,7 +93,7 @@ function Metric({ label, value, detail, testId }: { label: string; value: string
 
 function Status({ status }: { status: string }): ReactNode {
     const good = status === 'completed';
-    const warning = status === 'partial' || status === 'awaiting_confirmation';
+    const warning = status === 'partial' || status.includes('awaiting') || status.includes('waiting');
     return <span style={{ color: good ? '#6ee7b7' : warning ? '#fbbf24' : status === 'failed' ? '#fca5a5' : 'var(--fg-2)', fontFamily: 'var(--font-mono)' }}>{status}</span>;
 }
 

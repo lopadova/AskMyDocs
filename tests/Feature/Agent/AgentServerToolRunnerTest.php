@@ -147,6 +147,7 @@ final class AgentServerToolRunnerTest extends TestCase
             (string) data_get($result->body, 'artifact.text'),
         );
         $this->assertSame(123, data_get($result->body, 'artifact.structuredContent.orders.0.id'));
+        $this->assertSame(123, data_get($result->body, 'orders.0.id'));
         $this->assertSame('connector', data_get($definition->metadata, 'mcp_runtime'));
         $this->assertSame(1, data_get($run->fresh()->counters_json, 'physical_calls'));
         $this->assertDatabaseHas('mcp_tool_call_audit', [

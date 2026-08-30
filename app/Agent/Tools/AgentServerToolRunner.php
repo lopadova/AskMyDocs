@@ -171,6 +171,13 @@ final readonly class AgentServerToolRunner
             $body = is_array($outcome->payload)
                 ? $outcome->payload
                 : ['result' => $outcome->payload];
+            $structured = data_get($body, 'artifact.structuredContent');
+            if (is_array($structured) && ! array_is_list($structured)) {
+                // Keep the protocol envelope for UI/artifact consumers while
+                // exposing structured fields at the root for stable planner
+                // references declared by the MCP outputSchema.
+                $body += $structured;
+            }
             $physicalRequests = $outcome->status === 'confirmation_required' ? 0 : 1;
             $success = $outcome->status !== 'error' && $outcome->error === null;
             if (! $success) {

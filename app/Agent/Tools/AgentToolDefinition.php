@@ -59,6 +59,23 @@ final readonly class AgentToolDefinition implements JsonSerializable
         ];
     }
 
+    /**
+     * Planner-safe representation. Remote metadata is intentionally reduced to
+     * host-enforced execution facts; arbitrary MCP _meta never reaches the LLM.
+     *
+     * @return array<string,mixed>
+     */
+    public function plannerPayload(): array
+    {
+        $payload = $this->jsonSerialize();
+        $metadata = $this->metadata;
+        unset($metadata['meta'], $metadata['provenance'], $metadata['agent_capability_hint']);
+        $payload['metadata'] = $metadata;
+        $payload['trust'] = ['description' => 'untrusted_remote_data'];
+
+        return $payload;
+    }
+
     /** @return array<string,mixed> */
     public function openAiFunction(): array
     {

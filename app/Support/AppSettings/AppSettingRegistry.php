@@ -57,6 +57,14 @@ final class AppSettingRegistry
                 'deployOnly' => false,
                 'enum' => ['off', 'shadow', 'active'],
             ],
+            'agent.planner.mode' => [
+                'label' => 'Agent capability planner mode',
+                'type' => 'enum',
+                'config' => 'agent.planner.mode',
+                'scope' => 'both',
+                'deployOnly' => false,
+                'enum' => ['classic', 'shadow', 'capability'],
+            ],
             // Deploy-only security knob — visible but NOT runtime-settable.
             'ai_finops.enabled' => [
                 'label' => 'AI FinOps metering (deploy-managed)',

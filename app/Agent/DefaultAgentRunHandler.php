@@ -26,7 +26,12 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
     public function handle(AgentRun $run): void
     {
         $run->refresh();
-        if ($run->isTerminal() || $run->status === AgentRun::STATUS_AWAITING_CONFIRMATION) {
+        if ($run->isTerminal() || in_array($run->status, [
+            AgentRun::STATUS_AWAITING_CONFIRMATION,
+            AgentRun::STATUS_AWAITING_MCP_CONFIRMATION,
+            AgentRun::STATUS_AWAITING_MCP_INPUT,
+            AgentRun::STATUS_WAITING_MCP_TASK,
+        ], true)) {
             return;
         }
 
@@ -63,7 +68,7 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
         try {
             $turnContext = $this->turnContext($run);
             $outcome = $this->loop->run($run, $context, $turnContext);
-            if ($outcome->awaitingConfirmation()) {
+            if ($outcome->requiresInteraction()) {
                 return;
             }
 
