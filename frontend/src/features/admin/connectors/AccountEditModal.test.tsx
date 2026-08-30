@@ -1,3 +1,4 @@
+import type { ComponentProps } from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -81,7 +82,16 @@ function renderModal(h: Handlers = {}) {
             account={account()}
             projects={[]}
             initialTab={h.initialTab}
-            {...handlers}
+            // vitest 4 types a bare `vi.fn()` as Mock<Constructable | Procedure>
+            // rather than an any-shaped callable, so it no longer satisfies a
+            // specific prop signature. Every caller builds its spies with
+            // `vi.fn()`, and typing each one to its prop would obscure the
+            // tests for no benefit -- the assertions are about behaviour, and
+            // a wrong signature would fail them immediately.
+            {...(handlers as unknown as Pick<
+                ComponentProps<typeof AccountEditModal>,
+                'onSubmitDetails' | 'onSubmitConnection' | 'onTestConnection' | 'onSubmitSettings' | 'onClose'
+            >)}
         />,
     );
     return handlers;
