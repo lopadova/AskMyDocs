@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { Button } from '../../components/Button';
 import { Icon } from '../../components/Icons';
 import type { AgentTableArtifact as AgentTableArtifactData } from './chat.api';
 
@@ -81,7 +82,11 @@ export function AgentTableArtifact({
                     <thead>
                         <tr>
                             {artifact.columns.map((column) => <th key={column.key}>{column.label}</th>)}
-                            {selectable && <th aria-label={italian ? 'Azione' : 'Action'} />}
+                            {selectable && (
+                                <th className="agent-table-artifact-action-heading">
+                                    {italian ? 'Azione' : 'Action'}
+                                </th>
+                            )}
                         </tr>
                     </thead>
                     <tbody>
@@ -108,9 +113,13 @@ export function AgentTableArtifact({
                                     })}
                                     {selectable && (
                                         <td className="agent-table-artifact-action">
-                                            <button
-                                                type="button"
+                                            <Button
                                                 className="agent-table-artifact-select"
+                                                variant="secondary"
+                                                size="sm"
+                                                busy={submitting === row.key}
+                                                leadingIcon={isSelected ? <Icon.Check size={13} /> : undefined}
+                                                trailingIcon={!isSelected && submitting !== row.key ? <Icon.Chevron size={12} /> : undefined}
                                                 data-state={submitting === row.key ? 'loading' : isSelected ? 'selected' : 'idle'}
                                                 disabled={submitting !== null || selected !== null}
                                                 aria-label={`${isSelected ? (italian ? 'Selezionata' : 'Selected') : actionLabel}: ${row.label}`}
@@ -121,11 +130,11 @@ export function AgentTableArtifact({
                                                 data-testid={`agent-table-select-${row.key}`}
                                             >
                                                 {submitting === row.key
-                                                    ? <><span className="agent-table-artifact-spinner" aria-hidden="true" /> {italian ? 'Attendi' : 'Wait'}</>
+                                                    ? (italian ? 'Attendi' : 'Wait')
                                                     : isSelected
-                                                        ? <><Icon.Check size={12} /> {italian ? 'Selezionata' : 'Selected'}</>
-                                                        : <>{actionLabel}<Icon.Chevron size={11} /></>}
-                                            </button>
+                                                        ? (italian ? 'Selezionata' : 'Selected')
+                                                        : actionLabel}
+                                            </Button>
                                         </td>
                                     )}
                                 </tr>

@@ -13,9 +13,10 @@ import { UserMessageEditor } from './UserMessageEditor';
 import { RetrievalRunnerUpPanel } from './RetrievalRunnerUpPanel';
 import { CounterfactualPanel } from './CounterfactualPanel';
 import {
-    getCitations,
+    getAgentActivity,
     getAgentArtifact,
     getAgentSelection,
+    getCitations,
     getConfidence,
     getCounterfactual,
     getMessageId,
@@ -202,6 +203,10 @@ export function MessageBubble({
     const confidence = getConfidence(message);
     const isRefusal = refusalReason != null;
     const toolCalls = getToolCalls(message);
+    const hasPersistedActivity = getAgentActivity(message).length > 0;
+    const visibleToolCalls = hasPersistedActivity
+        ? toolCalls.filter((toolCall) => toolCall.status !== 'ok' || toolCall.app != null)
+        : toolCalls;
     const runnerUp = getRunnerUp(message);
     const counterfactual = getCounterfactual(message);
     const agentArtifact = getAgentArtifact(message);
@@ -214,14 +219,19 @@ export function MessageBubble({
             className="popin"
             style={{ display: 'flex', gap: 12, marginBottom: 22 }}
         >
-            <span className="chat-agent-avatar" data-testid="chat-agent-avatar" aria-hidden="true">
-                <Icon.Brain size={15} />
+            <span
+                className="chat-agent-avatar"
+                data-testid="chat-agent-avatar"
+                data-agent-mark="sparkles"
+                aria-hidden="true"
+            >
+                <Icon.Sparkles size={15} />
             </span>
             <div style={{ flex: 1, minWidth: 0 }}>
                 {thinking && <ThinkingTrace steps={thinking} />}
-                {toolCalls.length > 0 && (
+                {visibleToolCalls.length > 0 && (
                     <div data-testid={`chat-message-${messageId}-tool-calls`}>
-                        {toolCalls.map((toolCall) => (
+                        {visibleToolCalls.map((toolCall) => (
                             <ToolCallBubble
                                 key={toolCall.id}
                                 toolCall={toolCall}
