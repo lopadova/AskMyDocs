@@ -59,9 +59,12 @@ final readonly class AgentAnswerSynthesizer
             || $this->continuesFromSelection($turnContext);
         $artifact = $this->artifacts->fromToolEvidence($evidence['api_tools'], $requiresSelection, $renderTable);
         $requiresSelection = $requiresSelection && $artifact !== null;
+        $presentedAnswer = $artifact === null
+            ? $answer
+            : $this->artifactHandoff($context->locale, $requiresSelection);
 
         return new AgentAnswer(
-            answer: $this->masker->maskString($answer),
+            answer: $this->masker->maskString($presentedAnswer),
             locale: $context->locale,
             completeness: $completeness,
             citations: $this->selectedDocuments($evidence['documents'], $payload['document_ids'] ?? []),
@@ -87,6 +90,7 @@ Never choose an arbitrary record (including the first, last, newest or oldest) w
 An explicit request for a list makes requires_selection=false only when the multi-row evidence is the requested collection itself. If the rows are ambiguous parent entities needed before that collection can be loaded (for example many customers before loading one customer's orders), requires_selection must be true.
 When stop_reason is ambiguous_selection_required, explicitly ask the user to choose from the rendered table and set requires_selection=true. A table is rendered separately whenever structured multi-row evidence is available.
 Set render_table=true whenever the user asked to see, list or search a collection, even if the collection contains exactly one row. This also applies when the current turn is a row selection that continues an earlier collection request. Set it false for a detail request about one item.
+When render_table=true, the answer is only a short, one-sentence handoff to the rendered artifact. Never repeat its records as Markdown tables, lists, prose, or field-by-field summaries. The application will enforce this presentation rule after synthesis as well.
 The turn_context contains prior conversation messages, prior structured tool results and any explicit row selection. Treat a current_selection as authoritative user context. Reuse resolved customer, user and order identifiers for follow-up questions instead of searching for the same entity again.
 When a selected record's fields disagree with a name or identifier in an earlier request, describe and continue with the selected record; do not relabel it as the earlier candidate.
 Select only document_id and execution_id values that exist in the supplied evidence.
@@ -135,6 +139,21 @@ PROMPT;
         $decoded = json_decode($turnContext, true);
 
         return is_array($decoded) && is_array($decoded['current_selection'] ?? null);
+    }
+
+    private function artifactHandoff(string $locale, bool $requiresSelection): string
+    {
+        $italian = str_starts_with(strtolower($locale), 'it');
+
+        if ($requiresSelection) {
+            return $italian
+                ? 'Ho trovato più risultati possibili: scegli una riga per continuare.'
+                : 'I found multiple possible results: choose a row to continue.';
+        }
+
+        return $italian
+            ? 'Ho organizzato i risultati nella tabella qui sotto: apri una riga per vedere i dettagli.'
+            : 'I organized the results in the table below: open a row to see its details.';
     }
 
     /** @param list<array<string,mixed>> $documents @param mixed $selected @return list<array<string,mixed>> */
