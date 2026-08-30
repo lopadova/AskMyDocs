@@ -525,7 +525,7 @@ export function ChatView(): ReactNode {
             throw new Error('The conversation is not ready for a selection.');
         }
         await chat.sendMessage(
-            { text: selection.content },
+            { text: selection.displayText },
             { selection: { message_id: selection.messageId, row_key: selection.rowKey } },
         );
     };

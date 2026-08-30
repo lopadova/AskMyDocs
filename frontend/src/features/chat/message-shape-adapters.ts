@@ -1,5 +1,12 @@
 import type { UIMessage } from 'ai';
-import type { AgentTableArtifact, CounterfactualPanel, Message as AppMessage, MessageCitation, RunnerUpChunk } from './chat.api';
+import type {
+    AgentSelectionMetadata,
+    AgentTableArtifact,
+    CounterfactualPanel,
+    Message as AppMessage,
+    MessageCitation,
+    RunnerUpChunk,
+} from './chat.api';
 
 /**
  * v4.0/W3.2 — shape adapters that let the chat renderer consume BOTH
@@ -462,6 +469,30 @@ export function getAgentArtifact(m: RenderableMessage): AgentTableArtifact | nul
     }
 
     return artifact;
+}
+
+/**
+ * Structured receipt for an artifact row selected by the user. The raw row
+ * stays in message metadata for the agent; MessageBubble uses this adapter to
+ * render a human-readable receipt instead of the model-facing JSON content.
+ */
+export function getAgentSelection(m: RenderableMessage): AgentSelectionMetadata | null {
+    if (isUiMessage(m)) {
+        return null;
+    }
+    const selection = m.metadata?.agent_selection;
+    if (
+        !selection
+        || typeof selection.row_key !== 'string'
+        || typeof selection.label !== 'string'
+        || typeof selection.record !== 'object'
+        || selection.record === null
+        || Array.isArray(selection.record)
+    ) {
+        return null;
+    }
+
+    return selection;
 }
 
 /**

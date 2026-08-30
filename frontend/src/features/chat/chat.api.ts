@@ -174,8 +174,28 @@ export interface MessageMetadata {
     counterfactual?: CounterfactualPanel[];
     counterfactual_count?: number;
     agent_artifact?: AgentTableArtifact | null;
+    agent_selection?: AgentSelectionMetadata | null;
     requires_selection?: boolean;
     locale?: string;
+}
+
+export interface AgentSelectionDisplayField {
+    key: string;
+    label: string;
+    value: string | number | boolean | null;
+}
+
+export interface AgentSelectionMetadata {
+    source_message_id?: number | null;
+    source_execution_id?: number | null;
+    tool?: string | null;
+    row_key: string;
+    label: string;
+    record: Record<string, unknown>;
+    display?: {
+        title?: string | null;
+        fields?: AgentSelectionDisplayField[];
+    } | null;
 }
 
 export interface AgentTableArtifactColumn {

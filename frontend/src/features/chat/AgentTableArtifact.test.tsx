@@ -34,9 +34,8 @@ describe('AgentTableArtifact', () => {
         await waitFor(() => expect(onSelect).toHaveBeenCalledOnce());
         const selection = onSelect.mock.calls[0]?.[0];
         expect(selection).toMatchObject({ messageId: 90, rowKey: '102', label: 'Riccardo Lorini' });
-        expect(selection?.content).toContain('Ho selezionato questa riga (Riccardo Lorini)');
-        expect(selection?.content).toContain('"id": 102');
-        expect(selection?.content).toContain('"email": "two@example.test"');
+        expect(selection?.displayText).toBe('Ho selezionato “Riccardo Lorini”.');
+        expect(selection?.displayText).not.toContain('{');
         expect(await screen.findByText('Scelta inviata alla chat.')).toBeInTheDocument();
         expect(screen.getByTestId('agent-table-select-102')).toHaveTextContent('Selezionata');
 
