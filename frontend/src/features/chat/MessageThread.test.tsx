@@ -116,4 +116,23 @@ describe('MessageThread agent activity', () => {
         expect(screen.getByTestId('agent-activity-message')).toHaveTextContent('HubHive · shipments-get');
         expect(screen.getByTestId('agent-activity-bar')).toHaveAttribute('aria-busy', 'true');
     });
+
+    it('presents failures through the shared destructive alert structure', () => {
+        const user = message(30, 'user', 'Mostrami gli ultimi ordini.');
+
+        renderThread(
+            <MessageThread
+                conversationId={4}
+                messages={[user]}
+                sdkStatus="error"
+                error={new Error('The live source did not respond.')}
+            />,
+        );
+
+        const alert = screen.getByTestId('chat-thread-error');
+        expect(alert).toHaveAttribute('data-variant', 'destructive');
+        expect(alert).toHaveTextContent('We couldn’t complete that request');
+        expect(alert).toHaveTextContent('The live source did not respond.');
+        expect(alert.querySelector('[data-slot="alert-icon"]')).not.toBeNull();
+    });
 });

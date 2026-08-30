@@ -54,12 +54,13 @@ describe('Composer', () => {
         });
     });
 
-    it('rejects an empty draft with a client-side validation error', () => {
+    it('rejects an empty draft and opens accessible validation details', async () => {
         const props = makeProps();
         renderWithClient(<Composer {...props} />);
         const send = screen.getByTestId('chat-composer-send');
         fireEvent.click(send);
-        expect(screen.getByTestId('message-error')).toHaveTextContent('required');
+        expect(await screen.findByTestId('message-error')).toHaveTextContent('required');
+        expect(screen.getByTestId('message-error-trigger')).toHaveAttribute('aria-expanded', 'true');
         expect(props.onSend).not.toHaveBeenCalled();
     });
 
@@ -113,7 +114,11 @@ describe('Composer', () => {
     it('surfaces an external error via chat-composer-error', () => {
         const props = makeProps({ error: new Error('Provider rate limited') });
         renderWithClient(<Composer {...props} />);
+        const trigger = screen.getByTestId('chat-composer-error-trigger');
+        expect(trigger).toHaveAttribute('aria-expanded', 'false');
+        fireEvent.click(trigger);
         expect(screen.getByTestId('chat-composer-error')).toHaveTextContent('Provider rate limited');
+        expect(trigger).toHaveAttribute('aria-expanded', 'true');
     });
 
     it('does not repeat the same send error as both local and external feedback', async () => {
@@ -131,6 +136,7 @@ describe('Composer', () => {
         await waitFor(() => expect(input).toHaveValue('Try this'));
         expect(props.onSend).toHaveBeenCalledOnce();
         expect(screen.queryByTestId('message-error')).not.toBeInTheDocument();
+        fireEvent.click(screen.getByTestId('chat-composer-error-trigger'));
         expect(screen.getByTestId('chat-composer-error')).toHaveTextContent(message);
         expect(screen.getAllByText(message)).toHaveLength(1);
     });

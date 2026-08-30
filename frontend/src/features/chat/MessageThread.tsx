@@ -2,6 +2,7 @@ import { Fragment, useEffect, useRef, type ReactNode } from 'react';
 import { MessageBubble } from './MessageBubble';
 import { AgentActivityBar } from './AgentActivityBar';
 import { Icon } from '../../components/Icons';
+import { Alert, AlertDescription, AlertIcon, AlertTitle } from '../../components/ui/alert';
 import type { AgentRunEvent } from '../../lib/agent-run-events';
 import { mapStatusToDataState, type SdkStatus } from './map-status-to-data-state';
 import type { RenderableMessage } from './message-shape-adapters';
@@ -182,9 +183,19 @@ export function MessageThread({
             <div className="chat-thread-content">
                 {state === 'empty' && <EmptyThread />}
                 {state === 'error' && (
-                    <div data-testid="chat-thread-error" role="alert" style={errorStyle}>
-                        {error?.message ?? 'Could not load messages.'}
-                    </div>
+                    <Alert
+                        variant="destructive"
+                        className="chat-thread-alert"
+                        data-testid="chat-thread-error"
+                    >
+                        <AlertIcon>
+                            <Icon.Alert size={16} />
+                        </AlertIcon>
+                        <AlertTitle>We couldn’t complete that request</AlertTitle>
+                        <AlertDescription>
+                            {error?.message ?? 'Could not load messages.'}
+                        </AlertDescription>
+                    </Alert>
                 )}
                 {/*
                   * Render the thread only when a conversation is
@@ -296,15 +307,6 @@ export function MessageThread({
         </section>
     );
 }
-
-const errorStyle = {
-    padding: '12px 14px',
-    borderRadius: 10,
-    background: 'rgba(239,68,68,.08)',
-    border: '1px solid rgba(239,68,68,.3)',
-    color: 'var(--err)',
-    fontSize: 13,
-} as const;
 
 function EmptyThread(): ReactNode {
     const prompts = [
