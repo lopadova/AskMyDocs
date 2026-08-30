@@ -849,87 +849,128 @@ textarea:focus-visible {
 }
 
 .agent-table-artifact {
-  margin-top: 12px;
-  background: color-mix(in srgb, var(--panel-solid) 92%, var(--accent-a) 8%);
-  border: 1px solid var(--panel-border-strong);
-  border-radius: 12px;
+  margin-top: 14px;
+  color: var(--fg-1);
+  background: var(--panel-solid);
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
   overflow: hidden;
-  box-shadow: var(--shadow-sm);
+  box-shadow: 0 8px 28px -22px rgba(0,0,0,.72), 0 1px 2px rgba(0,0,0,.12);
+  isolation: isolate;
 }
 .agent-table-artifact[data-interaction-mode="selection"] {
-  border-color: color-mix(in srgb, var(--accent-a) 45%, var(--panel-border));
+  border-color: color-mix(in srgb, var(--accent-a) 24%, var(--panel-border-strong));
 }
 .agent-table-artifact-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 10px 12px;
+  gap: 16px;
+  min-height: 54px;
+  padding: 10px 12px 10px 14px;
+  background: color-mix(in srgb, var(--bg-1) 96%, var(--accent-a) 4%);
   border-bottom: 1px solid var(--hairline);
 }
-.agent-table-artifact-header > div {
+.agent-table-artifact-identity {
   min-width: 0;
   display: flex;
-  align-items: baseline;
-  gap: 8px;
+  align-items: center;
+  gap: 10px;
+}
+.agent-table-artifact-icon {
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  color: var(--fg-2);
+  background: var(--bg-2);
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+}
+.agent-table-artifact-heading {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
 }
 .agent-table-artifact-header strong {
+  display: block;
+  overflow: hidden;
   color: var(--fg-0);
-  font-size: 12px;
+  font: 620 12.5px/1.25 var(--font-sans);
+  letter-spacing: -.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.agent-table-artifact-header span {
+.agent-table-artifact-heading > span {
   color: var(--fg-3);
-  font: 500 10px/1.3 var(--font-mono);
+  font: 500 10.5px/1.25 var(--font-sans);
 }
 .agent-table-artifact-hint {
   flex: 0 0 auto;
-  padding: 4px 7px;
-  color: var(--accent-b) !important;
-  background: color-mix(in srgb, var(--accent-b) 9%, transparent);
-  border: 1px solid color-mix(in srgb, var(--accent-b) 22%, transparent);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 27px;
+  padding: 0 9px;
+  color: var(--fg-2);
+  background: var(--bg-2);
+  border: 1px solid var(--hairline);
   border-radius: 99px;
+  font: 520 10.5px/1 var(--font-sans);
+  white-space: nowrap;
+}
+.agent-table-artifact-hint svg {
+  color: color-mix(in srgb, var(--accent-mid) 72%, var(--fg-2));
 }
 .agent-table-artifact-scroll {
   max-height: min(46vh, 440px);
   overflow: auto;
+  scrollbar-gutter: stable;
 }
 .agent-table-artifact table {
   width: 100%;
-  min-width: 560px;
-  border-collapse: collapse;
-  font-size: 11px;
+  min-width: 600px;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 11.5px;
 }
 .agent-table-artifact th {
   position: sticky;
   top: 0;
-  z-index: 1;
-  padding: 8px 10px;
+  z-index: 2;
+  padding: 8px 12px;
   color: var(--fg-3);
-  background: var(--bg-2);
+  background: color-mix(in srgb, var(--bg-2) 96%, var(--panel-solid) 4%);
   border-bottom: 1px solid var(--panel-border);
-  font: 600 9px/1.2 var(--font-mono);
-  letter-spacing: .04em;
+  font: 620 9.5px/1.2 var(--font-sans);
+  letter-spacing: .055em;
   text-align: left;
   text-transform: uppercase;
   white-space: nowrap;
 }
 .agent-table-artifact td {
   max-width: 260px;
-  padding: 8px 10px;
+  height: 43px;
+  padding: 9px 12px;
   color: var(--fg-1);
   border-bottom: 1px solid var(--hairline);
+  font: 430 11.5px/1.4 var(--font-sans);
   overflow-wrap: anywhere;
+  vertical-align: middle;
 }
+.agent-table-artifact td > span[data-empty="true"] { color: var(--fg-3); }
+.agent-table-artifact tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--bg-2) 35%, transparent); }
 .agent-table-artifact tbody tr:last-child td { border-bottom: 0; }
 .agent-table-artifact tbody tr.is-selectable { cursor: pointer; }
-.agent-table-artifact tbody tr.is-selectable td { transition: background .14s ease, color .14s ease; }
-.agent-table-artifact tbody tr:hover td { background: color-mix(in srgb, var(--accent-a) 7%, transparent); }
+.agent-table-artifact tbody tr.is-selectable td { transition: background .16s ease, color .16s ease; }
+.agent-table-artifact tbody tr.is-selectable:hover td { background: color-mix(in srgb, var(--accent-a) 6%, var(--bg-2)); }
 .agent-table-artifact tbody tr[data-selected="true"] td {
   color: var(--fg-0);
-  background: color-mix(in srgb, var(--ok) 9%, var(--panel-solid));
+  background: color-mix(in srgb, var(--ok) 7%, var(--panel-solid));
 }
 .agent-table-artifact tbody tr[data-selected="true"] td:first-child {
-  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--ok) 75%, transparent);
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--ok) 70%, transparent);
 }
 .agent-table-artifact-action {
   width: 1%;
@@ -939,8 +980,52 @@ textarea:focus-visible {
 .agent-table-artifact-select {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  justify-content: center;
+  gap: 6px;
+  min-width: 76px;
+  height: 29px;
+  padding: 0 9px 0 10px;
+  color: var(--fg-1);
+  background: var(--bg-2);
+  border: 1px solid var(--panel-border-strong);
+  border-radius: 8px;
+  box-shadow: 0 1px 1px rgba(0,0,0,.08);
+  cursor: pointer;
+  font: 620 11px/1 var(--font-sans);
   white-space: nowrap;
+  transition: color .15s ease, background .15s ease, border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+}
+.agent-table-artifact[data-interaction-mode="selection"] .agent-table-artifact-select[data-state="idle"] {
+  color: color-mix(in srgb, var(--fg-0) 84%, var(--accent-mid));
+  background: color-mix(in srgb, var(--accent-a) 8%, var(--bg-2));
+  border-color: color-mix(in srgb, var(--accent-a) 28%, var(--panel-border));
+}
+.agent-table-artifact-select:hover:not(:disabled),
+.agent-table-artifact-select:focus-visible {
+  color: var(--fg-0);
+  background: var(--bg-3);
+  border-color: color-mix(in srgb, var(--accent-a) 35%, var(--panel-border-strong));
+  box-shadow: 0 4px 12px -8px rgba(var(--accent-glow), .65);
+  outline: none;
+  transform: translateY(-1px);
+}
+.agent-table-artifact-select:focus-visible {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-a) 15%, transparent);
+}
+.agent-table-artifact-select:disabled { cursor: default; opacity: .48; }
+.agent-table-artifact-select[data-state="selected"] {
+  color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 7%, var(--bg-2));
+  border-color: color-mix(in srgb, var(--ok) 24%, var(--panel-border));
+  opacity: 1;
+}
+.agent-table-artifact-spinner {
+  width: 11px;
+  height: 11px;
+  border: 1.5px solid color-mix(in srgb, currentColor 28%, transparent);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: agent-table-spin .65s linear infinite;
 }
 .agent-table-artifact-success,
 .agent-table-artifact-error {
@@ -958,6 +1043,17 @@ textarea:focus-visible {
 .agent-table-artifact-error {
   color: var(--err);
   border-top: 1px solid color-mix(in srgb, var(--err) 30%, transparent);
+}
+@keyframes agent-table-spin { to { transform: rotate(360deg); } }
+
+:root[data-theme="light"] .agent-table-artifact {
+  box-shadow: 0 8px 24px -20px rgba(25,25,55,.28), 0 1px 2px rgba(25,25,55,.05);
+}
+:root[data-theme="light"] .agent-table-artifact-header {
+  background: color-mix(in srgb, var(--panel-solid) 97%, var(--accent-a) 3%);
+}
+:root[data-theme="light"] .agent-table-artifact-select {
+  box-shadow: 0 1px 2px rgba(25,25,55,.06);
 }
 
 .mcp-app-frame {
@@ -1159,6 +1255,7 @@ textarea:focus-visible {
   .agent-mcp-debug-meta { grid-template-columns: 1fr; }
   .agent-table-artifact-header { align-items: flex-start; flex-direction: column; }
   .agent-table-artifact-hint { align-self: flex-start; }
+  .agent-table-artifact table { min-width: 560px; }
   .mcp-app-frame[data-display-mode="fullscreen"] { inset: 6px; }
   .mcp-app-frame-status { display: none; }
   .mcp-app-frame-heading strong { max-width: 45vw; }
@@ -1171,7 +1268,8 @@ textarea:focus-visible {
   .agent-activity-ring[data-active="true"]::after,
   .agent-activity-stage-icon[data-live="true"] svg,
   .agent-activity-live,
-  .agent-activity-details { animation: none; }
+  .agent-activity-details,
+  .agent-table-artifact-spinner { animation: none; }
 }
 
 /* chat: conversation-list rows. Inline styles can't express :hover, so
