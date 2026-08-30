@@ -15,6 +15,7 @@ AskMyDocs instead treats the full mailbox import as a durable campaign:
 - discovery captures a fixed mailbox boundary and creates monthly date windows;
 - one short job imports one bounded UID batch and commits its checkpoint to SQL;
 - completed windows are never selected again;
+- a terminal window failure is isolated while the remaining windows continue;
 - the scheduler recovers stale discovery and import work after a worker or queue
   outage;
 - regular incremental sync resumes from the campaign cutoff after completion.
@@ -85,16 +86,17 @@ at-least-once and deterministic paths provide the idempotency key.
 | Campaign status | Meaning | Next transition |
 |---|---|---|
 | `discovering` | Snapshot/window creation is queued or running. | `running` after window rows commit; `failed` after terminal errors. |
-| `running` | The pump is claiming and importing bounded windows. | `completed` after every window completes; `failed` after an exhausted real failure. |
+| `running` | The pump is claiming and importing bounded windows, skipping any terminally failed window. | `completed` after every window completes; `failed` after all remaining windows finish when at least one window failed. |
 | `completed` | All snapshot windows finished. | Terminal; a later incremental sync starts from `cutoff_at`. |
-| `failed` | Discovery or a window exhausted its real-error budget. | The UI starts a new campaign and fresh snapshot. |
+| `failed` | Discovery or a window exhausted its real-error budget. | Resume the same campaign from saved checkpoints; restart only when `UIDVALIDITY` invalidated the snapshot. |
 | `paused` | Reserved durable state; the scheduler does not pump it. | Operator-controlled. |
 
-`WithoutOverlapping` uses the same physical-mailbox key as folder listing and
-incremental sync. Lock contention releases discovery/import jobs back to the queue
-without consuming a fixed attempts budget; `retryUntil()` bounds those releases by
-the configured wall-clock requeue window, while `maxExceptions` still fails
-repeated real exceptions.
+`WithoutOverlapping` uses the same physical-mailbox key as incremental sync and
+explicitly shares that key across the sync, discovery, and import job classes.
+Lock contention therefore releases discovery/import jobs back to the queue before
+they open another IMAP connection, without consuming the real-exception budget;
+`retryUntil()` bounds those releases by the configured wall-clock requeue window,
+while `maxExceptions` still fails repeated real exceptions.
 
 Every minute `ImapBackfillScheduler`:
 
@@ -102,6 +104,11 @@ Every minute `ImapBackfillScheduler`:
    commit-before-queue-publish crash window;
 2. dispatches a pump for each `running` campaign;
 3. lets the pump reclaim stale `queued`/`running` windows as `pending`.
+
+When one import job exhausts its real-error budget, its window becomes `failed`
+and immediately dispatches the pump again. Other pending windows therefore keep
+advancing. The campaign becomes `failed` only after no pending or active window
+remains, preserving a complete list of the windows that need an operator resume.
 
 All queue entry points bind both host and connector-package tenant contexts only
 for their execution and restore the worker's previous contexts in `finally`.
@@ -127,7 +134,13 @@ POST /api/admin/connectors/{installationId}/imap-backfill
 ```
 
 Starting is idempotent while a campaign is active: concurrent requests lock the
-installation row and return the existing `discovering` or `running` campaign.
+installation row and return the existing `discovering` or `running` campaign. If
+the latest campaign failed during discovery, the same campaign ID retries
+discovery. If it failed while importing, completed windows remain untouched,
+incomplete windows return to `pending`, aggregate counters are rebuilt from their
+durable rows, and the pump continues from each saved `last_uid`. Only an
+`UIDVALIDITY changed` failure creates a new snapshot because the old UIDs no
+longer identify the same mailbox contents.
 
 `BackfillStatus` contains:
 
@@ -136,6 +149,7 @@ installation row and return the existing `discovering` or `running` campaign.
   "id": 42,
   "installation_id": 17,
   "status": "running",
+  "retry_mode": null,
   "total_messages": 128000,
   "processed_messages": 26400,
   "dispatched_documents": 27155,
@@ -196,11 +210,15 @@ and its project is `autry`.
    endpoint. The request returns `202` immediately with status `discovering`.
 4. Discovery captures the folder snapshots and creates monthly window rows. The
    first pump queues one window.
-5. With `batch_size=100` and `fetch_size=20`, each import job searches at most 101
-   UIDs, fetches at most five 20-message chunks, persists them and commits the next
-   UID checkpoint.
+5. With `batch_size=10` and `fetch_size=5`, each import job searches at most 11
+   UIDs, fetches at most two 5-message chunks, persists them and commits the next
+   UID checkpoint. A separate execution cap also splits campaigns created with a
+   larger historical batch size.
 6. Poll the GET endpoint. Worker restarts do not reset completed windows; stale
-   work is recovered by the next scheduler sweep.
+   work is recovered by the next scheduler sweep. If a real failure exhausts its
+   retries, that window is skipped while the other windows continue. After the
+   queue is drained, **Resume full import** reuses the same campaign and continues
+   failed windows from their last committed UID rather than returning to zero.
 7. When every window is complete, the campaign becomes `completed` and the
    installation watermark is set to the original cutoff. The normal incremental
    job then catches messages delivered after the snapshot.
@@ -216,8 +234,9 @@ configured attachment size/type policy still apply.
 |---|---:|---|
 | `CONNECTOR_IMAP_BACKFILL_ENABLED` | `true` | Enables campaign start and scheduler recovery. Does not disable incremental sync. |
 | `CONNECTOR_IMAP_BACKFILL_QUEUE` | `connectors` | Queue for discovery, pump and import jobs. |
-| `CONNECTOR_IMAP_BACKFILL_BATCH_SIZE` | `100` | Messages checkpointed per import job. |
-| `CONNECTOR_IMAP_BACKFILL_FETCH_SIZE` | `20` | Bodies fetched per IMAP bulk exchange. |
+| `CONNECTOR_IMAP_BACKFILL_BATCH_SIZE` | `10` | Messages checkpointed per import job for new campaigns. |
+| `CONNECTOR_IMAP_BACKFILL_MAX_MESSAGES_PER_JOB` | `10` | Runtime cap applied to new, running and resumed campaigns. |
+| `CONNECTOR_IMAP_BACKFILL_FETCH_SIZE` | `5` | Bodies fetched per IMAP bulk exchange. |
 | `CONNECTOR_IMAP_BACKFILL_STALE_MINUTES` | `20` | Heartbeat age before discovery/windows may be recovered. |
 | `CONNECTOR_IMAP_BACKFILL_ABSOLUTE_START` | `1970-01-01` | Oldest internal message date considered. |
 | `CONNECTOR_IMAP_MAILBOX_REQUEUE_WINDOW_MIN` | `30` | Wall-clock deadline for busy-mailbox lock requeues. |
@@ -242,10 +261,12 @@ configuration cache and restart long-lived workers so they load the new settings
   and messages may be outside the configured absolute start. Campaign/window
   statuses and heartbeats are authoritative.
 - **UIDVALIDITY changes invalidate the snapshot.** The current window fails rather
-  than applying an old UID checkpoint to a rebuilt mailbox; retry from the UI to
-  create a fresh campaign.
+  than applying an old UID checkpoint to a rebuilt mailbox; status exposes
+  `retry_mode: restart` and the UI creates a fresh campaign. Other failures expose
+  `retry_mode: resume` and retain the existing checkpoints.
 - **Folder selection is captured at start.** Changing include/exclude settings does
-  not rewrite an active campaign. Finish it or start a fresh campaign after failure.
+  not rewrite an active or ordinarily resumed campaign. A restart caused by an
+  invalidated UID namespace captures a new snapshot and current settings.
 - **Attachments remain policy-bound.** Full history imports every message, but an
   excluded, inline, oversized or disallowed attachment is intentionally not emitted.
 

@@ -68,6 +68,11 @@ final class ReconnectingImapBackfillClient implements ImapBackfillClient
         return $this->attempt('backfill.fetchMessage', fn (): ImapMessage => $this->inner->fetchMessage($mailbox, $uid));
     }
 
+    public function internalDate(string $mailbox, int $uid): Carbon
+    {
+        return $this->attempt('backfill.internalDate', fn (): Carbon => $this->inner->internalDate($mailbox, $uid));
+    }
+
     public function fetchMessages(string $mailbox, array $uids): array
     {
         return $this->attempt('backfill.fetchMessages', fn (): array => $this->inner->fetchMessages($mailbox, $uids));
@@ -95,7 +100,15 @@ final class ReconnectingImapBackfillClient implements ImapBackfillClient
             } catch (ConnectorAuthException $e) {
                 throw $e;
             } catch (\Throwable $e) {
-                if ($attempt >= $maxAttempts || ! $this->isTransientDrop($e)) {
+                $transient = $this->isTransientDrop($e);
+                if ($attempt >= $maxAttempts || ! $transient) {
+                    Log::error('[imap-backfill-diag] IMAP backfill operation abandoned', [
+                        'operation' => $label,
+                        'attempt' => $attempt,
+                        'max_attempts' => $maxAttempts,
+                        'transient' => $transient,
+                        'exception_chain' => Backfill\ImapBackfillDiagnostics::exceptionChain($e),
+                    ]);
                     throw $e;
                 }
 

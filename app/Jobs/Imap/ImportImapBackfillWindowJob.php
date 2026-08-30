@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Jobs\Imap;
 
 use App\Connectors\Imap\Backfill\ImapBackfillImporter;
+use App\Connectors\Imap\MailboxBusyException;
 use App\Connectors\Imap\MailboxLockKey;
 use App\Connectors\SerializedConnectorSyncJob;
 use App\Models\ImapBackfill;
@@ -18,6 +19,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
 use Padosoft\AskMyDocsConnectorBase\Support\TenantContext as PackageTenantContext;
 use Throwable;
@@ -27,7 +29,9 @@ final class ImportImapBackfillWindowJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 0;
-    public int $timeout = 600;
+    // Flex workers have a 90-second hard runtime ceiling. Import jobs are kept
+    // deliberately below it; the importer also caps each durable UID batch.
+    public int $timeout = 75;
     public int $maxExceptions = 5;
     public array $backoff = [30, 60, 120, 300];
 
@@ -83,6 +87,22 @@ final class ImportImapBackfillWindowJob implements ShouldQueue
 
         try {
             $result = $importer->importBatch($installation, $backfill, $window);
+        } catch (MailboxBusyException $e) {
+            $error = ['message' => $e->getMessage(), 'type' => $e::class, 'at' => now()->toIso8601String()];
+            $window->forceFill(['heartbeat_at' => now(), 'error_json' => $error])->save();
+            $backfill->forceFill(['heartbeat_at' => now(), 'error_json' => $error])->save();
+
+            $delay = max(1, (int) config('connectors.imap.mailbox_lock.requeue_after_seconds', 60));
+            Log::info('[imap-backfill-diag] mailbox busy — re-queuing window instead of failing', [
+                'backfill_id' => $backfill->id,
+                'window_id' => $window->id,
+                'installation_id' => $installation->id,
+                'tenant_id' => $this->tenantId,
+                'delay_seconds' => $delay,
+            ]);
+            $this->release($delay);
+
+            return;
         } catch (Throwable $e) {
             $error = ['message' => $e->getMessage(), 'type' => $e::class, 'at' => now()->toIso8601String()];
             $window->forceFill(['heartbeat_at' => now(), 'error_json' => $error])->save();
@@ -142,6 +162,7 @@ final class ImportImapBackfillWindowJob implements ShouldQueue
 
         return $key === null ? [] : [
             (new WithoutOverlapping($key))
+                ->shared()
                 ->releaseAfter((int) config('connectors.imap.mailbox_lock.requeue_after_seconds', 60))
                 ->expireAfter((int) config('connectors.imap.mailbox_lock.ttl_seconds', 700)),
         ];
@@ -154,14 +175,14 @@ final class ImportImapBackfillWindowJob implements ShouldQueue
 
     private function markFailed(?Throwable $exception): void
     {
-        DB::transaction(function () use ($exception): void {
+        $backfillId = DB::transaction(function () use ($exception): ?int {
             $window = ImapBackfillWindow::query()
                 ->forTenant($this->tenantId)
                 ->where('id', $this->windowId)
                 ->lockForUpdate()
                 ->first();
             if ($window === null || $window->status === ImapBackfillWindow::STATUS_COMPLETED) {
-                return;
+                return null;
             }
 
             $error = [
@@ -177,17 +198,32 @@ final class ImportImapBackfillWindowJob implements ShouldQueue
                 'error_json' => $error,
             ])->save();
 
-            ImapBackfill::query()
+            $backfill = ImapBackfill::query()
                 ->forTenant($this->tenantId)
                 ->where('id', $window->imap_backfill_id)
                 ->whereIn('status', ImapBackfill::ACTIVE_STATUSES)
-                ->update([
-                    'status' => ImapBackfill::STATUS_FAILED,
-                    'heartbeat_at' => now(),
-                    'error_json' => json_encode($error, JSON_THROW_ON_ERROR),
-                    'updated_at' => now(),
-                ]);
+                ->lockForUpdate()
+                ->first();
+            if ($backfill === null) {
+                return null;
+            }
+
+            // A terminal job failure belongs to this durable window. Keep the
+            // campaign active so the pump can skip it and claim the remaining
+            // pending windows. Once every window is terminal, the pump settles
+            // the campaign as failed if any window failed.
+            $backfill->forceFill([
+                'heartbeat_at' => now(),
+                'error_json' => $error,
+            ])->save();
+
+            return $backfill->id;
         });
+
+        if ($backfillId !== null) {
+            PumpImapBackfillJob::dispatch($backfillId, $this->tenantId)
+                ->onQueue((string) config('connectors.imap.backfill.queue', 'connectors'));
+        }
     }
 
     private function runInTenant(callable $callback): mixed

@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace App\Connectors\Imap\Backfill;
 
 use App\Jobs\Imap\DiscoverImapBackfillJob;
+use App\Jobs\Imap\PumpImapBackfillJob;
 use App\Models\ImapBackfill;
 use App\Models\ImapBackfillWindow;
 use App\Support\TenantContext;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
@@ -30,7 +32,8 @@ final class ImapBackfillManager
         }
 
         $tenantId = $this->tenantContext->current();
-        $backfill = DB::transaction(function () use ($tenantId, $installationId): ImapBackfill {
+        $dispatch = null;
+        $backfill = DB::transaction(function () use ($tenantId, $installationId, &$dispatch): ImapBackfill {
             // The installation row always exists before a campaign and is unique,
             // so it is the serialization point for concurrent empty-set starts.
             $installation = ConnectorInstallation::query()
@@ -42,11 +45,6 @@ final class ImapBackfillManager
             if ($installation === null) {
                 throw new NotFoundHttpException('IMAP installation not found.');
             }
-            if ($installation->status !== ConnectorInstallation::STATUS_ACTIVE) {
-                throw new UnprocessableEntityHttpException(
-                    'The IMAP account must be active before starting a full-history import.',
-                );
-            }
 
             $active = ImapBackfill::query()
                 ->forTenant($tenantId)
@@ -55,7 +53,105 @@ final class ImapBackfillManager
                 ->latest('id')
                 ->first();
             if ($active !== null) {
+                $this->ensureInstallationIsActive($installation);
+
                 return $active;
+            }
+
+            // A terminal queue failure must not discard a large mailbox's
+            // durable progress. The installation lock serializes concurrent
+            // operator retries, while the latest-campaign check prevents an
+            // older failed campaign from being revived after a newer one.
+            $latest = ImapBackfill::query()
+                ->forTenant($tenantId)
+                ->where('connector_installation_id', $installation->id)
+                ->latest('id')
+                ->lockForUpdate()
+                ->first();
+
+            // A transport failure can mark the installation ERRORED at the
+            // same time as the durable campaign fails. An explicit operator
+            // retry is the recovery boundary: re-arm only that failed campaign,
+            // in the same transaction, before resuming its saved checkpoints.
+            if (
+                $installation->status === ConnectorInstallation::STATUS_ERRORED
+                && $latest?->status === ImapBackfill::STATUS_FAILED
+            ) {
+                $installation->forceFill([
+                    'status' => ConnectorInstallation::STATUS_ACTIVE,
+                    'error_json' => null,
+                ])->saveOrFail();
+            }
+
+            $this->ensureInstallationIsActive($installation);
+
+            if (
+                $latest?->status === ImapBackfill::STATUS_FAILED
+                && ! $this->requiresFreshSnapshot($latest)
+            ) {
+                $windowQuery = ImapBackfillWindow::query()
+                    ->forTenant($tenantId)
+                    ->where('imap_backfill_id', $latest->id);
+                $totalWindows = (clone $windowQuery)->count();
+
+                if ($totalWindows === 0) {
+                    // Discovery persists its window set atomically. With no
+                    // windows there is no UID checkpoint to preserve, so retry
+                    // discovery on the SAME campaign and cutoff snapshot.
+                    $latest->forceFill([
+                        'status' => ImapBackfill::STATUS_DISCOVERING,
+                        'completed_at' => null,
+                        'heartbeat_at' => now(),
+                        'error_json' => null,
+                    ])->save();
+                    $dispatch = 'discover';
+
+                    return $latest;
+                }
+
+                // Resume every incomplete window immediately. Completed
+                // windows and every window's last_uid/processed counters stay
+                // untouched, so the first batch continues after the last
+                // confirmed UID rather than downloading history again.
+                (clone $windowQuery)
+                    ->where('status', '!=', ImapBackfillWindow::STATUS_COMPLETED)
+                    ->update([
+                        'status' => ImapBackfillWindow::STATUS_PENDING,
+                        'finished_at' => null,
+                        'heartbeat_at' => now(),
+                        'next_attempt_at' => now(),
+                        'error_json' => null,
+                        'updated_at' => now(),
+                    ]);
+
+                // Aggregate counters can lag their window transaction if a
+                // worker died at a boundary. Rebuild the campaign projection
+                // from the durable source-of-truth before exposing progress.
+                $totals = (clone $windowQuery)
+                    ->selectRaw('COALESCE(SUM(processed_messages), 0) AS processed_messages')
+                    ->selectRaw('COALESCE(SUM(dispatched_documents), 0) AS dispatched_documents')
+                    ->selectRaw('SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS completed_windows', [
+                        ImapBackfillWindow::STATUS_COMPLETED,
+                    ])
+                    ->firstOrFail();
+
+                $latest->forceFill([
+                    'status' => ImapBackfill::STATUS_RUNNING,
+                    'batch_size' => min(
+                        max(1, (int) $latest->batch_size),
+                        $this->maxMessagesPerJob(),
+                    ),
+                    'processed_messages' => (int) $totals->processed_messages,
+                    'dispatched_documents' => (int) $totals->dispatched_documents,
+                    'total_windows' => $totalWindows,
+                    'completed_windows' => (int) $totals->completed_windows,
+                    'completed_at' => null,
+                    'heartbeat_at' => now(),
+                    'error_json' => null,
+                ])->save();
+                $dispatch = 'pump';
+
+                return $latest;
             }
 
             $settings = (array) ($installation->config_json ?? []);
@@ -70,20 +166,29 @@ final class ImapBackfillManager
             $settings['recipients'] = ['include' => [], 'exclude' => []];
             $settings['subject'] = ['include_keywords' => [], 'exclude_keywords' => []];
 
-            return ImapBackfill::query()->create([
+            $created = ImapBackfill::query()->create([
                 'tenant_id' => $tenantId,
                 'connector_installation_id' => $installation->id,
                 'status' => ImapBackfill::STATUS_DISCOVERING,
                 'settings_json' => $settings,
-                'batch_size' => max(1, (int) config('connectors.imap.backfill.batch_size', 100)),
+                'batch_size' => min(
+                    max(1, (int) config('connectors.imap.backfill.batch_size', 10)),
+                    $this->maxMessagesPerJob(),
+                ),
                 'cutoff_at' => now(),
                 'started_at' => now(),
                 'heartbeat_at' => now(),
             ]);
+            $dispatch = 'discover';
+
+            return $created;
         });
 
-        if ($backfill->wasRecentlyCreated && $backfill->status === ImapBackfill::STATUS_DISCOVERING) {
+        if ($dispatch === 'discover') {
             DiscoverImapBackfillJob::dispatch($backfill->id, $tenantId)
+                ->onQueue((string) config('connectors.imap.backfill.queue', 'connectors'));
+        } elseif ($dispatch === 'pump') {
+            PumpImapBackfillJob::dispatch($backfill->id, $tenantId)
                 ->onQueue((string) config('connectors.imap.backfill.queue', 'connectors'));
         }
 
@@ -93,6 +198,22 @@ final class ImapBackfillManager
     public function isEnabled(): bool
     {
         return config('connectors.imap.backfill.enabled', true) === true;
+    }
+
+    private function maxMessagesPerJob(): int
+    {
+        return max(1, (int) config('connectors.imap.backfill.max_messages_per_job', 10));
+    }
+
+    private function ensureInstallationIsActive(ConnectorInstallation $installation): void
+    {
+        if ($installation->status === ConnectorInstallation::STATUS_ACTIVE) {
+            return;
+        }
+
+        throw new UnprocessableEntityHttpException(
+            'The IMAP account must be active before starting a full-history import.',
+        );
     }
 
     public function hasCompletedBackfill(int $installationId): bool
@@ -160,6 +281,9 @@ final class ImapBackfillManager
             'id' => $backfill->id,
             'installation_id' => $backfill->connector_installation_id,
             'status' => $backfill->status,
+            'retry_mode' => $backfill->status === ImapBackfill::STATUS_FAILED
+                ? ($this->requiresFreshSnapshot($backfill) ? 'restart' : 'resume')
+                : null,
             'total_messages' => $backfill->total_messages,
             'processed_messages' => $backfill->processed_messages,
             'dispatched_documents' => $backfill->dispatched_documents,
@@ -180,5 +304,13 @@ final class ImapBackfillManager
             ],
             'last_error' => $lastError?->error_json ?? $backfill->error_json,
         ];
+    }
+
+    private function requiresFreshSnapshot(ImapBackfill $backfill): bool
+    {
+        $message = data_get($backfill->error_json, 'message');
+
+        return is_string($message)
+            && Str::contains($message, 'UIDVALIDITY changed', ignoreCase: true);
     }
 }

@@ -9,15 +9,18 @@ use App\Connectors\Imap\Backfill\ImapBackfillClientProviderContract;
 use App\Connectors\Imap\Backfill\ImapBackfillDiscovery;
 use App\Connectors\Imap\Backfill\ImapBackfillImporter;
 use App\Connectors\Imap\Backfill\ImapBackfillMailboxSnapshot;
+use App\Connectors\Imap\MailboxBusyException;
 use App\Jobs\Imap\ImportImapBackfillWindowJob;
 use App\Jobs\Imap\PumpImapBackfillJob;
 use App\Models\ImapBackfill;
 use App\Models\ImapBackfillWindow;
 use App\Support\TenantContext;
 use Carbon\Carbon;
+use Illuminate\Contracts\Queue\Job as QueueJobContract;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
+use Mockery;
 use Padosoft\AskMyDocsConnectorBase\Contracts\ConnectorIngestionContract;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
 use Padosoft\AskMyDocsConnectorImap\Imap\ImapAttachment;
@@ -41,7 +44,7 @@ final class ImapBackfillAlgorithmsTest extends TestCase
         $client->mailboxNames = ['INBOX'];
         $client->snapshot = new ImapBackfillMailboxSnapshot(uidValidity: 77, maxUid: 20, messageCount: 2);
         $client->betweenUidValues = [10, 20];
-        $client->singleMessages[10] = $this->message(10, Carbon::parse('2026-01-15'));
+        $client->internalDates[10] = Carbon::parse('2026-01-15');
 
         (new ImapBackfillDiscovery($this->provider($client)))->discover($installation, $backfill);
 
@@ -64,6 +67,7 @@ final class ImapBackfillAlgorithmsTest extends TestCase
         $this->assertSame(2, $backfill->fresh()->total_messages);
         $this->assertSame(ImapBackfill::STATUS_RUNNING, $backfill->fresh()->status);
         $this->assertSame(500, $client->requestedLimit);
+        $this->assertSame(0, $client->fetchMessageCalls, 'discovery must not parse RFC822 headers');
         $this->assertTrue($client->closed);
     }
 
@@ -103,6 +107,75 @@ final class ImapBackfillAlgorithmsTest extends TestCase
         $this->assertSame(2, $backfill->fresh()->processed_messages);
         $this->assertCount(2, $ingestion->dispatched);
         Queue::assertPushed(PumpImapBackfillJob::class, 1);
+    }
+
+    public function test_import_splits_a_legacy_large_batch_at_the_current_per_job_cap(): void
+    {
+        Queue::fake();
+        Storage::fake('local');
+        config()->set('connectors.imap.backfill.max_messages_per_job', 10);
+        $installation = $this->installation();
+        $backfill = $this->backfill($installation, ImapBackfill::STATUS_RUNNING, [
+            'batch_size' => 100,
+            'total_messages' => 12,
+            'total_windows' => 1,
+            'settings_json' => ['skip_auto_generated' => false, 'attachments' => ['enabled' => false]],
+        ]);
+        $window = $this->window($installation, $backfill, [
+            'status' => ImapBackfillWindow::STATUS_QUEUED,
+            'snapshot_uid_validity' => 77,
+            'snapshot_max_uid' => 112,
+        ]);
+        $client = new AlgorithmFakeImapClient;
+        $client->state = new MailboxState(uidValidity: 77, lastUid: 112);
+        $client->betweenUidValues = range(101, 112);
+        foreach (range(101, 110) as $uid) {
+            $client->bulkMessages[$uid] = $this->message($uid, Carbon::parse('2026-01-10'));
+        }
+
+        $ingestion = new RecordingConnectorIngestion;
+        (new ImportImapBackfillWindowJob($window->id, $this->tenantId()))
+            ->handle(new ImapBackfillImporter($this->provider($client), $ingestion));
+
+        $freshWindow = $window->fresh();
+        $this->assertSame(11, $client->requestedLimit, 'the cap plus one is enough for the hasMore probe');
+        $this->assertSame(110, $freshWindow->last_uid);
+        $this->assertSame(10, $freshWindow->processed_messages);
+        $this->assertSame(ImapBackfillWindow::STATUS_PENDING, $freshWindow->status);
+        $this->assertCount(10, $ingestion->dispatched);
+        Queue::assertPushed(PumpImapBackfillJob::class, 1);
+    }
+
+    public function test_import_requeues_a_busy_mailbox_without_failing_the_campaign(): void
+    {
+        Queue::fake();
+        Storage::fake('local');
+        config()->set('connectors.imap.mailbox_lock.requeue_after_seconds', 7);
+        $installation = $this->installation();
+        $backfill = $this->backfill($installation, ImapBackfill::STATUS_RUNNING, [
+            'total_windows' => 1,
+        ]);
+        $window = $this->window($installation, $backfill, [
+            'status' => ImapBackfillWindow::STATUS_QUEUED,
+        ]);
+        $client = new AlgorithmFakeImapClient;
+        $client->selectMailboxException = new MailboxBusyException(
+            'Mailbox busy: another connection to this account is already in progress.',
+        );
+        $importer = new ImapBackfillImporter($this->provider($client), new RecordingConnectorIngestion);
+        $queueJob = Mockery::mock(QueueJobContract::class);
+        $queueJob->shouldReceive('release')->once()->with(7);
+        $job = new ImportImapBackfillWindowJob($window->id, $this->tenantId());
+        $job->setJob($queueJob);
+
+        $job->handle($importer);
+
+        $this->assertSame(ImapBackfillWindow::STATUS_RUNNING, $window->fresh()->status);
+        $this->assertSame(1, $window->fresh()->attempts);
+        $this->assertSame(MailboxBusyException::class, $window->fresh()->error_json['type']);
+        $this->assertSame(ImapBackfill::STATUS_RUNNING, $backfill->fresh()->status);
+        $this->assertSame(MailboxBusyException::class, $backfill->fresh()->error_json['type']);
+        Queue::assertNotPushed(PumpImapBackfillJob::class);
     }
 
     public function test_import_rejects_a_changed_uidvalidity_snapshot(): void
@@ -315,10 +388,14 @@ final class AlgorithmFakeImapClient implements ImapBackfillClient
     public array $betweenUidValues = [];
     /** @var array<int,ImapMessage> */
     public array $singleMessages = [];
+    /** @var array<int,Carbon> */
+    public array $internalDates = [];
     /** @var array<int,ImapMessage> */
     public array $bulkMessages = [];
     public ?int $requestedLimit = null;
+    public int $fetchMessageCalls = 0;
     public bool $closed = false;
+    public ?\Throwable $selectMailboxException = null;
 
     public function __construct()
     {
@@ -327,7 +404,14 @@ final class AlgorithmFakeImapClient implements ImapBackfillClient
     }
 
     public function mailboxes(): array { return $this->mailboxNames; }
-    public function selectMailbox(string $mailbox): MailboxState { return $this->state; }
+    public function selectMailbox(string $mailbox): MailboxState
+    {
+        if ($this->selectMailboxException !== null) {
+            throw $this->selectMailboxException;
+        }
+
+        return $this->state;
+    }
     public function snapshotMailbox(string $mailbox): ImapBackfillMailboxSnapshot { return $this->snapshot; }
 
     public function uidsBetween(
@@ -344,7 +428,13 @@ final class AlgorithmFakeImapClient implements ImapBackfillClient
 
     public function fetchMessage(string $mailbox, int $uid): ImapMessage
     {
+        $this->fetchMessageCalls++;
         return $this->singleMessages[$uid] ?? throw new RuntimeException("Missing fake UID {$uid}");
+    }
+
+    public function internalDate(string $mailbox, int $uid): Carbon
+    {
+        return $this->internalDates[$uid] ?? throw new RuntimeException("Missing fake INTERNALDATE for UID {$uid}");
     }
 
     public function fetchMessages(string $mailbox, array $uids): array

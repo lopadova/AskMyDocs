@@ -52,6 +52,7 @@ use App\Policies\KnowledgeDocumentPolicy;
 use App\Services\Admin\Pdf\PdfRenderer;
 use App\Services\Admin\Pdf\PdfRendererFactory;
 use App\Services\Kb\Pipeline\PipelineRegistry;
+use App\Support\KbDiskWriteSafety;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -176,6 +177,12 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        // Connector UID checkpoints are only safe when a failed source write
+        // throws. Laravel Cloud injects its `private` S3 disk with throw=false,
+        // so make every configured canonical/project KB disk strict before the
+        // filesystem manager can resolve and cache an adapter.
+        KbDiskWriteSafety::enforce();
+
         // v7.0/W6.3 — bind the three host adapters that satisfy the
         // `padosoft/askmydocs-mcp-pack` contracts. Bindings live in
         // `boot()` (not `register()`) because `bootstrap/providers.php`

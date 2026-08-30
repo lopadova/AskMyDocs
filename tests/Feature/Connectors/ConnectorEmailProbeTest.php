@@ -176,6 +176,7 @@ final class ConnectorEmailProbeTest extends TestCase
 
         $resp->assertStatus(503);
         $this->assertArrayHasKey('error', $resp->json());
+        $this->assertMatchesRegularExpression('/diag=[0-9a-f-]+ phase=fetch_newest/', (string) $resp->json('error'));
     }
 
     public function test_factory_build_failure_is_503_not_an_uncaught_500(): void

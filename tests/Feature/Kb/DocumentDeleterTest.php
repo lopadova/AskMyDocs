@@ -307,6 +307,83 @@ class DocumentDeleterTest extends TestCase
         Storage::disk('kb')->assertExists('docs/recent.md');
     }
 
+    public function test_prune_preserves_file_referenced_by_a_live_version(): void
+    {
+        config()->set('kb.deletion.soft_delete', true);
+        Storage::disk('kb')->put('docs/shared.md', '# current');
+
+        $old = $this->makeDocument([
+            'source_path' => 'docs/shared.md',
+            'version_hash' => 'old-version',
+            'status' => 'archived',
+        ]);
+        $live = $this->makeDocument([
+            'source_path' => 'docs/shared.md',
+            'version_hash' => 'live-version',
+            'status' => 'active',
+        ]);
+
+        (new DocumentDeleter)->delete($old);
+        KnowledgeDocument::withTrashed()
+            ->whereKey($old->id)
+            ->update(['deleted_at' => now()->subDays(45)]);
+
+        $purged = (new DocumentDeleter)->pruneSoftDeleted(now()->subDays(30));
+
+        $this->assertSame(1, $purged);
+        $this->assertNull(KnowledgeDocument::withTrashed()->find($old->id));
+        $this->assertNotNull(KnowledgeDocument::find($live->id));
+        Storage::disk('kb')->assertExists('docs/shared.md');
+    }
+
+    public function test_hard_delete_preserves_file_referenced_by_an_archived_version(): void
+    {
+        config()->set('kb.deletion.soft_delete', false);
+        Storage::disk('kb')->put('docs/shared.md', '# current');
+
+        $deleted = $this->makeDocument([
+            'source_path' => 'docs/shared.md',
+            'version_hash' => 'deleted-version',
+        ]);
+        $archived = $this->makeDocument([
+            'source_path' => 'docs/shared.md',
+            'version_hash' => 'archived-version',
+            'status' => 'archived',
+        ]);
+
+        $result = (new DocumentDeleter)->delete($deleted);
+
+        $this->assertFalse($result['file_deleted']);
+        $this->assertNull(KnowledgeDocument::withTrashed()->find($deleted->id));
+        $this->assertNotNull(KnowledgeDocument::find($archived->id));
+        Storage::disk('kb')->assertExists('docs/shared.md');
+    }
+
+    public function test_hard_delete_does_not_treat_a_different_storage_key_as_a_reference(): void
+    {
+        config()->set('kb.deletion.soft_delete', false);
+        Storage::fake('archive');
+        Storage::disk('kb')->put('docs/shared.md', '# current');
+        Storage::disk('archive')->put('history/docs/shared.md', '# archived');
+
+        $deleted = $this->makeDocument([
+            'source_path' => 'docs/shared.md',
+            'version_hash' => 'deleted-version',
+        ]);
+        $this->makeDocument([
+            'source_path' => 'docs/shared.md',
+            'version_hash' => 'other-storage-version',
+            'status' => 'archived',
+            'metadata' => ['disk' => 'archive', 'prefix' => 'history'],
+        ]);
+
+        $result = (new DocumentDeleter)->delete($deleted);
+
+        $this->assertTrue($result['file_deleted']);
+        Storage::disk('kb')->assertMissing('docs/shared.md');
+        Storage::disk('archive')->assertExists('history/docs/shared.md');
+    }
+
     public function test_hard_delete_refuses_storage_call_for_traversal_path(): void
     {
         // Iteration 4 (PR #116) — R1 + R4 + R14. KbPath::normalize()

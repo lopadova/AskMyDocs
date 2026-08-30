@@ -170,6 +170,202 @@ body {
   text-decoration: underline;
 }
 
+/* ---------- tenant + project onboarding ---------- */
+.workspace-screen {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(circle at 15% 15%, rgba(91, 140, 255, 0.16), transparent 32%),
+    radial-gradient(circle at 85% 85%, rgba(63, 111, 224, 0.1), transparent 30%),
+    var(--bg);
+}
+.workspace-header {
+  min-height: 62px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(22, 26, 33, 0.88);
+  backdrop-filter: blur(16px);
+}
+.workspace-user {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 13px;
+}
+.workspace-main {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: 40px 24px;
+}
+.workspace-card {
+  width: min(100%, 680px);
+  min-height: clamp(420px, calc(100vh - 142px), 520px);
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 34px;
+  background: rgba(22, 26, 33, 0.96);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.3);
+}
+.workspace-error-card {
+  min-height: 0;
+  align-items: flex-start;
+}
+.workspace-card h1 {
+  margin: 0;
+  font-size: 28px;
+  line-height: 1.15;
+}
+.workspace-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.workspace-copy p {
+  margin: 0;
+}
+.workspace-eyebrow {
+  margin: 0;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.9px;
+  text-transform: uppercase;
+}
+.workspace-progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.workspace-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.workspace-step.active {
+  color: var(--text);
+}
+.workspace-step-number {
+  width: 24px;
+  height: 24px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--bg-input);
+  font-weight: 700;
+}
+.workspace-step.active .workspace-step-number {
+  border-color: rgba(91, 140, 255, 0.55);
+  background: rgba(91, 140, 255, 0.16);
+  color: var(--accent);
+}
+.workspace-progress-line {
+  width: 54px;
+  height: 1px;
+  background: var(--border);
+}
+.workspace-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.workspace-option {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  color: var(--text);
+  text-align: left;
+  font: inherit;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, transform 0.15s;
+}
+.workspace-option:hover {
+  border-color: rgba(91, 140, 255, 0.7);
+  transform: translateY(-1px);
+}
+.workspace-option:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(91, 140, 255, 0.3);
+}
+.workspace-option.selected {
+  border-color: var(--accent);
+  background: rgba(91, 140, 255, 0.12);
+}
+.workspace-option-mark {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: linear-gradient(145deg, var(--accent), var(--accent-strong));
+  color: #fff;
+  font-size: 16px;
+  font-weight: 800;
+}
+.workspace-option-mark.project {
+  background: rgba(91, 140, 255, 0.16);
+  color: var(--accent);
+}
+.workspace-option-copy {
+  min-width: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+}
+.workspace-option-copy strong,
+.workspace-option-copy span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.workspace-option-arrow {
+  color: var(--muted);
+  font-size: 18px;
+}
+.workspace-option.selected .workspace-option-arrow {
+  color: var(--accent);
+}
+.workspace-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 22px;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  background: rgba(29, 34, 48, 0.45);
+}
+.workspace-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: auto;
+  padding-top: 4px;
+}
+.workspace-actions.split {
+  justify-content: space-between;
+}
+.workspace-actions .btn {
+  min-width: 120px;
+}
+
 /* ---------- shell ---------- */
 .shell {
   height: 100%;
@@ -458,6 +654,12 @@ body {
   display: inline-flex;
   align-items: center;
 }
+.context-switch {
+  min-width: 120px;
+}
+.context-switch .team-select {
+  width: 100%;
+}
 .team-select {
   background: var(--bg-input);
   color: var(--text);
@@ -521,6 +723,10 @@ body {
   border-radius: 999px;
   padding: 1px 7px;
   font-size: 11px;
+}
+.chip.active-project {
+  border-color: rgba(91, 140, 255, 0.45);
+  background: rgba(91, 140, 255, 0.1);
 }
 
 /* ---------- search result as a button ---------- */
@@ -810,6 +1016,10 @@ button.result:active,
     margin-left: 0;
     gap: 8px;
   }
+  .context-switch {
+    flex: 1 1 calc(50% - 4px);
+    min-width: 120px;
+  }
   .team-switch {
     flex: 1 1 auto;
     min-width: 0;
@@ -820,6 +1030,44 @@ button.result:active,
   }
   .user {
     display: none; /* the role badge + sign-out are enough on a phone */
+  }
+
+  /* ---- workspace picker: full-width, safe-area aware ---- */
+  .workspace-header {
+    padding-top: calc(10px + env(safe-area-inset-top));
+    padding-left: calc(16px + env(safe-area-inset-left));
+    padding-right: calc(16px + env(safe-area-inset-right));
+  }
+  .workspace-user > .muted {
+    display: none;
+  }
+  .workspace-main {
+    place-items: start center;
+    padding: 22px 14px;
+    padding-left: calc(14px + env(safe-area-inset-left));
+    padding-right: calc(14px + env(safe-area-inset-right));
+    padding-bottom: calc(22px + env(safe-area-inset-bottom));
+  }
+  .workspace-card {
+    min-height: calc(100vh - 118px - env(safe-area-inset-top));
+    gap: 20px;
+    padding: 24px 18px;
+    border-radius: 14px;
+  }
+  .workspace-error-card {
+    min-height: 0;
+  }
+  .workspace-card h1 {
+    font-size: 24px;
+  }
+  .workspace-options {
+    grid-template-columns: 1fr;
+  }
+  .workspace-option {
+    min-height: 68px;
+  }
+  .workspace-actions .btn {
+    min-height: 44px;
   }
 
   /* ---- tabs become a fixed bottom tab bar (iOS idiom) ---- */

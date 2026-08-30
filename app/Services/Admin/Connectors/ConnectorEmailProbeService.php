@@ -4,14 +4,17 @@ declare(strict_types=1);
 
 namespace App\Services\Admin\Connectors;
 
+use App\Connectors\Imap\Backfill\ImapBackfillDiagnostics;
+use App\Connectors\Imap\MailboxLockKey;
 use App\Support\TenantContext;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Padosoft\AskMyDocsConnectorBase\BaseConnector;
 use Padosoft\AskMyDocsConnectorBase\ConnectorRegistry;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
 use Padosoft\AskMyDocsConnectorImap\Imap\ImapClientFactoryInterface;
 use Padosoft\AskMyDocsConnectorImap\Imap\ImapClientInterface;
 use Padosoft\AskMyDocsConnectorImap\Imap\ImapMessage;
-use Illuminate\Support\Str;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Throwable;
 
@@ -72,6 +75,9 @@ final class ConnectorEmailProbeService
      */
     public function probe(int $installationId): array
     {
+        $diagnosticId = (string) Str::uuid();
+        $startedAt = microtime(true);
+        $phase = 'load_installation';
         $installation = ConnectorInstallation::query()
             ->where('id', $installationId)
             ->where('tenant_id', $this->tenantContext->current())
@@ -93,13 +99,7 @@ final class ConnectorEmailProbeService
         $connection = (array) ($config['connection'] ?? []);
         $authMode = (string) ($config['auth_mode'] ?? 'basic');
         $folder = $this->resolveFolder($config);
-
-        $secret = $this->resolveSecret($installation);
-        if ($secret === '') {
-            throw new ConnectorEmailProbeException(
-                'No stored credentials for this account — re-add it before testing.',
-            );
-        }
+        $mailboxLockKey = MailboxLockKey::forInstallation($installation);
 
         // Build the client INSIDE the try: a factory-level failure (bad connection
         // config, auth-mode mismatch, a connect/handshake that fails eagerly in
@@ -107,17 +107,54 @@ final class ConnectorEmailProbeService
         // as a 503 — not bypass the mapping and bubble up as a 500 (R14).
         $client = null;
 
+        Log::info('[imap-test-fetch-diag] probe started', [
+            'diagnostic_id' => $diagnosticId,
+            'installation_id' => $installation->id,
+            'tenant_id' => $installation->tenant_id,
+            'mailbox_lock_key' => $mailboxLockKey,
+            'folder_hash' => ImapBackfillDiagnostics::mailboxHash($folder),
+            'auth_mode' => $authMode,
+        ] + ImapBackfillDiagnostics::runtime());
+
         try {
+            $phase = 'resolve_credentials';
+            $secret = $this->resolveSecret($installation);
+            if ($secret === '') {
+                throw new ConnectorEmailProbeException(
+                    'No stored credentials for this account — re-add it before testing.',
+                );
+            }
+
+            $phase = 'create_client';
             $client = $this->factory->make($connection, $secret, $authMode);
+            $phase = 'fetch_newest';
             $message = $this->fetchNewest($client, $folder);
 
             // A reachable but empty folder is a valid 200, not a failure.
+            Log::info('[imap-test-fetch-diag] probe completed', [
+                'diagnostic_id' => $diagnosticId,
+                'installation_id' => $installation->id,
+                'message_found' => $message !== null,
+                'elapsed_ms' => ImapBackfillDiagnostics::elapsedMs($startedAt),
+            ]);
+
             return ['folder' => $folder, 'message' => $message === null ? null : $this->preview($message)];
         } catch (Throwable $e) {
             // R14 — surface "couldn't reach / read the mailbox" distinctly; never
             // let it look like an empty-but-successful probe.
+            Log::error('[imap-test-fetch-diag] probe failed', [
+                'diagnostic_id' => $diagnosticId,
+                'installation_id' => $installation->id,
+                'tenant_id' => $installation->tenant_id,
+                'mailbox_lock_key' => $mailboxLockKey,
+                'folder_hash' => ImapBackfillDiagnostics::mailboxHash($folder),
+                'phase' => $phase,
+                'elapsed_ms' => ImapBackfillDiagnostics::elapsedMs($startedAt),
+                'exception_chain' => ImapBackfillDiagnostics::exceptionChain($e),
+            ] + ImapBackfillDiagnostics::runtime());
+
             throw new ConnectorEmailProbeException(
-                "Impossibile scaricare l'email di prova: {$e->getMessage()}",
+                "Impossibile scaricare l'email di prova [diag={$diagnosticId} phase={$phase}]: {$e->getMessage()}",
                 previous: $e,
             );
         } finally {
