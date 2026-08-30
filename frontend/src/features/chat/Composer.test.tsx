@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactElement } from 'react';
 import { Composer } from './Composer';
@@ -94,5 +94,24 @@ describe('Composer', () => {
         const props = makeProps({ error: new Error('Provider rate limited') });
         renderWithClient(<Composer {...props} />);
         expect(screen.getByTestId('chat-composer-error')).toHaveTextContent('Provider rate limited');
+    });
+
+    it('does not repeat the same send error as both local and external feedback', async () => {
+        const message = 'I could not complete the search.';
+        const props = makeProps({
+            error: new Error(message),
+            onSend: vi.fn().mockRejectedValue(new Error(message)),
+        });
+        renderWithClient(<Composer {...props} />);
+
+        const input = screen.getByTestId('chat-composer-input');
+        fireEvent.change(input, { target: { value: 'Try this' } });
+        fireEvent.submit(screen.getByTestId('chat-composer'));
+
+        await waitFor(() => expect(input).toHaveValue('Try this'));
+        expect(props.onSend).toHaveBeenCalledOnce();
+        expect(screen.queryByTestId('message-error')).not.toBeInTheDocument();
+        expect(screen.getByTestId('chat-composer-error')).toHaveTextContent(message);
+        expect(screen.getAllByText(message)).toHaveLength(1);
     });
 });

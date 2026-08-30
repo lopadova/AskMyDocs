@@ -323,6 +323,20 @@ textarea:focus-visible {
 .chat-user-row:focus-within .chat-user-edit { opacity: 1; }
 @media (hover: none) { .chat-user-edit { opacity: 1; } }
 
+.chat-agent-avatar {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  display: grid;
+  place-items: center;
+  color: var(--accent-a);
+  background: color-mix(in srgb, var(--panel-solid) 92%, var(--accent-a) 8%);
+  border: 1px solid color-mix(in srgb, var(--accent-a) 24%, var(--panel-border));
+  border-radius: 50%;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 26%, transparent), var(--shadow-sm);
+}
+.chat-agent-avatar svg { display: block; }
+
 /* Chat shell: every vertical region owns its space. min-height: 0 is
    essential for the message thread to scroll inside the viewport instead
    of pushing the composer beyond the bottom edge. */
@@ -467,7 +481,7 @@ textarea:focus-visible {
   height: 42px;
   flex-basis: 42px;
 }
-.agent-activity-card.is-embedded .agent-activity-ring svg {
+.agent-activity-card.is-embedded .agent-activity-ring > svg {
   inset: -1px;
 }
 .agent-activity-card[data-state="active"] {
@@ -507,7 +521,7 @@ textarea:focus-visible {
 .agent-activity-ring[data-kind="ready"] { --activity-color: var(--ok); }
 .agent-activity-ring[data-kind="confirmation"] { --activity-color: var(--warn); }
 .agent-activity-ring[data-kind="error"] { --activity-color: var(--err); }
-.agent-activity-ring svg {
+.agent-activity-ring > svg {
   position: absolute;
   inset: 1px;
   width: 44px;
@@ -545,6 +559,12 @@ textarea:focus-visible {
   background: color-mix(in srgb, var(--activity-color) 10%, var(--bg-2));
   border: 1px solid color-mix(in srgb, var(--activity-color) 18%, transparent);
   border-radius: 50%;
+  overflow: hidden;
+}
+.agent-activity-stage-icon svg {
+  position: static;
+  display: block;
+  transform: none;
 }
 .agent-activity-stage-icon[data-live="true"] svg {
   animation: agent-icon-breathe 1.35s ease-in-out infinite;
@@ -1377,7 +1397,7 @@ textarea:focus-visible {
   }
   .agent-activity-main { padding: 9px 10px; }
   .agent-activity-ring { width: 42px; height: 42px; flex-basis: 42px; }
-  .agent-activity-ring svg { inset: -1px; }
+  .agent-activity-ring > svg { inset: -1px; }
   .agent-activity-metrics { display: none; }
   .agent-activity-details-toggle > span:not(.agent-activity-count),
   .agent-activity-cancel > span { display: none; }

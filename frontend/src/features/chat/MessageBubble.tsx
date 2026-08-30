@@ -214,20 +214,9 @@ export function MessageBubble({
             className="popin"
             style={{ display: 'flex', gap: 12, marginBottom: 22 }}
         >
-            <div
-                style={{
-                    width: 30,
-                    height: 30,
-                    borderRadius: 9,
-                    background: 'var(--grad-accent)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flex: '0 0 auto',
-                }}
-            >
-                <Icon.Logo size={16} />
-            </div>
+            <span className="chat-agent-avatar" data-testid="chat-agent-avatar" aria-hidden="true">
+                <Icon.Brain size={15} />
+            </span>
             <div style={{ flex: 1, minWidth: 0 }}>
                 {thinking && <ThinkingTrace steps={thinking} />}
                 {toolCalls.length > 0 && (
