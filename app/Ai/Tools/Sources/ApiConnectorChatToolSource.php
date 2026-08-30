@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Ai\Tools\Sources;
 
+use App\Agent\Tools\ApiToolRequestContext;
 use App\Ai\Tools\ChatToolInvocationResult;
 use App\Ai\Tools\ChatToolSourceContract;
 use App\Models\User;
@@ -17,6 +18,7 @@ final readonly class ApiConnectorChatToolSource implements ChatToolSourceContrac
         private TenantContext $tenants,
         private ApiToolRegistry $registry,
         private ApiToolExecutor $executor,
+        private ApiToolRequestContext $requestContext,
     ) {}
 
     public function key(): string
@@ -55,7 +57,12 @@ final readonly class ApiConnectorChatToolSource implements ChatToolSourceContrac
         if ($route === null) {
             throw new \RuntimeException('API connector tool is no longer available.');
         }
-        $payload = $this->executor->execute($route, $arguments, $context);
+        $prepared = $this->requestContext->apply($route, $arguments, $context);
+        $payload = $this->executor->execute(
+            $prepared['route'],
+            $prepared['arguments'],
+            $prepared['context'],
+        );
         $error = is_string($payload['error'] ?? null) ? $payload['error'] : null;
 
         return new ChatToolInvocationResult(
