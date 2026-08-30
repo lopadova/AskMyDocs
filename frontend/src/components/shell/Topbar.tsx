@@ -1,5 +1,6 @@
 import { Fragment } from 'react';
 import { Icon } from '../Icons';
+import { Button } from '../Button';
 import { TeamSwitcher } from './TeamSwitcher';
 import { Tooltip } from './Tooltip';
 import { UserMenu } from './UserMenu';
@@ -27,87 +28,61 @@ export function Topbar({
     crumbs = [],
 }: TopbarProps) {
     return (
-        <header
-            style={{
-                height: 52,
-                flex: '0 0 52px',
-                borderBottom: '1px solid var(--hairline)',
-                background: 'var(--bg-1)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 12,
-                padding: '0 16px',
-                position: 'relative',
-                zIndex: 5,
-            }}
-        >
-            {team !== null && teams.length > 0 && (
-                <TeamSwitcher team={team} teams={teams} onChange={onTeamChange} />
-            )}
-            <div
-                style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    color: 'var(--fg-3)',
-                    fontSize: 12,
-                }}
-            >
-                {crumbs.map((c, i) => (
-                    <Fragment key={`${c}-${i}`}>
-                        <Icon.Chevron size={12} />
-                        <span style={{ color: i === crumbs.length - 1 ? 'var(--fg-1)' : 'var(--fg-3)' }}>{c}</span>
-                    </Fragment>
-                ))}
+        <header className="app-topbar" data-testid="app-topbar">
+            <div className="app-topbar-leading">
+                {team !== null && teams.length > 0 && (
+                    <TeamSwitcher team={team} teams={teams} onChange={onTeamChange} />
+                )}
+                <nav className="app-topbar-crumbs" aria-label="Breadcrumb">
+                    {crumbs.map((c, i) => (
+                        <Fragment key={`${c}-${i}`}>
+                            <Icon.Chevron size={12} />
+                            <span data-current={i === crumbs.length - 1 ? 'true' : 'false'}>{c}</span>
+                        </Fragment>
+                    ))}
+                </nav>
             </div>
-            <div style={{ flex: 1 }} />
-            {team !== null && (
-                <div
-                    style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 4,
-                        padding: '4px 10px',
-                        background: 'var(--bg-2)',
-                        border: '1px solid var(--panel-border)',
-                        borderRadius: 9,
-                        fontSize: 11.5,
-                        color: 'var(--fg-2)',
-                    }}
-                >
-                    <span className="pulse-dot" style={{ width: 6, height: 6 }} />
-                    <span className="mono">All systems operational</span>
+
+            <div className="app-topbar-actions">
+                {team !== null && (
+                    <div className="app-topbar-status" role="status" aria-label="All systems operational">
+                        <span className="pulse-dot" aria-hidden="true" />
+                        <span>All systems operational</span>
+                    </div>
+                )}
+                <div className="app-topbar-tools" aria-label="Workspace tools">
+                    {/* v8.0/W1.4 — real notification bell wired to
+                      * `/api/notifications/unread-count` (30s polling) and
+                      * the per-user dropdown. */}
+                    {team !== null && <NotificationBell />}
+                    <Tooltip label={theme === 'dark' ? 'Light mode' : 'Dark mode'}>
+                        <Button
+                            variant="quiet"
+                            size="sm"
+                            iconOnly
+                            className="app-topbar-icon-button"
+                            aria-label="Toggle theme"
+                            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                        >
+                            {theme === 'dark' ? <Icon.Sun size={15} /> : <Icon.Moon size={15} />}
+                        </Button>
+                    </Tooltip>
+                    <Tooltip label="Interface settings">
+                        <Button
+                            variant="quiet"
+                            size="sm"
+                            iconOnly
+                            className="app-topbar-icon-button"
+                            aria-label="Open tweaks panel"
+                            onClick={onToggleTweaks}
+                        >
+                            <Icon.Sliders size={15} />
+                        </Button>
+                    </Tooltip>
                 </div>
-            )}
-            {/* v8.0/W1.4 — real notification bell wired to
-              * `/api/notifications/unread-count` (30s polling) and
-              * the per-user dropdown. Replaces the previous static
-              * mockup. */}
-            {team !== null && <NotificationBell />}
-            <Tooltip label={theme === 'dark' ? 'Light mode' : 'Dark mode'}>
-                <button
-                    type="button"
-                    className="btn icon ghost"
-                    aria-label="Toggle theme"
-                    onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-                >
-                    {theme === 'dark' ? <Icon.Sun size={15} /> : <Icon.Moon size={15} />}
-                </button>
-            </Tooltip>
-            <Tooltip label="Tweaks">
-                <button
-                    type="button"
-                    className="btn icon ghost"
-                    aria-label="Open tweaks panel"
-                    onClick={onToggleTweaks}
-                >
-                    <Icon.Sliders size={15} />
-                </button>
-            </Tooltip>
-            {/* The account menu — and the ONLY way to sign out. The
-              * logout transport existed end-to-end but was never wired
-              * to any control; this is that control. */}
-            <UserMenu />
+                {/* The account menu — and the ONLY way to sign out. */}
+                <UserMenu />
+            </div>
         </header>
     );
 }

@@ -63,7 +63,7 @@ import { DigestPreferences } from '../features/digest/DigestPreferences';
 import { MeDashboard } from '../features/dashboard/MeDashboard';
 import { EngagementPanel } from '../features/admin/engagement/EngagementPanel';
 import { ConnectedAppsView } from '../features/mcp-connections/ConnectedAppsView';
-import { ButtonSystemDemo } from '../features/developer/ButtonSystemDemo';
+import { UiFoundationsDemo } from '../features/developer/ButtonSystemDemo';
 import { GamificationInsightsPanel } from '../features/admin/engagement/GamificationInsightsPanel';
 import { AdminNotificationDefaultsGrid } from '../features/notifications/AdminNotificationDefaultsGrid';
 import { WidgetAdminView } from '../features/admin/widget/WidgetAdminView';
@@ -372,10 +372,23 @@ const chatConversationRoute = createRoute({
     path: 'chat/$conversationId',
     component: ChatView,
 });
+function UiFoundationsRoute() {
+    return (
+        <RequireRole roles={['super-admin', 'system-admin']}>
+            <UiFoundationsDemo />
+        </RequireRole>
+    );
+}
+
 const buttonSystemDemoRoute = createRoute({
     getParentRoute: () => teamRoute,
     path: 'developer/buttons',
-    component: ButtonSystemDemo,
+    component: UiFoundationsRoute,
+});
+const uiFoundationsRoute = createRoute({
+    getParentRoute: () => teamRoute,
+    path: 'developer/ui',
+    component: UiFoundationsRoute,
 });
 // These five paths shipped as `Coming in Phase …` placeholders in early
 // phases. The real views now live under `/app/admin/*` (DashboardView,
@@ -1429,6 +1442,7 @@ const teamChildren = [
     chatAnonymousRoute,
     chatConversationRoute,
     buttonSystemDemoRoute,
+    uiFoundationsRoute,
     dashboardRoute,
     kbRoute,
     insightsRoute,

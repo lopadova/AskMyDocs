@@ -34,4 +34,10 @@ describe('Button', () => {
 
         expect(screen.getByRole('button', { name: 'More actions' })).toBeInTheDocument();
     });
+
+    it('preserves an explicit external aria-busy state', () => {
+        render(<Button aria-busy={false}>Notifications</Button>);
+
+        expect(screen.getByRole('button', { name: 'Notifications' })).toHaveAttribute('aria-busy', 'false');
+    });
 });

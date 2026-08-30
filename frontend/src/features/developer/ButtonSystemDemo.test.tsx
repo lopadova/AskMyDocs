@@ -6,6 +6,9 @@ describe('ButtonSystemDemo', () => {
     it('documents every action hierarchy and interaction state', () => {
         render(<ButtonSystemDemo />);
 
+        expect(screen.getByRole('heading', { name: 'Application chrome' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Notifications demo' })).toBeInTheDocument();
+        expect(screen.getByRole('heading', { name: 'Core foundations' })).toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'Primary action' })).toHaveAttribute('data-variant', 'primary');
         expect(screen.getByRole('button', { name: 'Secondary action' })).toHaveAttribute('data-variant', 'secondary');
         expect(screen.getByRole('button', { name: 'Quiet action' })).toHaveAttribute('data-variant', 'quiet');

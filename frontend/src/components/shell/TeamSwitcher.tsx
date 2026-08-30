@@ -72,11 +72,11 @@ export function TeamSwitcher({ team, teams, onChange }: TeamSwitcherProps) {
     }, [open]);
 
     return (
-        <div ref={ref} style={{ position: 'relative' }}>
+        <div ref={ref} className="shell-menu-anchor shell-team-switcher">
             <button
                 ref={triggerRef}
                 type="button"
-                className="focus-ring"
+                className="focus-ring shell-context-trigger"
                 data-testid="team-switcher-trigger"
                 onClick={() => setOpen((o) => !o)}
                 disabled={singleTeam}
@@ -85,23 +85,9 @@ export function TeamSwitcher({ team, teams, onChange }: TeamSwitcherProps) {
                 aria-expanded={open}
                 aria-controls={open ? menuId : undefined}
                 aria-label={`Active team: ${team.name}`}
-                style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    padding: '6px 10px',
-                    background: 'var(--bg-2)',
-                    border: '1px solid var(--panel-border)',
-                    borderRadius: 9,
-                    cursor: singleTeam ? 'default' : 'pointer',
-                    color: 'var(--fg-0)',
-                    fontSize: 12.5,
-                    fontWeight: 500,
-                    opacity: singleTeam ? 0.75 : 1,
-                }}
             >
                 <ProjectDot color={teamColor(teams, team.tenant_id)} size={8} />
-                {team.name}
+                <span className="shell-context-trigger-label">{team.name}</span>
                 {!singleTeam && <Icon.ChevronDown size={13} style={{ color: 'var(--fg-3)' }} />}
             </button>
             {open && (
