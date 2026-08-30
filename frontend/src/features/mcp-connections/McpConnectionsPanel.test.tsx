@@ -62,6 +62,28 @@ describe('McpConnectionsPanel OAuth onboarding', () => {
         })));
     });
 
+    it('offers the three transports as visual choices and submits the selected protocol', async () => {
+        const user = userEvent.setup();
+        renderPanel();
+        await waitFor(() => expect(screen.getByTestId('mcp-connections-personal')).toHaveAttribute('data-state', 'ready'));
+        await user.click(screen.getByRole('button', { name: 'Add MCP connection' }));
+
+        await user.click(screen.getByText('Advanced settings'));
+        expect(screen.getByRole('radio', { name: /^Auto/ })).toBeChecked();
+        await user.click(screen.getByRole('radio', { name: /^Streamable HTTP/ }));
+        expect(screen.getByRole('radio', { name: /^Streamable HTTP/ })).toBeChecked();
+
+        await user.type(screen.getByLabelText('Name'), 'Streaming MCP');
+        await user.type(screen.getByLabelText('MCP endpoint'), 'https://mcp.example.test/stream');
+        await user.click(screen.getByRole('radio', { name: /^No authentication/ }));
+        await user.click(screen.getByRole('button', { name: 'Connect and discover' }));
+
+        await waitFor(() => expect(api.post).toHaveBeenCalledWith('/api/me/connected-apps/mcp', expect.objectContaining({
+            transport: 'streamable_http',
+            auth_method: 'none',
+        })));
+    });
+
     it('shows a safe cancellation result and removes OAuth callback parameters from the URL', async () => {
         window.history.replaceState({}, '', '/app/connected-apps?mcp=oauth_denied&mcp_connection=01TEST&keep=yes');
         renderPanel();
