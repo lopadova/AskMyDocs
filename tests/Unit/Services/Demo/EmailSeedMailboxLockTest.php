@@ -15,16 +15,19 @@ final class EmailSeedMailboxLockTest extends TestCase
 {
     #[DataProvider('interruptSignals')]
     public function test_interrupt_releases_lock_and_restores_signal_handlers(
-        int $signal,
         string $signalName,
     ): void {
         if (
             ! function_exists('pcntl_async_signals')
             || ! function_exists('pcntl_signal')
             || ! function_exists('pcntl_signal_get_handler')
+            || ! defined('SIGINT')
+            || ! defined('SIGTERM')
         ) {
             $this->markTestSkipped('PCNTL is required for the interrupt regression test.');
         }
+
+        $signal = (int) constant($signalName);
 
         config()->set('cache.default', 'array');
         config()->set('connectors.imap.serialize_connections', true);
@@ -67,12 +70,21 @@ final class EmailSeedMailboxLockTest extends TestCase
     }
 
     /**
-     * @return iterable<string, array{int, string}>
+     * Yields signal NAMES, never the constants themselves.
+     *
+     * A data provider runs during collection, before any in-test skip guard
+     * does. `SIGINT` / `SIGTERM` exist only when ext-pcntl is loaded, so
+     * naming them here made the whole class fail to collect on every PHP
+     * without pcntl -- every Windows machine -- with "Undefined constant
+     * SIGINT" instead of the skip the test already asks for. The test
+     * resolves the constant itself, after the guard.
+     *
+     * @return iterable<string, array{string}>
      */
     public static function interruptSignals(): iterable
     {
-        yield 'SIGINT' => [SIGINT, 'SIGINT'];
-        yield 'SIGTERM' => [SIGTERM, 'SIGTERM'];
+        yield 'SIGINT' => ['SIGINT'];
+        yield 'SIGTERM' => ['SIGTERM'];
     }
 
     private function target(): MailboxTarget

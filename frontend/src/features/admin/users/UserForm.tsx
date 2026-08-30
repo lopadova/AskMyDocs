@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useEffect } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, type Resolver } from 'react-hook-form';
 import { z } from 'zod';
 import type { AdminRole, AdminUser } from '../admin.api';
 
@@ -43,7 +43,12 @@ const editSchema = baseSchema.extend({
     membership_role: z.enum(['member', 'admin', 'owner']).optional(),
 });
 
-export type UserFormValues = z.infer<typeof createSchema>;
+// zod 4 splits input from output: `.default()` on is_active/roles makes them
+// optional going IN and guaranteed coming OUT, and @hookform/resolvers v5
+// types the resolver on the INPUT. useForm takes both so the resolver and
+// the submit handler each see the shape they actually deal with.
+export type UserFormInput = z.input<typeof createSchema>;
+export type UserFormValues = z.output<typeof createSchema>;
 
 export interface UserFormProps {
     mode: 'create' | 'edit';
@@ -79,8 +84,14 @@ export function UserForm({
         watch,
         setError,
         formState: { errors },
-    } = useForm<UserFormValues>({
-        resolver: zodResolver(schema),
+    } = useForm<UserFormInput, unknown, UserFormValues>({
+        // `schema` is one of two: create requires a password and a project,
+        // edit does not. Their inferred resolver type is therefore a union,
+        // which no longer matches the single form shape now that zod 4 splits
+        // input from output. The form's fields are createSchema's throughout
+        // -- edit simply relaxes which of them are required -- so annotating
+        // to that shape states what was already true rather than widening it.
+        resolver: zodResolver(schema) as Resolver<UserFormInput, unknown, UserFormValues>,
         defaultValues: {
             name: initial?.name ?? '',
             email: initial?.email ?? '',
@@ -95,7 +106,7 @@ export function UserForm({
     useEffect(() => {
         if (!serverErrors) return;
         for (const [field, message] of Object.entries(serverErrors)) {
-            setError(field as keyof UserFormValues, { type: 'server', message });
+            setError(field as keyof UserFormInput, { type: 'server', message });
         }
     }, [serverErrors, setError]);
 

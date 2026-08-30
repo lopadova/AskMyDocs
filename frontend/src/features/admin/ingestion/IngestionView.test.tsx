@@ -248,7 +248,14 @@ describe('IngestionView', () => {
         wrap(<IngestionView />);
 
         expect(screen.getByTestId('imap-backfill')).toHaveAttribute('data-state', 'ready');
-        expect(screen.getByTestId('imap-backfill-progress')).toHaveTextContent('3,500 / 128,199');
+        // Formatted the way the component formats it, not with a hard-coded
+        // en-US string. `toLocaleString()` follows the machine locale, so a
+        // literal '128,199' passes only in CI and fails on, say, an Italian
+        // machine that renders '128.199' -- a red suite that has nothing to
+        // do with the code under test, and reads like a real regression.
+        expect(screen.getByTestId('imap-backfill-progress')).toHaveTextContent(
+            `${(3500).toLocaleString()} / ${(128199).toLocaleString()}`,
+        );
         expect(screen.getByTestId('imap-backfill-start')).toHaveTextContent('Resume full import');
         fireEvent.click(screen.getByTestId('imap-backfill-start'));
         expect(startBackfillMock.mutate).toHaveBeenCalledWith(7);

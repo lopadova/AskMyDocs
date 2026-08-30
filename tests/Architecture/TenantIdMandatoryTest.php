@@ -77,6 +77,7 @@ final class TenantIdMandatoryTest extends TestCase
         // v8.8/W4 — content-gap analytics (refused-query rollup).
         \App\Models\KbSearchFailure::class,
         \App\Models\KnowledgeDocumentAcl::class,
+        \App\Models\UnmappedSourcePrincipal::class,
         \App\Models\AdminCommandAudit::class,
         \App\Models\AdminCommandNonce::class,
         \App\Models\EmailDatasetOperationNonce::class,

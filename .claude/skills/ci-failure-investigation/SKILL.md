@@ -1,6 +1,6 @@
 ---
 name: ci-failure-investigation
-description: When `gh pr checks` shows a Playwright (or any E2E) job red, NEVER guess fixes from the test name alone. Pull the failed-job log, the playwright-report.zip artefact, and the inline Laravel log dump BEFORE editing code — false-iteration cycles cost 4–8 min each plus a misleading next-iteration baseline. Trigger when a CI job has failed and the next step is "fix the failure", or when investigating Playwright/E2E timeouts, 500s, hangs, or flakes on a PR. Mirrors CLAUDE.md §R22.
+description: When `gh pr checks` shows a Playwright (or any E2E) job red, NEVER guess fixes from the test name alone. Pull the failed-job log, the per-shard playwright-report artefact, and the inline Laravel log dump BEFORE editing code — false-iteration cycles cost 4–8 min each plus a misleading next-iteration baseline. Trigger when a CI job has failed and the next step is "fix the failure", or when investigating Playwright/E2E timeouts, 500s, hangs, or flakes on a PR. Mirrors CLAUDE.md §R22.
 ---
 
 # CI failure investigation (R22)
@@ -26,9 +26,13 @@ full failure context first.
    share a root cause.
 
 2. **Playwright HTML report artefact** — `tests.yml` uploads
-   `playwright-report/` on failure (retention 7d). Download via:
-   - GitHub UI: PR → Checks → failed job → Artifacts → `playwright-report.zip`
-   - Or CLI: `gh run download <run-id> --name playwright-report --dir /tmp/pr-report`
+   the report on failure (retention 7d). The job is sharded across four
+   matrix jobs, so each uploads its own artefact `playwright-report-shard-<n>`.
+   A failing test lives in exactly one shard, and the failed-job log names it.
+   Download via:
+   - GitHub UI: PR → Checks → failed job → Artifacts → `playwright-report-shard-<n>.zip`
+   - One shard: `gh run download <run-id> --name playwright-report-shard-2 --dir /tmp/pr-report`
+   - All shards: `gh run download <run-id> --pattern 'playwright-report-shard-*' --dir /tmp/pr-report`
 
    Inside the zip, `data/<hash>.md` files are the **error contexts** for
    each failed test. They contain:
@@ -217,7 +221,7 @@ If ALL FOUR are true, the move-work-to-CLI fix is the right answer
 PR #33 spent multiple hours iterating on the wrong fixes (queue=sync
 fixups, optimize+retry experiments, re-hover hacks) because the early
 iterations skipped artefact analysis. Once we pulled the
-`playwright-report.zip` and the diagnostic throws were in place, the
+the shard's `playwright-report` artefact and the diagnostic throws were in place, the
 4 remaining failures resolved into 2 clusters with one targeted commit:
 DemoSeeder frontmatter (missing `slug:`, invalid `type: policy`) +
 chat re-hover that detached the popover. 30 min of artefact reading

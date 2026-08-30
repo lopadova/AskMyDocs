@@ -30,6 +30,7 @@ import { SynonymsList } from '../features/admin/synonyms/SynonymsList';
 import { KbInsightsView } from '../features/admin/kb-insights/KbInsightsView';
 import { AnalysisSettingsView } from '../features/admin/analysis-settings/AnalysisSettingsView';
 import { ContentGapsView } from '../features/admin/content-gaps/ContentGapsView';
+import { SourceAclView } from '../features/admin/source-acl/SourceAclView';
 import { WikiHealthView } from '../features/admin/wiki-health/WikiHealthView';
 import { WikiIndicesView } from '../features/admin/wiki-indices/WikiIndicesView';
 import { WikiExplorerView } from '../features/admin/wiki-explorer/WikiExplorerView';
@@ -791,6 +792,25 @@ const adminContentGapsRoute = createRoute({
     component: AdminContentGapsRoute,
 });
 
+// v8.33 / ADR 0028 phase 2 — source permissions: which documents have their
+// readers dictated by their source, and who the source named that could not
+// be matched to an internal subject.
+function AdminSourceAclRoute() {
+    return (
+        <RequireRole roles={['admin', 'super-admin']}>
+            <AdminShell section="source-acl">
+                <SourceAclView />
+            </AdminShell>
+        </RequireRole>
+    );
+}
+
+const adminSourceAclRoute = createRoute({
+    getParentRoute: () => teamRoute,
+    path: 'admin/kb/source-acl',
+    component: AdminSourceAclRoute,
+});
+
 // v8.11/P10 — Wiki Health (Auto-Wiki lint report + safe auto-fix).
 function AdminWikiHealthRoute() {
     return (
@@ -1417,6 +1437,7 @@ const teamChildren = [
     adminKbInsightsRoute,
     adminAnalysisSettingsRoute,
     adminContentGapsRoute,
+    adminSourceAclRoute,
     adminKbTimeMachineRoute,
     adminLogsRoute,
     adminMaintenanceRoute,

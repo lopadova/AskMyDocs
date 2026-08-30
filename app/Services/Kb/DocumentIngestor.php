@@ -10,6 +10,9 @@ use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
 use App\Services\Kb\Canonical\CanonicalParsedDocument;
 use App\Services\Kb\Canonical\CanonicalParser;
+use App\Services\Kb\Access\SourceAclMirror;
+use App\Services\Kb\Provenance\ProvenanceResolver;
+use Padosoft\AskMyDocsConnectorBase\Access\SourceAccess;
 use App\Services\Kb\Pii\ChunkRedactor;
 use App\Services\Kb\Pipeline\ChunkDraft;
 use App\Services\Kb\Pipeline\PipelineRegistry;
@@ -42,15 +45,22 @@ class DocumentIngestor
 {
     protected CanonicalParser $canonicalParser;
 
+    protected ProvenanceResolver $provenanceResolver;
+
     public function __construct(
         protected PipelineRegistry $registry,
         protected EmbeddingCacheService $embeddingCache,
         ?CanonicalParser $canonicalParser = null,
+        ?ProvenanceResolver $provenanceResolver = null,
     ) {
         // CanonicalParser is stateless and has no deps of its own, so we
         // can default-instantiate it when callers don't wire it explicitly
         // (e.g. legacy unit tests built before Phase 2).
         $this->canonicalParser = $canonicalParser ?? new CanonicalParser();
+        // Same reason, plus: the resolver only needs the connector registry,
+        // which the container already builds. Defaulting keeps every existing
+        // direct-construction call site working unchanged.
+        $this->provenanceResolver = $provenanceResolver ?? app(ProvenanceResolver::class);
     }
 
     /**
@@ -385,7 +395,7 @@ class DocumentIngestor
             array_map(fn (ChunkDraft $d) => $d->text, $chunkDrafts),
         );
 
-        $document = DB::transaction(fn () => $this->persistDocumentAndChunks(
+        $document = DB::transaction(function () use (
             $projectKey,
             $sourcePath,
             $title,
@@ -398,7 +408,32 @@ class DocumentIngestor
             $embeddingResponse,
             $canonical,
             $forceReembed,
-        ));
+        ) {
+            $document = $this->persistDocumentAndChunks(
+                $projectKey,
+                $sourcePath,
+                $title,
+                $mimeType,
+                $sourceType,
+                $metadata,
+                $documentHash,
+                $versionHash,
+                $chunkDrafts,
+                $embeddingResponse,
+                $canonical,
+                $forceReembed,
+            );
+
+            // Inside the SAME transaction as the document itself, on purpose.
+            // If the permission mirror cannot be written, the document must
+            // not exist either: ingesting it anyway would publish to the
+            // whole project a file the source shared with three people, which
+            // is the exact failure ADR 0028 phase 2 removes. A failed ingest
+            // retries; an over-shared document does not announce itself.
+            $this->mirrorSourceAccess($document, $metadata);
+
+            return $document;
+        });
 
         $this->dispatchCanonicalIndexerIfCanonical($document);
 
@@ -535,6 +570,12 @@ class DocumentIngestor
             // intended defaults / domain invariants (`'it'`, `'internal'`).
             'language' => $this->normalizeStringMeta($metadata['language'] ?? null, 'it'),
             'access_scope' => $this->normalizeStringMeta($metadata['access_scope'] ?? null, 'internal'),
+            // ADR 0028 phase 1 — who authored this. Asked of the connector
+            // that produced the metadata, never inferred from the content.
+            // null means no connector declared anything (the CLI walker, the
+            // HTTP batch endpoint, a connector predating the capability), and
+            // readers resolve that to the trusted default.
+            'provenance_tier' => $this->provenanceResolver->forIngestionMetadata($metadata)?->value,
             'status' => 'active',
             'document_hash' => $documentHash,
             'metadata' => $metadata,
@@ -650,6 +691,37 @@ class DocumentIngestor
     // -----------------------------------------------------------------
     // post-commit job dispatch
     // -----------------------------------------------------------------
+
+    /**
+     * Mirror the source's permission list onto the document, when a connector
+     * reported one (ADR 0028 phase 2).
+     *
+     * The DTO travels in metadata under a reserved key rather than as an
+     * argument, because adding even an optional parameter to the ingestion
+     * contract is a breaking change for every host that implements it.
+     *
+     * A corpus whose connector does not read permissions produces no key and
+     * reaches none of this, which is what keeps the feature free for the
+     * eleven connectors that have nothing to report.
+     *
+     * @param  array<string, mixed>  $metadata
+     */
+    private function mirrorSourceAccess(KnowledgeDocument $document, array $metadata): void
+    {
+        $raw = $metadata[SourceAccess::METADATA_KEY] ?? null;
+
+        if (! is_array($raw)) {
+            return;
+        }
+
+        $access = SourceAccess::fromArray($raw);
+
+        if ($access === null) {
+            return;
+        }
+
+        app(SourceAclMirror::class)->syncFor($document, $access);
+    }
 
     private function dispatchCanonicalIndexerIfCanonical(KnowledgeDocument $document): void
     {

@@ -1124,4 +1124,43 @@ return [
         */
         'redact_flow_payloads' => (bool) env('KB_PII_REDACT_FLOW_PAYLOADS', false),
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Provenance (ADR 0028)
+    |--------------------------------------------------------------------------
+    */
+    'provenance' => [
+
+        'tool_firewall' => [
+            /*
+            | v8.34 — whether externally-authored grounding may reach the MCP
+            | tool loop.
+            |
+            | The chain this closes is short and entirely ordinary: IMAP
+            | ingests content written by anyone who can send an email, that
+            | content becomes retrieval grounding, and the same platform
+            | exposes tools to the model. Nothing in between distinguishes a
+            | colleague's runbook from a stranger's instructions.
+            |
+            | When on, a turn grounded in any `untrusted-external` document
+            | still gets its answer -- the chunks are quoted and cited as
+            | usual -- but the tool loop is withheld for that turn. Quoting is
+            | what the corpus is for; acting is what an attacker wants.
+            |
+            | Default OFF, as ADR 0028 specifies for this phase. Switching it
+            | on changes agent behaviour on upgrade for anyone already
+            | ingesting email -- turns grounded in a message stop being able
+            | to act -- and that is a product decision rather than a
+            | deployment detail, so it is made deliberately rather than
+            | inherited.
+            |
+            | It costs nothing on a corpus with no externally authored
+            | documents, which is every corpus that has not configured a
+            | connector declaring one: the check is a NULL test on an indexed
+            | column.
+            */
+            'enabled' => (bool) env('KB_PROVENANCE_TOOL_FIREWALL', false),
+        ],
+    ],
 ];

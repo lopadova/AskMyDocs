@@ -16,6 +16,7 @@ use App\Services\ChatLog\ChatLogManager;
 use App\Services\Kb\FewShotService;
 use App\Services\Kb\Grounding\ConfidenceCalculator;
 use App\Services\Kb\Chat\ChatRetrievalService;
+use App\Services\Kb\Provenance\ProvenanceToolFirewall;
 use App\Services\Kb\Retrieval\RetrievalFilters;
 use App\Support\Canonical\CanonicalType;
 use App\Support\Kb\SourceType;
@@ -213,6 +214,9 @@ class MessageStreamController extends Controller
                 context: [
                     'conversation_id' => $conversation->id,
                     'message_id' => $userMessage->id,
+                    // ADR 0028 phase 3 - same verdict as the sync channel, so
+                    // streaming is not a way around the firewall.
+                    'provenance_firewall' => app(ProvenanceToolFirewall::class)->assess($result)->toArray(),
                 ],
             ));
         }

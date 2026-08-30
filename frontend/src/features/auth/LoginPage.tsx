@@ -13,7 +13,12 @@ const schema = z.object({
     remember: z.boolean().default(false),
 });
 
-type FormValues = z.infer<typeof schema>;
+// zod 4 splits a schema's input and output types: `.default()` makes the
+// field optional going IN and guaranteed coming OUT. @hookform/resolvers v5
+// types the resolver on the INPUT, so useForm has to be told both or the
+// two disagree about `remember`.
+type FormInput = z.input<typeof schema>;
+type FormValues = z.output<typeof schema>;
 
 export type LoginPageProps = {
     onSuccess?: () => void;
@@ -31,7 +36,7 @@ export function LoginPage({ onSuccess, onNavigateForgot, onNavigateRegister }: L
         register,
         handleSubmit,
         formState: { errors },
-    } = useForm<FormValues>({
+    } = useForm<FormInput, unknown, FormValues>({
         resolver: zodResolver(schema),
         defaultValues: { email: '', password: '', remember: false },
     });

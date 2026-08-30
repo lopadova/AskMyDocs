@@ -591,6 +591,25 @@ Route::middleware([
         Route::patch('/kb/documents/{id}/evidence-tier', [\App\Http\Controllers\Api\Admin\KbEvidenceTierController::class, 'update'])
             ->whereNumber('id')->name('api.admin.kb.documents.evidence-tier.update');
 
+        // v8.32 / ADR 0028 phase 1 — corpus provenance read-out: how much of
+        // the knowledge base was authored outside the organisation. R32 —
+        // covered by the AdminAuthorizationMatrix
+        // (`/api/admin/kb/provenance`).
+        Route::get('/kb/provenance', [\App\Http\Controllers\Api\Admin\KbProvenanceController::class, 'index'])
+            ->name('api.admin.kb.provenance.index');
+
+        // v8.33 / ADR 0028 phase 2 — the source-ACL triage queue: principals a
+        // connected source named on a document that could not be matched to an
+        // internal subject. The PATCH records a DECISION about a question, not
+        // a permission -- granting stays a separate, deliberate act through the
+        // ordinary ACL surface. R32 — covered by the AdminAuthorizationMatrix
+        // (`/api/admin/kb/source-acl`).
+        Route::get('/kb/source-acl', [\App\Http\Controllers\Api\Admin\KbSourceAclController::class, 'index'])
+            ->name('api.admin.kb.source-acl.index');
+        Route::patch('/kb/source-acl/{principal}', [\App\Http\Controllers\Api\Admin\KbSourceAclController::class, 'update'])
+            ->whereNumber('principal')
+            ->name('api.admin.kb.source-acl.update');
+
         // v8.11/P2 — auto-wiki graph canonicalization (AutoSci edges): rebuild a
         // doc's navigable graph (nodes + inferred edges). R32 — same admin KB
         // group gate as the representative `/api/admin/kb/evidence-tiers` row.
