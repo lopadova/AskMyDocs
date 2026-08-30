@@ -10,74 +10,102 @@ use RuntimeException;
 use Tests\TestCase;
 
 /**
- * The dataset guard has to reject paths outside its approved roots on every
- * platform, and accept the approved ones on every platform.
+ * The dataset guard has to reject paths outside its approved roots, and accept
+ * the approved ones, on every platform.
  *
  * It did neither. The prefixes were built with `DIRECTORY_SEPARATOR` while the
- * paths themselves are assembled with literal `/` throughout `CatalogLoader`.
- * On Linux the two coincide and the comparison worked by accident; on Windows
- * the path reads `C:\…\AskMyDocs/database/…` and every check failed — so a
- * guard meant to reject unapproved paths rejected the approved ones too, and
- * 15 tests were red for anyone developing on Windows while CI stayed green.
+ * paths themselves are assembled with a literal `/` throughout
+ * `CatalogLoader`. On Linux the two coincide and the comparison worked by
+ * accident; on Windows the path reads `C:\…\AskMyDocs/database/…`, nothing
+ * matched, and a guard meant to reject unapproved paths rejected the approved
+ * ones too — 15 tests red for anyone developing on Windows while CI stayed
+ * green. That asymmetry is why it survived.
  *
- * These tests drive the private helper through reflection on purpose. Going
- * through the public path would exercise it only with paths this machine
- * happens to produce, which is exactly the blind spot that let the bug live:
- * on CI it would pass whether or not the fix is present, and the fix would be
- * unprotected on the only platform where it matters.
+ * **The tests are platform-split on purpose, because the behaviour is.**
+ * Folding backslashes is correct where a backslash is a separator and unsafe
+ * where it is a legal filename character: on POSIX a real directory named
+ * `email-dataset\evil` would fold into `email-dataset/evil` and a path outside
+ * the root would be accepted as inside it. So each platform asserts the
+ * property that is true of it, rather than a shared one that would be a lie on
+ * one of them.
+ *
+ * They drive the private helper through reflection deliberately. Going through
+ * the public path would only ever use the paths the running machine produces —
+ * exactly the blind spot that let this live.
  */
 final class CatalogLoaderPathContainmentTest extends TestCase
 {
     private function label(CatalogLoader $loader, string $path): string
     {
-        $method = new ReflectionMethod($loader, 'snapshotLabel');
-
-        return $method->invoke($loader, $path);
+        return (new ReflectionMethod($loader, 'snapshotLabel'))->invoke($loader, $path);
     }
 
-    public function test_a_windows_style_root_accepts_a_forward_slash_path(): void
+    private function posixLoader(): CatalogLoader
     {
-        // The exact shape that failed: a native-separator root, and a path
-        // built by joining onto it with '/'.
-        $loader = new CatalogLoader('C:\\srv\\app\\database\\seeders\\email-dataset');
+        return new CatalogLoader('/srv/app/database/seeders/email-dataset');
+    }
 
+    public function test_a_posix_root_accepts_a_posix_path(): void
+    {
         $this->assertSame(
             'email-dataset/catalogs/v1/demo.json',
-            $this->label($loader, 'C:\\srv\\app\\database\\seeders\\email-dataset/catalogs/v1/demo.json'),
+            $this->label(
+                $this->posixLoader(),
+                '/srv/app/database/seeders/email-dataset/catalogs/v1/demo.json',
+            ),
         );
     }
 
-    public function test_a_posix_root_still_accepts_a_posix_path(): void
+    public function test_it_rejects_a_path_outside_the_roots(): void
     {
-        $loader = new CatalogLoader('/srv/app/database/seeders/email-dataset');
-
-        $this->assertSame(
-            'email-dataset/catalogs/v1/demo.json',
-            $this->label($loader, '/srv/app/database/seeders/email-dataset/catalogs/v1/demo.json'),
-        );
-    }
-
-    public function test_it_still_rejects_a_path_outside_the_roots(): void
-    {
-        // The guard must not have been widened into uselessness by making it
-        // separator-neutral: something genuinely outside is still refused.
-        $loader = new CatalogLoader('/srv/app/database/seeders/email-dataset');
-
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('outside approved roots');
 
-        $this->label($loader, '/etc/passwd');
+        $this->label($this->posixLoader(), '/etc/passwd');
     }
 
     public function test_a_sibling_directory_sharing_the_prefix_is_rejected(): void
     {
-        // `/srv/app/…/email-dataset-evil` starts with the root STRING but is a
-        // different directory. The trailing separator on the prefix is what
-        // separates the two, and normalising must not have dropped it.
-        $loader = new CatalogLoader('/srv/app/database/seeders/email-dataset');
-
+        // `…/email-dataset-evil` starts with the root STRING but is a different
+        // directory. The trailing separator on the prefix is what separates
+        // them, and normalising must not have dropped it.
         $this->expectException(RuntimeException::class);
 
-        $this->label($loader, '/srv/app/database/seeders/email-dataset-evil/leak.json');
+        $this->label($this->posixLoader(), '/srv/app/database/seeders/email-dataset-evil/leak.json');
+    }
+
+    public function test_on_posix_a_backslash_stays_an_ordinary_character(): void
+    {
+        // The reason folding is NOT unconditional. `email-dataset\evil` is a
+        // legal POSIX directory name and is outside the root; folding it would
+        // turn it into `email-dataset/evil` and admit it. This is the assertion
+        // CI runs, so the safety property is the one actually verified.
+        if (DIRECTORY_SEPARATOR !== '/') {
+            $this->markTestSkipped('Backslash is a separator on this platform, not a filename character.');
+        }
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('outside approved roots');
+
+        $this->label($this->posixLoader(), '/srv/app/database/seeders/email-dataset\\evil/leak.json');
+    }
+
+    public function test_on_windows_a_native_root_accepts_a_forward_slash_path(): void
+    {
+        // The exact shape that was failing: a native-separator root, and a path
+        // built by joining onto it with '/'. Meaningful only where '\' is the
+        // separator — which is the platform the bug was on.
+        if (DIRECTORY_SEPARATOR === '/') {
+            $this->markTestSkipped('Only meaningful where the native separator is a backslash.');
+        }
+
+        $root = 'C:'.DIRECTORY_SEPARATOR.'srv'.DIRECTORY_SEPARATOR.'app'
+            .DIRECTORY_SEPARATOR.'database'.DIRECTORY_SEPARATOR.'seeders'
+            .DIRECTORY_SEPARATOR.'email-dataset';
+
+        $this->assertSame(
+            'email-dataset/catalogs/v1/demo.json',
+            $this->label(new CatalogLoader($root), $root.'/catalogs/v1/demo.json'),
+        );
     }
 }

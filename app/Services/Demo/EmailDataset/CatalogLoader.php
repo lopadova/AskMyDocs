@@ -322,26 +322,30 @@ final readonly class CatalogLoader
 
     private function snapshotLabel(string $path): string
     {
-        // Compared with separators normalised, because the two sides are built
-        // differently: the prefixes come from `dirname(__DIR__, 4)` -- native
-        // separators, so backslashes on Windows -- while the paths themselves
-        // are assembled with literal '/' throughout this class. On Linux the
-        // two coincide and the comparison works by accident; on Windows the
-        // path reads `C:\...\AskMyDocs/database/...` and every containment
-        // check fails, so a guard that is supposed to REJECT paths outside the
-        // approved roots instead rejects the approved ones too.
+        // The two sides are built differently: the prefixes come from
+        // `dirname(__DIR__, 4)` -- native separators, so backslashes on
+        // Windows -- while the paths themselves are assembled with a literal
+        // '/' throughout this class. On Linux the two coincide and the
+        // comparison worked by accident. On Windows the path reads
+        // `C:\...\AskMyDocs/database/...`, nothing matched, and a guard whose
+        // job is to REJECT paths outside its approved roots rejected the
+        // approved ones too.
         //
-        // A containment check that depends on which platform runs it is not a
-        // containment check.
+        // Folding happens ONLY where a backslash is a separator. It is
+        // tempting to fold everywhere so CI exercises the Windows shape, and
+        // that would be wrong: on POSIX a backslash is a legal filename
+        // character, so a real directory named `email-dataset\evil` would fold
+        // into `email-dataset/evil` and a path OUTSIDE the root would be
+        // accepted as inside it. Widening a containment check to make it
+        // easier to test is the wrong trade.
         //
-        // Backslashes are folded UNCONDITIONALLY rather than only when
-        // DIRECTORY_SEPARATOR is one, so the rule is the same everywhere and a
-        // Windows-shaped path is still evaluated correctly by CI on Linux --
-        // otherwise the fix would be untested on the only platform that needed
-        // it. This cannot open an escape: folding a backslash into a separator
-        // can only make a path look DEEPER, and a path still has to begin with
-        // the approved prefix to be accepted at all.
-        $normalise = static fn (string $value): string => str_replace('\\', '/', $value);
+        // The consequence is that each platform verifies the property that is
+        // true of it -- see CatalogLoaderPathContainmentTest, which asserts
+        // Windows acceptance on Windows and backslash REJECTION on POSIX.
+        $foldBackslashes = DIRECTORY_SEPARATOR !== '/';
+        $normalise = static fn (string $value): string => $foldBackslashes
+            ? str_replace(DIRECTORY_SEPARATOR, '/', $value)
+            : $value;
 
         $path = $normalise($path);
 
