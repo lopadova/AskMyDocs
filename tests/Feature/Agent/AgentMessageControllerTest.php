@@ -59,6 +59,7 @@ final class AgentMessageControllerTest extends TestCase
             [
                 'content' => 'Dammi gli ordini di Tizio',
                 'filters' => ['project_keys' => ['other-project'], 'languages' => ['it']],
+                'live_sources' => ['api' => [], 'mcp' => ['mcp:hubhive']],
             ],
         );
 
@@ -70,6 +71,8 @@ final class AgentMessageControllerTest extends TestCase
         $this->assertSame($conversation->id, $run->conversation_id);
         $this->assertSame($user->id, $run->user_id);
         $this->assertSame('other-project', data_get($run->input_json, 'filters.project_keys.0'));
+        $this->assertSame([], data_get($run->input_json, 'live_sources.api'));
+        $this->assertSame(['mcp:hubhive'], data_get($run->input_json, 'live_sources.mcp'));
         $this->assertSame($run->run_id, data_get($conversation->messages()->sole()->metadata, 'agent_run_id'));
         Queue::assertPushed(ExecuteAgentRunJob::class, fn ($job): bool => $job->agentRunId === $run->id
             && $job->tenantId === 'acme');

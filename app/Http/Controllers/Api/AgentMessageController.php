@@ -38,6 +38,11 @@ final class AgentMessageController extends Controller
                 'selection' => ['sometimes', 'array'],
                 'selection.message_id' => ['required_with:selection', 'integer', 'min:1'],
                 'selection.row_key' => ['required_with:selection', 'string', 'max:128'],
+                'live_sources' => ['sometimes', 'array'],
+                'live_sources.api' => ['sometimes', 'array', 'max:250'],
+                'live_sources.api.*' => ['string', 'max:180'],
+                'live_sources.mcp' => ['sometimes', 'array', 'max:250'],
+                'live_sources.mcp.*' => ['string', 'max:180'],
             ],
             $this->retrievalFilterRules(),
         ));
@@ -74,6 +79,9 @@ final class AgentMessageController extends Controller
         }
         if ($selection !== null) {
             $input['selection'] = $selection;
+        }
+        if (is_array($validated['live_sources'] ?? null)) {
+            $input['live_sources'] = $validated['live_sources'];
         }
         $run = $runs->dispatch($context, $input, [
             'user_id' => $user->id,

@@ -58,15 +58,7 @@ export function FilterBar({
         <div
             data-testid="chat-filter-bar"
             data-filters-count={selectedCount}
-            style={{
-                position: 'relative',
-                display: 'flex',
-                alignItems: 'center',
-                flexWrap: 'wrap',
-                gap: 6,
-                padding: '6px 12px',
-                borderBottom: '1px solid var(--panel-border, rgba(255,255,255,.08))',
-            }}
+            className="chat-filter-bar"
         >
             {/*
               * T2.9-FE — saved presets dropdown sits BEFORE the
@@ -78,23 +70,11 @@ export function FilterBar({
             <button
                 type="button"
                 data-testid="chat-filter-bar-add"
+                className="chat-filter-trigger"
                 aria-label="Add chat filter"
                 aria-expanded={popoverOpen}
                 aria-haspopup="dialog"
                 onClick={() => setPopoverOpen((v) => !v)}
-                style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 4,
-                    padding: '3px 9px',
-                    border: '1px dashed var(--panel-border, rgba(255,255,255,.30))',
-                    borderRadius: 99,
-                    background: 'transparent',
-                    color: 'var(--fg-2)',
-                    cursor: 'pointer',
-                    fontSize: 11.5,
-                    lineHeight: 1.4,
-                }}
             >
                 <span aria-hidden="true">+</span>
                 Filter

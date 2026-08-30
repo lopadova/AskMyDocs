@@ -4,8 +4,9 @@ import { FilterBar } from './FilterBar';
 import { MentionPopover } from './MentionPopover';
 import { useChatStore } from './chat.store';
 import { VoiceInput } from './VoiceInput';
+import { LiveSourcesControl } from './LiveSourcesControl';
 import type { MentionResult } from './use-mention-search';
-import type { FilterState } from './chat.api';
+import type { FilterState, LiveSourceCatalog, LiveSourceKind, LiveSourceSelection } from './chat.api';
 import type { ChatCollectionOption } from './chat.api';
 
 export interface ComposerProps {
@@ -42,6 +43,9 @@ export interface ComposerProps {
      */
     filters: FilterState;
     onFiltersChange: (next: FilterState | ((prev: FilterState) => FilterState)) => void;
+    liveSources?: LiveSourceCatalog;
+    liveSourceSelection?: LiveSourceSelection;
+    onLiveSourcesChange?: (kind: LiveSourceKind, enabledKeys: string[]) => void;
     /**
      * Send handler. ChatView wraps `useChatStream().sendMessage()`
      * (with the conversation-creation flow if `conversationId` is
@@ -90,6 +94,9 @@ export function Composer({
     docLabels = {},
     filters,
     onFiltersChange,
+    liveSources,
+    liveSourceSelection,
+    onLiveSourcesChange,
     onSend,
     onStop,
     isStreaming,
@@ -245,7 +252,7 @@ export function Composer({
     const visibleLocalError = localError?.trim() === serverError?.trim() ? null : localError;
 
     return (
-        <div className="chat-composer-shell" style={{ padding: '12px 24px 18px' }}>
+        <div className="chat-composer-shell">
             <div className="chat-composer-inner">
                 <form
                     data-testid="chat-composer"
@@ -254,14 +261,7 @@ export function Composer({
                         e.preventDefault();
                         void send();
                     }}
-                    className={`glow-frame ${focused ? 'on' : ''}`}
-                    style={{
-                        background: 'var(--panel-solid)',
-                        border: '1px solid var(--panel-border-strong)',
-                        borderRadius: 14,
-                        boxShadow: focused ? 'var(--glow)' : 'var(--shadow)',
-                        transition: 'box-shadow .25s',
-                    }}
+                    className={`chat-composer glow-frame ${focused ? 'on' : ''}`}
                 >
                 {/*
                   * T2.7 — FilterBar renders ABOVE the legacy context-chip
@@ -278,10 +278,10 @@ export function Composer({
                     availableTags={availableTags}
                     docLabels={docLabelMap}
                 />
-                <div style={{ display: 'flex', gap: 6, padding: '10px 12px 2px', flexWrap: 'wrap' }}>
+                <div className="chat-composer-context">
                     {projectLabel && <ContextChip icon="Folder" label={projectLabel} />}
-                    <label style={{ fontSize: 11, color: 'var(--fg-2)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                        <span>Scope</span>
+                    <label className="chat-composer-scope">
+                        <span aria-hidden="true"><Icon.Database size={12} /></span>
                         <select
                             data-testid="chat-collection-picker"
                             value={filters.collection_id ?? ''}
@@ -292,7 +292,7 @@ export function Composer({
                                     collection_id: raw === '' ? null : Number(raw),
                                 }));
                             }}
-                            style={{ borderRadius: 8, border: '1px solid var(--panel-border)', background: 'var(--bg-3)', color: 'var(--fg-0)', padding: '2px 6px' }}
+                            aria-label="Knowledge base scope"
                         >
                             <option value="">All documents</option>
                             {availableCollections.map((row) => (
@@ -301,11 +301,20 @@ export function Composer({
                                 </option>
                             ))}
                         </select>
+                        <span aria-hidden="true"><Icon.ChevronDown size={10} /></span>
                     </label>
                     <ContextChip icon="Book" label="canonical only" />
+                    {onLiveSourcesChange && (
+                        <LiveSourcesControl
+                            sources={liveSources}
+                            selection={liveSourceSelection}
+                            disabled={isStreaming}
+                            onChange={onLiveSourcesChange}
+                        />
+                    )}
                     {modelLabel && <ContextChip icon="Brain" label={modelLabel} />}
                     <span style={{ flex: 1 }} />
-                    <span className="mono" style={{ fontSize: 10.5, color: 'var(--fg-3)', padding: 4 }}>
+                    <span className="chat-composer-shortcut mono">
                         Shift+⏎ for new line
                     </span>
                 </div>
@@ -316,7 +325,7 @@ export function Composer({
                   * on `mentionQuery !== null`, so when no @-token is
                   * active under the cursor the popover doesn't even mount.
                   */}
-                <div style={{ position: 'relative' }}>
+                <div className="chat-composer-input-wrap">
                 <textarea
                     name="message"
                     data-testid="chat-composer-input"
@@ -326,6 +335,7 @@ export function Composer({
                     aria-expanded={mentionQuery !== null}
                     aria-controls={mentionQuery !== null ? 'mention-popover' : undefined}
                     ref={textareaRef}
+                    className="chat-composer-input"
                     value={draft}
                     disabled={isStreaming}
                     onChange={onChange}
@@ -334,18 +344,6 @@ export function Composer({
                     onKeyDown={onKeyDown}
                     placeholder="Ask anything grounded in your knowledge base…"
                     rows={2}
-                    style={{
-                        width: '100%',
-                        padding: '6px 14px 10px',
-                        background: 'transparent',
-                        border: 0,
-                        outline: 'none',
-                        color: 'var(--fg-0)',
-                        fontSize: 14,
-                        fontFamily: 'var(--font-sans)',
-                        resize: 'none',
-                        lineHeight: 1.5,
-                    }}
                 />
                 {mentionQuery !== null && (
                     <MentionPopover
@@ -361,7 +359,7 @@ export function Composer({
                     />
                 )}
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px 10px' }}>
+                <div className="chat-composer-actions">
                     <button
                         type="button"
                         className="btn icon sm ghost"
@@ -460,19 +458,7 @@ export function Composer({
 function ContextChip({ icon, label }: { icon: 'Folder' | 'Book' | 'Brain'; label: string }): ReactNode {
     const Ico = Icon[icon];
     return (
-        <span
-            style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 5,
-                padding: '3px 8px',
-                background: 'var(--bg-3)',
-                border: '1px solid var(--panel-border)',
-                borderRadius: 99,
-                fontSize: 11,
-                color: 'var(--fg-1)',
-            }}
-        >
+        <span className="chat-composer-context-chip">
             <Ico size={11} style={{ color: 'var(--fg-2)' }} />
             <span>{label}</span>
         </span>

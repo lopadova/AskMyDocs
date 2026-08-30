@@ -6,7 +6,15 @@ import { ConversationTitle } from './ConversationTitle';
 import { MessageThread } from './MessageThread';
 import { Composer } from './Composer';
 import { ProjectSelector } from './ProjectSelector';
-import { chatApi, type Conversation, type FilterState, type Message as AppMessage, type MessageCitation } from './chat.api';
+import {
+    chatApi,
+    type Conversation,
+    type FilterState,
+    type LiveSourceKind,
+    type LiveSourceSelection,
+    type Message as AppMessage,
+    type MessageCitation,
+} from './chat.api';
 import { useChatStore } from './chat.store';
 import { useAuthStore } from '../../lib/auth-store';
 import { selectCurrentHash, useTeamStore } from '../../lib/team-store';
@@ -233,6 +241,7 @@ export function ChatView(): ReactNode {
     // request body. Composer is now a controlled component for
     // filters via `filters` + `onFiltersChange` props.
     const [filters, setFilters] = useState<FilterState>({});
+    const [disabledLiveSourcesByScope, setDisabledLiveSourcesByScope] = useState<Record<string, string[]>>({});
 
     const effectiveFilters = useMemo<FilterState>(() => {
         // Any project-less conversation must be explicitly constrained to the
@@ -246,6 +255,40 @@ export function ChatView(): ReactNode {
         const keys = teamProjectKeys.length > 0 ? teamProjectKeys : ['__no_project_access__'];
         return { ...filters, project_keys: keys };
     }, [projectKey, filters, teamProjectKeys]);
+
+    const liveSourcesQuery = useQuery({
+        queryKey: ['chat-live-sources', currentTeam, projectKey ?? 'all-projects'],
+        queryFn: () => chatApi.listLiveSources(projectKey),
+        staleTime: 30_000,
+    });
+    // Preferences are intentionally local to the current team/project scope:
+    // they survive starting a new conversation in the same scope, but never
+    // leak into another team or project. Newly discovered sources default ON.
+    const liveSourceScopeKey = `${currentTeam ?? 'no-team'}:${projectKey ?? 'all-projects'}`;
+    const liveSourceSelection = useMemo<LiveSourceSelection | undefined>(() => {
+        const catalog = liveSourcesQuery.data;
+        if (!catalog) return undefined;
+        const disabled = new Set(disabledLiveSourcesByScope[liveSourceScopeKey] ?? []);
+
+        return {
+            api: catalog.api.filter((source) => !disabled.has(source.key)).map((source) => source.key),
+            mcp: catalog.mcp.filter((source) => !disabled.has(source.key)).map((source) => source.key),
+        };
+    }, [disabledLiveSourcesByScope, liveSourceScopeKey, liveSourcesQuery.data]);
+
+    const handleLiveSourcesChange = (kind: LiveSourceKind, enabledKeys: string[]) => {
+        const catalog = liveSourcesQuery.data;
+        if (!catalog) return;
+        const groupKeys = new Set(catalog[kind].map((source) => source.key));
+        const enabled = new Set(enabledKeys);
+        setDisabledLiveSourcesByScope((current) => ({
+            ...current,
+            [liveSourceScopeKey]: [
+                ...(current[liveSourceScopeKey] ?? []).filter((key) => !groupKeys.has(key)),
+                ...catalog[kind].filter((source) => !enabled.has(source.key)).map((source) => source.key),
+            ],
+        }));
+    };
 
     const collectionsQuery = useQuery({
         queryKey: ['chat-collections'],
@@ -353,6 +396,7 @@ export function ChatView(): ReactNode {
     const chat = useAgentChat({
         conversationId: activeId,
         filters: effectiveFilters,
+        liveSources: liveSourceSelection,
         initialMessages,
         onFinish: () => {
             // Refetch the conversations list (sidebar's recent activity
@@ -698,6 +742,9 @@ export function ChatView(): ReactNode {
                     availableCollections={collectionsQuery.data ?? []}
                     filters={filters}
                     onFiltersChange={setFilters}
+                    liveSources={liveSourcesQuery.data}
+                    liveSourceSelection={liveSourceSelection}
+                    onLiveSourcesChange={handleLiveSourcesChange}
                     onSend={handleSend}
                     onStop={chat.stop}
                     isStreaming={isStreaming}

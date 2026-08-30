@@ -35,6 +35,8 @@ final class AgentToolRegistryTest extends TestCase
         $this->assertTrue($tools['get_orders']->readOnly);
         $this->assertSame(100, $tools['get_orders']->physicalMaximum);
         $this->assertSame('page', data_get($tools['get_orders']->metadata, 'pagination.type'));
+        $this->assertStringStartsWith('api:', (string) data_get($tools['get_orders']->metadata, 'source_key'));
+        $this->assertSame('get_orders', data_get($tools['get_orders']->metadata, 'source_name'));
     }
 
     public function test_connector_tools_can_be_disabled_without_removing_knowledge_search(): void
@@ -88,6 +90,7 @@ final class AgentToolRegistryTest extends TestCase
         $this->assertTrue($definition->idempotent);
         $this->assertSame('connector', $definition->metadata['mcp_runtime']);
         $this->assertSame($tool->connection->public_id, data_get($definition->metadata, 'provenance.connection_id'));
+        $this->assertSame('mcp:'.$tool->connection->public_id, data_get($definition->metadata, 'source_key'));
         $this->assertSame('list_my_orders_12345678', data_get($definition->metadata, 'provenance.server_name'));
     }
 
