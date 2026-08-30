@@ -322,12 +322,39 @@ final readonly class CatalogLoader
 
     private function snapshotLabel(string $path): string
     {
-        $projectPrefix = rtrim($this->projectRoot(), DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR;
+        // The two sides are built differently: the prefixes come from
+        // `dirname(__DIR__, 4)` -- native separators, so backslashes on
+        // Windows -- while the paths themselves are assembled with a literal
+        // '/' throughout this class. On Linux the two coincide and the
+        // comparison worked by accident. On Windows the path reads
+        // `C:\...\AskMyDocs/database/...`, nothing matched, and a guard whose
+        // job is to REJECT paths outside its approved roots rejected the
+        // approved ones too.
+        //
+        // Folding happens ONLY where a backslash is a separator. It is
+        // tempting to fold everywhere so CI exercises the Windows shape, and
+        // that would be wrong: on POSIX a backslash is a legal filename
+        // character, so a real directory named `email-dataset\evil` would fold
+        // into `email-dataset/evil` and a path OUTSIDE the root would be
+        // accepted as inside it. Widening a containment check to make it
+        // easier to test is the wrong trade.
+        //
+        // The consequence is that each platform verifies the property that is
+        // true of it -- see CatalogLoaderPathContainmentTest, which asserts
+        // Windows acceptance on Windows and backslash REJECTION on POSIX.
+        $foldBackslashes = DIRECTORY_SEPARATOR !== '/';
+        $normalise = static fn (string $value): string => $foldBackslashes
+            ? str_replace(DIRECTORY_SEPARATOR, '/', $value)
+            : $value;
+
+        $path = $normalise($path);
+
+        $projectPrefix = rtrim($normalise($this->projectRoot()), '/').'/';
         if (str_starts_with($path, $projectPrefix)) {
             return substr($path, strlen($projectPrefix));
         }
 
-        $catalogPrefix = rtrim($this->root(), DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR;
+        $catalogPrefix = rtrim($normalise($this->root()), '/').'/';
         if (str_starts_with($path, $catalogPrefix)) {
             return 'email-dataset/'.substr($path, strlen($catalogPrefix));
         }
