@@ -24,6 +24,7 @@ use App\Models\AgentToolExecution;
 use App\Models\User;
 use App\Services\Kb\Chat\ChatRetrievalService;
 use App\Services\Widget\WidgetPiiMasker;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /** Bounded plan → act → observe → re-plan data-retrieval loop. */
@@ -111,18 +112,37 @@ final readonly class AgentLoop
                 $completed === [] ? 'plan.created' : 'plan.updated',
                 $completed === [] ? 'plan.created' : 'plan.updated',
             );
-            $plan = $this->planner->decide(
-                $run,
-                (int) ($budget->snapshot()['iterations'] ?? 1),
-                $question,
-                $context,
-                $tools,
-                $capabilitySnapshot,
-                $evidence,
-                $this->plannerHistory($completed),
-                $results,
-                $turnContext,
-            );
+            try {
+                $plan = $this->planner->decide(
+                    $run,
+                    (int) ($budget->snapshot()['iterations'] ?? 1),
+                    $question,
+                    $context,
+                    $tools,
+                    $capabilitySnapshot,
+                    $evidence,
+                    $this->plannerHistory($completed),
+                    $results,
+                    $turnContext,
+                );
+            } catch (Throwable $exception) {
+                if (! $this->hasSuccessfulAction($completed) || ! $evidence->hasEvidence()) {
+                    throw $exception;
+                }
+
+                Log::warning('Agent replanning failed after evidence was collected; continuing to synthesis.', [
+                    'run_id' => $run->run_id,
+                    'iteration' => (int) ($budget->snapshot()['iterations'] ?? 1),
+                    'completed_action_count' => count($completed),
+                    'exception_class' => $exception::class,
+                    'exception_message' => $this->masker->maskString(mb_substr($exception->getMessage(), 0, 1000)),
+                    'exception_trace' => $exception->getTraceAsString(),
+                ]);
+                $evidence->addWarning('planner_recovery', 'agent_planner');
+                $this->checkpoint($run, $evidence, $completed, $results, $retrieved);
+
+                return $this->outcome('partial', $evidence, $completed, 'planner_recovery');
+            }
             $run->forceFill(['plan_json' => $plan->jsonSerialize()])->save();
             $this->events->publish(
                 $run,
@@ -166,6 +186,12 @@ final readonly class AgentLoop
                     );
                     $this->checkpoint($run, $evidence, $completed, $results, $retrieved);
                     continue;
+                }
+                if ($this->hasSuccessfulObservation($evidence, $tool->name, $resolved)) {
+                    $evidence->addWarning('duplicate_call_avoided', $tool->name);
+                    $this->checkpoint($run, $evidence, $completed, $results, $retrieved);
+
+                    return $this->outcome('answer', $evidence, $completed, 'duplicate_call_avoided');
                 }
                 $selection = data_get($run->input_json, 'selection');
                 if ($this->ambiguousSelection->blocks(
@@ -523,6 +549,71 @@ final readonly class AgentLoop
                 : [],
             'error_code' => $action['error_code'] ?? null,
         ], array_slice($completed, -20));
+    }
+
+    /** @param list<array<string,mixed>> $completed */
+    private function hasSuccessfulAction(array $completed): bool
+    {
+        foreach ($completed as $action) {
+            if (($action['status'] ?? null) === 'completed') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** @param array<string,mixed> $arguments */
+    private function hasSuccessfulObservation(
+        AgentEvidenceEnvelope $evidence,
+        string $toolName,
+        array $arguments,
+    ): bool {
+        $maskedArguments = $this->masker->maskArray($arguments) ?? [];
+        $signature = $this->stableSignature($maskedArguments);
+
+        foreach ($evidence->apiTools() as $observation) {
+            if (($observation['tool'] ?? null) !== $toolName) {
+                continue;
+            }
+            $result = is_array($observation['result'] ?? null) ? $observation['result'] : [];
+            $status = strtolower((string) ($result['status'] ?? ''));
+            if (isset($result['error']) || in_array($status, ['error', 'failed', 'cancelled'], true)) {
+                continue;
+            }
+            $observedArguments = is_array($observation['arguments'] ?? null)
+                ? $observation['arguments']
+                : [];
+            if (hash_equals($signature, $this->stableSignature($observedArguments))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** @param array<string,mixed> $value */
+    private function stableSignature(array $value): string
+    {
+        return hash('sha256', json_encode(
+            $this->stableValue($value),
+            JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES,
+        ));
+    }
+
+    private function stableValue(mixed $value): mixed
+    {
+        if (! is_array($value)) {
+            return $value;
+        }
+        if (! array_is_list($value)) {
+            ksort($value);
+        }
+        foreach ($value as $key => $nested) {
+            $value[$key] = $this->stableValue($nested);
+        }
+
+        return $value;
     }
 
     private function progress(AgentBudgetTracker $budget, AgentPlan $plan): AgentProgress
