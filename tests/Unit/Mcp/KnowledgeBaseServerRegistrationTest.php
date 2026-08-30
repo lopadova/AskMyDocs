@@ -29,16 +29,22 @@ class KnowledgeBaseServerRegistrationTest extends TestCase
         return $property->getDefaultValue();
     }
 
-    public function test_server_registers_exactly_forty_nine_tools(): void
+    public function test_server_registers_exactly_fifty_tools(): void
     {
         // 36 (v8.21) + 3 invitations tools (v8.x) + 1 AppSettingsTool (v8.22)
         // + 1 KbPiiPolicyTool + 1 KbDetokenizeTool + 1 KbEraseSubjectTool
         // + 1 KbReembedProjectTool (v8.23/Ciclo 4) + 1 ConnectorSettingsTool (v8.25)
-        // + 1 ApiConnectorsTool (v8.27 Connettore API) + 1 WidgetIntroConfigTool + 1 KbImapBackfillTool.
-        // The breakdown above has summed to 48 since KbImapBackfillTool landed
-        // with the durable IMAP backfill workflow; the assertion had been left
-        // at 47, so this lock failed on every branch instead of guarding them.
-        // + 1 KbProvenanceTool (v8.32 / ADR 0028 phase 1).
+        // + 1 ApiConnectorsTool (v8.27 Connettore API) + 1 WidgetIntroConfigTool
+        // + 1 KbImapBackfillTool = 48
+        // + 1 KbProvenanceTool (v8.32 / ADR 0028 phase 1)
+        // + 1 KbSourceAclTool (v8.33 / ADR 0028 phase 2) = 50.
+        //
+        // The count appears in THREE places -- this method's name, the sum
+        // above, and the assertion -- and all three have to move together.
+        // They did not: the roster reached 48 when KbImapBackfillTool landed
+        // while the assertion stayed at 47, and that single stale integer kept
+        // main red for four days, develop red for six, and blocked fifteen
+        // Dependabot pull requests. Adding a tool means editing all three.
         $this->assertCount(50, $this->registeredTools());
     }
 
