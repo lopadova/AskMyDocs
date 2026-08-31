@@ -22,7 +22,13 @@ export function AgentRuntimeOverview(): ReactNode {
         );
     }
 
-    const { metrics, planner_shadow: plannerShadow, policy, recent_runs: recent } = query.data;
+    const {
+        metrics,
+        planner_shadow: plannerShadow,
+        mcp_transport: mcpTransport,
+        policy,
+        recent_runs: recent,
+    } = query.data;
     return (
         <section data-testid="agent-runtime-overview" data-state="ready" aria-labelledby="agent-runtime-title" style={shellStyle}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
@@ -47,6 +53,22 @@ export function AgentRuntimeOverview(): ReactNode {
                         <Metric label="Candidates" value={plannerShadow.average_candidates ?? '—'} detail="average shortlist" testId="agent-planner-candidates" />
                         <Metric label="Planner latency" value={plannerShadow.average_planner_latency_ms == null ? '—' : `${plannerShadow.average_planner_latency_ms}ms`} detail={`${plannerShadow.fallbacks} fallbacks`} testId="agent-planner-latency" />
                         <Metric label="Planner tokens" value={plannerShadow.average_tokens ?? '—'} detail="average router + planner" testId="agent-planner-tokens" />
+                    </div>
+                </details>
+            )}
+
+            {mcpTransport.executions > 0 && (
+                <details data-testid="agent-mcp-transport" style={{ marginTop: 10, border: '1px solid var(--hairline)', borderRadius: 8, background: 'var(--bg-2)' }}>
+                    <summary style={{ padding: '9px 10px', cursor: 'pointer', color: 'var(--fg-1)', fontSize: 11.5 }}>
+                        MCP transport · {mcpTransport.negotiation_cache_hit_rate ?? 0}% discovery cache hit · {mcpTransport.physical_requests} requests
+                    </summary>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, padding: '0 10px 10px' }}>
+                        <Metric label="OAuth refresh" value={duration(mcpTransport.average_oauth_refresh_ms)} detail="average" testId="agent-mcp-oauth" />
+                        <Metric label="Endpoint guard" value={duration(mcpTransport.average_endpoint_guard_dns_ms)} detail="DNS + policy" testId="agent-mcp-guard" />
+                        <Metric label="Discovery" value={duration(mcpTransport.average_discovery_ms)} detail="average" testId="agent-mcp-discovery" />
+                        <Metric label="Tool call" value={duration(mcpTransport.average_tool_call_ms)} detail="average" testId="agent-mcp-tool-call" />
+                        <Metric label="Decode" value={duration(mcpTransport.average_decode_ms)} detail="average" testId="agent-mcp-decode" />
+                        <Metric label="Recoveries" value={sumCounts(mcpTransport.recoveries)} detail={`${sumCounts(mcpTransport.error_codes)} errors`} testId="agent-mcp-recoveries" />
                     </div>
                 </details>
             )}
@@ -79,6 +101,14 @@ export function AgentRuntimeOverview(): ReactNode {
             )}
         </section>
     );
+}
+
+function duration(value: number | null): string {
+    return value == null ? '—' : `${value}ms`;
+}
+
+function sumCounts(values: Record<string, number>): number {
+    return Object.values(values).reduce((sum, value) => sum + value, 0);
 }
 
 function Metric({ label, value, detail, testId }: { label: string; value: string | number; detail?: string; testId: string }): ReactNode {

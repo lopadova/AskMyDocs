@@ -15,6 +15,7 @@ use App\Models\User;
 use Padosoft\AskMyDocsConnectorApi\Models\ApiRoute;
 use Padosoft\AskMyDocsConnectorApi\Support\RouteMode;
 use Padosoft\AskMyDocsConnectorApi\Support\RouteStatus;
+use Padosoft\AskMyDocsConnectorMcp\Exceptions\McpInvocationException;
 
 /** Executes server-side API and MCP tools after a final scope revalidation. */
 final readonly class AgentServerToolRunner
@@ -27,8 +28,8 @@ final readonly class AgentServerToolRunner
     ) {}
 
     /**
-     * @param array<string,mixed> $arguments
-     * @param null|callable(array<string,mixed>):void $progress
+     * @param  array<string,mixed>  $arguments
+     * @param  null|callable(array<string,mixed>):void  $progress
      */
     public function execute(
         AgentToolDefinition $tool,
@@ -178,7 +179,9 @@ final readonly class AgentServerToolRunner
                 // references declared by the MCP outputSchema.
                 $body += $structured;
             }
-            $physicalRequests = $outcome->status === 'confirmation_required' ? 0 : 1;
+            $physicalRequests = $outcome->status === 'confirmation_required'
+                ? 0
+                : max(1, (int) ($outcome->metadata['physical_request_count'] ?? 1));
             $success = $outcome->status !== 'error' && $outcome->error === null;
             if (! $success) {
                 $body = [
@@ -197,9 +200,18 @@ final readonly class AgentServerToolRunner
             );
         } catch (\Throwable $exception) {
             $body = ['error' => $exception->getMessage()];
-            $budget->recordResult(1, $this->bytes($body), false);
+            $physicalRequests = $exception instanceof McpInvocationException
+                ? max(0, (int) ($exception->provenance['physical_request_count'] ?? 0))
+                : 1;
+            $budget->recordResult($physicalRequests, $this->bytes($body), false);
 
-            return new AgentToolActionResult($body, 1, false, 'mcp_tool_error');
+            return new AgentToolActionResult(
+                $body,
+                $physicalRequests,
+                false,
+                $exception instanceof McpInvocationException ? $exception->failureCode : 'mcp_tool_error',
+                $exception instanceof McpInvocationException ? ['mcp' => $exception->provenance] : [],
+            );
         }
     }
 

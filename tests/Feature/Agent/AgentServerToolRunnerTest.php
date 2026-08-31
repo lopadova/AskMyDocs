@@ -19,9 +19,11 @@ use Padosoft\AskMyDocsConnectorBase\Support\TenantContext as ConnectorTenantCont
 use Padosoft\AskMyDocsConnectorMcp\Models\McpConnection;
 use Padosoft\AskMyDocsConnectorMcp\Models\McpConnectionTool;
 use Padosoft\AskMyDocsConnectorMcp\Models\McpServerDefinition;
+use Padosoft\AskMyDocsConnectorMcp\Services\McpToolCatalogFingerprint;
 use Padosoft\AskMyDocsMcpPack\Contracts\McpServerContract;
 use Padosoft\AskMyDocsMcpPack\Contracts\McpTransportContract;
 use Padosoft\AskMyDocsMcpPack\Services\McpClient;
+use Padosoft\AskMyDocsMcpPack\Support\JsonRpcMessage;
 use Tests\Support\Mcp\StubMcpTransport;
 use Tests\TestCase;
 
@@ -81,6 +83,11 @@ final class AgentServerToolRunnerTest extends TestCase
             'auth_mode' => 'none',
             'endpoint' => 'https://gescat.example.test/mcp/clienti',
             'status' => McpServerDefinition::STATUS_ACTIVE,
+            'negotiated_era' => 'modern',
+            'negotiated_version' => McpClient::MODERN_PROTOCOL_VERSION,
+            'capabilities_json' => ['tools' => []],
+            'server_info_json' => ['name' => 'Gescat'],
+            'last_discovered_at' => now(),
         ]);
         $connection = McpConnection::query()->create([
             'tenant_id' => 'acme',
@@ -89,6 +96,7 @@ final class AgentServerToolRunnerTest extends TestCase
             'label' => 'Gescat',
             'project_key' => 'orders',
             'status' => McpConnection::STATUS_ACTIVE,
+            'last_discovered_at' => now(),
         ]);
         $tool = McpConnectionTool::query()->create([
             'tenant_id' => 'acme',
@@ -103,6 +111,13 @@ final class AgentServerToolRunnerTest extends TestCase
             'enabled' => true,
             'confirmation_required' => false,
         ]);
+        $connection->forceFill([
+            'catalog_hash' => app(McpToolCatalogFingerprint::class)->forConnection($connection),
+        ])->save();
+        $this->assertSame(
+            $connection->fresh()->catalog_hash,
+            app(McpToolCatalogFingerprint::class)->forConnection($connection),
+        );
         $transport = new StubMcpTransport;
         $transport->responses['server/discover'] = [
             'protocolVersion' => '2026-07-28',
@@ -141,6 +156,8 @@ final class AgentServerToolRunnerTest extends TestCase
         $this->assertTrue($result->successful());
         $this->assertTrue($result->complete);
         $this->assertSame(1, $result->physicalRequests);
+        $this->assertTrue((bool) data_get($result->stats, 'mcp.negotiation_cache_hit'));
+        $this->assertSame(1, data_get($result->stats, 'mcp.physical_request_count'));
         $this->assertSame('completed', $result->body['status']);
         $this->assertStringStartsWith(
             'Ordine 123 del 26 agosto.',
@@ -159,6 +176,26 @@ final class AgentServerToolRunnerTest extends TestCase
             'tool_local_name' => $tool->local_name,
             'status' => 'ok',
         ]);
+
+        $connection->forceFill(['last_discovered_at' => now()->subHour()])->save();
+        $transport->responses['tools/call:list-my-orders'] = JsonRpcMessage::errorResponse(
+            'ignored-by-stub',
+            -32603,
+            'Temporary upstream failure.',
+        );
+        $failure = app(AgentServerToolRunner::class)->execute(
+            $definition,
+            [],
+            $this->context($run),
+            $run,
+            new AgentBudgetTracker($run),
+        );
+
+        $this->assertFalse($failure->successful());
+        $this->assertSame(2, $failure->physicalRequests);
+        $this->assertSame('mcp_remote_error', $failure->stopReason);
+        $this->assertSame(2, data_get($failure->stats, 'mcp.physical_request_count'));
+        $this->assertSame(3, data_get($run->fresh()->counters_json, 'physical_calls'));
     }
 
     private function context(AgentRun $run): AgentExecutionContext
