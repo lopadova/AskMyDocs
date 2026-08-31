@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { chatApi } from './chat.api';
 import { Icon } from '../../components/Icons';
+import { Button } from '../../components/Button';
 
 export interface SuggestedFollowupsProps {
     conversationId: number | null;
@@ -91,14 +92,10 @@ export function SuggestedFollowups({
                 data-testid="chat-suggested-followups"
                 data-state="loading"
                 aria-label="Loading suggested follow-ups"
-                style={{
-                    display: 'flex',
-                    gap: 8,
-                    padding: '0 24px 8px',
-                    flexWrap: 'wrap',
-                    minHeight: 24,
-                }}
-            />
+                className="chat-suggested-followups-shell"
+            >
+                <div className="chat-suggested-followups" />
+            </div>
         );
     }
 
@@ -111,38 +108,25 @@ export function SuggestedFollowups({
             data-testid="chat-suggested-followups"
             data-state="ready"
             aria-label="Suggested follow-up questions"
-            style={{
-                display: 'flex',
-                gap: 8,
-                padding: '0 24px 10px',
-                flexWrap: 'wrap',
-            }}
+            className="chat-suggested-followups-shell"
         >
-            {suggestions.map((prompt, i) => (
-                <button
-                    key={`${turnId}-${i}`}
-                    type="button"
-                    data-testid={`chat-suggested-followup-${i}`}
-                    className="btn sm"
-                    onClick={() => onPick(prompt)}
-                    style={{
-                        fontSize: 12,
-                        color: 'var(--fg-1)',
-                        background: 'var(--bg-2)',
-                        border: '1px solid var(--panel-border)',
-                        borderRadius: 99,
-                        padding: '4px 10px',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 5,
-                        cursor: 'pointer',
-                    }}
-                    aria-label={`Suggested follow-up: ${prompt}`}
-                >
-                    <Icon.Sparkles size={11} style={{ color: 'var(--fg-3)' }} />
-                    <span>{prompt}</span>
-                </button>
-            ))}
+            <div className="chat-suggested-followups">
+                {suggestions.map((prompt, i) => (
+                    <Button
+                        key={`${turnId}-${i}`}
+                        variant="secondary"
+                        size="sm"
+                        leadingIcon={<Icon.Sparkles />}
+                        data-testid={`chat-suggested-followup-${i}`}
+                        className="chat-suggested-followup"
+                        onClick={() => onPick(prompt)}
+                        aria-label={`Suggested follow-up: ${prompt}`}
+                        title={prompt}
+                    >
+                        {prompt}
+                    </Button>
+                ))}
+            </div>
         </div>
     );
 }

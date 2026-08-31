@@ -1431,6 +1431,31 @@ textarea:focus-visible {
   max-width: 860px;
   margin: 0 auto;
 }
+.chat-suggested-followups-shell {
+  flex: 0 0 auto;
+  width: 100%;
+  padding: 10px 24px 0;
+  background: var(--bg-1);
+}
+.chat-suggested-followups {
+  width: 100%;
+  max-width: 860px;
+  min-height: 32px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.chat-suggested-followup {
+  max-width: min(100%, 360px);
+}
+.chat-suggested-followup .ui-button-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .chat-composer-shell {
   position: relative;
   z-index: 40;
@@ -2933,6 +2958,16 @@ textarea:focus-visible {
   .mcp-app-frame-status { display: none; }
   .mcp-app-frame-heading strong { max-width: 45vw; }
   .chat-thread-scroll { padding: 20px 14px; }
+  .chat-suggested-followups-shell { padding: 9px 14px 0; }
+  .chat-suggested-followups {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .chat-suggested-followup {
+    width: 100%;
+    max-width: none;
+    justify-content: flex-start;
+  }
   .chat-composer-shell { padding: 10px 14px 14px !important; }
   .chat-composer { border-radius: 10px; }
   .chat-composer-shortcut { display: none; }
