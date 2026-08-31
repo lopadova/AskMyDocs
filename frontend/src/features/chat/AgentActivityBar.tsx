@@ -1,6 +1,7 @@
 import { useId, useState, type ReactNode } from 'react';
 import type { AgentRunEvent } from '../../lib/agent-run-events';
 import { Icon } from '../../components/Icons';
+import { Button } from '../../components/Button';
 
 export interface AgentActivityBarProps {
     events: AgentRunEvent[];
@@ -152,8 +153,9 @@ export function AgentActivityBar({
                     </div>
                 </div>
                 {timelineEvents.length > 0 && (
-                    <button
-                        type="button"
+                    <Button
+                        variant="quiet"
+                        size="sm"
                         className="agent-activity-details-toggle"
                         aria-expanded={expanded}
                         aria-controls={timelineId}
@@ -163,11 +165,12 @@ export function AgentActivityBar({
                         <Icon.Eye size={13} />
                         <span>{expanded ? copy.hideDetails : copy.details}</span>
                         <span className="agent-activity-count">{timelineEvents.length}</span>
-                    </button>
+                    </Button>
                 )}
                 {active && (
-                    <button
-                        type="button"
+                    <Button
+                        variant="secondary"
+                        size="sm"
                         className="agent-activity-cancel"
                         aria-label={copy.cancel}
                         data-testid="agent-activity-cancel"
@@ -175,12 +178,12 @@ export function AgentActivityBar({
                     >
                         <Icon.Close size={12} />
                         <span>{copy.cancel}</span>
-                    </button>
+                    </Button>
                 )}
                 {awaitingConfirmation && (
-                    <button type="button" className="btn sm primary" data-testid="agent-activity-continue" onClick={onContinue}>
+                    <Button variant="primary" size="sm" data-testid="agent-activity-continue" onClick={onContinue}>
                         {copy.proceed}
-                    </button>
+                    </Button>
                 )}
             </div>
             {expanded && timelineEvents.length > 0 && (
@@ -553,16 +556,17 @@ function DebugJson({
                     <h4>{label}</h4>
                     <span className="agent-mcp-debug-json-summary">{debugValueSummary(normalized, inspectorCopy)}</span>
                 </div>
-                <button
-                    type="button"
+                <Button
+                    variant="quiet"
+                    size="sm"
                     className="agent-mcp-debug-copy"
                     aria-label={`${buttonLabel}: ${label}`}
                     onClick={() => void copyJson()}
                     data-state={copyState}
+                    leadingIcon={copyState === 'copied' ? <Icon.Check size={11} /> : <Icon.Copy size={11} />}
                 >
-                    {copyState === 'copied' ? <Icon.Check size={11} /> : <Icon.Copy size={11} />}
                     {buttonLabel}
-                </button>
+                </Button>
             </div>
             <div className="agent-mcp-debug-inspector" data-testid={`agent-mcp-debug-${variant}`}>
                 <DebugValueRoot value={normalized} copy={inspectorCopy} />

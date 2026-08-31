@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../../lib/api';
+import { Button } from '../../../components/Button';
 import { McpAppFrame, type McpAppHandle } from './McpAppFrame';
 import { ToolResultPreview } from './ToolResultPreview';
 
@@ -302,14 +303,14 @@ export function ToolCallBubble({ toolCall, conversationId, onMcpAppMessage }: To
                     {taskStatusMessage ? <div style={{ color: 'var(--fg-1)' }}>{taskStatusMessage}</div> : null}
                     {requiresLocalInteraction && toolCall.status === 'confirmation_required' ? (
                         <div style={{ display: 'flex', gap: 8 }}>
-                            <button type="button" disabled={submitting} onClick={() => void respond({ confirmed: true })} style={interactionButtonStyle}>Confirm</button>
-                            <button type="button" disabled={submitting} onClick={() => void respond({ confirmed: false })} style={interactionButtonStyle}>Decline</button>
+                            <Button variant="primary" size="sm" busy={submitting} data-testid={`chat-tool-call-${toolCall.id}-confirm`} onClick={() => void respond({ confirmed: true })}>Confirm</Button>
+                            <Button variant="secondary" size="sm" disabled={submitting} data-testid={`chat-tool-call-${toolCall.id}-decline`} onClick={() => void respond({ confirmed: false })}>Decline</Button>
                         </div>
                     ) : (
                         <>
                             {(taskInputRequests ?? toolCall.prompt?.inputRequests) && <ToolResultPreview value={taskInputRequests ?? toolCall.prompt?.inputRequests} />}
                             <textarea aria-label="MCP input responses" value={inputJson} onChange={(event) => setInputJson(event.target.value)} rows={4} style={interactionInputStyle} />
-                            <button type="button" disabled={submitting} onClick={requiresTaskInput ? submitTaskInput : submitInput} style={interactionButtonStyle}>Send input</button>
+                            <Button variant="primary" size="sm" busy={submitting} data-testid={`chat-tool-call-${toolCall.id}-send-input`} onClick={requiresTaskInput ? submitTaskInput : submitInput}>Send input</Button>
                         </>
                     )}
                     {interactionError && <div role="alert" style={{ color: 'var(--danger-fg)' }}>{interactionError}</div>}
@@ -319,9 +320,9 @@ export function ToolCallBubble({ toolCall, conversationId, onMcpAppMessage }: To
             {activeTaskId !== null && (effectiveStatus === 'task_accepted' || effectiveStatus === 'cancel_requested') ? (
                 <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
                     {taskStatusMessage ? <span>{taskStatusMessage}</span> : null}
-                    <button type="button" disabled={submitting || effectiveStatus === 'cancel_requested'} onClick={() => void cancelTask()} style={interactionButtonStyle}>
+                    <Button variant="secondary" size="sm" busy={submitting} disabled={effectiveStatus === 'cancel_requested'} data-testid={`chat-tool-call-${toolCall.id}-cancel-task`} onClick={() => void cancelTask()}>
                         {effectiveStatus === 'cancel_requested' ? 'Cancellation requested' : 'Cancel task'}
-                    </button>
+                    </Button>
                     {interactionError && <div role="alert" style={{ color: 'var(--danger-fg)' }}>{interactionError}</div>}
                 </div>
             ) : null}
@@ -544,17 +545,6 @@ function labelForStatus(status: ToolCallStatus): string {
             return status;
     }
 }
-
-const interactionButtonStyle: React.CSSProperties = {
-    width: 'fit-content',
-    border: '1px solid rgba(245,158,11,.4)',
-    borderRadius: 7,
-    background: 'rgba(245,158,11,.12)',
-    color: 'var(--fg-0)',
-    padding: '6px 10px',
-    cursor: 'pointer',
-    font: 'inherit',
-};
 
 const interactionInputStyle: React.CSSProperties = {
     width: '100%',
