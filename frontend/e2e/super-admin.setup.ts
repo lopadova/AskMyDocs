@@ -1,7 +1,6 @@
 import { test as setup, expect } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { resetAndSeed } from './setup-helpers';
 
 const AUTH_FILE = 'playwright/.auth/super-admin.json';
 const SUPER_EMAIL = process.env.E2E_SUPER_ADMIN_EMAIL ?? 'super@demo.local';
@@ -28,8 +27,8 @@ const SUPER_PASSWORD = process.env.E2E_SUPER_ADMIN_PASSWORD ?? 'password';
 setup('authenticate as super-admin', async ({ page, context }) => {
     mkdirSync(dirname(AUTH_FILE), { recursive: true });
 
-    await resetAndSeed(page);
-
+    // Authenticate against the database snapshot prepared by auth.setup.ts.
+    // A second migrate:fresh would invalidate every earlier storage state.
     await page.request.get('/sanctum/csrf-cookie');
 
     const cookies = await context.cookies();
