@@ -62,7 +62,7 @@ final class ChunkRedactor
         }
 
         // A dry-run preview must not mint vault tokens — fall back to the
-        // side-effect-free mask so flow_steps/audit never store raw PII.
+        // side-effect-free mask so flow_run_nodes/audit never store raw PII.
         $strategyName = $previewSafe ? 'mask' : $policy['strategy'];
         $strategy = $this->strategies->forName($strategyName);
         $engine = app(RedactorEngine::class);

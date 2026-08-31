@@ -12,6 +12,9 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
+use Padosoft\LaravelFlow\Dashboard\FlowDashboardReadModel;
+use Padosoft\LaravelFlow\Dashboard\Pagination;
+use Padosoft\LaravelFlow\Dashboard\RunFilter;
 use Tests\TestCase;
 
 /**
@@ -25,9 +28,17 @@ use Tests\TestCase;
  * authenticated user holds the most privileged role (super-admin).
  *
  * This is the load-bearing R30 test for the cockpit. A super-admin
- * leaking across tenants is a GDPR catastrophe; the row-level
- * tenant_id check inside AskMyDocsFlowAuthorizer is the only
- * defence (the package itself is tenant-agnostic).
+ * leaking across tenants is a GDPR catastrophe, and the package is
+ * tenant-agnostic, so both defences are the host's:
+ *
+ *  - AskMyDocsFlowAuthorizer checks tenant_id per row, which gates the
+ *    destructive ACTIONS;
+ *  - TenantScopedDashboardReads constrains every dashboard QUERY, which
+ *    is what keeps the run LIST from enumerating other tenants — the
+ *    authorizer's canViewRuns() is a plain role check with no row
+ *    filter, and v2 documents the canView* hooks as not yet invoked.
+ *
+ * Both are exercised below; neither is sufficient alone.
  *
  * The control assertion in each test confirms the SAME super-admin
  * CAN see tenant A's row — proving the rejection is caused by the
@@ -175,6 +186,40 @@ class FlowAdminTenantScopingTest extends TestCase
         $this->assertSame(1, $umbrellaRunCount);
         $this->assertSame(1, $umbrellaApprovalCount);
         $this->assertSame(1, $umbrellaWebhookCount);
+    }
+
+    public function test_the_run_list_does_not_enumerate_another_tenants_runs(): void
+    {
+        $page = $this->reader()->listRuns(new RunFilter, new Pagination(1, 50));
+
+        $ids = array_map(static fn ($run): string => $run->id, $page->items);
+
+        $this->assertContains($this->tenantARun, $ids, 'Sanity: the acme run must be listed.');
+        $this->assertNotContains($this->tenantBRun, $ids, 'Cross-tenant leak: umbrella run appeared in the acme list.');
+        $this->assertSame(1, $page->total);
+    }
+
+    public function test_run_detail_by_id_is_unavailable_for_another_tenants_run(): void
+    {
+        // The list being scoped is not enough on its own: a caller who knows
+        // the id would otherwise read the detail directly, and the detail is
+        // where inputs and outputs live.
+        $this->assertNotNull($this->reader()->findRun($this->tenantARun));
+        $this->assertNull($this->reader()->findRun($this->tenantBRun));
+    }
+
+    public function test_kpis_do_not_aggregate_another_tenants_rows(): void
+    {
+        // Aggregates leak by counting, without ever naming a row.
+        $kpis = $this->reader()->kpis();
+
+        $this->assertSame(1, $kpis->totalRuns);
+        $this->assertSame(1, $kpis->pendingApprovals);
+    }
+
+    private function reader(): FlowDashboardReadModel
+    {
+        return app(FlowDashboardReadModel::class);
     }
 
     private function resolveAuthorizer(): AskMyDocsFlowAuthorizer

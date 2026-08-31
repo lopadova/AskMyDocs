@@ -16,7 +16,7 @@ use Padosoft\LaravelFlow\FlowEngine;
 /**
  * `kb.ingest` — 5-step saga mirroring the {@see \App\Services\Kb\DocumentIngestor::ingest()}
  * pipeline. Decomposed onto laravel-flow v1.0 so each phase becomes
- * independently observable (flow_steps + flow_audit rows) and the persist
+ * independently observable (flow_run_nodes + flow_audit rows) and the persist
  * step gets a compensator that rolls back the document + chunks if any
  * downstream step fails.
  *

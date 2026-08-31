@@ -13,7 +13,7 @@ use Padosoft\LaravelFlow\FlowEngine;
 /**
  * `kb.canonical-index` — 3-step refactor of the legacy
  * {@see \App\Jobs\CanonicalIndexerJob} handler. Each phase becomes
- * independently observable (flow_steps + flow_audit rows) and the
+ * independently observable (flow_run_nodes + flow_audit rows) and the
  * node-population step gets a compensator that rolls back exactly the
  * KbNode rows it inserted if a downstream step fails.
  *
