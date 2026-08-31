@@ -12,7 +12,7 @@ return new class extends Migration
     {
         Schema::create('mcp_connector_shadow_reports', function (Blueprint $table): void {
             $table->id();
-            $table->string('tenant_id', 50);
+            $table->string('tenant_id', 50)->default('default')->index();
             $table->unsignedBigInteger('mcp_server_id')->nullable();
             $table->unsignedBigInteger('mcp_connector_connection_id')->nullable();
             $table->string('status', 32);

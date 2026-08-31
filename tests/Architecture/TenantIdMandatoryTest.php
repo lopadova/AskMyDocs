@@ -131,6 +131,8 @@ final class TenantIdMandatoryTest extends TestCase
         \App\Models\KbCanonicalHealthSnapshot::class,
         \App\Models\TenantSchedulerOverride::class,
         \App\Models\TenantBranding::class,
+        \App\Models\McpConnectorShadowReport::class,
+        \App\Models\AgentPlannerShadowReport::class,
         // v8.0/W5.1 — Living Collections foundation schema.
         \App\Models\KbCollection::class,
         \App\Models\KbCollectionMember::class,

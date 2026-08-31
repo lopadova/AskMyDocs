@@ -56,6 +56,48 @@ final class McpActivityDebugPayloadTest extends TestCase
         }
     }
 
+    public function test_it_bounds_large_and_deep_debug_payloads(): void
+    {
+        config()->set('app.env', 'local');
+        $deep = ['secret' => 'visible'];
+        for ($depth = 0; $depth < 20; $depth++) {
+            $deep = ['nested' => $deep];
+        }
+
+        $debug = app(McpActivityDebugPayload::class)->capture(
+            $this->tool(),
+            ['query' => str_repeat('x', 2_000_000), 'deep' => $deep],
+            ['items' => array_fill(0, 500, ['value' => str_repeat('y', 2_000)])],
+            10,
+            'ok',
+        );
+
+        $encoded = json_encode($debug, JSON_THROW_ON_ERROR);
+        $this->assertLessThanOrEqual(65_536, strlen($encoded));
+        $this->assertTrue(data_get($debug, '_debug_meta.truncated'));
+        $this->assertGreaterThan(2_000_000, data_get($debug, '_debug_meta.original_bytes'));
+        $this->assertStringContainsString('[truncated]', data_get($debug, 'parameters.query'));
+    }
+
+    public function test_it_bounds_hostile_oversized_object_keys(): void
+    {
+        config()->set('app.env', 'local');
+        $oversizedKey = str_repeat('remote-key-', 20_000);
+
+        $debug = app(McpActivityDebugPayload::class)->capture(
+            $this->tool(),
+            [],
+            [$oversizedKey => 'value'],
+            10,
+            'ok',
+        );
+
+        $encoded = json_encode($debug, JSON_THROW_ON_ERROR);
+        $this->assertLessThanOrEqual(65_536, strlen($encoded));
+        $this->assertTrue(data_get($debug, '_debug_meta.truncated'));
+        $this->assertStringNotContainsString($oversizedKey, $encoded);
+    }
+
     private function tool(): AgentToolDefinition
     {
         return new AgentToolDefinition(
