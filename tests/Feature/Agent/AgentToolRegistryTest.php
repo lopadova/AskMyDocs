@@ -94,6 +94,60 @@ final class AgentToolRegistryTest extends TestCase
         $this->assertSame('list_my_orders_12345678', data_get($definition->metadata, 'provenance.server_name'));
     }
 
+    public function test_mcp_next_tool_hints_are_localized_within_the_same_connection(): void
+    {
+        config()->set('connector-mcp.enabled', true);
+        config()->set('connector-mcp.runtime_mode', 'active');
+        app(TenantContext::class)->set('acme');
+        app(ConnectorTenantContext::class)->set('acme');
+        $user = User::query()->create([
+            'name' => 'Agent MCP relations user',
+            'email' => 'agent-mcp-relations@example.test',
+            'password' => Hash::make('secret-pass-123'),
+        ]);
+        $search = $this->mcpTool('acme', 'orders', 'orders_search_12345678');
+        $search->forceFill(['meta_json' => [
+            'askmydocs/agent-capability' => [
+                'entity' => 'order',
+                'operation' => 'search',
+                'collection_path' => 'data.items',
+                'identity_fields' => ['id', 'reference'],
+                'next_tools' => ['orders.get', 'foreign.get'],
+            ],
+        ]])->save();
+        $detail = McpConnectionTool::query()->create([
+            'tenant_id' => 'acme',
+            'mcp_connector_connection_id' => $search->connection->getKey(),
+            'remote_name' => 'orders.get',
+            'local_name' => 'orders_get_87654321',
+            'description' => 'Get an order.',
+            'input_schema_json' => ['type' => 'object', 'properties' => []],
+            'annotations_json' => ['readOnlyHint' => true, 'idempotentHint' => true],
+            'risk' => 'read',
+            'policy' => 'enabled',
+            'enabled' => true,
+            'confirmation_required' => false,
+        ]);
+
+        $tools = app(AgentToolRegistry::class)->forContext(
+            $this->context('acme', 'orders'),
+            $user,
+        );
+
+        $this->assertSame(
+            [$detail->local_name],
+            data_get($tools[$search->local_name]->metadata, 'agent_capability_hint.next_tools'),
+        );
+        $this->assertSame('data.items', data_get(
+            $tools[$search->local_name]->metadata,
+            'agent_capability_hint.collection_path',
+        ));
+        $this->assertArrayNotHasKey(
+            'agent_capability_hint',
+            $tools[$search->local_name]->plannerPayload()['metadata'],
+        );
+    }
+
     public function test_off_mcp_connector_runtime_does_not_leak_new_catalog_tools(): void
     {
         config()->set('connector-mcp.enabled', true);
