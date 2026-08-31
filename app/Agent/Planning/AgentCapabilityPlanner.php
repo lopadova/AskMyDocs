@@ -16,12 +16,13 @@ final readonly class AgentCapabilityPlanner
         private AgentCapabilityRouter $router,
         private AgentPlanner $planner,
         private AgentPlanValidator $validator,
+        private AgentPlanArgumentNormalizer $normalizer,
     ) {}
 
     /**
-     * @param array<string,AgentToolDefinition> $tools
-     * @param list<array<string,mixed>> $completedActions
-     * @param array<string,array<string,mixed>> $results
+     * @param  array<string,AgentToolDefinition>  $tools
+     * @param  list<array<string,mixed>>  $completedActions
+     * @param  array<string,array<string,mixed>>  $results
      */
     public function decide(
         string $question,
@@ -55,6 +56,7 @@ final readonly class AgentCapabilityPlanner
             $turnContext,
             $candidateSnapshot,
         );
+        $attempt = $this->normalized($attempt, $candidateTools);
         $plannerLatency = $attempt->latencyMs;
         $promptTokens = $attempt->promptTokens;
         $completionTokens = $attempt->completionTokens;
@@ -74,6 +76,7 @@ final readonly class AgentCapabilityPlanner
                 $candidateSnapshot,
                 $exception->validationCode.': '.$exception->getMessage(),
             );
+            $attempt = $this->normalized($attempt, $candidateTools);
             $plannerLatency += $attempt->latencyMs;
             $promptTokens = $this->sum($promptTokens, $attempt->promptTokens);
             $completionTokens = $this->sum($completionTokens, $attempt->completionTokens);
@@ -93,5 +96,16 @@ final readonly class AgentCapabilityPlanner
     private function sum(?int $left, ?int $right): ?int
     {
         return $left === null && $right === null ? null : (int) $left + (int) $right;
+    }
+
+    /** @param array<string,AgentToolDefinition> $tools */
+    private function normalized(AgentPlannerAttempt $attempt, array $tools): AgentPlannerAttempt
+    {
+        return new AgentPlannerAttempt(
+            $this->normalizer->normalize($attempt->plan, $tools),
+            $attempt->latencyMs,
+            $attempt->promptTokens,
+            $attempt->completionTokens,
+        );
     }
 }

@@ -25,7 +25,7 @@ final readonly class AgentToolRegistry
     ) {}
 
     /**
-     * @param list<AgentToolDefinition> $clientTools
+     * @param  list<AgentToolDefinition>  $clientTools
      * @return array<string,AgentToolDefinition>
      */
     public function forContext(
@@ -156,8 +156,7 @@ final readonly class AgentToolRegistry
         array &$tools,
         AgentExecutionContext $context,
         ?User $user,
-    ): void
-    {
+    ): void {
         if (! $user instanceof User) {
             return;
         }
@@ -223,9 +222,11 @@ final readonly class AgentToolRegistry
         array &$tools,
         AgentExecutionContext $context,
         User $user,
-    ): void
-    {
-        foreach ($this->connectorMcp->catalog($user, $context->projectKey) as $definition) {
+    ): void {
+        $catalog = $this->connectorMcp->catalog($user, $context->projectKey);
+        $remoteNames = $this->connectorRemoteToolMap($catalog);
+
+        foreach ($catalog as $definition) {
             $name = is_string($definition['name'] ?? null) ? $definition['name'] : '';
             if ($name === '' || isset($tools[$name])) {
                 continue;
@@ -248,6 +249,14 @@ final readonly class AgentToolRegistry
             $risk = is_string($definition['risk'] ?? null) ? $definition['risk'] : 'unknown';
             $readOnly = (bool) ($annotations['readOnlyHint'] ?? ($risk === 'read'));
             $idempotent = (bool) ($annotations['idempotentHint'] ?? $readOnly);
+            $hint = is_array($definition['agentCapability'] ?? null)
+                ? $definition['agentCapability']
+                : data_get($definition, '_meta.askmydocs/agent-capability');
+            $hint = is_array($hint) ? $hint : null;
+            $connectionId = is_string($provenance['connection_id'] ?? null)
+                ? $provenance['connection_id']
+                : '';
+            $hint = $this->localizeConnectorHint($hint, $connectionId, $remoteNames);
 
             $tools[$name] = new AgentToolDefinition(
                 name: $name,
@@ -272,14 +281,63 @@ final readonly class AgentToolRegistry
                     'output_schema' => is_array($definition['outputSchema'] ?? null)
                         ? $definition['outputSchema']
                         : null,
-                    'agent_capability_hint' => is_array($definition['agentCapability'] ?? null)
-                        ? $definition['agentCapability']
-                        : data_get($definition, '_meta.askmydocs/agent-capability'),
+                    'agent_capability_hint' => $hint,
                     'provenance' => $provenance,
                     'meta' => is_array($definition['_meta'] ?? null) ? $definition['_meta'] : null,
                 ],
             );
         }
+    }
+
+    /**
+     * @param  list<array<string,mixed>>  $catalog
+     * @return array<string,array<string,string>> connection id => remote name => local name
+     */
+    private function connectorRemoteToolMap(array $catalog): array
+    {
+        $map = [];
+        foreach ($catalog as $definition) {
+            $provenance = is_array($definition['provenance'] ?? null) ? $definition['provenance'] : [];
+            $connectionId = is_string($provenance['connection_id'] ?? null)
+                ? $provenance['connection_id']
+                : '';
+            $remoteName = is_string($provenance['tool_remote_name'] ?? null)
+                ? $provenance['tool_remote_name']
+                : '';
+            $localName = is_string($definition['name'] ?? null) ? $definition['name'] : '';
+            if ($connectionId !== '' && $remoteName !== '' && $localName !== '') {
+                $map[$connectionId][$remoteName] = $localName;
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * @param  array<string,mixed>|null  $hint
+     * @param  array<string,array<string,string>>  $remoteNames
+     * @return array<string,mixed>|null
+     */
+    private function localizeConnectorHint(?array $hint, string $connectionId, array $remoteNames): ?array
+    {
+        if ($hint === null || ! is_array($hint['next_tools'] ?? null)) {
+            return $hint;
+        }
+
+        $localized = array_values(array_unique(array_filter(array_map(
+            static fn (mixed $name): ?string => is_string($name)
+                ? ($remoteNames[$connectionId][$name] ?? null)
+                : null,
+            $hint['next_tools'],
+        ))));
+
+        if ($localized === []) {
+            unset($hint['next_tools']);
+        } else {
+            $hint['next_tools'] = $localized;
+        }
+
+        return $hint === [] ? null : $hint;
     }
 
     /** @return list<array<string,mixed>> */

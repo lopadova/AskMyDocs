@@ -10,6 +10,7 @@ use App\Ai\AiManager;
 use App\Ai\AiResponse;
 use App\Models\AgentRun;
 use App\Services\Kb\Chat\ChatRetrievalService;
+use App\Services\Kb\Retrieval\RetrievalFilters;
 use App\Services\Kb\Retrieval\SearchResult;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
@@ -37,6 +38,20 @@ final class AgentLoopTest extends TestCase
     {
         $findCustomer = $this->route('find_customer', 'http://erp.example.test/customers');
         $this->parameter($findCustomer, 'name', 'query');
+        $findCustomer->forceFill(['output_schema' => [
+            'type' => 'object',
+            'properties' => [
+                'items' => [
+                    'type' => 'array',
+                    'items' => [
+                        'type' => 'object',
+                        'properties' => ['id' => ['type' => 'integer']],
+                        'required' => ['id'],
+                    ],
+                ],
+            ],
+            'required' => ['items'],
+        ]])->save();
         $getOrders = $this->route('get_orders', 'http://erp.example.test/customers/{customer_id}/orders');
         $this->parameter($getOrders, 'customer_id', 'path', 'integer');
 
@@ -82,7 +97,7 @@ final class AgentLoopTest extends TestCase
         $retrieval->shouldReceive('retrieve')->once()->with(
             'Dammi tutti gli ordini di Tizio',
             'crm',
-            Mockery::type(\App\Services\Kb\Retrieval\RetrievalFilters::class),
+            Mockery::type(RetrievalFilters::class),
         )
             ->andReturn(new SearchResult(collect(), collect(), collect()));
         $this->app->instance(ChatRetrievalService::class, $retrieval);
@@ -103,7 +118,7 @@ final class AgentLoopTest extends TestCase
         Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/customers/77/orders'));
     }
 
-    public function test_failed_dependency_is_skipped_without_calling_the_downstream_api(): void
+    public function test_invalid_dependency_is_rejected_before_creating_an_execution(): void
     {
         $detail = $this->route('get_orders', 'http://erp.example.test/customers/{customer_id}/orders');
         $this->parameter($detail, 'customer_id', 'path', 'integer');
@@ -131,9 +146,8 @@ final class AgentLoopTest extends TestCase
         $run = $this->makeRun();
         $outcome = app(AgentLoop::class)->run($run, $this->context($run));
 
-        $this->assertSame('insufficient', $outcome->decision);
-        $this->assertSame('skipped', $run->toolExecutions()->sole()->status);
-        $this->assertSame('dependency_resolution_failed', $run->toolExecutions()->sole()->error_code);
+        $this->assertSame('answer', $outcome->decision);
+        $this->assertSame(0, $run->toolExecutions()->count());
         Http::assertNothingSent();
     }
 
