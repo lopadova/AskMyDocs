@@ -3,6 +3,10 @@ import { Button } from '../../components/Button';
 import { Icon } from '../../components/Icons';
 import type { AgentTableArtifact as AgentTableArtifactData } from './chat.api';
 
+type ArtifactColumnKind = 'identifier' | 'date' | 'number' | 'boolean' | 'text';
+
+const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
+
 export interface AgentArtifactSelection {
     messageId: number;
     rowKey: string;
@@ -32,6 +36,10 @@ export function AgentTableArtifact({
     const actionLabel = selectionRequired
         ? (italian ? 'Seleziona' : 'Select')
         : (italian ? 'Apri' : 'Open');
+    const columns = artifact.columns.map((column) => ({
+        ...column,
+        kind: columnKind(column, artifact.rows),
+    }));
 
     async function select(rowKey: string, label: string): Promise<void> {
         if (!onSelect || submitting !== null || selected !== null) return;
@@ -81,7 +89,9 @@ export function AgentTableArtifact({
                 <table aria-label={`${displayTitle(artifact.title)} · ${artifact.total_rows} ${italian ? 'risultati' : 'results'}`}>
                     <thead>
                         <tr>
-                            {artifact.columns.map((column) => <th key={column.key}>{column.label}</th>)}
+                            {columns.map((column) => (
+                                <th key={column.key} data-column-kind={column.kind}>{column.label}</th>
+                            ))}
                             {selectable && (
                                 <th className="agent-table-artifact-action-heading">
                                     {italian ? 'Azione' : 'Action'}
@@ -101,12 +111,20 @@ export function AgentTableArtifact({
                                     aria-selected={selectable ? isSelected : undefined}
                                     onClick={selectable ? () => void select(row.key, row.label) : undefined}
                                 >
-                                    {artifact.columns.map((column) => {
+                                    {columns.map((column) => {
                                         const rawValue = row.values[column.key];
                                         const value = displayValue(rawValue, locale);
 
                                         return (
-                                            <td key={column.key} title={value !== String(rawValue ?? '') ? String(rawValue ?? '') : undefined}>
+                                            <td
+                                                key={column.key}
+                                                data-column-kind={column.kind}
+                                                title={value === '—'
+                                                    ? undefined
+                                                    : value === String(rawValue ?? '')
+                                                        ? value
+                                                        : `${value} · ${String(rawValue ?? '')}`}
+                                            >
                                                 <span data-empty={value === '—' || undefined}>{value}</span>
                                             </td>
                                         );
@@ -175,7 +193,7 @@ function resultSummary(total: number, visible: number, truncated: boolean, itali
 function displayValue(value: string | number | boolean | null | undefined, locale: string): string {
     if (value === null || value === undefined || value === '') return '—';
     if (typeof value === 'boolean') return value ? '✓' : '✕';
-    if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value)) {
+    if (typeof value === 'string' && ISO_TIMESTAMP.test(value)) {
         const date = new Date(value);
         if (!Number.isNaN(date.getTime())) {
             try {
@@ -190,4 +208,35 @@ function displayValue(value: string | number | boolean | null | undefined, local
     }
 
     return String(value);
+}
+
+function columnKind(
+    column: AgentTableArtifactData['columns'][number],
+    rows: AgentTableArtifactData['rows'],
+): ArtifactColumnKind {
+    const semanticName = `${column.key} ${column.label}`
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, ' ')
+        .trim();
+    const values = rows
+        .map((row) => row.values[column.key])
+        .filter((value) => value !== null && value !== undefined && value !== '');
+
+    if (/(^|\s)(id|uuid|key|code|reference|token)(\s|$)/.test(semanticName)) {
+        return 'identifier';
+    }
+    if (
+        /(^|\s)(date|time|timestamp|created|updated|occurred|placed|shipped|delivered)(\s|$)/.test(semanticName)
+        || (values.length > 0 && values.every((value) => typeof value === 'string' && ISO_TIMESTAMP.test(value)))
+    ) {
+        return 'date';
+    }
+    if (values.length > 0 && values.every((value) => typeof value === 'number')) {
+        return 'number';
+    }
+    if (values.length > 0 && values.every((value) => typeof value === 'boolean')) {
+        return 'boolean';
+    }
+
+    return 'text';
 }
