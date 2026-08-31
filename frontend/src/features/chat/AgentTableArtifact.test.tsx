@@ -84,4 +84,38 @@ describe('AgentTableArtifact', () => {
         expect(screen.getByText('1 risultato')).toBeInTheDocument();
         expect(screen.queryByText('2026-08-20T09:00:00+00:00')).not.toBeInTheDocument();
     });
+
+    it('classifies long values so identifiers stay readable and can be visually truncated', () => {
+        const publicId = '01M127HWKGV0T9YQ71KBBZ3PXK';
+        const description = 'A deliberately long product description that should not distort the table layout';
+
+        render(
+            <AgentTableArtifact
+                artifact={{
+                    ...artifact,
+                    columns: [
+                        { key: 'public_id', label: 'Public ID' },
+                        { key: 'description', label: 'Description' },
+                        { key: 'total_amount', label: 'Total amount' },
+                    ],
+                    rows: [{
+                        key: publicId,
+                        label: 'Order',
+                        values: { public_id: publicId, description, total_amount: 600 },
+                    }],
+                    total_rows: 1,
+                    interaction_mode: 'view',
+                }}
+                messageId={93}
+                locale="it-IT"
+            />,
+        );
+
+        expect(screen.getByRole('columnheader', { name: 'Public ID' })).toHaveAttribute('data-column-kind', 'identifier');
+        expect(screen.getByRole('columnheader', { name: 'Description' })).toHaveAttribute('data-column-kind', 'text');
+        expect(screen.getByRole('columnheader', { name: 'Total amount' })).toHaveAttribute('data-column-kind', 'number');
+        expect(screen.getByText(publicId).closest('td')).toHaveAttribute('title', publicId);
+        expect(screen.getByText(publicId).closest('td')).toHaveAttribute('data-column-kind', 'identifier');
+        expect(screen.getByText(description).closest('td')).toHaveAttribute('title', description);
+    });
 });

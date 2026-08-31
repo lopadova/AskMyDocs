@@ -1434,14 +1434,15 @@ textarea:focus-visible {
 .chat-suggested-followups-shell {
   flex: 0 0 auto;
   width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 860px);
+  justify-content: center;
   padding: 10px 24px 0;
   background: var(--bg-1);
 }
 .chat-suggested-followups {
   width: 100%;
-  max-width: 860px;
   min-height: 32px;
-  margin: 0 auto;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2551,15 +2552,46 @@ textarea:focus-visible {
   white-space: nowrap;
 }
 .agent-table-artifact td {
-  max-width: 260px;
   height: 43px;
   padding: 9px 12px;
   color: var(--fg-1);
   border-bottom: 1px solid var(--hairline);
   font: 430 11.5px/1.4 var(--font-sans);
-  overflow-wrap: anywhere;
+  overflow-wrap: normal;
   vertical-align: middle;
 }
+.agent-table-artifact td > span {
+  display: block;
+  min-width: 0;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-table-artifact th[data-column-kind="identifier"],
+.agent-table-artifact td[data-column-kind="identifier"] { min-width: 148px; }
+.agent-table-artifact td[data-column-kind="identifier"] > span {
+  max-width: 190px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: -.015em;
+}
+.agent-table-artifact th[data-column-kind="date"],
+.agent-table-artifact td[data-column-kind="date"] { min-width: 150px; }
+.agent-table-artifact td[data-column-kind="date"] > span { max-width: 190px; }
+.agent-table-artifact th[data-column-kind="number"],
+.agent-table-artifact td[data-column-kind="number"] {
+  min-width: 92px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.agent-table-artifact th[data-column-kind="boolean"],
+.agent-table-artifact td[data-column-kind="boolean"] {
+  min-width: 76px;
+  text-align: center;
+}
+.agent-table-artifact th[data-column-kind="text"],
+.agent-table-artifact td[data-column-kind="text"] { min-width: 120px; }
 .agent-table-artifact td > span[data-empty="true"] { color: var(--fg-3); }
 .agent-table-artifact tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--bg-2) 35%, transparent); }
 .agent-table-artifact tbody tr:last-child td { border-bottom: 0; }
