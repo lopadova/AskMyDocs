@@ -1,7 +1,6 @@
 import { test as setup, expect } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { resetAndSeed } from './setup-helpers';
 
 const AUTH_FILE = 'playwright/.auth/viewer.json';
 const VIEWER_EMAIL = process.env.E2E_VIEWER_EMAIL ?? 'viewer@demo.local';
@@ -16,8 +15,8 @@ const VIEWER_PASSWORD = process.env.E2E_VIEWER_PASSWORD ?? 'password';
 setup('authenticate as viewer', async ({ page, context }) => {
     mkdirSync(dirname(AUTH_FILE), { recursive: true });
 
-    await resetAndSeed(page);
-
+    // auth.setup.ts owns the single reset + seed for the chained setup run.
+    // Resetting here would invalidate the admin session already persisted.
     await page.request.get('/sanctum/csrf-cookie');
 
     const cookies = await context.cookies();
