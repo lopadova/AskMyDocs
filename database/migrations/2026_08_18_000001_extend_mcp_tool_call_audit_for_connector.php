@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -46,14 +47,32 @@ return new class extends Migration
 
     public function down(): void
     {
+        if (DB::table('mcp_tool_call_audit')->whereNull('mcp_server_id')->exists()) {
+            throw new RuntimeException(
+                'Cannot restore non-null mcp_server_id while connector audit rows have no legacy server.',
+            );
+        }
+
         if (Schema::hasIndex('mcp_tool_call_audit', 'idx_mcp_tool_call_audit_tenant_source_connection')) {
             Schema::table('mcp_tool_call_audit', static fn (Blueprint $table) => $table->dropIndex('idx_mcp_tool_call_audit_tenant_source_connection'));
         }
         if (Schema::hasIndex('mcp_tool_call_audit', 'idx_mcp_tool_call_audit_invocation')) {
             Schema::table('mcp_tool_call_audit', static fn (Blueprint $table) => $table->dropIndex('idx_mcp_tool_call_audit_invocation'));
         }
-        if (Schema::hasColumn('mcp_tool_call_audit', 'source')) {
-            Schema::table('mcp_tool_call_audit', static fn (Blueprint $table) => $table->dropColumn('source'));
+        Schema::table('mcp_tool_call_audit', function (Blueprint $table): void {
+            $table->foreignId('mcp_server_id')->nullable(false)->change();
+        });
+
+        $columns = array_values(array_filter([
+            'source',
+            'mcp_connection_id',
+            'invocation_id',
+            'tool_remote_name',
+            'tool_local_name',
+            'error_class',
+        ], static fn (string $column): bool => Schema::hasColumn('mcp_tool_call_audit', $column)));
+        if ($columns !== []) {
+            Schema::table('mcp_tool_call_audit', static fn (Blueprint $table) => $table->dropColumn($columns));
         }
     }
 };

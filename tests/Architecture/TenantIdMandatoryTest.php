@@ -130,6 +130,8 @@ final class TenantIdMandatoryTest extends TestCase
         // v8.0/W4 — decision-debt health snapshot + tier-2 scheduler overrides.
         \App\Models\KbCanonicalHealthSnapshot::class,
         \App\Models\TenantSchedulerOverride::class,
+        \App\Models\McpConnectorShadowReport::class,
+        \App\Models\AgentPlannerShadowReport::class,
         // v8.0/W5.1 — Living Collections foundation schema.
         \App\Models\KbCollection::class,
         \App\Models\KbCollectionMember::class,

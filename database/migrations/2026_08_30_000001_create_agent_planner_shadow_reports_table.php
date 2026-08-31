@@ -14,7 +14,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('agent_run_id')->constrained('agent_runs')->cascadeOnDelete();
             $table->unsignedSmallInteger('iteration');
-            $table->string('tenant_id', 50);
+            $table->string('tenant_id', 50)->default('default')->index();
             $table->string('project_key', 120)->nullable();
             $table->string('mode', 20);
             $table->string('status', 32);
@@ -34,7 +34,7 @@ return new class extends Migration
             $table->string('error_code', 80)->nullable();
             $table->timestamps();
 
-            $table->unique(['agent_run_id', 'iteration'], 'uq_agent_planner_shadow_iteration');
+            $table->unique(['tenant_id', 'agent_run_id', 'iteration'], 'uq_agent_planner_shadow_iteration');
             $table->index(['tenant_id', 'created_at'], 'idx_agent_planner_shadow_tenant_time');
             $table->index(['tenant_id', 'status'], 'idx_agent_planner_shadow_tenant_status');
         });
