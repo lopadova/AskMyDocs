@@ -81,4 +81,40 @@ final class AgentTableArtifactFactoryTest extends TestCase
             array_column($singleView['columns'], 'key'),
         );
     }
+
+    public function test_it_uses_selected_execution_and_declared_collection_path(): void
+    {
+        $artifact = app(AgentTableArtifactFactory::class)->fromToolEvidence([
+            [
+                'execution_id' => 70,
+                'tool' => 'old_search',
+                'result' => ['items' => [
+                    ['id' => 'WRONG-1'],
+                    ['id' => 'WRONG-2'],
+                ]],
+            ],
+            [
+                'execution_id' => 71,
+                'tool' => 'orders_get',
+                'presentation' => ['collection_path' => 'data.orders'],
+                'result' => [
+                    'artifact' => [
+                        'structuredContent' => [
+                            'data' => [
+                                'orders' => [
+                                    ['id' => 'ORDER-1', 'line_items' => [['id' => 'LINE-1'], ['id' => 'LINE-2']]],
+                                    ['id' => 'ORDER-2', 'line_items' => [['id' => 'LINE-3']]],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ], false, false, [71]);
+
+        $this->assertNotNull($artifact);
+        $this->assertSame(71, $artifact['source_execution_id']);
+        $this->assertSame(['ORDER-1', 'ORDER-2'], array_column($artifact['rows'], 'key'));
+        $this->assertSame(['id'], array_column($artifact['columns'], 'key'));
+    }
 }

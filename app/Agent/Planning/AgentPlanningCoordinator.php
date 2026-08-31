@@ -5,9 +5,6 @@ declare(strict_types=1);
 namespace App\Agent\Planning;
 
 use App\Agent\AgentExecutionContext;
-use App\Agent\AgentProgress;
-use App\Agent\Capabilities\AgentCapabilityRanker;
-use App\Agent\Capabilities\AgentCapabilityRoute;
 use App\Agent\Capabilities\AgentCapabilitySnapshot;
 use App\Agent\Evidence\AgentEvidenceEnvelope;
 use App\Agent\Tools\AgentToolDefinition;
@@ -24,15 +21,11 @@ final readonly class AgentPlanningCoordinator
         private AgentCapabilityPlanner $capability,
         private AgentPlannerModeResolver $modes,
         private WidgetPiiMasker $masker,
-        private AgentCapabilityRanker $ranker,
-        private AgentPlanValidator $validator,
-        private AgentPlanArgumentNormalizer $normalizer,
     ) {}
 
     /**
      * @param  array<string,AgentToolDefinition>  $tools
      * @param  list<array<string,mixed>>  $completedActions
-     * @param  array<string,array<string,mixed>>  $results
      */
     public function decide(
         AgentRun $run,
@@ -48,29 +41,19 @@ final readonly class AgentPlanningCoordinator
     ): AgentPlan {
         $mode = $this->modes->forContext($context);
         if ($mode === 'classic') {
-            return $this->validatedClassicAttempt(
-                $question,
-                $context,
-                $tools,
-                $snapshot,
-                $evidence,
-                $completedActions,
-                $results,
-                $turnContext,
-            )->plan;
+            // `classic` is the rollback contract: it must remain byte-for-byte
+            // equivalent to the planner path that existed before capability
+            // routing was introduced. Validation, normalization and retries
+            // belong exclusively to the capability planner.
+            return $this->classic->decide(
+                $question, $context, $tools, $evidence, $completedActions, $turnContext,
+            );
         }
 
         $classic = null;
         if ($mode === 'shadow') {
-            $classic = $this->validatedClassicAttempt(
-                $question,
-                $context,
-                $tools,
-                $snapshot,
-                $evidence,
-                $completedActions,
-                $results,
-                $turnContext,
+            $classic = $this->classicAttempt(
+                $question, $context, $tools, $evidence, $completedActions, $turnContext,
             );
         }
 
@@ -89,15 +72,8 @@ final readonly class AgentPlanningCoordinator
 
             return $mode === 'shadow' ? $classic->plan : $capability->plan;
         } catch (Throwable $exception) {
-            $fallback = $classic ?? $this->validatedClassicAttempt(
-                $question,
-                $context,
-                $tools,
-                $snapshot,
-                $evidence,
-                $completedActions,
-                $results,
-                $turnContext,
+            $fallback = $classic ?? $this->classicAttempt(
+                $question, $context, $tools, $evidence, $completedActions, $turnContext,
             );
             $this->safeReport($run, $iteration, $mode, $snapshot, $fallback, null, $exception);
 
@@ -108,113 +84,17 @@ final readonly class AgentPlanningCoordinator
     /**
      * @param  array<string,AgentToolDefinition>  $tools
      * @param  list<array<string,mixed>>  $completedActions
-     * @param  array<string,array<string,mixed>>  $results
      */
-    private function validatedClassicAttempt(
+    private function classicAttempt(
         string $question,
         AgentExecutionContext $context,
         array $tools,
-        AgentCapabilitySnapshot $snapshot,
         AgentEvidenceEnvelope $evidence,
         array $completedActions,
-        array $results,
         ?string $turnContext,
     ): AgentPlannerAttempt {
-        $route = $this->deterministicRoute(
-            $question,
-            $turnContext,
-            $snapshot,
-            $evidence->documents() !== [],
-        );
-        $attempt = $this->classic->decideAttempt(
+        return $this->classic->decideAttempt(
             $question, $context, $tools, $evidence, $completedActions, $turnContext,
-        );
-
-        for ($correction = 0; $correction < 2; $correction++) {
-            $attempt = new AgentPlannerAttempt(
-                $this->normalizer->normalize($attempt->plan, $tools),
-                $attempt->latencyMs,
-                $attempt->promptTokens,
-                $attempt->completionTokens,
-            );
-
-            try {
-                $this->validator->validate(
-                    $attempt->plan,
-                    $tools,
-                    $snapshot,
-                    $route,
-                    $completedActions,
-                    $results,
-                );
-
-                return $attempt;
-            } catch (AgentPlanValidationException $exception) {
-                if ($correction === 0) {
-                    $retry = $this->classic->decideAttempt(
-                        $question,
-                        $context,
-                        $tools,
-                        $evidence,
-                        $completedActions,
-                        $turnContext,
-                        validationError: $exception->validationCode.': '.$exception->getMessage(),
-                    );
-                    $attempt = new AgentPlannerAttempt(
-                        $retry->plan,
-                        $attempt->latencyMs + $retry->latencyMs,
-                        $this->sum($attempt->promptTokens, $retry->promptTokens),
-                        $this->sum($attempt->completionTokens, $retry->completionTokens),
-                    );
-
-                    continue;
-                }
-
-                Log::warning('Classic agent plan remained invalid after one correction.', [
-                    'validation_code' => $exception->validationCode,
-                    'tool_count' => count($tools),
-                ]);
-
-                return new AgentPlannerAttempt(
-                    // Do not manufacture a premature `insufficient` after a
-                    // planner validation failure. `answer` safely stops tool
-                    // execution and lets synthesis describe current evidence.
-                    new AgentPlan('answer', [], new AgentProgress),
-                    $attempt->latencyMs,
-                    $attempt->promptTokens,
-                    $attempt->completionTokens,
-                );
-            }
-        }
-
-        throw new \LogicException('Unreachable classic planning validation state.');
-    }
-
-    private function deterministicRoute(
-        string $question,
-        ?string $turnContext,
-        AgentCapabilitySnapshot $snapshot,
-        bool $hasDocumentEvidence,
-    ): AgentCapabilityRoute {
-        $limit = max(1, min(8, (int) config('agent.planner.candidate_limit', 8)));
-        $ranked = array_values(array_filter(
-            $this->ranker->rank($question, $turnContext, $snapshot, $hasDocumentEvidence),
-            static fn (array $item): bool => $item['score'] > 0
-                && $item['capability']->readOnly
-                && ! $item['capability']->confirmationRequired,
-        ));
-        $selected = array_slice($ranked, 0, $limit);
-        $first = $selected[0]['capability'] ?? null;
-
-        return new AgentCapabilityRoute(
-            liveDataRequired: $first !== null && $first->source !== 'knowledge',
-            entity: $first?->entity ?? 'unknown',
-            operation: $first?->operation ?? 'unknown',
-            candidateTools: array_map(
-                static fn (array $item): string => $item['capability']->tool,
-                $selected,
-            ),
-            reasonCodes: ['deterministic_classic_validation'],
         );
     }
 

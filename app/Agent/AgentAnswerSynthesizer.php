@@ -55,9 +55,15 @@ final readonly class AgentAnswerSynthesizer
 
         $requiresSelection = $outcome->stopReason === 'ambiguous_selection_required'
             || (bool) ($payload['requires_selection'] ?? false);
-        $renderTable = (bool) ($payload['render_table'] ?? false)
-            || $this->continuesFromSelection($turnContext);
-        $artifact = $this->artifacts->fromToolEvidence($evidence['api_tools'], $requiresSelection, $renderTable);
+        $renderTable = (bool) ($payload['render_table'] ?? false);
+        $artifact = ! $requiresSelection && ! $renderTable
+            ? null
+            : $this->artifacts->fromToolEvidence(
+                $evidence['api_tools'],
+                $requiresSelection,
+                $renderTable,
+                is_array($payload['tool_execution_ids'] ?? null) ? $payload['tool_execution_ids'] : [],
+            );
         $requiresSelection = $requiresSelection && $artifact !== null;
         $presentedAnswer = $artifact === null
             ? $answer
@@ -128,17 +134,6 @@ PROMPT;
                 ],
             ],
         ];
-    }
-
-    private function continuesFromSelection(?string $turnContext): bool
-    {
-        if (! is_string($turnContext) || $turnContext === '') {
-            return false;
-        }
-
-        $decoded = json_decode($turnContext, true);
-
-        return is_array($decoded) && is_array($decoded['current_selection'] ?? null);
     }
 
     private function artifactHandoff(string $locale, bool $requiresSelection): string

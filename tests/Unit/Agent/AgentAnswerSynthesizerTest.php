@@ -18,7 +18,7 @@ use Tests\TestCase;
 
 final class AgentAnswerSynthesizerTest extends TestCase
 {
-    public function test_it_combines_sources_and_discards_fabricated_source_ids(): void
+    public function test_selection_does_not_force_a_detail_result_into_a_table(): void
     {
         $evidence = app(AgentEvidenceFactory::class)->empty();
         $evidence->addDocument([
@@ -41,7 +41,16 @@ final class AgentAnswerSynthesizerTest extends TestCase
             physicalMaximum: 1,
             executorReference: 9,
         );
-        $evidence->addToolResult($tool, ['customer_id' => 77], ['orders' => [['number' => 'A-100']]], 55);
+        $evidence->addToolResult($tool, ['order_id' => 'A-100'], [
+            'data' => [
+                'number' => 'A-100',
+                'status' => 'paid',
+                'line_items' => [
+                    ['id' => 'LINE-1', 'name' => 'First item'],
+                    ['id' => 'LINE-2', 'name' => 'Second item'],
+                ],
+            ],
+        ], 55);
 
         $ai = Mockery::mock(AiManager::class);
         $ai->shouldReceive('chatWithHistory')->once()->andReturn(new AiResponse(
@@ -57,7 +66,6 @@ final class AgentAnswerSynthesizerTest extends TestCase
                     'tool_execution_ids' => [55, 999],
                     'limitations' => ['Non mostrare Bearer eyJabcdefghijk.abcdefghijklmnopqrstu'],
                     'requires_selection' => false,
-                    // Selection continuations still render a one-row collection if the model misses this.
                     'render_table' => false,
                 ],
             ]],
@@ -68,7 +76,7 @@ final class AgentAnswerSynthesizerTest extends TestCase
             app(WidgetPiiMasker::class),
             app(AgentTableArtifactFactory::class),
         ))->synthesize(
-            'Quali ordini ha Tizio?',
+            'Dammi il dettaglio dell’ordine selezionato',
             $this->context(),
             new AgentLoopOutcome('answer', $evidence, []),
             json_encode(['current_selection' => ['record' => ['id' => 77]]], JSON_THROW_ON_ERROR),
@@ -79,15 +87,10 @@ final class AgentAnswerSynthesizerTest extends TestCase
         $this->assertSame([12], array_column($answer->citations, 'document_id'));
         $this->assertSame([55], array_column($answer->toolSources, 'execution_id'));
         $this->assertArrayNotHasKey('result', $answer->toolSources[0]);
-        $this->assertSame(
-            'Ho organizzato i risultati nella tabella qui sotto: apri una riga per vedere i dettagli.',
-            $answer->answer,
-        );
-        $this->assertStringNotContainsString('A-100', $answer->answer);
+        $this->assertStringContainsString('A-100', $answer->answer);
         $this->assertStringNotContainsString('admin@example.com', $answer->answer);
         $this->assertStringContainsString('Bearer [TOKEN]', $answer->limitations[0]);
-        $this->assertSame('view', data_get($answer->artifact, 'interaction_mode'));
-        $this->assertSame('A-100', data_get($answer->artifact, 'rows.0.values.number'));
+        $this->assertNull($answer->artifact);
     }
 
     public function test_it_marks_ambiguous_singular_results_as_a_selectable_table(): void

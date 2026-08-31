@@ -21,19 +21,29 @@ final class AgentTableArtifactFactory
 
     /**
      * @param  list<array<string, mixed>>  $tools
+     * @param  list<int|string>  $selectedExecutionIds
      * @return array<string, mixed>|null
      */
     public function fromToolEvidence(
         array $tools,
         bool $requiresSelection,
         bool $renderSingleRow = false,
+        array $selectedExecutionIds = [],
     ): ?array
     {
         $minimumRows = ! $requiresSelection && $renderSingleRow ? 1 : 2;
+        $selected = array_fill_keys(array_map('intval', $selectedExecutionIds), true);
         foreach (array_reverse($tools) as $tool) {
+            $executionId = (int) ($tool['execution_id'] ?? 0);
+            if ($selected !== [] && ! isset($selected[$executionId])) {
+                continue;
+            }
             $result = is_array($tool['result'] ?? null) ? $tool['result'] : [];
             $safeResult = $this->redactor->redact($result);
-            $rows = $this->structuredRows->best($safeResult, $minimumRows);
+            $collectionPath = data_get($tool, 'presentation.collection_path');
+            $rows = is_string($collectionPath) && $collectionPath !== ''
+                ? $this->structuredRows->atPath($safeResult, $collectionPath, $minimumRows)
+                : $this->structuredRows->best($safeResult, $minimumRows);
             if (count($rows) < $minimumRows) {
                 continue;
             }

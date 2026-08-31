@@ -118,7 +118,7 @@ final class AgentLoopTest extends TestCase
         Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/customers/77/orders'));
     }
 
-    public function test_invalid_dependency_is_rejected_before_creating_an_execution(): void
+    public function test_classic_mode_keeps_legacy_dependency_failure_without_external_call(): void
     {
         $detail = $this->route('get_orders', 'http://erp.example.test/customers/{customer_id}/orders');
         $this->parameter($detail, 'customer_id', 'path', 'integer');
@@ -146,8 +146,11 @@ final class AgentLoopTest extends TestCase
         $run = $this->makeRun();
         $outcome = app(AgentLoop::class)->run($run, $this->context($run));
 
-        $this->assertSame('answer', $outcome->decision);
-        $this->assertSame(0, $run->toolExecutions()->count());
+        $this->assertSame('insufficient', $outcome->decision);
+        $execution = $run->toolExecutions()->sole();
+        $this->assertSame('skipped', $execution->status);
+        $this->assertSame('dependency_resolution_failed', $execution->error_code);
+        $this->assertSame(0, $execution->physical_request_count);
         Http::assertNothingSent();
     }
 
