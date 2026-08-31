@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../lib/auth-store';
+import { Button } from '../../components/Button';
 import { modalBackdropStyle, modalPanelStyle } from '../admin/api-connectors/styles';
 import { toAdminError } from '../admin/shared/errors';
 import {
@@ -173,9 +174,9 @@ export function McpConnectionsPanel({
                     {!embedded && <p style={subtitleStyle}>{subtitle}</p>}
                 </div>
                 {!embedded && (
-                    <button type="button" className="focus-ring" onClick={() => setFormOpen(true)} style={primaryButtonStyle}>
+                    <Button variant="primary" onClick={() => setFormOpen(true)} data-testid="mcp-connection-add">
                         Add MCP connection
-                    </button>
+                    </Button>
                 )}
             </div>
 
@@ -195,7 +196,7 @@ export function McpConnectionsPanel({
             {query.isError && (
                 <div role="alert" style={emptyStyle}>
                     MCP connections are unavailable. The feature may still be disabled for this environment.{' '}
-                    <button type="button" onClick={() => void query.refetch()} style={linkButtonStyle}>Retry</button>
+                    <Button variant="quiet" size="sm" onClick={() => void query.refetch()} data-testid="mcp-connections-retry">Retry</Button>
                 </div>
             )}
             {!query.isLoading && !query.isError && connections.length === 0 && (
@@ -238,15 +239,18 @@ export function McpConnectionsPanel({
                                     Connect a server, authenticate securely and discover its capabilities.
                                 </p>
                             </div>
-                            <button
-                                type="button"
+                            <Button
+                                variant="quiet"
+                                size="sm"
+                                iconOnly
                                 aria-label="Close MCP connection form"
+                                data-testid="mcp-connection-form-close"
                                 disabled={create.isPending}
                                 onClick={closeForm}
-                                style={closeButtonStyle}
+                                style={{ flex: 'none' }}
                             >
                                 ×
-                            </button>
+                            </Button>
                         </div>
 
                         <div style={modalBodyStyle}>
@@ -254,19 +258,20 @@ export function McpConnectionsPanel({
 
                             <div style={twoColumnStyle}>
                                 <Field label="Name">
-                                    <input required autoFocus value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} style={inputStyle} />
+                                    <input required autoFocus data-testid="mcp-connection-name" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} style={inputStyle} />
                                 </Field>
                                 <Field label="Label">
-                                    <input value={form.label ?? ''} onChange={(event) => setForm({ ...form, label: event.target.value })} style={inputStyle} />
+                                    <input data-testid="mcp-connection-label" value={form.label ?? ''} onChange={(event) => setForm({ ...form, label: event.target.value })} style={inputStyle} />
                                 </Field>
                             </div>
 
                             <Field label="MCP endpoint">
-                                <input required type="url" placeholder="https://mcp.example.com/rpc" value={form.endpoint} onChange={(event) => setForm({ ...form, endpoint: event.target.value })} style={inputStyle} />
+                                <input required data-testid="mcp-connection-endpoint" type="url" placeholder="https://mcp.example.com/rpc" value={form.endpoint} onChange={(event) => setForm({ ...form, endpoint: event.target.value })} style={inputStyle} />
                             </Field>
 
                             <Field label="Project (optional)" hint={projectsError ? 'Projects could not be loaded.' : 'Controls where shared resources are indexed.'}>
                                 <select
+                                    data-testid="mcp-connection-project"
                                     value={form.project_key ?? ''}
                                     disabled={projectsLoading}
                                     onChange={(event) => setForm({ ...form, project_key: event.target.value || null })}
@@ -310,7 +315,7 @@ export function McpConnectionsPanel({
 
                             {form.auth_method === 'bearer' && (
                                 <Field label="Bearer token">
-                                    <input required type="password" autoComplete="new-password" value={form.bearer ?? ''} onChange={(event) => setForm({ ...form, bearer: event.target.value })} style={inputStyle} />
+                                    <input required data-testid="mcp-connection-bearer" type="password" autoComplete="new-password" value={form.bearer ?? ''} onChange={(event) => setForm({ ...form, bearer: event.target.value })} style={inputStyle} />
                                 </Field>
                             )}
 
@@ -356,10 +361,10 @@ export function McpConnectionsPanel({
                         </div>
 
                         <div style={modalFooterStyle}>
-                            <button type="button" disabled={create.isPending} onClick={closeForm} style={secondaryButtonStyle}>Cancel</button>
-                            <button type="submit" disabled={create.isPending} style={primaryButtonStyle}>
-                                {create.isPending ? 'Connecting…' : form.auth_method === 'oauth' ? 'Continue with OAuth' : 'Connect and discover'}
-                            </button>
+                            <Button variant="secondary" disabled={create.isPending} onClick={closeForm} data-testid="mcp-connection-cancel">Cancel</Button>
+                            <Button type="submit" variant="primary" busy={create.isPending} data-testid="mcp-connection-submit">
+                                {form.auth_method === 'oauth' ? 'Continue with OAuth' : 'Connect and discover'}
+                            </Button>
                         </div>
                     </form>
                 </div>
@@ -414,31 +419,33 @@ function ConnectionCard({
 
                 <div style={cardActionsStyle}>
                     {requiresOAuthAction && (
-                        <button type="button" disabled={busy} onClick={onOAuth} style={primarySmallButtonStyle}>
+                        <Button variant="primary" size="sm" busy={busy} onClick={onOAuth} data-testid={`mcp-connection-${connection.public_id}-oauth`}>
                             Connect OAuth
-                        </button>
+                        </Button>
                     )}
-                    <button
-                        type="button"
-                        className="focus-ring"
+                    <Button
+                        variant="quiet"
+                        size="sm"
+                        iconOnly
                         aria-expanded={expanded}
                         aria-label={expanded ? `Collapse ${connection.label}` : `Expand ${connection.label}`}
+                        data-testid={`mcp-connection-${connection.public_id}-expand`}
                         onClick={() => setExpanded((open) => !open)}
-                        style={iconActionStyle}
                     >
                         <ChevronIcon expanded={expanded} />
-                    </button>
+                    </Button>
                     <div style={{ position: 'relative' }}>
-                        <button
-                            type="button"
-                            className="focus-ring"
+                        <Button
+                            variant="quiet"
+                            size="sm"
+                            iconOnly
                             aria-label={`More actions for ${connection.label}`}
                             aria-expanded={menuOpen}
+                            data-testid={`mcp-connection-${connection.public_id}-menu`}
                             onClick={() => setMenuOpen((open) => !open)}
-                            style={iconActionStyle}
                         >
                             <span aria-hidden="true" style={{ fontSize: 18, lineHeight: 1 }}>⋯</span>
-                        </button>
+                        </Button>
                         {menuOpen && (
                             <div role="menu" style={menuStyle}>
                                 {oauthRequired && connection.status === 'active' && (
@@ -526,7 +533,7 @@ function SummaryBadge({ label, value, active }: { label: string; value: number; 
 }
 
 function MenuButton({ children, danger = false, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { danger?: boolean }) {
-    return <button type="button" role="menuitem" style={{ ...menuButtonStyle, ...(danger ? { color: '#fca5a5' } : {}) }} {...props}>{children}</button>;
+    return <Button variant={danger ? 'danger' : 'quiet'} size="sm" role="menuitem" style={{ width: '100%', justifyContent: 'flex-start' }} {...props}>{children}</Button>;
 }
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
@@ -562,6 +569,7 @@ function AuthChoice({
                 <span style={choiceDescriptionStyle}>{description}</span>
             </span>
             <input
+                data-testid={`mcp-auth-${kind}`}
                 type="radio"
                 name="mcp-auth-method"
                 checked={checked}
@@ -605,6 +613,7 @@ function TransportChoice({
                 <span style={choiceDescriptionStyle}>{description}</span>
             </span>
             <input
+                data-testid={`mcp-transport-${value}`}
                 type="radio"
                 name="mcp-transport"
                 value={value}
@@ -743,12 +752,6 @@ const capabilityHeadingStyle: CSSProperties = { display: 'flex', alignItems: 'ce
 const emptyCapabilityStyle: CSSProperties = { padding: '0 0 10px', color: 'var(--fg-3)', fontSize: 11.5 };
 const countBadgeStyle: CSSProperties = { borderRadius: 999, padding: '1px 7px', color: 'var(--fg-2)', background: 'var(--bg-2)', fontSize: 10.5, fontWeight: 600 };
 const inputStyle: CSSProperties = { width: '100%', boxSizing: 'border-box', borderRadius: 8, border: '1px solid var(--hairline)', background: 'var(--bg-2)', color: 'var(--fg-0)', padding: '9px 10px', font: 'inherit' };
-const primaryButtonStyle: CSSProperties = { border: '1px solid rgba(99,102,241,.65)', borderRadius: 8, background: 'var(--grad-accent-soft)', color: 'var(--fg-0)', padding: '9px 14px', font: 'inherit', fontSize: 12.5, fontWeight: 650, cursor: 'pointer' };
-const secondaryButtonStyle: CSSProperties = { ...primaryButtonStyle, background: 'transparent', borderColor: 'var(--hairline)', color: 'var(--fg-2)' };
-const primarySmallButtonStyle: CSSProperties = { ...primaryButtonStyle, padding: '6px 10px', fontSize: 11.5 };
-const iconActionStyle: CSSProperties = { width: 31, height: 31, display: 'grid', placeItems: 'center', padding: 0, borderRadius: 8, border: '1px solid var(--hairline)', background: 'var(--bg-2)', color: 'var(--fg-2)', cursor: 'pointer' };
-const closeButtonStyle: CSSProperties = { ...iconActionStyle, flex: 'none', fontSize: 20, lineHeight: 1 };
-const linkButtonStyle: CSSProperties = { border: 0, background: 'transparent', color: 'var(--accent)', cursor: 'pointer' };
 const emptyStyle: CSSProperties = { padding: 18, textAlign: 'center', color: 'var(--fg-3)', border: '1px dashed var(--hairline)', borderRadius: 10, fontSize: 12.5 };
 const errorStyle: CSSProperties = { padding: 10, color: '#fca5a5', background: 'rgba(239,68,68,.08)', border: '1px solid rgba(239,68,68,.3)', borderRadius: 8, fontSize: 12.5 };
 const successStyle: CSSProperties = { padding: 10, color: '#86efac', background: 'rgba(34,197,94,.08)', border: '1px solid rgba(34,197,94,.3)', borderRadius: 8, fontSize: 12.5 };
@@ -787,5 +790,4 @@ const transportIconSelectedStyle: CSSProperties = { color: 'var(--accent-b)', ba
 const transportLabelRowStyle: CSSProperties = { display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, flexWrap: 'wrap' };
 const recommendedBadgeStyle: CSSProperties = { borderRadius: 999, padding: '1px 5px', color: 'var(--accent-b)', background: 'color-mix(in srgb, var(--accent-b) 9%, transparent)', fontSize: 8.5, fontWeight: 700, letterSpacing: '.02em' };
 const menuStyle: CSSProperties = { position: 'absolute', zIndex: 20, top: 36, right: 0, width: 175, display: 'grid', padding: 5, border: '1px solid var(--hairline)', borderRadius: 9, background: 'var(--panel-solid, var(--bg-1))', boxShadow: '0 12px 30px rgba(0,0,0,.25)' };
-const menuButtonStyle: CSSProperties = { width: '100%', border: 0, borderRadius: 6, padding: '7px 9px', background: 'transparent', color: 'var(--fg-1)', textAlign: 'left', fontSize: 11.5, cursor: 'pointer' };
 function riskStyle(risk: string): CSSProperties { return { ...mutedBadgeStyle, color: risk === 'read' ? '#86efac' : risk === 'destructive' ? '#fca5a5' : '#fde68a' }; }

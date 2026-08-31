@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Icon } from '../../components/Icons';
+import { Button } from '../../components/Button';
 import type { LiveSourceKind, LiveSourceOption, LiveSourceSelection } from './chat.api';
 
 export interface LiveSourcesControlProps {
@@ -127,20 +128,23 @@ function LiveSourceGroup({
                             <strong>{label} connections</strong>
                             <small>Choose what the agent may call</small>
                         </span>
-                        <button
-                            type="button"
-                            className="chat-live-source-close"
+                        <Button
+                            variant="quiet"
+                            size="sm"
+                            iconOnly
                             aria-label={`Close ${label} source settings`}
+                            data-testid={`chat-live-source-${kind}-close`}
                             onClick={() => setOpen(false)}
                         >
                             <Icon.Close size={13} />
-                        </button>
+                        </Button>
                     </header>
 
                     {options.length > 7 && (
                         <label className="chat-live-source-search">
                             <span aria-hidden="true"><Icon.Search size={13} /></span>
                             <input
+                                data-testid={`chat-live-source-${kind}-search`}
                                 type="search"
                                 value={query}
                                 onChange={(event) => setQuery(event.target.value)}
@@ -154,6 +158,7 @@ function LiveSourceGroup({
                         type="button"
                         className="chat-live-source-all"
                         role="switch"
+                        data-testid={`chat-live-source-${kind}-toggle-all`}
                         aria-checked={allEnabled}
                         onClick={() => onChange(allEnabled ? [] : options.map((option) => option.key))}
                     >

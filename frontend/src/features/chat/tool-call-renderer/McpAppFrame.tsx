@@ -8,6 +8,7 @@ import type {
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 import { Icon } from '../../../components/Icons';
+import { Button } from '../../../components/Button';
 import { api } from '../../../lib/api';
 import { ToolResultPreview } from './ToolResultPreview';
 
@@ -384,22 +385,25 @@ export function McpAppFrame({ app, conversationId, onSendMessage }: McpAppFrameP
                     {loading ? 'Loading' : error ? 'Error' : ready ? 'Ready' : resource?.available ? 'Starting' : 'Unavailable'}
                 </span>
                 {resource?.advanced_enabled && displayMode === 'inline' ? (
-                    <button
-                        type="button"
-                        className="mcp-app-frame-action"
+                    <Button
+                        variant="quiet"
+                        size="sm"
+                        data-testid={`mcp-app-${app.id}-fullscreen`}
                         onClick={() => changeDisplayMode('fullscreen')}
                     >
                         Fullscreen
-                    </button>
+                    </Button>
                 ) : null}
                 {displayMode === 'fullscreen' ? (
-                    <button
-                        type="button"
-                        className="mcp-app-frame-action"
+                    <Button
+                        variant="quiet"
+                        size="sm"
+                        data-testid={`mcp-app-${app.id}-exit-fullscreen`}
+                        leadingIcon={<Icon.Close size={12} />}
                         onClick={() => changeDisplayMode('inline')}
                     >
-                        <Icon.Close size={12} /> Exit fullscreen
-                    </button>
+                        Exit fullscreen
+                    </Button>
                 ) : null}
             </header>
             {loading ? (
@@ -414,9 +418,9 @@ export function McpAppFrame({ app, conversationId, onSendMessage }: McpAppFrameP
                     <div>{fallback}</div>
                     {error ? <div role="alert" className="mcp-app-frame-error">{error}</div> : null}
                     {error ? (
-                        <button type="button" className="mcp-app-frame-action" onClick={() => setReloadToken((value) => value + 1)}>
+                        <Button variant="secondary" size="sm" data-testid={`mcp-app-${app.id}-retry`} onClick={() => setReloadToken((value) => value + 1)}>
                             Try again
-                        </button>
+                        </Button>
                     ) : null}
                 </div>
             ) : null}
@@ -449,9 +453,9 @@ export function McpAppFrame({ app, conversationId, onSendMessage }: McpAppFrameP
             {resource?.available && error ? (
                 <div role="alert" className="mcp-app-frame-error mcp-app-frame-error-block">
                     <span>{error}</span>
-                    <button type="button" className="mcp-app-frame-action" onClick={() => setReloadToken((value) => value + 1)}>
+                    <Button variant="secondary" size="sm" data-testid={`mcp-app-${app.id}-restart`} onClick={() => setReloadToken((value) => value + 1)}>
                         Restart app
-                    </button>
+                    </Button>
                 </div>
             ) : null}
             {pendingInteraction ? (
@@ -467,8 +471,8 @@ export function McpAppFrame({ app, conversationId, onSendMessage }: McpAppFrameP
                         : null}
                     {pendingInteraction.kind === 'confirmation_required' ? (
                         <div className="mcp-app-interaction-actions">
-                            <button type="button" className="btn sm primary" disabled={submitting} onClick={() => void respondToInteraction({ confirmed: true })}>Confirm</button>
-                            <button type="button" className="btn sm ghost" disabled={submitting} onClick={() => void respondToInteraction({ confirmed: false })}>Decline</button>
+                            <Button variant="primary" size="sm" busy={submitting} data-testid={`mcp-app-${app.id}-confirm`} onClick={() => void respondToInteraction({ confirmed: true })}>Confirm</Button>
+                            <Button variant="secondary" size="sm" disabled={submitting} data-testid={`mcp-app-${app.id}-decline`} onClick={() => void respondToInteraction({ confirmed: false })}>Decline</Button>
                         </div>
                     ) : (
                         <>
@@ -482,7 +486,7 @@ export function McpAppFrame({ app, conversationId, onSendMessage }: McpAppFrameP
                                 rows={4}
                                 className="mcp-app-interaction-input"
                             />
-                            <button type="button" className="btn sm primary" disabled={submitting} onClick={submitInput}>Send input</button>
+                            <Button variant="primary" size="sm" busy={submitting} data-testid={`mcp-app-${app.id}-send-input`} onClick={submitInput}>Send input</Button>
                         </>
                     )}
                 </div>
