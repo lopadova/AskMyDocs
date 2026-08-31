@@ -84,6 +84,31 @@ describe('SuggestedFollowups', () => {
         expect(screen.getByTestId('chat-suggested-followups')).toHaveAttribute('data-state', 'ready');
     });
 
+    it('uses the centered chat-width layout and canonical button treatment', async () => {
+        vi.mocked(chatApi.suggestedFollowups).mockResolvedValue([
+            'How does this affect remote workers?',
+        ]);
+
+        render(
+            <SuggestedFollowups
+                conversationId={42}
+                turnId={1}
+                isStreaming={false}
+                onPick={() => undefined}
+            />,
+        );
+
+        const shell = await screen.findByTestId('chat-suggested-followups');
+        const suggestion = screen.getByTestId('chat-suggested-followup-0');
+
+        expect(shell).toHaveClass('chat-suggested-followups-shell');
+        expect(shell.querySelector('.chat-suggested-followups')).not.toBeNull();
+        expect(suggestion).toHaveClass('ui-button', 'chat-suggested-followup');
+        expect(suggestion).toHaveAttribute('data-variant', 'secondary');
+        expect(suggestion).toHaveAttribute('data-size', 'sm');
+        expect(suggestion).toHaveAttribute('title', 'How does this affect remote workers?');
+    });
+
     it('truncates to 3 pills if the BE returns more than 3', async () => {
         vi.mocked(chatApi.suggestedFollowups).mockResolvedValue([
             'one',
