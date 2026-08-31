@@ -99,6 +99,7 @@
           "architecture/canonical-graph",
           "architecture/auto-wiki-engine",
           "architecture/ingestion-pipeline",
+          "architecture/agent-capability-planner",
           "architecture/database-schema",
           "architecture/security-and-threat-model",
           "architecture/decisions"

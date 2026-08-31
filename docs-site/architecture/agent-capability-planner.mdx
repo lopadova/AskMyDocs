@@ -1,0 +1,146 @@
+---
+title: "Agent capability planner"
+description: "How AskMyDocs builds a trusted per-run API/MCP/KB capability snapshot, routes to at most eight read-only tools, validates plans, preserves selections, and rolls out through shadow mode."
+icon: "route"
+---
+
+## Why this layer exists
+
+A chat model cannot reliably orchestrate live data if it sees only a generic
+instruction to “use tools when useful”. It needs to know which tools the current
+tenant, project and user may actually call, what entity each tool represents,
+which identifiers connect one call to the next, and whether the result is a
+single record or a collection.
+
+AskMyDocs therefore builds a **trusted capability snapshot before every run**.
+The snapshot combines Knowledge Base search, active API routes and visible MCP
+tools. It is immutable for that run: enabling a connection halfway through a
+turn does not silently expand the agent's authority.
+
+```mermaid
+flowchart LR
+    Q[Question + conversation selection] --> S[Authorized capability snapshot]
+    S --> R[Deterministic ranker]
+    R --> RR[Structured router<br/>max 8 candidates]
+    RR --> P[Capability planner]
+    P --> V[JSON Schema + dependency validator]
+    V -->|valid| E[Read-only execution]
+    V -->|one correction| P
+    E --> O[Evidence envelope + re-plan]
+    O --> A[Answer or selectable artifact]
+```
+
+## Trust boundary
+
+The host derives structural facts from authorization, registered tool names,
+JSON Schema and allow-listed annotations. Remote descriptions, MCP `_meta` and
+tool output are **untrusted data**, never additional system instructions.
+
+An MCP server may optionally publish
+`_meta["askmydocs/agent-capability"]`. AskMyDocs validates and normalizes that
+hint, uses it only to improve entity/operation/relationship inference, and does
+not forward the raw `_meta` object to the model. Standard MCP servers continue
+to work through conservative inference.
+
+The first capability-planner release is strictly read-only. A tool is excluded
+from the router catalog when it is mutative, requires confirmation, or carries
+high/critical risk. The executor repeats tenant, project, availability and
+authorization checks immediately before the physical call.
+
+## Routing large catalogs
+
+The deterministic pre-filter ranks tools using the question, recent turn
+context, current row selection and existing document evidence. With at most 40
+eligible tools, the structured router receives every compact capability. Above
+40, it receives the strongest 40 plus counts and operations for the omitted
+families.
+
+The router can request an omitted family such as `mcp:orders`; the host then
+performs a deterministic second lookup against the complete trusted index.
+Only the selected tools' full schemas reach the planner, and no route may
+contain more than eight candidates. This keeps token cost bounded without
+making tool 41 permanently unreachable.
+
+## Plans, references and re-planning
+
+Every proposed action is validated before execution:
+
+- the tool exists in the immutable snapshot and is read-only;
+- arguments conform to its input JSON Schema;
+- dependencies point to earlier or completed actions;
+- every `$from` reference names a dependency and a declared output path;
+- a speculative path is rejected when the source schema does not declare it;
+- `insufficient` is rejected while a routed relevant tool remains untried.
+
+Invalid capability plans get one structured correction attempt. If a result
+does not expose a declared path, the agent executes the first safe call and
+re-plans from the observed shape instead of inventing `items.0.id`.
+
+Successful live results are summarized as evidence: record count, identifiers,
+declared collection path, selected row and normalized errors. User selections
+are stored separately from the visible chat copy, so the model receives the
+complete row while the person sees a compact selection card. That selection is
+available to later turns such as “show me the details of this order”.
+
+## Example: duplicate customers to order detail
+
+1. “Show the orders for Riccardo Lorini” routes to `customers.search`.
+2. The result contains multiple customers. The loop suspends and renders a
+   selectable artifact; it does **not** choose the first customer.
+3. The user selects one row. AskMyDocs stores its complete structured payload
+   and displays a human-readable confirmation.
+4. The next plan resolves `customer_id` from `current_selection` and calls
+   `orders.list`.
+5. A list request renders the declared orders collection once, as an artifact;
+   the synthesizer does not repeat every row in prose.
+6. Selecting an order makes its identifier available to a later
+   `orders.detail` call. A detail result remains prose/card data and is not
+   incorrectly converted back into a table merely because a selection exists.
+
+## Runtime modes and rollback
+
+Set `AGENT_PLANNER_MODE` globally or `agent.planner.mode` through governed app
+settings:
+
+| Mode | Behaviour |
+|---|---|
+| `classic` | Exact legacy planner path. No capability validation or retry is inserted, so it remains a real rollback. |
+| `shadow` | Classic executes. Capability routing/planning produces a masked comparison report only; no duplicate API/MCP calls occur. |
+| `capability` | The validated capability plan executes. A planner failure falls back to classic for that iteration and is reported. |
+
+Shadow reports record snapshot hash and size, candidates, both plans, agreement,
+validation corrections, latency, tokens, fallback and premature-insufficient
+avoidance. Sensitive values are masked before persistence.
+
+<Warning>
+`AGENT_PLANNER_MODE=shadow` does not replace MCP runtime shadowing.
+`MCP_CONNECTOR_RUNTIME_MODE=shadow` compares the old and new connector domains;
+the agent setting compares planner decisions. Promote and roll back the two
+layers independently.
+</Warning>
+
+## Promotion gate
+
+Keep the mode on `shadow` until all of these are true:
+
+- golden routing scenarios pass, including list → select → detail;
+- no mutative or unauthorized proposal is observed;
+- at least 50 eligible development turns produce no invalid schema plan;
+- labelled live-data cases show no premature `insufficient` result;
+- external call counts prove the shadow planner did not execute;
+- every planner divergence has been manually reviewed.
+
+Switching back to `classic` is an immediate configuration rollback and does not
+require a deploy or data migration.
+
+## Operational gotchas
+
+- After changing environment values, clear or rebuild Laravel's config cache.
+- Treat missing API output schemas and missing MCP collection paths as rollout
+  blockers for multi-step workflows; inference is a fallback, not a contract.
+- Keep debug payloads bounded and redacted. Local/stage activity details are a
+  diagnostic view, not an unbounded copy of remote responses.
+- Package path repositories are a local-development convenience. CI and a
+  shared `develop` deployment require released, immutable connector versions or
+  explicitly checked-out sibling repositories.
+
