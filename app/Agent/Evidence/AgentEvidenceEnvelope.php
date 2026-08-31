@@ -67,6 +67,7 @@ final class AgentEvidenceEnvelope implements JsonSerializable
             'display_name' => $tool->displayName,
             'kind' => $tool->kind,
             'executor_reference' => $tool->executorReference,
+            'presentation' => $this->presentation($tool),
             'arguments' => $maskedArguments,
             'result' => $maskedResult,
             'evidence_hash' => hash('sha256', (string) json_encode($maskedResult, JSON_UNESCAPED_UNICODE)),
@@ -129,6 +130,24 @@ final class AgentEvidenceEnvelope implements JsonSerializable
             'api_tools' => $this->apiTools,
             'warnings' => $this->warnings,
         ];
+    }
+
+    /** @return array{collection_path:string|null,operation:string|null} */
+    private function presentation(AgentToolDefinition $tool): array
+    {
+        $hint = is_array($tool->metadata['agent_capability_hint'] ?? null)
+            ? $tool->metadata['agent_capability_hint']
+            : [];
+        $path = $hint['collection_path'] ?? $tool->metadata['items_path'] ?? null;
+        if (! is_string($path) || preg_match('/^(?:\$|[a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_*-]+)*)$/', $path) !== 1) {
+            $path = null;
+        }
+        $operation = $hint['operation'] ?? $tool->metadata['endpoint_type'] ?? null;
+        if (! is_string($operation) || ! in_array($operation, ['search', 'list', 'get', 'detail', 'summary', 'count', 'check'], true)) {
+            $operation = null;
+        }
+
+        return ['collection_path' => $path, 'operation' => $operation];
     }
 
     /** @param list<mixed> $items @return list<array<string,mixed>> */

@@ -8,6 +8,23 @@ namespace App\Agent\Support;
 final class StructuredResultRows
 {
     /** @param array<string,mixed> $payload @return list<array<string,mixed>> */
+    public function atPath(array $payload, string $path, int $minimumRows = 2): array
+    {
+        $candidate = $path === '$' ? $payload : data_get($payload, $path);
+        $rows = $this->recordRows($candidate, $minimumRows);
+        if ($rows !== []) {
+            return $rows;
+        }
+
+        // MCP envelopes may wrap the declared structured result. Match the
+        // declared suffix only; never fall back to an unrelated nested list.
+        $matches = [];
+        $this->collectDeclaredPath($payload, '', 0, $path, $minimumRows, $matches);
+
+        return $matches[0] ?? [];
+    }
+
+    /** @param array<string,mixed> $payload @return list<array<string,mixed>> */
     public function best(array $payload, int $minimumRows = 2): array
     {
         $candidates = [];
@@ -67,6 +84,48 @@ final class StructuredResultRows
                 $this->collect($nested, $nextPath, $depth + 1, $minimumRows, $candidates);
             }
         }
+    }
+
+    /** @param list<list<array<string,mixed>>> $matches */
+    private function collectDeclaredPath(
+        array $value,
+        string $path,
+        int $depth,
+        string $declaredPath,
+        int $minimumRows,
+        array &$matches,
+    ): void {
+        if ($depth > 8) {
+            return;
+        }
+        $normalized = ltrim($path, '.');
+        if ($normalized === $declaredPath || str_ends_with($normalized, '.'.$declaredPath)) {
+            $rows = $this->recordRows($value, $minimumRows);
+            if ($rows !== []) {
+                $matches[] = $rows;
+                return;
+            }
+        }
+        foreach ($value as $key => $nested) {
+            if (is_array($nested)) {
+                $next = $path === '' ? (string) $key : $path.'.'.$key;
+                $this->collectDeclaredPath($nested, $next, $depth + 1, $declaredPath, $minimumRows, $matches);
+            }
+        }
+    }
+
+    /** @return list<array<string,mixed>> */
+    private function recordRows(mixed $value, int $minimumRows): array
+    {
+        if (! is_array($value) || ! array_is_list($value)) {
+            return [];
+        }
+        $rows = array_values(array_filter(
+            $value,
+            static fn (mixed $row): bool => is_array($row) && ! array_is_list($row),
+        ));
+
+        return count($rows) >= max(1, $minimumRows) && count($rows) === count($value) ? $rows : [];
     }
 
     /** @param array<string,mixed>|list<mixed> $value @param list<int> $totals */

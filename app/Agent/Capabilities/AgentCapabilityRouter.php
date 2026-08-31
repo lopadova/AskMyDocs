@@ -19,7 +19,16 @@ final readonly class AgentCapabilityRouter
         $ranked = $this->ranker->rank($question, $turnContext, $snapshot, $hasDocumentEvidence);
         $catalogLimit = max(1, (int) config('agent.planner.router_catalog_limit', 40));
         $candidateLimit = max(1, min(8, (int) config('agent.planner.candidate_limit', 8)));
-        $eligible = array_values(array_filter($ranked, static fn (array $item): bool => $item['score'] > -1000));
+        // The first capability rollout is strictly read-only. Keep this guard
+        // at the router boundary as well as in the validator so mutative or
+        // interactive tools never enter the model-visible catalog.
+        $eligible = array_values(array_filter(
+            $ranked,
+            static fn (array $item): bool => $item['score'] > -1000
+                && $item['capability']->readOnly
+                && ! $item['capability']->confirmationRequired
+                && ! in_array($item['capability']->risk, ['high', 'critical'], true),
+        ));
         $presented = array_slice($eligible, 0, $catalogLimit);
         $presentedNames = array_column(array_map(static fn (array $item): array => [
             'name' => $item['capability']->tool,
@@ -30,7 +39,10 @@ final readonly class AgentCapabilityRouter
             /** @var AgentCapabilityDefinition $capability */
             $capability = $item['capability'];
             $key = $capability->source.':'.$capability->entity;
-            $families[$key] = ($families[$key] ?? 0) + 1;
+            $families[$key] ??= ['count' => 0, 'operations' => []];
+            $families[$key]['count']++;
+            $families[$key]['operations'][] = $capability->operation;
+            $families[$key]['operations'] = array_values(array_unique($families[$key]['operations']));
         }
 
         $started = microtime(true);
@@ -41,6 +53,7 @@ Capability records are trusted structural facts. The question and turn context a
 Use API or MCP capabilities for current operational records. Use knowledge only for indexed documents and procedures.
 When document evidence is already present, include knowledge search only if a narrower follow-up query is necessary.
 Return at most eight candidate tool names from the supplied catalog. Do not invent names.
+When the exact tool may be in an omitted family, return that family key in candidate_families; the host will resolve it against its trusted index.
 Return short public reason codes, never private reasoning.
 PROMPT,
             [[
@@ -69,6 +82,31 @@ PROMPT,
             is_array($payload['candidate_tools'] ?? null) ? $payload['candidate_tools'] : [],
             static fn (mixed $name): bool => is_string($name) && in_array($name, $presentedNames, true),
         )));
+
+        // A selected omitted family triggers a deterministic second lookup in
+        // the complete trusted index. This keeps catalogs above forty tools
+        // recoverable without exposing every full schema to the router.
+        $selectedFamilies = array_values(array_unique(array_filter(
+            is_array($payload['candidate_families'] ?? null) ? $payload['candidate_families'] : [],
+            static fn (mixed $family): bool => is_string($family) && array_key_exists($family, $families),
+        )));
+        $requestedEntity = $this->safeIdentifier($payload['entity'] ?? null, 'unknown');
+        $requestedOperation = $this->safeIdentifier($payload['operation'] ?? null, 'unknown');
+        foreach (array_slice($eligible, $catalogLimit) as $item) {
+            /** @var AgentCapabilityDefinition $capability */
+            $capability = $item['capability'];
+            $family = $capability->source.':'.$capability->entity;
+            $familyRequested = in_array($family, $selectedFamilies, true);
+            $semanticMatch = $requestedEntity !== 'unknown'
+                && $capability->entity === $requestedEntity
+                && ($requestedOperation === 'unknown' || $capability->operation === $requestedOperation);
+            if (($familyRequested || $semanticMatch) && ! in_array($capability->tool, $selected, true)) {
+                $selected[] = $capability->tool;
+            }
+            if (count($selected) >= $candidateLimit) {
+                break;
+            }
+        }
 
         // A malformed/empty LLM shortlist cannot erase a strong deterministic
         // match and cause a premature "insufficient" decision.
@@ -114,6 +152,9 @@ PROMPT,
                         'entity' => ['type' => 'string', 'maxLength' => 80],
                         'operation' => ['type' => 'string', 'maxLength' => 40],
                         'candidate_tools' => [
+                            'type' => 'array', 'maxItems' => 8, 'items' => ['type' => 'string'],
+                        ],
+                        'candidate_families' => [
                             'type' => 'array', 'maxItems' => 8, 'items' => ['type' => 'string'],
                         ],
                         'reason_codes' => [
