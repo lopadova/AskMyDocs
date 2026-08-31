@@ -4,12 +4,13 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Admin;
 
-use App\Models\AgentRun;
 use App\Models\AgentPlannerShadowReport;
+use App\Models\AgentRun;
 use App\Models\User;
 use Database\Seeders\RbacSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 final class AgentRunOverviewTest extends TestCase
@@ -40,6 +41,22 @@ final class AgentRunOverviewTest extends TestCase
             'physical_request_count' => 8,
             'latency_ms' => 120,
         ]);
+        $mine->toolExecutions()->create([
+            'logical_index' => 2,
+            'tool_name' => 'mcp_orders_list',
+            'tool_kind' => 'mcp',
+            'status' => 'completed',
+            'physical_request_count' => 1,
+            'latency_ms' => 80,
+            'result_meta_json' => ['stats' => ['mcp' => [
+                'negotiation_cache_hit' => true,
+                'oauth_refresh_ms' => 2,
+                'endpoint_guard_dns_ms' => 3,
+                'discovery_ms' => 0,
+                'tool_call_ms' => 60,
+                'decode_ms' => 1,
+            ]]],
+        ]);
         AgentPlannerShadowReport::query()->create([
             'agent_run_id' => $mine->id,
             'iteration' => 1,
@@ -67,12 +84,16 @@ final class AgentRunOverviewTest extends TestCase
         $response->assertOk()
             ->assertJsonPath('data.metrics.runs', 1)
             ->assertJsonPath('data.metrics.logical_calls', 3)
-            ->assertJsonPath('data.metrics.physical_requests', 8)
+            ->assertJsonPath('data.metrics.physical_requests', 9)
             ->assertJsonPath('data.metrics.success_rate', 100)
             ->assertJsonPath('data.planner_shadow.reports', 1)
             ->assertJsonPath('data.planner_shadow.premature_insufficient_avoided', 1)
             ->assertJsonPath('data.planner_shadow.invalid_plan_rate', 100)
             ->assertJsonPath('data.planner_shadow.average_candidates', 2)
+            ->assertJsonPath('data.mcp_transport.executions', 1)
+            ->assertJsonPath('data.mcp_transport.physical_requests', 1)
+            ->assertJsonPath('data.mcp_transport.negotiation_cache_hit_rate', 100)
+            ->assertJsonPath('data.mcp_transport.average_tool_call_ms', 60)
             ->assertJsonPath('data.policy.logical_hard', (int) config('agent.limits.logical_hard'))
             ->assertJsonPath('data.recent_runs.0.run_id', $mine->run_id);
         $json = $response->json('data');
@@ -91,7 +112,7 @@ final class AgentRunOverviewTest extends TestCase
     private function agentRun(string $tenant, string $status, int $logical, int $physical): AgentRun
     {
         return AgentRun::create([
-            'run_id' => \Illuminate\Support\Str::uuid()->toString(),
+            'run_id' => Str::uuid()->toString(),
             'tenant_id' => $tenant,
             'project_key' => 'orders',
             'channel' => 'widget',

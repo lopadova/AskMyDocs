@@ -4,12 +4,13 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\Admin;
 
-use App\Models\AgentRun;
 use App\Models\AgentPlannerShadowReport;
+use App\Models\AgentRun;
 use App\Models\AgentToolExecution;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Collection;
 
 /** Tenant-scoped, PII-free operations summary for the connector agent loop. */
 final class AgentRunOverviewController extends Controller
@@ -30,7 +31,14 @@ final class AgentRunOverviewController extends Controller
             ? collect()
             : AgentToolExecution::query()
                 ->whereIn('agent_run_id', $runIds)
-                ->get(['agent_run_id', 'status', 'tool_kind', 'physical_request_count', 'latency_ms']);
+                ->get([
+                    'agent_run_id', 'status', 'tool_name', 'tool_kind', 'error_code',
+                    'physical_request_count', 'latency_ms', 'result_meta_json',
+                ]);
+        $mcpExecutions = $executions->where('tool_kind', 'mcp');
+        $cacheObserved = $mcpExecutions->filter(
+            fn (AgentToolExecution $execution): bool => is_bool(data_get($execution->result_meta_json, 'stats.mcp.negotiation_cache_hit')),
+        );
         $terminalDurations = $runs
             ->filter(fn (AgentRun $run): bool => $run->started_at !== null && $run->completed_at !== null)
             ->map(fn (AgentRun $run): int => (int) $run->started_at->diffInMilliseconds($run->completed_at));
@@ -114,6 +122,37 @@ final class AgentRunOverviewController extends Controller
                         : (int) $report->prompt_tokens + (int) $report->completion_tokens,
                 )->all()),
             ],
+            'mcp_transport' => [
+                'executions' => $mcpExecutions->count(),
+                'physical_requests' => $mcpExecutions->sum('physical_request_count'),
+                'negotiation_cache_hit_rate' => $cacheObserved->isEmpty()
+                    ? null
+                    : round(($cacheObserved->filter(
+                        fn (AgentToolExecution $execution): bool => data_get(
+                            $execution->result_meta_json,
+                            'stats.mcp.negotiation_cache_hit',
+                        ) === true,
+                    )->count() / $cacheObserved->count()) * 100, 1),
+                'average_oauth_refresh_ms' => $this->executionStatAverage($mcpExecutions, 'oauth_refresh_ms'),
+                'average_endpoint_guard_dns_ms' => $this->executionStatAverage($mcpExecutions, 'endpoint_guard_dns_ms'),
+                'average_discovery_ms' => $this->executionStatAverage($mcpExecutions, 'discovery_ms'),
+                'average_tool_call_ms' => $this->executionStatAverage($mcpExecutions, 'tool_call_ms'),
+                'average_decode_ms' => $this->executionStatAverage($mcpExecutions, 'decode_ms'),
+                'recoveries' => $mcpExecutions
+                    ->map(fn (AgentToolExecution $execution): mixed => data_get(
+                        $execution->result_meta_json,
+                        'stats.mcp.recovery',
+                    ))
+                    ->filter(static fn (mixed $value): bool => is_string($value))
+                    ->countBy()
+                    ->all(),
+                'error_codes' => $mcpExecutions
+                    ->where('status', 'failed')
+                    ->pluck('error_code')
+                    ->filter(static fn (mixed $value): bool => is_string($value))
+                    ->countBy()
+                    ->all(),
+            ],
             'policy' => $this->policy(),
             'recent_runs' => $recent,
         ]]);
@@ -138,5 +177,15 @@ final class AgentRunOverviewController extends Controller
         $present = array_values(array_filter($values, static fn (mixed $value): bool => is_int($value) || is_float($value)));
 
         return $present === [] ? null : (int) round(array_sum($present) / count($present));
+    }
+
+    private function executionStatAverage(Collection $executions, string $key): ?int
+    {
+        return $this->averagePresent($executions
+            ->map(fn (AgentToolExecution $execution): mixed => data_get(
+                $execution->result_meta_json,
+                'stats.mcp.'.$key,
+            ))
+            ->all());
     }
 }

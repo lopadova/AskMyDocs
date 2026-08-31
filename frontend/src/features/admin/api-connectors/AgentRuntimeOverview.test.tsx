@@ -20,6 +20,18 @@ const overview: AgentRunOverview = {
         average_candidates: 5.2, average_router_latency_ms: 120, average_planner_latency_ms: 310,
         average_tokens: 900,
     },
+    mcp_transport: {
+        executions: 9,
+        physical_requests: 11,
+        negotiation_cache_hit_rate: 88.9,
+        average_oauth_refresh_ms: 2,
+        average_endpoint_guard_dns_ms: 3,
+        average_discovery_ms: 7,
+        average_tool_call_ms: 61,
+        average_decode_ms: 1,
+        recoveries: { renegotiated: 1 },
+        error_codes: { mcp_remote_error: 2 },
+    },
     policy: { logical_soft: 12, logical_hard: 25, physical_hard: 100 },
     recent_runs: [{
         run_id: 'run-1', project_key: 'orders', channel: 'chat', locale: 'it-IT',
@@ -46,6 +58,9 @@ describe('AgentRuntimeOverview', () => {
         expect(screen.getByTestId('agent-runtime-recent')).toHaveTextContent('orders');
         expect(screen.getByTestId('agent-planner-shadow')).toHaveTextContent('85% agreement');
         expect(screen.getByTestId('agent-planner-invalid')).toHaveTextContent('15%');
+        expect(screen.getByTestId('agent-mcp-transport')).toHaveTextContent('88.9% discovery cache hit');
+        expect(screen.getByTestId('agent-mcp-tool-call')).toHaveTextContent('61ms');
+        expect(screen.getByTestId('agent-mcp-recoveries')).toHaveTextContent('2 errors');
     });
 
     it('offers retry when telemetry cannot be loaded', async () => {
