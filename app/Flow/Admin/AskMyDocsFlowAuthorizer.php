@@ -133,6 +133,35 @@ final class AskMyDocsFlowAuthorizer implements ActionAuthorizer
     }
 
     /**
+     * Gate the Studio: reading a definition's UNREDACTED graph (node config
+     * included), saving a draft, dry-run planning, AI build and the advisor
+     * scan all pass through here.
+     *
+     * Super-admin only, matching canCancelRun rather than the wider admin
+     * set: editing a definition is strictly more dangerous than cancelling a
+     * single run, because it changes what every future run of that flow does.
+     *
+     * The empty flow name is a real call, not a defensive branch: the
+     * advisor's all-flows scan reaches Authorize::action() with no flowName
+     * in context, which passes ''. Treating that as an unscoped allow would
+     * make the one action that writes drafts across EVERY flow the only one
+     * with no flow to authorize against, so it is refused outright.
+     *
+     * There is nothing to gain by allowing it here today. AskMyDocs registers
+     * its nine definitions from code in FlowServiceProvider::registerDefinitions(),
+     * so a graph edited through the Studio would be a stored definition the
+     * linear engine never reads.
+     */
+    public function canEditDefinition(string $flowName, ?array $actor): bool
+    {
+        if ($flowName === '') {
+            return false;
+        }
+
+        return $this->userHasRole('super-admin');
+    }
+
+    /**
      * Resolve the active user via the standard auth guard. Anonymous
      * requests return null. Future API-token actors would surface
      * here once we wire a Sanctum personal-access-token guard for

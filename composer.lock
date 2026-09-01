@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "7b529fe5bbf9cdfc917b846392ac383d",
+    "content-hash": "12a61f904c518acc2d8056a0f28b87c8",
     "packages": [
         {
             "name": "aws/aws-crt-php",
@@ -1207,20 +1207,20 @@
         },
         {
             "name": "laravel/ai",
-            "version": "v0.8.1",
+            "version": "v0.11.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/laravel/ai.git",
-                "reference": "b23bc857576d7c4b3bb52ffd8be936ae74005d23"
+                "reference": "dd08142f0c4dc4d5544521ce3fc4a1b9c2fe748c"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/laravel/ai/zipball/b23bc857576d7c4b3bb52ffd8be936ae74005d23",
-                "reference": "b23bc857576d7c4b3bb52ffd8be936ae74005d23",
+                "url": "https://api.github.com/repos/laravel/ai/zipball/dd08142f0c4dc4d5544521ce3fc4a1b9c2fe748c",
+                "reference": "dd08142f0c4dc4d5544521ce3fc4a1b9c2fe748c",
                 "shasum": ""
             },
             "require": {
-                "aws/aws-sdk-php": "^3.339",
+                "aws/aws-sdk-php": "^3.369.1",
                 "illuminate/console": "^12.0|^13.0",
                 "illuminate/container": "^12.0|^13.0",
                 "illuminate/contracts": "^12.0|^13.0",
@@ -1233,13 +1233,15 @@
                 "php": "^8.3"
             },
             "require-dev": {
+                "driftingly/rector-laravel": "^2.5",
                 "laravel/mcp": "^0.8",
                 "laravel/pint": "^1.26",
                 "mockery/mockery": "^1.6.12",
                 "orchestra/testbench": "^10.6|^11.0",
                 "pestphp/pest": "^3.0|^4.0",
                 "pestphp/pest-plugin-laravel": "^3.0|^4.0",
-                "phpstan/phpstan": "^2.1"
+                "phpstan/phpstan": "^2.1",
+                "rector/rector": "^2.5"
             },
             "suggest": {
                 "laravel/mcp": "Required to use MCP client tools or MCP server tools with Laravel AI agents."
@@ -1277,7 +1279,7 @@
                 "issues": "https://github.com/laravel/ai/issues",
                 "source": "https://github.com/laravel/ai"
             },
-            "time": "2026-06-10T11:23:35+00:00"
+            "time": "2026-08-19T03:03:13+00:00"
         },
         {
             "name": "laravel/framework",
@@ -2913,16 +2915,16 @@
         },
         {
             "name": "padosoft/askmydocs-connector-api",
-            "version": "v1.0.0-beta.3",
+            "version": "v1.0.0-beta.4",
             "source": {
                 "type": "git",
                 "url": "https://github.com/padosoft/askmydocs-connector-api.git",
-                "reference": "0d110920eff64de36b726505b9a15c472a20d9f6"
+                "reference": "bb7749347cbf24e70fc80902d85e9179837e74f9"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/padosoft/askmydocs-connector-api/zipball/0d110920eff64de36b726505b9a15c472a20d9f6",
-                "reference": "0d110920eff64de36b726505b9a15c472a20d9f6",
+                "url": "https://api.github.com/repos/padosoft/askmydocs-connector-api/zipball/bb7749347cbf24e70fc80902d85e9179837e74f9",
+                "reference": "bb7749347cbf24e70fc80902d85e9179837e74f9",
                 "shasum": ""
             },
             "require": {
@@ -2991,10 +2993,10 @@
                 "tool-calling"
             ],
             "support": {
-                "source": "https://github.com/padosoft/askmydocs-connector-api/tree/v1.0.0-beta.3",
+                "source": "https://github.com/padosoft/askmydocs-connector-api/tree/v1.0.0-beta.4",
                 "issues": "https://github.com/padosoft/askmydocs-connector-api/issues"
             },
-            "time": "2026-08-29T15:05:11+00:00"
+            "time": "2026-08-30T00:39:13+00:00"
         },
         {
             "name": "padosoft/askmydocs-connector-base",
@@ -4206,16 +4208,16 @@
         },
         {
             "name": "padosoft/laravel-ai-guardrails",
-            "version": "v1.5.0",
+            "version": "v1.6.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/padosoft/laravel-ai-guardrails.git",
-                "reference": "b272f6f342dd3bcd2aa80faed267b4d55a6364f5"
+                "reference": "4992e1025662f8c811dec25637ff284b6db3f464"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/padosoft/laravel-ai-guardrails/zipball/b272f6f342dd3bcd2aa80faed267b4d55a6364f5",
-                "reference": "b272f6f342dd3bcd2aa80faed267b4d55a6364f5",
+                "url": "https://api.github.com/repos/padosoft/laravel-ai-guardrails/zipball/4992e1025662f8c811dec25637ff284b6db3f464",
+                "reference": "4992e1025662f8c811dec25637ff284b6db3f464",
                 "shasum": ""
             },
             "require": {
@@ -4224,7 +4226,7 @@
                 "illuminate/contracts": "^13.0",
                 "illuminate/database": "^13.0",
                 "illuminate/support": "^13.0",
-                "laravel/ai": "^0.8",
+                "laravel/ai": "^0.8|^0.9|^0.10|^0.11",
                 "php": "^8.3"
             },
             "require-dev": {
@@ -4278,7 +4280,7 @@
                 "issues": "https://github.com/padosoft/laravel-ai-guardrails/issues",
                 "source": "https://github.com/padosoft/laravel-ai-guardrails"
             },
-            "time": "2026-08-26T11:32:47+00:00"
+            "time": "2026-08-30T14:11:48+00:00"
         },
         {
             "name": "padosoft/laravel-ai-guardrails-admin",
@@ -4342,22 +4344,22 @@
         },
         {
             "name": "padosoft/laravel-ai-regolo",
-            "version": "v1.3.0",
+            "version": "v2.0.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/padosoft/laravel-ai-regolo.git",
-                "reference": "e0bf3663f34902ce07411d29237d2a2893022bc6"
+                "reference": "a4eb04425fe08b3a84bb0edf25927cdbb2f9099c"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/padosoft/laravel-ai-regolo/zipball/e0bf3663f34902ce07411d29237d2a2893022bc6",
-                "reference": "e0bf3663f34902ce07411d29237d2a2893022bc6",
+                "url": "https://api.github.com/repos/padosoft/laravel-ai-regolo/zipball/a4eb04425fe08b3a84bb0edf25927cdbb2f9099c",
+                "reference": "a4eb04425fe08b3a84bb0edf25927cdbb2f9099c",
                 "shasum": ""
             },
             "require": {
                 "illuminate/http": "^12.0|^13.0",
                 "illuminate/support": "^12.0|^13.0",
-                "laravel/ai": "^0.6|^0.7|^0.8.1",
+                "laravel/ai": "^0.11",
                 "php": "^8.3"
             },
             "require-dev": {
@@ -4406,9 +4408,9 @@
             ],
             "support": {
                 "issues": "https://github.com/padosoft/laravel-ai-regolo/issues",
-                "source": "https://github.com/padosoft/laravel-ai-regolo/tree/v1.3.0"
+                "source": "https://github.com/padosoft/laravel-ai-regolo/tree/v2.0.0"
             },
-            "time": "2026-07-24T14:00:10+00:00"
+            "time": "2026-08-30T14:15:51+00:00"
         },
         {
             "name": "padosoft/laravel-evidence-risk-review",
@@ -4540,19 +4542,20 @@
         },
         {
             "name": "padosoft/laravel-flow",
-            "version": "v1.1.1",
+            "version": "v2.5.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/padosoft/laravel-flow.git",
-                "reference": "bdf8a9b08ab45bebd8f714d337d294aff6de4337"
+                "reference": "aeedfebc9af176df78bc24a9c02f3175c664c2ef"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/padosoft/laravel-flow/zipball/bdf8a9b08ab45bebd8f714d337d294aff6de4337",
-                "reference": "bdf8a9b08ab45bebd8f714d337d294aff6de4337",
+                "url": "https://api.github.com/repos/padosoft/laravel-flow/zipball/aeedfebc9af176df78bc24a9c02f3175c664c2ef",
+                "reference": "aeedfebc9af176df78bc24a9c02f3175c664c2ef",
                 "shasum": ""
             },
             "require": {
+                "illuminate/broadcasting": "^13.0",
                 "illuminate/cache": "^13.0",
                 "illuminate/console": "^13.0",
                 "illuminate/contracts": "^13.0",
@@ -4609,22 +4612,22 @@
             ],
             "support": {
                 "issues": "https://github.com/padosoft/laravel-flow/issues",
-                "source": "https://github.com/padosoft/laravel-flow/tree/v1.1.1"
+                "source": "https://github.com/padosoft/laravel-flow/tree/v2.5.0"
             },
-            "time": "2026-06-20T23:07:27+00:00"
+            "time": "2026-08-31T11:59:37+00:00"
         },
         {
             "name": "padosoft/laravel-flow-admin",
-            "version": "1.0.0",
+            "version": "v2.4.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/padosoft/laravel-flow-admin.git",
-                "reference": "6f40c3ccc1ed5a70c40d1e5a635c67b9e438d8a4"
+                "reference": "a71db85a854bee0cd5054ec1e8ea1d9170924586"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/padosoft/laravel-flow-admin/zipball/6f40c3ccc1ed5a70c40d1e5a635c67b9e438d8a4",
-                "reference": "6f40c3ccc1ed5a70c40d1e5a635c67b9e438d8a4",
+                "url": "https://api.github.com/repos/padosoft/laravel-flow-admin/zipball/a71db85a854bee0cd5054ec1e8ea1d9170924586",
+                "reference": "a71db85a854bee0cd5054ec1e8ea1d9170924586",
                 "shasum": ""
             },
             "require": {
@@ -4633,15 +4636,19 @@
                 "illuminate/routing": "^13.0",
                 "illuminate/support": "^13.0",
                 "illuminate/view": "^13.0",
-                "padosoft/laravel-flow": "^1.0",
+                "padosoft/laravel-flow": "^2.4",
                 "php": "^8.3"
             },
             "require-dev": {
                 "larastan/larastan": "^3.0",
                 "laravel/pint": "^1.18",
                 "orchestra/testbench": "^11.0",
+                "padosoft/laravel-flow-ai": "^1.0",
                 "phpstan/phpstan": "^2.0",
                 "phpunit/phpunit": "^11.0"
+            },
+            "suggest": {
+                "padosoft/laravel-flow-ai": "Enables the Studio 'Build with AI' panel — turn a natural-language prompt into a validated draft graph. Optional; the admin boots and runs without it (the AI features stay hidden / return 404)."
             },
             "type": "library",
             "extra": {
@@ -4678,9 +4685,9 @@
             ],
             "support": {
                 "issues": "https://github.com/padosoft/laravel-flow-admin/issues",
-                "source": "https://github.com/padosoft/laravel-flow-admin/tree/v0.1.1"
+                "source": "https://github.com/padosoft/laravel-flow-admin/tree/v2.4.0"
             },
-            "time": "2026-05-06T21:25:38+00:00"
+            "time": "2026-08-26T11:26:08+00:00"
         },
         {
             "name": "padosoft/laravel-invitations",
@@ -6143,16 +6150,16 @@
         },
         {
             "name": "symfony/console",
-            "version": "v7.4.17",
+            "version": "v7.4.18",
             "source": {
                 "type": "git",
                 "url": "https://github.com/symfony/console.git",
-                "reference": "962e18f09ebe68a49039b4c82fc0ea4871824fca"
+                "reference": "23d6f88a29f6d0eac45bd77d70307adf83ba7ab0"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/symfony/console/zipball/962e18f09ebe68a49039b4c82fc0ea4871824fca",
-                "reference": "962e18f09ebe68a49039b4c82fc0ea4871824fca",
+                "url": "https://api.github.com/repos/symfony/console/zipball/23d6f88a29f6d0eac45bd77d70307adf83ba7ab0",
+                "reference": "23d6f88a29f6d0eac45bd77d70307adf83ba7ab0",
                 "shasum": ""
             },
             "require": {
@@ -6217,7 +6224,7 @@
                 "terminal"
             ],
             "support": {
-                "source": "https://github.com/symfony/console/tree/v7.4.17"
+                "source": "https://github.com/symfony/console/tree/v7.4.18"
             },
             "funding": [
                 {
@@ -6237,20 +6244,20 @@
                     "type": "tidelift"
                 }
             ],
-            "time": "2026-08-21T12:09:28+00:00"
+            "time": "2026-08-25T14:18:37+00:00"
         },
         {
             "name": "symfony/css-selector",
-            "version": "v7.4.17",
+            "version": "v7.4.18",
             "source": {
                 "type": "git",
                 "url": "https://github.com/symfony/css-selector.git",
-                "reference": "e3822e1cb7013a0a99b3c578130458927ec4eb89"
+                "reference": "fecf40067fc8d8880ea87b8ac227600b9aadd1d0"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/symfony/css-selector/zipball/e3822e1cb7013a0a99b3c578130458927ec4eb89",
-                "reference": "e3822e1cb7013a0a99b3c578130458927ec4eb89",
+                "url": "https://api.github.com/repos/symfony/css-selector/zipball/fecf40067fc8d8880ea87b8ac227600b9aadd1d0",
+                "reference": "fecf40067fc8d8880ea87b8ac227600b9aadd1d0",
                 "shasum": ""
             },
             "require": {
@@ -6286,7 +6293,7 @@
             "description": "Converts CSS selectors to XPath expressions",
             "homepage": "https://symfony.com",
             "support": {
-                "source": "https://github.com/symfony/css-selector/tree/v7.4.17"
+                "source": "https://github.com/symfony/css-selector/tree/v7.4.18"
             },
             "funding": [
                 {
@@ -6306,7 +6313,7 @@
                     "type": "tidelift"
                 }
             ],
-            "time": "2026-08-21T17:40:08+00:00"
+            "time": "2026-08-23T10:03:40+00:00"
         },
         {
             "name": "symfony/deprecation-contracts",
@@ -6766,16 +6773,16 @@
         },
         {
             "name": "symfony/http-foundation",
-            "version": "v7.4.17",
+            "version": "v7.4.18",
             "source": {
                 "type": "git",
                 "url": "https://github.com/symfony/http-foundation.git",
-                "reference": "2ebe78c083501dfb9509b31a7aedcae4d60a391f"
+                "reference": "d070b716a32fbe3bf04204db0f58ace73b86d133"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/symfony/http-foundation/zipball/2ebe78c083501dfb9509b31a7aedcae4d60a391f",
-                "reference": "2ebe78c083501dfb9509b31a7aedcae4d60a391f",
+                "url": "https://api.github.com/repos/symfony/http-foundation/zipball/d070b716a32fbe3bf04204db0f58ace73b86d133",
+                "reference": "d070b716a32fbe3bf04204db0f58ace73b86d133",
                 "shasum": ""
             },
             "require": {
@@ -6824,7 +6831,7 @@
             "description": "Defines an object-oriented layer for the HTTP specification",
             "homepage": "https://symfony.com",
             "support": {
-                "source": "https://github.com/symfony/http-foundation/tree/v7.4.17"
+                "source": "https://github.com/symfony/http-foundation/tree/v7.4.18"
             },
             "funding": [
                 {
@@ -6844,20 +6851,20 @@
                     "type": "tidelift"
                 }
             ],
-            "time": "2026-08-20T09:55:18+00:00"
+            "time": "2026-08-30T20:10:52+00:00"
         },
         {
             "name": "symfony/http-kernel",
-            "version": "v7.4.17",
+            "version": "v7.4.18",
             "source": {
                 "type": "git",
                 "url": "https://github.com/symfony/http-kernel.git",
-                "reference": "aa160388d444210e3d01bbb4c5c53af4cd763df4"
+                "reference": "275d2d2d24530f2a0eaf17704a3a93860a036351"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/symfony/http-kernel/zipball/aa160388d444210e3d01bbb4c5c53af4cd763df4",
-                "reference": "aa160388d444210e3d01bbb4c5c53af4cd763df4",
+                "url": "https://api.github.com/repos/symfony/http-kernel/zipball/275d2d2d24530f2a0eaf17704a3a93860a036351",
+                "reference": "275d2d2d24530f2a0eaf17704a3a93860a036351",
                 "shasum": ""
             },
             "require": {
@@ -6943,7 +6950,7 @@
             "description": "Provides a structured process for converting a Request into a Response",
             "homepage": "https://symfony.com",
             "support": {
-                "source": "https://github.com/symfony/http-kernel/tree/v7.4.17"
+                "source": "https://github.com/symfony/http-kernel/tree/v7.4.18"
             },
             "funding": [
                 {
@@ -6963,7 +6970,7 @@
                     "type": "tidelift"
                 }
             ],
-            "time": "2026-08-22T13:41:33+00:00"
+            "time": "2026-08-30T21:24:29+00:00"
         },
         {
             "name": "symfony/mailer",
@@ -7051,7 +7058,7 @@
         },
         {
             "name": "symfony/mime",
-            "version": "v7.4.17",
+            "version": "v7.4.18",
             "source": {
                 "type": "git",
                 "url": "https://github.com/symfony/mime.git",
@@ -7116,7 +7123,7 @@
                 "mime-type"
             ],
             "support": {
-                "source": "https://github.com/symfony/mime/tree/v7.4.17"
+                "source": "https://github.com/symfony/mime/tree/v7.4.18"
             },
             "funding": [
                 {
@@ -8129,7 +8136,7 @@
         },
         {
             "name": "symfony/process",
-            "version": "v7.4.17",
+            "version": "v7.4.18",
             "source": {
                 "type": "git",
                 "url": "https://github.com/symfony/process.git",
@@ -8170,7 +8177,7 @@
             "description": "Executes commands in sub-processes",
             "homepage": "https://symfony.com",
             "support": {
-                "source": "https://github.com/symfony/process/tree/v7.4.17"
+                "source": "https://github.com/symfony/process/tree/v7.4.18"
             },
             "funding": [
                 {
@@ -8194,7 +8201,7 @@
         },
         {
             "name": "symfony/routing",
-            "version": "v7.4.17",
+            "version": "v7.4.18",
             "source": {
                 "type": "git",
                 "url": "https://github.com/symfony/routing.git",
@@ -8255,7 +8262,7 @@
                 "url"
             ],
             "support": {
-                "source": "https://github.com/symfony/routing/tree/v7.4.17"
+                "source": "https://github.com/symfony/routing/tree/v7.4.18"
             },
             "funding": [
                 {
@@ -8279,16 +8286,16 @@
         },
         {
             "name": "symfony/service-contracts",
-            "version": "v3.7.1",
+            "version": "v3.7.3",
             "source": {
                 "type": "git",
                 "url": "https://github.com/symfony/service-contracts.git",
-                "reference": "c0a284bab1ed8aa0417e3d69250ab437739563a0"
+                "reference": "15e6a07ec2a2c75ceb1b21dd98105ee8456d2257"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/symfony/service-contracts/zipball/c0a284bab1ed8aa0417e3d69250ab437739563a0",
-                "reference": "c0a284bab1ed8aa0417e3d69250ab437739563a0",
+                "url": "https://api.github.com/repos/symfony/service-contracts/zipball/15e6a07ec2a2c75ceb1b21dd98105ee8456d2257",
+                "reference": "15e6a07ec2a2c75ceb1b21dd98105ee8456d2257",
                 "shasum": ""
             },
             "require": {
@@ -8342,7 +8349,7 @@
                 "standards"
             ],
             "support": {
-                "source": "https://github.com/symfony/service-contracts/tree/v3.7.1"
+                "source": "https://github.com/symfony/service-contracts/tree/v3.7.3"
             },
             "funding": [
                 {
@@ -8362,7 +8369,7 @@
                     "type": "tidelift"
                 }
             ],
-            "time": "2026-06-16T09:55:08+00:00"
+            "time": "2026-07-27T15:39:01+00:00"
         },
         {
             "name": "symfony/string",
@@ -8717,16 +8724,16 @@
         },
         {
             "name": "symfony/var-dumper",
-            "version": "v7.4.17",
+            "version": "v7.4.18",
             "source": {
                 "type": "git",
                 "url": "https://github.com/symfony/var-dumper.git",
-                "reference": "53712df8727da1744490202eeb9cb50d4b95419d"
+                "reference": "e088da50b813f32473a76871616cbb8fa54653a8"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/symfony/var-dumper/zipball/53712df8727da1744490202eeb9cb50d4b95419d",
-                "reference": "53712df8727da1744490202eeb9cb50d4b95419d",
+                "url": "https://api.github.com/repos/symfony/var-dumper/zipball/e088da50b813f32473a76871616cbb8fa54653a8",
+                "reference": "e088da50b813f32473a76871616cbb8fa54653a8",
                 "shasum": ""
             },
             "require": {
@@ -8780,7 +8787,7 @@
                 "dump"
             ],
             "support": {
-                "source": "https://github.com/symfony/var-dumper/tree/v7.4.17"
+                "source": "https://github.com/symfony/var-dumper/tree/v7.4.18"
             },
             "funding": [
                 {
@@ -8800,7 +8807,7 @@
                     "type": "tidelift"
                 }
             ],
-            "time": "2026-08-21T12:09:28+00:00"
+            "time": "2026-08-30T20:10:52+00:00"
         },
         {
             "name": "symfony/yaml",

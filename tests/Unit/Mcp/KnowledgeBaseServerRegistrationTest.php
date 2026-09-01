@@ -16,6 +16,9 @@ use ReflectionClass;
  */
 class KnowledgeBaseServerRegistrationTest extends TestCase
 {
+    /** Namespace of the tool classes that live as files in this repository. */
+    private const HOST_TOOL_NAMESPACE = 'App\\Mcp\\Tools\\';
+
     /**
      * @return list<string>
      */
@@ -29,23 +32,82 @@ class KnowledgeBaseServerRegistrationTest extends TestCase
         return $property->getDefaultValue();
     }
 
-    public function test_server_registers_exactly_fifty_tools(): void
+    /**
+     * Every tool class file under app/Mcp/Tools is registered on the server.
+     *
+     * DERIVED, not counted. A hard-coded total is the same number written in
+     * three places -- the method name, a comment's arithmetic, and the
+     * assertion -- and keeping them in step is a discipline that has failed
+     * repeatedly: 47 outlived a 48-tool roster and kept main red for four
+     * days, develop red for six, and blocked fifteen Dependabot pull
+     * requests. Even the fix for it drifted, landing an assertion of 50 under
+     * a method still named `forty_nine`.
+     *
+     * This comparison cannot go stale. Add a tool file without registering it
+     * and it fails; register a class whose file is gone and
+     * test_every_registered_tool_class_source_file_exists fails. Neither
+     * needs anybody to remember a number.
+     */
+    public function test_every_tool_file_on_disk_is_registered(): void
     {
-        // 36 (v8.21) + 3 invitations tools (v8.x) + 1 AppSettingsTool (v8.22)
-        // + 1 KbPiiPolicyTool + 1 KbDetokenizeTool + 1 KbEraseSubjectTool
-        // + 1 KbReembedProjectTool (v8.23/Ciclo 4) + 1 ConnectorSettingsTool (v8.25)
-        // + 1 ApiConnectorsTool (v8.27 Connettore API) + 1 WidgetIntroConfigTool
-        // + 1 KbImapBackfillTool = 48
-        // + 1 KbProvenanceTool (v8.32 / ADR 0028 phase 1)
-        // + 1 KbSourceAclTool (v8.33 / ADR 0028 phase 2) = 50.
-        //
-        // The count appears in THREE places -- this method's name, the sum
-        // above, and the assertion -- and all three have to move together.
-        // They did not: the roster reached 48 when KbImapBackfillTool landed
-        // while the assertion stayed at 47, and that single stale integer kept
-        // main red for four days, develop red for six, and blocked fifteen
-        // Dependabot pull requests. Adding a tool means editing all three.
-        $this->assertCount(50, $this->registeredTools());
+        $registered = array_values(array_filter(
+            $this->registeredTools(),
+            static fn (string $class): bool => str_starts_with($class, self::HOST_TOOL_NAMESPACE),
+        ));
+        sort($registered);
+
+        $this->assertSame(
+            $this->toolClassesOnDisk(),
+            $registered,
+            'The registered host tools and the files under app/Mcp/Tools have diverged.',
+        );
+    }
+
+    /**
+     * The roster is exactly the host tools plus the vendor-namespaced ones.
+     *
+     * The vendor entries are listed explicitly because they are NOT files in
+     * this repository -- they arrive from padosoft/laravel-invitations, so
+     * nothing on disk can be compared against them. Naming them is the
+     * honest way to say "and these three, deliberately"; it also means a
+     * fourth vendor tool appearing has to be acknowledged here rather than
+     * silently changing a total.
+     */
+    public function test_the_roster_is_the_host_tools_plus_the_declared_vendor_tools(): void
+    {
+        $vendorTools = [
+            \Padosoft\Invitations\Mcp\Tools\InviteGenerateCodesTool::class,
+            \Padosoft\Invitations\Mcp\Tools\InviteMetricsTool::class,
+            \Padosoft\Invitations\Mcp\Tools\InviteValidateCodeTool::class,
+        ];
+
+        foreach ($vendorTools as $class) {
+            $this->assertContains($class, $this->registeredTools());
+        }
+
+        $this->assertCount(
+            count($this->toolClassesOnDisk()) + count($vendorTools),
+            $this->registeredTools(),
+            'The roster holds something that is neither a file under app/Mcp/Tools nor a declared vendor tool.',
+        );
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function toolClassesOnDisk(): array
+    {
+        $files = glob(dirname(__DIR__, 3).'/app/Mcp/Tools/*.php');
+
+        $this->assertNotEmpty($files, 'No tool files found -- the path this test derives from has moved.');
+
+        $classes = array_map(
+            static fn (string $path): string => self::HOST_TOOL_NAMESPACE.basename($path, '.php'),
+            $files,
+        );
+        sort($classes);
+
+        return array_values($classes);
     }
 
     public function test_server_registers_the_provenance_tool(): void
