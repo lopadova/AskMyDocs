@@ -78,7 +78,7 @@ All features are verified against the stable @api public surface. No undocumente
 |---------|--------------|--------------------------|----------|
 | **Opt-in persistence** | config['persistence.enabled'] gates DB storage of runs, steps, audit | AskMyDocs enables persistence in production; review history, debug | MUST |
 | **flow_runs table** | Stores run metadata: definition name, input snapshot, status, timestamps | Query all KB ingest runs for last 7 days; filter by status | MUST |
-| **flow_steps table** | Stores per-step execution: handler, output, business-impact projection, error | Can see that step 2 (kb:validate) failed with "1,523 docs valid, 47 skipped" | MUST |
+| **flow_run_nodes table** | Stores per-step execution: handler, output, business-impact projection, error | Can see that step 2 (kb:validate) failed with "1,523 docs valid, 47 skipped" | MUST |
 | **flow_audit table** | Immutable append-only audit log using AppendOnlyAuditBuilder | Compliance log: "run-uuid transitioned RUNNING→PAUSED, then SUCCEEDED" | MUST |
 | **Payload redaction** | config['persistence.redaction.secret_keys'] specifies which JSON keys to mask | Input snapshot hides API keys, auth tokens, PII (SSN, credit card) | SHOULD |
 
@@ -146,7 +146,7 @@ All features are verified against the stable @api public surface. No undocumente
 
 ### Sub-PR 5: Persistence & Audit
 - Opt-in persistence (config['persistence.enabled'])
-- flow_runs, flow_steps, flow_audit tables + schema migrations
+- flow_runs, flow_run_nodes, flow_audit tables + schema migrations
 - Payload redaction (API keys, PII) before DB storage
 - Immutable audit trail via AppendOnlyAuditBuilder
 

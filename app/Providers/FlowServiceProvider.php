@@ -13,17 +13,19 @@ use App\Flow\Definitions\PruneChatLogsFlow;
 use App\Flow\Definitions\PruneDeletedFlow;
 use App\Flow\Definitions\PruneEmbeddingCacheFlow;
 use App\Flow\Definitions\RebuildGraphFlow;
+use App\Flow\Admin\TenantScopedDashboardReads;
 use App\Flow\Persistence\TenantAwareFlowStore;
 use App\Models\KbCanonicalAudit;
 use App\Support\TenantContext;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\ServiceProvider;
 use Padosoft\LaravelFlow\Contracts\FlowStore;
+use Padosoft\LaravelFlow\Dashboard\FlowDashboardReadModel;
 use Padosoft\LaravelFlow\FlowEngine;
 use Padosoft\LaravelFlow\Models\FlowApprovalRecord;
 use Padosoft\LaravelFlow\Models\FlowAuditRecord;
 use Padosoft\LaravelFlow\Models\FlowRunRecord;
-use Padosoft\LaravelFlow\Models\FlowStepRecord;
+use Padosoft\LaravelFlow\Models\FlowRunNodeRecord;
 use Padosoft\LaravelFlow\Models\FlowWebhookOutboxRecord;
 
 /**
@@ -36,7 +38,7 @@ use Padosoft\LaravelFlow\Models\FlowWebhookOutboxRecord;
  *    (vendor CLAUDE.md: "Companion dashboard is a separate repo;
  *    package stays headless"). AskMyDocs is multi-tenant per R30/R31 —
  *    every persisted Flow row carries `tenant_id`. The
- *    {@see FlowRunRecord::creating} / {@see FlowStepRecord::creating} /
+ *    {@see FlowRunRecord::creating} / {@see FlowRunNodeRecord::creating} /
  *    {@see FlowAuditRecord::creating} hooks below stamp the active
  *    tenant from {@see TenantContext} when the engine inserts a row.
  *
@@ -57,6 +59,23 @@ final class FlowServiceProvider extends ServiceProvider
                     ? $app['config']->get('laravel-flow.default_storage')
                     : null,
             ),
+        );
+
+        // The cockpit has no row-level boundary of its own: its authorizer
+        // gates destructive actions per row, but the run LIST is a plain role
+        // check, and v2 documents the three canView* hooks as reserved and
+        // not invoked. Without this, enabling FLOW_ADMIN_ENABLED lets an
+        // admin of one tenant browse every tenant's runs and payloads.
+        //
+        // extend() rather than a re-bind on purpose: both laravel-flow and
+        // laravel-flow-admin bind this singleton, so binding a third time
+        // would race their registration order, and flow-admin's own binding
+        // drops the configured connection. Extending applies to whichever
+        // binding wins and preserves what it built.
+        $this->app->extend(
+            FlowDashboardReadModel::class,
+            static fn (FlowDashboardReadModel $reader, $app): FlowDashboardReadModel => $reader
+                ->withScope(new TenantScopedDashboardReads($app->make(TenantContext::class))),
         );
     }
 
@@ -263,6 +282,12 @@ final class FlowServiceProvider extends ServiceProvider
      */
     private function stampTenantIdOnFlowRecords(): void
     {
+        // For flow_run_nodes specifically the hook below never runs: the
+        // vendor repository writes node rows with a query-builder upsert,
+        // which fires no Eloquent events. It stays registered as a backstop
+        // for any non-upsert insert, but the guarantee is carried by
+        // TenantAwareRunNodeRepository — delete that decorator and node rows
+        // go untenanted even though this hook is still here.
         $stamp = function ($model): void {
             // Skip if the package has been upgraded to a tenant-aware
             // schema and the engine starts setting it itself, OR if a
@@ -276,7 +301,7 @@ final class FlowServiceProvider extends ServiceProvider
         };
 
         FlowRunRecord::creating($stamp);
-        FlowStepRecord::creating($stamp);
+        FlowRunNodeRecord::creating($stamp);
         FlowApprovalRecord::creating($stamp);
         FlowWebhookOutboxRecord::creating($stamp);
         FlowAuditRecord::creating($stamp);

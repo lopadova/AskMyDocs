@@ -323,7 +323,7 @@ abstract class TestCase extends OrchestraTestCase
         $app['config']->set('admin', require __DIR__.'/../config/admin.php');
         // v4.2/W2 — laravel-flow needs persistence enabled for the
         // kb.ingest end-to-end tests (idempotency lookup, flow_runs +
-        // flow_steps + flow_audit row assertions). Override only the
+        // flow_run_nodes + flow_audit row assertions). Override only the
         // persistence.enabled knob; the package SP merges the rest.
         $app['config']->set('laravel-flow', require __DIR__.'/../config/laravel-flow.php');
         // v4.2/W3 — eval-harness CI gate. Without this, EvalRegistrar

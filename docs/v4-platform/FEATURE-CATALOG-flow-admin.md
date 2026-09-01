@@ -50,7 +50,7 @@
 
 | Adapter | Use case | Priority |
 |---|---|---|
-| **Eloquent** | Production: reads from `flow_runs`, `flow_steps`, `flow_approvals`, `flow_webhook_outbox` tables | MUST |
+| **Eloquent** | Production: reads from `flow_runs`, `flow_run_nodes`, `flow_approvals`, `flow_webhook_outbox` tables | MUST |
 | **Array** | E2E + Playwright: seed-42 deterministic fixtures; identical screenshots every run | SHOULD |
 
 ## FRONTEND STACK

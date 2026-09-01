@@ -10,10 +10,10 @@ use Padosoft\LaravelFlow\Contracts\FlowStore;
 use Padosoft\LaravelFlow\Contracts\PayloadRedactor;
 use Padosoft\LaravelFlow\Contracts\RedactorAwareFlowStore;
 use Padosoft\LaravelFlow\Contracts\RunRepository;
-use Padosoft\LaravelFlow\Contracts\StepRunRepository;
+use Padosoft\LaravelFlow\Contracts\RunNodeRepository;
 
 /**
- * Host decorator that adds tenant-aware step persistence to laravel-flow.
+ * Host decorator that adds tenant-aware run-node persistence to laravel-flow.
  */
 final readonly class TenantAwareFlowStore implements FlowStore, RedactorAwareFlowStore
 {
@@ -32,9 +32,9 @@ final readonly class TenantAwareFlowStore implements FlowStore, RedactorAwareFlo
         );
     }
 
-    public function steps(): StepRunRepository
+    public function runNodes(): RunNodeRepository
     {
-        return new TenantAwareStepRunRepository($this->inner->steps(), $this->tenants);
+        return new TenantAwareRunNodeRepository($this->inner->runNodes(), $this->tenants);
     }
 
     public function audit(): AuditRepository

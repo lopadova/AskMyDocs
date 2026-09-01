@@ -1301,7 +1301,7 @@ and the ADR set under [`docs/adr/`](docs/adr/)).
 |---|---|---|
 | MCP server (inward, 10 tools) | `enterprise-kb` server at `/mcp/kb` exposes the KB to Claude Desktop / Claude Code / any MCP-compatible agent (5 retrieval + 5 canonical/promote tools); `auth:sanctum` + `throttle:api` | v3.0 |
 | GitHub composite action `ingest-to-askmydocs` (v2) | Reusable action with diff-mode (every push: `git diff --diff-filter=AMR` ingest + `D`+`R` delete batches via `DELETE /api/kb/documents`) and full-sync mode; canonical-folder aware; max 100 docs / batch; `--rawfile` for ARG_MAX safety (R5) | v3.0 |
-| 9 registered Flow definitions (saga / compensation) | `kb.ingest` (5-step) / `kb.canonical-index` (3-step) / `kb.promote` (4-step approval-gated, first use of `approval-gate` primitive) / `kb.delete` (4-step) / `kb.prune-deleted` / `kb.prune-embedding-cache` (conditional approval gate) / `kb.prune-chat-logs` / `kb.rebuild-graph` / `kb.ingest-folder` (3-step fan-out). Reverse-order compensation chains; persisted to `flow_runs` + `flow_steps` + `flow_audit` + `flow_approvals` + `flow_webhook_outbox` | v4.2 |
+| 9 registered Flow definitions (saga / compensation) | `kb.ingest` (5-step) / `kb.canonical-index` (3-step) / `kb.promote` (4-step approval-gated, first use of `approval-gate` primitive) / `kb.delete` (4-step) / `kb.prune-deleted` / `kb.prune-embedding-cache` (conditional approval gate) / `kb.prune-chat-logs` / `kb.rebuild-graph` / `kb.ingest-folder` (3-step fan-out). Reverse-order compensation chains; persisted to `flow_runs` + `flow_run_nodes` + `flow_audit` + `flow_approvals` + `flow_webhook_outbox` | v4.2 |
 | Multi-AI-provider abstraction | OpenAI / Anthropic / Gemini / OpenRouter / Regolo all on the `laravel/ai` SDK (ADR 0015); OpenAI + OpenRouter hybrid (raw `Http::` retained only for the MCP tool-calling turn); `FallbackStreaming` trait synthesises single-chunk SSE for providers without native streaming | v1.0 |
 | Pluggable ingestion pipeline | 3 contracts (`ConverterInterface` / `ChunkerInterface` / `EnricherInterface`); `PipelineRegistry` with FQCN-validated-at-boot + `supports()` mutex (R23); add a new format = implement 3 interfaces + register in `config/kb-pipeline.php` | v3.0 |
 | Pluggable chat-log driver | `ChatLogDriverInterface`; `database` driver shipped; BigQuery / CloudWatch are extension points via `ChatLogManager::resolveDriver()` | v1.0 |
@@ -1819,7 +1819,7 @@ the sidecar and moved every call onto the host PHP process.)
 │ • RejectedApproach│  │                   │  │ • admin_command_audit /      │
 │   Injector        │  │                   │  │   admin_command_nonces /     │
 │ → SearchResult    │  │                   │  │   admin_insights_snapshots   │
-│   { primary,      │  │                   │  │ • flow_runs / flow_steps /   │
+│   { primary,      │  │                   │  │ • flow_runs / flow_run_nodes /   │
 │     expanded,     │  │                   │  │   flow_audit / approvals /   │
 │     rejected,     │  │                   │  │   webhook_outbox             │
 │     meta }        │  │                   │  │ • pii_token_maps (v4.1)      │
