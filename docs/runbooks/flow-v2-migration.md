@@ -68,13 +68,25 @@ Two things to read off this:
 
 ```sql
 SELECT count(DISTINCT tenant_id) AS tenants,
-       count(*) FILTER (WHERE tenant_id IS NULL) AS untenanted_runs
+       count(*) FILTER (WHERE tenant_id IS NULL OR btrim(tenant_id) = '') AS untenanted_runs
 FROM flow_runs;
 ```
 
 `untenanted_runs` **must be 0**. A run with no tenant produces nodes with no
 tenant, and step 4's tighten will abort the migration. Fix these first — they
 predate the v2 work and mean the v4.2 tenant migration did not fully apply.
+
+<!-- The empty-string arm is not defensive padding. A NULL tenant is at least
+findable; an empty one is matched by no `where tenant_id = ?` any tenant issues
+AND passes a whereNull check, so it is the one value that can pass every gate
+and still leave rows nobody can read. TenantScopedDashboardReads guards
+`$tenantId === ''` explicitly, which is the codebase conceding the state
+occurs. -->
+
+Count both arms deliberately: an **empty** `tenant_id` is worse than a NULL
+one. NULL is visible to the check that rejects it; `''` satisfies a
+`tenant_id IS NULL` gate while still matching no tenant's queries — the one
+value that can pass every guard and leave rows nobody can read.
 
 ### 1c. Orphan steps — the one condition that stops the migration mid-window
 
