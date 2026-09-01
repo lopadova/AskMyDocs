@@ -6,7 +6,9 @@ namespace Tests\Feature\Mcp;
 
 use App\Mcp\Tools\FlowRunStatusTool;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Schema;
 use Laravel\Mcp\Request;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 /**
@@ -89,6 +91,50 @@ final class FlowRunStatusToolShapeTest extends TestCase
         $this->assertNull($payload['matching_runs'], 'A match count must be null when nothing is recorded.');
         $this->assertSame([], $payload['recent_runs']);
         $this->assertIsString($payload['note'], 'The disabled branch must explain itself.');
+    }
+
+    /**
+     * The partially-migrated state a reviewer asked about on PR #466.
+     *
+     * `flow_runs` and `flow_approvals` / `flow_webhook_outbox` are created by
+     * DIFFERENT migrations, so a deployment can genuinely hold the first
+     * without the others. `kpis()` counts pending approvals and the outbox, so
+     * guarding on `flow_runs` alone would take the recording branch and throw
+     * on the next query — contradicting the contract the tool documents.
+     */
+    #[DataProvider('tablesTheRecordingBranchNeeds')]
+    public function test_a_missing_table_reports_not_recording_instead_of_throwing(string $missing): void
+    {
+        config(['laravel-flow.persistence.enabled' => true]);
+
+        Schema::drop($missing);
+
+        $payload = json_decode(
+            $this->textOf(app(FlowRunStatusTool::class)->handle(
+                new Request([]),
+                app(\Padosoft\LaravelFlow\Dashboard\FlowDashboardReadModel::class),
+            )),
+            true,
+            512,
+            JSON_THROW_ON_ERROR,
+        );
+
+        $this->assertFalse(
+            $payload['persistence_enabled'],
+            sprintf('With [%s] missing the tool claimed to be recording, and the next query would have thrown.', $missing),
+        );
+        $this->assertNull($payload['totals']);
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function tablesTheRecordingBranchNeeds(): iterable
+    {
+        // listRuns() reads flow_runs; kpis() also reads the other two.
+        yield 'flow_runs' => ['flow_runs'];
+        yield 'flow_approvals' => ['flow_approvals'];
+        yield 'flow_webhook_outbox' => ['flow_webhook_outbox'];
     }
 
     /**

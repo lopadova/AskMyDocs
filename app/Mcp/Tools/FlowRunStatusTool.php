@@ -140,6 +140,29 @@ class FlowRunStatusTool extends Tool
     }
 
     /**
+     * Every table the recording branch actually reads.
+     *
+     * `listRuns()` needs only `flow_runs`, but `kpis()` also counts pending
+     * approvals and the webhook outbox — and those live in a DIFFERENT
+     * migration (2026_05_09_145344) from `flow_runs` (…_145342), so "some of
+     * the flow tables exist" is a reachable state rather than a hypothetical.
+     * Guarding on `flow_runs` alone would take the recording branch and then
+     * throw inside `kpis()`, which is the opposite of what this tool promises.
+     *
+     * Deliberately NOT the full flow schema: `flow_run_nodes`,
+     * `flow_definitions`, `flow_node_children` and `flow_node_cache` are never
+     * read here, and requiring them would refuse to report on a deployment
+     * this tool can serve perfectly well.
+     *
+     * @var list<string>
+     */
+    private const REQUIRED_TABLES = [
+        'flow_runs',
+        'flow_approvals',
+        'flow_webhook_outbox',
+    ];
+
+    /**
      * Both halves matter. The config flag can be on while the tables are
      * absent (a deployment that enabled persistence without migrating), and
      * reading that as "recording" would throw on the first query instead of
@@ -147,8 +170,17 @@ class FlowRunStatusTool extends Tool
      */
     private function persistenceIsRecording(): bool
     {
-        return (bool) config('laravel-flow.persistence.enabled', false)
-            && Schema::hasTable('flow_runs');
+        if (! (bool) config('laravel-flow.persistence.enabled', false)) {
+            return false;
+        }
+
+        foreach (self::REQUIRED_TABLES as $table) {
+            if (! Schema::hasTable($table)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private function nullableString(mixed $value): ?string
