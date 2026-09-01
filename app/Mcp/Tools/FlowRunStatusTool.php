@@ -42,6 +42,13 @@ use Padosoft\LaravelFlow\Dashboard\RunSummary;
  * may legitimately not exist. That returns an empty, well-formed payload with
  * `persistence_enabled: false` rather than throwing — the caller can tell
  * "nothing ran" from "nothing is recorded", which a bare empty list could not.
+ *
+ * Both branches emit the SAME key set (R27), so a caller parses one shape and
+ * reads `persistence_enabled` to interpret it. Only the values differ: counts
+ * are null when nothing is recorded, never zero. Zero is a measurement, and a
+ * dashboard renders "0 failed" as healthy — which is the opposite of what an
+ * unrecorded corpus means. {@see \Tests\Feature\Mcp\FlowRunStatusToolShapeTest}
+ * holds both halves of that contract.
  */
 #[Description('Report Flow run health for the active tenant: aggregate counts (total, running, paused, failed, compensated, pending approvals, webhook outbox backlog) plus the most recent runs with their status, duration and failed step. Read-only; cannot start, cancel, replay or approve anything.')]
 #[IsReadOnly]
@@ -77,7 +84,16 @@ class FlowRunStatusTool extends Tool
             return Response::json([
                 'persistence_enabled' => false,
                 'note' => 'Flow persistence is disabled or its tables are absent, so no run history is recorded. Runs still execute.',
+                // Same key set as the recording branch (R27): a caller parses
+                // one shape and reads `persistence_enabled` to interpret it,
+                // rather than discovering which keys exist by path.
+                //
+                // Null rather than zero, deliberately. Zeros here are a lie a
+                // dashboard will render: "0 failed" reads as healthy, when the
+                // truth is that nothing is being recorded and the real count is
+                // unknown. Null cannot be mistaken for a measurement.
                 'totals' => null,
+                'matching_runs' => null,
                 'recent_runs' => [],
             ]);
         }
@@ -92,6 +108,9 @@ class FlowRunStatusTool extends Tool
 
         return Response::json([
             'persistence_enabled' => true,
+            // Present and null so the key set matches the disabled branch —
+            // there is nothing to explain when the numbers are real.
+            'note' => null,
             'totals' => [
                 'runs' => $kpis->totalRuns,
                 'running' => $kpis->runningRuns,

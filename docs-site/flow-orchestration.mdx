@@ -163,6 +163,12 @@ deployment can enable persistence without having migrated, and answers with
 `persistence_enabled: false` plus a note — so a caller can tell *"nothing ran"*
 from *"nothing is recorded"*, which a bare empty list cannot express.
 
+Both branches return the **same key set**, so a caller parses one shape and
+reads `persistence_enabled` to interpret it. Only the values change, and the
+counts come back **null rather than zero**: zero is a measurement, and a
+dashboard renders *0 failed* as healthy — the opposite of what an unrecorded
+corpus means.
+
 ## The tenant boundary the engine does not have
 
 `padosoft/laravel-flow` is tenant-agnostic **by design** — it is a general saga
