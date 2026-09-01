@@ -9,6 +9,7 @@ use App\Mcp\Tools\FinOpsBudgetStatusTool;
 use App\Mcp\Tools\ConnectorInstallationsTool;
 use App\Mcp\Tools\ConnectorSettingsTool;
 use App\Mcp\Tools\AppSettingsTool;
+use App\Mcp\Tools\FlowRunStatusTool;
 use App\Mcp\Tools\WidgetIntroConfigTool;
 use App\Mcp\Tools\KbDetokenizeTool;
 use App\Mcp\Tools\KbEraseSubjectTool;
@@ -192,6 +193,14 @@ class KnowledgeBaseServer extends Server
         // (R44). Write (queues vector-store mutations) → authorizer super-admin.
         // Tenant-scoped (R30).
         KbReembedProjectTool::class,
+
+        // Flow run health (R44 third surface). Reads through the SAME
+        // FlowDashboardReadModel the cockpit uses, so the host tenant scope
+        // wired onto it applies here too (R30) rather than being re-derived.
+        // Read-only by construction: the read model exposes no writes, so
+        // starting, cancelling, replaying or approving a run stays behind the
+        // cockpit's per-row authorizer, where a human is present.
+        FlowRunStatusTool::class,
 
         // v8.x — padosoft/laravel-invitations tri-surface (R44 third surface).
         // The invite engine's MCP tools over the SAME services the HTTP + PHP

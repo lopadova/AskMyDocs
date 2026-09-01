@@ -39,6 +39,7 @@
           "connectors-imap-backfill",
           "connectors-imap-serialization",
           "connectors-api",
+          "flow-orchestration",
           "kitt-widget",
           "admin-panel",
           "projects-registry",
