@@ -109,7 +109,20 @@ return new class extends Migration
                 $byTenant = [];
 
                 foreach ($runs as $run) {
-                    $byTenant[(string) $run->tenant_id][] = $run->id;
+                    $tenantId = is_string($run->tenant_id) ? trim($run->tenant_id) : '';
+
+                    // A run whose own tenant is empty has nothing to pass down.
+                    // Skipping leaves its nodes NULL, which tightenToHostShape()
+                    // then refuses — the same fail-closed path as a node with no
+                    // run at all. Stamping '' instead would be undetectable:
+                    // invisible to `where tenant_id = ?` AND invisible to a
+                    // whereNull check, so the migration would report success
+                    // over rows no tenant can read and no guard can find.
+                    if ($tenantId === '') {
+                        continue;
+                    }
+
+                    $byTenant[$tenantId][] = $run->id;
                 }
 
                 foreach ($byTenant as $tenantId => $runIds) {
@@ -130,14 +143,24 @@ return new class extends Migration
      */
     private function tightenToHostShape(): void
     {
-        $unattributed = DB::table(self::TABLE)->whereNull('tenant_id')->count();
+        // Empty counts as unattributed, not just NULL. '' is the worse of the
+        // two: a NULL row is at least findable by the check that rejects it,
+        // while '' passes a whereNull guard and is still matched by no
+        // `where tenant_id = ?` any tenant issues. Catching only NULL would
+        // let the migration finish green over rows nothing can read.
+        $unattributed = DB::table(self::TABLE)
+            ->whereNull('tenant_id')
+            ->orWhere('tenant_id', '')
+            ->count();
 
         if ($unattributed > 0) {
             throw new RuntimeException(sprintf(
-                '%d %s row(s) have no tenant after the backfill. Every node should '
-                .'inherit its run\'s tenant, so these have no matching flow_runs row. '
-                .'Resolve them before migrating — stamping them with the default '
-                .'tenant would make them readable by it.',
+                '%d %s row(s) have no usable tenant after the backfill. Every node '
+                .'should inherit its run\'s tenant, so these either have no matching '
+                .'flow_runs row or their run\'s tenant_id is itself empty. Resolve '
+                .'them before migrating — stamping them with the default tenant '
+                .'would make them readable by it, and stamping them empty would '
+                .'hide them from the very check reporting this.',
                 $unattributed,
                 self::TABLE,
             ));
