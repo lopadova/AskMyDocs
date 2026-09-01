@@ -22,7 +22,7 @@ use Tests\TestCase;
  *
  *   1. The outer-fence Laravel Gate `viewFlowAdmin` (consumed by the
  *      `can:viewFlowAdmin` middleware in `config/flow-admin.php`).
- *   2. The 8 methods on {@see AskMyDocsFlowAuthorizer} that
+ *   2. The 9 methods on {@see AskMyDocsFlowAuthorizer} that
  *      back the package's `Padosoft\LaravelFlowAdmin\Contracts\
  *      ActionAuthorizer` contract.
  *
@@ -190,6 +190,37 @@ class FlowAdminGatesTest extends TestCase
 
         $this->actingAs($this->makeUser('viewer'));
         $this->assertFalse($authorizer->canRetryWebhook($outboxId, null));
+    }
+
+    public function test_can_edit_definition_allows_super_admin_only(): void
+    {
+        $authorizer = $this->resolveAuthorizer();
+
+        $this->assertFalse($authorizer->canEditDefinition('kb.ingest-document', null));
+
+        $this->actingAs($this->makeUser('super-admin'));
+        $this->assertTrue($authorizer->canEditDefinition('kb.ingest-document', null));
+
+        // Editing a definition changes what EVERY future run of that flow
+        // does, so it sits with cancel at the highest role rather than with
+        // the wider admin set.
+        $this->actingAs($this->makeUser('admin'));
+        $this->assertFalse($authorizer->canEditDefinition('kb.ingest-document', null));
+
+        $this->actingAs($this->makeUser('dpo'));
+        $this->assertFalse($authorizer->canEditDefinition('kb.ingest-document', null));
+    }
+
+    public function test_can_edit_definition_refuses_the_all_flows_scan(): void
+    {
+        // Not a defensive branch: the advisor's all-flows scan reaches the
+        // package's Authorize helper with no flowName in context, which passes
+        // ''. Reading that as an unscoped allow would make the one action that
+        // writes drafts across every flow the only one with nothing to
+        // authorize against.
+        $this->actingAs($this->makeUser('super-admin'));
+
+        $this->assertFalse($this->resolveAuthorizer()->canEditDefinition('', null));
     }
 
     public function test_missing_run_returns_false_even_for_super_admin(): void

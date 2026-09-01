@@ -220,9 +220,26 @@ them?). A human-accepted page summarising an external email is `accepted` and
 2. **v8.33** — `SourceAccess`, resolver, mirrored ACL rows, reconciliation,
    triage UI, `AccessScopeScope` extension. Feature 13, default OFF.
 3. **v8.34** — provenance enforcement in the tool firewall. Phase 2 of 14,
-   default OFF. *(Shipped 2026-08-29. The default was kept OFF as specified:
-   switching it on stops turns grounded in email from acting, which is a
-   product decision for a deployment to take deliberately rather than one to
-   inherit from a release.)*
+   default OFF.
+
+   > **Superseded 2026-08-30: the firewall now ships ON.** It shipped OFF as
+   > specified on 2026-08-29, and the product owner then decided to reverse the
+   > default. Recorded here rather than only in config, because a default that
+   > contradicts its ADR is exactly the kind of drift this file exists to stop.
+   >
+   > The ADR's reasoning was about behaviour change on upgrade, and it stands:
+   > a deployment already ingesting email will find that turns grounded in a
+   > message stop being able to act. What it under-weighted is that a security
+   > control shipping OFF protects nobody until somebody remembers to switch it
+   > on — and the chain it closes is not hypothetical. It is three ordinary
+   > facts about this product (IMAP ingests what anyone can send; ingested
+   > content becomes grounding; the same platform exposes tools to the model)
+   > composing into an injection path with no boundary in between.
+   >
+   > The cost is bounded and the failure direction is safe: the answer is still
+   > produced from the same context with the same citations, only the tools are
+   > withheld, and the turn declines to act rather than acting on a stranger's
+   > instructions. `KB_PROVENANCE_TOOL_FIREWALL=false` restores the previous
+   > behaviour exactly, and both states are covered by tests (R43).
 
 Each phase updates `README.md` and the doc site in the same PR, per house rule.

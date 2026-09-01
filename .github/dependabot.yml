@@ -26,6 +26,22 @@ updates:
         update-types:
           - minor
           - patch
+    ignore:
+      # @types/node describes the runtime we actually run on, so it tracks the
+      # runtime floor rather than the newest release. `engines.node` is
+      # ">=24.15.0" and all three jobs in tests.yml pin node-version 24.15.0;
+      # types two majors ahead let a Node-26-only API typecheck in tooling code
+      # and then throw under Node 24 — exactly the class of bug the type checker
+      # is there to catch, and one CI would not surface. Same reasoning as the
+      # composer `config.platform.php` pin to the CI floor.
+      #
+      # REMOVE THIS ENTRY when the runtime moves: bump `engines.node`, the three
+      # `node-version` pins in .github/workflows/tests.yml, and @types/node in
+      # the SAME change. Minor and patch updates within the 24.x line are
+      # unaffected and keep flowing.
+      - dependency-name: "@types/node"
+        update-types:
+          - version-update:semver-major
 
   # Keeps third-party Actions pinned to reviewed, up-to-date commits
   # (SEC-CI-PERM-001 / supply-chain-ci: immutable, reviewed action refs).

@@ -84,11 +84,11 @@ final class IngestDocumentFlowTest extends TestCase
         $this->assertSame('succeeded', $runRow->status);
         $this->assertSame(IngestDocumentFlow::NAME, $runRow->definition_name);
 
-        $stepRows = DB::table('flow_steps')
+        $stepRows = DB::table('flow_run_nodes')
             ->where('run_id', $run->id)
             ->orderBy('sequence')
             ->get();
-        $stepNames = $stepRows->pluck('step_name')->all();
+        $stepNames = $stepRows->pluck('node_id')->all();
         $this->assertSame([
             'parse-markdown',
             'chunk-document',
@@ -98,7 +98,13 @@ final class IngestDocumentFlowTest extends TestCase
             'maybe-dispatch-collections-evaluator',
         ], $stepNames);
         foreach ($stepRows as $stepRow) {
+            // The tenant is what the host decorator adds; node_type is what
+            // v2 requires and the engine supplies. Asserting both means a
+            // regression in either the decorator or the compiled-step path
+            // fails here rather than surfacing later as an untenanted or
+            // untyped row the schema happens to accept.
             $this->assertSame('test-tenant', $stepRow->tenant_id);
+            $this->assertSame('legacy.step', $stepRow->node_type);
         }
 
         $auditCount = DB::table('flow_audit')->where('run_id', $run->id)->count();
