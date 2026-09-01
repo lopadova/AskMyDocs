@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Mcp\Tools;
 
+use App\Flow\Definitions\IngestDocumentFlow;
+use App\Flow\Definitions\PromotionFlow;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Support\Facades\Schema;
 use Laravel\Mcp\Request;
@@ -54,8 +56,16 @@ class FlowRunStatusTool extends Tool
                 ->default(10),
             'status' => $schema->string()
                 ->description("Optional status filter, e.g. 'failed', 'running', 'paused', 'succeeded'."),
+            // The examples are the definition constants themselves, not string
+            // literals: a literal here is a value an MCP consumer will try, so
+            // it has to be a name that actually resolves. The first draft said
+            // 'kb.ingest-document', which no definition has ever been called.
             'definition_name' => $schema->string()
-                ->description("Optional flow name filter, e.g. 'kb.ingest-document'."),
+                ->description(sprintf(
+                    "Optional flow name filter, e.g. '%s' or '%s'. Names come from the nine definitions registered in FlowServiceProvider.",
+                    IngestDocumentFlow::NAME,
+                    PromotionFlow::NAME,
+                )),
         ];
     }
 
