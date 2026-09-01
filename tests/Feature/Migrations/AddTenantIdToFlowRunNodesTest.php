@@ -81,7 +81,54 @@ final class AddTenantIdToFlowRunNodesTest extends TestCase
         $this->seedNode('run-that-does-not-exist', 'orphan-step');
 
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessageMatches('/have no tenant after the backfill/');
+        $this->expectExceptionMessageMatches('/have no usable tenant after the backfill/');
+
+        $this->runMigration();
+    }
+
+    /**
+     * An EMPTY tenant on the run is refused exactly like a missing one.
+     *
+     * Found by cloud review on PR #468. The backfill used to bucket on
+     * `(string) $run->tenant_id` and the guard used to check only whereNull,
+     * so a run with '' stamped every one of its nodes '' and the migration
+     * reported success over rows that no `where tenant_id = ?` will ever
+     * match and no whereNull check will ever find.
+     *
+     * That is strictly worse than the outcome this migration was written to
+     * avoid. Its whole argument for NULL-over-'default' is that NULL is
+     * "distinguishable, invisible to `where tenant_id = ?`, and repairable" —
+     * '' is invisible to the query AND to the guard, so it is undetectable
+     * rather than merely wrong.
+     *
+     * Not hypothetical: TenantScopedDashboardReads::apply() guards
+     * `$tenantId === ''` explicitly, which is the codebase conceding the
+     * state occurs.
+     */
+    public function test_it_refuses_an_empty_tenant_rather_than_stamping_it_through(): void
+    {
+        $this->rebuildWithoutTenantColumn();
+        $this->seedRun('run-with-blank-tenant', '');
+        $this->seedNode('run-with-blank-tenant', 'step-under-blank-tenant');
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/have no usable tenant after the backfill/');
+
+        $this->runMigration();
+    }
+
+    /**
+     * A whitespace-only tenant is the same defect wearing a disguise: it is
+     * non-empty to a `= ''` comparison and still matches no real tenant.
+     */
+    public function test_it_refuses_a_whitespace_only_tenant(): void
+    {
+        $this->rebuildWithoutTenantColumn();
+        $this->seedRun('run-with-spaces-tenant', '   ');
+        $this->seedNode('run-with-spaces-tenant', 'step-under-spaces-tenant');
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/have no usable tenant after the backfill/');
 
         $this->runMigration();
     }
