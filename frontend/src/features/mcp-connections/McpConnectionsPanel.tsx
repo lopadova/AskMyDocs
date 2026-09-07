@@ -3,7 +3,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../lib/auth-store';
 import { Button } from '../../components/Button';
 import { modalBackdropStyle, modalPanelStyle } from '../admin/api-connectors/styles';
-import { toAdminError } from '../admin/shared/errors';
+import { toAdminError, type AdminApiError } from '../admin/shared/errors';
+import { McpConnectionErrorDialog } from './McpConnectionErrorDialog';
 import {
     mcpConnectionsApi,
     type CreateMcpConnectionPayload,
@@ -55,7 +56,8 @@ export function McpConnectionsPanel({
     );
     const [form, setForm] = useState<CreateMcpConnectionPayload>(blankForm);
     const [formOpen, setFormOpen] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const [error, setError] = useState<AdminApiError | null>(null);
+    const [errorDetails, setErrorDetails] = useState<AdminApiError | null>(null);
     const previousCreateRequest = useRef(createRequest);
     // Capture the callback result once. The URL is cleaned immediately below,
     // while the connections query can still trigger additional renders.
@@ -78,9 +80,10 @@ export function McpConnectionsPanel({
             }
             closeForm();
             setError(null);
+            setErrorDetails(null);
             await refresh();
         },
-        onError: (cause) => setError(toAdminError(cause).message),
+        onError: (cause) => setError(toAdminError(cause)),
     });
     const action = useMutation({
         mutationFn: async (request: { kind: 'discover' | 'disconnect' | 'remove' | 'sync-resources'; id: string }) => {
@@ -90,24 +93,24 @@ export function McpConnectionsPanel({
             return mcpConnectionsApi.remove(scope, request.id);
         },
         onSuccess: refresh,
-        onError: (cause) => setError(toAdminError(cause).message),
+        onError: (cause) => setError(toAdminError(cause)),
     });
     const toolMutation = useMutation({
         mutationFn: (request: { connectionId: string; toolId: number; enabled: boolean }) =>
             mcpConnectionsApi.setTool(scope, request.connectionId, request.toolId, request.enabled),
         onSuccess: refresh,
-        onError: (cause) => setError(toAdminError(cause).message),
+        onError: (cause) => setError(toAdminError(cause)),
     });
     const resourceMutation = useMutation({
         mutationFn: (request: { connectionId: string; resourceId: number; enabled: boolean }) =>
             mcpConnectionsApi.setResource(request.connectionId, request.resourceId, request.enabled),
         onSuccess: refresh,
-        onError: (cause) => setError(toAdminError(cause).message),
+        onError: (cause) => setError(toAdminError(cause)),
     });
     const oauth = useMutation({
         mutationFn: (connectionId: string) => mcpConnectionsApi.beginOAuth(scope, connectionId),
         onSuccess: (url) => window.location.assign(url),
-        onError: (cause) => setError(toAdminError(cause).message),
+        onError: (cause) => setError(toAdminError(cause)),
     });
 
     useEffect(() => {
@@ -122,6 +125,7 @@ export function McpConnectionsPanel({
         if (createRequest === previousCreateRequest.current) return;
         previousCreateRequest.current = createRequest;
         setError(null);
+        setErrorDetails(null);
         setFormOpen(true);
     }, [createRequest]);
 
@@ -145,11 +149,13 @@ export function McpConnectionsPanel({
         setForm(blankForm);
         setFormOpen(false);
         setError(null);
+        setErrorDetails(null);
     }
 
     function submit(event: FormEvent) {
         event.preventDefault();
         setError(null);
+        setErrorDetails(null);
         create.mutate({
             ...form,
             label: form.label?.trim() || form.name,
@@ -190,7 +196,7 @@ export function McpConnectionsPanel({
                 </div>
             )}
 
-            {error && !formOpen && <div role="alert" style={errorStyle}>{error}</div>}
+            {error && !formOpen && <McpErrorAlert error={error} onShowDetails={() => setErrorDetails(error)} />}
 
             {query.isLoading && <div role="status" style={emptyStyle}>Loading MCP connections…</div>}
             {query.isError && (
@@ -254,7 +260,7 @@ export function McpConnectionsPanel({
                         </div>
 
                         <div style={modalBodyStyle}>
-                            {error && <div role="alert" style={errorStyle}>{error}</div>}
+                            {error && <McpErrorAlert error={error} onShowDetails={() => setErrorDetails(error)} />}
 
                             <div style={twoColumnStyle}>
                                 <Field label="Name">
@@ -369,7 +375,31 @@ export function McpConnectionsPanel({
                     </form>
                 </div>
             )}
+
+            {errorDetails && (
+                <McpConnectionErrorDialog error={errorDetails} onClose={() => setErrorDetails(null)} />
+            )}
         </section>
+    );
+}
+
+function McpErrorAlert({ error, onShowDetails }: { error: AdminApiError; onShowDetails: () => void }) {
+    return (
+        <div role="alert" style={{ ...errorStyle, display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ flex: 1, minWidth: 0 }}>{error.message}</span>
+            <Button
+                variant="quiet"
+                size="sm"
+                iconOnly
+                aria-label="View connection error details"
+                title="View error details"
+                data-testid="mcp-connection-error-info"
+                onClick={onShowDetails}
+                style={{ flex: 'none', color: '#fca5a5' }}
+            >
+                <InfoIcon />
+            </Button>
+        </div>
     );
 }
 
@@ -650,6 +680,16 @@ function hostOf(endpoint: string): string {
     } catch {
         return endpoint;
     }
+}
+
+function InfoIcon() {
+    return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 11v5" />
+            <path d="M12 8h.01" />
+        </svg>
+    );
 }
 
 function McpIcon() {
