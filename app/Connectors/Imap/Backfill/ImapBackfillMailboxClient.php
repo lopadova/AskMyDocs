@@ -40,7 +40,22 @@ final class ImapBackfillMailboxClient implements ImapBackfillClient
     /** @return list<string> */
     public function mailboxes(): array
     {
-        return $this->client->listMailboxes();
+        // Connect through the package client so its auth classification and
+        // close() lifecycle remain intact, then retain LIST's folder attributes.
+        if (! $this->client->ping()) {
+            throw new RuntimeException('IMAP connection unavailable while listing backfill mailboxes.');
+        }
+
+        $mailboxes = [];
+        // A flat LIST retains selectable descendants of a \Noselect container
+        // (e.g. [Gmail]) without attempting STATUS/SELECT on the container itself.
+        foreach ($this->rawClient->getFolders(false) as $folder) {
+            if (! $folder->no_select) {
+                $mailboxes[] = $folder->full_name; // Decoded UTF-8, not raw UTF7-IMAP.
+            }
+        }
+
+        return $mailboxes;
     }
 
     public function selectMailbox(string $mailbox): MailboxState

@@ -85,3 +85,14 @@ Regression tests replay wire responses through the installed Webklex decoder.
 This is a parsing failure, not an authentication or Redis configuration problem.
 The worker deployment must include the fix; no credential rotation, queue purge
 or backfill reset is required by this correction.
+
+## Non-selectable mailbox containers
+
+Backfill discovery filters LIST entries marked `\Noselect` (for example Gmail's
+`[Gmail]` container) before taking mailbox snapshots. It keeps their selectable
+children and decoded UTF-8 paths, including when no folder whitelist is set.
+This is a server-attribute check, not a hard-coded Gmail name exclusion. A
+selectable parent with children remains importable. LIST/authentication failures
+still fail discovery explicitly instead of being treated as an empty mailbox.
+This host-side filter applies to backfills; the package's folder-picker listing
+and incremental-sync implementation are unchanged.
