@@ -7,12 +7,14 @@ namespace App\Connectors;
 use App\Connectors\Imap\ImapSyncProgressContext;
 use App\Connectors\Imap\MailboxBusyException;
 use App\Connectors\Imap\MailboxLockKey;
+use App\Models\ImapBackfill;
 use DateTimeInterface;
 use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Padosoft\AskMyDocsConnectorBase\ConnectorRegistry;
 use Padosoft\AskMyDocsConnectorBase\ConnectorSyncJob;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
@@ -58,13 +60,17 @@ final class SerializedConnectorSyncJob extends ConnectorSyncJob
      */
     public static function dispatchFor(ConnectorInstallation $installation): void
     {
+        $queue = (string) config('connectors.sync_job_queue', 'connectors');
+
         if ($installation->connector_name === 'imap') {
-            self::dispatch($installation->id, $installation->tenant_id);
+            self::dispatch($installation->id, $installation->tenant_id)
+                ->onQueue($queue);
 
             return;
         }
 
-        ConnectorSyncJob::dispatch($installation->id, $installation->tenant_id);
+        ConnectorSyncJob::dispatch($installation->id, $installation->tenant_id)
+            ->onQueue($queue);
     }
 
     /**
@@ -202,6 +208,22 @@ final class SerializedConnectorSyncJob extends ConnectorSyncJob
             $tracksImap = $installation?->connector_name === 'imap';
             $priorLastSyncAt = $installation?->last_sync_at?->copy();
 
+            if (
+                $tracksImap
+                && $installation !== null
+                && $this->hasActiveBackfill($installation)
+            ) {
+                $delay = max(1, (int) config('connectors.imap.mailbox_lock.requeue_after_seconds', 60));
+                Log::info('[connector-imap] sync deferred — active backfill running', [
+                    'installation_id' => $this->installationId,
+                    'tenant_id' => $this->tenantId,
+                    'delay_seconds' => $delay,
+                ]);
+                $this->release($delay);
+
+                return;
+            }
+
             if ($tracksImap) {
                 $progress->begin($installation);
                 $progressStarted = true;
@@ -241,6 +263,23 @@ final class SerializedConnectorSyncJob extends ConnectorSyncJob
                 $tenantContext->set($priorTenant);
             }
         }
+    }
+
+    private function hasActiveBackfill(ConnectorInstallation $installation): bool
+    {
+        if (! Schema::hasTable('imap_backfills')) {
+            return false;
+        }
+
+        if ($installation->connector_name !== 'imap') {
+            return false;
+        }
+
+        return ImapBackfill::query()
+            ->where('tenant_id', $this->tenantId)
+            ->where('connector_installation_id', $installation->id)
+            ->whereIn('status', ImapBackfill::ACTIVE_STATUSES)
+            ->exists();
     }
 
     /**
