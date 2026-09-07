@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "0577af8931910fe8da40a82af4607cf6",
+    "content-hash": "4eb289b268d45c0badaaf1cdcc28db8e",
     "packages": [
         {
             "name": "aws/aws-crt-php",
@@ -3106,11 +3106,17 @@
         },
         {
             "name": "padosoft/askmydocs-connector-api",
-            "version": "1.0.x-dev",
-            "dist": {
-                "type": "path",
-                "url": "../../packages/askmydocs-connector-api",
+            "version": "v1.0.0-beta.1",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/padosoft/askmydocs-connector-api.git",
                 "reference": "4202b719ede4585025b891414d9ac4eceddd1d3d"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/padosoft/askmydocs-connector-api/zipball/4202b719ede4585025b891414d9ac4eceddd1d3d",
+                "reference": "4202b719ede4585025b891414d9ac4eceddd1d3d",
+                "shasum": ""
             },
             "require": {
                 "illuminate/contracts": "^12.0|^13.0",
@@ -3177,10 +3183,11 @@
                 "rag",
                 "tool-calling"
             ],
-            "transport-options": {
-                "symlink": true,
-                "relative": true
-            }
+            "support": {
+                "source": "https://github.com/padosoft/askmydocs-connector-api/tree/v1.0.0-beta.1",
+                "issues": "https://github.com/padosoft/askmydocs-connector-api/issues"
+            },
+            "time": "2026-08-12T09:18:52+00:00"
         },
         {
             "name": "padosoft/askmydocs-connector-base",
@@ -3789,11 +3796,17 @@
         },
         {
             "name": "padosoft/askmydocs-connector-mcp",
-            "version": "1.0.x-dev",
-            "dist": {
-                "type": "path",
-                "url": "../../packages/askmydocs-connector-mcp",
+            "version": "dev-codex/release-hardening",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/padosoft/askmydocs-connector-mcp.git",
                 "reference": "361beebbb7556474721a1a18f6734e98aa6d026f"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/padosoft/askmydocs-connector-mcp/zipball/361beebbb7556474721a1a18f6734e98aa6d026f",
+                "reference": "361beebbb7556474721a1a18f6734e98aa6d026f",
+                "shasum": ""
             },
             "require": {
                 "ext-curl": "*",
@@ -3868,10 +3881,11 @@
                 "padosoft",
                 "tool-calling"
             ],
-            "transport-options": {
-                "symlink": true,
-                "relative": true
-            }
+            "support": {
+                "source": "https://github.com/padosoft/askmydocs-connector-mcp/tree/codex/release-hardening",
+                "issues": "https://github.com/padosoft/askmydocs-connector-mcp/issues"
+            },
+            "time": "2026-09-01T09:43:17+00:00"
         },
         {
             "name": "padosoft/askmydocs-connector-notion",
@@ -4052,11 +4066,17 @@
         },
         {
             "name": "padosoft/askmydocs-mcp-pack",
-            "version": "2.0.x-dev",
-            "dist": {
-                "type": "path",
-                "url": "../../packages/askmydocs-mcp-pack",
+            "version": "dev-codex/v2",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/bramato/askmydocs-mcp-pack.git",
                 "reference": "8dbd400767c6362761a097f56a812579fc1a23c3"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/bramato/askmydocs-mcp-pack/zipball/8dbd400767c6362761a097f56a812579fc1a23c3",
+                "reference": "8dbd400767c6362761a097f56a812579fc1a23c3",
+                "shasum": ""
             },
             "require": {
                 "ext-json": "*",
@@ -4130,10 +4150,10 @@
                 "padosoft",
                 "tool-calling"
             ],
-            "transport-options": {
-                "symlink": true,
-                "relative": true
-            }
+            "support": {
+                "source": "https://github.com/bramato/askmydocs-mcp-pack/tree/codex/v2"
+            },
+            "time": "2026-09-01T09:42:45+00:00"
         },
         {
             "name": "padosoft/eval-harness",
@@ -12342,10 +12362,23 @@
             "time": "2025-12-08T11:19:18+00:00"
         }
     ],
-    "aliases": [],
+    "aliases": [
+        {
+            "package": "padosoft/askmydocs-connector-mcp",
+            "version": "dev-codex/release-hardening",
+            "alias": "1.0.x-dev",
+            "alias_normalized": "1.0.9999999.9999999-dev"
+        },
+        {
+            "package": "padosoft/askmydocs-mcp-pack",
+            "version": "dev-codex/v2",
+            "alias": "2.0.x-dev",
+            "alias_normalized": "2.0.9999999.9999999-dev"
+        }
+    ],
     "minimum-stability": "stable",
     "stability-flags": {
-        "padosoft/askmydocs-connector-api": 20,
+        "padosoft/askmydocs-connector-api": 10,
         "padosoft/askmydocs-connector-mcp": 20,
         "padosoft/askmydocs-mcp-pack": 20
     },
