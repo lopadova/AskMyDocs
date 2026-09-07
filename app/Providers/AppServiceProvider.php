@@ -905,6 +905,7 @@ class AppServiceProvider extends ServiceProvider
             // Targeted IMAP recovery: discard one stuck backfill campaign only;
             // queued jobs for the removed id then terminate as harmless no-ops.
             \App\Console\Commands\ResetImapBackfillCommand::class,
+            \App\Console\Commands\DiagnoseImapCommand::class,
             // Invite-only registration bootstrap. Codes without --tenant
             // create an account that must complete company onboarding; codes
             // with --tenant carry one explicit operational grant.
