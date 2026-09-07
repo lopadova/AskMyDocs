@@ -1,5 +1,6 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AgentRunEvent } from '../../lib/agent-run-events';
 import { AgentActivityBar } from './AgentActivityBar';
 
@@ -23,6 +24,7 @@ const progressEvent: AgentRunEvent = {
 };
 
 describe('AgentActivityBar', () => {
+    afterEach(() => vi.useRealTimers());
     it('renders localized live progress and cancellation', () => {
         const cancel = vi.fn();
         render(<AgentActivityBar events={[progressEvent]} active awaitingConfirmation={false} onCancel={cancel} onContinue={() => undefined} />);
@@ -69,6 +71,85 @@ describe('AgentActivityBar', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Mostra attività' }));
         expect(screen.getByTestId('agent-activity-timeline')).toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'Nascondi attività' })).toHaveAttribute('aria-expanded', 'true');
+    });
+
+    it.each(['run.completed', 'run.partial'] as const)('collapses %s after 200 ms and keeps the information below the answer', (type) => {
+        vi.useFakeTimers();
+        const answer = (info: React.ReactNode) => <article><p>La risposta</p><footer>{info}</footer></article>;
+        const props = { events: [progressEvent], awaitingConfirmation: false, onCancel: vi.fn(), onContinue: vi.fn(), children: answer };
+        const { rerender } = render(<AgentActivityBar {...props} active />);
+        act(() => vi.advanceTimersByTime(500));
+        expect(screen.queryByTestId('agent-activity-info')).not.toBeInTheDocument();
+
+        rerender(<AgentActivityBar {...props} events={[progressEvent, { ...progressEvent, sequence: 3, type }]} active={false} />);
+        act(() => vi.advanceTimersByTime(199));
+        expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '100');
+        expect(screen.queryByTestId('agent-activity-info')).not.toBeInTheDocument();
+        act(() => vi.advanceTimersByTime(1));
+        expect(within(screen.getByRole('article')).getByRole('button', { name: 'Informazioni sulla risposta' })).toBeInTheDocument();
+        expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+
+        fireEvent.click(screen.getByTestId('agent-activity-info'));
+        expect(within(screen.getByRole('dialog')).getByTestId('agent-activity-timeline')).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Chiudi informazioni' }));
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    it.each(['run.failed', 'run.cancelled', 'run.awaiting_confirmation'] as const)('keeps %s visible', (type) => {
+        vi.useFakeTimers();
+        render(
+            <AgentActivityBar events={[{ ...progressEvent, type }]} active={false} awaitingConfirmation={type === 'run.awaiting_confirmation'} onCancel={vi.fn()} onContinue={vi.fn()}>
+                {(info) => <footer>{info}</footer>}
+            </AgentActivityBar>,
+        );
+        act(() => vi.advanceTimersByTime(1000));
+        expect(screen.getByRole('progressbar')).toBeInTheDocument();
+        expect(screen.queryByTestId('agent-activity-info')).not.toBeInTheDocument();
+    });
+
+    it('keeps an open timeline available in the modal when the ready bar retires', () => {
+        vi.useFakeTimers();
+        render(
+            <AgentActivityBar events={[progressEvent]} active={false} awaitingConfirmation={false} onCancel={vi.fn()} onContinue={vi.fn()}>
+                {(info) => <footer>{info}</footer>}
+            </AgentActivityBar>,
+        );
+        fireEvent.click(screen.getByRole('button', { name: 'Mostra attività' }));
+        act(() => vi.advanceTimersByTime(200));
+        expect(screen.getAllByTestId('agent-activity-timeline')).toHaveLength(1);
+        expect(within(screen.getByRole('dialog')).getByTestId('agent-activity-timeline')).toBeInTheDocument();
+    });
+
+    it('opens from the keyboard and returns focus to the information button on Escape', async () => {
+        const user = userEvent.setup();
+        render(
+            <AgentActivityBar events={[progressEvent]} active={false} awaitingConfirmation={false} onCancel={vi.fn()} onContinue={vi.fn()}>
+                {(info) => <footer>{info}</footer>}
+            </AgentActivityBar>,
+        );
+        const info = await screen.findByRole('button', { name: 'Informazioni sulla risposta' });
+        info.focus();
+        await user.keyboard('{Enter}');
+        expect(screen.getByRole('dialog')).toContainElement(document.activeElement as HTMLElement);
+        await user.keyboard('{Escape}');
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        expect(info).toHaveFocus();
+    });
+
+    it('cancels retirement when the run resumes and starts a fresh delay for the next answer', () => {
+        vi.useFakeTimers();
+        const props = { events: [progressEvent], awaitingConfirmation: false, onCancel: vi.fn(), onContinue: vi.fn(), children: (info: React.ReactNode) => <footer>{info}</footer> };
+        const { rerender } = render(<AgentActivityBar {...props} active={false} />);
+        act(() => vi.advanceTimersByTime(100));
+        rerender(<AgentActivityBar {...props} active />);
+        act(() => vi.advanceTimersByTime(500));
+        expect(screen.getByRole('progressbar')).toBeInTheDocument();
+        expect(screen.queryByTestId('agent-activity-info')).not.toBeInTheDocument();
+        rerender(<AgentActivityBar {...props} active={false} events={[{ ...progressEvent, run_id: 'run-2' }]} />);
+        act(() => vi.advanceTimersByTime(199));
+        expect(screen.queryByTestId('agent-activity-info')).not.toBeInTheDocument();
+        act(() => vi.advanceTimersByTime(1));
+        expect(screen.getByTestId('agent-activity-info')).toBeInTheDocument();
     });
 
     it('identifies the active MCP server and tool at a glance', () => {
@@ -133,10 +214,15 @@ describe('AgentActivityBar', () => {
             },
         };
 
-        render(<AgentActivityBar events={[progressEvent, mcpEvent]} active={false} awaitingConfirmation={false} onCancel={() => undefined} onContinue={() => undefined} />);
+        render(
+            <AgentActivityBar events={[progressEvent, mcpEvent]} active={false} awaitingConfirmation={false} onCancel={() => undefined} onContinue={() => undefined}>
+                {(info) => <footer>{info}</footer>}
+            </AgentActivityBar>,
+        );
 
         expect(screen.queryByText('Dettagli chiamata MCP')).not.toBeInTheDocument();
-        fireEvent.click(screen.getByRole('button', { name: 'Mostra attività' }));
+        fireEvent.click(await screen.findByRole('button', { name: 'Informazioni sulla risposta' }));
+        expect(screen.getByRole('dialog')).toBeInTheDocument();
         expect(screen.getByText('Dettagli chiamata MCP')).toBeInTheDocument();
         expect(screen.getAllByText('list-my-orders').length).toBeGreaterThan(0);
         expect(screen.getByText('ok · 42 ms')).toBeInTheDocument();

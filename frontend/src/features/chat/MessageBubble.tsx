@@ -45,6 +45,7 @@ export interface MessageBubbleProps {
     message: RenderableMessage;
     projectKey?: string | null;
     streaming?: boolean;
+    activityInfo?: ReactNode;
     /**
      * v4.5/W7 Tier 1 #2 — assistant-only. Wired by the parent
      * (ChatView) for the LAST assistant turn to `chat.regenerate()`.
@@ -97,6 +98,7 @@ export function MessageBubble({
     message,
     projectKey,
     streaming = false,
+    activityInfo,
     onRegenerate,
     onBranch,
     onEditSubmit,
@@ -292,6 +294,7 @@ export function MessageBubble({
                 )}
                 {!streaming && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 2, marginTop: 10 }}>
+                        {activityInfo}
                         <MessageActions
                             content={textContent}
                             onRegenerate={onRegenerate}

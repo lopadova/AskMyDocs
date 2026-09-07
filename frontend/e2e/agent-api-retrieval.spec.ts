@@ -29,13 +29,15 @@ test.describe('Agentic API retrieval — real backend and SSE', () => {
         await controls.input.fill('Dammi tutti gli ordini di Tizio');
         await controls.send.click();
 
-        const activity = page.getByTestId('agent-activity-bar');
-        await expect(activity).toBeVisible({ timeout: 30_000 });
-        await expect(activity).toHaveAttribute('data-state', 'settled', { timeout: 30_000 });
+        const information = page.getByRole('button', { name: 'Informazioni sulla risposta' });
+        await expect(information).toBeVisible({ timeout: 30_000 });
+        await information.click();
+        const activity = page.getByRole('dialog', { name: 'Informazioni sulla risposta' });
         await expect(activity).toContainText('La risposta è pronta.');
         await expect(activity).toContainText('Sto chiamando Cerca cliente.');
         await expect(activity).toContainText('Sto chiamando Recupera ordini.');
         await expect(activity).toContainText(/Completate 2 richieste API/);
+        await page.getByRole('button', { name: 'Chiudi informazioni' }).click();
 
         const answer = page.locator('[data-testid^="chat-message-"][data-role="assistant"]').last();
         await expect(answer).toContainText('Ho trovato 3 ordini per Tizio: A-100, A-101, A-102.', { timeout: 30_000 });
@@ -63,9 +65,12 @@ test.describe('Agentic API retrieval — real backend and SSE', () => {
         await controls.input.fill('Dammi gli ordini di Tizio e simula 503');
         await controls.send.click();
 
-        const activity = page.getByTestId('agent-activity-bar');
-        await expect(activity).toHaveAttribute('data-state', 'settled', { timeout: 30_000 });
+        const information = page.getByRole('button', { name: 'Informazioni sulla risposta' });
+        await expect(information).toBeVisible({ timeout: 30_000 });
+        await information.click();
+        const activity = page.getByRole('dialog', { name: 'Informazioni sulla risposta' });
         await expect(activity).toContainText('Non è stato possibile completare Cerca cliente.');
+        await page.getByRole('button', { name: 'Chiudi informazioni' }).click();
         const answer = page.locator('[data-testid^="chat-message-"][data-role="assistant"]').last();
         await expect(answer).toContainText('Non ho potuto recuperare gli ordini', { timeout: 30_000 });
     });

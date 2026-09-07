@@ -1894,6 +1894,66 @@ textarea:focus-visible {
 .agent-activity-card.is-embedded .agent-activity-ring > svg {
   inset: -1px;
 }
+.agent-activity-collapse {
+  display: grid;
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transition: grid-template-rows .24s ease, opacity .18s ease, visibility 0s;
+}
+.agent-activity-collapse-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+.agent-activity-collapse[data-compact="true"] {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  visibility: hidden;
+  transition: grid-template-rows .24s ease, opacity .18s ease, visibility 0s .24s;
+}
+.agent-activity-info {
+  flex: 0 0 auto;
+  margin-right: 6px;
+  animation: agent-info-in .24s ease-out both;
+}
+@keyframes agent-info-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.agent-activity-modal {
+  width: min(860px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
+  max-height: min(85dvh, 900px);
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  color: var(--fg-1);
+  background: var(--panel-solid);
+}
+.agent-activity-modal-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  text-align: left;
+}
+.agent-activity-modal-summary {
+  display: grid;
+  gap: 4px;
+  color: var(--fg-2);
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.agent-activity-modal-summary strong { color: var(--ok); }
+.agent-activity-modal .agent-activity-details {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+}
+.agent-activity-modal .agent-activity-details ol {
+  max-height: none;
+  overflow: visible;
+}
 .agent-activity-card[data-state="active"] {
   border-color: color-mix(in srgb, var(--accent-a) 42%, var(--panel-border));
   box-shadow: 0 10px 34px -24px rgba(var(--accent-glow), .7), var(--shadow-sm);
@@ -3027,6 +3087,9 @@ textarea:focus-visible {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .agent-activity-collapse { transition: none; }
+  .agent-activity-collapse[data-compact="true"] { transition: none; }
+  .agent-activity-info { animation: none; }
   .mcp-app-frame-loader,
   .agent-activity-ring[data-active="true"]::after,
   .agent-activity-stage-icon[data-live="true"] svg,
