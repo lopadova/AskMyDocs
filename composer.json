@@ -17,7 +17,7 @@
         "padosoft/askmydocs-connector-google-drive": "^1.2",
         "padosoft/askmydocs-connector-imap": "^1.6",
         "padosoft/askmydocs-connector-jira": "^1.2",
-        "padosoft/askmydocs-connector-mcp": "dev-codex/release-hardening#361beebbb7556474721a1a18f6734e98aa6d026f as 1.0.x-dev",
+        "padosoft/askmydocs-connector-mcp": "^1.0",
         "padosoft/askmydocs-connector-notion": "^1.2",
         "padosoft/askmydocs-connector-onedrive": "^1.2",
         "padosoft/askmydocs-mcp-pack": "^2.0",
@@ -96,10 +96,6 @@
         {
             "type": "vcs",
             "url": "https://github.com/padosoft/askmydocs-connector-api"
-        },
-        {
-            "type": "vcs",
-            "url": "https://github.com/padosoft/askmydocs-connector-mcp"
         },
         {
             "type": "vcs",

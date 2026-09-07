@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "6137d4d61a0f0fafd16f36cf928db398",
+    "content-hash": "5e7956f278e6fe1b5faa0b4ddd310470",
     "packages": [
         {
             "name": "aws/aws-crt-php",
@@ -3796,16 +3796,16 @@
         },
         {
             "name": "padosoft/askmydocs-connector-mcp",
-            "version": "dev-codex/release-hardening",
+            "version": "v1.0.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/padosoft/askmydocs-connector-mcp.git",
-                "reference": "361beebbb7556474721a1a18f6734e98aa6d026f"
+                "reference": "cf4aafd963b8dd1eecc60819b36e284317d4905b"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/padosoft/askmydocs-connector-mcp/zipball/361beebbb7556474721a1a18f6734e98aa6d026f",
-                "reference": "361beebbb7556474721a1a18f6734e98aa6d026f",
+                "url": "https://api.github.com/repos/padosoft/askmydocs-connector-mcp/zipball/cf4aafd963b8dd1eecc60819b36e284317d4905b",
+                "reference": "cf4aafd963b8dd1eecc60819b36e284317d4905b",
                 "shasum": ""
             },
             "require": {
@@ -3845,22 +3845,7 @@
                     "Padosoft\\AskMyDocsConnectorMcp\\": "src/"
                 }
             },
-            "autoload-dev": {
-                "psr-4": {
-                    "Padosoft\\AskMyDocsConnectorMcp\\Tests\\": "tests/"
-                }
-            },
-            "scripts": {
-                "analyse": [
-                    "phpstan analyse --memory-limit=512M"
-                ],
-                "format": [
-                    "pint"
-                ],
-                "test": [
-                    "phpunit"
-                ]
-            },
+            "notification-url": "https://packagist.org/downloads/",
             "license": [
                 "Apache-2.0"
             ],
@@ -3882,10 +3867,10 @@
                 "tool-calling"
             ],
             "support": {
-                "source": "https://github.com/padosoft/askmydocs-connector-mcp/tree/codex/release-hardening",
-                "issues": "https://github.com/padosoft/askmydocs-connector-mcp/issues"
+                "issues": "https://github.com/padosoft/askmydocs-connector-mcp/issues",
+                "source": "https://github.com/padosoft/askmydocs-connector-mcp/tree/v1.0.0"
             },
-            "time": "2026-09-01T09:43:17+00:00"
+            "time": "2026-09-07T15:52:45+00:00"
         },
         {
             "name": "padosoft/askmydocs-connector-notion",
@@ -12348,18 +12333,10 @@
             "time": "2025-12-08T11:19:18+00:00"
         }
     ],
-    "aliases": [
-        {
-            "package": "padosoft/askmydocs-connector-mcp",
-            "version": "dev-codex/release-hardening",
-            "alias": "1.0.x-dev",
-            "alias_normalized": "1.0.9999999.9999999-dev"
-        }
-    ],
+    "aliases": [],
     "minimum-stability": "stable",
     "stability-flags": {
-        "padosoft/askmydocs-connector-api": 10,
-        "padosoft/askmydocs-connector-mcp": 20
+        "padosoft/askmydocs-connector-api": 10
     },
     "prefer-stable": true,
     "prefer-lowest": false,
