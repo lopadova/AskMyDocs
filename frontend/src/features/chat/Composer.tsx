@@ -93,9 +93,7 @@ export interface ComposerProps {
  */
 export function Composer({
     conversationId,
-    projectLabel,
     projectKey,
-    modelLabel,
     onRequireConversation,
     availableProjects = [],
     availableCollections = [],
@@ -273,61 +271,6 @@ export function Composer({
                     className={`chat-composer ${focused ? 'is-focused' : ''}`}
                 >
                 {/*
-                  * T2.7 — FilterBar renders ABOVE the legacy context-chip
-                  * row. Together they form the "what's constraining this
-                  * answer" surface. The legacy chips (project label,
-                  * canonical-only, model) stay visible because they show
-                  * conversation-level config the user can't directly
-                  * change here; the FilterBar owns the per-turn filters.
-                  */}
-                <FilterBar
-                    filters={filters}
-                    onChange={onFiltersChange}
-                    availableProjects={availableProjects}
-                    availableTags={availableTags}
-                    docLabels={docLabelMap}
-                />
-                <div className="chat-composer-context">
-                    {projectLabel && <ContextChip icon="Folder" label={projectLabel} />}
-                    <label className="chat-composer-scope">
-                        <span aria-hidden="true"><Icon.Database size={12} /></span>
-                        <select
-                            data-testid="chat-collection-picker"
-                            value={filters.collection_id ?? ''}
-                            onChange={(e) => {
-                                const raw = e.target.value;
-                                onFiltersChange((prev) => ({
-                                    ...prev,
-                                    collection_id: raw === '' ? null : Number(raw),
-                                }));
-                            }}
-                            aria-label="Knowledge base scope"
-                        >
-                            <option value="">All documents</option>
-                            {availableCollections.map((row) => (
-                                <option key={row.id} value={row.id}>
-                                    {row.name}
-                                </option>
-                            ))}
-                        </select>
-                        <span aria-hidden="true"><Icon.ChevronDown size={10} /></span>
-                    </label>
-                    <ContextChip icon="Book" label="canonical only" />
-                    {onLiveSourcesChange && (
-                        <LiveSourcesControl
-                            sources={liveSources}
-                            selection={liveSourceSelection}
-                            disabled={isStreaming}
-                            onChange={onLiveSourcesChange}
-                        />
-                    )}
-                    {modelLabel && <ContextChip icon="Brain" label={modelLabel} />}
-                    <span style={{ flex: 1 }} />
-                    <span className="chat-composer-shortcut mono">
-                        Shift+⏎ for new line
-                    </span>
-                </div>
-                {/*
                   * T2.8 — wrapper provides positioning context for the
                   * MentionPopover, which uses position:absolute / bottom:100%
                   * to render ABOVE the textarea. The popover is conditional
@@ -368,15 +311,59 @@ export function Composer({
                         />
                     )}
                 </div>
+                <div className="chat-composer-options" aria-label="Sources and filters">
+                    <FilterBar
+                        filters={filters}
+                        onChange={onFiltersChange}
+                        availableProjects={availableProjects}
+                        availableTags={availableTags}
+                        docLabels={docLabelMap}
+                    />
+                    <div className="chat-composer-context">
+                        <label className="chat-composer-scope">
+                            <span aria-hidden="true"><Icon.Database size={12} /></span>
+                            <select
+                                data-testid="chat-collection-picker"
+                                value={filters.collection_id ?? ''}
+                                onChange={(e) => {
+                                    const raw = e.target.value;
+                                    onFiltersChange((prev) => ({
+                                        ...prev,
+                                        collection_id: raw === '' ? null : Number(raw),
+                                    }));
+                                }}
+                                aria-label="Knowledge base scope"
+                            >
+                                <option value="">All documents</option>
+                                {availableCollections.map((row) => (
+                                    <option key={row.id} value={row.id}>
+                                        {row.name}
+                                    </option>
+                                ))}
+                            </select>
+                            <span aria-hidden="true"><Icon.ChevronDown size={10} /></span>
+                        </label>
+                        <ContextChip icon="Book" label="canonical only" />
+                        {onLiveSourcesChange && (
+                            <LiveSourcesControl
+                                sources={liveSources}
+                                selection={liveSourceSelection}
+                                disabled={isStreaming}
+                                onChange={onLiveSourcesChange}
+                            />
+                        )}
+                    </div>
+                </div>
                 <div className="chat-composer-actions">
                     <div className="chat-composer-tools" aria-label="Message tools">
                         <Button
-                            variant="secondary"
+                            variant="quiet"
                             size="sm"
                             iconOnly
                             className="chat-composer-tool-button"
                             data-testid="chat-composer-attach"
                             aria-label="Attach file"
+                            title="Attach file"
                         >
                             <Icon.Plus size={13} />
                         </Button>
@@ -384,6 +371,7 @@ export function Composer({
                             <VoiceInput onTranscript={(t) => appendToDraft((draft ? ' ' : '') + t)} />
                         )}
                     </div>
+                    <span className="chat-composer-shortcut">Shift+⏎ for a new line</span>
                     <span style={{ flex: 1 }} />
                     <span className="mono" style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>
                         {draft.length > 0 ? `${draft.length} chars` : ''}

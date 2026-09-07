@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { Button } from '../../components/Button';
 import { Icon } from '../../components/Icons';
 import { Markdown } from '../../lib/markdown';
 import { CitationsPopover } from './CitationsPopover';
@@ -136,13 +137,6 @@ export function MessageBubble({
                 data-testid={`chat-message-${messageId}`}
                 data-role="user"
                 className="popin chat-user-row"
-                style={{
-                    display: 'flex',
-                    justifyContent: 'flex-end',
-                    alignItems: 'center',
-                    gap: 6,
-                    marginBottom: 18,
-                }}
             >
                 {/*
                   * Edit affordance sits OUTSIDE the bubble, to its left
@@ -153,29 +147,22 @@ export function MessageBubble({
                   * keyboard-reachable without cluttering the thread.
                   */}
                 {onEditSubmit && !streaming && !agentSelection && (
-                    <button
-                        type="button"
-                        className="btn icon sm ghost chat-user-edit"
+                    <Button
+                        variant="quiet"
+                        size="sm"
+                        iconOnly
+                        className="chat-user-edit"
                         data-testid={`chat-message-${messageId}-edit`}
                         onClick={() => setEditing(true)}
                         aria-label="Edit your message"
+                        title="Edit your message"
                     >
                         <Icon.Edit size={12} />
-                    </button>
+                    </Button>
                 )}
                 <div
                     data-selection-receipt={agentSelection ? 'true' : undefined}
-                    style={{
-                        maxWidth: '70%',
-                        padding: agentSelection ? 0 : '10px 14px',
-                        background: 'var(--bg-3)',
-                        border: '1px solid var(--panel-border)',
-                        borderRadius: '14px 14px 4px 14px',
-                        fontSize: 13.5,
-                        lineHeight: 1.55,
-                        color: 'var(--fg-0)',
-                        whiteSpace: 'pre-wrap',
-                    }}
+                    className="chat-user-bubble"
                 >
                     {agentSelection
                         ? <AgentSelectionReceipt selection={agentSelection} locale={messageLocale} />
@@ -218,8 +205,7 @@ export function MessageBubble({
             data-testid={`chat-message-${messageId}`}
             data-role="assistant"
             data-refusal-reason={refusalReason ?? ''}
-            className="popin"
-            style={{ display: 'flex', gap: 12, marginBottom: 22 }}
+            className="popin chat-assistant-row"
         >
             <span
                 className="chat-agent-avatar"
@@ -254,7 +240,7 @@ export function MessageBubble({
                 ) : (
                     <div
                         data-testid={`chat-message-${messageId}-body`}
-                        style={{ fontSize: 13.5, color: 'var(--fg-1)' }}
+                        className="chat-message-body"
                     >
                         <Markdown source={textContent} project={projectKey ?? undefined} />
                         {streaming && <span className="caret" />}
@@ -293,91 +279,85 @@ export function MessageBubble({
                     <CounterfactualPanel rows={counterfactual} enabled={showCounterfactual} />
                 )}
                 {!streaming && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 2, marginTop: 10 }}>
-                        {activityInfo}
-                        <MessageActions
-                            content={textContent}
-                            onRegenerate={onRegenerate}
-                            onBranch={onBranch}
-                        />
-                        {/*
-                          * FeedbackButtons posts to
-                          * /conversations/{conv}/messages/{id}/feedback (see
-                          * `chatApi.rateMessage()`) which requires a numeric
-                          * persisted id. SDK UIMessage carries a string id
-                          * during the window between stream-finish and the
-                          * TanStack invalidation that swaps the cached
-                          * UIMessage for the persisted AppMessage. Hide the
-                          * buttons in that transient state — they reappear
-                          * once the refetch lands the canonical row.
-                          */}
-                        {typeof messageId === 'number' && !isUiMessage(message) && (
-                            <FeedbackButtons
-                                conversationId={conversationId}
-                                messageId={messageId}
-                                initialRating={message.rating}
+                    <div className="chat-message-footer">
+                        <div className="chat-message-controls">
+                            {activityInfo}
+                            <MessageActions
+                                content={textContent}
+                                onRegenerate={onRegenerate}
+                                onBranch={onBranch}
                             />
-                        )}
-                        <span style={{ flex: 1 }} />
-                        {/*
-                          * T3.6 — confidence badge to the right of
-                          * the action row. Renders nothing on legacy
-                          * rows that have no signal; renders 'refused'
-                          * tier (grey) when refusal_reason is set;
-                          * otherwise renders the high/moderate/low
-                          * tier per the score band.
-                          */}
-                        <ConfidenceBadge
-                            confidence={confidence}
-                            refusalReason={refusalReason}
-                        />
-                        {meta.model && (
-                            <span
-                                data-testid={`chat-message-${messageId}-meta`}
-                                className="mono"
-                                style={{
-                                    fontSize: 10.5,
-                                    color: 'var(--fg-3)',
-                                    marginLeft: 8,
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: 6,
-                                }}
-                            >
-                                <span data-testid={`chat-message-${messageId}-provider-model`}>
-                                    {meta.provider ? `${meta.provider} · ` : ''}
-                                    {meta.model}
-                                </span>
-                                {!isUiMessage(message) && message.created_at && (
-                                    <span data-testid={`chat-message-${messageId}-timestamp`}>
-                                        · {formatTimestamp(message.created_at)}
+                            {/*
+                              * FeedbackButtons posts to
+                              * /conversations/{conv}/messages/{id}/feedback (see
+                              * `chatApi.rateMessage()`) which requires a numeric
+                              * persisted id. SDK UIMessage carries a string id
+                              * during the window between stream-finish and the
+                              * TanStack invalidation that swaps the cached
+                              * UIMessage for the persisted AppMessage. Hide the
+                              * buttons in that transient state — they reappear
+                              * once the refetch lands the canonical row.
+                              */}
+                            {typeof messageId === 'number' && !isUiMessage(message) && (
+                                <FeedbackButtons
+                                    conversationId={conversationId}
+                                    messageId={messageId}
+                                    initialRating={message.rating}
+                                />
+                            )}
+                        </div>
+                        <div className="chat-message-metadata">
+                            {/*
+                              * T3.6 — confidence badge to the right of
+                              * the action row. Renders nothing on legacy
+                              * rows that have no signal; renders 'refused'
+                              * tier (grey) when refusal_reason is set;
+                              * otherwise renders the high/moderate/low
+                              * tier per the score band.
+                              */}
+                            <ConfidenceBadge
+                                confidence={confidence}
+                                refusalReason={refusalReason}
+                            />
+                            {meta.model && (
+                                <span
+                                    data-testid={`chat-message-${messageId}-meta`}
+                                    className="mono chat-message-meta"
+                                >
+                                    <span data-testid={`chat-message-${messageId}-provider-model`}>
+                                        {meta.provider ? `${meta.provider} · ` : ''}
+                                        {meta.model}
                                     </span>
-                                )}
-                                {meta.latency_ms !== undefined && (
-                                    <span>· {(meta.latency_ms / 1000).toFixed(1)}s</span>
-                                )}
-                            </span>
-                        )}
-                        {/*
-                          * v4.5/W7 Tier 1 #5 — per-turn token + cost meter.
-                          * v8.16/W3: prefers the authoritative server-resolved
-                          * cost (meta.cost / cost_currency, any ISO currency) and
-                          * skips the rate fetch when present; falls back to the
-                          * client-side rate compute (TanStack Query on
-                          * /api/chat/cost-rates) for legacy rows / metering-off.
-                          * Renders nothing on user turns / rows with no token
-                          * telemetry.
-                          */}
-                        <TokenCostMeter
-                            provider={meta.provider}
-                            model={meta.model}
-                            promptTokens={meta.prompt_tokens}
-                            completionTokens={meta.completion_tokens}
-                            totalTokens={meta.total_tokens}
-                            serverCost={meta.cost}
-                            serverCostCurrency={meta.cost_currency}
-                        />
-                        {/* timestamp moved into provider/model meta block above */}
+                                    {!isUiMessage(message) && message.created_at && (
+                                        <span data-testid={`chat-message-${messageId}-timestamp`}>
+                                            · {formatTimestamp(message.created_at)}
+                                        </span>
+                                    )}
+                                    {meta.latency_ms !== undefined && (
+                                        <span>· {(meta.latency_ms / 1000).toFixed(1)}s</span>
+                                    )}
+                                </span>
+                            )}
+                            {/*
+                              * v4.5/W7 Tier 1 #5 — per-turn token + cost meter.
+                              * v8.16/W3: prefers the authoritative server-resolved
+                              * cost (meta.cost / cost_currency, any ISO currency) and
+                              * skips the rate fetch when present; falls back to the
+                              * client-side rate compute (TanStack Query on
+                              * /api/chat/cost-rates) for legacy rows / metering-off.
+                              * Renders nothing on user turns / rows with no token
+                              * telemetry.
+                              */}
+                            <TokenCostMeter
+                                provider={meta.provider}
+                                model={meta.model}
+                                promptTokens={meta.prompt_tokens}
+                                completionTokens={meta.completion_tokens}
+                                totalTokens={meta.total_tokens}
+                                serverCost={meta.cost}
+                                serverCostCurrency={meta.cost_currency}
+                            />
+                        </div>
 
                     </div>
                 )}

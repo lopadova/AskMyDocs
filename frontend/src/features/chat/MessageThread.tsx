@@ -2,6 +2,8 @@ import { Fragment, useEffect, useRef, type ReactNode } from 'react';
 import { MessageBubble } from './MessageBubble';
 import { AgentActivityBar } from './AgentActivityBar';
 import { Icon } from '../../components/Icons';
+import { Button } from '../../components/Button';
+import { useChatStore } from './chat.store';
 import { Alert, AlertDescription, AlertIcon, AlertTitle } from '../../components/ui/alert';
 import type { AgentRunEvent } from '../../lib/agent-run-events';
 import { mapStatusToDataState, type SdkStatus } from './map-status-to-data-state';
@@ -178,7 +180,7 @@ export function MessageThread({
             aria-label="Conversation messages"
             aria-live="polite"
             aria-busy={isLoadingHistory || isStreaming}
-            className="grid-bg chat-thread-scroll"
+            className="chat-thread-scroll"
         >
             <div className="chat-thread-content">
                 {state === 'empty' && <EmptyThread />}
@@ -315,60 +317,29 @@ export function MessageThread({
 }
 
 function EmptyThread(): ReactNode {
+    const setDraft = useChatStore((state) => state.setDraft);
     const prompts = [
         'How does PTO work for new hires?',
         'Show me the remote work policy',
         'What’s the incident response checklist?',
     ];
     return (
-        <div
-            data-testid="chat-thread-empty"
-            style={{
-                maxWidth: 560,
-                margin: '64px auto',
-                padding: 24,
-                background: 'var(--panel-solid)',
-                border: '1px solid var(--panel-border)',
-                borderRadius: 14,
-                textAlign: 'center',
-            }}
-        >
-            <div
-                style={{
-                    width: 40,
-                    height: 40,
-                    margin: '0 auto 10px',
-                    background: 'var(--grad-accent)',
-                    borderRadius: 10,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                }}
-            >
-                <Icon.Sparkles size={18} />
-            </div>
-            <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>Ask your knowledge base</div>
-            <div style={{ fontSize: 13, color: 'var(--fg-2)', marginBottom: 18, lineHeight: 1.6 }}>
-                Answers are grounded in your canonical docs. Every reply cites the
-                sources it pulled from.
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {prompts.map((p, i) => (
-                    <button
-                        key={i}
-                        type="button"
-                        data-testid={`chat-suggested-prompt-${i}`}
-                        className="btn"
-                        style={{
-                            justifyContent: 'flex-start',
-                            fontSize: 12.5,
-                            color: 'var(--fg-1)',
-                            background: 'var(--bg-2)',
-                            border: '1px solid var(--panel-border)',
-                        }}
+        <div data-testid="chat-thread-empty" className="chat-empty-state">
+            <span className="chat-empty-icon" aria-hidden="true"><Icon.Sparkles size={24} /></span>
+            <h2>What would you like to explore?</h2>
+            <p>Ask your knowledge base. Follow the sources. Keep the conversation going.</p>
+            <div className="chat-empty-prompts">
+                {prompts.map((prompt, index) => (
+                    <Button
+                        key={prompt}
+                        variant="quiet"
+                        size="md"
+                        data-testid={`chat-suggested-prompt-${index}`}
+                        trailingIcon={<Icon.Chevron size={14} />}
+                        onClick={() => setDraft(prompt)}
                     >
-                        {p}
-                    </button>
+                        {prompt}
+                    </Button>
                 ))}
             </div>
         </div>

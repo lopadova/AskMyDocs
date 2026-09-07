@@ -1,4 +1,6 @@
 import { useState, type ReactNode } from 'react';
+import { Button } from '../../components/Button';
+import { Icon } from '../../components/Icons';
 import { FilterChip } from './FilterChip';
 import { FilterPickerPopover } from './FilterPickerPopover';
 import { FilterPresetsDropdown } from './FilterPresetsDropdown';
@@ -67,8 +69,10 @@ export function FilterBar({
               * order is just visual hierarchy, not a contract.
               */}
             <FilterPresetsDropdown filters={filters} onLoad={onChange} />
-            <button
-                type="button"
+            <Button
+                variant="quiet"
+                size="sm"
+                leadingIcon={<Icon.Filter size={13} />}
                 data-testid="chat-filter-bar-add"
                 className="chat-filter-trigger"
                 aria-label="Add chat filter"
@@ -76,7 +80,6 @@ export function FilterBar({
                 aria-haspopup="dialog"
                 onClick={() => setPopoverOpen((v) => !v)}
             >
-                <span aria-hidden="true">+</span>
                 Filter
                 {selectedCount > 0 && (
                     <span
@@ -99,7 +102,7 @@ export function FilterBar({
                         {selectedCount}
                     </span>
                 )}
-            </button>
+            </Button>
 
             {(filters.project_keys ?? []).map((p) => (
                 <FilterChip
