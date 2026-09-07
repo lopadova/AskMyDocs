@@ -887,6 +887,9 @@ class AppServiceProvider extends ServiceProvider
             // Operator bootstrap: create a real company (tenant) + its admin
             // user in one shot (create-new semantics, fails if it exists).
             \App\Console\Commands\CreateCompanyCommand::class,
+            // Destructive operator reset: purge one tenant and recreate only
+            // its registry row. Interactive confirmation unless --force.
+            \App\Console\Commands\ResetTenantCommand::class,
             // Invite-only registration bootstrap. Codes without --tenant
             // create an account that must complete company onboarding; codes
             // with --tenant carry one explicit operational grant.
