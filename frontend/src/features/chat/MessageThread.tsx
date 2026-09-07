@@ -262,9 +262,26 @@ export function MessageThread({
                             && !activeRunHasPersistedActivity
                             && (isStreaming || awaitingAgentConfirmation || agentEvents.length > 0);
 
+                        const renderMessage = (activityInfo: ReactNode = null) => (
+                            <MessageBubble
+                                conversationId={conversationId}
+                                message={m}
+                                projectKey={projectKey}
+                                streaming={streaming}
+                                activityInfo={activityInfo}
+                                onRegenerate={regenerateHandler}
+                                onBranch={branchHandler}
+                                onEditSubmit={editHandler}
+                                showCounterfactual={showCounterfactual}
+                                onOpenSource={onOpenSource}
+                                onMcpAppMessage={onMcpAppMessage}
+                                onAgentArtifactSelection={onAgentArtifactSelection}
+                            />
+                        );
+
                         return (
                             <Fragment key={getMessageId(m)}>
-                                {persistedActivity.length > 0 && (
+                                {persistedActivity.length > 0 ? (
                                     <AgentActivityBar
                                         events={persistedActivity}
                                         active={false}
@@ -273,21 +290,10 @@ export function MessageThread({
                                         onContinue={noop}
                                         instanceId={`message-${String(mid)}`}
                                         embedded
-                                    />
-                                )}
-                                <MessageBubble
-                                    conversationId={conversationId}
-                                    message={m}
-                                    projectKey={projectKey}
-                                    streaming={streaming}
-                                    onRegenerate={regenerateHandler}
-                                    onBranch={branchHandler}
-                                    onEditSubmit={editHandler}
-                                    showCounterfactual={showCounterfactual}
-                                    onOpenSource={onOpenSource}
-                                    onMcpAppMessage={onMcpAppMessage}
-                                    onAgentArtifactSelection={onAgentArtifactSelection}
-                                />
+                                    >
+                                        {renderMessage}
+                                    </AgentActivityBar>
+                                ) : renderMessage()}
                                 {showLiveActivityAfterMessage && (
                                     <AgentActivityBar
                                         events={agentEvents}

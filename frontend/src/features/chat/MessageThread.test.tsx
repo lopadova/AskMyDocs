@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactElement } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -57,7 +57,7 @@ describe('MessageThread agent activity', () => {
         });
     });
 
-    it('renders persisted activity between its user request and assistant answer', () => {
+    it('moves persisted activity into the answer footer and opens its timeline in a modal', async () => {
         const user = message(10, 'user', 'Dove si trova la spedizione?', { agent_run_id: 'run-1' });
         const assistant = message(11, 'assistant', 'La spedizione è stata consegnata.', {
             agent_run_id: 'run-1',
@@ -78,13 +78,16 @@ describe('MessageThread agent activity', () => {
 
         const content = container.querySelector('.chat-thread-content');
         expect(content).not.toBeNull();
-        expect(Array.from(content!.children).map((node) => (
+        expect(Array.from(content!.querySelectorAll('[data-role], [data-testid="agent-activity-bar"]')).map((node) => (
             node.getAttribute('data-role') ?? node.getAttribute('data-testid')
         ))).toEqual(['user', 'agent-activity-bar', 'assistant']);
         expect(screen.getByTestId('agent-activity-heading')).toHaveTextContent('Risultato pronto');
         expect(screen.getByText('La spedizione è stata consegnata.')).toBeInTheDocument();
         expect(screen.queryByTestId('chat-message-11-tool-calls')).not.toBeInTheDocument();
         expect(screen.queryByText('mcp_hubhive_orders_list')).not.toBeInTheDocument();
+        const info = await within(screen.getByTestId('chat-message-11')).findByRole('button', { name: 'Informazioni sulla risposta' });
+        fireEvent.click(info);
+        expect(within(screen.getByRole('dialog')).getByTestId('agent-activity-timeline')).toHaveTextContent('La risposta è pronta.');
     });
 
     it('shows the live activity immediately after the active user request', () => {

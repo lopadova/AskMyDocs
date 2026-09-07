@@ -1,7 +1,8 @@
-import { useId, useState, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import type { AgentRunEvent } from '../../lib/agent-run-events';
 import { Icon } from '../../components/Icons';
 import { Button } from '../../components/Button';
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '../../components/ui/dialog';
 
 export interface AgentActivityBarProps {
     events: AgentRunEvent[];
@@ -11,6 +12,8 @@ export interface AgentActivityBarProps {
     onContinue: () => void;
     instanceId?: string;
     embedded?: boolean;
+    /** Render the answer with the compact activity action in its footer. */
+    children?: (activityInfo: ReactNode) => ReactNode;
 }
 
 type ActivityState = 'active' | 'settled' | 'confirmation' | 'failed';
@@ -33,16 +36,23 @@ export function AgentActivityBar({
     onContinue,
     instanceId,
     embedded = false,
+    children,
 }: AgentActivityBarProps): ReactNode {
     const [expanded, setExpanded] = useState(false);
+    const [modalOpen, setModalOpen] = useState(false);
+    const [collapsedRunId, setCollapsedRunId] = useState<string | null>(null);
+    const barRef = useRef<HTMLDivElement>(null);
+    const infoRef = useRef<HTMLButtonElement>(null);
+    const restoreInfoFocus = useRef(false);
     const generatedId = useId();
     const timelineId = `agent-activity-timeline-${instanceId ?? generatedId}`;
-    if (events.length === 0 && !active && !awaitingConfirmation) return null;
     const latest = events[events.length - 1];
     const locale = latest?.locale?.toLowerCase().startsWith('it') ? 'it' : 'en';
     const copy = locale === 'it'
         ? {
             fallback: 'L’assistente sta lavorando.',
+            info: 'Informazioni sulla risposta',
+            close: 'Chiudi informazioni',
             details: 'Cronologia attività',
             showDetails: 'Mostra attività',
             hideDetails: 'Nascondi attività',
@@ -63,6 +73,8 @@ export function AgentActivityBar({
         }
         : {
             fallback: 'The assistant is working.',
+            info: 'Answer information',
+            close: 'Close information',
             details: 'Activity timeline',
             showDetails: 'Show activity',
             hideDetails: 'Hide activity',
@@ -102,7 +114,147 @@ export function AgentActivityBar({
     ));
     const progressOffset = RING_CIRCUMFERENCE * (1 - percent / 100);
 
-    return (
+    // Keep the ready state visible for 200 ms. Only retire the bar once its
+    // answer exists, so details never disappear during the history handoff.
+    const canCollapse = state === 'settled' && children !== undefined && events.length > 0;
+    const runId = latest?.run_id ?? timelineId;
+    const compact = canCollapse && collapsedRunId === runId;
+    const isModalOpen = modalOpen || (compact && expanded);
+    useEffect(() => {
+        setCollapsedRunId(null);
+        if (!canCollapse) return;
+        const timer = window.setTimeout(() => {
+            restoreInfoFocus.current = barRef.current?.contains(document.activeElement) ?? false;
+            setCollapsedRunId(runId);
+        }, 200);
+        return () => window.clearTimeout(timer);
+    }, [canCollapse, runId]);
+
+    useEffect(() => {
+        if (compact && restoreInfoFocus.current) {
+            if (!isModalOpen) infoRef.current?.focus({ preventScroll: true });
+            restoreInfoFocus.current = false;
+        }
+    }, [compact, isModalOpen]);
+
+    if (events.length === 0 && !active && !awaitingConfirmation) return children?.(null) ?? null;
+
+    const renderTimeline = () => (
+        <section className="agent-activity-details" id={timelineId} data-testid="agent-activity-timeline">
+            <div className="agent-activity-details-header">
+                <strong>{copy.details}</strong>
+                <span>{timelineEvents.length} {copy.events}</span>
+            </div>
+            <ol>
+                {timelineEvents.map((event) => {
+                    const debug = mcpDebugData(event);
+                    const eventState = event.type === 'run.failed' || event.type === 'run.cancelled'
+                        ? 'failed'
+                        : event.type === 'run.awaiting_confirmation'
+                            ? 'confirmation'
+                            : event.type === 'run.completed' || event.type === 'run.partial'
+                                ? 'settled'
+                                : 'active';
+                    const eventStage = activityStage(event, eventState, locale);
+
+                    return (
+                        <li
+                            key={event.sequence}
+                            className={debug ? 'agent-activity-event has-mcp-debug' : 'agent-activity-event'}
+                            data-kind={eventStage.kind}
+                        >
+                            <span className="agent-activity-event-icon" aria-hidden="true">{stageIcon(eventStage.kind, 12)}</span>
+                            <div className="agent-activity-event-content">
+                                <div className="agent-activity-event-heading">
+                                    <strong>{eventStage.title}</strong>
+                                    {event.created_at && <time dateTime={event.created_at}>{eventTime(event.created_at, locale)}</time>}
+                                </div>
+                                {event.message && <span className="agent-activity-event-message">{event.message}</span>}
+                                {debug && (
+                                    <details className="agent-mcp-debug" data-testid={`agent-mcp-debug-${event.sequence}`}>
+                                        <summary>
+                                            <span className="agent-mcp-debug-title">{copy.mcpDetails}</span>
+                                            <span className="agent-mcp-debug-tool">{debug.tool_remote_name}</span>
+                                            <span className="agent-mcp-debug-status" data-status={debug.status}>
+                                                {debug.status} · {debug.duration_ms} ms
+                                            </span>
+                                        </summary>
+                                        <div className="agent-mcp-debug-body">
+                                            <dl className="agent-mcp-debug-meta">
+                                                <div>
+                                                    <dt>{copy.server}</dt>
+                                                    <dd>{debug.server_name ?? debug.connection_id ?? '—'}</dd>
+                                                </div>
+                                                <div>
+                                                    <dt>{copy.runtime}</dt>
+                                                    <dd>{debug.runtime}</dd>
+                                                </div>
+                                                <div>
+                                                    <dt>Method</dt>
+                                                    <dd>{debug.method}</dd>
+                                                </div>
+                                                <div>
+                                                    <dt>Tool</dt>
+                                                    <dd>{debug.tool_local_name}</dd>
+                                                </div>
+                                            </dl>
+                                            <DebugJson
+                                                label={copy.parameters}
+                                                value={debug.parameters}
+                                                variant="parameters"
+                                                locale={locale}
+                                                copyLabel={copy.copy}
+                                                copiedLabel={copy.copied}
+                                                copyFailedLabel={copy.copyFailed}
+                                            />
+                                            <DebugJson
+                                                label={copy.response}
+                                                value={debug.response}
+                                                variant="response"
+                                                locale={locale}
+                                                copyLabel={copy.copy}
+                                                copiedLabel={copy.copied}
+                                                copyFailedLabel={copy.copyFailed}
+                                            />
+                                            {debug.error != null && (
+                                                <DebugJson
+                                                    label={copy.error}
+                                                    value={debug.error}
+                                                    variant="error"
+                                                    locale={locale}
+                                                    copyLabel={copy.copy}
+                                                    copiedLabel={copy.copied}
+                                                    copyFailedLabel={copy.copyFailed}
+                                                />
+                                            )}
+                                        </div>
+                                    </details>
+                                )}
+                            </div>
+                        </li>
+                    );
+                })}
+            </ol>
+        </section>
+    );
+    const information = compact ? (
+        <DialogTrigger asChild>
+            <Button
+                ref={infoRef}
+                variant="quiet"
+                size="sm"
+                iconOnly
+                className="agent-activity-info"
+                data-testid="agent-activity-info"
+                aria-label={copy.info}
+                title={copy.info}
+            >
+                <Icon.Info size={15} />
+            </Button>
+        </DialogTrigger>
+    ) : null;
+
+    const bar = (
         <aside
             data-testid="agent-activity-bar"
             data-state={state}
@@ -186,105 +338,54 @@ export function AgentActivityBar({
                     </Button>
                 )}
             </div>
-            {expanded && timelineEvents.length > 0 && (
-                <section className="agent-activity-details" id={timelineId} data-testid="agent-activity-timeline">
-                    <div className="agent-activity-details-header">
-                        <strong>{copy.details}</strong>
-                        <span>{timelineEvents.length} {copy.events}</span>
-                    </div>
-                    <ol>
-                        {timelineEvents.map((event) => {
-                            const debug = mcpDebugData(event);
-                            const eventState = event.type === 'run.failed' || event.type === 'run.cancelled'
-                                ? 'failed'
-                                : event.type === 'run.awaiting_confirmation'
-                                    ? 'confirmation'
-                                    : event.type === 'run.completed' || event.type === 'run.partial'
-                                        ? 'settled'
-                                        : 'active';
-                            const eventStage = activityStage(event, eventState, locale);
-
-                            return (
-                                <li
-                                    key={event.sequence}
-                                    className={debug ? 'agent-activity-event has-mcp-debug' : 'agent-activity-event'}
-                                    data-kind={eventStage.kind}
-                                >
-                                    <span className="agent-activity-event-icon" aria-hidden="true">{stageIcon(eventStage.kind, 12)}</span>
-                                    <div className="agent-activity-event-content">
-                                        <div className="agent-activity-event-heading">
-                                            <strong>{eventStage.title}</strong>
-                                            {event.created_at && <time dateTime={event.created_at}>{eventTime(event.created_at, locale)}</time>}
-                                        </div>
-                                        {event.message && <span className="agent-activity-event-message">{event.message}</span>}
-                                        {debug && (
-                                            <details className="agent-mcp-debug" data-testid={`agent-mcp-debug-${event.sequence}`}>
-                                                <summary>
-                                                    <span className="agent-mcp-debug-title">{copy.mcpDetails}</span>
-                                                    <span className="agent-mcp-debug-tool">{debug.tool_remote_name}</span>
-                                                    <span className="agent-mcp-debug-status" data-status={debug.status}>
-                                                        {debug.status} · {debug.duration_ms} ms
-                                                    </span>
-                                                </summary>
-                                                <div className="agent-mcp-debug-body">
-                                                    <dl className="agent-mcp-debug-meta">
-                                                        <div>
-                                                            <dt>{copy.server}</dt>
-                                                            <dd>{debug.server_name ?? debug.connection_id ?? '—'}</dd>
-                                                        </div>
-                                                        <div>
-                                                            <dt>{copy.runtime}</dt>
-                                                            <dd>{debug.runtime}</dd>
-                                                        </div>
-                                                        <div>
-                                                            <dt>Method</dt>
-                                                            <dd>{debug.method}</dd>
-                                                        </div>
-                                                        <div>
-                                                            <dt>Tool</dt>
-                                                            <dd>{debug.tool_local_name}</dd>
-                                                        </div>
-                                                    </dl>
-                                                    <DebugJson
-                                                        label={copy.parameters}
-                                                        value={debug.parameters}
-                                                        variant="parameters"
-                                                        locale={locale}
-                                                        copyLabel={copy.copy}
-                                                        copiedLabel={copy.copied}
-                                                        copyFailedLabel={copy.copyFailed}
-                                                    />
-                                                    <DebugJson
-                                                        label={copy.response}
-                                                        value={debug.response}
-                                                        variant="response"
-                                                        locale={locale}
-                                                        copyLabel={copy.copy}
-                                                        copiedLabel={copy.copied}
-                                                        copyFailedLabel={copy.copyFailed}
-                                                    />
-                                                    {debug.error != null && (
-                                                        <DebugJson
-                                                            label={copy.error}
-                                                            value={debug.error}
-                                                            variant="error"
-                                                            locale={locale}
-                                                            copyLabel={copy.copy}
-                                                            copiedLabel={copy.copied}
-                                                            copyFailedLabel={copy.copyFailed}
-                                                        />
-                                                    )}
-                                                </div>
-                                            </details>
-                                        )}
-                                    </div>
-                                </li>
-                            );
-                        })}
-                    </ol>
-                </section>
-            )}
+            {expanded && !compact && timelineEvents.length > 0 && renderTimeline()}
         </aside>
+    );
+
+    return (
+        <Dialog
+            open={isModalOpen}
+            onOpenChange={(open) => {
+                setModalOpen(open);
+                if (!open) setExpanded(false);
+            }}
+        >
+            {children ? (
+                <div
+                    ref={barRef}
+                    className="agent-activity-collapse"
+                    data-compact={compact}
+                    aria-hidden={compact || undefined}
+                    inert={compact || undefined}
+                >
+                    <div className="agent-activity-collapse-inner">{bar}</div>
+                </div>
+            ) : bar}
+            {children?.(information)}
+            <DialogContent
+                className="agent-activity-modal"
+                data-testid="agent-activity-modal"
+                showCloseButton={false}
+            >
+                <DialogHeader>
+                    <div className="agent-activity-modal-heading">
+                        <DialogTitle>{copy.info}</DialogTitle>
+                        <DialogClose asChild>
+                            <Button variant="quiet" size="sm" iconOnly aria-label={copy.close} title={copy.close}>
+                                <Icon.Close size={15} />
+                            </Button>
+                        </DialogClose>
+                    </div>
+                    <DialogDescription className="agent-activity-modal-summary">
+                        <strong>{stage.title}</strong>
+                        <span>{stage.detail || latest?.message || copy.fallback}</span>
+                        {likely > 0 && <span>{completed} / ~{likely} {copy.calls}</span>}
+                        {progress?.eta_ms != null && <span>{Math.ceil(progress.eta_ms / 1000)} {copy.seconds}</span>}
+                    </DialogDescription>
+                </DialogHeader>
+                {isModalOpen && renderTimeline()}
+            </DialogContent>
+        </Dialog>
     );
 }
 
