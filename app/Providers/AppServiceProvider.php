@@ -902,6 +902,9 @@ class AppServiceProvider extends ServiceProvider
             // Destructive operator reset: purge one tenant and recreate only
             // its registry row. Interactive confirmation unless --force.
             \App\Console\Commands\ResetTenantCommand::class,
+            // Targeted IMAP recovery: discard one stuck backfill campaign only;
+            // queued jobs for the removed id then terminate as harmless no-ops.
+            \App\Console\Commands\ResetImapBackfillCommand::class,
             // Invite-only registration bootstrap. Codes without --tenant
             // create an account that must complete company onboarding; codes
             // with --tenant carry one explicit operational grant.
