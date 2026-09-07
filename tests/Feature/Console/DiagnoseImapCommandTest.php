@@ -107,6 +107,64 @@ final class DiagnoseImapCommandTest extends TestCase
             ->assertSuccessful();
     }
 
+    public function test_omitting_the_id_inspects_the_only_imap_installation_in_the_requested_tenant(): void
+    {
+        $installation = $this->installation();
+        $this->installation('other-tenant');
+        $notImap = $this->installation('prima-demo', 'not-imap');
+        $notImap->update(['connector_name' => 'notion']);
+        $this->expectTtlReads($installation, 123, -2);
+
+        $this->artisan('connectors:imap:diagnose', ['tenant' => 'prima-demo'])
+            ->expectsOutputToContain("Automatically selected the only IMAP installation in 'prima-demo': {$installation->id}.")
+            ->expectsOutputToContain('installation_id: '.$installation->id)
+            ->expectsOutputToContain('backfill_id: none')
+            ->expectsOutputToContain('mailbox_lock: present (TTL: 123 seconds)')
+            ->assertSuccessful();
+    }
+
+    public function test_multiple_installations_are_listed_without_choosing_or_reading_any_locks(): void
+    {
+        $first = $this->installation('prima-demo', 'support');
+        $second = $this->installation('prima-demo', 'sales');
+        $this->installation('other-tenant', 'other-private-account');
+        Cache::shouldReceive('getStore')->never();
+
+        $this->assertSame(1, Artisan::call('connectors:imap:diagnose', ['tenant' => 'prima-demo']));
+        $output = Artisan::output();
+        $this->assertStringContainsString('support', $output);
+        $this->assertStringContainsString('sales', $output);
+        $this->assertStringContainsString("php artisan connectors:imap:diagnose prima-demo --installation={$first->id}", $output);
+        $this->assertStringContainsString("php artisan connectors:imap:diagnose prima-demo --installation={$second->id}", $output);
+        $this->assertStringNotContainsString('other-private-account', $output);
+        $this->assertStringNotContainsString('mailbox_lock:', $output);
+        $this->assertStringNotContainsString('private@example.test', $output);
+        $this->assertStringNotContainsString('secret-do-not-display', $output);
+    }
+
+    public function test_a_missing_backfill_lists_available_ids_without_silently_switching_target(): void
+    {
+        $installation = $this->installation();
+        Cache::shouldReceive('getStore')->never();
+
+        $this->artisan('connectors:imap:diagnose', ['tenant' => 'prima-demo', 'backfill' => 999])
+            ->expectsOutputToContain("IMAP backfill 999 does not exist in tenant 'prima-demo'.")
+            ->expectsOutputToContain("php artisan connectors:imap:diagnose prima-demo --installation={$installation->id}")
+            ->assertFailed();
+    }
+
+    public function test_no_imap_installations_reports_no_target_without_inspecting_other_tenants(): void
+    {
+        $this->installation('other-tenant');
+        $notImap = $this->installation();
+        $notImap->update(['connector_name' => 'notion']);
+        Cache::shouldReceive('getStore')->never();
+
+        $this->artisan('connectors:imap:diagnose', ['tenant' => 'prima-demo'])
+            ->expectsOutputToContain("No IMAP installations exist in tenant 'prima-demo'; lock state was not inspected.")
+            ->assertFailed();
+    }
+
     public function test_cross_tenant_targets_are_rejected_before_reading_locks(): void
     {
         $installation = $this->installation('other-tenant');
@@ -151,7 +209,6 @@ final class DiagnoseImapCommandTest extends TestCase
     {
         return [
             'invalid tenant' => [['tenant' => '../prima-demo', 'backfill' => 6]],
-            'missing target' => [['tenant' => 'prima-demo']],
             'ambiguous target' => [['tenant' => 'prima-demo', 'backfill' => 6, '--installation' => 2]],
             'invalid backfill' => [['tenant' => 'prima-demo', 'backfill' => 'abc']],
             'invalid installation' => [['tenant' => 'prima-demo', '--installation' => 0]],
@@ -242,11 +299,12 @@ final class DiagnoseImapCommandTest extends TestCase
         return $redis;
     }
 
-    private function installation(string $tenantId = 'prima-demo'): ConnectorInstallation
+    private function installation(string $tenantId = 'prima-demo', string $label = 'default'): ConnectorInstallation
     {
         return ConnectorInstallation::query()->create([
             'tenant_id' => $tenantId,
             'connector_name' => 'imap',
+            'label' => $label,
             'config_json' => [
                 'connection' => ['host' => 'imap.example.test', 'port' => 993, 'username' => 'private@example.test'],
                 'password' => 'secret-do-not-display',

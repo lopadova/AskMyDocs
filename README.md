@@ -195,8 +195,9 @@ tells buyers to demand:
   + `CONNECTOR_IMAP_MAILBOX_LOCK_*`. See the
   [doc-site](https://padosoft.mintlify.app/connectors-imap-serialization).
   Diagnose blocked folder requests without Tinker using
-  `php artisan connectors:imap:diagnose <tenant> <backfill-id>`: read-only queue/cache
-  configuration and separate mailbox/queue-overlap lock TTLs. See the
+  `php artisan connectors:imap:diagnose <tenant>` (optionally add a backfill id):
+  discovers the IMAP installation and reports read-only queue/cache configuration
+  and separate mailbox/queue-overlap lock TTLs. Multiple accounts are listed for selection. See the
   [operator guide](docs/operations/imap-lock-diagnostics.md).
   A **transient transport drop** on a live session (the classic *"fwrite(): SSL: Broken pipe"* /
   connection-reset / idle drop Gmail & Exchange trigger mid-sync) is **absorbed by one

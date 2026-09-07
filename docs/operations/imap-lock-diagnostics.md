@@ -4,11 +4,23 @@ Run on the affected deployment, with the same configuration as the web applicati
 and workers. Tinker is not required:
 
 ```bash
+php artisan connectors:imap:diagnose prima-demo
+```
+
+With only the exact tenant slug, the command selects its sole IMAP installation,
+even if there is no backfill left. If several IMAP installations exist, it lists
+their IDs, labels, statuses and exact commands to run, without choosing an account
+or reading any locks. If none exist, it reports that explicitly. Ambiguous/missing
+targets exit non-zero.
+
+To inspect a specific backfill, add its id:
+
+```bash
 php artisan connectors:imap:diagnose prima-demo 6
 ```
 
-The arguments are the exact tenant slug and backfill id. If the backfill has
-already been removed, use the IMAP installation id instead:
+A missing backfill also lists the available installation IDs; it never silently
+switches to a different target. To inspect an IMAP installation directly:
 
 ```bash
 php artisan connectors:imap:diagnose prima-demo --installation=123
