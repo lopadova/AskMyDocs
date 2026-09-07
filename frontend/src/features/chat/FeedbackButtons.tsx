@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { Button } from '../../components/Button';
 import { Icon } from '../../components/Icons';
 import { chatApi, type Message } from './chat.api';
 
@@ -38,31 +39,37 @@ export function FeedbackButtons({ conversationId, messageId, initialRating }: Fe
     });
 
     return (
-        <div data-testid="chat-feedback" data-rating={rating ?? 'none'} style={{ display: 'inline-flex', gap: 2 }}>
-            <button
+        <div data-testid="chat-feedback" data-rating={rating ?? 'none'} style={{ display: 'inline-flex', gap: 8 }}>
+            <Button
                 type="button"
-                className="btn icon sm ghost"
+                variant="quiet"
+                size="sm"
+                iconOnly
                 data-testid="chat-feedback-up"
                 aria-label="Mark answer as helpful"
+                title="Mark answer as helpful"
                 aria-pressed={rating === 'positive'}
                 onClick={() => mutation.mutate('positive')}
                 disabled={mutation.isPending}
                 style={{ color: rating === 'positive' ? 'var(--accent-a)' : undefined }}
             >
                 <Icon.ThumbsUp size={13} fill={rating === 'positive' ? 'currentColor' : 'none'} />
-            </button>
-            <button
+            </Button>
+            <Button
                 type="button"
-                className="btn icon sm ghost"
+                variant="quiet"
+                size="sm"
+                iconOnly
                 data-testid="chat-feedback-down"
                 aria-label="Mark answer as unhelpful"
+                title="Mark answer as unhelpful"
                 aria-pressed={rating === 'negative'}
                 onClick={() => mutation.mutate('negative')}
                 disabled={mutation.isPending}
                 style={{ color: rating === 'negative' ? 'var(--err)' : undefined }}
             >
                 <Icon.ThumbsDown size={13} fill={rating === 'negative' ? 'currentColor' : 'none'} />
-            </button>
+            </Button>
             {mutation.isError && (
                 <span data-testid="chat-feedback-error" role="alert" style={{ fontSize: 11, color: 'var(--err)' }}>
                     Couldn’t save rating.

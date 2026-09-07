@@ -77,7 +77,7 @@ export function ConversationList({ projectKey, onSelect, onNewAnonymous }: Conve
                 <div className="chat-conversation-actions">
                     <Button
                         variant="primary"
-                        size="md"
+                        size="sm"
                         className="chat-conversation-new"
                         data-testid="chat-new-conversation"
                         onClick={() => createMutation.mutate()}
@@ -87,8 +87,8 @@ export function ConversationList({ projectKey, onSelect, onNewAnonymous }: Conve
                         {createMutation.isPending ? 'Creating…' : 'New chat'}
                     </Button>
                     <Button
-                        variant="secondary"
-                        size="md"
+                        variant="quiet"
+                        size="sm"
                         className="chat-conversation-anonymous"
                         data-testid="chat-new-anonymous-chat"
                         onClick={onNewAnonymous}
@@ -110,14 +110,17 @@ export function ConversationList({ projectKey, onSelect, onNewAnonymous }: Conve
                         placeholder="Search conversations"
                     />
                     {filter !== '' && (
-                        <button
-                            type="button"
+                        <Button
+                            variant="quiet"
+                            size="sm"
+                            iconOnly
                             className="chat-conversation-search-clear"
                             aria-label="Clear conversation search"
+                            title="Clear conversation search"
                             onClick={() => setFilter('')}
                         >
                             <Icon.Close size={11} />
-                        </button>
+                        </Button>
                     )}
                 </label>
             </div>

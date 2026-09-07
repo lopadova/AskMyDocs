@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { Button } from '../../components/Button';
 import { Icon } from '../../components/Icons';
 
 export interface MessageActionsProps {
@@ -34,38 +35,47 @@ export function MessageActions({ content, onRegenerate, onBranch }: MessageActio
     };
 
     return (
-        <div data-testid="chat-message-actions" style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
-            <button
+        <div data-testid="chat-message-actions" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            <Button
                 type="button"
-                className="btn icon sm ghost"
+                variant="quiet"
+                size="sm"
+                iconOnly
                 data-testid="chat-message-copy"
                 data-state={copied ? 'copied' : 'idle'}
                 onClick={onCopy}
                 aria-label="Copy message"
+                title="Copy message"
             >
                 {copied ? <Icon.Check size={12} /> : <Icon.Copy size={12} />}
-            </button>
+            </Button>
             {onRegenerate && (
-                <button
+                <Button
                     type="button"
-                    className="btn icon sm ghost"
+                    variant="quiet"
+                    size="sm"
+                    iconOnly
                     data-testid="chat-message-regenerate"
                     onClick={onRegenerate}
                     aria-label="Regenerate answer"
+                    title="Regenerate answer"
                 >
                     <Icon.Play size={12} />
-                </button>
+                </Button>
             )}
             {onBranch && (
-                <button
+                <Button
                     type="button"
-                    className="btn icon sm ghost"
+                    variant="quiet"
+                    size="sm"
+                    iconOnly
                     data-testid="chat-message-branch"
                     onClick={onBranch}
                     aria-label="Branch from this reply"
+                    title="Branch from this reply"
                 >
                     <Icon.Branch size={12} />
-                </button>
+                </Button>
             )}
         </div>
     );

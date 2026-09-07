@@ -114,9 +114,9 @@ export function SuggestedFollowups({
                 {suggestions.map((prompt, i) => (
                     <Button
                         key={`${turnId}-${i}`}
-                        variant="secondary"
+                        variant="quiet"
                         size="sm"
-                        leadingIcon={<Icon.Sparkles />}
+                        trailingIcon={<Icon.Chevron />}
                         data-testid={`chat-suggested-followup-${i}`}
                         className="chat-suggested-followup"
                         onClick={() => onPick(prompt)}

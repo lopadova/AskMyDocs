@@ -309,12 +309,12 @@ export function AgentActivityBar({
                         variant="quiet"
                         size="sm"
                         className="agent-activity-details-toggle"
+                        leadingIcon={<Icon.Eye size={13} />}
                         aria-expanded={expanded}
                         aria-controls={timelineId}
                         aria-label={expanded ? copy.hideDetails : copy.showDetails}
                         onClick={() => setExpanded((value) => !value)}
                     >
-                        <Icon.Eye size={13} />
                         <span>{expanded ? copy.hideDetails : copy.details}</span>
                         <span className="agent-activity-count">{timelineEvents.length}</span>
                     </Button>
@@ -324,11 +324,11 @@ export function AgentActivityBar({
                         variant="secondary"
                         size="sm"
                         className="agent-activity-cancel"
+                        leadingIcon={<Icon.Close size={12} />}
                         aria-label={copy.cancel}
                         data-testid="agent-activity-cancel"
                         onClick={onCancel}
                     >
-                        <Icon.Close size={12} />
                         <span>{copy.cancel}</span>
                     </Button>
                 )}

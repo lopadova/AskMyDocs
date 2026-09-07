@@ -104,7 +104,7 @@ describe('SuggestedFollowups', () => {
         expect(shell).toHaveClass('chat-suggested-followups-shell');
         expect(shell.querySelector('.chat-suggested-followups')).not.toBeNull();
         expect(suggestion).toHaveClass('ui-button', 'chat-suggested-followup');
-        expect(suggestion).toHaveAttribute('data-variant', 'secondary');
+        expect(suggestion).toHaveAttribute('data-variant', 'quiet');
         expect(suggestion).toHaveAttribute('data-size', 'sm');
         expect(suggestion).toHaveAttribute('title', 'How does this affect remote workers?');
     });

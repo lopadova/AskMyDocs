@@ -1,4 +1,4 @@
-import { useCallback, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Outlet, useMatchRoute, useNavigate } from '@tanstack/react-router';
 import { Sidebar } from './Sidebar';
 import { NAV_ITEMS, SECTION_ROUTES, deriveSection, type SidebarSection } from './nav-config';
@@ -51,6 +51,15 @@ export function AppShell({ children, tenantScoped = true }: { children?: ReactNo
     const [density, setDensity] = useDensity('balanced');
     const [font, setFont] = useFontPair('geist');
     const [tweaksOpen, setTweaksOpen] = useState(false);
+    const [compactNavigation, setCompactNavigation] = useState(() => window.matchMedia?.('(max-width: 960px)').matches ?? false);
+    useEffect(() => {
+        const query = window.matchMedia?.('(max-width: 960px)');
+        if (!query) return;
+        const update = () => setCompactNavigation(query.matches);
+        update();
+        query.addEventListener('change', update);
+        return () => query.removeEventListener('change', update);
+    }, []);
 
     const navigate = useNavigate();
     const matchRoute = useMatchRoute();
@@ -119,13 +128,14 @@ export function AppShell({ children, tenantScoped = true }: { children?: ReactNo
         >
             <Sidebar
                 active={section}
+                collapsed={section === 'chat' && compactNavigation}
                 onNav={onNav}
                 user={sidebarUser}
                 projectCount={projectCount}
                 features={features}
                 hasTenants={teams.length > 0}
             />
-            <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <main style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                 <Topbar
                     team={activeTeam}
                     teams={teams}

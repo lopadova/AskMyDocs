@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from '@tanstack/react-router';
-import { ConversationList } from './ConversationList';
+import { ConversationNavigation } from './ConversationNavigation';
 import { ConversationTitle } from './ConversationTitle';
 import { MessageThread } from './MessageThread';
 import { Composer } from './Composer';
@@ -641,129 +641,133 @@ export function ChatView(): ReactNode {
 
     return (
         <div data-testid="chat-view" style={{ display: 'flex', height: '100%', flex: 1, minWidth: 0 }}>
-            <ConversationList
+            <ConversationNavigation
                 projectKey={projectKey}
                 onSelect={onSelect}
                 onNewAnonymous={() =>
                     navigate({ to: '/app/$teamHash/chat/anonymous', params: { teamHash } })
                 }
-            />
-            <div
-                className="chat-main-column"
-                style={{
-                    flex: 1,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    minWidth: 0,
-                    minHeight: 0,
-                    overflow: 'hidden',
-                    position: 'relative',
-                }}
             >
-                <header
-                    data-testid="chat-header"
-                    className="chat-header-shell"
-                >
-                    <span className="chat-header-icon" aria-hidden="true">
-                        <Icon.Chat size={17} />
-                    </span>
-                    <div className="chat-header-content">
-                        <div className="chat-header-title-row">
-                            {activeId !== null ? (
-                                <ConversationTitle
-                                    conversationId={activeId}
-                                    title={
-                                        activeConversation?.title?.trim()
-                                            ? activeConversation.title
-                                            : `Conversation #${activeId}`
-                                    }
-                                />
-                            ) : (
-                                <div className="chat-header-new-title">New chat</div>
-                            )}
-                        </div>
-                        <div className="chat-header-meta">
-                            <div className="chat-header-context-pill" data-kind="project">
-                                <span className="chat-header-context-icon" aria-hidden="true">
-                                    <Icon.Folder size={11} />
-                                </span>
-                                <span className="chat-header-context-label">Project</span>
-                                <ProjectSelector
-                                    value={projectScopeValue}
-                                    projects={teamProjectKeys}
-                                    allowAll
-                                    onChange={handleScopeChange}
-                                />
-                            </div>
-                            <div className="chat-header-context-pill" data-kind="model">
-                                <span className="chat-header-context-icon" aria-hidden="true">
-                                    <Icon.Brain size={11} />
-                                </span>
-                                <span className="chat-header-context-label">Model</span>
-                                <span className="chat-model-chip">{headerMeta}</span>
-                            </div>
-                        </div>
-                    </div>
-                    <Button
-                        variant="secondary"
-                        size="sm"
-                        iconOnly
-                        className="chat-header-more"
-                        data-testid="chat-header-more"
-                        aria-label="Conversation actions"
-                        title="Conversation actions"
+                {(historyToggle) => (
+                    <div
+                        className="chat-main-column grid-bg"
+                        style={{
+                            flex: 1,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            minWidth: 0,
+                            minHeight: 0,
+                            overflow: 'hidden',
+                            position: 'relative',
+                        }}
                     >
-                        <Icon.MoreH size={14} />
-                    </Button>
-                </header>
+                        <header
+                            data-testid="chat-header"
+                            className="chat-header-shell"
+                        >
+                            {historyToggle}
+                            <span className="chat-header-icon" aria-hidden="true">
+                                <Icon.Chat size={17} />
+                            </span>
+                            <div className="chat-header-content">
+                                <div className="chat-header-title-row">
+                                    {activeId !== null ? (
+                                        <ConversationTitle
+                                            conversationId={activeId}
+                                            title={
+                                                activeConversation?.title?.trim()
+                                                    ? activeConversation.title
+                                                    : `Conversation #${activeId}`
+                                            }
+                                        />
+                                    ) : (
+                                        <div className="chat-header-new-title">New chat</div>
+                                    )}
+                                </div>
+                                <div className="chat-header-meta">
+                                    <div className="chat-header-context-pill" data-kind="project">
+                                        <span className="chat-header-context-icon" aria-hidden="true">
+                                            <Icon.Folder size={11} />
+                                        </span>
+                                        <span className="chat-header-context-label">Project</span>
+                                        <ProjectSelector
+                                            value={projectScopeValue}
+                                            projects={teamProjectKeys}
+                                            allowAll
+                                            onChange={handleScopeChange}
+                                        />
+                                    </div>
+                                    <div className="chat-header-context-pill" data-kind="model">
+                                        <span className="chat-header-context-icon" aria-hidden="true">
+                                            <Icon.Brain size={11} />
+                                        </span>
+                                        <span className="chat-header-context-label">Model</span>
+                                        <span className="chat-model-chip">{headerMeta}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <Button
+                                variant="secondary"
+                                size="sm"
+                                iconOnly
+                                className="chat-header-more"
+                                data-testid="chat-header-more"
+                                aria-label="Conversation actions"
+                                title="Conversation actions"
+                            >
+                                <Icon.MoreH size={14} />
+                            </Button>
+                        </header>
 
-                <MessageThread
-                    conversationId={activeId}
-                    projectKey={projectKey}
-                    messages={threadMessages}
-                    sdkStatus={chat.status}
-                    isLoadingHistory={initialQuery.isLoading}
-                    error={chat.error ?? toError(initialQuery.error)}
-                    onRegenerate={handleRegenerate}
-                    onBranchAt={handleBranchAt}
-                    onEditUserMessage={handleEditUserMessage}
-                    showCounterfactual={showCounterfactual}
-                    onOpenSource={handleOpenSource}
-                    onMcpAppMessage={handleMcpAppMessage}
-                    onAgentArtifactSelection={handleAgentArtifactSelection}
-                    agentEvents={chat.events}
-                    activeAgentRunId={chat.activeRun?.run_id ?? null}
-                    awaitingAgentConfirmation={chat.confirmation !== null}
-                    onCancelAgent={chat.stop}
-                    onContinueAgent={() => void chat.continueRun()}
-                />
+                        <MessageThread
+                            conversationId={activeId}
+                            projectKey={projectKey}
+                            messages={threadMessages}
+                            sdkStatus={chat.status}
+                            isLoadingHistory={initialQuery.isLoading}
+                            error={chat.error ?? toError(initialQuery.error)}
+                            onRegenerate={handleRegenerate}
+                            onBranchAt={handleBranchAt}
+                            onEditUserMessage={handleEditUserMessage}
+                            showCounterfactual={showCounterfactual}
+                            onOpenSource={handleOpenSource}
+                            onMcpAppMessage={handleMcpAppMessage}
+                            onAgentArtifactSelection={handleAgentArtifactSelection}
+                            agentEvents={chat.events}
+                            activeAgentRunId={chat.activeRun?.run_id ?? null}
+                            awaitingAgentConfirmation={chat.confirmation !== null}
+                            onCancelAgent={chat.stop}
+                            onContinueAgent={() => void chat.continueRun()}
+                        />
 
-                <SuggestedFollowups
-                    conversationId={activeId}
-                    turnId={turnSettleId}
-                    isStreaming={isStreaming}
-                    onPick={(prompt) => void handleSend(prompt)}
-                />
+                        <SuggestedFollowups
+                            conversationId={activeId}
+                            turnId={turnSettleId}
+                            isStreaming={isStreaming}
+                            onPick={(prompt) => void handleSend(prompt)}
+                        />
 
-                <Composer
-                    conversationId={activeId}
-                    projectLabel={projectLabel}
-                    projectKey={projectKey}
-                    modelLabel={headerMeta}
-                    onRequireConversation={requireConversation}
-                    availableProjects={teamProjectKeys}
-                    availableCollections={collectionsQuery.data ?? []}
-                    filters={filters}
-                    onFiltersChange={setFilters}
-                    liveSources={liveSourcesQuery.data}
-                    liveSourceSelection={liveSourceSelection}
-                    onLiveSourcesChange={handleLiveSourcesChange}
-                    onSend={handleSend}
-                    onStop={chat.stop}
-                    isStreaming={isStreaming}
-                    error={chat.error ?? null}
-                />
-            </div>
+                        <Composer
+                            conversationId={activeId}
+                            projectLabel={projectLabel}
+                            projectKey={projectKey}
+                            modelLabel={headerMeta}
+                            onRequireConversation={requireConversation}
+                            availableProjects={teamProjectKeys}
+                            availableCollections={collectionsQuery.data ?? []}
+                            filters={filters}
+                            onFiltersChange={setFilters}
+                            liveSources={liveSourcesQuery.data}
+                            liveSourceSelection={liveSourceSelection}
+                            onLiveSourcesChange={handleLiveSourcesChange}
+                            onSend={handleSend}
+                            onStop={chat.stop}
+                            isStreaming={isStreaming}
+                            error={chat.error ?? null}
+                        />
+                    </div>
+                )}
+            </ConversationNavigation>
 
             {sourceCitation && (
                 <CitationDocumentModal

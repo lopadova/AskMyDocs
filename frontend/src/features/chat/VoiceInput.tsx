@@ -89,7 +89,7 @@ export function VoiceInput({ onTranscript }: VoiceInputProps): ReactNode {
     return (
         <Button
             type="button"
-            variant="secondary"
+            variant="quiet"
             size="sm"
             iconOnly
             onClick={toggle}
