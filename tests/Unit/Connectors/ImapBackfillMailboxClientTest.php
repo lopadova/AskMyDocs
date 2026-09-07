@@ -161,7 +161,7 @@ final class FailingBulkQuery extends WhereQuery
 {
     public function __construct() {}
 
-    public function whereUidIn(array $uids): static
+    public function where(mixed $criteria, mixed $value = null): static
     {
         return $this;
     }
@@ -209,9 +209,12 @@ final class SparseUidQuery extends WhereQuery
         return $this;
     }
 
-    public function whereUid(int|string $uid): static
+    public function where(mixed $criteria, mixed $value = null): static
     {
-        [$from, $through] = array_map('intval', explode(':', (string) $uid, 2));
+        if (! is_string($criteria) || ! preg_match('/^CUSTOM UID ([1-9][0-9]*):([1-9][0-9]*)$/D', $criteria, $matches)) {
+            throw new RuntimeException('Expected a raw numeric UID range.');
+        }
+        [$from, $through] = [(int) $matches[1], (int) $matches[2]];
         $this->fromUid = $from;
         $this->throughUid = $through;
 

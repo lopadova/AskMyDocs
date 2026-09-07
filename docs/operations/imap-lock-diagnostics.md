@@ -54,3 +54,20 @@ Redis URLs and lock owner tokens. Unsupported cache stores, Redis read failures
 and invalid targets exit non-zero and report an unknown lock state rather than
 claiming locks are free. Exit zero means inspection succeeded, not that locks are
 absent or an import is healthy.
+
+## `BAD Could not parse command` during `search_first_uid`
+
+Webklex 6.2's query builder quotes UID ranges/lists, producing `UID "1:1000"`
+or `UID "1,2,3"`. IMAP requires an unquoted sequence-set (`UID 1:1000` /
+`UID 1,2,3`), as defined in [RFC 3501 section 9](https://www.rfc-editor.org/rfc/rfc3501#section-9).
+The host backfill client now uses a raw numeric UID criterion for both discovery
+and bulk fetch searches, while leaving date formatting/escaping unchanged.
+Bulk UID values are validated before folder I/O; arbitrary strings cannot become
+raw commands. Regression tests use the installed Webklex query builder and capture
+its protocol request rather than mocking the criteria methods.
+
+This syntax error is not fixed by deleting jobs, clearing Redis or changing IMAP
+credentials. Deploy the corrected application code to the queue workers too.
+Existing retry attempts can then use the fix; a campaign already marked failed
+can be resumed through the full-history import action, preserving its checkpoints.
+Verify that discovery completes and the campaign progresses beyond `discovering`.

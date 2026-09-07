@@ -6,6 +6,7 @@ namespace App\Connectors\Imap\Backfill;
 
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
+use InvalidArgumentException;
 use Padosoft\AskMyDocsConnectorImap\Imap\ImapAttachment;
 use Padosoft\AskMyDocsConnectorImap\Imap\ImapClientInterface;
 use Padosoft\AskMyDocsConnectorImap\Imap\ImapMessage;
@@ -123,6 +124,13 @@ final class ImapBackfillMailboxClient implements ImapBackfillClient
         if ($uids === []) {
             return [];
         }
+        // The raw UID search criterion below must contain only protocol numbers,
+        // never arbitrary strings supplied through PHP's untyped array elements.
+        foreach ($uids as $uid) {
+            if (! is_int($uid) || $uid < 1 || $uid > 4294967295) {
+                throw new InvalidArgumentException('IMAP UIDs must be positive 32-bit integers.');
+            }
+        }
         $folder = $this->rawClient->getFolder($mailbox);
         if ($folder === null) {
             throw new RuntimeException("Mailbox not found: {$mailbox}");
@@ -130,7 +138,11 @@ final class ImapBackfillMailboxClient implements ImapBackfillClient
 
         try {
             $messages = [];
-            foreach ($folder->query()->whereUidIn($uids)->setSequence(IMAP::ST_UID)->get() as $rawMessage) {
+            // Webklex 6.2 quotes whereUidIn() as UID "1,2,3", but an IMAP
+            // sequence-set is not a string (RFC 3501 section 9). CUSTOM leaves
+            // this validated numeric criterion unquoted; other filters stay escaped.
+            $query = $folder->query()->where('CUSTOM UID '.implode(',', $uids))->setSequence(IMAP::ST_UID);
+            foreach ($query->get() as $rawMessage) {
                 if ($rawMessage instanceof Message) {
                     $messages[] = $this->mapMessage($mailbox, $rawMessage);
                 }
@@ -258,7 +270,10 @@ final class ImapBackfillMailboxClient implements ImapBackfillClient
         if ($end !== null) {
             $query->before($end);
         }
-        $query->whereUid(max(1, $fromUid).':'.($throughUid ?? '*'));
+        // whereUid("1:1000") is quoted by Webklex 6.2 and rejected as BAD by
+        // strict servers. These bounds are typed integers (or the literal '*'),
+        // so emit only the UID criterion raw and retain normal date formatting.
+        $query->where('CUSTOM UID '.max(1, $fromUid).':'.($throughUid ?? '*'));
 
         $uids = array_map('intval', $query->search()->all());
         sort($uids, SORT_NUMERIC);
