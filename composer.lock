@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "4eb289b268d45c0badaaf1cdcc28db8e",
+    "content-hash": "6137d4d61a0f0fafd16f36cf928db398",
     "packages": [
         {
             "name": "aws/aws-crt-php",
@@ -4066,16 +4066,16 @@
         },
         {
             "name": "padosoft/askmydocs-mcp-pack",
-            "version": "dev-codex/v2",
+            "version": "v2.0.0",
             "source": {
                 "type": "git",
-                "url": "https://github.com/bramato/askmydocs-mcp-pack.git",
-                "reference": "8dbd400767c6362761a097f56a812579fc1a23c3"
+                "url": "https://github.com/padosoft/askmydocs-mcp-pack.git",
+                "reference": "1e4e4fa0081e63c9c849c78b394350ea3292f24c"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/bramato/askmydocs-mcp-pack/zipball/8dbd400767c6362761a097f56a812579fc1a23c3",
-                "reference": "8dbd400767c6362761a097f56a812579fc1a23c3",
+                "url": "https://api.github.com/repos/padosoft/askmydocs-mcp-pack/zipball/1e4e4fa0081e63c9c849c78b394350ea3292f24c",
+                "reference": "1e4e4fa0081e63c9c849c78b394350ea3292f24c",
                 "shasum": ""
             },
             "require": {
@@ -4113,22 +4113,7 @@
                     "Padosoft\\AskMyDocsMcpPack\\": "src/"
                 }
             },
-            "autoload-dev": {
-                "psr-4": {
-                    "Padosoft\\AskMyDocsMcpPack\\Tests\\": "tests/"
-                }
-            },
-            "scripts": {
-                "test": [
-                    "vendor/bin/phpunit"
-                ],
-                "analyse": [
-                    "vendor/bin/phpstan analyse --memory-limit=1G"
-                ],
-                "format:check": [
-                    "vendor/bin/pint --test config/mcp-pack.php src/Adapters src/Apps src/Artifacts src/Auth src/Catalog src/Contracts/V2 src/Facades src/Fluent src/Http/Admin/V2 src/Http/V2 src/Protocol src/Subscriptions src/Tasks src/Validation src/AskMyDocsMcpPackServiceProvider.php src/Console/McpServeCommand.php src/Console/PruneMcpArtifactsCommand.php src/Console/PruneMcpTasksCommand.php src/Console/RecoverMcpTasksCommand.php src/Contracts/JsonRpcRequestHandlerContract.php src/Contracts/McpProtocolAwareTransportContract.php src/Exceptions/McpProtocolException.php src/Exceptions/McpProtocolNegotiationException.php src/Exceptions/McpRemoteErrorException.php src/Http/Admin/ServersController.php src/Models/McpArtifact.php src/Models/McpTask.php src/Models/McpToolCallAudit.php src/Resilience/ResilienceMediator.php src/ServerSide/JsonRpcRequestHandler.php src/ServerSide/StdioRunner.php src/ServerSide/V2JsonRpcRequestHandler.php src/Services/McpClient.php src/Services/McpDiscoveryService.php src/Services/McpHandshakeService.php src/Services/McpToolCallingService.php src/Services/RemoteMcpTool.php src/Services/ToolInvoker.php src/Support/McpCatalogPage.php src/Support/McpNegotiationResult.php src/Support/McpProtocolEra.php src/Support/McpRemoteTask.php src/Support/McpToolResult.php src/Transports/HttpJsonRpcTransport.php src/Transports/SseJsonRpcTransport.php src/Transports/StdioJsonRpcTransport.php database/migrations/2026_08_13_000001_create_mcp_v2_tables.php tests/Feature/Resilience/ResilienceMediatorTest.php tests/Feature/Services/McpClientDualEraTest.php tests/Feature/Services/McpClientResourcesPromptsTest.php tests/Feature/Services/McpHandshakeServiceTest.php tests/Feature/Services/ToolInvokerTest.php tests/Feature/Transports/HttpJsonRpcTransportTest.php tests/Feature/V2 tests/Unit/Services/RemoteMcpToolTest.php tests/Unit/Support/McpRemoteTaskTest.php tests/Unit/V2 tests/Support/FailingTaskHandler.php tests/Support/InputRequiredTaskHandler.php tests/Support/PartialInputTaskHandler.php tests/Support/TestAppFactory.php tests/Fixtures/conformance-server.php tests/TestCase.php"
-                ]
-            },
+            "notification-url": "https://packagist.org/downloads/",
             "license": [
                 "MIT"
             ],
@@ -4151,9 +4136,10 @@
                 "tool-calling"
             ],
             "support": {
-                "source": "https://github.com/bramato/askmydocs-mcp-pack/tree/codex/v2"
+                "issues": "https://github.com/padosoft/askmydocs-mcp-pack/issues",
+                "source": "https://github.com/padosoft/askmydocs-mcp-pack/tree/v2.0.0"
             },
-            "time": "2026-09-01T09:42:45+00:00"
+            "time": "2026-09-07T16:01:36+00:00"
         },
         {
             "name": "padosoft/eval-harness",
@@ -12368,19 +12354,12 @@
             "version": "dev-codex/release-hardening",
             "alias": "1.0.x-dev",
             "alias_normalized": "1.0.9999999.9999999-dev"
-        },
-        {
-            "package": "padosoft/askmydocs-mcp-pack",
-            "version": "dev-codex/v2",
-            "alias": "2.0.x-dev",
-            "alias_normalized": "2.0.9999999.9999999-dev"
         }
     ],
     "minimum-stability": "stable",
     "stability-flags": {
         "padosoft/askmydocs-connector-api": 10,
-        "padosoft/askmydocs-connector-mcp": 20,
-        "padosoft/askmydocs-mcp-pack": 20
+        "padosoft/askmydocs-connector-mcp": 20
     },
     "prefer-stable": true,
     "prefer-lowest": false,
