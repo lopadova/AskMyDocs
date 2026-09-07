@@ -1,1305 +1,1100 @@
-/* AskMyDoc landing — i18n dictionaries
- * Languages: it (default), en, fr, de, es
- *
- * Strings may contain inline HTML — rendered via dangerouslySetInnerHTML on
- * specific structured fields (titles, hero subline, body). Plain strings
- * are used for buttons, navigation, technical labels.
- */
-
-const LANGS = [
-  { code: "it", name: "Italiano", flag: "🇮🇹" },
-  { code: "en", name: "English",  flag: "🇬🇧" },
-  { code: "fr", name: "Français", flag: "🇫🇷" },
-  { code: "de", name: "Deutsch",  flag: "🇩🇪" },
-  { code: "es", name: "Español",  flag: "🇪🇸" },
+/** Curated landing copy. All example documents are fictional; no AI calls or customer data. */
+export const LANGUAGES = [
+  { code: 'it', name: 'Italiano' }, { code: 'en', name: 'English' },
+  { code: 'fr', name: 'Français' }, { code: 'de', name: 'Deutsch' }, { code: 'es', name: 'Español' },
 ];
-
-const I18N = {
-  /* ============================== ITALIAN (default) ===================== */
-  it: {
-    htmlLang: "it",
-    metaDescription:
-      "Knowledge base tipizzata, compilazione canonica, hybrid retrieval con rejected-approach injection. Multi-tenant, multi-provider, self-host. La grounding layer enterprise per LLM.",
-    pageTitle: "AskMyDoc — Enterprise RAG che non ripete gli errori",
-
-    nav: {
-      product: "Prodotto",
-      how: "Come funziona",
-      security: "Sicurezza",
-      usecases: "Use cases",
-      faq: "FAQ",
-      docs: "Docs",
-      github: "GitHub",
-      signin: "Accedi",
-      bookdemo: "Prenota demo",
+export const COPY = {
+  "it": {
+    "title": "AskMyDocs — Il sapere che fa la differenza.",
+    "description": "La piattaforma AI che connette documenti, persone e conoscenza. Risposte con fonti, controllo dei dati e un nuovo vantaggio per il vostro team.",
+    "skip": "Vai al contenuto",
+    "navigation": "Navigazione principale",
+    "language": "Lingua",
+    "menu": "Apri il menu",
+    "close": "Chiudi",
+    "nav": {
+      "vision": "La visione",
+      "experience": "L’esperienza",
+      "possibilities": "Le possibilità",
+      "trust": "La fiducia",
+      "login": "Accedi",
+      "demo": "Entra nella demo"
     },
-
-    hero: {
-      eyebrow: "v1.4 · canonical KB + MCP server",
-      titleHtml:
-        'Enterprise RAG<br/>che <span class="accent">non ripete</span> gli <span class="strike">errori</span>',
-      sub:
-        "Knowledge base tipizzata, compilazione canonica e iniezione degli approcci scartati. Multi-tenant, multi-provider, self-host. La grounding layer che doveva esserci dal giorno uno.",
-      ctaPrimary: "Prova la demo",
-      ctaSecondary: "Self-host gratis",
-      metaProviders: "OpenAI · Anthropic · Gemini · OpenRouter · Regolo",
-      metaDb: "Postgres + pgvector",
-      metaStack: "Laravel 13 · React",
-      graphProject: "project",
-      graphTenant: "tenant",
-      graphLive: "live",
+    "hero": {
+      "eyebrow": "La vostra conoscenza. Una nuova intelligenza.",
+      "title": "Il sapere che",
+      "title2": "fa la",
+      "emphasis": "differenza.",
+      "description": "Documenti, persone, idee. Connettete ciò che la vostra organizzazione sa e trasformatelo in risposte, con le fonti. L’AI, all’altezza del vostro mondo.",
+      "cta": "Scopri l’esperienza",
+      "secondary": "La nostra visione",
+      "note": "La vostra conoscenza. Le vostre fonti. Il vostro controllo.",
+      "caption": "Il sapere umano. Una nuova prospettiva.",
+      "cardLabel": "Tutto connesso.",
+      "cardText": "Ogni risposta, la sua fonte."
     },
-
-    graphPanel: {
-      nodeTypesHeader: "tipi di nodo · 9",
-      edgesHeader: "archi · 10 tipi",
-      graphExpansionHeader: "graph expansion",
-      row1hop: "vicini 1-hop",
-      rowRejectedInj: "iniezione approcci scartati",
-      rowCompositeFk: "FK composite tenant",
-      floatingNodes: "nodi",
-      floatingEdges: "archi",
-      floatingRejected: "scartato",
-      floatingExpansion: "espansione",
+    "strip": {
+      "label": "Pensato per chi coltiva l’eccellenza",
+      "business": "Imprese & Team"
     },
-
-    trustLabel: "Stack",
-
-    problem: {
-      eyebrow: "Il problema",
-      titleHtml:
-        'Il RAG vanilla allucina, ripete<br/><span class="accent">approcci già scartati</span>, non ha governance.',
-      subHtml:
-        'Embedding + top-k non sono una memoria. Sono un indice. Una memoria sa cosa è <span class="ink-1">canonico</span>, cosa è <span class="ink-1">scartato</span>, cosa <span class="ink-1">dipende</span> da cosa, e non ti consiglia di nuovo l\'errore che hai sistemato sei mesi fa.',
-      badHead: "✕ Senza AskMyDoc",
-      badTitle: "Stesso errore, ogni sei mesi.",
-      badBody:
-        "Un nuovo dev chiede al chatbot interno l'approccio per X. L'embedding pesca due README, un ticket vecchio e un commento abbandonato. Suggerisce di nuovo la stessa soluzione che avete già bocciato dopo un incidente in prod.",
-      goodHead: "✓ Con AskMyDoc",
-      goodTitle: "Il grafo conosce ciò che è stato scartato.",
-      goodBodyHtml:
-        'La query attiva un\'espansione 1-hop sul nodo <code class="mono ink-1">module:auth</code>. Trova un nodo <code class="mono coral">rejected-approach</code> collegato via <code class="mono ink-1"> supersedes</code>. L\'LLM riceve l\'antipattern in contesto e la risposta inizia con: "Non usare questo approccio, è stato già tentato — vedi INC-2025-04."',
+    "vision": {
+      "eyebrow": "01 — Il vostro capitale di conoscenza",
+      "aside": "Il valore è nei dettagli. Il sapere che li custodisce, anche.",
+      "title": "Non è solo ciò che sapete.",
+      "emphasis": "È ciò che vi distingue.",
+      "body1": "L’origine di un materiale. La ragione di una scelta. La soluzione trovata da un collega. Il vostro patrimonio vive in migliaia di documenti, e nella memoria delle persone.",
+      "body2": "AskMyDocs li mette in relazione. Una domanda, nella propria lingua, diventa una risposta chiara, accompagnata dalle fonti. Perché la conoscenza che vi distingue merita di diventare un vantaggio condiviso."
     },
-
-    retrieval: {
-      query: "Come gestiamo il refresh token nel tenant acme-prod?",
-      headPath: "POST /api/kb/query",
-      headFusion: "hybrid (0.6·v + 0.3·k + 0.1·h)",
-      live: "live",
-      pipeVector: "vector · pgvector",
-      pipeKeyword: "keyword · FTS",
-      pipeRerank: "rerank · head",
-      answerHead: "↳ risposta grounded",
-      answerMetaWaiting: "in attesa…",
-      answerMetaDone: "847ms · 3 citazioni · 1 scartato",
-      answerBodyHtml:
-        'Per <span class="mono ink-1">acme-prod</span> il refresh segue la rotazione definita in <span class="cite">ADR-0011</span>: token di durata 7gg, single-use, revocato via <span class="mono ink-1">tenant_id</span> scope. Vedi runbook <span class="cite">auth/refresh-flow</span> e l\'incidente collegato <span class="cite">INC-2025-04</span>.',
-      rejectedHtml:
-        '<b>Non proporre</b> long-lived JWT senza rotation — approccio scartato (supersedes m:auth)',
-    },
-
-    features: {
-      eyebrow: "Prodotto",
-      titleHtml: 'Sei capacità che <span class="accent">il RAG vanilla</span> non ha.',
-      sub: "Una piattaforma sola, opinionata sulle parti che contano, agnostica sulle parti che cambiano.",
-      items: [
-        {
-          title: "Hybrid retrieval con reranking",
-          body: "Fusione 0.6·vector + 0.3·keyword + 0.1·head. pgvector accanto a Postgres FTS, niente servizi esterni. Embedding cache con LRU pruning integrato.",
-          meta: ["pgvector", "FTS", "rerank"],
-        },
-        {
-          title: "Canonical knowledge graph",
-          body: "9 tipi di nodo, 10 tipi di edge. Frontmatter YAML + wikilink, espansione 1-hop a query time, iniezione automatica degli approcci scartati.",
-          meta: ["typed nodes", "rejected-approach"],
-        },
-        {
-          title: "Multi-provider, zero lock-in",
-          body: "OpenAI, Anthropic, Gemini, OpenRouter, Regolo — orchestrati con raw Http::, nessun SDK black-box. Chat e embedding provider configurabili separatamente.",
-          meta: ["5 provider", "no SDK"],
-        },
-        {
-          title: "Multi-tenant strutturale",
-          body: "tenant_id su 17+ tabelle, composite uniques per slug/doc_id, FK composite che rendono i cross-tenant edges impossibili a livello di schema.",
-          meta: ["isolation by schema"],
-        },
-        {
-          title: "Admin SPA completa",
-          body: "KPI dashboard, RBAC Spatie, KB tree explorer + inline editor, graph viewer, PDF export, log viewer a 5 tab e Artisan runner whitelisted.",
-          meta: ["React + TanStack"],
-        },
-        {
-          title: "MCP server pronto",
-          body: "Server enterprise-kb con 10 tool (5 retrieval + 5 canonical/promote). Si collega a Claude Desktop, Cursor o qualsiasi client MCP-compatibile.",
-          meta: ["10 tool", "Laravel MCP 0.7"],
-        },
-      ],
-    },
-
-    how: {
-      eyebrow: "Come funziona",
-      titleHtml: 'Tre passi. <span class="accent">Niente magia.</span>',
-      step1: {
-        label: "Ingest",
-        title: "Git push → auto-ingest.",
-        body: "Un'azione GitHub esegue l'upsert idempotente su (project_key, source_path, version_hash). Il chunker fence-aware segue le sezioni del markdown.",
-        visual: [
-          { cls: "dim", text: "› git push origin main" },
-          { cls: "info", text: "→ GH Action: ingest-to-askmydocs" },
-          { cls: "dim", text: "  sha256: e7d2…91a" },
-          { cls: "", text: "  POST /api/kb/ingest" },
-          { cls: "ok", text: "✓ 14 chunk upserted" },
-          { cls: "ok", text: "✓ idempotente (no dup)" },
-          { cls: "dim", text: "  job: IngestDocumentJob" },
-        ],
+    "principles": [
+      {
+        "title": "Riunire.",
+        "body": "Documenti, archivi e strumenti. Finalmente in dialogo."
       },
-      step2: {
-        label: "Compile",
-        title: "Promozione human-gated.",
-        body: "Un LLM suggerisce candidati canonical (no-write). Un umano valida. Solo a commit i nodi entrano nel grafo con audit trail immutabile.",
-        visual: [
-          { cls: "", text: "/promotion/suggest" },
-          { cls: "dim", text: "  ↳ 3 candidati" },
-          { cls: "dim", text: "    · decision: ADR-0011" },
-          { cls: "dim", text: "    · rejected: long-lived JWT" },
-          { cls: "dim", text: "    · runbook: refresh-flow" },
-          { cls: "info", text: "  revisione di alice@acme" },
-          { cls: "ok", text: "✓ promote → canonical" },
-          { cls: "dim", text: "  audit: kb_canonical_audit" },
-        ],
+      {
+        "title": "Comprendere.",
+        "body": "Risposte contestuali, con le fonti sempre a portata di mano."
       },
-      step3: {
-        label: "Answer",
-        title: "Grounded. Citata. Auditata.",
-        body: "Hybrid retrieval + espansione 1-hop sul grafo. Gli approcci scartati entrano in contesto. Refusal path se non c'è grounding sufficiente.",
-        visual: [
-          { cls: "dim", text: "› query \"refresh token acme\"" },
-          { cls: "info", text: "  hybrid: 9 hit (v+k+h)" },
-          { cls: "info", text: "  graph: +2 vicini (1-hop)" },
-          { cls: "coral", text: "  ⚠ 1 approccio scartato iniettato" },
-          { cls: "", text: "  llm: anthropic / sonnet" },
-          { cls: "ok", text: "✓ risposta · 3 citazioni" },
-          { cls: "dim", text: "  audit loggato · 847ms" },
-        ],
+      {
+        "title": "Tramandare.",
+        "body": "Il sapere giusto, alle persone giuste. Ovunque lavorino."
+      }
+    ],
+    "experience": {
+      "eyebrow": "02 — Dalla domanda alla conoscenza",
+      "title": "Una domanda semplice.",
+      "emphasis": "Un mondo, nella risposta.",
+      "description": "Da una scheda prodotto a una decisione di progetto. Esplora tre esempi e segui il percorso dalla domanda alle fonti.",
+      "photoCaption": "Un archivio. Infinite connessioni.",
+      "badge": "Esempio illustrativo",
+      "topics": "Esplora un argomento",
+      "bottom": "La conoscenza, con le sue fonti.",
+      "open": "Apri l’app",
+      "disclaimer": "Contenuti dimostrativi inventati per illustrare l’esperienza. Nell’app, le risposte si basano sui documenti del tuo team.",
+      "question": "La tua domanda",
+      "answer": "La conoscenza del vostro team",
+      "sourceLabel": "Fonte dimostrativa",
+      "excerpt": "Estratto",
+      "page": "Pagina"
+    },
+    "scenarios": [
+      {
+        "label": "Materiali",
+        "question": "Cosa rende speciale il cashmere della collezione Épure?",
+        "answer": "La scheda materiali descrive un cashmere a fibra lunga, scelto per morbidezza e leggerezza. La lavorazione a maglia fine e la finitura spazzolata ne definiscono la mano. In boutique, il racconto può partire dalla sensazione al tatto e proseguire con i consigli di cura presenti nella guida dedicata.",
+        "sources": [
+          {
+            "title": "Épure · Scheda materiali",
+            "page": "12",
+            "excerpt": "Il cashmere a fibra lunga della collezione Épure viene lavorato a maglia fine. Una finitura spazzolata dona una mano morbida, mantenendo la leggerezza del capo."
+          },
+          {
+            "title": "Guida alla cura",
+            "page": "8",
+            "excerpt": "Presentare al cliente la guida di cura specifica del capo. Raccomandare di seguire le indicazioni dell’etichetta e di riporre la maglieria piegata, evitando la sospensione prolungata."
+          }
+        ]
       },
+      {
+        "label": "Progetti",
+        "question": "Perché il team ha scelto un’architettura modulare per il progetto Atlas?",
+        "answer": "Il registro decisionale indica due priorità: riutilizzare i componenti e aggiornare i singoli moduli senza riprogettare l’intero sistema. Il verbale di revisione conferma la scelta, precisando che le interfacce condivise devono restare documentate. La decisione nasce quindi dalle esigenze di manutenzione e continuità del progetto.",
+        "sources": [
+          {
+            "title": "Atlas · Registro decisioni",
+            "page": "7",
+            "excerpt": "Si adotta un’architettura modulare per favorire il riutilizzo dei componenti e gli aggiornamenti indipendenti. Le interfacce tra moduli sono parte della documentazione di progetto."
+          },
+          {
+            "title": "Verbale di revisione",
+            "page": "2",
+            "excerpt": "Il team conferma la scelta modulare. Ogni modifica alle interfacce condivise deve essere documentata e discussa prima del rilascio, per mantenere la continuità del sistema."
+          }
+        ]
+      },
+      {
+        "label": "Team",
+        "question": "Come accompagniamo una nuova persona nei primi giorni?",
+        "answer": "Il percorso di inserimento prevede un referente, l’accesso alla documentazione del ruolo e una prima attività guidata. La checklist del team aggiunge un momento di confronto a fine settimana, per raccogliere domande e verificare gli accessi. Le procedure specifiche restano quelle del reparto di destinazione.",
+        "sources": [
+          {
+            "title": "Guida di benvenuto",
+            "page": "4",
+            "excerpt": "Ogni nuova persona ha un referente che presenta il team, condivide la documentazione del ruolo e accompagna una prima attività pratica."
+          },
+          {
+            "title": "Checklist di inserimento",
+            "page": "1",
+            "excerpt": "Entro la prima settimana: verificare gli accessi necessari, completare l’attività guidata e fissare un confronto con il referente per raccogliere domande e necessità."
+          }
+        ]
+      }
+    ],
+    "possibilities": {
+      "eyebrow": "03 — Per chi vuole fare la differenza",
+      "title": "L’intelligenza incontra",
+      "emphasis": "il vostro mondo.",
+      "caption": "Persone, idee e conoscenza. Insieme."
     },
-
-    usecases: {
-      eyebrow: "Use cases",
-      titleHtml: 'Dove <span class="accent">funziona davvero</span>.',
-      items: [
+    "useCases": [
+      {
+        "title": "Ogni dettaglio, una risposta.",
+        "body": "Dai materiali alla cura del prodotto, portate la conoscenza vicino al cliente. In boutique, nello showroom o nell’assistenza: precisione e sensibilità, nella stessa conversazione.",
+        "tag": "Fashion, Design & Client experience"
+      },
+      {
+        "title": "Le idee migliori non partono da zero.",
+        "body": "Ritrovate decisioni, ricerche e progetti precedenti. Collegate esperienza tecnica e visione creativa, perché il team possa costruire su ciò che già sa.",
+        "tag": "Imprese, Progetti & Innovazione"
+      },
+      {
+        "title": "Il sapere segue le persone.",
+        "body": "Procedure, standard e formazione accessibili nel momento del bisogno. Dalla sede a una struttura ricettiva, ogni persona può ritrovare il modo giusto di lavorare.",
+        "tag": "People, Operations & Hospitality"
+      }
+    ],
+    "connections": {
+      "eyebrow": "In continuità con il vostro mondo",
+      "title": "Il sapere è già lì. Connettiamolo.",
+      "documents": "I vostri documenti"
+    },
+    "trust": {
+      "eyebrow": "04 — La fiducia, per principio",
+      "title": "Un patrimonio prezioso.",
+      "emphasis": "Il controllo resta vostro.",
+      "description": "La conoscenza è un vantaggio distintivo. Scegliete dove custodirla, chi può accedervi e quali modelli AI utilizzare.",
+      "link": "Esplora la documentazione",
+      "items": [
         {
-          icon: "Book",
-          title: "Engineering docs & ADR repository",
-          body: "Trasforma README, ADR e RFC in un grafo canonico tipizzato. Le decisioni superate vengono linkate via supersedes, non perse.",
-          tags: ["ADR", "RFC", "Runbook"],
+          "title": "A casa vostra.",
+          "body": "Installazione self-hosted, per mantenere l’infrastruttura sotto il vostro controllo."
         },
         {
-          icon: "Support",
-          title: "Customer support knowledge base",
-          body: "Risposte grounded con citazioni, refusal path quando manca grounding, filter preset per categoria prodotto e versione.",
-          tags: ["Citazioni", "Refusal", "Filtri"],
+          "title": "A ciascuno, il suo accesso.",
+          "body": "Spazi di lavoro separati e autorizzazioni per rendere disponibile il sapere alle persone abilitate."
         },
         {
-          icon: "Scale",
-          title: "Compliance & Patent Box audit",
-          body: "Audit trail immutabile su ogni promotion canonica. Soft delete + retention configurabile. Export PDF certificabile.",
-          tags: ["Audit", "Retention", "PDF"],
+          "title": "Liberi di scegliere.",
+          "body": "Più provider AI e integrazioni MCP. Un ecosistema che può evolvere insieme a voi."
+        }
+      ]
+    },
+    "faq": {
+      "eyebrow": "Per andare oltre",
+      "title": "Qualche risposta, prima di iniziare.",
+      "items": [
+        {
+          "q": "Dobbiamo riorganizzare tutti i nostri documenti?",
+          "a": "Potete partire dai documenti e dagli strumenti già in uso. I connettori importano le fonti configurate; il team può poi curare e organizzare la conoscenza. Una raccolta pilota ben scelta è un buon punto di partenza."
         },
         {
-          icon: "Brain",
-          title: "LLM grounding multi-team",
-          body: "MCP server con 10 tool. Claude Desktop e Cursor parlano direttamente al tuo grafo canonico, con isolamento tenant.",
-          tags: ["MCP", "Claude", "Cursor"],
+          "q": "Da dove arrivano le risposte?",
+          "a": "AskMyDocs cerca nei contenuti accessibili alla persona che fa la domanda e accompagna le risposte con riferimenti alle fonti. Le citazioni permettono di risalire ai documenti: per le decisioni importanti, il controllo delle fonti resta essenziale."
         },
-      ],
+        {
+          "q": "Possiamo usarlo con team internazionali?",
+          "a": "Sì. La chat può lavorare con domande e contenuti in più lingue, in base al modello AI configurato. La landing è disponibile in italiano, inglese, francese, tedesco e spagnolo."
+        },
+        {
+          "q": "Possiamo scegliere dove risiedono i dati?",
+          "a": "AskMyDocs può essere installato sulla vostra infrastruttura. Il trattamento dei contenuti inviati ai modelli dipende dal provider AI e dalla configurazione scelti: hosting e provider vanno valutati insieme."
+        }
+      ]
     },
-
-    security: {
-      eyebrow: "Security & compliance",
-      titleHtml: 'L\'isolamento <span class="accent">è strutturale</span>, non promesso.',
-      items: [
-        { h: "Isolation", t: "Tenant by schema", b: "tenant_id su 17+ tabelle, FK composite. Cross-tenant edges impossibili strutturalmente, non per check applicativo." },
-        { h: "Audit", t: "Trail immutabile", b: "kb_canonical_audit registra ogni promotion. Comandi distruttivi richiedono token monouso DB-backed." },
-        { h: "Retention", t: "Soft delete + sweep", b: "Retention configurabile (default 30gg). Scheduler notturno per prune embedding, chat-log e deleted record." },
-        { h: "RBAC", t: "Spatie + Sanctum", b: "Ruoli e permessi granulari. Sanctum per API auth, RBAC su ogni endpoint admin. Nessun bypass." },
-        { h: "Providers", t: "No SDK black box", b: "Raw Http:: verso ogni provider. Niente dipendenze opache, niente telemetria nascosta, niente data leak indiretti." },
-      ],
+    "closing": {
+      "eyebrow": "Il vostro prossimo capitolo",
+      "title": "L’eccellenza ha una memoria.",
+      "emphasis": "Diamole voce.",
+      "description": "Scopri cosa succede quando la conoscenza di un’organizzazione diventa il potere di ogni persona.",
+      "cta": "Entra nella demo",
+      "note": "Accesso con le credenziali del vostro spazio di lavoro."
     },
-
-    faq: {
-      eyebrow: "FAQ",
-      titleHtml: 'Domande <span class="accent">ricorrenti</span>.',
-      items: [
-        { q: "Quali LLM e provider supportate?",
-          a: "OpenAI, Anthropic, Gemini, OpenRouter e Regolo per la chat. Chat provider ed embedding provider sono configurabili separatamente — niente SDK, solo raw Http::." },
-        { q: "Posso cambiare provider di embedding senza re-index?",
-          a: "No, e nessuno può: la dimensione dell'embedding cambia tra provider (es. 1536 vs 768 vs 3072). Quando cambi provider il re-index è inevitabile. Lo gestiamo con job batch idempotenti — vedi README \"Embedding dimension gotcha\"." },
-        { q: "Funziona on-prem o air-gapped?",
-          a: "Sì. AskMyDoc è self-host first: Laravel 13 + PostgreSQL + pgvector girano ovunque. Per air-gapped basta puntare la chat verso un provider on-prem (es. vLLM, Ollama via OpenAI-compatible)." },
-        { q: "Supporto multi-lingua?",
-          a: "Sì. Auto-translation integrata (Laravel skill), filter bar per lingua nelle conversazioni, citazioni preservate nella lingua del documento sorgente." },
-        { q: "Come funziona l'integrazione MCP con Claude Desktop o Cursor?",
-          a: "Includiamo un server enterprise-kb (Laravel\\Mcp ^0.7) con 10 tool: 5 di retrieval (hybrid search, graph expansion, ecc.) e 5 di canonical/promote. Lo configuri come MCP server nel client e ottieni accesso al grafo tenant-scoped." },
-        { q: "Quanto è invasivo l'onboarding di una codebase esistente?",
-          a: "Minimo: una GitHub Action su un repo di docs (anche Markdown puro). L'ingestion è idempotente su SHA-256, quindi push successivi non duplicano. La promozione canonica resta human-gated, partite zero e crescete." },
-      ],
+    "footer": {
+      "tagline": "Il vostro sapere. Una nuova possibilità.",
+      "docs": "Documentazione ↗",
+      "credit": "Immagini editoriali create con AI.",
+      "top": "Torna all’inizio"
     },
-
-    cta: {
-      eyebrow: "Pronto a partire",
-      titleHtml:
-        'La grounding layer<br/>che <span style="font-family:Instrument Serif, serif;font-style:italic;color:var(--mint)">doveva esserci</span> dal day one.',
-      sub: "Self-host gratis in 10 minuti, o lascia che la gestiamo noi. Multi-tenant, audit-ready, MCP-compatibile.",
-      primary: "Prenota una demo",
-      secondary: "Star su GitHub",
-    },
-
-    footer: {
-      tagline: "Enterprise RAG con knowledge graph canonico. Self-host first, MCP-native, multi-tenant by schema.",
-      colProduct: "Prodotto",
-      colResources: "Risorse",
-      colCompany: "Azienda",
-      colLegal: "Legale",
-      product: { features: "Features", how: "Come funziona", security: "Sicurezza", usecases: "Use cases" },
-      resources: { docs: "Docs", mcp: "Setup MCP", changelog: "Changelog", status: "Status" },
-      company: { contact: "Contatti", blog: "Blog", careers: "Lavora con noi", sales: "Vendite" },
-      legal: { privacy: "Privacy", terms: "Termini", dpa: "DPA", securitytxt: "security.txt" },
-      copyright: "© 2026 AskMyDoc · Costruito con Laravel 13, PostgreSQL, pgvector e opinioni testarde.",
-      version: "v1.4.2 · MIT (core) · Licenza commerciale disponibile",
-    },
-
-    langSwitch: "Lingua",
+    "images": {
+      "hero": "Luce pomeridiana in un atelier, tra libri, materiali e persone al lavoro",
+      "archive": "Archivio di libri e volumi tra scaffali in legno e pietra naturale",
+      "team": "Un team collabora attorno a un tavolo in uno studio luminoso"
+    }
   },
-
-  /* ============================== ENGLISH =============================== */
-  en: {
-    htmlLang: "en",
-    metaDescription:
-      "Typed knowledge base, canonical compilation, hybrid retrieval with rejected-approach injection. Multi-tenant, multi-provider, self-host. The enterprise grounding layer for LLMs.",
-    pageTitle: "AskMyDoc — Enterprise RAG that doesn't repeat past mistakes",
-
-    nav: {
-      product: "Product",
-      how: "How it works",
-      security: "Security",
-      usecases: "Use cases",
-      faq: "FAQ",
-      docs: "Docs",
-      github: "GitHub",
-      signin: "Sign in",
-      bookdemo: "Book demo",
+  "en": {
+    "title": "AskMyDocs — The knowledge that sets you apart.",
+    "description": "The AI platform connecting documents, people and knowledge. Answers with sources, control over your data and a new advantage for your team.",
+    "skip": "Skip to content",
+    "navigation": "Main navigation",
+    "language": "Language",
+    "menu": "Open menu",
+    "close": "Close",
+    "nav": {
+      "vision": "The vision",
+      "experience": "The experience",
+      "possibilities": "The possibilities",
+      "trust": "Trust",
+      "login": "Sign in",
+      "demo": "Enter the demo"
     },
-
-    hero: {
-      eyebrow: "v1.4 · canonical KB + MCP server",
-      titleHtml:
-        'Enterprise RAG<br/>that <span class="accent">won\'t repeat</span> past <span class="strike">mistakes</span>',
-      sub:
-        "Typed knowledge base, canonical compilation, rejected-approach injection. Multi-tenant, multi-provider, self-host. The grounding layer that should have been there since day one.",
-      ctaPrimary: "Try the demo",
-      ctaSecondary: "Self-host free",
-      metaProviders: "OpenAI · Anthropic · Gemini · OpenRouter · Regolo",
-      metaDb: "Postgres + pgvector",
-      metaStack: "Laravel 13 · React",
-      graphProject: "project",
-      graphTenant: "tenant",
-      graphLive: "live",
+    "hero": {
+      "eyebrow": "Your knowledge. A new intelligence.",
+      "title": "Your knowledge.",
+      "title2": "A new",
+      "emphasis": "advantage.",
+      "description": "Documents, people, ideas. Connect what your organisation knows and turn it into answers, with sources. AI that understands your world.",
+      "cta": "Explore the experience",
+      "secondary": "Our vision",
+      "note": "Your knowledge. Your sources. Your control.",
+      "caption": "Human knowledge. A new perspective.",
+      "cardLabel": "Everything connected.",
+      "cardText": "Every answer, its source."
     },
-
-    graphPanel: {
-      nodeTypesHeader: "node types · 9",
-      edgesHeader: "edges · 10 types",
-      graphExpansionHeader: "graph expansion",
-      row1hop: "1-hop neighbors",
-      rowRejectedInj: "rejected-approach inj.",
-      rowCompositeFk: "composite tenant FK",
-      floatingNodes: "nodes",
-      floatingEdges: "edges",
-      floatingRejected: "rejected",
-      floatingExpansion: "expansion",
+    "strip": {
+      "label": "For those who cultivate excellence",
+      "business": "Business & Teams"
     },
-
-    trustLabel: "Stack",
-
-    problem: {
-      eyebrow: "The problem",
-      titleHtml:
-        'Vanilla RAG hallucinates, repeats<br/><span class="accent">already-rejected approaches</span>, has no governance.',
-      subHtml:
-        'Embedding + top-k isn\'t memory. It\'s an index. A memory knows what\'s <span class="ink-1">canonical</span>, what was <span class="ink-1">rejected</span>, what <span class="ink-1">depends</span> on what — and won\'t suggest again the mistake you fixed six months ago.',
-      badHead: "✕ Without AskMyDoc",
-      badTitle: "Same mistake, every six months.",
-      badBody:
-        "A new dev asks the internal chatbot for the approach to X. The embedding picks up two READMEs, an old ticket and an abandoned comment. It suggests the same solution you already rejected after a prod incident.",
-      goodHead: "✓ With AskMyDoc",
-      goodTitle: "The graph knows what was discarded.",
-      goodBodyHtml:
-        'The query triggers a 1-hop expansion on the <code class="mono ink-1">module:auth</code> node. It finds a <code class="mono coral">rejected-approach</code> node linked via <code class="mono ink-1"> supersedes</code>. The LLM gets the antipattern in context and the answer starts with: "Don\'t use this approach — it was already tried, see INC-2025-04."',
+    "vision": {
+      "eyebrow": "01 — Your knowledge capital",
+      "aside": "Value lives in the details. So does the knowledge behind them.",
+      "title": "More than what you know.",
+      "emphasis": "What sets you apart.",
+      "body1": "The origin of a material. The reason behind a decision. A solution found by a colleague. Your heritage lives in thousands of documents, and in the memory of your people.",
+      "body2": "AskMyDocs connects them. A question, in your own language, becomes a clear answer with sources. Because the knowledge that sets you apart deserves to become a shared advantage."
     },
-
-    retrieval: {
-      query: "How do we handle refresh tokens in the acme-prod tenant?",
-      headPath: "POST /api/kb/query",
-      headFusion: "hybrid (0.6·v + 0.3·k + 0.1·h)",
-      live: "live",
-      pipeVector: "vector · pgvector",
-      pipeKeyword: "keyword · FTS",
-      pipeRerank: "rerank · head",
-      answerHead: "↳ grounded answer",
-      answerMetaWaiting: "waiting…",
-      answerMetaDone: "847ms · 3 citations · 1 rejected",
-      answerBodyHtml:
-        'For <span class="mono ink-1">acme-prod</span>, refresh follows the rotation defined in <span class="cite">ADR-0011</span>: 7-day token, single-use, revoked via <span class="mono ink-1">tenant_id</span> scope. See runbook <span class="cite">auth/refresh-flow</span> and related incident <span class="cite">INC-2025-04</span>.',
-      rejectedHtml:
-        '<b>Do not propose</b> long-lived JWT without rotation — rejected approach (supersedes m:auth)',
-    },
-
-    features: {
-      eyebrow: "Product",
-      titleHtml: 'Six capabilities <span class="accent">vanilla RAG</span> doesn\'t have.',
-      sub: "One platform, opinionated about what matters, agnostic about what changes.",
-      items: [
-        {
-          title: "Hybrid retrieval with reranking",
-          body: "Fusion 0.6·vector + 0.3·keyword + 0.1·head. pgvector alongside Postgres FTS, no external services. Embedding cache with built-in LRU pruning.",
-          meta: ["pgvector", "FTS", "rerank"],
-        },
-        {
-          title: "Canonical knowledge graph",
-          body: "9 node types, 10 edge types. YAML frontmatter + wikilinks, 1-hop expansion at query time, automatic injection of rejected approaches.",
-          meta: ["typed nodes", "rejected-approach"],
-        },
-        {
-          title: "Multi-provider, zero lock-in",
-          body: "OpenAI, Anthropic, Gemini, OpenRouter, Regolo — orchestrated with raw Http::, no SDK black-box. Chat and embedding providers configurable separately.",
-          meta: ["5 providers", "no SDK"],
-        },
-        {
-          title: "Structural multi-tenant",
-          body: "tenant_id on 17+ tables, composite uniques for slug/doc_id, composite FKs making cross-tenant edges schema-level impossible.",
-          meta: ["isolation by schema"],
-        },
-        {
-          title: "Full admin SPA",
-          body: "KPI dashboard, Spatie RBAC, KB tree explorer + inline editor, graph viewer, PDF export, 5-tab log viewer and whitelisted Artisan runner.",
-          meta: ["React + TanStack"],
-        },
-        {
-          title: "MCP server ready",
-          body: "enterprise-kb server with 10 tools (5 retrieval + 5 canonical/promote). Plugs into Claude Desktop, Cursor or any MCP-compatible client.",
-          meta: ["10 tools", "Laravel MCP 0.7"],
-        },
-      ],
-    },
-
-    how: {
-      eyebrow: "How it works",
-      titleHtml: 'Three steps. <span class="accent">No magic.</span>',
-      step1: {
-        label: "Ingest",
-        title: "Git push → auto-ingest.",
-        body: "A GitHub Action runs an idempotent upsert on (project_key, source_path, version_hash). The fence-aware chunker follows the markdown sections.",
-        visual: [
-          { cls: "dim", text: "› git push origin main" },
-          { cls: "info", text: "→ GH Action: ingest-to-askmydocs" },
-          { cls: "dim", text: "  sha256: e7d2…91a" },
-          { cls: "", text: "  POST /api/kb/ingest" },
-          { cls: "ok", text: "✓ 14 chunks upserted" },
-          { cls: "ok", text: "✓ idempotent (no dup)" },
-          { cls: "dim", text: "  job: IngestDocumentJob" },
-        ],
+    "principles": [
+      {
+        "title": "Connect.",
+        "body": "Documents, archives and tools. Finally in conversation."
       },
-      step2: {
-        label: "Compile",
-        title: "Human-gated promotion.",
-        body: "An LLM suggests canonical candidates (no-write). A human validates. Only on commit do nodes enter the graph with immutable audit trail.",
-        visual: [
-          { cls: "", text: "/promotion/suggest" },
-          { cls: "dim", text: "  ↳ 3 candidates" },
-          { cls: "dim", text: "    · decision: ADR-0011" },
-          { cls: "dim", text: "    · rejected: long-lived JWT" },
-          { cls: "dim", text: "    · runbook: refresh-flow" },
-          { cls: "info", text: "  review by alice@acme" },
-          { cls: "ok", text: "✓ promote → canonical" },
-          { cls: "dim", text: "  audit: kb_canonical_audit" },
-        ],
+      {
+        "title": "Understand.",
+        "body": "Contextual answers, with the sources always close at hand."
       },
-      step3: {
-        label: "Answer",
-        title: "Grounded. Cited. Audited.",
-        body: "Hybrid retrieval + 1-hop graph expansion. Rejected approaches enter the context. Refusal path when grounding isn't sufficient.",
-        visual: [
-          { cls: "dim", text: "› query \"refresh token acme\"" },
-          { cls: "info", text: "  hybrid: 9 hits (v+k+h)" },
-          { cls: "info", text: "  graph: +2 neighbors (1-hop)" },
-          { cls: "coral", text: "  ⚠ 1 rejected-approach injected" },
-          { cls: "", text: "  llm: anthropic / sonnet" },
-          { cls: "ok", text: "✓ answer · 3 citations" },
-          { cls: "dim", text: "  audit logged · 847ms" },
-        ],
+      {
+        "title": "Pass it on.",
+        "body": "The right knowledge, for the right people. Wherever they work."
+      }
+    ],
+    "experience": {
+      "eyebrow": "02 — From a question to understanding",
+      "title": "A simple question.",
+      "emphasis": "A world in the answer.",
+      "description": "From a product specification to a project decision. Explore three examples and follow the path from question to sources.",
+      "photoCaption": "One archive. Endless connections.",
+      "badge": "Illustrative example",
+      "topics": "Explore a topic",
+      "bottom": "Knowledge, with its sources.",
+      "open": "Open the app",
+      "disclaimer": "Fictional demonstration content illustrates the experience. In the app, answers draw on your team’s documents.",
+      "question": "Your question",
+      "answer": "Your team’s knowledge",
+      "sourceLabel": "Demonstration source",
+      "excerpt": "Excerpt",
+      "page": "Page"
+    },
+    "scenarios": [
+      {
+        "label": "Materials",
+        "question": "What makes the cashmere in the Épure collection special?",
+        "answer": "The material sheet describes a long-fibre cashmere chosen for softness and lightness. Fine-gauge knitting and a brushed finish define its feel. In the boutique, the story can begin with the touch of the fabric, followed by the care advice in the dedicated guide.",
+        "sources": [
+          {
+            "title": "Épure · Material sheet",
+            "page": "12",
+            "excerpt": "The Épure collection’s long-fibre cashmere is finely knitted. A brushed finish gives it a soft feel while preserving the garment’s lightness."
+          },
+          {
+            "title": "Care guide",
+            "page": "8",
+            "excerpt": "Introduce the customer to the garment’s specific care guide. Recommend following the label instructions and storing knitwear folded rather than hanging it for extended periods."
+          }
+        ]
       },
+      {
+        "label": "Projects",
+        "question": "Why did the team choose a modular architecture for project Atlas?",
+        "answer": "The decision log identifies two priorities: reusing components and updating individual modules without redesigning the whole system. The review minutes confirm the choice, noting that shared interfaces must remain documented. The decision therefore reflects the project’s maintenance and continuity needs.",
+        "sources": [
+          {
+            "title": "Atlas · Decision log",
+            "page": "7",
+            "excerpt": "A modular architecture is adopted to support component reuse and independent updates. Interfaces between modules form part of the project documentation."
+          },
+          {
+            "title": "Review minutes",
+            "page": "2",
+            "excerpt": "The team confirms the modular approach. Every change to shared interfaces must be documented and discussed before release to maintain system continuity."
+          }
+        ]
+      },
+      {
+        "label": "Teams",
+        "question": "How do we support a new colleague in their first days?",
+        "answer": "The onboarding path provides a named contact, access to role documentation and a first guided activity. The team checklist adds an end-of-week conversation to gather questions and check access. Department-specific procedures remain those of the receiving team.",
+        "sources": [
+          {
+            "title": "Welcome guide",
+            "page": "4",
+            "excerpt": "Every new colleague has a contact who introduces the team, shares role documentation and supports a first practical activity."
+          },
+          {
+            "title": "Onboarding checklist",
+            "page": "1",
+            "excerpt": "Within the first week: check required access, complete the guided activity and schedule a conversation with the contact to gather questions and needs."
+          }
+        ]
+      }
+    ],
+    "possibilities": {
+      "eyebrow": "03 — For those who make a difference",
+      "title": "Intelligence meets",
+      "emphasis": "your world.",
+      "caption": "People, ideas and knowledge. Together."
     },
-
-    usecases: {
-      eyebrow: "Use cases",
-      titleHtml: 'Where it <span class="accent">actually works</span>.',
-      items: [
+    "useCases": [
+      {
+        "title": "Every detail, an answer.",
+        "body": "From materials to product care, bring knowledge closer to the customer. In a boutique, showroom or support team: precision and sensibility in the same conversation.",
+        "tag": "Fashion, Design & Client experience"
+      },
+      {
+        "title": "The best ideas don’t start from zero.",
+        "body": "Rediscover decisions, research and past projects. Connect technical experience with creative vision so your team can build on what it already knows.",
+        "tag": "Business, Projects & Innovation"
+      },
+      {
+        "title": "Knowledge follows your people.",
+        "body": "Procedures, standards and learning, accessible when needed. From headquarters to a hospitality venue, everyone can find the right way to work.",
+        "tag": "People, Operations & Hospitality"
+      }
+    ],
+    "connections": {
+      "eyebrow": "In harmony with your world",
+      "title": "The knowledge is there. Let’s connect it.",
+      "documents": "Your documents"
+    },
+    "trust": {
+      "eyebrow": "04 — Trust, by principle",
+      "title": "A precious heritage.",
+      "emphasis": "The control stays yours.",
+      "description": "Knowledge is a distinctive advantage. Choose where it lives, who can access it and which AI models to use.",
+      "link": "Explore the documentation",
+      "items": [
         {
-          icon: "Book",
-          title: "Engineering docs & ADR repository",
-          body: "Turn READMEs, ADRs and RFCs into a typed canonical graph. Superseded decisions get linked via supersedes — not lost.",
-          tags: ["ADR", "RFC", "Runbook"],
+          "title": "In your own home.",
+          "body": "Self-hosted installation, keeping the infrastructure under your control."
         },
         {
-          icon: "Support",
-          title: "Customer support knowledge base",
-          body: "Grounded answers with citations, refusal path when grounding is missing, filter presets per product category and version.",
-          tags: ["Citations", "Refusal", "Filters"],
+          "title": "Access with intention.",
+          "body": "Separate workspaces and permissions make knowledge available to authorised people."
         },
         {
-          icon: "Scale",
-          title: "Compliance & Patent Box audit",
-          body: "Immutable audit trail on every canonical promotion. Soft delete + configurable retention. Certifiable PDF export.",
-          tags: ["Audit", "Retention", "PDF"],
+          "title": "Free to choose.",
+          "body": "Multiple AI providers and MCP integrations. An ecosystem that can evolve with you."
+        }
+      ]
+    },
+    "faq": {
+      "eyebrow": "A little further",
+      "title": "A few answers before we begin.",
+      "items": [
+        {
+          "q": "Do we need to reorganise all our documents?",
+          "a": "You can start with the documents and tools you already use. Connectors import configured sources; your team can then curate and organise the knowledge. A carefully chosen pilot collection is a useful starting point."
         },
         {
-          icon: "Brain",
-          title: "Multi-team LLM grounding",
-          body: "MCP server with 10 tools. Claude Desktop and Cursor talk directly to your canonical graph, with tenant isolation.",
-          tags: ["MCP", "Claude", "Cursor"],
+          "q": "Where do the answers come from?",
+          "a": "AskMyDocs searches content accessible to the person asking and provides answers with source references. Citations let you trace the documents: checking the sources remains essential for important decisions."
         },
-      ],
+        {
+          "q": "Can we use it with international teams?",
+          "a": "Yes. Chat can work with questions and content in multiple languages, depending on the configured AI model. This landing page is available in Italian, English, French, German and Spanish."
+        },
+        {
+          "q": "Can we choose where our data resides?",
+          "a": "AskMyDocs can be installed on your infrastructure. How content sent to models is processed depends on the AI provider and configuration you choose: hosting and provider should be assessed together."
+        }
+      ]
     },
-
-    security: {
-      eyebrow: "Security & compliance",
-      titleHtml: 'Isolation <span class="accent">is structural</span>, not promised.',
-      items: [
-        { h: "Isolation", t: "Tenant by schema", b: "tenant_id on 17+ tables, composite FKs. Cross-tenant edges impossible structurally — not by application check." },
-        { h: "Audit", t: "Immutable trail", b: "kb_canonical_audit records every promotion. Destructive commands require a DB-backed single-use token." },
-        { h: "Retention", t: "Soft delete + sweep", b: "Configurable retention (default 30d). Nightly scheduler prunes embeddings, chat-logs and deleted records." },
-        { h: "RBAC", t: "Spatie + Sanctum", b: "Granular roles and permissions. Sanctum for API auth, RBAC on every admin endpoint. No bypass." },
-        { h: "Providers", t: "No SDK black box", b: "Raw Http:: to every provider. No opaque dependencies, no hidden telemetry, no indirect data leaks." },
-      ],
+    "closing": {
+      "eyebrow": "Your next chapter",
+      "title": "Excellence has a memory.",
+      "emphasis": "Let’s give it a voice.",
+      "description": "Discover what happens when an organisation’s knowledge becomes the power of every person.",
+      "cta": "Enter the demo",
+      "note": "Sign in with your workspace credentials."
     },
-
-    faq: {
-      eyebrow: "FAQ",
-      titleHtml: 'Recurring <span class="accent">questions</span>.',
-      items: [
-        { q: "Which LLMs and providers do you support?",
-          a: "OpenAI, Anthropic, Gemini, OpenRouter and Regolo for chat. Chat provider and embedding provider are configurable separately — no SDK, just raw Http::." },
-        { q: "Can I switch embedding provider without re-indexing?",
-          a: "No, and nobody can: embedding dimensions change between providers (e.g. 1536 vs 768 vs 3072). When you switch, re-indexing is unavoidable. We handle it with idempotent batch jobs — see the README \"Embedding dimension gotcha\"." },
-        { q: "Does it work on-prem or air-gapped?",
-          a: "Yes. AskMyDoc is self-host first: Laravel 13 + PostgreSQL + pgvector run anywhere. For air-gapped, point chat at an on-prem provider (e.g. vLLM, Ollama via OpenAI-compatible)." },
-        { q: "Multi-language support?",
-          a: "Yes. Built-in auto-translation (Laravel skill), language filter bar in conversations, citations preserved in the source document's language." },
-        { q: "How does MCP integration with Claude Desktop or Cursor work?",
-          a: "We ship an enterprise-kb server (Laravel\\Mcp ^0.7) with 10 tools: 5 retrieval (hybrid search, graph expansion, etc.) and 5 canonical/promote. Configure it as an MCP server in the client and get tenant-scoped graph access." },
-        { q: "How invasive is onboarding an existing codebase?",
-          a: "Minimal: a GitHub Action on a docs repo (plain Markdown works). Ingestion is SHA-256 idempotent, so subsequent pushes don't duplicate. Canonical promotion stays human-gated — start at zero and grow." },
-      ],
+    "footer": {
+      "tagline": "Your knowledge. A new possibility.",
+      "docs": "Documentation ↗",
+      "credit": "Editorial imagery created with AI.",
+      "top": "Back to top"
     },
-
-    cta: {
-      eyebrow: "Ready to start",
-      titleHtml:
-        'The grounding layer<br/>that <span style="font-family:Instrument Serif, serif;font-style:italic;color:var(--mint)">should have been there</span> from day one.',
-      sub: "Self-host free in 10 minutes, or let us run it for you. Multi-tenant, audit-ready, MCP-compatible.",
-      primary: "Book a demo",
-      secondary: "Star on GitHub",
-    },
-
-    footer: {
-      tagline: "Enterprise RAG with canonical knowledge graph. Self-host first, MCP-native, multi-tenant by schema.",
-      colProduct: "Product",
-      colResources: "Resources",
-      colCompany: "Company",
-      colLegal: "Legal",
-      product: { features: "Features", how: "How it works", security: "Security", usecases: "Use cases" },
-      resources: { docs: "Docs", mcp: "MCP setup", changelog: "Changelog", status: "Status" },
-      company: { contact: "Contact", blog: "Blog", careers: "Careers", sales: "Sales" },
-      legal: { privacy: "Privacy", terms: "Terms", dpa: "DPA", securitytxt: "security.txt" },
-      copyright: "© 2026 AskMyDoc · Built with Laravel 13, PostgreSQL, pgvector and stubborn opinions.",
-      version: "v1.4.2 · MIT (core) · Commercial license available",
-    },
-
-    langSwitch: "Language",
+    "images": {
+      "hero": "Afternoon light in an atelier, with books, materials and people at work",
+      "archive": "An archive of books among wooden shelves and natural stone",
+      "team": "A team collaborates around a table in a light-filled studio"
+    }
   },
-
-  /* ============================== FRENCH ================================ */
-  fr: {
-    htmlLang: "fr",
-    metaDescription:
-      "Base de connaissances typée, compilation canonique, recherche hybride avec injection d'approches rejetées. Multi-tenant, multi-provider, auto-hébergé. La couche de grounding enterprise pour LLM.",
-    pageTitle: "AskMyDoc — RAG enterprise qui ne répète pas les erreurs",
-
-    nav: {
-      product: "Produit",
-      how: "Fonctionnement",
-      security: "Sécurité",
-      usecases: "Cas d'usage",
-      faq: "FAQ",
-      docs: "Docs",
-      github: "GitHub",
-      signin: "Connexion",
-      bookdemo: "Demander une démo",
+  "fr": {
+    "title": "AskMyDocs — Le savoir qui fait la différence.",
+    "description": "La plateforme d’IA qui relie documents, personnes et connaissances. Des réponses sourcées, la maîtrise des données et un nouvel atout pour vos équipes.",
+    "skip": "Aller au contenu",
+    "navigation": "Navigation principale",
+    "language": "Langue",
+    "menu": "Ouvrir le menu",
+    "close": "Fermer",
+    "nav": {
+      "vision": "La vision",
+      "experience": "L’expérience",
+      "possibilities": "Les possibilités",
+      "trust": "La confiance",
+      "login": "Connexion",
+      "demo": "Accéder à la démo"
     },
-
-    hero: {
-      eyebrow: "v1.4 · KB canonique + serveur MCP",
-      titleHtml:
-        'RAG enterprise<br/>qui <span class="accent">ne répète pas</span> les <span class="strike">erreurs</span>',
-      sub:
-        "Base de connaissances typée, compilation canonique, injection des approches rejetées. Multi-tenant, multi-provider, auto-hébergé. La couche de grounding qui aurait dû exister dès le premier jour.",
-      ctaPrimary: "Essayer la démo",
-      ctaSecondary: "Auto-héberger gratuitement",
-      metaProviders: "OpenAI · Anthropic · Gemini · OpenRouter · Regolo",
-      metaDb: "Postgres + pgvector",
-      metaStack: "Laravel 13 · React",
-      graphProject: "projet",
-      graphTenant: "tenant",
-      graphLive: "live",
+    "hero": {
+      "eyebrow": "Votre savoir. Une nouvelle intelligence.",
+      "title": "Votre savoir.",
+      "title2": "Une longueur",
+      "emphasis": "d’avance.",
+      "description": "Documents, personnes, idées. Reliez ce que votre organisation sait et transformez-le en réponses, avec leurs sources. Une IA à la hauteur de votre univers.",
+      "cta": "Découvrir l’expérience",
+      "secondary": "Notre vision",
+      "note": "Votre savoir. Vos sources. Votre contrôle.",
+      "caption": "Le savoir humain. Une nouvelle perspective.",
+      "cardLabel": "Tout est relié.",
+      "cardText": "Chaque réponse, sa source."
     },
-
-    graphPanel: {
-      nodeTypesHeader: "types de nœuds · 9",
-      edgesHeader: "arêtes · 10 types",
-      graphExpansionHeader: "expansion du graphe",
-      row1hop: "voisins 1-hop",
-      rowRejectedInj: "inj. approche rejetée",
-      rowCompositeFk: "FK composite tenant",
-      floatingNodes: "nœuds",
-      floatingEdges: "arêtes",
-      floatingRejected: "rejeté",
-      floatingExpansion: "expansion",
+    "strip": {
+      "label": "Pour ceux qui cultivent l’excellence",
+      "business": "Entreprises & Équipes"
     },
-
-    trustLabel: "Stack",
-
-    problem: {
-      eyebrow: "Le problème",
-      titleHtml:
-        'Le RAG vanille hallucine, répète<br/><span class="accent">des approches déjà rejetées</span>, sans gouvernance.',
-      subHtml:
-        'Embedding + top-k, ce n\'est pas une mémoire. C\'est un index. Une mémoire sait ce qui est <span class="ink-1">canonique</span>, ce qui a été <span class="ink-1">rejeté</span>, ce qui <span class="ink-1">dépend</span> de quoi — et ne suggère pas à nouveau l\'erreur réglée il y a six mois.',
-      badHead: "✕ Sans AskMyDoc",
-      badTitle: "La même erreur, tous les six mois.",
-      badBody:
-        "Un nouveau dev demande au chatbot interne l'approche pour X. L'embedding remonte deux README, un vieux ticket et un commentaire abandonné. Il suggère à nouveau la solution déjà rejetée après un incident en prod.",
-      goodHead: "✓ Avec AskMyDoc",
-      goodTitle: "Le graphe connaît ce qui a été écarté.",
-      goodBodyHtml:
-        'La requête déclenche une expansion 1-hop sur le nœud <code class="mono ink-1">module:auth</code>. Elle trouve un nœud <code class="mono coral">rejected-approach</code> relié via <code class="mono ink-1"> supersedes</code>. Le LLM reçoit l\'antipattern en contexte et la réponse commence par : « N\'utilisez pas cette approche, elle a déjà été tentée — voir INC-2025-04. »',
+    "vision": {
+      "eyebrow": "01 — Votre capital de connaissances",
+      "aside": "La valeur est dans les détails. Le savoir qui les préserve aussi.",
+      "title": "Au-delà de ce que vous savez.",
+      "emphasis": "Ce qui vous distingue.",
+      "body1": "L’origine d’une matière. La raison d’un choix. Une solution trouvée par un collègue. Votre patrimoine vit dans des milliers de documents, et dans la mémoire de vos équipes.",
+      "body2": "AskMyDocs les relie. Une question, dans sa propre langue, devient une réponse claire, accompagnée de ses sources. Parce que le savoir qui vous distingue mérite de devenir un atout partagé."
     },
-
-    retrieval: {
-      query: "Comment gérons-nous le refresh token dans le tenant acme-prod ?",
-      headPath: "POST /api/kb/query",
-      headFusion: "hybride (0,6·v + 0,3·k + 0,1·h)",
-      live: "live",
-      pipeVector: "vector · pgvector",
-      pipeKeyword: "keyword · FTS",
-      pipeRerank: "rerank · head",
-      answerHead: "↳ réponse grounded",
-      answerMetaWaiting: "en attente…",
-      answerMetaDone: "847ms · 3 citations · 1 rejeté",
-      answerBodyHtml:
-        'Pour <span class="mono ink-1">acme-prod</span>, le refresh suit la rotation définie dans <span class="cite">ADR-0011</span> : token 7j, à usage unique, révoqué via <span class="mono ink-1">tenant_id</span> scope. Voir le runbook <span class="cite">auth/refresh-flow</span> et l\'incident lié <span class="cite">INC-2025-04</span>.',
-      rejectedHtml:
-        '<b>Ne pas proposer</b> de JWT longue durée sans rotation — approche rejetée (supersedes m:auth)',
-    },
-
-    features: {
-      eyebrow: "Produit",
-      titleHtml: 'Six capacités que <span class="accent">le RAG vanille</span> n\'a pas.',
-      sub: "Une seule plateforme, opinionée sur ce qui compte, agnostique sur ce qui change.",
-      items: [
-        {
-          title: "Hybrid retrieval avec reranking",
-          body: "Fusion 0,6·vector + 0,3·keyword + 0,1·head. pgvector à côté de Postgres FTS, sans services externes. Cache d'embedding avec LRU pruning intégré.",
-          meta: ["pgvector", "FTS", "rerank"],
-        },
-        {
-          title: "Knowledge graph canonique",
-          body: "9 types de nœuds, 10 types d'arêtes. Frontmatter YAML + wikilinks, expansion 1-hop à la requête, injection automatique des approches rejetées.",
-          meta: ["nœuds typés", "rejected-approach"],
-        },
-        {
-          title: "Multi-provider, zéro lock-in",
-          body: "OpenAI, Anthropic, Gemini, OpenRouter, Regolo — orchestrés via raw Http::, sans SDK black-box. Chat et embedding configurables séparément.",
-          meta: ["5 providers", "no SDK"],
-        },
-        {
-          title: "Multi-tenant structurel",
-          body: "tenant_id sur 17+ tables, uniques composites pour slug/doc_id, FK composites rendant impossibles les arêtes cross-tenant au niveau schéma.",
-          meta: ["isolation par schéma"],
-        },
-        {
-          title: "SPA admin complète",
-          body: "Dashboard KPI, RBAC Spatie, explorateur KB + éditeur inline, visualiseur de graphe, export PDF, log viewer 5 onglets et runner Artisan whitelisté.",
-          meta: ["React + TanStack"],
-        },
-        {
-          title: "Serveur MCP prêt",
-          body: "Serveur enterprise-kb avec 10 outils (5 retrieval + 5 canonical/promote). Se branche sur Claude Desktop, Cursor ou tout client MCP-compatible.",
-          meta: ["10 outils", "Laravel MCP 0.7"],
-        },
-      ],
-    },
-
-    how: {
-      eyebrow: "Fonctionnement",
-      titleHtml: 'Trois étapes. <span class="accent">Aucune magie.</span>',
-      step1: {
-        label: "Ingest",
-        title: "Git push → auto-ingest.",
-        body: "Une GitHub Action exécute un upsert idempotent sur (project_key, source_path, version_hash). Le chunker fence-aware suit les sections du markdown.",
-        visual: [
-          { cls: "dim", text: "› git push origin main" },
-          { cls: "info", text: "→ GH Action: ingest-to-askmydocs" },
-          { cls: "dim", text: "  sha256: e7d2…91a" },
-          { cls: "", text: "  POST /api/kb/ingest" },
-          { cls: "ok", text: "✓ 14 chunks upserted" },
-          { cls: "ok", text: "✓ idempotent (no dup)" },
-          { cls: "dim", text: "  job: IngestDocumentJob" },
-        ],
+    "principles": [
+      {
+        "title": "Réunir.",
+        "body": "Documents, archives et outils. Enfin en dialogue."
       },
-      step2: {
-        label: "Compile",
-        title: "Promotion human-gated.",
-        body: "Un LLM suggère des candidats canoniques (no-write). Un humain valide. Seul le commit fait entrer les nœuds dans le graphe avec audit trail immuable.",
-        visual: [
-          { cls: "", text: "/promotion/suggest" },
-          { cls: "dim", text: "  ↳ 3 candidats" },
-          { cls: "dim", text: "    · decision: ADR-0011" },
-          { cls: "dim", text: "    · rejected: long-lived JWT" },
-          { cls: "dim", text: "    · runbook: refresh-flow" },
-          { cls: "info", text: "  revue par alice@acme" },
-          { cls: "ok", text: "✓ promote → canonical" },
-          { cls: "dim", text: "  audit: kb_canonical_audit" },
-        ],
+      {
+        "title": "Comprendre.",
+        "body": "Des réponses contextualisées, avec les sources toujours à portée de main."
       },
-      step3: {
-        label: "Answer",
-        title: "Grounded. Citée. Auditée.",
-        body: "Hybrid retrieval + expansion 1-hop du graphe. Les approches rejetées entrent dans le contexte. Refusal path si le grounding ne suffit pas.",
-        visual: [
-          { cls: "dim", text: "› query \"refresh token acme\"" },
-          { cls: "info", text: "  hybrid: 9 hits (v+k+h)" },
-          { cls: "info", text: "  graph: +2 voisins (1-hop)" },
-          { cls: "coral", text: "  ⚠ 1 approche rejetée injectée" },
-          { cls: "", text: "  llm: anthropic / sonnet" },
-          { cls: "ok", text: "✓ réponse · 3 citations" },
-          { cls: "dim", text: "  audit loggé · 847ms" },
-        ],
+      {
+        "title": "Transmettre.",
+        "body": "Le bon savoir, aux bonnes personnes. Où qu’elles travaillent."
+      }
+    ],
+    "experience": {
+      "eyebrow": "02 — De la question à la connaissance",
+      "title": "Une question simple.",
+      "emphasis": "Un monde dans la réponse.",
+      "description": "D’une fiche produit à une décision de projet. Explorez trois exemples et suivez le chemin de la question aux sources.",
+      "photoCaption": "Une archive. Des liens infinis.",
+      "badge": "Exemple illustratif",
+      "topics": "Explorer un sujet",
+      "bottom": "Le savoir, avec ses sources.",
+      "open": "Ouvrir l’app",
+      "disclaimer": "Ces contenus fictifs illustrent l’expérience. Dans l’application, les réponses s’appuient sur les documents de votre équipe.",
+      "question": "Votre question",
+      "answer": "Le savoir de votre équipe",
+      "sourceLabel": "Source de démonstration",
+      "excerpt": "Extrait",
+      "page": "Page"
+    },
+    "scenarios": [
+      {
+        "label": "Matières",
+        "question": "Qu’est-ce qui distingue le cachemire de la collection Épure ?",
+        "answer": "La fiche matière décrit un cachemire à fibres longues, choisi pour sa douceur et sa légèreté. Un tricotage fin et une finition brossée définissent son toucher. En boutique, le récit peut commencer par la sensation au toucher, puis se prolonger avec les conseils du guide d’entretien.",
+        "sources": [
+          {
+            "title": "Épure · Fiche matière",
+            "page": "12",
+            "excerpt": "Le cachemire à fibres longues de la collection Épure est tricoté en maille fine. Une finition brossée lui confère un toucher doux tout en préservant la légèreté de la pièce."
+          },
+          {
+            "title": "Guide d’entretien",
+            "page": "8",
+            "excerpt": "Présenter au client le guide d’entretien propre à la pièce. Recommander de suivre les indications de l’étiquette et de ranger la maille pliée, en évitant une suspension prolongée."
+          }
+        ]
       },
+      {
+        "label": "Projets",
+        "question": "Pourquoi l’équipe a-t-elle choisi une architecture modulaire pour Atlas ?",
+        "answer": "Le registre des décisions indique deux priorités : réutiliser les composants et mettre à jour les modules sans repenser tout le système. Le compte rendu confirme ce choix, en précisant que les interfaces partagées doivent rester documentées. La décision répond donc aux besoins de maintenance et de continuité du projet.",
+        "sources": [
+          {
+            "title": "Atlas · Registre des décisions",
+            "page": "7",
+            "excerpt": "Une architecture modulaire est retenue pour favoriser la réutilisation des composants et les mises à jour indépendantes. Les interfaces entre modules font partie de la documentation du projet."
+          },
+          {
+            "title": "Compte rendu de revue",
+            "page": "2",
+            "excerpt": "L’équipe confirme l’approche modulaire. Toute modification des interfaces partagées doit être documentée et discutée avant livraison afin de préserver la continuité du système."
+          }
+        ]
+      },
+      {
+        "label": "Équipes",
+        "question": "Comment accompagner une nouvelle personne dans ses premiers jours ?",
+        "answer": "Le parcours d’intégration prévoit un référent, l’accès à la documentation du rôle et une première activité guidée. La checklist ajoute un échange en fin de semaine pour recueillir les questions et vérifier les accès. Les procédures spécifiques restent celles du service d’accueil.",
+        "sources": [
+          {
+            "title": "Guide de bienvenue",
+            "page": "4",
+            "excerpt": "Chaque nouvelle personne dispose d’un référent qui présente l’équipe, partage la documentation du rôle et accompagne une première activité pratique."
+          },
+          {
+            "title": "Checklist d’intégration",
+            "page": "1",
+            "excerpt": "Durant la première semaine : vérifier les accès nécessaires, terminer l’activité guidée et prévoir un échange avec le référent pour recueillir questions et besoins."
+          }
+        ]
+      }
+    ],
+    "possibilities": {
+      "eyebrow": "03 — Pour ceux qui font la différence",
+      "title": "L’intelligence rencontre",
+      "emphasis": "votre univers.",
+      "caption": "Personnes, idées et savoir. Ensemble."
     },
-
-    usecases: {
-      eyebrow: "Cas d'usage",
-      titleHtml: 'Où ça <span class="accent">marche vraiment</span>.',
-      items: [
+    "useCases": [
+      {
+        "title": "Chaque détail, une réponse.",
+        "body": "Des matières à l’entretien du produit, rapprochez le savoir du client. En boutique, au showroom ou au service client : précision et sensibilité dans une même conversation.",
+        "tag": "Mode, Design & Expérience client"
+      },
+      {
+        "title": "Les meilleures idées ne partent pas de zéro.",
+        "body": "Retrouvez décisions, recherches et projets passés. Reliez expérience technique et vision créative pour que votre équipe construise sur ses acquis.",
+        "tag": "Entreprises, Projets & Innovation"
+      },
+      {
+        "title": "Le savoir accompagne vos équipes.",
+        "body": "Procédures, standards et formation accessibles au bon moment. Du siège à un établissement hôtelier, chacun peut retrouver la bonne façon de travailler.",
+        "tag": "Équipes, Opérations & Hôtellerie"
+      }
+    ],
+    "connections": {
+      "eyebrow": "Dans la continuité de votre univers",
+      "title": "Le savoir est déjà là. Relions-le.",
+      "documents": "Vos documents"
+    },
+    "trust": {
+      "eyebrow": "04 — La confiance, par principe",
+      "title": "Un patrimoine précieux.",
+      "emphasis": "Vous gardez le contrôle.",
+      "description": "Le savoir est un atout distinctif. Choisissez où le conserver, qui peut y accéder et quels modèles d’IA utiliser.",
+      "link": "Explorer la documentation",
+      "items": [
         {
-          icon: "Book",
-          title: "Docs ingénierie & dépôt ADR",
-          body: "Transformez README, ADR et RFC en un graphe canonique typé. Les décisions remplacées sont liées via supersedes, pas perdues.",
-          tags: ["ADR", "RFC", "Runbook"],
+          "title": "Chez vous.",
+          "body": "Une installation auto-hébergée, pour garder le contrôle de votre infrastructure."
         },
         {
-          icon: "Support",
-          title: "Base de connaissances support client",
-          body: "Réponses grounded avec citations, refusal path en l'absence de grounding, presets de filtre par catégorie et version produit.",
-          tags: ["Citations", "Refusal", "Filtres"],
+          "title": "À chacun, son accès.",
+          "body": "Des espaces séparés et des autorisations pour rendre le savoir accessible aux personnes habilitées."
         },
         {
-          icon: "Scale",
-          title: "Compliance & audit Patent Box",
-          body: "Audit trail immuable sur chaque promotion canonique. Soft delete + retention configurable. Export PDF certifiable.",
-          tags: ["Audit", "Retention", "PDF"],
+          "title": "Libres de choisir.",
+          "body": "Plusieurs fournisseurs d’IA et des intégrations MCP. Un écosystème qui peut évoluer avec vous."
+        }
+      ]
+    },
+    "faq": {
+      "eyebrow": "Pour aller plus loin",
+      "title": "Quelques réponses avant de commencer.",
+      "items": [
+        {
+          "q": "Faut-il réorganiser tous nos documents ?",
+          "a": "Vous pouvez commencer avec vos documents et outils actuels. Les connecteurs importent les sources configurées ; votre équipe peut ensuite organiser et enrichir le savoir. Une collection pilote bien choisie constitue un bon point de départ."
         },
         {
-          icon: "Brain",
-          title: "Grounding LLM multi-équipes",
-          body: "Serveur MCP avec 10 outils. Claude Desktop et Cursor parlent directement à votre graphe canonique, avec isolation tenant.",
-          tags: ["MCP", "Claude", "Cursor"],
+          "q": "D’où viennent les réponses ?",
+          "a": "AskMyDocs recherche dans les contenus accessibles à la personne qui pose la question et accompagne les réponses de références. Les citations permettent de retrouver les documents : vérifier les sources reste essentiel pour les décisions importantes."
         },
-      ],
+        {
+          "q": "Peut-on travailler avec des équipes internationales ?",
+          "a": "Oui. Le chat peut traiter des questions et des contenus en plusieurs langues, selon le modèle d’IA configuré. Cette page est disponible en italien, anglais, français, allemand et espagnol."
+        },
+        {
+          "q": "Peut-on choisir où résident nos données ?",
+          "a": "AskMyDocs peut être installé sur votre infrastructure. Le traitement des contenus transmis aux modèles dépend du fournisseur d’IA et de la configuration choisis : hébergement et fournisseur sont à évaluer ensemble."
+        }
+      ]
     },
-
-    security: {
-      eyebrow: "Sécurité & conformité",
-      titleHtml: 'L\'isolation <span class="accent">est structurelle</span>, pas promise.',
-      items: [
-        { h: "Isolation", t: "Tenant par schéma", b: "tenant_id sur 17+ tables, FK composites. Arêtes cross-tenant impossibles structurellement, pas par contrôle applicatif." },
-        { h: "Audit", t: "Trail immuable", b: "kb_canonical_audit enregistre chaque promotion. Les commandes destructrices exigent un token usage unique en base." },
-        { h: "Retention", t: "Soft delete + sweep", b: "Retention configurable (30j par défaut). Scheduler nocturne pour purger embeddings, chat-logs et records supprimés." },
-        { h: "RBAC", t: "Spatie + Sanctum", b: "Rôles et permissions granulaires. Sanctum pour l'API, RBAC sur chaque endpoint admin. Aucun bypass." },
-        { h: "Providers", t: "Pas de SDK black box", b: "Raw Http:: vers chaque provider. Aucune dépendance opaque, aucune télémétrie cachée, aucune fuite de données indirecte." },
-      ],
+    "closing": {
+      "eyebrow": "Votre prochain chapitre",
+      "title": "L’excellence a une mémoire.",
+      "emphasis": "Donnons-lui une voix.",
+      "description": "Découvrez ce qui se passe quand le savoir d’une organisation devient le pouvoir de chacun.",
+      "cta": "Accéder à la démo",
+      "note": "Connectez-vous avec les identifiants de votre espace de travail."
     },
-
-    faq: {
-      eyebrow: "FAQ",
-      titleHtml: 'Questions <span class="accent">récurrentes</span>.',
-      items: [
-        { q: "Quels LLM et providers supportez-vous ?",
-          a: "OpenAI, Anthropic, Gemini, OpenRouter et Regolo pour le chat. Chat provider et embedding provider sont configurables séparément — pas de SDK, juste raw Http::." },
-        { q: "Puis-je changer de provider d'embedding sans réindexer ?",
-          a: "Non, et personne ne le peut : la dimension d'embedding change entre providers (par ex. 1536 vs 768 vs 3072). Quand vous changez, la réindexation est inévitable. Nous le gérons avec des jobs batch idempotents — voir README « Embedding dimension gotcha »." },
-        { q: "Fonctionne-t-il on-prem ou air-gapped ?",
-          a: "Oui. AskMyDoc est self-host first : Laravel 13 + PostgreSQL + pgvector tournent partout. Pour l'air-gapped, pointez le chat vers un provider on-prem (par ex. vLLM, Ollama via OpenAI-compatible)." },
-        { q: "Support multilingue ?",
-          a: "Oui. Auto-traduction intégrée (skill Laravel), barre de filtre par langue dans les conversations, citations préservées dans la langue du document source." },
-        { q: "Comment fonctionne l'intégration MCP avec Claude Desktop ou Cursor ?",
-          a: "Nous fournissons un serveur enterprise-kb (Laravel\\Mcp ^0.7) avec 10 outils : 5 retrieval (hybrid search, graph expansion…) et 5 canonical/promote. Configurez-le comme serveur MCP dans le client et accédez au graphe tenant-scoped." },
-        { q: "Quelle invasivité pour onboarder une codebase existante ?",
-          a: "Minimale : une GitHub Action sur un repo de docs (Markdown brut suffit). L'ingestion est idempotente sur SHA-256, donc les push suivants ne dupliquent pas. La promotion canonique reste human-gated, vous partez de zéro et grandissez." },
-      ],
+    "footer": {
+      "tagline": "Votre savoir. Une nouvelle possibilité.",
+      "docs": "Documentation ↗",
+      "credit": "Images éditoriales créées avec l’IA.",
+      "top": "Retour en haut"
     },
-
-    cta: {
-      eyebrow: "Prêt à démarrer",
-      titleHtml:
-        'La couche de grounding<br/>qui <span style="font-family:Instrument Serif, serif;font-style:italic;color:var(--mint)">aurait dû exister</span> dès le day one.',
-      sub: "Auto-hébergez gratuitement en 10 minutes, ou laissez-nous le gérer. Multi-tenant, audit-ready, compatible MCP.",
-      primary: "Demander une démo",
-      secondary: "Star sur GitHub",
-    },
-
-    footer: {
-      tagline: "RAG enterprise avec knowledge graph canonique. Self-host first, MCP-native, multi-tenant by schema.",
-      colProduct: "Produit",
-      colResources: "Ressources",
-      colCompany: "Entreprise",
-      colLegal: "Légal",
-      product: { features: "Fonctionnalités", how: "Fonctionnement", security: "Sécurité", usecases: "Cas d'usage" },
-      resources: { docs: "Docs", mcp: "Setup MCP", changelog: "Changelog", status: "Status" },
-      company: { contact: "Contact", blog: "Blog", careers: "Carrières", sales: "Ventes" },
-      legal: { privacy: "Confidentialité", terms: "Conditions", dpa: "DPA", securitytxt: "security.txt" },
-      copyright: "© 2026 AskMyDoc · Construit avec Laravel 13, PostgreSQL, pgvector et des convictions têtues.",
-      version: "v1.4.2 · MIT (core) · Licence commerciale disponible",
-    },
-
-    langSwitch: "Langue",
+    "images": {
+      "hero": "Lumière d’après-midi dans un atelier, entre livres, matières et personnes au travail",
+      "archive": "Une archive de livres entre étagères en bois et pierre naturelle",
+      "team": "Une équipe collabore autour d’une table dans un studio lumineux"
+    }
   },
-
-  /* ============================== GERMAN ================================ */
-  de: {
-    htmlLang: "de",
-    metaDescription:
-      "Typisierte Knowledge Base, kanonische Kompilierung, hybride Retrieval mit Rejected-Approach-Injection. Multi-Tenant, Multi-Provider, Self-Host. Die Enterprise-Grounding-Layer für LLMs.",
-    pageTitle: "AskMyDoc — Enterprise RAG, das Fehler nicht wiederholt",
-
-    nav: {
-      product: "Produkt",
-      how: "Funktionsweise",
-      security: "Sicherheit",
-      usecases: "Use Cases",
-      faq: "FAQ",
-      docs: "Docs",
-      github: "GitHub",
-      signin: "Anmelden",
-      bookdemo: "Demo buchen",
+  "de": {
+    "title": "AskMyDocs — Das Wissen, das den Unterschied macht.",
+    "description": "Die KI-Plattform, die Dokumente, Menschen und Wissen verbindet. Antworten mit Quellen, Kontrolle über Ihre Daten und ein neuer Vorteil für Ihr Team.",
+    "skip": "Zum Inhalt",
+    "navigation": "Hauptnavigation",
+    "language": "Sprache",
+    "menu": "Menü öffnen",
+    "close": "Schließen",
+    "nav": {
+      "vision": "Die Vision",
+      "experience": "Das Erlebnis",
+      "possibilities": "Die Möglichkeiten",
+      "trust": "Vertrauen",
+      "login": "Anmelden",
+      "demo": "Demo öffnen"
     },
-
-    hero: {
-      eyebrow: "v1.4 · canonical KB + MCP-Server",
-      titleHtml:
-        'Enterprise RAG,<br/>das Fehler <span class="accent">nicht wiederholt</span> — <span class="strike">nie wieder</span>',
-      sub:
-        "Typisierte Knowledge Base, kanonische Kompilierung, Injection verworfener Ansätze. Multi-Tenant, Multi-Provider, Self-Host. Die Grounding-Layer, die es von Tag eins hätte geben sollen.",
-      ctaPrimary: "Demo testen",
-      ctaSecondary: "Self-Host kostenlos",
-      metaProviders: "OpenAI · Anthropic · Gemini · OpenRouter · Regolo",
-      metaDb: "Postgres + pgvector",
-      metaStack: "Laravel 13 · React",
-      graphProject: "Projekt",
-      graphTenant: "Tenant",
-      graphLive: "live",
+    "hero": {
+      "eyebrow": "Ihr Wissen. Eine neue Intelligenz.",
+      "title": "Ihr Wissen.",
+      "title2": "Ihr nächster",
+      "emphasis": "Vorsprung.",
+      "description": "Dokumente, Menschen, Ideen. Verbinden Sie das Wissen Ihrer Organisation und machen Sie daraus Antworten mit Quellen. KI, die Ihrer Welt gerecht wird.",
+      "cta": "Das Erlebnis entdecken",
+      "secondary": "Unsere Vision",
+      "note": "Ihr Wissen. Ihre Quellen. Ihre Kontrolle.",
+      "caption": "Menschliches Wissen. Eine neue Perspektive.",
+      "cardLabel": "Alles verbunden.",
+      "cardText": "Jede Antwort mit ihrer Quelle."
     },
-
-    graphPanel: {
-      nodeTypesHeader: "Knotentypen · 9",
-      edgesHeader: "Kanten · 10 Typen",
-      graphExpansionHeader: "Graph-Expansion",
-      row1hop: "1-Hop-Nachbarn",
-      rowRejectedInj: "Rejected-Approach-Inj.",
-      rowCompositeFk: "composite Tenant-FK",
-      floatingNodes: "Knoten",
-      floatingEdges: "Kanten",
-      floatingRejected: "verworfen",
-      floatingExpansion: "Expansion",
+    "strip": {
+      "label": "Für alle, die Exzellenz kultivieren",
+      "business": "Unternehmen & Teams"
     },
-
-    trustLabel: "Stack",
-
-    problem: {
-      eyebrow: "Das Problem",
-      titleHtml:
-        'Vanilla-RAG halluziniert, wiederholt<br/><span class="accent">bereits verworfene Ansätze</span> — ohne Governance.',
-      subHtml:
-        'Embedding + Top-k ist kein Gedächtnis. Es ist ein Index. Ein Gedächtnis weiß, was <span class="ink-1">kanonisch</span> ist, was <span class="ink-1">verworfen</span> wurde, was wovon <span class="ink-1">abhängt</span> — und schlägt nicht erneut den Fehler vor, den Sie vor sechs Monaten behoben haben.',
-      badHead: "✕ Ohne AskMyDoc",
-      badTitle: "Derselbe Fehler, alle sechs Monate.",
-      badBody:
-        "Ein neuer Entwickler fragt den internen Chatbot nach dem Ansatz für X. Das Embedding zieht zwei READMEs, ein altes Ticket und einen verwaisten Kommentar heran. Es schlägt dieselbe Lösung vor, die Sie nach einem Prod-Incident bereits verworfen haben.",
-      goodHead: "✓ Mit AskMyDoc",
-      goodTitle: "Der Graph weiß, was verworfen wurde.",
-      goodBodyHtml:
-        'Die Query löst eine 1-Hop-Expansion am Knoten <code class="mono ink-1">module:auth</code> aus. Sie findet einen <code class="mono coral">rejected-approach</code>-Knoten, verbunden via <code class="mono ink-1"> supersedes</code>. Das LLM erhält das Antipattern im Kontext und die Antwort beginnt mit: „Diesen Ansatz nicht verwenden — wurde bereits versucht, siehe INC-2025-04."',
+    "vision": {
+      "eyebrow": "01 — Ihr Wissenskapital",
+      "aside": "Der Wert liegt im Detail. Und im Wissen, das es bewahrt.",
+      "title": "Mehr als das, was Sie wissen.",
+      "emphasis": "Das, was Sie auszeichnet.",
+      "body1": "Die Herkunft eines Materials. Der Grund für eine Entscheidung. Eine Lösung aus dem Kollegenkreis. Ihr Erbe lebt in Tausenden von Dokumenten und in der Erinnerung Ihrer Menschen.",
+      "body2": "AskMyDocs verbindet sie. Eine Frage in der eigenen Sprache wird zu einer klaren Antwort mit Quellen. Denn das Wissen, das Sie auszeichnet, verdient es, ein gemeinsamer Vorteil zu werden."
     },
-
-    retrieval: {
-      query: "Wie handhaben wir Refresh-Tokens im acme-prod Tenant?",
-      headPath: "POST /api/kb/query",
-      headFusion: "hybrid (0,6·v + 0,3·k + 0,1·h)",
-      live: "live",
-      pipeVector: "vector · pgvector",
-      pipeKeyword: "keyword · FTS",
-      pipeRerank: "rerank · head",
-      answerHead: "↳ grounded Antwort",
-      answerMetaWaiting: "warte…",
-      answerMetaDone: "847ms · 3 Citations · 1 verworfen",
-      answerBodyHtml:
-        'Für <span class="mono ink-1">acme-prod</span> folgt der Refresh der in <span class="cite">ADR-0011</span> definierten Rotation: 7-Tage-Token, single-use, widerrufen via <span class="mono ink-1">tenant_id</span>-Scope. Siehe Runbook <span class="cite">auth/refresh-flow</span> und verbundener Incident <span class="cite">INC-2025-04</span>.',
-      rejectedHtml:
-        '<b>Nicht vorschlagen</b>: langlebige JWTs ohne Rotation — verworfener Ansatz (supersedes m:auth)',
-    },
-
-    features: {
-      eyebrow: "Produkt",
-      titleHtml: 'Sechs Fähigkeiten, die <span class="accent">Vanilla-RAG</span> nicht hat.',
-      sub: "Eine Plattform — opinionated, wo es zählt, agnostisch, wo sich Dinge ändern.",
-      items: [
-        {
-          title: "Hybrid Retrieval mit Reranking",
-          body: "Fusion 0,6·Vector + 0,3·Keyword + 0,1·Head. pgvector neben Postgres FTS, ohne externe Services. Embedding-Cache mit integriertem LRU-Pruning.",
-          meta: ["pgvector", "FTS", "rerank"],
-        },
-        {
-          title: "Kanonischer Knowledge Graph",
-          body: "9 Knotentypen, 10 Kantentypen. YAML-Frontmatter + Wikilinks, 1-Hop-Expansion zur Query-Zeit, automatische Injection verworfener Ansätze.",
-          meta: ["typisierte Knoten", "rejected-approach"],
-        },
-        {
-          title: "Multi-Provider, kein Lock-in",
-          body: "OpenAI, Anthropic, Gemini, OpenRouter, Regolo — orchestriert mit raw Http::, ohne SDK-Black-Box. Chat- und Embedding-Provider separat konfigurierbar.",
-          meta: ["5 Provider", "no SDK"],
-        },
-        {
-          title: "Strukturelles Multi-Tenant",
-          body: "tenant_id auf 17+ Tabellen, composite Uniques für slug/doc_id, composite FKs machen Cross-Tenant-Kanten auf Schema-Ebene unmöglich.",
-          meta: ["isolation by schema"],
-        },
-        {
-          title: "Vollständige Admin-SPA",
-          body: "KPI-Dashboard, Spatie-RBAC, KB-Tree-Explorer + Inline-Editor, Graph-Viewer, PDF-Export, 5-Tab-Log-Viewer und whitelisted Artisan-Runner.",
-          meta: ["React + TanStack"],
-        },
-        {
-          title: "MCP-Server fertig",
-          body: "enterprise-kb-Server mit 10 Tools (5 Retrieval + 5 canonical/promote). Anschluss an Claude Desktop, Cursor oder jeden MCP-kompatiblen Client.",
-          meta: ["10 Tools", "Laravel MCP 0.7"],
-        },
-      ],
-    },
-
-    how: {
-      eyebrow: "Funktionsweise",
-      titleHtml: 'Drei Schritte. <span class="accent">Keine Magie.</span>',
-      step1: {
-        label: "Ingest",
-        title: "Git push → Auto-Ingest.",
-        body: "Eine GitHub Action führt ein idempotentes Upsert auf (project_key, source_path, version_hash) aus. Der Fence-aware Chunker folgt den Markdown-Sektionen.",
-        visual: [
-          { cls: "dim", text: "› git push origin main" },
-          { cls: "info", text: "→ GH Action: ingest-to-askmydocs" },
-          { cls: "dim", text: "  sha256: e7d2…91a" },
-          { cls: "", text: "  POST /api/kb/ingest" },
-          { cls: "ok", text: "✓ 14 Chunks upserted" },
-          { cls: "ok", text: "✓ idempotent (no dup)" },
-          { cls: "dim", text: "  job: IngestDocumentJob" },
-        ],
+    "principles": [
+      {
+        "title": "Verbinden.",
+        "body": "Dokumente, Archive und Werkzeuge. Endlich im Dialog."
       },
-      step2: {
-        label: "Compile",
-        title: "Human-gated Promotion.",
-        body: "Ein LLM schlägt kanonische Kandidaten vor (no-write). Ein Mensch validiert. Erst beim Commit gelangen Knoten mit unveränderlichem Audit-Trail in den Graph.",
-        visual: [
-          { cls: "", text: "/promotion/suggest" },
-          { cls: "dim", text: "  ↳ 3 Kandidaten" },
-          { cls: "dim", text: "    · decision: ADR-0011" },
-          { cls: "dim", text: "    · rejected: long-lived JWT" },
-          { cls: "dim", text: "    · runbook: refresh-flow" },
-          { cls: "info", text: "  Review durch alice@acme" },
-          { cls: "ok", text: "✓ promote → canonical" },
-          { cls: "dim", text: "  audit: kb_canonical_audit" },
-        ],
+      {
+        "title": "Verstehen.",
+        "body": "Antworten im Kontext, mit den Quellen stets griffbereit."
       },
-      step3: {
-        label: "Answer",
-        title: "Grounded. Zitiert. Auditiert.",
-        body: "Hybrid Retrieval + 1-Hop-Graph-Expansion. Verworfene Ansätze gelangen in den Kontext. Refusal-Path bei unzureichendem Grounding.",
-        visual: [
-          { cls: "dim", text: "› query „refresh token acme\"" },
-          { cls: "info", text: "  hybrid: 9 Hits (v+k+h)" },
-          { cls: "info", text: "  graph: +2 Nachbarn (1-hop)" },
-          { cls: "coral", text: "  ⚠ 1 verworfener Ansatz injiziert" },
-          { cls: "", text: "  llm: anthropic / sonnet" },
-          { cls: "ok", text: "✓ Antwort · 3 Citations" },
-          { cls: "dim", text: "  audit geloggt · 847ms" },
-        ],
+      {
+        "title": "Weitergeben.",
+        "body": "Das richtige Wissen für die richtigen Menschen. An jedem Arbeitsort."
+      }
+    ],
+    "experience": {
+      "eyebrow": "02 — Von der Frage zum Wissen",
+      "title": "Eine einfache Frage.",
+      "emphasis": "Eine Welt in der Antwort.",
+      "description": "Von einer Produktspezifikation bis zur Projektentscheidung. Entdecken Sie drei Beispiele und folgen Sie dem Weg von der Frage zu den Quellen.",
+      "photoCaption": "Ein Archiv. Unzählige Verbindungen.",
+      "badge": "Anschauliches Beispiel",
+      "topics": "Ein Thema entdecken",
+      "bottom": "Wissen mit seinen Quellen.",
+      "open": "App öffnen",
+      "disclaimer": "Fiktive Beispielinhalte veranschaulichen das Erlebnis. In der App basieren die Antworten auf den Dokumenten Ihres Teams.",
+      "question": "Ihre Frage",
+      "answer": "Das Wissen Ihres Teams",
+      "sourceLabel": "Beispielquelle",
+      "excerpt": "Auszug",
+      "page": "Seite"
+    },
+    "scenarios": [
+      {
+        "label": "Materialien",
+        "question": "Was macht das Kaschmir der Kollektion Épure besonders?",
+        "answer": "Das Materialblatt beschreibt langfaseriges Kaschmir, ausgewählt für Weichheit und Leichtigkeit. Feiner Strick und eine gebürstete Oberfläche bestimmen den Griff. In der Boutique kann die Geschichte beim Gefühl des Materials beginnen, gefolgt von den Pflegehinweisen im zugehörigen Leitfaden.",
+        "sources": [
+          {
+            "title": "Épure · Materialblatt",
+            "page": "12",
+            "excerpt": "Das langfaserige Kaschmir der Kollektion Épure wird fein gestrickt. Eine gebürstete Oberfläche verleiht ihm einen weichen Griff und bewahrt die Leichtigkeit des Kleidungsstücks."
+          },
+          {
+            "title": "Pflegeleitfaden",
+            "page": "8",
+            "excerpt": "Den Kunden mit dem Pflegeleitfaden des Kleidungsstücks vertraut machen. Die Hinweise auf dem Etikett beachten und Strickwaren gefaltet aufbewahren, statt sie längere Zeit aufzuhängen."
+          }
+        ]
       },
+      {
+        "label": "Projekte",
+        "question": "Warum hat das Team für Atlas eine modulare Architektur gewählt?",
+        "answer": "Das Entscheidungsprotokoll nennt zwei Prioritäten: Komponenten wiederverwenden und einzelne Module aktualisieren, ohne das gesamte System neu zu entwerfen. Das Prüfprotokoll bestätigt die Wahl und hält fest, dass gemeinsame Schnittstellen dokumentiert bleiben müssen. Die Entscheidung folgt dem Wartungsbedarf und der Kontinuität des Projekts.",
+        "sources": [
+          {
+            "title": "Atlas · Entscheidungsprotokoll",
+            "page": "7",
+            "excerpt": "Eine modulare Architektur soll die Wiederverwendung von Komponenten und unabhängige Aktualisierungen fördern. Die Schnittstellen zwischen Modulen gehören zur Projektdokumentation."
+          },
+          {
+            "title": "Prüfprotokoll",
+            "page": "2",
+            "excerpt": "Das Team bestätigt den modularen Ansatz. Jede Änderung gemeinsamer Schnittstellen muss vor der Freigabe dokumentiert und besprochen werden, um die Kontinuität zu wahren."
+          }
+        ]
+      },
+      {
+        "label": "Teams",
+        "question": "Wie begleiten wir neue Mitarbeitende in den ersten Tagen?",
+        "answer": "Die Einarbeitung sieht eine Ansprechperson, Zugang zur Rollendokumentation und eine erste begleitete Aufgabe vor. Die Checkliste ergänzt ein Gespräch am Ende der Woche, um Fragen zu sammeln und Zugänge zu prüfen. Besondere Abläufe richten sich weiterhin nach der aufnehmenden Abteilung.",
+        "sources": [
+          {
+            "title": "Willkommensleitfaden",
+            "page": "4",
+            "excerpt": "Jede neue Person erhält eine Ansprechperson, die das Team vorstellt, die Rollendokumentation teilt und eine erste praktische Aufgabe begleitet."
+          },
+          {
+            "title": "Einarbeitungscheckliste",
+            "page": "1",
+            "excerpt": "In der ersten Woche: erforderliche Zugänge prüfen, die begleitete Aufgabe abschließen und ein Gespräch mit der Ansprechperson zu Fragen und Bedürfnissen vereinbaren."
+          }
+        ]
+      }
+    ],
+    "possibilities": {
+      "eyebrow": "03 — Für alle, die etwas bewegen",
+      "title": "Intelligenz trifft",
+      "emphasis": "Ihre Welt.",
+      "caption": "Menschen, Ideen und Wissen. Gemeinsam."
     },
-
-    usecases: {
-      eyebrow: "Use Cases",
-      titleHtml: 'Wo es <span class="accent">wirklich funktioniert</span>.',
-      items: [
+    "useCases": [
+      {
+        "title": "Jedes Detail, eine Antwort.",
+        "body": "Von Materialien bis zur Produktpflege: Bringen Sie Wissen näher zum Kunden. In Boutique, Showroom oder Kundendienst verbinden sich Präzision und Feingefühl.",
+        "tag": "Mode, Design & Kundenerlebnis"
+      },
+      {
+        "title": "Die besten Ideen beginnen nicht bei null.",
+        "body": "Entdecken Sie Entscheidungen, Forschung und frühere Projekte neu. Verbinden Sie technische Erfahrung mit kreativer Vision, damit Ihr Team auf vorhandenem Wissen aufbaut.",
+        "tag": "Unternehmen, Projekte & Innovation"
+      },
+      {
+        "title": "Wissen begleitet Ihre Menschen.",
+        "body": "Abläufe, Standards und Weiterbildung, genau dann zugänglich, wenn sie gebraucht werden. Von der Zentrale bis zum Hotel findet jeder den richtigen Weg zu arbeiten.",
+        "tag": "Menschen, Betrieb & Hotellerie"
+      }
+    ],
+    "connections": {
+      "eyebrow": "Im Einklang mit Ihrer Welt",
+      "title": "Das Wissen ist da. Verbinden wir es.",
+      "documents": "Ihre Dokumente"
+    },
+    "trust": {
+      "eyebrow": "04 — Vertrauen aus Prinzip",
+      "title": "Ein wertvolles Erbe.",
+      "emphasis": "Sie behalten die Kontrolle.",
+      "description": "Wissen ist ein besonderer Vorteil. Entscheiden Sie, wo es liegt, wer darauf zugreifen darf und welche KI-Modelle Sie einsetzen.",
+      "link": "Dokumentation entdecken",
+      "items": [
         {
-          icon: "Book",
-          title: "Engineering-Docs & ADR-Repository",
-          body: "Verwandelt READMEs, ADRs und RFCs in einen typisierten kanonischen Graph. Abgelöste Entscheidungen werden via supersedes verlinkt — nicht verloren.",
-          tags: ["ADR", "RFC", "Runbook"],
+          "title": "Bei Ihnen zu Hause.",
+          "body": "Installation auf eigener Infrastruktur, damit die Kontrolle bei Ihnen bleibt."
         },
         {
-          icon: "Support",
-          title: "Customer-Support-Knowledge-Base",
-          body: "Grounded Antworten mit Citations, Refusal-Path bei fehlendem Grounding, Filter-Presets pro Produktkategorie und Version.",
-          tags: ["Citations", "Refusal", "Filter"],
+          "title": "Zugang mit Bedacht.",
+          "body": "Getrennte Arbeitsbereiche und Berechtigungen machen Wissen für autorisierte Personen verfügbar."
         },
         {
-          icon: "Scale",
-          title: "Compliance & Patent-Box-Audit",
-          body: "Unveränderlicher Audit-Trail bei jeder kanonischen Promotion. Soft Delete + konfigurierbare Retention. Zertifizierbarer PDF-Export.",
-          tags: ["Audit", "Retention", "PDF"],
+          "title": "Frei in Ihrer Wahl.",
+          "body": "Mehrere KI-Anbieter und MCP-Integrationen. Ein Ökosystem, das mit Ihnen wachsen kann."
+        }
+      ]
+    },
+    "faq": {
+      "eyebrow": "Ein Stück weiter",
+      "title": "Ein paar Antworten vor dem Anfang.",
+      "items": [
+        {
+          "q": "Müssen wir alle Dokumente neu organisieren?",
+          "a": "Sie können mit den vorhandenen Dokumenten und Werkzeugen beginnen. Konnektoren importieren konfigurierte Quellen; Ihr Team kann das Wissen anschließend kuratieren und ordnen. Eine sorgfältig gewählte Pilotsammlung ist ein guter Einstieg."
         },
         {
-          icon: "Brain",
-          title: "Multi-Team-LLM-Grounding",
-          body: "MCP-Server mit 10 Tools. Claude Desktop und Cursor sprechen direkt mit Ihrem kanonischen Graph, mit Tenant-Isolation.",
-          tags: ["MCP", "Claude", "Cursor"],
+          "q": "Woher kommen die Antworten?",
+          "a": "AskMyDocs durchsucht Inhalte, auf die die fragende Person zugreifen darf, und liefert Antworten mit Quellenverweisen. Die Zitate führen zu den Dokumenten: Für wichtige Entscheidungen bleibt die Quellenprüfung wesentlich."
         },
-      ],
+        {
+          "q": "Können internationale Teams damit arbeiten?",
+          "a": "Ja. Der Chat kann Fragen und Inhalte in mehreren Sprachen verarbeiten, abhängig vom konfigurierten KI-Modell. Diese Seite ist auf Italienisch, Englisch, Französisch, Deutsch und Spanisch verfügbar."
+        },
+        {
+          "q": "Können wir den Speicherort unserer Daten wählen?",
+          "a": "AskMyDocs lässt sich auf Ihrer Infrastruktur installieren. Wie an Modelle gesendete Inhalte verarbeitet werden, hängt vom gewählten KI-Anbieter und der Konfiguration ab. Hosting und Anbieter sollten gemeinsam bewertet werden."
+        }
+      ]
     },
-
-    security: {
-      eyebrow: "Security & Compliance",
-      titleHtml: 'Isolation <span class="accent">ist strukturell</span>, nicht versprochen.',
-      items: [
-        { h: "Isolation", t: "Tenant by Schema", b: "tenant_id auf 17+ Tabellen, composite FKs. Cross-Tenant-Kanten strukturell unmöglich — nicht durch App-Check." },
-        { h: "Audit", t: "Unveränderlicher Trail", b: "kb_canonical_audit protokolliert jede Promotion. Destruktive Commands erfordern ein DB-backed Single-Use-Token." },
-        { h: "Retention", t: "Soft Delete + Sweep", b: "Konfigurierbare Retention (Default 30 Tage). Nächtlicher Scheduler bereinigt Embeddings, Chat-Logs und gelöschte Records." },
-        { h: "RBAC", t: "Spatie + Sanctum", b: "Granulare Rollen und Permissions. Sanctum für API-Auth, RBAC auf jedem Admin-Endpoint. Kein Bypass." },
-        { h: "Provider", t: "Keine SDK-Black-Box", b: "Raw Http:: zu jedem Provider. Keine opaken Dependencies, keine versteckte Telemetrie, keine indirekten Data-Leaks." },
-      ],
+    "closing": {
+      "eyebrow": "Ihr nächstes Kapitel",
+      "title": "Exzellenz hat ein Gedächtnis.",
+      "emphasis": "Geben wir ihm eine Stimme.",
+      "description": "Entdecken Sie, was geschieht, wenn das Wissen einer Organisation jede einzelne Person stärkt.",
+      "cta": "Demo öffnen",
+      "note": "Melden Sie sich mit den Zugangsdaten Ihres Arbeitsbereichs an."
     },
-
-    faq: {
-      eyebrow: "FAQ",
-      titleHtml: 'Häufige <span class="accent">Fragen</span>.',
-      items: [
-        { q: "Welche LLMs und Provider werden unterstützt?",
-          a: "OpenAI, Anthropic, Gemini, OpenRouter und Regolo für Chat. Chat-Provider und Embedding-Provider separat konfigurierbar — kein SDK, nur raw Http::." },
-        { q: "Kann ich den Embedding-Provider ohne Re-Index wechseln?",
-          a: "Nein, und niemand kann das: Embedding-Dimensionen unterscheiden sich zwischen Providern (z. B. 1536 vs. 768 vs. 3072). Beim Wechsel ist Re-Indexing unvermeidbar. Wir handhaben es mit idempotenten Batch-Jobs — siehe README „Embedding dimension gotcha\"." },
-        { q: "Funktioniert es on-prem oder air-gapped?",
-          a: "Ja. AskMyDoc ist self-host first: Laravel 13 + PostgreSQL + pgvector laufen überall. Für air-gapped Chat einfach auf einen on-prem Provider (z. B. vLLM, Ollama via OpenAI-kompatibel) zeigen." },
-        { q: "Mehrsprachige Unterstützung?",
-          a: "Ja. Integrierte Auto-Übersetzung (Laravel-Skill), Sprach-Filterbar in Conversations, Citations bleiben in der Sprache des Quelldokuments erhalten." },
-        { q: "Wie funktioniert die MCP-Integration mit Claude Desktop oder Cursor?",
-          a: "Wir liefern einen enterprise-kb-Server (Laravel\\Mcp ^0.7) mit 10 Tools: 5 Retrieval (Hybrid Search, Graph Expansion …) und 5 canonical/promote. Konfiguriert als MCP-Server im Client erhalten Sie tenant-scoped Graph-Zugriff." },
-        { q: "Wie invasiv ist das Onboarding einer bestehenden Codebase?",
-          a: "Minimal: eine GitHub Action auf einem Docs-Repo (auch reines Markdown). Ingestion ist SHA-256-idempotent, also dupliziert nichts. Kanonische Promotion bleibt human-gated — bei null starten und wachsen." },
-      ],
+    "footer": {
+      "tagline": "Ihr Wissen. Eine neue Möglichkeit.",
+      "docs": "Dokumentation ↗",
+      "credit": "Editorialbilder mit KI erstellt.",
+      "top": "Nach oben"
     },
-
-    cta: {
-      eyebrow: "Bereit zum Start",
-      titleHtml:
-        'Die Grounding-Layer,<br/>die <span style="font-family:Instrument Serif, serif;font-style:italic;color:var(--mint)">es geben sollte</span> — seit Tag eins.',
-      sub: "Kostenlos in 10 Minuten self-hosten — oder uns machen lassen. Multi-Tenant, audit-ready, MCP-kompatibel.",
-      primary: "Demo buchen",
-      secondary: "Star auf GitHub",
-    },
-
-    footer: {
-      tagline: "Enterprise RAG mit kanonischem Knowledge Graph. Self-host first, MCP-native, multi-tenant by schema.",
-      colProduct: "Produkt",
-      colResources: "Ressourcen",
-      colCompany: "Unternehmen",
-      colLegal: "Rechtliches",
-      product: { features: "Features", how: "Funktionsweise", security: "Sicherheit", usecases: "Use Cases" },
-      resources: { docs: "Docs", mcp: "MCP-Setup", changelog: "Changelog", status: "Status" },
-      company: { contact: "Kontakt", blog: "Blog", careers: "Karriere", sales: "Vertrieb" },
-      legal: { privacy: "Datenschutz", terms: "AGB", dpa: "AVV", securitytxt: "security.txt" },
-      copyright: "© 2026 AskMyDoc · Gebaut mit Laravel 13, PostgreSQL, pgvector und sturen Überzeugungen.",
-      version: "v1.4.2 · MIT (Core) · Kommerzielle Lizenz verfügbar",
-    },
-
-    langSwitch: "Sprache",
+    "images": {
+      "hero": "Nachmittagslicht in einem Atelier, mit Büchern, Materialien und arbeitenden Menschen",
+      "archive": "Ein Bücherarchiv zwischen Holzregalen und Naturstein",
+      "team": "Ein Team arbeitet an einem Tisch in einem lichtdurchfluteten Studio"
+    }
   },
-
-  /* ============================== SPANISH =============================== */
-  es: {
-    htmlLang: "es",
-    metaDescription:
-      "Base de conocimiento tipada, compilación canónica, retrieval híbrido con inyección de enfoques rechazados. Multi-tenant, multi-provider, self-host. La capa de grounding enterprise para LLM.",
-    pageTitle: "AskMyDoc — RAG enterprise que no repite los errores",
-
-    nav: {
-      product: "Producto",
-      how: "Cómo funciona",
-      security: "Seguridad",
-      usecases: "Casos de uso",
-      faq: "FAQ",
-      docs: "Docs",
-      github: "GitHub",
-      signin: "Iniciar sesión",
-      bookdemo: "Reservar demo",
+  "es": {
+    "title": "AskMyDocs — El saber que marca la diferencia.",
+    "description": "La plataforma de IA que conecta documentos, personas y conocimiento. Respuestas con fuentes, control de los datos y una nueva ventaja para vuestro equipo.",
+    "skip": "Ir al contenido",
+    "navigation": "Navegación principal",
+    "language": "Idioma",
+    "menu": "Abrir el menú",
+    "close": "Cerrar",
+    "nav": {
+      "vision": "La visión",
+      "experience": "La experiencia",
+      "possibilities": "Las posibilidades",
+      "trust": "La confianza",
+      "login": "Acceder",
+      "demo": "Entrar en la demo"
     },
-
-    hero: {
-      eyebrow: "v1.4 · KB canónica + servidor MCP",
-      titleHtml:
-        'RAG enterprise<br/>que <span class="accent">no repite</span> los <span class="strike">errores</span>',
-      sub:
-        "Base de conocimiento tipada, compilación canónica, inyección de enfoques rechazados. Multi-tenant, multi-provider, self-host. La capa de grounding que debería haber estado desde el día uno.",
-      ctaPrimary: "Probar la demo",
-      ctaSecondary: "Self-host gratis",
-      metaProviders: "OpenAI · Anthropic · Gemini · OpenRouter · Regolo",
-      metaDb: "Postgres + pgvector",
-      metaStack: "Laravel 13 · React",
-      graphProject: "proyecto",
-      graphTenant: "tenant",
-      graphLive: "live",
+    "hero": {
+      "eyebrow": "Vuestro saber. Una nueva inteligencia.",
+      "title": "Vuestro saber.",
+      "title2": "Una nueva",
+      "emphasis": "ventaja.",
+      "description": "Documentos, personas, ideas. Conectad lo que vuestra organización sabe y convertidlo en respuestas, con sus fuentes. Una IA a la altura de vuestro mundo.",
+      "cta": "Descubrir la experiencia",
+      "secondary": "Nuestra visión",
+      "note": "Vuestro saber. Vuestras fuentes. Vuestro control.",
+      "caption": "El saber humano. Una nueva perspectiva.",
+      "cardLabel": "Todo conectado.",
+      "cardText": "Cada respuesta, su fuente."
     },
-
-    graphPanel: {
-      nodeTypesHeader: "tipos de nodo · 9",
-      edgesHeader: "edges · 10 tipos",
-      graphExpansionHeader: "expansión del grafo",
-      row1hop: "vecinos 1-hop",
-      rowRejectedInj: "iny. enfoque rechazado",
-      rowCompositeFk: "FK composite tenant",
-      floatingNodes: "nodos",
-      floatingEdges: "edges",
-      floatingRejected: "rechazado",
-      floatingExpansion: "expansión",
+    "strip": {
+      "label": "Para quienes cultivan la excelencia",
+      "business": "Empresas & Equipos"
     },
-
-    trustLabel: "Stack",
-
-    problem: {
-      eyebrow: "El problema",
-      titleHtml:
-        'El RAG vanilla alucina, repite<br/><span class="accent">enfoques ya rechazados</span>, sin gobernanza.',
-      subHtml:
-        'Embedding + top-k no es una memoria. Es un índice. Una memoria sabe qué es <span class="ink-1">canónico</span>, qué fue <span class="ink-1">rechazado</span>, qué <span class="ink-1">depende</span> de qué — y no vuelve a sugerir el error que arreglaste hace seis meses.',
-      badHead: "✕ Sin AskMyDoc",
-      badTitle: "El mismo error, cada seis meses.",
-      badBody:
-        "Un nuevo dev pregunta al chatbot interno el enfoque para X. El embedding recupera dos README, un ticket viejo y un comentario abandonado. Sugiere la misma solución que ya rechazasteis tras un incidente en producción.",
-      goodHead: "✓ Con AskMyDoc",
-      goodTitle: "El grafo sabe lo que fue descartado.",
-      goodBodyHtml:
-        'La query dispara una expansión 1-hop sobre el nodo <code class="mono ink-1">module:auth</code>. Encuentra un nodo <code class="mono coral">rejected-approach</code> conectado vía <code class="mono ink-1"> supersedes</code>. El LLM recibe el antipatrón en contexto y la respuesta empieza con: «No usar este enfoque, ya fue intentado — ver INC-2025-04.»',
+    "vision": {
+      "eyebrow": "01 — Vuestro capital de conocimiento",
+      "aside": "El valor está en los detalles. Y en el saber que los preserva.",
+      "title": "Más que lo que sabéis.",
+      "emphasis": "Lo que os distingue.",
+      "body1": "El origen de un material. La razón de una elección. La solución encontrada por un compañero. Vuestro patrimonio vive en miles de documentos, y en la memoria de las personas.",
+      "body2": "AskMyDocs los conecta. Una pregunta, en el propio idioma, se convierte en una respuesta clara, acompañada de sus fuentes. Porque el saber que os distingue merece convertirse en una ventaja compartida."
     },
-
-    retrieval: {
-      query: "¿Cómo gestionamos el refresh token en el tenant acme-prod?",
-      headPath: "POST /api/kb/query",
-      headFusion: "híbrido (0,6·v + 0,3·k + 0,1·h)",
-      live: "live",
-      pipeVector: "vector · pgvector",
-      pipeKeyword: "keyword · FTS",
-      pipeRerank: "rerank · head",
-      answerHead: "↳ respuesta grounded",
-      answerMetaWaiting: "esperando…",
-      answerMetaDone: "847ms · 3 citas · 1 rechazado",
-      answerBodyHtml:
-        'Para <span class="mono ink-1">acme-prod</span>, el refresh sigue la rotación definida en <span class="cite">ADR-0011</span>: token de 7 días, single-use, revocado vía <span class="mono ink-1">tenant_id</span> scope. Ver runbook <span class="cite">auth/refresh-flow</span> e incidente relacionado <span class="cite">INC-2025-04</span>.',
-      rejectedHtml:
-        '<b>No proponer</b> JWT long-lived sin rotation — enfoque rechazado (supersedes m:auth)',
-    },
-
-    features: {
-      eyebrow: "Producto",
-      titleHtml: 'Seis capacidades que <span class="accent">el RAG vanilla</span> no tiene.',
-      sub: "Una sola plataforma, opinionada en lo que importa, agnóstica en lo que cambia.",
-      items: [
-        {
-          title: "Retrieval híbrido con reranking",
-          body: "Fusión 0,6·vector + 0,3·keyword + 0,1·head. pgvector junto a Postgres FTS, sin servicios externos. Caché de embeddings con LRU pruning integrado.",
-          meta: ["pgvector", "FTS", "rerank"],
-        },
-        {
-          title: "Knowledge graph canónico",
-          body: "9 tipos de nodo, 10 tipos de edge. Frontmatter YAML + wikilinks, expansión 1-hop a tiempo de query, inyección automática de enfoques rechazados.",
-          meta: ["nodos tipados", "rejected-approach"],
-        },
-        {
-          title: "Multi-provider, cero lock-in",
-          body: "OpenAI, Anthropic, Gemini, OpenRouter, Regolo — orquestados con raw Http::, sin SDK black-box. Chat y embedding configurables por separado.",
-          meta: ["5 providers", "no SDK"],
-        },
-        {
-          title: "Multi-tenant estructural",
-          body: "tenant_id en 17+ tablas, uniques composite para slug/doc_id, FK composite que hacen los edges cross-tenant imposibles a nivel de esquema.",
-          meta: ["isolation by schema"],
-        },
-        {
-          title: "SPA admin completa",
-          body: "Dashboard KPI, RBAC Spatie, explorador KB + editor inline, visor de grafo, export PDF, log viewer de 5 pestañas y runner Artisan whitelisted.",
-          meta: ["React + TanStack"],
-        },
-        {
-          title: "Servidor MCP listo",
-          body: "Servidor enterprise-kb con 10 herramientas (5 retrieval + 5 canonical/promote). Se conecta a Claude Desktop, Cursor o cualquier cliente MCP-compatible.",
-          meta: ["10 tools", "Laravel MCP 0.7"],
-        },
-      ],
-    },
-
-    how: {
-      eyebrow: "Cómo funciona",
-      titleHtml: 'Tres pasos. <span class="accent">Sin magia.</span>',
-      step1: {
-        label: "Ingest",
-        title: "Git push → auto-ingest.",
-        body: "Una GitHub Action ejecuta un upsert idempotente sobre (project_key, source_path, version_hash). El chunker fence-aware sigue las secciones del markdown.",
-        visual: [
-          { cls: "dim", text: "› git push origin main" },
-          { cls: "info", text: "→ GH Action: ingest-to-askmydocs" },
-          { cls: "dim", text: "  sha256: e7d2…91a" },
-          { cls: "", text: "  POST /api/kb/ingest" },
-          { cls: "ok", text: "✓ 14 chunks upserted" },
-          { cls: "ok", text: "✓ idempotente (no dup)" },
-          { cls: "dim", text: "  job: IngestDocumentJob" },
-        ],
+    "principles": [
+      {
+        "title": "Reunir.",
+        "body": "Documentos, archivos y herramientas. Por fin en diálogo."
       },
-      step2: {
-        label: "Compile",
-        title: "Promoción human-gated.",
-        body: "Un LLM sugiere candidatos canónicos (no-write). Un humano valida. Solo al commit los nodos entran al grafo con audit trail inmutable.",
-        visual: [
-          { cls: "", text: "/promotion/suggest" },
-          { cls: "dim", text: "  ↳ 3 candidatos" },
-          { cls: "dim", text: "    · decision: ADR-0011" },
-          { cls: "dim", text: "    · rejected: long-lived JWT" },
-          { cls: "dim", text: "    · runbook: refresh-flow" },
-          { cls: "info", text: "  revisión por alice@acme" },
-          { cls: "ok", text: "✓ promote → canonical" },
-          { cls: "dim", text: "  audit: kb_canonical_audit" },
-        ],
+      {
+        "title": "Comprender.",
+        "body": "Respuestas en contexto, con las fuentes siempre a mano."
       },
-      step3: {
-        label: "Answer",
-        title: "Grounded. Citada. Auditada.",
-        body: "Retrieval híbrido + expansión 1-hop del grafo. Los enfoques rechazados entran en contexto. Refusal path cuando no hay grounding suficiente.",
-        visual: [
-          { cls: "dim", text: "› query \"refresh token acme\"" },
-          { cls: "info", text: "  hybrid: 9 hits (v+k+h)" },
-          { cls: "info", text: "  graph: +2 vecinos (1-hop)" },
-          { cls: "coral", text: "  ⚠ 1 enfoque rechazado inyectado" },
-          { cls: "", text: "  llm: anthropic / sonnet" },
-          { cls: "ok", text: "✓ respuesta · 3 citas" },
-          { cls: "dim", text: "  audit logueado · 847ms" },
-        ],
+      {
+        "title": "Transmitir.",
+        "body": "El saber adecuado, para las personas adecuadas. Dondequiera que trabajen."
+      }
+    ],
+    "experience": {
+      "eyebrow": "02 — De la pregunta al conocimiento",
+      "title": "Una pregunta sencilla.",
+      "emphasis": "Un mundo en la respuesta.",
+      "description": "De una ficha de producto a una decisión de proyecto. Explora tres ejemplos y sigue el recorrido desde la pregunta hasta las fuentes.",
+      "photoCaption": "Un archivo. Conexiones infinitas.",
+      "badge": "Ejemplo ilustrativo",
+      "topics": "Explorar un tema",
+      "bottom": "El saber, con sus fuentes.",
+      "open": "Abrir la app",
+      "disclaimer": "Contenidos ficticios creados para ilustrar la experiencia. En la aplicación, las respuestas se basan en los documentos de vuestro equipo.",
+      "question": "Tu pregunta",
+      "answer": "El saber de vuestro equipo",
+      "sourceLabel": "Fuente de demostración",
+      "excerpt": "Extracto",
+      "page": "Página"
+    },
+    "scenarios": [
+      {
+        "label": "Materiales",
+        "question": "¿Qué hace especial al cachemir de la colección Épure?",
+        "answer": "La ficha de materiales describe un cachemir de fibra larga, elegido por su suavidad y ligereza. El punto fino y el acabado cepillado definen su tacto. En boutique, el relato puede comenzar con la sensación del tejido y continuar con los consejos de la guía de cuidados.",
+        "sources": [
+          {
+            "title": "Épure · Ficha de materiales",
+            "page": "12",
+            "excerpt": "El cachemir de fibra larga de la colección Épure se trabaja en punto fino. Un acabado cepillado le aporta suavidad al tacto y conserva la ligereza de la prenda."
+          },
+          {
+            "title": "Guía de cuidados",
+            "page": "8",
+            "excerpt": "Presentar al cliente la guía de cuidados específica de la prenda. Recomendar seguir las indicaciones de la etiqueta y guardar las prendas de punto dobladas, evitando colgarlas durante periodos prolongados."
+          }
+        ]
       },
+      {
+        "label": "Proyectos",
+        "question": "¿Por qué el equipo eligió una arquitectura modular para Atlas?",
+        "answer": "El registro de decisiones señala dos prioridades: reutilizar componentes y actualizar módulos sin rediseñar todo el sistema. El acta de revisión confirma la elección y precisa que las interfaces compartidas deben mantenerse documentadas. La decisión responde a las necesidades de mantenimiento y continuidad del proyecto.",
+        "sources": [
+          {
+            "title": "Atlas · Registro de decisiones",
+            "page": "7",
+            "excerpt": "Se adopta una arquitectura modular para favorecer la reutilización de componentes y las actualizaciones independientes. Las interfaces entre módulos forman parte de la documentación del proyecto."
+          },
+          {
+            "title": "Acta de revisión",
+            "page": "2",
+            "excerpt": "El equipo confirma el enfoque modular. Cada cambio en las interfaces compartidas debe documentarse y debatirse antes de la entrega para mantener la continuidad del sistema."
+          }
+        ]
+      },
+      {
+        "label": "Equipos",
+        "question": "¿Cómo acompañamos a una nueva persona en sus primeros días?",
+        "answer": "El proceso de incorporación prevé una persona de referencia, acceso a la documentación del puesto y una primera actividad guiada. La checklist añade una conversación al final de la semana para recoger preguntas y verificar accesos. Los procedimientos específicos siguen siendo los del departamento de destino.",
+        "sources": [
+          {
+            "title": "Guía de bienvenida",
+            "page": "4",
+            "excerpt": "Cada nueva persona cuenta con alguien de referencia que presenta al equipo, comparte la documentación del puesto y acompaña una primera actividad práctica."
+          },
+          {
+            "title": "Checklist de incorporación",
+            "page": "1",
+            "excerpt": "Durante la primera semana: verificar los accesos necesarios, completar la actividad guiada y acordar una conversación con la persona de referencia para recoger preguntas y necesidades."
+          }
+        ]
+      }
+    ],
+    "possibilities": {
+      "eyebrow": "03 — Para quienes marcan la diferencia",
+      "title": "La inteligencia encuentra",
+      "emphasis": "vuestro mundo.",
+      "caption": "Personas, ideas y conocimiento. Juntos."
     },
-
-    usecases: {
-      eyebrow: "Casos de uso",
-      titleHtml: 'Donde <span class="accent">funciona de verdad</span>.',
-      items: [
+    "useCases": [
+      {
+        "title": "Cada detalle, una respuesta.",
+        "body": "Desde los materiales hasta el cuidado del producto, acercad el saber al cliente. En boutique, showroom o atención al cliente: precisión y sensibilidad en la misma conversación.",
+        "tag": "Moda, Diseño & Experiencia de cliente"
+      },
+      {
+        "title": "Las mejores ideas no parten de cero.",
+        "body": "Recuperad decisiones, investigaciones y proyectos anteriores. Conectad experiencia técnica y visión creativa para que el equipo construya sobre lo que ya sabe.",
+        "tag": "Empresas, Proyectos & Innovación"
+      },
+      {
+        "title": "El saber acompaña a las personas.",
+        "body": "Procedimientos, estándares y formación disponibles cuando se necesitan. Desde la sede hasta un establecimiento hotelero, cada persona puede encontrar la forma adecuada de trabajar.",
+        "tag": "Personas, Operaciones & Hostelería"
+      }
+    ],
+    "connections": {
+      "eyebrow": "En sintonía con vuestro mundo",
+      "title": "El saber ya está ahí. Conectémoslo.",
+      "documents": "Vuestros documentos"
+    },
+    "trust": {
+      "eyebrow": "04 — La confianza, por principio",
+      "title": "Un patrimonio valioso.",
+      "emphasis": "El control sigue siendo vuestro.",
+      "description": "El conocimiento es una ventaja distintiva. Elegid dónde conservarlo, quién puede acceder y qué modelos de IA utilizar.",
+      "link": "Explorar la documentación",
+      "items": [
         {
-          icon: "Book",
-          title: "Docs de ingeniería & repositorio ADR",
-          body: "Transforma README, ADR y RFC en un grafo canónico tipado. Las decisiones superadas se enlazan vía supersedes — no se pierden.",
-          tags: ["ADR", "RFC", "Runbook"],
+          "title": "En vuestra casa.",
+          "body": "Instalación en infraestructura propia, para mantenerla bajo vuestro control."
         },
         {
-          icon: "Support",
-          title: "Base de conocimiento soporte cliente",
-          body: "Respuestas grounded con citas, refusal path cuando falta grounding, presets de filtro por categoría y versión de producto.",
-          tags: ["Citas", "Refusal", "Filtros"],
+          "title": "A cada persona, su acceso.",
+          "body": "Espacios de trabajo separados y permisos para ofrecer el saber a las personas autorizadas."
         },
         {
-          icon: "Scale",
-          title: "Compliance & auditoría Patent Box",
-          body: "Audit trail inmutable en cada promoción canónica. Soft delete + retention configurable. Export PDF certificable.",
-          tags: ["Audit", "Retention", "PDF"],
+          "title": "Libres para elegir.",
+          "body": "Varios proveedores de IA e integraciones MCP. Un ecosistema que puede evolucionar con vosotros."
+        }
+      ]
+    },
+    "faq": {
+      "eyebrow": "Para ir más allá",
+      "title": "Algunas respuestas antes de empezar.",
+      "items": [
+        {
+          "q": "¿Tenemos que reorganizar todos los documentos?",
+          "a": "Podéis empezar con los documentos y herramientas que ya utilizáis. Los conectores importan las fuentes configuradas; el equipo puede después organizar y cuidar el conocimiento. Una colección piloto bien elegida es un buen punto de partida."
         },
         {
-          icon: "Brain",
-          title: "Grounding LLM multi-equipo",
-          body: "Servidor MCP con 10 herramientas. Claude Desktop y Cursor hablan directamente con tu grafo canónico, con aislamiento por tenant.",
-          tags: ["MCP", "Claude", "Cursor"],
+          "q": "¿De dónde salen las respuestas?",
+          "a": "AskMyDocs busca en los contenidos accesibles para quien pregunta y acompaña las respuestas con referencias. Las citas permiten llegar a los documentos: comprobar las fuentes sigue siendo esencial para las decisiones importantes."
         },
-      ],
+        {
+          "q": "¿Podemos usarlo con equipos internacionales?",
+          "a": "Sí. El chat puede trabajar con preguntas y contenidos en varios idiomas, según el modelo de IA configurado. Esta página está disponible en italiano, inglés, francés, alemán y español."
+        },
+        {
+          "q": "¿Podemos elegir dónde residen los datos?",
+          "a": "AskMyDocs puede instalarse en vuestra infraestructura. El tratamiento del contenido enviado a los modelos depende del proveedor de IA y de la configuración elegidos: alojamiento y proveedor deben evaluarse conjuntamente."
+        }
+      ]
     },
-
-    security: {
-      eyebrow: "Seguridad & compliance",
-      titleHtml: 'El aislamiento <span class="accent">es estructural</span>, no prometido.',
-      items: [
-        { h: "Isolation", t: "Tenant por esquema", b: "tenant_id en 17+ tablas, FK composite. Edges cross-tenant imposibles estructuralmente, no por check aplicativo." },
-        { h: "Audit", t: "Trail inmutable", b: "kb_canonical_audit registra cada promoción. Los comandos destructivos requieren un token de un solo uso DB-backed." },
-        { h: "Retention", t: "Soft delete + sweep", b: "Retention configurable (30d por defecto). Scheduler nocturno purga embeddings, chat-logs y registros eliminados." },
-        { h: "RBAC", t: "Spatie + Sanctum", b: "Roles y permisos granulares. Sanctum para API auth, RBAC en cada endpoint admin. Sin bypass." },
-        { h: "Providers", t: "Sin SDK black box", b: "Raw Http:: hacia cada provider. Sin dependencias opacas, sin telemetría oculta, sin fugas de datos indirectas." },
-      ],
+    "closing": {
+      "eyebrow": "Vuestro próximo capítulo",
+      "title": "La excelencia tiene memoria.",
+      "emphasis": "Démosle voz.",
+      "description": "Descubre qué ocurre cuando el conocimiento de una organización se convierte en el poder de cada persona.",
+      "cta": "Entrar en la demo",
+      "note": "Accede con las credenciales de vuestro espacio de trabajo."
     },
-
-    faq: {
-      eyebrow: "FAQ",
-      titleHtml: 'Preguntas <span class="accent">recurrentes</span>.',
-      items: [
-        { q: "¿Qué LLMs y providers soportan?",
-          a: "OpenAI, Anthropic, Gemini, OpenRouter y Regolo para chat. Chat provider y embedding provider son configurables por separado — sin SDK, solo raw Http::." },
-        { q: "¿Puedo cambiar el embedding provider sin reindexar?",
-          a: "No, y nadie puede: la dimensión del embedding cambia entre providers (ej. 1536 vs 768 vs 3072). Al cambiar, reindexar es inevitable. Lo gestionamos con jobs batch idempotentes — ver README «Embedding dimension gotcha»." },
-        { q: "¿Funciona on-prem o air-gapped?",
-          a: "Sí. AskMyDoc es self-host first: Laravel 13 + PostgreSQL + pgvector corren en cualquier sitio. Para air-gapped, apuntar el chat a un provider on-prem (ej. vLLM, Ollama vía OpenAI-compatible)." },
-        { q: "¿Soporte multi-idioma?",
-          a: "Sí. Auto-traducción integrada (skill Laravel), filter bar por idioma en las conversaciones, citas preservadas en el idioma del documento fuente." },
-        { q: "¿Cómo funciona la integración MCP con Claude Desktop o Cursor?",
-          a: "Incluimos un servidor enterprise-kb (Laravel\\Mcp ^0.7) con 10 herramientas: 5 de retrieval (hybrid search, graph expansion, etc.) y 5 de canonical/promote. Lo configuras como servidor MCP en el cliente y obtienes acceso al grafo tenant-scoped." },
-        { q: "¿Cómo de invasivo es el onboarding de una codebase existente?",
-          a: "Mínimo: una GitHub Action sobre un repo de docs (Markdown puro vale). La ingestion es idempotente sobre SHA-256, así que los push posteriores no duplican. La promoción canónica sigue siendo human-gated — empezáis de cero y crecéis." },
-      ],
+    "footer": {
+      "tagline": "Vuestro saber. Una nueva posibilidad.",
+      "docs": "Documentación ↗",
+      "credit": "Imágenes editoriales creadas con IA.",
+      "top": "Volver al inicio"
     },
-
-    cta: {
-      eyebrow: "Listo para empezar",
-      titleHtml:
-        'La capa de grounding<br/>que <span style="font-family:Instrument Serif, serif;font-style:italic;color:var(--mint)">debería haber estado</span> desde el day one.',
-      sub: "Self-host gratis en 10 minutos, o deja que la gestionemos nosotros. Multi-tenant, audit-ready, MCP-compatible.",
-      primary: "Reservar demo",
-      secondary: "Star en GitHub",
-    },
-
-    footer: {
-      tagline: "RAG enterprise con knowledge graph canónico. Self-host first, MCP-native, multi-tenant by schema.",
-      colProduct: "Producto",
-      colResources: "Recursos",
-      colCompany: "Empresa",
-      colLegal: "Legal",
-      product: { features: "Características", how: "Cómo funciona", security: "Seguridad", usecases: "Casos de uso" },
-      resources: { docs: "Docs", mcp: "Setup MCP", changelog: "Changelog", status: "Status" },
-      company: { contact: "Contacto", blog: "Blog", careers: "Empleo", sales: "Ventas" },
-      legal: { privacy: "Privacidad", terms: "Términos", dpa: "DPA", securitytxt: "security.txt" },
-      copyright: "© 2026 AskMyDoc · Construido con Laravel 13, PostgreSQL, pgvector y opiniones obstinadas.",
-      version: "v1.4.2 · MIT (core) · Licencia comercial disponible",
-    },
-
-    langSwitch: "Idioma",
-  },
+    "images": {
+      "hero": "Luz de tarde en un atelier, entre libros, materiales y personas trabajando",
+      "archive": "Un archivo de libros entre estanterías de madera y piedra natural",
+      "team": "Un equipo colabora alrededor de una mesa en un estudio luminoso"
+    }
+  }
 };
 
-window.LANGS = LANGS;
-window.I18N = I18N;
+export function translate(locale, path) {
+  return path.split('.').reduce((value, key) => value?.[key], COPY[locale] ?? COPY.it);
+}
+
+/** URL takes precedence over saved preference, then all browser languages, then Italian. */
+export function resolveLocale({ search = '', saved, languages = [] } = {}) {
+  const supported = (value) => typeof value === 'string' && Object.hasOwn(COPY, value);
+  const requested = new URLSearchParams(search).get('lang');
+  if (supported(requested)) return requested;
+  if (supported(saved)) return saved;
+  return languages.map((language) => language.toLowerCase().split('-')[0]).find(supported) ?? 'it';
+}
