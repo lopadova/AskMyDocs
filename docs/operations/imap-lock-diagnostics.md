@@ -71,3 +71,17 @@ credentials. Deploy the corrected application code to the queue workers too.
 Existing retry attempts can then use the fix; a campaign already marked failed
 can be resumed through the full-history import action, preserving its checkpoints.
 Verify that discovery completes and the campaign progresses beyond `discovering`.
+
+## Invalid `INTERNALDATE` during discovery
+
+Webklex 6.2 can truncate the quoted date in a Gmail response shaped like
+`(UID 123 INTERNALDATE "07-Sep-2026 21:23:57 +0000")`, leaving only
+`"07-Sep-2026` for the application to parse. The backfill client recovers the
+complete date from the same successful, metadata-only FETCH response, matching
+the requested UID. It preserves the time and numeric offset and rejects partial
+or invalid dates instead of inventing midnight or rolling over calendar dates.
+Regression tests replay wire responses through the installed Webklex decoder.
+
+This is a parsing failure, not an authentication or Redis configuration problem.
+The worker deployment must include the fix; no credential rotation, queue purge
+or backfill reset is required by this correction.
