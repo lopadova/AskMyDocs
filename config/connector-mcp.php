@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Http\Middleware\McpConnectionDiagnostics;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Session\Middleware\StartSession;
@@ -39,6 +40,7 @@ return [
             StartSession::class,
             'auth:sanctum',
             'tenant.authorize',
+            McpConnectionDiagnostics::class,
         ],
         'admin_ability' => 'manageConnectors',
     ],

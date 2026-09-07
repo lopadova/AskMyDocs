@@ -207,6 +207,18 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        // Decorate the package's SSRF-safe transport per request so MCP OAuth
+        // onboarding failures can report every attempted URL/status without
+        // ever capturing credential headers or request payloads.
+        $this->app->scoped(\App\Mcp\Diagnostics\McpConnectionDiagnosticContext::class);
+        $this->app->scoped(
+            \Padosoft\AskMyDocsConnectorMcp\Contracts\SafeHttpClientContract::class,
+            static fn ($app): \Padosoft\AskMyDocsConnectorMcp\Contracts\SafeHttpClientContract => new \App\Mcp\Diagnostics\DiagnosticSafeHttpClient(
+                $app->make(\Padosoft\AskMyDocsConnectorMcp\Services\SafeHttpClient::class),
+                $app->make(\App\Mcp\Diagnostics\McpConnectionDiagnosticContext::class),
+            ),
+        );
+
         // Connector UID checkpoints are only safe when a failed source write
         // throws. Laravel Cloud injects its `private` S3 disk with throw=false,
         // so make every configured canonical/project KB disk strict before the

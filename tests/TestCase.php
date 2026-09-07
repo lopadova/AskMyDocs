@@ -192,6 +192,7 @@ abstract class TestCase extends OrchestraTestCase
             \Illuminate\Session\Middleware\StartSession::class,
             'auth:sanctum',
             'tenant.authorize',
+            \App\Http\Middleware\McpConnectionDiagnostics::class,
             'can:manageConnectors',
         ]);
         // The MCP package also ships with permissive route defaults. Mirror the

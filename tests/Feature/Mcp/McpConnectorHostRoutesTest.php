@@ -15,11 +15,14 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Padosoft\AskMyDocsConnectorBase\ConnectorRegistry;
 use Padosoft\AskMyDocsConnectorBase\ConnectorSyncJob;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
 use Padosoft\AskMyDocsConnectorBase\Support\TenantContext as ConnectorTenantContext;
 use Padosoft\AskMyDocsConnectorMcp\McpConnector;
+use Padosoft\AskMyDocsConnectorMcp\Contracts\SafeHttpClientContract;
 use Padosoft\AskMyDocsConnectorMcp\Models\McpConnection;
 use Padosoft\AskMyDocsConnectorMcp\Models\McpConnectionResource;
 use Padosoft\AskMyDocsConnectorMcp\Models\McpConnectionTool;
@@ -90,6 +93,48 @@ final class McpConnectorHostRoutesTest extends TestCase
         $user = $this->user('disabled@example.test');
 
         $this->actingAs($user)->getJson('/api/me/connected-apps/mcp')->assertNotFound();
+    }
+
+    public function test_oauth_connection_failure_returns_and_logs_correlated_backend_diagnostics(): void
+    {
+        config()->set('connector-mcp.oauth.enabled', true);
+        config()->set('connector-mcp.http.internal_endpoint_allowlist', ['mcp.example.test']);
+        Http::fake(static fn () => Http::response([], 404, ['Content-Type' => 'application/json']));
+        Log::spy();
+        $admin = $this->user('oauth-diagnostics@example.test');
+        $admin->assignRole('admin');
+
+        $this->assertInstanceOf(
+            \App\Mcp\Diagnostics\DiagnosticSafeHttpClient::class,
+            app(SafeHttpClientContract::class),
+        );
+
+        $response = $this->actingAs($admin)->postJson('/api/admin/connectors/mcp', [
+            'name' => 'Broken OAuth MCP',
+            'endpoint' => 'https://mcp.example.test/mcp',
+            'auth_method' => 'oauth',
+        ]);
+
+        $response->assertInternalServerError()
+            ->assertJsonPath('diagnostic.status', 500)
+            ->assertJsonPath('diagnostic.target_endpoint', 'https://mcp.example.test/mcp')
+            ->assertJsonPath('diagnostic.outbound_attempts.0.url', 'https://mcp.example.test/.well-known/oauth-protected-resource/mcp')
+            ->assertJsonPath('diagnostic.outbound_attempts.0.status', 404)
+            ->assertJsonPath('diagnostic.outbound_attempts.0.reason', 'Not Found')
+            ->assertJsonPath('diagnostic.outbound_attempts.1.url', 'https://mcp.example.test/.well-known/oauth-protected-resource')
+            ->assertJsonPath('diagnostic.outbound_attempts.1.status', 404)
+            ->assertJsonPath('diagnostic.configuration.oauth_enabled', true);
+        $this->assertSame(
+            $response->json('diagnostic.id'),
+            $response->headers->get('X-MCP-Diagnostic-ID'),
+        );
+
+        Log::shouldHaveReceived('error')
+            ->with('mcp.connection.request_failed', \Mockery::on(
+                fn (array $context): bool => $context['diagnostic_id'] === $response->json('diagnostic.id')
+                    && count($context['outbound_attempts']) === 2,
+            ))
+            ->once();
     }
 
     public function test_mcp_resource_connector_is_registered_but_hidden_from_generic_roster(): void

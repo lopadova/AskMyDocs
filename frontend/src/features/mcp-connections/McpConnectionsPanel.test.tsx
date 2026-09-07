@@ -113,6 +113,55 @@ describe('McpConnectionsPanel OAuth onboarding', () => {
         })));
     });
 
+    it('opens correlated backend diagnostics from the error info button', async () => {
+        const user = userEvent.setup();
+        vi.mocked(api.post).mockRejectedValueOnce({
+            message: 'Request failed with status code 500',
+            config: { method: 'post', url: '/api/me/connected-apps/mcp' },
+            response: {
+                status: 500,
+                statusText: 'Internal Server Error',
+                data: {
+                    message: 'MCP connection request failed.',
+                    diagnostic: {
+                        id: '01DIAGNOSTIC',
+                        occurred_at: '2026-09-07T17:30:00+02:00',
+                        detail: 'OAuth protected resource metadata discovery failed.',
+                        outbound_attempts: [
+                            {
+                                method: 'GET',
+                                url: 'https://hubhive.net/.well-known/oauth-protected-resource/mcp/marco-bramato',
+                                status: 404,
+                            },
+                        ],
+                    },
+                },
+            },
+        });
+        renderPanel();
+        await waitFor(() => expect(screen.getByTestId('mcp-connections-personal')).toHaveAttribute('data-state', 'ready'));
+        await user.click(screen.getByRole('button', { name: 'Add MCP connection' }));
+        await user.type(screen.getByLabelText('Name'), 'Hub');
+        await user.type(screen.getByLabelText('MCP endpoint'), 'https://hubhive.net/mcp/marco-bramato');
+        await user.click(screen.getByRole('button', { name: 'Continue with OAuth' }));
+
+        expect(await screen.findByRole('alert')).toHaveTextContent('MCP connection request failed.');
+        await user.click(screen.getByRole('button', { name: 'View connection error details' }));
+
+        expect(screen.getByRole('dialog', { name: 'Connection error details' })).toBeInTheDocument();
+        expect(screen.getByTestId('mcp-connection-error-detail')).toHaveTextContent('01DIAGNOSTIC');
+        expect(screen.getByTestId('mcp-connection-error-detail')).toHaveTextContent('/.well-known/oauth-protected-resource/mcp/marco-bramato');
+        expect(screen.getByTestId('mcp-connection-error-detail')).toHaveTextContent('404');
+
+        await user.click(screen.getByRole('button', { name: 'Close error details' }));
+        expect(screen.queryByTestId('mcp-connection-error-dialog')).toBeNull();
+
+        await user.click(screen.getByRole('button', { name: 'View connection error details' }));
+        await user.keyboard('{Escape}');
+        expect(screen.queryByTestId('mcp-connection-error-dialog')).toBeNull();
+        expect(screen.getByRole('dialog', { name: 'New MCP connection' })).toBeInTheDocument();
+    });
+
     it('keeps tool and resource catalogs collapsed until the connection is expanded', async () => {
         const user = userEvent.setup();
         vi.mocked(api.get).mockResolvedValueOnce({ data: [connectionFixture] } as never);
