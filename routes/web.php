@@ -14,6 +14,10 @@ use App\Http\Controllers\Api\AgentRunEventController;
 use App\Http\Controllers\Api\AgentRunControlController;
 use Illuminate\Support\Facades\Route;
 
+// Public editorial landing. Explicit route also serves the directory URL in Herd.
+Route::get('/landing', fn () => response()->file(public_path('landing/index.html')))
+    ->name('landing');
+
 /*
 |--------------------------------------------------------------------------
 | Auth Routes (guest only)
