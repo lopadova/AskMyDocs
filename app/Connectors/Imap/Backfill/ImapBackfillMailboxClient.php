@@ -97,16 +97,42 @@ final class ImapBackfillMailboxClient implements ImapBackfillClient
             throw new RuntimeException('The configured IMAP protocol cannot fetch INTERNALDATE.');
         }
 
-        $dates = $connection
-            ->fetch(['INTERNALDATE'], [$uid], null, IMAP::ST_UID)
-            ->validatedData();
+        $response = $connection->fetch(['INTERNALDATE'], [$uid], null, IMAP::ST_UID);
+        // Validate command completion before considering any partial wire data.
+        $dates = $response->validatedData();
         $value = is_array($dates) ? ($dates[$uid] ?? $dates[(string) $uid] ?? null) : null;
+
+        // Webklex 6.2 splits a quoted string when its closing quote is followed
+        // by ')'. Gmail sends exactly that shape: (UID n INTERNALDATE "...").
+        // Recover the complete value from this same metadata-only response, not
+        // another message's date or its RFC822 headers. Other shapes keep the
+        // library's decoded value. No extra network command is needed.
+        foreach ($response->getResponse() as $line) {
+            if (is_string($line) && preg_match(
+                '/\A\* [1-9][0-9]* FETCH \(UID '.$uid.' INTERNALDATE "([^"\r\n]+)"\)\r?\n?\z/i',
+                $line,
+                $match,
+            )) {
+                $value = $match[1];
+                break;
+            }
+        }
         if (! is_string($value) || trim($value) === '') {
             throw new RuntimeException("IMAP did not return INTERNALDATE for UID {$uid}.");
         }
 
         try {
-            return Carbon::parse($value);
+            $value = ltrim($value, ' '); // RFC 3501 also permits a space-padded day.
+            if (! preg_match('/\A[0-9]{1,2}-[A-Za-z]{3}-[0-9]{4} [0-9]{2}:[0-9]{2}:[0-9]{2} [+-][0-9]{4}\z/', $value)) {
+                throw new RuntimeException('Expected a complete IMAP date, time and numeric offset.');
+            }
+            $date = Carbon::createFromFormat('!j-M-Y H:i:s O', $value);
+            $errors = Carbon::getLastErrors();
+            if ($date === null || ($errors !== false && ($errors['warning_count'] > 0 || $errors['error_count'] > 0))) {
+                throw new RuntimeException('Invalid IMAP calendar date or time.');
+            }
+
+            return $date;
         } catch (\Throwable $exception) {
             throw new RuntimeException("IMAP returned an invalid INTERNALDATE for UID {$uid}.", previous: $exception);
         }
