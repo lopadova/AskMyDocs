@@ -41,10 +41,6 @@ final readonly class AgentPlanningCoordinator
     ): AgentPlan {
         $mode = $this->modes->forContext($context);
         if ($mode === 'classic') {
-            // `classic` is the rollback contract: it must remain byte-for-byte
-            // equivalent to the planner path that existed before capability
-            // routing was introduced. Validation, normalization and retries
-            // belong exclusively to the capability planner.
             return $this->classic->decide(
                 $question, $context, $tools, $evidence, $completedActions, $turnContext,
             );

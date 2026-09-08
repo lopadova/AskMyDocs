@@ -381,6 +381,129 @@ final class AgentLoopTest extends TestCase
         Http::assertSentCount(1);
     }
 
+    public function test_it_retries_a_replan_that_reuses_a_completed_action_id(): void
+    {
+        $this->route('get_order', 'http://erp.example.test/orders/DEMO-3007');
+        Http::fake(['*' => Http::response([
+            'status' => 'completed',
+            'data' => ['public_id' => 'DEMO-3007', 'commercial_status' => 'completed'],
+        ])]);
+
+        $requests = [];
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')
+            ->times(3)
+            ->withArgs(function (string $system, array $history) use (&$requests): bool {
+                $requests[] = json_decode(
+                    (string) data_get($history, '0.content'),
+                    true,
+                    flags: JSON_THROW_ON_ERROR,
+                );
+
+                return true;
+            })
+            ->andReturn(
+                $this->planResponse([
+                    'decision' => 'tools',
+                    'actions' => [[
+                        'id' => 'load_order',
+                        'tool' => 'get_order',
+                        'arguments' => [],
+                        'depends_on' => [],
+                        'purpose' => 'Recupero il dettaglio ordine',
+                    ]],
+                ]),
+                $this->planResponse([
+                    'decision' => 'tools',
+                    'actions' => [[
+                        'id' => 'load_order',
+                        'tool' => 'get_order',
+                        'arguments' => [],
+                        'depends_on' => [],
+                        'purpose' => 'Riutilizzo per errore lo stesso identificatore',
+                    ]],
+                ]),
+                $this->planResponse(['decision' => 'answer', 'actions' => []]),
+            );
+        $this->app->instance(AiManager::class, $ai);
+        $retrieval = Mockery::mock(ChatRetrievalService::class)->makePartial();
+        $retrieval->shouldReceive('retrieve')->once()->andReturn(new SearchResult(collect(), collect(), collect()));
+        $this->app->instance(ChatRetrievalService::class, $retrieval);
+
+        $run = $this->makeRun();
+        $outcome = app(AgentLoop::class)->run($run, $this->context($run));
+
+        $this->assertSame('answer', $outcome->decision);
+        $this->assertNull($outcome->stopReason);
+        $this->assertCount(1, $outcome->completedActions);
+        $this->assertStringContainsString(
+            'invalid or duplicated',
+            (string) data_get($requests, '2.validation_error'),
+        );
+        $this->assertSame(1, $run->toolExecutions()->count());
+        Http::assertSentCount(1);
+    }
+
+    public function test_exhaustive_search_cannot_answer_before_using_an_available_live_source(): void
+    {
+        $search = $this->route('search_people', 'http://erp.example.test/people');
+        $this->parameter($search, 'query', 'query');
+        Http::fake(['*' => Http::response(['items' => [['id' => 9, 'name' => 'Giulia Riva']]])]);
+
+        $requests = [];
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')
+            ->times(3)
+            ->withArgs(function (string $system, array $history) use (&$requests): bool {
+                $requests[] = json_decode(
+                    (string) data_get($history, '0.content'),
+                    true,
+                    flags: JSON_THROW_ON_ERROR,
+                );
+
+                return true;
+            })
+            ->andReturn(
+                $this->planResponse(['decision' => 'answer', 'actions' => []]),
+                $this->planResponse([
+                    'decision' => 'tools',
+                    'actions' => [[
+                        'id' => 'search_giulia_live',
+                        'tool' => 'search_people',
+                        'arguments' => ['query' => 'Giulia Riva'],
+                        'depends_on' => [],
+                        'purpose' => 'Cerco Giulia Riva nella fonte live',
+                    ]],
+                ]),
+                $this->planResponse(['decision' => 'answer', 'actions' => []]),
+            );
+        $this->app->instance(AiManager::class, $ai);
+        $retrieval = Mockery::mock(ChatRetrievalService::class)->makePartial();
+        $retrieval->shouldReceive('retrieve')
+            ->once()
+            ->with(
+                'Cerca tutto quello che riesci a trovare su Giulia Riva e fammi un riassunto',
+                'crm',
+                Mockery::type(RetrievalFilters::class),
+            )
+            ->andReturn(new SearchResult(collect(), collect(), collect()));
+        $this->app->instance(ChatRetrievalService::class, $retrieval);
+
+        $run = $this->makeRun();
+        $run->forceFill(['input_json' => [
+            'question' => 'Cerca tutto quello che riesci a trovare su Giulia Riva e fammi un riassunto',
+        ]])->save();
+        $outcome = app(AgentLoop::class)->run($run, $this->context($run));
+
+        $this->assertSame('answer', $outcome->decision);
+        $this->assertStringContainsString(
+            'live_source_coverage_required',
+            (string) data_get($requests, '1.validation_error'),
+        );
+        $this->assertSame('search_people', $run->toolExecutions()->sole()->tool_name);
+        Http::assertSentCount(1);
+    }
+
     public function test_shadow_mode_records_capability_proposal_without_executing_tools(): void
     {
         config()->set('agent.planner.mode', 'shadow');
