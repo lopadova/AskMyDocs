@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "062f133bc69e2ea63c3acdaa06050e81",
+    "content-hash": "9206a11da4d169323592b1d7ed3cb071",
     "packages": [
         {
             "name": "aws/aws-crt-php",
@@ -3640,16 +3640,16 @@
         },
         {
             "name": "padosoft/askmydocs-connector-imap",
-            "version": "v1.6.0",
+            "version": "v1.6.1",
             "source": {
                 "type": "git",
                 "url": "https://github.com/padosoft/askmydocs-connector-imap.git",
-                "reference": "8d731c5f711ad1a8bde0497b02bccd2c0bd44a60"
+                "reference": "5e402935d2b9a78007ce78c65932863e19401e01"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/padosoft/askmydocs-connector-imap/zipball/8d731c5f711ad1a8bde0497b02bccd2c0bd44a60",
-                "reference": "8d731c5f711ad1a8bde0497b02bccd2c0bd44a60",
+                "url": "https://api.github.com/repos/padosoft/askmydocs-connector-imap/zipball/5e402935d2b9a78007ce78c65932863e19401e01",
+                "reference": "5e402935d2b9a78007ce78c65932863e19401e01",
                 "shasum": ""
             },
             "require": {
@@ -3660,7 +3660,7 @@
                 "nesbot/carbon": "^2.0|^3.0",
                 "padosoft/askmydocs-connector-base": "^1.5",
                 "php": "^8.3",
-                "webklex/php-imap": "^6.0"
+                "webklex/php-imap": "^6.2"
             },
             "require-dev": {
                 "laravel/pint": "^1.18",
@@ -3708,10 +3708,10 @@
             ],
             "description": "IMAP email connector for AskMyDocs — ingest mailboxes (body, headers, attachments) as RAG knowledge.",
             "support": {
-                "source": "https://github.com/padosoft/askmydocs-connector-imap/tree/v1.6.0",
+                "source": "https://github.com/padosoft/askmydocs-connector-imap/tree/v1.6.1",
                 "issues": "https://github.com/padosoft/askmydocs-connector-imap/issues"
             },
-            "time": "2026-08-29T15:22:07+00:00"
+            "time": "2026-09-08T00:46:42+00:00"
         },
         {
             "name": "padosoft/askmydocs-connector-jira",
