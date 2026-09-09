@@ -491,13 +491,16 @@ independent code-reviewer SUBAGENT stays as the always-on local pre-merge
 gate when both cloud bots are unavailable. See `CLAUDE.md` R36 +
 `.claude/skills/copilot-pr-review-loop/`.
 
-### R37 — Branching: `feature/vX.Y` integration branches → `main` once per release
-For AskMyDocs: `main` = stable production. Each major release works in its
-own `feature/vX.Y` branch. Sub-task branches target `feature/vX.Y`, not
-`main`. Merge to `main` happens ONCE per major release when all sub-branches
-are merged, all tests + CI are green, and RC acceptance gates pass — then
-`feature/vX.Y → main → tag vX.Y.0`. For new standalone `padosoft/*` repos,
-PRs target `main` directly. See `.claude/skills/branching-strategy-feature-vx/`.
+### R37 — GitFlow permanente: `develop` integra, `main` rilascia
+For AskMyDocs, `main` is production and `develop` integrates the next release.
+Feature, fix and chore branches start from `origin/develop`, target `develop`
+and use squash merge. `release/X.Y.Z` starts from `origin/develop`, targets
+`main` and uses a merge commit. `hotfix/X.Y.Z` starts from `origin/main`,
+targets `main`, then `main` is merged back into `develop`. Dependabot targets
+`develop`. Never send feature work directly to `main` or a release branch.
+Both permanent branches require PR, green CI, resolved conversations and the
+Copilot loop, while deletion and force-push remain forbidden. See
+`docs/GITFLOW.md` and `.agents/skills/manage-gitflow/SKILL.md`.
 
 ### R38 — Heavy work belongs in CLI workflow steps, not behind `php artisan serve`
 PHP's built-in dev server has a single-threaded accept loop; any
@@ -508,15 +511,13 @@ and `/testing/seed` for per-test lightweight seeding (not full migrations).
 See `.claude/skills/ci-failure-investigation/` (R22/R38 worked example:
 PR #85 vs PR #83 anti-pattern).
 
-### R39 — Tag `vX.Y.0-rcN` at the end of every Wn milestone
-After each Wn closure on `feature/vX.Y` (all sub-task PRs merged + CI green
-+ closure status doc shipped): (1) open a docs PR refreshing `README.md`
-`### Key Features` and `## Changelog`; (2) capture the closure-commit SHA
-before the docs PR merges; (3) tag at that exact SHA with
-`gh release create vX.Y.0-rcN --target "$CLOSURE_SHA" --prerelease`.
-Increment N once per Wn. Final `vX.Y.0` GA fires only when the last Wn
-closes and `feature/vX.Y` merges into `main` (R37).
-See `.claude/skills/rc-tag-per-week-milestone/`.
+### R39 — Release candidates live on frozen `release/X.Y.Z` branches
+Create `vX.Y.Z-rcN` only when explicitly requested, on an immutable, verified
+SHA of `release/X.Y.Z` after feature freeze. CI, tests, docs and release notes
+must be green first; never move or reuse an RC tag. The final release merges
+`release/X.Y.Z` into `main` with a merge commit, tags the resulting production
+commit, then merges `main` back into `develop`. See `docs/GITFLOW.md` and
+`.claude/skills/rc-tag-per-week-milestone/`.
 
 ### R40 — Local critic loop (copilot-cli) BEFORE every push (v8.0+)
 
@@ -743,10 +744,10 @@ Before approving a PR, quickly verify:
       `tenant_id` in `$fillable`; new migration adds `tenant_id` column.
 - [ ] R36: PR was opened with `--reviewer copilot-pull-request-reviewer`;
       merge blocked until CI green AND Copilot review resolved.
-- [ ] R37: sub-task PRs target `feature/vX.Y`, not `main`; `main` merge
-      happens once per major release only.
+- [ ] R37: feature/fix/chore PRs target `develop`; only release and hotfix
+      branches target `main`, followed by immediate `develop` alignment.
 - [ ] R38: one-time heavy CLI work (migrate:fresh, large seeders) runs in
       a dedicated workflow step, not behind `php artisan serve`.
-- [ ] R39: Wn closure tagged `vX.Y.0-rcN` at the exact closure-commit SHA
-      with a refreshed README + CHANGELOG entry.
+- [ ] R39: an explicitly requested RC targets a verified immutable SHA of a
+      frozen `release/X.Y.Z` branch; the final tag targets merged `main`.
 - [ ] Tests: feature test added when the RAG hot path changed.
