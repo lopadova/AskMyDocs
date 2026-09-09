@@ -996,35 +996,29 @@ bug one arm later — a member scoped to `hr/policies/**` still received
 the same omission, found two audits apart.
 → See `app/Support/ScopeAllowlistSql.php` + `tests/Feature/Kb/RetrievalScopeAllowlistTest.php`.
 
-### R37 — Branching strategy: `feature/v4.x` integration branches → main
-For AskMyDocs, `main` holds the **stable production release** (v3 today,
-v4.0 when v4.0 RC ships, v4.1 when v4.1 ships, etc.). Each major
-release works in its own integration branch:
+### R37 — GitFlow permanente: `develop` integra, `main` rilascia
 
-- `main` ← stable production
-- `feature/v4.0` ← integration branch for entire v4.0 cycle (8 weeks)
-- `feature/v4.0/W1.B` ← sub-branch per sottotask, PR target = `feature/v4.0`
-- `feature/v4.1` ← integration branch for v4.1, PR sub-branches target it
-- ... and so on for v4.2, v4.3, v4.4
+AskMyDocs usa due branch permanenti protetti. `main` rappresenta la produzione;
+`develop` integra il lavoro della prossima release e deve contenere la storia di
+`main`.
 
-**Merge to main happens ONCE per major release**, when:
-- All sub-branches merged into `feature/v4.x`
-- All tests + CI green on `feature/v4.x`
-- RC1/RC2 acceptance criteria passed
-- Then: `feature/v4.x` → `main` → tag `v4.x.0`
+- `feature/*`, `fix/*` e `chore/*` partono da `origin/develop`, aprono PR verso
+  `develop` e usano squash merge.
+- `release/X.Y.Z` parte da `origin/develop`, accetta solo stabilizzazione e
+  documentazione, apre la PR verso `main` e usa merge commit.
+- `hotfix/X.Y.Z` parte da `origin/main`, confluisce in `main` con merge commit e
+  viene riportato immediatamente in `develop`.
+- Dependabot apre tutte le PR verso `develop`.
+- I tag finali vengono creati sulla `main` pubblicata; feature e fix non vanno
+  direttamente su `main` o sui branch di release.
 
-**Why not merge sub-branches direct to main**:
-- v3 must stay stable on main for hotfixes during 6-month v4 development
-- Half-merged v4 features on main would break v3 production users
-- Single merge per release = single review surface, single deploy event
+Entrambi i branch vietano cancellazione e force-push e richiedono PR, CI verde,
+conversazioni risolte e ciclo Copilot concluso. Non è obbligatoria
+un'approvazione umana, per non bloccare il maintainer unico.
 
-**For new repos** (`padosoft/laravel-ai-regolo`, `padosoft/laravel-flow`, etc.,
-created fresh for v4): PRs target `main` directly — no stable code to
-preserve; main and develop converge from day 1.
-
-Lorenzo decided this on 2026-04-28 during W1.B PR #78. Existing PR #78
-re-targeted from main to feature/v4.0.
-→ See `.claude/skills/branching-strategy-feature-vx/SKILL.md`.
+Prima di ricostruire un ramo condiviso, preservalo con branch di backup e bundle
+Git; non riscrivere la sorgente durante il recupero.
+→ See `docs/GITFLOW.md` and `.agents/skills/manage-gitflow/SKILL.md`.
 
 ### R36 — Copilot review + CI green loop is MANDATORY after EVERY push
 **The 9-step canonical flow** for every PR on every Lorenzo / Padosoft repo:
@@ -1195,65 +1189,26 @@ cross-feature memorisation isn't required when convention holds.
 Stateless components (`FilterBar`, `TagsList`) take `(value, onChange)`
 controlled props — state lifts to the lowest common parent.
 
-### R39 — Tag `vX.Y.0-rcN` at the end of every Wn milestone
-Standing convention from 2026-05-02. R37 says "merge to main once per
-major release"; R39 fills the gap by giving every weekly milestone a
-visible release-candidate tag. After each Wn closure on
-`feature/vX.Y` (every sub-task PR merged + CI green + closure status
-doc shipped under `docs/v4-platform/STATUS-{date}-week{N}.md`):
+### R39 — Release candidate solo su `release/X.Y.Z` congelata
 
-1. Open a small docs PR refreshing **`README.md`** — specifically the
-   `### Key Features` and `## Changelog` sections (AskMyDocs keeps the
-   changelog inline in the main README; there is no separate
-   `CHANGELOG.md` file). Add a new entry under `## Changelog` with the
-   `vX.Y.0-rcN` heading + bullet list of Wn deliverables, and refresh
-   `### Key Features` so the freshly-shipped capabilities surface above
-   the fold for prospective consumers.
-2. **Capture the closure-commit SHA before the docs PR merges**, then
-   tag at that exact SHA — never against the moving `feature/vX.Y` ref,
-   because another PR landing between `gh release create` and the docs
-   PR merge would silently shift the rc to the new HEAD:
-   ```bash
-   CLOSURE_SHA=$(git rev-parse origin/feature/vX.Y)
-   gh release create vX.Y.0-rcN \
-     --repo lopadova/AskMyDocs \
-     --target "$CLOSURE_SHA" \
-     --title "vX.Y.0-rcN — Wn milestone" \
-     --prerelease \
-     --notes "..."
-   ```
-3. Increment `N` once per Wn closure: rc1 after W4, rc2 after W5, etc.
-   The final `vX.Y.0` GA tag fires only when the LAST Wn closes (W8
-   for v4.0) and the integration branch merges into `main` per R37.
+Un tag `vX.Y.Z-rcN` si prepara soltanto quando viene richiesto esplicitamente e
+solo su uno SHA verificato di `release/X.Y.Z`, creato da `origin/develop` dopo
+il feature freeze. Non esiste più il tag RC automatico a ogni milestone
+settimanale e i branch `feature/vX.Y` non sono branch di integrazione correnti.
 
-Why a release-candidate and not a final tag at every Wn:
-- Composer / Packagist semver: `^X.Y` resolution skips RC builds by
-  default. Consumers explicitly opt in via `^X.Y@beta` or
-  `^X.Y.0-rcN` if they want the milestone preview. The stable channel
-  remains the previous major until the GA ships.
-- Each rc is a checkpoint. If something regresses between Wn and
-  Wn+1, the rc tag is a known-good rollback target.
-- Audit + community visibility: tagging publicly demonstrates progress
-  every week without committing to a final API contract — and gives
-  Patent Box auditors a clean per-week artefact to point at.
+Prima del tag:
 
-Anti-patterns:
-- ❌ Tagging the rc on `main` — rejected by R37.
-- ❌ Skipping the README + CHANGELOG refresh — leaves consumers staring
-  at a stale "Roadmap" claiming the freshly-shipped feature is still
-  pending.
-- ❌ Tagging mid-Wn (between sub-task merges) — wait for the closure
-  status doc to land first.
-- ❌ Re-tagging the same `rcN` after subsequent commits — bump to
-  `rcN+1` instead.
+1. completa CI, test, documentazione e release notes sul commit candidato;
+2. cattura lo SHA immutabile e verifica che sia ancora la revisione approvata;
+3. incrementa `N`, senza spostare o riutilizzare un tag esistente;
+4. pubblica tag o release soltanto con autorizzazione esplicita.
 
-Scope: applies to AskMyDocs (`lopadova/AskMyDocs`) integration-branch
-cycles. Standalone `padosoft/*` packages tag their own normal-semver
-`v0.1.0` final at the end of their respective Wn (already established
-for `padosoft/laravel-patent-box-tracker` after W4). Those follow
-plain SemVer, NOT the RC convention.
+La release finale passa da `release/X.Y.Z` a `main` con merge commit; il tag
+stabile punta alla `main` risultante e `main` viene riportato immediatamente in
+`develop`. I package indipendenti mantengono il proprio normale ciclo SemVer.
 
-→ See `.claude/skills/rc-tag-per-week-milestone/SKILL.md`.
+→ See `docs/GITFLOW.md` and
+`.claude/skills/rc-tag-per-week-milestone/SKILL.md`.
 
 ### R40 — Local critic loop (copilot-cli) BEFORE every push (v8.0+)
 
