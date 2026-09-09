@@ -1097,9 +1097,9 @@ The tenant-aware models — the authoritative list lives in `tests/Architecture/
 | **R30** | Every Eloquent query against a tenant-aware table MUST be scoped to the active tenant via `forTenant()` or explicit `where('tenant_id', $ctx->current())` — cross-tenant leak is a GDPR catastrophe |
 | **R31** | Every tenant-aware model MUST `use BelongsToTenant;` and list `'tenant_id'` in `$fillable`; `tests/Architecture/TenantIdMandatoryTest.php` enumerates the model list and gates new entries on every CI run |
 | **R36** | Mandatory Copilot review + CI green loop on every PR — caught the v4 PR #98 regression where `embedding_cache` was wrongly tagged tenant-scoped |
-| **R37** | `feature/vX.Y` integration branch + once-per-major merge to main — preserves stable consumers from in-flight major work |
+| **R37** | GitFlow permanente: feature/fix/chore → `develop`; release/hotfix → `main`, poi riallineamento immediato di `develop` |
 | **R38** | Heavy work (`migrate:fresh`, big seeders) belongs in CLI workflow steps, not behind `php artisan serve` — keeps E2E reliable |
-| **R39** | Tag `vX.Y.0-rcN` at every Wn weekly milestone closure pinned to the exact closure SHA — gives auditors and downstream consumers serialised milestone visibility |
+| **R39** | RC solo quando richiesto, su SHA verificato di `release/X.Y.Z`; tag finale sulla `main` risultante |
 ---
 
 ### Team switcher (per-team SPA routing)
@@ -2056,9 +2056,9 @@ for the per-package timeline and locked composer constraints.
 Contributions welcome. Workflow:
 
 1. **Fork** the repository
-2. **Create** a feature branch (`feature/v4.x/<sub-task>` for v4.x work — R37)
+2. **Create** `feature/<description>` from the latest `origin/develop` (R37)
 3. **Commit** with conventional-style messages
-4. **Push** + open a PR with `--reviewer copilot-pull-request-reviewer` (R36)
+4. **Push** + open the PR toward `develop` with `--reviewer copilot-pull-request-reviewer` (R36)
 5. **Wait** for Copilot review + CI green; iterate until 0 outstanding must-fix
 6. **Merge** when both gates pass
 
