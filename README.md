@@ -1097,9 +1097,9 @@ The tenant-aware models — the authoritative list lives in `tests/Architecture/
 | **R30** | Every Eloquent query against a tenant-aware table MUST be scoped to the active tenant via `forTenant()` or explicit `where('tenant_id', $ctx->current())` — cross-tenant leak is a GDPR catastrophe |
 | **R31** | Every tenant-aware model MUST `use BelongsToTenant;` and list `'tenant_id'` in `$fillable`; `tests/Architecture/TenantIdMandatoryTest.php` enumerates the model list and gates new entries on every CI run |
 | **R36** | Mandatory Copilot review + CI green loop on every PR — caught the v4 PR #98 regression where `embedding_cache` was wrongly tagged tenant-scoped |
-| **R37** | `feature/vX.Y` integration branch + once-per-major merge to main — preserves stable consumers from in-flight major work |
+| **R37** | GitFlow permanente: feature/fix/chore → `develop`; release/hotfix → `main`, poi riallineamento immediato di `develop` |
 | **R38** | Heavy work (`migrate:fresh`, big seeders) belongs in CLI workflow steps, not behind `php artisan serve` — keeps E2E reliable |
-| **R39** | Tag `vX.Y.0-rcN` at every Wn weekly milestone closure pinned to the exact closure SHA — gives auditors and downstream consumers serialised milestone visibility |
+| **R39** | RC solo quando richiesto, su SHA verificato di `release/X.Y.Z`; tag finale sulla `main` risultante |
 ---
 
 ### Team switcher (per-team SPA routing)
@@ -1868,6 +1868,11 @@ For the full component map see [`CLAUDE.md`](CLAUDE.md) section 3.
 
 ## Roadmap
 
+> **Nota storica sul workflow:** i nomi `feature/vX.Y` e i riferimenti a
+> R37/R39 nelle release già concluse descrivono la policy in vigore quando
+> quelle versioni furono pubblicate. Non sono istruzioni operative correnti;
+> per il nuovo lavoro fa fede [`docs/GITFLOW.md`](docs/GITFLOW.md).
+
 | Major | Status | Theme |
 |---|:---:|---|
 | **v4.0** | ✅ shipped 2026-05-02 | Enterprise platform foundation — multi-tenant + Vercel AI SDK streaming + canonical KB graph + admin shell + 5 sister packages on Packagist |
@@ -2056,9 +2061,9 @@ for the per-package timeline and locked composer constraints.
 Contributions welcome. Workflow:
 
 1. **Fork** the repository
-2. **Create** a feature branch (`feature/v4.x/<sub-task>` for v4.x work — R37)
+2. **Create** `feature/<description>` from the latest `origin/develop` (R37)
 3. **Commit** with conventional-style messages
-4. **Push** + open a PR with `--reviewer copilot-pull-request-reviewer` (R36)
+4. **Push** + open the PR toward `develop` with `--reviewer copilot-pull-request-reviewer` (R36)
 5. **Wait** for Copilot review + CI green; iterate until 0 outstanding must-fix
 6. **Merge** when both gates pass
 
@@ -2737,7 +2742,8 @@ a super-admin `POST .../regenerate`, and a new MCP tool `KbGamificationInsightsT
 (roster **31 → 32**) cover all three surfaces, with a React `CoachingCard` + admin
 `GamificationInsightsPanel` on the UI. Config lives under `kb.gamification.ai.*`
 (`KB_GAMIFICATION_AI_{ENABLED,PROVIDER,MODEL,MAX_TOKENS}`, default a free OpenRouter
-model). `feature/v8.18` merges to `main` as **v8.18.0** (R37) after the RC sequence.
+model). Nel workflow storico allora vigente, `feature/v8.18` confluisce in
+`main` come **v8.18.0** dopo la sequenza RC.
 
 **v8.17.0 — Credential-based connectors (IMAP) (GA, shipped 2026-06-20).** Adds the
 first **credential-based** connector (IMAP) to the connector framework, activatable
@@ -2805,7 +2811,8 @@ and table presence so a disabled deployment reads nothing over MCP. Plus a real-
 Playwright E2E over the package-served `/admin/ai-finops` admin SPA (admin reaches the
 shell; a viewer is denied **403** via the `viewAiFinOps` gate), with the package's
 prebuilt assets published + verified in CI; and a `docs-site` + CLAUDE.md parity pass
-(ADR 0015). `feature/v8.16` then merges to `main` as **v8.16.0** (R37).
+(ADR 0015). Nel workflow storico allora vigente, `feature/v8.16` confluisce in
+`main` come **v8.16.0**.
 
 **v8.15.0 — Engagement & Intelligence Suite.** The layer that turns a knowledge
 base from a passive store into a living system — proactive digests, contributor
