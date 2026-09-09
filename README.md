@@ -1868,6 +1868,11 @@ For the full component map see [`CLAUDE.md`](CLAUDE.md) section 3.
 
 ## Roadmap
 
+> **Nota storica sul workflow:** i nomi `feature/vX.Y` e i riferimenti a
+> R37/R39 nelle release già concluse descrivono la policy in vigore quando
+> quelle versioni furono pubblicate. Non sono istruzioni operative correnti;
+> per il nuovo lavoro fa fede [`docs/GITFLOW.md`](docs/GITFLOW.md).
+
 | Major | Status | Theme |
 |---|:---:|---|
 | **v4.0** | ✅ shipped 2026-05-02 | Enterprise platform foundation — multi-tenant + Vercel AI SDK streaming + canonical KB graph + admin shell + 5 sister packages on Packagist |
@@ -2737,7 +2742,8 @@ a super-admin `POST .../regenerate`, and a new MCP tool `KbGamificationInsightsT
 (roster **31 → 32**) cover all three surfaces, with a React `CoachingCard` + admin
 `GamificationInsightsPanel` on the UI. Config lives under `kb.gamification.ai.*`
 (`KB_GAMIFICATION_AI_{ENABLED,PROVIDER,MODEL,MAX_TOKENS}`, default a free OpenRouter
-model). `feature/v8.18` merges to `main` as **v8.18.0** (R37) after the RC sequence.
+model). Nel workflow storico allora vigente, `feature/v8.18` confluisce in
+`main` come **v8.18.0** dopo la sequenza RC.
 
 **v8.17.0 — Credential-based connectors (IMAP) (GA, shipped 2026-06-20).** Adds the
 first **credential-based** connector (IMAP) to the connector framework, activatable
@@ -2805,7 +2811,8 @@ and table presence so a disabled deployment reads nothing over MCP. Plus a real-
 Playwright E2E over the package-served `/admin/ai-finops` admin SPA (admin reaches the
 shell; a viewer is denied **403** via the `viewAiFinOps` gate), with the package's
 prebuilt assets published + verified in CI; and a `docs-site` + CLAUDE.md parity pass
-(ADR 0015). `feature/v8.16` then merges to `main` as **v8.16.0** (R37).
+(ADR 0015). Nel workflow storico allora vigente, `feature/v8.16` confluisce in
+`main` come **v8.16.0**.
 
 **v8.15.0 — Engagement & Intelligence Suite.** The layer that turns a knowledge
 base from a passive store into a living system — proactive digests, contributor
