@@ -1,0 +1,4 @@
+interface:
+  display_name: "Manage GitFlow"
+  short_description: "Gestisce feature, release e hotfix GitFlow"
+  default_prompt: "Usa $manage-gitflow per preparare in sicurezza il prossimo passaggio GitFlow del repository."
