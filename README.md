@@ -1932,7 +1932,13 @@ For the full component map see [`CLAUDE.md`](CLAUDE.md) section 3.
 | **v8.24.0** | ✅ shipped 2026-06-25 | **IMAP folder selection + dev/test email-ingest harness.** Operators now pick exactly which mailbox folders an IMAP account syncs into the KB, straight from **Admin → Connectors**. A post-install **"Folders"** action opens a connection-settings modal that lists the mailbox's **real** folders (live) and multi-selects the sync whitelist. Live discovery is **host-side by design** — `ImapFolderListingService` reuses the connector's PUBLIC seams (`ImapClientFactoryInterface` + `OAuthCredentialVault` + the stored `config_json.connection`) to open a client and return mailbox paths **verbatim** (case-sensitive, round-tripping 1:1 with the whitelist), so no package change was needed beyond `padosoft/askmydocs-connector-imap` **^1.4**. `GET /api/admin/connectors/{installationId}/folders` is tenant-scoped (R30 → 404 cross-tenant) and surfaces an unreachable server / rejected credentials as a distinct **503** (R14 — never a misleading empty 200; a genuinely empty mailbox is a valid `200 []`). `UpdateConnectorInstallationRequest` gains `folders.include` (≤200 EXACT paths, trimmed + deduped + `distinct`; **empty = sync all non-excluded folders**) and `date_window_days`, both additive (R27) and pre-filled by `ConnectorInstallationResource`; the write is a read-modify-write inside `lockForUpdate` (R21). React `FolderSettingsForm` (R11/R15/R29). Plus a dev/test **email-ingest harness** for repeatable end-to-end QA of the ingest→chat→isolation flow across tenants: seedable IMAP mailboxes (`MailSeedImapCommand`, `ImapMailboxSeeder`, `EmailMessageBuilder`, `WebklexMailboxAppender` + a `FakeImapClientFactory` test seam), multi-company case-study fixtures (`CaseStudyUsersSeeder`, `ConnectorInstallationsSeeder`, per-company email JSON) and console drivers (`ConnectorImapInstallCommand`, `DemoListCompaniesCommand`, `InitCaseStudiesCommand`). R32 matrix row for the folders endpoint; real-data Playwright (`connectors-folders-super-admin.spec.ts`) + role-access. Also ships the `ios-testflight-release` skill documenting the Tauri → TestFlight desktop release flow. [ADR 0021](docs/adr/0021-v824-imap-folder-selection.md) + doc-site ([credential connectors → folder picker](https://padosoft.mintlify.app/connectors-credential), R45). |
 | **v8.25.0** | ✅ shipped 2026-06-25 | **Schema-driven connector sync settings + first-class folder discovery.** Operators edit a connector account's **entire** safe sync surface — folders to **include AND exclude** as lists, the date window, body format, sender/recipient/subject filters, attachment policy, `only_unseen`/`reconcile_deletions`, `max_messages_per_sync` — from one **schema the connector advertises**, rendered + validated + persisted generically with **zero connector-specific host code** (R23). Two opt-in `padosoft/askmydocs-connector-base` **^1.4** interfaces: `SupportsConnectionSettings::connectionSettingsSchema()` (the editable field surface, each field a dotted `config_json` path) and `SupportsFolderDiscovery::listAvailableFolders()` (connector-owned live folder listing — **fixes XOAUTH2**, which the v8.24 host-side `ImapFolderListingService` could not do). Delivered **tri-surface over one core** (R44): `ConnectorSettingsService` + the HTTP resource/PATCH (dynamic per-field validation, unknown-key/typo → **422 not silent no-op** R14, null → clear-to-default), the **MCP** `ConnectorSettingsTool` (read, roster **44 → 45**) and the `connectors:configure` CLI — every surface enforcing the SAME constraints (R44 parity: bounds, list `distinct`/`min:1`/length, nullable-clear). A whitelisted folder that disappears upstream **never stops the sync** — `MailboxWalker::missingIncludedMailboxes()` records each missing one to `SyncResult.errors[]` + a `Log::warning` and ingests the rest (connector-imap **^1.4**). React `ConnectionSettingsForm` (schema-driven, `showIf`-aware, collision-safe testids, R11/R15/R29). [ADR 0022](docs/adr/0022-v825-schema-driven-connector-settings.md) + doc-site ([connector sync settings](https://padosoft.mintlify.app/connectors-sync-settings), R45). |
 | **v8.26.0** | ✅ shipped 2026-06-29 | **Invite-only SPA registration + native Invitations admin + IMAP connection serialization.** The auth UI is now **100% React**: `/login`, `/register`, `/forgot-password` and `/reset-password` all render the SPA shell on a HARD page load (the legacy Blade auth views + the web `PasswordResetController` are deleted), so a cache-cleared reload no longer drops to an un-branded pre-SPA login. A new **invite-only sign-up** screen (`RegisterPage`) posts to **`POST /api/auth/register`** — a thin HTTP adapter over the shared invite core (R44): it **pre-validates** the code (`CodeValidator`) before touching `users`, creates the account, then **authoritatively redeems** it (`RedemptionService` — the atomic conditional `UPDATE … WHERE current_uses < max_uses` + tagged Spatie-role / project-membership provisioners), run **outside** a DB transaction by design so the package's PostgreSQL compensation path is not poisoned, force-deleting the brand-new account on an exhausted-between-checks race so the invite-only invariant always holds. Every code failure is a **422 field error on `invite_code`** (R14, localized R24); the route is **throttled `6/min` per IP** (`throttle:register`) so it can't brute-force codes. The **Invitations admin** becomes a **native in-app tabbed page** (Overview · Campaigns · Codes · Invite · Referrals · Rewards · Waitlist · Anti-abuse) over the same `/api/admin/invitations/*` core inside the unified admin chrome — superseding the v8.22 cross-mount panel, which stays as an optional **"Advanced"** launcher shown only when `INVITATIONS_ADMIN_ENABLED=true` (the host learns it from the additive `features.invitations_admin` field on `/api/auth/me`, R27/R43). Plus **per-mailbox IMAP connection serialization** (at most one live connection per account host+port+username, cross-tenant + cross-surface, so a server never returns *"Too many simultaneous connections"*; busy sync jobs re-queue — `CONNECTOR_IMAP_SERIALIZE_CONNECTIONS`, default-on, needs an atomic lock store), a connector **test-fetch / enable** admin surface (preview one email without ingest; re-activate a disabled account), an SQS-safe widening of `connector_sync_runs.queue`, and a **timezone-aware RAG prompt** (`KB_PROMPT_TIMEZONE`, default `Europe/Rome`) so the chatbot can reason about time-relative questions while the app keeps running on UTC. PRs #381–#387. |
+| **v8.27.0** | ✅ shipped 2026-08-30 | **API Connector ("Connettore API") — endpoints as live LLM tools.** A new connector paradigm: where every other connector *ingests* documents into the vector store, the API connector turns each configured HTTP **endpoint (Rotta)** into a **tool the model can call during the chat turn**, so RAG and fresh API data arrive in parallel. Distributed as `padosoft/askmydocs-connector-api` with five tenant-aware tables, `UrlGuard` (the host's only outbound-URL SSRF guard), `ApiRouteTester`, `SchemaInferrer`, `ToolDefinitionGenerator` and `ApiToolExecutor` (retry / cache / rate-limit / output-cap / sanitised log). Host integration merges API tools into `McpToolCallingService::buildToolIndex()` gated by `connector-api.chat_tools.enabled` (R43), with routes mounted on the authenticated admin stack (R32 matrix row). Tri-surface per R44: `api-connector:list`/`:test`, `/api/admin/api-connectors/*` and the MCP `ApiConnectorsTool`, all over one `ConnectorAdminService`. Fase 2 (ingest mode) is reserved via the `mode` column. Completed by PR #424, which brought the agentic tools into chat and the widget. [ADR 0023](docs/adr/0023-v827-api-connector-live-tools.md) |
+| **v8.28.0** | ✅ shipped 2026-07-10 | **In-app team (tenant) management — create and rename a team.** A "team" is a tenant; its editable display name lives on the `tenants` registry row the topbar switcher already reads. A new **Teams** admin page lists the teams you may administer **from your real memberships**, offering Create (name + auto-slug, immutable id) and Rename. Everything runs over one shared `TeamRegistryService` (R44): create writes the tenants row + an initial project + your membership atomically; rename authorizes the **target** team by membership **independently of the request's tenant scope**, so an unmanageable team 404s rather than leaking through the header (IDOR-safe). The same core backs `team:create` / `team:rename` and `GET/POST /api/admin/teams` + `PATCH /api/admin/teams/{slug}`. Deliberately **HTTP + CLI only, no MCP write tool** — a documented R44 exception mirroring `ProjectController`, because team governance is not an agent capability. When the optional `tenants` table is absent the endpoints degrade to a clean **503** (R14/R43), never a 500. PR #397. |
+| **v8.29.0** | ✅ shipped 2026-08-06 | **Bounded generation and a CLI-only safety boundary for the case-study email harness.** The dataset generator can emit 30,000 deterministic messages and deliver them over real IMAP `APPEND`, and two boundaries were incomplete: the JSONL writer held one file descriptor per data/index shard until publish, so corpus size could exceed a normal process limit; and the destructive purge flags were guarded by CLI intent alone, with no environment fence, no exact single-use confirmation and no tenant-scoped forensic lifecycle. Both are closed, and the subsystem stays **CLI-only by decision** — it is an operator fixture harness, not a customer-facing write API, so adding HTTP or MCP mutations would widen the attack surface without creating a product use case. Shipped alongside IMAP reconnect-on-drop resilience (PR #403). PRs #403, #404. [ADR 0026](docs/adr/0026-v829-email-dataset-safety-boundary.md) |
+| **v8.30.0** | ✅ shipped 2026-08-24 | **System administrator boundary, global tenant control, and public registration intents.** The overloaded `super-admin` concept splits in two: a tenant `super-admin` is the strongest administrator only inside tenants where the account holds membership, while `system-admin` alone owns `platform.admin`. The global control plane lives at `/app/system/*` and `/api/system-admin/*`, outside the active-team route and header context, with audited atomic provisioning and DB-backed single-use lifecycle tokens. **No role bypasses tenant membership**, and accounts with none keep a real zero-tenant state instead of receiving synthetic `default` access. New global grants are possible only through `system-admin:grant|revoke {email} --yes` — Users CRUD, generic role commands, invitations and tenant provisioning all refuse the protected role — and tenant role demotion, user deletion and project-membership deletion each refuse to remove the final membership-bearing Super Admin of the active tenant. Public registration intents arrive with it: globally unique codes resolved by `RegistrationCodeResolver`, a resumable company-onboarding flow for bootstrap codes, and a named-company welcome handoff for tenant-linked ones. No MCP write surface, by explicit R44 exception — autonomous global privilege or tenant-lifecycle mutation is outside the agent trust boundary. PR #402. [ADR 0023](docs/adr/0023-v830-system-admin-boundary.md) · [ADR 0024](docs/adr/0024-v830-membership-required-operational-tenants.md) · [ADR 0025](docs/adr/0025-v830-registration-invite-onboarding.md) · [ADR 0027](docs/adr/0027-v830-widget-identity-and-current-session.md) |
+| **v8.31.0** | ✅ shipped 2026-08-29 | **R33 — authorization that must hold for retrieval belongs in SQL, not only in the policy.** An arm enforced by a policy is enforced only for callers that go through the Gate, and the RAG hot path does not: retrieval resolves chunks with `KnowledgeChunk::whereHas('document', …)` and never calls `KnowledgeDocumentPolicy`. Any arm of `User::hasDocumentAccess()` missing from `AccessScopeScope` is therefore **not enforced for grounding** — the model receives the chunks and cites them. The scope-allowlist arm was exactly that: a member scoped to `hr/policies/**` still received `hr/salaries/**` chunks as grounding, with citations. `ScopeAllowlistSql` pushes the arm into the global scope's SQL and **fails closed** where a glob shape cannot be expressed exactly in portable SQL, emitting an always-false arm rather than no arm — an empty `where` group is dropped by the query builder and reads as "no restriction", inverting the control. Regression-tested **through the relationship** rather than through the controller, because a controller test passes on the policy alone and proves nothing about the hot path. PR #443. |
 | **v8.32 → v8.34** | ✅ shipped 2026-08-29 | **Source ACL mirroring + ingest-time provenance.** The ingestion contract records what a document *is*, never where its authority comes from: a Drive file shared with three people becomes, on ingest, readable by everyone with the project. Alongside it, seven connectors ingest content written inside the organisation and **IMAP ingests content written by anyone who can send an email** — which then becomes grounding on a platform that also exposes MCP tools, a complete indirect-injection chain with no boundary between the ends. Two **opt-in** capability interfaces on `askmydocs-connector-base` (`SupportsSourceAcl`, `DeclaresProvenance`) carrying the permission list through ingestion metadata (an optional `?SourceAccess` argument was designed first and abandoned: PHP rejects an implementation with fewer parameters than its interface, so even an optional one fatals every HOST implementing the contract at class-declaration time) — eight connectors and a **public template** consume this contract, so a breaking signature is not available. Mirrored rows reuse `knowledge_document_acl` with an `origin` column, and reconciliation **deletes** on un-share (a mirror that only ever adds permissions is a slow leak). The load-bearing decision: a principal that cannot be resolved to an internal subject **fails closed** to `restricted-unmapped` rather than to project-wide visibility — this hides documents that are visible today, which is the intended direction and needs a triage surface + loud release note. Enforcement extends **R33** (allow-rows in the same SQL seam, so retrieval gets it for free), then optionally moves to the `laravel-iam-server` PDP — the point at which AskMyDocs would first depend on the IAM suite, flagged as a deliberate decision rather than a side effect. Phased so the cheap half is not held behind the expensive one: **v8.32** provenance labels (inert, answers *“how much of our corpus is externally authored?”*), **v8.33** ACL mirroring + principal resolver + reconciliation + triage UI, **v8.34** provenance enforcement in the tool firewall (an untrusted chunk may be **quoted** but must never influence a tool call). Provenance is deliberately **not** collapsed into the Auto-Wiki curation tier: that ranks *has a human vouched for this*, provenance records *who wrote it* — a human-accepted page summarising an external email is both at once. [ADR 0028](docs/adr/0028-source-acl-mirroring-and-ingest-provenance.md) |
+| **v8.35.0** | ✅ shipped 2026-09-01 | **Platform upgrade cycle — `laravel/ai` 0.11, `laravel-flow` v2, and the flow surface brought up to the R-rules.** Two sister packages move a major line at once. `laravel/ai` goes 0.8 → **0.11**; `laravel-flow` goes 1.1 → **2.5** (with `-admin` → 2.4), which replaces the per-step table with a run-node graph: `flow_steps` becomes `flow_run_nodes`, `StepRunRepository` becomes `RunNodeRepository`, and `FlowStepRecord` is gone. AskMyDocs implements the persistence contracts itself — precisely to add the tenant boundary the package deliberately does not have — which puts it in the minority of consumers the rename actually touches. The surface is smaller than it looks: `FlowStepHandler`, `FlowCompensator`, `FlowContext` and `FlowStepResult` are byte-identical across the two lines and `Flow::execute()` still runs the linear executor, so twenty-nine step handlers, four compensators and nine definitions are untouched. The real risk was **the tenant on converted history**: neither the package blueprint nor its conversion migration provides `tenant_id`, and the conversion **drops its own source table**, so the host adds the column nullable-with-no-default and backfills from `flow_runs` — a `default` stamp there would make every historical row of every tenant readable by the `default` tenant, undetectably. The flow surface then closes its R-rule gaps: **R32** gains an observed per-role cockpit test (the first version was theatre — it flipped the feature flag in the test body, but routes register at boot, so every request fell through to the SPA catch-all and passed while proving nothing), **R44** gains the `FlowRunStatusTool` MCP read surface reading through the *same* `FlowDashboardReadModel` the cockpit uses so the tenant scope applies without being re-derived, and **R45** gains a deep doc-site page plus a forward-only migration runbook. Closed out by a tenant-isolation fix: an **empty** `tenant_id` passed both the backfill and its guard, which is worse than the failure the migration was written to prevent — invisible to `where tenant_id = ?` *and* invisible to a `whereNull` check. PRs #460, #462, #463, #465, #466, #467, #469. See the [flow orchestration doc-site page](https://padosoft.mintlify.app/flow-orchestration) and the [v2 migration runbook](docs/runbooks/flow-v2-migration.md). |
 | **Future** | ⏳ planned for v8.x or v9.0 | Auto-Wiki follow-ups: navigator→chat wiring + benchmark-gated default-ON, source-retention wiring (save the converted markdown artifact). Agentic Knowledge Reports follow-ups: SSE progressive-paint generate + the Glide canvas grid (deferred for per-cell testability/a11y). SSO / SCIM enterprise auth + content export/portability — surfaced by the v8.8 Affine gap audit; #1 Semantic Time Travel + #8 v2 (answer drift replay) — parked from v8.0 |
 
 For the strategic reasoning behind v4.5+ see
@@ -2082,6 +2088,112 @@ including commercial use.
 
 ## Changelog
 
+**v8.35.0 — Platform upgrade cycle: `laravel/ai` 0.11, `laravel-flow` v2, and the flow surface brought up to the R-rules (GA, shipped 2026-09-01).**
+Two sister packages move a major line at once. `laravel/ai` goes 0.8 → **0.11**, and
+`laravel-flow` goes 1.1 → **2.5** (`-admin` → **2.4**), which replaces the per-step table
+with a run-node graph: `flow_steps` becomes `flow_run_nodes`, `StepRunRepository`
+becomes `RunNodeRepository`, and `FlowStepRecord` is gone. AskMyDocs implements the
+persistence contracts itself — precisely to add the tenant boundary the package
+deliberately does not have — which puts it in the minority of consumers the rename
+actually touches. The surface is smaller than it looks: `FlowStepHandler`,
+`FlowCompensator`, `FlowContext` and `FlowStepResult` are byte-identical across the two
+lines and `Flow::execute()` still runs the linear executor, so **twenty-nine step
+handlers, four compensators and nine definitions are untouched**. Four things were fatal
+rather than merely broken, and all four fail at boot or first run: a `FlowStepRecord`
+model hook that is class-not-found under v2; an `ActionAuthorizer` implementation missing
+`canEditDefinition`, which fatals at class load; `flow_runs.subject`, written
+unconditionally on every insert with no column guard; and `flow_run_nodes` keeping
+`unique(run_id, node_id)` because `createOrUpdate` upserts `ON CONFLICT` on exactly those
+columns. The real risk was **the tenant on converted history** — neither the package
+blueprint nor its conversion migration provides `tenant_id`, and the conversion **drops
+its own source table** — so the host adds the column nullable with no default and
+backfills from `flow_runs`. A `default` stamp there is the exact mechanism by which every
+historical row of every tenant becomes readable by the `default` tenant, and it is
+undetectable afterwards because a legitimately-default row and a mis-stamped one are
+byte-identical. The flow surface then closes its R-rule gaps: **R32** gains an observed
+per-role cockpit test (the first version was theatre — it flipped the feature flag in the
+test body, but routes register at boot, so every request fell through to the SPA
+catch-all and all six assertions passed while proving nothing; the rewrite flips it in
+`getEnvironmentSetUp` and the same mutation now fails exactly the denied-role cases),
+**R44** gains the `FlowRunStatusTool` MCP read surface — read-only *by construction*
+rather than by convention, reading through the **same** `FlowDashboardReadModel` the
+cockpit uses so the host tenant scope applies without being re-derived, with starting,
+cancelling, replaying and approving left behind the per-row authorizer where a human is
+present — and **R45** gains a deep doc-site page plus a forward-only migration runbook.
+Closed out by a tenant-isolation fix found in review: an **empty** `tenant_id` passed both
+the backfill and its guard, which is worse than the failure the migration was written to
+prevent — invisible to `where tenant_id = ?` **and** invisible to a `whereNull` check, so
+the migration would report success over rows nothing can read. Also in the cycle:
+`@types/node` pinned to the runtime floor so type definitions cannot run two majors ahead
+of the Node the app actually ships on, and the MCP roster test rewritten to derive from
+the files on disk instead of asserting a total — a hard-coded count had outlived the
+roster and kept `main` red for four days. PRs #460, #462, #463, #465, #466, #467, #469.
+See the [flow orchestration doc-site page](https://padosoft.mintlify.app/flow-orchestration)
+and the [v2 migration runbook](docs/runbooks/flow-v2-migration.md).
+
+**v8.34.0 — Provenance enforcement in the tool firewall (GA, shipped 2026-08-30).**
+Phase 3 of ADR 0028, and the phase that makes the labels load-bearing. The rule is an
+asymmetry, deliberately: an `untrusted-external` chunk may be **quoted** in an answer but
+must never **influence a tool call**. Refusing to quote would break the product to fix the
+security problem — an email corpus you cannot answer questions from is not a corpus —
+while refusing to *act* costs the turn its actions and nothing else. The answer still
+comes back, grounded in the same chunks with the same citations; only the tools are
+withheld. The firewall **never reads the content**: it inspects the *provenance* of the
+documents in context, because detecting an injection by reading it is a losing game
+against an adversary who can rewrite, while refusing to act on anything an outsider wrote
+does not depend on recognising the attack. A `null` tier means no connector said anything
+— every document written before the capability existed — so undeclared is deliberately
+**not** treated as untrusted, otherwise the upgrade would switch tools off for every
+existing deployment. Shipped switched **ON** in PR #461 after the default-off landing.
+PRs #455, #461. [ADR 0028](docs/adr/0028-source-acl-mirroring-and-ingest-provenance.md)
+
+**v8.33.0 — Source ACL mirroring, principal resolution and reconciliation (GA, shipped 2026-08-29).**
+Phase 2 of ADR 0028. The ingestion contract recorded what a document *is* and never where
+its authority comes from, so a Drive file shared with three people became, on ingest,
+readable by everyone with the project. Mirrored permissions now reuse
+`knowledge_document_acl` with an `origin` column, and reconciliation **deletes** on
+un-share — a mirror that only ever adds permissions is a slow leak. The load-bearing
+decision is that a principal which cannot be resolved to an internal subject **fails
+closed** to `restricted-unmapped` rather than to project-wide visibility. That hides
+documents which are visible today, which is the intended direction and is why it ships
+with a triage surface and a loud release note rather than quietly. Enforcement extends
+**R33**, putting allow-rows in the same SQL seam so retrieval gets it for free rather than
+through a second mechanism that could drift. PR #452.
+[ADR 0028](docs/adr/0028-source-acl-mirroring-and-ingest-provenance.md)
+
+**v8.32.0 — Ingest-time provenance labels (GA, shipped 2026-08-29).**
+Phase 1 of ADR 0028, phased so the cheap half is not held behind the expensive one. Two
+**opt-in** capability interfaces on `askmydocs-connector-base` (`SupportsSourceAcl`,
+`DeclaresProvenance`) carry the permission list and authorship through ingestion metadata.
+An optional `?SourceAccess` argument was designed first and abandoned: PHP rejects an
+implementation with fewer parameters than its interface, so even an optional one fatals
+every host implementing the contract at class-declaration time. Eight connectors and a
+public template consume this contract, which is why a breaking signature was not
+available. The labels are inert at this phase — they answer *“how much of our corpus is
+externally authored?”* and nothing enforces on them yet. Provenance is deliberately **not**
+collapsed into the Auto-Wiki curation tier: that ranks *has a human vouched for this*,
+provenance records *who wrote it*, and a human-accepted page summarising an external email
+is both at once — collapsing them would let curation launder authorship. PR #448.
+[ADR 0028](docs/adr/0028-source-acl-mirroring-and-ingest-provenance.md)
+
+**v8.31.0 — R33: authorization that must hold for retrieval belongs in SQL (GA, shipped 2026-08-29).**
+An authorization arm enforced by a **policy** is enforced only for callers that go through
+the Gate — and the RAG hot path does not. Retrieval resolves chunks with
+`KnowledgeChunk::whereHas('document', …)` and never calls `KnowledgeDocumentPolicy`, so any
+arm of `User::hasDocumentAccess()` left out of `AccessScopeScope` is **not enforced for
+grounding**: the model receives the chunks and cites them. The scope-allowlist arm was
+exactly that shape — a member scoped to `hr/policies/**` still received `hr/salaries/**`
+chunks as grounding, with citations — and it is the same bug as the earlier role-deny ACL
+finding, two arms of one method discovered two audits apart. `ScopeAllowlistSql` pushes the
+arm into the global scope's SQL and **fails closed** where a glob shape mixing single- and
+cross-segment wildcards cannot be expressed exactly in portable SQL. It emits an
+always-false arm rather than no arm, because an empty `where` group is dropped by the query
+builder and reads as *no restriction*, inverting the control. A subject with no restriction
+of this kind generates the identical query as before, so the rule costs nothing on the
+paths it does not constrain. Regression-tested **through the relationship** rather than the
+controller: a controller test passes on the policy alone and proves nothing about the hot
+path. PR #443.
+
 **v8.30.0 — System administrator boundary and global tenant control.**
 The former overloaded `super-admin` concept is split in two. A tenant
 `super-admin` is now the strongest application administrator only inside
@@ -2103,6 +2215,21 @@ silently, and the normalized-email backfill now runs in bounded chunks. See
 [ADR 0023](docs/adr/0023-v830-system-admin-boundary.md),
 [ADR 0024](docs/adr/0024-v830-membership-required-operational-tenants.md), and the
 [recovery runbook](docs/runbooks/system-admin-recovery.md).
+
+**v8.29.0 — Bounded generation and a CLI-only safety boundary for the email harness (GA, shipped 2026-08-06).**
+The case-study dataset generator can emit 30,000 deterministic messages and deliver them
+through real IMAP `APPEND` calls, and two boundaries were incomplete. The JSONL writer
+retained one file descriptor for **every** data and index shard until publish, so corpus
+size and shard fan-out could exceed a normal process limit. And the destructive purge
+flags were guarded by CLI intent alone — no environment fence, no exact single-use
+confirmation, no tenant-scoped forensic lifecycle. Both are closed, and the subsystem
+stays **CLI-only by decision rather than by omission**: it is an operator fixture harness,
+not a customer-facing product write API, so adding HTTP or MCP mutations would broaden the
+attack surface without creating a valid product use case — a documented R44 exception.
+Shipped alongside IMAP reconnect-on-drop resilience, which absorbs a transient transport
+drop by retrying once on a fresh connection instead of leaving an install stuck at
+*"Not synced yet"*. PRs #403, #404.
+[ADR 0026](docs/adr/0026-v829-email-dataset-safety-boundary.md)
 
 **v8.28.0 — In-app team (tenant) management: create a team + rename a team.**
 Operators can now **create a new team and rename a team from the admin UI**,
@@ -2129,7 +2256,7 @@ capability). When the optional `tenants` table is absent the endpoints degrade t
 a clean **503** (R14/R43), never a 500. See the
 [doc-site](https://padosoft.mintlify.app/team-management).
 
-**v8.27.0 — API Connector ("Connettore API"): endpoints as live LLM tools (in progress).**
+**v8.27.0 — API Connector ("Connettore API"): endpoints as live LLM tools (GA, shipped 2026-08-30).**
 A NEW kind of connector. Where the existing connectors *ingest* documents into the
 vector store, the **API connector** (`padosoft/askmydocs-connector-api`) turns each
 configured HTTP **endpoint (Rotta)** into a **live tool the LLM can call during chat** —
