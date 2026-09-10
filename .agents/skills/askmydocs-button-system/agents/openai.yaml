@@ -1,0 +1,7 @@
+interface:
+  display_name: "AskMyDocs Button System"
+  short_description: "Design and audit refined product buttons"
+  brand_color: "#8B5CF6"
+  default_prompt: "Use $askmydocs-button-system to design or audit these interface buttons."
+policy:
+  allow_implicit_invocation: true
