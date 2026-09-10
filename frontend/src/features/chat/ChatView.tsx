@@ -11,6 +11,7 @@ import { useChatStore } from './chat.store';
 import { useAuthStore } from '../../lib/auth-store';
 import { selectCurrentHash, useTeamStore } from '../../lib/team-store';
 import { Icon } from '../../components/Icons';
+import { Button } from '../../components/Button';
 import { useAgentChat } from './use-agent-chat';
 import { AgentActivityBar } from './AgentActivityBar';
 import { SuggestedFollowups } from './SuggestedFollowups';
@@ -633,14 +634,15 @@ export function ChatView(): ReactNode {
                             <span className="chat-model-chip">{headerMeta}</span>
                         </div>
                     </div>
-                    <button
-                        type="button"
-                        className="btn icon sm ghost"
+                    <Button
+                        variant="quiet"
+                        size="sm"
+                        iconOnly
                         data-testid="chat-header-more"
                         aria-label="Conversation actions"
                     >
                         <Icon.MoreH size={14} />
-                    </button>
+                    </Button>
                 </header>
 
                 <AgentActivityBar

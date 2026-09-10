@@ -110,6 +110,18 @@ export function UserForm({
         }
     }, [serverErrors, setError]);
 
+    const currentProjectKey = watch('initial_project_key');
+    const firstProjectKey = projectKeys[0];
+
+    useEffect(() => {
+        if (mode !== 'create' || currentProjectKey || !firstProjectKey) return;
+
+        // Project keys are loaded asynchronously by the admin view. A native
+        // select displays its first option when they arrive, but React Hook
+        // Form otherwise keeps the original empty value and rejects submit.
+        setValue('initial_project_key', firstProjectKey, { shouldValidate: true });
+    }, [currentProjectKey, firstProjectKey, mode, setValue]);
+
     const currentRoles = watch('roles') ?? [];
 
     function toggleRole(name: string) {
