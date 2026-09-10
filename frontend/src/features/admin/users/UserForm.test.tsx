@@ -58,6 +58,26 @@ describe('UserForm', () => {
         expect(err).toHaveTextContent('already been taken');
     });
 
+    it('initializes the first project when project keys arrive asynchronously', async () => {
+        const user = userEvent.setup();
+        const onSubmit = vi.fn();
+        const { rerender } = render(
+            <UserForm mode="create" roles={ROLES} projectKeys={[]} onSubmit={onSubmit} />,
+        );
+
+        rerender(
+            <UserForm mode="create" roles={ROLES} projectKeys={['engineering']} onSubmit={onSubmit} />,
+        );
+
+        await user.type(screen.getByTestId('user-form-name'), 'New user');
+        await user.type(screen.getByTestId('user-form-email'), 'new-user@demo.local');
+        await user.type(screen.getByTestId('user-form-password'), 'P@ssw0rd-New-User-1');
+        await user.click(screen.getByTestId('user-form-submit'));
+
+        await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+        expect(onSubmit.mock.calls[0][0].initial_project_key).toBe('engineering');
+    });
+
     it('allows empty password in edit mode and submits successfully', async () => {
         const user = userEvent.setup();
         const onSubmit = vi.fn();
