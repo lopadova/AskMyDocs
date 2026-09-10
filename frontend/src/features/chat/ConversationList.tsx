@@ -1,6 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '../../components/Icons';
+import { Button } from '../../components/Button';
 import { chatApi, type Conversation } from './chat.api';
 import { useChatStore } from './chat.store';
 
@@ -64,28 +65,25 @@ export function ConversationList({ projectKey, onSelect, onNewAnonymous }: Conve
             }}
         >
             <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <button
-                    type="button"
-                    className="btn primary"
+                <Button
+                    variant="primary"
                     data-testid="chat-new-conversation"
                     onClick={() => createMutation.mutate()}
-                    disabled={createMutation.isPending}
-                    aria-busy={createMutation.isPending}
+                    busy={createMutation.isPending}
+                    leadingIcon={<Icon.Plus size={13} />}
                     style={{ width: '100%', justifyContent: 'center' }}
                 >
-                    <Icon.Plus size={13} />
                     New chat
-                </button>
-                <button
-                    type="button"
-                    className="btn"
+                </Button>
+                <Button
+                    variant="secondary"
                     data-testid="chat-new-anonymous-chat"
                     onClick={onNewAnonymous}
+                    leadingIcon={<Icon.Eye size={13} />}
                     style={{ width: '100%', justifyContent: 'center' }}
                 >
-                    <Icon.Eye size={13} />
                     New anonymous chat
-                </button>
+                </Button>
             </div>
             <div style={{ padding: '0 12px 10px' }}>
                 <div style={{ position: 'relative' }}>
