@@ -107,9 +107,25 @@ references in the Markdown, formulas as LaTeX, a confidence per page.
   run; the second engine's run directory stays on disk, bounded (one per
   engine), and goes with the `.ocr/` tree — identical text is the same
   document, and the figures a driver did not change are not a new version. Tenant separation is the **source file's own** — the assets sit
-  beside the file whose namespace (disk + prefix + path) they inherit, so a
-  deployment that isolates tenants by disk/prefix isolates the figures with
-  them, and one that does not already shares the source object itself. A
+  beside the file whose namespace (disk + prefix + path) they inherit. That
+  namespace is not tenant-derived today (`KB_PATH_PREFIX` is one global
+  setting, an upload lands at `sub_path/basename`), so on a shared disk two
+  tenants that use the same `source_path` already share the **source object**
+  itself — a pre-existing property of the KB layout that W1 neither creates
+  nor fixes (it is the reason W2's new `.artifacts/` tree, which has no
+  "beside the source" constraint, is namespaced by `{tenant_id}/{project_key}`
+  with the safe-segment rules). What keeps the shared `.ocr/` tree safe is
+  content addressing plus a cross-tenant reference gate: a run directory is
+  named by `sha256(bytes · driver · fingerprint)`, so a tenant can only ever
+  reuse — or read — a run for bytes it already possesses (the figure pixels
+  are extracted from those very bytes), never one produced from another
+  tenant's file; and cleanup/refusal go through `DocumentDeleter`'s
+  storage-key gate, which counts referencing `knowledge_documents` rows
+  **across tenants** (`withoutGlobalScopes` — a documented R30 exception for a
+  shared physical object, the same posture as the IMAP mailbox lock), so no
+  tenant's hard delete removes assets another tenant's row still references.
+  Tests: a same-path/different-bytes collision (two run directories, the first
+  intact) and a cross-tenant reference that keeps the tree on hard delete. A
   collision test (two byte-versions at one path → two run directories, the
   first still intact) and a hard-delete test (last referencing row removes the
   whole `.ocr/`) are part of W1. The Markdown references
@@ -129,8 +145,15 @@ references in the Markdown, formulas as LaTeX, a confidence per page.
   in the interface's own docblock: the write is content-addressed and
   idempotent (the same input and engine produce the same run directory, a
   second run is a no-op), the run is immutable, and it lives under the
-  source's namespace and lifecycle — so a dry-run leaves exactly the run a
-  real run would create, nothing a later purge does not already cover. A run can be referenced by several rows (versions of one
+  source's namespace and lifecycle. **It never happens under a dry run.**
+  `ParseMarkdownStep` still calls `convert()` during `Flow::dryRun()`, so the
+  step marks the `SourceDocument` (`metadata.dry_run = true`) and the OCR
+  core then neither calls a driver (paid, and remote for some), nor writes
+  `.ocr/`, nor meters: it returns a page-shaped preview (`## Page n` sections,
+  `ocr.dry_run: true`, the page count the cap would see) so the chunk preview
+  stays realistic, and shows a run already recorded for those bytes
+  read-only. A flow-level dry-run test (no `.ocr/`, no ledger row, no driver
+  call) and a read-only recorded-run test are part of W1. A run can be referenced by several rows (versions of one
   source, a correction that kept the figures), so `.ocr/` is removed only
   when the **last row referencing the source key** goes — the same
   reference gate `DocumentDeleter` already applies to the source file
