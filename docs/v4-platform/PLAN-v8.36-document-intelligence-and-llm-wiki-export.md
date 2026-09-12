@@ -132,7 +132,24 @@ references in the Markdown, formulas as LaTeX, a confidence per page.
   `KB_OCR_ALLOW_REMOTE=true` (fail closed, default off — a sovereign install
   never sends a scan out by accident), the choice is audited on the
   document (`metadata.converter.ocr.driver` + `remote: true`), and a
-  negative test proves a remote driver cannot run with the knob off.
+  negative test proves a remote driver cannot run with the knob off. The
+  switch is **necessary, not sufficient** (SEC-LLM-001 gates 2 and 7): the
+  destination and the size of what leaves are bounded in code —
+  `vision-llm` resolves provider and model through `AiManager`, the same
+  choke point every chat call goes through, so the provider/model policy of
+  the platform applies unchanged and an unknown provider is a boot-time
+  refusal; `mistral-ocr` posts only to a URL whose host is in the exact
+  allow-list `kb.ocr.mistral.allowed_hosts` (default `api.mistral.eu`,
+  `api.mistral.ai`), never to an arbitrary base URL; every OCR run is capped
+  **before egress** by `KB_OCR_MAX_PAGES` (default 200, counted by the probe's
+  parser) and `KB_OCR_MAX_BYTES` (default the upload cap), a document over
+  either limit fails loudly with a reason instead of paying page by page;
+  and `OcrCostEstimator` reports `too_many_pages` / `driver_unavailable` so
+  the modal never promises a run the registry will refuse. Deny-by-default
+  tests cover unknown provider, host outside the allow-list, page and byte
+  overflow, and the knob off. Figure pixels are the one input regex
+  redaction cannot inspect; they stay on the KB disk behind the source's ACL
+  and are omitted from the W4 export under the PII policy.
   Figures are pixels: regex redaction cannot inspect them, so the figure
   directory is treated as **unredacted** — see W4 for what that means for
   export.
@@ -196,18 +213,27 @@ and the direct path (`DocumentIngestor::ingest` → `persistFromDrafts`) both
 reach `persistDocumentAndChunks()`, where the artifact is written — **one
 core, both paths**, exactly as `ChunkRedactor` was wired (ADR 0020 D3). A
 database transaction cannot roll back a filesystem write, so the write is
-**compensated, not "inside" the transaction**: the artifact is written under a
-path that is **unique per version row** — `{source_path}.versions/{version_hash}.md`,
-where `version_hash` is already unique per `(project_key, source_path)` and the
-row that is about to be inserted is the only one that can ever reference it —
-before the row is committed, the row records the path, and if the commit fails
-the file is deleted in the failure branch. Because no two rows (across versions
-or tenants on a shared disk, whose source paths differ by prefix) share an
-artifact path, the compensating delete cannot remove a file another committed
-transaction references — there is nothing to reference-count.
-`kb:prune-archived-versions` additionally sweeps artifacts whose
-`version_hash` no row (including trashed rows, R2) references — orphans left by
-a crash between the two steps — and only after that authoritative check.
+**compensated, not "inside" the transaction**, and the path is **unique per
+version row across tenants and projects**:
+`.artifacts/{tenant_id}/{project_key}/{source_path}.versions/{version_hash}.md`
+on the KB disk (under `KB_PATH_PREFIX`). `source_path` is prefix-free and the
+prefix is one global setting, so tenant and project are part of the key
+explicitly — the tuple `(tenant_id, project_key, source_path, version_hash)`
+is exactly the row's uniqueness, so no two rows can ever name one artifact and
+there is nothing to reference-count. The publish is race-safe against two
+concurrent identical ingests: each writer writes to its own temporary name
+(`{final}.{uuid}.tmp`), commits the row with the **final** path recorded, and
+only after commit moves its temp file into place (`exists()` on the final
+path → the identical bytes are already there, drop the temp). The loser of
+the unique-constraint race never touches the final path: its failure branch
+deletes **its own temp file only**, so it cannot remove what the winner's
+committed row references. A crash between commit and move leaves a row whose
+artifact is missing — `contentFor()` falls back to reconstruction and says so
+(§4 below), and `kb:artifacts-backfill` repairs it. `kb:prune-archived-versions`
+additionally sweeps `.tmp` leftovers older than one hour and artifacts whose
+`(tenant, project, path, version_hash)` no row (trashed rows included, R2)
+references, only after that authoritative check. Failure, idempotency and a
+genuinely concurrent identical-ingest test cover all of it.
 Failure, idempotency and concurrent-version tests cover all three. There is no `ConvertDocumentStep`; the conversion step is
 `ParseMarkdownStep`. OCR figures (W1) live beside the artifact under
 `{source_path}.ocr/{run}/images/`.
@@ -215,6 +241,14 @@ Failure, idempotency and concurrent-version tests cover all three. There is no `
 **Flag.** `KB_CONVERSION_ARTIFACTS_ENABLED` default-**OFF** in v8.36 (R43):
 OFF = no artifact is written and `diff` reconstructs from chunks exactly as
 today; ON = the artifact is written under the `source_retention` mode.
+Turning the flag on populates nothing by itself — `DocumentIngestor` returns
+the matching `version_hash` before the persistence core — so W2 ships
+`kb:artifacts-backfill {--project=} {--tenant=}`: for every live row without
+an artifact whose source is still on disk it re-converts (through the same
+converter, OCR included) and writes the artifact **without** creating a
+version when the converted bytes hash to the same `document_hash`; a source
+that is no longer on disk (`markdown_only` / `reference_only`) is reported,
+not invented.
 
 **Schema.** No new versions table — the family *is* the version model. Three
 columns on `knowledge_documents`: `version_actor` (`system:ingest` /
@@ -253,7 +287,13 @@ and the document resolved with `forTenant()`, as `kb:ocr` and
 they cannot have: it is a workflow, it is measured, and the agent only proposes.
 
 **UI** (`frontend/src/features/admin/kb/review/*`, R11/R12/R15): original
-page render left (PDF.js / image), Markdown right in raw or preview, page
+page render left (PDF.js / image) **when the source is retained** —
+`source_retention` `markdown_only` and `reference_only` deliberately drop or
+never copy the original, so the left pane has an explicit
+`data-state="unavailable"` with the mode named and no re-fetch is attempted
+(the connector credential is not the reviewer's; an authorized re-fetch is a
+recorded upstream ask), while the Markdown side, the heat-map and the
+review actions keep working; Markdown right in raw or preview, page
 navigator, a **confidence heat-map** marking low-`ocr_confidence` spans,
 Save → new version (W2), per-page status `unreviewed → reviewed` stored in a
 new tenant-aware `kb_document_page_reviews` table (R30/R31), and document
@@ -271,13 +311,35 @@ screen absent (clean 404), tools not registered; ON = the surface above.
 its document is born in the **`auto` tier** (ADR 0014) and stays there until
 a person approves it; approval promotes it to `human`. The reranker firewall
 we already have ranks it accordingly — Annota's "review before export" is
-already modelled by our schema. Nothing new to invent, one column to set.
+already modelled by our schema. Nothing new to invent, one column to set —
+and it is set **in W1, in the one core both paths share**: today
+`generation_source` defaults to `human` and only canonical frontmatter can
+ask for `auto`, so `DocumentIngestor::persistDocumentAndChunks()` (Flow and
+direct path alike) writes `generation_source = auto` for a non-canonical
+document whose `extractionMeta.provenance` is `ocr`; canonical frontmatter,
+when present, keeps its own say. An OCR ingest test asserts the tier through
+the relationship; approval in W3 is then the existing promote transition.
 
 **Agent surface — propose, never commit.** MCP `KbProposeTextCorrectionTool`
 (`document`, `page`, `old`, `new`, `rationale`) writes a **correction
 candidate** (the ADR 0003 pattern: `/suggest → /candidates → /promote`) —
 the only MCP tool of the cycle that writes toward the **corpus**, and it
-writes a candidate, never content. (W4's `KbCreateExportTool` is
+writes a candidate, never content. Writing a candidate is still a mutating
+effect (SEC-AI-ACT-001), so it carries the mutating-tool controls:
+authorization through `McpToolAuthorizer` **before** the document lookup,
+with the immutable initiating identity and the current tenant, and the
+document resolved with `forTenant()` (a foreign id is a 404, never a leak);
+model-supplied `old` / `new` / `rationale` bounded (`old` must occur exactly
+once on the page, `new` ≤ 4 000 chars, `rationale` ≤ 500) and stored as
+data; an idempotency key
+`sha256(tenant · user · document · page · old · new)` with a DB `UNIQUE` on
+`kb_text_correction_candidates`, so a replay returns the existing candidate
+and a genuinely concurrent double call creates one row; a per-user rate cap
+(`KB_REVIEW_CANDIDATES_PER_HOUR`, default 60); an audit row per accepted,
+denied and replayed call; and the human confirmation is the promotion
+itself — a candidate has no effect until a reviewer accepts it in the UI.
+Negative tests: no identity, wrong tenant, `old` not found or ambiguous,
+oversize fields, replay, concurrent duplicate, audit failure (fail closed). (W4's `KbCreateExportTool` is
 side-effecting too — it starts a job and writes a retained export on the
 staging disk — but it never touches corpus content; its controls are listed
 in W4.)
@@ -366,6 +428,12 @@ produces the folder the pattern expects — and then more than the pattern.
   jobs). Regression tests: no user → the job refuses, wrong/deleted user →
   refuses, worker reuse → the second job sees no leaked principal. The CLI
   requires an explicit, audited `--as-user=` and refuses to run unrestricted.
+- **`raw/` is the artifact or nothing.** A version without a stored artifact
+  (`reference_only`, a row older than the W2 flag, a missing file) is exported
+  **without** a `raw/` entry and listed in `MANIFEST.json` under
+  `raw_missing` with the reason; the export result is `partial` and says so
+  on every surface. Chunk reconstruction is never written as `raw/` — it is
+  an index, not the document.
 - **PII-governed `raw/`**: the artifact is the raw converted Markdown (ADR
   0020 keeps the vector store, not the disk, as the protected surface). The
   export therefore renders `raw/` **through the tenant PII policy** — the same
@@ -410,7 +478,8 @@ loop exists for. This is the loop Annota does not close.
 
 **Tri-surface.** Artisan `kb:export-wiki --as-user=` / `kb:import-wiki` ·
 HTTP `POST /api/admin/kb/exports` (async, `kb-staging` disk, signed download
-URL) + `GET /exports/{id}` + `POST /api/admin/kb/imports` (candidates only) ·
+URL) + `GET /api/admin/kb/exports/{id}` + `POST /api/admin/kb/imports`
+(candidates only) ·
 MCP `KbCreateExportTool` / `KbGetExportTool` (the two Annota tools we *do*
 mirror — read-only **with respect to the corpus**, but `KbCreateExportTool`
 is side-effecting: it starts a job and writes a retained artifact, so it is
@@ -452,7 +521,14 @@ dependency flagged in ADR 0028 — record it in the ADR, default the target
 one thin adapter, `App\Routines\WikiMaintenanceRoutineTarget implements
 RoutineTarget`, over the **existing** core the cron command already injects —
 `App\Services\Kb\AutoWiki\WikiMaintainer` (no rename, no second
-implementation); a generic flow-backed target is recorded as an upstream ask
+implementation). Because the package is optional, the adapter class — which
+`implements RoutineTarget` and therefore cannot even be autoloaded without
+`laravel-routines-contracts` — is registered only behind
+`interface_exists(RoutineTarget::class)` in a dedicated
+`registerWikiRoutineTarget()` of `AppServiceProvider`, and a boot test proves
+the application boots, the scheduler entry runs and `kb:wiki-maintain` works
+with the package absent and the flag in both states; a generic flow-backed
+target is recorded as an upstream ask
 in `docs/handoff/` for a padosoft-scoped session.
 
 **No double run.** With `KB_WIKI_ROUTINE_ENABLED=true` the scheduler entry for

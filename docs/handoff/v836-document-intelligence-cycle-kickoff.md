@@ -91,7 +91,9 @@ rendering of audit + plan, and the two-patch `git am` series used to move the co
    artifact-aware with reconstruction fallback, restore re-activates the artifact,
    MCP `KbDocumentVersionsTool` (read). **ADR 0030.**
 4. **W3 Digitization Review.** A converted document is born in the **`auto` tier**
-   (ADR 0014) and is promoted to `human` on approval. **The agent proposes, never
+   (ADR 0014) — set explicitly by W1 in `DocumentIngestor::persistDocumentAndChunks()`
+   (both paths) for a non-canonical document whose extraction origin is `ocr`, since
+   the column otherwise defaults to `human` — and is promoted to `human` on approval. **The agent proposes, never
    commits**: MCP `KbProposeTextCorrectionTool` writes a correction *candidate* (the
    ADR 0003 `/suggest → /candidates → /promote` pattern); **no MCP tool sets a
    review status** — status changes are HTTP + CLI only (a documented R44
