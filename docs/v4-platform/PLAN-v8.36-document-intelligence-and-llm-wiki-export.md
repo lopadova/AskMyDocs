@@ -101,7 +101,12 @@ references in the Markdown, formulas as LaTeX, a confidence per page.
   with identical input and engine lands on the same one (the ingest's own
   idempotency, and the recorded run it reuses), and a W2 artifact points at
   the exact run that produced it via `metadata.converter.ocr.run`. A run is
-  **immutable**: nothing rewrites a run directory after it is recorded. Tenant separation is the **source file's own** — the assets sit
+  **immutable**: nothing rewrites a run directory after it is recorded. When
+  two engines produce byte-identical Markdown the second ingest is the
+  usual version-hash no-op and the document keeps pointing at its original
+  run; the second engine's run directory stays on disk, bounded (one per
+  engine), and goes with the `.ocr/` tree — identical text is the same
+  document, and the figures a driver did not change are not a new version. Tenant separation is the **source file's own** — the assets sit
   beside the file whose namespace (disk + prefix + path) they inherit, so a
   deployment that isolates tenants by disk/prefix isolates the figures with
   them, and one that does not already shares the source object itself. A
@@ -119,7 +124,13 @@ references in the Markdown, formulas as LaTeX, a confidence per page.
   (every `put()` checked, R4): the Flow persists step outputs to the database,
   so binary blobs cannot travel in `ConvertedDocument::mediaItems` — the
   seam Copilot flagged as missing is the store, and `mediaItems` lists the
-  written paths. A run can be referenced by several rows (versions of one
+  written paths. This is a **documented exception** to the
+  `ConverterInterface` "stateless and side-effect-free" contract, recorded
+  in the interface's own docblock: the write is content-addressed and
+  idempotent (the same input and engine produce the same run directory, a
+  second run is a no-op), the run is immutable, and it lives under the
+  source's namespace and lifecycle — so a dry-run leaves exactly the run a
+  real run would create, nothing a later purge does not already cover. A run can be referenced by several rows (versions of one
   source, a correction that kept the figures), so `.ocr/` is removed only
   when the **last row referencing the source key** goes — the same
   reference gate `DocumentDeleter` already applies to the source file
@@ -152,8 +163,9 @@ references in the Markdown, formulas as LaTeX, a confidence per page.
   destination and the size of what leaves are bounded in code —
   `vision-llm` resolves provider and model through `AiManager`, the same
   choke point every chat call goes through, so the provider/model policy of
-  the platform applies unchanged and an unknown provider is a boot-time
-  refusal; `mistral-ocr` posts only to a URL whose host is in the exact
+  the platform applies unchanged and an unknown provider is refused when the
+  driver resolves it — `AiManager::provider()` resolves lazily, so the
+  boundary is *before the first request*, not at boot; `mistral-ocr` posts only to a URL whose host is in the exact
   allow-list `kb.ocr.mistral.allowed_hosts` (default `api.mistral.eu`,
   `api.mistral.ai`), never to an arbitrary base URL; every OCR run is capped
   **before egress** by `KB_OCR_MAX_PAGES` (default 200, counted by the probe's
@@ -233,7 +245,15 @@ version row across tenants and projects**:
 `.artifacts/{tenant_id}/{project_key}/{source_path}.versions/{version_hash}.md`
 on the KB disk (under `KB_PATH_PREFIX`). `source_path` is prefix-free and the
 prefix is one global setting, so tenant and project are part of the key
-explicitly. Today's database uniqueness is `uq_kb_doc_version` =
+explicitly — **as safe segments, never verbatim**: `project_key` is a free
+string of up to 120 characters at the ingest API and `kb:ingest-folder
+--project` validates nothing, so each of the two is admitted only when it
+matches `^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$` (no `/`, no `..`) and is
+otherwise replaced by `h-` + the first 24 hex of its SHA-256; the composed
+path is normalised with `KbPath::normalize()` (which refuses `.` / `..`) and
+must resolve **inside** the artifact root (`realpath` containment where the
+disk is local). Tests: a project key of `../../outside`, one of 120
+characters, and two keys that collide only after encoding. Today's database uniqueness is `uq_kb_doc_version` =
 `(project_key, source_path, version_hash)` — the tenant migration deferred
 rebuilding the composite uniques with `tenant_id`, so identical content at
 one path cannot be stored for two tenants **today** (a pre-existing
@@ -324,11 +344,20 @@ review actions keep working; Markdown right in raw or preview, page
 navigator, a **confidence heat-map** marking low-`ocr_confidence` spans,
 Save → new version (W2), per-page status `unreviewed → reviewed` stored in a
 new tenant-aware `kb_document_page_reviews` table (R30/R31), and document
-approval. **`approved` is not a new document status**: approval is the
-**existing, audited** ADR 0014 promote path (`WikiExplorerService::promote()`
-— `generation_source` `auto → human`, `canonical_status = accepted` when the
-document is canonical, its `kb_canonical_audit` row, all in one transaction);
-no new column, no new status, and the audit row is mandatory, not optional. A correction creates a new version through `DocumentIngestor` (the
+approval. **`approved` is not a new document status**: approval is a
+`generation_source` `auto → human` transition, audited, in one transaction —
+behind one `KbReviewService::approve()` that **branches on canonicity**: a
+canonical row goes through the existing `WikiExplorerService::promote()`
+(which also sets `canonical_status = accepted` and writes its
+`kb_canonical_audit` row); a **non-canonical** row — the normal case for an
+OCR'd scan — gets the same `generation_source` flip and the same audit row
+(`event_type = promoted`, actor = the reviewer) **without** touching
+`canonical_status` (`accepted` is a canonical status; `scopeAccepted()`
+would never see the row and it is not one). The review queue lists by
+`generation_source = auto` (and `metadata.converter.provenance = ocr`),
+not by slug, so non-canonical OCR rows are discoverable — `WikiExplorerService::list()`
+returns slugged rows only and is not reused for it. No new column, no new
+status, and the audit row is mandatory in both branches. A correction creates a new version through `DocumentIngestor` (the
 full document is re-chunked, as any re-ingest); pages whose text is unchanged
 are served by the embedding cache (`EmbeddingCacheService`, keyed by text
 hash), so no provider call is made for them — cheap, but not "page-only".
@@ -339,14 +368,23 @@ screen absent (clean 404), tools not registered; ON = the surface above.
 its document is born in the **`auto` tier** (ADR 0014) and stays there until
 a person approves it; approval promotes it to `human`. The reranker firewall
 we already have ranks it accordingly — Annota's "review before export" is
-already modelled by our schema. Nothing new to invent, one column to set —
-and it is set **in W1, in the one core both paths share**: today
-`generation_source` defaults to `human` and only canonical frontmatter can
-ask for `auto`, so `DocumentIngestor::persistDocumentAndChunks()` (Flow and
-direct path alike) writes `generation_source = auto` for a non-canonical
-document whose `extractionMeta.provenance` is `ocr`; canonical frontmatter,
-when present, keeps its own say. An OCR ingest test asserts the tier through
-the relationship; approval in W3 is then the existing promote transition.
+already modelled by our schema — with one honest caveat: today
+`Reranker::canonicalAdjustment()` returns before reading `generation_source`
+for a **non-canonical** row, so the `human > auto > raw` ordering is a fact
+for canonical rows only. W3 therefore ships a small, tested reranker change:
+the `generation_source` adjustment applies to non-canonical rows too (the
+canonical boost stays canonical-only), so an unreviewed scan ranks below a
+reviewed one. Nothing new to invent beyond that, one column to set — and it
+is set **in W1, in the one core both paths share**: today `generation_source`
+defaults to `human` and only canonical frontmatter can ask for `auto`, so
+`DocumentIngestor::buildDocumentAttributes()` — the row builder
+`persistDocumentAndChunks()` uses on the Flow and the direct path alike —
+writes `generation_source = auto` for a non-canonical document whose
+persisted `metadata.converter.provenance` is `ocr` (that is the key the
+converter's `extractionMeta` lands under; there is no top-level
+`extractionMeta` at this seam); canonical frontmatter, when present, keeps its
+own say. An OCR ingest test asserts the tier through the relationship;
+approval in W3 is then the transition above.
 
 **Agent surface — propose, never commit.** MCP `KbProposeTextCorrectionTool`
 (`document`, `page`, `old`, `new`, `rationale`) writes a **correction
@@ -360,9 +398,13 @@ document resolved with `forTenant()` (a foreign id is a 404, never a leak);
 model-supplied `old` / `new` / `rationale` bounded (`old` must occur exactly
 once on the page, `new` ≤ 4 000 chars, `rationale` ≤ 500) and stored as
 data; an idempotency key
-`sha256(tenant · user · document · page · old · new)` with a DB `UNIQUE` on
-`kb_text_correction_candidates`, so a replay returns the existing candidate
-and a genuinely concurrent double call creates one row; a per-user rate cap
+`sha256(tenant · user · document · version_hash · page · old · new)` with a
+DB `UNIQUE` on `kb_text_correction_candidates` (the source version is part of
+the identity, so a candidate validated against one OCR pass is never handed
+back for a later one; `rationale` is stored, not identity), a replay returns
+the existing candidate, a genuinely concurrent double call creates one row,
+and approval **re-validates** the candidate against the current version
+(`old` must still occur exactly once on that page) before applying it; a per-user rate cap
 (`KB_REVIEW_CANDIDATES_PER_HOUR`, default 60); an audit row per accepted,
 denied and replayed call; and the human confirmation is the promotion
 itself — a candidate has no effect until a reviewer accepts it in the UI.
@@ -526,7 +568,11 @@ mirror — read-only **with respect to the corpus**, but `KbCreateExportTool`
 is side-effecting: it starts a job and writes a retained artifact, so it is
 annotated as such, authorised like the HTTP endpoint, audited in
 `admin_command_audit`, rate-limited per principal and idempotent on
-`(tenant, principal, project, format)` for the retention window) +
+`(tenant, principal, project, sha256 of every normalised option —
+`format`, `include_images`, … —, corpus snapshot)` for the retention window,
+where the corpus snapshot is the max `updated_at` + row count of the
+principal's visible documents, so a request for images never reuses an
+image-less export and a refreshed corpus never serves a stale one) +
 `KbImportWikiTool` (yields promotion candidates — the propose-only pattern,
 never a write). Retention is its own
 knob, `KB_WIKI_EXPORT_RETENTION_HOURS` (default 24), swept by
@@ -661,8 +707,10 @@ R36/R40.
    `KB_OCR_ENABLED=false` an image is the same 422 as today and a scanned PDF
    yields the same empty document (or the same `RuntimeException` when neither
    smalot nor `pdftotext` can read it) as today (R43).
-2. Correcting one word on page 2 creates version 2, re-embeds only page 2,
-   and the diff endpoint shows exactly that word.
+2. Correcting one word on page 2 creates version 2; the document is
+   re-chunked and the unchanged pages' chunks are embedding-cache hits (no
+   provider call for them — the cache-level invariant, not "page-only"
+   work), and the diff endpoint shows exactly that word.
 3. An MCP agent calling `KbProposeTextCorrectionTool` produces a candidate; no
    chunk changes until a human approves; no MCP tool can set a review status
    (the roster test proves none is registered), and the HTTP `/review-status`
@@ -694,5 +742,5 @@ R36/R40.
       `digitization-review.mdx` (W3), `wiki-export.mdx` (W4), and a
       "Maintenance as a routine" section on `auto-wiki.mdx` (W5); README
       feature rows + the comparison table gains an **Annota AI** column
-- [ ] `CHANGELOG.md` entry per release; `ENTERPRISE-COMPLETENESS-ROADMAP.md`
+- [ ] `CHANGELOG.md` entry per release; `docs/ENTERPRISE-COMPLETENESS-ROADMAP.md`
       R5 (Slides OCR) re-scoped onto `OcrConverter`

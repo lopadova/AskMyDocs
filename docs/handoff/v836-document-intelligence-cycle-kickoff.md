@@ -188,7 +188,7 @@ navigation in `docs-site/docs.json`; Playwright real-data E2E for every screen
 - [ ] 8. `feature/v8.40` — W6 if still wanted; otherwise close it in the plan as
       “deferred” with one sentence of why.
 - [ ] 9. Final: README roadmap row flips to ✅ shipped with PR numbers; audit §2.1
-      table re-graded against what shipped; `ENTERPRISE-COMPLETENESS-ROADMAP.md` R5
+      table re-graded against what shipped; `docs/ENTERPRISE-COMPLETENESS-ROADMAP.md` R5
       (Slides OCR) re-scoped onto `OcrConverter`.
 
 ---
