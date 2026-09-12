@@ -252,9 +252,9 @@ navigation in `docs-site/docs.json`; Playwright real-data E2E for every screen
 
 | Wn | Integration branch | Sub-branch | PR | HEAD | Tag | State |
 |---|---|---|---|---|---|---|
-| plan | `main` | `claude/plan-annota-gap-document-intelligence` | — | — | — | not opened |
-| ADR 0029+0030 | `feature/v8.36` | `feature/v8.36-adr-0029-0030` | — | — | — | not started |
-| W1 | `feature/v8.36` | `feature/v8.36-W1` | — | — | — | not started |
+| plan | `main` | `claude/plan-annota-gap-document-intelligence` | [#476](https://github.com/lopadova/AskMyDocs/pull/476) | `b20420a3` | — | merged 2026-09-12 (squash; 12 Copilot rounds) |
+| ADR 0029+0030 | `feature/v8.36` (from `main` @ `b20420a3`) | `feature/v8.36-adr-0029-0030` | — | — | — | PR open 2026-09-12 |
+| W1 | `feature/v8.36` | `feature/v8.36-W1` | — | — | — | in progress 2026-09-12 (local critic rounds 1–8 done, full PHPUnit 4157 green, local E2E 7/7) |
 | W2 | `feature/v8.36` | `feature/v8.36-W2` | — | — | — | not started |
 | v8.36 GA | `main` | — | — | — | — | — |
 | W3 | `feature/v8.37` | `feature/v8.37-W3` | — | — | — | not started |
@@ -262,7 +262,7 @@ navigation in `docs-site/docs.json`; Playwright real-data E2E for every screen
 | W5 | `feature/v8.39` | `feature/v8.39-W5` | — | — | — | not started |
 | W6 | `feature/v8.40` | `feature/v8.40-W6` | — | — | — | optional |
 
-Last updated: 2026-09-11 (hand-off).
+Last updated: 2026-09-12 (plan merged; ADR PR opened).
 
 ---
 
