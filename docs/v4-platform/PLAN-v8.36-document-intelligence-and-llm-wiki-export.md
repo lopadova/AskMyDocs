@@ -127,7 +127,18 @@ references in the Markdown, formulas as LaTeX, a confidence per page.
   with identical input and engine lands on the same one (the ingest's own
   idempotency, and the recorded run it reuses), and a W2 artifact points at
   the exact run that produced it via `metadata.converter.ocr.run`. A run is
-  **immutable**: nothing rewrites a run directory after it is recorded. When
+  **immutable**: nothing rewrites a run directory after it is recorded — and
+  its **first write is reserved atomically**: `OcrService` takes a cache lock
+  on the run directory (`kb:ocr:run:{disk}:{sha1(dir)}`, Redis in
+  production, the same posture as the IMAP mailbox lock) from the
+  recorded-run check through `result.json`; a concurrent ingest of the same
+  bytes through the same engine waits for it (`KB_OCR_RUN_LOCK_WAIT`, default
+  300 s, then the job retries), looks again and **reuses** the run the first
+  worker recorded — one bill, one directory, never two nondeterministic
+  remote results interleaved in it; a forced execution has its own attempt
+  identity and never competes for a recorded run. A test holds the
+  reservation and asserts the second worker neither calls the driver nor
+  meters. When
   two engines produce byte-identical Markdown the second ingest is the
   usual version-hash no-op and the document keeps pointing at its original
   run; the second engine's run directory stays on disk — one directory per
