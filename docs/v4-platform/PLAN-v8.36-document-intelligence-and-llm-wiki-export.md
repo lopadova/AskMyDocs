@@ -92,11 +92,16 @@ references in the Markdown, formulas as LaTeX, a confidence per page.
 **Design decisions.**
 - Figures land on the `kb` disk under
   `{source_path}.ocr/{run}/images/fig-{page}-{n}.png`, where `{run}` is
-  **content-addressed** (the first 16 hex chars of the SHA-256 of the bytes
-  that were OCR'd): two versions of the same source path never overwrite each
-  other's pixels, a re-run on identical bytes lands on the same directory
-  (the ingest's own idempotency), and a W2 artifact can point at the run that
-  produced it. Tenant separation is the **source file's own** — the assets sit
+  **content-addressed over input AND engine** — the first 16 hex chars of
+  `sha256(bytes · driver name · driver fingerprint)`, the fingerprint being
+  the driver's own variant (model for `vision-llm` / `mistral-ocr`, language
+  + DPI for `tesseract`, the binary for `docling`) — so two versions of the
+  same source path never overwrite each other's pixels, the same bytes
+  through another driver or model land in another run directory, a re-run
+  with identical input and engine lands on the same one (the ingest's own
+  idempotency, and the recorded run it reuses), and a W2 artifact points at
+  the exact run that produced it via `metadata.converter.ocr.run`. A run is
+  **immutable**: nothing rewrites a run directory after it is recorded. Tenant separation is the **source file's own** — the assets sit
   beside the file whose namespace (disk + prefix + path) they inherit, so a
   deployment that isolates tenants by disk/prefix isolates the figures with
   them, and one that does not already shares the source object itself. A
@@ -104,13 +109,23 @@ references in the Markdown, formulas as LaTeX, a confidence per page.
   first still intact) and a hard-delete test (last referencing row removes the
   whole `.ocr/`) are part of W1. The Markdown references
   `![…](images/fig-3-1.png)` relative to the run directory — the same shape
-  Annota exports, so W4's export is a copy, not a transform. They are
+  Annota exports. The W2 artifact lives elsewhere
+  (`.artifacts/…/{version_hash}.md`), so a relative link inside it does not
+  resolve on the KB disk; that is fine for the Time Machine (it renders text)
+  and W4 **materialises** the pair: `raw/{doc}.md` next to
+  `raw/{doc}/images/` copied from the run named by the artifact's metadata —
+  two copies, no link rewrite. They are
   written **by the converter at conversion time** through `OcrFigureStore`
   (every `put()` checked, R4): the Flow persists step outputs to the database,
   so binary blobs cannot travel in `ConvertedDocument::mediaItems` — the
   seam Copilot flagged as missing is the store, and `mediaItems` lists the
-  written paths. Hard delete and `kb:prune-archived-versions` remove the
-  `.ocr/` directory together with the row (`OcrFigureStore::purge()`).
+  written paths. A run can be referenced by several rows (versions of one
+  source, a correction that kept the figures), so `.ocr/` is removed only
+  when the **last row referencing the source key** goes — the same
+  reference gate `DocumentDeleter` already applies to the source file
+  (`removeFile()` → `removeOcrAssets()`); `kb:prune-archived-versions`
+  passes through the same deleter. Deleting one archived row never removes a
+  run another row still references.
 - Every page carries `ocr_confidence` in chunk metadata; `Reranker` Layer-4
   may read it as a soft signal later — **not** in this workstream.
 - **Extraction origin, not authorship.** ADR 0028's `provenance_tier`
@@ -218,9 +233,15 @@ version row across tenants and projects**:
 `.artifacts/{tenant_id}/{project_key}/{source_path}.versions/{version_hash}.md`
 on the KB disk (under `KB_PATH_PREFIX`). `source_path` is prefix-free and the
 prefix is one global setting, so tenant and project are part of the key
-explicitly — the tuple `(tenant_id, project_key, source_path, version_hash)`
-is exactly the row's uniqueness, so no two rows can ever name one artifact and
-there is nothing to reference-count. The publish is race-safe against two
+explicitly. Today's database uniqueness is `uq_kb_doc_version` =
+`(project_key, source_path, version_hash)` — the tenant migration deferred
+rebuilding the composite uniques with `tenant_id`, so identical content at
+one path cannot be stored for two tenants **today** (a pre-existing
+limitation, not one W2 introduces or fixes): no two rows can name one
+artifact under the current constraint either, and the path carries
+`tenant_id` so the day the unique is rebuilt (its own migration + mirrored
+SQLite test migration, out of W2's scope and tracked as the deferred item)
+the artifact identity already matches. There is nothing to reference-count. The publish is race-safe against two
 concurrent identical ingests: each writer writes to its own temporary name
 (`{final}.{uuid}.tmp`), commits the row with the **final** path recorded, and
 only after commit moves its temp file into place (`exists()` on the final
@@ -248,7 +269,13 @@ an artifact whose source is still on disk it re-converts (through the same
 converter, OCR included) and writes the artifact **without** creating a
 version when the converted bytes hash to the same `document_hash`; a source
 that is no longer on disk (`markdown_only` / `reference_only`) is reported,
-not invented.
+not invented. The backfill is **operator-only maintenance — a documented R44
+exception**: it is a repair of storage, not a capability a client or an
+agent needs (the read surfaces degrade honestly without it, §4), it can
+re-run OCR on every document of a tenant and therefore spend, and its
+authorization boundary is the console (`--tenant` validated, the same
+contract as `kb:reembed-project`); a `--dry-run` reports what it would
+write.
 
 **Schema.** No new versions table — the family *is* the version model. Three
 columns on `knowledge_documents`: `version_actor` (`system:ingest` /
@@ -297,10 +324,11 @@ review actions keep working; Markdown right in raw or preview, page
 navigator, a **confidence heat-map** marking low-`ocr_confidence` spans,
 Save → new version (W2), per-page status `unreviewed → reviewed` stored in a
 new tenant-aware `kb_document_page_reviews` table (R30/R31), and document
-approval. **`approved` is not a new document status**: approval is the ADR
-0014 promote action — `generation_source` `auto → human` — plus
-`canonical_status = accepted` when the document is canonical; nothing else is
-written. A correction creates a new version through `DocumentIngestor` (the
+approval. **`approved` is not a new document status**: approval is the
+**existing, audited** ADR 0014 promote path (`WikiExplorerService::promote()`
+— `generation_source` `auto → human`, `canonical_status = accepted` when the
+document is canonical, its `kb_canonical_audit` row, all in one transaction);
+no new column, no new status, and the audit row is mandatory, not optional. A correction creates a new version through `DocumentIngestor` (the
 full document is re-chunked, as any re-ingest); pages whose text is unchanged
 are served by the embedding cache (`EmbeddingCacheService`, keyed by text
 hash), so no provider call is made for them — cheap, but not "page-only".
@@ -377,10 +405,13 @@ Digitization Review and the auto-tier mapping**.
 
 ### W4 — Export the governed wiki as a portable workspace (M/L) — v8.38
 
-**Goal.** `kb:export-wiki --project=X --as-user=U --format=llm-wiki|markdown|llms-txt`
+**Goal.** `kb:export-wiki --tenant=T --project=X --as-user=U --format=llm-wiki|markdown|llms-txt`
 produces the folder the pattern expects — and then more than the pattern.
-`--as-user` is not optional: the export is ACL-filtered for that principal
-(below), and the command refuses to run without one.
+`--tenant` and `--as-user` are not optional: `project_key` is only
+tenant-scoped and a console process has no request tenant, `--as-user` names
+a person who may belong to several tenants, so the command validates
+`--tenant` non-empty, resolves the user's membership **in that tenant**, and
+refuses to run otherwise — the same contract as the import path.
 
 ```
 {project}/
@@ -415,7 +446,15 @@ produces the folder the pattern expects — and then more than the pattern.
   (`Bearer …`, `sk-…`, a 40+ char base64 run) appears anywhere in the export
   or the manifest.
 - **ACL-aware** (R33): the export contains only what the exporting user may
-  retrieve, computed through `AccessScopeScope` — never a superset. The
+  retrieve, computed through `AccessScopeScope` — never a superset. That
+  scope lives on `KnowledgeDocument` only: `index.md` and `log.md` are
+  therefore **not** the raw `WikiIndexBuilder::hub()` / `operationLog()`
+  projections (tenant-filtered, not ACL-filtered — `KbWikiIndex` and
+  `KbCanonicalAudit` carry no document scope), they are rebuilt from the
+  ACL-scoped document set: hub entries and log lines that name a document
+  the principal cannot retrieve are dropped, and a regression test asserts
+  the index and the log, not only the page bodies, for a member limited to
+  `hr/policies/**`. The
   export runs async, and a queue worker has no request principal
   (`AccessScopeScope` applies no restriction for a null user), so the
   **exporting principal is captured at request authorization** (user id +
@@ -444,7 +483,9 @@ produces the folder the pattern expects — and then more than the pattern.
   tenant's PII policy is active the `.ocr/images/` directory is **omitted**
   from the export by default (the Markdown keeps the reference, the
   `MANIFEST.json` lists the omission) and included only with an explicit,
-  audited `--include-images`; a test covers both.
+  audited `include_images` — one field of the export request DTO, mapped on
+  all three surfaces (`--include-images`, the HTTP body, the MCP tool
+  argument) and recorded in the manifest; a test covers both.
 - **Tamper-evident**: `MANIFEST.json` hashes every file and chains them, the
   same primitive as the compliance reports (v8.0 W8). A folder found on a
   laptop can be verified against the server.
@@ -505,8 +546,11 @@ knob, `KB_WIKI_EXPORT_RETENTION_HOURS` (default 24), swept by
 instead as a **routine**: *the user, through the agent*, with a mandate
 (`kb.wiki.compile`, `kb.wiki.lint`), a spend ceiling, and a pause-and-ask when
 it wants to do something outside the mandate — deprecating a `human` page,
-say. The question lands in the "awaiting you" queue; `laravel-rebel-ai-guard`
-sees `routine_approval_starvation` if nobody answers.
+say. The question lands in the "awaiting you" queue of the routines package;
+if the optional `padosoft/laravel-rebel-ai-guard` is installed it observes
+`routine_approval_starvation` when nobody answers — an optional consumer,
+not a W5 dependency (none is declared beyond `laravel-routines` and its
+contracts).
 
 **Why.** `lucasastorian/llmwiki` tells its users to *"set up a Claude Routine
 so Claude refreshes the wiki"*. We have the routine engine; ours is sovereign,
@@ -531,13 +575,23 @@ with the package absent and the flag in both states; a generic flow-backed
 target is recorded as an upstream ask
 in `docs/handoff/` for a padosoft-scoped session.
 
-**No double run.** With `KB_WIKI_ROUTINE_ENABLED=true` the scheduler entry for
-`kb:wiki-maintain` is gated off (the routine owns the nightly run); with the
-flag off, or the package absent, the cron entry is byte-identical to v8.35.
+**No double run, no orphaned run.** The scheduler entry for
+`kb:wiki-maintain` is gated off **only when the routine is actually able to
+own the nightly run**: `KB_WIKI_ROUTINE_ENABLED=true` **and** the adapter is
+registered (`interface_exists(RoutineTarget::class)` — package installed)
+**and** the routine is registered. Any of the three missing → the cron entry
+is byte-identical to v8.35, and a log line says why the flag is not
+effective; a test covers flag-on-package-absent.
 
 **Tri-surface.** PHP `kb:wiki-routine {status|run}` · HTTP
 `GET /api/admin/kb/wiki-routine` (status, last run, pending questions) +
 `POST /api/admin/kb/wiki-routine/run` · MCP `KbWikiRoutineStatusTool` (read).
+**Documented R44 exception:** there is no MCP `run` tool. Starting the
+routine spends (the maintenance run is itself an agent run with a ceiling)
+and rewrites `auto` pages; by the cycle's invariant an agent may see the
+routine's state and its pending questions, not start it — the same
+exception as W1's OCR re-run and W3's review status, covered by the roster
+test.
 Doc-site: the `auto-wiki` page gains a "Maintenance as a routine" section
 (R45).
 

@@ -119,8 +119,10 @@ rendering of audit + plan, and the two-patch `git am` series used to move the co
    implementation). This is a **deliberate
    new dependency** — `padosoft/laravel-routines` v1.2.0,
    `padosoft/laravel-routines-contracts` v1.2.0, admin panel v1.1.0 are published.
-   With the routine ON the scheduler entry for `kb:wiki-maintain` is gated off (no
-   double run); OFF, the cron path is byte-identical. **ADR 0033.**
+   The scheduler entry for `kb:wiki-maintain` is gated off only when the routine
+   can own the run — flag ON **and** package/adapter present **and** routine
+   registered (no double run, no orphaned run); otherwise the cron path is
+   byte-identical, with a log line saying why. **ADR 0033.**
 7. **The `human > auto > raw` reranker firewall is untouched.** Nothing in this cycle
    lets machine output outrank human-vouched knowledge.
 8. **Documentation language is English**, community-facing (README, doc-site, ADRs,
@@ -139,8 +141,11 @@ Sub-branches target the integration branch and are named with a **dash**,
 `feature/v8.36-W1`, `feature/v8.36-W2` (not `feature/v8.36/W1`: git refuses a ref
 that is both a file and a directory once `feature/v8.36` exists — the repository's
 own precedent is `feature/v8.30-W1-fullscreenwidget`). This is the `feature/vX.Y`
-convention of the `branching-strategy-feature-vx` skill applied to the v8 line, as
-every cycle since v8.20 has done. Merge to `main` once per release with the GA tag.
+convention of the `branching-strategy-feature-vx` skill applied to the v8 line —
+the naming **chosen for this cycle** (the repository has used both
+`feature/v8.30-W1-…` and `feature/v8.30/W2-…` in the past; the slash form is
+impossible here once `feature/v8.36` exists). Merge to `main` once per release
+with the GA tag.
 The planning branch this file is on is a **docs-only PR to `main`** (the convention
 of #470 and the earlier audits).
 
@@ -213,7 +218,8 @@ navigation in `docs-site/docs.json`; Playwright real-data E2E for every screen
 
 - A scanned PDF and a PNG ingest end to end with `KB_OCR_ENABLED=true` and are refused
   exactly as today with the flag off (R43).
-- Every OCR'd document has an `auto` tier, extraction origin `ocr` on the document
+- Every **non-canonical** OCR'd document has an `auto` tier (a canonical one keeps
+  what its frontmatter says), extraction origin `ocr` on the document
   and its chunks, a per-page confidence, a FinOps line in the `ocr` category, and
   PII redacted before the first embedding; **with `KB_CONVERSION_ARTIFACTS_ENABLED=true`
   (W2) it also has a stored artifact** — with the W2 flag off, by design, it has none.
