@@ -65,10 +65,11 @@ rendering of audit + plan, and the two-patch `git am` series used to move the co
 
 1. **Scope and order.** W1 + W2 together (v8.36) → W3 (v8.37) → W4 (v8.38) → W5
    (v8.39) → W6 optional (v8.40). W3 needs W1 and W2; W4 needs W2; W6 needs W1.
-   Every workstream ships behind a **default-OFF** flag tested in both states (R43):
-   W1 `KB_OCR_ENABLED`, W2 `KB_CONVERSION_ARTIFACTS_ENABLED`, W3
+   Every executable workstream (W1–W5) ships behind a **default-OFF** flag tested in
+   both states (R43): W1 `KB_OCR_ENABLED`, W2 `KB_CONVERSION_ARTIFACTS_ENABLED`, W3
    `KB_DIGITIZATION_REVIEW_ENABLED`, W4 `KB_WIKI_EXPORT_ENABLED`, W5
-   `KB_WIKI_ROUTINE_ENABLED`, W6 `KB_TABULAR_VISION_ENABLED`.
+   `KB_WIKI_ROUTINE_ENABLED`. W6 is deferred (plan §W6): its flag
+   `KB_TABULAR_VISION_ENABLED` exists only if a plan addendum promotes it.
 2. **W1 `OcrConverter`** implements the existing `ConverterInterface`, registered in
    `config/kb-pipeline.php` (the `pluggable-pipeline-registry` skill); drivers
    `docling` / `mistral-ocr` / `vision-llm` / `tesseract` behind `KB_OCR_DRIVER`;
@@ -127,7 +128,8 @@ rendering of audit + plan, and the two-patch `git am` series used to move the co
    extended, not bypassed.** W3 requires `Reranker::canonicalAdjustment()` to apply the
    `generation_source` adjustment to non-canonical OCR rows too (today it only reads the
    column on canonical rows); that is a required change and it must keep the ordering
-   `human_reviewed > auto > raw` intact for every row it now covers, with the existing
+   `human > auto` intact for every row it now covers (`GenerationSource` has exactly
+   `human` and `auto`; "raw" is the ADR 0028 `provenance_tier` axis), with the existing
    reranker firewall tests extended to the non-canonical case. Nothing in this cycle
    lets machine output outrank human-vouched knowledge.
 8. **Documentation language is English**, community-facing (README, doc-site, ADRs,

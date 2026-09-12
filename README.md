@@ -2957,8 +2957,8 @@ falls back to the default chat provider, so you can point auto-compilation at a
 cheaper/smarter model than interactive chat); the **schema + config foundation for a source-retention policy**
 (`KB_SOURCE_RETENTION` = `full_copy` | `markdown_only` | `reference_only`, global
 + per-connector) plus a `markdown_path` artifact column — the ingest wiring that
-acts on the mode and writes the markdown artifact lands with the compiler in a
-later v8.11.x release;
+acts on the mode and writes the markdown artifact did not land in v8.11.x; it is
+W2 of the v8.36 cycle (see the **v8.36 → v8.40** roadmap row);
 and **ADR 0014**, which *extends* (does not revoke) ADR 0003 — the human tier
 keeps its human-gated promotion, while the `auto` tier is reversible, audited,
 and promotable `auto → human`. This is the foundation release of the cycle; the

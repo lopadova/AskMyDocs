@@ -55,10 +55,21 @@ references in the Markdown, formulas as LaTeX, a confidence per page.
   so **scanned PDFs are not claimed by `OcrConverter`**: `PdfConverter` stays
   the sole `application/pdf` match and, when OCR is on and a cheap text-layer
   probe (`PdfTextLayerProbe`, smalot over the first `KB_OCR_PROBE_PAGES`
-  pages, verdict recorded in `extractionMeta.text_layer_probe`) finds no text
-  — or the ingest metadata carries `ocr.force` (set by `kb:ocr`) — it
-  delegates to the same `OcrService`. One core, two entry MIMEs, no
-  overlapping predicates (the converter mutex test gains the image rows).
+  pages, verdict recorded in `extractionMeta.text_layer_probe`) returns a
+  confident **no-text** verdict — or the ingest metadata carries `ocr.force`
+  (set by `kb:ocr`) — it delegates to the same `OcrService`. A parser
+  failure is **not** "no text": on an `unreadable` verdict the converter
+  first tries the `pdftotext` fallback it has always had, keeps the text path
+  when that yields text, and goes to OCR only when neither parser can read
+  text out of the file (`text_layer_probe` records which case it was). One
+  core, two entry MIMEs, no overlapping predicates (the converter mutex test
+  gains the image rows). `ocr.force` means exactly "run the engine again":
+  the recorded run is not reused, the engine is billed, and its result
+  re-enters the normal ingest — byte-identical text is the usual
+  version-hash no-op (the document keeps its version; the run directory,
+  same key, is re-recorded in place — the one deliberate exception to
+  run immutability, because the operator asked for precisely that), any
+  other text is a new version.
 - `App\Support\Kb\SourceType` gains `IMAGE` for exactly `image/png`,
   `image/jpeg`, `image/tiff`, `image/webp` (an exact list, not a wildcard) —
   `fromMime()` / `fromExtension()` / `toMime()` / `isBinary()` (true: base64
@@ -104,8 +115,13 @@ references in the Markdown, formulas as LaTeX, a confidence per page.
   **immutable**: nothing rewrites a run directory after it is recorded. When
   two engines produce byte-identical Markdown the second ingest is the
   usual version-hash no-op and the document keeps pointing at its original
-  run; the second engine's run directory stays on disk, bounded (one per
-  engine), and goes with the `.ocr/` tree — identical text is the same
+  run; the second engine's run directory stays on disk — one directory per
+  distinct engine fingerprint ever applied to those bytes, so the bound is
+  the number of engines a deployment has used on that file, not one — and
+  goes with the whole `.ocr/` tree when the last referencing row is removed
+  (§lifecycle below); a garbage collector for run directories no live row
+  points at is deliberately **not** in this cycle (the tree is bounded by
+  the source's own lifetime). Identical text is the same
   document, and the figures a driver did not change are not a new version. Tenant separation is the **source file's own** — the assets sit
   beside the file whose namespace (disk + prefix + path) they inherit. That
   namespace is not tenant-derived today (`KB_PATH_PREFIX` is one global
@@ -133,9 +149,12 @@ references in the Markdown, formulas as LaTeX, a confidence per page.
   Annota exports. The W2 artifact lives elsewhere
   (`.artifacts/…/{version_hash}.md`), so a relative link inside it does not
   resolve on the KB disk; that is fine for the Time Machine (it renders text)
-  and W4 **materialises** the pair: `raw/{doc}.md` next to
-  `raw/{doc}/images/` copied from the run named by the artifact's metadata —
-  two copies, no link rewrite. They are
+  and W4 **materialises** the pair inside one directory —
+  `raw/{doc}/{doc}.md` beside `raw/{doc}/images/` copied from the run named
+  by the artifact's metadata — so `images/fig-3-1.png` resolves exactly as
+  it does on the KB disk: two copies, no link rewrite (a text-only document
+  is `raw/{doc}.md` as in the Karpathy layout; a document with figures gets
+  the directory form, and `MANIFEST.json` lists both shapes). They are
   written **by the converter at conversion time** through `OcrFigureStore`
   (every `put()` checked, R4): the Flow persists step outputs to the database,
   so binary blobs cannot travel in `ConvertedDocument::mediaItems` — the
@@ -308,11 +327,18 @@ today; ON = the artifact is written under the `source_retention` mode.
 Turning the flag on populates nothing by itself — `DocumentIngestor` returns
 the matching `version_hash` before the persistence core — so W2 ships
 `kb:artifacts-backfill {--project=} {--tenant=}`: for every live row without
-an artifact whose source is still on disk it re-converts (through the same
-converter, OCR included) and writes the artifact **without** creating a
-version when the converted bytes hash to the same `document_hash`; a source
-that is no longer on disk (`markdown_only` / `reference_only`) is reported,
-not invented. The backfill is **operator-only maintenance — a documented R44
+an artifact whose **effective retention mode retains Markdown** (`full_copy`
+or `markdown_only`) and whose source is still on disk, it re-converts
+(through the same converter, OCR included) and writes the artifact
+**without** creating a version when the converted bytes hash to the stored
+`document_hash`; when they do **not** (an OCR engine or model changed since
+the row was created) the row is reported as `hash_mismatch` and **no
+artifact is written** — an artifact must agree with the version's chunks,
+never overwrite them; a source that is no longer on disk is reported, not
+invented; and a row whose effective mode is `reference_only` is reported as
+`intentionally_missing` **even when a legacy source file is still on disk**
+(retention wiring was not active before this cycle) — the flag must never
+change a tenant's retention policy. The backfill is **operator-only maintenance — a documented R44
 exception**: it is a repair of storage, not a capability a client or an
 agent needs (the read surfaces degrade honestly without it, §4), it can
 re-run OCR on every document of a tenant and therefore spend, and its
@@ -385,7 +411,11 @@ full document is re-chunked, as any re-ingest); pages whose text is unchanged
 are served by the embedding cache (`EmbeddingCacheService`, keyed by text
 hash), so no provider call is made for them — cheap, but not "page-only".
 **Flag:** `KB_DIGITIZATION_REVIEW_ENABLED` default-OFF (R43): OFF = routes and
-screen absent (clean 404), tools not registered; ON = the surface above.
+screen absent (clean 404) and the MCP tools **stay registered** (the roster
+contract of `KnowledgeBaseServerRegistrationTest` derives the roster from the
+files in `app/Mcp/Tools/`, so a config-dependent roster would fail it) but
+answer a clean `{disabled: true, flag: KB_DIGITIZATION_REVIEW_ENABLED}` result,
+never a 500; ON = the surface above.
 
 **The tier mapping — the elegant part.** A converted page is machine output:
 its document is born in the **`auto` tier** (ADR 0014) and stays there until
@@ -396,8 +426,11 @@ already modelled by our schema — with one honest caveat: today
 for a **non-canonical** row, so the `human > auto > raw` ordering is a fact
 for canonical rows only. W3 therefore ships a small, tested reranker change:
 the `generation_source` adjustment applies to non-canonical rows too (the
-canonical boost stays canonical-only), so an unreviewed scan ranks below a
-reviewed one. Nothing new to invent beyond that, one column to set — and it
+canonical boost stays canonical-only), so among non-canonical rows a
+reviewed (`human`) scan outranks an unreviewed (`auto`) one — that
+reviewed-vs-unreviewed ordering is the invariant W3 tests; "raw" is the
+ADR 0028 `provenance_tier` axis (authorship), which this change does not
+re-order. Nothing new to invent beyond that, one column to set — and it
 is set **in W1, in the one core both paths share**: today `generation_source`
 defaults to `human` and only canonical frontmatter can ask for `auto`, so
 `DocumentIngestor::buildDocumentAttributes()` — the row builder
@@ -512,11 +545,18 @@ refuses to run otherwise — the same contract as the import path.
   team ruled out, not just what it wrote.
 - **`.mcp.json` carries no credential.** The folder is portable by design,
   so anything inside it must be safe to copy: the file names the server URL
-  and an `env`-referenced token variable (`ASKMYDOCS_TOKEN`) the consumer sets
-  at connection time — never a bearer token, never a signed URL, never the
-  exporting user's session. Authentication is the live server's own (Sanctum
-  token issued to the person who opens the folder, bound to *their* ACL, not
-  the exporter's). A regression test asserts that no token-shaped string
+  (`/mcp/kb`) and two `env`-referenced values the consumer sets at connection
+  time — `ASKMYDOCS_MCP_TOKEN` as the bearer and `ASKMYDOCS_TENANT_ID` as the
+  `X-Tenant-Id` header, the export's tenant pre-filled in a comment, never in
+  the file — never a token value, never a signed URL, never the exporting
+  user's session. Authentication is the live server's **shipped** MCP contract,
+  not a Sanctum user token: `/mcp/kb` runs `auth:sanctum` + `mcp.scope`, the
+  bearer is an `McpTenantToken` minted by `mcp:connect` for that tenant with
+  the scopes `EnforceMcpScope` validates, and the header must name the same
+  tenant or the request fails tenant matching — exactly what `McpConnectCommand`
+  emits today. The person who opens the folder mints their own token, bound
+  to *their* ACL, not the exporter's; an integration test exports for a
+  **non-default** tenant and connects with the generated file. A regression test asserts that no token-shaped string
   (`Bearer …`, `sk-…`, a 40+ char base64 run) appears anywhere in the export
   or the manifest.
 - **ACL-aware** (R33): the export contains only what the exporting user may
@@ -591,7 +631,8 @@ the same guard `kb:ingest-folder` applies, stated so the two cannot diverge.
 and a candidate without an actor would violate the attribution the whole
 loop exists for. This is the loop Annota does not close.
 
-**Tri-surface.** Artisan `kb:export-wiki --as-user=` / `kb:import-wiki` ·
+**Tri-surface.** Artisan `kb:export-wiki --tenant= --project= --as-user=
+[--include-images]` / `kb:import-wiki {path} --tenant= --as-user=` ·
 HTTP `POST /api/admin/kb/exports` (async, `kb-staging` disk, signed download
 URL) + `GET /api/admin/kb/exports/{id}` + `POST /api/admin/kb/imports`
 (candidates only) ·
@@ -615,8 +656,11 @@ export invalidated if any of them is no longer visible) +
 `KbImportWikiTool` (yields promotion candidates — the propose-only pattern,
 never a write). Retention is its own
 knob, `KB_WIKI_EXPORT_RETENTION_HOURS` (default 24), swept by
-`kb:prune-wiki-exports`; `KB_STAGING_RETENTION_HOURS` keeps its single job
-(upload staging batches) and is not reused.
+`kb:prune-wiki-exports` — **scheduled hourly** in `bootstrap/app.php`
+(`onOneServer()->withoutOverlapping()`, a tenant-agnostic sweep by
+`expires_at` that deletes the bundle and its row; `--dry-run` for operators);
+`KB_STAGING_RETENTION_HOURS` keeps its single job (upload staging batches)
+and is not reused.
 
 **Flags.** `KB_WIKI_EXPORT_ENABLED` default-OFF (R43). Closes the README
 `Future` items *source-retention wiring* and *content export/portability*.
@@ -712,7 +756,8 @@ Select, COCO, YOLO — stays out (audit §3.5).
 W1 OcrConverter ──┐
                   ├──► W3 Digitization Review ──► W5 routine (after W4)
 W2 Versions ──────┤
-                  └──► W4 Export / Import ──────► W6 vision column (optional)
+                  └──► W4 Export / Import
+(W6 vision column — optional, needs W1 only, enters this graph only through a plan addendum)
 ```
 
 W1 and W2 are independent and start together (v8.36). W3 needs both. W4 needs
@@ -774,8 +819,9 @@ R36/R40.
 - [ ] Both flag states tested (R43); tenant scope through relationships (R30/R33).
       The flags: **W1** `KB_OCR_ENABLED`, **W2** `KB_CONVERSION_ARTIFACTS_ENABLED`,
       **W3** `KB_DIGITIZATION_REVIEW_ENABLED`, **W4** `KB_WIKI_EXPORT_ENABLED`,
-      **W5** `KB_WIKI_ROUTINE_ENABLED`, **W6** `KB_TABULAR_VISION_ENABLED` — all
-      default-OFF
+      **W5** `KB_WIKI_ROUTINE_ENABLED` — all default-OFF (W6's
+      `KB_TABULAR_VISION_ENABLED` joins this list only if its addendum is
+      accepted)
 - [ ] Playwright real-data E2E for every screen (R12/R13); a11y checklist (R15)
 - [ ] Doc-site page per feature (R45): `documents-and-ocr.mdx` (W1+W2),
       `digitization-review.mdx` (W3), `wiki-export.mdx` (W4), and a
