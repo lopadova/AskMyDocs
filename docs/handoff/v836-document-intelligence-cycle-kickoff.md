@@ -72,8 +72,13 @@ rendering of audit + plan, and the two-patch `git am` series used to move the co
 2. **W1 `OcrConverter`** implements the existing `ConverterInterface`, registered in
    `config/kb-pipeline.php` (the `pluggable-pipeline-registry` skill); drivers
    `docling` / `mistral-ocr` / `vision-llm` / `tesseract` behind `KB_OCR_DRIVER`;
-   `KB_OCR_ENABLED=false` by default; `SourceType` gains `image/*` only when the flag
-   is on; figures to `{document}/images/fig-{page}-{n}.png`; per-page
+   `KB_OCR_ENABLED=false` by default; `SourceType` **always** defines the `image`
+   case and its four MIME mappings (`image/png`, `image/jpeg`, `image/tiff`,
+   `image/webp`) — the flag gates **acceptance at the entry points**
+   (`supportedMimes(bool)` / `knownExtensions(bool)` receive it from the
+   controller, the staging request, the folder walker and the connector bridge),
+   never the enum; figures to `{source_path}.ocr/{run}/images/fig-{page}-{n}.png`
+   with a content-addressed `{run}` (exact W1 wording in the plan); per-page
    `ocr_confidence`; extraction origin `ocr` on the document and chunk metadata,
    **orthogonal** to the ADR 0028 `provenance_tier` (which stays the connector's
    authorship declaration — the tool firewall keeps filtering on that); PII
@@ -96,8 +101,10 @@ rendering of audit + plan, and the two-patch `git am` series used to move the co
    **ADR 0031.**
 5. **W4 `kb:export-wiki` / `kb:import-wiki`.** Karpathy layout (`raw/`, `wiki/`,
    `index.md`, `log.md`, `AGENTS.md`, `CLAUDE.md`, `README.md`, `llms.txt`,
-   `.mcp.json`, `MANIFEST.json`) but **already compiled and governed**: frontmatter
-   `tier` / `evidence` / `provenance`, rejected approaches included, **ACL-filtered in
+   `.mcp.json` — secret-free —, `MANIFEST.json`) but **already compiled and
+   governed**: frontmatter `tier` / `evidence` / `provenance_tier` (authorship, ADR
+   0028) / `extraction` (`text-layer` | `ocr`, W1) — two keys, never merged —,
+   rejected approaches included, **ACL-filtered in
    SQL (R33)** for the exporting principal, hash-manifested. Import returns edits as
    promotion **candidates**, never direct writes. `KB_WIKI_EXPORT_ENABLED=false` by
    default. **ADR 0032.**
@@ -204,9 +211,10 @@ navigation in `docs-site/docs.json`; Playwright real-data E2E for every screen
 
 - A scanned PDF and a PNG ingest end to end with `KB_OCR_ENABLED=true` and are refused
   exactly as today with the flag off (R43).
-- Every OCR'd document has a stored artifact, an `auto` tier, `provenance: ocr`, a
-  per-page confidence, a FinOps line in the `ocr` category, and PII redacted before
-  the first embedding.
+- Every OCR'd document has an `auto` tier, extraction origin `ocr` on the document
+  and its chunks, a per-page confidence, a FinOps line in the `ocr` category, and
+  PII redacted before the first embedding; **with `KB_CONVERSION_ARTIFACTS_ENABLED=true`
+  (W2) it also has a stored artifact** — with the W2 flag off, by design, it has none.
 - Time Machine `diff` on two versions with artifacts diffs the artifacts; on two
   without, it falls back to reconstruction; a correction saved in the review UI is a
   new version with `version_actor = user:{id}`.

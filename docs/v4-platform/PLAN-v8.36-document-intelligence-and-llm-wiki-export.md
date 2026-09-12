@@ -90,9 +90,21 @@ references in the Markdown, formulas as LaTeX, a confidence per page.
 | `tesseract` (local) | Free fallback; no layout. |
 
 **Design decisions.**
-- Figures land on the `kb` disk under `{source_path}.ocr/images/fig-{page}-{n}.png`
-  and the Markdown references them as `![…](images/fig-3-1.png)` — the same
-  shape Annota exports, so W4's export is a copy, not a transform. They are
+- Figures land on the `kb` disk under
+  `{source_path}.ocr/{run}/images/fig-{page}-{n}.png`, where `{run}` is
+  **content-addressed** (the first 16 hex chars of the SHA-256 of the bytes
+  that were OCR'd): two versions of the same source path never overwrite each
+  other's pixels, a re-run on identical bytes lands on the same directory
+  (the ingest's own idempotency), and a W2 artifact can point at the run that
+  produced it. Tenant separation is the **source file's own** — the assets sit
+  beside the file whose namespace (disk + prefix + path) they inherit, so a
+  deployment that isolates tenants by disk/prefix isolates the figures with
+  them, and one that does not already shares the source object itself. A
+  collision test (two byte-versions at one path → two run directories, the
+  first still intact) and a hard-delete test (last referencing row removes the
+  whole `.ocr/`) are part of W1. The Markdown references
+  `![…](images/fig-3-1.png)` relative to the run directory — the same shape
+  Annota exports, so W4's export is a copy, not a transform. They are
   written **by the converter at conversion time** through `OcrFigureStore`
   (every `put()` checked, R4): the Flow persists step outputs to the database,
   so binary blobs cannot travel in `ConvertedDocument::mediaItems` — the
@@ -138,7 +150,10 @@ PDF with the flag OFF keeps **today's** behaviour — an empty document from
 `pdftotext` can read the file; the extraction label asserted through the
 relationship, not the controller (R33 lesson).
 
-**Tri-surface.** Artisan `kb:ocr {document}` (re-run) / `--status` · HTTP
+**Tri-surface.** Artisan `kb:ocr {document} {--status} {--tenant=}` (re-run /
+status; `--tenant` follows the `kb:reembed-project` contract — validated
+non-empty before any lookup, the document resolved with `forTenant()`, so a
+bare id can never land in another tenant) · HTTP
 `POST /api/admin/kb/documents/{id}/ocr` (re-run) + `GET …/ocr` (status) ·
 MCP `KbOcrStatusTool` (read). **Documented R44 exception:** there is no MCP
 write surface for OCR — re-running a conversion spends money and rewrites
@@ -181,14 +196,21 @@ and the direct path (`DocumentIngestor::ingest` → `persistFromDrafts`) both
 reach `persistDocumentAndChunks()`, where the artifact is written — **one
 core, both paths**, exactly as `ChunkRedactor` was wired (ADR 0020 D3). A
 database transaction cannot roll back a filesystem write, so the write is
-**compensated, not "inside" the transaction**: the artifact is written under
-a content-addressed name before the row is committed, the row records the
-path, and if the commit fails the file is deleted in the failure branch;
-`kb:prune-archived-versions` additionally sweeps artifacts that no row
-references (orphans left by a crash between the two steps). Failure and
-idempotency tests cover both. There is no `ConvertDocumentStep`; the conversion step is
+**compensated, not "inside" the transaction**: the artifact is written under a
+path that is **unique per version row** — `{source_path}.versions/{version_hash}.md`,
+where `version_hash` is already unique per `(project_key, source_path)` and the
+row that is about to be inserted is the only one that can ever reference it —
+before the row is committed, the row records the path, and if the commit fails
+the file is deleted in the failure branch. Because no two rows (across versions
+or tenants on a shared disk, whose source paths differ by prefix) share an
+artifact path, the compensating delete cannot remove a file another committed
+transaction references — there is nothing to reference-count.
+`kb:prune-archived-versions` additionally sweeps artifacts whose
+`version_hash` no row (including trashed rows, R2) references — orphans left by
+a crash between the two steps — and only after that authoritative check.
+Failure, idempotency and concurrent-version tests cover all three. There is no `ConvertDocumentStep`; the conversion step is
 `ParseMarkdownStep`. OCR figures (W1) live beside the artifact under
-`{source_path}.ocr/images/`.
+`{source_path}.ocr/{run}/images/`.
 
 **Flag.** `KB_CONVERSION_ARTIFACTS_ENABLED` default-**OFF** in v8.36 (R43):
 OFF = no artifact is written and `diff` reconstructs from chunks exactly as
@@ -215,8 +237,10 @@ gives *Semantic Time Travel* (parked since v8.0) the faithful "what did this
 document say on date X" it needs: the Time Machine already answers that for the
 indexed body, the artifact answers it for the document.
 
-**Tri-surface.** `kb:doc-versions {document}` (new CLI over the existing
-service) · the existing HTTP endpoints, `diff` now artifact-aware · MCP
+**Tri-surface.** `kb:doc-versions {document} {--tenant=}` (new CLI over the
+existing tenant-scoped `DocumentVersionService`; `--tenant` validated non-empty
+and the document resolved with `forTenant()`, as `kb:ocr` and
+`kb:reembed-project` do — never the process-global default context) · the existing HTTP endpoints, `diff` now artifact-aware · MCP
 `KbDocumentVersionsTool` (read — the R44 surface the v8.7 feature never got).
 
 **ADR.** **0030 — Conversion artifacts on the Time Machine.**
@@ -252,7 +276,11 @@ already modelled by our schema. Nothing new to invent, one column to set.
 **Agent surface — propose, never commit.** MCP `KbProposeTextCorrectionTool`
 (`document`, `page`, `old`, `new`, `rationale`) writes a **correction
 candidate** (the ADR 0003 pattern: `/suggest → /candidates → /promote`) —
-the only MCP write of the cycle, and it writes a candidate, never content.
+the only MCP tool of the cycle that writes toward the **corpus**, and it
+writes a candidate, never content. (W4's `KbCreateExportTool` is
+side-effecting too — it starts a job and writes a retained export on the
+staging disk — but it never touches corpus content; its controls are listed
+in W4.)
 **There is no MCP tool that sets a review status**: page and document review
 status change only through the HTTP surface (role-gated, R32 matrix row) and
 the CLI — a documented R44 exception, the explicit inverse of Annota's
@@ -302,7 +330,7 @@ produces the folder the pattern expects — and then more than the pattern.
   CLAUDE.md            # same, Claude-flavoured; generated from CanonicalType
   README.md            # what this is, where it came from, how to talk to it
   llms.txt / llms-full.txt
-  .mcp.json            # → the enterprise-kb server: files AND a live connection
+  .mcp.json            # → the enterprise-kb server URL; secret-free (see below)
   MANIFEST.json        # tenant, project, exporter, ACL summary, sha256 per file, chain hash
 ```
 
@@ -315,13 +343,29 @@ produces the folder the pattern expects — and then more than the pattern.
   `canonical_type: decision|runbook|rejected-approach|…`. **Rejected
   approaches are exported** — an agent reading the folder inherits what the
   team ruled out, not just what it wrote.
+- **`.mcp.json` carries no credential.** The folder is portable by design,
+  so anything inside it must be safe to copy: the file names the server URL
+  and an `env`-referenced token variable (`ASKMYDOCS_TOKEN`) the consumer sets
+  at connection time — never a bearer token, never a signed URL, never the
+  exporting user's session. Authentication is the live server's own (Sanctum
+  token issued to the person who opens the folder, bound to *their* ACL, not
+  the exporter's). A regression test asserts that no token-shaped string
+  (`Bearer …`, `sk-…`, a 40+ char base64 run) appears anywhere in the export
+  or the manifest.
 - **ACL-aware** (R33): the export contains only what the exporting user may
   retrieve, computed through `AccessScopeScope` — never a superset. The
   export runs async, and a queue worker has no request principal
   (`AccessScopeScope` applies no restriction for a null user), so the
   **exporting principal is captured at request authorization** (user id +
-  tenant) and **re-applied in the job** before any query; the CLI requires an
-  explicit, audited `--as-user=` and refuses to run unrestricted.
+  tenant) and **re-applied in the job** before any query — and "re-applied"
+  means the **user**, not only the tenant: `AccessScopeScope` derives its
+  predicate from `auth()->user()` and applies no restriction when there is
+  none, so the job reloads the `User` by id, re-checks it still holds the
+  export permission, sets it as the authenticated user for the duration of
+  the export and clears it in `finally` (a queue worker is reused across
+  jobs). Regression tests: no user → the job refuses, wrong/deleted user →
+  refuses, worker reuse → the second job sees no leaked principal. The CLI
+  requires an explicit, audited `--as-user=` and refuses to run unrestricted.
 - **PII-governed `raw/`**: the artifact is the raw converted Markdown (ADR
   0020 keeps the vector store, not the disk, as the protected surface). The
   export therefore renders `raw/` **through the tenant PII policy** — the same
@@ -426,6 +470,16 @@ Doc-site: the `auto-wiki` page gains a "Maintenance as a routine" section
 ---
 
 ### W6 — Optional adjacency: `vision` column in Tabular Review (S) — v8.40
+
+**Status: deferred — out of scope for this cycle unless promoted.** W6 is
+recorded here as an adjacency, not as an executable workstream: it has no
+tri-surface contract, OFF-state behaviour, tenant boundary, test plan,
+acceptance criteria or doc-site deliverable in this plan, and the checklist in
+§5 names only its flag (`KB_TABULAR_VISION_ENABLED`). It is **not** scheduled
+in §2 and the hand-off checkpoint row exists only to record the decision. If it
+is promoted, it gets a plan addendum with the same executable scope as W1–W5
+(the R43/R44/R45 lines below, plus a `tabular-vision.mdx` page) **before** a
+branch is opened.
 
 A fourth `agent` dimension next to `extract` / `graph` / `verify`
 (`GovernanceColumnResolver`, `TabularReviewExtractor`): a column whose cell is
