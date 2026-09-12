@@ -129,7 +129,8 @@ rendering of audit + plan, and the two-patch `git am` series used to move the co
    `generation_source` adjustment to non-canonical OCR rows too (today it only reads the
    column on canonical rows); that is a required change and it must keep the ordering
    `human > auto` intact for every row it now covers (`GenerationSource` has exactly
-   `human` and `auto`; "raw" is the ADR 0028 `provenance_tier` axis), with the existing
+   `human` and `auto`; "raw" in the firewall test is a non-canonical row, which keeps
+   its default `human` and is unaffected — only unreviewed OCR text is re-ordered), with the existing
    reranker firewall tests extended to the non-canonical case. Nothing in this cycle
    lets machine output outrank human-vouched knowledge.
 8. **Documentation language is English**, community-facing (README, doc-site, ADRs,

@@ -66,10 +66,18 @@ references in the Markdown, formulas as LaTeX, a confidence per page.
   gains the image rows). `ocr.force` means exactly "run the engine again":
   the recorded run is not reused, the engine is billed, and its result
   re-enters the normal ingest — byte-identical text is the usual
-  version-hash no-op (the document keeps its version; the run directory,
-  same key, is re-recorded in place — the one deliberate exception to
-  run immutability, because the operator asked for precisely that), any
-  other text is a new version.
+  version-hash no-op (the document keeps its version), any other text is a
+  new version. A forced execution is a **new attempt with its own run
+  identity** (the run key carries a per-attempt salt), so the previous run
+  directory is never rewritten: runs stay immutable, a W2 artifact keeps
+  pointing at the exact run that produced it, and the old run goes with the
+  `.ocr/` tree when the last referencing row is removed. `ocr.force` is a
+  **host-only control**: `kb:ocr` and the HTTP re-run endpoint set it on the
+  job they build; the HTTP ingest entry point and the connector bridge
+  strip `ocr.force`, `ocr.rerun_lock` and `dry_run` from any metadata a
+  client or a connector hands in, so nobody can trigger a billed engine run
+  through `documents.*.metadata` (a test posts the key and asserts the
+  persisted row has no forced run).
 - `App\Support\Kb\SourceType` gains `IMAGE` for exactly `image/png`,
   `image/jpeg`, `image/tiff`, `image/webp` (an exact list, not a wildcard) —
   `fromMime()` / `fromExtension()` / `toMime()` / `isBinary()` (true: base64
@@ -82,7 +90,14 @@ references in the Markdown, formulas as LaTeX, a confidence per page.
   (`KbIngestFolderCommand`, `ListFolderFilesStep`), so with the flag off an
   image is refused with the same 422 / "Unsupported file type" as today and
   the "Supported:" list does not mention it (R43). `FileTypeSniffer` verifies
-  the real magic bytes for `IMAGE` (SEC-UPLOAD-001). The **connector** entry
+  the real magic bytes for `IMAGE` (SEC-UPLOAD-001). Once images are inputs,
+  discovery must never read the converter's own output back: `KbPath::
+  isGeneratedAsset()` marks every path under a `{name}.ocr/` segment (and
+  under the W2 `.artifacts/` root) and the folder walker
+  (`ListFolderFilesStep`) and the orphan-file sweep (`kb:prune-orphan-files`)
+  exclude it, so a recursive re-ingest cannot OCR its own figures or nest
+  `.ocr/` trees; a test runs the walker over a tree that contains a run
+  directory and asserts the figures are not listed. The **connector** entry
   point is gated too: `HostIngestionBridge::dispatchIngestion()` (the path
   IMAP / OneDrive attachments take, which reaches `IngestDocumentJob` without
   a controller) refuses an image MIME with the flag off — recorded as a
@@ -119,9 +134,14 @@ references in the Markdown, formulas as LaTeX, a confidence per page.
   distinct engine fingerprint ever applied to those bytes, so the bound is
   the number of engines a deployment has used on that file, not one — and
   goes with the whole `.ocr/` tree when the last referencing row is removed
-  (§lifecycle below); a garbage collector for run directories no live row
-  points at is deliberately **not** in this cycle (the tree is bounded by
-  the source's own lifetime). Identical text is the same
+  (§lifecycle below). Two orphan cases are covered without a general
+  collector: a source whose first ingest failed after the run was written
+  has no row at all, and `kb:prune-orphan-files` removes that source
+  **together with its `.ocr/` tree** (the sweep now purges beside every
+  orphan it deletes); a W2 `hash_mismatch` backfill writes nothing, so it
+  creates no run. A garbage collector for run directories beside a source
+  that still has rows is deliberately **not** in this cycle (the tree is
+  bounded by the source's own lifetime). Identical text is the same
   document, and the figures a driver did not change are not a new version. Tenant separation is the **source file's own** — the assets sit
   beside the file whose namespace (disk + prefix + path) they inherit. That
   namespace is not tenant-derived today (`KB_PATH_PREFIX` is one global
@@ -254,8 +274,9 @@ estimate is `GET /api/admin/kb/uploads/{batch}/estimate`.
 
 **Goal.** Finish what ADR 0014 started: the converted Markdown is a **stored**
 artifact, and the version model AskMyDocs already has carries it. Every
-conversion, correction and re-ingest is a version with a faithful diff and a
-restore that brings back the exact text, not a reconstruction.
+conversion, correction and **changed-content** re-ingest is a version with a
+faithful diff and a restore that brings back the exact text, not a
+reconstruction (a byte-identical re-ingest stays the no-op it is today).
 
 **What exists — do not rebuild it.** *Cloud Time Machine* (v8.7/W5):
 `DocumentIngestor::archivePreviousVersions` keeps the prior `knowledge_documents`
@@ -428,9 +449,14 @@ for canonical rows only. W3 therefore ships a small, tested reranker change:
 the `generation_source` adjustment applies to non-canonical rows too (the
 canonical boost stays canonical-only), so among non-canonical rows a
 reviewed (`human`) scan outranks an unreviewed (`auto`) one — that
-reviewed-vs-unreviewed ordering is the invariant W3 tests; "raw" is the
-ADR 0028 `provenance_tier` axis (authorship), which this change does not
-re-order. Nothing new to invent beyond that, one column to set — and it
+reviewed-vs-unreviewed ordering is the invariant W3 tests. "Raw" in the
+existing firewall test means a **non-canonical** row, which today defaults
+to `generation_source = human` (only canonical frontmatter can ask for
+`auto`, and W1 sets `auto` only for non-canonical rows whose extraction
+origin is `ocr`); such a row is therefore indistinguishable from a reviewed
+OCR row on this signal and keeps its ranking — the change re-orders nothing
+but unreviewed OCR text, which is the point. `provenance_tier` (ADR 0028)
+is a different axis the reranker does not read. Nothing new to invent beyond that, one column to set — and it
 is set **in W1, in the one core both paths share**: today `generation_source`
 defaults to `human` and only canonical frontmatter can ask for `auto`, so
 `DocumentIngestor::buildDocumentAttributes()` — the row builder
@@ -481,7 +507,8 @@ in W4.)
 **There is no MCP tool that sets a review status**: page and document review
 status change only through the HTTP surface (role-gated, R32 matrix row) and
 the CLI — a documented R44 exception, the explicit inverse of Annota's
-`update_document_page` / `update_asset_review_status`. Rationale in ADR 0029:
+`update_document_page` / `update_asset_review_status`. Rationale in ADR 0031
+(the Digitization Review decision; ADR 0029 covers OCR only):
 an OCR'd inbound letter is external text; an agent that read it must not be
 able to edit another document's content, nor vouch for it.
 
@@ -547,16 +574,29 @@ refuses to run otherwise — the same contract as the import path.
   so anything inside it must be safe to copy: the file names the server URL
   (`/mcp/kb`) and two `env`-referenced values the consumer sets at connection
   time — `ASKMYDOCS_MCP_TOKEN` as the bearer and `ASKMYDOCS_TENANT_ID` as the
-  `X-Tenant-Id` header, the export's tenant pre-filled in a comment, never in
-  the file — never a token value, never a signed URL, never the exporting
-  user's session. Authentication is the live server's **shipped** MCP contract,
-  not a Sanctum user token: `/mcp/kb` runs `auth:sanctum` + `mcp.scope`, the
-  bearer is an `McpTenantToken` minted by `mcp:connect` for that tenant with
-  the scopes `EnforceMcpScope` validates, and the header must name the same
-  tenant or the request fails tenant matching — exactly what `McpConnectCommand`
-  emits today. The person who opens the folder mints their own token, bound
-  to *their* ACL, not the exporter's; an integration test exports for a
-  **non-default** tenant and connects with the generated file. A regression test asserts that no token-shaped string
+  `X-Tenant-Id` header. `.mcp.json` stays **valid JSON** (no comments): the
+  export's tenant id and the connection steps go in the generated `README.md`
+  and `AGENTS.md`. Never a token value, never a signed URL, never the
+  exporting user's session. What the live server accepts today: `/mcp/kb`
+  is mounted with `auth:sanctum` + `mcp.scope`; `mcp.scope`
+  (`EnforceMcpScope`) reads the bearer as an `McpTenantToken` (hash, tenant,
+  expiry, revocation, tool scopes) — a token minted by an admin through
+  `POST /api/admin/mcp/tokens` (`askmd_…`, `created_by` recorded), which
+  `askmydocs:mcp:connect --server --tenant --token --name` only *emits* into a
+  client config, never mints. Two gaps W4 closes, host-side, before the
+  exported connection is called supported: (1) an `McpTenantToken` is not a
+  Sanctum personal-access token, so the bearer cannot pass `auth:sanctum` as
+  is — W4 ships an `mcp-token` guard adapter that authenticates an `askmd_`
+  bearer as its `created_by` user (or generates a Sanctum PAT instead; the
+  ADR decides, the test contract is the same); (2) that adapter is also the
+  **principal binding**: retrieval ACLs come from `auth()->user()` and
+  `AccessScopeScope` returns unconstrained when no user is present, so the
+  token's `created_by` user is restored before any MCP retrieval — the
+  person who opens the folder mints *their own* token and sees *their* ACL,
+  never the exporter's — with a cross-user ACL regression test (two users,
+  one document visible to one of them, the other's token cannot retrieve it)
+  and an integration test that exports for a **non-default** tenant and
+  connects with the generated file. A regression test asserts that no token-shaped string
   (`Bearer …`, `sk-…`, a 40+ char base64 run) appears anywhere in the export
   or the manifest.
 - **ACL-aware** (R33): the export contains only what the exporting user may
@@ -653,8 +693,10 @@ the key even when no row's `updated_at` moved; as a second gate, every
 download of a retained export re-authorizes the principal against the
 export's recorded document ids at download time and answers 403 with the
 export invalidated if any of them is no longer visible) +
-`KbImportWikiTool` (yields promotion candidates — the propose-only pattern,
-never a write). Retention is its own
+`KbImportWikiTool` (yields promotion candidates — the propose-only pattern:
+it never writes corpus content, but a candidate *is* a row, so the tool
+carries the same mutating-tool controls as `KbProposeTextCorrectionTool` —
+authorization before validation, idempotency key, audit, per-user rate cap). Retention is its own
 knob, `KB_WIKI_EXPORT_RETENTION_HOURS` (default 24), swept by
 `kb:prune-wiki-exports` — **scheduled hourly** in `bootstrap/app.php`
 (`onOneServer()->withoutOverlapping()`, a tenant-agnostic sweep by
