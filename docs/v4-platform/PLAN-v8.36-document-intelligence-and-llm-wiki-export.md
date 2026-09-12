@@ -403,8 +403,17 @@ DB `UNIQUE` on `kb_text_correction_candidates` (the source version is part of
 the identity, so a candidate validated against one OCR pass is never handed
 back for a later one; `rationale` is stored, not identity), a replay returns
 the existing candidate, a genuinely concurrent double call creates one row,
-and approval **re-validates** the candidate against the current version
-(`old` must still occur exactly once on that page) before applying it; a per-user rate cap
+and approval is **single-use and atomic** (R21): the candidate row carries a
+persisted `status` (`pending` → `applied` | `rejected`) and `consumed_at`; the
+reviewer's approval runs in one DB transaction that locks the candidate row
+(`lockForUpdate`, refusing any row no longer `pending`) together with the
+document/version row, re-validates the candidate against the current version
+(`old` must still occur exactly once on that page), applies it, writes the
+audit row and marks the candidate consumed — so two reviewers approving the
+same candidate concurrently produce exactly one correction version and one
+audit row, the second approval answering 409 `already_consumed`; a
+concurrent-approval regression test (two workers, one candidate) is part of
+W3; a per-user rate cap
 (`KB_REVIEW_CANDIDATES_PER_HOUR`, default 60); an audit row per accepted,
 denied and replayed call; and the human confirmation is the promotion
 itself — a candidate has no effect until a reviewer accepts it in the UI.
@@ -571,8 +580,15 @@ annotated as such, authorised like the HTTP endpoint, audited in
 `(tenant, principal, project, sha256 of every normalised option —
 `format`, `include_images`, … —, corpus snapshot)` for the retention window,
 where the corpus snapshot is the max `updated_at` + row count of the
-principal's visible documents, so a request for images never reuses an
-image-less export and a refreshed corpus never serves a stale one) +
+principal's visible documents **plus an authorization digest** — the sha256
+of the sorted visible document ids together with the principal's role,
+project memberships and ACL grants — so a request for images never reuses an
+image-less export, a refreshed corpus never serves a stale one, and an ACL or
+membership change that removes a document from the principal's view changes
+the key even when no row's `updated_at` moved; as a second gate, every
+download of a retained export re-authorizes the principal against the
+export's recorded document ids at download time and answers 403 with the
+export invalidated if any of them is no longer visible) +
 `KbImportWikiTool` (yields promotion candidates — the propose-only pattern,
 never a write). Retention is its own
 knob, `KB_WIKI_EXPORT_RETENTION_HOURS` (default 24), swept by
