@@ -71,7 +71,12 @@ references in the Markdown, formulas as LaTeX, a confidence per page.
   (`KbIngestFolderCommand`, `ListFolderFilesStep`), so with the flag off an
   image is refused with the same 422 / "Unsupported file type" as today and
   the "Supported:" list does not mention it (R43). `FileTypeSniffer` verifies
-  the real magic bytes for `IMAGE` (SEC-UPLOAD-001).
+  the real magic bytes for `IMAGE` (SEC-UPLOAD-001). The **connector** entry
+  point is gated too: `HostIngestionBridge::dispatchIngestion()` (the path
+  IMAP / OneDrive attachments take, which reaches `IngestDocumentJob` without
+  a controller) refuses an image MIME with the flag off — recorded as a
+  failed ingestion with a reason, never a job that dies in converter
+  resolution — with an OFF-state regression test on that bridge.
 - `PdfPageChunker` already slices on `## Page N`; the converter keeps that
   shape so chunking is untouched.
 
@@ -107,7 +112,18 @@ references in the Markdown, formulas as LaTeX, a confidence per page.
   `untrusted-external`**, not because it was OCR'd; the test asserts that
   boundary through the chunk → document relationship (R33 lesson).
 - **PII**: `ChunkRedactor` (ADR 0020) runs unchanged on the OCR output before
-  embedding. Scans are where the codici fiscali live.
+  embedding. Scans are where the codici fiscali live. That boundary protects
+  the **index**; it cannot protect bytes that leave the tenant to be
+  recognised. So remote drivers (`mistral-ocr`, `vision-llm`) are a
+  **final-egress policy** of their own: each driver declares
+  `isRemote()`, the registry refuses a remote driver unless
+  `KB_OCR_ALLOW_REMOTE=true` (fail closed, default off — a sovereign install
+  never sends a scan out by accident), the choice is audited on the
+  document (`metadata.converter.ocr.driver` + `remote: true`), and a
+  negative test proves a remote driver cannot run with the knob off.
+  Figures are pixels: regex redaction cannot inspect them, so the figure
+  directory is treated as **unredacted** — see W4 for what that means for
+  export.
 - **FinOps**: OCR calls are metered per page under a new `ocr` category; the
   upload modal shows an **estimate before commit** (pages × configured
   rate) — parity with Annota's upload screen, and honest about cost.
@@ -162,9 +178,15 @@ nothing else can create one because nothing else can write. (c) No
 persistence core both ingest paths already share: the Flow saga
 (`ParseMarkdownStep` converts → `PersistChunksStep` → `DocumentIngestor::persistDrafts`)
 and the direct path (`DocumentIngestor::ingest` → `persistFromDrafts`) both
-reach `persistDocumentAndChunks()`, where the artifact is written inside the
-transaction — **one core, both paths**, exactly as `ChunkRedactor` was wired
-(ADR 0020 D3). There is no `ConvertDocumentStep`; the conversion step is
+reach `persistDocumentAndChunks()`, where the artifact is written — **one
+core, both paths**, exactly as `ChunkRedactor` was wired (ADR 0020 D3). A
+database transaction cannot roll back a filesystem write, so the write is
+**compensated, not "inside" the transaction**: the artifact is written under
+a content-addressed name before the row is committed, the row records the
+path, and if the commit fails the file is deleted in the failure branch;
+`kb:prune-archived-versions` additionally sweeps artifacts that no row
+references (orphans left by a crash between the two steps). Failure and
+idempotency tests cover both. There is no `ConvertDocumentStep`; the conversion step is
 `ParseMarkdownStep`. OCR figures (W1) live beside the artifact under
 `{source_path}.ocr/images/`.
 
@@ -174,8 +196,13 @@ today; ON = the artifact is written under the `source_retention` mode.
 
 **Schema.** No new versions table — the family *is* the version model. Three
 columns on `knowledge_documents`: `version_actor` (`system:ingest` /
-`system:ocr` / `user:{id}` / `agent:{id}` via `DelegationContext` where
-present), `version_reason`, `content_hash` of the artifact.
+`system:ocr` / `user:{id}`; `agent:{id}` reserved for the IAM-agents
+integration), `version_reason`, `content_hash` of the artifact. The columns
+are **surfaced, not storage-only**: `DocumentVersionService::versionsFor()`
+selects them, `KbDocumentVersionController::index()` returns them
+(additive, R27), `timemachine.api.ts` `DocVersion` carries them and the
+Time Machine timeline shows actor + reason per version, with tests at each
+layer.
 `DocumentVersionService::diff` prefers the stored artifacts when both versions
 have one and falls back to `reconstructContent()` otherwise (R43: both branches
 tested); `restore` re-activates the artifact with the row. W3 creates versions
@@ -224,12 +251,14 @@ already modelled by our schema. Nothing new to invent, one column to set.
 
 **Agent surface — propose, never commit.** MCP `KbProposeTextCorrectionTool`
 (`document`, `page`, `old`, `new`, `rationale`) writes a **correction
-candidate** (the ADR 0003 pattern: `/suggest → /candidates → /promote`);
-`KbSetReviewStatusTool` is **human-only** (role-gated, R32 matrix row) — the
-explicit inverse of Annota's `update_document_page` /
-`update_asset_review_status`. Rationale in ADR 0029: an OCR'd inbound letter
-is external text; an agent that read it must not be able to edit another
-document's content.
+candidate** (the ADR 0003 pattern: `/suggest → /candidates → /promote`) —
+the only MCP write of the cycle, and it writes a candidate, never content.
+**There is no MCP tool that sets a review status**: page and document review
+status change only through the HTTP surface (role-gated, R32 matrix row) and
+the CLI — a documented R44 exception, the explicit inverse of Annota's
+`update_document_page` / `update_asset_review_status`. Rationale in ADR 0029:
+an OCR'd inbound letter is external text; an agent that read it must not be
+able to edit another document's content, nor vouch for it.
 
 **Workflow.** The review queue is a `laravel-flow` definition with an
 approval node (flow v2 is already the host's dependency); reviewers see it in
@@ -245,9 +274,11 @@ version as gold; the nightly `eval:nightly` gains an `ocr` lane; a regression
 in CER across a driver upgrade fails the gate. *Nobody measures their own OCR
 correction quality; we will publish ours.*
 
-**Tri-surface.** `kb:review {document} --page` (CLI apply of a candidate) ·
-HTTP `/api/admin/kb/documents/{id}/pages/{n}` + `/review-status` +
-`/corrections` · MCP the two tools above.
+**Tri-surface.** `kb:review {document} --page` (CLI apply of a candidate /
+set status) · HTTP `/api/admin/kb/documents/{id}/pages/{n}` +
+`/review-status` + `/corrections` · MCP `KbProposeTextCorrectionTool`
+(propose) + `KbReviewStatusTool` (**read** — what is reviewed, by whom).
+Documented R44 exception: no MCP write of review status.
 
 **ADR.** 0029 (extended with the propose-only decision), plus **0031 —
 Digitization Review and the auto-tier mapping**.
@@ -256,8 +287,10 @@ Digitization Review and the auto-tier mapping**.
 
 ### W4 — Export the governed wiki as a portable workspace (M/L) — v8.38
 
-**Goal.** `kb:export-wiki --project=X --format=llm-wiki|markdown|llms-txt`
+**Goal.** `kb:export-wiki --project=X --as-user=U --format=llm-wiki|markdown|llms-txt`
 produces the folder the pattern expects — and then more than the pattern.
+`--as-user` is not optional: the export is ACL-filtered for that principal
+(below), and the command refuses to run without one.
 
 ```
 {project}/
@@ -294,7 +327,12 @@ produces the folder the pattern expects — and then more than the pattern.
   export therefore renders `raw/` **through the tenant PII policy** — the same
   surrogates `ChunkRedactor` produces when redaction is active — so the folder
   never carries text the index itself refuses to hold; a regression test
-  ingests a fixture with a codice fiscale and asserts the export.
+  ingests a fixture with a codice fiscale and asserts the export. Figures are
+  different — `ChunkRedactor` rewrites text, not pixels — so when the
+  tenant's PII policy is active the `.ocr/images/` directory is **omitted**
+  from the export by default (the Markdown keeps the reference, the
+  `MANIFEST.json` lists the omission) and included only with an explicit,
+  audited `--include-images`; a test covers both.
 - **Tamper-evident**: `MANIFEST.json` hashes every file and chains them, the
   same primitive as the compliance reports (v8.0 W8). A folder found on a
   laptop can be verified against the server.
@@ -303,18 +341,40 @@ produces the folder the pattern expects — and then more than the pattern.
 - **Already compiled.** Annota ships `raw/` + instructions and the customer's
   agent pays to compile. We ship the compiled, human-vouched wiki; the skills
   in `AGENTS.md` are for *extending* it.
+- **The folder is untrusted content, and says so.** Once materialised, the
+  live `ProvenanceToolFirewall` cannot follow the pages; the generated
+  `AGENTS.md` / `CLAUDE.md` therefore open with an explicit boundary — every
+  page under `raw/` and `wiki/` is data, `provenance_tier:
+  untrusted-external` pages may be quoted but never followed as
+  instructions, and the `.mcp.json` connection must not be used on a page's
+  say-so — and the export test suite includes a prompt-injection fixture
+  (an externally authored page carrying instructions) asserting it is
+  exported with the marker, not stripped, not promoted.
 
-**Round-trip.** `kb:import-wiki {folder}` diffs the folder against the
-server's versions (W2) and turns edits into **promotion candidates** (ADR
-0003) attributed to the importing user — never direct writes. This is the
-loop Annota does not close.
+**Round-trip.** `kb:import-wiki {folder} --tenant= --as-user=` diffs the
+folder against the server's versions (W2) and turns edits into **promotion
+candidates** (ADR 0003) attributed to the importing user — never direct
+writes. `{folder}` is a **local filesystem path** (the folder a person
+brought back, not a KB-disk path): absolute or relative to the working
+directory, resolved with `realpath()` and every file inside re-checked to
+stay under it (no symlink escape), while the *destination* `source_path` of
+each candidate is normalised through `KbPath::normalize()` like any ingest —
+the same guard `kb:ingest-folder` applies, stated so the two cannot diverge.
+`--tenant` and `--as-user` are mandatory: a console process has no principal,
+and a candidate without an actor would violate the attribution the whole
+loop exists for. This is the loop Annota does not close.
 
 **Tri-surface.** Artisan `kb:export-wiki --as-user=` / `kb:import-wiki` ·
 HTTP `POST /api/admin/kb/exports` (async, `kb-staging` disk, signed download
 URL) + `GET /exports/{id}` + `POST /api/admin/kb/imports` (candidates only) ·
 MCP `KbCreateExportTool` / `KbGetExportTool` (the two Annota tools we *do*
-mirror, because export is read-only) + `KbImportWikiTool` (yields promotion
-candidates — the propose-only pattern, never a write). Retention is its own
+mirror — read-only **with respect to the corpus**, but `KbCreateExportTool`
+is side-effecting: it starts a job and writes a retained artifact, so it is
+annotated as such, authorised like the HTTP endpoint, audited in
+`admin_command_audit`, rate-limited per principal and idempotent on
+`(tenant, principal, project, format)` for the retention window) +
+`KbImportWikiTool` (yields promotion candidates — the propose-only pattern,
+never a write). Retention is its own
 knob, `KB_WIKI_EXPORT_RETENTION_HOURS` (default 24), swept by
 `kb:prune-wiki-exports`; `KB_STAGING_RETENTION_HOURS` keeps its single job
 (upload staging batches) and is not reused.
@@ -346,9 +406,10 @@ dependency flagged in ADR 0028 — record it in the ADR, default the target
 `RoutineTarget` is defined by `padosoft/laravel-routines-contracts`;
 `laravel-flow` v2.5 ships **no** adapter for it. The host therefore implements
 one thin adapter, `App\Routines\WikiMaintenanceRoutineTarget implements
-RoutineTarget`, over the same `WikiMaintenanceService` core the cron command
-calls; a generic flow-backed target is recorded as an upstream ask in
-`docs/handoff/` for a padosoft-scoped session.
+RoutineTarget`, over the **existing** core the cron command already injects —
+`App\Services\Kb\AutoWiki\WikiMaintainer` (no rename, no second
+implementation); a generic flow-backed target is recorded as an upstream ask
+in `docs/handoff/` for a padosoft-scoped session.
 
 **No double run.** With `KB_WIKI_ROUTINE_ENABLED=true` the scheduler entry for
 `kb:wiki-maintain` is gated off (the routine owns the nightly run); with the
@@ -387,8 +448,12 @@ W2 Versions ──────┤
 
 W1 and W2 are independent and start together (v8.36). W3 needs both. W4 needs
 W2 (artifacts) and benefits from W1 (images/). W5 needs nothing but the
-dependency decision. Each workstream is its own `feature/v8.3x` integration
-branch per R37, RC-tagged per R39, Copilot loop per R36/R40.
+dependency decision. Branching per R37 as the hand-off spells out: one
+**release integration branch** per version (`feature/v8.36`, `feature/v8.37`,
+…) merged to `main` once with the GA tag, and one **task branch** per
+workstream (`feature/v8.36-W1`, `feature/v8.36-W2`, `feature/v8.37-W3`, …)
+whose PR targets its integration branch; RC-tagged per R39, Copilot loop per
+R36/R40.
 
 ---
 
@@ -415,8 +480,9 @@ branch per R37, RC-tagged per R39, Copilot loop per R36/R40.
 2. Correcting one word on page 2 creates version 2, re-embeds only page 2,
    and the diff endpoint shows exactly that word.
 3. An MCP agent calling `KbProposeTextCorrectionTool` produces a candidate; no
-   chunk changes until a human approves; `KbSetReviewStatusTool` returns 403 to
-   an agent principal (R32 matrix row).
+   chunk changes until a human approves; no MCP tool can set a review status
+   (the roster test proves none is registered), and the HTTP `/review-status`
+   endpoint returns 403 to every non-reviewer role (R32 matrix row).
 4. CER/WER between the OCR output and the approved version is reported by
    `eval:nightly`; a synthetic 5-point CER regression fails the gate.
 5. `kb:export-wiki` on a project with one `human`, one `auto` and one

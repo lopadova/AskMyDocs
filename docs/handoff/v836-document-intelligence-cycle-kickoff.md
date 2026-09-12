@@ -88,9 +88,10 @@ rendering of audit + plan, and the two-patch `git am` series used to move the co
 4. **W3 Digitization Review.** A converted document is born in the **`auto` tier**
    (ADR 0014) and is promoted to `human` on approval. **The agent proposes, never
    commits**: MCP `KbProposeTextCorrectionTool` writes a correction *candidate* (the
-   ADR 0003 `/suggest → /candidates → /promote` pattern); `KbSetReviewStatusTool` is
-   human-only. This is the explicit inverse of the competitor's
-   `update_document_page`, and an ecosystem invariant. CER/WER as **host-side**
+   ADR 0003 `/suggest → /candidates → /promote` pattern); **no MCP tool sets a
+   review status** — status changes are HTTP + CLI only (a documented R44
+   exception) and MCP gets a read-only `KbReviewStatusTool`. This is the explicit
+   inverse of the competitor's `update_document_page`, and an ecosystem invariant. CER/WER as **host-side**
    metrics in `app/Eval/Metrics/` (R23 pattern), not a change to `padosoft/eval-harness`.
    **ADR 0031.**
 5. **W4 `kb:export-wiki` / `kb:import-wiki`.** Karpathy layout (`raw/`, `wiki/`,
@@ -104,7 +105,9 @@ rendering of audit + plan, and the two-patch `git am` series used to move the co
    mandate and a pause-and-ask. `RoutineTarget` is defined by
    `padosoft/laravel-routines-contracts` and `laravel-flow` v2.5 ships no adapter
    for it, so the host implements a thin `App\Routines\WikiMaintenanceRoutineTarget`
-   over the same maintenance core the cron command calls. This is a **deliberate
+   over the existing maintenance core the cron command already injects,
+   `App\Services\Kb\AutoWiki\WikiMaintainer` (no rename, no second
+   implementation). This is a **deliberate
    new dependency** — `padosoft/laravel-routines` v1.2.0,
    `padosoft/laravel-routines-contracts` v1.2.0, admin panel v1.1.0 are published.
    With the routine ON the scheduler entry for `kb:wiki-maintain` is gated off (no
