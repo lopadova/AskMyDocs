@@ -67,6 +67,33 @@ class KbPath
      *
      * @param  list<string>  $globs
      */
+    /**
+     * True when a path lies inside a generated-asset subtree the ingestion
+     * pipeline writes itself and must never read back as a source:
+     * `{source}.ocr/…` (OCR runs + figures, v8.36 / ADR 0029) and the
+     * `.artifacts/` root reserved for conversion artifacts (ADR 0030).
+     * Discovery (folder walker, orphan sweeps) and the HTTP ingest entry
+     * point all consult it, so a recursive ingest cannot self-ingest the
+     * figures it extracted on the previous run.
+     */
+    public static function isGeneratedAsset(string $path): bool
+    {
+        $segments = explode('/', str_replace('\\', '/', trim($path, '/')));
+        foreach ($segments as $index => $segment) {
+            if ($segment === '') {
+                continue;
+            }
+            if (str_ends_with(strtolower($segment), '.ocr') && $index < count($segments) - 1) {
+                return true;
+            }
+            if ($segment === '.artifacts' && $index < count($segments) - 1) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public static function matchesAnyGlob(string $path, array $globs): bool
     {
         foreach ($globs as $glob) {

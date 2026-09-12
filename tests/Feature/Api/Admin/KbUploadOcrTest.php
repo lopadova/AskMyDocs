@@ -1,0 +1,268 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Tests\Feature\Api\Admin;
+
+use App\Models\KbIngestBatchItem;
+use App\Models\User;
+use App\Services\Kb\Ocr\Drivers\FakeOcrDriver;
+use Database\Seeders\RbacSeeder;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
+use Tests\Fixtures\Pdf\PdfFixtureBuilder;
+use Tests\TestCase;
+
+/**
+ * v8.36 / ADR 0029 — the upload modal path: images accepted only with OCR on
+ * (R43), magic bytes verified (SEC-UPLOAD-001), and the cost estimate before
+ * commit (§8) in both states.
+ */
+final class KbUploadOcrTest extends TestCase
+{
+    use RefreshDatabase;
+
+    protected function defineRoutes($router): void
+    {
+        $router->middleware('api')->prefix('api')->group(__DIR__.'/../../../../routes/api.php');
+    }
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seed(RbacSeeder::class);
+        Cache::flush();
+        Storage::fake('kb-staging');
+        Storage::fake('kb');
+        $this->withHeaders(['Accept' => 'application/json']);
+        config(['kb.ocr.driver' => 'fake', 'kb.ocr.rate_per_page' => 0.004, 'ai-finops.currency.base' => 'USD']);
+    }
+
+    private function makeAdmin(): User
+    {
+        $admin = User::create(['name' => 'Admin', 'email' => 'admin-'.uniqid().'@demo.local', 'password' => Hash::make('secret123')]);
+        $admin->assignRole('admin');
+
+        return $admin;
+    }
+
+    private function png(string $name = 'scan.png'): UploadedFile
+    {
+        return UploadedFile::fake()->createWithContent($name, (string) base64_decode(FakeOcrDriver::PNG_1X1, true));
+    }
+
+    public function test_off_an_image_upload_is_refused_like_any_unsupported_type(): void
+    {
+        config(['kb.ocr.enabled' => false]);
+
+        $resp = $this->actingAs($this->makeAdmin())->post('/api/admin/kb/uploads', [
+            'project_key' => 'legal',
+            'files' => [$this->png()],
+        ])->assertStatus(422)->assertJsonValidationErrors('files.0');
+
+        $this->assertStringNotContainsString('png', (string) $resp->json('errors.files.0.0'));
+    }
+
+    public function test_on_an_image_upload_is_staged_with_the_image_source_type(): void
+    {
+        config(['kb.ocr.enabled' => true]);
+
+        $resp = $this->actingAs($this->makeAdmin())->post('/api/admin/kb/uploads', [
+            'project_key' => 'legal',
+            'files' => [$this->png()],
+        ])->assertStatus(201);
+
+        $resp->assertJsonPath('items.0.source_type', 'image')
+            ->assertJsonPath('items.0.mime_type', 'image/png')
+            ->assertJsonPath('items.0.status', KbIngestBatchItem::STATUS_STAGED);
+        $item = KbIngestBatchItem::query()->findOrFail($resp->json('items.0.id'));
+        $this->assertTrue(Storage::disk('kb-staging')->exists($item->staging_path));
+        $this->assertStringEndsWith('.png', $item->staging_path);
+    }
+
+    public function test_on_a_file_named_png_that_is_not_an_image_is_rejected_by_the_sniffer(): void
+    {
+        config(['kb.ocr.enabled' => true]);
+
+        $this->actingAs($this->makeAdmin())->post('/api/admin/kb/uploads', [
+            'project_key' => 'legal',
+            'files' => [UploadedFile::fake()->createWithContent('fake.png', 'just text')],
+        ])->assertStatus(422)->assertJsonValidationErrors('files.0');
+    }
+
+    public function test_estimate_off_reports_disabled_and_zero(): void
+    {
+        config(['kb.ocr.enabled' => false]);
+        $admin = $this->makeAdmin();
+        $batchId = $this->actingAs($admin)->post('/api/admin/kb/uploads', [
+            'project_key' => 'legal',
+            'files' => [UploadedFile::fake()->createWithContent('scan.pdf', PdfFixtureBuilder::build(['  ']))],
+        ])->assertStatus(201)->json('batch.id');
+
+        $this->actingAs($admin)->getJson("/api/admin/kb/uploads/{$batchId}/estimate")
+            ->assertOk()
+            ->assertJsonPath('data.enabled', false)
+            ->assertJsonPath('data.total_pages', 0)
+            ->assertJsonPath('data.total_cost', 0)
+            ->assertJsonPath('data.items.0.would_ocr', false)
+            ->assertJsonPath('data.items.0.reason', 'ocr_disabled');
+    }
+
+    public function test_estimate_reports_when_the_configured_driver_cannot_run_here(): void
+    {
+        // R14 — a remote driver with the egress knob off: the modal must warn,
+        // not promise a run the registry will refuse at commit.
+        config(['kb.ocr.enabled' => true, 'kb.ocr.driver' => 'mistral-ocr', 'kb.ocr.allow_remote' => false]);
+        $admin = $this->makeAdmin();
+        $batchId = $this->actingAs($admin)->post('/api/admin/kb/uploads', [
+            'project_key' => 'legal',
+            'files' => [$this->png('a.png')],
+        ])->assertStatus(201)->json('batch.id');
+
+        $this->actingAs($admin)->getJson("/api/admin/kb/uploads/{$batchId}/estimate")
+            ->assertOk()
+            ->assertJsonPath('data.enabled', true)
+            ->assertJsonPath('data.driver', 'mistral-ocr')
+            ->assertJsonPath('data.driver_available', false)
+            ->assertJsonPath('data.items.0.would_ocr', true);
+        $this->assertStringContainsString('KB_OCR_ALLOW_REMOTE', (string) $this->actingAs($admin)->getJson("/api/admin/kb/uploads/{$batchId}/estimate")->json('data.driver_error'));
+    }
+
+    public function test_estimate_flags_an_image_over_the_byte_cap(): void
+    {
+        config(['kb.ocr.enabled' => true, 'kb.ocr.max_bytes' => 10]);
+        $admin = $this->makeAdmin();
+        $batchId = $this->actingAs($admin)->post('/api/admin/kb/uploads', [
+            'project_key' => 'legal',
+            'files' => [$this->png('a.png')],
+        ])->assertStatus(201)->json('batch.id');
+
+        $this->actingAs($admin)->getJson("/api/admin/kb/uploads/{$batchId}/estimate")
+            ->assertOk()
+            ->assertJsonPath('data.items.0.would_ocr', false)
+            ->assertJsonPath('data.items.0.reason', 'too_many_bytes');
+    }
+
+    public function test_a_staged_jpeg_keeps_its_real_extension_on_the_staging_disk(): void
+    {
+        config(['kb.ocr.enabled' => true]);
+        $admin = $this->makeAdmin();
+        $jpeg = UploadedFile::fake()->createWithContent('photo.jpg', "\xFF\xD8\xFF\xE0".str_repeat("\x00", 64));
+        $resp = $this->actingAs($admin)->post('/api/admin/kb/uploads', ['project_key' => 'legal', 'files' => [$jpeg]])->assertStatus(201);
+
+        $item = \App\Models\KbIngestBatchItem::query()->findOrFail((string) $resp->json('items.0.id'));
+        $this->assertStringEndsWith('.jpg', (string) $item->staging_path);
+        Storage::disk('kb-staging')->assertExists((string) $item->staging_path);
+    }
+
+    public function test_estimate_counts_tiff_frames_and_applies_the_page_cap(): void
+    {
+        config(['kb.ocr.enabled' => true, 'kb.ocr.max_pages' => 2]);
+        $admin = $this->makeAdmin();
+        $header = 'II'.pack('v', 42).pack('V', 8);
+        $ifds = '';
+        for ($i = 0; $i < 3; $i++) {
+            $offset = 8 + strlen($ifds);
+            $next = $i === 2 ? 0 : $offset + 2 + 12 + 4;
+            $ifds .= pack('v', 1).pack('v', 256).pack('v', 3).pack('V', 1).pack('V', 1).pack('V', $next);
+        }
+        $tiff = UploadedFile::fake()->createWithContent('multi.tiff', $header.$ifds);
+        $batchId = $this->actingAs($admin)->post('/api/admin/kb/uploads', ['project_key' => 'legal', 'files' => [$tiff]])
+            ->assertStatus(201)->json('batch.id');
+
+        $this->actingAs($admin)->getJson("/api/admin/kb/uploads/{$batchId}/estimate")
+            ->assertOk()
+            ->assertJsonPath('data.items.0.would_ocr', false)
+            ->assertJsonPath('data.items.0.pages', 3)
+            ->assertJsonPath('data.items.0.reason', 'too_many_pages');
+    }
+
+    public function test_estimate_counts_tiff_frames_even_when_uploaded_under_another_image_extension(): void
+    {
+        // The sniffer accepts any raster and the batch row stores the family
+        // MIME, so a 3-frame TIFF named `.png` must still be quoted as 3 pages
+        // — the same number `OcrService::pageCountForBytes()` enforces.
+        config(['kb.ocr.enabled' => true, 'kb.ocr.max_pages' => 2]);
+        $admin = $this->makeAdmin();
+        $header = 'II'.pack('v', 42).pack('V', 8);
+        $ifds = '';
+        for ($i = 0; $i < 3; $i++) {
+            $offset = 8 + strlen($ifds);
+            $next = $i === 2 ? 0 : $offset + 2 + 12 + 4;
+            $ifds .= pack('v', 1).pack('v', 256).pack('v', 3).pack('V', 1).pack('V', 1).pack('V', $next);
+        }
+        $disguised = UploadedFile::fake()->createWithContent('multi.png', $header.$ifds);
+        $batchId = $this->actingAs($admin)->post('/api/admin/kb/uploads', ['project_key' => 'legal', 'files' => [$disguised]])
+            ->assertStatus(201)->json('batch.id');
+
+        $this->actingAs($admin)->getJson("/api/admin/kb/uploads/{$batchId}/estimate")
+            ->assertOk()
+            ->assertJsonPath('data.items.0.would_ocr', false)
+            ->assertJsonPath('data.items.0.pages', 3)
+            ->assertJsonPath('data.items.0.reason', 'too_many_pages');
+    }
+
+    public function test_estimate_flags_a_pdf_over_the_page_cap(): void
+    {
+        config(['kb.ocr.enabled' => true, 'kb.ocr.max_pages' => 2]);
+        $admin = $this->makeAdmin();
+        $batchId = $this->actingAs($admin)->post('/api/admin/kb/uploads', [
+            'project_key' => 'legal',
+            'files' => [UploadedFile::fake()->createWithContent('long.pdf', PdfFixtureBuilder::build(['  ', ' ', '   ']))],
+        ])->assertStatus(201)->json('batch.id');
+
+        $this->actingAs($admin)->getJson("/api/admin/kb/uploads/{$batchId}/estimate")
+            ->assertOk()
+            ->assertJsonPath('data.items.0.would_ocr', false)
+            ->assertJsonPath('data.items.0.reason', 'too_many_pages')
+            ->assertJsonPath('data.items.0.pages', 3)
+            ->assertJsonPath('data.total_cost', 0);
+    }
+
+    public function test_estimate_on_prices_images_and_scanned_pdfs_but_not_text_pdfs(): void
+    {
+        config(['kb.ocr.enabled' => true]);
+        $admin = $this->makeAdmin();
+        $resp = $this->actingAs($admin)->post('/api/admin/kb/uploads', [
+            'project_key' => 'legal',
+            'files' => [
+                $this->png('a.png'),
+                UploadedFile::fake()->createWithContent('scanned.pdf', PdfFixtureBuilder::build(['  ', ' ', '   '])),
+                UploadedFile::fake()->createWithContent('text.pdf', PdfFixtureBuilder::buildThreePageSample()),
+                UploadedFile::fake()->createWithContent('notes.md', "# Notes\n\nbody"),
+            ],
+        ])->assertStatus(201);
+        $batchId = $resp->json('batch.id');
+        $byName = collect($resp->json('items'))->keyBy('original_filename');
+
+        $estimate = $this->actingAs($admin)->getJson("/api/admin/kb/uploads/{$batchId}/estimate")->assertOk()->json('data');
+        $items = collect($estimate['items'])->keyBy('id');
+
+        $this->assertTrue($estimate['enabled']);
+        $this->assertSame('fake', $estimate['driver']);
+        $this->assertSame('USD', $estimate['currency']);
+        $this->assertEqualsWithDelta(0.004, $estimate['rate_per_page'], 0.000001);
+
+        $image = $items[$byName['a.png']['id']];
+        $this->assertTrue($image['would_ocr']);
+        $this->assertSame(1, $image['pages']);
+        $this->assertSame('image', $image['reason']);
+
+        $scanned = $items[$byName['scanned.pdf']['id']];
+        $this->assertTrue($scanned['would_ocr']);
+        $this->assertSame(3, $scanned['pages']);
+        $this->assertSame('scanned_pdf', $scanned['reason']);
+        $this->assertEqualsWithDelta(0.012, $scanned['cost'], 0.000001);
+
+        $this->assertFalse($items[$byName['text.pdf']['id']]['would_ocr']);
+        $this->assertSame('text_layer_present', $items[$byName['text.pdf']['id']]['reason']);
+        $this->assertFalse($items[$byName['notes.md']['id']]['would_ocr']);
+        $this->assertSame('not_ocr_able', $items[$byName['notes.md']['id']]['reason']);
+
+        $this->assertSame(4, $estimate['total_pages']);
+        $this->assertEqualsWithDelta(0.016, $estimate['total_cost'], 0.000001);
+    }
+}

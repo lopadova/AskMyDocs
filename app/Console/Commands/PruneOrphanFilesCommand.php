@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Services\Kb\Ocr\OcrFigureStore;
 use App\Models\KnowledgeDocument;
 use App\Support\KbDiskResolver;
 use App\Support\KbPath;
@@ -73,7 +74,7 @@ class PruneOrphanFilesCommand extends Command
             return self::SUCCESS;
         }
 
-        [$deleted, $failed] = $this->deleteOrphans($storage, $orphans, $prefix);
+        [$deleted, $failed] = $this->deleteOrphans($storage, $orphans, $prefix, $disk);
 
         $this->info(sprintf(
             'Disk [%s]: scanned=%d orphans=%d deleted=%d failed=%d',
@@ -107,6 +108,9 @@ class PruneOrphanFilesCommand extends Command
     private function filterMarkdown(array $files): array
     {
         return array_values(array_filter($files, function (string $path): bool {
+            if (KbPath::isGeneratedAsset($path)) {
+                return false; // never a source (ADR 0029 / 0030)
+            }
             $ext = strtolower((string) pathinfo($path, PATHINFO_EXTENSION));
 
             return $ext === 'md' || $ext === 'markdown';
@@ -165,7 +169,7 @@ class PruneOrphanFilesCommand extends Command
      * @param  array<int,string>  $orphans
      * @return array{0:int,1:int} [deleted, failed]
      */
-    private function deleteOrphans($storage, array $orphans, string $prefix): array
+    private function deleteOrphans($storage, array $orphans, string $prefix, string $disk): array
     {
         $deleted = 0;
         $failed = 0;
@@ -179,6 +183,15 @@ class PruneOrphanFilesCommand extends Command
                 $failed++;
                 $this->error("  ! failed to delete: {$target}");
                 continue;
+            }
+
+            // An orphan source is typically a failed first ingest; the OCR
+            // run it may have produced (`{source}.ocr/`) has no row either
+            // and goes with it — the only sweep such a run ever gets.
+            try {
+                app(OcrFigureStore::class)->purgeBeside($disk, $target);
+            } catch (\Throwable $e) {
+                $this->warn("  ! could not purge OCR assets beside {$target}: {$e->getMessage()}");
             }
 
             $deleted++;

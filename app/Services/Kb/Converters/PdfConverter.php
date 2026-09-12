@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Services\Kb\Converters;
 
 use App\Services\Kb\Contracts\ConverterInterface;
+use App\Services\Kb\Ocr\OcrService;
+use App\Services\Kb\Ocr\PdfTextLayerProbe;
 use App\Services\Kb\Pipeline\ConvertedDocument;
 use App\Services\Kb\Pipeline\SourceDocument;
 use Smalot\PdfParser\Parser;
@@ -31,9 +33,24 @@ use Throwable;
  * Per LESSONS T1.3 rule: `extractionMeta['filename'] = basename($doc->sourcePath)`
  * so the downstream chunker (and admin observability surfaces) attribute
  * chunks back to the source file.
+ *
+ * v8.36 / ADR 0029 — OCR fallback for scanned PDFs. The pipeline registry
+ * resolves converters by MIME alone, so "is there a text layer?" cannot be
+ * decided in `supports()`; it is decided HERE, after the text-layer probe:
+ * when `kb.ocr.enabled` is true and the probe finds no text (or the ingest
+ * metadata carries `ocr.force`), conversion is delegated to the same
+ * {@see OcrService} the image converter uses. `extractionMeta.text_layer_probe`
+ * records the verdict either way. With the flag off this class is byte for
+ * byte the v8.35 one.
  */
 final class PdfConverter implements ConverterInterface
 {
+    /**
+     * Nullable so the pure unit tests (and any legacy direct construction)
+     * keep working; the container always injects it.
+     */
+    public function __construct(private readonly ?OcrService $ocr = null) {}
+
     public function name(): string
     {
         return 'pdf-converter';
@@ -46,11 +63,26 @@ final class PdfConverter implements ConverterInterface
 
     public function convert(SourceDocument $doc): ConvertedDocument
     {
+        $ocrRoute = $this->ocrRoute($doc);
+        if ($ocrRoute !== null && $ocrRoute['reason'] !== null) {
+            $converted = $this->ocr->convert($doc, $this->name(), reason: $ocrRoute['reason']);
+
+            return new ConvertedDocument(
+                markdown: $converted->markdown,
+                mediaItems: $converted->mediaItems,
+                extractionMeta: array_merge($converted->extractionMeta, ['text_layer_probe' => $ocrRoute['probe']]),
+                sourceMimeType: $converted->sourceMimeType,
+            );
+        }
+
         $start = hrtime(true);
         $strategy = 'smalot';
 
         try {
-            $pages = $this->extractWithSmalot($doc->bytes);
+            // An `unreadable` probe already ran pdftotext and found text:
+            // keep those pages instead of failing smalot a second time.
+            $pages = $ocrRoute['pages'] ?? $this->extractWithSmalot($doc->bytes);
+            $strategy = isset($ocrRoute['pages']) ? 'pdftotext' : 'smalot';
         } catch (Throwable $smalotError) {
             try {
                 $pages = $this->extractWithPdftotext($doc->bytes);
@@ -72,16 +104,76 @@ final class PdfConverter implements ConverterInterface
         return new ConvertedDocument(
             markdown: $markdown,
             mediaItems: [],
-            extractionMeta: [
+            extractionMeta: array_merge([
                 'converter' => $this->name(),
                 'duration_ms' => $durationMs,
                 'page_count' => count($pages),
                 'extraction_strategy' => $strategy,
                 'source_path' => $doc->sourcePath,
                 'filename' => $filename,
-            ],
+            ], $this->ocrEnabled() ? ['text_layer_probe' => $ocrRoute['probe'] ?? PdfTextLayerProbe::PRESENT] : []),
             sourceMimeType: $doc->mimeType,
         );
+    }
+
+    /**
+     * Decide whether this PDF goes to OCR. Null = text-layer path with a
+     * confident `present` verdict; `reason === null` = text-layer path
+     * through pages the pdftotext fallback already produced (the probe's
+     * parser could not read the file but pdftotext could — a parser failure
+     * is NOT "no text", and must never be billed as a scan); a non-null
+     * `reason` = OCR.
+     *
+     * @return array{reason: ?string, probe: string, pages?: list<string>}|null
+     */
+    private function ocrRoute(SourceDocument $doc): ?array
+    {
+        if (! $this->ocrEnabled()) {
+            return null;
+        }
+        if (OcrService::isForced($doc->metadata)) {
+            return ['reason' => 'forced', 'probe' => 'skipped'];
+        }
+        $probe = $this->ocr->probe()->probe($doc->bytes);
+        if ($probe['verdict'] === PdfTextLayerProbe::PRESENT) {
+            return null;
+        }
+        if ($probe['verdict'] === PdfTextLayerProbe::UNREADABLE) {
+            try {
+                $pages = $this->extractWithPdftotext($doc->bytes);
+            } catch (Throwable) {
+                return ['reason' => 'scanned_pdf', 'probe' => PdfTextLayerProbe::UNREADABLE.':pdftotext_failed'];
+            }
+            if ($this->hasText($pages)) {
+                return ['reason' => null, 'probe' => PdfTextLayerProbe::UNREADABLE.':pdftotext', 'pages' => $pages];
+            }
+
+            return ['reason' => 'scanned_pdf', 'probe' => PdfTextLayerProbe::UNREADABLE.':pdftotext_empty'];
+        }
+
+        return ['reason' => 'scanned_pdf', 'probe' => $probe['verdict']];
+    }
+
+    /**
+     * Same threshold the probe applies to the parser's text: whitespace
+     * stripped, at least `text_layer_probe.min_text_chars` over the pages.
+     *
+     * @param  list<string>  $pages
+     */
+    private function hasText(array $pages): bool
+    {
+        $minChars = max(0, (int) config('kb.ocr.text_layer_probe.min_text_chars', 20));
+        $chars = 0;
+        foreach ($pages as $page) {
+            $chars += mb_strlen((string) preg_replace('/\s+/u', '', $page));
+        }
+
+        return $chars >= $minChars;
+    }
+
+    private function ocrEnabled(): bool
+    {
+        return $this->ocr !== null && $this->ocr->enabled();
     }
 
     /**
@@ -122,7 +214,7 @@ final class PdfConverter implements ConverterInterface
         }
 
         try {
-            $process = new Process(['pdftotext', '-layout', '-enc', 'UTF-8', $tmp, '-']);
+            $process = new Process([(string) config('kb.pdf.pdftotext_bin', 'pdftotext'), '-layout', '-enc', 'UTF-8', $tmp, '-']);
             $process->mustRun();
             $text = $process->getOutput();
             $pages = preg_split("/\f/", $text);

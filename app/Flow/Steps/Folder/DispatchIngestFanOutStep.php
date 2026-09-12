@@ -104,6 +104,11 @@ final class DispatchIngestFanOutStep implements FlowStepHandler
 
             $extension = (string) pathinfo($relative, PATHINFO_EXTENSION);
             $sourceType = SourceType::fromExtension($extension);
+            // v8.36 / ADR 0029 — an image is a supported type only while OCR
+            // is on (R43); off, it is recorded as unsupported exactly as before.
+            if ($sourceType === SourceType::IMAGE && ! (bool) config('kb.ocr.enabled', false)) {
+                $sourceType = SourceType::UNKNOWN;
+            }
             if ($sourceType === SourceType::UNKNOWN) {
                 $failures[] = ['path' => $relative, 'reason' => 'unsupported_extension: '.$extension];
                 continue;

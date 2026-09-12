@@ -590,6 +590,13 @@ class DocumentIngestor
                 'canonical_status' => null,
                 'retrieval_priority' => 50,
                 'frontmatter_json' => null,
+                // v8.36 / ADR 0029 — a machine-read (OCR) document is born in
+                // the `auto` tier (ADR 0014) until a person approves it (W3);
+                // set here, in the one core both ingest paths share. Text-layer
+                // and markdown documents keep the human default.
+                'generation_source' => (($metadata['converter']['provenance'] ?? null) === 'ocr')
+                    ? GenerationSource::Auto->value
+                    : GenerationSource::Human->value,
             ]);
         }
 

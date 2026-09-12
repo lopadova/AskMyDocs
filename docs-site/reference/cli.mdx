@@ -31,6 +31,7 @@ commands grouped by concern with their exact signatures. Run `php artisan
 |---|---|
 | `kb:ingest {path} {--project=} {--title=} {--disk=}` | Ingest a single document via the configured disk |
 | `kb:ingest-folder {path?} {--project=} {--tenant=} {--disk=} {--pattern=} {--recursive} {--sync} {--limit=0} {--dry-run} {--prune-orphans} {--force-delete}` | Walk a folder and dispatch one ingestion job per supported file |
+| `kb:ocr {document} {--status} {--tenant=default}` | v8.36 — show the OCR status of a document (`--status`) or queue a forced OCR re-run through the standard ingest job (`metadata.ocr.force=true`); refuses when `KB_OCR_ENABLED=false`. See [Documents & OCR](/documents-and-ocr) |
 
 ## Promotion & deletion
 

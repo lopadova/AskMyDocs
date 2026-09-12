@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { UploadDropzone } from './UploadDropzone';
+import { OcrEstimateLine } from './OcrEstimateLine';
 import {
     isTerminalBatch,
     type BatchItemStatus,
@@ -10,6 +11,7 @@ import {
     useBatchProgress,
     useCancelBatch,
     useCommitBatch,
+    useOcrEstimate,
     useRemoveStagedItem,
     useStageBatch,
 } from './kb-upload.hooks';
@@ -24,7 +26,11 @@ import {
  * errors next to context).
  */
 
-const ACCEPT = '.md,.markdown,.txt,.pdf,.docx';
+// v8.36 — images are listed so the picker offers them; whether they are
+// ACCEPTED is the server's call (StageKbUploadRequest gates on
+// KB_OCR_ENABLED and answers 422 when OCR is off — the error surfaces in the
+// DOM, R14/R43).
+const ACCEPT = '.md,.markdown,.txt,.pdf,.docx,.png,.jpg,.jpeg,.tif,.tiff,.webp';
 
 type Phase = 'selecting' | 'staging' | 'review' | 'committing' | 'progress' | 'done' | 'error';
 
@@ -56,6 +62,9 @@ export function UploadModal({ seed, defaultProject, projectOptions, onClose, onC
     const [batchId, setBatchId] = useState<string | null>(null);
     const [staged, setStaged] = useState<UploadBatchResponse | null>(null);
     const [actionError, setActionError] = useState<string | null>(null);
+    // Bumped whenever a staged item is removed so the OCR estimate re-reads
+    // the batch it describes (R17 — the cached copy follows the source).
+    const [estimateRevision, setEstimateRevision] = useState(0);
 
     const stageMut = useStageBatch();
     const commitMut = useCommitBatch();
@@ -64,6 +73,8 @@ export function UploadModal({ seed, defaultProject, projectOptions, onClose, onC
 
     const poll = phase === 'committing' || phase === 'progress';
     const progress = useBatchProgress(batchId, poll);
+    // v8.36 / ADR 0029 §8 — the OCR cost line, read only in the review phase.
+    const ocrEstimate = useOcrEstimate(batchId, phase === 'review', estimateRevision);
 
     // Esc closes (mirror ProjectFormDialog).
     useEffect(() => {
@@ -130,6 +141,7 @@ export function UploadModal({ seed, defaultProject, projectOptions, onClose, onC
         removeMut.mutate(
             { batchId, itemId },
             {
+                onSuccess: () => setEstimateRevision((r) => r + 1),
                 // R14: a failed DELETE must NOT read as success. The file is still
                 // staged server-side and would be ingested on commit, so restore
                 // the row at its original position and surface the error.
@@ -331,6 +343,14 @@ export function UploadModal({ seed, defaultProject, projectOptions, onClose, onC
                                     </li>
                                 ))}
                             </ul>
+                        )}
+
+                        {phase === 'review' && (
+                            <OcrEstimateLine
+                                state={ocrEstimate.isError ? 'error' : ocrEstimate.data ? 'ready' : 'loading'}
+                                estimate={ocrEstimate.data}
+                                errorMessage={ocrEstimate.isError ? errMessage(ocrEstimate.error) : null}
+                            />
                         )}
 
                         {anyCanonical && phase === 'review' && (

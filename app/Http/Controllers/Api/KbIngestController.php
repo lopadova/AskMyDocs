@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api;
 
+use App\Services\Kb\Ocr\OcrService;
 use App\Jobs\IngestDocumentJob;
 use App\Support\Kb\SourceType;
 use App\Support\KbPath;
@@ -153,13 +154,17 @@ class KbIngestController extends Controller
 
         $mimeType = trim((string) ($doc['mime_type'] ?? 'text/markdown'));
         $sourceType = SourceType::fromMime($mimeType);
-        if ($sourceType === SourceType::UNKNOWN) {
+        // v8.36 / ADR 0029 — images are accepted only when OCR is on (R43):
+        // with the flag off an image is refused with the SAME 422 as before,
+        // and the "Supported:" list does not mention it.
+        $ocrEnabled = (bool) config('kb.ocr.enabled', false);
+        if ($sourceType === SourceType::UNKNOWN || ($sourceType === SourceType::IMAGE && ! $ocrEnabled)) {
             throw ValidationException::withMessages([
                 'documents' => [sprintf(
                     'Unsupported mime_type "%s" for source_path "%s". Supported: %s.',
                     $mimeType,
                     $sourcePath,
-                    implode(', ', SourceType::supportedMimes()),
+                    implode(', ', SourceType::supportedMimes($ocrEnabled)),
                 )],
             ]);
         }
@@ -197,7 +202,9 @@ class KbIngestController extends Controller
                 ? $sourcePath
                 : KbPath::normalize($prefix.'/'.$sourcePath),
             'title' => $doc['title'] ?? null,
-            'metadata' => is_array($doc['metadata'] ?? null) ? $doc['metadata'] : [],
+            // v8.36 — `ocr.force` / `ocr.rerun_lock` / `dry_run` are host-only
+            // controls (a forced run is billed): never accepted from a client.
+            'metadata' => OcrService::stripTrustedOnlyKeys(is_array($doc['metadata'] ?? null) ? $doc['metadata'] : []),
         ];
     }
 }

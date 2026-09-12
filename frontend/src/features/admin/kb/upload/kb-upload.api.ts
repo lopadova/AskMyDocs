@@ -104,7 +104,52 @@ export const kbUploadApi = {
     async removeItem(batchId: string, itemId: string): Promise<void> {
         await api.delete(`/api/admin/kb/uploads/${batchId}/items/${itemId}`);
     },
+
+    /**
+     * v8.36 / ADR 0029 §8 — OCR cost estimate for a staged batch, read
+     * BEFORE commit. Side-effect free on the server (no driver runs); with
+     * `KB_OCR_ENABLED=false` the server answers `enabled=false` and zeros
+     * (R43 — the OFF path is an honest answer, not a missing one).
+     */
+    async estimate(batchId: string): Promise<OcrEstimate> {
+        const { data } = await api.get<{ data: OcrEstimate }>(`/api/admin/kb/uploads/${batchId}/estimate`);
+        return data.data;
+    },
 };
+
+/** Why an item would (or would not) be OCR'd — mirrors OcrCostEstimator. */
+export type OcrEstimateReason =
+    | 'ocr_disabled'
+    | 'image'
+    | 'scanned_pdf'
+    | 'text_layer_present'
+    | 'not_ocr_able'
+    | 'staged_file_missing'
+    | 'too_many_pages'
+    | 'too_many_bytes';
+
+export interface OcrEstimateItem {
+    id: string;
+    would_ocr: boolean;
+    pages: number;
+    /** false when `pages` is a floor (the PDF could not be parsed) */
+    pages_exact: boolean;
+    cost: number;
+    reason: OcrEstimateReason;
+}
+
+export interface OcrEstimate {
+    enabled: boolean;
+    driver: string;
+    /** false when the configured driver cannot run here (binary missing, remote driver with KB_OCR_ALLOW_REMOTE off) */
+    driver_available: boolean;
+    driver_error: string | null;
+    currency: string;
+    rate_per_page: number;
+    total_pages: number;
+    total_cost: number;
+    items: OcrEstimateItem[];
+}
 
 /** Terminal batch statuses — polling stops here. */
 export const TERMINAL_BATCH_STATUSES: BatchStatus[] = [

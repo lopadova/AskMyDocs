@@ -100,6 +100,11 @@ final class KbUploadStagingService
         if ($sourceType === SourceType::UNKNOWN) {
             $sourceType = SourceType::fromMime((string) $file->getClientMimeType());
         }
+        // v8.36 / ADR 0029 — an image is a supported type only while OCR is
+        // on (R43); with the flag off it is refused exactly like v8.35.
+        if ($sourceType === SourceType::IMAGE && ! (bool) config('kb.ocr.enabled', false)) {
+            $sourceType = SourceType::UNKNOWN;
+        }
 
         $itemId = (string) Str::orderedUuid();
 
@@ -111,7 +116,7 @@ final class KbUploadStagingService
         }
 
         $dir = "{$batch->tenant_id}/{$batch->id}";
-        $storedName = "{$itemId}.{$this->stagingExtension($sourceType)}";
+        $storedName = "{$itemId}.{$this->stagingExtension($sourceType, $file)}";
         $stored = $disk->putFileAs($dir, $file, $storedName);
 
         if ($stored === false) {
@@ -429,8 +434,16 @@ final class KbUploadStagingService
             : KbPath::normalize($prefix.'/'.$destinationPath);
     }
 
-    private function stagingExtension(SourceType $type): string
+    private function stagingExtension(SourceType $type, ?UploadedFile $file = null): string
     {
+        if ($type === SourceType::IMAGE) {
+            // Keep the real raster format on disk (the sniffer already
+            // verified the magic bytes); png is only the fallback.
+            $ext = strtolower((string) $file?->getClientOriginalExtension());
+
+            return in_array($ext, SourceType::imageExtensions(), true) ? ($ext === 'jpeg' ? 'jpg' : ($ext === 'tif' ? 'tiff' : $ext)) : 'png';
+        }
+
         return match ($type) {
             SourceType::MARKDOWN => 'md',
             SourceType::TEXT => 'txt',

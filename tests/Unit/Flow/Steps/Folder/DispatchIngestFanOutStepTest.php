@@ -55,6 +55,24 @@ final class DispatchIngestFanOutStepTest extends TestCase
         $this->assertSame(1, $result->output['failure_count']);
     }
 
+    /**
+     * v8.36 / ADR 0029 — R43: the same `.png` that is a failure with OCR off
+     * is dispatched with OCR on (the walker honours the flag).
+     */
+    public function test_image_is_dispatched_only_when_ocr_is_enabled(): void
+    {
+        Queue::fake();
+        config(['kb.ocr.enabled' => true]);
+        Storage::disk('kb')->put('docs/b.png', 'png');
+        $step = $this->app->make(DispatchIngestFanOutStep::class);
+
+        $result = $step->execute($this->context(['docs/a.md', 'docs/b.png']));
+
+        $this->assertSame(2, $result->output['dispatched_count']);
+        $this->assertSame(0, $result->output['failure_count']);
+        Queue::assertPushed(IngestDocumentJob::class, fn (IngestDocumentJob $job) => $job->relativePath === 'docs/b.png' && $job->mimeType === 'image/png');
+    }
+
     public function test_invalid_path_recorded_as_failure_not_thrown(): void
     {
         Queue::fake();

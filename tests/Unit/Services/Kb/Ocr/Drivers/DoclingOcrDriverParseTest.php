@@ -1,0 +1,75 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Tests\Unit\Services\Kb\Ocr\Drivers;
+
+use App\Services\Kb\Ocr\Drivers\DoclingOcrDriver;
+use PHPUnit\Framework\Attributes\Test;
+use Tests\TestCase;
+
+/**
+ * SEC-PATH-001 — the figure links in Docling's Markdown are OCR OUTPUT and
+ * must never decide a filesystem read outside the working directory.
+ */
+final class DoclingOcrDriverParseTest extends TestCase
+{
+    private string $dir;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->dir = sys_get_temp_dir().'/kb_docling_test_'.bin2hex(random_bytes(4));
+        mkdir($this->dir.'/input_artifacts', 0755, true);
+        file_put_contents($this->dir.'/input_artifacts/image_1.png', 'PNGBYTES');
+        file_put_contents($this->dir.'/secret.txt', 'host secret');
+    }
+
+    protected function tearDown(): void
+    {
+        foreach (glob($this->dir.'/input_artifacts/*') ?: [] as $f) {
+            unlink($f);
+        }
+        @rmdir($this->dir.'/input_artifacts');
+        foreach (glob($this->dir.'/*') ?: [] as $f) {
+            if (is_file($f)) {
+                unlink($f);
+            }
+        }
+        @rmdir($this->dir);
+        parent::tearDown();
+    }
+
+    #[Test]
+    public function a_well_formed_artifact_link_becomes_a_figure(): void
+    {
+        $pages = $this->app->make(DoclingOcrDriver::class)->parseMarkdownOutput(
+            "Text\n\n![Figure](input_artifacts/image_1.png)\n\n<!-- page break -->\nSecond",
+            $this->dir,
+        );
+
+        $this->assertCount(2, $pages);
+        $this->assertCount(1, $pages[0]->figures);
+        $this->assertSame('PNGBYTES', $pages[0]->figures[0]->bytes);
+        $this->assertSame('png', $pages[0]->figures[0]->extension);
+        $this->assertStringContainsString('](images/fig-1-1.png)', $pages[0]->markdown);
+        $this->assertSame([], $pages[1]->figures);
+    }
+
+    #[Test]
+    public function traversal_and_non_image_links_are_left_as_text_and_never_read(): void
+    {
+        $markdown = implode("\n", [
+            '![a](input_artifacts/../secret.txt)',
+            '![b](input_artifacts/../../../../etc/hostname)',
+            '![c](/etc/passwd)',
+            '![d](input_artifacts/image_1.png.php)',
+            '![e](secret.txt)',
+        ]);
+
+        $pages = $this->app->make(DoclingOcrDriver::class)->parseMarkdownOutput($markdown, $this->dir);
+
+        $this->assertSame([], $pages[0]->figures, 'no figure may be read from a non-allow-listed link');
+        $this->assertSame($markdown, $pages[0]->markdown, 'rejected links stay as plain text');
+    }
+}

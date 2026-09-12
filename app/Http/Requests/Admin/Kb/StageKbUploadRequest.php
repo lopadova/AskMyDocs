@@ -90,11 +90,18 @@ class StageKbUploadRequest extends FormRequest
             if ($type === SourceType::UNKNOWN) {
                 $type = SourceType::fromMime((string) $file->getClientMimeType());
             }
+            // v8.36 / ADR 0029 — images are an accepted type only while OCR is
+            // on (R43); with the flag off they are refused like any unknown type
+            // and the "Allowed:" list does not mention them.
+            $ocrEnabled = (bool) config('kb.ocr.enabled', false);
+            if ($type === SourceType::IMAGE && ! $ocrEnabled) {
+                $type = SourceType::UNKNOWN;
+            }
 
             if ($type === SourceType::UNKNOWN) {
                 $validator->errors()->add(
                     "files.{$i}",
-                    'Unsupported file type. Allowed: md, markdown, txt, pdf, docx.',
+                    'Unsupported file type. Allowed: '.implode(', ', SourceType::knownExtensions($ocrEnabled)).'.',
                 );
 
                 continue;

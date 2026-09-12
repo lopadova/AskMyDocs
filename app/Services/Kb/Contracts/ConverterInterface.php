@@ -17,6 +17,17 @@ use App\Services\Kb\Pipeline\SourceDocument;
  * Implementations MUST be stateless and side-effect-free; the pipeline
  * resolves a single instance per process via the Laravel container (the
  * concrete registry/resolver lands in T1.4).
+ *
+ * Documented exception (v8.36, ADR 0029): the OCR path — `OcrConverter`, and
+ * `PdfConverter` when it falls back to OCR — writes the figures a driver
+ * extracts beside the source (`{source}.ocr/{run}/images/`) at conversion
+ * time, because the Flow persists step outputs to the database and binary
+ * blobs cannot travel in `ConvertedDocument::mediaItems`. The write is
+ * content-addressed and idempotent (same bytes + engine → same run directory,
+ * a second run is a no-op), the run is immutable, it follows the source's
+ * lifecycle (`DocumentDeleter`), and it NEVER happens under a dry run:
+ * `ParseMarkdownStep` marks the SourceDocument (`metadata.dry_run`) and the
+ * OCR core then neither calls a driver, nor writes, nor meters.
  */
 interface ConverterInterface
 {

@@ -70,6 +70,11 @@ final class ParseMarkdownStep implements FlowStepHandler
             'disk' => $disk,
             'prefix' => (string) config('kb.sources.path_prefix', ''),
         ]);
+        if ($context->dryRun) {
+            // v8.36 — converters with a persistence seam (OCR figures, paid
+            // remote drivers) must know this is a preview: no write, no spend.
+            $combinedMetadata['dry_run'] = true;
+        }
 
         $source = new SourceDocument(
             sourcePath: $normalizedPath,

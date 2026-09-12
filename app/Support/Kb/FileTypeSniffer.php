@@ -80,6 +80,11 @@ final class FileTypeSniffer
                 ? null
                 : 'declared as DOCX but the content is not an OOXML/ZIP container',
             SourceType::MARKDOWN, SourceType::TEXT => self::binarySignatureIn($head),
+            // v8.36 / ADR 0029 — scanned images: the real leading bytes must be
+            // one of the accepted raster formats (png / jpeg / tiff / webp).
+            SourceType::IMAGE => self::isImage($head)
+                ? null
+                : 'declared as image but the content is not a PNG, JPEG, TIFF or WebP image',
             // Vendor/connector source types are produced server-side, not
             // uploaded as raw files, so there is nothing to sniff here.
             default => null,
@@ -89,6 +94,19 @@ final class FileTypeSniffer
     /**
      * @param  array<int, string>  $signatures
      */
+    private static function isImage(string $head): bool
+    {
+        if (str_starts_with($head, self::BINARY_SIGNATURES['png']) || str_starts_with($head, self::BINARY_SIGNATURES['jpeg'])) {
+            return true;
+        }
+        // TIFF: little- or big-endian header.
+        if (str_starts_with($head, "II*\0") || str_starts_with($head, "MM\0*")) {
+            return true;
+        }
+        // WebP: RIFF....WEBP
+        return str_starts_with($head, 'RIFF') && substr($head, 8, 4) === 'WEBP';
+    }
+
     private static function startsWithAny(string $head, array $signatures): bool
     {
         foreach ($signatures as $signature) {

@@ -9,6 +9,7 @@ use App\Models\KbCanonicalAudit;
 use App\Models\KbNode;
 use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
+use App\Services\Kb\Ocr\OcrFigureStore;
 use App\Services\Kb\Analysis\ChangeAnalysisGate;
 use App\Support\KbPath;
 use App\Support\LikeEscaper;
@@ -558,6 +559,20 @@ class DocumentDeleter
         }
     }
 
+    private function removeOcrAssets(string $disk, string $fullPath, int $documentId): void
+    {
+        try {
+            app(OcrFigureStore::class)->purgeBeside($disk, $fullPath);
+        } catch (\Throwable $e) {
+            Log::warning('DocumentDeleter: failed to remove OCR assets', [
+                'document_id' => $documentId,
+                'disk' => $disk,
+                'full_path' => $fullPath,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
     private function removeFile(string $disk, string $fullPath, int $documentId, string $sourcePath): bool
     {
         try {
@@ -609,6 +624,11 @@ class DocumentDeleter
             return false;
         }
 
+        // v8.36 / ADR 0029 — the OCR assets (`{fullPath}.ocr/`) belong to the
+        // same storage key and pass the same reference gate above: they go
+        // when the last row referencing the source goes, never before.
+        $this->removeOcrAssets($disk, $fullPath, $documentId);
+
         try {
             $storage = Storage::disk($disk);
             if (! $storage->exists($fullPath)) {
@@ -641,6 +661,17 @@ class DocumentDeleter
      * long version history stays memory-safe. Disk + prefix are resolved from
      * the immutable ingest metadata with the same fallbacks used by deletion.
      */
+    /**
+     * Public reference gate for callers that hold a resolved storage key and
+     * must not delete a file a knowledge_documents row (any tenant, trashed
+     * included) still points at — the connector bridge's refused-image path.
+     * Returns the referencing document id, or null when nothing references it.
+     */
+    public function documentReferencingStorageKey(string $disk, string $fullPath, string $sourcePath): ?int
+    {
+        return $this->firstDocumentReferencingStorageKey($disk, $fullPath, $sourcePath);
+    }
+
     private function firstDocumentReferencingStorageKey(
         string $disk,
         string $fullPath,

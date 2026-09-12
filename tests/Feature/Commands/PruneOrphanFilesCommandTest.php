@@ -93,6 +93,33 @@ class PruneOrphanFilesCommandTest extends TestCase
         Storage::disk('kb')->assertExists('docs/readme.txt');
     }
 
+    /**
+     * v8.36 / ADR 0029 — an orphan source (a failed first ingest) may have
+     * left an OCR run beside it; the sweep removes both, and never treats
+     * the run's own files as orphan candidates.
+     */
+    public function test_deleting_an_orphan_source_purges_the_ocr_run_beside_it(): void
+    {
+        Storage::fake('kb');
+
+        Storage::disk('kb')->put('docs/kept.md', 'k');
+        Storage::disk('kb')->put('docs/orphan.md', 'o');
+        Storage::disk('kb')->put('docs/orphan.md.ocr/0123456789abcdef/images/fig-1-1.png', 'figure');
+        Storage::disk('kb')->put('docs/orphan.md.ocr/0123456789abcdef/result.json', '{}');
+        Storage::disk('kb')->put('docs/kept.md.ocr/fedcba9876543210/notes.md', 'not a source');
+
+        $this->seedDoc('docs/kept.md', 'hk');
+
+        $this->artisan('kb:prune-orphan-files')
+            ->expectsOutputToContain('scanned=2 orphans=1 deleted=1 failed=0')
+            ->assertSuccessful();
+
+        Storage::disk('kb')->assertMissing('docs/orphan.md');
+        $this->assertFalse(Storage::disk('kb')->directoryExists('docs/orphan.md.ocr'), 'the orphan run goes with its source');
+        Storage::disk('kb')->assertExists('docs/kept.md');
+        Storage::disk('kb')->assertExists('docs/kept.md.ocr/fedcba9876543210/notes.md'); // a run beside a live source is neither a candidate nor purged
+    }
+
     public function test_soft_deleted_documents_protect_their_file_from_being_flagged_orphan(): void
     {
         Storage::fake('kb');

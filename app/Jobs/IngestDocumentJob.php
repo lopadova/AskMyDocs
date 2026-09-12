@@ -3,6 +3,9 @@
 namespace App\Jobs;
 
 use App\Flow\Definitions\IngestDocumentFlow;
+use App\Services\Kb\Ocr\OcrDriverUnavailableException;
+use App\Services\Kb\Ocr\OcrLimitExceededException;
+use App\Services\Kb\Ocr\OcrService;
 use App\Support\Kb\SourceType;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
@@ -64,6 +67,12 @@ class IngestDocumentJob implements ShouldQueue
         // ingest into 'default'. Defaults to 'default' so callers that
         // never set a tenant — and existing tests — keep working.
         public readonly string $tenantId = 'default',
+        // v8.36 / ADR 0029 — optional salt for the flow idempotency key. The
+        // default key is tenant:project:path, so a deliberate RE-RUN of the
+        // same path (kb:ocr) would be short-circuited to the original flow
+        // run by the store. A run key makes it a new run; null keeps the
+        // legacy behaviour for every existing dispatcher.
+        public readonly ?string $runKey = null,
     ) {
         $this->onQueue(config('kb.ingest.queue', 'kb-ingest'));
     }
@@ -84,6 +93,7 @@ class IngestDocumentJob implements ShouldQueue
         ?string $title = null,
         array $metadata = [],
         ?string $mimeType = null,
+        ?string $runKey = null,
     ): \Illuminate\Foundation\Bus\PendingDispatch {
         $tenantId = app(TenantContext::class)->current();
 
@@ -95,6 +105,7 @@ class IngestDocumentJob implements ShouldQueue
             metadata: $metadata,
             mimeType: $mimeType,
             tenantId: $tenantId,
+            runKey: $runKey,
         );
     }
 
@@ -116,6 +127,20 @@ class IngestDocumentJob implements ShouldQueue
             // TenantContext::current(); without this re-bind every tenant-
             // aware insert would silently land under 'default'.
             $tenantContext->set($this->tenantId);
+
+            // v8.36 — a forced OCR re-run carries a per-document lock; re-arm
+            // it for this attempt (it may have lapsed while the job waited in
+            // the queue). If a NEWER re-run took it over in the meantime this
+            // job must not produce a duplicate paid run: fail loudly (R14).
+            if (! OcrService::renewRerunLock($this->metadata)) {
+                $superseded = new \RuntimeException("IngestDocumentJob superseded by a newer OCR re-run for {$this->disk}:{$this->relativePath} — the re-run lock is now held by another owner.");
+                if ($this->job === null) {
+                    throw $superseded;
+                }
+                $this->fail($superseded);
+
+                return;
+            }
 
             $title = $this->title ?: pathinfo($this->relativePath, PATHINFO_FILENAME);
             $mimeType = $this->mimeType ?? 'text/markdown';
@@ -155,10 +180,34 @@ class IngestDocumentJob implements ShouldQueue
             // $tries / backoff retry semantics.
             if ($run->status !== \Padosoft\LaravelFlow\FlowRun::STATUS_SUCCEEDED) {
                 $failedStep = $run->failedStep ?? '(unknown)';
-                throw new \RuntimeException(
-                    "IngestDocumentFlow [{$run->status}] at step [{$failedStep}] for {$this->disk}:{$this->relativePath}"
-                );
+                $stepError = $failedStep !== '(unknown)' && ($run->stepResults[$failedStep] ?? null) instanceof \Padosoft\LaravelFlow\FlowStepResult
+                    ? $run->stepResults[$failedStep]->error
+                    : null;
+                $message = "IngestDocumentFlow [{$run->status}] at step [{$failedStep}] for {$this->disk}:{$this->relativePath}";
+                // v8.36 — a deterministic OCR refusal (over the page/byte cap,
+                // driver unavailable or not allowed) does not change on retry:
+                // fail now instead of re-parsing a 25 MiB scan three times.
+                if ($stepError instanceof OcrLimitExceededException || $stepError instanceof OcrDriverUnavailableException) {
+                    $refusal = new \RuntimeException($message.': '.$stepError->getMessage(), 0, $stepError);
+                    if ($this->job === null) {
+                        // Bare handle() / dispatchNow: there is no queue job to
+                        // mark failed (dispatchSync DOES set one — a SyncJob),
+                        // so the refusal must surface as an exception (R14) —
+                        // `fail()` would be a silent no-op here.
+                        throw $refusal;
+                    }
+                    $this->fail($refusal);
+
+                    return;
+                }
+                throw new \RuntimeException($message);
             }
+
+            // v8.36 — the run succeeded: a forced OCR re-run (kb:ocr / POST
+            // …/ocr) may carry the per-document lock that makes a second
+            // re-run a 409; release it on this terminal outcome only (a retry
+            // in flight must keep it — see failed() for the other outcome).
+            OcrService::releaseRerunLock($this->metadata);
 
             $persistResult = $run->stepResults['persist-chunks'] ?? null;
             $documentId = $persistResult instanceof \Padosoft\LaravelFlow\FlowStepResult
@@ -222,6 +271,11 @@ class IngestDocumentJob implements ShouldQueue
 
     public function failed(\Throwable $exception): void
     {
+        // Terminal failure (fail() or attempts exhausted): the re-run lock
+        // carried by a forced OCR re-run is released here, never on a retry.
+        // Owner-bound: a lock a newer re-run took over is left to its owner.
+        OcrService::releaseRerunLock($this->metadata);
+
         Log::error('IngestDocumentJob failed after retries', [
             'project_key' => $this->projectKey,
             'source_path' => $this->relativePath,
@@ -240,9 +294,14 @@ class IngestDocumentJob implements ShouldQueue
         // agnostic (path-only) so tenant + project + path uniquely
         // identify the row regardless of file bytes.
         $raw = "{$tenantId}:{$this->projectKey}:{$this->relativePath}";
+        if ($this->runKey !== null && $this->runKey !== '') {
+            $raw .= ':'.$this->runKey;
+        }
         if (strlen($raw) <= 200) {
             return $raw;
         }
-        return "{$tenantId}:{$this->projectKey}:".hash('sha256', $this->relativePath);
+        $tail = $this->relativePath.(($this->runKey !== null && $this->runKey !== '') ? ':'.$this->runKey : '');
+
+        return "{$tenantId}:{$this->projectKey}:".hash('sha256', $tail);
     }
 }

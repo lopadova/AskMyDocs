@@ -26,6 +26,10 @@ The MCP server (`app/Mcp/Servers/KnowledgeBaseServer.php`, registered name
   (`KbWikiReviewTool`), suggestion apply (`KbApplySuggestionTool`), wiki
   maintenance (`KbWikiMaintainTool`), and auto→human-vouched tier promotion
   (`KbWikiPromoteTool`).
+- **Document-intelligence read surface (v8.36):** `KbOcrStatusTool` reports whether a
+  document was OCR'd, with which driver, per-page confidence and figure count — read-only
+  by design; an agent cannot start an OCR run or spend (see
+  [Documents & OCR](/documents-and-ocr)).
 - **Write-nothing propose/suggest** tools that surface candidate artifacts for
   human review — the **canonical promotion pipeline** (suggest → candidates →
   promote via `CanonicalWriter`) stays human-gated

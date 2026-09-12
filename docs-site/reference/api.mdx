@@ -157,6 +157,7 @@ group is pinned in the [authorization matrix](/architecture/security-and-threat-
 | Users / roles / permissions | `/api/admin/users`, `/roles`, `/permissions` | `role:admin\|super-admin` |
 | Project memberships | `/api/admin/users/{user}/memberships`, `/memberships/{id}` | `role:admin\|super-admin` |
 | KB tree / health / documents | `/api/admin/kb/tree`, `/health`, `/documents/*` | `role:admin\|super-admin` |
+| KB OCR (v8.36) | `GET /api/admin/kb/documents/{id}/ocr` (status), `POST …/ocr` (re-run, 202), `GET /api/admin/kb/uploads/{batch}/estimate` (pre-commit cost estimate) | `role:admin\|super-admin` |
 | KB collections / tags / synonyms / analyses | `/api/admin/kb/collections`, `/tags`, `/synonyms`, `/analyses` | `role:admin\|super-admin` |
 | KB analysis/autowiki settings, content gaps | `/api/admin/kb/analysis-settings`, `/autowiki-settings`, `/content-gaps` | `role:admin\|super-admin` |
 | Auto-Wiki ops (evidence-tier, wiki-link, synthesize, index, lint, navigate, review, maintain, pages, promote/discard) | `/api/admin/kb/{evidence-tiers,wiki-*,concepts/*}` | `role:admin\|super-admin` |

@@ -6,6 +6,7 @@ namespace App\Flow\Steps\Folder;
 
 use App\Flow\Steps\StepTenantBinder;
 use App\Support\Kb\SourceType;
+use App\Support\KbPath;
 use Illuminate\Support\Facades\Storage;
 use Padosoft\LaravelFlow\FlowContext;
 use Padosoft\LaravelFlow\FlowStepHandler;
@@ -80,8 +81,9 @@ final class ListFolderFilesStep implements FlowStepHandler
             $filtered = array_filter($clean, static fn (string $v): bool => $v !== '');
             return array_values(array_unique($filtered));
         }
-        // Default to every supported source-type extension when omitted.
-        return SourceType::knownExtensions();
+        // Default to every supported source-type extension when omitted
+        // (images only when OCR is on — v8.36 / ADR 0029, R43).
+        return SourceType::knownExtensions((bool) config('kb.ocr.enabled', false));
     }
 
     /**
@@ -91,6 +93,13 @@ final class ListFolderFilesStep implements FlowStepHandler
      */
     private function filterByExtensions(array $files, array $extensions): array
     {
+        // The converter's own output (`{source}.ocr/…/images/*.png`) is
+        // never a source: a recursive walk that picked it up would OCR its
+        // own figures and nest `.ocr/` trees on every run (ADR 0029).
+        $files = array_values(array_filter(
+            $files,
+            static fn (string $path): bool => ! KbPath::isGeneratedAsset($path),
+        ));
         if ($extensions === []) {
             return $files;
         }

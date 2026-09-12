@@ -95,6 +95,34 @@ class KbIngestControllerTest extends TestCase
         });
     }
 
+    /**
+     * v8.36 / ADR 0029 — `ocr.force` starts a billed engine run and
+     * `dry_run` turns conversion into a preview: host-only controls that a
+     * client must not be able to set through `documents.*.metadata`.
+     */
+    public function test_strips_host_only_ocr_controls_from_client_metadata(): void
+    {
+        Queue::fake();
+        Storage::fake('kb');
+
+        $this->postJson('/api/kb/ingest', [
+            'documents' => [[
+                'project_key' => 'erp-core',
+                'source_path' => 'docs/forced.md',
+                'content' => "# Forced\n\nBody.",
+                'metadata' => ['language' => 'en', 'dry_run' => true, 'ocr' => ['force' => true, 'rerun_lock' => ['key' => 'k', 'owner' => 'o'], 'lang' => 'ita']],
+            ]],
+        ])->assertStatus(202);
+
+        Queue::assertPushed(IngestDocumentJob::class, function (IngestDocumentJob $job): bool {
+            return ($job->metadata['language'] ?? null) === 'en'
+                && ! array_key_exists('dry_run', $job->metadata)
+                && ! array_key_exists('force', $job->metadata['ocr'] ?? [])
+                && ! array_key_exists('rerun_lock', $job->metadata['ocr'] ?? [])
+                && ($job->metadata['ocr']['lang'] ?? null) === 'ita';
+        });
+    }
+
     public function test_accepts_batch_and_queues_one_job_per_document(): void
     {
         Queue::fake();

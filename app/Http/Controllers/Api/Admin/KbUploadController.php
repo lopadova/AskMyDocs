@@ -103,6 +103,15 @@ final class KbUploadController extends Controller
     }
 
     /**
+     * GET /api/admin/kb/uploads/{uploadBatch}/estimate — OCR cost before commit
+     * (v8.36 / ADR 0029 §8). Reads the staged bytes, never runs a driver.
+     */
+    public function estimate(KbIngestBatch $uploadBatch, \App\Services\Kb\Ocr\OcrCostEstimator $estimator): JsonResponse
+    {
+        return response()->json(['data' => $estimator->forBatch($uploadBatch, $this->service->stagingDiskName())]);
+    }
+
+    /**
      * POST /api/admin/kb/uploads/{uploadBatch}/commit — move + dispatch ingest.
      */
     public function commit(CommitKbUploadRequest $request, KbIngestBatch $uploadBatch): JsonResponse
