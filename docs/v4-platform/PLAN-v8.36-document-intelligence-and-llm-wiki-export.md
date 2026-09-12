@@ -49,12 +49,29 @@ references in the Markdown, formulas as LaTeX, a confidence per page.
 - `app/Services/Kb/Contracts/ConverterInterface.php` + the registry in
   `config/kb-pipeline.php` (`converters` list, first-match-wins, R23 FQCN
   validated at boot). `OcrConverter` registers **before** `PdfConverter` and
-  `supports()` any `image/*` MIME plus `application/pdf` **when the text layer
-  is empty** (a cheap `pdftotext -l 3` probe recorded in `extractionMeta`).
-- `App\Support\Kb\SourceType` gains `image` (`image/png`, `image/jpeg`,
-  `image/tiff`, `image/webp`) — update `fromMime()` / `fromExtension()` /
-  `toMime()` / `supportedMimes()` **and** `config/kb-pipeline.php` together
-  (the README already warns both must move in lockstep).
+  claims the four image MIMEs below — **only when `KB_OCR_ENABLED=true`**
+  (OFF → `supports()` is false for every MIME and the registry falls through
+  as in v8.35). The registry resolves by MIME alone (`supports(string $mime)`),
+  so **scanned PDFs are not claimed by `OcrConverter`**: `PdfConverter` stays
+  the sole `application/pdf` match and, when OCR is on and a cheap text-layer
+  probe (`PdfTextLayerProbe`, smalot over the first `KB_OCR_PROBE_PAGES`
+  pages, verdict recorded in `extractionMeta.text_layer_probe`) finds no text
+  — or the ingest metadata carries `ocr.force` (set by `kb:ocr`) — it
+  delegates to the same `OcrService`. One core, two entry MIMEs, no
+  overlapping predicates (the converter mutex test gains the image rows).
+- `App\Support\Kb\SourceType` gains `IMAGE` for exactly `image/png`,
+  `image/jpeg`, `image/tiff`, `image/webp` (an exact list, not a wildcard) —
+  `fromMime()` / `fromExtension()` / `toMime()` / `isBinary()` (true: base64
+  on the HTTP endpoint, raw bytes on disk) updated together with
+  `config/kb-pipeline.php::mime_to_source_type`. The enum stays pure;
+  **acceptance is gated at the entry points**: `supportedMimes(bool
+  $includeImages)` / `knownExtensions(bool $includeImages)` receive
+  `config('kb.ocr.enabled')` from `KbIngestController`, the upload
+  `StageKbUploadRequest` + `KbUploadStagingService`, and the folder walker
+  (`KbIngestFolderCommand`, `ListFolderFilesStep`), so with the flag off an
+  image is refused with the same 422 / "Unsupported file type" as today and
+  the "Supported:" list does not mention it (R43). `FileTypeSniffer` verifies
+  the real magic bytes for `IMAGE` (SEC-UPLOAD-001).
 - `PdfPageChunker` already slices on `## Page N`; the converter keeps that
   shape so chunking is untouched.
 
@@ -68,14 +85,27 @@ references in the Markdown, formulas as LaTeX, a confidence per page.
 | `tesseract` (local) | Free fallback; no layout. |
 
 **Design decisions.**
-- Figures land on the `kb` disk under `{document}/images/fig-{page}-{n}.png`
+- Figures land on the `kb` disk under `{source_path}.ocr/images/fig-{page}-{n}.png`
   and the Markdown references them as `![…](images/fig-3-1.png)` — the same
-  shape Annota exports, so W4's export is a copy, not a transform.
+  shape Annota exports, so W4's export is a copy, not a transform. They are
+  written **by the converter at conversion time** through `OcrFigureStore`
+  (every `put()` checked, R4): the Flow persists step outputs to the database,
+  so binary blobs cannot travel in `ConvertedDocument::mediaItems` — the
+  seam Copilot flagged as missing is the store, and `mediaItems` lists the
+  written paths. Hard delete and `kb:prune-archived-versions` remove the
+  `.ocr/` directory together with the row (`OcrFigureStore::purge()`).
 - Every page carries `ocr_confidence` in chunk metadata; `Reranker` Layer-4
   may read it as a soft signal later — **not** in this workstream.
-- **Provenance** (ADR 0028): chunks born from OCR carry `provenance: ocr` and
-  `authored: external` when the source connector says so (IMAP attachment).
-  The tool firewall treats them as any external text.
+- **Extraction origin, not authorship.** ADR 0028's `provenance_tier`
+  (`trusted-internal` / `untrusted-external` / `machine-generated`) records
+  *who authored* the source and stays whatever the connector declared — OCR
+  never writes it. OCR adds an **orthogonal** fact, *how the text was
+  obtained*: `metadata.converter.provenance = 'ocr'` on the document and
+  `provenance: ocr` + `ocr_confidence` on every chunk's metadata. The
+  `ProvenanceToolFirewall` keeps filtering on `provenance_tier`, so an OCR'd
+  IMAP attachment is withheld from tool calls **because IMAP declares it
+  `untrusted-external`**, not because it was OCR'd; the test asserts that
+  boundary through the chunk → document relationship (R33 lesson).
 - **PII**: `ChunkRedactor` (ADR 0020) runs unchanged on the OCR output before
   embedding. Scans are where the codici fiscali live.
 - **FinOps**: OCR calls are metered per page under a new `ocr` category; the
@@ -86,11 +116,18 @@ references in the Markdown, formulas as LaTeX, a confidence per page.
 
 **Tests.** A three-page scanned fixture (text + table + figure), one per
 driver behind an env guard (live recording pattern of `tests/Live/`), a fake
-driver for CI; both flag states; the `image/*` 422 path when OFF; provenance
-label asserted through the relationship, not the controller (R33 lesson).
+driver for CI; both flag states; the `image/*` 422 path when OFF; a scanned
+PDF with the flag OFF keeps **today's** behaviour — an empty document from
+`PdfConverter`, or the same `RuntimeException` when neither smalot nor
+`pdftotext` can read the file; the extraction label asserted through the
+relationship, not the controller (R33 lesson).
 
-**Tri-surface.** Artisan `kb:ocr {document}` (re-run on demand) · HTTP
-`POST /api/admin/kb/documents/{id}/ocr` · MCP `KbOcrStatusTool` (read).
+**Tri-surface.** Artisan `kb:ocr {document}` (re-run) / `--status` · HTTP
+`POST /api/admin/kb/documents/{id}/ocr` (re-run) + `GET …/ocr` (status) ·
+MCP `KbOcrStatusTool` (read). **Documented R44 exception:** there is no MCP
+write surface for OCR — re-running a conversion spends money and rewrites
+grounding, and by the cycle's invariant that is a human decision. The
+estimate is `GET /api/admin/kb/uploads/{batch}/estimate`.
 
 **ADR.** **0029 — OCR converter, drivers, and OCR provenance.**
 
@@ -121,11 +158,19 @@ nothing else can create one because nothing else can write. (c) No
 `actor`/`reason` on a version: the Time Machine cannot say *who* changed *why*.
 
 **Seams.** `config/kb.php` `source_retention` (`full_copy` / `markdown_only` /
-`reference_only`) and `knowledge_documents.markdown_path` — wire them in
-`IngestDocumentFlow` (`ConvertDocumentStep` writes the artifact, the chunker
-reads it) and in `DocumentIngestor::persistFromDrafts` (direct path) — **one
-core, both paths**, exactly as `ChunkRedactor` was wired (ADR 0020 D3). OCR
-figures (W1) live beside the artifact under `{document}/images/`.
+`reference_only`) and `knowledge_documents.markdown_path` — wired in the one
+persistence core both ingest paths already share: the Flow saga
+(`ParseMarkdownStep` converts → `PersistChunksStep` → `DocumentIngestor::persistDrafts`)
+and the direct path (`DocumentIngestor::ingest` → `persistFromDrafts`) both
+reach `persistDocumentAndChunks()`, where the artifact is written inside the
+transaction — **one core, both paths**, exactly as `ChunkRedactor` was wired
+(ADR 0020 D3). There is no `ConvertDocumentStep`; the conversion step is
+`ParseMarkdownStep`. OCR figures (W1) live beside the artifact under
+`{source_path}.ocr/images/`.
+
+**Flag.** `KB_CONVERSION_ARTIFACTS_ENABLED` default-**OFF** in v8.36 (R43):
+OFF = no artifact is written and `diff` reconstructs from chunks exactly as
+today; ON = the artifact is written under the `source_retention` mode.
 
 **Schema.** No new versions table — the family *is* the version model. Three
 columns on `knowledge_documents`: `version_actor` (`system:ingest` /
@@ -159,9 +204,17 @@ they cannot have: it is a workflow, it is measured, and the agent only proposes.
 **UI** (`frontend/src/features/admin/kb/review/*`, R11/R12/R15): original
 page render left (PDF.js / image), Markdown right in raw or preview, page
 navigator, a **confidence heat-map** marking low-`ocr_confidence` spans,
-Save → new version (W2), per-page status `unreviewed → reviewed`, document
-status `approved`. Re-chunk and re-embed **only the touched pages**
-(`PdfPageChunker` boundaries make this cheap).
+Save → new version (W2), per-page status `unreviewed → reviewed` stored in a
+new tenant-aware `kb_document_page_reviews` table (R30/R31), and document
+approval. **`approved` is not a new document status**: approval is the ADR
+0014 promote action — `generation_source` `auto → human` — plus
+`canonical_status = accepted` when the document is canonical; nothing else is
+written. A correction creates a new version through `DocumentIngestor` (the
+full document is re-chunked, as any re-ingest); pages whose text is unchanged
+are served by the embedding cache (`EmbeddingCacheService`, keyed by text
+hash), so no provider call is made for them — cheap, but not "page-only".
+**Flag:** `KB_DIGITIZATION_REVIEW_ENABLED` default-OFF (R43): OFF = routes and
+screen absent (clean 404), tools not registered; ON = the surface above.
 
 **The tier mapping — the elegant part.** A converted page is machine output:
 its document is born in the **`auto` tier** (ADR 0014) and stays there until
@@ -222,12 +275,26 @@ produces the folder the pattern expects — and then more than the pattern.
 
 **What makes it ours, not theirs.**
 - Pages carry frontmatter the agent can *trust differently*: `tier: human|auto`,
-  `evidence: guideline|peer_reviewed|…`, `provenance: internal|external|ocr`,
+  `evidence: guideline|peer_reviewed|…`, `provenance_tier:
+  trusted-internal|untrusted-external|machine-generated` (the ADR 0028
+  authorship value, verbatim) plus `extraction: text-layer|ocr` (the W1
+  extraction origin — two keys, two contracts, never merged),
   `canonical_type: decision|runbook|rejected-approach|…`. **Rejected
   approaches are exported** — an agent reading the folder inherits what the
   team ruled out, not just what it wrote.
 - **ACL-aware** (R33): the export contains only what the exporting user may
-  retrieve, computed through `AccessScopeScope` — never a superset.
+  retrieve, computed through `AccessScopeScope` — never a superset. The
+  export runs async, and a queue worker has no request principal
+  (`AccessScopeScope` applies no restriction for a null user), so the
+  **exporting principal is captured at request authorization** (user id +
+  tenant) and **re-applied in the job** before any query; the CLI requires an
+  explicit, audited `--as-user=` and refuses to run unrestricted.
+- **PII-governed `raw/`**: the artifact is the raw converted Markdown (ADR
+  0020 keeps the vector store, not the disk, as the protected surface). The
+  export therefore renders `raw/` **through the tenant PII policy** — the same
+  surrogates `ChunkRedactor` produces when redaction is active — so the folder
+  never carries text the index itself refuses to hold; a regression test
+  ingests a fixture with a codice fiscale and asserts the export.
 - **Tamper-evident**: `MANIFEST.json` hashes every file and chains them, the
   same primitive as the compliance reports (v8.0 W8). A folder found on a
   laptop can be verified against the server.
@@ -242,11 +309,15 @@ server's versions (W2) and turns edits into **promotion candidates** (ADR
 0003) attributed to the importing user — never direct writes. This is the
 loop Annota does not close.
 
-**Tri-surface.** Artisan `kb:export-wiki` / `kb:import-wiki` · HTTP
-`POST /api/admin/kb/exports` (async, `kb-staging` disk, signed download URL,
-retention = `KB_STAGING_RETENTION_HOURS`) + `GET /exports/{id}` · MCP
-`KbCreateExportTool` / `KbGetExportTool` (the two Annota tools we *do* mirror,
-because export is read-only).
+**Tri-surface.** Artisan `kb:export-wiki --as-user=` / `kb:import-wiki` ·
+HTTP `POST /api/admin/kb/exports` (async, `kb-staging` disk, signed download
+URL) + `GET /exports/{id}` + `POST /api/admin/kb/imports` (candidates only) ·
+MCP `KbCreateExportTool` / `KbGetExportTool` (the two Annota tools we *do*
+mirror, because export is read-only) + `KbImportWikiTool` (yields promotion
+candidates — the propose-only pattern, never a write). Retention is its own
+knob, `KB_WIKI_EXPORT_RETENTION_HOURS` (default 24), swept by
+`kb:prune-wiki-exports`; `KB_STAGING_RETENTION_HOURS` keeps its single job
+(upload staging batches) and is not reused.
 
 **Flags.** `KB_WIKI_EXPORT_ENABLED` default-OFF (R43). Closes the README
 `Future` items *source-retention wiring* and *content export/portability*.
@@ -271,9 +342,23 @@ delegated, budgeted, and has a human reachable. Same story, better ending.
 **Dependency decision — explicit.** AskMyDocs depends on `laravel-flow ^2.5`,
 **not** on `laravel-routines`. Adding it is a deliberate choice, like the IAM
 dependency flagged in ADR 0028 — record it in the ADR, default the target
-**OFF**, and keep the cron path working unchanged (R43 both states). The only
-shipped `RoutineTarget` is `FlowTarget` (in `laravel-flow`): a two-node flow
-calling `kb:wiki-maintain` is enough; no new target type needed.
+**OFF**, and keep the cron path working unchanged (R43 both states).
+`RoutineTarget` is defined by `padosoft/laravel-routines-contracts`;
+`laravel-flow` v2.5 ships **no** adapter for it. The host therefore implements
+one thin adapter, `App\Routines\WikiMaintenanceRoutineTarget implements
+RoutineTarget`, over the same `WikiMaintenanceService` core the cron command
+calls; a generic flow-backed target is recorded as an upstream ask in
+`docs/handoff/` for a padosoft-scoped session.
+
+**No double run.** With `KB_WIKI_ROUTINE_ENABLED=true` the scheduler entry for
+`kb:wiki-maintain` is gated off (the routine owns the nightly run); with the
+flag off, or the package absent, the cron entry is byte-identical to v8.35.
+
+**Tri-surface.** PHP `kb:wiki-routine {status|run}` · HTTP
+`GET /api/admin/kb/wiki-routine` (status, last run, pending questions) +
+`POST /api/admin/kb/wiki-routine/run` · MCP `KbWikiRoutineStatusTool` (read).
+Doc-site: the `auto-wiki` page gains a "Maintenance as a routine" section
+(R45).
 
 **ADR.** **0033 — Auto-Wiki maintenance as a delegated routine.**
 
@@ -295,7 +380,7 @@ Select, COCO, YOLO — stays out (audit §3.5).
 
 ```
 W1 OcrConverter ──┐
-                  ├──► W3 Digitization Review ──► W5 routine (optional after W4)
+                  ├──► W3 Digitization Review ──► W5 routine (after W4)
 W2 Versions ──────┤
                   └──► W4 Export / Import ──────► W6 vision column (optional)
 ```
@@ -323,8 +408,10 @@ branch per R37, RC-tagged per R39, Copilot loop per R36/R40.
 1. A scanned three-page PDF with a table and a figure, uploaded via the admin
    modal **and** arriving as an IMAP attachment, becomes a searchable document
    with the figure referenced in its Markdown, PII redacted before embedding,
-   `provenance: ocr` on every chunk, and an FinOps line item — with
-   `KB_OCR_ENABLED=false` it is a 422 / empty exactly as today (R43).
+   `provenance: ocr` on every chunk, and a FinOps line item — with
+   `KB_OCR_ENABLED=false` an image is the same 422 as today and a scanned PDF
+   yields the same empty document (or the same `RuntimeException` when neither
+   smalot nor `pdftotext` can read it) as today (R43).
 2. Correcting one word on page 2 creates version 2, re-embeds only page 2,
    and the diff endpoint shows exactly that word.
 3. An MCP agent calling `KbProposeTextCorrectionTool` produces a candidate; no
@@ -347,10 +434,15 @@ branch per R37, RC-tagged per R39, Copilot loop per R36/R40.
 
 - [ ] ADR (0029–0033) accepted before code
 - [ ] Core service + PHP Artisan + HTTP + MCP over one core (R44)
-- [ ] Both flag states tested (R43); tenant scope through relationships (R30/R33)
+- [ ] Both flag states tested (R43); tenant scope through relationships (R30/R33).
+      The flags: **W1** `KB_OCR_ENABLED`, **W2** `KB_CONVERSION_ARTIFACTS_ENABLED`,
+      **W3** `KB_DIGITIZATION_REVIEW_ENABLED`, **W4** `KB_WIKI_EXPORT_ENABLED`,
+      **W5** `KB_WIKI_ROUTINE_ENABLED`, **W6** `KB_TABULAR_VISION_ENABLED` — all
+      default-OFF
 - [ ] Playwright real-data E2E for every screen (R12/R13); a11y checklist (R15)
-- [ ] Doc-site page per feature (R45): `documents-and-ocr.mdx`,
-      `digitization-review.mdx`, `wiki-export.mdx`; README feature rows +
-      the comparison table gains an **Annota AI** column
+- [ ] Doc-site page per feature (R45): `documents-and-ocr.mdx` (W1+W2),
+      `digitization-review.mdx` (W3), `wiki-export.mdx` (W4), and a
+      "Maintenance as a routine" section on `auto-wiki.mdx` (W5); README
+      feature rows + the comparison table gains an **Annota AI** column
 - [ ] `CHANGELOG.md` entry per release; `ENTERPRISE-COMPLETENESS-ROADMAP.md`
       R5 (Slides OCR) re-scoped onto `OcrConverter`

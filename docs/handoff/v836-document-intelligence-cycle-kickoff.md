@@ -65,15 +65,22 @@ rendering of audit + plan, and the two-patch `git am` series used to move the co
 
 1. **Scope and order.** W1 + W2 together (v8.36) → W3 (v8.37) → W4 (v8.38) → W5
    (v8.39) → W6 optional (v8.40). W3 needs W1 and W2; W4 needs W2; W6 needs W1.
-   Every workstream ships behind a **default-OFF** flag tested in both states (R43).
+   Every workstream ships behind a **default-OFF** flag tested in both states (R43):
+   W1 `KB_OCR_ENABLED`, W2 `KB_CONVERSION_ARTIFACTS_ENABLED`, W3
+   `KB_DIGITIZATION_REVIEW_ENABLED`, W4 `KB_WIKI_EXPORT_ENABLED`, W5
+   `KB_WIKI_ROUTINE_ENABLED`, W6 `KB_TABULAR_VISION_ENABLED`.
 2. **W1 `OcrConverter`** implements the existing `ConverterInterface`, registered in
    `config/kb-pipeline.php` (the `pluggable-pipeline-registry` skill); drivers
    `docling` / `mistral-ocr` / `vision-llm` / `tesseract` behind `KB_OCR_DRIVER`;
    `KB_OCR_ENABLED=false` by default; `SourceType` gains `image/*` only when the flag
    is on; figures to `{document}/images/fig-{page}-{n}.png`; per-page
-   `ocr_confidence`; ingest provenance `ocr` (ADR 0028 vocabulary); PII redaction
-   **before** embedding through the ADR 0020 seam; FinOps `ocr` category with a cost
-   estimate on the upload modal. **ADR 0029.**
+   `ocr_confidence`; extraction origin `ocr` on the document and chunk metadata,
+   **orthogonal** to the ADR 0028 `provenance_tier` (which stays the connector's
+   authorship declaration — the tool firewall keeps filtering on that); PII
+   redaction **before** embedding through the ADR 0020 seam; FinOps `ocr` category
+   with a cost estimate on the upload modal. Scanned PDFs are routed by a
+   text-layer probe inside `PdfConverter` (the registry resolves by MIME alone),
+   images by `OcrConverter`. **ADR 0029.**
 3. **W2** — see §2: artifacts on the Time Machine, three columns on
    `knowledge_documents` (`version_actor`, `version_reason`, `content_hash`), `diff`
    artifact-aware with reconstruction fallback, restore re-activates the artifact,
@@ -94,11 +101,14 @@ rendering of audit + plan, and the two-patch `git am` series used to move the co
    promotion **candidates**, never direct writes. `KB_WIKI_EXPORT_ENABLED=false` by
    default. **ADR 0032.**
 6. **W5** makes Auto-Wiki maintenance a `padosoft/laravel-routines` routine with a
-   mandate and a pause-and-ask, through `FlowTarget` (the only `RoutineTarget`
-   implementation; `laravel-flow ^2.5` is already a host dependency). This is a
-   **deliberate new dependency** — `padosoft/laravel-routines` v1.2.0,
+   mandate and a pause-and-ask. `RoutineTarget` is defined by
+   `padosoft/laravel-routines-contracts` and `laravel-flow` v2.5 ships no adapter
+   for it, so the host implements a thin `App\Routines\WikiMaintenanceRoutineTarget`
+   over the same maintenance core the cron command calls. This is a **deliberate
+   new dependency** — `padosoft/laravel-routines` v1.2.0,
    `padosoft/laravel-routines-contracts` v1.2.0, admin panel v1.1.0 are published.
-   The cron path stays as it is. **ADR 0033.**
+   With the routine ON the scheduler entry for `kb:wiki-maintain` is gated off (no
+   double run); OFF, the cron path is byte-identical. **ADR 0033.**
 7. **The `human > auto > raw` reranker firewall is untouched.** Nothing in this cycle
    lets machine output outrank human-vouched knowledge.
 8. **Documentation language is English**, community-facing (README, doc-site, ADRs,
@@ -113,9 +123,14 @@ rendering of audit + plan, and the two-patch `git am` series used to move the co
 
 **Branching (R37).** `main` is production. One integration branch per release:
 `feature/v8.36`, `feature/v8.37`, `feature/v8.38`, `feature/v8.39`, `feature/v8.40`.
-Sub-branches `feature/v8.36/W1`, `feature/v8.36/W2` target the integration branch.
-Merge to `main` once per release with the GA tag. The planning branch this file is on
-is a **docs-only PR to `main`** (the convention of #470 and the earlier audits).
+Sub-branches target the integration branch and are named with a **dash**,
+`feature/v8.36-W1`, `feature/v8.36-W2` (not `feature/v8.36/W1`: git refuses a ref
+that is both a file and a directory once `feature/v8.36` exists — the repository's
+own precedent is `feature/v8.30-W1-fullscreenwidget`). This is the `feature/vX.Y`
+convention of the `branching-strategy-feature-vx` skill applied to the v8 line, as
+every cycle since v8.20 has done. Merge to `main` once per release with the GA tag.
+The planning branch this file is on is a **docs-only PR to `main`** (the convention
+of #470 and the earlier audits).
 
 **Tags (R39).** `vX.Y.0-rcN` at every Wn closure, at the closure SHA, after the closure
 STATUS doc (`docs/v4-platform/STATUS-{date}-v8{XY}-w{n}.md`) and the README
@@ -139,17 +154,20 @@ navigation in `docs-site/docs.json`; Playwright real-data E2E for every screen
 
 - [ ] 0. PR of this branch → `main` (docs only) · loop · merge.
 - [ ] 1. `feature/v8.36` from `main`. ADR 0029 + ADR 0030 accepted (docs PR first).
-- [ ] 2. `feature/v8.36/W1` — `OcrConverter` + drivers + `image/*` + figures + confidence
-      + provenance + PII seam + FinOps `ocr` + upload estimate + tri-surface + doc page.
-- [ ] 3. `feature/v8.36/W2` — `source_retention`/`markdown_path` wired in both ingest
-      paths, three columns, artifact-aware `diff`/`restore`, `kb:doc-versions`,
-      `KbDocumentVersionsTool`, doc page. (W1 and W2 in parallel is fine.)
+- [ ] 2. `feature/v8.36-W1` — `OcrConverter` + drivers + `image/*` + figures + confidence
+      + extraction origin + PII seam + FinOps `ocr` + upload estimate + tri-surface + doc page.
+- [ ] 3. `feature/v8.36-W2` — `source_retention`/`markdown_path` wired in the one
+      persistence core both ingest paths share (`ParseMarkdownStep` → `PersistChunksStep`
+      → `DocumentIngestor::persistDrafts`, and `ingest()` → `persistFromDrafts`; there is
+      no `ConvertDocumentStep`), three columns (+ mirrored test migration),
+      artifact-aware `diff`/`restore`, `kb:doc-versions`, `KbDocumentVersionsTool`,
+      doc page. (W1 and W2 in parallel is fine.)
 - [ ] 4. Closure STATUS doc + README refresh + `v8.36.0-rc1` … then GA `v8.36.0`
       (`feature/v8.36 → main`).
-- [ ] 5. `feature/v8.37` — W3 (ADR 0031 first). GA `v8.37.0`.
-- [ ] 6. `feature/v8.38` — W4 (ADR 0032 first). GA `v8.38.0`.
-- [ ] 7. `feature/v8.39` — W5 (ADR 0033 first; `composer require padosoft/laravel-routines`
-      in its own commit). GA `v8.39.0`.
+- [ ] 5. `feature/v8.37` — W3 on `feature/v8.37-W3` (ADR 0031 first). GA `v8.37.0`.
+- [ ] 6. `feature/v8.38` — W4 on `feature/v8.38-W4` (ADR 0032 first). GA `v8.38.0`.
+- [ ] 7. `feature/v8.39` — W5 on `feature/v8.39-W5` (ADR 0033 first; `composer require
+      padosoft/laravel-routines` in its own commit). GA `v8.39.0`.
 - [ ] 8. `feature/v8.40` — W6 if still wanted; otherwise close it in the plan as
       “deferred” with one sentence of why.
 - [ ] 9. Final: README roadmap row flips to ✅ shipped with PR numbers; audit §2.1
@@ -208,13 +226,14 @@ navigation in `docs-site/docs.json`; Playwright real-data E2E for every screen
 | Wn | Integration branch | Sub-branch | PR | HEAD | Tag | State |
 |---|---|---|---|---|---|---|
 | plan | `main` | `claude/plan-annota-gap-document-intelligence` | — | — | — | not opened |
-| W1 | `feature/v8.36` | `feature/v8.36/W1` | — | — | — | not started |
-| W2 | `feature/v8.36` | `feature/v8.36/W2` | — | — | — | not started |
+| ADR 0029+0030 | `feature/v8.36` | `feature/v8.36-adr-0029-0030` | — | — | — | not started |
+| W1 | `feature/v8.36` | `feature/v8.36-W1` | — | — | — | not started |
+| W2 | `feature/v8.36` | `feature/v8.36-W2` | — | — | — | not started |
 | v8.36 GA | `main` | — | — | — | — | — |
-| W3 | `feature/v8.37` | `feature/v8.37/W3` | — | — | — | not started |
-| W4 | `feature/v8.38` | `feature/v8.38/W4` | — | — | — | not started |
-| W5 | `feature/v8.39` | `feature/v8.39/W5` | — | — | — | not started |
-| W6 | `feature/v8.40` | `feature/v8.40/W6` | — | — | — | optional |
+| W3 | `feature/v8.37` | `feature/v8.37-W3` | — | — | — | not started |
+| W4 | `feature/v8.38` | `feature/v8.38-W4` | — | — | — | not started |
+| W5 | `feature/v8.39` | `feature/v8.39-W5` | — | — | — | not started |
+| W6 | `feature/v8.40` | `feature/v8.40-W6` | — | — | — | optional |
 
 Last updated: 2026-09-11 (hand-off).
 
@@ -239,8 +258,8 @@ Start here, in this order:
 2. If that branch has no PR to main yet, open one (docs-only planning PR, reviewer
    copilot-pull-request-reviewer), run the loop, merge. If it is already merged, skip.
 3. Create feature/v8.36 from main. Write and merge ADR 0029 and ADR 0030 first (verify
-   0028 is still the last ADR), then start W1 and W2 in parallel on feature/v8.36/W1 and
-   feature/v8.36/W2.
+   0028 is still the last ADR), then start W1 and W2 in parallel on feature/v8.36-W1 and
+   feature/v8.36-W2 (dash: git refuses a ref under an existing branch name).
 4. Follow the step list in §4 and the checkpoint table in §7 of the hand-off; update the
    table after every merged PR with branch, PR number, HEAD sha, tag, absolute date.
 

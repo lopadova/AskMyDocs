@@ -6,8 +6,10 @@ data-preparation side, to decide what the v8.36+ cycle should build.
 
 **Method**:
 - AskMyDocs column grounded by `git grep` on `origin/main` at **v8.35.0**
-  (`51dd1b3`). Every ✅ cell carries a file-path citation; every ❌ carries
-  the grep that came back empty and what would be needed.
+  (`51dd1b3`). Every ✅ / ⚠️ cell in §2.1 carries a file-path citation and
+  every ❌ carries the grep that came back empty and what would be needed;
+  §2.2 (where we are ahead) cites the route, module, ADR or package that
+  ships the capability rather than a file path per cell.
 - Annota AI column grounded by `WebFetch` against the official product,
   pricing and trust pages, plus the **full transcript of the launch video**
   (Simone Rizzo, YouTube `S4kd1IRSccY`, supplied verbatim by the product
@@ -111,7 +113,7 @@ Legend: ✅ shipped · ⚠️ partial · ❌ absent · 🔜 announced, not shipp
 | Eval gate in CI + nightly LLM-as-judge + retrieval metrics | ✅ (`padosoft/eval-harness`) | ❌ |
 | Spend governance (budgets, policies, chargeback, forecast) | ✅ (`laravel-ai-finops`) | ⚠️ credits |
 | Audit trail, tamper-evident compliance reports | ✅ | 🔜 |
-| Delegated identity, mandates, scheduled agents that pause to ask | ✅ (ecosystem: `laravel-iam-agents`, `laravel-routines`) | ❌ |
+| Delegated identity, mandates, scheduled agents that pause to ask | ⚠️ ecosystem packages (`laravel-iam-agents`, `laravel-routines`) — published, **not yet a host dependency** (neither in `composer.json` at v8.35.0); W5 wires the first one | ❌ |
 | Licence / hosting | MIT, self-host anywhere | SaaS; on-prem only on Enterprise |
 
 ---
