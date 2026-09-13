@@ -171,10 +171,19 @@ would pass the cap and be posted to a third party. So an uncountable
 document is treated as uncountable: for a **remote** driver the service
 refuses it **before egress** with a third machine-readable reason,
 `pages_uncountable`, and the estimate reports the same refusal
-(`would_ocr = false`, `pages_exact = false`); a **local** driver may still
-run on it — nothing leaves the tenant, and `KB_OCR_MAX_BYTES` bounds the
-work — and the estimate then shows the floor with `pages_exact = false` so
-the modal never presents it as an exact price. Deny-by-default tests cover
+(`would_ocr = false`, `pages_exact = false`); a **local** driver runs on it
+only where the work is **bounded by construction** — a byte cap is not such
+a bound, since a small compressed file can still hold an unbounded page
+count or expensive image streams. The drivers that rasterise page by page
+(`tesseract`, `vision-llm`) qualify: `pdftoppm -f 1 -l KB_OCR_MAX_PAGES`
+renders at most the cap whatever the object table claims, and each page
+then runs under the driver's own per-page timeout, so CPU, memory and time
+are capped by the same numbers the verified path uses. A whole-file engine
+(`docling`) cannot be told the size of what it is handed and is refused
+like a remote one. The contract carries the fact
+(`OcrDriver::boundsWorkWithoutPageCount()`), the service and the estimate
+consult it, and where the run is allowed the estimate shows the floor with
+`pages_exact = false` so the modal never presents it as an exact price. Deny-by-default tests cover
 the knob off, a host outside the list, a non-JSON response, both overflows
 and the uncountable-to-remote refusal.
 
@@ -195,7 +204,16 @@ vector store, not the disk, as the protected surface): under the source's
 ACL, purged with it by the deleter's reference gate, never the redacted
 text (that lives only in the chunks). A deployment that must not hold raw
 OCR text beside its scans sets `KB_OCR_REUSE_ENABLED=false` — every ingest
-then runs the driver and records nothing; both states are tested (R43).
+then runs the driver and records nothing **beside the scan**; both states
+are tested (R43). That knob governs the `.ocr/` run only. Whether the
+converted Markdown of an OCR'd document is kept as a *version artifact* is
+ADR 0030's decision (`KB_CONVERSION_ARTIFACTS_ENABLED` under the effective
+`source_retention` mode), and the two compose without surprises: a
+deployment that must retain **no** raw OCR text on disk sets reuse off
+**and** either leaves artifacts off or runs `reference_only`; one that keeps
+artifacts on has, by that choice, accepted raw converted text under the
+document's own controls (ADR 0030 §3), whatever the reuse knob says. The
+chunks stay the only redacted form in every combination.
 
 The `.ocr/` directory is **retention-aware**, like every other local copy
 (ADR 0014, ADR 0030 §3): it is written only when the effective

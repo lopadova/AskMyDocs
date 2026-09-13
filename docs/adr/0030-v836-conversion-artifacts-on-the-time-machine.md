@@ -151,11 +151,13 @@ here rather than assumed:
   the W4 export, which passes every artifact through the tenant PII policy
   before it leaves (ADR 0032).
 - **Erasure.** The artifact goes with its row: `DocumentDeleter`'s hard
-  delete removes it, `kb:prune-archived-versions` removes it with each
-  pruned version and sweeps orphans (§8), and a subject erasure that hard
-  deletes the document (ADR 0023) removes the artifact with the source.
-  Crypto-shred (ADR 0020 D6) targets the vault, which holds nothing about
-  the artifact; the artifact is removed by deletion, not by shredding.
+  delete removes it, and `kb:prune-archived-versions` removes it with each
+  pruned version and sweeps orphans (§8). There is no other erasure path —
+  every flow that hard-deletes a document goes through `DocumentDeleter`,
+  so every one of them removes the artifact. Crypto-shred (ADR 0020 D6)
+  targets the vault, which holds nothing about the artifact; the artifact
+  is removed by deletion, never by shredding, and a vault shred must not be
+  read as erasing stored Markdown.
 - **Retention.** No artifact is written in `reference_only`; `markdown_only`
   replaces the original binary with the artifact rather than adding to it.
 
@@ -169,7 +171,7 @@ names the run whose images it references.
 |---|---|---|
 | `version_actor` | `string(191) null` | Who created this version: `system:ingest`, `system:ocr`, `system:autowiki`, `user:{id}`, `agent:{id}` (when an agent acts for a user through `DelegationContext`; today the authenticated principal yields `user:{id}`). **Derived server-side, never taken from the client**: `version_actor` is a host-only metadata key, stripped at the HTTP ingest and connector boundaries by the same `OcrService::stripTrustedOnlyKeys()` gate that already strips `dry_run` / `ocr.*` (ADR 0029), and then set by the trusted caller — `user:{id}` from the authenticated principal in `KbIngestController` and in `restore`, `system:ingest` for the CLI walker and the connector bridge, `system:ocr` for a `kb:ocr` re-run; the ingestor falls back to `system:ingest` when no trusted caller set it. A caller who sends `version_actor` in `documents.*.metadata` cannot forge a `user:{id}` or `system:*` identity; a negative test sends one and asserts the stored actor is the principal's. |
 | `version_reason` | `string(1024) null` | Free text supplied by the caller: `re-ingest`, `ocr`, `correction: page 2`, `restore of #123`. |
-| `content_hash` | `string(64) null` | SHA-256 of the stored artifact bytes. Equals `document_hash` today (both hash the converted markdown) and is kept separate on purpose: W3 corrections change the artifact without re-running conversion, and the export manifest (W4) hashes the artifact, not the conversion. |
+| `content_hash` | `string(64) null` | SHA-256 of the stored artifact bytes, recorded at the moment they are written. For every ingested version it equals `document_hash` **by construction** (both hash the same Markdown; a correction is an ordinary new version, §7), and it is null on rows without an artifact. It exists as its own column so a reader can verify the stored bytes against the row without re-hashing the source — the integrity check the backfill (§3), the prune (§8) and the export manifest (W4) rely on — not to diverge from `document_hash`. |
 
 All three are nullable so every existing row is a valid "unknown actor"
 version; a backfill is deliberately not run (an invented actor is worse than
@@ -208,19 +210,32 @@ before.
 
 W3 will create a version from a saved correction. It does so by calling
 `DocumentIngestor` with the corrected markdown, `version_actor = user:{id}`,
-`version_reason = "correction: page N"`; the document is re-chunked and
-re-embedded as a whole, and the cost of the unchanged pages is bounded by the
-**embedding cache** (`embedding_cache`, keyed on text hash), not by a partial
-update — the `## Page N` boundaries make the untouched chunks byte-identical,
-so their embeddings are cache hits. This ADR fixes the contract; W3 implements
-the caller.
+`version_reason = "correction: page N"`: an **ordinary new version**, with
+`document_hash = version_hash = content_hash = sha256(corrected markdown)`,
+its own artifact and its own row — the original conversion stays in the
+family as the archived version it always was, so the Time Machine diffs the
+correction against it faithfully. Nothing preserves the original document
+hash across a correction, and nothing needs to: the hashes name bytes, and
+the bytes changed. The document is re-chunked and re-embedded as a whole,
+and the cost of the unchanged pages is bounded by the **embedding cache**
+(`embedding_cache`, keyed on text hash), not by a partial update — the
+`## Page N` boundaries make the untouched chunks byte-identical, so their
+embeddings are cache hits. This ADR fixes the contract; W3 implements the
+caller.
 
 ### 8. Retention and erasure cover the artifact and the OCR assets
 
 `kb:prune-archived-versions` deletes the artifact with the row it prunes (R4
-return checked, logged, never silent). `DocumentDeleter`'s hard delete removes
-the artifact and, through the same *last referencing row* gate, the
-`{source_path}.ocr/` directory (ADR 0029 §6). ADR 0020 D6 crypto-shred applies
+return checked, logged, never silent). The prune does **not** go through
+`DocumentDeleter` — it hard-deletes archived rows by query — so it carries
+its own OCR cleanup: each pruned row's recorded run
+(`metadata.converter.ocr.run`, the `{source_path}.ocr/{run}/` directory) is
+purged when no remaining row, live, archived or soft-deleted, of any tenant
+sharing that source key still references the same run; the `.ocr/` tree as a
+whole still goes with the *last referencing row* of the source, through
+`DocumentDeleter`'s hard delete (ADR 0029 §6). `DocumentDeleter`'s hard
+delete removes the artifact of the row it deletes unconditionally: each row
+owns its own artifact, unlike the shared source file. ADR 0020 D6 crypto-shred applies
 unchanged: the artifact is raw markdown outside the AI boundary and the vault
 is the only link between a surrogate and a person — shredding the vault does
 not touch the artifact, and does not need to: the artifact is erased by
@@ -251,8 +266,11 @@ table below.
   it below today's footprint for binary sources.
 - Existing rows have no artifact and keep diffing by reconstruction until
   their next re-ingest. No migration rewrites history.
-- `content_hash` and `document_hash` are equal until the first correction;
-  a reader that assumes they always are will be wrong from v8.37 on.
+- `content_hash` equals `document_hash` on every ingested version by
+  construction (§4, §7) and is null where no artifact is stored; its value
+  is the integrity check on the stored bytes, not a second identity —
+  a reader that treats it as a version id will be wrong; a reader that
+  compares it to the bytes on disk is doing exactly what it is for.
 
 ## Surfaces (R44)
 

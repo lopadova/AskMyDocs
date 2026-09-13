@@ -147,7 +147,9 @@ flowchart LR
   Markdown becomes a stored artifact written in *both* ingest paths through
   the one persistence core, three nullable columns record who created a
   version and why, `diff` prefers artifacts and falls back to reconstruction
-  (both branches tested), and retention and crypto-shred cover the artifact.
+  (both branches tested), and retention and deletion cover the artifact
+  (crypto-shred targets the vault, which holds nothing about it — a vault shred
+  never erases stored Markdown; deletion does).
   No versions table is added: the family *is* the version model, and the
   narrower gap the audit found is closed without rebuilding what v8.7 shipped.
 
