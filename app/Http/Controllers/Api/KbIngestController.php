@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api;
 
+use App\Services\Kb\Ocr\OcrService;
 use App\Jobs\IngestDocumentJob;
+use App\Support\Kb\FileTypeSniffer;
 use App\Support\Kb\SourceType;
 use App\Support\KbPath;
 use Illuminate\Http\JsonResponse;
@@ -150,16 +152,30 @@ class KbIngestController extends Controller
         } catch (\InvalidArgumentException $e) {
             throw ValidationException::withMessages(['documents' => [$e->getMessage()]]);
         }
+        // v8.36 / ADR 0029 §6 — the converters' own output (`{source}.ocr/`,
+        // `.artifacts/`) is never a source: accepting such a path would let a
+        // client overwrite a recorded run or an artifact and re-ingest it.
+        if (KbPath::isGeneratedAsset($sourcePath)) {
+            throw ValidationException::withMessages([
+                'documents' => [sprintf('source_path "%s" is inside a generated-asset directory (.ocr/ or .artifacts/) and cannot be ingested as a source.', $sourcePath)],
+            ]);
+        }
 
-        $mimeType = trim((string) ($doc['mime_type'] ?? 'text/markdown'));
+        // Normalised once (lower-case, parameters dropped): what is validated
+        // is what is persisted and what the converter registry resolves on.
+        $mimeType = SourceType::normaliseMime((string) ($doc['mime_type'] ?? 'text/markdown'));
         $sourceType = SourceType::fromMime($mimeType);
-        if ($sourceType === SourceType::UNKNOWN) {
+        // v8.36 / ADR 0029 — images are accepted only when OCR is on (R43):
+        // with the flag off an image is refused with the SAME 422 as before,
+        // and the "Supported:" list does not mention it.
+        $ocrEnabled = (bool) config('kb.ocr.enabled', false);
+        if ($sourceType === SourceType::UNKNOWN || ($sourceType === SourceType::IMAGE && ! $ocrEnabled)) {
             throw ValidationException::withMessages([
                 'documents' => [sprintf(
                     'Unsupported mime_type "%s" for source_path "%s". Supported: %s.',
                     $mimeType,
                     $sourcePath,
-                    implode(', ', SourceType::supportedMimes()),
+                    implode(', ', SourceType::supportedMimes($ocrEnabled)),
                 )],
             ]);
         }
@@ -172,7 +188,8 @@ class KbIngestController extends Controller
         // review). PHASE 2 re-decodes one document at a time at write time,
         // so peak memory stays bounded to a single decoded document.
         $isBinary = $sourceType->isBinary();
-        if ($isBinary && base64_decode((string) $doc['content'], true) === false) {
+        $decoded = $isBinary ? base64_decode((string) $doc['content'], true) : null;
+        if ($isBinary && $decoded === false) {
             throw ValidationException::withMessages([
                 'documents' => [sprintf(
                     'documents.*.content for binary mime_type "%s" must be valid base64 (source_path: %s).',
@@ -181,6 +198,24 @@ class KbIngestController extends Controller
                 )],
             ]);
         }
+        // v8.36 / ADR 0029 §2 — an image is verified from its bytes, exactly as
+        // the multipart upload does: the declared MIME is a label, the magic
+        // bytes are the fact. Anything that is not a PNG/JPEG/TIFF/WebP is
+        // refused, and the MIME that travels is the one the bytes carry.
+        if ($sourceType === SourceType::IMAGE) {
+            $sniffed = FileTypeSniffer::imageMimeOf(substr((string) $decoded, 0, 16));
+            if ($sniffed === null) {
+                throw ValidationException::withMessages([
+                    'documents' => [sprintf(
+                        'documents.*.content declared as %s for source_path "%s" is not a PNG, JPEG, TIFF or WebP image.',
+                        $mimeType,
+                        $sourcePath,
+                    )],
+                ]);
+            }
+            $mimeType = $sniffed;
+        }
+        unset($decoded); // PHASE 2 re-decodes one document at a time at write time
 
         return [
             'project_key' => $projectKey,
@@ -197,7 +232,9 @@ class KbIngestController extends Controller
                 ? $sourcePath
                 : KbPath::normalize($prefix.'/'.$sourcePath),
             'title' => $doc['title'] ?? null,
-            'metadata' => is_array($doc['metadata'] ?? null) ? $doc['metadata'] : [],
+            // v8.36 — `ocr.force` / `ocr.rerun_lock` / `dry_run` are host-only
+            // controls (a forced run is billed): never accepted from a client.
+            'metadata' => OcrService::stripTrustedOnlyKeys(is_array($doc['metadata'] ?? null) ? $doc['metadata'] : []),
         ];
     }
 }

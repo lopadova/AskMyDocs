@@ -212,8 +212,9 @@ class KbIngestFolderCommand extends Command
     private function parsePatterns(string $raw): array
     {
         if ($raw === '') {
-            // Default to every supported source-type extension.
-            return SourceType::knownExtensions();
+            // Default to every supported source-type extension (images only
+            // when OCR is on — v8.36 / ADR 0029, R43).
+            return SourceType::knownExtensions((bool) config('kb.ocr.enabled', false));
         }
         $parts = array_filter(array_map('trim', explode(',', $raw)));
         $extensions = [];

@@ -3,6 +3,7 @@ import { KB_PROJECTS_KEY, KB_TREE_KEY } from '../kb-tree.api';
 import {
     isTerminalBatch,
     kbUploadApi,
+    type OcrEstimate,
     type StageInput,
     type UploadBatchResponse,
 } from './kb-upload.api';
@@ -67,5 +68,20 @@ export function useBatchProgress(batchId: string | null, poll: boolean) {
         },
         staleTime: 0,
         retry: false,
+    });
+}
+
+/**
+ * v8.36 — OCR cost estimate for the staged batch (review phase only). Read
+ * once per batch id; the modal re-reads when a staged item is removed by
+ * passing a bumped `revision`. Errors surface through the result object so
+ * the modal can render them (R14) — never swallowed into a `null`.
+ */
+export function useOcrEstimate(batchId: string | null, enabled: boolean, revision = 0) {
+    return useQuery<OcrEstimate>({
+        queryKey: [...KB_UPLOAD_KEY, batchId ?? 'idle', 'ocr-estimate', revision],
+        queryFn: () => kbUploadApi.estimate(batchId as string),
+        enabled: batchId !== null && enabled,
+        staleTime: 30_000,
     });
 }

@@ -5,6 +5,10 @@ declare(strict_types=1);
 namespace App\Services\Kb\Converters;
 
 use App\Services\Kb\Contracts\ConverterInterface;
+use App\Services\Kb\Ocr\OcrService;
+use App\Services\Kb\Ocr\OcrLimitExceededException;
+use App\Services\Kb\Ocr\PdfTextFallback;
+use App\Services\Kb\Ocr\PdfTextLayerProbe;
 use App\Services\Kb\Pipeline\ConvertedDocument;
 use App\Services\Kb\Pipeline\SourceDocument;
 use Smalot\PdfParser\Parser;
@@ -31,9 +35,32 @@ use Throwable;
  * Per LESSONS T1.3 rule: `extractionMeta['filename'] = basename($doc->sourcePath)`
  * so the downstream chunker (and admin observability surfaces) attribute
  * chunks back to the source file.
+ *
+ * v8.36 / ADR 0029 — OCR fallback for scanned PDFs. The pipeline registry
+ * resolves converters by MIME alone, so "is there a text layer?" cannot be
+ * decided in `supports()`; it is decided HERE, after the text-layer probe:
+ * when `kb.ocr.enabled` is true and the probe finds no text (or the ingest
+ * metadata carries `ocr.force`), conversion is delegated to the same
+ * {@see OcrService} the image converter uses. `extractionMeta.text_layer_probe`
+ * records the verdict either way. With the flag off this class takes the
+ * v8.35 path (smalot, then the pdftotext fallback) — with one deliberate
+ * change in both states: a pdftotext run past `KB_PDFTOTEXT_TIMEOUT` is the
+ * deterministic `run_too_long` refusal (never retried, never handed to OCR)
+ * instead of the generic error the job used to retry.
  */
 final class PdfConverter implements ConverterInterface
 {
+    /**
+     * Nullable so the pure unit tests (and any legacy direct construction)
+     * keep working; the container always injects it.
+     */
+    private ?PdfTextFallback $pdfTextFallback = null;
+
+    public function __construct(private readonly ?OcrService $ocr = null, ?PdfTextFallback $pdfTextFallback = null)
+    {
+        $this->pdfTextFallback = $pdfTextFallback;
+    }
+
     public function name(): string
     {
         return 'pdf-converter';
@@ -46,15 +73,39 @@ final class PdfConverter implements ConverterInterface
 
     public function convert(SourceDocument $doc): ConvertedDocument
     {
+        // Null only when OCR is disabled; with OCR on the route always
+        // carries the probe verdict, so the meta below never reads a null.
+        $ocrRoute = $this->ocrRoute($doc);
+        if ($ocrRoute !== null && $ocrRoute['reason'] !== null) {
+            $converted = $this->ocr->convert($doc, $this->name(), reason: $ocrRoute['reason']);
+
+            return new ConvertedDocument(
+                markdown: $converted->markdown,
+                mediaItems: $converted->mediaItems,
+                extractionMeta: array_merge($converted->extractionMeta, ['text_layer_probe' => $ocrRoute['probe']]),
+                sourceMimeType: $converted->sourceMimeType,
+            );
+        }
+
         $start = hrtime(true);
         $strategy = 'smalot';
+        // OFF path: `$ocrRoute` is null and nothing below reads it — the
+        // pdftotext pages exist only when an `unreadable` probe already ran
+        // the fallback and found text (OCR on), and are read through the
+        // null-safe local below.
+        $pdftotextPages = $ocrRoute !== null && isset($ocrRoute['pages']) && is_array($ocrRoute['pages']) ? $ocrRoute['pages'] : null;
 
         try {
-            $pages = $this->extractWithSmalot($doc->bytes);
+            // An `unreadable` probe already ran pdftotext and found text:
+            // keep those pages instead of failing smalot a second time.
+            $pages = $pdftotextPages ?? $this->extractWithSmalot($doc->bytes);
+            $strategy = $pdftotextPages !== null ? 'pdftotext' : 'smalot';
         } catch (Throwable $smalotError) {
             try {
                 $pages = $this->extractWithPdftotext($doc->bytes);
                 $strategy = 'pdftotext';
+            } catch (OcrLimitExceededException $refused) {
+                throw $refused;
             } catch (Throwable $fallbackError) {
                 throw new \RuntimeException(sprintf(
                     'PdfConverter could not extract text from "%s": smalot failed (%s) and pdftotext fallback failed (%s).',
@@ -72,16 +123,77 @@ final class PdfConverter implements ConverterInterface
         return new ConvertedDocument(
             markdown: $markdown,
             mediaItems: [],
-            extractionMeta: [
+            extractionMeta: array_merge([
                 'converter' => $this->name(),
                 'duration_ms' => $durationMs,
                 'page_count' => count($pages),
                 'extraction_strategy' => $strategy,
                 'source_path' => $doc->sourcePath,
                 'filename' => $filename,
-            ],
+            ], $ocrRoute !== null ? ['text_layer_probe' => $ocrRoute['probe']] : []),
             sourceMimeType: $doc->mimeType,
         );
+    }
+
+    /**
+     * Decide whether this PDF goes to OCR. Null only when OCR is disabled.
+     * With OCR on the array is always returned: `reason === null` = the
+     * text-layer path (a confident `present` verdict, or pages the pdftotext
+     * fallback already produced when the probe's parser could not read the
+     * file — a parser failure is NOT "no text", and must never be billed as
+     * a scan); a non-null `reason` = OCR. `probe` always carries the verdict.
+     *
+     * `pages` carries the pdftotext pages the text path reuses; for a
+     * `mixed` verdict `scanned_pages` names the scanned page numbers.
+     *
+     * @return array{reason: ?string, probe: string, pages?: list<string>, scanned_pages?: list<int>}|null
+     */
+    private function ocrRoute(SourceDocument $doc): ?array
+    {
+        if (! $this->ocrEnabled()) {
+            return null;
+        }
+        if (OcrService::isForced($doc->metadata)) {
+            return ['reason' => 'forced', 'probe' => 'skipped'];
+        }
+        $probe = $this->ocr->probe()->probe($doc->bytes);
+        if ($probe['verdict'] === PdfTextLayerProbe::PRESENT) {
+            return ['reason' => null, 'probe' => PdfTextLayerProbe::PRESENT];
+        }
+        if ($probe['verdict'] === PdfTextLayerProbe::MIXED) {
+            // Text pages AND scanned pages (a typed cover over scanned body
+            // pages): the whole document goes to OCR so no page is lost — the
+            // text pages are OCR'd too; the probe names the scanned ones.
+            return ['reason' => 'mixed_pdf', 'probe' => PdfTextLayerProbe::MIXED, 'scanned_pages' => $probe['scanned_pages']];
+        }
+        if ($probe['verdict'] === PdfTextLayerProbe::UNREADABLE) {
+            try {
+                $pages = $this->extractWithPdftotext($doc->bytes);
+            } catch (OcrLimitExceededException $refused) {
+                // `run_too_long`: a deterministic refusal of the document,
+                // never a silent hand-off to a billed OCR run (R14).
+                throw $refused;
+            } catch (Throwable) {
+                return ['reason' => 'scanned_pdf', 'probe' => PdfTextLayerProbe::UNREADABLE.':pdftotext_failed'];
+            }
+            if ($this->hasText($pages)) {
+                return ['reason' => null, 'probe' => PdfTextLayerProbe::UNREADABLE.':pdftotext', 'pages' => $pages];
+            }
+
+            return ['reason' => 'scanned_pdf', 'probe' => PdfTextLayerProbe::UNREADABLE.':pdftotext_empty'];
+        }
+
+        return ['reason' => 'scanned_pdf', 'probe' => $probe['verdict']];
+    }
+
+    private function hasText(array $pages): bool
+    {
+        return $this->fallback()->hasText($pages);
+    }
+
+    private function ocrEnabled(): bool
+    {
+        return $this->ocr !== null && $this->ocr->enabled();
     }
 
     /**
@@ -103,9 +215,8 @@ final class PdfConverter implements ConverterInterface
     }
 
     /**
-     * Fallback to the `pdftotext` binary from Poppler. The `\f` form-feed
-     * character separates pages in pdftotext's output, so we split on it
-     * to reconstruct a per-page array matching the smalot shape.
+     * The `pdftotext` fallback — ONE implementation, shared with the cost
+     * estimate so both answer "does this unreadable PDF have text?" alike.
      *
      * @return list<string>
      *
@@ -116,38 +227,12 @@ final class PdfConverter implements ConverterInterface
      */
     private function extractWithPdftotext(string $bytes): array
     {
-        $tmp = tempnam(sys_get_temp_dir(), 'kb_pdf_');
-        if ($tmp === false || file_put_contents($tmp, $bytes) === false) {
-            throw new \RuntimeException('Failed to write temporary PDF file for pdftotext fallback');
-        }
+        return $this->fallback()->extract($bytes);
+    }
 
-        try {
-            $process = new Process(['pdftotext', '-layout', '-enc', 'UTF-8', $tmp, '-']);
-            $process->mustRun();
-            $text = $process->getOutput();
-            $pages = preg_split("/\f/", $text);
-            if ($pages === false || $pages === []) {
-                return [$text];
-            }
-            // pdftotext frequently emits a trailing form-feed after the last
-            // page, which can surface here as one or more trailing empty OR
-            // whitespace-only elements (the binary often appends `\n` or
-            // spaces after the form-feed too). Loop-pop ALL such phantom
-            // trailing pages so page_count and later page numbering stay
-            // aligned with the real page count.
-            while ($pages !== [] && trim((string) end($pages)) === '') {
-                array_pop($pages);
-            }
-            return $pages === [] ? [$text] : $pages;
-        } finally {
-            // Per CLAUDE.md R7 (no @-silenced errors): explicit guard +
-            // unsuppressed unlink. tempnam() always returns a writable path,
-            // so a missing file at this point would only happen if another
-            // process raced us — guarding with is_file() handles that.
-            if (is_file($tmp)) {
-                unlink($tmp);
-            }
-        }
+    private function fallback(): PdfTextFallback
+    {
+        return $this->pdfTextFallback ??= new PdfTextFallback();
     }
 
     /**

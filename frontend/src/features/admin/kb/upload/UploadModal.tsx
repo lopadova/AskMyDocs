@@ -1,5 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { useAuthStore } from '../../../../lib/auth-store';
 import { UploadDropzone } from './UploadDropzone';
+import { OcrEstimateLine } from './OcrEstimateLine';
 import {
     isTerminalBatch,
     type BatchItemStatus,
@@ -10,6 +12,7 @@ import {
     useBatchProgress,
     useCancelBatch,
     useCommitBatch,
+    useOcrEstimate,
     useRemoveStagedItem,
     useStageBatch,
 } from './kb-upload.hooks';
@@ -24,7 +27,18 @@ import {
  * errors next to context).
  */
 
-const ACCEPT = '.md,.markdown,.txt,.pdf,.docx';
+/**
+ * v8.36 / R18 — the picker's `accept` derives from the extensions the server
+ * delivered on `/api/auth/me` (`SourceType::knownExtensions()`: images only
+ * while KB_OCR_ENABLED is on, R43), never from a second literal list here.
+ * Until they arrive the picker is unfiltered: acceptance is the server's
+ * call anyway (StageKbUploadRequest answers 422 and the error surfaces in
+ * the DOM, R14).
+ */
+export function acceptAttribute(extensions: readonly string[]): string | undefined {
+    const cleaned = extensions.map((e) => e.trim().replace(/^\./, '').toLowerCase()).filter((e) => e !== '');
+    return cleaned.length === 0 ? undefined : cleaned.map((e) => `.${e}`).join(',');
+}
 
 type Phase = 'selecting' | 'staging' | 'review' | 'committing' | 'progress' | 'done' | 'error';
 
@@ -49,6 +63,7 @@ function errMessage(err: unknown): string {
 }
 
 export function UploadModal({ seed, defaultProject, projectOptions, onClose, onCommitted }: UploadModalProps): ReactNode {
+    const accept = useAuthStore((s) => acceptAttribute(s.kbUploadAcceptedExtensions));
     const [phase, setPhase] = useState<Phase>('selecting');
     const [projectKey, setProjectKey] = useState(seed?.projectKey ?? defaultProject ?? '');
     const [subPath, setSubPath] = useState(seed?.subPath ?? '');
@@ -56,6 +71,9 @@ export function UploadModal({ seed, defaultProject, projectOptions, onClose, onC
     const [batchId, setBatchId] = useState<string | null>(null);
     const [staged, setStaged] = useState<UploadBatchResponse | null>(null);
     const [actionError, setActionError] = useState<string | null>(null);
+    // Bumped whenever a staged item is removed so the OCR estimate re-reads
+    // the batch it describes (R17 — the cached copy follows the source).
+    const [estimateRevision, setEstimateRevision] = useState(0);
 
     const stageMut = useStageBatch();
     const commitMut = useCommitBatch();
@@ -64,6 +82,8 @@ export function UploadModal({ seed, defaultProject, projectOptions, onClose, onC
 
     const poll = phase === 'committing' || phase === 'progress';
     const progress = useBatchProgress(batchId, poll);
+    // v8.36 / ADR 0029 §8 — the OCR cost line, read only in the review phase.
+    const ocrEstimate = useOcrEstimate(batchId, phase === 'review', estimateRevision);
 
     // Esc closes (mirror ProjectFormDialog).
     useEffect(() => {
@@ -130,6 +150,7 @@ export function UploadModal({ seed, defaultProject, projectOptions, onClose, onC
         removeMut.mutate(
             { batchId, itemId },
             {
+                onSuccess: () => setEstimateRevision((r) => r + 1),
                 // R14: a failed DELETE must NOT read as success. The file is still
                 // staged server-side and would be ingested on commit, so restore
                 // the row at its original position and surface the error.
@@ -283,7 +304,7 @@ export function UploadModal({ seed, defaultProject, projectOptions, onClose, onC
                         </div>
 
                         {phase === 'selecting' && (
-                            <UploadDropzone onAddFiles={(f) => setPickedFiles((prev) => [...prev, ...f])} accept={ACCEPT} />
+                            <UploadDropzone onAddFiles={(f) => setPickedFiles((prev) => [...prev, ...f])} accept={accept} />
                         )}
 
                         {/* Picked-but-not-staged file names. */}
@@ -331,6 +352,14 @@ export function UploadModal({ seed, defaultProject, projectOptions, onClose, onC
                                     </li>
                                 ))}
                             </ul>
+                        )}
+
+                        {phase === 'review' && (
+                            <OcrEstimateLine
+                                state={ocrEstimate.isError ? 'error' : ocrEstimate.data ? 'ready' : 'loading'}
+                                estimate={ocrEstimate.data}
+                                errorMessage={ocrEstimate.isError ? errMessage(ocrEstimate.error) : null}
+                            />
                         )}
 
                         {anyCanonical && phase === 'review' && (

@@ -55,6 +55,67 @@ final class DispatchIngestFanOutStepTest extends TestCase
         $this->assertSame(1, $result->output['failure_count']);
     }
 
+    /**
+     * v8.36 / ADR 0029 — R43: the same `.png` that is a failure with OCR off
+     * is dispatched with OCR on (the walker honours the flag).
+     */
+    public function test_image_is_dispatched_only_when_ocr_is_enabled(): void
+    {
+        Queue::fake();
+        config(['kb.ocr.enabled' => true]);
+        Storage::disk('kb')->put('docs/b.png', (string) base64_decode(\App\Services\Kb\Ocr\Drivers\FakeOcrDriver::PNG_1X1, true));
+        $step = $this->app->make(DispatchIngestFanOutStep::class);
+
+        $result = $step->execute($this->context(['docs/a.md', 'docs/b.png']));
+
+        $this->assertSame(2, $result->output['dispatched_count']);
+        $this->assertSame(0, $result->output['failure_count']);
+        Queue::assertPushed(IngestDocumentJob::class, fn (IngestDocumentJob $job) => $job->relativePath === 'docs/b.png' && $job->mimeType === 'image/png');
+    }
+
+    /**
+     * ADR 0029 §2 — an image is dispatched with its EXACT raster MIME read
+     * from its BYTES, never the family label `image/png` and never the
+     * extension: a JPEG named `.png` is `image/jpeg`. The MIME reaches the
+     * converter registry and the document row as what the bytes are; bytes
+     * that are no known raster are a per-file failure, not a queued job.
+     */
+    public function test_images_are_dispatched_with_the_raster_mime_of_their_bytes_not_their_extension(): void
+    {
+        Queue::fake();
+        config(['kb.ocr.enabled' => true]);
+        $png = (string) base64_decode(\App\Services\Kb\Ocr\Drivers\FakeOcrDriver::PNG_1X1, true);
+        $jpeg = "\xFF\xD8\xFF\xE0".str_repeat("\x00", 16);
+        $tiff = 'II'.pack('v', 42).pack('V', 8).str_repeat("\x00", 16);
+        $webp = 'RIFF'.pack('V', 24).'WEBPVP8 '.str_repeat("\x00", 8);
+        $files = [
+            'docs/a.jpg' => [$jpeg, 'image/jpeg'],
+            'docs/b.jpeg' => [$jpeg, 'image/jpeg'],
+            'docs/c.tif' => [$tiff, 'image/tiff'],
+            'docs/d.tiff' => [$tiff, 'image/tiff'],
+            'docs/e.webp' => [$webp, 'image/webp'],
+            'docs/f.PNG' => [$png, 'image/png'],
+            // the extension lies: the bytes decide
+            'docs/g.png' => [$jpeg, 'image/jpeg'],
+        ];
+        foreach ($files as $path => [$bytes]) {
+            Storage::disk('kb')->put($path, $bytes);
+        }
+        Storage::disk('kb')->put('docs/h.png', 'not an image at all');
+        $step = $this->app->make(DispatchIngestFanOutStep::class);
+
+        $result = $step->execute($this->context([...array_keys($files), 'docs/h.png']));
+
+        $this->assertSame(7, $result->output['dispatched_count']);
+        $this->assertSame(1, $result->output['failure_count']);
+        $this->assertStringContainsString('unrecognised_bytes', (string) $result->output['failures'][0]['reason']);
+        $this->assertSame('docs/h.png', $result->output['failures'][0]['path']);
+        foreach ($files as $path => [, $mime]) {
+            Queue::assertPushed(IngestDocumentJob::class, fn (IngestDocumentJob $job) => $job->relativePath === $path && $job->mimeType === $mime);
+        }
+        Queue::assertNotPushed(IngestDocumentJob::class, fn (IngestDocumentJob $job) => $job->relativePath === 'docs/h.png');
+    }
+
     public function test_invalid_path_recorded_as_failure_not_thrown(): void
     {
         Queue::fake();

@@ -61,23 +61,35 @@ the whole probe window — every page up to `KB_OCR_MAX_PAGES`
 (`KB_OCR_PROBE_PAGES=0`, the default; a positive value bounds the window and
 is a documented trade-off: a scanned page beyond it is not seen, and a page
 the OCR cap would refuse cannot change the verdict). A page with fewer than
-`KB_OCR_PROBE_MIN_CHARS` extractable characters that carries an image XObject
-is a *scanned* page; one with neither is *blank* (a separator — never a reason
-to OCR by itself). No text page at all is `empty`; text pages **and** scanned
-pages is `mixed` — a typed cover over scanned body pages, scans stapled to a
+`KB_OCR_PROBE_MIN_CHARS` extractable characters that carries an image
+XObject is a *scanned* page; one that only *paints* (drawn content outside
+every text object — text outlined into paths, a drawing, a form XObject,
+a decorative rule) is read as scanned **only when no page has a text
+layer** (the outlined-text design export, which a "blank" verdict would
+silently skip) and is a divider beside typed pages — it never promotes a
+text PDF to `mixed`, which would bill the whole document for a chapter
+title under a rule; one that paints nothing is *blank* (a separator —
+never a reason to OCR by itself). No text page but at least one scanned or
+painted page is `empty`; a window of blank pages alone is `present` with
+zero text pages (nothing to OCR, never a billed run over empty pages — the
+text path ingests it as today); text pages **and** image pages is `mixed` — a typed cover over scanned body pages, scans stapled to a
 memo — and the **whole document** is routed to OCR so no page is silently
 lost (the text pages are OCR'd too; a per-page hybrid that keeps the parsed
 text of text pages is a later refinement, not this cycle's); otherwise
 `present`. `empty`, `mixed`, an unreadable file that `pdftotext` cannot read
-either, or an ingest carrying `metadata.ocr.force = true` (what `kb:ocr`
+either (the fallback is bounded by `KB_PDFTOTEXT_TIMEOUT`: it runs before
+OCR and in the estimate, outside any run budget, so a run past it is the
+deterministic `run_too_long` refusal of the document — never a retry, never
+a silent hand-off to a billed OCR run), or an ingest carrying `metadata.ocr.force = true` (what `kb:ocr`
 sets) routes the bytes to the same `OcrService` the image converter uses,
 with `reason` `scanned_pdf` / `mixed_pdf` / `forced`. The verdict (`present`
 · `mixed` · `empty` · `unreadable` · `skipped`) is recorded in
 `extractionMeta['text_layer_probe']`, the scanned page numbers with it; a PDF
 whose every content page has a text layer keeps its current path, byte for
 byte. Regression cases: a cover over scanned pages is `mixed` and OCR'd, a
-blank separator inside a text PDF is `present`, a bounded window is blind
-beyond it. No two converters ever claim one MIME: a
+blank separator inside a text PDF is `present`, blank pages alone are
+`present` with no OCR, an outlined-text page is `scanned`, a bounded window
+is blind beyond it. No two converters ever claim one MIME: a
 converter-mutex test (the twin of the chunker one) proves it in both states.
 
 ### 2. `SourceType` always knows `IMAGE`; the flag gates acceptance at the entry points
@@ -125,7 +137,7 @@ interface OcrDriver
     public function isAvailable(): bool;                 // binary / key / package present
     public function isRemote(): bool;                    // sends the bytes out of the tenant
     public function meteringMode(): OcrMeteringMode;     // PerPage | Sdk
-    public function maxDurationSeconds(int $pages): int;  // declared worst case: sizes the run-directory lease (§6)
+    public function maxDurationSeconds(int $pages): int;  // declared worst case, capped by the run budget KB_OCR_JOB_TIMEOUT every driver enforces: sizes the run-directory lease (§6)
     public function boundsWorkWithoutPageCount(): bool;  // may run on an uncountable PDF: work bounded by construction (§4)
     public function recognise(OcrRequest $request): OcrResult;
 }
@@ -185,7 +197,11 @@ bounded: `OcrService::convert()` refuses a document over `KB_OCR_MAX_PAGES`
 (counted format-independently before conversion — the probe's parser for a
 PDF, the IFD chain for a multi-page TIFF, one for any other image) or
 `KB_OCR_MAX_BYTES` **before** any driver
-runs, with a machine-readable reason (`too_many_pages` / `too_many_bytes`)
+runs, with a machine-readable reason (`too_many_pages` / `too_many_bytes`;
+and `multi_frame_image` for a multi-page TIFF handed to a driver that
+transcribes one frame per image — `OcrDriver::acceptsMultiFrameImages()`,
+false for `tesseract`, `vision-llm` and `mistral-ocr`, true for `docling`
+— which would otherwise be billed for every frame and read the first)
 that `OcrCostEstimator` reports in advance together with
 `driver_available`, so the modal never promises a run the registry will
 refuse (R14); the estimate and the service read the page count from the
@@ -229,7 +245,13 @@ box (defence in depth), and a rendered page over
 `KB_OCR_RASTER_MAX_PAGE_BYTES` (default 10 MiB) or over the box is a
 deterministic refusal (`rendered_page_too_large`) raised **before** the page
 is decoded locally or posted to a vision provider, with the working directory
-removed. For
+removed. A **source image** is a page too: the drivers that decode or post
+it as is (`docling`, `mistral-ocr`) apply the same pixel box and page byte
+cap to the source bytes before the engine starts or the request is built —
+the source cap admitted the file, the page cap decides whether it may be a
+page — and the upload estimate takes that decision on the staged bytes
+(`ImageBounds::refusalReason()`, after the page-count and frame gates) so
+the modal states `rendered_page_too_large` before commit. For
 `vision-llm` this is the egress invariant made concrete: what leaves is a
 rendered page, and no rendered page leaves unbounded. A
 whole-file engine (`docling`) cannot be told the size of what it is handed and
@@ -239,7 +261,16 @@ like a remote one. The contract carries the fact
 consult it, and where the run is allowed the estimate shows the floor with
 `pages_exact = false` so the modal never presents it as an exact price. Deny-by-default tests cover
 the knob off, a host outside the list, a non-JSON response, both overflows
-and the uncountable-to-remote refusal.
+and the uncountable-to-remote refusal. The figure caps — `KB_OCR_MAX_FIGURE_BYTES`
+per figure, `KB_OCR_MAX_FIGURES` / `KB_OCR_MAX_FIGURES_TOTAL_BYTES` per run —
+are applied by the drivers while they parse (a figure past them is omitted
+before it is read, the Markdown says so) **and** re-checked by `OcrService`
+on what any driver returns, before anything is stored, recorded or metered:
+a result over them is an invalid driver result and is discarded
+(`OcrLimitExceededException`, reason `figure_budget_exceeded` — terminal,
+never a retry that would pay for the same answer), so the limits are
+invariant for a driver (a test double, a future engine) that did not apply
+them itself.
 
 ### 5. Same bytes, same driver: the recorded run is reused, never re-billed
 
@@ -250,7 +281,11 @@ would pay for every document again. `OcrService` therefore records each run
 at `{source}.ocr/{run}/result.json` (pages, confidence, figure descriptors,
 driver, engine meta) next to the figures, and reuses it when the same bytes
 arrive through the same engine (the run key embeds the driver fingerprint) —
-no driver call, no FinOps row, `metadata.converter.ocr.reused = true`.
+no driver call, no FinOps row, `metadata.converter.ocr.reused = true`. The
+lookup needs only the driver's identity: a run recorded by a driver that
+cannot run here today (remote egress off, a binary gone) is still reused —
+the egress gate and the availability check apply before a driver call, never
+before the lookup.
 `kb:ocr` (`metadata.ocr.force`) bypasses the reuse on purpose; a run whose
 figures went missing is redone. The recorded text is **raw** OCR output on
 the KB disk, the same posture as the source file itself (ADR 0020 keeps the
@@ -258,9 +293,12 @@ vector store, not the disk, as the protected surface): under the source's
 ACL, purged with it by the deleter's reference gate, never the redacted
 text (that lives only in the chunks). A deployment that must not hold raw
 OCR text beside its scans sets `KB_OCR_REUSE_ENABLED=false` — every ingest
-then runs the driver and records **no `result.json`**; both states are
-tested (R43). That knob governs the recorded run — the raw OCR text and its
-reuse — and nothing else: the figures under `{run}/images/` follow
+then runs the driver, records **no `result.json`** and is a **new run with
+its own attempt identity** (its own `{run}` directory, exactly like a forced
+re-run), so a re-ingest of the same bytes never rewrites the figures a
+previous document version still references; both states are tested (R43).
+That knob governs the recorded run — the raw OCR text and its reuse — and
+nothing else: the figures under `{run}/images/` follow
 `KB_OCR_FIGURES_ENABLED` (default on) and the retention mode of §5
 (`reference_only` stores neither run nor figures; `full_copy` and
 `markdown_only` store figures when the switch is on, whatever the reuse
@@ -313,12 +351,20 @@ serve the wrong text or figures to a document and defeat the reuse lookup;
 the full digest makes the identity collision-free for every practical
 purpose. The **variant** is what `OcrService` composes from everything that
 shapes the output: the engine variant each driver declares
-(`OcrDriver::fingerprint()`: effective provider + model for `vision-llm`,
-model + endpoint for `mistral-ocr`, language + DPI for `tesseract`, the
-binary for `docling`), the figure switch (`;figures=0|1`, because the
-Markdown differs), and — for a forced re-run only — a fresh per-attempt salt
+(`OcrDriver::fingerprint()`: effective provider + model + rasteriser for
+`vision-llm`, model + endpoint for `mistral-ocr`, language + DPI + the
+`tesseract` / `pdftoppm` / `pdfinfo` executables for `tesseract`, the full
+binary path for `docling` — the executables ARE the engine for a local
+driver, another build is another transcript), the caps that shape the
+output (the page cap `;pages=N`, the raster bounds `;raster=<px>:<bytes>`,
+the figure switch and budget `;figures=0` / `;figures=1:<bytes>:<count>:<total>`
+— a lowered cap must never reuse a run recorded under a wider one), and —
+for a forced re-run or a run with reuse off — a fresh per-attempt salt
 (`;attempt=<16 hex>`), so `ocr.force` always lands on a **new** immutable
-run and never reuses or rewrites the recorded one (§6). Two versions of one
+run and never reuses or rewrites the recorded one (§6); the `ocr.force` /
+`ocr.rerun_lock` / `dry_run` keys are inputs of that one job and are stripped
+before the row is persisted (`OcrService::stripTrustedOnlyKeys()`), so a later
+ingest built from the row's metadata is never forced again. Two versions of one
 source path never overwrite each other's pixels; the same bytes through
 another engine land in another run; an ordinary re-ingest with identical
 input and engine lands on the same, immutable run (the ingest's own
@@ -381,7 +427,11 @@ the Flow's `tenant:project:path` idempotency from collapsing the job; it does
 **not** bypass the ingestor's version idempotency, which is content-addressed
 (`version_hash` of the converted Markdown). So the force flag travels to
 persistence as well: `PersistChunksStep` passes `replaceExisting = true`
-(from `OcrService::isForced()`) into `DocumentIngestor::persistDrafts()`,
+(from `OcrService::isForced()`, or `OcrService::isFreshOcrRun()` — any run
+that actually called the driver, `converter.ocr.reused === false`, such as
+every ingest with reuse off or a recorded run redone because a figure went
+missing; `DocumentIngestor::ingest()` applies the same rule on the direct
+path) into `DocumentIngestor::persistDrafts()`,
 which then skips the same-hash short-circuit and **replaces in place** the
 live version's chunk set and its `metadata.converter.ocr` block (run key,
 attempt, confidence) — the row points at the new run, no second version is
@@ -398,7 +448,24 @@ reads the converter's output back: `KbPath::isGeneratedAsset()` marks every
 path under a `{name}.ocr/` segment (and the ADR 0030 `.artifacts/` root) and
 the folder walker and the orphan-file sweep exclude it; the sweep also
 purges the `.ocr/` tree beside every orphan source it removes, which is the
-one sweep a run written by a failed first ingest ever gets.
+one sweep a run written by a failed first ingest ever gets. "Orphan" is
+decided per physical namespace, with the same test the dangling-tree check
+applies (`DocumentDeleter::documentResolvesToStorageKey()`): a file is
+known only when a row's **recorded** disk and prefix resolve to it on the
+swept disk, so a row carrying the same logical path on another disk or
+under another prefix never protects a file — or the tree beside it — here.
+A row that recorded no disk (`metadata.disk`, persisted with the prefix by
+every ingest since the namespace was recorded; a prefix-only record counts
+as legacy) protects the file on its path wherever a deleting consumer looks
+— the orphan sweep, the dangling-tree sweep, the connector bridge and the
+deleter's own hard delete all apply the one predicate
+(`DocumentDeleter::documentReferencesStorageKey()`), and every one of them
+only ever deletes, so a legacy row fails closed rather than guessing a
+disk. The fail-closed set shrinks only by re-ingest (a namespace backfill
+is a follow-up, recorded in the hand-off). The decision is taken over the whole
+table (`withoutGlobalScopes()`, as the dangling-tree check does): the admin
+command runner executes the sweep under the caller's project scope, and a
+hidden row must never turn its file into an orphan.
 
 The write is a **documented exception** to the `ConverterInterface`
 "stateless and side-effect-free" contract, recorded in the interface's own

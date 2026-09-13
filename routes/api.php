@@ -517,6 +517,9 @@ Route::middleware([
                 ->name('api.admin.kb.uploads.show');
             Route::get('/{uploadBatch}/status', [\App\Http\Controllers\Api\Admin\KbUploadController::class, 'status'])
                 ->name('api.admin.kb.uploads.status');
+            // v8.36 / ADR 0029 §8 — OCR cost estimate before commit.
+            Route::get('/{uploadBatch}/estimate', [\App\Http\Controllers\Api\Admin\KbUploadController::class, 'estimate'])
+                ->name('api.admin.kb.uploads.estimate');
             Route::post('/{uploadBatch}/commit', [\App\Http\Controllers\Api\Admin\KbUploadController::class, 'commit'])
                 ->name('api.admin.kb.uploads.commit');
             Route::post('/{uploadBatch}/cancel', [\App\Http\Controllers\Api\Admin\KbUploadController::class, 'cancel'])
@@ -684,6 +687,13 @@ Route::middleware([
         // (R20 — route contracts must not collide).
         Route::post('/kb/documents/{id}/restore-version', [\App\Http\Controllers\Api\Admin\KbDocumentVersionController::class, 'restore'])
             ->whereNumber('id')->name('api.admin.kb.documents.versions.restore');
+
+        // v8.36 / ADR 0029 — OCR status + re-run (R44 HTTP surface). R32 —
+        // covered by the AdminAuthorizationMatrix (`/api/admin/kb/documents/1/ocr`).
+        Route::get('/kb/documents/{id}/ocr', [\App\Http\Controllers\Api\Admin\KbOcrController::class, 'status'])
+            ->whereNumber('id')->name('api.admin.kb.documents.ocr.status');
+        Route::post('/kb/documents/{id}/ocr', [\App\Http\Controllers\Api\Admin\KbOcrController::class, 'rerun'])
+            ->whereNumber('id')->name('api.admin.kb.documents.ocr.rerun');
 
         Route::apiResource('kb/collections', KbCollectionController::class)
             ->parameters(['collections' => 'id'])

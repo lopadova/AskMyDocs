@@ -2,8 +2,11 @@
 
 namespace App\Console\Commands;
 
+use App\Services\Kb\DocumentDeleter;
+use App\Services\Kb\Ocr\OcrFigureStore;
 use App\Models\KnowledgeDocument;
 use App\Support\KbDiskResolver;
+use App\Support\Kb\SourceType;
 use App\Support\KbPath;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Storage;
@@ -18,8 +21,13 @@ use Illuminate\Support\Facades\Storage;
  * single `whereIn('source_path', ...)` query per chunk; no whole-table
  * `->get()` is ever issued even on corpora with millions of rows.
  *
- * Soft-delete aware (R2): uses `withTrashed()` so a document still
- * inside its retention window never has its file flagged as orphan.
+ * Soft-delete aware (R2) and scope-blind: the orphan decision is taken
+ * over the whole table (`withoutGlobalScopes()` — trashed rows, every
+ * tenant, whatever project scope the caller may read), so a document still
+ * inside its retention window, or one the admin command runner's caller
+ * cannot read, never has its file flagged as orphan. The same documented
+ * R30 exception as the dangling-tree sweep and the deleter's reference
+ * gate: a source object on a shared disk is not tenant namespaced.
  */
 class PruneOrphanFilesCommand extends Command
 {
@@ -43,48 +51,184 @@ class PruneOrphanFilesCommand extends Command
         // this is also a large performance win (avoid a full bucket walk).
         $allFiles = $prefix === '' ? $storage->allFiles() : $storage->allFiles($prefix);
         $markdownFiles = $this->filterMarkdown($allFiles);
+        // v8.36 / ADR 0029 §6 — `{source}.ocr/` trees whose source is gone
+        // from the disk AND from every row (a hard delete that kept an
+        // in-flight run, a failed first ingest whose source was never
+        // written): nothing else ever sweeps them.
+        $danglingOcr = $this->detectDanglingOcrTrees($storage, $allFiles, $prefix, $disk);
 
-        if ($markdownFiles === []) {
-            $this->info("No markdown files found on disk [{$disk}].");
+        if ($markdownFiles === [] && $danglingOcr === []) {
+            $this->info("No source files found on disk [{$disk}].");
 
             return self::SUCCESS;
         }
 
         $relativePaths = $this->toRelativePaths($markdownFiles, $prefix);
-        $orphans = $this->detectOrphans($relativePaths);
+        $orphans = $this->detectOrphans($relativePaths, $prefix, $disk);
         $scanned = count($relativePaths);
         $orphanCount = count($orphans);
 
-        if ($orphanCount === 0) {
-            $this->info("Scanned {$scanned} markdown file(s) on disk [{$disk}] — no orphans found.");
+        if ($orphanCount === 0 && $danglingOcr === []) {
+            $this->info("Scanned {$scanned} source file(s) on disk [{$disk}] — no orphans found.");
 
             return self::SUCCESS;
         }
 
         if ($dryRun) {
             $this->renderDryRun($storage, $orphans, $disk, $prefix);
+            $this->renderDanglingOcrDryRun($danglingOcr, $disk);
             $this->line(sprintf(
-                'DRY-RUN: %d of %d orphan file(s) found on disk [%s]. No changes made.',
+                'DRY-RUN: %d of %d orphan file(s) and %d dangling OCR tree(s) found on disk [%s]. No changes made.',
                 $orphanCount,
                 $scanned,
+                count($danglingOcr),
                 $disk,
             ));
 
             return self::SUCCESS;
         }
 
-        [$deleted, $failed] = $this->deleteOrphans($storage, $orphans, $prefix);
+        [$deleted, $failed, $orphanOcrKept] = $this->deleteOrphans($storage, $orphans, $prefix, $disk);
+        [$purged, $inFlight, $ocrFailed] = $this->purgeDanglingOcrTrees($danglingOcr, $disk);
 
         $this->info(sprintf(
-            'Disk [%s]: scanned=%d orphans=%d deleted=%d failed=%d',
+            'Disk [%s]: scanned=%d orphans=%d deleted=%d failed=%d orphan_ocr_kept=%d dangling_ocr=%d purged=%d in_flight=%d ocr_failed=%d',
             $disk,
             $scanned,
             $orphanCount,
             $deleted,
             $failed,
+            $orphanOcrKept,
+            count($danglingOcr),
+            $purged,
+            $inFlight,
+            $ocrFailed,
         ));
 
-        return $failed === 0 ? self::SUCCESS : self::FAILURE;
+        return ($failed === 0 && $ocrFailed === 0) ? self::SUCCESS : self::FAILURE;
+    }
+
+    /**
+     * `.ocr` trees on the disk whose source key exists neither on the disk
+     * nor in ANY `knowledge_documents` row — live, archived or soft-deleted,
+     * any tenant (`withoutGlobalScopes`: the tree sits beside a source object
+     * that is not tenant namespaced, the same documented R30 exception as
+     * the deleter's reference gate). A tree beside an orphan FILE is not
+     * listed here: it goes with the file in {@see deleteOrphans()}.
+     *
+     * @param  array<int,string>  $allFiles
+     * @return array<int,string> disk-relative source keys (the tree is `{key}.ocr`)
+     */
+    private function detectDanglingOcrTrees($storage, array $allFiles, string $prefix, string $disk): array
+    {
+        $onDisk = array_flip(array_map(static fn (string $f): string => KbPath::normalize($f), $allFiles));
+        $suffix = OcrFigureStore::DIR_SUFFIX;
+        $sourceKeys = [];
+        foreach ($allFiles as $file) {
+            $key = self::ocrTreeSourceKey(KbPath::normalize($file), $suffix);
+            if ($key === null || isset($onDisk[$key])) {
+                continue; // not a generated tree, or source still on disk: handled with the file
+            }
+            $sourceKeys[$key] = true;
+        }
+        $keys = array_keys($sourceKeys);
+        if ($keys === []) {
+            return [];
+        }
+
+        // The reference gate is the deleter's: a row protects the tree only
+        // when its RECORDED disk + prefix resolve to this very key on this
+        // very disk — a row on another disk, or under another prefix, that
+        // happens to share the logical `source_path` must not keep an
+        // orphaned tree alive forever (nor, conversely, be ignored). A row
+        // that never recorded its disk (ingested before the namespace was
+        // persisted) protects the tree on any disk: deletion fails closed.
+        $deleter = app(DocumentDeleter::class);
+        $dangling = [];
+        foreach ($keys as $key) {
+            if ($deleter->documentReferencingStorageKey($disk, $key, $this->stripPrefix($key, $prefix)) !== null) {
+                continue;
+            }
+            $dangling[] = $key;
+        }
+        sort($dangling);
+
+        return $dangling;
+    }
+
+    /**
+     * The source key a file under a generated OCR tree belongs to, or null
+     * when the file is not part of one. A `.ocr` segment in a path names a
+     * tree ONLY when what follows it has the store's run layout —
+     * `{sha256 run key}/result.json` or `{run key}/images/{figure}` (see
+     * OcrFigureStore::runDirFor() / store()): a legitimate source such as
+     * `docs/archive.ocr/manual.png` is a directory that happens to end in
+     * `.ocr`, and deriving `docs/archive` from it would let the purge remove
+     * that source subtree. The LAST matching segment wins, so a source that
+     * itself lives under such a directory (`docs/archive.ocr/manual.png.ocr/
+     * {run}/result.json`) resolves to the source, not to the directory.
+     */
+    public static function ocrTreeSourceKey(string $normalized, string $suffix = OcrFigureStore::DIR_SUFFIX): ?string
+    {
+        $needle = $suffix.'/';
+        $at = strrpos($normalized, $needle);
+        while ($at !== false) {
+            $key = substr($normalized, 0, $at);
+            $rest = substr($normalized, $at + strlen($needle));
+            if ($key !== '' && preg_match('#^[a-f0-9]{64}/(result\.json|images/[^/]+)$#', $rest) === 1) {
+                return $key;
+            }
+            // Look for an earlier `.ocr/` segment strictly BEFORE this one:
+            // searching the prefix guarantees the loop advances (or ends)
+            // on every path, whatever the suffix after the segment looks like.
+            $at = $at === 0 ? false : strrpos(substr($normalized, 0, $at), $needle);
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<int,string>  $danglingOcr
+     * @return array{0:int,1:int,2:int} [purged, in_flight (kept), failed]
+     */
+    private function purgeDanglingOcrTrees(array $danglingOcr, string $disk): array
+    {
+        $purged = 0;
+        $inFlight = 0;
+        $failed = 0;
+        $store = app(OcrFigureStore::class);
+        foreach ($danglingOcr as $sourceKey) {
+            try {
+                // Grace-aware: a run recorded inside the in-flight window is
+                // kept (its row may be about to commit) and picked up by the
+                // next sweep once aged.
+                if ($store->purgeBeside($disk, $sourceKey)) {
+                    $purged++;
+                    continue;
+                }
+                $inFlight++;
+                $this->line("  ~ kept (in flight): {$sourceKey}".OcrFigureStore::DIR_SUFFIX);
+            } catch (\Throwable $e) {
+                $failed++;
+                $this->error("  ! could not purge dangling OCR tree {$sourceKey}".OcrFigureStore::DIR_SUFFIX.": {$e->getMessage()}");
+            }
+        }
+
+        return [$purged, $inFlight, $failed];
+    }
+
+    /**
+     * @param  array<int,string>  $danglingOcr
+     */
+    private function renderDanglingOcrDryRun(array $danglingOcr, string $disk): void
+    {
+        if ($danglingOcr === []) {
+            return;
+        }
+        $this->table(
+            ['Dangling OCR tree ['.$disk.']'],
+            array_map(static fn (string $k): array => [$k.OcrFigureStore::DIR_SUFFIX], $danglingOcr),
+        );
     }
 
     private function resolveDisk(): string
@@ -106,10 +250,21 @@ class PruneOrphanFilesCommand extends Command
      */
     private function filterMarkdown(array $files): array
     {
-        return array_values(array_filter($files, function (string $path): bool {
-            $ext = strtolower((string) pathinfo($path, PATHINFO_EXTENSION));
+        // v8.36 / ADR 0029 — while OCR is on, an image is a source like a
+        // Markdown file: an orphan scan (a failed first ingest) and the
+        // `.ocr/` tree beside it would otherwise stay on the disk forever.
+        // With OCR off images are not sources and are never touched (R43).
+        $extensions = ['md', 'markdown'];
+        if (filter_var(config('kb.ocr.enabled', false), FILTER_VALIDATE_BOOLEAN)) {
+            $extensions = array_merge($extensions, SourceType::imageExtensions());
+        }
 
-            return $ext === 'md' || $ext === 'markdown';
+        return array_values(array_filter($files, function (string $path) use ($extensions): bool {
+            if (KbPath::isGeneratedAsset($path)) {
+                return false; // never a source (ADR 0029 / 0030)
+            }
+
+            return in_array(strtolower((string) pathinfo($path, PATHINFO_EXTENSION)), $extensions, true);
         }));
     }
 
@@ -142,19 +297,50 @@ class PruneOrphanFilesCommand extends Command
      * @param  array<int,string>  $relativePaths
      * @return array<int,string>
      */
-    private function detectOrphans(array $relativePaths): array
+    private function detectOrphans(array $relativePaths, string $prefix, string $disk): array
     {
         $orphans = [];
+        $deleter = app(DocumentDeleter::class);
 
         foreach (array_chunk($relativePaths, 1000) as $chunk) {
-            $known = KnowledgeDocument::withTrashed()
+            // A file is known only when a row's RECORDED namespace resolves
+            // to this very key on this very disk — the same test the
+            // dangling-tree sweep applies (`documentReferencesStorageKey()`):
+            // a row carrying the same logical path on another disk, or under
+            // another prefix, references another object, and the file here
+            // (with any `.ocr/` tree beside it) is an orphan of this namespace.
+            // Every row, whatever the caller may read (the admin command
+            // runner executes this under a user whose AccessScopeScope would
+            // hide other projects' rows — and their files would then be
+            // "orphans"), trashed included, every tenant (the documented R30
+            // exception: the object is not tenant namespaced): a deletion
+            // decision is taken over the whole table, as the dangling-tree
+            // sweep takes it.
+            $known = [];
+            $rows = KnowledgeDocument::query()
+                ->withoutGlobalScopes()
                 ->whereIn('source_path', $chunk)
-                ->pluck('source_path')
-                ->all();
+                ->select(['id', 'project_key', 'source_path', 'metadata'])
+                ->cursor();
+            foreach ($rows as $row) {
+                $relative = (string) $row->source_path;
+                if (isset($known[$relative])) {
+                    continue;
+                }
+                // A row that never recorded its disk (ingested before the
+                // namespace was persisted) protects the file on its path
+                // wherever the sweep looks — deletion fails closed, the
+                // pre-namespace behaviour, never "a stranger to its own
+                // file"; the predicate carries that rule for every consumer.
+                if ($deleter->documentReferencesStorageKey($row, $disk, $this->applyPrefix($relative, $prefix))) {
+                    $known[$relative] = true;
+                }
+            }
 
-            $diff = array_diff($chunk, $known);
-            foreach ($diff as $orphan) {
-                $orphans[] = $orphan;
+            foreach ($chunk as $relative) {
+                if (! isset($known[$relative])) {
+                    $orphans[] = $relative;
+                }
             }
         }
 
@@ -163,12 +349,13 @@ class PruneOrphanFilesCommand extends Command
 
     /**
      * @param  array<int,string>  $orphans
-     * @return array{0:int,1:int} [deleted, failed]
+     * @return array{0:int,1:int,2:int} [deleted, failed, ocr trees kept (in flight)]
      */
-    private function deleteOrphans($storage, array $orphans, string $prefix): array
+    private function deleteOrphans($storage, array $orphans, string $prefix, string $disk): array
     {
         $deleted = 0;
         $failed = 0;
+        $ocrKept = 0;
 
         foreach ($orphans as $relative) {
             $target = $this->applyPrefix($relative, $prefix);
@@ -181,10 +368,32 @@ class PruneOrphanFilesCommand extends Command
                 continue;
             }
 
+            // An orphan source is typically a failed first ingest; the OCR
+            // run it may have produced (`{source}.ocr/`) has no row either
+            // and goes with it — the only sweep such a run ever gets. A
+            // purge that fails is a failed sweep (R14): the source is gone
+            // but generated OCR data stayed behind, so the path counts as
+            // failed and the command exits non-zero, never a clean report.
+            try {
+                app(OcrFigureStore::class)->purgeBeside($disk, $target);
+                // `purgeBeside()` is false both for "nothing there" and for a
+                // run kept inside the in-flight grace: only a tree still on
+                // the disk is reported (kept, never a failure — the next
+                // sweep takes it once aged, as for a dangling tree).
+                if ($storage->directoryExists($target.OcrFigureStore::DIR_SUFFIX)) {
+                    $ocrKept++;
+                    $this->line("  ~ kept (in flight): {$target}".OcrFigureStore::DIR_SUFFIX);
+                }
+            } catch (\Throwable $e) {
+                $failed++;
+                $this->error("  ! source deleted but its OCR assets could not be purged beside {$target}: {$e->getMessage()}");
+                continue;
+            }
+
             $deleted++;
         }
 
-        return [$deleted, $failed];
+        return [$deleted, $failed, $ocrKept];
     }
 
     /**

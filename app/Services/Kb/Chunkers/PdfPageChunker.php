@@ -29,7 +29,10 @@ use App\Services\Kb\Pipeline\ConvertedDocument;
  */
 final class PdfPageChunker implements ChunkerInterface
 {
-    private const SUPPORTED_SOURCE_TYPES = ['pdf'];
+    // v8.36 / ADR 0029 — `image` (OcrConverter) emits the same `## Page N`
+    // shape, so the page chunker owns it too. The mutex test guards the
+    // claim against every other chunker.
+    private const SUPPORTED_SOURCE_TYPES = ['pdf', 'image'];
     private const PAGE_HEADING_RE = '/^##\s+Page\s+(\d+)\s*$/m';
     private const PARAGRAPH_SEP = '/\n{2,}/';
     private const CHARS_PER_TOKEN = 4;
@@ -57,21 +60,31 @@ final class PdfPageChunker implements ChunkerInterface
         }
 
         $hardCap = $this->hardCapTokens();
+        $ocrPages = $this->ocrPageIndex($doc->extractionMeta);
         $drafts = [];
         $order = 0;
         foreach ($pages as $page) {
             $headingPath = 'Page ' . $page['number'];
             $pieces = $this->enforceHardCap($page['text'], $hardCap);
+            $metadata = [
+                'filename' => $filename,
+                'strategy' => 'pdf-page',
+                'page' => $page['number'],
+            ];
+            // v8.36 / ADR 0029 §5-6 — pages born from OCR carry the extraction
+            // method and the engine's per-page confidence on every chunk, so
+            // the review heat-map (W3) and any later soft ranking signal read
+            // it from the chunk row, not from the document.
+            if ($ocrPages !== null) {
+                $metadata['provenance'] = 'ocr';
+                $metadata['ocr_confidence'] = $ocrPages[$page['number']] ?? null;
+            }
             foreach ($pieces as $piece) {
                 $drafts[] = new ChunkDraft(
                     text: $piece,
                     order: $order++,
                     headingPath: $headingPath,
-                    metadata: [
-                        'filename' => $filename,
-                        'strategy' => 'pdf-page',
-                        'page' => $page['number'],
-                    ],
+                    metadata: $metadata,
                 );
             }
         }
@@ -87,6 +100,30 @@ final class PdfPageChunker implements ChunkerInterface
      *
      * @return list<array{number: int, text: string}>
      */
+    /**
+     * `[pageNumber => confidence|null]` when the converter ran OCR
+     * (`extractionMeta.provenance === 'ocr'`), null otherwise.
+     *
+     * @param  array<string, mixed>  $extractionMeta
+     * @return array<int, float|null>|null
+     */
+    private function ocrPageIndex(array $extractionMeta): ?array
+    {
+        if (($extractionMeta['provenance'] ?? null) !== 'ocr') {
+            return null;
+        }
+        $index = [];
+        foreach ((array) ($extractionMeta['ocr']['pages'] ?? []) as $page) {
+            if (! is_array($page) || ! isset($page['number'])) {
+                continue;
+            }
+            $confidence = $page['confidence'] ?? null;
+            $index[(int) $page['number']] = $confidence === null ? null : (float) $confidence;
+        }
+
+        return $index;
+    }
+
     private function splitByPageHeadings(string $markdown): array
     {
         $pages = [];

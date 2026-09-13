@@ -3,6 +3,7 @@
 namespace Tests\Feature\Commands;
 
 use App\Models\KnowledgeDocument;
+use App\Services\Kb\Ocr\OcrFigureStore;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
@@ -12,6 +13,9 @@ use Tests\TestCase;
 class PruneOrphanFilesCommandTest extends TestCase
 {
     use RefreshDatabase;
+
+    /** A run key has the store's shape: the 64 hex chars of a SHA-256. */
+    private const RUN = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
 
     protected function setUp(): void
     {
@@ -24,7 +28,12 @@ class PruneOrphanFilesCommandTest extends TestCase
         config()->set('kb.deletion.soft_delete', true);
     }
 
-    private function seedDoc(string $sourcePath, string $versionHash, string $project = 'demo'): KnowledgeDocument
+    /**
+     * A row records the storage namespace its file lives in (`metadata.disk`
+     * / `metadata.prefix`, as the ingest job persists them): a test that
+     * selects another disk or prefix seeds the row with THAT namespace.
+     */
+    private function seedDoc(string $sourcePath, string $versionHash, string $project = 'demo', string $disk = 'kb', string $prefix = ''): KnowledgeDocument
     {
         return KnowledgeDocument::create([
             'project_key' => $project,
@@ -36,7 +45,7 @@ class PruneOrphanFilesCommandTest extends TestCase
             'status' => 'active',
             'document_hash' => $versionHash,
             'version_hash' => $versionHash,
-            'metadata' => ['disk' => 'kb', 'prefix' => ''],
+            'metadata' => ['disk' => $disk, 'prefix' => $prefix],
             'indexed_at' => now(),
         ]);
     }
@@ -93,6 +102,323 @@ class PruneOrphanFilesCommandTest extends TestCase
         Storage::disk('kb')->assertExists('docs/readme.txt');
     }
 
+    /**
+     * v8.36 / ADR 0029 — an orphan source (a failed first ingest) may have
+     * left an OCR run beside it; the sweep removes both, and never treats
+     * the run's own files as orphan candidates.
+     */
+    public function test_deleting_an_orphan_source_purges_the_ocr_run_beside_it(): void
+    {
+        Storage::fake('kb');
+
+        Storage::disk('kb')->put('docs/kept.md', 'k');
+        Storage::disk('kb')->put('docs/orphan.md', 'o');
+        Storage::disk('kb')->put('docs/orphan.md.ocr/'.self::RUN.'/images/fig-1-1.png', 'figure');
+        Storage::disk('kb')->put('docs/orphan.md.ocr/'.self::RUN.'/result.json', '{}');
+        Storage::disk('kb')->put('docs/kept.md.ocr/fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210/notes.md', 'not a source');
+
+        $this->seedDoc('docs/kept.md', 'hk');
+
+        // Past the in-flight grace (ADR 0029 §6): the run is not a reservation any more.
+        $this->travel(OcrFigureStore::inFlightGraceSeconds() + 60)->seconds();
+        $this->artisan('kb:prune-orphan-files')
+            ->expectsOutputToContain('scanned=2 orphans=1 deleted=1 failed=0')
+            ->assertSuccessful();
+
+        Storage::disk('kb')->assertMissing('docs/orphan.md');
+        $this->assertFalse(Storage::disk('kb')->directoryExists('docs/orphan.md.ocr'), 'the orphan run goes with its source');
+        Storage::disk('kb')->assertExists('docs/kept.md');
+        Storage::disk('kb')->assertExists('docs/kept.md.ocr/fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210/notes.md'); // a run beside a live source is neither a candidate nor purged
+    }
+
+    /**
+     * A `.ocr` tree whose source is gone from the disk and from every row
+     * (a hard delete that kept an in-flight run) is swept here — grace-aware:
+     * a run recorded inside the in-flight window is kept, an aged one goes.
+     * The source-row check is cross-tenant and includes trashed rows (the
+     * deleter's R30 exception), and a tree beside a still-referenced key is
+     * never a candidate.
+     */
+    /**
+     * An orphan source goes; the `.ocr/` run beside it recorded inside the
+     * in-flight grace is KEPT (its row may be about to commit) and reported
+     * as such — never counted as a clean sweep, never as a failure.
+     */
+    public function test_an_orphan_source_is_deleted_and_its_in_flight_ocr_run_is_kept_and_reported(): void
+    {
+        Storage::fake('kb');
+        $run = str_repeat('0123456789abcdef', 4);
+        Storage::disk('kb')->put('docs/orphan.md', '# orphan');
+        Storage::disk('kb')->put("docs/orphan.md.ocr/{$run}/result.json", '{}');
+
+        $this->artisan('kb:prune-orphan-files')
+            ->expectsOutputToContain('kept (in flight): docs/orphan.md.ocr')
+            ->expectsOutputToContain('orphans=1 deleted=1 failed=0 orphan_ocr_kept=1')
+            ->assertExitCode(0);
+
+        Storage::disk('kb')->assertMissing('docs/orphan.md');
+        $this->assertTrue(Storage::disk('kb')->directoryExists("docs/orphan.md.ocr/{$run}"));
+    }
+
+    /**
+     * The reference gate resolves each row's RECORDED disk + prefix: a row
+     * on another disk that shares the logical `source_path` does not keep an
+     * orphaned tree on this disk alive.
+     */
+    public function test_a_row_on_another_disk_does_not_protect_a_dangling_ocr_tree_on_this_one(): void
+    {
+        Storage::fake('kb');
+        Storage::fake('kb-other');
+        $run = str_repeat('abcdef0123456789', 4);
+        Storage::disk('kb')->put("docs/elsewhere.md.ocr/{$run}/result.json", '{}');
+        // Same logical path, recorded on ANOTHER disk: not a reference to this key.
+        $other = $this->seedDoc('docs/elsewhere.md', 'he');
+        KnowledgeDocument::withoutGlobalScopes()->whereKey($other->id)->update(['metadata' => json_encode(['disk' => 'kb-other', 'prefix' => ''])]);
+
+        $this->travel(OcrFigureStore::inFlightGraceSeconds() + 60)->seconds();
+        $this->artisan('kb:prune-orphan-files')
+            ->expectsOutputToContain('dangling_ocr=1 purged=1')
+            ->assertSuccessful();
+        $this->assertFalse(Storage::disk('kb')->directoryExists('docs/elsewhere.md.ocr'));
+    }
+
+    /**
+     * A row ingested before the storage namespace was persisted (no
+     * `metadata.disk`) protects the file on its path wherever a deleting
+     * consumer looks — the orphan sweep and the deleter's public reference
+     * gate alike — so deletion fails closed and never guesses a disk that
+     * would make every legacy row on a per-project disk a stranger to its
+     * own file.
+     */
+    public function test_a_legacy_row_without_a_recorded_namespace_protects_its_file_on_a_per_project_disk(): void
+    {
+        config()->set('kb.project_disks', ['hr-portal' => 'kb-hr']);
+        Storage::fake('kb-hr');
+        Storage::fake('kb');
+        Storage::disk('kb-hr')->put('docs/legacy-null.md', 'a');
+        Storage::disk('kb-hr')->put('docs/legacy-prefix-only.md', 'b');
+        Storage::disk('kb-hr')->put('docs/orphan.md', 'o');
+        $null = $this->seedDoc('docs/legacy-null.md', 'h1', 'hr-portal');
+        KnowledgeDocument::withoutGlobalScopes()->whereKey($null->id)->update(['metadata' => null]);
+        $prefixOnly = $this->seedDoc('docs/legacy-prefix-only.md', 'h2', 'hr-portal');
+        KnowledgeDocument::withoutGlobalScopes()->whereKey($prefixOnly->id)->update(['metadata' => json_encode(['prefix' => ''])]);
+
+        $this->artisan('kb:prune-orphan-files', ['--project' => 'hr-portal'])
+            ->expectsOutputToContain('scanned=3 orphans=1 deleted=1 failed=0')
+            ->assertSuccessful();
+
+        Storage::disk('kb-hr')->assertExists('docs/legacy-null.md');
+        Storage::disk('kb-hr')->assertExists('docs/legacy-prefix-only.md');
+        Storage::disk('kb-hr')->assertMissing('docs/orphan.md');
+
+        // The deleter's public reference gate (cursor-loaded rows, the path
+        // the dangling-tree sweep and the connector bridge delete through)
+        // fails closed on a legacy row too: it references the object on
+        // whichever disk the caller asks about.
+        $deleter = app(\App\Services\Kb\DocumentDeleter::class);
+        $this->assertSame((int) $null->id, $deleter->documentReferencingStorageKey('kb-hr', 'docs/legacy-null.md', 'docs/legacy-null.md'));
+        $this->assertSame((int) $null->id, $deleter->documentReferencingStorageKey('kb', 'docs/legacy-null.md', 'docs/legacy-null.md'));
+    }
+
+    /** The dangling-tree sweep never purges the run beside a live legacy row on a per-project disk. */
+    public function test_a_legacy_row_keeps_the_ocr_tree_beside_it_on_a_per_project_disk(): void
+    {
+        config()->set('kb.project_disks', ['hr-portal' => 'kb-hr']);
+        Storage::fake('kb-hr');
+        Storage::fake('kb');
+        $run = str_repeat('abcdef0123456789', 4);
+        Storage::disk('kb-hr')->put("docs/legacy.md.ocr/{$run}/result.json", '{}');
+        $legacy = $this->seedDoc('docs/legacy.md', 'hl', 'hr-portal');
+        KnowledgeDocument::withoutGlobalScopes()->whereKey($legacy->id)->update(['metadata' => null]);
+
+        $this->travel(OcrFigureStore::inFlightGraceSeconds() + 60)->seconds();
+        // Nothing to sweep at all: the tree is referenced, no source file is listed.
+        $this->artisan('kb:prune-orphan-files', ['--project' => 'hr-portal'])
+            ->expectsOutputToContain('No source files found on disk [kb-hr]')
+            ->assertSuccessful();
+        $this->assertTrue(Storage::disk('kb-hr')->directoryExists('docs/legacy.md.ocr'));
+    }
+
+    /**
+     * The sweep decides over the WHOLE table: run by a user whose
+     * AccessScopeScope hides other projects' rows (the admin command runner
+     * executes it under the caller), those projects' files must never be
+     * classified as orphans — R30/R33, the same posture as the dangling-tree
+     * sweep.
+     */
+    public function test_the_sweep_ignores_the_callers_project_scope_when_deciding_orphans(): void
+    {
+        $this->seed(\Database\Seeders\RbacSeeder::class);
+        config()->set('kb.project_isolation.enabled', true);
+        Storage::fake('kb');
+        Storage::disk('kb')->put('docs/mine.md', 'm');
+        Storage::disk('kb')->put('docs/theirs.md', 't');
+        Storage::disk('kb')->put('docs/orphan.md', 'o');
+        $this->seedDoc('docs/mine.md', 'hm', 'demo');
+        $this->seedDoc('docs/theirs.md', 'ht', 'other-project');
+
+        $viewer = \App\Models\User::create(['name' => 'viewer', 'email' => 'viewer-'.uniqid().'@demo.local', 'password' => \Illuminate\Support\Facades\Hash::make('secret123')]);
+        $viewer->assignRole('viewer');
+        \App\Models\ProjectMembership::create(['user_id' => $viewer->id, 'project_key' => 'demo', 'role' => 'member']);
+        $this->actingAs($viewer);
+        $this->assertSame(1, KnowledgeDocument::query()->count(), 'the scope hides the other project for this caller');
+
+        $this->artisan('kb:prune-orphan-files')
+            ->expectsOutputToContain('scanned=3 orphans=1 deleted=1 failed=0')
+            ->assertSuccessful();
+
+        Storage::disk('kb')->assertExists('docs/mine.md');
+        Storage::disk('kb')->assertExists('docs/theirs.md');
+        Storage::disk('kb')->assertMissing('docs/orphan.md');
+    }
+
+    /**
+     * The tree-key parser always terminates: a `.ocr/` segment whose suffix is
+     * not the store's layout (an ordinary directory that happens to end in
+     * `.ocr`, nested ones, a tree inside such a directory) is skipped by
+     * searching strictly before it, and the answer is the innermost real tree
+     * or null.
+     */
+    public function test_the_ocr_tree_key_parser_terminates_on_every_shape_of_path(): void
+    {
+        $run = str_repeat('abcdef0123456789', 4);
+        $this->assertNull(\App\Console\Commands\PruneOrphanFilesCommand::ocrTreeSourceKey('docs/archive.ocr/manual.md'));
+        $this->assertNull(\App\Console\Commands\PruneOrphanFilesCommand::ocrTreeSourceKey('a.ocr/b.ocr/c.ocr/x.md'));
+        $this->assertNull(\App\Console\Commands\PruneOrphanFilesCommand::ocrTreeSourceKey('docs/archive.ocr/'.$run.'/notes.txt'));
+        $this->assertSame('docs/archive.ocr/scan.png', \App\Console\Commands\PruneOrphanFilesCommand::ocrTreeSourceKey('docs/archive.ocr/scan.png.ocr/'.$run.'/result.json'));
+        $this->assertSame('docs/scan.png', \App\Console\Commands\PruneOrphanFilesCommand::ocrTreeSourceKey('docs/scan.png.ocr/'.$run.'/images/fig-1-1.png'));
+    }
+
+    /**
+     * The orphan test is the same physical test the dangling-tree sweep
+     * applies: a row carrying the same logical path on ANOTHER disk or under
+     * ANOTHER prefix references another object, so the file in THIS
+     * namespace (and the `.ocr/` tree beside it) is an orphan here.
+     */
+    public function test_a_row_on_another_disk_or_prefix_does_not_protect_a_source_file_in_this_namespace(): void
+    {
+        Storage::fake('kb');
+        Storage::fake('kb-other');
+        $run = str_repeat('abcdef0123456789', 4);
+        Storage::disk('kb')->put('docs/elsewhere.md', 'e');
+        Storage::disk('kb')->put("docs/elsewhere.md.ocr/{$run}/result.json", '{}');
+        Storage::disk('kb')->put('docs/archived.md', 'a');
+        Storage::disk('kb')->put('docs/here.md', 'h');
+        $other = $this->seedDoc('docs/elsewhere.md', 'he');
+        KnowledgeDocument::withoutGlobalScopes()->whereKey($other->id)->update(['metadata' => json_encode(['disk' => 'kb-other', 'prefix' => ''])]);
+        $archived = $this->seedDoc('docs/archived.md', 'ha');
+        KnowledgeDocument::withoutGlobalScopes()->whereKey($archived->id)->update(['metadata' => json_encode(['disk' => 'kb', 'prefix' => 'archive'])]);
+        $this->seedDoc('docs/here.md', 'hh');
+
+        $this->travel(OcrFigureStore::inFlightGraceSeconds() + 60)->seconds();
+        $this->artisan('kb:prune-orphan-files', ['--dry-run' => true])
+            ->expectsOutputToContain('DRY-RUN: 2 of 3 orphan file(s)')
+            ->assertSuccessful();
+
+        $this->artisan('kb:prune-orphan-files')
+            ->assertSuccessful();
+        Storage::disk('kb')->assertMissing('docs/elsewhere.md');
+        Storage::disk('kb')->assertMissing('docs/archived.md');
+        $this->assertFalse(Storage::disk('kb')->directoryExists('docs/elsewhere.md.ocr'), 'the OCR tree beside the orphan goes with it');
+        Storage::disk('kb')->assertExists('docs/here.md');
+    }
+
+    /**
+     * v8.36 / ADR 0029 — with OCR on, an image is a source: an orphan scan
+     * and the `.ocr/` tree beside it are swept like an orphan Markdown file.
+     * With OCR off images are not sources and are never touched (R43).
+     */
+    public function test_orphan_images_are_swept_only_while_ocr_is_on(): void
+    {
+        Storage::fake('kb');
+        $run = str_repeat('0123456789abcdef', 4);
+        Storage::disk('kb')->put('scans/orphan.png', 'PNG');
+        Storage::disk('kb')->put("scans/orphan.png.ocr/{$run}/images/fig-1-1.png", 'figure');
+        Storage::disk('kb')->put("scans/orphan.png.ocr/{$run}/result.json", '{}');
+        Storage::disk('kb')->put('scans/kept.png', 'PNG');
+        $this->seedDoc('scans/kept.png', 'hk');
+        $this->travel(OcrFigureStore::inFlightGraceSeconds() + 60)->seconds();
+
+        config(['kb.ocr.enabled' => false]);
+        $this->artisan('kb:prune-orphan-files')->assertSuccessful();
+        Storage::disk('kb')->assertExists('scans/orphan.png');
+
+        config(['kb.ocr.enabled' => true]);
+        $this->artisan('kb:prune-orphan-files')
+            ->expectsOutputToContain('orphans=1 deleted=1 failed=0')
+            ->assertSuccessful();
+        Storage::disk('kb')->assertMissing('scans/orphan.png');
+        $this->assertFalse(Storage::disk('kb')->directoryExists('scans/orphan.png.ocr'));
+        Storage::disk('kb')->assertExists('scans/kept.png');
+    }
+
+    /**
+     * A directory that merely ends in `.ocr` is not a generated tree: the
+     * sweep identifies a tree by the store's run layout (`{sha256}/result.json`,
+     * `{sha256}/images/…`), so a legitimate source under such a directory is
+     * never resolved to a `docs/archive` key nobody references — which would
+     * have let the purge remove the whole source subtree.
+     */
+    public function test_a_source_inside_a_directory_named_dot_ocr_is_not_mistaken_for_a_dangling_tree(): void
+    {
+        Storage::fake('kb');
+        Storage::disk('kb')->put('docs/archive.ocr/manual.md', '# manual');
+        Storage::disk('kb')->put('docs/archive.ocr/notes/readme.md', '# readme');
+        $this->seedDoc('docs/archive.ocr/manual.md', 'hm');
+        $this->seedDoc('docs/archive.ocr/notes/readme.md', 'hr');
+        // The real tree of a source that itself lives under that directory
+        // resolves to the SOURCE, and is dangling only once the source is
+        // gone from the disk and from every row.
+        Storage::disk('kb')->put('docs/archive.ocr/gone.md.ocr/'.self::RUN.'/result.json', '{}');
+        // A run directory that does not have the store's shape is not a run.
+        Storage::disk('kb')->put('docs/other.ocr/short/result.json', '{}');
+        $this->seedDoc('docs/other.ocr/short/result.json', 'hs');
+
+        $this->travel(OcrFigureStore::inFlightGraceSeconds() + 60)->seconds();
+        $this->artisan('kb:prune-orphan-files', ['--dry-run' => true])
+            ->expectsOutputToContain('docs/archive.ocr/gone.md.ocr')
+            ->expectsOutputToContain('0 of 0 orphan file(s) and 1 dangling OCR tree(s)')
+            ->assertSuccessful();
+
+        $this->artisan('kb:prune-orphan-files')
+            ->expectsOutputToContain('dangling_ocr=1 purged=1 in_flight=0 ocr_failed=0')
+            ->assertSuccessful();
+        Storage::disk('kb')->assertExists('docs/archive.ocr/manual.md');
+        Storage::disk('kb')->assertExists('docs/archive.ocr/notes/readme.md');
+        Storage::disk('kb')->assertExists('docs/other.ocr/short/result.json');
+        $this->assertFalse(Storage::disk('kb')->directoryExists('docs/archive.ocr/gone.md.ocr'));
+    }
+
+    public function test_a_dangling_ocr_tree_is_swept_only_once_it_has_aged_past_the_in_flight_grace(): void
+    {
+        Storage::fake('kb');
+        Storage::disk('kb')->put('docs/gone.md.ocr/'.self::RUN.'/images/fig-1-1.png', 'figure');
+        Storage::disk('kb')->put('docs/gone.md.ocr/'.self::RUN.'/result.json', '{}');
+        // Source gone from the disk but a soft-deleted row of ANOTHER tenant
+        // still references the key: the tree is that row's, not dangling.
+        Storage::disk('kb')->put('docs/theirs.md.ocr/fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210/result.json', '{}');
+        $theirs = $this->seedDoc('docs/theirs.md', 'ht');
+        KnowledgeDocument::withoutGlobalScopes()->whereKey($theirs->id)->update(['tenant_id' => 'other-tenant', 'deleted_at' => now()]);
+
+        $this->artisan('kb:prune-orphan-files', ['--dry-run' => true])
+            ->expectsOutputToContain('docs/gone.md.ocr')
+            ->expectsOutputToContain('0 of 0 orphan file(s) and 1 dangling OCR tree(s)')
+            ->assertSuccessful();
+        Storage::disk('kb')->assertExists('docs/gone.md.ocr/'.self::RUN.'/result.json');
+
+        $this->artisan('kb:prune-orphan-files')
+            ->expectsOutputToContain('dangling_ocr=1 purged=0 in_flight=1 ocr_failed=0')
+            ->assertSuccessful();
+        Storage::disk('kb')->assertExists('docs/gone.md.ocr/'.self::RUN.'/result.json');
+
+        $this->travel(OcrFigureStore::inFlightGraceSeconds() + 60)->seconds();
+        $this->artisan('kb:prune-orphan-files')
+            ->expectsOutputToContain('dangling_ocr=1 purged=1 in_flight=0 ocr_failed=0')
+            ->assertSuccessful();
+        $this->assertFalse(Storage::disk('kb')->directoryExists('docs/gone.md.ocr'));
+        Storage::disk('kb')->assertExists('docs/theirs.md.ocr/fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210/result.json');
+    }
+
     public function test_soft_deleted_documents_protect_their_file_from_being_flagged_orphan(): void
     {
         Storage::fake('kb');
@@ -147,7 +473,7 @@ class PruneOrphanFilesCommandTest extends TestCase
         // Decoy: a file on the default disk must stay untouched.
         Storage::disk('kb')->put('docs/decoy.md', 'd');
 
-        $this->seedDoc('docs/hr-doc.md', 'hrd', 'hr-portal');
+        $this->seedDoc('docs/hr-doc.md', 'hrd', 'hr-portal', disk: 'kb-hr');
 
         $this->artisan('kb:prune-orphan-files', ['--project' => 'hr-portal'])
             ->expectsOutputToContain('scanned=2 orphans=1 deleted=1 failed=0')
@@ -179,7 +505,7 @@ class PruneOrphanFilesCommandTest extends TestCase
         Storage::disk('kb')->put('outside-root.md', 'y');
 
         // DocumentIngestor stores source_path without the prefix.
-        $this->seedDoc('docs/kept.md', 'hk');
+        $this->seedDoc('docs/kept.md', 'hk', prefix: 'kb/proj');
 
         $this->artisan('kb:prune-orphan-files')
             ->expectsOutputToContain('scanned=2 orphans=1 deleted=1 failed=0')
@@ -206,7 +532,8 @@ class PruneOrphanFilesCommandTest extends TestCase
         Storage::disk('kb')->put('kb/proj/docs/kept.md', 'k');
         Storage::disk('kb')->put('kb/proj/docs/orphan.md', 'o');
 
-        $this->seedDoc('docs/kept.md', 'hk');
+        // Recorded as the operator typed it: the resolver normalises it.
+        $this->seedDoc('docs/kept.md', 'hk', prefix: 'kb\\proj');
 
         $this->artisan('kb:prune-orphan-files')
             ->expectsOutputToContain('scanned=2 orphans=1 deleted=1 failed=0')
