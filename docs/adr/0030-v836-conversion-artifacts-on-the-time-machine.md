@@ -87,10 +87,16 @@ already share — **one core, both paths**, exactly as `ChunkRedactor` is wired.
 `source_path` is prefix-free and the prefix is one global setting, so tenant
 and project are part of the key explicitly — **as safe segments, never
 verbatim**: each is admitted only when it matches
-`^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$` (no `/`, no `..`) and is otherwise
-replaced by `h-` + the first 24 hex of its SHA-256; the composed path is
-normalised with `KbPath::normalize()` and must resolve **inside** the artifact
-root. Two checks, by disk kind: the lexical one on every disk — a string
+`^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$` (no `/`, no `..`) **and does not start
+with `h-`** — that prefix is reserved for the encoding — and is otherwise
+replaced by `h-` + the **full** 64-hex SHA-256 of the value. The mapping is
+injective: a verbatim segment can never spell an encoded one (`h-…` is never
+admitted verbatim, so a tenant literally named `h-<hex>` is itself hashed),
+and two distinct values share an encoded segment only on a SHA-256 collision.
+A collision test pins both properties (a literal `h-<64 hex>` name and the
+unsafe value whose digest it spells resolve to different paths). The composed
+path is normalised with `KbPath::normalize()` and must resolve **inside** the
+artifact root. Two checks, by disk kind: the lexical one on every disk — a string
 check on the normalised path (`str_starts_with($path, $root.'/')`), after
 `KbPath::normalize()` has rejected `.` and `..` segments, so no traversal
 survives it — and, on a **local** disk, a `realpath` check on every read,
@@ -172,12 +178,28 @@ here rather than assumed:
   before it leaves (ADR 0032).
 - **Erasure.** The artifact goes with its row: `DocumentDeleter`'s hard
   delete removes it, and `kb:prune-archived-versions` removes it with each
-  pruned version and sweeps orphans (§8). There is no other erasure path —
-  every flow that hard-deletes a document goes through `DocumentDeleter`,
-  so every one of them removes the artifact. Crypto-shred (ADR 0020 D6)
-  targets the vault, which holds nothing about the artifact; the artifact
-  is removed by deletion, never by shredding, and a vault shred must not be
-  read as erasing stored Markdown.
+  pruned version and sweeps orphans (§8). Every flow that hard-deletes a
+  document goes through `DocumentDeleter`, so every one of them removes the
+  artifact. **This is document deletion, not subject erasure.** The Art.17
+  path that exists today (`SubjectErasureService`, ADR 0020 Decision 6, also
+  the DSAR `delete` hook of `AskMyDocsUserDataDeleter`) crypto-shreds the
+  `pii_token_maps` vault — the AI boundary: surrogates in chunks, embeddings
+  and chat become unresolvable — and **touches no raw asset**: not the
+  original binary the customer uploaded, not this artifact, not the
+  `{source_path}.ocr/` run (ADR 0029). The artifact is raw Markdown *before*
+  the PII seam and therefore still contains the subject's original values
+  after a shred, exactly as the original PDF does. So the artifact adds no
+  new erasure obligation, but the ADR must not overstate the guarantee: a
+  data-subject request that reaches raw assets is completed by **hard-deleting
+  the documents that contain the subject** (`kb:delete --force`,
+  `DELETE /api/kb/documents`, the retention prunes), which is a customer /
+  operator step the DSAR runbook has to include — a vault shred is not an
+  erasure of stored Markdown, of OCR figures, or of the source. Locating "every
+  document that mentions this subject" is not a W2 capability: it is recorded
+  as a candidate for the v8.39 routine (W5) — a subject → documents locator
+  over the vault's token map, driving `DocumentDeleter` — and, until it
+  exists, the compliance claim is "shred covers the index; deletion covers
+  the raw assets; the operator joins the two".
 - **Retention.** No artifact is written in `reference_only`; `markdown_only`
   replaces the original binary with the artifact rather than adding to it.
 
@@ -269,11 +291,14 @@ in-flight grace (ADR 0029 §6); the `.ocr/` tree as a whole still goes with the
 One gate, two callers: the hard delete and the prune cannot diverge on what
 "referenced" means. `DocumentDeleter`'s hard
 delete removes the artifact of the row it deletes unconditionally: each row
-owns its own artifact, unlike the shared source file. ADR 0020 D6 crypto-shred applies
-unchanged: the artifact is raw markdown outside the AI boundary and the vault
-is the only link between a surrogate and a person — shredding the vault does
-not touch the artifact, and does not need to: the artifact is erased by
-deletion, with the row and the source it came from (§3, *Erasure*).
+owns its own artifact, unlike the shared source file. ADR 0020 Decision 6
+crypto-shred applies unchanged and **stops at the AI boundary**: it shreds the
+vault, which is the only link between a surrogate and a person, and it does not
+touch the artifact — raw Markdown before the PII seam — nor the OCR run, nor
+the source. Those are erased by deletion only: the documents that contain the
+subject are hard-deleted (row by row or by the prune) and the artifact, the
+run and the source go with them (§3, *Erasure*). A shred alone is not an
+erasure of any raw asset.
 
 ### 9. The MCP read surface the v8.7 feature never got
 

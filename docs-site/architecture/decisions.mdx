@@ -148,9 +148,12 @@ flowchart LR
   the one persistence core, three nullable columns arrive with it —
   `version_actor` and `version_reason` record who created a version and why,
   `content_hash` is the integrity hash of the stored artifact — `diff` prefers artifacts and falls back to reconstruction
-  (both branches tested), and retention and deletion cover the artifact
-  (crypto-shred targets the vault, which holds nothing about it — a vault shred
-  never erases stored Markdown; deletion does).
+  (both branches tested), and retention and deletion cover the artifact.
+  The erasure boundary is stated, not assumed: the Art.17 crypto-shred targets
+  the vault and stops at the AI boundary — it never erases stored Markdown,
+  OCR figures or the original source, which are raw assets *before* the PII
+  seam; those are erased by hard-deleting the documents that contain the
+  subject, an operator step of the DSAR runbook.
   No versions table is added: the family *is* the version model, and the
   narrower gap the audit found is closed without rebuilding what v8.7 shipped.
 

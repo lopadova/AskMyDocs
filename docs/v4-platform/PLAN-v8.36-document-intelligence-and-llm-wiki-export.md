@@ -325,12 +325,15 @@ prefix is one global setting, so tenant and project are part of the key
 explicitly — **as safe segments, never verbatim**: `project_key` is a free
 string of up to 120 characters at the ingest API and `kb:ingest-folder
 --project` validates nothing, so each of the two is admitted only when it
-matches `^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$` (no `/`, no `..`) and is
-otherwise replaced by `h-` + the first 24 hex of its SHA-256; the composed
+matches `^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$` (no `/`, no `..`) and does not
+start with the reserved `h-` prefix, and is otherwise replaced by `h-` + the
+full 64-hex SHA-256 of the value (injective: a verbatim segment can never
+spell an encoded one — ADR 0030 §3); the composed
 path is normalised with `KbPath::normalize()` (which refuses `.` / `..`) and
 must resolve **inside** the artifact root (`realpath` containment where the
 disk is local). Tests: a project key of `../../outside`, one of 120
-characters, and two keys that collide only after encoding. Today's database uniqueness is `uq_kb_doc_version` =
+characters, two keys that collide only after encoding, and a literal
+`h-<64 hex>` key against the unsafe value whose digest it spells. Today's database uniqueness is `uq_kb_doc_version` =
 `(project_key, source_path, version_hash)` — the tenant migration deferred
 rebuilding the composite uniques with `tenant_id`, so identical content at
 one path cannot be stored for two tenants **today** (a pre-existing
@@ -395,11 +398,19 @@ have one and falls back to `reconstructContent()` otherwise (R43: both branches
 tested); `restore` re-activates the artifact with the row. W3 creates versions
 on correction through the same service. Retention: `kb:prune-archived-versions`
 deletes the artifact with the row. Erasure is by deletion, not by shredding:
-ADR 0020's crypto-shred targets the token vault, which holds nothing about the
-artifact, so a vault shred never erases stored Markdown — every hard-delete
-path removes the artifact: `DocumentDeleter` row by row, and the batch prune
-(`kb:prune-archived-versions`, which hard-deletes by query) through the same
-cleanup and reference gates (ADR 0030 §3 *Erasure*, §8).
+ADR 0020's crypto-shred (`SubjectErasureService`, the DSAR `delete` hook)
+targets the token vault and stops at the AI boundary — it holds nothing about
+the artifact, the `.ocr/` run or the original source, all raw assets *before*
+the PII seam that still contain the subject's original values after a shred.
+Every hard-delete path removes the artifact: `DocumentDeleter` row by row, and
+the batch prune (`kb:prune-archived-versions`, which hard-deletes by query)
+through the same cleanup and reference gates (ADR 0030 §3 *Erasure*, §8). The
+DSAR boundary is therefore explicit: **the shred covers the index; deleting the
+documents that contain the subject covers the raw assets; that deletion is a
+customer / operator step of the DSAR runbook, not an Art.17 guarantee W1/W2
+make on their own.** A subject → documents locator that drives
+`DocumentDeleter` from the vault's token map is a W5 (v8.39) candidate, not
+W2 scope.
 
 **Why it is its own workstream.** It is the prerequisite of W3 and W4, and it
 gives *Semantic Time Travel* (parked since v8.0) the faithful "what did this
