@@ -19,11 +19,14 @@ use Throwable;
  *
  * Every page inside the probe window is classified from what smalot reads:
  * `text` (at least `min_text_chars` non-whitespace characters), `scanned`
- * (below the threshold AND carrying something to look at — an image XObject,
- * a page that is a picture of text, or painted content with no text object
- * behind it: text outlined into paths, a drawing) or `blank` (below the
- * threshold and nothing painted: a separator or an empty page, never a
- * reason to OCR by itself). The verdict follows:
+ * (below the threshold AND carrying an image XObject — a page that is a
+ * picture of text), `painted` (below the threshold, no image, but drawn
+ * content with no text object behind it: text outlined into paths, a
+ * drawing, a decorative rule) or `blank` (below the threshold and nothing
+ * painted: a separator or an empty page, never a reason to OCR by itself).
+ * A painted page counts as scanned only when no page has a text layer (the
+ * outlined-text design export); beside typed pages it is a divider, never a
+ * reason to OCR the whole document. The verdict follows:
  *
  *   - `present`  — every page that has content is a text page (blank pages
  *                  are ignored, so a window of blank pages alone is
@@ -88,6 +91,7 @@ final class PdfTextLayerProbe
         $probed = 0;
         $textPages = 0;
         $scanned = [];
+        $painted = [];
         foreach ($pages as $index => $page) {
             if ($probed >= $pagesToProbe) {
                 break;
@@ -111,17 +115,31 @@ final class PdfTextLayerProbe
 
                 continue;
             }
-            if ($this->carriesImage($page)) {
+            if ($this->carriesImageXObject($page)) {
                 $scanned[] = $number;
+
+                continue;
+            }
+            if ($this->paintsSomething($page)) {
+                $painted[] = $number;
             }
         }
 
+        // A painted-only page (no image, drawn content) is read as scanned
+        // when NO page has a text layer — the outlined-text design export —
+        // but never promotes a text PDF to `mixed`: a chapter divider with a
+        // decorative rule beside typed pages would otherwise send the whole
+        // document to a billed OCR run. Image pages decide `mixed` alone.
         $verdict = match (true) {
-            $textPages === 0 && ($scanned !== [] || $probed === 0) => self::EMPTY,
+            $textPages === 0 && ($scanned !== [] || $painted !== [] || $probed === 0) => self::EMPTY,
             $textPages === 0 => self::PRESENT,
             $scanned !== [] => self::MIXED,
             default => self::PRESENT,
         };
+        if ($verdict === self::EMPTY && $painted !== []) {
+            $scanned = array_values(array_unique(array_merge($scanned, $painted)));
+            sort($scanned);
+        }
 
         return [
             'verdict' => $verdict,
@@ -137,22 +155,6 @@ final class PdfTextLayerProbe
     public function isTextless(string $bytes): bool
     {
         return $this->probe($bytes)['verdict'] !== self::PRESENT;
-    }
-
-    /**
-     * Something to look at on a textless page: an image XObject (a picture
-     * of text), or painted content outside every text object — text
-     * outlined into paths, a drawing, a form XObject — which OCR can read
-     * and a "blank" verdict would silently skip. A page that paints nothing
-     * is blank.
-     */
-    private function carriesImage(Page $page): bool
-    {
-        if ($this->carriesImageXObject($page)) {
-            return true;
-        }
-
-        return $this->paintsSomething($page);
     }
 
     /**
@@ -176,7 +178,11 @@ final class PdfTextLayerProbe
         if (preg_match('/(?<![A-Za-z])BI(?![A-Za-z]).*?(?<![A-Za-z])EI(?![A-Za-z])/s', $content) === 1) {
             return true;
         }
-        $outsideText = preg_replace('/(?<![A-Za-z])BT(?![A-Za-z]).*?(?<![A-Za-z])ET(?![A-Za-z])/s', ' ', $content) ?? $content;
+        // String literals `(…)` and hex strings `<…>` are operands, never
+        // operators: removed first so a letter inside them (a truncated text
+        // object, a name) is never read as a painting operator.
+        $operators = preg_replace('/\((?:\\\\.|[^\\\\)])*\)|<[0-9A-Fa-f\s]*>/s', ' ', $content) ?? $content;
+        $outsideText = preg_replace('/(?<![A-Za-z])BT(?![A-Za-z]).*?(?<![A-Za-z])ET(?![A-Za-z])/s', ' ', $operators) ?? $operators;
 
         return preg_match('/(?<![A-Za-z\/])(?:f\*?|F|B\*?|b\*?|S|s|sh|Do)(?![A-Za-z*])/', $outsideText) === 1;
     }

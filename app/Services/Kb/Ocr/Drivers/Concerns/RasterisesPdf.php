@@ -121,13 +121,15 @@ trait RasterisesPdf
         // `run_too_long`, never a generic error the job retries.
         try {
             $budget?->assertRemaining($request->filename);
-            $dpi = $this->boundedDpi($input, $pdfinfoBinary, $maxPages, $dpi, $maxPx, $budget?->bound($timeout) ?? $timeout, $request->filename);
+            $dpi = $this->boundedDpi($input, $pdfinfoBinary, $maxPages, $dpi, $maxPx, $budget?->bound($timeout, null, $request->filename) ?? $timeout, $request->filename);
             $budget?->assertRemaining($request->filename);
+            // A spent budget refuses here (`bound()` throws): still inside the
+            // guarded block, so the working directory never outlives the refusal.
+            $renderTimeout = max(1, $budget?->bound($timeout, null, $request->filename) ?? $timeout);
         } catch (\Throwable $e) {
             $this->cleanupAfterFailure($dir, $e);
             throw $e;
         }
-        $renderTimeout = max(1, $budget?->bound($timeout) ?? $timeout);
         $process = new Process([$pdftoppmBinary, '-r', (string) $dpi, '-f', '1', '-l', (string) $maxPages, '-png', $input, $dir.'/page']);
         $process->setTimeout($renderTimeout);
         try {

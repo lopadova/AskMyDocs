@@ -71,8 +71,23 @@ final class PdfTextLayerProbeTest extends TestCase
         $this->assertSame(PdfTextLayerProbe::EMPTY, $probe['verdict']);
         $this->assertSame([2], $probe['scanned_pages']);
 
-        $mixed = app(PdfTextLayerProbe::class)->probe(PdfFixtureBuilder::build([self::COVER, ' '], [], [2]));
-        $this->assertSame(PdfTextLayerProbe::MIXED, $mixed['verdict'], 'a typed cover over an outlined page is mixed');
+    }
+
+    /**
+     * Beside typed pages a painted-only page is a divider (a chapter title
+     * under the threshold with a decorative rule), never a reason to OCR
+     * the whole document: `mixed` is decided by image pages alone.
+     */
+    public function test_a_painted_divider_beside_text_pages_never_makes_the_document_mixed(): void
+    {
+        $probe = app(PdfTextLayerProbe::class)->probe(PdfFixtureBuilder::build([self::COVER, 'Part II', self::COVER], [], [2]));
+
+        $this->assertSame(PdfTextLayerProbe::PRESENT, $probe['verdict']);
+        $this->assertSame([], $probe['scanned_pages']);
+        $this->assertSame(2, $probe['text_pages']);
+
+        $withImage = app(PdfTextLayerProbe::class)->probe(PdfFixtureBuilder::build([self::COVER, 'Part II'], [2], [2]));
+        $this->assertSame(PdfTextLayerProbe::MIXED, $withImage['verdict'], 'an image page still decides mixed');
     }
 
     /** A positive KB_OCR_PROBE_PAGES bounds the window — the documented trade-off: a scanned page beyond it is not seen. */

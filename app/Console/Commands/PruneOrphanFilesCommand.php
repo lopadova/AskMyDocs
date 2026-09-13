@@ -302,14 +302,29 @@ class PruneOrphanFilesCommand extends Command
             // a row carrying the same logical path on another disk, or under
             // another prefix, references another object, and the file here
             // (with any `.ocr/` tree beside it) is an orphan of this namespace.
+            // Every row, whatever the caller may read (the admin command
+            // runner executes this under a user whose AccessScopeScope would
+            // hide other projects' rows — and their files would then be
+            // "orphans"), trashed included: a deletion decision is taken
+            // over the whole table, as the dangling-tree sweep takes it.
             $known = [];
-            $rows = KnowledgeDocument::withTrashed()
+            $rows = KnowledgeDocument::query()
+                ->withoutGlobalScopes()
                 ->whereIn('source_path', $chunk)
-                ->select(['id', 'source_path', 'metadata'])
+                ->select(['id', 'project_key', 'source_path', 'metadata'])
                 ->cursor();
             foreach ($rows as $row) {
                 $relative = (string) $row->source_path;
                 if (isset($known[$relative])) {
+                    continue;
+                }
+                // A row that never recorded its namespace (ingested before it
+                // was persisted) protects the file on its path wherever the
+                // sweep looks: deletion fails closed, the pre-namespace
+                // behaviour — never "a stranger to its own file".
+                if (! $deleter->documentRecordsStorageNamespace($row)) {
+                    $known[$relative] = true;
+
                     continue;
                 }
                 if ($deleter->documentResolvesToStorageKey($row, $disk, $this->applyPrefix($relative, $prefix))) {

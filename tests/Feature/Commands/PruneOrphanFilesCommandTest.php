@@ -183,6 +183,74 @@ class PruneOrphanFilesCommandTest extends TestCase
     }
 
     /**
+     * A row ingested before the storage namespace was persisted (no
+     * `metadata.disk` / `metadata.prefix`) protects the file on its path
+     * wherever the sweep looks — deletion fails closed — and, where the
+     * deleter must resolve such a row, the disk is the one its project
+     * resolves to, never the bare default that would make every legacy row
+     * on a per-project disk a stranger to its own file.
+     */
+    public function test_a_legacy_row_without_a_recorded_namespace_protects_its_file_on_a_per_project_disk(): void
+    {
+        config()->set('kb.project_disks', ['hr-portal' => 'kb-hr']);
+        Storage::fake('kb-hr');
+        Storage::fake('kb');
+        Storage::disk('kb-hr')->put('docs/legacy-null.md', 'a');
+        Storage::disk('kb-hr')->put('docs/legacy-prefix-only.md', 'b');
+        Storage::disk('kb-hr')->put('docs/orphan.md', 'o');
+        $null = $this->seedDoc('docs/legacy-null.md', 'h1', 'hr-portal');
+        KnowledgeDocument::withoutGlobalScopes()->whereKey($null->id)->update(['metadata' => null]);
+        $prefixOnly = $this->seedDoc('docs/legacy-prefix-only.md', 'h2', 'hr-portal');
+        KnowledgeDocument::withoutGlobalScopes()->whereKey($prefixOnly->id)->update(['metadata' => json_encode(['prefix' => ''])]);
+
+        $this->artisan('kb:prune-orphan-files', ['--project' => 'hr-portal'])
+            ->expectsOutputToContain('scanned=3 orphans=1 deleted=1 failed=0')
+            ->assertSuccessful();
+
+        Storage::disk('kb-hr')->assertExists('docs/legacy-null.md');
+        Storage::disk('kb-hr')->assertExists('docs/legacy-prefix-only.md');
+        Storage::disk('kb-hr')->assertMissing('docs/orphan.md');
+
+        // The deleter resolves a legacy row (no recorded disk) to its project disk.
+        $deleter = app(\App\Services\Kb\DocumentDeleter::class);
+        $this->assertTrue($deleter->documentResolvesToStorageKey($null->fresh(), 'kb-hr', 'docs/legacy-null.md'));
+        $this->assertFalse($deleter->documentResolvesToStorageKey($null->fresh(), 'kb', 'docs/legacy-null.md'));
+    }
+
+    /**
+     * The sweep decides over the WHOLE table: run by a user whose
+     * AccessScopeScope hides other projects' rows (the admin command runner
+     * executes it under the caller), those projects' files must never be
+     * classified as orphans — R30/R33, the same posture as the dangling-tree
+     * sweep.
+     */
+    public function test_the_sweep_ignores_the_callers_project_scope_when_deciding_orphans(): void
+    {
+        $this->seed(\Database\Seeders\RbacSeeder::class);
+        config()->set('kb.project_isolation.enabled', true);
+        Storage::fake('kb');
+        Storage::disk('kb')->put('docs/mine.md', 'm');
+        Storage::disk('kb')->put('docs/theirs.md', 't');
+        Storage::disk('kb')->put('docs/orphan.md', 'o');
+        $this->seedDoc('docs/mine.md', 'hm', 'demo');
+        $this->seedDoc('docs/theirs.md', 'ht', 'other-project');
+
+        $viewer = \App\Models\User::create(['name' => 'viewer', 'email' => 'viewer-'.uniqid().'@demo.local', 'password' => \Illuminate\Support\Facades\Hash::make('secret123')]);
+        $viewer->assignRole('viewer');
+        \App\Models\ProjectMembership::create(['user_id' => $viewer->id, 'project_key' => 'demo', 'role' => 'member']);
+        $this->actingAs($viewer);
+        $this->assertSame(1, KnowledgeDocument::query()->count(), 'the scope hides the other project for this caller');
+
+        $this->artisan('kb:prune-orphan-files')
+            ->expectsOutputToContain('scanned=3 orphans=1 deleted=1 failed=0')
+            ->assertSuccessful();
+
+        Storage::disk('kb')->assertExists('docs/mine.md');
+        Storage::disk('kb')->assertExists('docs/theirs.md');
+        Storage::disk('kb')->assertMissing('docs/orphan.md');
+    }
+
+    /**
      * The tree-key parser always terminates: a `.ocr/` segment whose suffix is
      * not the store's layout (an ordinary directory that happens to end in
      * `.ocr`, nested ones, a tree inside such a directory) is skipped by

@@ -11,6 +11,7 @@ use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
 use App\Services\Kb\Ocr\OcrFigureStore;
 use App\Services\Kb\Analysis\ChangeAnalysisGate;
+use App\Support\KbDiskResolver;
 use App\Support\KbPath;
 use App\Support\LikeEscaper;
 use DateTimeInterface;
@@ -746,9 +747,17 @@ class DocumentDeleter
         return null;
     }
 
+    /** Whether the row persisted the storage namespace its file lives in (`metadata.disk` / `metadata.prefix`). */
+    public function documentRecordsStorageNamespace(KnowledgeDocument $document): bool
+    {
+        $metadata = is_array($document->metadata) ? $document->metadata : [];
+
+        return array_key_exists('disk', $metadata) || array_key_exists('prefix', $metadata);
+    }
+
     /**
      * Whether this row's RECORDED storage namespace (`metadata.disk` /
-     * `metadata.prefix`, the configured defaults when absent) resolves its
+     * `metadata.prefix`, the project disk and the configured prefix when absent) resolves its
      * `source_path` to exactly `$fullPath` on `$disk` — the one test of
      * "this row references that physical object", shared by the dangling
      * OCR-tree sweep and the orphan-file sweep so neither can be fooled by a
@@ -757,7 +766,14 @@ class DocumentDeleter
     public function documentResolvesToStorageKey(KnowledgeDocument $document, string $disk, string $fullPath): bool
     {
         $metadata = is_array($document->metadata) ? $document->metadata : [];
-        $candidateDisk = (string) ($metadata['disk'] ?? config('kb.sources.disk', 'kb'));
+        // A row that recorded no disk was ingested before the namespace was
+        // persisted: the disk it used is the one its project resolved to
+        // then and now (`KbDiskResolver`), never the bare default — on a
+        // per-project disk the default would make every legacy row a
+        // stranger to its own file.
+        $candidateDisk = array_key_exists('disk', $metadata)
+            ? (string) $metadata['disk']
+            : KbDiskResolver::forProject((string) $document->project_key);
         $candidatePrefix = array_key_exists('prefix', $metadata)
             ? (string) $metadata['prefix']
             : (string) config('kb.sources.path_prefix', '');

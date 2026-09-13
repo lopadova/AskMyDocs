@@ -121,7 +121,7 @@ final class TesseractOcrDriver implements OcrDriver
             $pages = [];
             foreach ($raster['pages'] as $number => $imagePath) {
                 $budget->assertRemaining($request->filename);
-                $pages[] = $this->recognisePage($binary, $lang, $budget->bound($timeout), $number, $imagePath);
+                $pages[] = $this->recognisePage($binary, $lang, $budget->bound($timeout, null, $request->filename), $number, $imagePath);
             }
         } catch (\Throwable $e) {
             $this->cleanupAfterFailure($raster['dir'], $e);

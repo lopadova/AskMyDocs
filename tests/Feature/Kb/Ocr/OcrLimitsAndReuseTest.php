@@ -695,11 +695,14 @@ final class OcrLimitsAndReuseTest extends TestCase
         config(['kb.ocr.fake.pages' => [['markdown' => 'Alpha', 'confidence' => 0.8, 'figures' => 3]]]);
         $converter = $this->app->make(OcrConverter::class);
 
+        // Terminal (`OcrLimitExceededException`, never a generic error the
+        // job retries): the same result would come back on every retry.
         config(['kb.ocr.max_figures_per_run' => 2]);
         try {
             $converter->convert($this->image());
             $this->fail('three figures over a budget of two must be refused');
-        } catch (\RuntimeException $e) {
+        } catch (OcrLimitExceededException $e) {
+            $this->assertSame('figure_budget_exceeded', $e->reason);
             $this->assertStringContainsString('KB_OCR_MAX_FIGURES=2', $e->getMessage());
         }
 
@@ -707,7 +710,8 @@ final class OcrLimitsAndReuseTest extends TestCase
         try {
             $converter->convert($this->image());
             $this->fail('three figures over a total-bytes budget of two must be refused');
-        } catch (\RuntimeException $e) {
+        } catch (OcrLimitExceededException $e) {
+            $this->assertSame('figure_budget_exceeded', $e->reason);
             $this->assertStringContainsString('KB_OCR_MAX_FIGURES_TOTAL_BYTES='.($figure * 2), $e->getMessage());
         }
 
@@ -715,7 +719,8 @@ final class OcrLimitsAndReuseTest extends TestCase
         try {
             $converter->convert($this->image());
             $this->fail('a figure over the per-figure cap must be refused');
-        } catch (\RuntimeException $e) {
+        } catch (OcrLimitExceededException $e) {
+            $this->assertSame('figure_budget_exceeded', $e->reason);
             $this->assertStringContainsString('KB_OCR_MAX_FIGURE_BYTES', $e->getMessage());
         }
 

@@ -107,6 +107,7 @@ final class KbUploadOcrTest extends TestCase
         Storage::disk('kb-staging')->assertExists((string) $item->staging_path);
         Storage::disk('kb')->assertMissing((string) $item->destination_path);
         \Illuminate\Support\Facades\Queue::assertNothingPushed();
+        $this->assertSame(\App\Models\KbIngestBatch::STATUS_COMPLETED_WITH_ERRORS, \App\Models\KbIngestBatch::query()->findOrFail($batchId)->status, 'the batch finalises with the refused item');
     }
 
     public function test_on_a_file_named_png_that_is_not_an_image_is_rejected_by_the_sniffer(): void

@@ -220,7 +220,7 @@ TXT;
                 // provider call is bounded by what is left of the run budget
                 // (the SDK's per-call timeout, the same seam SdkChat uses); a
                 // call that outlives it is the terminal `run_too_long`.
-                $bound = $budget->bound($callTimeout);
+                $bound = $budget->bound($callTimeout, null, $request->filename);
                 try {
                     $response = $agent->prompt(
                         "Transcribe page {$number}.",

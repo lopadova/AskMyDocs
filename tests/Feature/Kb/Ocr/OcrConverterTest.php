@@ -233,6 +233,31 @@ final class OcrConverterTest extends TestCase
      * The binary is stubbed through KB_PDFTOTEXT_BIN (poppler is not a test
      * dependency).
      */
+    /**
+     * R43 — both flag states: with OCR off the smalot-failure fallback still
+     * runs pdftotext, and a run past KB_PDFTOTEXT_TIMEOUT is the same
+     * deterministic `run_too_long` refusal (never a generic error retried),
+     * with no temporary copy left behind.
+     */
+    public function test_off_a_pdftotext_timeout_is_a_terminal_refusal(): void
+    {
+        config(['kb.ocr.enabled' => false, 'kb.pdf.pdftotext_timeout' => 1]);
+        $stub = tempnam(sys_get_temp_dir(), 'pdftotext_stub_');
+        file_put_contents($stub, "#!/bin/sh\nsleep 5\n");
+        chmod($stub, 0755);
+        config(['kb.pdf.pdftotext_bin' => $stub]);
+        $before = glob(sys_get_temp_dir().'/kb_pdf_*') ?: [];
+        try {
+            $this->app->make(PdfConverter::class)->convert($this->pdf('%PDF-1.4 not really a pdf'));
+            $this->fail('a run past the timeout must be refused');
+        } catch (\App\Services\Kb\Ocr\OcrLimitExceededException $e) {
+            $this->assertSame('run_too_long', $e->reason);
+        } finally {
+            unlink($stub);
+        }
+        $this->assertSame($before, glob(sys_get_temp_dir().'/kb_pdf_*') ?: [], 'no temporary PDF is left behind');
+    }
+
     public function test_on_an_unreadable_pdf_with_pdftotext_text_keeps_the_text_layer_path(): void
     {
         config(['kb.ocr.enabled' => true]);

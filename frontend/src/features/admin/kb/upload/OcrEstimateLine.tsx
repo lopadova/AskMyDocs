@@ -89,7 +89,7 @@ export function OcrEstimateLine({ state, estimate, errorMessage }: OcrEstimateLi
             uncountable > 0 ? `${files(uncountable)} ha${uncountable === 1 ? 's' : 've'} a page count that cannot be verified (the PDF could not be parsed), which the configured ${estimate.driver} driver refuses to run without` : '',
             multiFrame > 0 ? `${files(multiFrame)} ${multiFrame === 1 ? 'is a multi-frame TIFF' : 'are multi-frame TIFFs'} the ${estimate.driver} driver would transcribe one frame of (split into one image per page)` : '',
             tooLarge > 0 ? `${files(tooLarge)} exceed${tooLarge === 1 ? 's' : ''} the raster bounds a page must fit (KB_OCR_RASTER_MAX_PAGE_PX / KB_OCR_RASTER_MAX_PAGE_BYTES)` : '',
-            tooLong > 0 ? `${files(tooLong)} could not be read by pdftotext within KB_PDFTOTEXT_TIMEOUT (a malformed PDF)` : '',
+            tooLong > 0 ? `${files(tooLong)} could not be read by pdftotext within KB_PDFTOTEXT_TIMEOUT (raise it, or split the file)` : '',
         ].filter(Boolean).join('; ') + ' — refused before any driver runs.';
     // A staged object whose bytes are no raster the OCR path serves (a file
     // replaced or corrupted since upload) is refused at commit with the same

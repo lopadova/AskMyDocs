@@ -242,7 +242,7 @@ describe('OcrEstimateLine', () => {
         };
         render(<OcrEstimateLine state="ready" estimate={est} />);
         const el = screen.getByTestId('kb-upload-ocr-estimate');
-        expect(el.textContent).toContain('1 file could not be read by pdftotext within KB_PDFTOTEXT_TIMEOUT');
+        expect(el.textContent).toContain('1 file could not be read by pdftotext within KB_PDFTOTEXT_TIMEOUT (raise it, or split the file)');
         expect(el.textContent).toContain('refused before any driver runs');
         expect(el.textContent).not.toContain('KB_OCR_MAX_PAGES / KB_OCR_MAX_BYTES');
     });

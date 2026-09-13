@@ -347,27 +347,27 @@ final class OcrService
      *
      * @param  list<OcrFigure>  $figures
      *
-     * @throws \RuntimeException  when the result exceeds a cap — discarded, nothing is stored, recorded or metered
+     * @throws OcrLimitExceededException  when the result exceeds a cap (`figure_budget_exceeded`) — discarded, nothing is stored, recorded or metered; terminal, the same result would come back on a retry
      */
     private function assertFiguresWithinBudget(OcrDriver $driver, string $filename, array $figures): void
     {
         $maxFigureBytes = max(1, (int) config('kb.ocr.max_figure_bytes', 10485760));
         $budget = OcrFigureBudget::fromConfig();
         $totalBytes = 0;
-        foreach ($figures as $n => $figure) {
+        foreach ($figures as $figure) {
             $bytes = strlen($figure->bytes);
             $totalBytes += $bytes;
             if ($bytes > $maxFigureBytes) {
-                throw new \RuntimeException(sprintf(
+                throw new OcrLimitExceededException(sprintf(
                     'OCR driver "%s" returned a %d-byte figure for "%s", over KB_OCR_MAX_FIGURE_BYTES (%d); the result is discarded — nothing is stored, recorded or metered.',
                     $driver->name(),
                     $bytes,
                     $filename,
                     $maxFigureBytes,
-                ));
+                ), 'figure_budget_exceeded');
             }
             if (! $budget->admit($bytes)) {
-                throw new \RuntimeException(sprintf(
+                throw new OcrLimitExceededException(sprintf(
                     'OCR driver "%s" returned %d figures (%d bytes) for "%s", over the run figure budget (KB_OCR_MAX_FIGURES=%d / KB_OCR_MAX_FIGURES_TOTAL_BYTES=%d); the result is discarded — nothing is stored, recorded or metered.',
                     $driver->name(),
                     count($figures),
@@ -375,7 +375,7 @@ final class OcrService
                     $filename,
                     $budget->maxCount(),
                     $budget->maxBytes(),
-                ));
+                ), 'figure_budget_exceeded');
             }
         }
     }

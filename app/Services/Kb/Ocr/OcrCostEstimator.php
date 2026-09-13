@@ -79,7 +79,7 @@ final class OcrCostEstimator
             // would OCR, or one OCR itself refused (over a cap, uncountable,
             // multi-frame) — a text PDF, a text file or an unreadable object
             // is ingestible (or fails) without any driver.
-            $needsDriver = $row['would_ocr'] || in_array($row['reason'], ['too_many_pages', 'too_many_bytes', 'pages_uncountable', 'multi_frame_image', 'rendered_page_too_large', 'run_too_long'], true);
+            $needsDriver = $row['would_ocr'] || in_array($row['reason'], ['too_many_pages', 'too_many_bytes', 'pages_uncountable', 'multi_frame_image', 'rendered_page_too_large'], true);
             if (! $row['driver_available'] && $needsDriver) {
                 $blockedPdf = $blockedPdf || $kind === SourceType::PDF;
                 $blockedImage = $blockedImage || $kind === SourceType::IMAGE;

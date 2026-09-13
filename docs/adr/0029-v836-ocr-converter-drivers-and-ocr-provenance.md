@@ -61,15 +61,18 @@ the whole probe window — every page up to `KB_OCR_MAX_PAGES`
 (`KB_OCR_PROBE_PAGES=0`, the default; a positive value bounds the window and
 is a documented trade-off: a scanned page beyond it is not seen, and a page
 the OCR cap would refuse cannot change the verdict). A page with fewer than
-`KB_OCR_PROBE_MIN_CHARS` extractable characters that carries something to
-look at — an image XObject, or painted content outside every text object
-(text outlined into paths, a drawing, a form XObject: OCR can read it and a
-"blank" verdict would silently skip it) — is a *scanned* page; one that
-paints nothing is *blank* (a separator — never a reason to OCR by itself).
-No text page but at least one scanned page is `empty`; a window of blank
-pages alone is `present` with zero text pages (nothing to OCR, never a
-billed run over empty pages — the text path ingests it as today); text
-pages **and** scanned pages is `mixed` — a typed cover over scanned body pages, scans stapled to a
+`KB_OCR_PROBE_MIN_CHARS` extractable characters that carries an image
+XObject is a *scanned* page; one that only *paints* (drawn content outside
+every text object — text outlined into paths, a drawing, a form XObject,
+a decorative rule) is read as scanned **only when no page has a text
+layer** (the outlined-text design export, which a "blank" verdict would
+silently skip) and is a divider beside typed pages — it never promotes a
+text PDF to `mixed`, which would bill the whole document for a chapter
+title under a rule; one that paints nothing is *blank* (a separator —
+never a reason to OCR by itself). No text page but at least one scanned or
+painted page is `empty`; a window of blank pages alone is `present` with
+zero text pages (nothing to OCR, never a billed run over empty pages — the
+text path ingests it as today); text pages **and** image pages is `mixed` — a typed cover over scanned body pages, scans stapled to a
 memo — and the **whole document** is routed to OCR so no page is silently
 lost (the text pages are OCR'd too; a per-page hybrid that keeps the parsed
 text of text pages is a later refinement, not this cycle's); otherwise
@@ -263,9 +266,11 @@ per figure, `KB_OCR_MAX_FIGURES` / `KB_OCR_MAX_FIGURES_TOTAL_BYTES` per run —
 are applied by the drivers while they parse (a figure past them is omitted
 before it is read, the Markdown says so) **and** re-checked by `OcrService`
 on what any driver returns, before anything is stored, recorded or metered:
-a result over them is an invalid driver result and is discarded, so the
-limits are invariant for a driver (a test double, a future engine) that did
-not apply them itself.
+a result over them is an invalid driver result and is discarded
+(`OcrLimitExceededException`, reason `figure_budget_exceeded` — terminal,
+never a retry that would pay for the same answer), so the limits are
+invariant for a driver (a test double, a future engine) that did not apply
+them itself.
 
 ### 5. Same bytes, same driver: the recorded run is reused, never re-billed
 
@@ -449,6 +454,13 @@ applies (`DocumentDeleter::documentResolvesToStorageKey()`): a file is
 known only when a row's **recorded** disk and prefix resolve to it on the
 swept disk, so a row carrying the same logical path on another disk or
 under another prefix never protects a file — or the tree beside it — here.
+A row that recorded no namespace (ingested before it was persisted)
+protects the file on its path wherever the sweep looks — deletion fails
+closed — and resolves, where a resolution is needed, to its project's disk
+(`KbDiskResolver`), never the bare default. The decision is taken over the
+whole table (`withoutGlobalScopes()`, as the dangling-tree check does):
+the admin command runner executes the sweep under the caller's project
+scope, and a hidden row must never turn its file into an orphan.
 
 The write is a **documented exception** to the `ConverterInterface`
 "stateless and side-effect-free" contract, recorded in the interface's own

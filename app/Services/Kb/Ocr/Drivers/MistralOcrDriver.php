@@ -186,7 +186,7 @@ final class MistralOcrDriver implements OcrDriver
         // the cap, so an allow-listed endpoint cannot exhaust the worker's
         // memory before the size check runs (SEC-EXTRESP-001).
         $budget = OcrRunBudget::start();
-        $callTimeout = $budget->bound((int) config('kb.ocr.mistral.timeout', 120));
+        $callTimeout = $budget->bound((int) config('kb.ocr.mistral.timeout', 120), null, $request->filename);
         try {
             $response = Http::withToken((string) config('kb.ocr.mistral.api_key'))
                 ->acceptJson()

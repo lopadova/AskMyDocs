@@ -42,8 +42,11 @@ use Throwable;
  * when `kb.ocr.enabled` is true and the probe finds no text (or the ingest
  * metadata carries `ocr.force`), conversion is delegated to the same
  * {@see OcrService} the image converter uses. `extractionMeta.text_layer_probe`
- * records the verdict either way. With the flag off this class is byte for
- * byte the v8.35 one.
+ * records the verdict either way. With the flag off this class takes the
+ * v8.35 path (smalot, then the pdftotext fallback) — with one deliberate
+ * change in both states: a pdftotext run past `KB_PDFTOTEXT_TIMEOUT` is the
+ * deterministic `run_too_long` refusal (never retried, never handed to OCR)
+ * instead of the generic error the job used to retry.
  */
 final class PdfConverter implements ConverterInterface
 {
