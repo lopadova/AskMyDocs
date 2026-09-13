@@ -129,6 +129,28 @@ final class HostIngestionBridgeTest extends TestCase
         $this->assertSame('acme', $audit->tenant_id);
     }
 
+    public function test_a_connector_mime_with_parameters_is_normalised_before_the_image_gate(): void
+    {
+        Queue::fake();
+        config()->set('kb.ocr.enabled', false);
+
+        /** @var HostIngestionBridge $bridge */
+        $bridge = $this->app->make(ConnectorIngestionContract::class);
+        $bridge->dispatchIngestion(
+            projectKey: 'connector-onedrive',
+            relativePath: 'connector-onedrive/scan.png',
+            disk: 'kb',
+            title: 'scan.png',
+            metadata: ['connector' => 'onedrive', 'installation_id' => 7],
+            mimeType: 'Image/PNG; charset=binary',
+            tenantId: 'acme',
+        );
+
+        Queue::assertNothingPushed();
+        $audit = KbCanonicalAudit::query()->where('event_type', 'connector_ingest_refused')->firstOrFail();
+        $this->assertSame('image/png', $audit->metadata_json['metadata']['mime_type']);
+    }
+
     public function test_refused_imap_image_removes_the_orphan_source_and_records_it(): void
     {
         Queue::fake();

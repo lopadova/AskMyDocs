@@ -131,6 +131,27 @@ class PruneOrphanFilesCommandTest extends TestCase
      * deleter's R30 exception), and a tree beside a still-referenced key is
      * never a candidate.
      */
+    /**
+     * An orphan source goes; the `.ocr/` run beside it recorded inside the
+     * in-flight grace is KEPT (its row may be about to commit) and reported
+     * as such — never counted as a clean sweep, never as a failure.
+     */
+    public function test_an_orphan_source_is_deleted_and_its_in_flight_ocr_run_is_kept_and_reported(): void
+    {
+        Storage::fake('kb');
+        $run = str_repeat('0123456789abcdef', 4);
+        Storage::disk('kb')->put('docs/orphan.md', '# orphan');
+        Storage::disk('kb')->put("docs/orphan.md.ocr/{$run}/result.json", '{}');
+
+        $this->artisan('kb:prune-orphan-files')
+            ->expectsOutputToContain('kept (in flight): docs/orphan.md.ocr')
+            ->expectsOutputToContain('orphans=1 deleted=1 failed=0 orphan_ocr_kept=1')
+            ->assertExitCode(0);
+
+        Storage::disk('kb')->assertMissing('docs/orphan.md');
+        $this->assertTrue(Storage::disk('kb')->directoryExists("docs/orphan.md.ocr/{$run}"));
+    }
+
     public function test_a_dangling_ocr_tree_is_swept_only_once_it_has_aged_past_the_in_flight_grace(): void
     {
         Storage::fake('kb');

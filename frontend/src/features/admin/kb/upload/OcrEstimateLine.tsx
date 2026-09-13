@@ -61,7 +61,7 @@ export function OcrEstimateLine({ state, estimate, errorMessage }: OcrEstimateLi
             <p data-testid="kb-upload-ocr-estimate" data-state="ready" data-ocr-enabled="false" role="status" aria-live="polite" style={base}>
                 OCR is disabled on this server (<code>KB_OCR_ENABLED=false</code>): scanned PDFs are ingested as
                 empty documents and images are refused
-                {imageCount > 0 ? ` — ${imageCount} staged file${imageCount === 1 ? '' : 's'} would need it` : ''}.
+                {imageCount > 0 ? ` — ${imageCount} staged image or PDF file${imageCount === 1 ? '' : 's'} would need it` : ''}.
             </p>
         );
     }

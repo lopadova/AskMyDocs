@@ -380,6 +380,29 @@ final class OcrLimitsAndReuseTest extends TestCase
         Http::assertNotSent(fn ($request): bool => str_contains($request->url(), 'evil.example.test'));
     }
 
+    /**
+     * SEC-EXTRESP-001 — the input cap bounds what leaves; the response of a
+     * remote driver is validated against the same number before anything is
+     * stored, recorded or metered.
+     */
+    #[Test]
+    public function a_remote_response_with_more_pages_than_the_document_is_discarded_before_anything_is_recorded(): void
+    {
+        Http::fake(['https://api.mistral.eu/*' => Http::response(['pages' => [
+            ['index' => 0, 'markdown' => 'one'], ['index' => 1, 'markdown' => 'two'], ['index' => 2, 'markdown' => 'three'],
+        ]], 200)]);
+        config(['kb.ocr.driver' => 'mistral-ocr', 'kb.ocr.allow_remote' => true, 'kb.ocr.mistral.api_key' => 'k']);
+
+        try {
+            $this->app->make(OcrConverter::class)->convert($this->image());
+            $this->fail('three pages for a one-page image must be refused');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('returned 3 pages', $e->getMessage());
+            $this->assertStringContainsString('at most 1 allowed', $e->getMessage());
+        }
+        $this->assertSame([], Storage::disk('kb')->allFiles('docs/scan.png.ocr'), 'nothing recorded, no figure stored');
+    }
+
     #[Test]
     public function mistral_refuses_a_non_json_response(): void
     {

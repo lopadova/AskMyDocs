@@ -223,6 +223,19 @@ enum SourceType: string
      * the FAMILY label (`image/png`) because a source type is one value per
      * family; unknown MIMEs fall back to `png`.
      */
+    /**
+     * The canonical form of a declared MIME: lower-case, no parameters
+     * (`Application/PDF; charset=binary` → `application/pdf`). Every ingress
+     * normalises ONCE, before the source type is resolved AND before the
+     * value is persisted or handed to the converter registry, whose
+     * `supports()` compares exactly — a request that passed validation on
+     * the stripped form must never fail converter resolution on the raw one.
+     */
+    public static function normaliseMime(string $mimeType): string
+    {
+        return strtolower(trim(explode(';', $mimeType, 2)[0]));
+    }
+
     public static function imageExtensionFromMime(string $mime): string
     {
         return match (strtolower(trim(explode(';', $mime, 2)[0]))) {

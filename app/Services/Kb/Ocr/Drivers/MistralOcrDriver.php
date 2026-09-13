@@ -7,10 +7,13 @@ namespace App\Services\Kb\Ocr\Drivers;
 use App\Services\Kb\Ocr\OcrDriver;
 use App\Services\Kb\Ocr\OcrDriverUnavailableException;
 use App\Services\Kb\Ocr\OcrFigure;
+use App\Services\Kb\Ocr\OcrMarkdown;
 use App\Services\Kb\Ocr\OcrMeteringMode;
 use App\Services\Kb\Ocr\OcrPage;
 use App\Services\Kb\Ocr\OcrRequest;
 use App\Services\Kb\Ocr\OcrResult;
+use App\Support\Kb\FileTypeSniffer;
+use App\Support\Kb\SourceType;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
@@ -192,7 +195,15 @@ final class MistralOcrDriver implements OcrDriver
                 if ($bytes === false || $bytes === '' || strlen($bytes) > $maxFigureBytes) {
                     continue;
                 }
-                $figure = new OcrFigure($number, $n + 1, $bytes, 'png', (string) ($image['id'] ?? ''));
+                // SEC-EXTRESP-001 — the format is what the decoded bytes ARE
+                // (the API returns JPEG as readily as PNG); a blob that is no
+                // raster we serve is dropped, never stored under a `.png` name
+                // a reader would fail to decode.
+                $figureMime = FileTypeSniffer::imageMimeOf(substr($bytes, 0, 16));
+                if ($figureMime === null) {
+                    continue;
+                }
+                $figure = new OcrFigure($number, $n + 1, $bytes, SourceType::imageExtensionFromMime($figureMime), (string) ($image['id'] ?? ''));
                 $figures[] = $figure;
                 if ($figure->placeholder !== null && $figure->placeholder !== '') {
                     $markdown = str_replace(
@@ -202,6 +213,10 @@ final class MistralOcrDriver implements OcrDriver
                     );
                 }
             }
+            // Only the figures above may be cited: any other image link the
+            // provider emitted (an unmatched placeholder, an external URL)
+            // becomes text, never a reference the renderer would load.
+            $markdown = OcrMarkdown::stripForeignImageLinks($markdown, array_map(static fn (OcrFigure $f): string => $f->fileName(), $figures));
             $pages[] = new OcrPage(number: $number, markdown: trim($markdown), confidence: null, figures: $figures);
         }
         // SEC-EXTRESP-001 — an empty (or all-malformed) page list is an

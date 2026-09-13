@@ -161,7 +161,9 @@ class KbIngestController extends Controller
             ]);
         }
 
-        $mimeType = trim((string) ($doc['mime_type'] ?? 'text/markdown'));
+        // Normalised once (lower-case, parameters dropped): what is validated
+        // is what is persisted and what the converter registry resolves on.
+        $mimeType = SourceType::normaliseMime((string) ($doc['mime_type'] ?? 'text/markdown'));
         $sourceType = SourceType::fromMime($mimeType);
         // v8.36 / ADR 0029 — images are accepted only when OCR is on (R43):
         // with the flag off an image is refused with the SAME 422 as before,

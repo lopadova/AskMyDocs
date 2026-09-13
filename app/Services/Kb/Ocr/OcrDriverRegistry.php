@@ -60,12 +60,16 @@ final class OcrDriverRegistry
     }
 
     /**
-     * @throws RuntimeException when the name is not registered or is `fake` in production
+     * @throws OcrDriverUnavailableException when the name is not registered, is
+     *   `fake` in production, or names a remote driver while remote egress is
+     *   off — every "this driver cannot run here" is the same typed refusal,
+     *   so the re-run surfaces answer a clean 422 to a misspelled
+     *   `KB_OCR_DRIVER` as they do to a disabled remote one, never a 500
      */
     public function resolve(string $name): OcrDriver
     {
         if (! $this->has($name)) {
-            throw new RuntimeException(sprintf(
+            throw new OcrDriverUnavailableException(sprintf(
                 'Unknown OCR driver "%s". Registered: %s.',
                 $name,
                 implode(', ', $this->names()),
@@ -75,7 +79,7 @@ final class OcrDriverRegistry
         // SEC-ENV-001 — an allow-list, not an exact match on "production":
         // `prod`, `Production` or any unknown environment name is production.
         if ($name === 'fake' && ! app()->environment(['local', 'testing', 'development'])) {
-            throw new RuntimeException('The "fake" OCR driver is not available in production.');
+            throw new OcrDriverUnavailableException('The "fake" OCR driver is not available in production.');
         }
 
         $driver = $this->drivers[$name];

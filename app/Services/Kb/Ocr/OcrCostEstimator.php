@@ -113,11 +113,16 @@ final class OcrCostEstimator
     private function forItem(KbIngestBatchItem $item, string $stagingDisk, bool $enabled, bool $sdkMetered = false): array
     {
         $id = (string) $item->id;
-        if (! $enabled) {
-            return ['id' => $id, 'would_ocr' => false, 'pages' => 0, 'cost' => 0.0, 'reason' => 'ocr_disabled', 'pages_exact' => true];
-        }
-
         $type = SourceType::tryFrom((string) $item->source_type) ?? SourceType::UNKNOWN;
+        if (! $enabled) {
+            // `ocr_disabled` names only the items OCR WOULD have looked at
+            // (an image, a PDF — whether a PDF is scanned is not probed with
+            // the flag off); text and Markdown never needed it (R14: the
+            // modal must not count them as "would need OCR").
+            $reason = $type === SourceType::IMAGE || $type === SourceType::PDF ? 'ocr_disabled' : 'not_ocr_able';
+
+            return ['id' => $id, 'would_ocr' => false, 'pages' => 0, 'cost' => 0.0, 'reason' => $reason, 'pages_exact' => true];
+        }
 
         $maxBytes = max(1, (int) config('kb.ocr.max_bytes', 26214400));
         $maxPages = max(1, (int) config('kb.ocr.max_pages', 200));
@@ -135,7 +140,12 @@ final class OcrCostEstimator
             // it was uploaded under (the sniffer accepts any raster and the
             // batch row only stores the family MIME), so the modal can never
             // quote a run the ingest will refuse.
-            $pages = $this->ocr->pageCountForBytes((string) $item->mime_type, (string) Storage::disk($stagingDisk)->get($stagingPath));
+            $imageBytes = Storage::disk($stagingDisk)->get($stagingPath);
+            if (! is_string($imageBytes)) {
+                // R14 — a failed read is not an empty image to price.
+                return ['id' => $id, 'would_ocr' => false, 'pages' => 0, 'cost' => 0.0, 'reason' => 'staged_file_unreadable', 'pages_exact' => true];
+            }
+            $pages = $this->ocr->pageCountForBytes((string) $item->mime_type, $imageBytes);
             if ($pages > $maxPages) {
                 return ['id' => $id, 'would_ocr' => false, 'pages' => $pages, 'cost' => 0.0, 'reason' => 'too_many_pages', 'pages_exact' => true];
             }
@@ -158,7 +168,11 @@ final class OcrCostEstimator
             return ['id' => $id, 'would_ocr' => false, 'pages' => 0, 'cost' => 0.0, 'reason' => 'staged_file_missing', 'pages_exact' => true];
         }
 
-        $bytes = (string) Storage::disk($stagingDisk)->get($stagingPath);
+        $bytes = Storage::disk($stagingDisk)->get($stagingPath);
+        if (! is_string($bytes)) {
+            // R14 — a failed read is not an empty scan to price as one page.
+            return ['id' => $id, 'would_ocr' => false, 'pages' => 0, 'cost' => 0.0, 'reason' => 'staged_file_unreadable', 'pages_exact' => true];
+        }
         if (strlen($bytes) > $maxBytes) {
             return ['id' => $id, 'would_ocr' => false, 'pages' => 0, 'cost' => 0.0, 'reason' => 'too_many_bytes', 'pages_exact' => true];
         }

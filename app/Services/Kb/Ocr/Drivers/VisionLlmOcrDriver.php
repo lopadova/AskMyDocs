@@ -9,6 +9,7 @@ use App\Ai\Providers\Internal\SdkAnonymousAgent;
 use App\Services\Kb\Ocr\Drivers\Concerns\RasterisesPdf;
 use App\Services\Kb\Ocr\OcrDriver;
 use App\Services\Kb\Ocr\OcrDriverUnavailableException;
+use App\Services\Kb\Ocr\OcrMarkdown;
 use App\Services\Kb\Ocr\OcrMeteringMode;
 use App\Services\Kb\Ocr\OcrPage;
 use App\Services\Kb\Ocr\OcrRequest;
@@ -217,18 +218,8 @@ TXT;
      */
     public static function stripImageLinks(string $markdown): string
     {
-        return (string) preg_replace_callback(
-            '/!\[([^\]]*)\]\([^)]*\)/',
-            static function (array $m): string {
-                $alt = trim($m[1]);
-                if ($alt === '' || strcasecmp($alt, 'figure') === 0) {
-                    return '*[Figure]*';
-                }
-
-                return str_starts_with(strtolower($alt), 'figure') ? "*[{$alt}]*" : "*[Figure: {$alt}]*";
-            },
-            $markdown,
-        );
+        // No figure is ever extracted here, so no generated link is kept.
+        return OcrMarkdown::stripForeignImageLinks($markdown, []);
     }
 
     /**

@@ -127,6 +127,8 @@ export type OcrEstimateReason =
     | 'text_layer_present'
     | 'not_ocr_able'
     | 'staged_file_missing'
+    /** the staged file exists but could not be read: never priced as an empty scan */
+    | 'staged_file_unreadable'
     | 'too_many_pages'
     | 'too_many_bytes'
     /** the PDF could not be parsed and the configured driver refuses an unverified page count (remote, or unable to bound its own work): refused before any work */

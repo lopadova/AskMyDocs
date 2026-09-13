@@ -67,6 +67,17 @@ class KbPath
      *
      * @param  list<string>  $globs
      */
+    public static function matchesAnyGlob(string $path, array $globs): bool
+    {
+        foreach ($globs as $glob) {
+            $regex = self::globToRegex($glob);
+            if (preg_match($regex, $path) === 1) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /**
      * True when a path lies inside a generated-asset subtree the ingestion
      * pipeline writes itself and must never read back as a source:
@@ -91,17 +102,6 @@ class KbPath
             }
         }
 
-        return false;
-    }
-
-    public static function matchesAnyGlob(string $path, array $globs): bool
-    {
-        foreach ($globs as $glob) {
-            $regex = self::globToRegex($glob);
-            if (preg_match($regex, $path) === 1) {
-                return true;
-            }
-        }
         return false;
     }
 

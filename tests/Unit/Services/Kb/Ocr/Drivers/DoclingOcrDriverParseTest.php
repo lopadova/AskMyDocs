@@ -75,7 +75,7 @@ final class DoclingOcrDriverParseTest extends TestCase
     }
 
     #[Test]
-    public function traversal_and_non_image_links_are_left_as_text_and_never_read(): void
+    public function traversal_and_non_image_links_become_text_placeholders_and_are_never_read(): void
     {
         $markdown = implode("\n", [
             '![a](input_artifacts/../secret.txt)',
@@ -88,6 +88,9 @@ final class DoclingOcrDriverParseTest extends TestCase
         $pages = $this->app->make(DoclingOcrDriver::class)->parseMarkdownOutput($markdown, $this->dir);
 
         $this->assertSame([], $pages[0]->figures, 'no figure may be read from a non-allow-listed link');
-        $this->assertSame($markdown, $pages[0]->markdown, 'rejected links stay as plain text');
+        // A rejected link is not kept as a link either: the persisted Markdown
+        // never cites a path the store did not write (one rule, every driver).
+        $this->assertSame(implode("\n", ['*[Figure: a]*', '*[Figure: b]*', '*[Figure: c]*', '*[Figure: d]*', '*[Figure: e]*']), $pages[0]->markdown);
+        $this->assertStringNotContainsString('](', $pages[0]->markdown, 'no image link survives');
     }
 }

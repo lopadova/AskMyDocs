@@ -57,7 +57,7 @@ describe('OcrEstimateLine', () => {
         const el = screen.getByTestId('kb-upload-ocr-estimate');
         expect(el).toHaveAttribute('data-ocr-enabled', 'false');
         expect(el.textContent).toContain('KB_OCR_ENABLED=false');
-        expect(el.textContent).toContain('2 staged files would need it');
+        expect(el.textContent).toContain('2 staged image or PDF files would need it');
         expect(screen.queryByTestId('kb-upload-ocr-estimate-cost')).toBeNull();
     });
 

@@ -99,7 +99,10 @@ final class KbUploadOcrTest extends TestCase
         $admin = $this->makeAdmin();
         $batchId = $this->actingAs($admin)->post('/api/admin/kb/uploads', [
             'project_key' => 'legal',
-            'files' => [UploadedFile::fake()->createWithContent('scan.pdf', PdfFixtureBuilder::build(['  ']))],
+            'files' => [
+                UploadedFile::fake()->createWithContent('scan.pdf', PdfFixtureBuilder::build(['  '])),
+                UploadedFile::fake()->createWithContent('notes.md', "# Notes\n\nplain text never needs OCR\n"),
+            ],
         ])->assertStatus(201)->json('batch.id');
 
         $this->actingAs($admin)->getJson("/api/admin/kb/uploads/{$batchId}/estimate")
@@ -108,7 +111,9 @@ final class KbUploadOcrTest extends TestCase
             ->assertJsonPath('data.total_pages', 0)
             ->assertJsonPath('data.total_cost', 0)
             ->assertJsonPath('data.items.0.would_ocr', false)
-            ->assertJsonPath('data.items.0.reason', 'ocr_disabled');
+            ->assertJsonPath('data.items.0.reason', 'ocr_disabled')
+            // A text file never needed OCR: the modal must not count it.
+            ->assertJsonPath('data.items.1.reason', 'not_ocr_able');
     }
 
     public function test_estimate_reports_when_the_configured_driver_cannot_run_here(): void

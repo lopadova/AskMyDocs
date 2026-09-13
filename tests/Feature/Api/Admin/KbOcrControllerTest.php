@@ -251,6 +251,19 @@ final class KbOcrControllerTest extends TestCase
      * run here" as an unavailable one: a 422 with the registry's reason,
      * never a 500 from `OcrDriverUnavailableException` (Copilot #478 round 3).
      */
+    public function test_rerun_is_a_422_not_a_500_when_the_configured_driver_name_is_unknown(): void
+    {
+        config(['kb.ocr.enabled' => true, 'kb.ocr.driver' => 'tesseratc']);
+        Queue::fake();
+        $doc = $this->document();
+        Storage::disk('kb')->put($doc->source_path, '%PDF-1.4 x');
+
+        $this->actingAs($this->makeAdmin())->postJson("/api/admin/kb/documents/{$doc->id}/ocr")
+            ->assertStatus(422)
+            ->assertJsonFragment(['message' => 'Unknown OCR driver "tesseratc". Registered: docling, mistral-ocr, vision-llm, tesseract, fake.']);
+        Queue::assertNothingPushed();
+    }
+
     public function test_rerun_is_a_422_not_a_500_when_the_configured_driver_is_remote_and_remote_is_not_allowed(): void
     {
         config(['kb.ocr.enabled' => true, 'kb.ocr.driver' => 'mistral-ocr', 'kb.ocr.allow_remote' => false, 'kb.ocr.mistral.api_key' => 'k']);

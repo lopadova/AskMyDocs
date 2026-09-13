@@ -81,16 +81,17 @@ class PruneOrphanFilesCommand extends Command
             return self::SUCCESS;
         }
 
-        [$deleted, $failed] = $this->deleteOrphans($storage, $orphans, $prefix, $disk);
+        [$deleted, $failed, $orphanOcrKept] = $this->deleteOrphans($storage, $orphans, $prefix, $disk);
         [$purged, $inFlight, $ocrFailed] = $this->purgeDanglingOcrTrees($danglingOcr, $disk);
 
         $this->info(sprintf(
-            'Disk [%s]: scanned=%d orphans=%d deleted=%d failed=%d dangling_ocr=%d purged=%d in_flight=%d ocr_failed=%d',
+            'Disk [%s]: scanned=%d orphans=%d deleted=%d failed=%d orphan_ocr_kept=%d dangling_ocr=%d purged=%d in_flight=%d ocr_failed=%d',
             $disk,
             $scanned,
             $orphanCount,
             $deleted,
             $failed,
+            $orphanOcrKept,
             count($danglingOcr),
             $purged,
             $inFlight,
@@ -277,12 +278,13 @@ class PruneOrphanFilesCommand extends Command
 
     /**
      * @param  array<int,string>  $orphans
-     * @return array{0:int,1:int} [deleted, failed]
+     * @return array{0:int,1:int,2:int} [deleted, failed, ocr trees kept (in flight)]
      */
     private function deleteOrphans($storage, array $orphans, string $prefix, string $disk): array
     {
         $deleted = 0;
         $failed = 0;
+        $ocrKept = 0;
 
         foreach ($orphans as $relative) {
             $target = $this->applyPrefix($relative, $prefix);
@@ -303,6 +305,14 @@ class PruneOrphanFilesCommand extends Command
             // failed and the command exits non-zero, never a clean report.
             try {
                 app(OcrFigureStore::class)->purgeBeside($disk, $target);
+                // `purgeBeside()` is false both for "nothing there" and for a
+                // run kept inside the in-flight grace: only a tree still on
+                // the disk is reported (kept, never a failure — the next
+                // sweep takes it once aged, as for a dangling tree).
+                if ($storage->directoryExists($target.OcrFigureStore::DIR_SUFFIX)) {
+                    $ocrKept++;
+                    $this->line("  ~ kept (in flight): {$target}".OcrFigureStore::DIR_SUFFIX);
+                }
             } catch (\Throwable $e) {
                 $failed++;
                 $this->error("  ! source deleted but its OCR assets could not be purged beside {$target}: {$e->getMessage()}");
@@ -312,7 +322,7 @@ class PruneOrphanFilesCommand extends Command
             $deleted++;
         }
 
-        return [$deleted, $failed];
+        return [$deleted, $failed, $ocrKept];
     }
 
     /**

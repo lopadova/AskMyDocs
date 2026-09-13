@@ -148,8 +148,22 @@ them is bounded in code before any egress (SEC-LLM-001 gates 2 and 7):
   applies unchanged and an unknown provider is a refusal, not a fallback.
 - `mistral-ocr` posts only to an `https` URL whose host is in the exact
   allow-list `KB_OCR_MISTRAL_ALLOWED_HOSTS` (default `api.mistral.eu,
-  api.mistral.ai`), validates the response's content type and size, and caps
-  each returned figure at `KB_OCR_MAX_FIGURE_BYTES`.
+  api.mistral.ai`), validates the response's content type and size, caps
+  each returned figure at `KB_OCR_MAX_FIGURE_BYTES`, stores a figure under
+  the format its **bytes** are (a blob that is no raster is dropped) and
+  treats an empty page list as an invalid answer, never a recorded run of
+  zero pages.
+- A remote driver's **response** is validated against the same page number
+  the input cap admitted: more pages than the document has is an invalid
+  answer — discarded before anything is stored, recorded or metered — so
+  the cap bounds response-side storage and spend, not only egress.
+- The persisted Markdown may cite only the figures the driver extracted and
+  the store wrote (`images/fig-{page}-{n}.{ext}`). Every other image link in
+  an engine's, a provider's or a model's output — an unmatched placeholder,
+  an external URL, a path that is not there — becomes an italic text
+  description (`OcrMarkdown::stripForeignImageLinks()`, one rule for every
+  driver), so a document never loads an arbitrary URL through the Markdown
+  renderer and never cites a missing file.
 - Every run — local or remote — is refused **before** the driver starts when
   the document exceeds `KB_OCR_MAX_PAGES` (counted by the probe's parser) or
   `KB_OCR_MAX_BYTES`; the refusal carries a machine-readable reason

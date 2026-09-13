@@ -7,6 +7,7 @@ namespace App\Services\Kb\Ocr\Drivers;
 use App\Services\Kb\Ocr\OcrDriver;
 use App\Services\Kb\Ocr\OcrDriverUnavailableException;
 use App\Services\Kb\Ocr\OcrFigure;
+use App\Services\Kb\Ocr\OcrMarkdown;
 use App\Services\Kb\Ocr\OcrMeteringMode;
 use App\Services\Kb\Ocr\OcrPage;
 use App\Services\Kb\Ocr\OcrRequest;
@@ -177,7 +178,8 @@ final class DoclingOcrDriver implements OcrDriver
      * `input_artifacts/<name>.<png|jpg|jpeg|webp|tif|tiff>` shape is
      * accepted, the resolved path must stay inside the working directory
      * after `realpath()`, and the extension comes from that allow-list.
-     * Anything else is left in the Markdown as text.
+     * Anything else becomes an italic text placeholder — never a link the
+     * renderer would follow (`OcrMarkdown::stripForeignImageLinks()`).
      *
      * @internal exposed for the unit test; not part of the driver contract.
      *
@@ -226,6 +228,9 @@ final class DoclingOcrDriver implements OcrDriver
                 },
                 $body,
             );
+            // Only the figures rewritten above may be cited; any other image
+            // link in the engine's output becomes text (one rule, every driver).
+            $body = OcrMarkdown::stripForeignImageLinks($body, array_map(static fn (OcrFigure $f): string => $f->fileName(), $figures));
             $pages[] = new OcrPage(number: $number, markdown: trim($body), confidence: null, figures: $figures);
         }
 

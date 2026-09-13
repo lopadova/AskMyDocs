@@ -321,6 +321,20 @@ final class OcrService
                         filename: $filename,
                         options: is_array($doc->metadata['ocr'] ?? null) ? $doc->metadata['ocr'] : [],
                     ));
+                    // SEC-EXTRESP-001 — the input cap bounds what leaves; the
+                    // RESPONSE of a remote driver is validated against the
+                    // same number before anything is stored, recorded or
+                    // metered: more pages than the document has (or than the
+                    // cap admits) is an invalid answer, not extra spend.
+                    if ($driver->isRemote() && $result->pageCount() > $pages) {
+                        throw new \RuntimeException(sprintf(
+                            'OCR driver "%s" returned %d pages for "%s" (at most %d allowed); the response is discarded — nothing is stored, recorded or metered.',
+                            $driver->name(),
+                            $result->pageCount(),
+                            $filename,
+                            $pages,
+                        ));
+                    }
 
                     $allFigures = [];
                     foreach ($result->pages as $page) {
@@ -391,6 +405,11 @@ final class OcrService
     }
 
     /**
+     * Returns the number of pages the run is ALLOWED to produce: the verified
+     * count, or — for a PDF the parser could not read, admitted only on a
+     * driver that renders at most `KB_OCR_MAX_PAGES` — that cap. The lease is
+     * sized from it and the driver's result is validated against it.
+     *
      * @throws OcrLimitExceededException
      */
     private function assertWithinLimits(string $mimeType, string $bytes, string $filename, OcrDriver $driver): int
@@ -463,7 +482,7 @@ final class OcrService
             ), 'multi_frame_image');
         }
 
-        return $pages;
+        return $exact ? $pages : $maxPages;
     }
 
     /**
@@ -721,8 +740,15 @@ final class OcrService
         // R14 — the same limits the job enforces, checked here so a re-run
         // the job would refuse (page/byte cap, unverifiable page count on a
         // remote driver) is a 422 now, not a queued failure later.
+        $bytes = Storage::disk($disk)->get($fullPath);
+        if (! is_string($bytes) || $bytes === '') {
+            // R14 — `exists()` does not promise the read: an unreadable
+            // source is a loud failure, never empty bytes fed to the limit
+            // check and a queued re-run that dies later.
+            throw new \RuntimeException("Source file could not be read on disk [{$disk}]: {$sourcePath}.");
+        }
         try {
-            $this->assertWithinLimits((string) $document->mime_type, (string) Storage::disk($disk)->get($fullPath), basename($sourcePath), $driver);
+            $this->assertWithinLimits((string) $document->mime_type, $bytes, basename($sourcePath), $driver);
         } catch (OcrLimitExceededException $e) {
             throw new UnprocessableEntityHttpException($e->getMessage(), $e);
         }

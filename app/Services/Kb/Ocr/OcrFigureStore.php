@@ -166,7 +166,15 @@ final class OcrFigureStore
     }
 
     /**
-     * @return array<string, mixed>|null null when absent or unreadable
+     * The recorded run, or null when none was recorded (absent, or a file
+     * that is not the JSON the service wrote — logged, then redone). A file
+     * that EXISTS but cannot be read is neither: it throws, so a transient
+     * disk error never masquerades as a cache miss that runs — and bills —
+     * the driver again for a run that is already on the disk.
+     *
+     * @return array<string, mixed>|null
+     *
+     * @throws \RuntimeException when the recorded run exists but cannot be read
      */
     public function loadResult(string $disk, string $sourcePath, string $prefix, string $runKey): ?array
     {
@@ -175,9 +183,18 @@ final class OcrFigureStore
         if (! $storage->exists($path)) {
             return null;
         }
-        $decoded = json_decode((string) $storage->get($path), true);
+        $raw = $storage->get($path);
+        if (! is_string($raw)) {
+            throw new \RuntimeException("Recorded OCR run exists but could not be read: {$path}.");
+        }
+        $decoded = json_decode($raw, true);
+        if (! is_array($decoded)) {
+            Log::warning('OcrFigureStore: recorded run is not valid JSON; the run will be redone', ['disk' => $disk, 'path' => $path]);
 
-        return is_array($decoded) ? $decoded : null;
+            return null;
+        }
+
+        return $decoded;
     }
 
     /**

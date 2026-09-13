@@ -90,6 +90,9 @@ final class HostIngestionBridge implements ConnectorIngestionContract
         // here — the dispatcher's process may belong to a different
         // tenant by the time this runs in a long-lived queue worker.
         $progressMetadata = $metadata;
+        // The connector's MIME is a label from another system: canonical form
+        // (lower-case, no parameters) before it is gated, persisted or resolved.
+        $mimeType = SourceType::normaliseMime($mimeType);
 
         // v8.36/W1 (R43) — the connector path bypasses the controller, the
         // staging request and the folder walker, so it gates images itself:
