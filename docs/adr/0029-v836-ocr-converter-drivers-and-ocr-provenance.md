@@ -127,8 +127,8 @@ FQCN at boot (R23):
 
 | Driver | Key | Remote | Why it is in the list |
 |---|---|---|---|
-| Tesseract (local CLI) | `tesseract` | no | Free fallback; no layout. **Default.** |
-| Docling (IBM, Apache-2.0, local CLI) | `docling` | no | Layout, tables, figures, formulas → LaTeX. The sovereign choice. |
+| Tesseract (local CLI) | `tesseract` | no | Free fallback; no layout. **The shipped default** (`KB_OCR_DRIVER` unset or blank → `tesseract`, `config/kb.php`): it is the only engine with no Python runtime, so a fresh install that flips `KB_OCR_ENABLED` on can run OCR at all. |
+| Docling (IBM, Apache-2.0, local CLI) | `docling` | no | Layout, tables, figures, formulas → LaTeX. **The recommended driver for a sovereign install** — recommended, not default: an operator opts in with `KB_OCR_DRIVER=docling` once the binary is on the worker; the plan's "default for sovereign installs" means this recommendation, never a different shipped default. |
 | Mistral OCR (API) | `mistral-ocr` | **yes** | Strongest on tables and complex layouts; EU-hosted provider. |
 | Vision LLM (`laravel/ai` — the configured chat provider) | `vision-llm` | **yes** | Zero new infrastructure; metered by the SDK hook like any call. |
 | Fake | `fake` | no | Deterministic fixture driver for tests and the E2E harness; resolvable only in `local` / `testing` / `development` — an allow-list, so `prod` or a misspelt name is production (SEC-ENV-001). |
@@ -335,8 +335,21 @@ count is kept on disk: recency is the reservation, the sweep is the reaper.
 A forced re-run (`ocr.force`, set only by `kb:ocr` / the HTTP re-run on the
 job they build) is a **new attempt with its own run identity** — the run key
 carries a per-attempt salt — so the recorded run is never rewritten in place
-and an artifact that names it stays valid; the old run goes with the `.ocr/`
-tree. `ocr.force`, `ocr.rerun_lock` and `dry_run` are host-only controls:
+and an artifact that names it stays valid. A fresh Flow `runKey` only keeps
+the Flow's `tenant:project:path` idempotency from collapsing the job; it does
+**not** bypass the ingestor's version idempotency, which is content-addressed
+(`version_hash` of the converted Markdown). So the force flag travels to
+persistence as well: `PersistChunksStep` passes `replaceExisting = true`
+(from `OcrService::isForced()`) into `DocumentIngestor::persistDrafts()`,
+which then skips the same-hash short-circuit and **replaces in place** the
+live version's chunk set and its `metadata.converter.ocr` block (run key,
+attempt, confidence) — the row points at the new run, no second version is
+created, and the superseded run becomes unreferenced and is purged by the
+reference gate once it is past the in-flight grace (§6). Without that
+contract a byte-identical forced run would be billed and recorded while the
+row kept naming the old run; the regression test drives the real job and
+asserts the new run key on the row, a replaced (not duplicated) chunk set and
+exactly two metered runs. `ocr.force`, `ocr.rerun_lock` and `dry_run` are host-only controls:
 the HTTP ingest entry point and the connector bridge strip them from any
 metadata a client hands in (`OcrService::stripTrustedOnlyKeys()`), so nobody
 can start a billed engine run through `documents.*.metadata`. Discovery never
@@ -445,7 +458,11 @@ default-ON only after W3 publishes a CER/WER baseline for the shipped drivers.
   collapse provenance into the curation tier.
 - A re-run through `kb:ocr` is an ordinary `IngestDocumentJob` with
   `metadata.ocr.force = true` and a fresh `runKey`, so the Flow's
-  `tenant:project:path` idempotency does not collapse it into the existing run.
+  `tenant:project:path` idempotency does not collapse it into the existing run
+  — and, because the Flow key is not the version key, the same flag reaches
+  `DocumentIngestor::persistDrafts(replaceExisting: true)` so a byte-identical
+  result replaces the live version's chunks and OCR block in place instead of
+  leaving the new run unreferenced (§6).
 - The `OcrDriver` contract is host-side. An upstream ask — an `OcrDriver`
   adapter package or a `laravel/ai` vision helper — is recorded in
   `docs/handoff/` for a padosoft-scoped session; nothing here waits on it.

@@ -325,8 +325,10 @@ table below.
   it below today's footprint for binary sources.
 - Existing rows have no artifact and keep diffing by reconstruction until
   their next re-ingest. No migration rewrites history.
-- `content_hash` equals `document_hash` on every ingested version by
-  construction (§4, §7) and is null where no artifact is stored; its value
+- `content_hash` equals `document_hash` **on every version that has a stored
+  artifact**, by construction (§4, §7); on a row without one — flag OFF,
+  `reference_only`, a legacy row ingested before W2 — it is null, and null
+  means "no artifact", never "a correction" or "a mismatch". Its value
   is the integrity check on the stored bytes, not a second identity —
   a reader that treats it as a version id will be wrong; a reader that
   compares it to the bytes on disk is doing exactly what it is for.

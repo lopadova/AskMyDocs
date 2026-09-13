@@ -110,10 +110,10 @@ references in the Markdown, formulas as LaTeX, a confidence per page.
 
 | Driver | Why it is in the list |
 |---|---|
-| `docling` (IBM, Apache-2.0, local process) | Layout, tables, figures, formulas → LaTeX. The default for sovereign installs. |
+| `docling` (IBM, Apache-2.0, local process) | Layout, tables, figures, formulas → LaTeX. The **recommended** driver for sovereign installs — opt-in via `KB_OCR_DRIVER=docling`; the shipped default stays `tesseract` (ADR 0029 §3). |
 | `mistral-ocr` (API) | The engine `lucasastorian/llmwiki` uses for "higher-quality OCR on tables and complex layouts". EU-hosted provider. |
 | `vision-llm` (`laravel/ai` — Claude / Gemini / Regolo EU) | Zero new infra; metered by FinOps like any call. |
-| `tesseract` (local) | Free fallback; no layout. |
+| `tesseract` (local) | Free fallback; no layout. The shipped default (`KB_OCR_DRIVER` unset → `tesseract`), because it needs no Python runtime. |
 
 **Design decisions.**
 - Figures land on the `kb` disk under
