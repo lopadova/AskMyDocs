@@ -168,6 +168,41 @@ final class RasterisesPdfTest extends TestCase
         $this->assertSame([], glob(sys_get_temp_dir().'/kb_ocr_*/page-1.png') ?: []);
     }
 
+    /**
+     * ADR 0029 §4 — an image IS the page: the same pixel and byte bounds
+     * apply to it before an engine decodes it or a provider receives it (a
+     * highly compressed file with huge dimensions is a decode bomb whatever
+     * the source byte cap said).
+     */
+    public function test_a_direct_image_over_the_pixel_box_or_the_byte_cap_is_refused_too(): void
+    {
+        config(['kb.ocr.raster.max_page_px' => 500, 'kb.ocr.raster.max_page_bytes' => 10485760]);
+        [$pdftoppm] = $this->pdftoppmStub();
+        try {
+            $this->driver()->run(new OcrRequest(bytes: self::pngHeader(9000, 9000), mimeType: 'image/png', filename: 'bomb.png', options: []), $pdftoppm, 150, '/nonexistent/pdfinfo');
+            $this->fail('an image over the pixel box must be refused');
+        } catch (OcrLimitExceededException $e) {
+            $this->assertSame('rendered_page_too_large', $e->reason);
+            $this->assertStringContainsString('9000×9000 px', $e->getMessage());
+        }
+        $this->assertSame([], glob(sys_get_temp_dir().'/kb_ocr_*/input.img') ?: [], 'the working directory is removed on refusal');
+
+        config(['kb.ocr.raster.max_page_px' => 6000, 'kb.ocr.raster.max_page_bytes' => 16]);
+        try {
+            $this->driver()->run(new OcrRequest(bytes: (string) base64_decode(FakeOcrDriver::PNG_1X1, true), mimeType: 'image/png', filename: 'big.png', options: []), $pdftoppm, 150, '/nonexistent/pdfinfo');
+            $this->fail('an image over the byte cap must be refused');
+        } catch (OcrLimitExceededException $e) {
+            $this->assertSame('rendered_page_too_large', $e->reason);
+            $this->assertStringContainsString('KB_OCR_RASTER_MAX_PAGE_BYTES', $e->getMessage());
+        }
+
+        // Within both bounds the image is the single page, no pdftoppm/pdfinfo involved.
+        config(['kb.ocr.raster.max_page_bytes' => 10485760]);
+        $raster = $this->driver()->run(new OcrRequest(bytes: (string) base64_decode(FakeOcrDriver::PNG_1X1, true), mimeType: 'image/png', filename: 'ok.png', options: []), $pdftoppm, 150, '/nonexistent/pdfinfo');
+        $this->assertSame([1], array_keys($raster['pages']));
+        $this->driver()->clean($raster['dir']);
+    }
+
     public function test_an_unreadable_produced_page_is_an_error_not_a_page(): void
     {
         [$pdftoppm] = $this->pdftoppmStub('not a png');
@@ -177,7 +212,7 @@ final class RasterisesPdfTest extends TestCase
             $this->driver()->run($this->pdf('broken.pdf'), $pdftoppm, 72, $pdfinfo);
             $this->fail('an unreadable page image must not be handed on');
         } catch (\RuntimeException $e) {
-            $this->assertStringContainsString('unreadable image', $e->getMessage());
+            $this->assertStringContainsString('Unreadable page image', $e->getMessage());
         }
         $this->assertSame([], glob(sys_get_temp_dir().'/kb_ocr_*/page-1.png') ?: []);
     }

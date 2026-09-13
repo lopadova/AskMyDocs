@@ -44,8 +44,16 @@ trait RasterisesPdf
             throw $e;
         }
 
+        $maxPx = max(500, (int) config('kb.ocr.raster.max_page_px', 6000));
         if (! $request->isPdf()) {
-            return ['dir' => $dir, 'pages' => [1 => $input]];
+            // An image IS the page: the same pixel and byte bounds apply
+            // before an engine decodes it or a provider receives it — a
+            // highly compressed file with huge dimensions is a decode bomb
+            // whatever the source byte cap said.
+            $pages = [1 => $input];
+            $this->assertRenderedBounds($dir, $pages, $request->filename, $maxPx);
+
+            return ['dir' => $dir, 'pages' => $pages];
         }
 
         if ((new ExecutableFinder())->find($pdftoppmBinary) === null && ! is_executable($pdftoppmBinary)) {
@@ -70,7 +78,6 @@ trait RasterisesPdf
         // would need less than the 50-DPI floor to fit is refused outright.
         // (`pdftoppm -W/-H` are crop sizes, not a scale bound: they would
         // silently discard the text outside the box, never shrink the render.)
-        $maxPx = max(500, (int) config('kb.ocr.raster.max_page_px', 6000));
         try {
             $dpi = $this->boundedDpi($input, $pdfinfoBinary, $maxPages, $dpi, $maxPx, $timeout, $request->filename);
         } catch (\Throwable $e) {
@@ -116,19 +123,37 @@ trait RasterisesPdf
         // that was actually produced (defence in depth behind the pre-render
         // DPI bound) and the byte cap applies to it; either over the limit is
         // a deterministic refusal, raised before any egress and never retried.
+        $this->assertRenderedBounds($dir, $pages, $request->filename, $maxPx);
+
+        return ['dir' => $dir, 'pages' => $pages];
+    }
+
+    /**
+     * Every page image — rendered from a PDF or the input image itself — is
+     * measured (`getimagesize`, header only) against the pixel box and its
+     * file size against the byte cap before an engine decodes it or a
+     * provider receives it. Over either bound: `rendered_page_too_large`,
+     * the working directory removed. Undecodable: an error, never a page.
+     *
+     * @param  array<int, string>  $pages
+     *
+     * @throws OcrLimitExceededException
+     */
+    private function assertRenderedBounds(string $dir, array $pages, string $filename, int $maxPx): void
+    {
         $maxRenderedBytes = max(1, (int) config('kb.ocr.raster.max_page_bytes', 10485760));
         foreach ($pages as $number => $path) {
             $size = (int) (filesize($path) ?: 0);
-            $dimensions = $this->measurePng($path);
+            $dimensions = $this->measureImage($path);
             if ($dimensions === null) {
-                $this->cleanupAfterFailure($dir, $e = new \RuntimeException(sprintf('pdftoppm produced an unreadable image for page %d of "%s".', $number, $request->filename)));
+                $this->cleanupAfterFailure($dir, $e = new \RuntimeException(sprintf('Unreadable page image for page %d of "%s".', $number, $filename)));
                 throw $e;
             }
             [$width, $height] = $dimensions;
             if ($width > $maxPx || $height > $maxPx) {
                 $this->cleanupAfterFailure($dir, $e = new OcrLimitExceededException(sprintf(
-                    'OCR refused for "%s": page %d renders to %d×%d px, over KB_OCR_RASTER_MAX_PAGE_PX (%d).',
-                    $request->filename,
+                    'OCR refused for "%s": page %d is %d×%d px, over KB_OCR_RASTER_MAX_PAGE_PX (%d).',
+                    $filename,
                     $number,
                     $width,
                     $height,
@@ -140,16 +165,14 @@ trait RasterisesPdf
                 continue;
             }
             $this->cleanupAfterFailure($dir, $e = new OcrLimitExceededException(sprintf(
-                'OCR refused for "%s": page %d renders to %d bytes, over KB_OCR_RASTER_MAX_PAGE_BYTES (%d).',
-                $request->filename,
+                'OCR refused for "%s": page %d is %d bytes, over KB_OCR_RASTER_MAX_PAGE_BYTES (%d).',
+                $filename,
                 $number,
                 $size,
                 $maxRenderedBytes,
             ), 'rendered_page_too_large'));
             throw $e;
         }
-
-        return ['dir' => $dir, 'pages' => $pages];
     }
 
     /**
@@ -209,7 +232,7 @@ trait RasterisesPdf
     /**
      * @return array{0: int, 1: int}|null width and height, null when the file is not a decodable image
      */
-    private function measurePng(string $path): ?array
+    private function measureImage(string $path): ?array
     {
         try {
             $info = getimagesize($path);

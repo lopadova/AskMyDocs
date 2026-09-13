@@ -79,12 +79,17 @@ final class PdfConverter implements ConverterInterface
 
         $start = hrtime(true);
         $strategy = 'smalot';
+        // OFF path: `$ocrRoute` is null and nothing below reads it — the
+        // pdftotext pages exist only when an `unreadable` probe already ran
+        // the fallback and found text (OCR on), and are read through the
+        // null-safe local below.
+        $pdftotextPages = $ocrRoute !== null && isset($ocrRoute['pages']) && is_array($ocrRoute['pages']) ? $ocrRoute['pages'] : null;
 
         try {
             // An `unreadable` probe already ran pdftotext and found text:
             // keep those pages instead of failing smalot a second time.
-            $pages = $ocrRoute['pages'] ?? $this->extractWithSmalot($doc->bytes);
-            $strategy = isset($ocrRoute['pages']) ? 'pdftotext' : 'smalot';
+            $pages = $pdftotextPages ?? $this->extractWithSmalot($doc->bytes);
+            $strategy = $pdftotextPages !== null ? 'pdftotext' : 'smalot';
         } catch (Throwable $smalotError) {
             try {
                 $pages = $this->extractWithPdftotext($doc->bytes);
