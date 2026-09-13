@@ -65,7 +65,7 @@ final class OcrLimitsAndReuseTest extends TestCase
         $pdf = new SourceDocument(
             sourcePath: 'docs/long.pdf',
             mimeType: 'application/pdf',
-            bytes: PdfFixtureBuilder::build(['  ', ' ', '   ']),
+            bytes: PdfFixtureBuilder::build(['  ', ' ', '   '], [1, 2, 3]),
             externalUrl: null,
             externalId: null,
             connectorType: 'local',
@@ -652,6 +652,51 @@ final class OcrLimitsAndReuseTest extends TestCase
         config(['kb.ocr.figures.enabled' => false]);
         $third = $converter->convert($this->image());
         $this->assertNotSame($second->extractionMeta['ocr']['run'], $third->extractionMeta['ocr']['run'], 'figures off is another output');
+    }
+
+    /**
+     * SEC-LIMITS-001 — the figure caps hold for EVERY driver at the service
+     * boundary, not only in the drivers that apply them while parsing: a
+     * result over the count, the total-bytes or the per-figure cap is
+     * discarded before anything is stored, recorded or metered.
+     */
+    #[Test]
+    public function a_driver_result_over_the_figure_budget_is_discarded_before_anything_is_recorded(): void
+    {
+        $figure = strlen((string) base64_decode(FakeOcrDriver::PNG_1X1, true));
+        config(['kb.ocr.fake.pages' => [['markdown' => 'Alpha', 'confidence' => 0.8, 'figures' => 3]]]);
+        $converter = $this->app->make(OcrConverter::class);
+
+        config(['kb.ocr.max_figures_per_run' => 2]);
+        try {
+            $converter->convert($this->image());
+            $this->fail('three figures over a budget of two must be refused');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('KB_OCR_MAX_FIGURES=2', $e->getMessage());
+        }
+
+        config(['kb.ocr.max_figures_per_run' => 200, 'kb.ocr.max_figures_total_bytes' => $figure * 2]);
+        try {
+            $converter->convert($this->image());
+            $this->fail('three figures over a total-bytes budget of two must be refused');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('KB_OCR_MAX_FIGURES_TOTAL_BYTES='.($figure * 2), $e->getMessage());
+        }
+
+        config(['kb.ocr.max_figures_total_bytes' => 104857600, 'kb.ocr.max_figure_bytes' => $figure - 1]);
+        try {
+            $converter->convert($this->image());
+            $this->fail('a figure over the per-figure cap must be refused');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('KB_OCR_MAX_FIGURE_BYTES', $e->getMessage());
+        }
+
+        $this->assertSame([], array_filter(Storage::disk('kb')->allFiles(), static fn (string $f): bool => str_contains($f, '.ocr/')), 'nothing was stored or recorded');
+
+        config(['kb.ocr.max_figure_bytes' => 10485760]);
+        $ok = $converter->convert($this->image());
+        $this->assertFalse((bool) $ok->extractionMeta['ocr']['reused']);
+        $this->assertSame(3, $ok->extractionMeta['ocr']['figures'], 'within every cap the result is recorded');
     }
 
     /** With figures off, `pages[].figures` agrees with the document-level zero: only persisted figures are counted. */

@@ -100,7 +100,7 @@ final class KbUploadOcrTest extends TestCase
         $batchId = $this->actingAs($admin)->post('/api/admin/kb/uploads', [
             'project_key' => 'legal',
             'files' => [
-                UploadedFile::fake()->createWithContent('scan.pdf', PdfFixtureBuilder::build(['  '])),
+                UploadedFile::fake()->createWithContent('scan.pdf', PdfFixtureBuilder::build(['  '], [1])),
                 UploadedFile::fake()->createWithContent('notes.md', "# Notes\n\nplain text never needs OCR\n"),
                 UploadedFile::fake()->createWithContent('text.pdf', PdfFixtureBuilder::build(['This page carries plenty of extractable text for the probe to count.'])),
             ],
@@ -258,7 +258,7 @@ final class KbUploadOcrTest extends TestCase
 
         $withPdf = $this->actingAs($admin)->post('/api/admin/kb/uploads', ['project_key' => 'legal', 'files' => [
             $this->png('b.png'),
-            UploadedFile::fake()->createWithContent('scan.pdf', PdfFixtureBuilder::build(['  '])),
+            UploadedFile::fake()->createWithContent('scan.pdf', PdfFixtureBuilder::build(['  '], [1])),
         ]])->assertStatus(201)->json('batch.id');
         $response = $this->actingAs($admin)->getJson("/api/admin/kb/uploads/{$withPdf}/estimate")
             ->assertOk()
@@ -310,7 +310,7 @@ final class KbUploadOcrTest extends TestCase
         config(['kb.ocr.enabled' => true]);
         $admin = $this->makeAdmin();
         $batchId = $this->actingAs($admin)->post('/api/admin/kb/uploads', ['project_key' => 'legal', 'files' => [
-            UploadedFile::fake()->createWithContent('scan.pdf', PdfFixtureBuilder::build(['  '])),
+            UploadedFile::fake()->createWithContent('scan.pdf', PdfFixtureBuilder::build(['  '], [1])),
         ]])->assertStatus(201)->json('batch.id');
         $item = KbIngestBatchItem::query()->where('batch_id', $batchId)->firstOrFail();
         Storage::disk('kb-staging')->put((string) $item->staging_path, (string) base64_decode(FakeOcrDriver::PNG_1X1, true));
@@ -499,7 +499,7 @@ final class KbUploadOcrTest extends TestCase
         $admin = $this->makeAdmin();
         $batchId = $this->actingAs($admin)->post('/api/admin/kb/uploads', [
             'project_key' => 'legal',
-            'files' => [UploadedFile::fake()->createWithContent('long.pdf', PdfFixtureBuilder::build(['  ', ' ', '   ']))],
+            'files' => [UploadedFile::fake()->createWithContent('long.pdf', PdfFixtureBuilder::build(['  ', ' ', '   '], [1, 2, 3]))],
         ])->assertStatus(201)->json('batch.id');
 
         $this->actingAs($admin)->getJson("/api/admin/kb/uploads/{$batchId}/estimate")
@@ -508,6 +508,36 @@ final class KbUploadOcrTest extends TestCase
             ->assertJsonPath('data.items.0.reason', 'too_many_pages')
             ->assertJsonPath('data.items.0.pages', 3)
             ->assertJsonPath('data.total_cost', 0);
+    }
+
+    /**
+     * A PDF the parser cannot read goes through `pdftotext` first; a run
+     * past KB_PDFTOTEXT_TIMEOUT is the deterministic `run_too_long` refusal
+     * commit will give — the modal says so instead of quoting an OCR run
+     * that never starts (R14).
+     */
+    public function test_estimate_reports_a_pdf_the_pdftotext_fallback_cannot_read_in_time(): void
+    {
+        $stub = tempnam(sys_get_temp_dir(), 'pdftotext_stub_');
+        file_put_contents($stub, "#!/bin/sh\nsleep 5\n");
+        chmod($stub, 0755);
+        config(['kb.ocr.enabled' => true, 'kb.pdf.pdftotext_bin' => $stub, 'kb.pdf.pdftotext_timeout' => 1]);
+        $admin = $this->makeAdmin();
+        try {
+            $batchId = $this->actingAs($admin)->post('/api/admin/kb/uploads', [
+                'project_key' => 'legal',
+                'files' => [UploadedFile::fake()->createWithContent('broken.pdf', '%PDF-1.4 not really a pdf')],
+            ])->assertStatus(201)->json('batch.id');
+
+            $this->actingAs($admin)->getJson("/api/admin/kb/uploads/{$batchId}/estimate")
+                ->assertOk()
+                ->assertJsonPath('data.items.0.would_ocr', false)
+                ->assertJsonPath('data.items.0.reason', 'run_too_long')
+                ->assertJsonPath('data.items.0.pages_exact', false)
+                ->assertJsonPath('data.total_cost', 0);
+        } finally {
+            unlink($stub);
+        }
     }
 
     public function test_estimate_refuses_an_unparseable_pdf_for_a_remote_driver_but_prices_it_as_a_floor_for_a_local_one(): void
@@ -567,7 +597,7 @@ final class KbUploadOcrTest extends TestCase
             'project_key' => 'legal',
             'files' => [
                 $this->png('a.png'),
-                UploadedFile::fake()->createWithContent('scanned.pdf', PdfFixtureBuilder::build(['  ', ' ', '   '])),
+                UploadedFile::fake()->createWithContent('scanned.pdf', PdfFixtureBuilder::build(['  ', ' ', '   '], [1, 2, 3])),
                 UploadedFile::fake()->createWithContent('mixed.pdf', PdfFixtureBuilder::build(['Cover page with plenty of typed text on it.', '   '], [2])),
                 UploadedFile::fake()->createWithContent('text.pdf', PdfFixtureBuilder::buildThreePageSample()),
                 UploadedFile::fake()->createWithContent('notes.md', "# Notes\n\nbody"),

@@ -28,7 +28,12 @@ class PruneOrphanFilesCommandTest extends TestCase
         config()->set('kb.deletion.soft_delete', true);
     }
 
-    private function seedDoc(string $sourcePath, string $versionHash, string $project = 'demo'): KnowledgeDocument
+    /**
+     * A row records the storage namespace its file lives in (`metadata.disk`
+     * / `metadata.prefix`, as the ingest job persists them): a test that
+     * selects another disk or prefix seeds the row with THAT namespace.
+     */
+    private function seedDoc(string $sourcePath, string $versionHash, string $project = 'demo', string $disk = 'kb', string $prefix = ''): KnowledgeDocument
     {
         return KnowledgeDocument::create([
             'project_key' => $project,
@@ -40,7 +45,7 @@ class PruneOrphanFilesCommandTest extends TestCase
             'status' => 'active',
             'document_hash' => $versionHash,
             'version_hash' => $versionHash,
-            'metadata' => ['disk' => 'kb', 'prefix' => ''],
+            'metadata' => ['disk' => $disk, 'prefix' => $prefix],
             'indexed_at' => now(),
         ]);
     }
@@ -175,6 +180,40 @@ class PruneOrphanFilesCommandTest extends TestCase
             ->expectsOutputToContain('dangling_ocr=1 purged=1')
             ->assertSuccessful();
         $this->assertFalse(Storage::disk('kb')->directoryExists('docs/elsewhere.md.ocr'));
+    }
+
+    /**
+     * The orphan test is the same physical test the dangling-tree sweep
+     * applies: a row carrying the same logical path on ANOTHER disk or under
+     * ANOTHER prefix references another object, so the file in THIS
+     * namespace (and the `.ocr/` tree beside it) is an orphan here.
+     */
+    public function test_a_row_on_another_disk_or_prefix_does_not_protect_a_source_file_in_this_namespace(): void
+    {
+        Storage::fake('kb');
+        Storage::fake('kb-other');
+        $run = str_repeat('abcdef0123456789', 4);
+        Storage::disk('kb')->put('docs/elsewhere.md', 'e');
+        Storage::disk('kb')->put("docs/elsewhere.md.ocr/{$run}/result.json", '{}');
+        Storage::disk('kb')->put('docs/archived.md', 'a');
+        Storage::disk('kb')->put('docs/here.md', 'h');
+        $other = $this->seedDoc('docs/elsewhere.md', 'he');
+        KnowledgeDocument::withoutGlobalScopes()->whereKey($other->id)->update(['metadata' => json_encode(['disk' => 'kb-other', 'prefix' => ''])]);
+        $archived = $this->seedDoc('docs/archived.md', 'ha');
+        KnowledgeDocument::withoutGlobalScopes()->whereKey($archived->id)->update(['metadata' => json_encode(['disk' => 'kb', 'prefix' => 'archive'])]);
+        $this->seedDoc('docs/here.md', 'hh');
+
+        $this->travel(OcrFigureStore::inFlightGraceSeconds() + 60)->seconds();
+        $this->artisan('kb:prune-orphan-files', ['--dry-run' => true])
+            ->expectsOutputToContain('DRY-RUN: 2 of 3 orphan file(s)')
+            ->assertSuccessful();
+
+        $this->artisan('kb:prune-orphan-files')
+            ->assertSuccessful();
+        Storage::disk('kb')->assertMissing('docs/elsewhere.md');
+        Storage::disk('kb')->assertMissing('docs/archived.md');
+        $this->assertFalse(Storage::disk('kb')->directoryExists('docs/elsewhere.md.ocr'), 'the OCR tree beside the orphan goes with it');
+        Storage::disk('kb')->assertExists('docs/here.md');
     }
 
     /**
@@ -327,7 +366,7 @@ class PruneOrphanFilesCommandTest extends TestCase
         // Decoy: a file on the default disk must stay untouched.
         Storage::disk('kb')->put('docs/decoy.md', 'd');
 
-        $this->seedDoc('docs/hr-doc.md', 'hrd', 'hr-portal');
+        $this->seedDoc('docs/hr-doc.md', 'hrd', 'hr-portal', disk: 'kb-hr');
 
         $this->artisan('kb:prune-orphan-files', ['--project' => 'hr-portal'])
             ->expectsOutputToContain('scanned=2 orphans=1 deleted=1 failed=0')
@@ -359,7 +398,7 @@ class PruneOrphanFilesCommandTest extends TestCase
         Storage::disk('kb')->put('outside-root.md', 'y');
 
         // DocumentIngestor stores source_path without the prefix.
-        $this->seedDoc('docs/kept.md', 'hk');
+        $this->seedDoc('docs/kept.md', 'hk', prefix: 'kb/proj');
 
         $this->artisan('kb:prune-orphan-files')
             ->expectsOutputToContain('scanned=2 orphans=1 deleted=1 failed=0')
@@ -386,7 +425,8 @@ class PruneOrphanFilesCommandTest extends TestCase
         Storage::disk('kb')->put('kb/proj/docs/kept.md', 'k');
         Storage::disk('kb')->put('kb/proj/docs/orphan.md', 'o');
 
-        $this->seedDoc('docs/kept.md', 'hk');
+        // Recorded as the operator typed it: the resolver normalises it.
+        $this->seedDoc('docs/kept.md', 'hk', prefix: 'kb\\proj');
 
         $this->artisan('kb:prune-orphan-files')
             ->expectsOutputToContain('scanned=2 orphans=1 deleted=1 failed=0')

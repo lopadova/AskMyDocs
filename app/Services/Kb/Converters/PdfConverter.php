@@ -6,6 +6,7 @@ namespace App\Services\Kb\Converters;
 
 use App\Services\Kb\Contracts\ConverterInterface;
 use App\Services\Kb\Ocr\OcrService;
+use App\Services\Kb\Ocr\OcrLimitExceededException;
 use App\Services\Kb\Ocr\PdfTextFallback;
 use App\Services\Kb\Ocr\PdfTextLayerProbe;
 use App\Services\Kb\Pipeline\ConvertedDocument;
@@ -100,6 +101,8 @@ final class PdfConverter implements ConverterInterface
             try {
                 $pages = $this->extractWithPdftotext($doc->bytes);
                 $strategy = 'pdftotext';
+            } catch (OcrLimitExceededException $refused) {
+                throw $refused;
             } catch (Throwable $fallbackError) {
                 throw new \RuntimeException(sprintf(
                     'PdfConverter could not extract text from "%s": smalot failed (%s) and pdftotext fallback failed (%s).',
@@ -160,6 +163,10 @@ final class PdfConverter implements ConverterInterface
         if ($probe['verdict'] === PdfTextLayerProbe::UNREADABLE) {
             try {
                 $pages = $this->extractWithPdftotext($doc->bytes);
+            } catch (OcrLimitExceededException $refused) {
+                // `run_too_long`: a deterministic refusal of the document,
+                // never a silent hand-off to a billed OCR run (R14).
+                throw $refused;
             } catch (Throwable) {
                 return ['reason' => 'scanned_pdf', 'probe' => PdfTextLayerProbe::UNREADABLE.':pdftotext_failed'];
             }

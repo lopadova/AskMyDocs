@@ -93,7 +93,7 @@ final class OcrConverterTest extends TestCase
     public function test_off_a_scanned_pdf_keeps_todays_empty_document_behaviour(): void
     {
         config(['kb.ocr.enabled' => false]);
-        $converted = $this->app->make(PdfConverter::class)->convert($this->pdf(PdfFixtureBuilder::build(['   ', ' '])));
+        $converted = $this->app->make(PdfConverter::class)->convert($this->pdf(PdfFixtureBuilder::build(['   ', ' '], [1, 2])));
 
         $this->assertSame('', $converted->markdown);
         $this->assertArrayNotHasKey('text_layer_probe', $converted->extractionMeta);
@@ -217,7 +217,7 @@ final class OcrConverterTest extends TestCase
     public function test_on_a_scanned_pdf_is_routed_to_ocr_by_the_text_layer_probe(): void
     {
         config(['kb.ocr.enabled' => true]);
-        $converted = $this->app->make(PdfConverter::class)->convert($this->pdf(PdfFixtureBuilder::build(['   ', ' '])));
+        $converted = $this->app->make(PdfConverter::class)->convert($this->pdf(PdfFixtureBuilder::build(['   ', ' '], [1, 2])));
 
         $this->assertSame(PdfTextLayerProbe::EMPTY, $converted->extractionMeta['text_layer_probe']);
         $this->assertSame('scanned_pdf', $converted->extractionMeta['ocr']['reason']);

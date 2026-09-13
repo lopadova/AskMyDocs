@@ -61,23 +61,32 @@ the whole probe window — every page up to `KB_OCR_MAX_PAGES`
 (`KB_OCR_PROBE_PAGES=0`, the default; a positive value bounds the window and
 is a documented trade-off: a scanned page beyond it is not seen, and a page
 the OCR cap would refuse cannot change the verdict). A page with fewer than
-`KB_OCR_PROBE_MIN_CHARS` extractable characters that carries an image XObject
-is a *scanned* page; one with neither is *blank* (a separator — never a reason
-to OCR by itself). No text page at all is `empty`; text pages **and** scanned
-pages is `mixed` — a typed cover over scanned body pages, scans stapled to a
+`KB_OCR_PROBE_MIN_CHARS` extractable characters that carries something to
+look at — an image XObject, or painted content outside every text object
+(text outlined into paths, a drawing, a form XObject: OCR can read it and a
+"blank" verdict would silently skip it) — is a *scanned* page; one that
+paints nothing is *blank* (a separator — never a reason to OCR by itself).
+No text page but at least one scanned page is `empty`; a window of blank
+pages alone is `present` with zero text pages (nothing to OCR, never a
+billed run over empty pages — the text path ingests it as today); text
+pages **and** scanned pages is `mixed` — a typed cover over scanned body pages, scans stapled to a
 memo — and the **whole document** is routed to OCR so no page is silently
 lost (the text pages are OCR'd too; a per-page hybrid that keeps the parsed
 text of text pages is a later refinement, not this cycle's); otherwise
 `present`. `empty`, `mixed`, an unreadable file that `pdftotext` cannot read
-either, or an ingest carrying `metadata.ocr.force = true` (what `kb:ocr`
+either (the fallback is bounded by `KB_PDFTOTEXT_TIMEOUT`: it runs before
+OCR and in the estimate, outside any run budget, so a run past it is the
+deterministic `run_too_long` refusal of the document — never a retry, never
+a silent hand-off to a billed OCR run), or an ingest carrying `metadata.ocr.force = true` (what `kb:ocr`
 sets) routes the bytes to the same `OcrService` the image converter uses,
 with `reason` `scanned_pdf` / `mixed_pdf` / `forced`. The verdict (`present`
 · `mixed` · `empty` · `unreadable` · `skipped`) is recorded in
 `extractionMeta['text_layer_probe']`, the scanned page numbers with it; a PDF
 whose every content page has a text layer keeps its current path, byte for
 byte. Regression cases: a cover over scanned pages is `mixed` and OCR'd, a
-blank separator inside a text PDF is `present`, a bounded window is blind
-beyond it. No two converters ever claim one MIME: a
+blank separator inside a text PDF is `present`, blank pages alone are
+`present` with no OCR, an outlined-text page is `scanned`, a bounded window
+is blind beyond it. No two converters ever claim one MIME: a
 converter-mutex test (the twin of the chunker one) proves it in both states.
 
 ### 2. `SourceType` always knows `IMAGE`; the flag gates acceptance at the entry points
@@ -249,7 +258,14 @@ like a remote one. The contract carries the fact
 consult it, and where the run is allowed the estimate shows the floor with
 `pages_exact = false` so the modal never presents it as an exact price. Deny-by-default tests cover
 the knob off, a host outside the list, a non-JSON response, both overflows
-and the uncountable-to-remote refusal.
+and the uncountable-to-remote refusal. The figure caps — `KB_OCR_MAX_FIGURE_BYTES`
+per figure, `KB_OCR_MAX_FIGURES` / `KB_OCR_MAX_FIGURES_TOTAL_BYTES` per run —
+are applied by the drivers while they parse (a figure past them is omitted
+before it is read, the Markdown says so) **and** re-checked by `OcrService`
+on what any driver returns, before anything is stored, recorded or metered:
+a result over them is an invalid driver result and is discarded, so the
+limits are invariant for a driver (a test double, a future engine) that did
+not apply them itself.
 
 ### 5. Same bytes, same driver: the recorded run is reused, never re-billed
 
@@ -427,7 +443,12 @@ reads the converter's output back: `KbPath::isGeneratedAsset()` marks every
 path under a `{name}.ocr/` segment (and the ADR 0030 `.artifacts/` root) and
 the folder walker and the orphan-file sweep exclude it; the sweep also
 purges the `.ocr/` tree beside every orphan source it removes, which is the
-one sweep a run written by a failed first ingest ever gets.
+one sweep a run written by a failed first ingest ever gets. "Orphan" is
+decided per physical namespace, with the same test the dangling-tree check
+applies (`DocumentDeleter::documentResolvesToStorageKey()`): a file is
+known only when a row's **recorded** disk and prefix resolve to it on the
+swept disk, so a row carrying the same logical path on another disk or
+under another prefix never protects a file — or the tree beside it — here.
 
 The write is a **documented exception** to the `ConverterInterface`
 "stateless and side-effect-free" contract, recorded in the interface's own

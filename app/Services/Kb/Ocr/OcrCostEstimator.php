@@ -7,7 +7,6 @@ namespace App\Services\Kb\Ocr;
 use App\FinOps\OcrCallMeter;
 use App\Models\KbIngestBatch;
 use App\Models\KbIngestBatchItem;
-use App\Services\Kb\Ocr\ImageBounds;
 use App\Support\Kb\FileTypeSniffer;
 use App\Support\Kb\SourceType;
 use Illuminate\Support\Facades\Storage;
@@ -80,7 +79,7 @@ final class OcrCostEstimator
             // would OCR, or one OCR itself refused (over a cap, uncountable,
             // multi-frame) — a text PDF, a text file or an unreadable object
             // is ingestible (or fails) without any driver.
-            $needsDriver = $row['would_ocr'] || in_array($row['reason'], ['too_many_pages', 'too_many_bytes', 'pages_uncountable', 'multi_frame_image', 'rendered_page_too_large'], true);
+            $needsDriver = $row['would_ocr'] || in_array($row['reason'], ['too_many_pages', 'too_many_bytes', 'pages_uncountable', 'multi_frame_image', 'rendered_page_too_large', 'run_too_long'], true);
             if (! $row['driver_available'] && $needsDriver) {
                 $blockedPdf = $blockedPdf || $kind === SourceType::PDF;
                 $blockedImage = $blockedImage || $kind === SourceType::IMAGE;
@@ -261,11 +260,20 @@ final class OcrCostEstimator
         // parser could not read: the `pdftotext` fallback runs first, and a
         // file it finds text in is ingested as text, never OCR'd — so the
         // modal must not quote pages and spend for it.
-        if ($probe['verdict'] === PdfTextLayerProbe::UNREADABLE && $this->pdfTextFallback->textPages($bytes) !== null) {
-            return ['id' => $id, 'would_ocr' => false, 'pages' => 0, 'cost' => 0.0, 'reason' => 'text_layer_present', 'pages_exact' => true];
-        }
         $pages = max(1, (int) $probe['pages_total']);
         $exact = (bool) $probe['pages_exact'];
+        if ($probe['verdict'] === PdfTextLayerProbe::UNREADABLE) {
+            try {
+                if ($this->pdfTextFallback->textPages($bytes) !== null) {
+                    return ['id' => $id, 'would_ocr' => false, 'pages' => 0, 'cost' => 0.0, 'reason' => 'text_layer_present', 'pages_exact' => true];
+                }
+            } catch (OcrLimitExceededException $refused) {
+                // The fallback outlived KB_PDFTOTEXT_TIMEOUT: commit refuses
+                // the document the same way (`run_too_long`), so the modal
+                // says so instead of quoting an OCR run that never starts.
+                return ['id' => $id, 'would_ocr' => false, 'pages' => $pages, 'cost' => 0.0, 'reason' => $refused->reason, 'pages_exact' => $exact];
+            }
+        }
         // The same refusal the service applies (ADR 0029 §4): a floor is not
         // a cap input, so an unparseable PDF runs only on a local driver that
         // bounds its own work — and the modal says so before commit (R14).

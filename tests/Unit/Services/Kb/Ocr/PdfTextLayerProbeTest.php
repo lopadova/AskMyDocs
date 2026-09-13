@@ -37,10 +37,42 @@ final class PdfTextLayerProbeTest extends TestCase
         $this->assertSame([], $probe['scanned_pages']);
     }
 
-    public function test_no_text_page_at_all_is_empty(): void
+    public function test_no_text_page_but_a_scanned_page_is_empty(): void
     {
-        $this->assertSame(PdfTextLayerProbe::EMPTY, app(PdfTextLayerProbe::class)->probe(PdfFixtureBuilder::build(['   ', ' ']))['verdict']);
         $this->assertSame(PdfTextLayerProbe::EMPTY, app(PdfTextLayerProbe::class)->probe(PdfFixtureBuilder::build(['   ', ' '], [1, 2]))['verdict']);
+        $this->assertSame(PdfTextLayerProbe::EMPTY, app(PdfTextLayerProbe::class)->probe(PdfFixtureBuilder::build(['   ', ' '], [2]))['verdict'], 'one scanned page beside a blank one is a scan');
+    }
+
+    /**
+     * A window of blank pages alone — no text, nothing painted — is not a
+     * scan: `present` with zero text pages, so the converter takes today's
+     * text path and never bills an OCR run over empty pages.
+     */
+    public function test_blank_pages_alone_are_nothing_to_ocr(): void
+    {
+        $probe = app(PdfTextLayerProbe::class)->probe(PdfFixtureBuilder::build(['   ', ' ']));
+
+        $this->assertSame(PdfTextLayerProbe::PRESENT, $probe['verdict']);
+        $this->assertSame(0, $probe['text_pages']);
+        $this->assertSame([], $probe['scanned_pages']);
+        $this->assertSame(2, $probe['pages_probed']);
+    }
+
+    /**
+     * Painted content without a text object behind it — text outlined into
+     * paths by a design export — is something OCR can read: such a page is
+     * `scanned`, never mistaken for a blank separator, so the document is
+     * OCR'd rather than ingested empty.
+     */
+    public function test_a_page_that_paints_without_text_or_image_is_scanned_not_blank(): void
+    {
+        $probe = app(PdfTextLayerProbe::class)->probe(PdfFixtureBuilder::build(['   ', ' '], [], [2]));
+
+        $this->assertSame(PdfTextLayerProbe::EMPTY, $probe['verdict']);
+        $this->assertSame([2], $probe['scanned_pages']);
+
+        $mixed = app(PdfTextLayerProbe::class)->probe(PdfFixtureBuilder::build([self::COVER, ' '], [], [2]));
+        $this->assertSame(PdfTextLayerProbe::MIXED, $mixed['verdict'], 'a typed cover over an outlined page is mixed');
     }
 
     /** A positive KB_OCR_PROBE_PAGES bounds the window — the documented trade-off: a scanned page beyond it is not seen. */

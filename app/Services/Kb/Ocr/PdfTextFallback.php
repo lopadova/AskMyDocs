@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Kb\Ocr;
 
 use Illuminate\Support\Facades\Log;
+use Symfony\Component\Process\Exception\ProcessTimedOutException;
 use Symfony\Component\Process\Exception\RuntimeException as ProcessRuntimeException;
 use Symfony\Component\Process\Process;
 
@@ -30,6 +31,12 @@ final class PdfTextFallback
     {
         try {
             $pages = $this->extract($bytes);
+        } catch (OcrLimitExceededException $refused) {
+            // A run past KB_PDFTOTEXT_TIMEOUT is a deterministic refusal of
+            // the document, never "no text, go to OCR": the same malformed
+            // bytes would hold the OCR path the same way, and paying to try
+            // is not the caller's call to make silently (R14).
+            throw $refused;
         } catch (\Throwable) {
             return null;
         }
@@ -67,10 +74,12 @@ final class PdfTextFallback
      *
      * @return list<string>
      *
-     * @throws ProcessRuntimeException  when the `pdftotext` binary is missing
-     *                                  on PATH OR fails non-zero on the input.
-     * @throws \RuntimeException        when the temp file required for the
-     *                                  run can't be created/written.
+     * @throws ProcessRuntimeException    when the `pdftotext` binary is missing
+     *                                    on PATH OR fails non-zero on the input.
+     * @throws OcrLimitExceededException  when the run outlives `kb.pdf.pdftotext_timeout`
+     *                                    (`run_too_long` — deterministic, never retried).
+     * @throws \RuntimeException          when the temp file required for the
+     *                                    run can't be created/written.
      */
     public function extract(string $bytes): array
     {
@@ -87,8 +96,21 @@ final class PdfTextFallback
             if (file_put_contents($tmp, $bytes) === false) {
                 throw new \RuntimeException('Failed to write temporary PDF file for pdftotext fallback');
             }
+            $timeout = max(1, (int) config('kb.pdf.pdftotext_timeout', 60));
             $process = new Process([(string) config('kb.pdf.pdftotext_bin', 'pdftotext'), '-layout', '-enc', 'UTF-8', $tmp, '-']);
-            $process->mustRun();
+            $process->setTimeout($timeout);
+            try {
+                $process->mustRun();
+            } catch (ProcessTimedOutException) {
+                // Terminal: the same bytes would time out again. The same
+                // `run_too_long` refusal an OCR run past its budget raises,
+                // so callers and the estimate treat both alike.
+                throw new OcrLimitExceededException(sprintf(
+                    'pdftotext exceeded its timeout (%d s, KB_PDFTOTEXT_TIMEOUT) on a %d-byte PDF — refused, nothing is extracted or OCR\'d.',
+                    $timeout,
+                    strlen($bytes),
+                ), 'run_too_long');
+            }
             $text = $process->getOutput();
             $pages = preg_split("/\f/", $text);
             if ($pages === false || $pages === []) {

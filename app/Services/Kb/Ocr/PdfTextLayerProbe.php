@@ -4,7 +4,12 @@ declare(strict_types=1);
 
 namespace App\Services\Kb\Ocr;
 
+use Smalot\PdfParser\Element\ElementArray;
+use Smalot\PdfParser\Element\ElementMissing;
+use Smalot\PdfParser\Element\ElementNull;
+use Smalot\PdfParser\Element\ElementXRef;
 use Smalot\PdfParser\Page;
+use Smalot\PdfParser\PDFObject;
 use Smalot\PdfParser\Parser;
 use Smalot\PdfParser\XObject\Image;
 use Throwable;
@@ -14,16 +19,22 @@ use Throwable;
  *
  * Every page inside the probe window is classified from what smalot reads:
  * `text` (at least `min_text_chars` non-whitespace characters), `scanned`
- * (below the threshold AND carrying an image XObject — a page that is a
- * picture of text) or `blank` (below the threshold, no image: a separator or
- * an empty page, never a reason to OCR by itself). The verdict follows:
+ * (below the threshold AND carrying something to look at — an image XObject,
+ * a page that is a picture of text, or painted content with no text object
+ * behind it: text outlined into paths, a drawing) or `blank` (below the
+ * threshold and nothing painted: a separator or an empty page, never a
+ * reason to OCR by itself). The verdict follows:
  *
  *   - `present`  — every page that has content is a text page (blank pages
- *                  are ignored): today's text-layer path, byte for byte;
+ *                  are ignored, so a window of blank pages alone is
+ *                  `present` with `text_pages = 0`: nothing to OCR, never a
+ *                  billed run over empty pages): today's text-layer path,
+ *                  byte for byte;
  *   - `mixed`    — text pages AND scanned pages: a textual cover over scanned
  *                  body pages, or scans stapled to a typed memo. The whole
  *                  document is routed to OCR so no page is silently lost;
- *   - `empty`    — no text page at all: a scan.
+ *   - `empty`    — no text page at all and at least one scanned page (or no
+ *                  page in the window): a scan.
  *
  * The window is every page up to `KB_OCR_MAX_PAGES` (`KB_OCR_PROBE_PAGES=0`,
  * the default); a positive `KB_OCR_PROBE_PAGES` bounds it for very large
@@ -106,7 +117,8 @@ final class PdfTextLayerProbe
         }
 
         $verdict = match (true) {
-            $textPages === 0 => self::EMPTY,
+            $textPages === 0 && ($scanned !== [] || $probed === 0) => self::EMPTY,
+            $textPages === 0 => self::PRESENT,
             $scanned !== [] => self::MIXED,
             default => self::PRESENT,
         };
@@ -127,8 +139,85 @@ final class PdfTextLayerProbe
         return $this->probe($bytes)['verdict'] !== self::PRESENT;
     }
 
-    /** An image XObject on the page: a textless page that is a picture, not a blank. */
+    /**
+     * Something to look at on a textless page: an image XObject (a picture
+     * of text), or painted content outside every text object — text
+     * outlined into paths, a drawing, a form XObject — which OCR can read
+     * and a "blank" verdict would silently skip. A page that paints nothing
+     * is blank.
+     */
     private function carriesImage(Page $page): bool
+    {
+        if ($this->carriesImageXObject($page)) {
+            return true;
+        }
+
+        return $this->paintsSomething($page);
+    }
+
+    /**
+     * Whether the page's content stream paints anything outside its text
+     * objects: an inline image, a filled or stroked path, a shading, an
+     * XObject draw. Operands never end in a bare painting operator, so the
+     * check is on operator tokens after every `BT … ET` block is removed.
+     * A stream that cannot be read is treated as painted (the conservative
+     * direction: a page OCR'd for nothing costs a page; a page skipped costs
+     * its content).
+     */
+    private function paintsSomething(Page $page): bool
+    {
+        $content = $this->contentStream($page);
+        if ($content === null) {
+            return true;
+        }
+        if (trim($content) === '') {
+            return false;
+        }
+        if (preg_match('/(?<![A-Za-z])BI(?![A-Za-z]).*?(?<![A-Za-z])EI(?![A-Za-z])/s', $content) === 1) {
+            return true;
+        }
+        $outsideText = preg_replace('/(?<![A-Za-z])BT(?![A-Za-z]).*?(?<![A-Za-z])ET(?![A-Za-z])/s', ' ', $content) ?? $content;
+
+        return preg_match('/(?<![A-Za-z\/])(?:f\*?|F|B\*?|b\*?|S|s|sh|Do)(?![A-Za-z*])/', $outsideText) === 1;
+    }
+
+    /** The page's content stream(s) joined, as {@see Page::getText()} reads them; null when they cannot be read. */
+    private function contentStream(Page $page): ?string
+    {
+        try {
+            $contents = $page->get('Contents');
+            if ($contents instanceof PDFObject) {
+                $elements = $contents->getHeader()->getElements();
+                if (! is_numeric(key($elements))) {
+                    return (string) $contents->getContent();
+                }
+                $joined = '';
+                foreach ($elements as $element) {
+                    $joined .= ($element instanceof ElementXRef ? $element->getObject()->getContent() : $element->getContent())."\n";
+                }
+
+                return $joined;
+            }
+            if ($contents instanceof ElementArray) {
+                $joined = '';
+                foreach ($contents->getContent() as $element) {
+                    $joined .= $element->getContent()."\n";
+                }
+
+                return $joined;
+            }
+            if ($contents instanceof ElementMissing || $contents instanceof ElementNull || $contents === null || $contents === false) {
+                return '';
+            }
+        } catch (Throwable) {
+            return null;
+        }
+
+        return null;
+    }
+
+    /** An image XObject on the page: a textless page that is a picture, not a blank. */
+    private function carriesImageXObject(Page $page): bool
     {
         try {
             foreach ($page->getXObjects() as $xobject) {

@@ -398,6 +398,12 @@ return [
     */
     'pdf' => [
         'pdftotext_bin' => env('KB_PDFTOTEXT_BIN', 'pdftotext'),
+        // Bound on one `pdftotext` run (seconds): the fallback runs BEFORE
+        // OCR (and in the upload estimate), outside any OCR run budget, so a
+        // malformed PDF could otherwise hold a worker or the estimate
+        // indefinitely. A run past it is the deterministic `run_too_long`
+        // refusal, never a retry and never a silent hand-off to OCR.
+        'pdftotext_timeout' => (int) env('KB_PDFTOTEXT_TIMEOUT', 60),
     ],
 
     'ocr' => [

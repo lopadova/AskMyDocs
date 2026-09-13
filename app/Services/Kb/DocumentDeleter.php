@@ -738,21 +738,37 @@ class DocumentDeleter
             ->cursor();
 
         foreach ($documents as $document) {
-            $metadata = is_array($document->metadata) ? $document->metadata : [];
-            $candidateDisk = (string) ($metadata['disk'] ?? config('kb.sources.disk', 'kb'));
-            $candidatePrefix = array_key_exists('prefix', $metadata)
-                ? (string) $metadata['prefix']
-                : (string) config('kb.sources.path_prefix', '');
-            $candidateFullPath = $this->resolveFullPath(
-                $candidatePrefix,
-                (string) $document->source_path,
-            );
-
-            if ($candidateDisk === $disk && $candidateFullPath === $normalizedFullPath) {
+            if ($this->documentResolvesToStorageKey($document, $disk, $normalizedFullPath)) {
                 return (int) $document->id;
             }
         }
 
         return null;
+    }
+
+    /**
+     * Whether this row's RECORDED storage namespace (`metadata.disk` /
+     * `metadata.prefix`, the configured defaults when absent) resolves its
+     * `source_path` to exactly `$fullPath` on `$disk` — the one test of
+     * "this row references that physical object", shared by the dangling
+     * OCR-tree sweep and the orphan-file sweep so neither can be fooled by a
+     * row that carries the same logical path on another disk or prefix.
+     */
+    public function documentResolvesToStorageKey(KnowledgeDocument $document, string $disk, string $fullPath): bool
+    {
+        $metadata = is_array($document->metadata) ? $document->metadata : [];
+        $candidateDisk = (string) ($metadata['disk'] ?? config('kb.sources.disk', 'kb'));
+        $candidatePrefix = array_key_exists('prefix', $metadata)
+            ? (string) $metadata['prefix']
+            : (string) config('kb.sources.path_prefix', '');
+        $candidateFullPath = $this->resolveFullPath($candidatePrefix, (string) $document->source_path);
+
+        try {
+            $normalizedFullPath = KbPath::normalize($fullPath);
+        } catch (\InvalidArgumentException) {
+            return false;
+        }
+
+        return $candidateDisk === $disk && $candidateFullPath === $normalizedFullPath;
     }
 }

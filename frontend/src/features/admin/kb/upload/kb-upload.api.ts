@@ -138,7 +138,9 @@ export type OcrEstimateReason =
     /** a multi-frame TIFF the configured driver would transcribe one frame of: refused before any work */
     | 'multi_frame_image'
     /** an image over the raster bounds (pixel box / page byte cap) every page must fit: refused before any driver decodes or posts it */
-    | 'rendered_page_too_large';
+    | 'rendered_page_too_large'
+    /** the pdftotext fallback outlived KB_PDFTOTEXT_TIMEOUT on this PDF: refused, never handed to a billed OCR run */
+    | 'run_too_long';
 
 export interface OcrEstimateItem {
     id: string;

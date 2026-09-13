@@ -59,7 +59,7 @@ class PruneOrphanFilesCommand extends Command
         }
 
         $relativePaths = $this->toRelativePaths($markdownFiles, $prefix);
-        $orphans = $this->detectOrphans($relativePaths);
+        $orphans = $this->detectOrphans($relativePaths, $prefix, $disk);
         $scanned = count($relativePaths);
         $orphanCount = count($orphans);
 
@@ -287,19 +287,37 @@ class PruneOrphanFilesCommand extends Command
      * @param  array<int,string>  $relativePaths
      * @return array<int,string>
      */
-    private function detectOrphans(array $relativePaths): array
+    private function detectOrphans(array $relativePaths, string $prefix, string $disk): array
     {
         $orphans = [];
+        $deleter = app(DocumentDeleter::class);
 
         foreach (array_chunk($relativePaths, 1000) as $chunk) {
-            $known = KnowledgeDocument::withTrashed()
+            // A file is known only when a row's RECORDED namespace resolves
+            // to this very key on this very disk — the same test the
+            // dangling-tree sweep applies (`documentResolvesToStorageKey()`):
+            // a row carrying the same logical path on another disk, or under
+            // another prefix, references another object, and the file here
+            // (with any `.ocr/` tree beside it) is an orphan of this namespace.
+            $known = [];
+            $rows = KnowledgeDocument::withTrashed()
                 ->whereIn('source_path', $chunk)
-                ->pluck('source_path')
-                ->all();
+                ->select(['id', 'source_path', 'metadata'])
+                ->cursor();
+            foreach ($rows as $row) {
+                $relative = (string) $row->source_path;
+                if (isset($known[$relative])) {
+                    continue;
+                }
+                if ($deleter->documentResolvesToStorageKey($row, $disk, $this->applyPrefix($relative, $prefix))) {
+                    $known[$relative] = true;
+                }
+            }
 
-            $diff = array_diff($chunk, $known);
-            foreach ($diff as $orphan) {
-                $orphans[] = $orphan;
+            foreach ($chunk as $relative) {
+                if (! isset($known[$relative])) {
+                    $orphans[] = $relative;
+                }
             }
         }
 

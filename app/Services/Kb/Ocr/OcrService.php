@@ -340,6 +340,47 @@ final class OcrService
     }
 
     /**
+     * The per-figure cap and the run's aggregate figure budget, applied to
+     * what the driver returned: the same limits a driver enforces while it
+     * parses, re-checked here so a driver that skipped them (a test double,
+     * a future engine) can never record a run the caps did not admit.
+     *
+     * @param  list<OcrFigure>  $figures
+     *
+     * @throws \RuntimeException  when the result exceeds a cap — discarded, nothing is stored, recorded or metered
+     */
+    private function assertFiguresWithinBudget(OcrDriver $driver, string $filename, array $figures): void
+    {
+        $maxFigureBytes = max(1, (int) config('kb.ocr.max_figure_bytes', 10485760));
+        $budget = OcrFigureBudget::fromConfig();
+        $totalBytes = 0;
+        foreach ($figures as $n => $figure) {
+            $bytes = strlen($figure->bytes);
+            $totalBytes += $bytes;
+            if ($bytes > $maxFigureBytes) {
+                throw new \RuntimeException(sprintf(
+                    'OCR driver "%s" returned a %d-byte figure for "%s", over KB_OCR_MAX_FIGURE_BYTES (%d); the result is discarded — nothing is stored, recorded or metered.',
+                    $driver->name(),
+                    $bytes,
+                    $filename,
+                    $maxFigureBytes,
+                ));
+            }
+            if (! $budget->admit($bytes)) {
+                throw new \RuntimeException(sprintf(
+                    'OCR driver "%s" returned %d figures (%d bytes) for "%s", over the run figure budget (KB_OCR_MAX_FIGURES=%d / KB_OCR_MAX_FIGURES_TOTAL_BYTES=%d); the result is discarded — nothing is stored, recorded or metered.',
+                    $driver->name(),
+                    count($figures),
+                    $totalBytes,
+                    $filename,
+                    $budget->maxCount(),
+                    $budget->maxBytes(),
+                ));
+            }
+        }
+    }
+
+    /**
      * Whether the ingest metadata asks for OCR regardless of the text layer
      * (`metadata.ocr.force = true`, set by `rerun()`).
      *
@@ -587,6 +628,13 @@ final class OcrService
                             $allFigures[] = $figure;
                         }
                     }
+                    // SEC-LIMITS-001 — the figure caps are invariant for every
+                    // driver at THIS boundary, not only in the drivers that
+                    // apply them while parsing: a result carrying more (or
+                    // heavier) figures than the budget admits is an invalid
+                    // driver result and is discarded before anything is
+                    // stored, recorded or metered.
+                    $this->assertFiguresWithinBudget($driver, $filename, $allFigures);
                     // The write phase runs under the assets-directory lock
                     // the purge takes for the whole removal of the tree: a
                     // sweep that found the directory empty a moment ago can

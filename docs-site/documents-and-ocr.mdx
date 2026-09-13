@@ -106,16 +106,24 @@ converter. The split is therefore:
   `KB_OCR_MAX_PAGES` (`KB_OCR_PROBE_PAGES=0`, the default; a positive value
   bounds the window and is a documented trade-off — a scanned page beyond it
   is not seen): a page with fewer than `KB_OCR_PROBE_MIN_CHARS` extractable
-  characters that carries an image is a scanned page. No text page at all is
-  `empty`; text pages **and** scanned pages is `mixed` — a typed cover over
-  scanned body pages — and the whole document is routed to OCR so no page is
-  silently lost (reason `mixed_pdf`, the scanned page numbers recorded);
-  otherwise `present`. `empty`, `mixed` and an ingest carrying
+  characters that carries something to look at — an image, or painted
+  content with no text object behind it (text outlined into paths by a
+  design export) — is a scanned page; one that paints nothing is blank, a
+  separator, never a reason to OCR by itself. No text page but at least one
+  scanned page is `empty`; text pages **and** scanned pages is `mixed` — a
+  typed cover over scanned body pages — and the whole document is routed to
+  OCR so no page is silently lost (reason `mixed_pdf`, the scanned page
+  numbers recorded); otherwise `present` — including a window of blank
+  pages alone, which is nothing to OCR and never a billed run over empty
+  pages. `empty`, `mixed` and an ingest carrying
   `metadata.ocr.force = true` route the document to the same `OcrService`
   the image path uses. A file the parser cannot read at all (`unreadable`) is
   **not** treated as a scan: the converter first runs the `pdftotext` fallback
-  it always had (`KB_PDFTOTEXT_BIN`), keeps the text path when that yields
-  text, and goes to OCR only when neither parser can read text from the file.
+  it always had (`KB_PDFTOTEXT_BIN`, bounded by `KB_PDFTOTEXT_TIMEOUT` — a
+  run past it is the deterministic `run_too_long` refusal of the document,
+  never a silent hand-off to a billed OCR run, and the upload estimate says
+  so before commit), keeps the text path when that yields text, and goes to
+  OCR only when neither parser can read text from the file.
   "Yields text" is the probe's own per-page rule (`PdfTextFallback::hasText()`):
   at least one page with `KB_OCR_PROBE_MIN_CHARS` non-whitespace
   characters — several short pages that merely add up to the threshold are
@@ -412,16 +420,17 @@ No schema change. Everything lands in JSON columns that already exist:
 | `KB_OCR_ALLOW_REMOTE` | `false` | Final-egress policy for `mistral-ocr` / `vision-llm`. Strict `true` only. |
 | `KB_OCR_PROBE_PAGES` / `KB_OCR_PROBE_MIN_CHARS` | `0` / `20` | Text-layer probe: `0` probes every page up to `KB_OCR_MAX_PAGES` (per-page verdict, `mixed` routes to OCR); a positive value bounds the window. A page under the threshold that carries an image is a scanned page. |
 | `KB_PDFTOTEXT_BIN` | `pdftotext` | Poppler binary the PDF converter falls back to before OCR when smalot cannot parse a file. |
+| `KB_PDFTOTEXT_TIMEOUT` | `60` | Seconds one `pdftotext` run may take. The fallback runs before OCR (and in the upload estimate), outside any OCR run budget, so a malformed PDF could otherwise hold a worker or the estimate indefinitely; a run past it is refused as `run_too_long` — deterministic, never retried, never handed to OCR. |
 | `KB_OCR_RATE_PER_PAGE` | `0.004` | Per-page rate for locally-priced drivers and the estimate. |
 | `KB_OCR_FIGURES_ENABLED` | `true` | Write figures to `{source}.ocr/{run}/images/`. |
 | `KB_OCR_JOB_TIMEOUT` | `3600` | Wall-clock budget of one OCR run, enforced by every driver (`OcrRunBudget`: a page-by-page engine bounds each process — `pdfinfo`, `pdftoppm`, every page, every provider call — by what is left when it starts and stops with `run_too_long` once it is spent; a whole-file engine's timeout is capped by it). Any process or provider call that hits its timeout is the same terminal `run_too_long` (the same page would time out again), never a generic error the job retries. The run lease, the ingest job timeout (`OcrService::jobTimeoutFor()`) and the re-run lock are all derived from it, so the queue's `retry_after` (`REDIS_QUEUE_RETRY_AFTER` / `DB_QUEUE_RETRY_AFTER`) only has to exceed this budget plus its margins (~520 s) — a shorter value is logged at every dispatch it endangers, because Laravel would re-reserve a still-running job on another worker. |
 | `KB_OCR_MAX_PAGES` / `KB_OCR_MAX_BYTES` | `200` / `26214400` | Refuse before any driver runs; reasons `too_many_pages` / `too_many_bytes`. Pages are counted format-independently (PDF parser, TIFF frames, 1 for other images); an unparseable PDF has only a floor and is refused for a remote driver with `pages_uncountable`. The same gate verifies the bytes against the declared type (a `%PDF-` header, or a PNG / JPEG / TIFF / WebP signature) for **every** ingress — upload, JSON ingest, folder walk, connector — and refuses anything else with `unrecognised_bytes`, so no driver, remote or local, is ever handed a mislabelled file. A multi-frame TIFF is refused with `multi_frame_image` by every driver that transcribes one frame per image (`tesseract`, `vision-llm`, `mistral-ocr`; `docling` accepts it). `KB_OCR_MAX_BYTES` bounds the **source file**; what a page renders to is bounded separately (next row). |
 | `KB_OCR_RASTER_MAX_PAGE_PX` / `KB_OCR_RASTER_MAX_PAGE_BYTES` | `6000` / `10485760` | Bounds a page must fit — a rendered page for the page-by-page drivers (`tesseract`, `vision-llm`), a source image decoded or posted as is for `docling` / `mistral-ocr` (and the same refusal in the upload estimate); both are part of the run identity, so lowering either never reuses a run recorded under a wider bound. For the rasterising drivers: the render DPI is lowered from the page geometry `pdfinfo` reports so that no page's long side exceeds `PX` pixels (a small file can declare a 200-inch page; one that cannot fit at 50 DPI is refused before rendering), the produced PNG is re-measured, and a rendered page over either bound is refused with `rendered_page_too_large` **before** it is decoded locally or posted to the vision provider. `KB_OCR_PDFINFO_BIN` names the `pdfinfo` binary (poppler-utils, beside `pdftoppm`). |
 | `KB_OCR_MAX_FIGURE_BYTES` | `10485760` | Largest figure a driver may hand back. |
-| `KB_OCR_MAX_FIGURES` / `KB_OCR_MAX_FIGURES_TOTAL_BYTES` | `200` / `104857600` | Aggregate figure budget of one run (count / total bytes): every accepted figure is held in memory until the run is recorded, so a document inside the page and byte caps must not carry an unbounded number of sub-cap figures. A figure past the budget is omitted before it is read (the Markdown says so). |
+| `KB_OCR_MAX_FIGURES` / `KB_OCR_MAX_FIGURES_TOTAL_BYTES` | `200` / `104857600` | Aggregate figure budget of one run (count / total bytes): every accepted figure is held in memory until the run is recorded, so a document inside the page and byte caps must not carry an unbounded number of sub-cap figures. A figure past the budget is omitted before it is read (the Markdown says so). The caps (this budget and `KB_OCR_MAX_FIGURE_BYTES`) are re-checked by `OcrService` on what every driver returns, before anything is stored, recorded or metered: a result over them is an invalid driver result and is discarded, so the limits hold for a driver that did not apply them itself. |
 | `KB_OCR_RUN_LOCK_WAIT` | `300` | Seconds a worker waits for the reservation of a run directory another worker is writing before letting the job retry; the recorded run is then reused. Needs an atomic lock store (Redis) in production. |
 | `KB_OCR_REUSE_ENABLED` | `true` | Record each run at `{source}.ocr/{run}/result.json` and reuse it for identical bytes through the same engine. Off: nothing is recorded and every ingest is a new run with its own attempt identity (own `{run}` directory), never a rewrite of a previous run's figures. |
-| `KB_OCR_PURGE_GRACE_SECONDS` | `1800` | Seconds a recorded run counts as in flight: it is recorded before the row that references it commits, so a hard delete or the orphan sweep that finds no referencing row inside this window keeps the run instead of removing the figures a row is about to point at; `kb:prune-orphan-files` removes an unreferenced run once it has aged past it — under the run's own reservation, so a run a worker is reusing at that moment is never taken — and, while OCR is on, sweeps orphan **image** sources (a failed first ingest) together with the tree beside them, as it does orphan Markdown files. The sweep recognises a tree by the store's layout (`{source}.ocr/{64-hex run key}/result.json` or `…/images/…`): a directory that merely ends in `.ocr` holding ordinary sources is never mistaken for one. |
+| `KB_OCR_PURGE_GRACE_SECONDS` | `1800` | Seconds a recorded run counts as in flight: it is recorded before the row that references it commits, so a hard delete or the orphan sweep that finds no referencing row inside this window keeps the run instead of removing the figures a row is about to point at; `kb:prune-orphan-files` removes an unreferenced run once it has aged past it — under the run's own reservation, so a run a worker is reusing at that moment is never taken — and, while OCR is on, sweeps orphan **image** sources (a failed first ingest) together with the tree beside them, as it does orphan Markdown files. A source file is an orphan of the swept namespace when no row's **recorded** disk and prefix (`metadata.disk` / `metadata.prefix`) resolve to it there — the same test the dangling-tree check applies — so a row carrying the same logical path on another disk or under another prefix never protects a file (or the tree beside it) in this one. The sweep recognises a tree by the store's layout (`{source}.ocr/{64-hex run key}/result.json` or `…/images/…`): a directory that merely ends in `.ocr` holding ordinary sources is never mistaken for one. |
 | `KB_OCR_MISTRAL_ALLOWED_HOSTS` | `api.mistral.eu,api.mistral.ai` | Exact host allow-list for the Mistral endpoint (https, port 443 only). |
 | `KB_OCR_MISTRAL_TIMEOUT` / `KB_OCR_MISTRAL_MAX_RESPONSE_BYTES` | `120` / `67108864` | Request timeout and response size cap. |
 | `KB_OCR_VISION_TIMEOUT` | `300` | Per-document timeout of the vision driver (rasterisation + calls). |

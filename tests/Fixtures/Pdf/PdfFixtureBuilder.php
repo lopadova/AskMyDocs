@@ -60,13 +60,17 @@ final class PdfFixtureBuilder
      * @param  list<int>  $imagePages  1-based page numbers that also draw a
      *                                 (1×1 gray) image XObject — a "scanned"
      *                                 page when its text is blank.
+     * @param  list<int>  $paintedPages  1-based page numbers that also fill a
+     *                                   rectangle path (no text object, no
+     *                                   image) — text outlined into paths,
+     *                                   as a design export produces it.
      *
      * @throws \InvalidArgumentException when `$pageTexts` is empty — a PDF
      *         with zero pages produces an invalid `/Kids []` list and a
      *         malformed Pages object that smalot cannot parse. Callers
      *         must always provide ≥1 page.
      */
-    public static function build(array $pageTexts, array $imagePages = []): string
+    public static function build(array $pageTexts, array $imagePages = [], array $paintedPages = []): string
     {
         if ($pageTexts === []) {
             throw new \InvalidArgumentException(
@@ -112,7 +116,8 @@ final class PdfFixtureBuilder
             // Escape PDF string literal: backslash, parens, line breaks. ASCII only here.
             $escaped = self::escapeStringLiteral($pageTexts[$i]);
             $stream = "BT\n/F1 12 Tf\n100 700 Td\n({$escaped}) Tj\nET"
-                . ($drawsImage ? "\nq\n400 0 0 600 100 100 cm\n/Im1 Do\nQ" : '');
+                . ($drawsImage ? "\nq\n400 0 0 600 100 100 cm\n/Im1 Do\nQ" : '')
+                . (in_array($i + 1, $paintedPages, true) ? "\n0 0 0 rg\n100 100 200 50 re\nf" : '');
             $objects[$contentId] = "<< /Length " . strlen($stream) . " >>\nstream\n{$stream}\nendstream";
         }
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Services\Kb\Ocr;
 
+use App\Services\Kb\Ocr\OcrLimitExceededException;
 use App\Services\Kb\Ocr\PdfTextFallback;
 use Tests\TestCase;
 
@@ -75,6 +76,27 @@ final class PdfTextFallbackTest extends TestCase
         config(['kb.pdf.pdftotext_bin' => '/nonexistent/pdftotext']);
         $this->assertNull((new PdfTextFallback)->textPages('%PDF-1.4 x'), 'binary missing → OCR');
         $this->assertSame([], glob(sys_get_temp_dir().'/kb_pdf_*') ?: [], 'no temporary PDF is left behind');
+    }
+
+    /**
+     * The fallback runs before OCR, outside any run budget: a run past
+     * KB_PDFTOTEXT_TIMEOUT is the deterministic `run_too_long` refusal —
+     * never "no text, go to OCR" and never a generic error a job retries —
+     * and the temporary copy is removed.
+     */
+    public function test_a_run_past_the_timeout_is_a_terminal_refusal_not_a_hand_off_to_ocr(): void
+    {
+        config(['kb.pdf.pdftotext_bin' => $this->stub('sleep 5'), 'kb.pdf.pdftotext_timeout' => 1]);
+        $before = glob(sys_get_temp_dir().'/kb_pdf_*') ?: [];
+
+        try {
+            (new PdfTextFallback)->textPages('%PDF-1.4 malformed');
+            $this->fail('a run past the timeout must be refused');
+        } catch (OcrLimitExceededException $e) {
+            $this->assertSame('run_too_long', $e->reason);
+            $this->assertStringContainsString('KB_PDFTOTEXT_TIMEOUT', $e->getMessage());
+        }
+        $this->assertSame($before, glob(sys_get_temp_dir().'/kb_pdf_*') ?: [], 'no temporary PDF is left behind');
     }
 
     private function stub(string $script): string

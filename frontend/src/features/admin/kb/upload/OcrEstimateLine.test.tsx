@@ -233,6 +233,20 @@ describe('OcrEstimateLine', () => {
         expect(el.textContent).toContain('1 file');
     });
 
+    it('ON with a PDF pdftotext could not read in time — names the timeout refusal', () => {
+        const est: OcrEstimate = {
+            ...on,
+            total_pages: 0,
+            total_cost: 0,
+            items: [{ id: 'p', would_ocr: false, pages: 1, pages_exact: false, cost: 0, reason: 'run_too_long' }],
+        };
+        render(<OcrEstimateLine state="ready" estimate={est} />);
+        const el = screen.getByTestId('kb-upload-ocr-estimate');
+        expect(el.textContent).toContain('1 file could not be read by pdftotext within KB_PDFTOTEXT_TIMEOUT');
+        expect(el.textContent).toContain('refused before any driver runs');
+        expect(el.textContent).not.toContain('KB_OCR_MAX_PAGES / KB_OCR_MAX_BYTES');
+    });
+
     it('ON with a staged file that cannot be read — states the failure instead of "no file needs OCR"', () => {
         const unreadable: OcrEstimate = {
             ...on,
