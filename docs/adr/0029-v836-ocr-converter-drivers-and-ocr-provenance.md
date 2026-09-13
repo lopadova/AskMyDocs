@@ -69,8 +69,19 @@ converter-mutex test (the twin of the chunker one) proves it in both states.
 
 `SourceType::IMAGE = 'image'` exists unconditionally, with `fromMime()` /
 `fromExtension()` (`png`, `jpg`, `jpeg`, `tif`, `tiff`, `webp`) / `toMime()`
-(`image/png`) / `isBinary()` (`true`) and `config/kb-pipeline.php::mime_to_source_type`
-updated in lockstep. What the flag gates is **acceptance**:
+(`image/png`, the **family** label — one source type is one value per family)
+/ `isBinary()` (`true`) and `config/kb-pipeline.php::mime_to_source_type`
+updated in lockstep. The family label is never what an image is dispatched
+as: every entry point that knows the extension sends the **exact** raster MIME
+— `SourceType::imageMimeFromExtension()` (`image/jpeg`, `image/tiff`,
+`image/webp`, `image/png`) in the folder walker (`DispatchIngestFanOutStep`,
+sync and queued) and in the upload staging (`KbIngestBatchItem.mime_type`,
+which the commit dispatches), connectors the MIME they carry — so the
+converter registry resolves the four exact MIMEs `OcrConverter` claims and
+`knowledge_documents.mime_type` records what the bytes are. The drivers still
+read the magic bytes (`OcrRequest::effectiveMimeType()`) before building a
+data URL or picking an input format: an extension is a label, the bytes are
+the fact. What the flag gates is **acceptance**:
 `supportedMimes(bool $includeImages)` and `knownExtensions(bool $includeImages)`
 receive `config('kb.ocr.enabled')` from every entry point — `KbIngestController`,
 `StageKbUploadRequest` + `KbUploadStagingService`, `KbIngestFolderCommand` /

@@ -1,7 +1,10 @@
 # Hand-off — v8.36 → v8.40 Document Intelligence cycle: session kickoff
 
-**Status:** designed 2026-09-11, **not started**. Audit + plan + README roadmap row
-are on this branch; nothing under `app/` has changed yet.
+**Status:** designed 2026-09-11, **in progress since 2026-09-12** — plan merged
+to `main` (#476, `b20420a3`), `feature/v8.36` open, ADR 0029 + 0030 under review
+(#477), W1 under review (#478), W2 implemented locally on its head. The §7
+checkpoint table below is the live execution state; this header only says the
+cycle has started.
 **Owner of the work:** the Claude Code session opened with `lopadova/AskMyDocs` as
 its *initial* source (§5 explains why it has to be a new session), driven by Lorenzo.
 **Goal:** execute `docs/v4-platform/PLAN-v8.36-document-intelligence-and-llm-wiki-export.md`
@@ -253,9 +256,9 @@ navigation in `docs-site/docs.json`; Playwright real-data E2E for every screen
 | Wn | Integration branch | Sub-branch | PR | HEAD | Tag | State |
 |---|---|---|---|---|---|---|
 | plan | `main` | `claude/plan-annota-gap-document-intelligence` | [#476](https://github.com/lopadova/AskMyDocs/pull/476) | `b20420a3` | — | merged 2026-09-12 (squash; 12 Copilot rounds) |
-| ADR 0029+0030 | `feature/v8.36` (from `main` @ `b20420a3`) | `feature/v8.36-adr-0029-0030` | — | — | — | PR open 2026-09-12 |
-| W1 | `feature/v8.36` | `feature/v8.36-W1` | — | — | — | in progress 2026-09-12 (local critic rounds 1–8 done, full PHPUnit 4157 green, local E2E 7/7) |
-| W2 | `feature/v8.36` | `feature/v8.36-W2` | — | — | — | not started |
+| ADR 0029+0030 | `feature/v8.36` (from `main` @ `b20420a3`) | `feature/v8.36-adr-0029-0030` | [#477](https://github.com/lopadova/AskMyDocs/pull/477) | (see PR) | — | PR open 2026-09-12, Copilot rounds 1–6 addressed 2026-09-13 |
+| W1 | `feature/v8.36` | `feature/v8.36-W1` | [#478](https://github.com/lopadova/AskMyDocs/pull/478) | (see PR) | — | PR open 2026-09-13, Copilot rounds 1–4 addressed, CI green on each head; merges after #477 |
+| W2 | `feature/v8.36` | `feature/v8.36-W2` | — | — | — | implemented 2026-09-13 on the W1 head (local suites green); PR opens after #478 merges |
 | v8.36 GA | `main` | — | — | — | — | — |
 | W3 | `feature/v8.37` | `feature/v8.37-W3` | — | — | — | not started |
 | W4 | `feature/v8.38` | `feature/v8.38-W4` | — | — | — | not started |
