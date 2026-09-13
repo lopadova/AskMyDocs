@@ -265,7 +265,7 @@ navigation in `docs-site/docs.json`; Playwright real-data E2E for every screen
 | W5 | `feature/v8.39` | `feature/v8.39-W5` | — | — | — | not started |
 | W6 | `feature/v8.40` | `feature/v8.40-W6` | — | — | — | optional |
 
-Last updated: 2026-09-12 (plan merged; ADR PR opened).
+Last updated: 2026-09-13 (plan merged; ADR PR opened).
 
 ---
 
