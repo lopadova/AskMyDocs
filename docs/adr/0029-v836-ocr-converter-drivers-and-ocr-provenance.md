@@ -125,7 +125,7 @@ interface OcrDriver
     public function isAvailable(): bool;                 // binary / key / package present
     public function isRemote(): bool;                    // sends the bytes out of the tenant
     public function meteringMode(): OcrMeteringMode;     // PerPage | Sdk
-    public function maxDurationSeconds(int $pages): int;  // declared worst case: sizes the run-directory lease (§6)
+    public function maxDurationSeconds(int $pages): int;  // declared worst case, capped by the run budget KB_OCR_JOB_TIMEOUT every driver enforces: sizes the run-directory lease (§6)
     public function boundsWorkWithoutPageCount(): bool;  // may run on an uncountable PDF: work bounded by construction (§4)
     public function recognise(OcrRequest $request): OcrResult;
 }

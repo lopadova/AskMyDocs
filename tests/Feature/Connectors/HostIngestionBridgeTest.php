@@ -86,7 +86,10 @@ final class HostIngestionBridgeTest extends TestCase
             relativePath: 'notion/page-abc.md',
             disk: 'kb',
             title: 'Page ABC',
-            metadata: ['notion_page_id' => 'abc-123', 'dry_run' => true, 'ocr' => ['force' => true]],
+            // `disk` / `prefix` name the storage namespace: a connector must
+            // not point the queued read at another object than the one it
+            // persisted (ParseMarkdownStep honours `metadata.prefix`).
+            metadata: ['notion_page_id' => 'abc-123', 'dry_run' => true, 'ocr' => ['force' => true], 'prefix' => 'other-tenant', 'disk' => 'elsewhere'],
             mimeType: 'text/markdown',
             tenantId: 'acme',
         );

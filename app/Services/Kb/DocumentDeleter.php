@@ -347,14 +347,18 @@ class DocumentDeleter
     }
 
     /**
-     * Remove a previously-recorded file from a disk. Public wrapper around
-     * the private {@see removeFile()} helper used by the legacy
+     * Remove a previously-recorded file from a disk — and the `.ocr/` tree
+     * beside it. Public wrapper around the private helper used by the legacy
      * `forceDelete()` path so {@see \App\Flow\Definitions\DeleteDocumentFlow}
-     * can express the file removal as its own Flow step.
+     * can express the file removal as its own Flow step; both outcomes are
+     * returned so a hard delete never reports a clean disk while OCR assets
+     * were kept (in-flight grace) or failed to go.
+     *
+     * @return array{file_deleted: bool, ocr_assets_deleted: bool}
      */
-    public function removeFileFor(string $disk, string $fullPath, int $documentId, string $sourcePath): bool
+    public function removeFileFor(string $disk, string $fullPath, int $documentId, string $sourcePath): array
     {
-        return $this->removeFile($disk, $fullPath, $documentId, $sourcePath);
+        return $this->removeFileAndOcrAssets($disk, $fullPath, $documentId, $sourcePath);
     }
 
     /**

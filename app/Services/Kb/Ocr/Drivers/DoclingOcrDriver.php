@@ -13,6 +13,7 @@ use App\Services\Kb\Ocr\OcrMeteringMode;
 use App\Services\Kb\Ocr\OcrPage;
 use App\Services\Kb\Ocr\OcrRequest;
 use App\Services\Kb\Ocr\OcrResult;
+use App\Services\Kb\Ocr\OcrRunBudget;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\Process\ExecutableFinder;
 use Symfony\Component\Process\Exception\ProcessFailedException;
@@ -90,7 +91,8 @@ final class DoclingOcrDriver implements OcrDriver
         }
 
         $binary = (string) config('kb.ocr.docling.binary', 'docling');
-        $timeout = (int) config('kb.ocr.docling.timeout', 600);
+        // The single engine call never outlives the run budget (KB_OCR_JOB_TIMEOUT).
+        $timeout = OcrRunBudget::start()->bound((int) config('kb.ocr.docling.timeout', 600));
 
         // Private to the worker's user (0700), like the rasteriser's directory.
         $dir = sys_get_temp_dir().'/kb_docling_'.bin2hex(random_bytes(6));

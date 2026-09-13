@@ -30,5 +30,8 @@ final class OcrServiceMetadataTest extends TestCase
         $this->assertSame(['title' => 't'], OcrService::stripTrustedOnlyKeys(['title' => 't', 'ocr' => 'x', 'dry_run' => true]));
         $this->assertSame(['title' => 't'], OcrService::stripTrustedOnlyKeys(['title' => 't', 'ocr' => ['force' => true, 'rerun_lock' => ['key' => 'k', 'owner' => 'o']]]));
         $this->assertSame(['ocr' => ['note' => 'kept']], OcrService::stripTrustedOnlyKeys(['ocr' => ['note' => 'kept', 'force' => true]]));
+        // The storage namespace (`disk` / `prefix`) is the host's: a client
+        // value would point the queued read at another object.
+        $this->assertSame(['title' => 't'], OcrService::stripTrustedOnlyKeys(['title' => 't', 'prefix' => '../x', 'disk' => 'other']));
     }
 }

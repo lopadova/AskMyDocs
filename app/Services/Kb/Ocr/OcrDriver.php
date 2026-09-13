@@ -72,7 +72,9 @@ interface OcrDriver
      * service sizes the run-directory reservation from it, so the lease is
      * provably longer than the work it protects (ADR 0029 §5): a driver
      * whose timeouts are per page must multiply, one whose timeout is per
-     * document returns it as is.
+     * document returns it as is. Every driver also enforces the run budget
+     * (`KB_OCR_JOB_TIMEOUT`, {@see OcrRunBudget}), so the effective bound the
+     * service uses is the smaller of the two (OcrService::effectiveWorstCase()).
      */
     public function maxDurationSeconds(int $pages): int;
 

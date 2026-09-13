@@ -435,6 +435,13 @@ return [
         // cannot read has only a `/Type /Page` floor, and a floor is not a cap
         // input: it is refused for a remote driver (`pages_uncountable`).
         'max_pages' => (int) env('KB_OCR_MAX_PAGES', 200),
+        // Wall-clock budget of ONE OCR run (seconds). The drivers enforce it
+        // (a page-by-page engine stops at it with `run_too_long`, a
+        // whole-file engine's timeout is capped by it), so the run lease,
+        // the ingest job timeout and the re-run lock are all bounded by it —
+        // and the queue's `retry_after` only has to exceed THIS (+ margins),
+        // never a driver's theoretical worst case.
+        'job_timeout' => (int) env('KB_OCR_JOB_TIMEOUT', 3600),
         'max_bytes' => (int) env('KB_OCR_MAX_BYTES', 26214400), // 25 MiB, the upload cap
         // Largest single figure a driver may hand back (remote drivers return
         // base64 images inside the response body).

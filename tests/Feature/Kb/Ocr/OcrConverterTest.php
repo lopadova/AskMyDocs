@@ -8,6 +8,7 @@ use App\Services\Kb\Converters\OcrConverter;
 use App\Services\Kb\Converters\PdfConverter;
 use App\Services\Kb\Ocr\Drivers\FakeOcrDriver;
 use App\Services\Kb\Ocr\OcrFigureStore;
+use App\Services\Kb\Ocr\OcrService;
 use App\Services\Kb\Ocr\PdfTextLayerProbe;
 use App\Services\Kb\Pipeline\PipelineRegistry;
 use App\Services\Kb\Pipeline\SourceDocument;
@@ -119,7 +120,7 @@ final class OcrConverterTest extends TestCase
     /** Content-addressed run key of the 1x1 PNG every test image carries. */
     private function pngRun(): string
     {
-        return OcrFigureStore::runKeyFor((string) base64_decode(FakeOcrDriver::PNG_1X1, true), 'fake', 'fake;figures=1');
+        return OcrFigureStore::runKeyFor((string) base64_decode(FakeOcrDriver::PNG_1X1, true), 'fake', OcrService::runVariant('fake', true));
     }
 
     public function test_on_an_image_becomes_page_markdown_with_figures_on_disk(): void
@@ -154,7 +155,7 @@ final class OcrConverterTest extends TestCase
 
         $this->assertStringNotContainsString('images/fig-1-1.png', $converted->markdown);
         $this->assertStringContainsString('Fake OCR output of scan.png.', $converted->markdown);
-        $runWithoutFigures = OcrFigureStore::runKeyFor((string) base64_decode(FakeOcrDriver::PNG_1X1, true), 'fake', 'fake;figures=0');
+        $runWithoutFigures = OcrFigureStore::runKeyFor((string) base64_decode(FakeOcrDriver::PNG_1X1, true), 'fake', OcrService::runVariant('fake', false));
         Storage::disk('kb')->assertMissing("docs/scan.png.ocr/{$runWithoutFigures}/images/fig-1-1.png");
         $this->assertSame([], $converted->mediaItems);
     }

@@ -14,6 +14,7 @@ use App\Services\Kb\Ocr\OcrMeteringMode;
 use App\Services\Kb\Ocr\OcrPage;
 use App\Services\Kb\Ocr\OcrRequest;
 use App\Services\Kb\Ocr\OcrResult;
+use App\Services\Kb\Ocr\OcrRunBudget;
 use Laravel\Ai\Files\Base64Image;
 
 /**
@@ -178,17 +179,21 @@ TXT;
         $provider = $this->ai->provider(is_string($providerName) && $providerName !== '' ? $providerName : null);
         [, $model] = $this->effectiveEngine();
 
+        // The run budget (KB_OCR_JOB_TIMEOUT) bounds the whole run: the
+        // render by what is left of it, and no page is sent once it is spent.
+        $budget = OcrRunBudget::start();
         $raster = $this->rasterise(
             $request,
             (string) config('kb.ocr.vision_llm.pdftoppm', 'pdftoppm'),
             (int) config('kb.ocr.vision_llm.dpi', 150),
-            (int) config('kb.ocr.vision_llm.timeout', 300),
+            $budget->bound((int) config('kb.ocr.vision_llm.timeout', 300)),
             (string) config('kb.ocr.vision_llm.pdfinfo', 'pdfinfo'),
         );
 
         try {
             $pages = [];
             foreach ($raster['pages'] as $number => $imagePath) {
+                $budget->assertRemaining($request->filename);
                 $bytes = file_get_contents($imagePath);
                 if ($bytes === false || $bytes === '') {
                     // R4 — a read failure is a failed run, never an empty

@@ -36,9 +36,12 @@ final class IngestDocumentJobTimeoutTest extends TestCase
     #[Test]
     public function on_an_ocr_able_document_gets_the_drivers_worst_case_and_text_keeps_the_default(): void
     {
-        config(['kb.ocr.enabled' => true, 'kb.ocr.driver' => 'tesseract', 'kb.ocr.max_pages' => 200, 'kb.ocr.tesseract.timeout' => 300]);
+        config(['kb.ocr.enabled' => true, 'kb.ocr.driver' => 'tesseract', 'kb.ocr.max_pages' => 200, 'kb.ocr.tesseract.timeout' => 300, 'kb.ocr.job_timeout' => 3600]);
         $expected = OcrService::leaseFor(app(TesseractOcrDriver::class), 200);
         $this->assertGreaterThan(OcrService::DEFAULT_JOB_TIMEOUT, $expected);
+        // Bounded by the run budget the driver enforces, never the sum of
+        // 200 per-page timeouts: the queue's retry_after only has to exceed this.
+        $this->assertSame(3600 + OcrService::RUN_LOCK_MARGIN, $expected);
         $this->assertSame($expected, $this->job('application/pdf')->timeout);
         $this->assertSame($expected, $this->job('image/jpeg; charset=binary')->timeout);
         $this->assertSame(OcrService::DEFAULT_JOB_TIMEOUT, $this->job('text/markdown')->timeout);
@@ -46,6 +49,18 @@ final class IngestDocumentJobTimeoutTest extends TestCase
 
         config(['kb.ocr.driver' => 'docling', 'kb.ocr.docling.timeout' => 600]);
         $this->assertSame(max(OcrService::RUN_LOCK_TTL, 600 + OcrService::RUN_LOCK_MARGIN), $this->job('application/pdf')->timeout);
+    }
+
+    #[Test]
+    public function a_queue_retry_after_shorter_than_the_job_timeout_is_logged_at_dispatch(): void
+    {
+        config(['kb.ocr.enabled' => true, 'kb.ocr.driver' => 'tesseract', 'kb.ocr.job_timeout' => 3600, 'queue.default' => 'redis', 'queue.connections.redis.retry_after' => 330]);
+        \Illuminate\Support\Facades\Log::shouldReceive('warning')->once()->withArgs(fn (string $message): bool => str_contains($message, 'retry_after'));
+        $this->assertSame(3600 + OcrService::RUN_LOCK_MARGIN, $this->job('application/pdf')->timeout);
+
+        config(['queue.connections.redis.retry_after' => 3600 + OcrService::RUN_LOCK_MARGIN + 1]);
+        \Illuminate\Support\Facades\Log::shouldReceive('warning')->never();
+        $this->job('application/pdf');
     }
 
     #[Test]

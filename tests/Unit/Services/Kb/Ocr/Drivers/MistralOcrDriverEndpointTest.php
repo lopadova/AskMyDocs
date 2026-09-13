@@ -77,6 +77,34 @@ final class MistralOcrDriverEndpointTest extends TestCase
         ];
     }
 
+    /**
+     * A source image goes to the provider as is: it is measured against the
+     * same pixel box the rasterising drivers apply to a rendered page BEFORE
+     * the request is built — an image over it never leaves.
+     */
+    public function test_a_source_image_over_the_pixel_box_is_refused_before_any_egress(): void
+    {
+        config(['kb.ocr.allow_remote' => true, 'kb.ocr.mistral.api_key' => 'k', 'kb.ocr.mistral.url' => 'https://api.mistral.eu/v1/ocr', 'kb.ocr.mistral.allowed_hosts' => ['api.mistral.eu'], 'kb.ocr.raster.max_page_px' => 500]);
+        // One fake for the whole test (stubs accumulate across Http::fake() calls).
+        Http::fake(['https://api.mistral.eu/*' => Http::response(['pages' => [['index' => 0, 'markdown' => 'ok']]], 200)]);
+        // PNG signature + IHDR declaring 900×10 px: tiny bytes, over the box.
+        $png = "\x89PNG\r\n\x1a\n".pack('N', 13).'IHDR'.pack('NN', 900, 10)."\x08\x02\x00\x00\x00".pack('N', 0);
+
+        try {
+            app(MistralOcrDriver::class)->recognise(new OcrRequest($png, 'image/png', 'wide.png'));
+            $this->fail('an image over the pixel box must be refused');
+        } catch (\App\Services\Kb\Ocr\OcrLimitExceededException $e) {
+            $this->assertSame('rendered_page_too_large', $e->reason);
+            $this->assertStringContainsString('900×10 px', $e->getMessage());
+        }
+        Http::assertNothingSent();
+
+        // Inside the box: the request is built and sent.
+        config(['kb.ocr.raster.max_page_px' => 1000]);
+        $this->assertCount(1, app(MistralOcrDriver::class)->recognise(new OcrRequest($png, 'image/png', 'wide.png'))->pages);
+        Http::assertSentCount(1);
+    }
+
     /** The run's aggregate figure budget applies to a remote response too: a figure past it is dropped and its link becomes text. */
     public function test_figures_past_the_run_budget_are_dropped(): void
     {

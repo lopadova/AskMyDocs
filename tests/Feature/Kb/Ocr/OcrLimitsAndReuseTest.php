@@ -302,7 +302,7 @@ final class OcrLimitsAndReuseTest extends TestCase
     {
         config(['kb.ocr.run_lock.wait_seconds' => 1]);
         $doc = $this->image();
-        $runKey = OcrFigureStore::runKeyFor($doc->bytes, 'fake', 'fake;figures=1');
+        $runKey = OcrFigureStore::runKeyFor($doc->bytes, 'fake', OcrService::runVariant('fake', true));
         $runDir = $this->app->make(OcrFigureStore::class)->runDirFor($doc->sourcePath, '', $runKey);
         $other = \Illuminate\Support\Facades\Cache::lock(OcrService::runLockKey('kb', $runDir), 60);
         $this->assertTrue($other->get(), 'simulate another worker holding the reservation');
@@ -364,7 +364,7 @@ final class OcrLimitsAndReuseTest extends TestCase
     {
         $converter = $this->app->make(OcrConverter::class);
         $converter->convert($this->image());
-        $run = OcrFigureStore::runKeyFor((string) base64_decode(FakeOcrDriver::PNG_1X1, true), 'fake', 'fake;figures=1');
+        $run = OcrFigureStore::runKeyFor((string) base64_decode(FakeOcrDriver::PNG_1X1, true), 'fake', OcrService::runVariant('fake', true));
         $result = "docs/scan.png.ocr/{$run}/result.json";
         touch(Storage::disk('kb')->path($result), time() - 3600);
         clearstatcache();
@@ -388,7 +388,7 @@ final class OcrLimitsAndReuseTest extends TestCase
     public function a_reservation_that_cannot_be_refreshed_fails_loudly(): void
     {
         $store = $this->app->make(OcrFigureStore::class);
-        $run = OcrFigureStore::runKeyFor((string) base64_decode(FakeOcrDriver::PNG_1X1, true), 'fake', 'fake;figures=1');
+        $run = OcrFigureStore::runKeyFor((string) base64_decode(FakeOcrDriver::PNG_1X1, true), 'fake', OcrService::runVariant('fake', true));
 
         // No recorded run at that key: there is nothing to re-record, the
         // reservation cannot be refreshed, and that is an exception — not a
@@ -412,7 +412,7 @@ final class OcrLimitsAndReuseTest extends TestCase
     {
         $converter = $this->app->make(OcrConverter::class);
         $converter->convert($this->image());
-        $run = OcrFigureStore::runKeyFor((string) base64_decode(FakeOcrDriver::PNG_1X1, true), 'fake', 'fake;figures=1');
+        $run = OcrFigureStore::runKeyFor((string) base64_decode(FakeOcrDriver::PNG_1X1, true), 'fake', OcrService::runVariant('fake', true));
         $path = "docs/scan.png.ocr/{$run}/result.json";
         $recorded = json_decode((string) Storage::disk('kb')->get($path), true);
         $recorded['driver'] = 'tesseract';
@@ -594,7 +594,9 @@ final class OcrLimitsAndReuseTest extends TestCase
     #[Test]
     public function the_run_reservation_lease_outlives_the_drivers_declared_worst_case(): void
     {
-        config(['kb.ocr.tesseract.timeout' => 300, 'kb.ocr.vision_llm.timeout' => 300, 'kb.ocr.docling.timeout' => 600, 'kb.ocr.mistral.timeout' => 120]);
+        // A budget above every declared worst case, so the lease below IS the
+        // declared worst case; the default budget is asserted at the end.
+        config(['kb.ocr.tesseract.timeout' => 300, 'kb.ocr.vision_llm.timeout' => 300, 'kb.ocr.docling.timeout' => 600, 'kb.ocr.mistral.timeout' => 120, 'kb.ocr.job_timeout' => 200000]);
         $registry = $this->app->make(\App\Services\Kb\Ocr\OcrDriverRegistry::class);
         $tesseract = $registry->resolve('tesseract');
         $docling = $registry->resolve('docling');
@@ -623,6 +625,33 @@ final class OcrLimitsAndReuseTest extends TestCase
         $markdownJob = new \App\Jobs\IngestDocumentJob(projectKey: 'p', relativePath: 'a.md', disk: 'kb', mimeType: 'text/markdown');
         $this->assertSame(OcrService::RERUN_LOCK_TTL, OcrService::rerunLockTtlFor('text/markdown'));
         $this->assertGreaterThan($markdownJob->timeout + 330 + max($markdownJob->backoff), OcrService::rerunLockTtlFor('text/markdown'));
+
+        // Under the DEFAULT budget the same 200-page run is bounded by
+        // KB_OCR_JOB_TIMEOUT: lease, job timeout and re-run lock all follow
+        // it, which is what the queue's retry_after has to exceed.
+        config(['kb.ocr.job_timeout' => 3600]);
+        $this->assertSame(3600 + OcrService::RUN_LOCK_MARGIN, OcrService::leaseFor($tesseract, 200));
+        $bounded = new \App\Jobs\IngestDocumentJob(projectKey: 'p', relativePath: 'a.pdf', disk: 'kb', mimeType: 'application/pdf');
+        $this->assertSame(3600 + OcrService::RUN_LOCK_MARGIN, $bounded->timeout);
+        $this->assertSame(3600 + OcrService::RUN_LOCK_MARGIN + OcrService::RERUN_LOCK_MARGIN, OcrService::rerunLockTtlFor('application/pdf'));
+    }
+
+    /** The figure caps shape the output (a figure past them is omitted), so a changed cap is a new run, never a reused result. */
+    #[Test]
+    public function the_run_key_changes_with_the_figure_caps(): void
+    {
+        config(['kb.ocr.fake.pages' => [['markdown' => 'Alpha', 'confidence' => 0.8, 'figures' => 1]]]);
+        $converter = $this->app->make(OcrConverter::class);
+        $first = $converter->convert($this->image());
+
+        config(['kb.ocr.max_figures_per_run' => 7]);
+        $second = $converter->convert($this->image());
+        $this->assertNotSame($first->extractionMeta['ocr']['run'], $second->extractionMeta['ocr']['run']);
+        $this->assertFalse((bool) $second->extractionMeta['ocr']['reused']);
+
+        config(['kb.ocr.figures.enabled' => false]);
+        $third = $converter->convert($this->image());
+        $this->assertNotSame($second->extractionMeta['ocr']['run'], $third->extractionMeta['ocr']['run'], 'figures off is another output');
     }
 
     #[Test]

@@ -15,6 +15,7 @@ use App\Support\KbPath;
 use App\Support\TenantContext;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
@@ -78,7 +79,24 @@ final class OcrService
      */
     public static function leaseFor(OcrDriver $driver, int $pages): int
     {
-        return max(self::RUN_LOCK_TTL, $driver->maxDurationSeconds(max(1, $pages)) + self::RUN_LOCK_MARGIN);
+        return max(self::RUN_LOCK_TTL, self::effectiveWorstCase($driver, $pages) + self::RUN_LOCK_MARGIN);
+    }
+
+    /** The wall-clock budget of one run (`KB_OCR_JOB_TIMEOUT`), which every driver enforces (OcrRunBudget). */
+    public static function runBudgetSeconds(): int
+    {
+        return max(60, (int) config('kb.ocr.job_timeout', 3600));
+    }
+
+    /**
+     * The longest one `recognise()` can actually take: the driver's declared
+     * worst case for `$pages` pages, capped by the run budget the driver
+     * enforces — so a 200-page page-by-page run is bounded by the budget,
+     * not by the sum of its per-page timeouts.
+     */
+    public static function effectiveWorstCase(OcrDriver $driver, int $pages): int
+    {
+        return min($driver->maxDurationSeconds(max(1, $pages)), self::runBudgetSeconds());
     }
 
     /**
@@ -133,7 +151,33 @@ final class OcrService
             return self::DEFAULT_JOB_TIMEOUT;
         }
 
-        return max(self::DEFAULT_JOB_TIMEOUT, self::leaseFor($driver, max(1, (int) config('kb.ocr.max_pages', 200))));
+        $timeout = max(self::DEFAULT_JOB_TIMEOUT, self::leaseFor($driver, max(1, (int) config('kb.ocr.max_pages', 200))));
+        self::warnIfQueueRetryAfterIsShorter($timeout);
+
+        return $timeout;
+    }
+
+    /**
+     * Laravel re-reserves a job that is still running once the connection's
+     * `retry_after` elapses — a second worker on the same document, two paid
+     * runs. The value has to exceed the OCR job timeout (`KB_OCR_JOB_TIMEOUT`
+     * + margins, see .env.example); a shorter one is a deployment defect
+     * worth a loud line at every dispatch it endangers, never a silent
+     * duplicate later.
+     */
+    private static function warnIfQueueRetryAfterIsShorter(int $timeout): void
+    {
+        $connection = (string) config('queue.default', 'sync');
+        $retryAfter = config("queue.connections.{$connection}.retry_after");
+        if (! is_numeric($retryAfter) || (int) $retryAfter > $timeout) {
+            return;
+        }
+        Log::warning('OcrService: the queue retry_after is not longer than the OCR job timeout; a running OCR job could be re-reserved by another worker', [
+            'connection' => $connection,
+            'retry_after' => (int) $retryAfter,
+            'job_timeout' => $timeout,
+            'hint' => 'set REDIS_QUEUE_RETRY_AFTER / DB_QUEUE_RETRY_AFTER above KB_OCR_JOB_TIMEOUT + 520',
+        ]);
     }
 
     private static function isPdfMime(string $mimeType): bool
@@ -183,6 +227,21 @@ final class OcrService
         } finally {
             $lock->release();
         }
+    }
+
+    /**
+     * The engine variant a run key is derived from: the driver's fingerprint
+     * plus the figure switch and, when figures are on, the figure caps
+     * (`KB_OCR_MAX_FIGURE_BYTES`, `KB_OCR_MAX_FIGURES`,
+     * `KB_OCR_MAX_FIGURES_TOTAL_BYTES`) — they shape the output too (a
+     * figure past them is omitted, the Markdown rewritten), so a changed cap
+     * is a new run.
+     */
+    public static function runVariant(string $fingerprint, bool $figuresEnabled): string
+    {
+        return $fingerprint.';figures='.($figuresEnabled
+            ? sprintf('1:%d:%d:%d', (int) config('kb.ocr.max_figure_bytes', 10485760), (int) config('kb.ocr.max_figures_per_run', 200), (int) config('kb.ocr.max_figures_total_bytes', 104857600))
+            : '0');
     }
 
     public static function runLockKey(string $disk, string $runDir): string
@@ -304,6 +363,12 @@ final class OcrService
     public static function stripTrustedOnlyKeys(array $metadata): array
     {
         unset($metadata['dry_run']);
+        // `disk` and `prefix` name the storage namespace the source was
+        // written under: the host records them at ingest and a re-run
+        // carries them from the row — a client or a connector must not, or
+        // the queued read would resolve another object than the one the
+        // boundary persisted (ParseMarkdownStep honours `metadata.prefix`).
+        unset($metadata['disk'], $metadata['prefix']);
         // `ocr` is a host-owned block: a scalar a client put there carries
         // nothing the pipeline reads and would only trip the array accessors
         // downstream, so it is dropped with the reserved keys.
@@ -377,7 +442,11 @@ final class OcrService
         // runs are immutable and a W2 artifact points at the exact run that
         // produced it, so a previous run (and the figures a previous document
         // version still references) is never rewritten in place.
-        $variant = $driver->fingerprint().';figures='.($figuresEnabled ? '1' : '0');
+        // The figure caps shape the output too (a figure past them is
+        // omitted and the Markdown rewritten), so a changed cap is a new run
+        // — never a reused result that exceeds today's limit or lacks the
+        // figures today's limit would admit.
+        $variant = self::runVariant($driver->fingerprint(), $figuresEnabled);
         if (! $reuseAllowed) {
             $variant .= ';attempt='.bin2hex(random_bytes(8));
         }
@@ -824,7 +893,7 @@ final class OcrService
      * time: a second call while the first is queued is a 409, so a double
      * click never queues two paid runs.
      *
-     * @return array{dispatched: bool, document_id: int, source_path: string, driver: string, run_key: string}
+     * @return array{dispatched: bool, document_id: int, source_path: string, driver: string, flow_run_key: string}
      *
      * @throws UnprocessableEntityHttpException when OCR is disabled, the driver is
      *   unavailable, the source is not OCR-able, the file is gone from disk or
@@ -938,7 +1007,11 @@ final class OcrService
             'document_id' => (int) $document->id,
             'source_path' => $sourcePath,
             'driver' => $driver->name(),
-            'run_key' => $runKey,
+            // The Flow idempotency salt of THIS dispatch (`ocr:<uuid>`), not
+            // the content-addressed run key of the assets directory — that
+            // one exists only once the job has run and is recorded on the
+            // row (`metadata.converter.ocr.run`, `kb:ocr --status`).
+            'flow_run_key' => $runKey,
         ];
     }
 

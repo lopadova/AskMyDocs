@@ -13,6 +13,7 @@ use App\Services\Kb\DocumentIngestor;
 use App\Services\Kb\EmbeddingCacheService;
 use App\Services\Kb\Ocr\Drivers\FakeOcrDriver;
 use App\Services\Kb\Ocr\OcrFigureStore;
+use App\Services\Kb\Ocr\OcrService;
 use App\Services\Kb\Pipeline\SourceDocument;
 use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -118,7 +119,7 @@ final class OcrIngestPipelineTest extends TestCase
         $this->assertSame(0.42, $chunks[1]->metadata['ocr_confidence']);
         $this->assertSame('Page 2', $chunks[1]->heading_path);
         $this->assertStringContainsString('images/fig-1-1.png', $chunks[0]->chunk_text);
-        $run = OcrFigureStore::runKeyFor((string) base64_decode(FakeOcrDriver::PNG_1X1, true), 'fake', 'fake;figures=1');
+        $run = OcrFigureStore::runKeyFor((string) base64_decode(FakeOcrDriver::PNG_1X1, true), 'fake', OcrService::runVariant('fake', true));
         Storage::disk('kb')->assertExists("scans/letter.png.ocr/{$run}/images/fig-1-1.png");
     }
 
@@ -182,7 +183,7 @@ final class OcrIngestPipelineTest extends TestCase
      */
     public function test_a_reused_run_is_a_fresh_reservation_again(): void
     {
-        $run = OcrFigureStore::runKeyFor((string) base64_decode(FakeOcrDriver::PNG_1X1, true), 'fake', 'fake;figures=1');
+        $run = OcrFigureStore::runKeyFor((string) base64_decode(FakeOcrDriver::PNG_1X1, true), 'fake', OcrService::runVariant('fake', true));
         $result = "scans/again2.png.ocr/{$run}/result.json";
         $figure = "scans/again2.png.ocr/{$run}/images/fig-1-1.png";
         $first = app(DocumentIngestor::class)->ingest('legal', $this->image('scans/again2.png'), title: 'Again');
@@ -290,7 +291,7 @@ final class OcrIngestPipelineTest extends TestCase
         $tenants = app(TenantContext::class);
         $home = $tenants->current();
         $mine = app(DocumentIngestor::class)->ingest('legal', $this->image('scans/shared.png'), title: 'Shared');
-        $run = OcrFigureStore::runKeyFor((string) base64_decode(FakeOcrDriver::PNG_1X1, true), 'fake', 'fake;figures=1');
+        $run = OcrFigureStore::runKeyFor((string) base64_decode(FakeOcrDriver::PNG_1X1, true), 'fake', OcrService::runVariant('fake', true));
         $figure = "scans/shared.png.ocr/{$run}/images/fig-1-1.png";
         Storage::disk('kb')->assertExists($figure);
 
@@ -316,7 +317,7 @@ final class OcrIngestPipelineTest extends TestCase
     public function test_hard_delete_purges_the_ocr_assets_and_soft_delete_keeps_them(): void
     {
         $document = app(DocumentIngestor::class)->ingest('legal', $this->image(), title: 'Letter');
-        $run = OcrFigureStore::runKeyFor((string) base64_decode(FakeOcrDriver::PNG_1X1, true), 'fake', 'fake;figures=1');
+        $run = OcrFigureStore::runKeyFor((string) base64_decode(FakeOcrDriver::PNG_1X1, true), 'fake', OcrService::runVariant('fake', true));
         $figure = "scans/letter.png.ocr/{$run}/images/fig-1-1.png";
         Storage::disk('kb')->assertExists($figure);
 
@@ -347,7 +348,7 @@ final class OcrIngestPipelineTest extends TestCase
     public function test_hard_delete_inside_the_in_flight_grace_keeps_the_run_and_the_orphan_sweep_removes_it_once_aged(): void
     {
         $document = app(DocumentIngestor::class)->ingest('legal', $this->image('scans/race.png'), title: 'Race');
-        $run = OcrFigureStore::runKeyFor((string) base64_decode(FakeOcrDriver::PNG_1X1, true), 'fake', 'fake;figures=1');
+        $run = OcrFigureStore::runKeyFor((string) base64_decode(FakeOcrDriver::PNG_1X1, true), 'fake', OcrService::runVariant('fake', true));
         $figure = "scans/race.png.ocr/{$run}/images/fig-1-1.png";
         Storage::disk('kb')->assertExists($figure);
 

@@ -110,13 +110,16 @@ class KbIngestControllerTest extends TestCase
                 'project_key' => 'erp-core',
                 'source_path' => 'docs/forced.md',
                 'content' => "# Forced\n\nBody.",
-                'metadata' => ['language' => 'en', 'dry_run' => true, 'ocr' => ['force' => true, 'rerun_lock' => ['key' => 'k', 'owner' => 'o'], 'lang' => 'ita']],
+                'metadata' => ['language' => 'en', 'dry_run' => true, 'ocr' => ['force' => true, 'rerun_lock' => ['key' => 'k', 'owner' => 'o'], 'lang' => 'ita'], 'prefix' => '../../other', 'disk' => 'elsewhere'],
             ]],
         ])->assertStatus(202);
 
         Queue::assertPushed(IngestDocumentJob::class, function (IngestDocumentJob $job): bool {
             return ($job->metadata['language'] ?? null) === 'en'
                 && ! array_key_exists('dry_run', $job->metadata)
+                // the storage namespace is the host's, never the client's
+                && ! array_key_exists('prefix', $job->metadata)
+                && ! array_key_exists('disk', $job->metadata)
                 && ! array_key_exists('force', $job->metadata['ocr'] ?? [])
                 && ! array_key_exists('rerun_lock', $job->metadata['ocr'] ?? [])
                 && ($job->metadata['ocr']['lang'] ?? null) === 'ita';

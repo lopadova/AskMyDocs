@@ -64,11 +64,11 @@ final class KbOcrCommand extends Command
             }
 
             $this->info(sprintf(
-                'OCR re-run queued for document %d (%s) with driver "%s" [run %s].',
+                'OCR re-run queued for document %d (%s) with driver "%s" [flow run %s — the OCR run key is recorded on the row once the job has run: --status].',
                 $result['document_id'],
                 $result['source_path'],
                 $result['driver'],
-                $result['run_key'],
+                $result['flow_run_key'],
             ));
 
             return self::SUCCESS;

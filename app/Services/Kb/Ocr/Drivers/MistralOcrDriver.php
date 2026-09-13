@@ -13,6 +13,8 @@ use App\Services\Kb\Ocr\OcrMeteringMode;
 use App\Services\Kb\Ocr\OcrPage;
 use App\Services\Kb\Ocr\OcrRequest;
 use App\Services\Kb\Ocr\OcrResult;
+use App\Services\Kb\Ocr\OcrRunBudget;
+use App\Services\Kb\Ocr\ImageBounds;
 use App\Support\Kb\FileTypeSniffer;
 use App\Support\Kb\SourceType;
 use Illuminate\Support\Facades\Http;
@@ -161,6 +163,13 @@ final class MistralOcrDriver implements OcrDriver
         // data URL must name what the bytes actually are or the API rejects
         // or mis-decodes a JPEG/TIFF/WebP sent as PNG.
         $mime = $request->effectiveMimeType();
+        // A source image goes to the provider AS IS: it is measured against
+        // the same pixel box the rasterising drivers apply to a rendered
+        // page BEFORE the request is built — a small file can declare
+        // dimensions whose decoded allocation is a bomb (ADR 0029 §4).
+        if (! $request->isPdf()) {
+            ImageBounds::assertWithinPixelBox($request->bytes, $request->filename);
+        }
         $dataUrl = 'data:'.$mime.';base64,'.base64_encode($request->bytes);
         $document = $request->isPdf()
             ? ['type' => 'document_url', 'document_url' => $dataUrl]
@@ -180,7 +189,7 @@ final class MistralOcrDriver implements OcrDriver
             ->acceptJson()
             ->withoutRedirecting()
             ->withOptions(['stream' => true])
-            ->timeout((int) config('kb.ocr.mistral.timeout', 120))
+            ->timeout(OcrRunBudget::start()->bound((int) config('kb.ocr.mistral.timeout', 120)))
             ->post($url, [
                 'model' => (string) config('kb.ocr.mistral.model', 'mistral-ocr-latest'),
                 'document' => $document,

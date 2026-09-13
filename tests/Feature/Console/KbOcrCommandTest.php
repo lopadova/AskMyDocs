@@ -88,7 +88,10 @@ final class KbOcrCommandTest extends TestCase
         Storage::disk('kb')->put('scans/one.pdf', '%PDF-1.4');
 
         $this->artisan('kb:ocr', ['document' => $doc->id])
-            ->expectsOutputToContain('OCR re-run queued')
+            // ONE substring for the line: the console mock hands a line to the
+            // first matching expectation only, so two substrings of the same
+            // line never both pass.
+            ->expectsOutputToContain('OCR re-run queued for document 1 (scans/one.pdf) with driver "fake" [flow run ocr:')
             ->assertSuccessful();
 
         Queue::assertPushed(IngestDocumentJob::class, fn (IngestDocumentJob $job) => ($job->metadata['ocr']['force'] ?? false) === true

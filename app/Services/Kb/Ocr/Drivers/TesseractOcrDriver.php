@@ -11,6 +11,7 @@ use App\Services\Kb\Ocr\OcrMeteringMode;
 use App\Services\Kb\Ocr\OcrPage;
 use App\Services\Kb\Ocr\OcrRequest;
 use App\Services\Kb\Ocr\OcrResult;
+use App\Services\Kb\Ocr\OcrRunBudget;
 use Symfony\Component\Process\ExecutableFinder;
 use Symfony\Component\Process\Exception\ProcessFailedException;
 use Symfony\Component\Process\Process;
@@ -92,19 +93,24 @@ final class TesseractOcrDriver implements OcrDriver
         $binary = (string) config('kb.ocr.tesseract.binary', 'tesseract');
         $lang = (string) config('kb.ocr.tesseract.lang', 'eng');
         $timeout = (int) config('kb.ocr.tesseract.timeout', 300);
+        // Every process this run starts is bounded by what is left of the run
+        // budget (KB_OCR_JOB_TIMEOUT): the work can never exceed it, whatever
+        // the per-page timeouts add up to over the page cap.
+        $budget = OcrRunBudget::start();
 
         $raster = $this->rasterise(
             $request,
             (string) config('kb.ocr.tesseract.pdftoppm', 'pdftoppm'),
             (int) config('kb.ocr.tesseract.dpi', 200),
-            $timeout,
+            $budget->bound($timeout),
             (string) config('kb.ocr.tesseract.pdfinfo', 'pdfinfo'),
         );
 
         try {
             $pages = [];
             foreach ($raster['pages'] as $number => $imagePath) {
-                $pages[] = $this->recognisePage($binary, $lang, $timeout, $number, $imagePath);
+                $budget->assertRemaining($request->filename);
+                $pages[] = $this->recognisePage($binary, $lang, $budget->bound($timeout), $number, $imagePath);
             }
         } catch (\Throwable $e) {
             $this->cleanupAfterFailure($raster['dir'], $e);
@@ -118,8 +124,9 @@ final class TesseractOcrDriver implements OcrDriver
     /**
      * Two bounded setup processes for a PDF (`pdfinfo` for the page bound,
      * `pdftoppm` for the render) plus two bounded processes (text + TSV) per
-     * page, each under the same timeout — the lease sized from this must
-     * outlive the whole run, or a second worker could re-bill it.
+     * page, each under the same timeout — the declared worst case the run
+     * lease is sized from (capped by the run budget the driver enforces,
+     * OcrService::effectiveWorstCase()).
      */
     public function maxDurationSeconds(int $pages): int
     {

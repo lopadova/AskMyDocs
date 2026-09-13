@@ -195,11 +195,15 @@ final class KbOcrControllerTest extends TestCase
         Storage::disk('kb')->put($doc->source_path, '%PDF-1.4 scanned');
 
         $admin = $this->makeAdmin();
-        $this->actingAs($admin)->postJson("/api/admin/kb/documents/{$doc->id}/ocr")
+        $response = $this->actingAs($admin)->postJson("/api/admin/kb/documents/{$doc->id}/ocr")
             ->assertStatus(202)
             ->assertJsonPath('data.dispatched', true)
             ->assertJsonPath('data.document_id', $doc->id)
-            ->assertJsonPath('data.driver', 'fake');
+            ->assertJsonPath('data.driver', 'fake')
+            // The Flow idempotency salt of this dispatch — the OCR run key is
+            // content-addressed and exists only once the job has run.
+            ->assertJsonMissingPath('data.run_key');
+        $this->assertStringStartsWith('ocr:', (string) $response->json('data.flow_run_key'));
 
         Queue::assertPushed(IngestDocumentJob::class, function (IngestDocumentJob $job) use ($doc, $admin): bool {
             return $job->relativePath === $doc->source_path
