@@ -283,8 +283,12 @@ the paths — at
 {prefix}/{dir of source_path}/{basename}.ocr/{run}/images/fig-{page}-{n}.png
 ```
 
-where `{run}` is the first 16 hex characters of
-`sha256(bytes · driver name · driver fingerprint)` — the fingerprint being the
+where `{run}` is the **full 64-hex** `sha256(bytes · driver name · driver
+fingerprint)` — never a truncated prefix: a 16-hex prefix is a 64-bit
+identifier two different tuples could share, and one immutable run directory
+would then serve the wrong text or figures to a document and defeat the reuse
+lookup; the full digest makes the identity collision-free for every practical
+purpose — the fingerprint being the
 engine variant each driver declares (`OcrDriver::fingerprint()`: model for
 `vision-llm` / `mistral-ocr`, language + DPI for `tesseract`, the binary for
 `docling`). Two versions of one source path never overwrite each other's

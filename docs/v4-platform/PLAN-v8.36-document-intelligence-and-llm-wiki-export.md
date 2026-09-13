@@ -118,8 +118,9 @@ references in the Markdown, formulas as LaTeX, a confidence per page.
 **Design decisions.**
 - Figures land on the `kb` disk under
   `{source_path}.ocr/{run}/images/fig-{page}-{n}.png`, where `{run}` is
-  **content-addressed over input AND engine** — the first 16 hex chars of
-  `sha256(bytes · driver name · driver fingerprint)`, the fingerprint being
+  **content-addressed over input AND engine** — the full 64-hex
+  `sha256(bytes · driver name · driver fingerprint)` (never a truncated
+  prefix, which two tuples could share — ADR 0029 §5), the fingerprint being
   the driver's own variant (model for `vision-llm` / `mistral-ocr`, language
   + DPI for `tesseract`, the binary for `docling`) — so two versions of the
   same source path never overwrite each other's pixels, the same bytes
@@ -348,8 +349,13 @@ only after commit moves its temp file into place. A final file that already
 exists is re-hashed against the temp, never trusted on `exists()` alone:
 identical bytes → drop the temp; a truncated or replaced file → the verified
 temp is moved over it (atomic rename on a local disk), so a corrupt artifact
-is repaired by the next identical ingest instead of being kept and later
-reported as `integrity: mismatch` by `contentFor()` (ADR 0030 §3). The loser of
+is repaired instead of being kept and later reported as `integrity: mismatch`
+by `contentFor()`. The identical-ingest path reaches this on purpose: the
+ingestor's same-hash short-circuit verifies the existing version's artifact
+(present, hashing to `content_hash`) before returning the row and republishes
+it from the freshly converted bytes when it is missing or corrupt — no new
+version, no chunk rewrite; `kb:artifacts-backfill` covers rows nobody
+re-ingests (ADR 0030 §3). The loser of
 the unique-constraint race never touches the final path: its failure branch
 deletes **its own temp file only**, so it cannot remove what the winner's
 committed row references. A crash between commit and move leaves a row whose

@@ -115,9 +115,16 @@ only after commit moves its temp file into place. A final file that already
 exists is **not** taken on faith: the path is the content hash, so the store
 re-hashes what is there — identical bytes → the temp is dropped; anything else
 (a truncated or replaced file) → the verified temp is moved over it, an atomic
-rename on a local disk, so a corrupt pre-existing artifact is repaired by the
-next identical ingest instead of being kept and later reported as
-`integrity: mismatch` (§5) while the temp that was correct is thrown away.
+rename on a local disk, so a corrupt pre-existing artifact is repaired
+instead of being kept and later reported as `integrity: mismatch` (§5) while
+the temp that was correct is thrown away. The identical-ingest path does not
+skip this: the ingestor's same-hash short-circuit returns the existing version
+only **after verifying its artifact** — present on disk and hashing to
+`content_hash` — and when the artifact is missing or corrupt it republishes it
+from the freshly converted bytes through the same temp-then-publish protocol
+(no new version, no chunk rewrite, the pointer and `content_hash` unchanged
+because the bytes are the same); `kb:artifacts-backfill` covers the rows
+nobody re-ingests.
 The loser of the
 unique-constraint race never touches the final path: its failure branch
 deletes **its own temp file only**. A crash between commit and move leaves a
