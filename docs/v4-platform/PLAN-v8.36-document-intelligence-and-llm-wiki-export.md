@@ -53,11 +53,13 @@ references in the Markdown, formulas as LaTeX, a confidence per page.
   (OFF → `supports()` is false for every MIME and the registry falls through
   as in v8.35). The registry resolves by MIME alone (`supports(string $mime)`),
   so **scanned PDFs are not claimed by `OcrConverter`**: `PdfConverter` stays
-  the sole `application/pdf` match and, when OCR is on and a cheap text-layer
-  probe (`PdfTextLayerProbe`, smalot over the first `KB_OCR_PROBE_PAGES`
-  pages, verdict recorded in `extractionMeta.text_layer_probe`) returns a
-  confident **no-text** verdict — or the ingest metadata carries `ocr.force`
-  (set by `kb:ocr`) — it delegates to the same `OcrService`. A parser
+  the sole `application/pdf` match and, when OCR is on and the text-layer
+  probe (`PdfTextLayerProbe`, smalot, **per page** over every page up to
+  `KB_OCR_MAX_PAGES` — `KB_OCR_PROBE_PAGES` bounds the window — verdict
+  recorded in `extractionMeta.text_layer_probe`) returns `empty` (no text
+  page) or `mixed` (text pages and scanned pages: the whole document is OCR'd
+  so no page is lost, reason `mixed_pdf`) — or the ingest metadata carries
+  `ocr.force` (set by `kb:ocr`) — it delegates to the same `OcrService`. A parser
   failure is **not** "no text": on an `unreadable` verdict the converter
   first tries the `pdftotext` fallback it has always had, keeps the text path
   when that yields text, and goes to OCR only when neither parser can read
@@ -110,16 +112,17 @@ references in the Markdown, formulas as LaTeX, a confidence per page.
 
 | Driver | Why it is in the list |
 |---|---|
-| `docling` (IBM, Apache-2.0, local process) | Layout, tables, figures, formulas → LaTeX. The default for sovereign installs. |
+| `docling` (IBM, Apache-2.0, local process) | Layout, tables, figures, formulas → LaTeX. The **recommended** driver for sovereign installs — opt-in via `KB_OCR_DRIVER=docling`; the shipped default stays `tesseract` (ADR 0029 §3). |
 | `mistral-ocr` (API) | The engine `lucasastorian/llmwiki` uses for "higher-quality OCR on tables and complex layouts". EU-hosted provider. |
 | `vision-llm` (`laravel/ai` — Claude / Gemini / Regolo EU) | Zero new infra; metered by FinOps like any call. |
-| `tesseract` (local) | Free fallback; no layout. |
+| `tesseract` (local) | Free fallback; no layout. The shipped default (`KB_OCR_DRIVER` unset → `tesseract`), because it needs no Python runtime. |
 
 **Design decisions.**
 - Figures land on the `kb` disk under
   `{source_path}.ocr/{run}/images/fig-{page}-{n}.png`, where `{run}` is
-  **content-addressed over input AND engine** — the first 16 hex chars of
-  `sha256(bytes · driver name · driver fingerprint)`, the fingerprint being
+  **content-addressed over input AND engine** — the full 64-hex
+  `sha256(bytes · driver name · driver fingerprint)` (never a truncated
+  prefix, which two tuples could share — ADR 0029 §5), the fingerprint being
   the driver's own variant (model for `vision-llm` / `mistral-ocr`, language
   + DPI for `tesseract`, the binary for `docling`) — so two versions of the
   same source path never overwrite each other's pixels, the same bytes
@@ -208,8 +211,11 @@ references in the Markdown, formulas as LaTeX, a confidence per page.
   when the **last row referencing the source key** goes — the same
   reference gate `DocumentDeleter` already applies to the source file
   (`removeFile()` → `removeOcrAssets()`); `kb:prune-archived-versions`
-  passes through the same deleter. Deleting one archived row never removes a
-  run another row still references.
+  hard-deletes by query but asks the same deleter gate
+  (`documentReferencingOcrRun()`) before purging a pruned row's run (ADR 0030
+  §8). Deleting one archived row never removes a run another row still
+  references, and a run inside the in-flight grace is never purged (ADR 0029
+  §6).
 - Every page carries `ocr_confidence` in chunk metadata; `Reranker` Layer-4
   may read it as a soft signal later — **not** in this workstream.
 - **Extraction origin, not authorship.** ADR 0028's `provenance_tier`
@@ -322,12 +328,15 @@ prefix is one global setting, so tenant and project are part of the key
 explicitly — **as safe segments, never verbatim**: `project_key` is a free
 string of up to 120 characters at the ingest API and `kb:ingest-folder
 --project` validates nothing, so each of the two is admitted only when it
-matches `^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$` (no `/`, no `..`) and is
-otherwise replaced by `h-` + the first 24 hex of its SHA-256; the composed
+matches `^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$` (no `/`, no `..`) and does not
+start with the reserved `h-` prefix, and is otherwise replaced by `h-` + the
+full 64-hex SHA-256 of the value (injective: a verbatim segment can never
+spell an encoded one — ADR 0030 §3); the composed
 path is normalised with `KbPath::normalize()` (which refuses `.` / `..`) and
 must resolve **inside** the artifact root (`realpath` containment where the
 disk is local). Tests: a project key of `../../outside`, one of 120
-characters, and two keys that collide only after encoding. Today's database uniqueness is `uq_kb_doc_version` =
+characters, two keys that collide only after encoding, and a literal
+`h-<64 hex>` key against the unsafe value whose digest it spells. Today's database uniqueness is `uq_kb_doc_version` =
 `(project_key, source_path, version_hash)` — the tenant migration deferred
 rebuilding the composite uniques with `tenant_id`, so identical content at
 one path cannot be stored for two tenants **today** (a pre-existing
@@ -338,8 +347,17 @@ SQLite test migration, out of W2's scope and tracked as the deferred item)
 the artifact identity already matches. There is nothing to reference-count. The publish is race-safe against two
 concurrent identical ingests: each writer writes to its own temporary name
 (`{final}.{uuid}.tmp`), commits the row with the **final** path recorded, and
-only after commit moves its temp file into place (`exists()` on the final
-path → the identical bytes are already there, drop the temp). The loser of
+only after commit moves its temp file into place. A final file that already
+exists is re-hashed against the temp, never trusted on `exists()` alone:
+identical bytes → drop the temp; a truncated or replaced file → the verified
+temp is moved over it (atomic rename on a local disk), so a corrupt artifact
+is repaired instead of being kept and later reported as `integrity: mismatch`
+by `contentFor()`. The identical-ingest path reaches this on purpose: the
+ingestor's same-hash short-circuit verifies the existing version's artifact
+(present, hashing to `content_hash`) before returning the row and republishes
+it from the freshly converted bytes when it is missing or corrupt — no new
+version, no chunk rewrite; `kb:artifacts-backfill` covers rows nobody
+re-ingests (ADR 0030 §3). The loser of
 the unique-constraint race never touches the final path: its failure branch
 deletes **its own temp file only**, so it cannot remove what the winner's
 committed row references. A crash between commit and move leaves a row whose
@@ -391,8 +409,20 @@ layer.
 have one and falls back to `reconstructContent()` otherwise (R43: both branches
 tested); `restore` re-activates the artifact with the row. W3 creates versions
 on correction through the same service. Retention: `kb:prune-archived-versions`
-deletes the artifact with the row; ADR 0020 D5 crypto-shred applies to
-artifacts.
+deletes the artifact with the row. Erasure is by deletion, not by shredding:
+ADR 0020's crypto-shred (`SubjectErasureService`, the DSAR `delete` hook)
+targets the token vault and stops at the AI boundary — it holds nothing about
+the artifact, the `.ocr/` run or the original source, all raw assets *before*
+the PII seam that still contain the subject's original values after a shred.
+Every hard-delete path removes the artifact: `DocumentDeleter` row by row, and
+the batch prune (`kb:prune-archived-versions`, which hard-deletes by query)
+through the same cleanup and reference gates (ADR 0030 §3 *Erasure*, §8). The
+DSAR boundary is therefore explicit: **the shred covers the index; deleting the
+documents that contain the subject covers the raw assets; that deletion is a
+customer / operator step of the DSAR runbook, not an Art.17 guarantee W1/W2
+make on their own.** A subject → documents locator that drives
+`DocumentDeleter` from the vault's token map is a W5 (v8.39) candidate, not
+W2 scope.
 
 **Why it is its own workstream.** It is the prerequisite of W3 and W4, and it
 gives *Semantic Time Travel* (parked since v8.0) the faithful "what did this

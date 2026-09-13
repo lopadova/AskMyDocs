@@ -1,8 +1,8 @@
 # ADR 0028 — Source ACL mirroring and ingest-time provenance (design)
 
-- **Status:** Proposed
-- **Date:** 2026-08-25
-- **Cycle:** target v8.32 → v8.34 (phased)
+- **Status:** Accepted — shipped in three phases, v8.32 → v8.34 (GA 2026-08-30)
+- **Date:** 2026-08-25 (proposed) · 2026-08-30 (all phases shipped)
+- **Cycle:** v8.32 → v8.34 (phased)
 - **Builds on:** the connector framework (`askmydocs-connector-base` ^1.4), the
   capability-interface pattern (`SupportsCredentialForm`, `SupportsFolderDiscovery`),
   R30 tenant scoping, R33 scope-allowlist-in-SQL, the Auto-Wiki
