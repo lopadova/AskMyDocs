@@ -654,6 +654,21 @@ final class OcrLimitsAndReuseTest extends TestCase
         $this->assertNotSame($second->extractionMeta['ocr']['run'], $third->extractionMeta['ocr']['run'], 'figures off is another output');
     }
 
+    /** With figures off, `pages[].figures` agrees with the document-level zero: only persisted figures are counted. */
+    #[Test]
+    public function per_page_figure_counts_reflect_the_persisted_figures(): void
+    {
+        config(['kb.ocr.fake.pages' => [['markdown' => 'Alpha', 'confidence' => 0.8, 'figures' => 2]]]);
+        $on = $this->app->make(OcrConverter::class)->convert($this->image());
+        $this->assertSame(2, $on->extractionMeta['ocr']['pages'][0]['figures']);
+
+        config(['kb.ocr.figures.enabled' => false]);
+        $off = $this->app->make(OcrConverter::class)->convert($this->image());
+        $this->assertSame(0, $off->extractionMeta['ocr']['figures']);
+        $this->assertSame(0, $off->extractionMeta['ocr']['pages'][0]['figures'], 'nothing was persisted: nothing is counted');
+        $this->assertSame([], $off->mediaItems);
+    }
+
     /** The page cap shapes what a page-by-page driver records for an unverified PDF: a changed cap is a new run. */
     #[Test]
     public function the_run_key_changes_with_the_page_cap(): void

@@ -338,6 +338,10 @@ for an Sdk-metered driver (`vision-llm`) the response says `metering: sdk`,
 carries no page price (`rate_per_page` and every `cost` are `0`) and the modal
 says the provider meters tokens, so no page price is ever invented. The estimate reads the
 staged bytes and runs the probe; it never runs a driver, so it is free. It
+With the flag off the estimate still probes each staged PDF: one with a text
+layer answers `text_layer_present` (it is ingested as text either way), only
+an image or a scan is `ocr_disabled` — the OFF answer is honest, never
+"every PDF would need OCR" (R43). It
 also says when the run would be refused (`driver_available: false` — a remote
 driver with the knob off, a missing binary — or a file over the page/byte
 caps, or a staged object whose bytes are no raster — or no PDF — any more,

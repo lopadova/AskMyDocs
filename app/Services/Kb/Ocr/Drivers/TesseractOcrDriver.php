@@ -166,6 +166,11 @@ final class TesseractOcrDriver implements OcrDriver
             $tsv->setTimeout($timeout);
             $tsv->mustRun();
             $confidence = $this->meanConfidenceFromTsv($tsv->getOutput());
+        } catch (ProcessTimedOutException) {
+            // A soft signal, but a process that outlived its (budget-bounded)
+            // timeout is the terminal `run_too_long` like the text pass —
+            // never a page recorded as successful past the budget.
+            throw OcrRunBudget::timedOut('page '.$number, 'tesseract (confidence pass)', $timeout);
         } catch (\Throwable) {
             $confidence = null;
         }

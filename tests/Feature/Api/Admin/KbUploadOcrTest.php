@@ -102,6 +102,7 @@ final class KbUploadOcrTest extends TestCase
             'files' => [
                 UploadedFile::fake()->createWithContent('scan.pdf', PdfFixtureBuilder::build(['  '])),
                 UploadedFile::fake()->createWithContent('notes.md', "# Notes\n\nplain text never needs OCR\n"),
+                UploadedFile::fake()->createWithContent('text.pdf', PdfFixtureBuilder::build(['This page carries plenty of extractable text for the probe to count.'])),
             ],
         ])->assertStatus(201)->json('batch.id');
 
@@ -113,7 +114,10 @@ final class KbUploadOcrTest extends TestCase
             ->assertJsonPath('data.items.0.would_ocr', false)
             ->assertJsonPath('data.items.0.reason', 'ocr_disabled')
             // A text file never needed OCR: the modal must not count it.
-            ->assertJsonPath('data.items.1.reason', 'not_ocr_able');
+            ->assertJsonPath('data.items.1.reason', 'not_ocr_able')
+            // A PDF with a text layer is ingested as text with the flag off
+            // too: never counted as "would need OCR" (R43 — an honest OFF).
+            ->assertJsonPath('data.items.2.reason', 'text_layer_present');
     }
 
     public function test_estimate_reports_when_the_configured_driver_cannot_run_here(): void

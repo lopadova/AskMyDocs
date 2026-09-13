@@ -34,4 +34,12 @@ final class OcrServiceMetadataTest extends TestCase
         // value would point the queued read at another object.
         $this->assertSame(['title' => 't'], OcrService::stripTrustedOnlyKeys(['title' => 't', 'prefix' => '../x', 'disk' => 'other']));
     }
+
+    public function test_the_persist_step_strips_only_the_run_control_keys_and_keeps_the_storage_namespace(): void
+    {
+        $this->assertSame(
+            ['disk' => 'kb', 'prefix' => 'archive', 'ocr' => ['note' => 'kept']],
+            OcrService::stripRunControlKeys(['disk' => 'kb', 'prefix' => 'archive', 'dry_run' => true, 'ocr' => ['note' => 'kept', 'force' => true, 'rerun_lock' => ['key' => 'k', 'owner' => 'o']]]),
+        );
+    }
 }

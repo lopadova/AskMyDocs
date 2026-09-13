@@ -155,10 +155,15 @@ final class OcrCostEstimator
         $type = SourceType::tryFrom((string) $item->source_type) ?? SourceType::UNKNOWN;
         if (! $enabled) {
             // `ocr_disabled` names only the items OCR WOULD have looked at
-            // (an image, a PDF — whether a PDF is scanned is not probed with
-            // the flag off); text and Markdown never needed it (R14: the
-            // modal must not count them as "would need OCR").
-            $reason = $type === SourceType::IMAGE || $type === SourceType::PDF ? 'ocr_disabled' : 'not_ocr_able';
+            // (an image, a scanned PDF); text and Markdown never needed it,
+            // and a PDF with a text layer is ingested as text with the flag
+            // off exactly as with it on — the probe says which (R14/R43: the
+            // OFF answer is honest, never "every PDF would need OCR").
+            $reason = match (true) {
+                $type === SourceType::IMAGE => 'ocr_disabled',
+                $type === SourceType::PDF => $this->offPathPdfReason($item, $stagingDisk),
+                default => 'not_ocr_able',
+            };
 
             return ['id' => $id, 'would_ocr' => false, 'pages' => 0, 'cost' => 0.0, 'reason' => $reason, 'pages_exact' => true];
         }
@@ -284,6 +289,26 @@ final class OcrCostEstimator
     /**
      * @return array{id: string, would_ocr: bool, pages: int, cost: float, reason: string, pages_exact: bool}
      */
+    /**
+     * OFF path, PDF: `text_layer_present` when the probe finds a text layer
+     * (the converter extracts it, flag or no flag), `ocr_disabled` for a
+     * scan — or for a file that cannot be read or is no PDF, which is the
+     * conservative "this one OCR would have looked at".
+     */
+    private function offPathPdfReason(KbIngestBatchItem $item, string $stagingDisk): string
+    {
+        $stagingPath = (string) $item->staging_path;
+        if ($stagingPath === '' || ! Storage::disk($stagingDisk)->exists($stagingPath)) {
+            return 'ocr_disabled';
+        }
+        $bytes = $this->readStaged($stagingDisk, $stagingPath);
+        if ($bytes === null || ! str_starts_with($bytes, '%PDF-')) {
+            return 'ocr_disabled';
+        }
+
+        return $this->probe->probe($bytes)['verdict'] === PdfTextLayerProbe::PRESENT ? 'text_layer_present' : 'ocr_disabled';
+    }
+
     private function priced(string $id, int $pages, string $reason, bool $exact = true, bool $sdkMetered = false): array
     {
         $estimate = $this->meter->estimate($pages);

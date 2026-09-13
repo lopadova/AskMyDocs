@@ -98,7 +98,9 @@ final class PersistChunksStep implements FlowStepHandler
             // (the admin raw edit re-dispatches it) and expose the lock
             // payload through document reads. `isForced()` below still reads
             // the original bag, so this run replaces the version it re-ran.
-            metadata: \App\Services\Kb\Ocr\OcrService::stripTrustedOnlyKeys($combinedMetadata),
+            // Only the run-control keys go: the host-resolved `disk` /
+            // `prefix` this same job carries are persisted with the row.
+            metadata: \App\Services\Kb\Ocr\OcrService::stripRunControlKeys($combinedMetadata),
             embeddingResponse: $embeddingResponse,
             canonical: $canonical,
             // ADR 0029 — a forced OCR re-run replaces the version it re-ran.

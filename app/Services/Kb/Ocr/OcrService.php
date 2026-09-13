@@ -365,7 +365,6 @@ final class OcrService
      */
     public static function stripTrustedOnlyKeys(array $metadata): array
     {
-        unset($metadata['dry_run']);
         // `disk` and `prefix` name the storage namespace the source was
         // written under: the host records them at ingest and a re-run
         // carries them from the row — a client or a connector must not, or
@@ -378,6 +377,24 @@ final class OcrService
         if (array_key_exists('ocr', $metadata) && ! is_array($metadata['ocr'])) {
             unset($metadata['ocr']);
         }
+
+        return self::stripRunControlKeys($metadata);
+    }
+
+    /**
+     * The keys that drive ONE ingest job and must not outlive it on the row
+     * (`ocr.force`, `ocr.rerun_lock`, `dry_run`): the persist step strips
+     * these — and only these — so the host-resolved storage namespace the
+     * same job carries (`disk` / `prefix`, set by ParseMarkdownStep) is
+     * persisted with the row, where a later re-run or delete reads it back
+     * to resolve the SAME object after a configuration change.
+     *
+     * @param  array<string, mixed>  $metadata
+     * @return array<string, mixed>
+     */
+    public static function stripRunControlKeys(array $metadata): array
+    {
+        unset($metadata['dry_run']);
         if (is_array($metadata['ocr'] ?? null)) {
             unset($metadata['ocr']['force'], $metadata['ocr']['rerun_lock']);
             if ($metadata['ocr'] === []) {
@@ -578,10 +595,15 @@ final class OcrService
         $markdown = $this->renderMarkdown($filename, $result, $figuresEnabled);
         $durationMs = (int) ((hrtime(true) - $start) / 1_000_000);
 
+        // Per page, the figures that were PERSISTED (from `$written`, the
+        // recorded run's descriptors on reuse): with figures off a driver may
+        // still return descriptors, and `pages[].figures` must agree with the
+        // document-level `figures: 0` / `figures_dir: null`.
+        $writtenPerPage = array_count_values(array_map(static fn (array $w): int => (int) $w['page'], $written));
         $pagesMeta = array_map(static fn (OcrPage $p): array => [
             'number' => $p->number,
             'confidence' => $p->confidence,
-            'figures' => count($p->figures),
+            'figures' => $writtenPerPage[$p->number] ?? 0,
             'chars' => mb_strlen($p->markdown),
         ], $result->pages);
 

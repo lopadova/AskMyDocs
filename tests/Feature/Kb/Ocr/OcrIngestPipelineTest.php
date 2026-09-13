@@ -409,6 +409,10 @@ final class OcrIngestPipelineTest extends TestCase
         // the lock payload through document reads.
         $this->assertArrayNotHasKey('ocr', $row->metadata, 'ocr.force / ocr.rerun_lock are never persisted');
         $this->assertSame('kept', $row->metadata['note']);
+        // The host-resolved storage namespace the job carried IS persisted:
+        // a later re-run or delete reads it back to resolve the same object.
+        $this->assertSame('kb', $row->metadata['disk']);
+        $this->assertSame('', $row->metadata['prefix']);
         $this->assertNotSame($firstRun, (string) $row->metadata['converter']['ocr']['run'], 'the row must point at the run that was billed');
         $this->assertFalse((bool) $row->metadata['converter']['ocr']['reused']);
         // R16 — exactly two metered runs: the forced one was paid, not reused.
