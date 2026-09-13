@@ -562,6 +562,16 @@ final class KbUploadOcrTest extends TestCase
                 ->assertJsonPath('data.items.0.reason', 'run_too_long')
                 ->assertJsonPath('data.items.0.pages_exact', false)
                 ->assertJsonPath('data.total_cost', 0);
+
+            // The refusal never touches the OCR driver: with the driver
+            // unavailable the batch is not reported as blocked by it.
+            config(['kb.ocr.driver' => 'tesseract', 'kb.ocr.tesseract.binary' => '/nonexistent/tesseract']);
+            $this->actingAs($admin)->getJson("/api/admin/kb/uploads/{$batchId}/estimate")
+                ->assertOk()
+                ->assertJsonPath('data.items.0.reason', 'run_too_long')
+                ->assertJsonPath('data.items.0.driver_available', false)
+                ->assertJsonPath('data.driver_available', true)
+                ->assertJsonPath('data.driver_error', null);
         } finally {
             unlink($stub);
         }

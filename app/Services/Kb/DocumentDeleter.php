@@ -11,7 +11,6 @@ use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
 use App\Services\Kb\Ocr\OcrFigureStore;
 use App\Services\Kb\Analysis\ChangeAnalysisGate;
-use App\Support\KbDiskResolver;
 use App\Support\KbPath;
 use App\Support\LikeEscaper;
 use DateTimeInterface;
@@ -711,7 +710,11 @@ class DocumentDeleter
      *
      * Rows are narrowed by the logical source path in SQL, then streamed so a
      * long version history stays memory-safe. Disk + prefix are resolved from
-     * the immutable ingest metadata with the same fallbacks used by deletion.
+     * the immutable ingest metadata with the same fallbacks used by deletion
+     * (`kb.sources.disk` / `kb.sources.path_prefix`); a row that never
+     * recorded its namespace (ingested before it was persisted) IS a reference
+     * whenever its logical path matches — every consumer of this gate only
+     * ever deletes, so a legacy row fails closed rather than guessing a disk.
      */
     /**
      * Public reference gate for callers that hold a resolved storage key and
@@ -735,10 +738,15 @@ class DocumentDeleter
         $documents = KnowledgeDocument::query()
             ->withoutGlobalScopes()
             ->where('source_path', $normalizedSourcePath)
-            ->select(['id', 'source_path', 'metadata'])
+            ->select(['id', 'project_key', 'source_path', 'metadata'])
             ->cursor();
 
         foreach ($documents as $document) {
+            if (! $this->documentRecordsStorageNamespace($document)) {
+                // Fail closed: a namespace-less row on this path references
+                // the object as far as any deletion may assume.
+                return (int) $document->id;
+            }
             if ($this->documentResolvesToStorageKey($document, $disk, $normalizedFullPath)) {
                 return (int) $document->id;
             }
@@ -747,17 +755,23 @@ class DocumentDeleter
         return null;
     }
 
-    /** Whether the row persisted the storage namespace its file lives in (`metadata.disk` / `metadata.prefix`). */
+    /**
+     * Whether the row persisted the storage namespace its file lives in.
+     * The disk is the decisive half (`metadata.disk`; the ingest job records
+     * it together with `metadata.prefix`): a row without it is a legacy row,
+     * whatever else its metadata carries, and is never resolved to a guessed
+     * disk by a deleting consumer.
+     */
     public function documentRecordsStorageNamespace(KnowledgeDocument $document): bool
     {
         $metadata = is_array($document->metadata) ? $document->metadata : [];
 
-        return array_key_exists('disk', $metadata) || array_key_exists('prefix', $metadata);
+        return array_key_exists('disk', $metadata);
     }
 
     /**
      * Whether this row's RECORDED storage namespace (`metadata.disk` /
-     * `metadata.prefix`, the project disk and the configured prefix when absent) resolves its
+     * `metadata.prefix`, deletion's configured defaults when absent) resolves its
      * `source_path` to exactly `$fullPath` on `$disk` — the one test of
      * "this row references that physical object", shared by the dangling
      * OCR-tree sweep and the orphan-file sweep so neither can be fooled by a
@@ -766,14 +780,11 @@ class DocumentDeleter
     public function documentResolvesToStorageKey(KnowledgeDocument $document, string $disk, string $fullPath): bool
     {
         $metadata = is_array($document->metadata) ? $document->metadata : [];
-        // A row that recorded no disk was ingested before the namespace was
-        // persisted: the disk it used is the one its project resolved to
-        // then and now (`KbDiskResolver`), never the bare default — on a
-        // per-project disk the default would make every legacy row a
-        // stranger to its own file.
-        $candidateDisk = array_key_exists('disk', $metadata)
-            ? (string) $metadata['disk']
-            : KbDiskResolver::forProject((string) $document->project_key);
+        // The same fallbacks deletion applies (`kb.sources.disk` /
+        // `kb.sources.path_prefix`). A row that recorded no disk never
+        // reaches a resolution in the deleting consumers — they treat it as
+        // a reference by path ({@see documentRecordsStorageNamespace()}).
+        $candidateDisk = (string) ($metadata['disk'] ?? config('kb.sources.disk', 'kb'));
         $candidatePrefix = array_key_exists('prefix', $metadata)
             ? (string) $metadata['prefix']
             : (string) config('kb.sources.path_prefix', '');

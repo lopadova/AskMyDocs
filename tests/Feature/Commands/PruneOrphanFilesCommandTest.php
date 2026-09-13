@@ -211,10 +211,32 @@ class PruneOrphanFilesCommandTest extends TestCase
         Storage::disk('kb-hr')->assertExists('docs/legacy-prefix-only.md');
         Storage::disk('kb-hr')->assertMissing('docs/orphan.md');
 
-        // The deleter resolves a legacy row (no recorded disk) to its project disk.
+        // The deleter's public reference gate (cursor-loaded rows, the path
+        // the dangling-tree sweep and the connector bridge delete through)
+        // fails closed on a legacy row too: it references the object on
+        // whichever disk the caller asks about.
         $deleter = app(\App\Services\Kb\DocumentDeleter::class);
-        $this->assertTrue($deleter->documentResolvesToStorageKey($null->fresh(), 'kb-hr', 'docs/legacy-null.md'));
-        $this->assertFalse($deleter->documentResolvesToStorageKey($null->fresh(), 'kb', 'docs/legacy-null.md'));
+        $this->assertSame((int) $null->id, $deleter->documentReferencingStorageKey('kb-hr', 'docs/legacy-null.md', 'docs/legacy-null.md'));
+        $this->assertSame((int) $null->id, $deleter->documentReferencingStorageKey('kb', 'docs/legacy-null.md', 'docs/legacy-null.md'));
+    }
+
+    /** The dangling-tree sweep never purges the run beside a live legacy row on a per-project disk. */
+    public function test_a_legacy_row_keeps_the_ocr_tree_beside_it_on_a_per_project_disk(): void
+    {
+        config()->set('kb.project_disks', ['hr-portal' => 'kb-hr']);
+        Storage::fake('kb-hr');
+        Storage::fake('kb');
+        $run = str_repeat('abcdef0123456789', 4);
+        Storage::disk('kb-hr')->put("docs/legacy.md.ocr/{$run}/result.json", '{}');
+        $legacy = $this->seedDoc('docs/legacy.md', 'hl', 'hr-portal');
+        KnowledgeDocument::withoutGlobalScopes()->whereKey($legacy->id)->update(['metadata' => null]);
+
+        $this->travel(OcrFigureStore::inFlightGraceSeconds() + 60)->seconds();
+        // Nothing to sweep at all: the tree is referenced, no source file is listed.
+        $this->artisan('kb:prune-orphan-files', ['--project' => 'hr-portal'])
+            ->expectsOutputToContain('No source files found on disk [kb-hr]')
+            ->assertSuccessful();
+        $this->assertTrue(Storage::disk('kb-hr')->directoryExists('docs/legacy.md.ocr'));
     }
 
     /**

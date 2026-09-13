@@ -178,10 +178,13 @@ final class PdfTextLayerProbe
         if (preg_match('/(?<![A-Za-z])BI(?![A-Za-z]).*?(?<![A-Za-z])EI(?![A-Za-z])/s', $content) === 1) {
             return true;
         }
-        // String literals `(…)` and hex strings `<…>` are operands, never
+        // String literals `(…)` — escapes and one level of balanced
+        // parentheses honoured — and hex strings `<…>` are operands, never
         // operators: removed first so a letter inside them (a truncated text
-        // object, a name) is never read as a painting operator.
-        $operators = preg_replace('/\((?:\\\\.|[^\\\\)])*\)|<[0-9A-Fa-f\s]*>/s', ' ', $content) ?? $content;
+        // object, a name) is never read as a painting operator. A deeper
+        // nesting leaves a tail of text-object content, none of which is a
+        // painting operator after the lookarounds below.
+        $operators = preg_replace('/\((?:\\\\.|[^\\\\()]|\([^()]*\))*\)|<[0-9A-Fa-f\s]*>/s', ' ', $content) ?? $content;
         $outsideText = preg_replace('/(?<![A-Za-z])BT(?![A-Za-z]).*?(?<![A-Za-z])ET(?![A-Za-z])/s', ' ', $operators) ?? $operators;
 
         return preg_match('/(?<![A-Za-z\/])(?:f\*?|F|B\*?|b\*?|S|s|sh|Do)(?![A-Za-z*])/', $outsideText) === 1;

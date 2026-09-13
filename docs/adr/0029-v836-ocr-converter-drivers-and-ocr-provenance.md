@@ -455,12 +455,13 @@ known only when a row's **recorded** disk and prefix resolve to it on the
 swept disk, so a row carrying the same logical path on another disk or
 under another prefix never protects a file — or the tree beside it — here.
 A row that recorded no namespace (ingested before it was persisted)
-protects the file on its path wherever the sweep looks — deletion fails
-closed — and resolves, where a resolution is needed, to its project's disk
-(`KbDiskResolver`), never the bare default. The decision is taken over the
-whole table (`withoutGlobalScopes()`, as the dangling-tree check does):
-the admin command runner executes the sweep under the caller's project
-scope, and a hidden row must never turn its file into an orphan.
+protects the file on its path wherever a deleting consumer looks — the
+orphan sweep, the dangling-tree sweep and the connector bridge all ask the
+same gate, and every one of them only ever deletes, so a legacy row fails
+closed rather than guessing a disk. The decision is taken over the whole
+table (`withoutGlobalScopes()`, as the dangling-tree check does): the admin
+command runner executes the sweep under the caller's project scope, and a
+hidden row must never turn its file into an orphan.
 
 The write is a **documented exception** to the `ConverterInterface`
 "stateless and side-effect-free" contract, recorded in the interface's own

@@ -21,8 +21,13 @@ use Illuminate\Support\Facades\Storage;
  * single `whereIn('source_path', ...)` query per chunk; no whole-table
  * `->get()` is ever issued even on corpora with millions of rows.
  *
- * Soft-delete aware (R2): uses `withTrashed()` so a document still
- * inside its retention window never has its file flagged as orphan.
+ * Soft-delete aware (R2) and scope-blind: the orphan decision is taken
+ * over the whole table (`withoutGlobalScopes()` — trashed rows, every
+ * tenant, whatever project scope the caller may read), so a document still
+ * inside its retention window, or one the admin command runner's caller
+ * cannot read, never has its file flagged as orphan. The same documented
+ * R30 exception as the dangling-tree sweep and the deleter's reference
+ * gate: a source object on a shared disk is not tenant namespaced.
  */
 class PruneOrphanFilesCommand extends Command
 {
@@ -305,8 +310,10 @@ class PruneOrphanFilesCommand extends Command
             // Every row, whatever the caller may read (the admin command
             // runner executes this under a user whose AccessScopeScope would
             // hide other projects' rows — and their files would then be
-            // "orphans"), trashed included: a deletion decision is taken
-            // over the whole table, as the dangling-tree sweep takes it.
+            // "orphans"), trashed included, every tenant (the documented R30
+            // exception: the object is not tenant namespaced): a deletion
+            // decision is taken over the whole table, as the dangling-tree
+            // sweep takes it.
             $known = [];
             $rows = KnowledgeDocument::query()
                 ->withoutGlobalScopes()
