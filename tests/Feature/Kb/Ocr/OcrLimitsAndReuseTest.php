@@ -170,6 +170,36 @@ final class OcrLimitsAndReuseTest extends TestCase
         $this->assertSame(1, $one->extractionMeta['page_count']);
     }
 
+    /**
+     * ADR 0029 §6 — a purge removes a run only under the run's own
+     * reservation: while a worker holds it (its figures verified, its
+     * `result.json` about to be re-stamped) the run is kept, whatever its
+     * age, so an ingest can never commit references to figures a purge took.
+     */
+    #[Test]
+    public function a_purge_never_removes_a_run_whose_reservation_another_worker_holds(): void
+    {
+        config(['kb.ocr.fake.pages' => [['markdown' => 'Alpha', 'figures' => 1]]]);
+        $first = $this->app->make(OcrConverter::class)->convert($this->image());
+        $run = $first->extractionMeta['ocr']['run'];
+        $figure = "docs/scan.png.ocr/{$run}/images/fig-1-1.png";
+        Storage::disk('kb')->assertExists($figure);
+        $this->travel(OcrFigureStore::inFlightGraceSeconds() + 60)->seconds();
+
+        $runDir = $this->app->make(OcrFigureStore::class)->runDirFor('docs/scan.png', '', $run);
+        $other = \Illuminate\Support\Facades\Cache::lock(OcrService::runLockKey('kb', $runDir), 30);
+        $this->assertTrue($other->get(), 'simulate a worker reusing the run under its reservation');
+        try {
+            $this->assertFalse($this->app->make(OcrFigureStore::class)->purge('kb', 'docs/scan.png'), 'kept: reserved');
+            Storage::disk('kb')->assertExists($figure);
+        } finally {
+            $other->release();
+        }
+
+        $this->assertTrue($this->app->make(OcrFigureStore::class)->purge('kb', 'docs/scan.png'), 'released: removed');
+        Storage::disk('kb')->assertMissing($figure);
+    }
+
     #[Test]
     public function a_recorded_run_whose_figure_went_missing_is_redone(): void
     {
@@ -516,8 +546,10 @@ final class OcrLimitsAndReuseTest extends TestCase
         $tesseract = $registry->resolve('tesseract');
         $docling = $registry->resolve('docling');
 
-        // 200 pages × (text + tsv) × 300 s + rasterisation: the fixed floor would expire mid-run.
-        $this->assertSame(300 * (1 + 2 * 200), $tesseract->maxDurationSeconds(200));
+        // 200 pages × (text + tsv) × 300 s + the two PDF setup processes
+        // (pdfinfo + pdftoppm): the fixed floor would expire mid-run.
+        $this->assertSame(300 * (2 + 2 * 200), $tesseract->maxDurationSeconds(200));
+        $this->assertSame(300 * (2 + 200), app(\App\Services\Kb\Ocr\Drivers\VisionLlmOcrDriver::class)->maxDurationSeconds(200));
         $this->assertGreaterThan(OcrService::RUN_LOCK_TTL, OcrService::leaseFor($tesseract, 200));
         $this->assertSame($tesseract->maxDurationSeconds(200) + OcrService::RUN_LOCK_MARGIN, OcrService::leaseFor($tesseract, 200));
         // A per-document driver's lease is its timeout, floored at the minimum.

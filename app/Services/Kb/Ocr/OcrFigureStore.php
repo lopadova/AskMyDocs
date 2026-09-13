@@ -6,6 +6,7 @@ namespace App\Services\Kb\Ocr;
 
 use App\Support\KbPath;
 use Illuminate\Contracts\Filesystem\Filesystem;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
@@ -34,6 +35,9 @@ use RuntimeException;
 final class OcrFigureStore
 {
     public const DIR_SUFFIX = '.ocr';
+
+    /** Lease of the per-run reservation a purge takes: a directory removal, never a run. */
+    public const PURGE_LOCK_SECONDS = 60;
 
     /**
      * Seconds a recorded run is treated as IN FLIGHT and never purged (ADR
@@ -240,12 +244,29 @@ final class OcrFigureStore
         $threshold = now()->getTimestamp() - self::inFlightGraceSeconds();
         $kept = [];
         foreach ($storage->directories($dir) as $runDir) {
-            if ($this->isInFlight($storage, $runDir, $threshold)) {
+            // A run is removed only under ITS reservation — the same lock
+            // `OcrService::convert()` holds from the recorded-run check
+            // through `refreshReservation()`. A run a worker is reusing at
+            // this very moment (its figures verified, its `result.json` about
+            // to be re-stamped) is therefore never deleted between the two,
+            // and the ingest can never commit `mediaItems` pointing at
+            // figures a purge took; a reservation that cannot be taken is a
+            // run in flight, kept like an aged one inside the grace.
+            $reservation = Cache::lock(OcrService::runLockKey($disk, KbPath::normalize($runDir)), self::PURGE_LOCK_SECONDS);
+            if (! $reservation->get()) {
                 $kept[] = $runDir;
                 continue;
             }
-            if (! $storage->deleteDirectory($runDir)) {
-                throw new RuntimeException("OcrFigureStore: failed to remove OCR run {$runDir} on disk [{$disk}].");
+            try {
+                if ($this->isInFlight($storage, $runDir, $threshold)) {
+                    $kept[] = $runDir;
+                    continue;
+                }
+                if (! $storage->deleteDirectory($runDir)) {
+                    throw new RuntimeException("OcrFigureStore: failed to remove OCR run {$runDir} on disk [{$disk}].");
+                }
+            } finally {
+                $reservation->release();
             }
         }
 

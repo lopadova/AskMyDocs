@@ -115,7 +115,10 @@ final class OcrService
      * Returns false only when the lock is now held by ANOTHER owner — a
      * newer re-run was queued after this one's lock lapsed — so the caller
      * must fail instead of producing a second paid run. A lock store that is
-     * down never blocks the ingest (the TTL backstops, as everywhere else).
+     * DOWN is uncertainty, not ownership: this throws a retryable exception
+     * (the job's tries/backoff), so a paid run never proceeds on a lock the
+     * attempt cannot prove is still its own — unlike the release paths, where
+     * the TTL backstops a store that is down.
      *
      * @param  array<string, mixed>  $metadata
      */

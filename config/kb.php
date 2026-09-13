@@ -401,7 +401,7 @@ return [
     ],
 
     'ocr' => [
-        'enabled' => (bool) env('KB_OCR_ENABLED', false),
+        'enabled' => filter_var(env('KB_OCR_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
         // `?: 'tesseract'` — a present-but-blank KB_OCR_DRIVER= is invalid, not
         // "use the default" (same normalisation as the autowiki knobs above).
         'driver' => env('KB_OCR_DRIVER') ?: 'tesseract',
@@ -472,7 +472,7 @@ return [
         'purge_grace_seconds' => (int) env('KB_OCR_PURGE_GRACE_SECONDS', 1800),
 
         'reuse' => [
-            'enabled' => (bool) env('KB_OCR_REUSE_ENABLED', true),
+            'enabled' => filter_var(env('KB_OCR_REUSE_ENABLED', true), FILTER_VALIDATE_BOOLEAN),
         ],
 
         // PDF text-layer probe, decided PER PAGE: a page with fewer than
@@ -501,7 +501,7 @@ return [
         // `{run}` content-addressed (OcrFigureStore::runKeyFor). The markdown
         // references them as `![Figure p.n](images/fig-p-n.png)`.
         'figures' => [
-            'enabled' => (bool) env('KB_OCR_FIGURES_ENABLED', true),
+            'enabled' => filter_var(env('KB_OCR_FIGURES_ENABLED', true), FILTER_VALIDATE_BOOLEAN),
         ],
 
         'docling' => [

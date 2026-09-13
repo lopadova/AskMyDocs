@@ -116,12 +116,17 @@ TXT;
         return [$providerName, $model];
     }
 
-    /** One rasterisation plus one provider call per page, each budgeted at the driver timeout. */
+    /**
+     * Two bounded setup processes for a PDF (`pdfinfo` for the page bound,
+     * `pdftoppm` for the render) plus one provider call per page, each
+     * budgeted at the driver timeout — the lease sized from this must outlive
+     * the whole run, or a second worker could make a duplicate remote call.
+     */
     public function maxDurationSeconds(int $pages): int
     {
         $timeout = max(1, (int) config('kb.ocr.vision_llm.timeout', 300));
 
-        return $timeout * (1 + max(1, $pages));
+        return $timeout * (2 + max(1, $pages));
     }
 
     /** Page images are rendered up to KB_OCR_MAX_PAGES and each page is one bounded provider call. */

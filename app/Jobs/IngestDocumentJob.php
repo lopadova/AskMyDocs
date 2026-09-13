@@ -203,12 +203,6 @@ class IngestDocumentJob implements ShouldQueue
                 throw new \RuntimeException($message);
             }
 
-            // v8.36 — the run succeeded: a forced OCR re-run (kb:ocr / POST
-            // …/ocr) may carry the per-document lock that makes a second
-            // re-run a 409; release it on this terminal outcome only (a retry
-            // in flight must keep it — see failed() for the other outcome).
-            OcrService::releaseRerunLock($this->metadata);
-
             $persistResult = $run->stepResults['persist-chunks'] ?? null;
             $documentId = $persistResult instanceof \Padosoft\LaravelFlow\FlowStepResult
                 ? ($persistResult->output['knowledge_document_id'] ?? null)
@@ -262,6 +256,16 @@ class IngestDocumentJob implements ShouldQueue
             ) {
                 \App\Jobs\AutoWikiCompilerJob::dispatch((int) $documentId, $this->tenantId);
             }
+
+            // v8.36 — the run succeeded AND every success-path step that can
+            // throw (the two dispatches above) is behind us: a forced OCR
+            // re-run (kb:ocr / POST …/ocr) may carry the per-document lock
+            // that makes a second re-run a 409; it is released on this
+            // terminal outcome only. Released any earlier, a dispatch that
+            // throws would retry this job with the lock already gone and let
+            // another paid re-run be queued alongside (a retry in flight must
+            // keep it — see failed() for the other outcome).
+            OcrService::releaseRerunLock($this->metadata);
         } finally {
             // Restore even on exception/throw so a failing job never leaves
             // the singleton stuck on this job's tenant for the next one.

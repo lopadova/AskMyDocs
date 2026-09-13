@@ -106,12 +106,17 @@ final class TesseractOcrDriver implements OcrDriver
         return new OcrResult(driver: $this->name(), pages: $pages, meta: ['lang' => $lang]);
     }
 
-    /** One rasterisation plus two bounded processes (text + TSV) per page, each under the same timeout. */
+    /**
+     * Two bounded setup processes for a PDF (`pdfinfo` for the page bound,
+     * `pdftoppm` for the render) plus two bounded processes (text + TSV) per
+     * page, each under the same timeout — the lease sized from this must
+     * outlive the whole run, or a second worker could re-bill it.
+     */
     public function maxDurationSeconds(int $pages): int
     {
         $timeout = max(1, (int) config('kb.ocr.tesseract.timeout', 300));
 
-        return $timeout * (1 + 2 * max(1, $pages));
+        return $timeout * (2 + 2 * max(1, $pages));
     }
 
     private function recognisePage(string $binary, string $lang, int $timeout, int $number, string $imagePath): OcrPage
