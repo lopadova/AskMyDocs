@@ -146,8 +146,10 @@ boot that every FQCN implements `OcrDriver`. Two rules are enforced in
   is **refused in production**.
 - A driver whose `isRemote()` is true (`mistral-ocr`, `vision-llm`) is refused
   unless `config('kb.ocr.allow_remote') === true`. The env value is cast with
-  `FILTER_VALIDATE_BOOLEAN` and compared strictly, so `KB_OCR_ALLOW_REMOTE=1`,
-  `yes` or a typo all keep the door **closed**.
+  `FILTER_VALIDATE_BOOLEAN` and then compared strictly: the boolean-true
+  spellings that filter accepts — `true`, `1`, `yes`, `on` (case-insensitive)
+  — open the gate; everything else (`false`, `0`, `no`, `off`, an empty
+  value, a typo) keeps the door **closed**.
 
 The status surfaces report `remote: true|false` on every OCR'd document, so an
 auditor can answer "did this scan leave our infrastructure?" per document.
@@ -363,7 +365,11 @@ staged bytes and runs the probe; it never runs a driver, so it is free. It
 With the flag off the estimate still probes each staged PDF: one with a text
 layer answers `text_layer_present` (it is ingested as text either way), only
 an image or a scan is `ocr_disabled` — the OFF answer is honest, never
-"every PDF would need OCR" (R43). It
+"every PDF would need OCR" (R43). The flag is read again at **commit**, not
+only at staging: an image staged while OCR was on and committed after a
+deployment turned it off is refused before the move (item failed with
+`ocr_disabled`), never moved and dispatched only for the converter to refuse
+it. It
 also says when the run would be refused (`driver_available: false` — a remote
 driver with the knob off, a missing binary — or a file over the page/byte
 caps, or a staged object whose bytes are no raster — or no PDF — any more,
@@ -417,13 +423,13 @@ No schema change. Everything lands in JSON columns that already exist:
 |---|---|---|
 | `KB_OCR_ENABLED` | `false` | The switch. Gates every entry point and the PDF fallback. |
 | `KB_OCR_DRIVER` | `tesseract` | `tesseract` · `docling` · `mistral-ocr` · `vision-llm` · `fake` (non-production only) |
-| `KB_OCR_ALLOW_REMOTE` | `false` | Final-egress policy for `mistral-ocr` / `vision-llm`. Strict `true` only. |
+| `KB_OCR_ALLOW_REMOTE` | `false` | Final-egress policy for `mistral-ocr` / `vision-llm`. Parsed with `FILTER_VALIDATE_BOOLEAN`: `true`, `1`, `yes` or `on` (case-insensitive) open the gate; any other value — including a typo — is closed. |
 | `KB_OCR_PROBE_PAGES` / `KB_OCR_PROBE_MIN_CHARS` | `0` / `20` | Text-layer probe: `0` probes every page up to `KB_OCR_MAX_PAGES` (per-page verdict, `mixed` routes to OCR); a positive value bounds the window. A page under the threshold that carries an image is a scanned page. |
 | `KB_PDFTOTEXT_BIN` | `pdftotext` | Poppler binary the PDF converter falls back to before OCR when smalot cannot parse a file. |
 | `KB_PDFTOTEXT_TIMEOUT` | `60` | Seconds one `pdftotext` run may take. The fallback runs before OCR (and in the upload estimate), outside any OCR run budget, so a malformed PDF could otherwise hold a worker or the estimate indefinitely; a run past it is refused as `run_too_long` — deterministic, never retried, never handed to OCR. |
 | `KB_OCR_RATE_PER_PAGE` | `0.004` | Per-page rate for locally-priced drivers and the estimate. |
 | `KB_OCR_FIGURES_ENABLED` | `true` | Write figures to `{source}.ocr/{run}/images/`. |
-| `KB_OCR_JOB_TIMEOUT` | `3600` | Wall-clock budget of one OCR run, enforced by every driver (`OcrRunBudget`: a page-by-page engine bounds each process — `pdfinfo`, `pdftoppm`, every page, every provider call — by what is left when it starts and stops with `run_too_long` once it is spent; a whole-file engine's timeout is capped by it). Any process or provider call that hits its timeout is the same terminal `run_too_long` (the same page would time out again), never a generic error the job retries. The run lease, the ingest job timeout (`OcrService::jobTimeoutFor()`) and the re-run lock are all derived from it, so the queue's `retry_after` (`REDIS_QUEUE_RETRY_AFTER` / `DB_QUEUE_RETRY_AFTER`) only has to exceed this budget plus its margins (~520 s) — a shorter value is logged at every dispatch it endangers, because Laravel would re-reserve a still-running job on another worker. |
+| `KB_OCR_JOB_TIMEOUT` | `3600` | Wall-clock budget of one OCR run, enforced by every driver (`OcrRunBudget`: a page-by-page engine bounds each process — `pdfinfo`, `pdftoppm`, every page, every provider call — by what is left when it starts and stops with `run_too_long` once it is spent; a whole-file engine's timeout is capped by it, and a spent budget grants no "one more second": `bound()` itself refuses, so a whole-file or remote call sized from it can never start after the budget expired). Any process or provider call that hits its timeout is the same terminal `run_too_long` (the same page would time out again), never a generic error the job retries. The run lease, the ingest job timeout (`OcrService::jobTimeoutFor()`) and the re-run lock are all derived from it, so the queue's `retry_after` (`REDIS_QUEUE_RETRY_AFTER` / `DB_QUEUE_RETRY_AFTER`) only has to exceed this budget plus its margins (~520 s) — a shorter value is logged at every dispatch it endangers, because Laravel would re-reserve a still-running job on another worker. |
 | `KB_OCR_MAX_PAGES` / `KB_OCR_MAX_BYTES` | `200` / `26214400` | Refuse before any driver runs; reasons `too_many_pages` / `too_many_bytes`. Pages are counted format-independently (PDF parser, TIFF frames, 1 for other images); an unparseable PDF has only a floor and is refused for a remote driver with `pages_uncountable`. The same gate verifies the bytes against the declared type (a `%PDF-` header, or a PNG / JPEG / TIFF / WebP signature) for **every** ingress — upload, JSON ingest, folder walk, connector — and refuses anything else with `unrecognised_bytes`, so no driver, remote or local, is ever handed a mislabelled file. A multi-frame TIFF is refused with `multi_frame_image` by every driver that transcribes one frame per image (`tesseract`, `vision-llm`, `mistral-ocr`; `docling` accepts it). `KB_OCR_MAX_BYTES` bounds the **source file**; what a page renders to is bounded separately (next row). |
 | `KB_OCR_RASTER_MAX_PAGE_PX` / `KB_OCR_RASTER_MAX_PAGE_BYTES` | `6000` / `10485760` | Bounds a page must fit — a rendered page for the page-by-page drivers (`tesseract`, `vision-llm`), a source image decoded or posted as is for `docling` / `mistral-ocr` (and the same refusal in the upload estimate); both are part of the run identity, so lowering either never reuses a run recorded under a wider bound. For the rasterising drivers: the render DPI is lowered from the page geometry `pdfinfo` reports so that no page's long side exceeds `PX` pixels (a small file can declare a 200-inch page; one that cannot fit at 50 DPI is refused before rendering), the produced PNG is re-measured, and a rendered page over either bound is refused with `rendered_page_too_large` **before** it is decoded locally or posted to the vision provider. `KB_OCR_PDFINFO_BIN` names the `pdfinfo` binary (poppler-utils, beside `pdftoppm`). |
 | `KB_OCR_MAX_FIGURE_BYTES` | `10485760` | Largest figure a driver may hand back. |
@@ -508,8 +514,10 @@ modal, once as an IMAP attachment — on a deployment with `KB_OCR_ENABLED=true`
 - **Enabling the flag does not re-process history.** Documents that ingested
   empty before v8.36 keep their empty text until re-ingested; `kb:ocr {id}`
   queues that per document.
-- **`KB_OCR_ALLOW_REMOTE=1` is not `true`.** The gate is deliberately strict;
-  the registry error names the exact value it expects.
+- **Only a boolean-true spelling opens the egress gate.** `KB_OCR_ALLOW_REMOTE`
+  accepts `true`, `1`, `yes` or `on` (case-insensitive, `FILTER_VALIDATE_BOOLEAN`);
+  a typo or any other value keeps remote OCR closed, and the registry error
+  says how to open it.
 - **The estimate is a probe, not a promise.** It counts pages the driver will
   see; a driver may still skip an empty page, which is why the ledger row is
   written from the actual result.
@@ -517,7 +525,10 @@ modal, once as an IMAP attachment — on a deployment with `KB_OCR_ENABLED=true`
   ingest flow reaches the converter, but the OCR core sees the dry-run mark and
   returns a page-shaped preview instead of calling the driver: no remote
   egress, no `.ocr/` write, no ledger row. A run already recorded for those
-  bytes is shown read-only.
+  bytes is shown read-only. The preview shows what the run would do: for a
+  PDF the parser could not count, a bounded local driver renders up to
+  `KB_OCR_MAX_PAGES`, so the preview carries the cap's worth of `## Page`
+  sections and that `page_count`, never the parser's floor.
 - **Figures are not redacted.** They inherit the source's ACL and stay on the
   KB disk; the wiki export (W4) omits them under the tenant PII policy by
   default.

@@ -24,8 +24,19 @@ final class OcrRunBudgetTest extends TestCase
         $this->assertSame(100, $budget->remaining(1000.0));
         $this->assertSame(60, $budget->bound(300, 1040.0), 'a per-page timeout never outlives the budget');
         $this->assertSame(30, $budget->bound(30, 1040.0), 'a shorter per-page timeout is kept');
-        $this->assertSame(1, $budget->bound(300, 1100.0), 'at least one second so a process can start');
+        $this->assertSame(1, $budget->bound(300, 1099.5), 'at least one second so a process can start while any budget is left');
         $budget->assertRemaining('scan.pdf', 1099.5);
+
+        // A spent budget grants no "one more second": a whole-file or remote
+        // caller that sizes its single call from bound() — without a
+        // preceding assertRemaining() — is refused here, terminally.
+        try {
+            $budget->bound(300, 1100.0, 'scan.pdf');
+            $this->fail('a spent budget must refuse the next process');
+        } catch (OcrLimitExceededException $e) {
+            $this->assertSame('run_too_long', $e->reason);
+            $this->assertStringContainsString('"scan.pdf"', $e->getMessage());
+        }
 
         try {
             $budget->assertRemaining('scan.pdf', 1100.0);

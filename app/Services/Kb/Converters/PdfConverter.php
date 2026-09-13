@@ -140,7 +140,10 @@ final class PdfConverter implements ConverterInterface
      * file — a parser failure is NOT "no text", and must never be billed as
      * a scan); a non-null `reason` = OCR. `probe` always carries the verdict.
      *
-     * @return array{reason: ?string, probe: string, pages?: list<string>}|null
+     * `pages` carries the pdftotext pages the text path reuses; for a
+     * `mixed` verdict `scanned_pages` names the scanned page numbers.
+     *
+     * @return array{reason: ?string, probe: string, pages?: list<string>, scanned_pages?: list<int>}|null
      */
     private function ocrRoute(SourceDocument $doc): ?array
     {

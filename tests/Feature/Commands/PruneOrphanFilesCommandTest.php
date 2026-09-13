@@ -183,6 +183,23 @@ class PruneOrphanFilesCommandTest extends TestCase
     }
 
     /**
+     * The tree-key parser always terminates: a `.ocr/` segment whose suffix is
+     * not the store's layout (an ordinary directory that happens to end in
+     * `.ocr`, nested ones, a tree inside such a directory) is skipped by
+     * searching strictly before it, and the answer is the innermost real tree
+     * or null.
+     */
+    public function test_the_ocr_tree_key_parser_terminates_on_every_shape_of_path(): void
+    {
+        $run = str_repeat('abcdef0123456789', 4);
+        $this->assertNull(\App\Console\Commands\PruneOrphanFilesCommand::ocrTreeSourceKey('docs/archive.ocr/manual.md'));
+        $this->assertNull(\App\Console\Commands\PruneOrphanFilesCommand::ocrTreeSourceKey('a.ocr/b.ocr/c.ocr/x.md'));
+        $this->assertNull(\App\Console\Commands\PruneOrphanFilesCommand::ocrTreeSourceKey('docs/archive.ocr/'.$run.'/notes.txt'));
+        $this->assertSame('docs/archive.ocr/scan.png', \App\Console\Commands\PruneOrphanFilesCommand::ocrTreeSourceKey('docs/archive.ocr/scan.png.ocr/'.$run.'/result.json'));
+        $this->assertSame('docs/scan.png', \App\Console\Commands\PruneOrphanFilesCommand::ocrTreeSourceKey('docs/scan.png.ocr/'.$run.'/images/fig-1-1.png'));
+    }
+
+    /**
      * The orphan test is the same physical test the dangling-tree sweep
      * applies: a row carrying the same logical path on ANOTHER disk or under
      * ANOTHER prefix references another object, so the file in THIS

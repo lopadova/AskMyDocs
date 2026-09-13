@@ -41,10 +41,24 @@ final class OcrRunBudget
         return max(0, (int) ceil($this->seconds - $elapsed));
     }
 
-    /** A per-process timeout that never outlives the budget (at least 1 s so a process can start). */
-    public function bound(int $timeout, ?float $now = null): int
+    /**
+     * A per-process timeout that never outlives the budget. Once the budget
+     * is spent there is no "one more second": the terminal `run_too_long`
+     * refusal is raised here, so a whole-file or remote caller that sizes
+     * its single call from `bound()` — without a preceding
+     * `assertRemaining()` — can never start work or send bytes after
+     * KB_OCR_JOB_TIMEOUT has expired.
+     *
+     * @throws OcrLimitExceededException  once the budget is spent (`run_too_long`)
+     */
+    public function bound(int $timeout, ?float $now = null, string $filename = 'the document'): int
     {
-        return max(1, min($timeout, $this->remaining($now)));
+        $remaining = $this->remaining($now);
+        if ($remaining <= 0) {
+            throw $this->spent($filename);
+        }
+
+        return max(1, min($timeout, $remaining));
     }
 
     /**
@@ -70,7 +84,12 @@ final class OcrRunBudget
         if ($this->remaining($now) > 0) {
             return;
         }
-        throw new OcrLimitExceededException(sprintf(
+        throw $this->spent($filename);
+    }
+
+    private function spent(string $filename): OcrLimitExceededException
+    {
+        return new OcrLimitExceededException(sprintf(
             'OCR refused for "%s": the run exceeded KB_OCR_JOB_TIMEOUT (%d s) — the pages OCR\'d so far are discarded, nothing is recorded or metered.',
             $filename,
             $this->seconds,

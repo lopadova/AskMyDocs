@@ -558,7 +558,7 @@ final class OcrService
             if ($reused === null) {
                 $assertRunnable();
 
-                return $this->dryRunPreview($doc, $converterName, $reason, $driver, $runKey, $start);
+                return $this->dryRunPreview($doc, $pages, $converterName, $reason, $driver, $runKey, $start);
             }
             $result = $reused['result'];
             $written = $reused['written'];
@@ -1124,12 +1124,16 @@ final class OcrService
      * What a dry run returns instead of an OCR result: one `## Page n` section
      * per page the driver WOULD see (the PdfPageChunker shape, so the chunk
      * preview is realistic) and the same `ocr` meta block with `dry_run: true`
-     * and no text, figures or spend.
+     * and no text, figures or spend. `$pages` is the count
+     * `assertWithinLimits()` admitted — the parser's exact count, or
+     * KB_OCR_MAX_PAGES for an unparseable PDF a bounded local driver renders
+     * up to the cap — so the preview shows what the run would do, never the
+     * parser's floor.
      */
-    private function dryRunPreview(SourceDocument $doc, string $converterName, string $reason, OcrDriver $driver, string $runKey, int $start): ConvertedDocument
+    private function dryRunPreview(SourceDocument $doc, int $pages, string $converterName, string $reason, OcrDriver $driver, string $runKey, int $start): ConvertedDocument
     {
         $filename = basename($doc->sourcePath);
-        $pages = max(1, $this->pageCountFor($doc));
+        $pages = max(1, $pages);
         $note = sprintf(
             '_OCR dry run — this page would be sent to the `%s` driver%s; no text was extracted, no figures written, nothing billed._',
             $driver->name(),

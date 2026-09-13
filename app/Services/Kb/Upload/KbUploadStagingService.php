@@ -228,6 +228,20 @@ final class KbUploadStagingService
 
     private function commitOne(KbIngestBatch $batch, KbIngestBatchItem $item, Filesystem $staging, Filesystem $kb): void
     {
+        // v8.36 / ADR 0029 (R43) — the flag is re-read at commit, not only
+        // at staging: a batch staged while OCR was on can be committed after
+        // a deployment turned it off, and an image would then be moved and
+        // dispatched only for `OcrService::convert()` to refuse it. Refused
+        // here instead, before the move, with the same machine-readable
+        // reason the estimate gives (`ocr_disabled`).
+        if ((string) $item->source_type === SourceType::IMAGE->value && ! (bool) config('kb.ocr.enabled', false)) {
+            $this->transitionItem($item, KbIngestBatchItem::STATUS_FAILED, [
+                'error' => 'ocr_disabled: OCR is disabled (KB_OCR_ENABLED=false), so an image cannot be ingested; the staged file was not moved.',
+            ]);
+
+            return;
+        }
+
         $this->transitionItem($item, KbIngestBatchItem::STATUS_MOVING);
 
         // 1) Move staging → kb. A failure here is a genuine MOVE failure and

@@ -83,6 +83,32 @@ final class KbUploadOcrTest extends TestCase
         $this->assertStringEndsWith('.png', $item->staging_path);
     }
 
+    /**
+     * R43 — the flag is re-read at commit: an image staged while OCR was on
+     * and committed after it was turned off is refused BEFORE the move with
+     * the machine-readable `ocr_disabled` reason, never moved and dispatched
+     * only for the converter to refuse it.
+     */
+    public function test_an_image_staged_with_ocr_on_is_refused_at_commit_once_ocr_is_off(): void
+    {
+        config(['kb.ocr.enabled' => true]);
+        \Illuminate\Support\Facades\Queue::fake();
+        $admin = $this->makeAdmin();
+        $resp = $this->actingAs($admin)->post('/api/admin/kb/uploads', ['project_key' => 'legal', 'files' => [$this->png('scan.png')]])->assertStatus(201);
+        $batchId = $resp->json('batch.id');
+        $item = KbIngestBatchItem::query()->where('batch_id', $batchId)->firstOrFail();
+
+        config(['kb.ocr.enabled' => false]);
+        $this->actingAs($admin)->postJson("/api/admin/kb/uploads/{$batchId}/commit")->assertStatus(202);
+
+        $item->refresh();
+        $this->assertSame(KbIngestBatchItem::STATUS_FAILED, $item->status);
+        $this->assertStringStartsWith('ocr_disabled', (string) $item->error);
+        Storage::disk('kb-staging')->assertExists((string) $item->staging_path);
+        Storage::disk('kb')->assertMissing((string) $item->destination_path);
+        \Illuminate\Support\Facades\Queue::assertNothingPushed();
+    }
+
     public function test_on_a_file_named_png_that_is_not_an_image_is_rejected_by_the_sniffer(): void
     {
         config(['kb.ocr.enabled' => true]);

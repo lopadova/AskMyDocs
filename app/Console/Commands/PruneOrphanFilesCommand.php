@@ -171,7 +171,10 @@ class PruneOrphanFilesCommand extends Command
             if ($key !== '' && preg_match('#^[a-f0-9]{64}/(result\.json|images/[^/]+)$#', $rest) === 1) {
                 return $key;
             }
-            $at = $at === 0 ? false : strrpos($normalized, $needle, $at - strlen($normalized) - 1);
+            // Look for an earlier `.ocr/` segment strictly BEFORE this one:
+            // searching the prefix guarantees the loop advances (or ends)
+            // on every path, whatever the suffix after the segment looks like.
+            $at = $at === 0 ? false : strrpos(substr($normalized, 0, $at), $needle);
         }
 
         return null;

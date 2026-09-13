@@ -216,14 +216,6 @@ enum SourceType: string
     }
 
     /**
-     * The on-disk extension for an exact raster MIME (ADR 0029 §2). The MIME
-     * comes from the BYTES (`FileTypeSniffer::imageMimeOf()`), never from the
-     * client filename: a JPEG uploaded as `scan.png` is staged as `.jpg`,
-     * dispatched as `image/jpeg` and recorded as what it is. `toMime()` stays
-     * the FAMILY label (`image/png`) because a source type is one value per
-     * family; unknown MIMEs fall back to `png`.
-     */
-    /**
      * The canonical form of a declared MIME: lower-case, no parameters
      * (`Application/PDF; charset=binary` → `application/pdf`). Every ingress
      * normalises ONCE, before the source type is resolved AND before the
@@ -236,6 +228,14 @@ enum SourceType: string
         return strtolower(trim(explode(';', $mimeType, 2)[0]));
     }
 
+    /**
+     * The on-disk extension for an exact raster MIME (ADR 0029 §2). The MIME
+     * comes from the BYTES (`FileTypeSniffer::imageMimeOf()`), never from the
+     * client filename: a JPEG uploaded as `scan.png` is staged as `.jpg`,
+     * dispatched as `image/jpeg` and recorded as what it is. `toMime()` stays
+     * the FAMILY label (`image/png`) because a source type is one value per
+     * family; unknown MIMEs fall back to `png`.
+     */
     public static function imageExtensionFromMime(string $mime): string
     {
         return match (strtolower(trim(explode(';', $mime, 2)[0]))) {

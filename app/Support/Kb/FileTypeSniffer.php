@@ -26,12 +26,6 @@ namespace App\Support\Kb;
 final class FileTypeSniffer
 {
     /**
-     * Known binary magic-number signatures, keyed by a human label. Used to
-     * reject a binary payload masquerading as declared-text.
-     *
-     * @var array<string, string>
-     */
-    /**
      * ZIP local-file-header, empty-archive and spanned-archive signatures. DOCX
      * is an OOXML zip; a real one always has entries (PK\x03\x04) but we accept
      * the whole family so a valid edge-case archive is never falsely rejected.
@@ -40,6 +34,13 @@ final class FileTypeSniffer
      */
     private const ZIP_SIGNATURES = ["PK\x03\x04", "PK\x05\x06", "PK\x07\x08"];
 
+    /**
+     * Known binary magic-number signatures, keyed by a human label. Used to
+     * reject a binary payload masquerading as declared-text, and to name the
+     * exact raster MIME of an image ({@see imageMimeOf()}).
+     *
+     * @var array<string, string>
+     */
     private const BINARY_SIGNATURES = [
         'pdf' => "%PDF-",
         'png' => "\x89PNG\r\n\x1a\n",
@@ -92,12 +93,6 @@ final class FileTypeSniffer
     }
 
     /**
-     * The exact raster MIME the leading bytes carry (png / jpeg / tiff / webp),
-     * or null when they are none of the accepted formats. Public so the JSON
-     * ingest entry point — which receives bytes, not a file — applies the
-     * same verification as the multipart upload (ADR 0029 §2).
-     */
-    /**
      * The exact raster MIME of a file on the local filesystem, from its
      * leading bytes (`null` when they are not PNG / JPEG / TIFF / WebP).
      */
@@ -133,6 +128,12 @@ final class FileTypeSniffer
         return $head === false ? null : self::imageMimeOf($head);
     }
 
+    /**
+     * The exact raster MIME the leading bytes carry (png / jpeg / tiff / webp),
+     * or null when they are none of the accepted formats. Public so the JSON
+     * ingest entry point — which receives bytes, not a file — applies the
+     * same verification as the multipart upload (ADR 0029 §2).
+     */
     public static function imageMimeOf(string $head): ?string
     {
         if (str_starts_with($head, self::BINARY_SIGNATURES['png'])) {

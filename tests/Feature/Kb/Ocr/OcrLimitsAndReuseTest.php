@@ -384,6 +384,34 @@ final class OcrLimitsAndReuseTest extends TestCase
      * row that would cite figures a purge may take before it commits.
      * `OcrService::convert()` calls it unguarded under the run lock.
      */
+    /**
+     * The dry run previews what the RUN would do: for a PDF the parser could
+     * not count, a bounded local driver renders up to KB_OCR_MAX_PAGES, so
+     * the preview shows the cap's worth of `## Page` sections and reports
+     * that `page_count` — never the parser's `/Type /Page` floor.
+     */
+    #[Test]
+    public function a_dry_run_of_an_unparseable_pdf_previews_the_page_cap_a_bounded_driver_renders_to(): void
+    {
+        config(['kb.ocr.max_pages' => 4]);
+        $pdf = new SourceDocument(
+            sourcePath: 'docs/broken.pdf',
+            mimeType: 'application/pdf',
+            bytes: "%PDF-1.4 not really a pdf\n/Type /Page\n",
+            externalUrl: null,
+            externalId: null,
+            connectorType: 'local',
+            metadata: ['dry_run' => true],
+        );
+
+        $preview = $this->app->make(PdfConverter::class)->convert($pdf);
+
+        $this->assertTrue((bool) $preview->extractionMeta['ocr']['dry_run']);
+        $this->assertSame(4, $preview->extractionMeta['page_count'], 'the cap the bounded run renders to, not the parser floor');
+        $this->assertSame(4, substr_count($preview->markdown, "\n## Page "), 'one section per page the run would see');
+        $this->assertSame([], array_filter(Storage::disk('kb')->allFiles(), static fn (string $f): bool => str_contains($f, '.ocr/')), 'a dry run writes nothing');
+    }
+
     #[Test]
     public function a_reservation_that_cannot_be_refreshed_fails_loudly(): void
     {
