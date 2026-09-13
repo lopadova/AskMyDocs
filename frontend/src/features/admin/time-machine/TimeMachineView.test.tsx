@@ -90,6 +90,27 @@ describe('TimeMachineView', () => {
         expect(screen.queryByTestId('kb-time-machine-version-11-artifact')).toBeNull();
     });
 
+    it('warns when a version\'s stored document is missing or does not match its hash (v8.36)', async () => {
+        mockGet.mockImplementation((url: string) => {
+            if (url.includes('/diff')) {
+                return Promise.resolve({ data: { data: { from: 11, to: 22, added: 0, removed: 0, rows: [] } } });
+            }
+            return Promise.resolve({ data: { data: [
+                { id: 33, title: 'Decision v3', version_hash: 'cccccccc33', status: 'active', is_canonical: false, canonical_type: null, is_live: true, indexed_at: '2026-06-03T00:00:00Z', created_at: null, version_actor: 'user:7', version_reason: null, content_hash: 'c0ffee', has_artifact: false, artifact_state: 'mismatch' },
+                { id: 22, title: 'Decision v2', version_hash: 'bbbbbbbb11', status: 'archived', is_canonical: false, canonical_type: null, is_live: false, indexed_at: '2026-06-02T00:00:00Z', created_at: null, version_actor: 'user:7', version_reason: null, content_hash: 'cafe', has_artifact: false, artifact_state: 'missing' },
+                { id: 11, title: 'Decision v1', version_hash: 'aaaaaaaa22', status: 'archived', is_canonical: false, canonical_type: null, is_live: false, indexed_at: '2026-06-01T00:00:00Z', created_at: null, version_actor: null, version_reason: null, content_hash: null, has_artifact: false, artifact_state: 'none' },
+            ], meta: { project_key: 'eng', source_path: 'docs/dec.md', total: 3 } } });
+        });
+        render(withQueryClient(<TimeMachineView docId={33} />));
+        await waitFor(() => expect(screen.getByTestId('kb-time-machine-version-33')).toBeVisible());
+
+        expect(screen.getByTestId('kb-time-machine-version-33-artifact-warning')).toHaveAttribute('data-artifact-state', 'mismatch');
+        expect(screen.getByTestId('kb-time-machine-version-33-artifact-warning')).toHaveTextContent('artifact mismatch');
+        expect(screen.getByTestId('kb-time-machine-version-22-artifact-warning')).toHaveAttribute('data-artifact-state', 'missing');
+        expect(screen.queryByTestId('kb-time-machine-version-33-artifact')).toBeNull(); // never "stored" over a bad file
+        expect(screen.queryByTestId('kb-time-machine-version-11-artifact-warning')).toBeNull(); // a row that never had one is not a warning
+    });
+
     it('labels a diff as faithful only when both sides are stored documents (v8.36)', async () => {
         mockGet.mockImplementation((url: string) => {
             if (url.includes('/diff')) {
@@ -105,7 +126,42 @@ describe('TimeMachineView', () => {
 
         await waitFor(() => expect(screen.getByTestId('kb-time-machine-diff-source')).toBeVisible());
         expect(screen.getByTestId('kb-time-machine-diff-source')).toHaveAttribute('data-diff-faithful', 'false');
-        expect(screen.getByTestId('kb-time-machine-diff-source')).toHaveTextContent('Index diff — the older side is reconstructed');
+        expect(screen.getByTestId('kb-time-machine-diff-source')).toHaveTextContent('Index diff — the From side is reconstructed');
+    });
+
+    it('names the reconstructed side by the pick that selected it, never as newer or older (v8.36)', async () => {
+        // From and To are independent picks: here the ARCHIVED row 11 is the To side.
+        mockGet.mockImplementation((url: string) => {
+            if (url.includes('/diff')) {
+                return Promise.resolve({ data: { data: { from: 22, to: 11, added: 0, removed: 1, rows: [{ type: 'remove', text: 'old' }], from_source: 'artifact', to_source: 'reconstruction' } } });
+            }
+            return Promise.resolve(TIMELINE);
+        });
+        render(withQueryClient(<TimeMachineView docId={22} />));
+        await waitFor(() => expect(screen.getByTestId('kb-time-machine-version-11')).toBeVisible());
+
+        await userEvent.click(screen.getByTestId('kb-time-machine-version-22-from'));
+        await userEvent.click(screen.getByTestId('kb-time-machine-version-11-to'));
+
+        await waitFor(() => expect(screen.getByTestId('kb-time-machine-diff-source')).toBeVisible());
+        expect(screen.getByTestId('kb-time-machine-diff-source')).toHaveTextContent('Index diff — the To side is reconstructed');
+    });
+
+    it('says both sides are reconstructed when neither is a stored document (v8.36)', async () => {
+        mockGet.mockImplementation((url: string) => {
+            if (url.includes('/diff')) {
+                return Promise.resolve({ data: { data: { from: 11, to: 22, added: 0, removed: 0, rows: [], from_source: 'reconstruction', to_source: 'reconstruction' } } });
+            }
+            return Promise.resolve(TIMELINE);
+        });
+        render(withQueryClient(<TimeMachineView docId={22} />));
+        await waitFor(() => expect(screen.getByTestId('kb-time-machine-version-11')).toBeVisible());
+
+        await userEvent.click(screen.getByTestId('kb-time-machine-version-11-from'));
+        await userEvent.click(screen.getByTestId('kb-time-machine-version-22-to'));
+
+        await waitFor(() => expect(screen.getByTestId('kb-time-machine-diff-source')).toBeVisible());
+        expect(screen.getByTestId('kb-time-machine-diff-source')).toHaveTextContent('Index diff — both the From and the To side are reconstructed');
     });
 
     it('labels a diff as faithful when both sides are stored documents (v8.36)', async () => {

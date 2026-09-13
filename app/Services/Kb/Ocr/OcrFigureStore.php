@@ -233,8 +233,16 @@ final class OcrFigureStore
      * point (ADR 0030 §8): the prune purges a pruned version's run when no
      * remaining row references it, while the `.ocr/` tree as a whole still
      * goes with the last referencing row of the source. Grace-aware like the
-     * tree purge: a run still inside the in-flight window is kept and false
-     * is returned.
+     * tree purge, and taken under the run's own reservation — the lock
+     * `OcrService::convert()` holds from the recorded-run check through
+     * `refreshReservation()` — so a run a worker is reusing at this very
+     * moment is never deleted between its figure check and its commit: a
+     * reservation that cannot be taken is a run in flight. Returns false
+     * when there is nothing to remove or the run is kept (in flight);
+     * throws when the disk refuses the removal (R14 — never a silent
+     * "kept").
+     *
+     * @throws RuntimeException when the directory exists, is not in flight, and cannot be removed
      */
     public function purgeRun(string $disk, string $sourcePath, string $prefix, string $runKey): bool
     {
@@ -243,13 +251,26 @@ final class OcrFigureStore
         if (! $storage->directoryExists($runDir)) {
             return false;
         }
-        if ($this->isInFlight($storage, $runDir, now()->getTimestamp() - self::inFlightGraceSeconds())) {
-            Log::info('OcrFigureStore: OCR run inside the in-flight grace was kept', ['disk' => $disk, 'run_dir' => $runDir]);
+        $reservation = Cache::lock(OcrService::runLockKey($disk, KbPath::normalize($runDir)), self::PURGE_LOCK_SECONDS);
+        if (! $reservation->get()) {
+            Log::info('OcrFigureStore: OCR run is reserved by a converter; the purge is deferred to the next sweep', ['disk' => $disk, 'run_dir' => $runDir]);
 
             return false;
         }
+        try {
+            if ($this->isInFlight($storage, $runDir, now()->getTimestamp() - self::inFlightGraceSeconds())) {
+                Log::info('OcrFigureStore: OCR run inside the in-flight grace was kept', ['disk' => $disk, 'run_dir' => $runDir]);
 
-        return (bool) $storage->deleteDirectory($runDir);
+                return false;
+            }
+            if (! $storage->deleteDirectory($runDir)) {
+                throw new RuntimeException("OcrFigureStore: failed to remove OCR run {$runDir} on disk [{$disk}].");
+            }
+
+            return true;
+        } finally {
+            $reservation->release();
+        }
     }
 
     /**

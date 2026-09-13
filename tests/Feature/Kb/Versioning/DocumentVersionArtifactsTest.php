@@ -272,6 +272,13 @@ final class DocumentVersionArtifactsTest extends TestCase
             $this->assertNull($store->read('kb', $path), 'read refuses a path that resolves outside the root');
             $this->assertFalse($store->delete('kb', $path), 'delete refuses it too');
             $this->assertFileExists($outside.'/secret.md');
+            try {
+                $store->writeTemp('kb', '.artifacts/t/eng/link/new.md', 'bytes');
+                $this->fail('writeTemp must refuse a final path whose parent resolves outside the root');
+            } catch (\RuntimeException $e) {
+                $this->assertStringContainsString('outside the artifact root', $e->getMessage());
+            }
+            $this->assertSame(['secret.md'], array_map('basename', glob($outside.'/*') ?: []), 'nothing was written through the symlink');
         } finally {
             unlink($base.'/link');
             unlink($outside.'/secret.md');
@@ -321,6 +328,63 @@ final class DocumentVersionArtifactsTest extends TestCase
         $this->assertTrue($other->isError());
         $names = array_map(static fn ($a): string => $a->getName(), (new \ReflectionClass($tool))->getAttributes());
         $this->assertContains(\Laravel\Mcp\Server\Tools\Annotations\IsReadOnly::class, $names);
+    }
+
+    /**
+     * ADR 0030 §5 — `has_artifact` is a READ + VERIFIED claim, never the
+     * pointer alone (the ingestor keeps the pointer when a post-commit publish
+     * fails; a file can be truncated later): the additive `artifact_state`
+     * says why on every surface (HTTP, MCP, CLI) — the same check the content
+     * endpoint serves with.
+     */
+    public function test_has_artifact_is_a_verified_claim_and_artifact_state_says_why_on_every_surface(): void
+    {
+        $verified = $this->version('v1', 'archived', 'a', "# Doc\n\na\n");
+        $missing = $this->version('v2', 'archived', 'b', "# Doc\n\nb\n");
+        Storage::disk('kb')->delete((string) $missing->markdown_path);
+        $corrupt = $this->version('v3', 'archived', 'c', "# Doc\n\nc\n");
+        Storage::disk('kb')->put((string) $corrupt->markdown_path, 'tampered');
+        $none = $this->version('v4', 'active', 'd');
+        $expected = [
+            $verified->id => ['verified', true],
+            $missing->id => ['missing', false],
+            $corrupt->id => ['mismatch', false],
+            $none->id => ['none', false],
+        ];
+
+        $rows = $this->actingAs($this->makeAdmin())->getJson("/api/admin/kb/documents/{$none->id}/versions")
+            ->assertOk()
+            ->json('data');
+        $this->assertCount(4, $rows);
+        foreach ($rows as $row) {
+            [$state, $has] = $expected[$row['id']];
+            $this->assertSame($state, $row['artifact_state'], "row {$row['id']}");
+            $this->assertSame($has, $row['has_artifact'], "row {$row['id']}");
+        }
+
+        $tool = new \App\Mcp\Tools\KbDocumentVersionsTool;
+        $payload = json_decode((string) $tool->handle(new \Laravel\Mcp\Request(['document_id' => $none->id]), app(DocumentVersionService::class), app(TenantContext::class))->content(), true, flags: JSON_THROW_ON_ERROR);
+        foreach ($payload['versions'] as $row) {
+            [$state, $has] = $expected[$row['id']];
+            $this->assertSame($state, $row['artifact_state']);
+            $this->assertSame($has, $row['has_artifact']);
+        }
+
+        $this->artisan('kb:doc-versions', ['document' => $none->id, '--tenant' => app(TenantContext::class)->current()])
+            ->expectsOutputToContain('mismatch')
+            ->expectsOutputToContain('missing')
+            ->assertExitCode(0);
+    }
+
+    /** SEC-PATH-001 — the artifact root a sweep enumerates and deletes under is normalized and never escapes through the configured prefix. */
+    public function test_the_artifact_root_is_normalized_and_refuses_a_traversing_prefix(): void
+    {
+        $store = app(ConversionArtifactStore::class);
+
+        $this->assertSame('.artifacts', $store->rootFor(''));
+        $this->assertSame('a/b/c/.artifacts', $store->rootFor('a\\b//c/'));
+        $this->expectException(\RuntimeException::class);
+        $store->rootFor('../outside');
     }
 
     public function test_hard_delete_removes_the_rows_own_artifact(): void

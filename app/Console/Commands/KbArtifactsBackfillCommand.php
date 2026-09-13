@@ -21,13 +21,20 @@ use Illuminate\Support\Facades\Storage;
  * OCR'd source, can reuse or spend a recorded run), so the console is its
  * authorization boundary.
  *
- * Per live row without an artifact: `reference_only` retention → nothing
- * (`intentionally_missing`); source gone from disk → `source_missing`;
- * conversion throws → `conversion_failed`; converted Markdown hashes to the
- * row's `document_hash` → artifact written (`written`); anything else →
- * `hash_mismatch`, nothing written — a stored artifact must be THE bytes
- * the row's version hash names, never a fresh reconversion under a newer
- * converter passed off as history.
+ * Per live row, judged on ITS retention contract (`metadata.source_retention`,
+ * a row without the stamp predates v8.36 and counts as `full_copy` — the
+ * configured mode of the day decides nothing here, so a history ingested
+ * under `full_copy` is still backfilled after the knob moved to
+ * `reference_only`): `reference_only` → nothing (`intentionally_missing`);
+ * pointer set and its bytes readable + hashing to `document_hash` →
+ * `already_stored`; otherwise (no pointer, or a pointer whose file is
+ * missing or corrupt — a publish that failed after commit, a process that
+ * died between the pointer and the move, a later corruption): source gone
+ * from disk → `source_missing`; conversion throws → `conversion_failed`;
+ * converted Markdown hashes to the row's `document_hash` → artifact written
+ * (`written`); anything else → `hash_mismatch`, nothing written — a stored
+ * artifact must be THE bytes the row's version hash names, never a fresh
+ * reconversion under a newer converter passed off as history.
  */
 final class KbArtifactsBackfillCommand extends Command
 {
@@ -36,11 +43,10 @@ final class KbArtifactsBackfillCommand extends Command
                             {--tenant=default : Tenant whose rows are backfilled}
                             {--dry-run : Report what would be written without touching the disk or the rows}';
 
-    protected $description = 'Store the conversion artifact of live documents that have none (ADR 0030); refuses hash mismatches';
+    protected $description = 'Store or repair the conversion artifact of live documents, each judged on its own retention contract (ADR 0030); refuses hash mismatches';
 
     public function handle(
         ConversionArtifactStore $store,
-        SourceRetentionResolver $retention,
         PipelineRegistry $registry,
         TenantContext $tenants,
     ): int {
@@ -58,17 +64,10 @@ final class KbArtifactsBackfillCommand extends Command
         $dryRun = (bool) $this->option('dry-run');
         $project = trim((string) ($this->option('project') ?? ''));
 
-        $counts = ['written' => 0, 'intentionally_missing' => 0, 'source_missing' => 0, 'hash_mismatch' => 0, 'conversion_failed' => 0];
+        $counts = ['already_stored' => 0, 'written' => 0, 'intentionally_missing' => 0, 'source_missing' => 0, 'hash_mismatch' => 0, 'conversion_failed' => 0];
         $previous = $tenants->current();
         $tenants->set($tenant);
         try {
-            if (! $retention->retainsMarkdown()) {
-                $counts['intentionally_missing'] = $this->candidates($tenant, $project)->count();
-                $this->report($counts, $dryRun);
-
-                return self::SUCCESS;
-            }
-
             $this->candidates($tenant, $project)->chunkById(100, function ($rows) use ($store, $registry, $tenant, $dryRun, &$counts): void {
                 foreach ($rows as $row) {
                     $counts[$this->backfill($row, $store, $registry, $tenant, $dryRun)]++;
@@ -87,10 +86,12 @@ final class KbArtifactsBackfillCommand extends Command
      */
     private function candidates(string $tenant, string $project)
     {
+        // Every live row: a pointer is not an artifact (it is verified per
+        // row below), so rows whose file never landed or went corrupt are
+        // repaired, not skipped forever.
         $query = KnowledgeDocument::query()
             ->forTenant($tenant)
-            ->where('status', 'active')
-            ->whereNull('markdown_path');
+            ->where('status', 'active');
         if ($project !== '') {
             $query->where('project_key', $project);
         }
@@ -101,10 +102,22 @@ final class KbArtifactsBackfillCommand extends Command
     private function backfill(KnowledgeDocument $row, ConversionArtifactStore $store, PipelineRegistry $registry, string $tenant, bool $dryRun): string
     {
         $metadata = is_array($row->metadata) ? $row->metadata : [];
+        $rowMode = (string) ($metadata['source_retention'] ?? SourceRetentionResolver::FULL_COPY);
+        if ($rowMode === SourceRetentionResolver::REFERENCE_ONLY) {
+            return 'intentionally_missing';
+        }
         $disk = (string) ($metadata['disk'] ?? config('kb.sources.disk', 'kb'));
         $prefix = array_key_exists('prefix', $metadata)
             ? (string) $metadata['prefix']
             : (string) config('kb.sources.path_prefix', '');
+        $pointer = $row->markdown_path;
+        if (is_string($pointer) && $pointer !== '') {
+            $current = $store->read($disk, $pointer);
+            if (is_string($current) && hash('sha256', $current) === (string) $row->document_hash) {
+                return 'already_stored';
+            }
+            $this->line("  #{$row->id} {$row->source_path}: artifact pointer set but the file is ".($current === null ? 'missing' : 'corrupt').'; repairing');
+        }
         try {
             $sourcePath = KbPath::normalize((string) $row->source_path);
             $fullPath = $prefix === '' ? $sourcePath : KbPath::normalize($prefix.'/'.$sourcePath);
@@ -153,13 +166,16 @@ final class KbArtifactsBackfillCommand extends Command
         // Pointer first, bytes second — the same order as ingest (row commits
         // with the path, then the move): the orphan sweep only deletes files
         // no row points at, so a file published before its pointer would be
-        // inside that window. On failure the pointer is taken back.
+        // inside that window. On failure the row goes back to exactly what
+        // it was: no pointer, or the previous pointer (still `missing` /
+        // `mismatch` for the next run — never turned into an orphan).
+        $previous = ['markdown_path' => $row->markdown_path, 'content_hash' => $row->content_hash];
         $row->update(['markdown_path' => $final, 'content_hash' => $hash]);
         try {
             $tmp = $store->writeTemp($disk, $final, $converted->markdown);
             $store->publish($disk, $tmp, $final);
         } catch (\Throwable $e) {
-            $row->update(['markdown_path' => null, 'content_hash' => null]);
+            $row->update($previous);
             $this->line("  #{$row->id} {$sourcePath}: conversion_failed (could not publish: {$e->getMessage()})");
 
             return 'conversion_failed';
@@ -175,7 +191,8 @@ final class KbArtifactsBackfillCommand extends Command
     private function report(array $counts, bool $dryRun): void
     {
         $this->info(sprintf(
-            'written=%d intentionally_missing=%d source_missing=%d hash_mismatch=%d conversion_failed=%d%s',
+            'already_stored=%d written=%d intentionally_missing=%d source_missing=%d hash_mismatch=%d conversion_failed=%d%s',
+            $counts['already_stored'],
             $counts['written'],
             $counts['intentionally_missing'],
             $counts['source_missing'],

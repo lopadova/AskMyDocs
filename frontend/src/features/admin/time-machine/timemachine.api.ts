@@ -22,6 +22,8 @@ export interface DocVersion {
     content_hash?: string | null;
     /** v8.36 / ADR 0030 — true when the converted Markdown of this version is stored on disk */
     has_artifact?: boolean;
+    /** v8.36 / ADR 0030 §5 — the verified state behind `has_artifact`: none · verified · unverified · missing · mismatch (additive, R27) */
+    artifact_state?: 'none' | 'verified' | 'unverified' | 'missing' | 'mismatch';
     /** v8.36 / ADR 0030 §6 — who last restored this version (kept apart from the creation provenance); null when never restored */
     restored_by?: string | null;
     /** v8.36 / ADR 0030 §6 — when it was last restored (ISO-8601) */

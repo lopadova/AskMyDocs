@@ -213,6 +213,132 @@ final class ConversionArtifactsIngestTest extends TestCase
         Storage::disk('kb')->assertMissing('reports/q3.pdf');
     }
 
+    /**
+     * ADR 0030 §3 — the drop is gated on the ROW's persisted contract, never
+     * on the configured mode of the day: a `full_copy` version re-embedded
+     * (a trusted replay carrying its own metadata, as ReembedDocumentJob
+     * does) after `KB_SOURCE_RETENTION` moved to `markdown_only` keeps its
+     * original; only a version BORN under `markdown_only` lets it go.
+     */
+    public function test_markdown_only_drop_is_gated_on_the_rows_persisted_contract_not_the_configured_mode(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => true, 'kb.source_retention.mode' => 'full_copy']);
+        $bytes = PdfFixtureBuilder::buildThreePageSample();
+        Storage::disk('kb')->put('reports/q5.pdf', $bytes);
+        $source = fn (array $metadata): SourceDocument => new SourceDocument(
+            sourcePath: 'reports/q5.pdf', mimeType: 'application/pdf', bytes: $bytes,
+            externalUrl: null, externalId: null, connectorType: 'local', metadata: $metadata,
+        );
+        $full = app(DocumentIngestor::class)->ingest('eng', $source(['disk' => 'kb', 'prefix' => '']), 'Q5');
+        $this->assertSame('full_copy', $full->metadata['source_retention']);
+
+        config(['kb.source_retention.mode' => 'markdown_only']);
+        app(DocumentIngestor::class)->ingest('eng', $source($full->fresh()->metadata), 'Q5', forceReembed: true);
+
+        Storage::disk('kb')->assertExists('reports/q5.pdf');
+        $this->assertSame('full_copy', $full->fresh()->metadata['source_retention']);
+
+        // A version born under markdown_only (a different path, nothing else references it) drops its original.
+        Storage::disk('kb')->put('reports/q6.pdf', $bytes);
+        $born = app(DocumentIngestor::class)->ingest('eng', new SourceDocument(
+            sourcePath: 'reports/q6.pdf', mimeType: 'application/pdf', bytes: $bytes,
+            externalUrl: null, externalId: null, connectorType: 'local', metadata: ['disk' => 'kb', 'prefix' => ''],
+        ), 'Q6');
+        $this->assertSame('markdown_only', $born->metadata['source_retention']);
+        Storage::disk('kb')->assertMissing('reports/q6.pdf');
+    }
+
+    /**
+     * A row that predates the stamp counts as `full_copy` when it is REPLACED
+     * (a trusted replay such as ReembedDocumentJob carries its stamp-less
+     * metadata): a replay after the knob moved to `markdown_only` never drops
+     * the original the row was ingested to keep, and stamps it `full_copy`.
+     */
+    public function test_a_replay_of_a_pre_stamp_row_keeps_its_original_and_stamps_it_full_copy(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => true, 'kb.source_retention.mode' => 'full_copy']);
+        $bytes = PdfFixtureBuilder::buildThreePageSample();
+        Storage::disk('kb')->put('reports/q7.pdf', $bytes);
+        $source = fn (array $metadata): SourceDocument => new SourceDocument(
+            sourcePath: 'reports/q7.pdf', mimeType: 'application/pdf', bytes: $bytes,
+            externalUrl: null, externalId: null, connectorType: 'local', metadata: $metadata,
+        );
+        $legacy = app(DocumentIngestor::class)->ingest('eng', $source(['disk' => 'kb', 'prefix' => '']), 'Q7');
+        $legacy->update(['metadata' => ['disk' => 'kb', 'prefix' => '']]); // pre-v8.36: no stamp
+
+        config(['kb.source_retention.mode' => 'markdown_only']);
+        app(DocumentIngestor::class)->ingest('eng', $source($legacy->fresh()->metadata), 'Q7', forceReembed: true);
+
+        Storage::disk('kb')->assertExists('reports/q7.pdf');
+        $this->assertSame('full_copy', $legacy->fresh()->metadata['source_retention']);
+    }
+
+    /** R43 — with the artifacts flag OFF the retention knob is inert, and the row is stamped with what actually happened: `full_copy`. */
+    public function test_off_the_row_is_stamped_full_copy_whatever_the_retention_knob_says(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => false, 'kb.source_retention.mode' => 'reference_only']);
+
+        $doc = $this->ingestMarkdown("# Off
+
+Inert knob.", 'docs/inert.md');
+
+        $this->assertSame('full_copy', $doc->fresh()->metadata['source_retention']);
+        $this->assertNull($doc->markdown_path);
+    }
+
+    /** An unknown retention value is never a permissive one: it resolves to the configured mode, and the untrusted boundaries strip the key anyway. */
+    public function test_an_unknown_source_retention_value_is_replaced_by_the_configured_mode(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => true, 'kb.source_retention.mode' => 'full_copy']);
+
+        $doc = $this->ingestMarkdown("# Unknown\n\nBody.", 'docs/unknown.md', ['source_retention' => 'drop_everything']);
+
+        $this->assertSame('full_copy', $doc->fresh()->metadata['source_retention']);
+    }
+
+    /**
+     * ADR 0030 §3 — an identical re-ingest with the flag on publishes the
+     * artifact of a version that predates the artifacts (no pointer), under
+     * ITS contract: a row stamped `reference_only` gets nothing.
+     */
+    public function test_an_identical_re_ingest_publishes_the_artifact_of_a_version_that_predates_the_artifacts(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => false]);
+        $markdown = "# Legacy\n\nIngested before the flag.";
+        $legacy = $this->ingestMarkdown($markdown, 'docs/legacy.md');
+        $this->assertNull($legacy->markdown_path);
+        $reference = $this->ingestMarkdown("# Ref\n\nReference only.", 'docs/ref.md');
+        $reference->update(['metadata' => array_merge($reference->metadata, ['source_retention' => 'reference_only'])]);
+
+        config(['kb.conversion_artifacts.enabled' => true]);
+        $again = $this->ingestMarkdown($markdown, 'docs/legacy.md');
+        $refAgain = $this->ingestMarkdown("# Ref\n\nReference only.", 'docs/ref.md');
+
+        $this->assertSame($legacy->id, $again->id, 'no new version');
+        $this->assertNotNull($again->markdown_path);
+        $this->assertSame($markdown, Storage::disk('kb')->get((string) $again->markdown_path));
+        $this->assertSame(hash('sha256', $markdown), $again->fresh()->content_hash);
+        $this->assertSame($reference->id, $refAgain->id);
+        $this->assertNull($refAgain->fresh()->markdown_path);
+    }
+
+    /** The repair of an existing version goes to the disk the version RECORDED, not to the incoming request's. */
+    public function test_an_identical_re_ingest_repairs_the_artifact_on_the_versions_recorded_disk(): void
+    {
+        Storage::fake('kb-archive');
+        config(['kb.conversion_artifacts.enabled' => true]);
+        $markdown = "# Moved\n\nStored on the archive disk.";
+        $doc = $this->ingestMarkdown($markdown, 'docs/moved.md', ['disk' => 'kb-archive', 'prefix' => '']);
+        Storage::disk('kb-archive')->assertExists((string) $doc->markdown_path);
+        Storage::disk('kb-archive')->delete((string) $doc->markdown_path);
+
+        $again = $this->ingestMarkdown($markdown, 'docs/moved.md', ['disk' => 'kb', 'prefix' => '']);
+
+        $this->assertSame($doc->id, $again->id);
+        Storage::disk('kb-archive')->assertExists((string) $doc->markdown_path);
+        Storage::disk('kb')->assertMissing((string) $doc->markdown_path);
+    }
+
     public function test_markdown_only_retention_never_drops_a_markdown_source_which_is_its_own_artifact(): void
     {
         config(['kb.conversion_artifacts.enabled' => true, 'kb.source_retention.mode' => 'markdown_only']);

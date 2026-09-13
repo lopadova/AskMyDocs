@@ -10,6 +10,7 @@ use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
 use App\Services\Kb\Pipeline\ConvertedDocument;
 use App\Services\Kb\Pipeline\SourceDocument;
+use App\Services\Kb\Versioning\ConversionArtifactStore;
 use App\Services\Kb\Versioning\SourceRetentionResolver;
 use App\Support\Kb\FileTypeSniffer;
 use App\Support\KbPath;
@@ -436,6 +437,15 @@ final class OcrService
         // the queued read would resolve another object than the one the
         // boundary persisted (ParseMarkdownStep honours `metadata.prefix`).
         unset($metadata['disk'], $metadata['prefix']);
+        // ADR 0030 §3 — `source_retention` is the retention contract the row
+        // was ingested under and `source_dropped` the host's record that the
+        // original went with it: both drive what a later `markdown_only`
+        // pass may drop, so they are stamped server-side by the ingestor
+        // (and carried back from the row by trusted replays such as
+        // ReembedDocumentJob) — never accepted from a client or a connector,
+        // which could otherwise mark a `full_copy` row as one that no longer
+        // needs its shared original.
+        unset($metadata['source_retention'], $metadata['source_dropped']);
         // `ocr` is a host-owned block: a scalar a client put there carries
         // nothing the pipeline reads and would only trip the array accessors
         // downstream, so it is dropped with the reserved keys.
@@ -530,7 +540,11 @@ final class OcrService
         // ADR 0029 §5 / ADR 0030 §3 — the `.ocr/` directory is a local copy
         // and is retention-aware: in `reference_only` no run is recorded and
         // no figure is stored (nothing to reuse from, no `images/` reference).
-        $retainsLocal = app(SourceRetentionResolver::class)->retainsMarkdown();
+        // The retention mode is wired by KB_CONVERSION_ARTIFACTS_ENABLED
+        // (ADR 0030 §2): with that flag off a deployment that set the knob
+        // while it was a foundation keeps figures and reuse as before (R43).
+        $retainsLocal = ! app(ConversionArtifactStore::class)->enabled()
+            || app(SourceRetentionResolver::class)->retainsMarkdown();
         $figuresEnabled = (bool) config('kb.ocr.figures.enabled', true) && $retainsLocal;
         $reuseEnabled = (bool) config('kb.ocr.reuse.enabled', true) && $retainsLocal;
         // Idempotency (CLAUDE.md §5): the same bytes through the same driver

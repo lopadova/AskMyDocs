@@ -60,7 +60,7 @@ class PruneOrphanFilesCommand extends Command
         // any more (a version pruned while its run was in flight, a forced
         // re-run whose old run nothing points at): the deleter purges a tree
         // only with its last row, so these have no other reaper.
-        $staleRuns = $this->detectStaleOcrRuns($allFiles, $prefix, $danglingOcr);
+        $staleRuns = $this->detectStaleOcrRuns($allFiles, $prefix, $danglingOcr, $disk);
 
         if ($markdownFiles === [] && $danglingOcr === [] && $staleRuns === []) {
             $this->info("No source files found on disk [{$disk}].");
@@ -131,7 +131,7 @@ class PruneOrphanFilesCommand extends Command
      * @param  array<int,string>  $danglingOcr
      * @return array<int,array{0:string,1:string}> [disk-relative source key, run]
      */
-    private function detectStaleOcrRuns(array $allFiles, string $prefix, array $danglingOcr): array
+    private function detectStaleOcrRuns(array $allFiles, string $prefix, array $danglingOcr, string $disk): array
     {
         $onDisk = array_flip(array_map(static fn (string $f): string => KbPath::normalize($f), $allFiles));
         $dangling = array_flip($danglingOcr);
@@ -158,10 +158,14 @@ class PruneOrphanFilesCommand extends Command
             return [];
         }
 
+        // The gate takes the run directory's full identity — this disk, this
+        // prefix, the source path — so a same-named row under another
+        // namespace neither keeps a stale run alive nor is mistaken for the
+        // one being swept (ADR 0030 §8).
         $deleter = app(DocumentDeleter::class);
         $stale = [];
         foreach ($runs as [$key, $run]) {
-            if ($deleter->documentReferencingOcrRun($this->stripPrefix($key, $prefix), $run) !== null) {
+            if ($deleter->documentReferencingOcrRun($disk, $prefix, $this->stripPrefix($key, $prefix), $run) !== null) {
                 continue;
             }
             $stale[] = [$key, $run];
@@ -183,6 +187,10 @@ class PruneOrphanFilesCommand extends Command
         $store = app(OcrFigureStore::class);
         foreach ($staleRuns as [$key, $run]) {
             try {
+                // `purgeRun()` throws when the disk refuses the removal
+                // (counted as failed below, exit non-zero); false is only a
+                // run kept inside the in-flight grace or reserved by a
+                // converter — never a storage failure reported as "kept".
                 if ($store->purgeRun($disk, $this->stripPrefix($key, $prefix), $prefix, $run)) {
                     $purged++;
                     continue;

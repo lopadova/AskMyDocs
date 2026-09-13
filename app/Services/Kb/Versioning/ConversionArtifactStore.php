@@ -59,9 +59,19 @@ final class ConversionArtifactStore
      */
     public function rootFor(string $prefix): string
     {
-        $prefix = trim($prefix, '/');
-
-        return $prefix === '' ? self::ROOT : $prefix.'/'.self::ROOT;
+        $prefix = trim(str_replace('\\', '/', $prefix), '/');
+        if ($prefix === '') {
+            return self::ROOT;
+        }
+        // SEC-PATH-001 — the prefix is configuration, but a sweep enumerates
+        // and DELETES under the root it composes: a traversal segment or a
+        // stray `//` must never make maintenance operate outside
+        // `.artifacts/`. The same canonical rules as every KB path (R1).
+        try {
+            return KbPath::normalize($prefix.'/'.self::ROOT);
+        } catch (\InvalidArgumentException $e) {
+            throw new RuntimeException('ConversionArtifactStore: the configured path prefix cannot form an artifact root: '.$e->getMessage(), 0, $e);
+        }
     }
 
     /**
@@ -114,6 +124,11 @@ final class ConversionArtifactStore
      */
     public function writeTemp(string $disk, string $finalPath, string $markdown): string
     {
+        // SEC-PATH-001 — the parent of the final path is resolved BEFORE
+        // the temp is written: `Storage::put()` would create the temp
+        // through a planted symlink, and a refusal at publish() would then
+        // come after the bytes had already landed outside the root.
+        $this->assertContainedOnDisk($disk, $finalPath);
         $tmp = $finalPath.'.'.Str::uuid().self::TMP_SUFFIX;
         if (! Storage::disk($disk)->put($tmp, $markdown)) {
             throw new RuntimeException(sprintf('ConversionArtifactStore: could not write artifact temp file [%s] %s.', $disk, $tmp));
@@ -287,69 +302,112 @@ final class ConversionArtifactStore
         }
     }
 
+    public const REMOVED = 'removed';
+
+    public const ABSENT = 'absent';
+
+    public const FAILED = 'failed';
+
     /**
      * Remove a published artifact. False when nothing was there or the disk
      * refused (logged) — never an exception: retention and erasure must
-     * finish their database work whatever the disk says.
+     * finish their database work whatever the disk says. Callers that must
+     * REPORT a refusal apart from an already-missing file use {@see remove()}.
      */
     public function delete(string $disk, string $path): bool
+    {
+        return $this->remove($disk, $path) === self::REMOVED;
+    }
+
+    /**
+     * Remove a published artifact and say what happened: `removed`, `absent`
+     * (nothing was there — a prune finding the file already gone is done),
+     * or `failed` (the disk refused, or the path resolves outside the root;
+     * logged). Retention commands count the three apart so a refused delete
+     * is never reported as a completed cleanup (R14).
+     */
+    public function remove(string $disk, string $path): string
     {
         try {
             $storage = Storage::disk($disk);
             if (! $storage->exists($path)) {
-                return false;
+                return self::ABSENT;
             }
             $this->assertContainedOnDisk($disk, $path);
             if (! $storage->delete($path)) {
                 Log::warning('ConversionArtifactStore: could not delete artifact', ['disk' => $disk, 'path' => $path]);
 
-                return false;
+                return self::FAILED;
             }
 
-            return true;
+            return self::REMOVED;
         } catch (\Throwable $e) {
             Log::warning('ConversionArtifactStore: could not delete artifact', ['disk' => $disk, 'path' => $path, 'error' => $e->getMessage()]);
 
-            return false;
+            return self::FAILED;
         }
     }
 
     /**
      * Sweep temp files older than `$maxAgeSeconds` under the artifact root
-     * — leftovers of a writer that died between temp and move.
+     * — leftovers of a writer that died between temp and move. Every entry
+     * is checked against the real artifact root before it is read or
+     * removed (a symlinked parent under `.artifacts/` would otherwise let
+     * the sweep reach outside it); a refused entry is skipped and counted
+     * as failed, as is a delete the disk refuses, so the retention command
+     * can report them instead of a clean run (R14).
      *
-     * @return int files removed
+     * @return array{removed: int, failed: int}
      */
-    public function sweepTemps(string $disk, string $prefix, int $maxAgeSeconds, bool $dryRun = false): int
+    public function sweepTemps(string $disk, string $prefix, int $maxAgeSeconds, bool $dryRun = false): array
     {
         $storage = Storage::disk($disk);
         $root = $this->rootFor($prefix);
         if (! $storage->directoryExists($root)) {
-            return 0;
+            return ['removed' => 0, 'failed' => 0];
         }
         $cutoff = time() - max(0, $maxAgeSeconds);
         $removed = 0;
-        foreach ($storage->allFiles($root) as $file) {
+        $failed = 0;
+        try {
+            $files = $storage->allFiles($root);
+        } catch (\Throwable $e) {
+            // The local adapter refuses to walk through a symbolic link
+            // (SymbolicLinkEncountered): a planted link under the root is a
+            // refused sweep, reported as such — never a clean zero.
+            Log::warning('ConversionArtifactStore: could not enumerate the artifact root for the temp sweep', ['disk' => $disk, 'root' => $root, 'error' => $e->getMessage()]);
+
+            return ['removed' => 0, 'failed' => 1];
+        }
+        foreach ($files as $file) {
             if (! str_ends_with($file, self::TMP_SUFFIX)) {
                 continue;
             }
             try {
+                $this->assertContainedOnDisk($disk, $file);
                 if ($storage->lastModified($file) > $cutoff) {
                     continue;
                 }
-            } catch (\Throwable) {
+            } catch (\Throwable $e) {
+                Log::warning('ConversionArtifactStore: temp file skipped by the sweep', ['disk' => $disk, 'path' => $file, 'error' => $e->getMessage()]);
+                $failed++;
                 continue;
             }
             if ($dryRun || $storage->delete($file)) {
                 $removed++;
+                continue;
             }
+            Log::warning('ConversionArtifactStore: could not remove stale artifact temp file', ['disk' => $disk, 'path' => $file]);
+            $failed++;
         }
 
-        return $removed;
+        return ['removed' => $removed, 'failed' => $failed];
     }
 
     /**
      * Every published artifact under the root, disk-relative, temps excluded.
+     * Throws when the root cannot be walked (a local adapter refuses a
+     * symbolic link under it): the caller reports a failed sweep (R14).
      *
      * @return list<string>
      */

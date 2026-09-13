@@ -87,9 +87,13 @@ when that env is false the slot never runs regardless of its `SCHEDULE_*` value.
 - **`kb:prune-deleted`** — hard-delete documents soft-deleted longer than
   `KB_SOFT_DELETE_RETENTION_DAYS`, cascading chunks + graph + file on disk.
 - **`kb:prune-archived-versions`** — drop old archived document versions beyond
-  the per-family retention cap; since v8.36 each pruned version's conversion
-  artifact goes with it, and the run sweeps stale `.tmp` files
-  (`KB_CONVERSION_ARTIFACTS_TMP_MAX_AGE`) and artifacts no row references.
+  the per-family retention cap, each through the deleter's row path (chunks,
+  graph node, deprecation audit); since v8.36 each pruned version's conversion
+  artifact goes with it (and its OCR run, when no row whose recorded disk +
+  prefix resolve to that run directory still names it), and the run sweeps
+  stale `.tmp` files (`KB_CONVERSION_ARTIFACTS_TMP_MAX_AGE`) and artifacts no
+  row references on that disk. Every refused removal is counted (`*_failed`)
+  and makes the command exit non-zero.
 - **`kb:prune-staging-batches`** — purge stale drag-and-drop upload staging
   batches and their staged files on the `kb-staging` disk once past
   `KB_STAGING_RETENTION_HOURS` (default 24; `--hours=N` overrides). Keeps the

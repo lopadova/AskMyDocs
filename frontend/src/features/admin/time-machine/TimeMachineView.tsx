@@ -137,6 +137,18 @@ export function TimeMachineView({ docId }: { docId: number }): ReactNode {
  * reads an index diff as the document's own history. Older servers omit the
  * sources: then nothing is claimed either way.
  */
+/**
+ * Names the reconstructed side(s) by the pick that selected them — "From" /
+ * "To" are chosen independently, so neither is necessarily the newer or the
+ * older version and the note never says so.
+ */
+function indexDiffSides(fromSource: string, toSource: string): string {
+    if (fromSource !== 'artifact' && toSource !== 'artifact') {
+        return 'both the From and the To side are';
+    }
+    return fromSource !== 'artifact' ? 'the From side is' : 'the To side is';
+}
+
 function DiffSourceNote({ fromSource, toSource }: { fromSource?: string; toSource?: string }): ReactNode {
     if (!fromSource || !toSource) {
         return null;
@@ -150,7 +162,7 @@ function DiffSourceNote({ fromSource, toSource }: { fromSource?: string; toSourc
         >
             {faithful
                 ? 'Faithful diff — both versions compared from their stored documents.'
-                : `Index diff — ${fromSource === 'artifact' ? 'the newer side' : toSource === 'artifact' ? 'the older side' : 'both sides'} ${fromSource !== 'artifact' && toSource !== 'artifact' ? 'are' : 'is'} reconstructed from indexed chunks, not the stored document.`}
+                : `Index diff — ${indexDiffSides(fromSource, toSource)} reconstructed from indexed chunks, not the stored document.`}
         </p>
     );
 }
@@ -195,6 +207,18 @@ function VersionRow({
             {v.has_artifact && (
                 <span data-testid={`kb-time-machine-version-${v.id}-artifact`} title="The converted document of this version is stored and diffs are faithful" style={{ fontSize: 10.5, padding: '1px 6px', borderRadius: 999, border: '1px solid var(--ok, #3fb950)', color: 'var(--ok, #3fb950)' }}>
                     stored
+                </span>
+            )}
+            {(v.artifact_state === 'missing' || v.artifact_state === 'mismatch') && (
+                <span
+                    data-testid={`kb-time-machine-version-${v.id}-artifact-warning`}
+                    data-artifact-state={v.artifact_state}
+                    role="img"
+                    aria-label={v.artifact_state === 'missing' ? 'Stored document missing: diffs fall back to the index' : 'Stored document does not match its recorded hash: diffs fall back to the index'}
+                    title={v.artifact_state === 'missing' ? 'The stored document behind this version is missing; kb:artifacts-backfill repairs it' : 'The stored document behind this version does not match its recorded hash; kb:artifacts-backfill repairs it'}
+                    style={{ fontSize: 10.5, padding: '1px 6px', borderRadius: 999, border: '1px solid var(--warn, #d29922)', color: 'var(--warn, #d29922)' }}
+                >
+                    {v.artifact_state === 'missing' ? 'artifact missing' : 'artifact mismatch'}
                 </span>
             )}
             <span style={{ flex: 1 }} />

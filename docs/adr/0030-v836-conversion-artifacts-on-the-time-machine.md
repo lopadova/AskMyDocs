@@ -139,8 +139,12 @@ the artifact identity matches. There is nothing to reference-count.
 `kb:prune-archived-versions` additionally sweeps `.tmp` leftovers older than
 one hour and artifacts whose `(tenant, project, path, version_hash)` no row
 (trashed rows included, R2) references, only after that authoritative check.
-Failure, idempotency and a genuinely concurrent identical-ingest test cover
-all of it. In `markdown_only` the original binary is deleted only after the
+Failure and idempotency tests cover all of it, including a sequential
+winner/loser test of two identical publishes (the loser discards only its
+own temp). A process-level race test is not feasible in the suite — SQLite
+is in-memory per process and `Storage::fake()` is per test — so the
+concurrent case rests on the unique constraint plus that loser path, not on
+a test that fires two workers (R21 exception, stated here on purpose). In `markdown_only` the original binary is deleted only after the
 **final move has succeeded** — `publish()` throws on a failed move, reuses a
 pre-existing final only after re-hashing it (a corrupt one is replaced, never
 kept), and the drop runs after it, never on the database commit alone — and
@@ -155,22 +159,48 @@ every referencing row was ingested under a mode that does not require it — a
 `full_copy` row (or a pre-v8.36 row without the stamp, which counts as
 `full_copy`) blocks the drop even with its artifact present; a
 `reference_only` row never needed the local source; a `markdown_only` row
-needs its artifact on disk. A kept original is logged with the blocking row
+needs its artifact on disk. The stamp is **host-owned**: `source_retention`
+(and `source_dropped`) are stripped at the HTTP ingest and connector
+boundaries by `OcrService::stripTrustedOnlyKeys()` like `version_actor`, set
+server-side from the configured mode at ingest, validated against the known
+modes (an unknown value resolves to the configured mode, never to a
+permissive one), and carried back from the row only by trusted replays such
+as `ReembedDocumentJob` — so a client can never mark a `full_copy` row as one
+that no longer needs its shared original. The drop itself is gated on the
+row's **own** stamp, never on the configured mode of the day: a `full_copy`
+version re-embedded after `KB_SOURCE_RETENTION` moved to `markdown_only`
+keeps its original, and so does a pre-v8.36 row replayed without a stamp — a
+version being **replaced** (a forced re-embed, a fresh OCR run of the same
+bytes) keeps the contract it was born under (`full_copy` when it has none);
+only a **new** version gets the configured mode. With the artifacts flag off
+the knob is the inert foundation it was (nothing stored, nothing dropped or
+withheld), so a new version is stamped `full_copy` — what actually happened —
+and a later backfill with the flag on never reads `intentionally_missing`
+into a row that never lived under `reference_only`. A kept original is logged with the blocking row
 (R4 return checked on the delete).
 
 Turning the flag on populates nothing by itself, so `kb:artifacts-backfill
 {--project=} {--tenant=} {--dry-run}` — **operator-only maintenance, a
 documented R44 exception** (a storage repair that can re-run OCR and spend;
 its authorization boundary is the console, `--tenant` validated as
-`kb:reembed-project` does) — re-converts every live row without an artifact
-whose effective retention mode retains Markdown (`full_copy`, `markdown_only`)
-and whose source is still on disk, and writes the artifact **without** creating
-a version when the converted bytes hash to the stored `document_hash`; a
-`hash_mismatch` (an engine changed since) is reported and **nothing is
-written** — an artifact must agree with the version's chunks; a missing source
-is reported, not invented; and a row whose effective mode is `reference_only`
-is reported as `intentionally_missing` even when a legacy source file is still
-on disk — the flag never changes a tenant's retention policy.
+`kb:reembed-project` does) — walks every live row and judges each on **its
+own** retention contract (`metadata.source_retention`; a row without the
+stamp predates v8.36 and counts as `full_copy` — the configured mode of the
+day decides nothing, so a `full_copy` history is still backfilled after the
+knob moved to `reference_only`): a row stamped `reference_only` is
+`intentionally_missing` even when a legacy source file is still on disk — the
+flag never changes a tenant's retention policy; a row whose pointer resolves
+to a readable file hashing to `document_hash` is `already_stored`; every other
+row — no pointer, or a pointer whose file is missing or corrupt (a publish
+that failed after commit, a process that died between the pointer and the
+move, a later corruption) — is re-converted from its source while it is still
+on disk, and the artifact is written **without** creating a version when the
+converted bytes hash to the stored `document_hash`; a `hash_mismatch` (an
+engine changed since) is reported and **nothing is written** — an artifact
+must agree with the version's chunks; a missing source is reported, not
+invented. The identical re-ingest path publishes the artifact of a pointerless
+row the same way (§3 above), so the backfill is for the rows nobody
+re-pushes.
 
 The artifact is the **raw** converted Markdown, not the redacted chunks: the
 raw markdown is already the `document_hash` idempotency anchor. For a
@@ -291,19 +321,34 @@ caller.
 
 ### 8. Retention and erasure cover the artifact and the OCR assets
 
-`kb:prune-archived-versions` deletes the artifact with the row it prunes (R4
-return checked, logged, never silent). The prune hard-deletes archived rows
-**by query** (one family at a time, R3) rather than through
-`DocumentDeleter::delete()` row by row — but it does not re-implement the
-reference rules: the decision whether a pruned row's recorded run
-(`metadata.converter.ocr.run`, the `{source_path}.ocr/{run}/` directory) may
-go is delegated to the deleter's gate, `DocumentDeleter::documentReferencingOcrRun()`,
-the same helper family as `documentReferencingStorageKey()` — a run is purged
-only when no remaining row, live, archived or soft-deleted, of any tenant
-sharing that source key still references it, and never while it is inside the
-in-flight grace (ADR 0029 §6); the `.ocr/` tree as a whole still goes with the
-*last referencing row* of the source, through `DocumentDeleter`'s hard delete.
-One gate, two callers: the hard delete and the prune cannot diverge on what
+`kb:prune-archived-versions` deletes the artifact with the row it prunes and
+**reports** what happened to it — `artifacts_removed` / `artifacts_absent` /
+`artifacts_failed` per tenant, the temp and orphan sweeps likewise
+(`artifact_temps_failed`, `artifact_orphans_failed`) — and exits non-zero when
+any delete was refused: the rows are gone, the bytes are not, and a refused
+delete is never reported as a completed cleanup (R14). The prune selects
+archived rows **by query** (one family at a time, R3) but removes each row
+through the deleter's row path (`DocumentDeleter::deleteRowsOnly()`): chunks,
+the graph node an archived canonical version may still own, and the
+deprecation audit row go in one transaction per row, the same cascade every
+other hard delete takes. Nor does it re-implement the reference rules: the
+decision whether a pruned row's recorded run (`metadata.converter.ocr.run`,
+the `{prefix}/{source_path}.ocr/{run}/` directory) may go is delegated to the
+deleter's gate, `DocumentDeleter::documentReferencingOcrRun(disk, prefix,
+source_path, run)`, the same helper family as
+`documentReferencingStorageKey()` — a run directory is physically namespaced
+by disk, prefix, source path and run key, so a run is purged only when no
+remaining row, live, archived or soft-deleted, of any tenant whose **recorded
+namespace resolves to that very directory** still names it (a same-named row
+under another disk or prefix references another directory and neither keeps
+this one alive nor is ignored; a legacy row without a recorded disk counts as
+a reference, fail closed), never while it is inside the in-flight grace (ADR
+0029 §6), and only under the run's own reservation — the lock a converter
+holds from its recorded-run check to its commit — so a run being reused at
+that very moment is never deleted between its figure check and its commit;
+the `.ocr/` tree as a whole still goes with the *last referencing row* of the
+source, through `DocumentDeleter`'s hard delete. One gate, three callers (the
+hard delete, the prune, the orphan sweep): they cannot diverge on what
 "referenced" means. `DocumentDeleter`'s hard
 delete removes the artifact of the row it deletes unconditionally: each row
 owns its own artifact, unlike the shared source file. ADR 0020 Decision 6
@@ -319,8 +364,15 @@ erasure of any raw asset.
 
 `KbDocumentVersionsTool` (read) lists a document's family with `id`, `status`,
 `is_live`, `version_actor`, `version_reason`, `content_hash`,
-`has_artifact`, `restored_by`, `restored_at` (§6), `indexed_at`, tenant-scoped through the same service (R30,
-R44). It reads; it never restores. `kb:doc-versions {document} {--tenant=}` is
+`has_artifact`, `artifact_state`, `restored_by`, `restored_at` (§6), `indexed_at`, tenant-scoped through the same service (R30,
+R44). `has_artifact` is a **read + verified** claim on every surface (HTTP,
+MCP, CLI), never the pointer alone: the ingestor deliberately keeps
+`markdown_path` when a post-commit publish fails and a file can be truncated
+later, so each surface derives it from `DocumentVersionService::artifactStateFor()`
+— the same read + hash check `contentFor()` serves content with — and exposes
+the additive `artifact_state` (`none` · `verified` · `unverified` · `missing`
+· `mismatch`) so an operator never reads a "stored" badge over a file that
+cannot be read. It reads; it never restores. `kb:doc-versions {document} {--tenant=}` is
 the CLI over the same service — `--tenant` validated non-empty and the
 document resolved with `forTenant()`, never the process-global default.
 `restore` stays HTTP-only and human-only, and `kb:artifacts-backfill` (§3)

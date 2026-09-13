@@ -294,9 +294,11 @@ recorded run (the raw OCR text and its reuse) only; figures follow
 `KB_OCR_FIGURES_ENABLED` and the retention mode, so a deployment that must
 hold no OCR asset at all beside its scans turns figures off too — and the
 same happens by policy when the effective `KB_SOURCE_RETENTION` is
-`reference_only`, the mode that promises no local copy at all: no run is
-recorded, no figure is stored, the Markdown carries no `images/` reference
-(ADR 0029 §5, ADR 0030 §3). Second, on a shared disk two tenants with the same source
+`reference_only` — once `KB_CONVERSION_ARTIFACTS_ENABLED` wires the
+retention mode; with that flag off the knob stays the inert foundation it
+was, and figures and reuse are unchanged (R43) — the mode that promises no
+local copy at all: no run is recorded, no figure is stored, the Markdown
+carries no `images/` reference (ADR 0029 §5, ADR 0030 §3). Second, on a shared disk two tenants with the same source
 key and bytes share the run: the second tenant's ingest is `reused: true`
 and carries no FinOps row — no data crosses (both already hold the bytes),
 but the first tenant carries the cost; a deployment that isolates tenants by
@@ -464,7 +466,17 @@ flowchart LR
   trashed included — was ingested under a mode that does not require it and
   has its artifact present on disk. A `full_copy` row (or a pre-v8.36 row
   without the stamp, which counts as `full_copy`) blocks the drop; a
-  `reference_only` row never needed the local source.
+  `reference_only` row never needed the local source. The stamp is host-owned
+  — `source_retention` / `source_dropped` sent by a client or a connector are
+  stripped like `version_actor`, an unknown value resolves to the configured
+  mode — and the drop is gated on the row's **own** stamp, never on the
+  configured mode of the day: a `full_copy` version re-embedded after
+  `KB_SOURCE_RETENTION` moved to `markdown_only` keeps its original, and a
+  version being replaced (a forced re-embed, a fresh OCR run) keeps the
+  contract it was born under — `full_copy` for a pre-v8.36 row without a
+  stamp; only a new version gets the configured mode, and with the artifacts
+  flag off it is stamped `full_copy` (nothing was stored, dropped or
+  withheld).
 - **Retention follows `KB_SOURCE_RETENTION`.** `full_copy` (default) stores
   the artifact next to the original; `markdown_only` stores it and drops the
   original binary after the artifact commit (a Markdown source is its own
@@ -475,7 +487,7 @@ flowchart LR
   `KB_CONVERSION_ARTIFACTS_TMP_MAX_AGE` plus artifacts no row (trashed rows
   included) references any more. Both sweeps are deliberately **cross-tenant**
   (the root is one shared tree; a file is deleted only at zero references
-  across every tenant) and cover the configured `KB_DISK` / `KB_PATH_PREFIX`
+  across every tenant) and cover the configured `KB_FILESYSTEM_DISK` / `KB_PATH_PREFIX`
   only. A soft delete leaves the artifact in place.
 - **`markdown_only` keeps the sweeps honest.** The original is dropped only
   when every row referencing that storage key — any tenant, trashed rows
@@ -484,11 +496,18 @@ flowchart LR
   `kb:ingest-folder --prune-orphans` never reads the missing file as an orphan,
   and a PII-policy re-embed (`kb:reembed-project`) reads the artifact instead.
   The backfill does not drop originals: it repairs history, it never changes it.
-- **Backfill is operator-only.** `kb:artifacts-backfill` re-converts live
-  rows without an artifact and writes one only when the reconversion hashes to
-  the row's `document_hash` (`hash_mismatch` is reported and nothing is
-  written — an artifact must agree with the version's chunks); `reference_only`
-  rows are `intentionally_missing`, a missing source is reported, not invented.
+- **Backfill is operator-only and judges each row on its own contract.**
+  `kb:artifacts-backfill` walks every live row: a row stamped
+  `reference_only` is `intentionally_missing` whatever `KB_SOURCE_RETENTION`
+  says today (a row without the stamp predates v8.36 and counts as
+  `full_copy`, so a `full_copy` history is still backfilled after the knob
+  moved); a pointer whose file is readable and hashes to `document_hash` is
+  `already_stored`; any other row — no pointer, or a pointer whose file is
+  missing or corrupt — is re-converted and gets its artifact only when the
+  reconversion hashes to the row's `document_hash` (`hash_mismatch` is
+  reported and nothing is written — an artifact must agree with the version's
+  chunks); a missing source is reported, not invented. An identical re-ingest
+  with the flag on repairs or publishes a version's artifact the same way.
 
 The artifact is the converter's output **before** the PII seam. That is why
 it is readable only through the role-gated admin Time Machine surfaces and
@@ -575,7 +594,7 @@ The Time Machine (W2) is tri-surface over `DocumentVersionService`:
 | Surface | Entry | Notes |
 |---|---|---|
 | PHP | `php artisan kb:doc-versions {document} --tenant=… [--diff=FROM:TO]` · `php artisan kb:artifacts-backfill --tenant=… [--project=] [--dry-run]` | The list prints actor, reason, artifact and content hash per version; `--diff` prints an artifact-aware diff with the source of each side. The backfill is operator-only maintenance (a storage repair that re-converts): a documented R44 exception. Both refuse a blank `--tenant`. |
-| HTTP | `GET /api/admin/kb/documents/{id}/versions` (now with `version_actor`, `version_reason`, `content_hash`, `has_artifact`) · `GET …/versions/diff?from&to` (now with `from_source`, `to_source`) · `GET …/versions/{versionId}/content` (new) · `POST …/restore-version` (now records the restore in `metadata.restores`, creation provenance untouched) | `role:admin\|super-admin`, R32 matrix row; the content endpoint is family-scoped (404 for a version outside the document's family). |
+| HTTP | `GET /api/admin/kb/documents/{id}/versions` (now with `version_actor`, `version_reason`, `content_hash`, `has_artifact` — a read + verified claim, never the pointer alone — and `artifact_state`: `none` · `verified` · `unverified` · `missing` · `mismatch`) · `GET …/versions/diff?from&to` (now with `from_source`, `to_source`) · `GET …/versions/{versionId}/content` (new) · `POST …/restore-version` (now records the restore in `metadata.restores`, creation provenance untouched) | `role:admin\|super-admin`, R32 matrix row; the content endpoint is family-scoped (404 for a version outside the document's family). |
 | MCP | `KbDocumentVersionsTool` | **Read-only, metadata only.** Diff and content have no MCP twin by design: the artifact is un-redacted converter output (documented R44 exception). |
 
 ## Decision rationale (ADR-style)
@@ -639,7 +658,18 @@ modal, once as an IMAP attachment — on a deployment with `KB_OCR_ENABLED=true`
 
 - **Turning artifacts on populates nothing by itself.** Rows ingested before
   `KB_CONVERSION_ARTIFACTS_ENABLED=true` keep diffing by reconstruction until
-  their next re-ingest or a `kb:artifacts-backfill --tenant=…` run.
+  their next identical re-ingest (which publishes the artifact for a
+  pointerless row under its own retention contract) or a
+  `kb:artifacts-backfill --tenant=…` run.
+- **A "stored" badge is a verified claim.** `has_artifact` is derived from the
+  same read + hash check the content endpoint uses; `artifact_state` says
+  `missing` or `mismatch` when the pointer no longer resolves to the recorded
+  bytes, and `kb:artifacts-backfill` repairs those rows.
+- **A refused delete is a failed prune.** `kb:prune-archived-versions` reports
+  `artifacts_failed` / `artifact_temps_failed` / `artifact_orphans_failed` /
+  `ocr_failed` and exits non-zero when the disk refused a removal (or a
+  planted symlink under `.artifacts/` stopped a sweep): the rows are gone,
+  the bytes are not.
 - **Turning it off is a stop, not a rollback.** Nothing already stored is
   discarded or hidden; `contentFor()` keeps reading it and the UI keeps saying
   *faithful* for those pairs.

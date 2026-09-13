@@ -820,7 +820,8 @@ final class OcrLimitsAndReuseTest extends TestCase
     #[Test]
     public function reference_only_retention_records_no_run_and_stores_no_figure(): void
     {
-        config(['kb.source_retention.mode' => 'reference_only', 'kb.ocr.fake.pages' => [['markdown' => 'p1', 'figures' => [FakeOcrDriver::PNG_1X1]]]]);
+        // The retention mode is wired by KB_CONVERSION_ARTIFACTS_ENABLED (ADR 0030 §2).
+        config(['kb.conversion_artifacts.enabled' => true, 'kb.source_retention.mode' => 'reference_only', 'kb.ocr.fake.pages' => [['markdown' => 'p1', 'figures' => [FakeOcrDriver::PNG_1X1]]]]);
         $converter = $this->app->make(OcrConverter::class);
 
         $first = $converter->convert($this->image());
@@ -835,6 +836,26 @@ final class OcrLimitsAndReuseTest extends TestCase
         config(['kb.source_retention.mode' => 'full_copy']);
         $converter->convert($this->image());
         $this->assertTrue($converter->convert($this->image())->extractionMeta['ocr']['reused']);
+    }
+
+    /**
+     * R43 — with KB_CONVERSION_ARTIFACTS_ENABLED off the retention knob is the
+     * inert foundation it was before v8.36: a deployment that set
+     * `reference_only` while it was unwired keeps figures and run reuse
+     * exactly as before the upgrade.
+     */
+    #[Test]
+    public function with_the_artifacts_flag_off_the_retention_mode_does_not_touch_figures_or_reuse(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => false, 'kb.source_retention.mode' => 'reference_only', 'kb.ocr.fake.pages' => [['markdown' => 'p1', 'figures' => [FakeOcrDriver::PNG_1X1]]]]);
+        $converter = $this->app->make(OcrConverter::class);
+
+        $first = $converter->convert($this->image());
+        $run = $first->extractionMeta['ocr']['run'];
+        Storage::disk('kb')->assertExists("docs/scan.png.ocr/{$run}/result.json");
+        Storage::disk('kb')->assertExists("docs/scan.png.ocr/{$run}/images/fig-1-1.png");
+        $this->assertCount(1, $first->mediaItems);
+        $this->assertTrue((bool) $converter->convert($this->image())->extractionMeta['ocr']['reused']);
     }
 
     #[Test]

@@ -9,9 +9,11 @@ use Illuminate\Support\Facades\Schema;
  * of the stored artifact.
  *
  * All three are nullable so every existing row is a valid "unknown actor"
- * version; no backfill invents an actor. `content_hash` equals
- * `document_hash` until the first correction (v8.37) changes the artifact
- * without re-running conversion.
+ * version; no backfill invents an actor. `content_hash` is the SHA-256 of
+ * the stored artifact: equal to `document_hash` by construction (the
+ * artifact IS the converted Markdown the version hash was computed from) —
+ * an integrity check on the file, never a second identity; a later
+ * correction is an ordinary new version (ADR 0030 §4/§7).
  */
 return new class extends Migration
 {

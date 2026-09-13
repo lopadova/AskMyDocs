@@ -761,23 +761,38 @@ class DocumentDeleter
      * a remaining row — any tenant, live, archived or soft-deleted, the same
      * documented R30 exception as the storage-key gate, because the run
      * directory sits beside a source object that is not tenant namespaced —
-     * whose `metadata.converter.ocr.run` names `$run` under `$sourcePath`,
-     * or null when nothing references it. The prune asks here before it
-     * purges a pruned version's run, so "referenced" means the same thing
-     * for the hard delete and for the prune.
+     * whose `metadata.converter.ocr.run` names `$run` AND whose recorded
+     * storage namespace resolves `$sourcePath` to the very object the run
+     * directory sits beside (`$prefix/$sourcePath` on `$disk`), or null when
+     * nothing references it. A run directory is physically scoped by disk,
+     * prefix, source path and run key: a same-named row under another disk
+     * or prefix references ANOTHER run directory and neither keeps this one
+     * alive nor is ignored — the same identity {@see documentReferencesStorageKey()}
+     * applies to the source object, legacy rows without a recorded disk
+     * counting as references (fail closed). The prune and the orphan sweep
+     * ask here before they purge a run, so "referenced" means the same thing
+     * for the hard delete and for the retention paths.
      */
-    public function documentReferencingOcrRun(string $sourcePath, string $run): ?int
+    public function documentReferencingOcrRun(string $disk, string $prefix, string $sourcePath, string $run): ?int
     {
-        $documents = KnowledgeDocument::query()
+        $normalizedSourcePath = KbPath::normalize($sourcePath);
+        $fullPath = $this->resolveFullPath($prefix, $normalizedSourcePath);
+        if ($fullPath === null) {
+            return null;
+        }
+        // R3 — the run key is compared in SQL (JSON path, portable across
+        // pgsql and SQLite), never by decoding every version's metadata; the
+        // (few) rows naming the run are then judged on their namespace.
+        $rows = KnowledgeDocument::query()
             ->withoutGlobalScopes()
-            ->where('source_path', KbPath::normalize($sourcePath))
-            ->select(['id', 'metadata'])
+            ->where('source_path', $normalizedSourcePath)
+            ->where('metadata->converter->ocr->run', $run)
+            ->select(['id', 'source_path', 'metadata'])
+            ->orderBy('id')
             ->cursor();
-
-        foreach ($documents as $document) {
-            $metadata = is_array($document->metadata) ? $document->metadata : [];
-            if (($metadata['converter']['ocr']['run'] ?? null) === $run) {
-                return (int) $document->id;
+        foreach ($rows as $row) {
+            if ($this->documentReferencesStorageKey($row, $disk, $fullPath)) {
+                return (int) $row->id;
             }
         }
 

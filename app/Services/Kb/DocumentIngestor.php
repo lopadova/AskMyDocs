@@ -247,6 +247,64 @@ class DocumentIngestor
         );
     }
 
+    /**
+     * v8.36 / ADR 0030 §5 — re-derive and re-embed the chunks of an EXISTING
+     * version from its stored artifact (the converted Markdown), without
+     * running any converter: the row's `mime_type` may be a binary format
+     * (a `markdown_only` PDF whose original was dropped), and its converter
+     * must never be handed Markdown bytes — that would fail, or start an OCR
+     * run over text. The row keeps its identity (`mime_type`, `source_type`,
+     * metadata, version hash — the artifact hashes to it by construction);
+     * only the chunk set is replaced under the current policy.
+     */
+    public function reembedFromMarkdown(KnowledgeDocument $document, string $markdown): KnowledgeDocument
+    {
+        $mimeType = $document->mime_type !== null && $document->mime_type !== '' ? (string) $document->mime_type : 'text/markdown';
+        $sourceType = $this->resolveSourceType($mimeType);
+        $metadata = is_array($document->metadata) ? $document->metadata : [];
+        $sourcePath = KbPath::normalize((string) $document->source_path);
+
+        $converted = new \App\Services\Kb\Pipeline\ConvertedDocument(
+            markdown: $markdown,
+            mediaItems: [],
+            extractionMeta: is_array($metadata['converter'] ?? null) ? $metadata['converter'] : ['converter' => 'artifact'],
+            sourceMimeType: $mimeType,
+        );
+        $source = new SourceDocument(
+            sourcePath: $sourcePath,
+            mimeType: $mimeType,
+            bytes: $markdown,
+            externalUrl: is_string($metadata['external_url'] ?? null) ? $metadata['external_url'] : null,
+            externalId: is_string($metadata['external_id'] ?? null) ? $metadata['external_id'] : null,
+            connectorType: is_string($metadata['connector'] ?? null) ? $metadata['connector'] : 'local',
+            metadata: $metadata,
+        );
+        $converted = $this->projectChunkerHints($converted, $source, $sourceType);
+        $chunkDrafts = $this->registry->resolveChunker($sourceType)->chunk($converted);
+        // The artifact was produced by this row's converter, so the row's
+        // source-type chunker is the right one (a PDF/OCR artifact carries
+        // the `## Page N` markers PdfPageChunker slices on). Should that
+        // chunker find nothing to slice in a non-empty artifact, fall back to
+        // the generic Markdown chunker: with `forceReembed` an empty draft
+        // list would REPLACE the live chunks with nothing and silently drop
+        // the document from retrieval (R14).
+        if ($chunkDrafts === [] && trim($markdown) !== '' && $sourceType !== 'markdown') {
+            $chunkDrafts = $this->registry->resolveChunker('markdown')->chunk($converted);
+        }
+
+        return $this->persistFromDrafts(
+            projectKey: (string) $document->project_key,
+            sourcePath: $sourcePath,
+            title: (string) $document->title,
+            mimeType: $mimeType,
+            sourceType: $sourceType,
+            markdown: $markdown,
+            chunkDrafts: $chunkDrafts,
+            metadata: $metadata,
+            forceReembed: true,
+        );
+    }
+
     // -----------------------------------------------------------------
     // lookup
     // -----------------------------------------------------------------
@@ -329,6 +387,7 @@ class DocumentIngestor
     ): KnowledgeDocument {
         $documentHash = hash('sha256', $markdown);
         $versionHash = $documentHash;
+        $existing = $this->findExistingVersion($projectKey, $sourcePath, $versionHash);
 
         // v8.36 / ADR 0029 — a forced OCR re-run (`metadata.ocr.force`) that
         // produced byte-identical Markdown is still a NEW run: its chunks and
@@ -336,15 +395,16 @@ class DocumentIngestor
         // existing version's instead of being dropped by the same-hash guard
         // — otherwise the row would keep pointing at the previous run while
         // the new one was billed and recorded. Same mechanics as forceReembed.
-        if (! $replaceExisting) {
-            $existing = $this->findExistingVersion($projectKey, $sourcePath, $versionHash);
-            if ($existing !== null) {
-                $existing->update(['indexed_at' => now()]);
-                $this->repairArtifactOfExistingVersion($existing, $markdown, $metadata);
+        if (! $replaceExisting && $existing !== null) {
+            $existing->update(['indexed_at' => now()]);
+            $this->repairArtifactOfExistingVersion($existing, $markdown, $metadata);
 
-                return $existing;
-            }
+            return $existing;
         }
+
+        // ADR 0030 §3 — the retention contract, decided BEFORE anything is
+        // staged or dropped (the same rule as persistFromDrafts()).
+        $metadata = $this->stampSourceRetention($metadata, $existing);
 
         // v8.36 / ADR 0030 §3 — the artifact temp file is written BEFORE the
         // transaction and moved into place only after commit; a failed
@@ -402,6 +462,7 @@ class DocumentIngestor
     ): KnowledgeDocument {
         $documentHash = hash('sha256', $markdown);
         $versionHash = $documentHash;
+        $existing = $this->findExistingVersion($projectKey, $sourcePath, $versionHash);
 
         // v8.23 (Ciclo 4, PR5) — a `forceReembed` re-ingest (after a PII-policy
         // change) deliberately SKIPS the version_hash idempotency short-circuit:
@@ -409,15 +470,21 @@ class DocumentIngestor
         // must be re-derived + re-embedded under the NEW policy. persistDocument-
         // AndChunks then REPLACES the existing version's chunks rather than
         // accumulating them.
-        if (! $forceReembed) {
-            $existing = $this->findExistingVersion($projectKey, $sourcePath, $versionHash);
-            if ($existing !== null) {
-                $existing->update(['indexed_at' => now()]);
-                $this->repairArtifactOfExistingVersion($existing, $markdown, $metadata);
+        if (! $forceReembed && $existing !== null) {
+            $existing->update(['indexed_at' => now()]);
+            $this->repairArtifactOfExistingVersion($existing, $markdown, $metadata);
 
-                return $existing;
-            }
+            return $existing;
         }
+
+        // ADR 0030 §3 — the retention contract this version is persisted
+        // under, decided BEFORE anything is staged or dropped: a version
+        // being REPLACED keeps the contract it was born under (its own stamp,
+        // `full_copy` for a row that predates the stamp — never the configured
+        // mode of the day), a new version gets the configured mode; an unknown
+        // value is never a permissive one (the untrusted boundaries strip the
+        // key anyway).
+        $metadata = $this->stampSourceRetention($metadata, $existing);
 
         // v8.23 (Ciclo 4) — PII redaction of the chunk text (direct path). Runs
         // here, AFTER the idempotency short-circuit above, so an identical
@@ -521,11 +588,12 @@ class DocumentIngestor
 
         $tenantId = app(TenantContext::class)->current();
 
-        // ADR 0030 §3 — the retention contract the row was ingested under.
-        // `markdown_only` may drop a shared original only if EVERY row that
-        // references it was ingested under a mode that does not require the
-        // original; a row without the stamp (pre-v8.36) counts as full_copy.
-        $metadata['source_retention'] ??= app(SourceRetentionResolver::class)->mode();
+        // ADR 0030 §3 — the retention contract the row was ingested under is
+        // stamped by the caller (persistFromDrafts() / persistDrafts()) before
+        // anything is staged; `markdown_only` may drop a shared original only
+        // if EVERY row that references it was ingested under a mode that does
+        // not require the original; a row without the stamp (pre-v8.36)
+        // counts as full_copy.
 
         // v8.36 / ADR 0030 §4 — provenance is written when the version is
         // BORN. A forced re-embed re-runs this on the same row and must not
@@ -728,7 +796,7 @@ class DocumentIngestor
     private function stageArtifact(string $projectKey, string $sourcePath, string $versionHash, string $markdown, array $metadata): ?array
     {
         $store = app(ConversionArtifactStore::class);
-        if (! $store->enabled() || ! app(SourceRetentionResolver::class)->retainsMarkdown()) {
+        if (! $store->enabled() || $this->sourceRetentionOf($metadata) === SourceRetentionResolver::REFERENCE_ONLY) {
             return null;
         }
         if (($metadata['dry_run'] ?? false) === true) {
@@ -749,20 +817,34 @@ class DocumentIngestor
      * to `content_hash`. A missing or corrupt artifact is republished from the
      * freshly converted bytes through the same temp-then-publish protocol —
      * no new version, no chunk rewrite, pointer and `content_hash` unchanged
-     * (the bytes are the same by construction). A row without a pointer is
-     * left to `kb:artifacts-backfill`; a failed repair is logged and the row
-     * keeps falling back to reconstruction, exactly as before the re-ingest.
+     * (the bytes are the same by construction). A row that predates the
+     * artifacts (no pointer) gets its artifact published the same way, under
+     * ITS retention contract (a `reference_only` row stays without one) —
+     * an identical re-ingest with the flag on is the cheapest repair there
+     * is, `kb:artifacts-backfill` being the one for rows nobody re-pushes.
+     * The disk is the version's RECORDED namespace (the configured one only
+     * for a legacy row), never the incoming request's: after `kb.sources.disk`
+     * changes the historical artifact still lives where the row says.
+     * A failed repair is logged and the row keeps falling back to
+     * reconstruction, exactly as before the re-ingest.
      *
      * @param  array<string,mixed>  $metadata
      */
     private function repairArtifactOfExistingVersion(KnowledgeDocument $existing, string $markdown, array $metadata): void
     {
-        $path = $existing->markdown_path;
-        if (! is_string($path) || $path === '' || ($metadata['dry_run'] ?? false) === true) {
+        if (($metadata['dry_run'] ?? false) === true) {
             return;
         }
         $store = app(ConversionArtifactStore::class);
         if (! $store->enabled()) {
+            return;
+        }
+        $existingMetadata = is_array($existing->metadata) ? $existing->metadata : [];
+        $disk = (string) ($existingMetadata['disk'] ?? config('kb.sources.disk', 'kb'));
+        $path = $existing->markdown_path;
+        if (! is_string($path) || $path === '') {
+            $this->publishArtifactOfPointerlessVersion($existing, $markdown, $existingMetadata, $disk, $store);
+
             return;
         }
         $expected = is_string($existing->content_hash) && $existing->content_hash !== '' ? $existing->content_hash : hash('sha256', $markdown);
@@ -772,7 +854,6 @@ class DocumentIngestor
 
             return;
         }
-        $disk = (string) ($metadata['disk'] ?? config('kb.sources.disk', 'kb'));
         try {
             $current = $store->read($disk, $path);
             if (is_string($current) && hash('sha256', $current) === $expected) {
@@ -783,6 +864,100 @@ class DocumentIngestor
         } catch (\Throwable $e) {
             Log::error('DocumentIngestor: artifact repair failed; reads keep falling back to reconstruction until kb:artifacts-backfill repairs it', ['document_id' => $existing->id, 'disk' => $disk, 'markdown_path' => $path, 'error' => $e->getMessage()]);
         }
+    }
+
+    /**
+     * Publish the artifact of a version that never had one (ingested before
+     * the flag was on) from an identical re-ingest: pointer first, bytes
+     * second — the same order as a fresh ingest, so the orphan sweep never
+     * sees a published file no row points at — and the pointer taken back
+     * when the publish fails, so the row is left exactly as it was.
+     *
+     * @param  array<string,mixed>  $existingMetadata
+     */
+    private function publishArtifactOfPointerlessVersion(KnowledgeDocument $existing, string $markdown, array $existingMetadata, string $disk, ConversionArtifactStore $store): void
+    {
+        if ($this->sourceRetentionOf($existingMetadata) === SourceRetentionResolver::REFERENCE_ONLY) {
+            return;
+        }
+        $hash = hash('sha256', $markdown);
+        if ($hash !== (string) $existing->document_hash) {
+            Log::warning('DocumentIngestor: converted bytes do not match the recorded document_hash; no artifact published', ['document_id' => $existing->id]);
+
+            return;
+        }
+        $prefix = array_key_exists('prefix', $existingMetadata)
+            ? (string) $existingMetadata['prefix']
+            : (string) config('kb.sources.path_prefix', '');
+        $final = null;
+        try {
+            $final = $store->pathFor(app(TenantContext::class)->current(), (string) $existing->project_key, KbPath::normalize((string) $existing->source_path), (string) $existing->version_hash, $prefix);
+            KnowledgeDocument::withoutGlobalScopes()->whereKey($existing->id)->update(['markdown_path' => $final, 'content_hash' => $hash]);
+            $store->publish($disk, $store->writeTemp($disk, $final, $markdown), $final);
+            $existing->markdown_path = $final;
+            $existing->content_hash = $hash;
+            Log::info('DocumentIngestor: artifact published for a version that predated the artifacts, from an identical re-ingest', ['document_id' => $existing->id, 'disk' => $disk, 'markdown_path' => $final]);
+        } catch (\Throwable $e) {
+            if ($final !== null) {
+                KnowledgeDocument::withoutGlobalScopes()->whereKey($existing->id)->update(['markdown_path' => null, 'content_hash' => null]);
+            }
+            Log::error('DocumentIngestor: artifact publish failed for a version that predated the artifacts; kb:artifacts-backfill can repair it', ['document_id' => $existing->id, 'disk' => $disk, 'error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * The retention contract a persisted row lives under: its own stamp when
+     * it carries a valid one, `full_copy` otherwise — a row without the stamp
+     * predates v8.36 and, once persisted, counts as `full_copy` wherever a
+     * drop is decided (publishArtifact(), the backfill, the pointerless
+     * repair). Never the configured mode of the day.
+     *
+     * @param  array<string,mixed>  $metadata
+     */
+    private function sourceRetentionOf(array $metadata): string
+    {
+        $mode = $metadata['source_retention'] ?? null;
+        if (is_string($mode) && in_array($mode, SourceRetentionResolver::MODES, true)) {
+            return $mode;
+        }
+
+        return SourceRetentionResolver::FULL_COPY;
+    }
+
+    /**
+     * Stamp the contract a version is persisted under. A version being
+     * REPLACED (a forced re-embed, a fresh OCR run of the same bytes) keeps
+     * the one it was born under — its own stamp, `full_copy` for a row that
+     * predates the stamp — so a replay after `KB_SOURCE_RETENTION` moved to
+     * `markdown_only` never drops an original the row was ingested to keep.
+     * A NEW version gets the configured mode — unless the artifacts flag is
+     * off, in which case the mode is the inert foundation it was (nothing is
+     * stored, nothing is dropped or withheld, R43) and the row is stamped
+     * `full_copy`: what actually happened, so a later backfill with the flag
+     * on does not read `intentionally_missing` into a row that never lived
+     * under `reference_only`. An unknown value is never a permissive one.
+     *
+     * @param  array<string,mixed>  $metadata
+     * @return array<string,mixed>
+     */
+    private function stampSourceRetention(array $metadata, ?KnowledgeDocument $existing): array
+    {
+        if ($existing !== null) {
+            $metadata['source_retention'] = $this->sourceRetentionOf(is_array($existing->metadata) ? $existing->metadata : []);
+
+            return $metadata;
+        }
+        if (! app(ConversionArtifactStore::class)->enabled()) {
+            $metadata['source_retention'] = SourceRetentionResolver::FULL_COPY;
+
+            return $metadata;
+        }
+        $mode = $metadata['source_retention'] ?? null;
+        $metadata['source_retention'] = is_string($mode) && in_array($mode, SourceRetentionResolver::MODES, true)
+            ? $mode
+            : app(SourceRetentionResolver::class)->mode();
+
+        return $metadata;
     }
 
     /**
@@ -845,7 +1020,10 @@ class DocumentIngestor
         $store = app(ConversionArtifactStore::class);
         $store->publish($artifact['disk'], $artifact['tmp'], $artifact['final']);
 
-        if (! app(SourceRetentionResolver::class)->dropsOriginal() || $sourceType === 'markdown') {
+        // The drop is gated on THIS row's persisted contract, never on the
+        // configured mode of the day: a `full_copy` version re-embedded after
+        // `KB_SOURCE_RETENTION` moved to `markdown_only` keeps its original.
+        if ($this->sourceRetentionOf($metadata) !== SourceRetentionResolver::MARKDOWN_ONLY || $sourceType === 'markdown') {
             return;
         }
         $prefix = array_key_exists('prefix', $metadata)

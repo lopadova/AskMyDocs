@@ -4,12 +4,16 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Console;
 
+use App\Models\KbCanonicalAudit;
+use App\Models\KbNode;
 use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
 use App\Services\Kb\Ocr\OcrFigureStore;
+use App\Services\Kb\Ocr\OcrService;
 use App\Services\Kb\Versioning\ConversionArtifactStore;
 use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -143,7 +147,7 @@ final class ArtifactsRetentionCommandsTest extends TestCase
         $freshTmp = $store->writeTemp('kb', $orphan, 'in flight');
 
         $this->artisan('kb:prune-archived-versions')
-            ->expectsOutputToContain('artifact_temps_swept=1 artifact_orphans_removed=1')
+            ->expectsOutputToContain('artifact_temps_swept=1 artifact_temps_failed=0 artifact_orphans_removed=1 artifact_orphans_failed=0')
             ->assertExitCode(0);
 
         Storage::disk('kb')->assertExists((string) $live->markdown_path);
@@ -174,7 +178,7 @@ final class ArtifactsRetentionCommandsTest extends TestCase
         $store->publish('kb', $store->writeTemp('kb', $orphan, 'orphan'), $orphan);
 
         $this->artisan('kb:prune-archived-versions', ['--dry-run' => true])
-            ->expectsOutputToContain('artifact_orphans_removed=1 (dry-run)')
+            ->expectsOutputToContain('artifact_orphans_removed=1 artifact_orphans_failed=0 (dry-run)')
             ->assertExitCode(0);
 
         Storage::disk('kb')->assertExists($orphan);
@@ -191,20 +195,26 @@ final class ArtifactsRetentionCommandsTest extends TestCase
         $drift = $this->row(2, 'active', null, 'docs/drift.md');
         // source gone
         $gone = $this->row(3, 'active', null, 'docs/gone.md');
-        // already has an artifact: not a candidate
-        $has = $this->row(4, 'active', 'stored', 'docs/has.md');
+        // already has a VERIFIED artifact (readable, hashes to document_hash): nothing to do
+        $has = $this->row(4, 'active', "# Doc\n\nversion 4\n", 'docs/has.md');
         // archived: not live, not a candidate
         Storage::disk('kb')->put('docs/old.md', "# Doc\n\nversion 5\n");
         $this->row(5, 'archived', null, 'docs/old.md');
+        // a pointer is not an artifact: the file behind it is corrupt (a
+        // publish that failed after commit, a later corruption) → repaired
+        Storage::disk('kb')->put('docs/corrupt.md', "# Doc\n\nversion 6\n");
+        $corrupt = $this->row(6, 'active', 'not the recorded bytes', 'docs/corrupt.md');
 
         $this->artisan('kb:artifacts-backfill', ['--tenant' => $tenant, '--dry-run' => true])
-            ->expectsOutputToContain('written=1 intentionally_missing=0 source_missing=1 hash_mismatch=1 conversion_failed=0 (dry-run)')
+            ->expectsOutputToContain('already_stored=1 written=2 intentionally_missing=0 source_missing=1 hash_mismatch=1 conversion_failed=0 (dry-run)')
             ->assertExitCode(0);
         $this->assertNull($match->fresh()->markdown_path);
+        $this->assertSame('not the recorded bytes', Storage::disk('kb')->get((string) $corrupt->markdown_path));
 
         $this->artisan('kb:artifacts-backfill', ['--tenant' => $tenant])
-            ->expectsOutputToContain('written=1 intentionally_missing=0 source_missing=1 hash_mismatch=1 conversion_failed=0')
+            ->expectsOutputToContain('already_stored=1 written=2 intentionally_missing=0 source_missing=1 hash_mismatch=1 conversion_failed=0')
             ->assertExitCode(0);
+        $this->assertSame("# Doc\n\nversion 6\n", Storage::disk('kb')->get((string) $corrupt->fresh()->markdown_path));
 
         $written = $match->fresh();
         $this->assertNotNull($written->markdown_path);
@@ -215,16 +225,27 @@ final class ArtifactsRetentionCommandsTest extends TestCase
         $this->assertSame($has->markdown_path, $has->fresh()->markdown_path);
     }
 
-    public function test_backfill_reports_reference_only_rows_as_intentionally_missing_and_refuses_a_blank_tenant(): void
+    /**
+     * ADR 0030 §3 — the retention contract is the ROW's (`metadata.source_retention`,
+     * a row without the stamp predates v8.36 and counts as `full_copy`), never
+     * the configured mode of the day: a history ingested under `full_copy` is
+     * still backfilled after the knob moved to `reference_only`, and a row
+     * ingested under `reference_only` gets nothing whatever the knob says now.
+     */
+    public function test_backfill_judges_each_row_on_its_own_retention_contract_and_refuses_a_blank_tenant(): void
     {
         Storage::disk('kb')->put('docs/ref.md', "# Doc\n\nversion 1\n");
-        $row = $this->row(1, 'active', null, 'docs/ref.md');
-        config(['kb.source_retention.mode' => 'reference_only']);
+        $stamped = $this->row(1, 'active', null, 'docs/ref.md');
+        $stamped->update(['metadata' => ['disk' => 'kb', 'prefix' => '', 'source_retention' => 'reference_only']]);
+        Storage::disk('kb')->put('docs/legacy.md', "# Doc\n\nversion 2\n");
+        $legacy = $this->row(2, 'active', null, 'docs/legacy.md'); // no stamp: full_copy
+        config(['kb.source_retention.mode' => 'reference_only']); // the knob of the day decides nothing
 
         $this->artisan('kb:artifacts-backfill', ['--tenant' => app(TenantContext::class)->current()])
-            ->expectsOutputToContain('written=0 intentionally_missing=1')
+            ->expectsOutputToContain('already_stored=0 written=1 intentionally_missing=1')
             ->assertExitCode(0);
-        $this->assertNull($row->fresh()->markdown_path);
+        $this->assertNull($stamped->fresh()->markdown_path);
+        $this->assertNotNull($legacy->fresh()->markdown_path);
 
         $this->artisan('kb:artifacts-backfill', ['--tenant' => ''])->assertExitCode(1);
 
@@ -232,5 +253,172 @@ final class ArtifactsRetentionCommandsTest extends TestCase
         $this->artisan('kb:artifacts-backfill', ['--tenant' => app(TenantContext::class)->current()])
             ->expectsOutputToContain('KB_CONVERSION_ARTIFACTS_ENABLED=false')
             ->assertExitCode(1);
+    }
+    /**
+     * ADR 0030 §3 — artifact disks are independent storage objects: a row
+     * whose RECORDED disk is another one references another file with the
+     * same path and does not keep this disk's orphan alive; a row that never
+     * recorded its disk protects the path wherever the sweep looks (fail
+     * closed, as for source files).
+     */
+    public function test_prune_sweep_judges_artifact_references_by_the_rows_recorded_disk(): void
+    {
+        $store = app(ConversionArtifactStore::class);
+        $tenant = app(TenantContext::class)->current();
+        $otherDiskPath = $store->pathFor($tenant, 'eng', 'docs/other.md', str_repeat('d', 64));
+        $store->publish('kb', $store->writeTemp('kb', $otherDiskPath, 'on kb, referenced only on kb-archive'), $otherDiskPath);
+        $onOtherDisk = $this->row(1, 'active', null, 'docs/other.md');
+        $onOtherDisk->update(['markdown_path' => $otherDiskPath, 'metadata' => ['disk' => 'kb-archive', 'prefix' => '']]);
+        $legacyPath = $store->pathFor($tenant, 'eng', 'docs/legacy.md', str_repeat('e', 64));
+        $store->publish('kb', $store->writeTemp('kb', $legacyPath, 'referenced by a row without a disk'), $legacyPath);
+        $legacy = $this->row(2, 'active', null, 'docs/legacy.md');
+        $legacy->update(['markdown_path' => $legacyPath, 'metadata' => []]);
+
+        $this->artisan('kb:prune-archived-versions')
+            ->expectsOutputToContain('artifact_orphans_removed=1 artifact_orphans_failed=0')
+            ->assertExitCode(0);
+
+        Storage::disk('kb')->assertMissing($otherDiskPath);
+        Storage::disk('kb')->assertExists($legacyPath);
+    }
+
+    /**
+     * ADR 0030 §8 — an OCR run directory is namespaced by disk, prefix,
+     * source path and run: a row naming the same run under another prefix
+     * references ANOTHER directory and does not keep this one alive; a
+     * legacy row (no recorded disk) does, fail closed.
+     */
+    public function test_prune_purges_an_ocr_run_only_referenced_under_another_storage_namespace(): void
+    {
+        $shared = str_repeat('a', 64);
+        $protected = str_repeat('b', 64);
+        $this->row(9, 'active')->update(['metadata' => ['disk' => 'kb', 'prefix' => 'other', 'converter' => ['ocr' => ['run' => $shared]]]]);
+        $this->row(2, 'archived')->update(['metadata' => ['disk' => 'kb', 'prefix' => '', 'converter' => ['ocr' => ['run' => $shared]]]]);
+        $this->row(1, 'archived')->update(['metadata' => ['disk' => 'kb', 'prefix' => '', 'converter' => ['ocr' => ['run' => $protected]]]]);
+        $this->row(8, 'active', null, 'docs/legacy.md')->update(['metadata' => ['converter' => ['ocr' => ['run' => $protected]]]]);
+        $this->row(3, 'archived', null, 'docs/legacy.md')->update(['metadata' => ['disk' => 'kb', 'prefix' => '', 'converter' => ['ocr' => ['run' => $protected]]]]);
+        Storage::disk('kb')->put("docs/dec.md.ocr/{$shared}/result.json", '{}');
+        Storage::disk('kb')->put("other/docs/dec.md.ocr/{$shared}/result.json", '{}');
+        Storage::disk('kb')->put("docs/dec.md.ocr/{$protected}/result.json", '{}');
+        Storage::disk('kb')->put("docs/legacy.md.ocr/{$protected}/result.json", '{}');
+
+        $this->travel(OcrFigureStore::inFlightGraceSeconds() + 60)->seconds();
+        $this->artisan('kb:prune-archived-versions', ['--keep' => 0])
+            ->expectsOutputToContain('ocr_runs_purged=2 ocr_runs_kept=0 ocr_failed=0')
+            ->assertExitCode(0);
+
+        Storage::disk('kb')->assertMissing("docs/dec.md.ocr/{$shared}/result.json");   // the live row's run lives under `other/`
+        Storage::disk('kb')->assertExists("other/docs/dec.md.ocr/{$shared}/result.json");
+        Storage::disk('kb')->assertMissing("docs/dec.md.ocr/{$protected}/result.json");
+        Storage::disk('kb')->assertExists("docs/legacy.md.ocr/{$protected}/result.json"); // legacy row: fail closed
+    }
+
+    /** R14 — a configured prefix that cannot form an artifact root is a reported failure, never an unhandled crash. */
+    public function test_prune_reports_a_traversing_prefix_as_a_failed_sweep(): void
+    {
+        config(['kb.sources.path_prefix' => '../outside']);
+
+        $this->artisan('kb:prune-archived-versions')
+            ->expectsOutputToContain('artifact_temps_swept=0 artifact_temps_failed=1 artifact_orphans_removed=0 artifact_orphans_failed=1')
+            ->assertExitCode(1);
+    }
+
+    /** A run reserved by a converter at this very moment is kept, never deleted under its feet. */
+    public function test_prune_keeps_an_ocr_run_a_converter_holds_the_reservation_of(): void
+    {
+        $run = str_repeat('f', 64);
+        $this->row(9, 'active');
+        $this->row(1, 'archived')->update(['metadata' => ['disk' => 'kb', 'prefix' => '', 'converter' => ['ocr' => ['run' => $run]]]]);
+        Storage::disk('kb')->put('docs/dec.md', '# live source');
+        Storage::disk('kb')->put("docs/dec.md.ocr/{$run}/result.json", '{}');
+        $this->travel(OcrFigureStore::inFlightGraceSeconds() + 60)->seconds();
+
+        $reservation = Cache::lock(OcrService::runLockKey('kb', "docs/dec.md.ocr/{$run}"), 60);
+        $this->assertTrue($reservation->get());
+        try {
+            $this->artisan('kb:prune-archived-versions', ['--keep' => 0])
+                ->expectsOutputToContain('ocr_runs_purged=0 ocr_runs_kept=1 ocr_failed=0')
+                ->assertExitCode(0);
+        } finally {
+            $reservation->release();
+        }
+        Storage::disk('kb')->assertExists("docs/dec.md.ocr/{$run}/result.json");
+
+        $this->artisan('kb:prune-orphan-files')
+            ->expectsOutputToContain('stale_runs=1 runs_purged=1 runs_in_flight=0')
+            ->assertSuccessful();
+        Storage::disk('kb')->assertMissing("docs/dec.md.ocr/{$run}/result.json");
+    }
+
+    /**
+     * The prune takes the deleter's row path: an archived canonical version
+     * that still owns a graph node loses it and gets its deprecation audit
+     * row, like every other hard delete.
+     */
+    public function test_prune_cascades_the_graph_and_writes_the_deprecation_audit_through_the_deleter(): void
+    {
+        $this->row(9, 'active');
+        $old = $this->row(1, 'archived');
+        $old->update(['is_canonical' => true, 'doc_id' => 'dec-old', 'slug' => 'dec-old', 'canonical_type' => 'decision', 'canonical_status' => 'accepted']);
+        KbNode::create(['project_key' => 'eng', 'node_uid' => 'dec-old', 'node_type' => 'decision', 'label' => 'dec-old', 'source_doc_id' => 'dec-old', 'payload_json' => []]);
+
+        $this->artisan('kb:prune-archived-versions', ['--keep' => 0])->assertExitCode(0);
+
+        $this->assertDatabaseMissing('knowledge_documents', ['id' => $old->id]);
+        $this->assertSame(0, KbNode::withoutGlobalScopes()->where('node_uid', 'dec-old')->count());
+        $this->assertSame(1, KbCanonicalAudit::withoutGlobalScopes()->where('doc_id', 'dec-old')->where('event_type', 'deprecated')->count());
+    }
+
+    /**
+     * R14 — a refused artifact delete is a failed cleanup, reported and
+     * non-zero, never "pruned": here the file resolves outside the artifact
+     * root through a planted symlink and the store refuses to touch it.
+     */
+    public function test_prune_reports_a_refused_artifact_delete_and_exits_non_zero(): void
+    {
+        $this->row(9, 'active');
+        $pruned = $this->row(1, 'archived', 'old');
+        $root = rtrim(Storage::disk('kb')->path(''), '/');
+        $docsDir = $root.'/'.dirname(dirname((string) $pruned->markdown_path));
+        $outside = sys_get_temp_dir().'/amd-outside-'.uniqid();
+        rename($docsDir, $outside);
+        symlink($outside, $docsDir);
+        try {
+            $this->artisan('kb:prune-archived-versions', ['--keep' => 0])
+                ->expectsOutputToContain('artifacts_removed=0 artifacts_absent=0 artifacts_failed=1')
+                ->assertExitCode(1);
+            $this->assertDatabaseMissing('knowledge_documents', ['id' => $pruned->id]);
+            $this->assertFileExists($outside.'/'.basename(dirname((string) $pruned->markdown_path)).'/'.basename((string) $pruned->markdown_path));
+        } finally {
+            unlink($docsDir);
+            rename($outside, $docsDir);
+        }
+    }
+
+    /**
+     * The local adapter refuses to walk through a symbolic link under the
+     * root (`SymbolicLinkEncountered`): the temp sweep reports a refused
+     * enumeration as a failed sweep and the command exits non-zero — the
+     * file behind the link is never touched.
+     */
+    public function test_prune_reports_a_refused_artifact_root_enumeration_as_a_failed_sweep(): void
+    {
+        $root = rtrim(Storage::disk('kb')->path(''), '/');
+        mkdir($root.'/.artifacts', 0755, true);
+        $outside = sys_get_temp_dir().'/amd-outside-'.uniqid();
+        mkdir($outside, 0755, true);
+        file_put_contents($outside.'/dead.md.x.tmp', 'half written');
+        touch($outside.'/dead.md.x.tmp', time() - 7200);
+        symlink($outside, $root.'/.artifacts/link');
+        try {
+            $this->artisan('kb:prune-archived-versions')
+                ->expectsOutputToContain('artifact_temps_swept=0 artifact_temps_failed=1')
+                ->assertExitCode(1);
+            $this->assertFileExists($outside.'/dead.md.x.tmp');
+        } finally {
+            unlink($root.'/.artifacts/link');
+            unlink($outside.'/dead.md.x.tmp');
+            rmdir($outside);
+        }
     }
 }

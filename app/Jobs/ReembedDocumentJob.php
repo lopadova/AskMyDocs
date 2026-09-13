@@ -87,11 +87,35 @@ class ReembedDocumentJob implements ShouldQueue
             }
 
             // v8.36 / ADR 0030 — `markdown_only` retention drops the original
-            // after the artifact commit: the stored artifact IS the bytes a
-            // re-embed needs (it hashes to the same version), so read it.
+            // after the artifact commit: the stored artifact IS the converted
+            // Markdown of this version, so it is re-chunked and re-embedded
+            // WITHOUT a converter (the row's mime may be a binary format the
+            // converter would choke on, or OCR again) and only when its bytes
+            // still hash to the version (R14: a corrupt artifact is a logged
+            // skip, never a new version).
+            $metadata = is_array($document->metadata) ? $document->metadata : [];
             $artifactPath = $document->markdown_path;
             if ($bytes === null && is_string($artifactPath) && $artifactPath !== '') {
-                $bytes = app(\App\Services\Kb\Versioning\ConversionArtifactStore::class)->read($resolved['disk'], $artifactPath);
+                // The artifact lives on the disk the version RECORDED, not on
+                // the connector's current one: after a disk change the
+                // historical artifact is still where the row says it is.
+                $artifactDisk = is_string($metadata['disk'] ?? null) && $metadata['disk'] !== '' ? $metadata['disk'] : (string) $resolved['disk'];
+                $artifact = app(\App\Services\Kb\Versioning\ConversionArtifactStore::class)->read($artifactDisk, $artifactPath);
+                if ($artifact !== null) {
+                    $expected = (string) ($document->content_hash ?? $document->document_hash);
+                    if (hash('sha256', $artifact) !== $expected) {
+                        Log::warning('ReembedDocumentJob: stored artifact does not hash to the version; skipping re-embed.', [
+                            'document_id' => $document->id,
+                            'source_path' => $document->source_path,
+                            'tenant_id' => $this->tenantId,
+                        ]);
+
+                        return;
+                    }
+                    $ingestor->reembedFromMarkdown($document, $artifact);
+
+                    return;
+                }
             }
 
             if ($bytes === null) {
@@ -103,8 +127,6 @@ class ReembedDocumentJob implements ShouldQueue
 
                 return;
             }
-
-            $metadata = is_array($document->metadata) ? $document->metadata : [];
 
             $ingestor->ingest(
                 projectKey: (string) $document->project_key,

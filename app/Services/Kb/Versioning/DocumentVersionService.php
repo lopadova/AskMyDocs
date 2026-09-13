@@ -59,43 +59,98 @@ final class DocumentVersionService
                 'markdown_path', 'version_actor', 'version_reason', 'content_hash', 'metadata']);
     }
 
+    public const ARTIFACT_NONE = 'none';
+
+    public const ARTIFACT_VERIFIED = 'verified';
+
+    public const ARTIFACT_UNVERIFIED = 'unverified';
+
+    public const ARTIFACT_MISSING = 'missing';
+
+    public const ARTIFACT_MISMATCH = 'mismatch';
+
+    /**
+     * v8.36 / ADR 0030 §5 — the verified state of a version's artifact, the
+     * same read + hash check {@see contentFor()} serves content with (never
+     * the pointer alone: the ingestor deliberately keeps the pointer when a
+     * post-commit publish fails, and a file can be truncated or replaced
+     * later): `none` (no pointer), `verified` (readable, hashes to
+     * `content_hash`), `unverified` (readable, no `content_hash` to check
+     * against), `missing` (pointer set, nothing readable there), `mismatch`
+     * (readable, does not hash to `content_hash`). Every surface that claims
+     * "this version has a stored artifact" derives it from here.
+     */
+    public function artifactStateFor(KnowledgeDocument $version): string
+    {
+        return $this->readArtifact($version)['state'];
+    }
+
+    /** Whether an artifact state means the stored bytes are readable and serve the version's content. */
+    public static function isReadableArtifactState(string $state): bool
+    {
+        return in_array($state, [self::ARTIFACT_VERIFIED, self::ARTIFACT_UNVERIFIED], true);
+    }
+
+    /**
+     * @return array{state: string, content: string|null, disk: string|null, path: string|null}
+     */
+    private function readArtifact(KnowledgeDocument $version): array
+    {
+        $path = $version->markdown_path;
+        if (! is_string($path) || $path === '') {
+            return ['state' => self::ARTIFACT_NONE, 'content' => null, 'disk' => null, 'path' => null];
+        }
+        $metadata = is_array($version->metadata) ? $version->metadata : [];
+        $disk = (string) ($metadata['disk'] ?? config('kb.sources.disk', 'kb'));
+        $content = $this->artifacts->read($disk, $path);
+        if ($content === null) {
+            return ['state' => self::ARTIFACT_MISSING, 'content' => null, 'disk' => $disk, 'path' => $path];
+        }
+        if (! is_string($version->content_hash) || $version->content_hash === '') {
+            return ['state' => self::ARTIFACT_UNVERIFIED, 'content' => $content, 'disk' => $disk, 'path' => $path];
+        }
+        if (hash('sha256', $content) !== $version->content_hash) {
+            return ['state' => self::ARTIFACT_MISMATCH, 'content' => null, 'disk' => $disk, 'path' => $path];
+        }
+
+        return ['state' => self::ARTIFACT_VERIFIED, 'content' => $content, 'disk' => $disk, 'path' => $path];
+    }
+
     /**
      * v8.36 / ADR 0030 §5 — the version's content and where it came from:
-     * the stored artifact when `markdown_path` is set and the file is there,
+     * the stored artifact when `markdown_path` is set, the file is there and
+     * its bytes hash to `content_hash` (or there is no hash to check),
      * otherwise the chunk reconstruction. A missing file behind a non-null
      * path is logged and degrades — it is not a 500 (R14 is about silent
-     * success; this says which source it used).
+     * success; this says which source it used). A truncated or replaced file
+     * is never reported as a faithful artifact: it degrades to the
+     * reconstruction and says so (`integrity: mismatch`).
      *
      * @return array{content: string, source: string, integrity: string|null}
      */
     public function contentFor(KnowledgeDocument $version): array
     {
-        $path = $version->markdown_path;
-        if (is_string($path) && $path !== '') {
-            $metadata = is_array($version->metadata) ? $version->metadata : [];
-            $disk = (string) ($metadata['disk'] ?? config('kb.sources.disk', 'kb'));
-            $content = $this->artifacts->read($disk, $path);
-            // ADR 0030 §5 — `content_hash` is the integrity check of the
-            // stored bytes: a truncated or replaced file is never reported
-            // as a faithful artifact; it degrades to the reconstruction and
-            // says so (`integrity: mismatch`), it is not a 500.
-            if ($content !== null && is_string($version->content_hash) && $version->content_hash !== '' && hash('sha256', $content) !== $version->content_hash) {
+        $artifact = $this->readArtifact($version);
+        switch ($artifact['state']) {
+            case self::ARTIFACT_VERIFIED:
+                return ['content' => (string) $artifact['content'], 'source' => self::SOURCE_ARTIFACT, 'integrity' => self::INTEGRITY_VERIFIED];
+            case self::ARTIFACT_UNVERIFIED:
+                return ['content' => (string) $artifact['content'], 'source' => self::SOURCE_ARTIFACT, 'integrity' => null];
+            case self::ARTIFACT_MISMATCH:
                 Log::warning('DocumentVersionService: artifact bytes do not match content_hash, falling back to reconstruction', [
                     'document_id' => (int) $version->id,
-                    'disk' => $disk,
-                    'markdown_path' => $path,
+                    'disk' => $artifact['disk'],
+                    'markdown_path' => $artifact['path'],
                 ]);
 
                 return ['content' => $this->reconstructContent($version), 'source' => self::SOURCE_RECONSTRUCTION, 'integrity' => self::INTEGRITY_MISMATCH];
-            }
-            if ($content !== null) {
-                return ['content' => $content, 'source' => self::SOURCE_ARTIFACT, 'integrity' => is_string($version->content_hash) && $version->content_hash !== '' ? self::INTEGRITY_VERIFIED : null];
-            }
-            Log::warning('DocumentVersionService: artifact missing behind markdown_path, falling back to reconstruction', [
-                'document_id' => (int) $version->id,
-                'disk' => $disk,
-                'markdown_path' => $path,
-            ]);
+            case self::ARTIFACT_MISSING:
+                Log::warning('DocumentVersionService: artifact missing behind markdown_path, falling back to reconstruction', [
+                    'document_id' => (int) $version->id,
+                    'disk' => $artifact['disk'],
+                    'markdown_path' => $artifact['path'],
+                ]);
+                break;
         }
 
         return ['content' => $this->reconstructContent($version), 'source' => self::SOURCE_RECONSTRUCTION, 'integrity' => null];

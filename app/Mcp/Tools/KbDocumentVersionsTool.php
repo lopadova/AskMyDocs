@@ -24,7 +24,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
  * artifact is the converter's output before the PII seam, so content stays
  * on the role-gated HTTP surface (documented R44 exception).
  */
-#[Description('List a knowledge document\'s version family (newest first): id, status, whether it is live, who created the version and why, the artifact content hash and whether a stored conversion artifact exists. Read-only; tenant-scoped. Returns metadata only, never the content.')]
+#[Description('List a knowledge document\'s version family (newest first): id, status, whether it is live, who created the version and why, the artifact content hash, whether a stored conversion artifact is readable and verified (has_artifact) and its verified state (artifact_state: none, verified, unverified, missing, mismatch). Read-only; tenant-scoped. Returns metadata only, never the content.')]
 #[IsReadOnly]
 #[IsIdempotent]
 class KbDocumentVersionsTool extends Tool
@@ -46,7 +46,11 @@ class KbDocumentVersionsTool extends Tool
             return Response::error("Document {$id} not found.");
         }
 
-        $rows = $versions->versionsFor($document)->map(static fn (KnowledgeDocument $v): array => [
+        $rows = $versions->versionsFor($document)->map(function (KnowledgeDocument $v) use ($versions): array {
+            // ADR 0030 §5 — read + verified, never the pointer alone.
+            $artifactState = $versions->artifactStateFor($v);
+
+            return [
             'id' => (int) $v->id,
             'title' => $v->title,
             'version_hash' => $v->version_hash,
@@ -55,11 +59,13 @@ class KbDocumentVersionsTool extends Tool
             'version_actor' => $v->version_actor,
             'version_reason' => $v->version_reason,
             'content_hash' => $v->content_hash,
-            'has_artifact' => is_string($v->markdown_path) && $v->markdown_path !== '',
+            'has_artifact' => DocumentVersionService::isReadableArtifactState($artifactState),
+            'artifact_state' => $artifactState,
             'restored_by' => DocumentVersionService::lastRestoreOf($v)['actor'] ?? null,
             'restored_at' => DocumentVersionService::lastRestoreOf($v)['at'] ?? null,
             'indexed_at' => $v->indexed_at?->toIso8601String(),
-        ])->all();
+            ];
+        })->all();
 
         return Response::json([
             'project_key' => $document->project_key,

@@ -31,7 +31,8 @@ The MCP server (`app/Mcp/Servers/KnowledgeBaseServer.php`, registered name
   by design; an agent cannot start an OCR run or spend (see
   [Documents & OCR](/documents-and-ocr)). `KbDocumentVersionsTool` lists a document's
   version family — status, live flag, who created each version and why, the artifact
-  content hash and whether a stored conversion artifact exists — metadata only: the
+  content hash, whether a stored conversion artifact is readable and verified
+  (`has_artifact`) and its verified state (`artifact_state`) — metadata only: the
   artifact content and the artifact-aware diff stay on the role-gated HTTP surface
   because the artifact is un-redacted converter output (a documented R44 exception).
 - **Write-nothing propose/suggest** tools that surface candidate artifacts for

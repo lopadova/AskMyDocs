@@ -33,7 +33,14 @@ final class KbDocumentVersionController extends Controller
     {
         $document = $this->findOr404($id);
 
-        $rows = $this->versions->versionsFor($document)->map(fn (KnowledgeDocument $v): array => [
+        $rows = $this->versions->versionsFor($document)->map(function (KnowledgeDocument $v): array {
+            // ADR 0030 §5 — a stored artifact is one that can be READ and
+            // verified, not a pointer: the same check the content endpoint
+            // serves with, so the UI never shows the "stored" badge over a
+            // file that is missing or corrupt.
+            $artifactState = $this->versions->artifactStateFor($v);
+
+            return [
             'id' => $v->id,
             'title' => $v->title,
             'version_hash' => $v->version_hash,
@@ -48,11 +55,14 @@ final class KbDocumentVersionController extends Controller
             'version_actor' => $v->version_actor,
             'version_reason' => $v->version_reason,
             'content_hash' => $v->content_hash,
-            'has_artifact' => is_string($v->markdown_path) && $v->markdown_path !== '',
+            'has_artifact' => DocumentVersionService::isReadableArtifactState($artifactState),
+            // additive (R27): none · verified · unverified · missing · mismatch
+            'artifact_state' => $artifactState,
             // ADR 0030 §6 — the last restore, kept apart from the creation provenance
             'restored_by' => DocumentVersionService::lastRestoreOf($v)['actor'] ?? null,
             'restored_at' => DocumentVersionService::lastRestoreOf($v)['at'] ?? null,
-        ])->all();
+            ];
+        })->all();
 
         return response()->json([
             'data' => $rows,

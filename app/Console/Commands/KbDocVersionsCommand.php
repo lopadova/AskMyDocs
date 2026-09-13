@@ -55,7 +55,9 @@ final class KbDocVersionsCommand extends Command
                     $v->status === 'active' ? 'live' : (string) $v->status,
                     (string) ($v->version_actor ?? '—'),
                     (string) ($v->version_reason ?? '—'),
-                    is_string($v->markdown_path) && $v->markdown_path !== '' ? 'yes' : 'no',
+                    // ADR 0030 §5 — the verified state (none · verified ·
+                    // unverified · missing · mismatch), never the pointer alone.
+                    $versions->artifactStateFor($v),
                     is_string($v->content_hash) ? substr($v->content_hash, 0, 12) : '—',
                     $v->indexed_at?->toIso8601String() ?? '—',
                 ])->all(),
