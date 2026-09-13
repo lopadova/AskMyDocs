@@ -95,6 +95,7 @@ untouched.
 interface OcrDriver
 {
     public function name(): string;
+    public function fingerprint(): string;               // engine variant: model / binary version / language pack
     public function isAvailable(): bool;                 // binary / key / package present
     public function isRemote(): bool;                    // sends the bytes out of the tenant
     public function meteringMode(): OcrMeteringMode;     // PerPage | Sdk
@@ -102,7 +103,10 @@ interface OcrDriver
 }
 ```
 
-`OcrResult` carries `pages: list<OcrPage>` — `number`, `markdown`, `confidence`
+`fingerprint()` is part of the contract, not a convention: it is one of the
+inputs of the content-addressed run key (§5), so a driver that changes engine
+without changing its fingerprint would silently reuse another engine's
+recorded run. `OcrResult` carries `pages: list<OcrPage>` — `number`, `markdown`, `confidence`
 (0..1, null when the driver cannot say), `figures: list<OcrFigure>` — plus the
 engine's own `meta`. Drivers are listed in `config/kb.php` under `ocr.drivers`
 (key → FQCN) and resolved through `OcrDriverRegistry`, which validates every
@@ -135,8 +139,10 @@ the PII seam can see any text, which makes the driver choice a data-subprocessor
 decision (SEC-LLM-001 gate 3). Selecting them is therefore not enough:
 `OcrDriverRegistry::resolve()` refuses any driver whose `isRemote()` is true
 unless `config('kb.ocr.allow_remote') === true`. The env value is cast with
-`FILTER_VALIDATE_BOOLEAN` and compared strictly, so `1`, `yes` or a typo keep
-the gate **closed**. Every status surface reports `remote: true|false` on an
+`FILTER_VALIDATE_BOOLEAN` and compared strictly with `=== true`, so only a
+value the filter recognises as true (`true`, `1`, `yes`, `on`) opens the
+gate; `false`, `0`, `no`, `off`, an empty value, an absent variable or any
+typo casts to `false` and keeps the gate **closed**. Every status surface reports `remote: true|false` on an
 OCR'd document, so an auditor can answer *did this scan leave our
 infrastructure?* per document. A negative test proves a remote driver cannot
 run with the knob off.
@@ -155,10 +161,22 @@ runs, with a machine-readable reason (`too_many_pages` / `too_many_bytes`)
 that `OcrCostEstimator` reports in advance together with
 `driver_available`, so the modal never promises a run the registry will
 refuse (R14); the estimate and the service read the page count from the
-same probe (`pages_total`, a `/Type /Page` floor when the parser fails) so
-they cannot disagree, and a refusal fails the ingest job immediately rather
-than being retried three times. Deny-by-default tests cover the knob off, a host outside the
-list, a non-JSON response and both overflows.
+same probe (`pages_total`) so they cannot disagree, and a refusal fails the
+ingest job immediately rather than being retried three times. The count is
+trusted only when the parser actually read the file (`pages_exact = true`).
+When it could not, the probe still reports a `/Type /Page` object count, but
+that number is a **floor**, and a lower bound cannot enforce a maximum: a
+malformed or hostile PDF with more real pages than visible page objects
+would pass the cap and be posted to a third party. So an uncountable
+document is treated as uncountable: for a **remote** driver the service
+refuses it **before egress** with a third machine-readable reason,
+`pages_uncountable`, and the estimate reports the same refusal
+(`would_ocr = false`, `pages_exact = false`); a **local** driver may still
+run on it — nothing leaves the tenant, and `KB_OCR_MAX_BYTES` bounds the
+work — and the estimate then shows the floor with `pages_exact = false` so
+the modal never presents it as an exact price. Deny-by-default tests cover
+the knob off, a host outside the list, a non-JSON response, both overflows
+and the uncountable-to-remote refusal.
 
 ### 5. Same bytes, same driver: the recorded run is reused, never re-billed
 
@@ -316,7 +334,12 @@ probe, never by running a driver.
 
 `KB_OCR_ENABLED=false` in v8.36. With the flag off the deployment is byte for
 byte the v8.35 one: image MIMEs are refused with the current 422, a scanned PDF
-produces the current empty document, `supportedMimes(false)` is unchanged.
+takes one of the two no-OCR outcomes `PdfConverter` already has — an empty
+document when the parser reads the file and finds no text, a
+`RuntimeException` (and the failed ingest job it implies) when neither the
+parser nor `pdftotext` can read it — and `supportedMimes(false)` is
+unchanged. Both branches are pinned by regression tests so the OFF state is
+the current behaviour, not a new "empty document" one.
 Both states are tested at the converter registry (mutex), the ingest endpoint,
 the upload request and modal (Vitest + Playwright), the folder walker, the
 connector bridge, the estimate, the CLI and the MCP tool. The flag flips to
@@ -350,7 +373,7 @@ default-ON only after W3 publishes a CER/WER baseline for the shipped drivers.
 |---|---|---|---|
 | Re-run OCR on a document | `kb:ocr {document} {--tenant=}` · `OcrService::rerun()` | `POST /api/admin/kb/documents/{id}/ocr` (202; 409 while a re-run is already queued — the lock is carried by the job and released when it finishes, on any outcome; needs an atomic shared lock store across pods) | — (spends and rewrites grounding: human-only by design, documented R44 exception) |
 | OCR status, driver, remote, confidence per page | `kb:ocr {document} --status {--tenant=}` · `OcrService::status()` | `GET /api/admin/kb/documents/{id}/ocr` | `KbOcrStatusTool` (read) |
-| Cost estimate before commit | `OcrCostEstimator::forBatch()` | `GET /api/admin/kb/uploads/{batch}/estimate` | — |
+| Cost estimate before commit | `OcrCostEstimator::forBatch()` | `GET /api/admin/kb/uploads/{batch}/estimate` | — (documented R44 exception: the estimate is computed over an **upload staging batch**, an object that exists only between the modal's *stage* and *commit* steps for the human uploading; no agent surface stages files, so there is no batch an agent could ask about. The after-the-fact facts an agent needs — page count, driver, remote, cost of the recorded run — are read through `KbOcrStatusTool`) |
 
 All three adapt one core, `App\Services\Kb\Ocr\OcrService`, tenant-scoped
 through `KnowledgeDocument::forTenant()` (R30); the CLI validates `--tenant`

@@ -60,10 +60,15 @@ the service reading them.
 ### 2. `KB_CONVERSION_ARTIFACTS_ENABLED` — default OFF, both states tested
 
 The artifact write is behind `KB_CONVERSION_ARTIFACTS_ENABLED=false`
-(`config('kb.conversion_artifacts.enabled')`). With the flag off nothing is
-written, `markdown_path` stays `null`, and `diff` / `restore` / the versions
-endpoint behave exactly as v8.35 (the three new columns are simply `null` and
-the FE renders them as *unknown*). With the flag on, `source_retention`
+(`config('kb.conversion_artifacts.enabled')`). With the flag off **no new
+artifact is written**: `markdown_path` stays `null` on every row ingested
+while it is off, and `diff` / `restore` / the versions endpoint keep working
+by reconstruction, as in v8.35. The read surface is not byte-for-byte v8.35,
+by design: the responses gain the additive fields of §4 (`null` / *unknown*
+for rows that never had them, R27), and a row that received an artifact while
+the flag was on keeps it — `contentFor()` (§5) still reads it and still says
+which source it used. Turning the flag off is therefore a stop, not a
+rollback; nothing already stored is discarded or hidden. With the flag on, `source_retention`
 (ADR 0014) is finally wired: in `full_copy` (the default) and `markdown_only`
 the converter output is stored; in `reference_only` it is not. Both states
 are tested on both ingest paths (R43).
@@ -138,7 +143,7 @@ names the run whose images it references.
 
 | Column | Type | Meaning |
 |---|---|---|
-| `version_actor` | `string(191) null` | Who created this version: `system:ingest`, `system:ocr`, `system:autowiki`, `user:{id}`, `agent:{id}` (when an agent acts for a user through `DelegationContext`; today the authenticated principal yields `user:{id}`). Set by the ingestor from the ingestion metadata (`version_actor` key) with `system:ingest` as the default. |
+| `version_actor` | `string(191) null` | Who created this version: `system:ingest`, `system:ocr`, `system:autowiki`, `user:{id}`, `agent:{id}` (when an agent acts for a user through `DelegationContext`; today the authenticated principal yields `user:{id}`). **Derived server-side, never taken from the client**: `version_actor` is a host-only metadata key, stripped at the HTTP ingest and connector boundaries by the same `OcrService::stripTrustedOnlyKeys()` gate that already strips `dry_run` / `ocr.*` (ADR 0029), and then set by the trusted caller — `user:{id}` from the authenticated principal in `KbIngestController` and in `restore`, `system:ingest` for the CLI walker and the connector bridge, `system:ocr` for a `kb:ocr` re-run; the ingestor falls back to `system:ingest` when no trusted caller set it. A caller who sends `version_actor` in `documents.*.metadata` cannot forge a `user:{id}` or `system:*` identity; a negative test sends one and asserts the stored actor is the principal's. |
 | `version_reason` | `string(1024) null` | Free text supplied by the caller: `re-ingest`, `ocr`, `correction: page 2`, `restore of #123`. |
 | `content_hash` | `string(64) null` | SHA-256 of the stored artifact bytes. Equals `document_hash` today (both hash the converted markdown) and is kept separate on purpose: W3 corrections change the artifact without re-running conversion, and the export manifest (W4) hashes the artifact, not the conversion. |
 
@@ -205,7 +210,9 @@ on disk.
 R44). It reads; it never restores. `kb:doc-versions {document} {--tenant=}` is
 the CLI over the same service — `--tenant` validated non-empty and the
 document resolved with `forTenant()`, never the process-global default.
-`restore` stays HTTP-only and human-only.
+`restore` stays HTTP-only and human-only, and `kb:artifacts-backfill` (§3)
+stays console-only: both are listed with their exception in the surfaces
+table below.
 
 ## Consequences
 
@@ -228,9 +235,23 @@ document resolved with `forTenant()`, never the process-global default.
 | Capability | PHP / CLI | HTTP | MCP |
 |---|---|---|---|
 | List a document's versions | `kb:doc-versions {document} {--tenant=}` · `DocumentVersionService::versionsFor()` | `GET /api/admin/kb/documents/{id}/versions` (existing; now returns actor/reason/hash) | `KbDocumentVersionsTool` (read) |
-| Diff two versions (artifact-aware) | `kb:doc-versions {document} --diff=A:B {--tenant=}` · `DocumentVersionService::diff()` | `GET /api/admin/kb/documents/{id}/versions/diff?from&to` (existing; now reports the source of each side) | — |
+| Diff two versions (artifact-aware) | `kb:doc-versions {document} --diff=A:B {--tenant=}` · `DocumentVersionService::diff()` | `GET /api/admin/kb/documents/{id}/versions/diff?from&to` (existing; now reports the source of each side) | — (documented R44 exception, see below) |
 | Restore a version | `DocumentVersionService::restore()` | `POST /api/admin/kb/documents/{id}/restore-version` (existing; now records actor/reason) | — (write; human-only by design) |
-| Read a version's artifact | `DocumentVersionService::contentFor()` | `GET /api/admin/kb/documents/{id}/versions/{versionId}/content` | — |
+| Read a version's artifact | `DocumentVersionService::contentFor()` | `GET /api/admin/kb/documents/{id}/versions/{versionId}/content` | — (documented R44 exception, see below) |
+| Backfill artifacts for existing rows | `kb:artifacts-backfill {--project=} {--tenant=} {--dry-run}` (§3) | — | — (operator-only maintenance that re-converts, can spend and rewrites storage: console is its authorization boundary; documented R44 exception) |
+
+**Why diff and content have no MCP surface in v8.36.** The artifact is the
+converter's output **before** the PII seam: redaction runs on the chunks
+(ADR 0020), not on the stored Markdown, and the two admin endpoints are
+role-gated precisely because they return un-redacted bytes to a human who is
+allowed to see them. An MCP tool returning the same bytes — or a diff of
+two of them — would hand the model text that never passed the tenant PII
+policy, which is the one read path agents are not given anywhere else in the
+platform (SEC-LLM-001 gate 3). The list tool exposes only the metadata of
+§4, none of the content. A **redacted** agent read of an artifact is the W4
+concern: the export renders every artifact through the tenant PII policy
+(ADR 0032), and that rendered form is what an agent may consume. Until then
+the exception is explicit, not an omission.
 
 All surfaces adapt one core, `DocumentVersionService`, tenant-scoped through
 `KnowledgeDocument::forTenant()` (R30).
