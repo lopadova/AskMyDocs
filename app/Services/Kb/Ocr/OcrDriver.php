@@ -53,5 +53,15 @@ interface OcrDriver
      * @throws OcrDriverUnavailableException when the engine cannot run here
      * @throws \RuntimeException when recognition fails irrecoverably
      */
+    /**
+     * Worst-case wall-clock seconds one `recognise()` of `$pages` pages can
+     * take under the driver's own timeouts (process / HTTP / per-page). The
+     * service sizes the run-directory reservation from it, so the lease is
+     * provably longer than the work it protects (ADR 0029 §5): a driver
+     * whose timeouts are per page must multiply, one whose timeout is per
+     * document returns it as is.
+     */
+    public function maxDurationSeconds(int $pages): int;
+
     public function recognise(OcrRequest $request): OcrResult;
 }

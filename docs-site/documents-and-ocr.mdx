@@ -149,7 +149,12 @@ them is bounded in code before any egress (SEC-LLM-001 gates 2 and 7):
 
 A run directory is immutable, so its first write is **reserved atomically**: a
 cache lock on the directory is held from the recorded-run check through
-`result.json`. A second worker ingesting the same bytes at the same time waits
+`result.json`, with a lease sized per run from the driver's declared worst
+case for the verified page count (`OcrDriver::maxDurationSeconds()` — per-page
+timeouts multiply, per-document timeouts count once) plus a write margin,
+never below 1 200 s — so the lease is provably longer than the work it
+protects, and a worker that dies mid-run blocks the directory for at most the
+time its run could legitimately have taken. A second worker ingesting the same bytes at the same time waits
 for it, looks again, and reuses the run the first worker recorded — one bill,
 one directory, never two nondeterministic remote results interleaved in it. A
 forced re-run has its own attempt identity and never touches a recorded run.

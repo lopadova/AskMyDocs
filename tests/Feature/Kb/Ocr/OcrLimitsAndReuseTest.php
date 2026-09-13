@@ -248,6 +248,26 @@ final class OcrLimitsAndReuseTest extends TestCase
         Http::assertNothingSent();
     }
 
+    /** SEC-SSRF-001 — an allow-listed endpoint cannot redirect the bytes to a host that is not. */
+    #[Test]
+    public function mistral_never_follows_a_redirect_off_the_allow_list(): void
+    {
+        Http::fake([
+            'https://api.mistral.eu/*' => Http::response('', 307, ['Location' => 'https://evil.example.test/v1/ocr']),
+            'https://evil.example.test/*' => Http::response(['pages' => []], 200),
+        ]);
+        config(['kb.ocr.driver' => 'mistral-ocr', 'kb.ocr.allow_remote' => true, 'kb.ocr.mistral.api_key' => 'k']);
+
+        try {
+            $this->app->make(OcrConverter::class)->convert($this->image());
+            $this->fail('expected the redirect to be treated as a failed call');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('HTTP 307', $e->getMessage());
+        }
+        Http::assertSentCount(1);
+        Http::assertNotSent(fn ($request): bool => str_contains($request->url(), 'evil.example.test'));
+    }
+
     #[Test]
     public function mistral_refuses_a_non_json_response(): void
     {
@@ -308,6 +328,34 @@ final class OcrLimitsAndReuseTest extends TestCase
 
         $this->assertSame('fake', $converted->extractionMeta['ocr']['driver']);
         $this->assertSame(['pages' => 1, 'exact' => false], $this->app->make(OcrService::class)->pageCountDetailFor('application/pdf', $doc->bytes));
+    }
+
+    /**
+     * ADR 0029 §5 — the reservation lease is sized from the driver's declared
+     * worst case for the verified page count, never a fixed guess shorter
+     * than the work; the re-run lock outlives one job attempt window.
+     */
+    #[Test]
+    public function the_run_reservation_lease_outlives_the_drivers_declared_worst_case(): void
+    {
+        config(['kb.ocr.tesseract.timeout' => 300, 'kb.ocr.vision_llm.timeout' => 300, 'kb.ocr.docling.timeout' => 600, 'kb.ocr.mistral.timeout' => 120]);
+        $registry = $this->app->make(\App\Services\Kb\Ocr\OcrDriverRegistry::class);
+        $tesseract = $registry->resolve('tesseract');
+        $docling = $registry->resolve('docling');
+
+        // 200 pages × (text + tsv) × 300 s + rasterisation: the fixed floor would expire mid-run.
+        $this->assertSame(300 * (1 + 2 * 200), $tesseract->maxDurationSeconds(200));
+        $this->assertGreaterThan(OcrService::RUN_LOCK_TTL, OcrService::leaseFor($tesseract, 200));
+        $this->assertSame($tesseract->maxDurationSeconds(200) + OcrService::RUN_LOCK_MARGIN, OcrService::leaseFor($tesseract, 200));
+        // A per-document driver's lease is its timeout, floored at the minimum.
+        $this->assertSame(600, $docling->maxDurationSeconds(200));
+        $this->assertSame(OcrService::RUN_LOCK_TTL, OcrService::leaseFor($docling, 200));
+        $this->assertSame(OcrService::RUN_LOCK_TTL, OcrService::leaseFor($registry->resolve('fake'), 1));
+
+        // The re-run lock is re-armed at attempt start and must outlive ONE
+        // attempt: the job timeout + the queue retry_after + the largest backoff.
+        $job = new \App\Jobs\IngestDocumentJob(projectKey: 'p', relativePath: 'a.pdf', disk: 'kb');
+        $this->assertGreaterThan($job->timeout + 330 + max($job->backoff), OcrService::RERUN_LOCK_TTL);
     }
 
     #[Test]

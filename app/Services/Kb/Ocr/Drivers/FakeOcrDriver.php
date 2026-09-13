@@ -44,6 +44,11 @@ final class FakeOcrDriver implements OcrDriver
         return 'fake';
     }
 
+    public function maxDurationSeconds(int $pages): int
+    {
+        return 1;
+    }
+
     public function meteringMode(): OcrMeteringMode
     {
         return OcrMeteringMode::PerPage;

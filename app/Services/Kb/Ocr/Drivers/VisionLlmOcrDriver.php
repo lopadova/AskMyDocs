@@ -80,6 +80,14 @@ TXT;
         );
     }
 
+    /** One rasterisation plus one provider call per page, each budgeted at the driver timeout. */
+    public function maxDurationSeconds(int $pages): int
+    {
+        $timeout = max(1, (int) config('kb.ocr.vision_llm.timeout', 300));
+
+        return $timeout * (1 + max(1, $pages));
+    }
+
     public function meteringMode(): OcrMeteringMode
     {
         return OcrMeteringMode::Sdk;

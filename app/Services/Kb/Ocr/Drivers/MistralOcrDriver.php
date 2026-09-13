@@ -74,6 +74,12 @@ final class MistralOcrDriver implements OcrDriver
         }
     }
 
+    /** One HTTP call for the whole document under the client timeout. */
+    public function maxDurationSeconds(int $pages): int
+    {
+        return max(1, (int) config('kb.ocr.mistral.timeout', 120));
+    }
+
     public function meteringMode(): OcrMeteringMode
     {
         return OcrMeteringMode::PerPage;
@@ -96,8 +102,12 @@ final class MistralOcrDriver implements OcrDriver
         $url = (string) config('kb.ocr.mistral.url', 'https://api.mistral.eu/v1/ocr');
         $this->assertAllowedEndpoint($url);
 
+        // The host was allow-listed above; a redirect would let the endpoint
+        // send the document bytes somewhere that was not (SEC-SSRF-001), so
+        // the client never follows one — a 3xx is a failed call, not a hop.
         $response = Http::withToken((string) config('kb.ocr.mistral.api_key'))
             ->acceptJson()
+            ->withoutRedirecting()
             ->timeout((int) config('kb.ocr.mistral.timeout', 120))
             ->post($url, [
                 'model' => (string) config('kb.ocr.mistral.model', 'mistral-ocr-latest'),

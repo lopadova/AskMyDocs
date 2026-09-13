@@ -48,6 +48,12 @@ final class DoclingOcrDriver implements OcrDriver
         return 'docling;bin='.basename((string) config('kb.ocr.docling.binary', 'docling'));
     }
 
+    /** One bounded process for the whole document. */
+    public function maxDurationSeconds(int $pages): int
+    {
+        return max(1, (int) config('kb.ocr.docling.timeout', 600));
+    }
+
     public function meteringMode(): OcrMeteringMode
     {
         return OcrMeteringMode::PerPage;

@@ -54,11 +54,31 @@ final class OcrService
     public const RERUN_LOCK_TTL = 1200;
 
     /**
-     * TTL of the per-run-directory reservation (seconds): held from the
-     * recorded-run check through `result.json`, i.e. one driver call plus
-     * the figure writes — a driver's own timeout is ≤ 300 s.
+     * MINIMUM lease of the per-run-directory reservation (seconds). The
+     * reservation is held from the recorded-run check through `result.json`,
+     * i.e. one driver call plus the figure writes, and a driver call is not
+     * bounded by 1 200 s in general: Tesseract and the vision driver work
+     * page by page under a per-page timeout, and the page cap allows 200.
+     * So the actual lease is sized per run by `leaseFor()` from the
+     * driver's declared worst case for the page count already verified by
+     * the cap, and this constant is only its floor — a lease that is
+     * provably longer than the work it protects, never a fixed guess.
      */
     public const RUN_LOCK_TTL = 1200;
+
+    /** Margin over the driver's declared worst case: the figure writes + `result.json`. */
+    public const RUN_LOCK_MARGIN = 120;
+
+    /**
+     * The reservation lease for one run: the driver's worst case for
+     * `$pages` pages under its own timeouts, plus the write margin, never
+     * below RUN_LOCK_TTL. A worker that dies mid-run therefore blocks the
+     * directory for at most the time its run could legitimately have taken.
+     */
+    public static function leaseFor(OcrDriver $driver, int $pages): int
+    {
+        return max(self::RUN_LOCK_TTL, $driver->maxDurationSeconds(max(1, $pages)) + self::RUN_LOCK_MARGIN);
+    }
 
     public static function runLockKey(string $disk, string $runDir): string
     {
@@ -231,7 +251,7 @@ final class OcrService
         // Bounded work BEFORE any driver runs or any byte leaves the tenant
         // (SEC-LLM-001 gate 7): a document over the page or size cap fails
         // loudly with a reason instead of being billed page by page.
-        $this->assertWithinLimits($doc->mimeType, $doc->bytes, $filename, $driver);
+        $pages = $this->assertWithinLimits($doc->mimeType, $doc->bytes, $filename, $driver);
 
         // Idempotency (CLAUDE.md §5): the same bytes through the same driver
         // produce the same result — reuse the recorded run instead of paying
@@ -261,7 +281,7 @@ final class OcrService
             // never two nondeterministic remote results interleaved in it.
             // Needs an atomic lock store (Redis in production).
             $runDir = $this->figures->runDirFor($doc->sourcePath, $prefix, $runKey);
-            $reservation = Cache::lock(self::runLockKey($disk, $runDir), self::RUN_LOCK_TTL);
+            $reservation = Cache::lock(self::runLockKey($disk, $runDir), self::leaseFor($driver, $pages));
             try {
                 $reservation->block(max(1, (int) config('kb.ocr.run_lock.wait_seconds', 300)));
             } catch (LockTimeoutException) {
@@ -352,7 +372,7 @@ final class OcrService
     /**
      * @throws OcrLimitExceededException
      */
-    private function assertWithinLimits(string $mimeType, string $bytes, string $filename, OcrDriver $driver): void
+    private function assertWithinLimits(string $mimeType, string $bytes, string $filename, OcrDriver $driver): int
     {
         $maxBytes = max(1, (int) config('kb.ocr.max_bytes', 26214400));
         if (strlen($bytes) > $maxBytes) {
@@ -388,6 +408,8 @@ final class OcrService
                 $maxPages,
             ), 'too_many_pages');
         }
+
+        return $pages;
     }
 
     /**
