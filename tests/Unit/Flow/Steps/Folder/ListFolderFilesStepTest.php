@@ -48,6 +48,27 @@ final class ListFolderFilesStepTest extends TestCase
         $this->assertSame(2, $result->output['matched_count']);
     }
 
+    /**
+     * v8.36 / ADR 0029 — a recursive walk over a folder that already holds
+     * OCR runs must not list the extracted figures as inputs (self-ingest).
+     */
+    public function test_recursive_walk_never_lists_the_converters_own_output(): void
+    {
+        config(['kb.ocr.enabled' => true]);
+        Storage::disk('kb')->put('docs/scan.png', 'png-bytes');
+        Storage::disk('kb')->put('docs/scan.png.ocr/0123456789abcdef/images/fig-1-1.png', 'figure');
+        Storage::disk('kb')->put('docs/scan.png.ocr/0123456789abcdef/result.json', '{}');
+        Storage::disk('kb')->put('docs/a.md', '# a');
+
+        $step = $this->app->make(ListFolderFilesStep::class);
+        $result = $step->execute($this->context('default', 'docs', recursive: true));
+
+        $this->assertSame(2, $result->output['matched_count']);
+        foreach ($result->output['matched_files'] as $file) {
+            $this->assertStringNotContainsString('.ocr/', (string) $file);
+        }
+    }
+
     public function test_limit_caps_results(): void
     {
         Storage::disk('kb')->put('docs/a.md', '# a');

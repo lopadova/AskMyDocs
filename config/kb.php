@@ -331,9 +331,10 @@ return [
     |
     | NOTE: this knob + the `knowledge_documents.markdown_path` column are the
     | foundation declared in v8.11.0; the INGEST WIRING that reads this mode and
-    | writes the markdown artifact / drops the original lands with the
-    | AutoWikiCompiler in a later v8.11.x release. Until then ingest behaves as
-    | before (`reference_only`-style metadata + chunks, original kept on disk).
+    | writes the markdown artifact / drops the original did NOT land in v8.11.x —
+    | it is W2 of the v8.36 Document Intelligence cycle (ADR 0030, behind
+    | KB_CONVERSION_ARTIFACTS_ENABLED). Until then ingest behaves as before
+    | (`reference_only`-style metadata + chunks, original kept on disk).
     |
     | Intended (once wired) — what is kept on ingest, globally (and per-connector
     | via config/connectors.php overrides):
@@ -357,6 +358,202 @@ return [
         // the default only kicks in when the var is ABSENT. Same normalization
         // as the auto-wiki AI override knobs above.
         'mode' => env('KB_SOURCE_RETENTION') ?: 'full_copy',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | OCR — ingest with eyes (v8.36 / ADR 0029)
+    |--------------------------------------------------------------------------
+    |
+    | Scanned PDFs and images (png / jpeg / tiff / webp) become Markdown of the
+    | same `# {filename}` + `## Page N` shape PdfConverter emits, so
+    | PdfPageChunker chunks them unchanged. One converter, four drivers behind
+    | one contract (App\Services\Kb\Ocr\OcrDriver), selected by KB_OCR_DRIVER.
+    |
+    | DEFAULT-OFF (R43). With `enabled=false` the deployment is byte-for-byte
+    | the v8.35 one: image MIMEs are refused with the same 422, a scanned PDF
+    | yields the same empty document, SourceType::supportedMimes() is
+    | unchanged. Both states are tested.
+    |
+    | Drivers:
+    |   docling      IBM Docling CLI (local process) — layout, tables, figures,
+    |                formulas → LaTeX. Default for sovereign installs.
+    |   mistral-ocr  Mistral OCR API (EU-hosted). Strongest on tables/layouts.
+    |   vision-llm   laravel/ai vision call (Claude / Gemini / Regolo) — zero
+    |                new infra, metered by FinOps like any chat call.
+    |   tesseract    Tesseract CLI (local) — free fallback, no layout.
+    |   fake         deterministic driver for tests and the E2E harness. Only
+    |                resolvable outside production (R43 / SEC-ENV-001).
+    |
+    */
+
+    /*
+    |--------------------------------------------------------------------------
+    | PDF text extraction
+    |--------------------------------------------------------------------------
+    | PdfConverter reads the text layer with smalot/pdfparser and falls back
+    | to Poppler's pdftotext when smalot rejects the file. The binary path
+    | is configurable so a host can point at a non-PATH install (and tests
+    | can substitute a stub).
+    */
+    'pdf' => [
+        'pdftotext_bin' => env('KB_PDFTOTEXT_BIN', 'pdftotext'),
+    ],
+
+    'ocr' => [
+        'enabled' => filter_var(env('KB_OCR_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+        // `?: 'tesseract'` — a present-but-blank KB_OCR_DRIVER= is invalid, not
+        // "use the default" (same normalisation as the autowiki knobs above).
+        'driver' => env('KB_OCR_DRIVER') ?: 'tesseract',
+
+        // Final-egress policy (ADR 0029 §7). `mistral-ocr` and `vision-llm`
+        // send the document bytes to a remote service BEFORE the PII seam
+        // can see the text. They run only when this is true; the registry
+        // refuses them otherwise (fail closed). Strict `=== true` after the
+        // cast so a malformed value keeps the door shut.
+        'allow_remote' => filter_var(env('KB_OCR_ALLOW_REMOTE', false), FILTER_VALIDATE_BOOLEAN),
+
+        // Driver registry — key → FQCN. Validated at boot (R23): every class
+        // must implement OcrDriver or OcrDriverRegistry throws.
+        'drivers' => [
+            'docling' => \App\Services\Kb\Ocr\Drivers\DoclingOcrDriver::class,
+            'mistral-ocr' => \App\Services\Kb\Ocr\Drivers\MistralOcrDriver::class,
+            'vision-llm' => \App\Services\Kb\Ocr\Drivers\VisionLlmOcrDriver::class,
+            'tesseract' => \App\Services\Kb\Ocr\Drivers\TesseractOcrDriver::class,
+            'fake' => \App\Services\Kb\Ocr\Drivers\FakeOcrDriver::class,
+        ],
+
+        // Image MIMEs the OcrConverter claims (SourceType::IMAGE). Kept here so
+        // the converter, SourceType::imageMimes() and mime_to_source_type in
+        // config/kb-pipeline.php move in lockstep (a test asserts equality).
+        'image_mimes' => ['image/png', 'image/jpeg', 'image/tiff', 'image/webp'],
+
+        // Bounded work BEFORE egress / spend (SEC-LLM-001 gate 7, ADR 0029
+        // §4): a document over either limit fails loudly with a reason —
+        // never page-by-page billing on a 2 000-page scan. Pages are counted
+        // by the probe's parser; bytes are the request size. A PDF the parser
+        // cannot read has only a `/Type /Page` floor, and a floor is not a cap
+        // input: it is refused for a remote driver (`pages_uncountable`).
+        'max_pages' => (int) env('KB_OCR_MAX_PAGES', 200),
+        // Wall-clock budget of ONE OCR run (seconds). The drivers enforce it
+        // (a page-by-page engine stops at it with `run_too_long`, a
+        // whole-file engine's timeout is capped by it), so the run lease,
+        // the ingest job timeout and the re-run lock are all bounded by it —
+        // and the queue's `retry_after` only has to exceed THIS (+ margins),
+        // never a driver's theoretical worst case.
+        'job_timeout' => (int) env('KB_OCR_JOB_TIMEOUT', 3600),
+        'max_bytes' => (int) env('KB_OCR_MAX_BYTES', 26214400), // 25 MiB, the upload cap
+        // Largest single figure a driver may hand back (remote drivers return
+        // base64 images inside the response body).
+        'max_figure_bytes' => (int) env('KB_OCR_MAX_FIGURE_BYTES', 10485760),
+        // Aggregate figure budget of ONE run (every accepted figure is held
+        // in memory until the run is recorded): how many figures a run may
+        // keep and how many bytes they may add up to; a figure over the
+        // budget is omitted, and the Markdown says so.
+        'max_figures_per_run' => (int) env('KB_OCR_MAX_FIGURES', 200),
+        'max_figures_total_bytes' => (int) env('KB_OCR_MAX_FIGURES_TOTAL_BYTES', 104857600), // 100 MiB
+
+        // Rendered-page bounds for the drivers that rasterise a PDF page by
+        // page (tesseract, vision-llm): the source byte cap above bounds the
+        // FILE, these bound what a page RENDERS to — the long side no page
+        // may exceed in pixels (the render DPI is lowered from the page
+        // geometry pdfinfo reports so every page fits; a page that cannot fit
+        // at 50 DPI is refused before rendering), and the PNG size a page may
+        // reach before it is decoded locally or posted to a vision provider
+        // (ADR 0029 §4).
+        'raster' => [
+            'max_page_px' => (int) env('KB_OCR_RASTER_MAX_PAGE_PX', 6000),
+            'max_page_bytes' => (int) env('KB_OCR_RASTER_MAX_PAGE_BYTES', 10485760),
+        ],
+
+        // Recorded-run reuse (ADR 0029 §5): the raw OCR pages of a run are
+        // kept at {source}.ocr/{run}/result.json — beside the figures, under
+        // the source's own ACL, purged with it — so identical bytes through
+        // the same engine never pay twice. Off = every ingest runs the
+        // driver and nothing is recorded (the disk then holds pixels only).
+        // Seconds a worker waits for the reservation of a run directory another
+        // worker is writing (same bytes, same engine) before giving up and
+        // letting the job retry; the first worker's run is then reused.
+        'run_lock' => [
+            'wait_seconds' => (int) env('KB_OCR_RUN_LOCK_WAIT', 300),
+        ],
+
+        // Seconds a recorded run counts as IN FLIGHT: it is recorded before the
+        // row that references it commits, so a hard delete or orphan sweep
+        // that sees no referencing row inside this grace keeps the run instead
+        // of removing the figures a row is about to point at (ADR 0029 §6).
+        'purge_grace_seconds' => (int) env('KB_OCR_PURGE_GRACE_SECONDS', 1800),
+
+        'reuse' => [
+            'enabled' => filter_var(env('KB_OCR_REUSE_ENABLED', true), FILTER_VALIDATE_BOOLEAN),
+        ],
+
+        // PDF text-layer probe, decided PER PAGE: a page with fewer than
+        // `min_text_chars` extractable characters that carries an image is a
+        // scanned page. No text page at all → `empty` (routed to OCR); text
+        // pages AND scanned pages → `mixed` (the whole document is routed to
+        // OCR so no page is lost); otherwise `present` (today's text path).
+        // Recorded in extractionMeta.text_layer_probe. `pages` = 0 probes
+        // every page up to KB_OCR_MAX_PAGES; a positive value bounds the
+        // window (a scanned page beyond it is not seen). `force` on the
+        // ingest metadata (`metadata.ocr.force = true`, kb:ocr) bypasses it.
+        'text_layer_probe' => [
+            'pages' => (int) env('KB_OCR_PROBE_PAGES', 0),
+            'min_text_chars' => (int) env('KB_OCR_PROBE_MIN_CHARS', 20),
+        ],
+
+        // FinOps: per-page rate (base currency, ai-finops.currency.base) used
+        // for the `ocr` purpose tag on locally-priced drivers (docling,
+        // tesseract, mistral-ocr) and for the estimate on the upload modal.
+        // vision-llm is metered by the laravel/ai lifecycle hook per token and
+        // is NOT double-counted here.
+        'rate_per_page' => (float) env('KB_OCR_RATE_PER_PAGE', 0.004),
+
+        // Where figures land on the kb disk, relative to the source path's
+        // directory: `{dir}/{basename}.ocr/{run}/images/fig-{page}-{n}.png`,
+        // `{run}` content-addressed (OcrFigureStore::runKeyFor). The markdown
+        // references them as `![Figure p.n](images/fig-p-n.png)`.
+        'figures' => [
+            'enabled' => filter_var(env('KB_OCR_FIGURES_ENABLED', true), FILTER_VALIDATE_BOOLEAN),
+        ],
+
+        'docling' => [
+            'binary' => env('KB_OCR_DOCLING_BIN', 'docling'),
+            'timeout' => (int) env('KB_OCR_DOCLING_TIMEOUT', 600),
+        ],
+        'tesseract' => [
+            'binary' => env('KB_OCR_TESSERACT_BIN', 'tesseract'),
+            'pdftoppm' => env('KB_OCR_PDFTOPPM_BIN', 'pdftoppm'),
+            'pdfinfo' => env('KB_OCR_PDFINFO_BIN', 'pdfinfo'),
+            'lang' => env('KB_OCR_TESSERACT_LANG', 'eng'),
+            'dpi' => (int) env('KB_OCR_TESSERACT_DPI', 200),
+            'timeout' => (int) env('KB_OCR_TESSERACT_TIMEOUT', 300),
+        ],
+        'mistral' => [
+            'api_key' => env('KB_OCR_MISTRAL_API_KEY') ?: env('MISTRAL_API_KEY'),
+            'url' => env('KB_OCR_MISTRAL_URL', 'https://api.mistral.eu/v1/ocr'),
+            // Exact host allow-list for the OCR endpoint (SEC-SSRF-001): the
+            // driver refuses any other host BEFORE sending the document.
+            'allowed_hosts' => array_values(array_filter(array_map('trim', explode(',', (string) env('KB_OCR_MISTRAL_ALLOWED_HOSTS', 'api.mistral.eu,api.mistral.ai'))))),
+            'max_response_bytes' => (int) env('KB_OCR_MISTRAL_MAX_RESPONSE_BYTES', 67108864),
+            'model' => env('KB_OCR_MISTRAL_MODEL', 'mistral-ocr-latest'),
+            'timeout' => (int) env('KB_OCR_MISTRAL_TIMEOUT', 120),
+        ],
+        'vision_llm' => [
+            // Empty → the default chat provider/model of AiManager.
+            'provider' => env('KB_OCR_VISION_PROVIDER') ?: null,
+            'model' => env('KB_OCR_VISION_MODEL') ?: null,
+            'max_tokens' => (int) env('KB_OCR_VISION_MAX_TOKENS', 4000),
+            'pdftoppm' => env('KB_OCR_PDFTOPPM_BIN', 'pdftoppm'),
+            'pdfinfo' => env('KB_OCR_PDFINFO_BIN', 'pdfinfo'),
+            'dpi' => (int) env('KB_OCR_VISION_DPI', 150),
+            'timeout' => (int) env('KB_OCR_VISION_TIMEOUT', 300),
+        ],
+        'fake' => [
+            // Pages the fake driver returns; each page may carry `markdown`,
+            // `confidence` and `figures` (count). Null → one synthetic page.
+            'pages' => null,
+        ],
     ],
 
     /*

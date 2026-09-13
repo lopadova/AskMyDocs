@@ -68,9 +68,17 @@ class StageKbUploadRequest extends FormRequest
         }
 
         try {
-            KbPath::normalize($subPath);
+            $normalized = KbPath::normalize($subPath);
         } catch (InvalidArgumentException $e) {
             $validator->errors()->add('sub_path', $e->getMessage());
+
+            return;
+        }
+        // ADR 0029 §6 — the converters' own output is never a source: a
+        // sub_path inside `{source}.ocr/` or `.artifacts/` would let an upload
+        // overwrite a recorded run or an artifact and self-ingest it.
+        if (KbPath::isGeneratedAsset($normalized.'/x')) {
+            $validator->errors()->add('sub_path', 'sub_path is inside a generated-asset directory (.ocr/ or .artifacts/) and cannot receive sources.');
         }
     }
 
@@ -90,11 +98,18 @@ class StageKbUploadRequest extends FormRequest
             if ($type === SourceType::UNKNOWN) {
                 $type = SourceType::fromMime((string) $file->getClientMimeType());
             }
+            // v8.36 / ADR 0029 — images are an accepted type only while OCR is
+            // on (R43); with the flag off they are refused like any unknown type
+            // and the "Allowed:" list does not mention them.
+            $ocrEnabled = (bool) config('kb.ocr.enabled', false);
+            if ($type === SourceType::IMAGE && ! $ocrEnabled) {
+                $type = SourceType::UNKNOWN;
+            }
 
             if ($type === SourceType::UNKNOWN) {
                 $validator->errors()->add(
                     "files.{$i}",
-                    'Unsupported file type. Allowed: md, markdown, txt, pdf, docx.',
+                    'Unsupported file type. Allowed: '.implode(', ', SourceType::knownExtensions($ocrEnabled)).'.',
                 );
 
                 continue;

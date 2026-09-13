@@ -256,8 +256,8 @@ navigation in `docs-site/docs.json`; Playwright real-data E2E for every screen
 | Wn | Integration branch | Sub-branch | PR | HEAD | Tag | State |
 |---|---|---|---|---|---|---|
 | plan | `main` | `claude/plan-annota-gap-document-intelligence` | [#476](https://github.com/lopadova/AskMyDocs/pull/476) | `b20420a3` | — | merged 2026-09-12 (squash; 12 Copilot rounds) |
-| ADR 0029+0030 | `feature/v8.36` (from `main` @ `b20420a3`) | `feature/v8.36-adr-0029-0030` | [#477](https://github.com/lopadova/AskMyDocs/pull/477) | (see PR) | — | PR open 2026-09-12, Copilot rounds 1–6 addressed 2026-09-13 |
-| W1 | `feature/v8.36` | `feature/v8.36-W1` | [#478](https://github.com/lopadova/AskMyDocs/pull/478) | (see PR) | — | PR open 2026-09-13, Copilot rounds 1–4 addressed, CI green on each head; merges after #477 |
+| ADR 0029+0030 | `feature/v8.36` (from `main` @ `b20420a3`) | `feature/v8.36-adr-0029-0030` | [#477](https://github.com/lopadova/AskMyDocs/pull/477) | `7f9a1bfe` (squash on `feature/v8.36`; PR head `ad9fae6c`) | — | merged 2026-09-13 (16 Copilot rounds, labelled E2E green) |
+| W1 | `feature/v8.36` | `feature/v8.36-W1` | [#478](https://github.com/lopadova/AskMyDocs/pull/478) | (see PR) | — | PR open 2026-09-13, Copilot rounds 1–10 addressed, CI green on each head; E2E gate (`run-e2e`) on; merges after #477 (merged) |
 | W2 | `feature/v8.36` | `feature/v8.36-W2` | — | — | — | implemented 2026-09-13 on the W1 head (local suites green); PR opens after #478 merges |
 | v8.36 GA | `main` | — | — | — | — | — |
 | W3 | `feature/v8.37` | `feature/v8.37-W3` | — | — | — | not started |
@@ -265,7 +265,7 @@ navigation in `docs-site/docs.json`; Playwright real-data E2E for every screen
 | W5 | `feature/v8.39` | `feature/v8.39-W5` | — | — | — | not started |
 | W6 | `feature/v8.40` | `feature/v8.40-W6` | — | — | — | optional |
 
-Last updated: 2026-09-13 (ADR PR #477 and W1 PR #478 in review; W2 implemented locally on the W1 head).
+Last updated: 2026-09-13 (ADR PR #477 merged as `7f9a1bfe`; W1 PR #478 in its final loop; W2 implemented locally on the W1 head).
 
 ---
 

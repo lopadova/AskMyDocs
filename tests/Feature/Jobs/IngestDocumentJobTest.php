@@ -82,6 +82,181 @@ class IngestDocumentJobTest extends TestCase
         $this->app->call([$job, 'handle']);
     }
 
+    /**
+     * v8.36 — a deterministic OCR refusal (over the byte/page cap) is failed
+     * immediately instead of being retried three times (R14).
+     */
+    public function test_handle_fails_fast_on_a_deterministic_ocr_refusal(): void
+    {
+        Storage::fake('kb');
+        config()->set('kb.sources.disk', 'kb');
+        config()->set('kb.sources.path_prefix', '');
+        config()->set('kb.ocr.enabled', true);
+        config()->set('kb.ocr.driver', 'fake');
+        config()->set('kb.ocr.max_bytes', 10);
+        Storage::disk('kb')->put('scan.png', (string) base64_decode(\App\Services\Kb\Ocr\Drivers\FakeOcrDriver::PNG_1X1, true));
+
+        $job = new IngestDocumentJob(projectKey: 'demo', relativePath: 'scan.png', disk: 'kb', mimeType: 'image/png');
+        $queueJob = \Mockery::mock(\Illuminate\Contracts\Queue\Job::class);
+        $queueJob->shouldReceive('fail')->once()->withArgs(function (\Throwable $e): bool {
+            return $e->getPrevious() instanceof \App\Services\Kb\Ocr\OcrLimitExceededException
+                && str_contains($e->getMessage(), 'KB_OCR_MAX_BYTES');
+        });
+        $queueJob->shouldReceive('isReleased')->andReturn(false)->byDefault();
+        $queueJob->shouldReceive('hasFailed')->andReturn(false)->byDefault();
+        $job->setJob($queueJob);
+
+        // No exception escapes: the job is failed, not re-queued.
+        $this->app->call([$job, 'handle']);
+
+        $this->assertSame(0, KnowledgeDocument::query()->where('source_path', 'scan.png')->count());
+    }
+
+    public function test_a_refusal_without_a_queue_job_surfaces_as_an_exception(): void
+    {
+        Storage::fake('kb');
+        config()->set('kb.sources.disk', 'kb');
+        config()->set('kb.sources.path_prefix', '');
+        config()->set('kb.ocr.enabled', true);
+        config()->set('kb.ocr.driver', 'fake');
+        config()->set('kb.ocr.max_bytes', 10);
+        Storage::disk('kb')->put('scan.png', (string) base64_decode(\App\Services\Kb\Ocr\Drivers\FakeOcrDriver::PNG_1X1, true));
+
+        $job = new IngestDocumentJob(projectKey: 'demo', relativePath: 'scan.png', disk: 'kb', mimeType: 'image/png');
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('KB_OCR_MAX_BYTES');
+        $this->app->call([$job, 'handle']);
+    }
+
+    /**
+     * v8.36 — the re-run lock a forced OCR re-run carries is released on the
+     * terminal outcome only: after success, and in failed(); never while a
+     * retry is still queued (R21).
+     */
+    public function test_rerun_lock_is_released_after_success_but_kept_while_a_retry_is_pending(): void
+    {
+        Storage::fake('kb');
+        config()->set('kb.sources.disk', 'kb');
+        config()->set('kb.sources.path_prefix', '');
+        Storage::disk('kb')->put('note.md', "# Note\n\nbody");
+
+        $key = \App\Services\Kb\Ocr\OcrService::rerunLockKey('default', 42);
+        $lock = \Illuminate\Support\Facades\Cache::lock($key, 600);
+        $this->assertTrue($lock->get());
+        $carried = ['ocr' => ['rerun_lock' => ['key' => $key, 'owner' => $lock->owner()]]];
+
+        // A failing attempt with retries left keeps the lock.
+        $failing = new IngestDocumentJob(projectKey: 'demo', relativePath: 'missing.md', disk: 'kb', metadata: $carried);
+        try {
+            $this->app->call([$failing, 'handle']);
+            $this->fail('expected the missing file to throw');
+        } catch (RuntimeException) {
+        }
+        $this->assertFalse(\Illuminate\Support\Facades\Cache::lock($key, 1)->get(), 'the lock must survive a retryable failure');
+
+        // failed() (attempts exhausted) releases it.
+        $failing->failed(new RuntimeException('exhausted'));
+        $probe = \Illuminate\Support\Facades\Cache::lock($key, 1);
+        $this->assertTrue($probe->get(), 'failed() must release the lock');
+        $probe->release();
+
+        // A successful run releases it too.
+        $lock = \Illuminate\Support\Facades\Cache::lock($key, 600);
+        $this->assertTrue($lock->get());
+        $ok = new IngestDocumentJob(projectKey: 'demo', relativePath: 'note.md', disk: 'kb', metadata: ['ocr' => ['rerun_lock' => ['key' => $key, 'owner' => $lock->owner()]]]);
+        $this->app->call([$ok, 'handle']);
+        $this->assertTrue(\Illuminate\Support\Facades\Cache::lock($key, 1)->get(), 'success must release the lock');
+    }
+
+    /**
+     * The production release path: `$this->fail()` → `Job::fail()` →
+     * `failed()` on a fresh instance resolved from the serialized payload.
+     * The sync driver runs exactly that chain, so a serialization gap on
+     * `metadata.ocr.rerun_lock` would leave the lock held until the TTL.
+     */
+    public function test_a_refusal_on_a_real_queue_job_reaches_failed_and_releases_the_rerun_lock(): void
+    {
+        Storage::fake('kb');
+        config()->set('queue.default', 'sync');
+        config()->set('kb.sources.disk', 'kb');
+        config()->set('kb.sources.path_prefix', '');
+        config()->set('kb.ocr.enabled', true);
+        config()->set('kb.ocr.driver', 'fake');
+        config()->set('kb.ocr.max_bytes', 10);
+        Storage::disk('kb')->put('scan.png', (string) base64_decode(\App\Services\Kb\Ocr\Drivers\FakeOcrDriver::PNG_1X1, true));
+
+        $key = \App\Services\Kb\Ocr\OcrService::rerunLockKey('default', 7);
+        $lock = \Illuminate\Support\Facades\Cache::lock($key, 600);
+        $this->assertTrue($lock->get());
+
+        \Illuminate\Support\Facades\Event::fake([\Illuminate\Queue\Events\JobFailed::class]);
+        IngestDocumentJob::dispatchSync(
+            projectKey: 'demo',
+            relativePath: 'scan.png',
+            disk: 'kb',
+            mimeType: 'image/png',
+            metadata: ['ocr' => ['rerun_lock' => ['key' => $key, 'owner' => $lock->owner()]]],
+        );
+
+        \Illuminate\Support\Facades\Event::assertDispatched(\Illuminate\Queue\Events\JobFailed::class, function (\Illuminate\Queue\Events\JobFailed $event): bool {
+            return str_contains($event->exception->getMessage(), 'KB_OCR_MAX_BYTES');
+        });
+        $this->assertTrue(\Illuminate\Support\Facades\Cache::lock($key, 1)->get(), 'failed() on the real queue path must release the lock');
+        $this->assertSame(0, KnowledgeDocument::query()->where('source_path', 'scan.png')->count());
+    }
+
+    /**
+     * A lock that lapsed while the job waited is re-armed at attempt start;
+     * one that a NEWER re-run took over makes the older job fail instead of
+     * producing a duplicate paid run.
+     */
+    public function test_rerun_lock_is_rearmed_at_attempt_start_and_a_superseded_job_fails(): void
+    {
+        Storage::fake('kb');
+        config()->set('queue.default', 'sync');
+        config()->set('kb.sources.disk', 'kb');
+        config()->set('kb.sources.path_prefix', '');
+        Storage::disk('kb')->put('note.md', "# Note\n\nbody");
+
+        $key = \App\Services\Kb\Ocr\OcrService::rerunLockKey('default', 9);
+
+        // Lapsed while queued: nobody holds it, the job re-acquires and runs.
+        $lapsed = new IngestDocumentJob(projectKey: 'demo', relativePath: 'note.md', disk: 'kb', metadata: ['ocr' => ['rerun_lock' => ['key' => $key, 'owner' => 'job-a']]]);
+        $this->app->call([$lapsed, 'handle']);
+        $this->assertSame(1, KnowledgeDocument::query()->where('source_path', 'note.md')->count());
+        $this->assertTrue(\Illuminate\Support\Facades\Cache::lock($key, 1)->get(), 'success releases the re-armed lock');
+        \Illuminate\Support\Facades\Cache::lock($key, 1)->forceRelease();
+
+        // Taken over by a newer re-run: the older job must not run.
+        $newer = \Illuminate\Support\Facades\Cache::lock($key, 600);
+        $this->assertTrue($newer->get());
+        \Illuminate\Support\Facades\Event::fake([\Illuminate\Queue\Events\JobFailed::class]);
+        IngestDocumentJob::dispatchSync(
+            projectKey: 'demo',
+            relativePath: 'note.md',
+            disk: 'kb',
+            metadata: ['ocr' => ['rerun_lock' => ['key' => $key, 'owner' => 'job-a']]],
+        );
+        \Illuminate\Support\Facades\Event::assertDispatched(\Illuminate\Queue\Events\JobFailed::class, function (\Illuminate\Queue\Events\JobFailed $event): bool {
+            return str_contains($event->exception->getMessage(), 'superseded by a newer OCR re-run');
+        });
+        $this->assertFalse(\Illuminate\Support\Facades\Cache::lock($key, 1)->get(), 'the newer owner keeps its lock');
+        $newer->release();
+
+        // Bare handle() with a foreign owner throws (no queue job to fail).
+        $newer = \Illuminate\Support\Facades\Cache::lock($key, 600);
+        $this->assertTrue($newer->get());
+        $bare = new IngestDocumentJob(projectKey: 'demo', relativePath: 'note.md', disk: 'kb', metadata: ['ocr' => ['rerun_lock' => ['key' => $key, 'owner' => 'job-a']]]);
+        try {
+            $this->app->call([$bare, 'handle']);
+            $this->fail('expected the superseded job to throw');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('superseded by a newer OCR re-run', $e->getMessage());
+        }
+        $newer->release();
+    }
+
     public function test_handle_respects_configured_path_prefix(): void
     {
         Storage::fake('kb');
@@ -278,5 +453,38 @@ MD,
         );
 
         $this->assertSame('custom-queue-name', $job->queue);
+    }
+
+
+    /**
+     * Uncertainty is not ownership: with the lock store unreachable the job
+     * must not run a billable OCR pass it cannot prove is still its own. The
+     * attempt is retryable (the queue's tries/backoff), never a silent run
+     * that the same-owner check used to wave through (Copilot #478 round 3).
+     */
+    public function test_an_unreachable_rerun_lock_store_makes_the_attempt_retryable_not_a_run(): void
+    {
+        Storage::fake('kb');
+        Storage::disk('kb')->put('note.md', '# note');
+        config()->set('kb.sources.disk', 'kb');
+        config()->set('kb.sources.path_prefix', '');
+        \Illuminate\Support\Facades\Cache::partialMock()
+            ->shouldReceive('lock')
+            ->andThrow(new RuntimeException('lock store down'));
+
+        $job = new IngestDocumentJob(
+            projectKey: 'demo',
+            relativePath: 'note.md',
+            disk: 'kb',
+            metadata: ['ocr' => ['rerun_lock' => ['key' => 'ocr-rerun:demo:note.md', 'owner' => 'job-a']]],
+        );
+
+        try {
+            $this->app->call([$job, 'handle']);
+            $this->fail('an unreachable lock store must not let the attempt run');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('lock store unavailable', $e->getMessage());
+        }
+        $this->assertSame(0, KnowledgeDocument::query()->count(), 'nothing was ingested');
     }
 }

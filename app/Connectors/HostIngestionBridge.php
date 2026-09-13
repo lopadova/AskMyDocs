@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Connectors;
 
+use App\Services\Kb\Ocr\OcrService;
 use App\Connectors\Imap\ImapSyncProgressContext;
 use App\Jobs\IngestDocumentJob;
 use App\Models\KbCanonicalAudit;
@@ -12,6 +13,7 @@ use App\Services\Demo\EmailDataset\EmailDatasetReader;
 use App\Services\Demo\EmailDataset\FixtureMetadataIndex;
 use App\Services\Kb\DocumentDeleter;
 use App\Services\Kb\Pii\IngestStrategyResolver;
+use App\Support\Kb\SourceType;
 use App\Support\KbPath;
 use App\Support\TenantContext;
 use Illuminate\Support\Facades\DB;
@@ -88,6 +90,26 @@ final class HostIngestionBridge implements ConnectorIngestionContract
         // here — the dispatcher's process may belong to a different
         // tenant by the time this runs in a long-lived queue worker.
         $progressMetadata = $metadata;
+        // The connector's MIME is a label from another system: canonical form
+        // (lower-case, no parameters) before it is gated, persisted or resolved.
+        $mimeType = SourceType::normaliseMime($mimeType);
+
+        // v8.36/W1 (R43) — the connector path bypasses the controller, the
+        // staging request and the folder walker, so it gates images itself:
+        // with KB_OCR_ENABLED=false an image attachment is refused HERE as a
+        // recorded, reasoned event — never a queued job that dies later in
+        // converter resolution. The IMAP UID is still confirmed so the sync
+        // does not re-present the same attachment every run; re-enabling OCR
+        // and re-syncing (backfill) picks it up.
+        if ($this->refusesImageWithoutOcr($mimeType)) {
+            $this->recordRefusedImage($projectKey, $relativePath, $mimeType, $metadata, $tenantId, $disk);
+            $this->imapSyncProgress->recordSuccessfulDispatch($progressMetadata, $tenantId);
+
+            return;
+        }
+
+        // Connector metadata is not a host control surface either (ADR 0029).
+        $metadata = OcrService::stripTrustedOnlyKeys($metadata);
         $metadata = $this->withGeneratedFixtureMetadata($projectKey, $metadata);
         $relativePath = $this->prepareImapSourcePath(
             projectKey: $projectKey,
@@ -123,6 +145,114 @@ final class HostIngestionBridge implements ConnectorIngestionContract
         // confirms a UID after the real host dispatch succeeded; every other
         // connector and direct ingestion path sees a no-op.
         $this->imapSyncProgress->recordSuccessfulDispatch($progressMetadata, $tenantId);
+    }
+
+    private function refusesImageWithoutOcr(string $mimeType): bool
+    {
+        if (SourceType::fromMime($mimeType) !== SourceType::IMAGE) {
+            return false;
+        }
+
+        return (bool) config('kb.ocr.enabled', false) === false;
+    }
+
+    /**
+     * @param  array<string,mixed>  $metadata
+     */
+    private function recordRefusedImage(
+        string $projectKey,
+        string $relativePath,
+        string $mimeType,
+        array $metadata,
+        string $tenantId,
+        string $disk,
+    ): void {
+        $connectorKey = is_string($metadata['connector'] ?? null) ? $metadata['connector'] : 'unknown';
+        $installationId = isset($metadata['installation_id']) ? (int) $metadata['installation_id'] : null;
+
+        Log::warning('HostIngestionBridge: image refused because OCR is disabled', [
+            'connector_key' => $connectorKey,
+            'project_key' => $projectKey,
+            'relative_path' => $relativePath,
+            'mime_type' => $mimeType,
+            'reason' => 'ocr_disabled',
+        ]);
+
+        // The IMAP connector has already written the attachment to the KB
+        // disk before calling here; a refused image would otherwise sit as
+        // orphan bytes nobody ingests or prunes (R4: the delete is checked).
+        $removed = $connectorKey === 'imap' ? $this->removeRefusedSource($relativePath, $disk) : null;
+        $cleanupFailed = $connectorKey === 'imap' && $removed === null;
+
+        // Written with the tenant the CONNECTOR passed — never the worker's
+        // TenantContext, which may belong to another tenant by now (R30).
+        $this->writeAudit($tenantId, $connectorKey, 'connector_ingest_refused', $installationId, [
+            'reason' => 'ocr_disabled',
+            'project_key' => $projectKey,
+            'relative_path' => $relativePath,
+            'mime_type' => $mimeType,
+            'source_removed' => $removed,
+            'cleanup_failed' => $cleanupFailed,
+        ]);
+
+        // R14 — a cleanup that failed is not a refusal that succeeded: the
+        // orphan attachment is still on the disk. The failure reaches the
+        // sync job (the UID is NOT confirmed, so the next sync re-presents
+        // the attachment and the removal is retried) instead of a warning
+        // nobody reads while the bytes stay behind.
+        if ($cleanupFailed) {
+            throw new \RuntimeException(sprintf(
+                'Refused image attachment "%s" could not be removed from disk "%s"; the refusal is recorded but the source is still on disk.',
+                $relativePath,
+                $disk,
+            ));
+        }
+    }
+
+    /**
+     * @param  string  $disk  the disk the connector wrote to — the path is resolved
+     *                        with the global prefix, the disk is the caller's, never
+     *                        `config('kb.sources.disk')` (a connector may target another)
+     *
+     * @return bool|null true = removed; false = nothing to remove (absent, or kept
+     *                   because a document still references it); null = the removal
+     *                   FAILED (unresolvable path, disk error) — the caller raises it
+     */
+    private function removeRefusedSource(string $relativePath, string $disk): ?bool
+    {
+        try {
+            $resolved = $this->resolveKbSourcePath($relativePath);
+            $storage = Storage::disk($disk);
+            if (! $storage->exists($resolved['absolute'])) {
+                return false;
+            }
+            // The IMAP connector names attachments by UID: a backfill can
+            // re-present the SAME key a live row (ingested while OCR was on)
+            // still points at. Same reference gate as DocumentDeleter (R4).
+            $referencedBy = $this->deleter->documentReferencingStorageKey($disk, $resolved['absolute'], $relativePath);
+            if ($referencedBy !== null) {
+                Log::info('HostIngestionBridge: refused image source kept, still referenced by a document', [
+                    'relative_path' => $relativePath,
+                    // The gate crosses tenants by design (a storage key is
+                    // infrastructure); the foreign id stays out of this
+                    // tenant's log.
+                    'referenced' => true,
+                ]);
+
+                return false;
+            }
+
+            // R4 — a `false` from the disk is a failed removal, not "removed".
+            return $storage->delete($resolved['absolute']) ? true : null;
+        } catch (\Throwable $e) {
+            Log::warning('HostIngestionBridge: could not remove refused image source', [
+                'relative_path' => $relativePath,
+                'exception' => $e::class,
+                'message' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
     }
 
     /**
@@ -515,6 +645,19 @@ final class HostIngestionBridge implements ConnectorIngestionContract
             ? $eventType
             : 'connector_'.$eventType;
 
+        $this->writeAudit($this->tenantContext->current(), $connectorKey, $namespaced, $installationId, $metadata);
+    }
+
+    /**
+     * @param  array<string,mixed>|null  $metadata
+     */
+    private function writeAudit(
+        string $tenantId,
+        string $connectorKey,
+        string $namespaced,
+        ?int $installationId,
+        ?array $metadata,
+    ): void {
         $payload = [
             'connector_key' => $connectorKey,
             'installation_id' => $installationId,
@@ -530,7 +673,7 @@ final class HostIngestionBridge implements ConnectorIngestionContract
             // workflow filters by project_key) without forcing
             // connector events to attach to an arbitrary KB project.
             KbCanonicalAudit::create([
-                'tenant_id' => $this->tenantContext->current(),
+                'tenant_id' => $tenantId,
                 'project_key' => 'connector',
                 'doc_id' => null,
                 'slug' => null,

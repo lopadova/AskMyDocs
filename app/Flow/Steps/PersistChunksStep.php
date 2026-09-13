@@ -92,9 +92,23 @@ final class PersistChunksStep implements FlowStepHandler
             sourceType: (string) $chunkOutput['source_type'],
             markdown: (string) $parseOutput['markdown'],
             chunkDrafts: $drafts,
-            metadata: $combinedMetadata,
+            // The host-only control keys (`ocr.force`, `ocr.rerun_lock`,
+            // `dry_run`) drive THIS run and must not be stored: a row that
+            // kept them would force the next ingest built from its metadata
+            // (the admin raw edit re-dispatches it) and expose the lock
+            // payload through document reads. `isForced()` below still reads
+            // the original bag, so this run replaces the version it re-ran.
+            // Only the run-control keys go: the host-resolved `disk` /
+            // `prefix` this same job carries are persisted with the row.
+            metadata: \App\Services\Kb\Ocr\OcrService::stripRunControlKeys($combinedMetadata),
             embeddingResponse: $embeddingResponse,
             canonical: $canonical,
+            // ADR 0029 — a forced OCR re-run replaces the version it re-ran,
+            // and so does any FRESH (billed, recorded) run: with reuse off,
+            // or a recorded run redone because a figure went missing, the
+            // row must point at the run that produced it, never keep the old
+            // `converter.ocr` block while the new run's assets sit unreferenced.
+            replaceExisting: \App\Services\Kb\Ocr\OcrService::isForced($combinedMetadata) || \App\Services\Kb\Ocr\OcrService::isFreshOcrRun($combinedMetadata),
         );
 
         $output = [

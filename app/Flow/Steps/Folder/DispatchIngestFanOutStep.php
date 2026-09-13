@@ -8,6 +8,7 @@ use App\Flow\Steps\StepTenantBinder;
 use App\Jobs\IngestDocumentJob;
 use App\Services\Kb\DocumentIngestor;
 use App\Services\Kb\Pipeline\SourceDocument;
+use App\Support\Kb\FileTypeSniffer;
 use App\Support\Kb\SourceType;
 use App\Support\KbPath;
 use Illuminate\Support\Facades\Storage;
@@ -104,14 +105,32 @@ final class DispatchIngestFanOutStep implements FlowStepHandler
 
             $extension = (string) pathinfo($relative, PATHINFO_EXTENSION);
             $sourceType = SourceType::fromExtension($extension);
+            // v8.36 / ADR 0029 — an image is a supported type only while OCR
+            // is on (R43); off, it is recorded as unsupported exactly as before.
+            if ($sourceType === SourceType::IMAGE && ! (bool) config('kb.ocr.enabled', false)) {
+                $sourceType = SourceType::UNKNOWN;
+            }
             if ($sourceType === SourceType::UNKNOWN) {
                 $failures[] = ['path' => $relative, 'reason' => 'unsupported_extension: '.$extension];
+                continue;
+            }
+            // ADR 0029 §2 — an image is dispatched with its EXACT raster MIME
+            // (jpeg/tiff/webp) read from its BYTES, never the family label and
+            // never the extension (a JPEG named `.png` is `image/jpeg`): the
+            // MIME reaches the converter registry and the document row as what
+            // the bytes are. Bytes that are no known raster are a per-file
+            // failure here (R14), never a job that dies in the converter.
+            $mimeType = $sourceType === SourceType::IMAGE
+                ? FileTypeSniffer::imageMimeOnDisk($storage, $fullPath)
+                : $sourceType->toMime();
+            if ($mimeType === null) {
+                $failures[] = ['path' => $relative, 'reason' => 'unrecognised_bytes: not a PNG, JPEG, TIFF or WebP image'];
                 continue;
             }
 
             try {
                 if ($sync) {
-                    $this->ingestSync($storage, $disk, $prefix, $projectKey, $fullPath, $relative, $sourceType);
+                    $this->ingestSync($storage, $disk, $prefix, $projectKey, $fullPath, $relative, $mimeType);
                 } else {
                     IngestDocumentJob::dispatch(
                         projectKey: $projectKey,
@@ -119,7 +138,7 @@ final class DispatchIngestFanOutStep implements FlowStepHandler
                         disk: $disk,
                         title: null,
                         metadata: [],
-                        mimeType: $sourceType->toMime(),
+                        mimeType: $mimeType,
                         tenantId: $tenantId,
                     );
                 }
@@ -156,7 +175,7 @@ final class DispatchIngestFanOutStep implements FlowStepHandler
         string $projectKey,
         string $fullPath,
         string $relative,
-        SourceType $sourceType,
+        string $mimeType,
     ): void {
         if (! $storage->exists($fullPath)) {
             throw new RuntimeException("File vanished before ingestion: {$fullPath}");
@@ -167,7 +186,7 @@ final class DispatchIngestFanOutStep implements FlowStepHandler
             projectKey: $projectKey,
             source: new SourceDocument(
                 sourcePath: $relative,
-                mimeType: $sourceType->toMime(),
+                mimeType: $mimeType,
                 bytes: $bytes,
                 externalUrl: null,
                 externalId: null,

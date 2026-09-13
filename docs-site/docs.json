@@ -26,6 +26,7 @@
         "icon": "book-open",
         "pages": [
           "ingestion",
+          "documents-and-ocr",
           "chat-and-retrieval",
           "canonical-and-promotion",
           "auto-wiki",

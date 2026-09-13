@@ -63,7 +63,11 @@ final class PipelineRegistryTest extends TestCase
         $this->assertContains('docx-converter', $names);
         // v4.5/W5.5 — vendor markdown passthrough for the six connectors.
         $this->assertContains('vendor-markdown-passthrough', $names);
-        $this->assertCount(5, $names);
+        // v8.36 / ADR 0029 — OCR converter (registered before pdf-converter;
+        // claims image/* only when kb.ocr.enabled).
+        $this->assertContains('ocr-converter', $names);
+        $this->assertCount(6, $names);
+        $this->assertLessThan(array_search('pdf-converter', $names, true), array_search('ocr-converter', $names, true));
     }
 
     public function test_lists_all_registered_chunkers_for_admin_ui(): void

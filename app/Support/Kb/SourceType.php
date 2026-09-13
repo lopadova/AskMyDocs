@@ -48,6 +48,11 @@ enum SourceType: string
     case DRIVE_GSHEET = 'drive_gsheet';
     case DRIVE_GSLIDE = 'drive_gslide';
     case ONEDRIVE_OFFICE = 'onedrive_office';
+    // v8.36 / ADR 0029 — scanned images routed through OcrConverter. The
+    // mapping is static; whether an image is ACCEPTED at an entry point is
+    // decided by `kb.ocr.enabled` through `supportedMimes(true)` /
+    // `knownExtensions(true)` (R43 — the OFF path is the shipped default).
+    case IMAGE = 'image';
     case UNKNOWN = 'unknown';
 
     /**
@@ -81,6 +86,8 @@ enum SourceType: string
             'application/vnd.google-apps.spreadsheet' => self::DRIVE_GSHEET,
             'application/vnd.google-apps.presentation' => self::DRIVE_GSLIDE,
             'application/vnd.onedrive.office+json' => self::ONEDRIVE_OFFICE,
+            // v8.36 — images (ADR 0029). Same list as kb.ocr.image_mimes.
+            'image/png', 'image/jpeg', 'image/tiff', 'image/webp' => self::IMAGE,
             default => self::UNKNOWN,
         };
     }
@@ -98,6 +105,7 @@ enum SourceType: string
             'txt' => self::TEXT,
             'pdf' => self::PDF,
             'docx' => self::DOCX,
+            'png', 'jpg', 'jpeg', 'tif', 'tiff', 'webp' => self::IMAGE,
             default => self::UNKNOWN,
         };
     }
@@ -114,6 +122,7 @@ enum SourceType: string
             self::TEXT => 'text/plain',
             self::PDF => 'application/pdf',
             self::DOCX => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            self::IMAGE => 'image/png',
             self::UNKNOWN => 'application/octet-stream',
         };
     }
@@ -128,7 +137,7 @@ enum SourceType: string
     public function isBinary(): bool
     {
         return match ($this) {
-            self::PDF, self::DOCX => true,
+            self::PDF, self::DOCX, self::IMAGE => true,
             default => false,
         };
     }
@@ -149,10 +158,17 @@ enum SourceType: string
      *                       KbIngestFolderCommand as the default `--pattern`
      *                       value so multi-format folder walks find every
      *                       supported file out-of-the-box.
+     *
+     * v8.36 — image extensions are listed only when the caller passes
+     * `includeImages = true` (= `config('kb.ocr.enabled')` at the call
+     * site). The enum stays pure (no container access) so it remains
+     * unit-testable and so the OFF path is byte-identical to v8.35.
      */
-    public static function knownExtensions(): array
+    public static function knownExtensions(bool $includeImages = false): array
     {
-        return ['md', 'markdown', 'txt', 'pdf', 'docx'];
+        $base = ['md', 'markdown', 'txt', 'pdf', 'docx'];
+
+        return $includeImages ? array_merge($base, self::imageExtensions()) : $base;
     }
 
     /**
@@ -164,15 +180,69 @@ enum SourceType: string
      *                       operators see the full set of MIMEs the
      *                       endpoint accepts (not just the canonical
      *                       form returned by `toMime()`).
+     *
+     * v8.36 — image MIMEs are listed only when `includeImages = true`
+     * (see knownExtensions()).
      */
-    public static function supportedMimes(): array
+    public static function supportedMimes(bool $includeImages = false): array
     {
-        return [
+        $base = [
             'text/markdown',
             'text/x-markdown',
             'text/plain',
             'application/pdf',
             'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         ];
+
+        return $includeImages ? array_merge($base, self::imageMimes()) : $base;
+    }
+
+    /**
+     * @return list<string>  the image MIMEs OcrConverter claims (ADR 0029).
+     *                       Mirrors `kb.ocr.image_mimes` and the `image/*`
+     *                       rows of `kb-pipeline.mime_to_source_type`.
+     */
+    public static function imageMimes(): array
+    {
+        return ['image/png', 'image/jpeg', 'image/tiff', 'image/webp'];
+    }
+
+    /**
+     * @return list<string>  the image file extensions mapped to IMAGE.
+     */
+    public static function imageExtensions(): array
+    {
+        return ['png', 'jpg', 'jpeg', 'tif', 'tiff', 'webp'];
+    }
+
+    /**
+     * The on-disk extension for an exact raster MIME (ADR 0029 §2). The MIME
+     * comes from the BYTES (`FileTypeSniffer::imageMimeOf()`), never from the
+     * client filename: a JPEG uploaded as `scan.png` is staged as `.jpg`,
+     * dispatched as `image/jpeg` and recorded as what it is. `toMime()` stays
+     * the FAMILY label (`image/png`) because a source type is one value per
+     * family; unknown MIMEs fall back to `png`.
+     */
+    /**
+     * The canonical form of a declared MIME: lower-case, no parameters
+     * (`Application/PDF; charset=binary` → `application/pdf`). Every ingress
+     * normalises ONCE, before the source type is resolved AND before the
+     * value is persisted or handed to the converter registry, whose
+     * `supports()` compares exactly — a request that passed validation on
+     * the stripped form must never fail converter resolution on the raw one.
+     */
+    public static function normaliseMime(string $mimeType): string
+    {
+        return strtolower(trim(explode(';', $mimeType, 2)[0]));
+    }
+
+    public static function imageExtensionFromMime(string $mime): string
+    {
+        return match (strtolower(trim(explode(';', $mime, 2)[0]))) {
+            'image/jpeg' => 'jpg',
+            'image/tiff' => 'tiff',
+            'image/webp' => 'webp',
+            default => 'png',
+        };
     }
 }

@@ -95,6 +95,37 @@ class KbIngestControllerTest extends TestCase
         });
     }
 
+    /**
+     * v8.36 / ADR 0029 — `ocr.force` starts a billed engine run and
+     * `dry_run` turns conversion into a preview: host-only controls that a
+     * client must not be able to set through `documents.*.metadata`.
+     */
+    public function test_strips_host_only_ocr_controls_from_client_metadata(): void
+    {
+        Queue::fake();
+        Storage::fake('kb');
+
+        $this->postJson('/api/kb/ingest', [
+            'documents' => [[
+                'project_key' => 'erp-core',
+                'source_path' => 'docs/forced.md',
+                'content' => "# Forced\n\nBody.",
+                'metadata' => ['language' => 'en', 'dry_run' => true, 'ocr' => ['force' => true, 'rerun_lock' => ['key' => 'k', 'owner' => 'o'], 'lang' => 'ita'], 'prefix' => '../../other', 'disk' => 'elsewhere'],
+            ]],
+        ])->assertStatus(202);
+
+        Queue::assertPushed(IngestDocumentJob::class, function (IngestDocumentJob $job): bool {
+            return ($job->metadata['language'] ?? null) === 'en'
+                && ! array_key_exists('dry_run', $job->metadata)
+                // the storage namespace is the host's, never the client's
+                && ! array_key_exists('prefix', $job->metadata)
+                && ! array_key_exists('disk', $job->metadata)
+                && ! array_key_exists('force', $job->metadata['ocr'] ?? [])
+                && ! array_key_exists('rerun_lock', $job->metadata['ocr'] ?? [])
+                && ($job->metadata['ocr']['lang'] ?? null) === 'ita';
+        });
+    }
+
     public function test_accepts_batch_and_queues_one_job_per_document(): void
     {
         Queue::fake();
@@ -271,5 +302,28 @@ class KbIngestControllerTest extends TestCase
 
         Queue::assertNothingPushed();
         Storage::disk('kb')->assertMissing('docs/ok.md');
+    }
+
+
+    /**
+     * v8.36 / ADR 0029 §6 — the converters' own output (`{source}.ocr/`,
+     * `.artifacts/`) is never a source: a client must not be able to overwrite
+     * a recorded run or an artifact and re-ingest it through the batch API.
+     */
+    public function test_rejects_a_source_path_inside_a_generated_asset_directory(): void
+    {
+        Queue::fake();
+        Storage::fake('kb');
+
+        foreach (['scans/letter.png.ocr/abc123/result.json', '.artifacts/legal/scans/letter.png/deadbeef.md'] as $path) {
+            $this->postJson('/api/kb/ingest', [
+                'documents' => [['source_path' => $path, 'content' => '# forged run']],
+            ])
+                ->assertStatus(422)
+                ->assertJsonValidationErrors(['documents']);
+        }
+
+        Queue::assertNothingPushed();
+        Storage::disk('kb')->assertDirectoryEmpty('/');
     }
 }

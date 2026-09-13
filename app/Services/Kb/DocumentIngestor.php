@@ -119,6 +119,13 @@ class DocumentIngestor
             'converter' => $converted->extractionMeta,
         ]);
 
+        // ADR 0029 — the same rule as the Flow path (PersistChunksStep): a
+        // forced or otherwise FRESH OCR run replaces the identical version
+        // it re-produced, so the row points at the run that was billed.
+        $replace = $forceReembed
+            || \App\Services\Kb\Ocr\OcrService::isForced($combinedMetadata)
+            || \App\Services\Kb\Ocr\OcrService::isFreshOcrRun($combinedMetadata);
+
         return $this->persistFromDrafts(
             projectKey: $projectKey,
             sourcePath: $normalizedSource->sourcePath,
@@ -128,7 +135,7 @@ class DocumentIngestor
             markdown: $converted->markdown,
             chunkDrafts: $chunkDrafts,
             metadata: $combinedMetadata,
-            forceReembed: $forceReembed,
+            forceReembed: $replace,
         );
     }
 
@@ -315,14 +322,23 @@ class DocumentIngestor
         array $metadata,
         EmbeddingsResponse $embeddingResponse,
         ?CanonicalParsedDocument $canonical,
+        bool $replaceExisting = false,
     ): KnowledgeDocument {
         $documentHash = hash('sha256', $markdown);
         $versionHash = $documentHash;
 
-        $existing = $this->findExistingVersion($projectKey, $sourcePath, $versionHash);
-        if ($existing !== null) {
-            $existing->update(['indexed_at' => now()]);
-            return $existing;
+        // v8.36 / ADR 0029 — a forced OCR re-run (`metadata.ocr.force`) that
+        // produced byte-identical Markdown is still a NEW run: its chunks and
+        // its `converter.ocr` block (run key, attempt, confidence) replace the
+        // existing version's instead of being dropped by the same-hash guard
+        // — otherwise the row would keep pointing at the previous run while
+        // the new one was billed and recorded. Same mechanics as forceReembed.
+        if (! $replaceExisting) {
+            $existing = $this->findExistingVersion($projectKey, $sourcePath, $versionHash);
+            if ($existing !== null) {
+                $existing->update(['indexed_at' => now()]);
+                return $existing;
+            }
         }
 
         return DB::transaction(fn () => $this->persistDocumentAndChunks(
@@ -337,6 +353,7 @@ class DocumentIngestor
             $chunkDrafts,
             $embeddingResponse,
             $canonical,
+            $replaceExisting,
         ));
     }
 
@@ -590,6 +607,13 @@ class DocumentIngestor
                 'canonical_status' => null,
                 'retrieval_priority' => 50,
                 'frontmatter_json' => null,
+                // v8.36 / ADR 0029 — a machine-read (OCR) document is born in
+                // the `auto` tier (ADR 0014) until a person approves it (W3);
+                // set here, in the one core both ingest paths share. Text-layer
+                // and markdown documents keep the human default.
+                'generation_source' => (($metadata['converter']['provenance'] ?? null) === 'ocr')
+                    ? GenerationSource::Auto->value
+                    : GenerationSource::Human->value,
             ]);
         }
 

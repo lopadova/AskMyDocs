@@ -94,6 +94,20 @@ class AppServiceProvider extends ServiceProvider
             return new PipelineRegistry($app, (array) config('kb-pipeline', []));
         });
 
+        // v8.36 / ADR 0029 — OCR driver registry. Same R23 posture as the
+        // pipeline registry: every FQCN in `kb.ocr.drivers` is validated to
+        // implement OcrDriver at boot; the configured driver is resolved by
+        // name at conversion time.
+        $this->app->singleton(\App\Services\Kb\Ocr\OcrDriverRegistry::class, function ($app) {
+            return new \App\Services\Kb\Ocr\OcrDriverRegistry($app, (array) config('kb.ocr.drivers', []));
+        });
+        // Bound as a singleton so every consumer — PdfConverter's `?OcrService`,
+        // OcrConverter, the admin controller, the CLI, the estimator — shares
+        // ONE instance (the run-lock bookkeeping and the driver cache live on
+        // it); without the binding the container would build a fresh service
+        // per resolution.
+        $this->app->singleton(\App\Services\Kb\Ocr\OcrService::class);
+
         // v8.15/W2 — digest card renderers (Discord/Slack/Teams). The registry
         // validates the interface + non-overlapping channel keys at boot (R23).
         $this->app->singleton(\App\Services\Digest\Renderers\DigestRendererRegistry::class, function () {
@@ -896,6 +910,8 @@ class AppServiceProvider extends ServiceProvider
             \App\Console\Commands\NotificationsDigestWeeklyCommand::class,
             // v8.7/W5 — Cloud Time Machine archived-version retention.
             \App\Console\Commands\PruneArchivedVersionsCommand::class,
+            // v8.36 / ADR 0029 — OCR PHP surface (R44): re-run + status.
+            \App\Console\Commands\KbOcrCommand::class,
             // v8.9 — UI upload staging buffer retention sweep.
             \App\Console\Commands\PruneStagingBatchesCommand::class,
             // v8.11/P1b — evidence-tier PHP surface (AutoSci #67, R44).

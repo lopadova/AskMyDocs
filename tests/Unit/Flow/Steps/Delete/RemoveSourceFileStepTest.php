@@ -21,7 +21,25 @@ final class RemoveSourceFileStepTest extends TestCase
 
         $this->assertTrue($result->success);
         $this->assertTrue($result->output['file_deleted']);
+        $this->assertTrue($result->output['ocr_assets_deleted'], 'no `.ocr/` tree was there: nothing remains');
+        $this->assertSame(['file_deleted' => true, 'ocr_assets_deleted' => true], $result->businessImpact);
         Storage::disk('kb')->assertMissing('docs/x.md');
+    }
+
+    /** v8.36 / ADR 0029 §6 — a `.ocr/` tree kept by the in-flight grace is reported, never hidden behind `file_deleted=true`. */
+    public function test_reports_an_ocr_tree_the_grace_kept(): void
+    {
+        Storage::fake('kb');
+        Storage::disk('kb')->put('docs/x.md', '# x');
+        Storage::disk('kb')->put('docs/x.md.ocr/'.str_repeat('a', 64).'/result.json', '{}');
+
+        $step = $this->app->make(RemoveSourceFileStep::class);
+        $result = $step->execute($this->context(force: true, keepFile: false, hardDeleted: true));
+
+        $this->assertTrue($result->output['file_deleted']);
+        $this->assertFalse($result->output['ocr_assets_deleted'], 'the run is inside the in-flight grace: kept and reported');
+        $this->assertFalse($result->businessImpact['ocr_assets_deleted']);
+        Storage::disk('kb')->assertExists('docs/x.md.ocr/'.str_repeat('a', 64).'/result.json');
     }
 
     public function test_no_op_when_keep_file_true(): void

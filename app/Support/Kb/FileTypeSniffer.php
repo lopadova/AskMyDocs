@@ -80,6 +80,11 @@ final class FileTypeSniffer
                 ? null
                 : 'declared as DOCX but the content is not an OOXML/ZIP container',
             SourceType::MARKDOWN, SourceType::TEXT => self::binarySignatureIn($head),
+            // v8.36 / ADR 0029 — scanned images: the real leading bytes must be
+            // one of the accepted raster formats (png / jpeg / tiff / webp).
+            SourceType::IMAGE => self::isImage($head)
+                ? null
+                : 'declared as image but the content is not a PNG, JPEG, TIFF or WebP image',
             // Vendor/connector source types are produced server-side, not
             // uploaded as raw files, so there is nothing to sniff here.
             default => null,
@@ -87,8 +92,81 @@ final class FileTypeSniffer
     }
 
     /**
+     * The exact raster MIME the leading bytes carry (png / jpeg / tiff / webp),
+     * or null when they are none of the accepted formats. Public so the JSON
+     * ingest entry point — which receives bytes, not a file — applies the
+     * same verification as the multipart upload (ADR 0029 §2).
+     */
+    /**
+     * The exact raster MIME of a file on the local filesystem, from its
+     * leading bytes (`null` when they are not PNG / JPEG / TIFF / WebP).
+     */
+    public static function imageMimeOfPath(string $realPath): ?string
+    {
+        $head = self::readHead($realPath, 16);
+
+        return $head === null ? null : self::imageMimeOf($head);
+    }
+
+    /**
+     * The exact raster MIME of a file on a Laravel disk, from its leading
+     * bytes — a stream read of 16 bytes, never the whole object (a folder
+     * walk sees many files). `null` when the file cannot be read or its
+     * bytes are not PNG / JPEG / TIFF / WebP.
+     */
+    public static function imageMimeOnDisk(\Illuminate\Contracts\Filesystem\Filesystem $storage, string $path): ?string
+    {
+        try {
+            $stream = $storage->readStream($path);
+        } catch (\Throwable) {
+            return null;
+        }
+        if (! is_resource($stream)) {
+            return null;
+        }
+        try {
+            $head = fread($stream, 16);
+        } finally {
+            fclose($stream);
+        }
+
+        return $head === false ? null : self::imageMimeOf($head);
+    }
+
+    public static function imageMimeOf(string $head): ?string
+    {
+        if (str_starts_with($head, self::BINARY_SIGNATURES['png'])) {
+            return 'image/png';
+        }
+        if (str_starts_with($head, self::BINARY_SIGNATURES['jpeg'])) {
+            return 'image/jpeg';
+        }
+        if (str_starts_with($head, "II*\0") || str_starts_with($head, "MM\0*")) {
+            return 'image/tiff';
+        }
+        if (str_starts_with($head, 'RIFF') && substr($head, 8, 4) === 'WEBP') {
+            return 'image/webp';
+        }
+
+        return null;
+    }
+
+    /**
      * @param  array<int, string>  $signatures
      */
+    private static function isImage(string $head): bool
+    {
+        if (str_starts_with($head, self::BINARY_SIGNATURES['png']) || str_starts_with($head, self::BINARY_SIGNATURES['jpeg'])) {
+            return true;
+        }
+        // TIFF: little- or big-endian header.
+        if (str_starts_with($head, "II*\0") || str_starts_with($head, "MM\0*")) {
+            return true;
+        }
+        // WebP: RIFF....WEBP
+        return str_starts_with($head, 'RIFF') && substr($head, 8, 4) === 'WEBP';
+    }
+
     private static function startsWithAny(string $head, array $signatures): bool
     {
         foreach ($signatures as $signature) {

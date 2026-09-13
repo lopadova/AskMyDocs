@@ -9,6 +9,7 @@ use App\Jobs\IngestDocumentJob;
 use App\Models\KbIngestBatch;
 use App\Models\KbIngestBatchItem;
 use App\Services\Kb\Canonical\CanonicalParser;
+use App\Support\Kb\FileTypeSniffer;
 use App\Support\Kb\SourceType;
 use App\Support\KbPath;
 use App\Support\TenantContext;
@@ -100,8 +101,22 @@ final class KbUploadStagingService
         if ($sourceType === SourceType::UNKNOWN) {
             $sourceType = SourceType::fromMime((string) $file->getClientMimeType());
         }
+        // v8.36 / ADR 0029 — an image is a supported type only while OCR is
+        // on (R43); with the flag off it is refused exactly like v8.35.
+        if ($sourceType === SourceType::IMAGE && ! (bool) config('kb.ocr.enabled', false)) {
+            $sourceType = SourceType::UNKNOWN;
+        }
 
         $itemId = (string) Str::orderedUuid();
+
+        // Defence in depth (the FormRequest already refuses such a sub_path):
+        // a destination inside `{source}.ocr/` or `.artifacts/` is never
+        // staged, so commit can never dispatch converter output as a source.
+        if (KbPath::isGeneratedAsset($destination)) {
+            $this->createItem($batch, $itemId, $original, '', $destination, (string) $file->getClientMimeType(), $sourceType->value, (int) $file->getSize(), KbIngestBatchItem::STATUS_FAILED, false, null, 'Destination is inside a generated-asset directory (.ocr/ or .artifacts/).');
+
+            return;
+        }
 
         if ($sourceType === SourceType::UNKNOWN) {
             // Defence in depth — the FormRequest already rejects these.
@@ -110,19 +125,34 @@ final class KbUploadStagingService
             return;
         }
 
+        // ADR 0029 §2 — an image keeps its EXACT raster MIME read from its
+        // BYTES (the request verified the raster family from the same magic
+        // bytes; the client filename decides nothing): a JPEG uploaded as
+        // `scan.png` is staged as `.jpg`, committed and recorded as
+        // `image/jpeg`. The family label `image/png` is never what a jpeg
+        // is ingested as, and neither is its extension.
+        $imageMime = $sourceType === SourceType::IMAGE ? FileTypeSniffer::imageMimeOfPath((string) $file->getRealPath()) : null;
+        if ($sourceType === SourceType::IMAGE && $imageMime === null) {
+            // Defence in depth — the FormRequest already rejects these.
+            $this->createItem($batch, $itemId, $original, '', $destination, (string) $file->getClientMimeType(), $sourceType->value, (int) $file->getSize(), KbIngestBatchItem::STATUS_FAILED, false, null, 'File content is not a PNG, JPEG, TIFF or WebP image.');
+
+            return;
+        }
+        $mimeType = $imageMime ?? $sourceType->toMime();
+
         $dir = "{$batch->tenant_id}/{$batch->id}";
-        $storedName = "{$itemId}.{$this->stagingExtension($sourceType)}";
+        $storedName = "{$itemId}.{$this->stagingExtension($sourceType, $imageMime)}";
         $stored = $disk->putFileAs($dir, $file, $storedName);
 
         if ($stored === false) {
-            $this->createItem($batch, $itemId, $original, '', $destination, $sourceType->toMime(), $sourceType->value, (int) $file->getSize(), KbIngestBatchItem::STATUS_FAILED, false, null, 'Failed to write to staging disk.');
+            $this->createItem($batch, $itemId, $original, '', $destination, $mimeType, $sourceType->value, (int) $file->getSize(), KbIngestBatchItem::STATUS_FAILED, false, null, 'Failed to write to staging disk.');
 
             return;
         }
 
         [$isCanonical, $warning] = $this->detectCanonical($sourceType, $disk, (string) $stored);
 
-        $this->createItem($batch, $itemId, $original, (string) $stored, $destination, $sourceType->toMime(), $sourceType->value, (int) $file->getSize(), KbIngestBatchItem::STATUS_STAGED, $isCanonical, $warning, null);
+        $this->createItem($batch, $itemId, $original, (string) $stored, $destination, $mimeType, $sourceType->value, (int) $file->getSize(), KbIngestBatchItem::STATUS_STAGED, $isCanonical, $warning, null);
     }
 
     /**
@@ -429,8 +459,14 @@ final class KbUploadStagingService
             : KbPath::normalize($prefix.'/'.$destinationPath);
     }
 
-    private function stagingExtension(SourceType $type): string
+    private function stagingExtension(SourceType $type, ?string $imageMime = null): string
     {
+        if ($type === SourceType::IMAGE) {
+            // The real raster format on disk, from the sniffed MIME — never
+            // from the client filename (ADR 0029 §2); png only as fallback.
+            return SourceType::imageExtensionFromMime((string) $imageMime);
+        }
+
         return match ($type) {
             SourceType::MARKDOWN => 'md',
             SourceType::TEXT => 'txt',

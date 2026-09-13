@@ -104,7 +104,73 @@ export const kbUploadApi = {
     async removeItem(batchId: string, itemId: string): Promise<void> {
         await api.delete(`/api/admin/kb/uploads/${batchId}/items/${itemId}`);
     },
+
+    /**
+     * v8.36 / ADR 0029 §8 — OCR cost estimate for a staged batch, read
+     * BEFORE commit. Side-effect free on the server (no driver runs); with
+     * `KB_OCR_ENABLED=false` the server answers `enabled=false` and zeros
+     * (R43 — the OFF path is an honest answer, not a missing one).
+     */
+    async estimate(batchId: string): Promise<OcrEstimate> {
+        const { data } = await api.get<{ data: OcrEstimate }>(`/api/admin/kb/uploads/${batchId}/estimate`);
+        return data.data;
+    },
 };
+
+/** Why an item would (or would not) be OCR'd — mirrors OcrCostEstimator. */
+export type OcrEstimateReason =
+    | 'ocr_disabled'
+    | 'image'
+    | 'scanned_pdf'
+    /** text pages and scanned pages in one PDF: the whole document is OCR'd so no page is lost */
+    | 'mixed_pdf'
+    | 'text_layer_present'
+    | 'not_ocr_able'
+    | 'staged_file_missing'
+    /** the staged file exists but could not be read: never priced as an empty scan */
+    | 'staged_file_unreadable'
+    | 'too_many_pages'
+    | 'too_many_bytes'
+    /** the PDF could not be parsed and the configured driver refuses an unverified page count (remote, or unable to bound its own work): refused before any work */
+    | 'pages_uncountable'
+    /** the bytes do not carry the signature of the declared type: refused before any driver runs */
+    | 'unrecognised_bytes'
+    /** a multi-frame TIFF the configured driver would transcribe one frame of: refused before any work */
+    | 'multi_frame_image'
+    /** an image over the raster bounds (pixel box / page byte cap) every page must fit: refused before any driver decodes or posts it */
+    | 'rendered_page_too_large';
+
+export interface OcrEstimateItem {
+    id: string;
+    would_ocr: boolean;
+    pages: number;
+    /** false when `pages` is a floor (the PDF could not be parsed) */
+    pages_exact: boolean;
+    cost: number;
+    reason: OcrEstimateReason;
+    /**
+     * Whether the configured driver can run THIS kind of input here (a PDF
+     * needs the rasteriser's Poppler binaries, an image does not), so a mixed
+     * batch names only the files that would fail. Absent on older servers:
+     * fall back to the batch-level `driver_available`.
+     */
+    driver_available?: boolean;
+}
+
+export interface OcrEstimate {
+    enabled: boolean;
+    driver: string;
+    /** false when the configured driver cannot run here (binary missing, remote driver with KB_OCR_ALLOW_REMOTE off) */
+    driver_available: boolean;
+    driver_error: string | null;
+    /** per_page: total_cost = pages × rate_per_page; sdk: no page rate — the provider meters tokens, FinOps records the real spend */
+    metering: 'per_page' | 'sdk';
+    currency: string;
+    rate_per_page: number;
+    total_pages: number;
+    total_cost: number;
+    items: OcrEstimateItem[];
+}
 
 /** Terminal batch statuses — polling stops here. */
 export const TERMINAL_BATCH_STATUSES: BatchStatus[] = [

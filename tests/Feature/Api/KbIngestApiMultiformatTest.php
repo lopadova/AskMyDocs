@@ -100,6 +100,30 @@ final class KbIngestApiMultiformatTest extends TestCase
         ));
     }
 
+    /**
+     * A declared MIME is normalised ONCE (lower-case, parameters dropped):
+     * what passes validation is what is persisted and what the converter
+     * registry resolves on — `application/pdf; charset=binary` must never
+     * pass the validator and then fail `supports()`' exact comparison.
+     */
+    public function test_a_mime_type_with_parameters_is_normalised_before_dispatch(): void
+    {
+        Queue::fake();
+
+        $this->postJson('/api/kb/ingest', [
+            'documents' => [[
+                'project_key' => 'api-mf-test',
+                'source_path' => 'docs/params.pdf',
+                'mime_type' => 'Application/PDF; charset=binary',
+                'content' => base64_encode(PdfFixtureBuilder::buildSinglePage()),
+            ]],
+        ])->assertStatus(202)->assertJsonPath('documents.0.source_type', 'pdf');
+
+        Queue::assertPushed(IngestDocumentJob::class, fn (IngestDocumentJob $job) => (
+            $job->relativePath === 'docs/params.pdf' && $job->mimeType === 'application/pdf'
+        ));
+    }
+
     public function test_docx_mime_type_decodes_base64_and_dispatches_with_docx_mime(): void
     {
         Queue::fake();

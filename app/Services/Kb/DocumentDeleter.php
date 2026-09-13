@@ -9,6 +9,7 @@ use App\Models\KbCanonicalAudit;
 use App\Models\KbNode;
 use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
+use App\Services\Kb\Ocr\OcrFigureStore;
 use App\Services\Kb\Analysis\ChangeAnalysisGate;
 use App\Support\KbPath;
 use App\Support\LikeEscaper;
@@ -34,7 +35,7 @@ class DocumentDeleter
      * Delete a single document. When $force is null the behaviour is driven
      * by the `kb.deletion.soft_delete` config flag (default: soft).
      *
-     * @return array{mode: string, document_id: int, project_key: string, source_path: string, file_deleted: bool}
+     * @return array{mode: string, document_id: int, project_key: string, source_path: string, file_deleted: bool, ocr_assets_deleted?: bool}
      */
     public function delete(KnowledgeDocument $document, ?bool $force = null, bool $analyzeImpact = false): array
     {
@@ -135,7 +136,7 @@ class DocumentDeleter
      * and repeated soft-deletes are idempotent (no-op returning a soft
      * result).
      *
-     * @return array{mode: string, document_id: int, project_key: string, source_path: string, file_deleted: bool}|null
+     * @return array{mode: string, document_id: int, project_key: string, source_path: string, file_deleted: bool, ocr_assets_deleted?: bool}|null
      */
     public function deleteByPath(string $projectKey, string $sourcePath, ?bool $force = null): ?array
     {
@@ -183,7 +184,7 @@ class DocumentDeleter
      * WARNING level so ops can spot unscoped runs in production.
      *
      * @param  array<int,string>  $existingRelativePaths
-     * @return array<int,array{mode: string, document_id: int, project_key: string, source_path: string, file_deleted: bool}>
+     * @return array<int,array{mode: string, document_id: int, project_key: string, source_path: string, file_deleted: bool, ocr_assets_deleted?: bool}>
      */
     public function deleteOrphans(
         string $projectKey,
@@ -263,7 +264,7 @@ class DocumentDeleter
      * Per Copilot PR #115 review iteration 1 (R4 + R14 — never silently
      * destroy operator-supplied data on a recoverable failure).
      *
-     * @return array{mode: string, document_id: int, project_key: string, source_path: string, file_deleted: bool, canonical: array<string, mixed>|null}
+     * @return array{mode: string, document_id: int, project_key: string, source_path: string, file_deleted: bool, ocr_assets_deleted: bool, canonical: array<string, mixed>|null}
      */
     public function deleteDbOnly(KnowledgeDocument $document): array
     {
@@ -346,14 +347,18 @@ class DocumentDeleter
     }
 
     /**
-     * Remove a previously-recorded file from a disk. Public wrapper around
-     * the private {@see removeFile()} helper used by the legacy
+     * Remove a previously-recorded file from a disk — and the `.ocr/` tree
+     * beside it. Public wrapper around the private helper used by the legacy
      * `forceDelete()` path so {@see \App\Flow\Definitions\DeleteDocumentFlow}
-     * can express the file removal as its own Flow step.
+     * can express the file removal as its own Flow step; both outcomes are
+     * returned so a hard delete never reports a clean disk while OCR assets
+     * were kept (in-flight grace) or failed to go.
+     *
+     * @return array{file_deleted: bool, ocr_assets_deleted: bool}
      */
-    public function removeFileFor(string $disk, string $fullPath, int $documentId, string $sourcePath): bool
+    public function removeFileFor(string $disk, string $fullPath, int $documentId, string $sourcePath): array
     {
-        return $this->removeFile($disk, $fullPath, $documentId, $sourcePath);
+        return $this->removeFileAndOcrAssets($disk, $fullPath, $documentId, $sourcePath);
     }
 
     /**
@@ -380,7 +385,7 @@ class DocumentDeleter
     }
 
     /**
-     * @return array{mode: string, document_id: int, project_key: string, source_path: string, file_deleted: bool}
+     * @return array{mode: string, document_id: int, project_key: string, source_path: string, file_deleted: bool, ocr_assets_deleted?: bool}
      */
     private function softDelete(KnowledgeDocument $document): array
     {
@@ -402,7 +407,7 @@ class DocumentDeleter
     }
 
     /**
-     * @return array{mode: string, document_id: int, project_key: string, source_path: string, file_deleted: bool}
+     * @return array{mode: string, document_id: int, project_key: string, source_path: string, file_deleted: bool, ocr_assets_deleted?: bool}
      */
     private function forceDelete(KnowledgeDocument $document): array
     {
@@ -433,16 +438,20 @@ class DocumentDeleter
             $this->writeDeprecationAudit($document);
         });
 
-        $fileDeleted = $fullPath === null
-            ? false
-            : $this->removeFile($disk, $fullPath, $documentId, $sourcePath);
+        $removal = $fullPath === null
+            ? ['file_deleted' => false, 'ocr_assets_deleted' => false]
+            : $this->removeFileAndOcrAssets($disk, $fullPath, $documentId, $sourcePath);
 
         return [
             'mode' => 'hard',
             'document_id' => $documentId,
             'project_key' => $projectKey,
             'source_path' => $sourcePath,
-            'file_deleted' => $fileDeleted,
+            'file_deleted' => $removal['file_deleted'],
+            // v8.36 / ADR 0029 §4 — additive (R27): whether the `.ocr/` tree
+            // is gone too. A hard delete that reports the source removed but
+            // leaves generated OCR data behind says so here, never silently.
+            'ocr_assets_deleted' => $removal['ocr_assets_deleted'],
             'canonical' => $canonicalSnapshot,
         ];
     }
@@ -558,7 +567,64 @@ class DocumentDeleter
         }
     }
 
+    /**
+     * Remove the `{fullPath}.ocr/` tree. Returns true when NO OCR tree
+     * remains for the source afterwards (removed, or never there); false
+     * when one is still on the disk — a purge error, or a run kept inside
+     * the in-flight grace (ADR 0029 §6) that the orphan sweep removes once
+     * aged. The result is reported, never swallowed (R14): a hard delete
+     * that leaves generated OCR data behind must say so.
+     */
+    private function removeOcrAssets(string $disk, string $fullPath, int $documentId): bool
+    {
+        try {
+            app(OcrFigureStore::class)->purgeBeside($disk, $fullPath);
+
+            return ! Storage::disk($disk)->directoryExists($fullPath.OcrFigureStore::DIR_SUFFIX);
+        } catch (\Throwable $e) {
+            Log::warning('DocumentDeleter: failed to remove OCR assets', [
+                'document_id' => $documentId,
+                'disk' => $disk,
+                'full_path' => $fullPath,
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
+    }
+
     private function removeFile(string $disk, string $fullPath, int $documentId, string $sourcePath): bool
+    {
+        return $this->removeFileAndOcrAssets($disk, $fullPath, $documentId, $sourcePath)['file_deleted'];
+    }
+
+    /**
+     * @return array{file_deleted: bool, ocr_assets_deleted: bool}  `ocr_assets_deleted`
+     *         is true when no `.ocr/` tree remains for the source — including the
+     *         paths that never touch the disk (a shared key, a failed reference
+     *         check) only when none was there to begin with.
+     */
+    private function removeFileAndOcrAssets(string $disk, string $fullPath, int $documentId, string $sourcePath): array
+    {
+        $result = $this->removeSourceObject($disk, $fullPath, $documentId, $sourcePath);
+        if ($result['ocr_assets_deleted'] !== null) {
+            return ['file_deleted' => $result['file_deleted'], 'ocr_assets_deleted' => $result['ocr_assets_deleted']];
+        }
+        // The purge did not run (kept/refused before it): honest answer is
+        // whether a tree is there, never an assumed "clean".
+        try {
+            $remains = Storage::disk($disk)->directoryExists($fullPath.OcrFigureStore::DIR_SUFFIX);
+        } catch (\Throwable) {
+            $remains = true;
+        }
+
+        return ['file_deleted' => $result['file_deleted'], 'ocr_assets_deleted' => ! $remains];
+    }
+
+    /**
+     * @return array{file_deleted: bool, ocr_assets_deleted: ?bool}  null = the purge was not attempted
+     */
+    private function removeSourceObject(string $disk, string $fullPath, int $documentId, string $sourcePath): array
     {
         try {
             $referencingDocumentId = $this->firstDocumentReferencingStorageKey(
@@ -575,7 +641,7 @@ class DocumentDeleter
                 'reason' => $e->getMessage(),
             ]);
 
-            return false;
+            return ['file_deleted' => false, 'ocr_assets_deleted' => null];
         } catch (\Throwable $e) {
             // Reference discovery is a safety gate. If it cannot complete,
             // keep the shared object rather than risk deleting bytes still
@@ -589,7 +655,7 @@ class DocumentDeleter
                 'error' => $e->getMessage(),
             ]);
 
-            return false;
+            return ['file_deleted' => false, 'ocr_assets_deleted' => null];
         }
 
         if ($referencingDocumentId !== null) {
@@ -606,16 +672,21 @@ class DocumentDeleter
                 'full_path' => $fullPath,
             ]);
 
-            return false;
+            return ['file_deleted' => false, 'ocr_assets_deleted' => null];
         }
+
+        // v8.36 / ADR 0029 — the OCR assets (`{fullPath}.ocr/`) belong to the
+        // same storage key and pass the same reference gate above: they go
+        // when the last row referencing the source goes, never before.
+        $ocrAssetsDeleted = $this->removeOcrAssets($disk, $fullPath, $documentId);
 
         try {
             $storage = Storage::disk($disk);
             if (! $storage->exists($fullPath)) {
-                return false;
+                return ['file_deleted' => false, 'ocr_assets_deleted' => $ocrAssetsDeleted];
             }
 
-            return (bool) $storage->delete($fullPath);
+            return ['file_deleted' => (bool) $storage->delete($fullPath), 'ocr_assets_deleted' => $ocrAssetsDeleted];
         } catch (\Throwable $e) {
             // A stale/missing file on the disk must never stop a DB deletion
             // from completing — log and move on.
@@ -627,7 +698,7 @@ class DocumentDeleter
                 'error' => $e->getMessage(),
             ]);
 
-            return false;
+            return ['file_deleted' => false, 'ocr_assets_deleted' => $ocrAssetsDeleted];
         }
     }
 
@@ -641,6 +712,17 @@ class DocumentDeleter
      * long version history stays memory-safe. Disk + prefix are resolved from
      * the immutable ingest metadata with the same fallbacks used by deletion.
      */
+    /**
+     * Public reference gate for callers that hold a resolved storage key and
+     * must not delete a file a knowledge_documents row (any tenant, trashed
+     * included) still points at — the connector bridge's refused-image path.
+     * Returns the referencing document id, or null when nothing references it.
+     */
+    public function documentReferencingStorageKey(string $disk, string $fullPath, string $sourcePath): ?int
+    {
+        return $this->firstDocumentReferencingStorageKey($disk, $fullPath, $sourcePath);
+    }
+
     private function firstDocumentReferencingStorageKey(
         string $disk,
         string $fullPath,

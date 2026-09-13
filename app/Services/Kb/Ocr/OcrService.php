@@ -1,0 +1,1170 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Services\Kb\Ocr;
+
+use App\FinOps\OcrCallMeter;
+use App\Jobs\IngestDocumentJob;
+use App\Models\KnowledgeChunk;
+use App\Models\KnowledgeDocument;
+use App\Services\Kb\Pipeline\ConvertedDocument;
+use App\Services\Kb\Pipeline\SourceDocument;
+use App\Support\Kb\FileTypeSniffer;
+use App\Support\KbPath;
+use App\Support\TenantContext;
+use Illuminate\Contracts\Cache\LockTimeoutException;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
+use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
+
+/**
+ * v8.36 / ADR 0029 — the one OCR core every surface adapts (R44):
+ *
+ *  - `convert()`  — SourceDocument → ConvertedDocument through the configured
+ *                   driver; called by OcrConverter (images) and by the
+ *                   PdfConverter fallback (scanned PDFs).
+ *  - `status()`   — what OCR recorded on a document (driver, pages,
+ *                   confidence, figures) read from the document metadata and
+ *                   the chunk rows; the read surface of `kb:ocr --status`,
+ *                   `GET …/ocr` and KbOcrStatusTool.
+ *  - `rerun()`    — re-dispatch the ingestion of a document with OCR forced;
+ *                   the write surface of `kb:ocr` and `POST …/ocr`
+ *                   (human-only by design — no MCP write tool).
+ *
+ * Tenant scope: every document read goes through `forTenant()` (R30).
+ */
+final class OcrService
+{
+    public const PROVENANCE = 'ocr';
+
+    /**
+     * Backstop TTL of the re-run lock (seconds). The job releases it on its
+     * terminal outcome (success, or failed() after the last attempt) and
+     * re-arms it at the start of every attempt (`renewRerunLock()`), so the
+     * TTL only has to outlive ONE attempt window of IngestDocumentJob —
+     * 300 s timeout + the queue `retry_after` + the largest backoff (60 s) —
+     * not the whole retry sequence nor the time the job waits in the queue:
+     * a lock that lapsed while the job was queued is simply re-acquired at
+     * attempt start, and one taken over by a newer re-run in the meantime
+     * makes the older job fail loudly instead of running a duplicate paid
+     * run. 1 200 s keeps a wide margin over that single window.
+     */
+    public const RERUN_LOCK_TTL = 1200;
+
+    /**
+     * MINIMUM lease of the per-run-directory reservation (seconds). The
+     * reservation is held from the recorded-run check through `result.json`,
+     * i.e. one driver call plus the figure writes, and a driver call is not
+     * bounded by 1 200 s in general: Tesseract and the vision driver work
+     * page by page under a per-page timeout, and the page cap allows 200.
+     * So the actual lease is sized per run by `leaseFor()` from the
+     * driver's declared worst case for the page count already verified by
+     * the cap, and this constant is only its floor — a lease that is
+     * provably longer than the work it protects, never a fixed guess.
+     */
+    public const RUN_LOCK_TTL = 1200;
+
+    /** Margin over the driver's declared worst case: the figure writes + `result.json`. */
+    public const RUN_LOCK_MARGIN = 120;
+
+    /**
+     * The reservation lease for one run: the driver's worst case for
+     * `$pages` pages under its own timeouts, plus the write margin, never
+     * below RUN_LOCK_TTL. A worker that dies mid-run therefore blocks the
+     * directory for at most the time its run could legitimately have taken.
+     */
+    public static function leaseFor(OcrDriver $driver, int $pages): int
+    {
+        return max(self::RUN_LOCK_TTL, self::effectiveWorstCase($driver, $pages) + self::RUN_LOCK_MARGIN);
+    }
+
+    /** The wall-clock budget of one run (`KB_OCR_JOB_TIMEOUT`), which every driver enforces (OcrRunBudget). */
+    public static function runBudgetSeconds(): int
+    {
+        return max(60, (int) config('kb.ocr.job_timeout', 3600));
+    }
+
+    /**
+     * The longest one `recognise()` can actually take: the driver's declared
+     * worst case for `$pages` pages, capped by the run budget the driver
+     * enforces — so a 200-page page-by-page run is bounded by the budget,
+     * not by the sum of its per-page timeouts.
+     */
+    public static function effectiveWorstCase(OcrDriver $driver, int $pages): int
+    {
+        return min($driver->maxDurationSeconds(max(1, $pages)), self::runBudgetSeconds());
+    }
+
+    /**
+     * Margin the re-run lock keeps over one attempt's budget: the queue's
+     * `retry_after` window (a worker that dies is noticed after it) plus the
+     * largest job backoff, so the lock can never lapse between an attempt
+     * that timed out and the retry that re-arms it.
+     */
+    public const RERUN_LOCK_MARGIN = 400;
+
+    /**
+     * Lease of the per-document re-run lock for a document with `$mimeType`:
+     * one attempt of the job it guards plus the margin, never below
+     * RERUN_LOCK_TTL. The job budget of an OCR-able document is the
+     * configured driver's declared worst case (jobTimeoutFor()), so a
+     * 200-page page-by-page run cannot outlive its own lock and let a second
+     * `kb:ocr` / HTTP re-run start a duplicate paid run while it is still OCRing.
+     */
+    public static function rerunLockTtlFor(?string $mimeType): int
+    {
+        return max(self::RERUN_LOCK_TTL, self::jobTimeoutFor($mimeType) + self::RERUN_LOCK_MARGIN);
+    }
+
+    /** The queue timeout of an ingest job that will not OCR (the pre-v8.36 value). */
+    public const DEFAULT_JOB_TIMEOUT = 300;
+
+    /**
+     * Queue timeout for an `IngestDocumentJob` of a document with `$mimeType`,
+     * consistent with the configured driver's declared worst case: an
+     * image or a PDF while OCR is on may run the driver for up to
+     * `leaseFor(driver, KB_OCR_MAX_PAGES)` — a Docling call of its own
+     * timeout, a page-by-page engine for the whole cap — and a worker that
+     * killed the job at the default 300 s would abandon a run its lease still
+     * reserves, retry, wait on its own reservation and fail. Anything else
+     * (text, Markdown, OCR off, a driver that cannot be resolved here) keeps
+     * the default, so the policy costs nothing on the paths OCR never takes.
+     */
+    public static function jobTimeoutFor(?string $mimeType): int
+    {
+        if (! (bool) config('kb.ocr.enabled', false)) {
+            return self::DEFAULT_JOB_TIMEOUT;
+        }
+        $mime = \App\Support\Kb\SourceType::normaliseMime((string) ($mimeType ?? 'text/markdown'));
+        if (! self::isPdfMime($mime) && ! in_array($mime, \App\Support\Kb\SourceType::imageMimes(), true)) {
+            return self::DEFAULT_JOB_TIMEOUT;
+        }
+        try {
+            $driver = app(OcrDriverRegistry::class)->configured();
+        } catch (\Throwable) {
+            // An unresolvable driver refuses the run deterministically in the
+            // worker (no retries): the default budget is more than enough.
+            return self::DEFAULT_JOB_TIMEOUT;
+        }
+
+        $timeout = max(self::DEFAULT_JOB_TIMEOUT, self::leaseFor($driver, max(1, (int) config('kb.ocr.max_pages', 200))));
+        self::warnIfQueueRetryAfterIsShorter($timeout);
+
+        return $timeout;
+    }
+
+    /**
+     * Laravel re-reserves a job that is still running once the connection's
+     * `retry_after` elapses — a second worker on the same document, two paid
+     * runs. The value has to exceed the OCR job timeout (`KB_OCR_JOB_TIMEOUT`
+     * + margins, see .env.example); a shorter one is a deployment defect
+     * worth a loud line at every dispatch it endangers, never a silent
+     * duplicate later.
+     */
+    private static function warnIfQueueRetryAfterIsShorter(int $timeout): void
+    {
+        $connection = (string) config('queue.default', 'sync');
+        $retryAfter = config("queue.connections.{$connection}.retry_after");
+        if (! is_numeric($retryAfter) || (int) $retryAfter > $timeout) {
+            return;
+        }
+        Log::warning('OcrService: the queue retry_after is not longer than the OCR job timeout; a running OCR job could be re-reserved by another worker', [
+            'connection' => $connection,
+            'retry_after' => (int) $retryAfter,
+            'job_timeout' => $timeout,
+            'hint' => 'set REDIS_QUEUE_RETRY_AFTER / DB_QUEUE_RETRY_AFTER above KB_OCR_JOB_TIMEOUT + 520',
+        ]);
+    }
+
+    private static function isPdfMime(string $mimeType): bool
+    {
+        return strtolower(trim(explode(';', $mimeType, 2)[0])) === 'application/pdf';
+    }
+
+    /**
+     * Lease of the per-assets-directory lock (seconds): held by a converter
+     * for the WRITE phase of a run (figures + `result.json`, never the
+     * driver call) and by a purge for the whole removal of the directory,
+     * so a purge that found the directory empty can never delete it under
+     * a run that started writing into it after the enumeration.
+     */
+    public const ASSETS_LOCK_SECONDS = 300;
+
+    /** Default seconds a converter waits for a purge that holds the assets lock (`kb.ocr.assets_lock.wait_seconds`). */
+    public const ASSETS_LOCK_WAIT_SECONDS = 90;
+
+    public static function assetsLockKey(string $disk, string $assetsDir): string
+    {
+        return 'kb:ocr:assets:'.$disk.':'.sha1($assetsDir);
+    }
+
+    /**
+     * Run `$write` while holding the assets-directory lock of `$sourcePath`
+     * (see ASSETS_LOCK_SECONDS). A purge in progress is waited for; one that
+     * does not finish in time is a retryable failure, never a write into a
+     * directory that is being removed.
+     *
+     * @template T
+     *
+     * @param  \Closure(): T  $write
+     * @return T
+     */
+    private function underAssetsLock(string $disk, string $sourcePath, string $prefix, \Closure $write): mixed
+    {
+        $assetsDir = KbPath::normalize($this->figures->assetsDirFor($sourcePath, $prefix));
+        $lock = Cache::lock(self::assetsLockKey($disk, $assetsDir), self::ASSETS_LOCK_SECONDS);
+        try {
+            $lock->block(max(1, (int) config('kb.ocr.assets_lock.wait_seconds', self::ASSETS_LOCK_WAIT_SECONDS)));
+        } catch (LockTimeoutException) {
+            throw new \RuntimeException(sprintf('OCR assets directory "%s" is being purged on disk [%s]; retry once the purge has finished.', $assetsDir, $disk));
+        }
+        try {
+            return $write();
+        } finally {
+            $lock->release();
+        }
+    }
+
+    /**
+     * The engine variant a run key is derived from: the driver's fingerprint
+     * plus the page cap, the figure switch and, when figures are on, the figure caps
+     * (`KB_OCR_MAX_FIGURE_BYTES`, `KB_OCR_MAX_FIGURES`,
+     * `KB_OCR_MAX_FIGURES_TOTAL_BYTES`) — they shape the output too (a
+     * figure past them is omitted, the Markdown rewritten), so a changed cap
+     * is a new run.
+     */
+    public static function runVariant(string $fingerprint, bool $figuresEnabled): string
+    {
+        // The page cap shapes the output too: a page-by-page driver on a PDF
+        // whose count could not be verified records at most the cap, so a
+        // changed cap must not reuse a run made under the old one.
+        // The raster bounds shape what a run admits (a page over them is
+        // refused): a lowered cap must not reuse a run recorded under a
+        // wider one.
+        return $fingerprint.';pages='.max(1, (int) config('kb.ocr.max_pages', 200)).';raster='.ImageBounds::maxPagePx().':'.ImageBounds::maxPageBytes().';figures='.($figuresEnabled
+            ? sprintf('1:%d:%d:%d', (int) config('kb.ocr.max_figure_bytes', 10485760), (int) config('kb.ocr.max_figures_per_run', 200), (int) config('kb.ocr.max_figures_total_bytes', 104857600))
+            : '0');
+    }
+
+    public static function runLockKey(string $disk, string $runDir): string
+    {
+        return 'kb:ocr:run:'.$disk.':'.sha1($runDir);
+    }
+
+    public static function rerunLockKey(string $tenantId, int $documentId): string
+    {
+        return sprintf('kb:ocr:rerun:%s:%d', $tenantId, $documentId);
+    }
+
+    /**
+     * Release the re-run lock a job carried in its ingest metadata
+     * (`metadata.ocr.rerun_lock`). Safe to call when absent or already gone.
+     *
+     * @param  array<string, mixed>  $metadata
+     */
+    public static function releaseRerunLock(array $metadata): void
+    {
+        $lock = $metadata['ocr']['rerun_lock'] ?? null;
+        if (! is_array($lock) || ! is_string($lock['key'] ?? null) || ! is_string($lock['owner'] ?? null)) {
+            return;
+        }
+        try {
+            Cache::restoreLock($lock['key'], $lock['owner'])->release();
+        } catch (\Throwable) {
+            // A lock store that is down must not fail the ingest — the TTL backstops.
+        }
+    }
+
+    /**
+     * Re-arm the re-run lock a job carries at the start of an attempt.
+     * Returns false only when the lock is now held by ANOTHER owner — a
+     * newer re-run was queued after this one's lock lapsed — so the caller
+     * must fail instead of producing a second paid run. A lock store that is
+     * DOWN is uncertainty, not ownership: this throws a retryable exception
+     * (the job's tries/backoff), so a paid run never proceeds on a lock the
+     * attempt cannot prove is still its own — unlike the release paths, where
+     * the TTL backstops a store that is down.
+     *
+     * @param  array<string, mixed>  $metadata
+     */
+    public static function renewRerunLock(array $metadata, ?string $mimeType = null): bool
+    {
+        $lock = $metadata['ocr']['rerun_lock'] ?? null;
+        if (! is_array($lock) || ! is_string($lock['key'] ?? null) || ! is_string($lock['owner'] ?? null)) {
+            return true;
+        }
+        try {
+            // Lapsed while queued: re-acquire under the same owner, with a
+            // lease that outlives THIS attempt's budget (the job timeout of
+            // an OCR-able document is the driver's worst case).
+            if (Cache::lock($lock['key'], self::rerunLockTtlFor($mimeType), $lock['owner'])->get()) {
+                return true;
+            }
+
+            // Still ours (within TTL): nothing to do.
+            return Cache::restoreLock($lock['key'], $lock['owner'])->isOwnedByCurrentProcess();
+        } catch (\Throwable $e) {
+            // Uncertainty is not ownership: with the lock store unreachable the
+            // job must not walk into a billable run it cannot prove is still
+            // its own. A retryable error lets the attempt run once the store
+            // is back (the job's tries/backoff), instead of a silent duplicate.
+            throw new \RuntimeException('OCR re-run lock store unavailable; retry the attempt: '.$e->getMessage(), 0, $e);
+        }
+    }
+
+    public function __construct(
+        private readonly OcrDriverRegistry $registry,
+        private readonly OcrFigureStore $figures,
+        private readonly OcrCallMeter $meter,
+        private readonly PdfTextLayerProbe $probe,
+        private readonly TenantContext $tenants,
+    ) {}
+
+    public function enabled(): bool
+    {
+        return (bool) config('kb.ocr.enabled', false);
+    }
+
+    public function driver(): OcrDriver
+    {
+        return $this->registry->configured();
+    }
+
+    public function probe(): PdfTextLayerProbe
+    {
+        return $this->probe;
+    }
+
+    /**
+     * Whether the ingest metadata asks for OCR regardless of the text layer
+     * (`metadata.ocr.force = true`, set by `rerun()`).
+     *
+     * @param  array<string, mixed>  $metadata
+     */
+    public static function isForced(array $metadata): bool
+    {
+        // The HTTP validator admits any value under `metadata`, so `ocr` may
+        // arrive as a scalar: that is "not forced", never a TypeError that
+        // turns the ingest into a 500 (R14).
+        $ocr = $metadata['ocr'] ?? null;
+
+        return is_array($ocr) && ($ocr['force'] ?? false) === true;
+    }
+
+    /**
+     * Whether the conversion this metadata describes ran the OCR driver
+     * (a fresh, recorded, billed run — `converter.ocr.reused === false`)
+     * rather than reusing a recorded one. A fresh run replaces the identical
+     * version it re-produced (PersistChunksStep / DocumentIngestor), so the
+     * row always points at the run that was billed.
+     *
+     * @param  array<string, mixed>  $metadata
+     */
+    public static function isFreshOcrRun(array $metadata): bool
+    {
+        $ocr = $metadata['converter']['ocr'] ?? null;
+
+        return is_array($ocr) && ($ocr['reused'] ?? null) === false;
+    }
+
+    /**
+     * Ingest-metadata keys only the host may set: `ocr.force` starts a billed
+     * engine run, `ocr.rerun_lock` names a lock this job will release,
+     * `dry_run` turns the conversion into a preview. They travel on the
+     * job the host builds (`rerun()`, ParseMarkdownStep) — never on the
+     * metadata a client or a connector hands in. Every untrusted boundary
+     * (HTTP ingest, connector bridge) strips them.
+     *
+     * @param  array<string, mixed>  $metadata
+     * @return array<string, mixed>
+     */
+    public static function stripTrustedOnlyKeys(array $metadata): array
+    {
+        // `disk` and `prefix` name the storage namespace the source was
+        // written under: the host records them at ingest and a re-run
+        // carries them from the row — a client or a connector must not, or
+        // the queued read would resolve another object than the one the
+        // boundary persisted (ParseMarkdownStep honours `metadata.prefix`).
+        unset($metadata['disk'], $metadata['prefix']);
+        // `ocr` is a host-owned block: a scalar a client put there carries
+        // nothing the pipeline reads and would only trip the array accessors
+        // downstream, so it is dropped with the reserved keys.
+        if (array_key_exists('ocr', $metadata) && ! is_array($metadata['ocr'])) {
+            unset($metadata['ocr']);
+        }
+
+        return self::stripRunControlKeys($metadata);
+    }
+
+    /**
+     * The keys that drive ONE ingest job and must not outlive it on the row
+     * (`ocr.force`, `ocr.rerun_lock`, `dry_run`): the persist step strips
+     * these — and only these — so the host-resolved storage namespace the
+     * same job carries (`disk` / `prefix`, set by ParseMarkdownStep) is
+     * persisted with the row, where a later re-run or delete reads it back
+     * to resolve the SAME object after a configuration change.
+     *
+     * @param  array<string, mixed>  $metadata
+     * @return array<string, mixed>
+     */
+    public static function stripRunControlKeys(array $metadata): array
+    {
+        unset($metadata['dry_run']);
+        if (is_array($metadata['ocr'] ?? null)) {
+            unset($metadata['ocr']['force'], $metadata['ocr']['rerun_lock']);
+            if ($metadata['ocr'] === []) {
+                unset($metadata['ocr']);
+            }
+        }
+
+        return $metadata;
+    }
+
+    /**
+     * `Flow::dryRun()` reaches the converter through ParseMarkdownStep, which
+     * marks the SourceDocument; a dry run must have NO write and NO cost
+     * side effect — no driver call, no figure write, no ledger row.
+     *
+     * @param  array<string, mixed>  $metadata
+     */
+    public static function isDryRun(array $metadata): bool
+    {
+        return ($metadata['dry_run'] ?? false) === true;
+    }
+
+    /**
+     * Run the configured driver and render the PdfPageChunker shape.
+     *
+     * @param  string  $converterName  recorded in extractionMeta.converter
+     * @param  string  $reason  `image` | `scanned_pdf` | `forced`
+     *
+     * @throws OcrDriverUnavailableException
+     * @throws \RuntimeException
+     */
+    public function convert(SourceDocument $doc, string $converterName, string $reason): ConvertedDocument
+    {
+        if (! $this->enabled()) {
+            throw new \RuntimeException('OCR is disabled (KB_OCR_ENABLED=false).');
+        }
+
+        $start = hrtime(true);
+        // The driver's IDENTITY (name, fingerprint, capabilities) is enough
+        // for the limits, the run key and the recorded-run lookup: a run
+        // recorded by a driver that cannot run here today (remote egress
+        // switched off, a binary gone after a deployment) is still reused —
+        // a read, no egress, no bill. The gate below runs only when a driver
+        // call is actually needed.
+        $driver = $this->registry->configuredIdentity();
+        $forPdf = self::isPdfMime($doc->mimeType);
+        $assertRunnable = function () use ($driver, $forPdf): void {
+            $this->registry->configured(); // egress gate (ADR 0029 §7)
+            $unavailable = $driver->unavailableReason($forPdf);
+            if ($unavailable !== null) {
+                throw new OcrDriverUnavailableException(sprintf(
+                    'OCR driver "%s" is not available on this host: %s',
+                    $driver->name(),
+                    $unavailable,
+                ));
+            }
+        };
+
+        $filename = basename($doc->sourcePath);
+        $disk = (string) ($doc->metadata['disk'] ?? config('kb.sources.disk', 'kb'));
+        $prefix = array_key_exists('prefix', $doc->metadata)
+            ? (string) $doc->metadata['prefix']
+            : (string) config('kb.sources.path_prefix', '');
+        $figuresEnabled = (bool) config('kb.ocr.figures.enabled', true);
+        // Idempotency (CLAUDE.md §5): the same bytes through the same driver
+        // produce the same result — reuse the recorded run instead of paying
+        // for it again (a re-ingest of identical bytes, an IMAP backfill, a
+        // GH-action full sync). `ocr.force` (kb:ocr) bypasses the reuse.
+        $reuseEnabled = (bool) config('kb.ocr.reuse.enabled', true);
+        $reuseAllowed = ! self::isForced($doc->metadata) && $reuseEnabled;
+        // Engine-aware run key: bytes × driver × the driver's variant × the
+        // figure switch — anything that shapes the output shapes the key.
+        // A run that will NOT be reused — a forced re-run (kb:ocr), or any
+        // run while reuse is off — is a NEW attempt with its own identity:
+        // runs are immutable and a W2 artifact points at the exact run that
+        // produced it, so a previous run (and the figures a previous document
+        // version still references) is never rewritten in place.
+        // The figure caps shape the output too (a figure past them is
+        // omitted and the Markdown rewritten), so a changed cap is a new run
+        // — never a reused result that exceeds today's limit or lacks the
+        // figures today's limit would admit.
+        $variant = self::runVariant($driver->fingerprint(), $figuresEnabled);
+        if (! $reuseAllowed) {
+            $variant .= ';attempt='.bin2hex(random_bytes(8));
+        }
+        $runKey = OcrFigureStore::runKeyFor($doc->bytes, $driver->name(), $variant);
+
+        // Bounded work BEFORE any driver runs or any byte leaves the tenant
+        // (SEC-LLM-001 gate 7): a document over the page or size cap fails
+        // loudly with a reason instead of being billed page by page.
+        $pages = $this->assertWithinLimits($doc->mimeType, $doc->bytes, $filename, $driver);
+
+        $reused = null;
+
+        if (self::isDryRun($doc->metadata)) {
+            // A dry run previews the shape and the spend; it never runs the
+            // driver (paid, remote for some), never writes `.ocr/` — not even
+            // a reservation refresh — never meters. A recorded run is shown
+            // read-only, outside the reservation (it holds no reference).
+            $reused = $reuseAllowed ? $this->reusableResult($disk, $doc->sourcePath, $prefix, $runKey, $driver->name()) : null;
+            if ($reused === null) {
+                $assertRunnable();
+
+                return $this->dryRunPreview($doc, $converterName, $reason, $driver, $runKey, $start);
+            }
+            $result = $reused['result'];
+            $written = $reused['written'];
+        } else {
+            // A run directory is immutable, so its FIRST write is reserved
+            // atomically: the reservation covers the recorded-run check, the
+            // driver call, the figure writes and `result.json`. A concurrent
+            // ingest of the same bytes waits here, looks again, and reuses
+            // the run the first worker recorded — one bill, one directory,
+            // never two nondeterministic remote results interleaved in it.
+            // Needs an atomic lock store (Redis in production).
+            $runDir = $this->figures->runDirFor($doc->sourcePath, $prefix, $runKey);
+            $reservation = Cache::lock(self::runLockKey($disk, $runDir), self::leaseFor($driver, $pages));
+            try {
+                $reservation->block(max(1, (int) config('kb.ocr.run_lock.wait_seconds', 300)));
+            } catch (LockTimeoutException) {
+                throw new \RuntimeException(sprintf(
+                    'OCR run already in progress for "%s" (run %s); retry once it has been recorded.',
+                    $filename,
+                    $runKey,
+                ));
+            }
+            try {
+                // The recorded-run check and the reservation refresh happen
+                // UNDER the run lock, so no purge can remove the tree between
+                // "its figures are all here" and "it is reserved again"
+                // (ADR 0029 §6): a reuse is a new reference in flight, and a
+                // refresh that fails is a failed ingest, never a row that
+                // cites figures a sweep may already have taken.
+                if ($reuseAllowed) {
+                    $reused = $this->reusableResult($disk, $doc->sourcePath, $prefix, $runKey, $driver->name());
+                }
+                if ($reused !== null) {
+                    $result = $reused['result'];
+                    $written = $reused['written'];
+                    $this->underAssetsLock($disk, $doc->sourcePath, $prefix, fn () => $this->figures->refreshReservation($disk, $doc->sourcePath, $prefix, $runKey));
+                } else {
+                    $assertRunnable();
+                    $result = $driver->recognise(new OcrRequest(
+                        bytes: $doc->bytes,
+                        mimeType: $doc->mimeType,
+                        filename: $filename,
+                        options: is_array($doc->metadata['ocr'] ?? null) ? $doc->metadata['ocr'] : [],
+                    ));
+                    // SEC-EXTRESP-001 — the input cap bounds what leaves; the
+                    // RESPONSE of a remote driver is validated against the
+                    // same number before anything is stored, recorded or
+                    // metered. A remote driver only ever receives an EXACT
+                    // page count (an uncountable PDF never leaves), so the
+                    // answer must carry exactly that many pages: more is
+                    // spend the cap did not admit, fewer is a truncated
+                    // document that would be recorded, reused and metered
+                    // as if it were complete.
+                    if ($driver->isRemote() && $result->pageCount() !== $pages) {
+                        throw new \RuntimeException(sprintf(
+                            'OCR driver "%s" returned %d pages for "%s", a %d-page document; the response is discarded — nothing is stored, recorded or metered.',
+                            $driver->name(),
+                            $result->pageCount(),
+                            $filename,
+                            $pages,
+                        ));
+                    }
+
+                    $allFigures = [];
+                    foreach ($result->pages as $page) {
+                        foreach ($page->figures as $figure) {
+                            $allFigures[] = $figure;
+                        }
+                    }
+                    // The write phase runs under the assets-directory lock
+                    // the purge takes for the whole removal of the tree: a
+                    // sweep that found the directory empty a moment ago can
+                    // never delete it under these writes (ADR 0029 §6).
+                    $written = $this->underAssetsLock($disk, $doc->sourcePath, $prefix, function () use ($disk, $doc, $prefix, $runKey, $allFigures, $figuresEnabled, $reuseEnabled, $result): array {
+                        $written = $figuresEnabled ? $this->figures->store($disk, $doc->sourcePath, $prefix, $runKey, $allFigures) : [];
+                        // The immutable run is persisted while the reservation
+                        // is held, THEN metered: a `result.json` write that
+                        // fails after the FinOps row was written would let the
+                        // job retry with nothing to reuse and bill the same
+                        // attempt twice. The meter is best-effort and never throws.
+                        if ($reuseEnabled) {
+                            $this->recordRun($disk, $doc->sourcePath, $prefix, $runKey, $result, $written);
+                        }
+
+                        return $written;
+                    });
+                    $this->meter->meter($result, $driver, $doc->sourcePath);
+                }
+            } finally {
+                $reservation->release();
+            }
+        }
+
+        $markdown = $this->renderMarkdown($filename, $result, $figuresEnabled);
+        $durationMs = (int) ((hrtime(true) - $start) / 1_000_000);
+
+        // Per page, the figures that were PERSISTED (from `$written`, the
+        // recorded run's descriptors on reuse): with figures off a driver may
+        // still return descriptors, and `pages[].figures` must agree with the
+        // document-level `figures: 0` / `figures_dir: null`.
+        $writtenPerPage = array_count_values(array_map(static fn (array $w): int => (int) $w['page'], $written));
+        $pagesMeta = array_map(static fn (OcrPage $p): array => [
+            'number' => $p->number,
+            'confidence' => $p->confidence,
+            'figures' => $writtenPerPage[$p->number] ?? 0,
+            'chars' => mb_strlen($p->markdown),
+        ], $result->pages);
+
+        return new ConvertedDocument(
+            markdown: $markdown,
+            mediaItems: $written,
+            extractionMeta: [
+                'converter' => $converterName,
+                'duration_ms' => $durationMs,
+                'page_count' => $result->pageCount(),
+                'extraction_strategy' => 'ocr',
+                'source_path' => $doc->sourcePath,
+                'filename' => $filename,
+                // ADR 0029 §6 — how the text was obtained. Orthogonal to the
+                // ADR 0028 `provenance_tier` (who authored it), which stays
+                // whatever the connector declared.
+                'provenance' => self::PROVENANCE,
+                'ocr' => [
+                    'driver' => $driver->name(),
+                    // Audited on the document: did the bytes leave the tenant?
+                    'remote' => $driver->isRemote(),
+                    'reason' => $reason,
+                    'pages' => $pagesMeta,
+                    'mean_confidence' => $result->meanConfidence(),
+                    'min_confidence' => $result->minConfidence(),
+                    'figures' => count($written),
+                    'run' => $runKey,
+                    // true when the recorded run was reused (no driver call, no spend)
+                    'reused' => $reused !== null,
+                    'dry_run' => self::isDryRun($doc->metadata),
+                    'figures_dir' => $written === [] ? null : $this->figures->runDirFor($doc->sourcePath, $prefix, $runKey),
+                    'engine' => $result->meta,
+                    'ran_at' => now()->toIso8601String(),
+                ],
+            ],
+            sourceMimeType: $doc->mimeType,
+        );
+    }
+
+    /**
+     * Returns the number of pages the run is ALLOWED to produce: the verified
+     * count, or — for a PDF the parser could not read, admitted only on a
+     * driver that renders at most `KB_OCR_MAX_PAGES` — that cap. The lease is
+     * sized from it and the driver's result is validated against it.
+     *
+     * @throws OcrLimitExceededException
+     */
+    private function assertWithinLimits(string $mimeType, string $bytes, string $filename, OcrDriver $driver): int
+    {
+        // One pre-egress boundary for EVERY ingress (multipart upload, JSON
+        // ingest, folder walk, connector): the bytes must carry the signature
+        // of what the declared MIME says they are — a PDF header, or one of
+        // the accepted raster formats — before any driver, remote or local,
+        // is handed them. A declared label is never trusted on its own.
+        $declared = strtolower(trim(explode(';', $mimeType, 2)[0]));
+        $expectsPdf = $declared === 'application/pdf';
+        $sniffed = $expectsPdf
+            ? (str_starts_with($bytes, '%PDF-') ? 'application/pdf' : null)
+            : FileTypeSniffer::imageMimeOf(substr($bytes, 0, 16));
+        if ($sniffed === null) {
+            throw new OcrLimitExceededException(sprintf(
+                'OCR refused for "%s": the bytes are not %s (declared "%s"); nothing is sent to a driver.',
+                $filename,
+                $expectsPdf ? 'a PDF' : 'a PNG, JPEG, TIFF or WebP image',
+                $declared,
+            ), 'unrecognised_bytes');
+        }
+
+        $maxBytes = max(1, (int) config('kb.ocr.max_bytes', 26214400));
+        if (strlen($bytes) > $maxBytes) {
+            throw new OcrLimitExceededException(sprintf(
+                'OCR refused for "%s": %d bytes exceed KB_OCR_MAX_BYTES (%d).',
+                $filename,
+                strlen($bytes),
+                $maxBytes,
+            ), 'too_many_bytes');
+        }
+
+        $maxPages = max(1, (int) config('kb.ocr.max_pages', 200));
+        ['pages' => $pages, 'exact' => $exact] = $this->pageCountDetailFor($mimeType, $bytes);
+        // A lower bound cannot enforce a maximum: when the parser could not
+        // read the PDF the count is a `/Type /Page` floor, and a malformed
+        // or hostile file with more real pages than visible page objects
+        // would pass the cap. So an uncountable PDF runs only where the
+        // work is bounded by construction (ADR 0029 §4): never on a remote
+        // driver (that is egress of an unbounded document), and only on a
+        // local driver that renders page by page up to KB_OCR_MAX_PAGES
+        // under a per-page timeout — a whole-file engine gets nothing it
+        // could not be told the size of.
+        if (! $exact && ($driver->isRemote() || ! $driver->boundsWorkWithoutPageCount())) {
+            throw new OcrLimitExceededException(sprintf(
+                'OCR refused for "%s": the page count could not be verified (the PDF could not be parsed) and driver "%s" %s; an unverifiable document only runs where the work is bounded by construction.',
+                $filename,
+                $driver->name(),
+                $driver->isRemote() ? 'is remote' : 'does not bound its own work',
+            ), 'pages_uncountable');
+        }
+        if ($pages > $maxPages) {
+            throw new OcrLimitExceededException(sprintf(
+                'OCR refused for "%s": %d pages exceed KB_OCR_MAX_PAGES (%d).',
+                $filename,
+                $pages,
+                $maxPages,
+            ), 'too_many_pages');
+        }
+        // Every frame was counted as a page above; a driver that transcribes
+        // one image per file would be billed for all of them and read the
+        // first — refused here, never a silent first frame (ADR 0029 §4).
+        if (! $expectsPdf && $pages > 1 && ! $driver->acceptsMultiFrameImages()) {
+            throw new OcrLimitExceededException(sprintf(
+                'OCR refused for "%s": a %d-frame TIFF is not supported by driver "%s", which OCRs one frame per image and would drop the others; split it into one image per page.',
+                $filename,
+                $pages,
+                $driver->name(),
+            ), 'multi_frame_image');
+        }
+
+        return $exact ? $pages : $maxPages;
+    }
+
+    /**
+     * Page count before conversion, format-independent: the probe's parser
+     * count for a PDF (a `/Type /Page` floor when the parser cannot read
+     * it — the same number the estimate shows), the IFD chain length for a
+     * TIFF (a multi-page TIFF is N pages of egress and spend), 1 for any
+     * other image.
+     */
+    public function pageCountFor(SourceDocument $doc): int
+    {
+        return $this->pageCountForBytes($doc->mimeType, $doc->bytes);
+    }
+
+    /**
+     * The ONE page-count function: the cap enforced by `assertWithinLimits()`
+     * and the estimate shown before commit (`OcrCostEstimator`) both read it
+     * (directly, or through the probe it wraps), so they cannot disagree.
+     * The MIME is only trusted to tell PDF from raster: uploads, connectors
+     * and `knowledge_documents` all carry the family MIME (`image/png` for
+     * every raster, whatever the extension), so a TIFF is recognised from its
+     * bytes — `TiffFrameCounter` answers the IFD chain length for a TIFF
+     * header and 1 for any other image. `exact` is false only for a PDF the
+     * parser could not read, where `pages` is the `/Type /Page` object floor
+     * — a number the estimate may show but the cap must never trust for a
+     * remote driver. Images are always exact: the IFD chain is the document.
+     *
+     * @return array{pages: int, exact: bool}
+     */
+    public function pageCountDetailFor(string $mimeType, string $bytes): array
+    {
+        $mime = strtolower(trim(explode(';', $mimeType, 2)[0]));
+        if ($mime === 'application/pdf') {
+            $probe = $this->probe->probe($bytes);
+
+            return ['pages' => (int) ($probe['pages_total'] ?? 0), 'exact' => (bool) ($probe['pages_exact'] ?? false)];
+        }
+        if (str_starts_with($mime, 'image/')) {
+            return ['pages' => TiffFrameCounter::count($bytes), 'exact' => true];
+        }
+
+        return ['pages' => 1, 'exact' => true];
+    }
+
+    /** The `pages` projection of `pageCountDetailFor()` for callers that only need the number. */
+    public function pageCountForBytes(string $mimeType, string $bytes): int
+    {
+        return $this->pageCountDetailFor($mimeType, $bytes)['pages'];
+    }
+
+    /**
+     * @return array{result: OcrResult, written: list<array{path: string, page: int, index: int, bytes: int, relative: string}>}|null
+     */
+    private function reusableResult(string $disk, string $sourcePath, string $prefix, string $runKey, string $driverName): ?array
+    {
+        $recorded = $this->figures->loadResult($disk, $sourcePath, $prefix, $runKey);
+        if ($recorded === null || ($recorded['driver'] ?? null) !== $driverName || ! is_array($recorded['pages'] ?? null)) {
+            return null;
+        }
+
+        $storage = Storage::disk($disk);
+        $written = [];
+        foreach ((array) ($recorded['figures'] ?? []) as $figure) {
+            if (! is_array($figure) || ! isset($figure['path']) || ! $storage->exists((string) $figure['path'])) {
+                // A figure went missing (manual cleanup): the run is stale, re-run.
+                return null;
+            }
+            $written[] = [
+                'path' => (string) $figure['path'],
+                'relative' => (string) ($figure['relative'] ?? ''),
+                'page' => (int) ($figure['page'] ?? 0),
+                'index' => (int) ($figure['index'] ?? 0),
+                'bytes' => (int) ($figure['bytes'] ?? 0),
+            ];
+        }
+
+        // Rebuild the figure descriptors (bytes are on disk already, only
+        // page/index/extension matter for the Markdown references).
+        $figuresByPage = [];
+        foreach ($written as $entry) {
+            $ext = strtolower(pathinfo($entry['path'], PATHINFO_EXTENSION)) ?: 'png';
+            $figuresByPage[$entry['page']][] = new OcrFigure($entry['page'], $entry['index'], '', $ext);
+        }
+
+        $pages = [];
+        foreach ($recorded['pages'] as $page) {
+            if (! is_array($page)) {
+                return null;
+            }
+            $number = (int) ($page['number'] ?? 0);
+            $pages[] = new OcrPage(
+                number: $number,
+                markdown: (string) ($page['markdown'] ?? ''),
+                confidence: isset($page['confidence']) ? (float) $page['confidence'] : null,
+                figures: $figuresByPage[$number] ?? [],
+            );
+        }
+
+        return [
+            'result' => new OcrResult(driver: $driverName, pages: $pages, meta: (array) ($recorded['meta'] ?? [])),
+            'written' => $written,
+        ];
+    }
+
+    /**
+     * @param  list<array{path: string, page: int, index: int, bytes: int, relative: string}>  $written
+     */
+    private function recordRun(string $disk, string $sourcePath, string $prefix, string $runKey, OcrResult $result, array $written): void
+    {
+        $this->figures->storeResult($disk, $sourcePath, $prefix, $runKey, [
+            'driver' => $result->driver,
+            'recorded_at' => now()->toIso8601String(),
+            'meta' => $result->meta,
+            'pages' => array_map(static fn (OcrPage $p): array => [
+                'number' => $p->number,
+                'markdown' => $p->markdown,
+                'confidence' => $p->confidence,
+            ], $result->pages),
+            'figures' => $written,
+        ]);
+    }
+
+    /**
+     * What OCR recorded on a document. Reads the immutable ingest metadata
+     * (`metadata.converter.ocr`) and the per-chunk confidence through the
+     * chunk relationship — the same rows the retrieval path reads.
+     *
+     * @return array{
+     *   document_id: int, enabled: bool, driver_configured: string, driver_available: bool,
+     *   ocr: bool, ran_at: ?string, driver: ?string, remote: ?bool, reason: ?string, page_count: ?int,
+     *   mean_confidence: ?float, min_confidence: ?float, figures: int, figures_dir: ?string,
+     *   pages: list<array{number:int, confidence:?float, figures:int, chunks:int}>
+     * }
+     */
+    public function status(KnowledgeDocument $document): array
+    {
+        $metadata = is_array($document->metadata) ? $document->metadata : [];
+        $converter = is_array($metadata['converter'] ?? null) ? $metadata['converter'] : [];
+        $ocr = is_array($converter['ocr'] ?? null) ? $converter['ocr'] : null;
+
+        // R3 — one chunk row in memory at a time: a cheap read endpoint must
+        // not hydrate every chunk of a long scan to count pages.
+        $chunkPages = [];
+        $chunks = KnowledgeChunk::query()
+            ->forTenant($this->tenants->current())
+            ->where('knowledge_document_id', $document->id)
+            ->select(['id', 'metadata'])
+            ->cursor();
+        foreach ($chunks as $chunk) {
+            $meta = is_array($chunk->metadata) ? $chunk->metadata : [];
+            if (! isset($meta['page'])) {
+                continue;
+            }
+            $page = (int) $meta['page'];
+            $chunkPages[$page] = ($chunkPages[$page] ?? 0) + 1;
+        }
+
+        $pages = [];
+        foreach ((array) ($ocr['pages'] ?? []) as $page) {
+            if (! is_array($page) || ! isset($page['number'])) {
+                continue;
+            }
+            $number = (int) $page['number'];
+            $pages[] = [
+                'number' => $number,
+                'confidence' => isset($page['confidence']) ? (float) $page['confidence'] : null,
+                'figures' => (int) ($page['figures'] ?? 0),
+                'chunks' => (int) ($chunkPages[$number] ?? 0),
+            ];
+        }
+
+        $driver = null;
+        $available = false;
+        try {
+            $configured = $this->driver();
+            $driver = $configured->name();
+            $available = $configured->unavailableReason(self::isPdfMime((string) $document->mime_type)) === null;
+        } catch (\Throwable) {
+            $driver = (string) config('kb.ocr.driver', 'tesseract');
+        }
+
+        return [
+            'document_id' => (int) $document->id,
+            'enabled' => $this->enabled(),
+            'driver_configured' => (string) $driver,
+            'driver_available' => $available,
+            'ocr' => $ocr !== null,
+            'ran_at' => $ocr['ran_at'] ?? null,
+            'driver' => $ocr['driver'] ?? null,
+            'remote' => isset($ocr['remote']) ? (bool) $ocr['remote'] : null,
+            'reason' => $ocr['reason'] ?? null,
+            'page_count' => isset($converter['page_count']) ? (int) $converter['page_count'] : null,
+            'mean_confidence' => isset($ocr['mean_confidence']) ? (float) $ocr['mean_confidence'] : null,
+            'min_confidence' => isset($ocr['min_confidence']) ? (float) $ocr['min_confidence'] : null,
+            'figures' => (int) ($ocr['figures'] ?? 0),
+            'figures_dir' => $ocr['figures_dir'] ?? null,
+            'pages' => $pages,
+        ];
+    }
+
+    /**
+     * Re-run OCR on a document: re-dispatches its ingestion with OCR forced
+     * and a fresh flow idempotency key, so the run is not short-circuited to
+     * the original one. The ingest metadata carries `version_actor` /
+     * `version_reason` for the W2 artifact columns (ADR 0030); an identical
+     * result is the usual version-hash no-op. One re-run per document at a
+     * time: a second call while the first is queued is a 409, so a double
+     * click never queues two paid runs.
+     *
+     * @return array{dispatched: bool, document_id: int, source_path: string, driver: string, flow_run_key: string}
+     *
+     * @throws UnprocessableEntityHttpException when OCR is disabled, the driver is
+     *   unavailable, the source is not OCR-able, the file is gone from disk or
+     *   cannot be read, or the job would refuse it anyway (page/byte cap,
+     *   unverifiable page count on a remote driver)
+     */
+    public function rerun(KnowledgeDocument $document, string $actor): array
+    {
+        if (! $this->enabled()) {
+            throw new UnprocessableEntityHttpException('OCR is disabled (KB_OCR_ENABLED=false).');
+        }
+
+        try {
+            $driver = $this->driver();
+        } catch (OcrDriverUnavailableException $e) {
+            // A remote driver with KB_OCR_ALLOW_REMOTE off (or an unknown
+            // name) is the same "cannot run here" the line below reports: a
+            // 422 with the registry's reason, never a 500.
+            throw new UnprocessableEntityHttpException($e->getMessage(), $e);
+        }
+        $mime = strtolower(trim(explode(';', (string) $document->mime_type, 2)[0]));
+        $unavailable = $driver->unavailableReason($mime === 'application/pdf');
+        if ($unavailable !== null) {
+            throw new UnprocessableEntityHttpException(sprintf('OCR driver "%s" is not available on this host: %s', $driver->name(), $unavailable));
+        }
+
+        $ocrable = $mime === 'application/pdf' || in_array($mime, \App\Support\Kb\SourceType::imageMimes(), true);
+        if (! $ocrable) {
+            throw new UnprocessableEntityHttpException("Document mime type \"{$mime}\" is not OCR-able (PDF or image only).");
+        }
+
+        $metadata = is_array($document->metadata) ? $document->metadata : [];
+        $disk = (string) ($metadata['disk'] ?? config('kb.sources.disk', 'kb'));
+        $prefix = array_key_exists('prefix', $metadata)
+            ? (string) $metadata['prefix']
+            : (string) config('kb.sources.path_prefix', '');
+        $sourcePath = KbPath::normalize((string) $document->source_path);
+        // The same key the ingest resolved: prefix + source through the one
+        // normaliser (a prefix with backslashes or repeated separators reads
+        // the same object, never a false "not found").
+        $fullPath = trim($prefix, '/') === '' ? $sourcePath : KbPath::normalize(trim($prefix, '/').'/'.$sourcePath);
+
+        if (! Storage::disk($disk)->exists($fullPath)) {
+            throw new UnprocessableEntityHttpException("Source file not found on disk [{$disk}]: {$sourcePath}.");
+        }
+
+        // R14 — the same limits the job enforces, checked here so a re-run
+        // the job would refuse (page/byte cap, unverifiable page count on a
+        // remote driver) is a 422 now, not a queued failure later.
+        // R14 — `exists()` does not promise the read: an unreadable source
+        // (a thrown adapter error, or a non-string / empty read) is the same
+        // deliberate 422 as a missing one — never empty bytes fed to the
+        // limit check and a queued re-run that dies later, never a raw 500.
+        try {
+            $bytes = Storage::disk($disk)->get($fullPath);
+        } catch (\Throwable $e) {
+            throw new UnprocessableEntityHttpException("Source file could not be read on disk [{$disk}]: {$sourcePath}.", $e);
+        }
+        if (! is_string($bytes) || $bytes === '') {
+            throw new UnprocessableEntityHttpException("Source file could not be read on disk [{$disk}]: {$sourcePath}.");
+        }
+        try {
+            $this->assertWithinLimits((string) $document->mime_type, $bytes, basename($sourcePath), $driver);
+        } catch (OcrLimitExceededException $e) {
+            throw new UnprocessableEntityHttpException($e->getMessage(), $e);
+        }
+
+        // One queued re-run per document: the lock is released by the job on
+        // its terminal outcome (IngestDocumentJob::handle success branch /
+        // failed(), through OcrService::releaseRerunLock) and by the failure
+        // branch below when the dispatch itself fails; the TTL is only the
+        // backstop for a worker that dies mid-run. Needs an atomic shared
+        // lock store (Redis in production) to hold across pods.
+        $lockKey = self::rerunLockKey($this->tenants->current(), (int) $document->id);
+        $lock = Cache::lock($lockKey, self::rerunLockTtlFor((string) $document->mime_type));
+        if (! $lock->get()) {
+            throw new ConflictHttpException('An OCR re-run for this document is already queued.');
+        }
+
+        $runKey = 'ocr:'.Str::uuid();
+
+        // Only the ingest-time keys travel: the previous row's `converter` /
+        // `connector` / `external_*` blocks are outputs of the last run, not
+        // inputs to this one (the ingestor rewrites them anyway).
+        $ingestMetadata = array_diff_key($metadata, array_flip(['converter', 'connector', 'external_url', 'external_id']));
+
+        try {
+            IngestDocumentJob::dispatchForCurrentTenant(
+                projectKey: (string) $document->project_key,
+                relativePath: $sourcePath,
+                disk: $disk,
+                title: (string) $document->title,
+                metadata: array_merge($ingestMetadata, [
+                    'ocr' => array_merge((array) ($metadata['ocr'] ?? []), [
+                        'force' => true,
+                        'rerun_lock' => ['key' => $lockKey, 'owner' => $lock->owner()],
+                    ]),
+                    'version_actor' => $actor,
+                    'version_reason' => 'ocr re-run ('.$driver->name().')',
+                ]),
+                mimeType: (string) $document->mime_type,
+                runKey: $runKey,
+            );
+        } catch (\Throwable $e) {
+            $lock->release();
+            throw $e;
+        }
+
+        return [
+            'dispatched' => true,
+            'document_id' => (int) $document->id,
+            'source_path' => $sourcePath,
+            'driver' => $driver->name(),
+            // The Flow idempotency salt of THIS dispatch (`ocr:<uuid>`), not
+            // the content-addressed run key of the assets directory — that
+            // one exists only once the job has run and is recorded on the
+            // row (`metadata.converter.ocr.run`, `kb:ocr --status`).
+            'flow_run_key' => $runKey,
+        ];
+    }
+
+    /**
+     * What a dry run returns instead of an OCR result: one `## Page n` section
+     * per page the driver WOULD see (the PdfPageChunker shape, so the chunk
+     * preview is realistic) and the same `ocr` meta block with `dry_run: true`
+     * and no text, figures or spend.
+     */
+    private function dryRunPreview(SourceDocument $doc, string $converterName, string $reason, OcrDriver $driver, string $runKey, int $start): ConvertedDocument
+    {
+        $filename = basename($doc->sourcePath);
+        $pages = max(1, $this->pageCountFor($doc));
+        $note = sprintf(
+            '_OCR dry run — this page would be sent to the `%s` driver%s; no text was extracted, no figures written, nothing billed._',
+            $driver->name(),
+            $driver->isRemote() ? ' (remote)' : '',
+        );
+        $sections = [];
+        for ($n = 1; $n <= $pages; $n++) {
+            $sections[] = "## Page {$n}\n\n{$note}";
+        }
+
+        return new ConvertedDocument(
+            markdown: "# {$filename}\n\n".implode("\n\n", $sections)."\n",
+            mediaItems: [],
+            extractionMeta: [
+                'converter' => $converterName,
+                'duration_ms' => (int) ((hrtime(true) - $start) / 1_000_000),
+                'page_count' => $pages,
+                'extraction_strategy' => 'ocr',
+                'source_path' => $doc->sourcePath,
+                'filename' => $filename,
+                'provenance' => self::PROVENANCE,
+                'ocr' => [
+                    'driver' => $driver->name(),
+                    'remote' => $driver->isRemote(),
+                    'reason' => $reason,
+                    'pages' => [],
+                    'mean_confidence' => null,
+                    'min_confidence' => null,
+                    'figures' => 0,
+                    'run' => $runKey,
+                    'reused' => false,
+                    'dry_run' => true,
+                    'figures_dir' => null,
+                    'engine' => [],
+                ],
+            ],
+            sourceMimeType: $doc->mimeType,
+        );
+    }
+
+    private function renderMarkdown(string $filename, OcrResult $result, bool $figuresEnabled): string
+    {
+        $sections = [];
+        foreach ($result->pages as $page) {
+            $body = trim($page->markdown);
+            if (! $figuresEnabled) {
+                // A driver that rewrote its own image links (Docling) must not
+                // leave the Markdown citing files that are not stored: a
+                // generated `images/fig-…` reference is removed outright (the
+                // figure was deliberately not kept — no marker), the text
+                // around it stays; anything else is handled below.
+                $body = (string) preg_replace('/!\[[^\]]*\]\(images\/fig-[^)\s]+\)/', '', $body);
+            }
+            if ($figuresEnabled) {
+                foreach ($page->figures as $figure) {
+                    $ref = sprintf('![Figure %d.%d](images/%s)', $figure->page, $figure->index, $figure->fileName());
+                    if (str_contains($body, 'images/'.$figure->fileName())) {
+                        continue; // the driver already rewrote the reference
+                    }
+                    if ($figure->placeholder !== null && $figure->placeholder !== '' && str_contains($body, $figure->placeholder)) {
+                        $body = str_replace($figure->placeholder, $ref, $body);
+                        continue;
+                    }
+                    $body = $body === '' ? $ref : $body."\n\n".$ref;
+                }
+            }
+            // The persisted Markdown cites only what the store wrote — the
+            // page's figures when figures are on, nothing when they are off:
+            // every other image reference (a driver's own rewrite of a file
+            // that is not stored, a placeholder, an external URL — inline,
+            // reference-style or a raw tag) becomes text, whatever driver
+            // produced it and whatever it did upstream (SEC-LLM-001 gate 6).
+            $keep = $figuresEnabled ? array_map(static fn (OcrFigure $f): string => $f->fileName(), $page->figures) : [];
+            $body = trim((string) preg_replace('/\n{3,}/', "\n\n", OcrMarkdown::stripForeignImageLinks($body, $keep)));
+            if ($body === '') {
+                continue;
+            }
+            $sections[] = '## Page '.$page->number."\n\n{$body}\n\n";
+        }
+        if ($sections === []) {
+            return '';
+        }
+
+        return "# {$filename}\n\n".rtrim(implode('', $sections))."\n";
+    }
+}
