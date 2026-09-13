@@ -344,8 +344,12 @@ SQLite test migration, out of W2's scope and tracked as the deferred item)
 the artifact identity already matches. There is nothing to reference-count. The publish is race-safe against two
 concurrent identical ingests: each writer writes to its own temporary name
 (`{final}.{uuid}.tmp`), commits the row with the **final** path recorded, and
-only after commit moves its temp file into place (`exists()` on the final
-path → the identical bytes are already there, drop the temp). The loser of
+only after commit moves its temp file into place. A final file that already
+exists is re-hashed against the temp, never trusted on `exists()` alone:
+identical bytes → drop the temp; a truncated or replaced file → the verified
+temp is moved over it (atomic rename on a local disk), so a corrupt artifact
+is repaired by the next identical ingest instead of being kept and later
+reported as `integrity: mismatch` by `contentFor()` (ADR 0030 §3). The loser of
 the unique-constraint race never touches the final path: its failure branch
 deletes **its own temp file only**, so it cannot remove what the winner's
 committed row references. A crash between commit and move leaves a row whose
