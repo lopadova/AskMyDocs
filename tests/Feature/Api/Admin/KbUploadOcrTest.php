@@ -268,6 +268,40 @@ final class KbUploadOcrTest extends TestCase
             ->assertJsonPath('data.items.0.pages', 3);
     }
 
+    /**
+     * The estimate takes the SAME decision the converter takes for a PDF
+     * the parser cannot read: when the `pdftotext` fallback finds text the
+     * document is ingested as text, so no OCR page or spend is quoted.
+     */
+    public function test_estimate_does_not_quote_ocr_for_an_unreadable_pdf_the_pdftotext_fallback_can_read(): void
+    {
+        $stub = tempnam(sys_get_temp_dir(), 'pdftotext_stub_');
+        file_put_contents($stub, "#!/bin/sh\nprintf 'Plenty of real text on this page\\f'\n");
+        chmod($stub, 0755);
+        try {
+            config(['kb.ocr.enabled' => true, 'kb.ocr.driver' => 'fake', 'kb.pdf.pdftotext_bin' => $stub]);
+            $admin = $this->makeAdmin();
+            $batchId = $this->actingAs($admin)->post('/api/admin/kb/uploads', [
+                'project_key' => 'legal',
+                'files' => [UploadedFile::fake()->createWithContent('odd.pdf', '%PDF-1.4 not parseable by the pure-php parser')],
+            ])->assertStatus(201)->json('batch.id');
+
+            $this->actingAs($admin)->getJson("/api/admin/kb/uploads/{$batchId}/estimate")
+                ->assertOk()
+                ->assertJsonPath('data.items.0.would_ocr', false)
+                ->assertJsonPath('data.items.0.reason', 'text_layer_present')
+                ->assertJsonPath('data.total_pages', 0);
+
+            // Without the fallback's text the same file IS quoted (fake driver bounds its own work).
+            config(['kb.pdf.pdftotext_bin' => '/nonexistent/pdftotext']);
+            $this->actingAs($admin)->getJson("/api/admin/kb/uploads/{$batchId}/estimate")
+                ->assertOk()
+                ->assertJsonPath('data.items.0.would_ocr', true);
+        } finally {
+            unlink($stub);
+        }
+    }
+
     public function test_estimate_counts_tiff_frames_and_applies_the_page_cap(): void
     {
         config(['kb.ocr.enabled' => true, 'kb.ocr.max_pages' => 2]);

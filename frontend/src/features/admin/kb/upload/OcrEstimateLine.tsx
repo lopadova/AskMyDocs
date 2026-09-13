@@ -102,6 +102,7 @@ export function OcrEstimateLine({ state, estimate, errorMessage }: OcrEstimateLi
             <p data-testid="kb-upload-ocr-estimate" data-state="ready" data-ocr-enabled="true" data-ocr-driver-available="false" role="alert" style={{ ...base, color: 'var(--err)' }}>
                 {files(needing)} would need OCR, but the <code>{estimate.driver}</code> driver cannot run on this server
                 {estimate.driver_error ? ` (${estimate.driver_error})` : ''}. Committing will fail those files.
+                {unreadableNote !== '' ? ` ${unreadableNote}` : ''}
             </p>
         );
     }

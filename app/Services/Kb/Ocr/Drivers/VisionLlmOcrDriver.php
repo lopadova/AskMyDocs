@@ -58,13 +58,21 @@ TXT;
     public function unavailableReason(): ?string
     {
         try {
-            $provider = config('kb.ocr.vision_llm.provider');
-            $this->ai->provider(is_string($provider) && $provider !== '' ? $provider : null);
-
-            return null;
+            $configured = config('kb.ocr.vision_llm.provider');
+            $providerName = $this->ai->provider(is_string($configured) && $configured !== '' ? $configured : null)->name();
         } catch (\Throwable) {
             return 'vision-llm OCR: no chat provider configured (KB_OCR_VISION_PROVIDER / AI_PROVIDER).';
         }
+        // A resolvable provider is not a usable one: the SDK call needs its
+        // credential, and a deployment that selected vision-llm without one
+        // must learn it here (estimate, status, re-run pre-flight — R14), not
+        // from a worker that fails page 1.
+        $key = config("ai.providers.{$providerName}.key");
+        if (! is_string($key) || trim($key) === '') {
+            return sprintf('vision-llm OCR: provider "%s" has no API key configured.', $providerName);
+        }
+
+        return null;
     }
 
     public function isRemote(): bool

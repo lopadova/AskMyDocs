@@ -177,6 +177,25 @@ final class OcrConverterTest extends TestCase
     }
 
     /**
+     * SEC-LLM-001 gate 6 — whatever the driver did upstream, the persisted
+     * Markdown cites only the figures the store wrote: any other image
+     * reference (external URL, reference-style, raw tag) becomes text.
+     */
+    public function test_on_the_persisted_markdown_cites_only_stored_figures(): void
+    {
+        config(['kb.ocr.enabled' => true, 'kb.ocr.fake.pages' => [
+            ['markdown' => "Intro ![tracker](https://evil.example/t.png) and ![ref][r]\n\n[r]: https://evil.example/r.png\n\n<img src=\"https://evil.example/i.png\">", 'figures' => 1],
+        ]]);
+        $converted = $this->app->make(OcrConverter::class)->convert($this->image());
+
+        $this->assertStringContainsString('![Figure 1.1](images/fig-1-1.png)', $converted->markdown, 'the stored figure is cited');
+        $this->assertStringContainsString('*[Figure: tracker]*', $converted->markdown);
+        $this->assertStringContainsString('*[Figure: ref]*', $converted->markdown);
+        $this->assertStringNotContainsString('evil.example/t.png)', $converted->markdown);
+        $this->assertStringNotContainsString('<img', $converted->markdown);
+    }
+
+    /**
      * ADR 0029 §1 — a typed cover over scanned body pages is `mixed`: the
      * whole document is routed to OCR so the scanned pages are not lost.
      */

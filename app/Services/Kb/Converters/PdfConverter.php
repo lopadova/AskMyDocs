@@ -6,6 +6,7 @@ namespace App\Services\Kb\Converters;
 
 use App\Services\Kb\Contracts\ConverterInterface;
 use App\Services\Kb\Ocr\OcrService;
+use App\Services\Kb\Ocr\PdfTextFallback;
 use App\Services\Kb\Ocr\PdfTextLayerProbe;
 use App\Services\Kb\Pipeline\ConvertedDocument;
 use App\Services\Kb\Pipeline\SourceDocument;
@@ -49,7 +50,12 @@ final class PdfConverter implements ConverterInterface
      * Nullable so the pure unit tests (and any legacy direct construction)
      * keep working; the container always injects it.
      */
-    public function __construct(private readonly ?OcrService $ocr = null) {}
+    private ?PdfTextFallback $pdfTextFallback = null;
+
+    public function __construct(private readonly ?OcrService $ocr = null, ?PdfTextFallback $pdfTextFallback = null)
+    {
+        $this->pdfTextFallback = $pdfTextFallback;
+    }
 
     public function name(): string
     {
@@ -167,21 +173,9 @@ final class PdfConverter implements ConverterInterface
         return ['reason' => 'scanned_pdf', 'probe' => $probe['verdict']];
     }
 
-    /**
-     * Same threshold the probe applies to the parser's text: whitespace
-     * stripped, at least `text_layer_probe.min_text_chars` over the pages.
-     *
-     * @param  list<string>  $pages
-     */
     private function hasText(array $pages): bool
     {
-        $minChars = max(0, (int) config('kb.ocr.text_layer_probe.min_text_chars', 20));
-        $chars = 0;
-        foreach ($pages as $page) {
-            $chars += mb_strlen((string) preg_replace('/\s+/u', '', $page));
-        }
-
-        return $chars >= $minChars;
+        return $this->fallback()->hasText($pages);
     }
 
     private function ocrEnabled(): bool
@@ -208,9 +202,8 @@ final class PdfConverter implements ConverterInterface
     }
 
     /**
-     * Fallback to the `pdftotext` binary from Poppler. The `\f` form-feed
-     * character separates pages in pdftotext's output, so we split on it
-     * to reconstruct a per-page array matching the smalot shape.
+     * The `pdftotext` fallback — ONE implementation, shared with the cost
+     * estimate so both answer "does this unreadable PDF have text?" alike.
      *
      * @return list<string>
      *
@@ -221,38 +214,12 @@ final class PdfConverter implements ConverterInterface
      */
     private function extractWithPdftotext(string $bytes): array
     {
-        $tmp = tempnam(sys_get_temp_dir(), 'kb_pdf_');
-        if ($tmp === false || file_put_contents($tmp, $bytes) === false) {
-            throw new \RuntimeException('Failed to write temporary PDF file for pdftotext fallback');
-        }
+        return $this->fallback()->extract($bytes);
+    }
 
-        try {
-            $process = new Process([(string) config('kb.pdf.pdftotext_bin', 'pdftotext'), '-layout', '-enc', 'UTF-8', $tmp, '-']);
-            $process->mustRun();
-            $text = $process->getOutput();
-            $pages = preg_split("/\f/", $text);
-            if ($pages === false || $pages === []) {
-                return [$text];
-            }
-            // pdftotext frequently emits a trailing form-feed after the last
-            // page, which can surface here as one or more trailing empty OR
-            // whitespace-only elements (the binary often appends `\n` or
-            // spaces after the form-feed too). Loop-pop ALL such phantom
-            // trailing pages so page_count and later page numbering stay
-            // aligned with the real page count.
-            while ($pages !== [] && trim((string) end($pages)) === '') {
-                array_pop($pages);
-            }
-            return $pages === [] ? [$text] : $pages;
-        } finally {
-            // Per CLAUDE.md R7 (no @-silenced errors): explicit guard +
-            // unsuppressed unlink. tempnam() always returns a writable path,
-            // so a missing file at this point would only happen if another
-            // process raced us — guarding with is_file() handles that.
-            if (is_file($tmp)) {
-                unlink($tmp);
-            }
-        }
+    private function fallback(): PdfTextFallback
+    {
+        return $this->pdfTextFallback ??= new PdfTextFallback();
     }
 
     /**

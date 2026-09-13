@@ -630,20 +630,22 @@ final class OcrService
         $converter = is_array($metadata['converter'] ?? null) ? $metadata['converter'] : [];
         $ocr = is_array($converter['ocr'] ?? null) ? $converter['ocr'] : null;
 
-        $chunkPages = KnowledgeChunk::query()
+        // R3 — one chunk row in memory at a time: a cheap read endpoint must
+        // not hydrate every chunk of a long scan to count pages.
+        $chunkPages = [];
+        $chunks = KnowledgeChunk::query()
             ->forTenant($this->tenants->current())
             ->where('knowledge_document_id', $document->id)
-            ->get(['metadata'])
-            ->reduce(function (array $carry, KnowledgeChunk $chunk): array {
-                $meta = is_array($chunk->metadata) ? $chunk->metadata : [];
-                $page = isset($meta['page']) ? (int) $meta['page'] : null;
-                if ($page === null) {
-                    return $carry;
-                }
-                $carry[$page] = ($carry[$page] ?? 0) + 1;
-
-                return $carry;
-            }, []);
+            ->select(['id', 'metadata'])
+            ->cursor();
+        foreach ($chunks as $chunk) {
+            $meta = is_array($chunk->metadata) ? $chunk->metadata : [];
+            if (! isset($meta['page'])) {
+                continue;
+            }
+            $page = (int) $meta['page'];
+            $chunkPages[$page] = ($chunkPages[$page] ?? 0) + 1;
+        }
 
         $pages = [];
         foreach ((array) ($ocr['pages'] ?? []) as $page) {
@@ -872,10 +874,11 @@ final class OcrService
             $body = trim($page->markdown);
             if (! $figuresEnabled) {
                 // A driver that rewrote its own image links (Docling) must not
-                // leave the Markdown citing files that are not stored: strip
-                // every generated `images/fig-…` reference, then the empty
-                // lines it leaves behind.
-                $body = trim((string) preg_replace('/\n{3,}/', "\n\n", (string) preg_replace('/!\[[^\]]*\]\(images\/fig-[^)\s]+\)/', '', $body)));
+                // leave the Markdown citing files that are not stored: a
+                // generated `images/fig-…` reference is removed outright (the
+                // figure was deliberately not kept — no marker), the text
+                // around it stays; anything else is handled below.
+                $body = (string) preg_replace('/!\[[^\]]*\]\(images\/fig-[^)\s]+\)/', '', $body);
             }
             if ($figuresEnabled) {
                 foreach ($page->figures as $figure) {
@@ -890,6 +893,14 @@ final class OcrService
                     $body = $body === '' ? $ref : $body."\n\n".$ref;
                 }
             }
+            // The persisted Markdown cites only what the store wrote — the
+            // page's figures when figures are on, nothing when they are off:
+            // every other image reference (a driver's own rewrite of a file
+            // that is not stored, a placeholder, an external URL — inline,
+            // reference-style or a raw tag) becomes text, whatever driver
+            // produced it and whatever it did upstream (SEC-LLM-001 gate 6).
+            $keep = $figuresEnabled ? array_map(static fn (OcrFigure $f): string => $f->fileName(), $page->figures) : [];
+            $body = trim((string) preg_replace('/\n{3,}/', "\n\n", OcrMarkdown::stripForeignImageLinks($body, $keep)));
             if ($body === '') {
                 continue;
             }

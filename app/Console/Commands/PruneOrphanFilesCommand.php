@@ -6,6 +6,7 @@ use App\Services\Kb\DocumentDeleter;
 use App\Services\Kb\Ocr\OcrFigureStore;
 use App\Models\KnowledgeDocument;
 use App\Support\KbDiskResolver;
+use App\Support\Kb\SourceType;
 use App\Support\KbPath;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Storage;
@@ -52,7 +53,7 @@ class PruneOrphanFilesCommand extends Command
         $danglingOcr = $this->detectDanglingOcrTrees($storage, $allFiles, $prefix, $disk);
 
         if ($markdownFiles === [] && $danglingOcr === []) {
-            $this->info("No markdown files found on disk [{$disk}].");
+            $this->info("No source files found on disk [{$disk}].");
 
             return self::SUCCESS;
         }
@@ -63,7 +64,7 @@ class PruneOrphanFilesCommand extends Command
         $orphanCount = count($orphans);
 
         if ($orphanCount === 0 && $danglingOcr === []) {
-            $this->info("Scanned {$scanned} markdown file(s) on disk [{$disk}] — no orphans found.");
+            $this->info("Scanned {$scanned} source file(s) on disk [{$disk}] — no orphans found.");
 
             return self::SUCCESS;
         }
@@ -218,13 +219,21 @@ class PruneOrphanFilesCommand extends Command
      */
     private function filterMarkdown(array $files): array
     {
-        return array_values(array_filter($files, function (string $path): bool {
+        // v8.36 / ADR 0029 — while OCR is on, an image is a source like a
+        // Markdown file: an orphan scan (a failed first ingest) and the
+        // `.ocr/` tree beside it would otherwise stay on the disk forever.
+        // With OCR off images are not sources and are never touched (R43).
+        $extensions = ['md', 'markdown'];
+        if (filter_var(config('kb.ocr.enabled', false), FILTER_VALIDATE_BOOLEAN)) {
+            $extensions = array_merge($extensions, SourceType::imageExtensions());
+        }
+
+        return array_values(array_filter($files, function (string $path) use ($extensions): bool {
             if (KbPath::isGeneratedAsset($path)) {
                 return false; // never a source (ADR 0029 / 0030)
             }
-            $ext = strtolower((string) pathinfo($path, PATHINFO_EXTENSION));
 
-            return $ext === 'md' || $ext === 'markdown';
+            return in_array(strtolower((string) pathinfo($path, PATHINFO_EXTENSION)), $extensions, true);
         }));
     }
 

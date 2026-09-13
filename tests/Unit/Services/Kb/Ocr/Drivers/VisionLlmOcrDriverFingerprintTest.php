@@ -29,6 +29,17 @@ final class VisionLlmOcrDriverFingerprintTest extends TestCase
         $this->assertStringContainsString('provider=openai;model=gpt-4o-mini;', app(VisionLlmOcrDriver::class)->fingerprint());
     }
 
+    /** R14 — a resolvable provider without a credential is not an available driver. */
+    public function test_a_provider_without_an_api_key_makes_the_driver_unavailable(): void
+    {
+        config(['ai.default' => 'openai', 'kb.ocr.vision_llm.provider' => null, 'ai.providers.openai.key' => '']);
+        $this->assertStringContainsString('no API key', (string) app(VisionLlmOcrDriver::class)->unavailableReason());
+        $this->assertFalse(app(VisionLlmOcrDriver::class)->isAvailable());
+
+        config(['ai.providers.openai.key' => 'k']);
+        $this->assertNull(app(VisionLlmOcrDriver::class)->unavailableReason());
+    }
+
     /**
      * The driver extracts no figures, so its Markdown must cite none: an
      * image link the model emits anyway — the old `![Figure](figure)`

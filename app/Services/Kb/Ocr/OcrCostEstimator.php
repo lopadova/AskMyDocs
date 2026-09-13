@@ -33,6 +33,7 @@ final class OcrCostEstimator
         private readonly PdfTextLayerProbe $probe,
         private readonly OcrDriverRegistry $registry,
         private readonly OcrService $ocr,
+        private readonly PdfTextFallback $pdfTextFallback,
     ) {}
 
     /**
@@ -145,6 +146,12 @@ final class OcrCostEstimator
                 // R14 — a failed read is not an empty image to price.
                 return ['id' => $id, 'would_ocr' => false, 'pages' => 0, 'cost' => 0.0, 'reason' => 'staged_file_unreadable', 'pages_exact' => true];
             }
+            // The cap is enforced on the bytes the run will read, not on
+            // the size recorded at staging: an object replaced or grown since
+            // is refused here exactly as the service will refuse it (R14).
+            if (strlen($imageBytes) > $maxBytes) {
+                return ['id' => $id, 'would_ocr' => false, 'pages' => 0, 'cost' => 0.0, 'reason' => 'too_many_bytes', 'pages_exact' => true];
+            }
             $pages = $this->ocr->pageCountForBytes((string) $item->mime_type, $imageBytes);
             if ($pages > $maxPages) {
                 return ['id' => $id, 'would_ocr' => false, 'pages' => $pages, 'cost' => 0.0, 'reason' => 'too_many_pages', 'pages_exact' => true];
@@ -180,6 +187,13 @@ final class OcrCostEstimator
         // `pages_exact = false`, when the parser cannot read the file).
         $probe = $this->probe->probe($bytes);
         if ($probe['verdict'] === PdfTextLayerProbe::PRESENT) {
+            return ['id' => $id, 'would_ocr' => false, 'pages' => 0, 'cost' => 0.0, 'reason' => 'text_layer_present', 'pages_exact' => true];
+        }
+        // The SAME decision `PdfConverter::ocrRoute()` takes for a PDF the
+        // parser could not read: the `pdftotext` fallback runs first, and a
+        // file it finds text in is ingested as text, never OCR'd — so the
+        // modal must not quote pages and spend for it.
+        if ($probe['verdict'] === PdfTextLayerProbe::UNREADABLE && $this->pdfTextFallback->textPages($bytes) !== null) {
             return ['id' => $id, 'would_ocr' => false, 'pages' => 0, 'cost' => 0.0, 'reason' => 'text_layer_present', 'pages_exact' => true];
         }
         $pages = max(1, (int) $probe['pages_total']);

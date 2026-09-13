@@ -174,6 +174,35 @@ class PruneOrphanFilesCommandTest extends TestCase
         $this->assertFalse(Storage::disk('kb')->directoryExists('docs/elsewhere.md.ocr'));
     }
 
+    /**
+     * v8.36 / ADR 0029 — with OCR on, an image is a source: an orphan scan
+     * and the `.ocr/` tree beside it are swept like an orphan Markdown file.
+     * With OCR off images are not sources and are never touched (R43).
+     */
+    public function test_orphan_images_are_swept_only_while_ocr_is_on(): void
+    {
+        Storage::fake('kb');
+        $run = str_repeat('0123456789abcdef', 4);
+        Storage::disk('kb')->put('scans/orphan.png', 'PNG');
+        Storage::disk('kb')->put("scans/orphan.png.ocr/{$run}/images/fig-1-1.png", 'figure');
+        Storage::disk('kb')->put("scans/orphan.png.ocr/{$run}/result.json", '{}');
+        Storage::disk('kb')->put('scans/kept.png', 'PNG');
+        $this->seedDoc('scans/kept.png', 'hk');
+        $this->travel(OcrFigureStore::inFlightGraceSeconds() + 60)->seconds();
+
+        config(['kb.ocr.enabled' => false]);
+        $this->artisan('kb:prune-orphan-files')->assertSuccessful();
+        Storage::disk('kb')->assertExists('scans/orphan.png');
+
+        config(['kb.ocr.enabled' => true]);
+        $this->artisan('kb:prune-orphan-files')
+            ->expectsOutputToContain('orphans=1 deleted=1 failed=0')
+            ->assertSuccessful();
+        Storage::disk('kb')->assertMissing('scans/orphan.png');
+        $this->assertFalse(Storage::disk('kb')->directoryExists('scans/orphan.png.ocr'));
+        Storage::disk('kb')->assertExists('scans/kept.png');
+    }
+
     public function test_a_dangling_ocr_tree_is_swept_only_once_it_has_aged_past_the_in_flight_grace(): void
     {
         Storage::fake('kb');

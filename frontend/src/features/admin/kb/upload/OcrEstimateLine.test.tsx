@@ -225,6 +225,25 @@ describe('OcrEstimateLine', () => {
         expect(text).toContain('committing will fail it');
     });
 
+    it('ON with a driver that cannot run AND an unreadable staged file — both failures are stated', () => {
+        const both: OcrEstimate = {
+            ...on,
+            driver: 'mistral-ocr',
+            driver_available: false,
+            driver_error: 'set KB_OCR_ALLOW_REMOTE=true',
+            total_pages: 0,
+            total_cost: 0,
+            items: [
+                { id: 'p', would_ocr: true, pages: 1, pages_exact: true, cost: 0.004, reason: 'scanned_pdf' },
+                { id: 'u', would_ocr: false, pages: 0, pages_exact: true, cost: 0, reason: 'staged_file_unreadable' },
+            ],
+        };
+        render(<OcrEstimateLine state="ready" estimate={both} />);
+        const text = screen.getByTestId('kb-upload-ocr-estimate').textContent ?? '';
+        expect(text).toContain('driver cannot run on this server');
+        expect(text).toContain('1 file cannot be read on the staging disk');
+    });
+
     it('marks a floor page count with ≥ when the PDF could not be parsed', () => {
         const floor: OcrEstimate = { ...on, total_pages: 3, items: [{ id: 'f', would_ocr: true, pages: 3, pages_exact: false, cost: 0.012, reason: 'scanned_pdf' }] };
         render(<OcrEstimateLine state="ready" estimate={floor} />);
