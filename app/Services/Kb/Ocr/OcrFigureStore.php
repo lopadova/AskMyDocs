@@ -137,6 +137,27 @@ final class OcrFigureStore
     }
 
     /**
+     * A reuse performs no write, so an old run (past the in-flight grace)
+     * reused by a new ingest would be purgeable before the new row commits.
+     * Re-recording `result.json` with the same bytes refreshes the run's
+     * newest file — the reservation the purge honours (ADR 0029 §6). A
+     * failed refresh is logged, never fatal: the reuse itself is valid.
+     */
+    public function refreshReservation(string $disk, string $sourcePath, string $prefix, string $runKey): void
+    {
+        $path = $this->resultPath($sourcePath, $prefix, $runKey);
+        try {
+            $storage = Storage::disk($disk);
+            $bytes = $storage->exists($path) ? $storage->get($path) : null;
+            if (! is_string($bytes) || $storage->put($path, $bytes) === false) {
+                Log::warning('OcrFigureStore: could not refresh the reservation of a reused run', ['disk' => $disk, 'path' => $path]);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('OcrFigureStore: could not refresh the reservation of a reused run', ['disk' => $disk, 'path' => $path, 'error' => $e->getMessage()]);
+        }
+    }
+
+    /**
      * @return array<string, mixed>|null null when absent or unreadable
      */
     public function loadResult(string $disk, string $sourcePath, string $prefix, string $runKey): ?array

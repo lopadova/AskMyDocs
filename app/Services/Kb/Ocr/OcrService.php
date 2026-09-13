@@ -276,6 +276,9 @@ final class OcrService
         if ($reused !== null) {
             $result = $reused['result'];
             $written = $reused['written'];
+            // ADR 0029 §6 — a reuse is a new reference in flight: refresh the
+            // run's reservation so no purge removes it before the row commits.
+            $this->figures->refreshReservation($disk, $doc->sourcePath, $prefix, $runKey);
         } else {
             // A run directory is immutable, so its FIRST write is reserved
             // atomically: the reservation covers the recorded-run check, the
@@ -302,6 +305,7 @@ final class OcrService
                 if ($reused !== null) {
                     $result = $reused['result'];
                     $written = $reused['written'];
+                    $this->figures->refreshReservation($disk, $doc->sourcePath, $prefix, $runKey);
                 } else {
                     $result = $driver->recognise(new OcrRequest(
                         bytes: $doc->bytes,

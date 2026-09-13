@@ -174,6 +174,44 @@ final class OcrIngestPipelineTest extends TestCase
         app(DocumentIngestor::class)->ingest('legal', $this->image(), title: 'Letter');
     }
 
+    /**
+     * ADR 0029 §6 — a reuse performs no write, so an old run reused by a new
+     * ingest must still count as in flight until the new row commits: the
+     * reuse refreshes the run's reservation (re-records result.json), and a
+     * hard delete inside the grace keeps the run.
+     */
+    public function test_a_reused_run_is_a_fresh_reservation_again(): void
+    {
+        $run = OcrFigureStore::runKeyFor((string) base64_decode(FakeOcrDriver::PNG_1X1, true), 'fake', 'fake;figures=1');
+        $result = "scans/again2.png.ocr/{$run}/result.json";
+        $figure = "scans/again2.png.ocr/{$run}/images/fig-1-1.png";
+        $first = app(DocumentIngestor::class)->ingest('legal', $this->image('scans/again2.png'), title: 'Again');
+        Storage::disk('kb')->assertExists($result);
+        // Age the recorded run well past the in-flight grace (real clock).
+        $stale = time() - OcrFigureStore::inFlightGraceSeconds() - 3600;
+        touch(Storage::disk('kb')->path($result), $stale);
+        touch(Storage::disk('kb')->path($figure), $stale);
+        $this->assertLessThan(time() - 60, Storage::disk('kb')->lastModified($result));
+
+        // Same bytes under another tenant: a reuse, not a new run.
+        $tenants = app(TenantContext::class);
+        $home = $tenants->current();
+        $tenants->set('other-tenant');
+        try {
+            $theirs = app(DocumentIngestor::class)->ingest('legal', $this->image('scans/again2.png'), title: 'Again');
+        } finally {
+            $tenants->set($home);
+        }
+        $this->assertTrue((bool) $theirs->metadata['converter']['ocr']['reused']);
+        $this->assertSame(1, UsageRecord::query()->where('purpose_tag', 'ocr')->count(), 'a reuse is not metered');
+        $this->assertGreaterThan(time() - 60, Storage::disk('kb')->lastModified($result), 'the reuse refreshed the reservation');
+
+        // The first tenant's hard delete cannot purge a run another row references — and
+        // even with the reference gate aside, the run is in flight again.
+        app(DocumentDeleter::class)->delete($first, force: true);
+        Storage::disk('kb')->assertExists($figure);
+    }
+
     public function test_re_ingesting_the_same_scan_is_the_usual_version_hash_no_op(): void
     {
         $first = app(DocumentIngestor::class)->ingest('legal', $this->image(), title: 'Letter');
