@@ -433,7 +433,7 @@ class DocumentIngestor
             $this->discardArtifact($artifact);
             throw $e;
         }
-        $this->publishArtifactOrLog($artifact, $document, $sourceType, $metadata);
+        $this->publishArtifactOrLog($artifact, $document);
 
         return $document;
     }
@@ -553,7 +553,7 @@ class DocumentIngestor
             $this->discardArtifact($artifact);
             throw $e;
         }
-        $this->publishArtifactOrLog($artifact, $document, $sourceType, $metadata);
+        $this->publishArtifactOrLog($artifact, $document);
 
         $this->dispatchCanonicalIndexerIfCanonical($document);
 
@@ -849,6 +849,9 @@ class DocumentIngestor
         $path = $existing->markdown_path;
         if (! is_string($path) || $path === '') {
             $this->publishArtifactOfPointerlessVersion($existing, $markdown, $existingMetadata, $disk, $store);
+            if (is_string($existing->markdown_path) && $existing->markdown_path !== '') {
+                $this->finalizeSourceRetentionOrLog($existing, $disk, $existing->markdown_path);
+            }
 
             return;
         }
@@ -863,14 +866,42 @@ class DocumentIngestor
             $current = $store->read($disk, $path);
             if (is_string($current) && hash('sha256', $current) === $expected) {
                 $this->recordContentHashIfMissing($existing, $expected);
-
-                return;
+            } else {
+                $store->publish($disk, $store->writeTemp($disk, $path, $markdown), $path);
+                $this->recordContentHashIfMissing($existing, $expected);
+                Log::info('DocumentIngestor: artifact repaired from an identical re-ingest', ['document_id' => $existing->id, 'disk' => $disk, 'markdown_path' => $path, 'was' => $current === null ? 'missing' : 'corrupt']);
             }
-            $store->publish($disk, $store->writeTemp($disk, $path, $markdown), $path);
-            $this->recordContentHashIfMissing($existing, $expected);
-            Log::info('DocumentIngestor: artifact repaired from an identical re-ingest', ['document_id' => $existing->id, 'disk' => $disk, 'markdown_path' => $path, 'was' => $current === null ? 'missing' : 'corrupt']);
         } catch (\Throwable $e) {
             Log::error('DocumentIngestor: artifact repair failed; reads keep falling back to reconstruction until kb:artifacts-backfill repairs it', ['document_id' => $existing->id, 'disk' => $disk, 'markdown_path' => $path, 'error' => $e->getMessage()]);
+
+            return;
+        }
+        // ADR 0030 §3 — the row's retention contract is finalized on every
+        // identical re-ingest whose artifact is verified, not only on the
+        // fresh ingest: an original re-uploaded after a `markdown_only` drop,
+        // or one kept because the key was locked, is dropped now.
+        $this->finalizeSourceRetentionOrLog($existing, $disk, $path);
+    }
+
+    /**
+     * The retention tail of an identical re-ingest is best effort, like the
+     * artifact publish of a fresh one (publishArtifactOrLog()): the row is
+     * already correct, and a failure here (a recorded disk since removed from
+     * the config, a lock store outage) must not fail a job whose retry would
+     * be a version-hash no-op (R14) — it is logged, and the next identical
+     * ingest or the backfill retries the drop.
+     */
+    private function finalizeSourceRetentionOrLog(KnowledgeDocument $existing, string $disk, string $final): void
+    {
+        try {
+            $this->finalizeSourceRetention($existing, $disk, $final);
+        } catch (\Throwable $e) {
+            Log::error('DocumentIngestor: markdown_only retention could not be finalized on an identical re-ingest; the next identical ingest or kb:artifacts-backfill retries the drop', [
+                'document_id' => (int) $existing->id,
+                'disk' => $disk,
+                'markdown_path' => $final,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 
@@ -885,7 +916,11 @@ class DocumentIngestor
         if (is_string($existing->content_hash) && $existing->content_hash !== '') {
             return;
         }
-        KnowledgeDocument::withoutGlobalScopes()->whereKey($existing->id)->update(['content_hash' => $hash]);
+        if ($existing->updateUnscopedWithinOwnTenant(['content_hash' => $hash]) === 0) {
+            Log::warning('DocumentIngestor: content_hash could not be recorded — the row is no longer the one read', ['document_id' => (int) $existing->id]);
+
+            return;
+        }
         $existing->content_hash = $hash;
     }
 
@@ -915,14 +950,32 @@ class DocumentIngestor
         $final = null;
         try {
             $final = $store->pathFor(app(TenantContext::class)->current(), (string) $existing->project_key, KbPath::normalize((string) $existing->source_path), (string) $existing->version_hash, $prefix);
-            KnowledgeDocument::withoutGlobalScopes()->whereKey($existing->id)->update(['markdown_path' => $final, 'content_hash' => $hash]);
+            if ($existing->updateUnscopedWithinOwnTenant(['markdown_path' => $final, 'content_hash' => $hash]) === 0) {
+                // No row took the pointer (the row changed underneath): bytes
+                // published now would be an orphan nobody points at (R4).
+                Log::warning('DocumentIngestor: no artifact published — the pointerless row is no longer the one read', ['document_id' => (int) $existing->id]);
+
+                return;
+            }
             $store->publish($disk, $store->writeTemp($disk, $final, $markdown), $final);
             $existing->markdown_path = $final;
             $existing->content_hash = $hash;
             Log::info('DocumentIngestor: artifact published for a version that predated the artifacts, from an identical re-ingest', ['document_id' => $existing->id, 'disk' => $disk, 'markdown_path' => $final]);
         } catch (\Throwable $e) {
+            // Two identical re-ingests of the same pointerless version can
+            // repair it at once: when THIS attempt fails but a verified
+            // artifact is already at the path (the other attempt's), the
+            // pointer stays — it points at the version's bytes — instead of
+            // erasing a healthy publication until the next repair.
+            if ($final !== null && $store->verifies($disk, $final, $hash)) {
+                $existing->markdown_path = $final;
+                $existing->content_hash = $hash;
+                Log::warning('DocumentIngestor: artifact publish failed but a verified artifact is already at the path (a concurrent repair); pointer kept', ['document_id' => $existing->id, 'disk' => $disk, 'markdown_path' => $final, 'error' => $e->getMessage()]);
+
+                return;
+            }
             if ($final !== null) {
-                KnowledgeDocument::withoutGlobalScopes()->whereKey($existing->id)->update(['markdown_path' => null, 'content_hash' => null]);
+                $existing->updateUnscopedWithinOwnTenant(['markdown_path' => null, 'content_hash' => null]);
             }
             Log::error('DocumentIngestor: artifact publish failed for a version that predated the artifacts; kb:artifacts-backfill can repair it', ['document_id' => $existing->id, 'disk' => $disk, 'error' => $e->getMessage()]);
         }
@@ -1003,15 +1056,14 @@ class DocumentIngestor
      * or to fail a job whose retry would be a version-hash no-op (R14).
      *
      * @param  array{disk: string, tmp: string, final: string}|null  $artifact
-     * @param  array<string,mixed>  $metadata
      */
-    private function publishArtifactOrLog(?array $artifact, KnowledgeDocument $document, string $sourceType, array $metadata): void
+    private function publishArtifactOrLog(?array $artifact, KnowledgeDocument $document): void
     {
         if ($artifact === null) {
             return;
         }
         try {
-            $this->publishArtifact($artifact, $document, $sourceType, $metadata);
+            $this->publishArtifact($artifact, $document);
         } catch (\Throwable $e) {
             $this->discardArtifact($artifact);
             Log::error('DocumentIngestor: artifact publish failed after commit; the row keeps its pointer and reads fall back to reconstruction until kb:artifacts-backfill repairs it', [
@@ -1036,19 +1088,36 @@ class DocumentIngestor
      * the orphan sweeps never read the missing file as an orphan.
      *
      * @param  array{disk: string, tmp: string, final: string}  $artifact
-     * @param  array<string,mixed>  $metadata
      */
-    private function publishArtifact(array $artifact, KnowledgeDocument $document, string $sourceType, array $metadata): void
+    private function publishArtifact(array $artifact, KnowledgeDocument $document): void
     {
         $store = app(ConversionArtifactStore::class);
         $store->publish($artifact['disk'], $artifact['tmp'], $artifact['final']);
+        $this->finalizeSourceRetention($document, $artifact['disk'], $artifact['final']);
+    }
 
-        // The drop is gated on THIS row's persisted contract, never on the
-        // configured mode of the day: a `full_copy` version re-embedded after
-        // `KB_SOURCE_RETENTION` moved to `markdown_only` keeps its original.
-        if ($this->sourceRetentionOf($metadata) !== SourceRetentionResolver::MARKDOWN_ONLY || $sourceType === 'markdown') {
-            return;
+    /**
+     * ADR 0030 §3 — apply the row's retention contract to its original once
+     * the row's artifact `$final` is on `$disk`: in `markdown_only` (the
+     * ROW's persisted stamp, never the configured mode of the day — a
+     * `full_copy` version re-embedded after `KB_SOURCE_RETENTION` moved keeps
+     * its original) the original binary is dropped under the storage key's
+     * lock when every other referencing row already has a verified artifact
+     * to stand in for it, and the rows are stamped `source_dropped`. Three
+     * callers, one gate: the fresh ingest, the identical re-ingest whose
+     * artifact was just verified, repaired or published for the first time,
+     * `kb:artifacts-backfill`.
+     *
+     * @return bool true when THIS call dropped the original
+     */
+    public function finalizeSourceRetention(KnowledgeDocument $document, string $disk, string $final): bool
+    {
+        $metadata = is_array($document->metadata) ? $document->metadata : [];
+        if ($this->sourceRetentionOf($metadata) !== SourceRetentionResolver::MARKDOWN_ONLY || (string) $document->source_type === 'markdown') {
+            return false;
         }
+        $store = app(ConversionArtifactStore::class);
+        $artifact = ['disk' => $disk, 'final' => $final];
         $prefix = array_key_exists('prefix', $metadata)
             ? (string) $metadata['prefix']
             : (string) config('kb.sources.path_prefix', '');
@@ -1056,11 +1125,11 @@ class DocumentIngestor
             $sourcePath = KbPath::normalize((string) $document->source_path);
             $original = $prefix === '' ? $sourcePath : KbPath::normalize($prefix.'/'.$sourcePath);
         } catch (\InvalidArgumentException) {
-            return;
+            return false;
         }
         $storage = Storage::disk($artifact['disk']);
         if ($original === $artifact['final'] || ! $storage->exists($original)) {
-            return;
+            return false;
         }
 
         // ADR 0030 §3 — the reference scan and the delete run under the
@@ -1079,19 +1148,20 @@ class DocumentIngestor
                 'path' => $original,
             ]);
 
-            return;
+            return false;
         }
         try {
-            $this->dropOriginalUnderLock($storage, $store, $artifact, $document, $original, $sourcePath);
+            return $this->dropOriginalUnderLock($storage, $store, $artifact, $document, $original, $sourcePath);
         } finally {
             $lock->release();
         }
     }
 
     /**
-     * @param  array{disk: string, tmp: string, final: string}  $artifact
+     * @param  array{disk: string, final: string}  $artifact
+     * @return bool true when the original was dropped
      */
-    private function dropOriginalUnderLock(Filesystem $storage, ConversionArtifactStore $store, array $artifact, KnowledgeDocument $document, string $original, string $sourcePath): void
+    private function dropOriginalUnderLock(Filesystem $storage, ConversionArtifactStore $store, array $artifact, KnowledgeDocument $document, string $original, string $sourcePath): bool
     {
         // The original is dropped only once this row's final move has
         // succeeded (publish() threw otherwise) AND every other referencing
@@ -1109,7 +1179,7 @@ class DocumentIngestor
                 'path' => $original,
             ]);
 
-            return;
+            return false;
         }
         if (! $storage->delete($original)) {
             Log::warning('DocumentIngestor: markdown_only retention could not drop the original after the artifact commit', [
@@ -1118,18 +1188,20 @@ class DocumentIngestor
                 'path' => $original,
             ]);
 
-            return;
+            return false;
         }
         // Bounded pass (R3): every referencing row is stamped chunk by chunk,
         // never materialised as a whole.
         $this->eachRowReferencingStorageKey($artifact['disk'], $original, $sourcePath, function (KnowledgeDocument $row): bool {
             $rowMetadata = is_array($row->metadata) ? $row->metadata : [];
-            if (($rowMetadata['source_dropped'] ?? false) !== true) {
-                KnowledgeDocument::withoutGlobalScopes()->whereKey($row->id)->update(['metadata' => array_merge($rowMetadata, ['source_dropped' => true])]);
+            if (($rowMetadata['source_dropped'] ?? false) !== true && $row->updateUnscopedWithinOwnTenant(['metadata' => array_merge($rowMetadata, ['source_dropped' => true])]) === 0) {
+                Log::warning('DocumentIngestor: source_dropped could not be stamped — the row is no longer the one read; the orphan sweeps fail closed on a missing file', ['document_id' => (int) $row->id]);
             }
 
             return true;
         });
+
+        return true;
     }
 
     /**
@@ -1185,7 +1257,9 @@ class DocumentIngestor
     {
         KnowledgeDocument::withoutGlobalScopes()
             ->where('source_path', $sourcePath)
-            ->select(['id', 'source_path', 'markdown_path', 'content_hash', 'document_hash', 'metadata'])
+            // `tenant_id` rides along: the stamp write is bound to each row's
+            // OWN tenant (updateUnscopedWithinOwnTenant, R30).
+            ->select(['id', 'tenant_id', 'source_path', 'markdown_path', 'content_hash', 'document_hash', 'metadata'])
             ->orderBy('id')
             ->chunkById(200, function ($chunk) use ($disk, $fullPath, $each): bool {
                 foreach ($chunk as $row) {

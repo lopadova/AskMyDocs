@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Console\Commands;
 
 use App\Models\KnowledgeDocument;
+use App\Services\Kb\DocumentIngestor;
 use App\Services\Kb\Pipeline\PipelineRegistry;
 use App\Services\Kb\Pipeline\SourceDocument;
 use App\Services\Kb\Versioning\ConversionArtifactStore;
@@ -48,6 +49,7 @@ final class KbArtifactsBackfillCommand extends Command
     public function handle(
         ConversionArtifactStore $store,
         PipelineRegistry $registry,
+        DocumentIngestor $ingestor,
         TenantContext $tenants,
     ): int {
         $tenant = trim((string) $this->option('tenant'));
@@ -68,9 +70,9 @@ final class KbArtifactsBackfillCommand extends Command
         $previous = $tenants->current();
         $tenants->set($tenant);
         try {
-            $this->candidates($tenant, $project)->chunkById(100, function ($rows) use ($store, $registry, $tenant, $dryRun, &$counts): void {
+            $this->candidates($tenant, $project)->chunkById(100, function ($rows) use ($store, $registry, $ingestor, $tenant, $dryRun, &$counts): void {
                 foreach ($rows as $row) {
-                    $counts[$this->backfill($row, $store, $registry, $tenant, $dryRun)]++;
+                    $counts[$this->backfill($row, $store, $registry, $ingestor, $tenant, $dryRun)]++;
                 }
             });
         } finally {
@@ -99,7 +101,7 @@ final class KbArtifactsBackfillCommand extends Command
         return $query;
     }
 
-    private function backfill(KnowledgeDocument $row, ConversionArtifactStore $store, PipelineRegistry $registry, string $tenant, bool $dryRun): string
+    private function backfill(KnowledgeDocument $row, ConversionArtifactStore $store, PipelineRegistry $registry, DocumentIngestor $ingestor, string $tenant, bool $dryRun): string
     {
         $metadata = is_array($row->metadata) ? $row->metadata : [];
         // The ROW's contract decides — a persisted invalid value resolves to
@@ -125,9 +127,12 @@ final class KbArtifactsBackfillCommand extends Command
                 // integrity instead of `unverified` forever.
                 if (! $dryRun && (! is_string($row->content_hash) || $row->content_hash === '')) {
                     // The same integrity-only write as the identical re-ingest
-                    // (DocumentIngestor::recordContentHashIfMissing): no
-                    // `updated_at` bump, no observer — the version did not change.
-                    KnowledgeDocument::withoutGlobalScopes()->whereKey($row->id)->update(['content_hash' => (string) $row->document_hash]);
+                    // (DocumentIngestor::recordContentHashIfMissing): bound to
+                    // the row's own tenant (R30). A row that is no longer the
+                    // one read is reported, not silently skipped (R4).
+                    if ($row->updateUnscopedWithinOwnTenant(['content_hash' => (string) $row->document_hash]) === 0) {
+                        $this->line("  #{$row->id} {$row->source_path}: verified, but the content_hash could not be recorded (row changed underneath)");
+                    }
                 }
 
                 return 'already_stored';
@@ -217,7 +222,24 @@ final class KbArtifactsBackfillCommand extends Command
 
             return 'conversion_failed';
         }
-        $this->line("  #{$row->id} {$sourcePath}: written {$final}");
+        // ADR 0030 §3 — the row's retention contract is applied once its
+        // artifact is on disk and verified, exactly as after a fresh ingest:
+        // for a `markdown_only` row the original is dropped under the storage
+        // key's lock when no other referencing row still requires it, and the
+        // rows are stamped `source_dropped`. A repair that stopped short of
+        // this would leave the advertised retention transition half done.
+        // The artifact IS written whatever happens next: a retention tail
+        // that fails (a removed disk, a lock store outage) is reported on the
+        // row's line and the run goes on — never a stack trace mid-corpus
+        // that loses the counts of the rows already repaired (R14).
+        try {
+            $dropped = $ingestor->finalizeSourceRetention($row, $disk, $final);
+        } catch (\Throwable $e) {
+            $this->line("  #{$row->id} {$sourcePath}: written {$final} (retention not finalized: {$e->getMessage()})");
+
+            return 'written';
+        }
+        $this->line("  #{$row->id} {$sourcePath}: written {$final}".($dropped ? ' (original dropped: markdown_only)' : ''));
 
         return 'written';
     }

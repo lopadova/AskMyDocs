@@ -412,6 +412,40 @@ final class ArtifactsRetentionCommandsTest extends TestCase
         $this->assertSame('full_copy', $recorded->fresh()->metadata['source_retention'], 'the row keeps its own contract');
     }
 
+    /** ADR 0030 §3 — a backfill write applies the row's retention contract: a `markdown_only` row's original goes through the same reference-aware gate as ingest. */
+    public function test_backfill_applies_the_rows_retention_contract_after_a_write(): void
+    {
+        config(['kb.ocr.enabled' => true, 'kb.ocr.driver' => 'fake', 'kb.ocr.fake.pages' => [['markdown' => 'scanned text']]]);
+        $cache = \Mockery::mock(\App\Services\Kb\EmbeddingCacheService::class);
+        $cache->shouldReceive('generate')->andReturnUsing(
+            fn (array $texts) => new \App\Ai\EmbeddingsResponse(embeddings: array_map(fn () => array_fill(0, 8, 0.0), $texts), provider: 'fake', model: 'fake-8'),
+        );
+        $this->app->instance(\App\Services\Kb\EmbeddingCacheService::class, $cache);
+        $tenant = app(TenantContext::class)->current();
+        $png = (string) base64_decode(\App\Services\Kb\Ocr\Drivers\FakeOcrDriver::PNG_1X1, true);
+        Storage::disk('kb')->put('scans/dropme.png', $png);
+        config(['kb.source_retention.mode' => 'markdown_only']);
+        $row = app(\App\Services\Kb\DocumentIngestor::class)->ingest('eng', new \App\Services\Kb\Pipeline\SourceDocument(
+            sourcePath: 'scans/dropme.png', mimeType: 'image/png', bytes: $png,
+            externalUrl: null, externalId: null, connectorType: 'local', metadata: ['disk' => 'kb', 'prefix' => ''],
+        ), 'Drop me');
+        Storage::disk('kb')->assertMissing('scans/dropme.png');
+        $artifact = (string) $row->markdown_path;
+        // The artifact is lost and the original comes back (a restore from backup): the row is `markdown_only` with a full copy on disk again.
+        Storage::disk('kb')->delete($artifact);
+        Storage::disk('kb')->put('scans/dropme.png', $png);
+        KnowledgeDocument::withoutGlobalScopes()->whereKey($row->id)->update(['metadata' => array_diff_key($row->fresh()->metadata, ['source_dropped' => true])]);
+
+        $this->artisan('kb:artifacts-backfill', ['--tenant' => $tenant])
+            ->expectsOutputToContain('(original dropped: markdown_only)')
+            ->expectsOutputToContain('already_stored=0 written=1 intentionally_missing=0 source_missing=0 hash_mismatch=0 conversion_failed=0')
+            ->assertExitCode(0);
+
+        Storage::disk('kb')->assertExists($artifact);
+        Storage::disk('kb')->assertMissing('scans/dropme.png');
+        $this->assertTrue($row->fresh()->metadata['source_dropped']);
+    }
+
     /** R14 — a configured prefix that cannot form an artifact root is a reported failure, never an unhandled crash. */
     public function test_prune_reports_a_traversing_prefix_as_a_failed_sweep(): void
     {

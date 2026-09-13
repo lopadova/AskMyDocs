@@ -438,6 +438,70 @@ Inert knob.", 'docs/inert.md');
         $this->assertSame('markdown_only', $doc->fresh()->metadata['source_retention'], 'the contract is recorded; the next identical ingest retries the drop');
     }
 
+    /** ADR 0030 §3 — the retention contract is finalized on the identical re-ingest too: an original re-uploaded after a `markdown_only` drop is dropped again and the rows stamped. */
+    public function test_an_identical_re_ingest_after_a_re_upload_drops_the_original_again(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => true, 'kb.source_retention.mode' => 'markdown_only']);
+        $bytes = PdfFixtureBuilder::buildThreePageSample();
+        Storage::disk('kb')->put('reports/q13.pdf', $bytes);
+        $source = new SourceDocument(
+            sourcePath: 'reports/q13.pdf', mimeType: 'application/pdf', bytes: $bytes,
+            externalUrl: null, externalId: null, connectorType: 'local', metadata: ['disk' => 'kb', 'prefix' => ''],
+        );
+        $doc = app(DocumentIngestor::class)->ingest('eng', $source, 'Q13');
+        Storage::disk('kb')->assertMissing('reports/q13.pdf');
+        $this->assertTrue($doc->fresh()->metadata['source_dropped']);
+
+        // The operator re-uploads the same binary (a sync, a copy back) …
+        Storage::disk('kb')->put('reports/q13.pdf', $bytes);
+        KnowledgeDocument::withoutGlobalScopes()->whereKey($doc->id)->update(['metadata' => array_diff_key($doc->fresh()->metadata, ['source_dropped' => true])]);
+
+        // … and the identical re-ingest (same version, artifact verified) applies the row's contract again.
+        $again = app(DocumentIngestor::class)->ingest('eng', $source, 'Q13');
+
+        $this->assertSame($doc->id, $again->id);
+        Storage::disk('kb')->assertMissing('reports/q13.pdf');
+        $this->assertTrue($again->fresh()->metadata['source_dropped']);
+        Storage::disk('kb')->assertExists((string) $again->markdown_path);
+    }
+
+    /** R30 — an integrity write that bypasses the tenant scope is still bound to the row's own tenant: a row that is no longer the one read is not written. */
+    public function test_unscoped_integrity_writes_carry_the_rows_own_tenant(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => true]);
+        $doc = $this->ingestMarkdown("# Tenant\n\nBound.", 'docs/tenant-bound.md');
+        $this->assertSame(1, $doc->updateUnscopedWithinOwnTenant(['content_hash' => str_repeat('a', 64)]));
+        $this->assertSame(str_repeat('a', 64), $doc->fresh()->content_hash);
+
+        \Illuminate\Support\Facades\DB::table('knowledge_documents')->where('id', $doc->id)->update(['tenant_id' => 'someone-else']);
+
+        $this->assertSame(0, $doc->updateUnscopedWithinOwnTenant(['content_hash' => str_repeat('b', 64)]), 'the write is bound to the tenant the row was read under');
+        $this->assertSame(str_repeat('a', 64), KnowledgeDocument::withoutGlobalScopes()->whereKey($doc->id)->value('content_hash'));
+    }
+
+    /** Two identical re-ingests can repair the same pointerless version at once: an attempt that fails while a verified artifact is already at the path keeps the pointer instead of erasing the other attempt's publication. */
+    public function test_a_failed_pointerless_publish_keeps_the_pointer_when_a_verified_artifact_is_already_there(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => true]);
+        $markdown = "# Pointerless\n\nRepaired by two workers.";
+        $doc = $this->ingestMarkdown($markdown, 'docs/pointerless-race.md');
+        $final = (string) $doc->markdown_path;
+        Storage::disk('kb')->assertExists($final);
+        // The row predates the artifacts (no pointer) while the other worker's publication is already on disk …
+        KnowledgeDocument::withoutGlobalScopes()->whereKey($doc->id)->update(['markdown_path' => null, 'content_hash' => null]);
+        // … and THIS worker's temp write is refused (a full disk, a lost mount); everything already there still reads.
+        $root = Storage::disk('kb')->path('');
+        $adapter = new \Tests\Fixtures\Storage\WriteRefusingAdapter(new \League\Flysystem\Local\LocalFilesystemAdapter($root), static fn (string $path): bool => str_ends_with($path, '.tmp'));
+        Storage::set('kb', new \Illuminate\Filesystem\FilesystemAdapter(new \League\Flysystem\Filesystem($adapter), $adapter, ['root' => $root]));
+
+        $again = $this->ingestMarkdown($markdown, 'docs/pointerless-race.md');
+
+        $this->assertSame($doc->id, $again->id);
+        $this->assertSame($final, $again->fresh()->markdown_path, 'the pointer stays on the verified artifact');
+        $this->assertSame(hash('sha256', $markdown), $again->fresh()->content_hash);
+        Storage::disk('kb')->assertExists($final);
+    }
+
     /** SEC-SETTING-SHAPE-001 — a lock TTL that is not a positive number of seconds is the documented default, not a 1-second lock, and it is said once. */
     public function test_a_non_positive_lock_ttl_falls_back_to_the_default_and_warns(): void
     {

@@ -679,7 +679,11 @@ modal, once as an IMAP attachment — on a deployment with `KB_OCR_ENABLED=true`
   non-Markdown source — nothing waits on it with the flag off), and a sibling
   artifact counts only when its bytes verify. Like the OCR run lock it needs an
   atomic lock store (Redis) in production; `KB_CONVERSION_ARTIFACTS_SOURCE_LOCK_WAIT`
-  / `KB_CONVERSION_ARTIFACTS_SOURCE_LOCK_TTL` tune it (10 s / 60 s).
+  / `KB_CONVERSION_ARTIFACTS_SOURCE_LOCK_TTL` tune it (10 s / 60 s). The gate
+  runs on every path that leaves a verified artifact behind — the fresh
+  ingest, an identical re-ingest whose artifact was just verified, repaired or
+  published for the first time, a `kb:artifacts-backfill` write — so an original re-uploaded after a drop, or
+  kept because the key was locked, is dropped the next time round.
 - **A refused delete is a failed prune.** `kb:prune-archived-versions` reports
   `artifacts_failed` / `artifact_temps_failed` / `artifact_orphans_failed` /
   `ocr_failed` and exits non-zero when the disk refused a removal (or a

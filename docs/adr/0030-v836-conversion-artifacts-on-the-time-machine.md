@@ -167,7 +167,12 @@ referencing rows (R3) and stops at the first that still requires the
 original. The scan and the delete run under the storage key's lock
 (`kb:source:{disk}:{sha1(key)}`), the same lock every persist path holds
 around its row commit, so a concurrent ingest of the same `(disk, path)`
-cannot commit a `full_copy` row between the two halves; a lock that cannot be
+cannot commit a `full_copy` row between the two halves. The gate is one method
+(`DocumentIngestor::finalizeSourceRetention()`) with three callers — the fresh
+ingest, the identical re-ingest whose artifact was just verified, repaired or
+published for the first time, `kb:artifacts-backfill` after a write — so an original re-uploaded after a
+drop, or kept because the key was locked, is dropped the next time any of
+them leaves a verified artifact behind; a lock that cannot be
 taken keeps the original (the conservative direction). The lock is taken only
 where a drop is possible at all — an artifact being stored for a non-Markdown
 source — so with the flag off, in `reference_only`, in a dry run or for a
