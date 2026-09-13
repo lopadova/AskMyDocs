@@ -90,10 +90,14 @@ verbatim**: each is admitted only when it matches
 `^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$` (no `/`, no `..`) and is otherwise
 replaced by `h-` + the first 24 hex of its SHA-256; the composed path is
 normalised with `KbPath::normalize()` and must resolve **inside** the artifact
-root — a string check on the normalised path (`str_starts_with($path,
-$root.'/')`), which is what a disk-agnostic store can verify; `KbPath::normalize()`
-has already rejected `.` and `..` segments, so no traversal survives to the
-check. The `.artifacts/` root
+root. Two checks, by disk kind: the lexical one on every disk — a string
+check on the normalised path (`str_starts_with($path, $root.'/')`), after
+`KbPath::normalize()` has rejected `.` and `..` segments, so no traversal
+survives it — and, on a **local** disk, a `realpath` check on every read,
+delete and publish (the file's real path when it exists, its parent's
+otherwise, and the published file's after the move) that refuses a path a
+symlink planted under `.artifacts/` makes resolve outside the real root.
+Object stores have no symlinks: there the lexical check is the whole check. The `.artifacts/` root
 is a generated-asset subtree (`KbPath::isGeneratedAsset()`, ADR 0029): the
 folder walker and the orphan sweeps never read it back as a source.
 
@@ -123,7 +127,14 @@ drop runs after it, never on the database commit alone — and only when every
 other row referencing the same storage key (any tenant, trashed included) has
 its artifact **present on disk**: a `markdown_path` whose file never landed (a
 publish that failed after commit, repaired later by the backfill) does not
-stand in for the original. A kept original is logged with the blocking row
+stand in for the original. The gate also honours each row's own **retention
+contract**: every row records the mode it was ingested under
+(`metadata.source_retention`), and a shared original is dropped only when
+every referencing row was ingested under a mode that does not require it — a
+`full_copy` row (or a pre-v8.36 row without the stamp, which counts as
+`full_copy`) blocks the drop even with its artifact present; a
+`reference_only` row never needed the local source; a `markdown_only` row
+needs its artifact on disk. A kept original is logged with the blocking row
 (R4 return checked on the delete).
 
 Turning the flag on populates nothing by itself, so `kb:artifacts-backfill
@@ -194,9 +205,15 @@ the Time Machine list (additive fields only, R27).
 
 ### 5. `diff` prefers artifacts, falls back to reconstruction
 
-`DocumentVersionService::contentFor(KnowledgeDocument $v): string` returns
-the artifact when `markdown_path` is set and the file exists, otherwise
-`reconstructContent()`. `diff()` uses `contentFor()` on both sides and reports
+`DocumentVersionService::contentFor(KnowledgeDocument $v)` returns the
+artifact when `markdown_path` is set, the file exists **and its bytes hash to
+`content_hash`** — `content_hash` is the integrity check, so it is checked on
+every read: a truncated or replaced file is logged, degrades to
+`reconstructContent()` and says so (`integrity: mismatch`; `verified` when the
+hash matched, `null` when there was nothing to check against — a row without
+`content_hash`). The content endpoint carries `integrity`, the diff
+`from_integrity` / `to_integrity` (additive, R27), so a tampered artifact is
+never presented as a faithful side. Otherwise `reconstructContent()`. `diff()` uses `contentFor()` on both sides and reports
 which source each side came from (`from_source` / `to_source` ∈
 `artifact | reconstruction`) so the UI can say when a diff is faithful and when
 it is an index diff. Both branches are tested (R43): two versions with
@@ -262,7 +279,7 @@ deletion, with the row and the source it came from (§3, *Erasure*).
 
 `KbDocumentVersionsTool` (read) lists a document's family with `id`, `status`,
 `is_live`, `version_actor`, `version_reason`, `content_hash`,
-`has_artifact`, `indexed_at`, tenant-scoped through the same service (R30,
+`has_artifact`, `restored_by`, `restored_at` (§6), `indexed_at`, tenant-scoped through the same service (R30,
 R44). It reads; it never restores. `kb:doc-versions {document} {--tenant=}` is
 the CLI over the same service — `--tenant` validated non-empty and the
 document resolved with `forTenant()`, never the process-global default.

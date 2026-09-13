@@ -322,7 +322,10 @@ figures a row is about to point at. The run directory itself is therefore the
 `KB_OCR_PURGE_GRACE_SECONDS` (default 1800, well above the lease plus the
 longest ingest tail) is *in flight* and is never purged — neither by
 `DocumentDeleter`'s hard delete, which then keeps the tree and reports it,
-nor by the orphan sweep. A run that never gains a row (its ingest failed after
+nor by the orphan sweep. A **reuse** performs no write of its own, so it
+refreshes the reservation explicitly: `result.json` is re-recorded with the
+same bytes and the reused run is in flight again until the new row commits —
+an old run can never be reused and purged in the same window. A run that never gains a row (its ingest failed after
 recording, or the last row went while it was young) is a *dangling* tree —
 `{source}.ocr/` with the source gone from the disk and from every row of any
 tenant, trashed included — and `kb:prune-orphan-files` removes it once it has
