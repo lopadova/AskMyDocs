@@ -34,6 +34,16 @@ test.describe('Admin KB Upload', () => {
         await page.getByTestId('kb-upload-open').click();
         await expect(page.getByTestId('kb-upload-modal')).toBeVisible();
 
+        // R18 — the picker filters on the extensions the real /api/auth/me
+        // delivers (SourceType::knownExtensions(), images only with OCR on),
+        // not on a list the SPA keeps: the two must match byte for byte.
+        const me = await (await page.request.get('/api/auth/me')).json() as { kb_upload: { accepted_extensions: string[] } };
+        expect(me.kb_upload.accepted_extensions).toContain('md');
+        await expect(page.getByTestId('kb-upload-file-input')).toHaveAttribute(
+            'accept',
+            me.kb_upload.accepted_extensions.map((e) => `.${e}`).join(','),
+        );
+
         // Pick the first real project (derived from the DB, R18) — never a literal.
         await page.getByTestId('kb-upload-project-select').selectOption({ index: 1 });
 

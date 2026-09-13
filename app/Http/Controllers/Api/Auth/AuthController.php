@@ -218,6 +218,13 @@ class AuthController extends Controller
                 'invitations_admin' => (bool) config('invitations-admin.enabled', false),
                 'system_admin' => $user->can(\App\Support\PlatformAccess::PLATFORM_ADMIN_PERMISSION),
             ],
+            // R27 additive / R18 — the file types the KB upload accepts, from
+            // the ONE source of truth (`SourceType::knownExtensions()`, images
+            // only while OCR is on, R43) so the SPA picker never keeps a second
+            // literal list a future ingest-supported format would miss.
+            'kb_upload' => [
+                'accepted_extensions' => \App\Support\Kb\SourceType::knownExtensions((bool) config('kb.ocr.enabled', false)),
+            ],
         ], 200);
     }
 }

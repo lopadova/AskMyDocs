@@ -207,11 +207,29 @@ final class MistralOcrDriver implements OcrDriver
         $maxFigureBytes = max(1, (int) config('kb.ocr.max_figure_bytes', 10 * 1024 * 1024));
 
         $pages = [];
-        foreach (array_values($payload['pages']) as $i => $page) {
-            if (! is_array($page)) {
-                continue;
+        // SEC-EXTRESP-001 — the provider's page numbering is untrusted: a
+        // page `index` must be a whole number inside the range of the list
+        // it belongs to, and no two pages may claim the same number. A
+        // duplicate would make two figures collide on one `fig-p-n` path and
+        // an out-of-range index would persist a bogus `## Page` heading —
+        // the service's count check (exactly the admitted pages) sees
+        // neither, so both are refused here before anything is stored.
+        $entries = array_values(array_filter($payload['pages'], 'is_array'));
+        $seen = [];
+        foreach ($entries as $i => $page) {
+            $index = $page['index'] ?? $i;
+            if (! is_int($index) || $index < 0 || $index >= count($entries)) {
+                throw new RuntimeException(sprintf(
+                    'Mistral OCR returned an invalid page index (%s) for "%s".',
+                    is_scalar($index) ? var_export($index, true) : gettype($index),
+                    $request->filename,
+                ));
             }
-            $number = (int) ($page['index'] ?? $i) + 1;
+            $number = $index + 1;
+            if (isset($seen[$number])) {
+                throw new RuntimeException(sprintf('Mistral OCR returned page %d twice for "%s".', $number, $request->filename));
+            }
+            $seen[$number] = true;
             $markdown = (string) ($page['markdown'] ?? '');
             $figures = [];
             foreach (array_values((array) ($page['images'] ?? [])) as $n => $image) {
@@ -254,6 +272,7 @@ final class MistralOcrDriver implements OcrDriver
         if ($pages === []) {
             throw new RuntimeException(sprintf('Mistral OCR returned no pages for "%s".', $request->filename));
         }
+        usort($pages, static fn (OcrPage $a, OcrPage $b): int => $a->number <=> $b->number);
 
         return new OcrResult(
             driver: $this->name(),

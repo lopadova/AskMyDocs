@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { useAuthStore } from '../../../../lib/auth-store';
 import { UploadDropzone } from './UploadDropzone';
 import { OcrEstimateLine } from './OcrEstimateLine';
 import {
@@ -26,11 +27,18 @@ import {
  * errors next to context).
  */
 
-// v8.36 — images are listed so the picker offers them; whether they are
-// ACCEPTED is the server's call (StageKbUploadRequest gates on
-// KB_OCR_ENABLED and answers 422 when OCR is off — the error surfaces in the
-// DOM, R14/R43).
-const ACCEPT = '.md,.markdown,.txt,.pdf,.docx,.png,.jpg,.jpeg,.tif,.tiff,.webp';
+/**
+ * v8.36 / R18 — the picker's `accept` derives from the extensions the server
+ * delivered on `/api/auth/me` (`SourceType::knownExtensions()`: images only
+ * while KB_OCR_ENABLED is on, R43), never from a second literal list here.
+ * Until they arrive the picker is unfiltered: acceptance is the server's
+ * call anyway (StageKbUploadRequest answers 422 and the error surfaces in
+ * the DOM, R14).
+ */
+export function acceptAttribute(extensions: readonly string[]): string | undefined {
+    const cleaned = extensions.map((e) => e.trim().replace(/^\./, '').toLowerCase()).filter((e) => e !== '');
+    return cleaned.length === 0 ? undefined : cleaned.map((e) => `.${e}`).join(',');
+}
 
 type Phase = 'selecting' | 'staging' | 'review' | 'committing' | 'progress' | 'done' | 'error';
 
@@ -55,6 +63,7 @@ function errMessage(err: unknown): string {
 }
 
 export function UploadModal({ seed, defaultProject, projectOptions, onClose, onCommitted }: UploadModalProps): ReactNode {
+    const accept = useAuthStore((s) => acceptAttribute(s.kbUploadAcceptedExtensions));
     const [phase, setPhase] = useState<Phase>('selecting');
     const [projectKey, setProjectKey] = useState(seed?.projectKey ?? defaultProject ?? '');
     const [subPath, setSubPath] = useState(seed?.subPath ?? '');
@@ -295,7 +304,7 @@ export function UploadModal({ seed, defaultProject, projectOptions, onClose, onC
                         </div>
 
                         {phase === 'selecting' && (
-                            <UploadDropzone onAddFiles={(f) => setPickedFiles((prev) => [...prev, ...f])} accept={ACCEPT} />
+                            <UploadDropzone onAddFiles={(f) => setPickedFiles((prev) => [...prev, ...f])} accept={accept} />
                         )}
 
                         {/* Picked-but-not-staged file names. */}

@@ -201,6 +201,29 @@ final class KbUploadOcrTest extends TestCase
             ->assertJsonPath('data.items.0.reason', 'too_many_bytes');
     }
 
+    /**
+     * The estimate applies the SAME magic-byte check the service applies
+     * before a driver runs: a staged object replaced since upload by bytes
+     * that are no raster is refused with the reason commit would give,
+     * never priced as a run that cannot start.
+     */
+    public function test_estimate_refuses_a_staged_image_whose_bytes_are_no_longer_a_raster(): void
+    {
+        config(['kb.ocr.enabled' => true]);
+        $admin = $this->makeAdmin();
+        $batchId = $this->actingAs($admin)->post('/api/admin/kb/uploads', ['project_key' => 'legal', 'files' => [$this->png('a.png')]])
+            ->assertStatus(201)->json('batch.id');
+        $item = KbIngestBatchItem::query()->where('batch_id', $batchId)->firstOrFail();
+        Storage::disk('kb-staging')->put((string) $item->staging_path, '%PDF-1.4 not an image any more');
+
+        $this->actingAs($admin)->getJson("/api/admin/kb/uploads/{$batchId}/estimate")
+            ->assertOk()
+            ->assertJsonPath('data.items.0.would_ocr', false)
+            ->assertJsonPath('data.items.0.pages', 0)
+            ->assertJsonPath('data.items.0.reason', 'unrecognised_bytes')
+            ->assertJsonPath('data.total_pages', 0);
+    }
+
     public function test_a_staged_jpeg_keeps_its_real_extension_on_the_staging_disk(): void
     {
         config(['kb.ocr.enabled' => true]);

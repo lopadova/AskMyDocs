@@ -87,9 +87,19 @@ export function OcrEstimateLine({ state, estimate, errorMessage }: OcrEstimateLi
             uncountable > 0 ? `${files(uncountable)} ha${uncountable === 1 ? 's' : 've'} a page count that cannot be verified (the PDF could not be parsed), which the configured ${estimate.driver} driver refuses to run without` : '',
             multiFrame > 0 ? `${files(multiFrame)} ${multiFrame === 1 ? 'is a multi-frame TIFF' : 'are multi-frame TIFFs'} the ${estimate.driver} driver would transcribe one frame of (split into one image per page)` : '',
         ].filter(Boolean).join('; ') + ' — refused before any driver runs.';
-    const unreadableNote = unreadable.length === 0
-        ? ''
-        : `${files(unreadable.length)} cannot be read on the staging disk (missing or unreadable) — committing will fail ${unreadable.length === 1 ? 'it' : 'them'}.`;
+    // A staged object whose bytes are no raster the OCR path serves (a file
+    // replaced or corrupted since upload) is refused at commit with the same
+    // reason the estimate gives here: it must be stated, never counted as
+    // "nothing needs OCR" (R14).
+    const notImage = estimate.items.filter((i) => i.reason === 'unrecognised_bytes');
+    const unreadableNote = [
+        unreadable.length === 0
+            ? ''
+            : `${files(unreadable.length)} cannot be read on the staging disk (missing or unreadable) — committing will fail ${unreadable.length === 1 ? 'it' : 'them'}.`,
+        notImage.length === 0
+            ? ''
+            : `${files(notImage.length)} ${notImage.length === 1 ? 'is' : 'are'} not the image ${notImage.length === 1 ? 'its' : 'their'} name claims (the staged bytes are no PNG, JPEG, TIFF or WebP) — committing will fail ${notImage.length === 1 ? 'it' : 'them'}.`,
+    ].filter(Boolean).join(' ');
     const problems = [refusal, unreadableNote].filter(Boolean).join(' ');
 
     // R14 — never promise a run the server will refuse: the driver cannot

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Kb\Ocr;
 
+use Illuminate\Support\Facades\Log;
 use Symfony\Component\Process\Exception\RuntimeException as ProcessRuntimeException;
 use Symfony\Component\Process\Process;
 
@@ -37,20 +38,27 @@ final class PdfTextFallback
     }
 
     /**
-     * Same threshold the text-layer probe applies to the parser's text:
-     * whitespace stripped, at least `text_layer_probe.min_text_chars`.
+     * The SAME per-page rule the text-layer probe applies to the parser's
+     * text: a page carries text when, whitespace stripped, it holds at least
+     * `text_layer_probe.min_text_chars` characters (any character at all
+     * when the threshold is zero). The document has text when at least one
+     * page qualifies — never when many short pages merely add up to the
+     * threshold, which would send a scanned page down the text path and
+     * silently skip its OCR.
      *
      * @param  list<string>  $pages
      */
     public function hasText(array $pages): bool
     {
         $minChars = max(0, (int) config('kb.ocr.text_layer_probe.min_text_chars', 20));
-        $chars = 0;
         foreach ($pages as $page) {
-            $chars += mb_strlen((string) preg_replace('/\s+/u', '', $page));
+            $pageChars = mb_strlen((string) preg_replace('/\s+/u', '', $page));
+            if ($minChars > 0 ? $pageChars >= $minChars : $pageChars > 0) {
+                return true;
+            }
         }
 
-        return $chars >= $minChars;
+        return false;
     }
 
     /**
@@ -84,7 +92,7 @@ final class PdfTextFallback
             $text = $process->getOutput();
             $pages = preg_split("/\f/", $text);
             if ($pages === false || $pages === []) {
-                return [$text];
+                $pages = [$text];
             }
             // pdftotext frequently emits a trailing form-feed after the last
             // page, which surfaces here as one or more trailing empty OR
@@ -93,14 +101,42 @@ final class PdfTextFallback
             while ($pages !== [] && trim((string) end($pages)) === '') {
                 array_pop($pages);
             }
-
-            return $pages === [] ? [$text] : $pages;
-        } finally {
-            // Per CLAUDE.md R7 (no @-silenced errors): explicit guard +
-            // unsuppressed unlink; is_file() covers a concurrent removal.
-            if (is_file($tmp)) {
-                unlink($tmp);
-            }
+        } catch (\Throwable $e) {
+            // The run failed: the copy still has to go, but the failure the
+            // caller sees is the run's — a cleanup that fails on top of it
+            // is logged, not thrown over it.
+            $this->removeTemp($tmp, $e);
+            throw $e;
         }
+        // The run succeeded: a copy of the document that cannot be removed
+        // is a retained artifact in the shared temp directory, and that is a
+        // failure the caller must see (R4/SEC-RETENTION-001), never a
+        // success that silently kept the bytes behind.
+        $this->removeTemp($tmp, null);
+
+        return $pages === [] ? [$text] : $pages;
+    }
+
+    /**
+     * Per CLAUDE.md R7 (no @-silenced errors): explicit guard + unsuppressed
+     * unlink; is_file() covers a concurrent removal. With no exception in
+     * flight a failed removal throws; with one, it is logged so the original
+     * failure is the one that surfaces.
+     */
+    private function removeTemp(string $tmp, ?\Throwable $inFlight): void
+    {
+        if (! is_file($tmp)) {
+            return;
+        }
+        if (unlink($tmp)) {
+            return;
+        }
+        if ($inFlight === null) {
+            throw new \RuntimeException("Failed to remove the temporary PDF file {$tmp} after the pdftotext run.");
+        }
+        Log::warning('PdfTextFallback: temporary PDF file could not be removed after a failed pdftotext run', [
+            'path' => $tmp,
+            'exception' => $inFlight::class,
+        ]);
     }
 }

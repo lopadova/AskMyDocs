@@ -14,6 +14,9 @@ class PruneOrphanFilesCommandTest extends TestCase
 {
     use RefreshDatabase;
 
+    /** A run key has the store's shape: the 64 hex chars of a SHA-256. */
+    private const RUN = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -105,8 +108,8 @@ class PruneOrphanFilesCommandTest extends TestCase
 
         Storage::disk('kb')->put('docs/kept.md', 'k');
         Storage::disk('kb')->put('docs/orphan.md', 'o');
-        Storage::disk('kb')->put('docs/orphan.md.ocr/0123456789abcdef/images/fig-1-1.png', 'figure');
-        Storage::disk('kb')->put('docs/orphan.md.ocr/0123456789abcdef/result.json', '{}');
+        Storage::disk('kb')->put('docs/orphan.md.ocr/'.self::RUN.'/images/fig-1-1.png', 'figure');
+        Storage::disk('kb')->put('docs/orphan.md.ocr/'.self::RUN.'/result.json', '{}');
         Storage::disk('kb')->put('docs/kept.md.ocr/fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210/notes.md', 'not a source');
 
         $this->seedDoc('docs/kept.md', 'hk');
@@ -203,11 +206,48 @@ class PruneOrphanFilesCommandTest extends TestCase
         Storage::disk('kb')->assertExists('scans/kept.png');
     }
 
+    /**
+     * A directory that merely ends in `.ocr` is not a generated tree: the
+     * sweep identifies a tree by the store's run layout (`{sha256}/result.json`,
+     * `{sha256}/images/…`), so a legitimate source under such a directory is
+     * never resolved to a `docs/archive` key nobody references — which would
+     * have let the purge remove the whole source subtree.
+     */
+    public function test_a_source_inside_a_directory_named_dot_ocr_is_not_mistaken_for_a_dangling_tree(): void
+    {
+        Storage::fake('kb');
+        Storage::disk('kb')->put('docs/archive.ocr/manual.md', '# manual');
+        Storage::disk('kb')->put('docs/archive.ocr/notes/readme.md', '# readme');
+        $this->seedDoc('docs/archive.ocr/manual.md', 'hm');
+        $this->seedDoc('docs/archive.ocr/notes/readme.md', 'hr');
+        // The real tree of a source that itself lives under that directory
+        // resolves to the SOURCE, and is dangling only once the source is
+        // gone from the disk and from every row.
+        Storage::disk('kb')->put('docs/archive.ocr/gone.md.ocr/'.self::RUN.'/result.json', '{}');
+        // A run directory that does not have the store's shape is not a run.
+        Storage::disk('kb')->put('docs/other.ocr/short/result.json', '{}');
+        $this->seedDoc('docs/other.ocr/short/result.json', 'hs');
+
+        $this->travel(OcrFigureStore::inFlightGraceSeconds() + 60)->seconds();
+        $this->artisan('kb:prune-orphan-files', ['--dry-run' => true])
+            ->expectsOutputToContain('docs/archive.ocr/gone.md.ocr')
+            ->expectsOutputToContain('0 of 0 orphan file(s) and 1 dangling OCR tree(s)')
+            ->assertSuccessful();
+
+        $this->artisan('kb:prune-orphan-files')
+            ->expectsOutputToContain('dangling_ocr=1 purged=1 in_flight=0 ocr_failed=0')
+            ->assertSuccessful();
+        Storage::disk('kb')->assertExists('docs/archive.ocr/manual.md');
+        Storage::disk('kb')->assertExists('docs/archive.ocr/notes/readme.md');
+        Storage::disk('kb')->assertExists('docs/other.ocr/short/result.json');
+        $this->assertFalse(Storage::disk('kb')->directoryExists('docs/archive.ocr/gone.md.ocr'));
+    }
+
     public function test_a_dangling_ocr_tree_is_swept_only_once_it_has_aged_past_the_in_flight_grace(): void
     {
         Storage::fake('kb');
-        Storage::disk('kb')->put('docs/gone.md.ocr/0123456789abcdef/images/fig-1-1.png', 'figure');
-        Storage::disk('kb')->put('docs/gone.md.ocr/0123456789abcdef/result.json', '{}');
+        Storage::disk('kb')->put('docs/gone.md.ocr/'.self::RUN.'/images/fig-1-1.png', 'figure');
+        Storage::disk('kb')->put('docs/gone.md.ocr/'.self::RUN.'/result.json', '{}');
         // Source gone from the disk but a soft-deleted row of ANOTHER tenant
         // still references the key: the tree is that row's, not dangling.
         Storage::disk('kb')->put('docs/theirs.md.ocr/fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210/result.json', '{}');
@@ -218,12 +258,12 @@ class PruneOrphanFilesCommandTest extends TestCase
             ->expectsOutputToContain('docs/gone.md.ocr')
             ->expectsOutputToContain('0 of 0 orphan file(s) and 1 dangling OCR tree(s)')
             ->assertSuccessful();
-        Storage::disk('kb')->assertExists('docs/gone.md.ocr/0123456789abcdef/result.json');
+        Storage::disk('kb')->assertExists('docs/gone.md.ocr/'.self::RUN.'/result.json');
 
         $this->artisan('kb:prune-orphan-files')
             ->expectsOutputToContain('dangling_ocr=1 purged=0 in_flight=1 ocr_failed=0')
             ->assertSuccessful();
-        Storage::disk('kb')->assertExists('docs/gone.md.ocr/0123456789abcdef/result.json');
+        Storage::disk('kb')->assertExists('docs/gone.md.ocr/'.self::RUN.'/result.json');
 
         $this->travel(OcrFigureStore::inFlightGraceSeconds() + 60)->seconds();
         $this->artisan('kb:prune-orphan-files')

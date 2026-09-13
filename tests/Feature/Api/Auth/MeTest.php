@@ -288,7 +288,32 @@ class MeTest extends TestCase
                 'onboarding' => ['required', 'can_create_company'],
                 'preferences' => ['theme', 'density', 'language'],
                 'features' => ['invitations_admin', 'system_admin'],
+                'kb_upload' => ['accepted_extensions'],
             ]);
+    }
+
+    /**
+     * R18/R43 — the picker's accepted extensions come from the server's
+     * source of truth in BOTH OCR states: images are offered only while
+     * `KB_OCR_ENABLED` is on, exactly as the staging request accepts them.
+     */
+    public function test_me_exposes_the_kb_upload_accepted_extensions_in_both_ocr_states(): void
+    {
+        $user = $this->makeUser('picker@example.com');
+        $this->actingAsWithoutTenant($user);
+
+        config(['kb.ocr.enabled' => false]);
+        $this->getJson('/api/auth/me')
+            ->assertOk()
+            ->assertJsonPath('kb_upload.accepted_extensions', \App\Support\Kb\SourceType::knownExtensions(false))
+            ->assertJsonMissingPath('kb_upload.accepted_extensions.5');
+
+        config(['kb.ocr.enabled' => true]);
+        $this->getJson('/api/auth/me')
+            ->assertOk()
+            ->assertJsonPath('kb_upload.accepted_extensions', \App\Support\Kb\SourceType::knownExtensions(true))
+            ->assertJsonFragment(['png'])
+            ->assertJsonFragment(['webp']);
     }
 
     public function test_me_exposes_invitations_admin_feature_flag_in_both_states(): void

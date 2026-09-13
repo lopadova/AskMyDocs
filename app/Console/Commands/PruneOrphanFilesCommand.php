@@ -120,16 +120,9 @@ class PruneOrphanFilesCommand extends Command
         $suffix = OcrFigureStore::DIR_SUFFIX;
         $sourceKeys = [];
         foreach ($allFiles as $file) {
-            $normalized = KbPath::normalize($file);
-            // The first `.ocr` segment names the tree; anything nested below
-            // it belongs to a run.
-            $at = strpos($normalized, $suffix.'/');
-            if ($at === false) {
-                continue;
-            }
-            $key = substr($normalized, 0, $at);
-            if ($key === '' || isset($onDisk[$key])) {
-                continue; // source still on disk: handled with the file
+            $key = self::ocrTreeSourceKey(KbPath::normalize($file), $suffix);
+            if ($key === null || isset($onDisk[$key])) {
+                continue; // not a generated tree, or source still on disk: handled with the file
             }
             $sourceKeys[$key] = true;
         }
@@ -154,6 +147,34 @@ class PruneOrphanFilesCommand extends Command
         sort($dangling);
 
         return $dangling;
+    }
+
+    /**
+     * The source key a file under a generated OCR tree belongs to, or null
+     * when the file is not part of one. A `.ocr` segment in a path names a
+     * tree ONLY when what follows it has the store's run layout —
+     * `{sha256 run key}/result.json` or `{run key}/images/{figure}` (see
+     * OcrFigureStore::runDirFor() / store()): a legitimate source such as
+     * `docs/archive.ocr/manual.png` is a directory that happens to end in
+     * `.ocr`, and deriving `docs/archive` from it would let the purge remove
+     * that source subtree. The LAST matching segment wins, so a source that
+     * itself lives under such a directory (`docs/archive.ocr/manual.png.ocr/
+     * {run}/result.json`) resolves to the source, not to the directory.
+     */
+    public static function ocrTreeSourceKey(string $normalized, string $suffix = OcrFigureStore::DIR_SUFFIX): ?string
+    {
+        $needle = $suffix.'/';
+        $at = strrpos($normalized, $needle);
+        while ($at !== false) {
+            $key = substr($normalized, 0, $at);
+            $rest = substr($normalized, $at + strlen($needle));
+            if ($key !== '' && preg_match('#^[a-f0-9]{64}/(result\.json|images/[^/]+)$#', $rest) === 1) {
+                return $key;
+            }
+            $at = $at === 0 ? false : strrpos($normalized, $needle, $at - strlen($normalized) - 1);
+        }
+
+        return null;
     }
 
     /**

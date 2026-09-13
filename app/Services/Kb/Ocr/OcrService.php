@@ -176,7 +176,12 @@ final class OcrService
      */
     public static function isForced(array $metadata): bool
     {
-        return (bool) (($metadata['ocr'] ?? [])['force'] ?? false);
+        // The HTTP validator admits any value under `metadata`, so `ocr` may
+        // arrive as a scalar: that is "not forced", never a TypeError that
+        // turns the ingest into a 500 (R14).
+        $ocr = $metadata['ocr'] ?? null;
+
+        return is_array($ocr) && ($ocr['force'] ?? false) === true;
     }
 
     /**
@@ -193,6 +198,12 @@ final class OcrService
     public static function stripTrustedOnlyKeys(array $metadata): array
     {
         unset($metadata['dry_run']);
+        // `ocr` is a host-owned block: a scalar a client put there carries
+        // nothing the pipeline reads and would only trip the array accessors
+        // downstream, so it is dropped with the reserved keys.
+        if (array_key_exists('ocr', $metadata) && ! is_array($metadata['ocr'])) {
+            unset($metadata['ocr']);
+        }
         if (is_array($metadata['ocr'] ?? null)) {
             unset($metadata['ocr']['force'], $metadata['ocr']['rerun_lock']);
             if ($metadata['ocr'] === []) {

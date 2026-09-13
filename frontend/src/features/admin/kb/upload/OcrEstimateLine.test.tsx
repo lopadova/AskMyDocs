@@ -208,6 +208,40 @@ describe('OcrEstimateLine', () => {
         expect(el.textContent).not.toContain('No file needs OCR');
     });
 
+    it('ON with a staged image whose bytes are no raster — states the refusal instead of "no file needs OCR"', () => {
+        const replaced: OcrEstimate = {
+            ...on,
+            total_pages: 0,
+            total_cost: 0,
+            items: [{ id: 'r', would_ocr: false, pages: 0, pages_exact: true, cost: 0, reason: 'unrecognised_bytes' }],
+        };
+        render(<OcrEstimateLine state="ready" estimate={replaced} />);
+        const el = screen.getByTestId('kb-upload-ocr-estimate');
+        expect(el).toHaveAttribute('role', 'alert');
+        expect(el.textContent).toContain('1 file is not the image its name claims');
+        expect(el.textContent).toContain('committing will fail it');
+        expect(el.textContent).not.toContain('No file needs OCR');
+    });
+
+    it('ON with a driver that cannot run AND a staged image that is no raster — both failures are stated', () => {
+        const both: OcrEstimate = {
+            ...on,
+            driver: 'mistral-ocr',
+            driver_available: false,
+            driver_error: 'set KB_OCR_ALLOW_REMOTE=true',
+            total_pages: 0,
+            total_cost: 0,
+            items: [
+                { id: 'p', would_ocr: true, pages: 1, pages_exact: true, cost: 0.004, reason: 'scanned_pdf' },
+                { id: 'r', would_ocr: false, pages: 0, pages_exact: true, cost: 0, reason: 'unrecognised_bytes' },
+            ],
+        };
+        render(<OcrEstimateLine state="ready" estimate={both} />);
+        const text = screen.getByTestId('kb-upload-ocr-estimate').textContent ?? '';
+        expect(text).toContain('driver cannot run on this server');
+        expect(text).toContain('1 file is not the image its name claims');
+    });
+
     it('ON with pending files AND an unreadable one — the failure is stated next to the estimate', () => {
         const mixed: OcrEstimate = {
             ...on,

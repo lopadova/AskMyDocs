@@ -8,6 +8,7 @@ use App\Services\Kb\Ocr\Drivers\MistralOcrDriver;
 use App\Services\Kb\Ocr\OcrDriverUnavailableException;
 use App\Services\Kb\Ocr\OcrRequest;
 use Illuminate\Support\Facades\Http;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 /**
@@ -43,6 +44,52 @@ final class MistralOcrDriverEndpointTest extends TestCase
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('returned no pages');
         app(MistralOcrDriver::class)->recognise(new OcrRequest((string) base64_decode(\App\Services\Kb\Ocr\Drivers\FakeOcrDriver::PNG_1X1, true), 'image/png', 'scan.png'));
+    }
+
+    /**
+     * SEC-EXTRESP-001 — the provider's page numbering is validated: a
+     * duplicate index (two figures would collide on one `fig-p-n` path), an
+     * index outside the returned list (a bogus `## Page` heading) and a
+     * non-integer index are each an invalid response, never a recorded run.
+     */
+    #[DataProvider('invalidPageIndexes')]
+    public function test_an_invalid_page_index_is_an_invalid_response(array $indexes, string $message): void
+    {
+        config(['kb.ocr.allow_remote' => true, 'kb.ocr.mistral.api_key' => 'k', 'kb.ocr.mistral.url' => 'https://api.mistral.eu/v1/ocr', 'kb.ocr.mistral.allowed_hosts' => ['api.mistral.eu']]);
+        Http::fake(['https://api.mistral.eu/*' => Http::response(['pages' => array_map(
+            static fn ($index): array => ['index' => $index, 'markdown' => 'text'],
+            $indexes,
+        )], 200)]);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage($message);
+        app(MistralOcrDriver::class)->recognise(new OcrRequest((string) base64_decode(\App\Services\Kb\Ocr\Drivers\FakeOcrDriver::PNG_1X1, true), 'image/png', 'scan.png'));
+    }
+
+    /** @return array<string, array{0: list<mixed>, 1: string}> */
+    public static function invalidPageIndexes(): array
+    {
+        return [
+            'duplicate' => [[0, 0], 'returned page 1 twice'],
+            'out of range' => [[0, 7], 'invalid page index (7)'],
+            'negative' => [[-1], 'invalid page index (-1)'],
+            'not an integer' => [['1'], "invalid page index ('1')"],
+        ];
+    }
+
+    /** Pages come back in page order whatever order the provider listed them in. */
+    public function test_pages_are_ordered_by_their_index(): void
+    {
+        config(['kb.ocr.allow_remote' => true, 'kb.ocr.mistral.api_key' => 'k', 'kb.ocr.mistral.url' => 'https://api.mistral.eu/v1/ocr', 'kb.ocr.mistral.allowed_hosts' => ['api.mistral.eu']]);
+        Http::fake(['https://api.mistral.eu/*' => Http::response(['pages' => [
+            ['index' => 1, 'markdown' => 'second'],
+            ['index' => 0, 'markdown' => 'first'],
+        ]], 200)]);
+
+        $result = app(MistralOcrDriver::class)->recognise(new OcrRequest('%PDF-1.4 x', 'application/pdf', 'a.pdf'));
+
+        $this->assertSame([1, 2], array_map(static fn ($p) => $p->number, $result->pages));
+        $this->assertSame('first', $result->pages[0]->markdown);
     }
 
     /**

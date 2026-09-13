@@ -7,6 +7,7 @@ namespace App\Services\Kb\Ocr;
 use App\FinOps\OcrCallMeter;
 use App\Models\KbIngestBatch;
 use App\Models\KbIngestBatchItem;
+use App\Support\Kb\FileTypeSniffer;
 use App\Support\Kb\SourceType;
 use Illuminate\Support\Facades\Storage;
 use Throwable;
@@ -152,7 +153,16 @@ final class OcrCostEstimator
             if (strlen($imageBytes) > $maxBytes) {
                 return ['id' => $id, 'would_ocr' => false, 'pages' => 0, 'cost' => 0.0, 'reason' => 'too_many_bytes', 'pages_exact' => true];
             }
-            $pages = $this->ocr->pageCountForBytes((string) $item->mime_type, $imageBytes);
+            // The SAME magic-byte check `OcrService::assertWithinLimits()`
+            // applies before a driver runs: a staged object replaced or
+            // corrupted since upload (a PDF, arbitrary bytes under the image
+            // MIME) is refused here with the reason commit would give, not
+            // priced as a run that cannot start (R14).
+            $imageMime = FileTypeSniffer::imageMimeOf(substr($imageBytes, 0, 16));
+            if ($imageMime === null) {
+                return ['id' => $id, 'would_ocr' => false, 'pages' => 0, 'cost' => 0.0, 'reason' => 'unrecognised_bytes', 'pages_exact' => true];
+            }
+            $pages = $this->ocr->pageCountForBytes($imageMime, $imageBytes);
             if ($pages > $maxPages) {
                 return ['id' => $id, 'would_ocr' => false, 'pages' => $pages, 'cost' => 0.0, 'reason' => 'too_many_pages', 'pages_exact' => true];
             }

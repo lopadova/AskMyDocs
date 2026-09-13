@@ -38,6 +38,32 @@ final class PdfTextFallbackTest extends TestCase
         $this->assertStringContainsString('Second page', $pages[1]);
     }
 
+    /**
+     * The threshold is per page, as the probe applies it: several short
+     * pages that only ADD UP to `min_text_chars` are scanned pages, and a
+     * zero threshold counts any non-blank page.
+     */
+    public function test_the_text_threshold_is_applied_per_page_like_the_probe(): void
+    {
+        config(['kb.ocr.text_layer_probe.min_text_chars' => 20]);
+        $fallback = new PdfTextFallback;
+        $this->assertFalse($fallback->hasText(['seven c', 'seven c', 'seven c', 'seven c']), 'four short pages do not add up to a text layer');
+        $this->assertTrue($fallback->hasText(['', 'twenty-characters!!!', '']), 'one qualifying page is enough');
+
+        config(['kb.ocr.text_layer_probe.min_text_chars' => 0]);
+        $this->assertFalse($fallback->hasText(['   ', "\n"]), 'blank pages never count');
+        $this->assertTrue($fallback->hasText(['   ', 'x']), 'any character counts at a zero threshold');
+    }
+
+    public function test_the_temporary_copy_is_removed_after_a_successful_run(): void
+    {
+        config(['kb.pdf.pdftotext_bin' => $this->stub("printf 'Enough text on this page to count\f'")]);
+        $before = glob(sys_get_temp_dir().'/kb_pdf_*') ?: [];
+
+        $this->assertNotNull((new PdfTextFallback)->textPages('%PDF-1.4 x'));
+        $this->assertSame($before, glob(sys_get_temp_dir().'/kb_pdf_*') ?: [], 'no temporary PDF is left behind');
+    }
+
     public function test_no_text_or_a_failing_binary_means_ocr(): void
     {
         config(['kb.pdf.pdftotext_bin' => $this->stub("printf '  \\f \\f'")]);
