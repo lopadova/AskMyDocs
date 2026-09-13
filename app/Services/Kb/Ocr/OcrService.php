@@ -231,7 +231,7 @@ final class OcrService
         // Bounded work BEFORE any driver runs or any byte leaves the tenant
         // (SEC-LLM-001 gate 7): a document over the page or size cap fails
         // loudly with a reason instead of being billed page by page.
-        $this->assertWithinLimits($doc, $filename);
+        $this->assertWithinLimits($doc->mimeType, $doc->bytes, $filename, $driver);
 
         // Idempotency (CLAUDE.md §5): the same bytes through the same driver
         // produce the same result — reuse the recorded run instead of paying
@@ -352,20 +352,34 @@ final class OcrService
     /**
      * @throws OcrLimitExceededException
      */
-    private function assertWithinLimits(SourceDocument $doc, string $filename): void
+    private function assertWithinLimits(string $mimeType, string $bytes, string $filename, OcrDriver $driver): void
     {
         $maxBytes = max(1, (int) config('kb.ocr.max_bytes', 26214400));
-        if (strlen($doc->bytes) > $maxBytes) {
+        if (strlen($bytes) > $maxBytes) {
             throw new OcrLimitExceededException(sprintf(
                 'OCR refused for "%s": %d bytes exceed KB_OCR_MAX_BYTES (%d).',
                 $filename,
-                strlen($doc->bytes),
+                strlen($bytes),
                 $maxBytes,
             ), 'too_many_bytes');
         }
 
         $maxPages = max(1, (int) config('kb.ocr.max_pages', 200));
-        $pages = $this->pageCountFor($doc);
+        ['pages' => $pages, 'exact' => $exact] = $this->pageCountDetailFor($mimeType, $bytes);
+        // A lower bound cannot enforce a maximum: when the parser could not
+        // read the PDF the count is a `/Type /Page` floor, and a malformed
+        // or hostile file with more real pages than visible page objects
+        // would pass the cap. For a remote driver that is egress of an
+        // unbounded document, so an uncountable PDF is refused BEFORE any
+        // byte leaves (ADR 0029 §4). A local driver may still run on it:
+        // nothing leaves the tenant and KB_OCR_MAX_BYTES bounds the work.
+        if (! $exact && $driver->isRemote()) {
+            throw new OcrLimitExceededException(sprintf(
+                'OCR refused for "%s": the page count could not be verified (the PDF could not be parsed) and driver "%s" is remote; an unverifiable document is never sent to a third party.',
+                $filename,
+                $driver->name(),
+            ), 'pages_uncountable');
+        }
         if ($pages > $maxPages) {
             throw new OcrLimitExceededException(sprintf(
                 'OCR refused for "%s": %d pages exceed KB_OCR_MAX_PAGES (%d).',
@@ -389,25 +403,39 @@ final class OcrService
     }
 
     /**
-     * The ONE page-count function: the cap enforced here and the estimate
-     * shown before commit (`OcrCostEstimator`) both call it, so they cannot
-     * disagree. The MIME is only trusted to tell PDF from raster: uploads,
-     * connectors and `knowledge_documents` all carry the family MIME
-     * (`image/png` for every raster, whatever the extension), so a TIFF is
-     * recognised from its bytes — `TiffFrameCounter` answers the IFD chain
-     * length for a TIFF header and 1 for any other image.
+     * The ONE page-count function: the cap enforced by `assertWithinLimits()`
+     * and the estimate shown before commit (`OcrCostEstimator`) both read it
+     * (directly, or through the probe it wraps), so they cannot disagree.
+     * The MIME is only trusted to tell PDF from raster: uploads, connectors
+     * and `knowledge_documents` all carry the family MIME (`image/png` for
+     * every raster, whatever the extension), so a TIFF is recognised from its
+     * bytes — `TiffFrameCounter` answers the IFD chain length for a TIFF
+     * header and 1 for any other image. `exact` is false only for a PDF the
+     * parser could not read, where `pages` is the `/Type /Page` object floor
+     * — a number the estimate may show but the cap must never trust for a
+     * remote driver. Images are always exact: the IFD chain is the document.
+     *
+     * @return array{pages: int, exact: bool}
      */
-    public function pageCountForBytes(string $mimeType, string $bytes): int
+    public function pageCountDetailFor(string $mimeType, string $bytes): array
     {
         $mime = strtolower(trim(explode(';', $mimeType, 2)[0]));
         if ($mime === 'application/pdf') {
-            return (int) ($this->probe->probe($bytes)['pages_total'] ?? 0);
+            $probe = $this->probe->probe($bytes);
+
+            return ['pages' => (int) ($probe['pages_total'] ?? 0), 'exact' => (bool) ($probe['pages_exact'] ?? false)];
         }
         if (str_starts_with($mime, 'image/')) {
-            return TiffFrameCounter::count($bytes);
+            return ['pages' => TiffFrameCounter::count($bytes), 'exact' => true];
         }
 
-        return 1;
+        return ['pages' => 1, 'exact' => true];
+    }
+
+    /** The `pages` projection of `pageCountDetailFor()` for callers that only need the number. */
+    public function pageCountForBytes(string $mimeType, string $bytes): int
+    {
+        return $this->pageCountDetailFor($mimeType, $bytes)['pages'];
     }
 
     /**
@@ -570,7 +598,9 @@ final class OcrService
      * @return array{dispatched: bool, document_id: int, source_path: string, driver: string, run_key: string}
      *
      * @throws UnprocessableEntityHttpException when OCR is disabled, the driver is
-     *   unavailable, the source is not OCR-able, or the file is gone from disk
+     *   unavailable, the source is not OCR-able, the file is gone from disk, or
+     *   the job would refuse it anyway (page/byte cap, unverifiable page count
+     *   on a remote driver)
      */
     public function rerun(KnowledgeDocument $document, string $actor): array
     {
@@ -599,6 +629,15 @@ final class OcrService
 
         if (! Storage::disk($disk)->exists($fullPath)) {
             throw new UnprocessableEntityHttpException("Source file not found on disk [{$disk}]: {$sourcePath}.");
+        }
+
+        // R14 — the same limits the job enforces, checked here so a re-run
+        // the job would refuse (page/byte cap, unverifiable page count on a
+        // remote driver) is a 422 now, not a queued failure later.
+        try {
+            $this->assertWithinLimits((string) $document->mime_type, (string) Storage::disk($disk)->get($fullPath), basename($sourcePath), $driver);
+        } catch (OcrLimitExceededException $e) {
+            throw new UnprocessableEntityHttpException($e->getMessage(), $e);
         }
 
         // One queued re-run per document: the lock is released by the job on

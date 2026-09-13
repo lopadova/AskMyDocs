@@ -100,7 +100,63 @@ describe('OcrEstimateLine', () => {
         render(<OcrEstimateLine state="ready" estimate={over} />);
         const el = screen.getByTestId('kb-upload-ocr-estimate');
         expect(el).toHaveAttribute('role', 'alert');
-        expect(el.textContent).toContain('exceed the OCR limits');
+        expect(el.textContent).toContain('1 file exceeds the OCR limits');
+        expect(el.textContent).not.toContain('cannot be verified');
+    });
+
+    it('ON mixed batch — names the cap for the capped file and the unverifiable count for the other, next to the run it will do', () => {
+        const mixed: OcrEstimate = {
+            ...on,
+            driver: 'mistral-ocr',
+            total_pages: 2,
+            total_cost: 0.008,
+            items: [
+                { id: 'ok', would_ocr: true, pages: 2, pages_exact: true, cost: 0.008, reason: 'scanned_pdf' },
+                { id: 'big', would_ocr: false, pages: 900, pages_exact: true, cost: 0, reason: 'too_many_pages' },
+                { id: 'u', would_ocr: false, pages: 1, pages_exact: false, cost: 0, reason: 'pages_uncountable' },
+            ],
+        };
+        render(<OcrEstimateLine state="ready" estimate={mixed} />);
+        const text = screen.getByTestId('kb-upload-ocr-estimate').textContent ?? '';
+        expect(text).toContain('OCR will run on 1 file');
+        expect(text).toContain('1 file exceeds the OCR limits');
+        expect(text).toContain('1 file has a page count that cannot be verified');
+        expect(text).toContain('mistral-ocr');
+    });
+
+    it('ON with an unparseable PDF and a remote driver that cannot run here — the driver warning wins over the refusal reason', () => {
+        const disabled: OcrEstimate = {
+            ...on,
+            driver: 'mistral-ocr',
+            driver_available: false,
+            driver_error: 'set KB_OCR_ALLOW_REMOTE=true',
+            total_pages: 0,
+            total_cost: 0,
+            items: [{ id: 'u', would_ocr: false, pages: 1, pages_exact: false, cost: 0, reason: 'pages_uncountable' }],
+        };
+        render(<OcrEstimateLine state="ready" estimate={disabled} />);
+        const el = screen.getByTestId('kb-upload-ocr-estimate');
+        expect(el).toHaveAttribute('data-ocr-driver-available', 'false');
+        expect(el.textContent).toContain('1 file would need OCR');
+        expect(el.textContent).toContain('KB_OCR_ALLOW_REMOTE');
+        expect(el.textContent).not.toContain('would go to the remote');
+    });
+
+    it('ON with an unparseable PDF and a remote driver — says the page count cannot be verified and it will be refused', () => {
+        const uncountable: OcrEstimate = {
+            ...on,
+            driver: 'mistral-ocr',
+            total_pages: 0,
+            total_cost: 0,
+            items: [{ id: 'u', would_ocr: false, pages: 1, pages_exact: false, cost: 0, reason: 'pages_uncountable' }],
+        };
+        render(<OcrEstimateLine state="ready" estimate={uncountable} />);
+        const el = screen.getByTestId('kb-upload-ocr-estimate');
+        expect(el).toHaveAttribute('role', 'alert');
+        expect(el.textContent).toContain('1 file has a page count that cannot be verified');
+        expect(el.textContent).toContain('mistral-ocr');
+        expect(el.textContent).toContain('refused before any driver runs');
+        expect(el.textContent).not.toContain('exceeds the OCR limits');
     });
 
     it('marks a floor page count with ≥ when the PDF could not be parsed', () => {

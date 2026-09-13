@@ -153,6 +153,24 @@ final class KbOcrControllerTest extends TestCase
         Queue::assertNothingPushed();
     }
 
+    public function test_rerun_is_a_422_not_a_queued_failure_when_a_remote_driver_would_refuse_the_page_count(): void
+    {
+        // R14 — the job would refuse an unverifiable page count on a remote
+        // driver (ADR 0029 §4); the pre-flight says so now, and the re-run
+        // lock is never taken, so a corrected retry is not a 409.
+        config(['kb.ocr.enabled' => true, 'kb.ocr.driver' => 'mistral-ocr', 'kb.ocr.allow_remote' => true, 'kb.ocr.mistral.api_key' => 'k']);
+        Queue::fake();
+        $doc = $this->document();
+        Storage::disk('kb')->put($doc->source_path, '%PDF-1.4 not really a pdf');
+
+        $admin = $this->makeAdmin();
+        $this->actingAs($admin)->postJson("/api/admin/kb/documents/{$doc->id}/ocr")
+            ->assertStatus(422)
+            ->assertJsonFragment(['message' => 'OCR refused for "'.basename($doc->source_path).'": the page count could not be verified (the PDF could not be parsed) and driver "mistral-ocr" is remote; an unverifiable document is never sent to a third party.']);
+        $this->actingAs($admin)->postJson("/api/admin/kb/documents/{$doc->id}/ocr")->assertStatus(422);
+        Queue::assertNothingPushed();
+    }
+
     public function test_rerun_queues_the_ingestion_with_ocr_forced_and_a_fresh_run_key(): void
     {
         config(['kb.ocr.enabled' => true]);

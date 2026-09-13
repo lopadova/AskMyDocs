@@ -222,6 +222,47 @@ final class KbUploadOcrTest extends TestCase
             ->assertJsonPath('data.total_cost', 0);
     }
 
+    public function test_estimate_refuses_an_unparseable_pdf_for_a_remote_driver_but_prices_it_as_a_floor_for_a_local_one(): void
+    {
+        // ADR 0029 §4 — the estimate and the service share the refusal: a
+        // floor is not a cap input, so a remote driver never gets the file.
+        config(['kb.ocr.enabled' => true, 'kb.ocr.driver' => 'mistral-ocr', 'kb.ocr.allow_remote' => true, 'kb.ocr.mistral.api_key' => 'k']);
+        $admin = $this->makeAdmin();
+        $batchId = $this->actingAs($admin)->post('/api/admin/kb/uploads', [
+            'project_key' => 'legal',
+            'files' => [UploadedFile::fake()->createWithContent('broken.pdf', '%PDF-1.4 not really a pdf')],
+        ])->assertStatus(201)->json('batch.id');
+
+        $this->actingAs($admin)->getJson("/api/admin/kb/uploads/{$batchId}/estimate")
+            ->assertOk()
+            ->assertJsonPath('data.items.0.would_ocr', false)
+            ->assertJsonPath('data.items.0.reason', 'pages_uncountable')
+            ->assertJsonPath('data.items.0.pages_exact', false)
+            ->assertJsonPath('data.total_cost', 0);
+
+        // Same batch, local driver: it runs, and the price is marked inexact.
+        config(['kb.ocr.driver' => 'fake']);
+        $this->actingAs($admin)->getJson("/api/admin/kb/uploads/{$batchId}/estimate")
+            ->assertOk()
+            ->assertJsonPath('data.items.0.would_ocr', true)
+            ->assertJsonPath('data.items.0.reason', 'scanned_pdf')
+            ->assertJsonPath('data.items.0.pages_exact', false)
+            ->assertJsonPath('data.items.0.pages', 1)
+            ->assertJsonPath('data.items.0.cost', 0.004)
+            ->assertJsonPath('data.total_pages', 1)
+            ->assertJsonPath('data.total_cost', 0.004);
+
+        // Remote driver with the egress knob OFF (R43): both refusals hold —
+        // the driver cannot run here AND the count is unverifiable — and the
+        // estimate reports both so the modal shows the disabled-driver warning.
+        config(['kb.ocr.driver' => 'mistral-ocr', 'kb.ocr.allow_remote' => false]);
+        $this->actingAs($admin)->getJson("/api/admin/kb/uploads/{$batchId}/estimate")
+            ->assertOk()
+            ->assertJsonPath('data.driver_available', false)
+            ->assertJsonPath('data.items.0.would_ocr', false)
+            ->assertJsonPath('data.items.0.reason', 'pages_uncountable');
+    }
+
     public function test_estimate_on_prices_images_and_scanned_pdfs_but_not_text_pdfs(): void
     {
         config(['kb.ocr.enabled' => true]);

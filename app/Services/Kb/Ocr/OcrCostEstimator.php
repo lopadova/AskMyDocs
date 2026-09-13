@@ -15,7 +15,9 @@ use Throwable;
  * v8.36 / ADR 0029 §8 — the number shown BEFORE commit on the upload modal.
  *
  * For every staged item: would OCR run (image → yes; PDF → only when the
- * text-layer probe finds no text; anything else → no), how many pages, and
+ * text-layer probe finds no text and, for a remote driver, only when the
+ * page count is exact — an unparseable PDF is `pages_uncountable`; anything
+ * else → no), how many pages, and
  * pages × `kb.ocr.rate_per_page`. The estimate reads the staged bytes
  * through the staging disk — it never runs a driver, so it is cheap and
  * side-effect free. With OCR disabled every item reports `would_ocr=false`
@@ -149,6 +151,12 @@ final class OcrCostEstimator
         }
         $pages = max(1, (int) $probe['pages_total']);
         $exact = (bool) $probe['pages_exact'];
+        // The same refusal the service applies (ADR 0029 §4): a floor is not
+        // a cap input, so an unparseable PDF is never sent to a remote
+        // driver — and the modal says so before commit (R14).
+        if (! $exact && $this->registry->isRemote((string) config('kb.ocr.driver', 'tesseract'))) {
+            return ['id' => $id, 'would_ocr' => false, 'pages' => $pages, 'cost' => 0.0, 'reason' => 'pages_uncountable', 'pages_exact' => false];
+        }
         if ($pages > $maxPages) {
             return ['id' => $id, 'would_ocr' => false, 'pages' => $pages, 'cost' => 0.0, 'reason' => 'too_many_pages', 'pages_exact' => $exact];
         }

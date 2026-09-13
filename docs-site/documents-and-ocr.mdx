@@ -138,6 +138,12 @@ them is bounded in code before any egress (SEC-LLM-001 gates 2 and 7):
   the document exceeds `KB_OCR_MAX_PAGES` (counted by the probe's parser) or
   `KB_OCR_MAX_BYTES`; the refusal carries a machine-readable reason
   (`too_many_pages` / `too_many_bytes`) that the estimate shows in advance.
+- A PDF the parser cannot read has no verified page count — the probe reports
+  a `/Type /Page` object count as a **floor** (`pages_exact: false`), and a
+  lower bound cannot enforce a maximum. For a **remote** driver such a document
+  is refused before any byte leaves (reason `pages_uncountable`, shown by the
+  estimate too); a **local** driver may still run on it, bounded by
+  `KB_OCR_MAX_BYTES`, and the estimate marks its price as inexact.
 
 ### Same bytes, same driver, no second bill
 
@@ -275,7 +281,7 @@ No schema change. Everything lands in JSON columns that already exist:
 | `KB_PDFTOTEXT_BIN` | `pdftotext` | Poppler binary the PDF converter falls back to before OCR when smalot cannot parse a file. |
 | `KB_OCR_RATE_PER_PAGE` | `0.004` | Per-page rate for locally-priced drivers and the estimate. |
 | `KB_OCR_FIGURES_ENABLED` | `true` | Write figures to `{source}.ocr/{run}/images/`. |
-| `KB_OCR_MAX_PAGES` / `KB_OCR_MAX_BYTES` | `200` / `26214400` | Refuse before any driver runs; reasons `too_many_pages` / `too_many_bytes`. Pages are counted format-independently (PDF parser, TIFF frames, 1 for other images). |
+| `KB_OCR_MAX_PAGES` / `KB_OCR_MAX_BYTES` | `200` / `26214400` | Refuse before any driver runs; reasons `too_many_pages` / `too_many_bytes`. Pages are counted format-independently (PDF parser, TIFF frames, 1 for other images); an unparseable PDF has only a floor and is refused for a remote driver with `pages_uncountable`. |
 | `KB_OCR_MAX_FIGURE_BYTES` | `10485760` | Largest figure a driver may hand back. |
 | `KB_OCR_RUN_LOCK_WAIT` | `300` | Seconds a worker waits for the reservation of a run directory another worker is writing before letting the job retry; the recorded run is then reused. Needs an atomic lock store (Redis) in production. |
 | `KB_OCR_REUSE_ENABLED` | `true` | Record each run at `{source}.ocr/{run}/result.json` and reuse it for identical bytes through the same engine. |

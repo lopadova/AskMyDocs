@@ -94,6 +94,17 @@ final class OcrDriverRegistry
         return $driver;
     }
 
+    /**
+     * Whether the named driver posts document bytes outside the tenant —
+     * answered from the registered instance WITHOUT the egress gate, so the
+     * estimate can describe a driver the registry would refuse to run.
+     * Unknown name → false (nothing leaves through a driver that does not exist).
+     */
+    public function isRemote(string $name): bool
+    {
+        return $this->has($name) && $this->drivers[$name]->isRemote();
+    }
+
     public static function remoteAllowed(): bool
     {
         return config('kb.ocr.allow_remote', false) === true;

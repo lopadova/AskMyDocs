@@ -431,7 +431,9 @@ return [
         // Bounded work BEFORE egress / spend (SEC-LLM-001 gate 7, ADR 0029
         // §4): a document over either limit fails loudly with a reason —
         // never page-by-page billing on a 2 000-page scan. Pages are counted
-        // by the probe's parser; bytes are the request size.
+        // by the probe's parser; bytes are the request size. A PDF the parser
+        // cannot read has only a `/Type /Page` floor, and a floor is not a cap
+        // input: it is refused for a remote driver (`pages_uncountable`).
         'max_pages' => (int) env('KB_OCR_MAX_PAGES', 200),
         'max_bytes' => (int) env('KB_OCR_MAX_BYTES', 26214400), // 25 MiB, the upload cap
         // Largest single figure a driver may hand back (remote drivers return

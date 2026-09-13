@@ -65,14 +65,28 @@ export function OcrEstimateLine({ state, estimate, errorMessage }: OcrEstimateLi
     }
 
     const pending = estimate.items.filter((i) => i.would_ocr);
-    const overLimit = estimate.items.filter((i) => i.reason === 'too_many_pages' || i.reason === 'too_many_bytes');
+    const overLimit = estimate.items.filter((i) => i.reason === 'too_many_pages' || i.reason === 'too_many_bytes' || i.reason === 'pages_uncountable');
+    const uncountable = estimate.items.filter((i) => i.reason === 'pages_uncountable').length;
+    const capped = overLimit.length - uncountable;
+    const files = (k: number) => `${k} file${k === 1 ? '' : 's'}`;
+    // One refusal sentence, reused by every branch that mentions refused
+    // files, so a mixed batch names the real reason for each group (R14).
+    const refusal = overLimit.length === 0
+        ? ''
+        : [
+            capped > 0 ? `${files(capped)} exceed${capped === 1 ? 's' : ''} the OCR limits (KB_OCR_MAX_PAGES / KB_OCR_MAX_BYTES)` : '',
+            uncountable > 0 ? `${files(uncountable)} ha${uncountable === 1 ? 's' : 've'} a page count that cannot be verified (the PDF could not be parsed) and would go to the remote ${estimate.driver} driver` : '',
+        ].filter(Boolean).join('; ') + ' — refused before any driver runs.';
 
     // R14 — never promise a run the server will refuse: the driver cannot
     // run here (missing binary, remote driver without KB_OCR_ALLOW_REMOTE).
-    if (pending.length > 0 && !estimate.driver_available) {
+    // Files the limits already refuse count too: their reason must not read
+    // as if a disabled driver were about to receive them.
+    const needing = pending.length + overLimit.length;
+    if (needing > 0 && !estimate.driver_available) {
         return (
             <p data-testid="kb-upload-ocr-estimate" data-state="ready" data-ocr-enabled="true" data-ocr-driver-available="false" role="alert" style={{ ...base, color: 'var(--err)' }}>
-                {pending.length} file{pending.length === 1 ? '' : 's'} would need OCR, but the <code>{estimate.driver}</code> driver cannot run on this server
+                {files(needing)} would need OCR, but the <code>{estimate.driver}</code> driver cannot run on this server
                 {estimate.driver_error ? ` (${estimate.driver_error})` : ''}. Committing will fail those files.
             </p>
         );
@@ -81,7 +95,7 @@ export function OcrEstimateLine({ state, estimate, errorMessage }: OcrEstimateLi
     if (pending.length === 0 && overLimit.length > 0) {
         return (
             <p data-testid="kb-upload-ocr-estimate" data-state="ready" data-ocr-enabled="true" data-ocr-pages="0" role="alert" style={{ ...base, color: 'var(--err)' }}>
-                {overLimit.length} file{overLimit.length === 1 ? '' : 's'} exceed the OCR limits (KB_OCR_MAX_PAGES / KB_OCR_MAX_BYTES) and will be refused.
+                {refusal}
             </p>
         );
     }
@@ -108,7 +122,7 @@ export function OcrEstimateLine({ state, estimate, errorMessage }: OcrEstimateLi
             {pending.some((i) => !i.pages_exact) ? '≥ ' : ''}{estimate.total_pages} page{estimate.total_pages === 1 ? '' : 's'}) with the <code>{estimate.driver}</code>{' '}
             driver — estimated <strong data-testid="kb-upload-ocr-estimate-cost">{formatCost(estimate.total_cost, estimate.currency)}</strong>{' '}
             at {formatCost(estimate.rate_per_page, estimate.currency)}/page, metered by FinOps.
-            {overLimit.length > 0 ? ` ${overLimit.length} file${overLimit.length === 1 ? '' : 's'} exceed the OCR limits and will be refused.` : ''}
+            {overLimit.length > 0 ? ` ${refusal}` : ''}
         </p>
     );
 }

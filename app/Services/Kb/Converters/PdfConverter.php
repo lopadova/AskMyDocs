@@ -63,6 +63,8 @@ final class PdfConverter implements ConverterInterface
 
     public function convert(SourceDocument $doc): ConvertedDocument
     {
+        // Null only when OCR is disabled; with OCR on the route always
+        // carries the probe verdict, so the meta below never reads a null.
         $ocrRoute = $this->ocrRoute($doc);
         if ($ocrRoute !== null && $ocrRoute['reason'] !== null) {
             $converted = $this->ocr->convert($doc, $this->name(), reason: $ocrRoute['reason']);
@@ -111,18 +113,18 @@ final class PdfConverter implements ConverterInterface
                 'extraction_strategy' => $strategy,
                 'source_path' => $doc->sourcePath,
                 'filename' => $filename,
-            ], $this->ocrEnabled() ? ['text_layer_probe' => $ocrRoute['probe'] ?? PdfTextLayerProbe::PRESENT] : []),
+            ], $ocrRoute !== null ? ['text_layer_probe' => $ocrRoute['probe']] : []),
             sourceMimeType: $doc->mimeType,
         );
     }
 
     /**
-     * Decide whether this PDF goes to OCR. Null = text-layer path with a
-     * confident `present` verdict; `reason === null` = text-layer path
-     * through pages the pdftotext fallback already produced (the probe's
-     * parser could not read the file but pdftotext could — a parser failure
-     * is NOT "no text", and must never be billed as a scan); a non-null
-     * `reason` = OCR.
+     * Decide whether this PDF goes to OCR. Null only when OCR is disabled.
+     * With OCR on the array is always returned: `reason === null` = the
+     * text-layer path (a confident `present` verdict, or pages the pdftotext
+     * fallback already produced when the probe's parser could not read the
+     * file — a parser failure is NOT "no text", and must never be billed as
+     * a scan); a non-null `reason` = OCR. `probe` always carries the verdict.
      *
      * @return array{reason: ?string, probe: string, pages?: list<string>}|null
      */
@@ -136,7 +138,7 @@ final class PdfConverter implements ConverterInterface
         }
         $probe = $this->ocr->probe()->probe($doc->bytes);
         if ($probe['verdict'] === PdfTextLayerProbe::PRESENT) {
-            return null;
+            return ['reason' => null, 'probe' => PdfTextLayerProbe::PRESENT];
         }
         if ($probe['verdict'] === PdfTextLayerProbe::UNREADABLE) {
             try {

@@ -126,7 +126,9 @@ export type OcrEstimateReason =
     | 'not_ocr_able'
     | 'staged_file_missing'
     | 'too_many_pages'
-    | 'too_many_bytes';
+    | 'too_many_bytes'
+    /** the PDF could not be parsed and the configured driver is remote: refused before egress */
+    | 'pages_uncountable';
 
 export interface OcrEstimateItem {
     id: string;

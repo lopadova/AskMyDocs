@@ -259,6 +259,57 @@ final class OcrLimitsAndReuseTest extends TestCase
         $this->app->make(OcrConverter::class)->convert($this->image());
     }
 
+    /**
+     * ADR 0029 §4 — a `/Type /Page` floor is not a cap input: a PDF the
+     * parser cannot read has no verified page count, so a remote driver
+     * never receives it. Refused before any byte leaves.
+     */
+    #[Test]
+    public function a_remote_driver_refuses_a_pdf_whose_page_count_cannot_be_verified_before_egress(): void
+    {
+        Http::fake();
+        config(['kb.ocr.driver' => 'mistral-ocr', 'kb.ocr.allow_remote' => true, 'kb.ocr.mistral.api_key' => 'k', 'kb.ocr.max_pages' => 200]);
+        $doc = new SourceDocument(
+            sourcePath: 'docs/unparseable.pdf',
+            mimeType: 'application/pdf',
+            bytes: '%PDF-1.4 not really a pdf',
+            externalUrl: null,
+            externalId: null,
+            connectorType: 'local',
+            metadata: [],
+        );
+
+        try {
+            $this->app->make(OcrService::class)->convert($doc, 'pdf-converter', 'scanned_pdf');
+            $this->fail('expected the uncountable PDF to be refused before egress');
+        } catch (OcrLimitExceededException $e) {
+            $this->assertSame('pages_uncountable', $e->reason);
+            $this->assertStringContainsString('mistral-ocr', $e->getMessage());
+        }
+        Http::assertNothingSent();
+    }
+
+    /** The same document through a local driver still runs: nothing leaves and the byte cap bounds the work. */
+    #[Test]
+    public function a_local_driver_still_runs_on_a_pdf_whose_page_count_is_only_a_floor(): void
+    {
+        config(['kb.ocr.driver' => 'fake', 'kb.ocr.max_pages' => 200]);
+        $doc = new SourceDocument(
+            sourcePath: 'docs/unparseable.pdf',
+            mimeType: 'application/pdf',
+            bytes: '%PDF-1.4 not really a pdf',
+            externalUrl: null,
+            externalId: null,
+            connectorType: 'local',
+            metadata: [],
+        );
+
+        $converted = $this->app->make(OcrService::class)->convert($doc, 'pdf-converter', 'scanned_pdf');
+
+        $this->assertSame('fake', $converted->extractionMeta['ocr']['driver']);
+        $this->assertSame(['pages' => 1, 'exact' => false], $this->app->make(OcrService::class)->pageCountDetailFor('application/pdf', $doc->bytes));
+    }
+
     #[Test]
     public function the_run_key_changes_with_the_engine_so_another_driver_never_overwrites_a_run(): void
     {
