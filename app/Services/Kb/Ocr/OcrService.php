@@ -10,6 +10,7 @@ use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
 use App\Services\Kb\Pipeline\ConvertedDocument;
 use App\Services\Kb\Pipeline\SourceDocument;
+use App\Services\Kb\Versioning\SourceRetentionResolver;
 use App\Support\Kb\FileTypeSniffer;
 use App\Support\KbPath;
 use App\Support\TenantContext;
@@ -365,6 +366,10 @@ final class OcrService
      */
     public static function stripTrustedOnlyKeys(array $metadata): array
     {
+        // ADR 0030 §4 — the version actor is an audit identity: derived by the
+        // trusted caller (authenticated principal, CLI, connector bridge),
+        // never accepted from a client payload.
+        unset($metadata['version_actor']);
         // `disk` and `prefix` name the storage namespace the source was
         // written under: the host records them at ingest and a re-run
         // carries them from the row — a client or a connector must not, or
@@ -387,7 +392,11 @@ final class OcrService
      * these — and only these — so the host-resolved storage namespace the
      * same job carries (`disk` / `prefix`, set by ParseMarkdownStep) is
      * persisted with the row, where a later re-run or delete reads it back
-     * to resolve the SAME object after a configuration change.
+     * to resolve the SAME object after a configuration change, and a
+     * trusted audit input it carries (`version_actor`, ADR 0030 §4) still
+     * reaches the ingestor — while a row never keeps a control key that
+     * would force the next ingest built from its metadata or expose a lock
+     * payload through document reads.
      *
      * @param  array<string, mixed>  $metadata
      * @return array<string, mixed>
@@ -458,12 +467,16 @@ final class OcrService
         $prefix = array_key_exists('prefix', $doc->metadata)
             ? (string) $doc->metadata['prefix']
             : (string) config('kb.sources.path_prefix', '');
-        $figuresEnabled = (bool) config('kb.ocr.figures.enabled', true);
+        // ADR 0029 §5 / ADR 0030 §3 — the `.ocr/` directory is a local copy
+        // and is retention-aware: in `reference_only` no run is recorded and
+        // no figure is stored (nothing to reuse from, no `images/` reference).
+        $retainsLocal = app(SourceRetentionResolver::class)->retainsMarkdown();
+        $figuresEnabled = (bool) config('kb.ocr.figures.enabled', true) && $retainsLocal;
+        $reuseEnabled = (bool) config('kb.ocr.reuse.enabled', true) && $retainsLocal;
         // Idempotency (CLAUDE.md §5): the same bytes through the same driver
         // produce the same result — reuse the recorded run instead of paying
         // for it again (a re-ingest of identical bytes, an IMAP backfill, a
         // GH-action full sync). `ocr.force` (kb:ocr) bypasses the reuse.
-        $reuseEnabled = (bool) config('kb.ocr.reuse.enabled', true);
         $reuseAllowed = ! self::isForced($doc->metadata) && $reuseEnabled;
         // Engine-aware run key: bytes × driver × the driver's variant × the
         // figure switch — anything that shapes the output shapes the key.

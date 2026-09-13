@@ -158,6 +158,7 @@ group is pinned in the [authorization matrix](/architecture/security-and-threat-
 | Project memberships | `/api/admin/users/{user}/memberships`, `/memberships/{id}` | `role:admin\|super-admin` |
 | KB tree / health / documents | `/api/admin/kb/tree`, `/health`, `/documents/*` | `role:admin\|super-admin` |
 | KB OCR (v8.36) | `GET /api/admin/kb/documents/{id}/ocr` (status), `POST …/ocr` (re-run, 202), `GET /api/admin/kb/uploads/{batch}/estimate` (pre-commit cost estimate) | `role:admin\|super-admin` |
+| Time Machine artifacts (v8.36) | `GET /api/admin/kb/documents/{id}/versions/{versionId}/content` (a version's stored Markdown, or its chunk reconstruction, with `source`); `…/versions` and `…/versions/diff` gain additive `version_actor` / `version_reason` / `content_hash` / `has_artifact` / `restored_by` / `restored_at`, `from_source` / `to_source` and the integrity verdicts `from_integrity` / `to_integrity` (`verified` · `mismatch` · null); the content endpoint carries `integrity` too | `role:admin\|super-admin` |
 | KB collections / tags / synonyms / analyses | `/api/admin/kb/collections`, `/tags`, `/synonyms`, `/analyses` | `role:admin\|super-admin` |
 | KB analysis/autowiki settings, content gaps | `/api/admin/kb/analysis-settings`, `/autowiki-settings`, `/content-gaps` | `role:admin\|super-admin` |
 | Auto-Wiki ops (evidence-tier, wiki-link, synthesize, index, lint, navigate, review, maintain, pages, promote/discard) | `/api/admin/kb/{evidence-tiers,wiki-*,concepts/*}` | `role:admin\|super-admin` |

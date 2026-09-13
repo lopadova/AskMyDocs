@@ -112,7 +112,9 @@ class PruneOrphanFilesCommandTest extends TestCase
         Storage::disk('kb')->put('docs/orphan.md.ocr/'.self::RUN.'/result.json', '{}');
         Storage::disk('kb')->put('docs/kept.md.ocr/fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210/notes.md', 'not a source');
 
-        $this->seedDoc('docs/kept.md', 'hk');
+        $kept = $this->seedDoc('docs/kept.md', 'hk');
+        // The live row names its run: a referenced run is never a stale-run candidate.
+        $kept->update(['metadata' => ['disk' => 'kb', 'prefix' => '', 'converter' => ['ocr' => ['run' => str_repeat('fedcba9876543210', 4)]]]]);
 
         // Past the in-flight grace (ADR 0029 §6): the run is not a reservation any more.
         $this->travel(OcrFigureStore::inFlightGraceSeconds() + 60)->seconds();
@@ -231,7 +233,7 @@ class PruneOrphanFilesCommandTest extends TestCase
         $this->travel(OcrFigureStore::inFlightGraceSeconds() + 60)->seconds();
         $this->artisan('kb:prune-orphan-files', ['--dry-run' => true])
             ->expectsOutputToContain('docs/archive.ocr/gone.md.ocr')
-            ->expectsOutputToContain('0 of 0 orphan file(s) and 1 dangling OCR tree(s)')
+            ->expectsOutputToContain('0 of 0 orphan file(s), 1 dangling OCR tree(s) and 0 stale OCR run(s)')
             ->assertSuccessful();
 
         $this->artisan('kb:prune-orphan-files')
@@ -256,7 +258,7 @@ class PruneOrphanFilesCommandTest extends TestCase
 
         $this->artisan('kb:prune-orphan-files', ['--dry-run' => true])
             ->expectsOutputToContain('docs/gone.md.ocr')
-            ->expectsOutputToContain('0 of 0 orphan file(s) and 1 dangling OCR tree(s)')
+            ->expectsOutputToContain('0 of 0 orphan file(s), 1 dangling OCR tree(s) and 0 stale OCR run(s)')
             ->assertSuccessful();
         Storage::disk('kb')->assertExists('docs/gone.md.ocr/'.self::RUN.'/result.json');
 

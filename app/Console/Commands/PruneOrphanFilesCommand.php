@@ -51,8 +51,13 @@ class PruneOrphanFilesCommand extends Command
         // in-flight run, a failed first ingest whose source was never
         // written): nothing else ever sweeps them.
         $danglingOcr = $this->detectDanglingOcrTrees($storage, $allFiles, $prefix, $disk);
+        // …and, inside trees a row still references, the runs no row names
+        // any more (a version pruned while its run was in flight, a forced
+        // re-run whose old run nothing points at): the deleter purges a tree
+        // only with its last row, so these have no other reaper.
+        $staleRuns = $this->detectStaleOcrRuns($allFiles, $prefix, $danglingOcr);
 
-        if ($markdownFiles === [] && $danglingOcr === []) {
+        if ($markdownFiles === [] && $danglingOcr === [] && $staleRuns === []) {
             $this->info("No source files found on disk [{$disk}].");
 
             return self::SUCCESS;
@@ -63,7 +68,7 @@ class PruneOrphanFilesCommand extends Command
         $scanned = count($relativePaths);
         $orphanCount = count($orphans);
 
-        if ($orphanCount === 0 && $danglingOcr === []) {
+        if ($orphanCount === 0 && $danglingOcr === [] && $staleRuns === []) {
             $this->info("Scanned {$scanned} source file(s) on disk [{$disk}] — no orphans found.");
 
             return self::SUCCESS;
@@ -72,11 +77,13 @@ class PruneOrphanFilesCommand extends Command
         if ($dryRun) {
             $this->renderDryRun($storage, $orphans, $disk, $prefix);
             $this->renderDanglingOcrDryRun($danglingOcr, $disk);
+            $this->renderStaleOcrRunsDryRun($staleRuns, $disk);
             $this->line(sprintf(
-                'DRY-RUN: %d of %d orphan file(s) and %d dangling OCR tree(s) found on disk [%s]. No changes made.',
+                'DRY-RUN: %d of %d orphan file(s), %d dangling OCR tree(s) and %d stale OCR run(s) found on disk [%s]. No changes made.',
                 $orphanCount,
                 $scanned,
                 count($danglingOcr),
+                count($staleRuns),
                 $disk,
             ));
 
@@ -85,9 +92,10 @@ class PruneOrphanFilesCommand extends Command
 
         [$deleted, $failed, $orphanOcrKept] = $this->deleteOrphans($storage, $orphans, $prefix, $disk);
         [$purged, $inFlight, $ocrFailed] = $this->purgeDanglingOcrTrees($danglingOcr, $disk);
+        [$runsPurged, $runsInFlight, $runsFailed] = $this->purgeStaleOcrRuns($staleRuns, $disk, $prefix);
 
         $this->info(sprintf(
-            'Disk [%s]: scanned=%d orphans=%d deleted=%d failed=%d orphan_ocr_kept=%d dangling_ocr=%d purged=%d in_flight=%d ocr_failed=%d',
+            'Disk [%s]: scanned=%d orphans=%d deleted=%d failed=%d orphan_ocr_kept=%d dangling_ocr=%d purged=%d in_flight=%d ocr_failed=%d stale_runs=%d runs_purged=%d runs_in_flight=%d runs_failed=%d',
             $disk,
             $scanned,
             $orphanCount,
@@ -98,9 +106,105 @@ class PruneOrphanFilesCommand extends Command
             $purged,
             $inFlight,
             $ocrFailed,
+            count($staleRuns),
+            $runsPurged,
+            $runsInFlight,
+            $runsFailed,
         ));
 
-        return ($failed === 0 && $ocrFailed === 0) ? self::SUCCESS : self::FAILURE;
+        return ($failed === 0 && $ocrFailed === 0 && $runsFailed === 0) ? self::SUCCESS : self::FAILURE;
+    }
+
+    /**
+     * Runs (`{key}.ocr/{run}`) under trees that are NOT dangling — a row still
+     * references the source — but that no row of any tenant, trashed
+     * included, names in `metadata.converter.ocr.run` (the deleter's gate,
+     * ADR 0030 §8). A tree beside an orphan file is not scanned: it goes with
+     * the file.
+     *
+     * @param  array<int,string>  $allFiles
+     * @param  array<int,string>  $danglingOcr
+     * @return array<int,array{0:string,1:string}> [disk-relative source key, run]
+     */
+    private function detectStaleOcrRuns(array $allFiles, string $prefix, array $danglingOcr): array
+    {
+        $onDisk = array_flip(array_map(static fn (string $f): string => KbPath::normalize($f), $allFiles));
+        $dangling = array_flip($danglingOcr);
+        $suffix = OcrFigureStore::DIR_SUFFIX;
+        $runs = [];
+        foreach ($allFiles as $file) {
+            $normalized = KbPath::normalize($file);
+            $at = strpos($normalized, $suffix.'/');
+            if ($at === false) {
+                continue;
+            }
+            $key = substr($normalized, 0, $at);
+            if ($key === '' || isset($dangling[$key]) || ! isset($onDisk[$key])) {
+                continue;
+            }
+            $rest = substr($normalized, $at + strlen($suffix) + 1);
+            $run = explode('/', $rest, 2)[0];
+            if (preg_match('/^[a-f0-9]{64}$/', $run) !== 1) {
+                continue;
+            }
+            $runs[$key.'|'.$run] = [$key, $run];
+        }
+        if ($runs === []) {
+            return [];
+        }
+
+        $deleter = app(DocumentDeleter::class);
+        $stale = [];
+        foreach ($runs as [$key, $run]) {
+            if ($deleter->documentReferencingOcrRun($this->stripPrefix($key, $prefix), $run) !== null) {
+                continue;
+            }
+            $stale[] = [$key, $run];
+        }
+        usort($stale, static fn (array $a, array $b): int => [$a[0], $a[1]] <=> [$b[0], $b[1]]);
+
+        return $stale;
+    }
+
+    /**
+     * @param  array<int,array{0:string,1:string}>  $staleRuns
+     * @return array{0:int,1:int,2:int} [purged, in_flight (kept), failed]
+     */
+    private function purgeStaleOcrRuns(array $staleRuns, string $disk, string $prefix): array
+    {
+        $purged = 0;
+        $inFlight = 0;
+        $failed = 0;
+        $store = app(OcrFigureStore::class);
+        foreach ($staleRuns as [$key, $run]) {
+            try {
+                if ($store->purgeRun($disk, $this->stripPrefix($key, $prefix), $prefix, $run)) {
+                    $purged++;
+                    continue;
+                }
+                $inFlight++;
+                $this->line("  ~ kept (in flight): {$key}".OcrFigureStore::DIR_SUFFIX."/{$run}");
+            } catch (\Throwable $e) {
+                $failed++;
+                $this->error("  ! could not purge stale OCR run {$key}".OcrFigureStore::DIR_SUFFIX."/{$run}: {$e->getMessage()}");
+            }
+        }
+
+        return [$purged, $inFlight, $failed];
+    }
+
+    /**
+     * @param  array<int,array{0:string,1:string}>  $staleRuns
+     */
+    private function renderStaleOcrRunsDryRun(array $staleRuns, string $disk): void
+    {
+        if ($staleRuns === []) {
+            return;
+        }
+        $this->table(
+            ['Stale OCR run ['.$disk.']'],
+            array_map(static fn (array $r): array => [$r[0].OcrFigureStore::DIR_SUFFIX.'/'.$r[1]], $staleRuns),
+        );
     }
 
     /**

@@ -10,6 +10,7 @@ use App\Models\KbNode;
 use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
 use App\Services\Kb\Ocr\OcrFigureStore;
+use App\Services\Kb\Versioning\ConversionArtifactStore;
 use App\Services\Kb\Analysis\ChangeAnalysisGate;
 use App\Support\KbPath;
 use App\Support\LikeEscaper;
@@ -35,7 +36,7 @@ class DocumentDeleter
      * Delete a single document. When $force is null the behaviour is driven
      * by the `kb.deletion.soft_delete` config flag (default: soft).
      *
-     * @return array{mode: string, document_id: int, project_key: string, source_path: string, file_deleted: bool, ocr_assets_deleted?: bool}
+     * @return array{mode: string, document_id: int, project_key: string, source_path: string, file_deleted: bool, ocr_assets_deleted?: bool, artifact_deleted?: bool}
      */
     public function delete(KnowledgeDocument $document, ?bool $force = null, bool $analyzeImpact = false): array
     {
@@ -136,7 +137,7 @@ class DocumentDeleter
      * and repeated soft-deletes are idempotent (no-op returning a soft
      * result).
      *
-     * @return array{mode: string, document_id: int, project_key: string, source_path: string, file_deleted: bool, ocr_assets_deleted?: bool}|null
+     * @return array{mode: string, document_id: int, project_key: string, source_path: string, file_deleted: bool, ocr_assets_deleted?: bool, artifact_deleted?: bool}|null
      */
     public function deleteByPath(string $projectKey, string $sourcePath, ?bool $force = null): ?array
     {
@@ -184,7 +185,7 @@ class DocumentDeleter
      * WARNING level so ops can spot unscoped runs in production.
      *
      * @param  array<int,string>  $existingRelativePaths
-     * @return array<int,array{mode: string, document_id: int, project_key: string, source_path: string, file_deleted: bool, ocr_assets_deleted?: bool}>
+     * @return array<int,array{mode: string, document_id: int, project_key: string, source_path: string, file_deleted: bool, ocr_assets_deleted?: bool, artifact_deleted?: bool}>
      */
     public function deleteOrphans(
         string $projectKey,
@@ -244,6 +245,14 @@ class DocumentDeleter
         $results = [];
         $query->orderBy('id')->chunkById(100, function ($orphans) use (&$results, $force) {
             foreach ($orphans as $orphan) {
+                // v8.36 / ADR 0030 §3 — `markdown_only` retention drops the
+                // original binary on purpose after the artifact commit and
+                // stamps the row: a missing file that was dropped by design
+                // is not an orphan, it is the retention policy working.
+                $metadata = is_array($orphan->metadata) ? $orphan->metadata : [];
+                if (($metadata['source_dropped'] ?? false) === true) {
+                    continue;
+                }
                 $results[] = $this->delete($orphan, $force);
             }
         });
@@ -264,7 +273,7 @@ class DocumentDeleter
      * Per Copilot PR #115 review iteration 1 (R4 + R14 — never silently
      * destroy operator-supplied data on a recoverable failure).
      *
-     * @return array{mode: string, document_id: int, project_key: string, source_path: string, file_deleted: bool, ocr_assets_deleted: bool, canonical: array<string, mixed>|null}
+     * @return array{mode: string, document_id: int, project_key: string, source_path: string, file_deleted: bool, ocr_assets_deleted: bool, artifact_deleted: bool, canonical: array<string, mixed>|null}
      */
     public function deleteDbOnly(KnowledgeDocument $document): array
     {
@@ -385,7 +394,7 @@ class DocumentDeleter
     }
 
     /**
-     * @return array{mode: string, document_id: int, project_key: string, source_path: string, file_deleted: bool, ocr_assets_deleted?: bool}
+     * @return array{mode: string, document_id: int, project_key: string, source_path: string, file_deleted: bool, ocr_assets_deleted?: bool, artifact_deleted?: bool}
      */
     private function softDelete(KnowledgeDocument $document): array
     {
@@ -407,7 +416,7 @@ class DocumentDeleter
     }
 
     /**
-     * @return array{mode: string, document_id: int, project_key: string, source_path: string, file_deleted: bool, ocr_assets_deleted?: bool}
+     * @return array{mode: string, document_id: int, project_key: string, source_path: string, file_deleted: bool, ocr_assets_deleted?: bool, artifact_deleted?: bool}
      */
     private function forceDelete(KnowledgeDocument $document): array
     {
@@ -442,6 +451,11 @@ class DocumentDeleter
             ? ['file_deleted' => false, 'ocr_assets_deleted' => false]
             : $this->removeFileAndOcrAssets($disk, $fullPath, $documentId, $sourcePath);
 
+        // v8.36 / ADR 0030 §8 — each row owns its own version artifact: it
+        // goes with the row, no reference gate needed (the source file above
+        // is shared across versions; the artifact is not).
+        $artifactDeleted = $this->removeArtifact($disk, $document->markdown_path, $documentId);
+
         return [
             'mode' => 'hard',
             'document_id' => $documentId,
@@ -452,6 +466,8 @@ class DocumentDeleter
             // is gone too. A hard delete that reports the source removed but
             // leaves generated OCR data behind says so here, never silently.
             'ocr_assets_deleted' => $removal['ocr_assets_deleted'],
+            // v8.36 / ADR 0030 §8 — additive (R27): the row's version artifact.
+            'artifact_deleted' => $artifactDeleted,
             'canonical' => $canonicalSnapshot,
         ];
     }
@@ -564,6 +580,33 @@ class DocumentDeleter
                 'reason' => $e->getMessage(),
             ]);
             return null;
+        }
+    }
+
+    /**
+     * Remove the row's own version artifact (ADR 0030 §8). Returns true when
+     * NO artifact remains for the row afterwards (deleted, never written, or
+     * already gone); false when one is still on the disk — a delete error
+     * the caller reports instead of a warning nobody reads (R14).
+     */
+    private function removeArtifact(string $disk, mixed $markdownPath, int $documentId): bool
+    {
+        if (! is_string($markdownPath) || $markdownPath === '') {
+            return true;
+        }
+        try {
+            app(ConversionArtifactStore::class)->delete($disk, $markdownPath);
+
+            return ! Storage::disk($disk)->exists($markdownPath);
+        } catch (\Throwable $e) {
+            Log::warning('DocumentDeleter: failed to remove conversion artifact', [
+                'document_id' => $documentId,
+                'disk' => $disk,
+                'markdown_path' => $markdownPath,
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
         }
     }
 
@@ -721,6 +764,34 @@ class DocumentDeleter
     public function documentReferencingStorageKey(string $disk, string $fullPath, string $sourcePath): ?int
     {
         return $this->firstDocumentReferencingStorageKey($disk, $fullPath, $sourcePath);
+    }
+
+    /**
+     * Public reference gate for ONE recorded OCR run (ADR 0030 §8): the id of
+     * a remaining row — any tenant, live, archived or soft-deleted, the same
+     * documented R30 exception as the storage-key gate, because the run
+     * directory sits beside a source object that is not tenant namespaced —
+     * whose `metadata.converter.ocr.run` names `$run` under `$sourcePath`,
+     * or null when nothing references it. The prune asks here before it
+     * purges a pruned version's run, so "referenced" means the same thing
+     * for the hard delete and for the prune.
+     */
+    public function documentReferencingOcrRun(string $sourcePath, string $run): ?int
+    {
+        $documents = KnowledgeDocument::query()
+            ->withoutGlobalScopes()
+            ->where('source_path', KbPath::normalize($sourcePath))
+            ->select(['id', 'metadata'])
+            ->cursor();
+
+        foreach ($documents as $document) {
+            $metadata = is_array($document->metadata) ? $document->metadata : [];
+            if (($metadata['converter']['ocr']['run'] ?? null) === $run) {
+                return (int) $document->id;
+            }
+        }
+
+        return null;
     }
 
     private function firstDocumentReferencingStorageKey(

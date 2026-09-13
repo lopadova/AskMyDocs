@@ -87,13 +87,22 @@ when that env is false the slot never runs regardless of its `SCHEDULE_*` value.
 - **`kb:prune-deleted`** — hard-delete documents soft-deleted longer than
   `KB_SOFT_DELETE_RETENTION_DAYS`, cascading chunks + graph + file on disk.
 - **`kb:prune-archived-versions`** — drop old archived document versions beyond
-  the per-family retention cap.
+  the per-family retention cap; since v8.36 each pruned version's conversion
+  artifact goes with it, and the run sweeps stale `.tmp` files
+  (`KB_CONVERSION_ARTIFACTS_TMP_MAX_AGE`) and artifacts no row references.
 - **`kb:prune-staging-batches`** — purge stale drag-and-drop upload staging
   batches and their staged files on the `kb-staging` disk once past
   `KB_STAGING_RETENTION_HOURS` (default 24; `--hours=N` overrides). Keeps the
   staging area from accumulating abandoned review sessions.
 - **`kb:prune-orphan-files`** — remove markdown files on the KB disk with no
-  matching `knowledge_documents` row.
+  matching `knowledge_documents` row. Since v8.36 it is also the reaper of the
+  OCR run store: a `{source}.ocr/` tree whose source is gone from the disk and
+  from every row of any tenant (trashed included) is *dangling*, and a run
+  inside a live tree that no row names any more is *stale* — both are removed
+  once older than `KB_OCR_PURGE_GRACE_SECONDS` (a younger run is an in-flight
+  reservation and is kept, reported as `in_flight`). The reference decision is
+  `DocumentDeleter`'s gate, the same the hard delete and
+  `kb:prune-archived-versions` use.
 - **`kb:rebuild-graph`** — rebuild `kb_nodes` + `kb_edges` from canonical docs.
   No-op when no canonical docs exist. See [canonical & promotion](/canonical-and-promotion).
 - **`kb:health-recompute`** / **`kb:stale-review-sweep`** — recompute KB health

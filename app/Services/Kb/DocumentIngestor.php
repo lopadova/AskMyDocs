@@ -18,10 +18,13 @@ use App\Services\Kb\Pipeline\ChunkDraft;
 use App\Services\Kb\Pipeline\PipelineRegistry;
 use App\Services\Kb\Pipeline\SourceDocument;
 use App\Support\Canonical\GenerationSource;
+use App\Services\Kb\Versioning\ConversionArtifactStore;
+use App\Services\Kb\Versioning\SourceRetentionResolver;
 use App\Support\KbPath;
 use App\Support\TenantContext;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 
 /**
@@ -330,24 +333,39 @@ class DocumentIngestor
             $existing = $this->findExistingVersion($projectKey, $sourcePath, $versionHash);
             if ($existing !== null) {
                 $existing->update(['indexed_at' => now()]);
+                $this->repairArtifactOfExistingVersion($existing, $markdown, $metadata);
+
                 return $existing;
             }
         }
 
-        return DB::transaction(fn () => $this->persistDocumentAndChunks(
-            $projectKey,
-            $sourcePath,
-            $title,
-            $mimeType,
-            $sourceType,
-            $metadata,
-            $documentHash,
-            $versionHash,
-            $chunkDrafts,
-            $embeddingResponse,
-            $canonical,
-            $replaceExisting,
-        ));
+        // v8.36 / ADR 0030 §3 — the artifact temp file is written BEFORE the
+        // transaction and moved into place only after commit; a failed
+        // transaction discards this attempt's temp and nothing else.
+        $artifact = $this->stageArtifact($projectKey, $sourcePath, $versionHash, $markdown, $metadata);
+        try {
+            $document = DB::transaction(fn () => $this->persistDocumentAndChunks(
+                $projectKey,
+                $sourcePath,
+                $title,
+                $mimeType,
+                $sourceType,
+                $metadata,
+                $documentHash,
+                $versionHash,
+                $chunkDrafts,
+                $embeddingResponse,
+                $canonical,
+                $replaceExisting,
+                $artifact,
+            ));
+        } catch (\Throwable $e) {
+            $this->discardArtifact($artifact);
+            throw $e;
+        }
+        $this->publishArtifactOrLog($artifact, $document, $sourceType, $metadata);
+
+        return $document;
     }
 
     // -----------------------------------------------------------------
@@ -388,6 +406,8 @@ class DocumentIngestor
             $existing = $this->findExistingVersion($projectKey, $sourcePath, $versionHash);
             if ($existing !== null) {
                 $existing->update(['indexed_at' => now()]);
+                $this->repairArtifactOfExistingVersion($existing, $markdown, $metadata);
+
                 return $existing;
             }
         }
@@ -405,21 +425,11 @@ class DocumentIngestor
             array_map(fn (ChunkDraft $d) => $d->text, $chunkDrafts),
         );
 
-        $document = DB::transaction(function () use (
-            $projectKey,
-            $sourcePath,
-            $title,
-            $mimeType,
-            $sourceType,
-            $metadata,
-            $documentHash,
-            $versionHash,
-            $chunkDrafts,
-            $embeddingResponse,
-            $canonical,
-            $forceReembed,
-        ) {
-            $document = $this->persistDocumentAndChunks(
+        // v8.36 / ADR 0030 §3 — temp before the transaction, move after commit,
+        // this attempt's temp discarded on failure (one core, both paths).
+        $artifact = $this->stageArtifact($projectKey, $sourcePath, $versionHash, $markdown, $metadata);
+        try {
+            $document = DB::transaction(function () use (
                 $projectKey,
                 $sourcePath,
                 $title,
@@ -432,18 +442,39 @@ class DocumentIngestor
                 $embeddingResponse,
                 $canonical,
                 $forceReembed,
-            );
+                $artifact,
+            ) {
+                $document = $this->persistDocumentAndChunks(
+                    $projectKey,
+                    $sourcePath,
+                    $title,
+                    $mimeType,
+                    $sourceType,
+                    $metadata,
+                    $documentHash,
+                    $versionHash,
+                    $chunkDrafts,
+                    $embeddingResponse,
+                    $canonical,
+                    $forceReembed,
+                    $artifact,
+                );
 
-            // Inside the SAME transaction as the document itself, on purpose.
-            // If the permission mirror cannot be written, the document must
-            // not exist either: ingesting it anyway would publish to the
-            // whole project a file the source shared with three people, which
-            // is the exact failure ADR 0028 phase 2 removes. A failed ingest
-            // retries; an over-shared document does not announce itself.
-            $this->mirrorSourceAccess($document, $metadata);
+                // Inside the SAME transaction as the document itself, on purpose.
+                // If the permission mirror cannot be written, the document must
+                // not exist either: ingesting it anyway would publish to the
+                // whole project a file the source shared with three people, which
+                // is the exact failure ADR 0028 phase 2 removes. A failed ingest
+                // retries; an over-shared document does not announce itself.
+                $this->mirrorSourceAccess($document, $metadata);
 
-            return $document;
-        });
+                return $document;
+            });
+        } catch (\Throwable $e) {
+            $this->discardArtifact($artifact);
+            throw $e;
+        }
+        $this->publishArtifactOrLog($artifact, $document, $sourceType, $metadata);
 
         $this->dispatchCanonicalIndexerIfCanonical($document);
 
@@ -471,6 +502,7 @@ class DocumentIngestor
         $embeddingResponse,
         ?CanonicalParsedDocument $canonical,
         bool $forceReembed = false,
+        ?array $artifact = null,
     ): KnowledgeDocument {
         // If this is a canonical re-ingest with changed content, previous
         // versions still hold the (project_key, slug) / (project_key, doc_id)
@@ -482,14 +514,28 @@ class DocumentIngestor
 
         $tenantId = app(TenantContext::class)->current();
 
-        $attributes = $this->buildDocumentAttributes(
+        // ADR 0030 §3 — the retention contract the row was ingested under.
+        // `markdown_only` may drop a shared original only if EVERY row that
+        // references it was ingested under a mode that does not require the
+        // original; a row without the stamp (pre-v8.36) counts as full_copy.
+        $metadata['source_retention'] ??= app(SourceRetentionResolver::class)->mode();
+
+        // v8.36 / ADR 0030 §4 — provenance is written when the version is
+        // BORN. A forced re-embed re-runs this on the same row and must not
+        // rewrite who created it (a restore's `user:{id}` stays), nor null a
+        // stored artifact because the flag is off today: only a freshly
+        // staged artifact updates the pointer on an existing row.
+        $isNewVersion = $this->findExistingVersion($projectKey, $sourcePath, $versionHash) === null;
+        $attributes = array_merge($this->buildDocumentAttributes(
             $title,
             $mimeType,
             $sourceType,
             $metadata,
             $documentHash,
             $canonical,
-        );
+        ), $isNewVersion
+            ? $this->versionProvenanceAttributes($metadata, $documentHash, $artifact)
+            : ($artifact === null ? [] : ['markdown_path' => $artifact['final'], 'content_hash' => $documentHash]));
         // R30/R31 — tenant_id is part of the lookup keys so two tenants
         // ingesting the same `(project_key, source_path, version_hash)`
         // tuple produce two distinct rows instead of one tenant clobbering
@@ -588,7 +634,11 @@ class DocumentIngestor
             'provenance_tier' => $this->provenanceResolver->forIngestionMetadata($metadata)?->value,
             'status' => 'active',
             'document_hash' => $documentHash,
-            'metadata' => $metadata,
+            // ADR 0030 §4 — `version_actor` / `version_reason` are columns
+            // (the audit record of THIS version), never stored metadata: a
+            // copy in the bag would ride into the next ingest built from the
+            // row's metadata (the admin raw edit) and name the wrong actor.
+            'metadata' => array_diff_key($metadata, array_flip(['version_actor', 'version_reason'])),
             'indexed_at' => now(),
         ];
         if ($canonical === null) {
@@ -654,6 +704,270 @@ class DocumentIngestor
         }
         $trimmed = trim($value);
         return $trimmed === '' ? $default : $trimmed;
+    }
+
+    // -----------------------------------------------------------------
+    // v8.36 / ADR 0030 — conversion artifacts + version provenance
+    // -----------------------------------------------------------------
+
+    /**
+     * Write this version's Markdown to a temp file beside its final artifact
+     * path — or return null when nothing is to be stored (flag off,
+     * `reference_only` retention, dry run).
+     *
+     * @param  array<string,mixed>  $metadata
+     * @return array{disk: string, tmp: string, final: string}|null
+     */
+    private function stageArtifact(string $projectKey, string $sourcePath, string $versionHash, string $markdown, array $metadata): ?array
+    {
+        $store = app(ConversionArtifactStore::class);
+        if (! $store->enabled() || ! app(SourceRetentionResolver::class)->retainsMarkdown()) {
+            return null;
+        }
+        if (($metadata['dry_run'] ?? false) === true) {
+            return null;
+        }
+        $disk = (string) ($metadata['disk'] ?? config('kb.sources.disk', 'kb'));
+        $prefix = array_key_exists('prefix', $metadata)
+            ? (string) $metadata['prefix']
+            : (string) config('kb.sources.path_prefix', '');
+        $final = $store->pathFor(app(TenantContext::class)->current(), $projectKey, $sourcePath, $versionHash, $prefix);
+
+        return ['disk' => $disk, 'tmp' => $store->writeTemp($disk, $final, $markdown), 'final' => $final];
+    }
+
+    /**
+     * ADR 0030 §3 — the same-hash short-circuit returns the existing version
+     * only after its artifact has been verified: present on disk and hashing
+     * to `content_hash`. A missing or corrupt artifact is republished from the
+     * freshly converted bytes through the same temp-then-publish protocol —
+     * no new version, no chunk rewrite, pointer and `content_hash` unchanged
+     * (the bytes are the same by construction). A row without a pointer is
+     * left to `kb:artifacts-backfill`; a failed repair is logged and the row
+     * keeps falling back to reconstruction, exactly as before the re-ingest.
+     *
+     * @param  array<string,mixed>  $metadata
+     */
+    private function repairArtifactOfExistingVersion(KnowledgeDocument $existing, string $markdown, array $metadata): void
+    {
+        $path = $existing->markdown_path;
+        if (! is_string($path) || $path === '' || ($metadata['dry_run'] ?? false) === true) {
+            return;
+        }
+        $store = app(ConversionArtifactStore::class);
+        if (! $store->enabled()) {
+            return;
+        }
+        $expected = is_string($existing->content_hash) && $existing->content_hash !== '' ? $existing->content_hash : hash('sha256', $markdown);
+        if (hash('sha256', $markdown) !== $expected) {
+            // Cannot happen for the same version_hash; refuse to "repair" with bytes that are not the recorded ones.
+            Log::warning('DocumentIngestor: converted bytes do not match the recorded content_hash; artifact left as is', ['document_id' => $existing->id]);
+
+            return;
+        }
+        $disk = (string) ($metadata['disk'] ?? config('kb.sources.disk', 'kb'));
+        try {
+            $current = $store->read($disk, $path);
+            if (is_string($current) && hash('sha256', $current) === $expected) {
+                return;
+            }
+            $store->publish($disk, $store->writeTemp($disk, $path, $markdown), $path);
+            Log::info('DocumentIngestor: artifact repaired from an identical re-ingest', ['document_id' => $existing->id, 'disk' => $disk, 'markdown_path' => $path, 'was' => $current === null ? 'missing' : 'corrupt']);
+        } catch (\Throwable $e) {
+            Log::error('DocumentIngestor: artifact repair failed; reads keep falling back to reconstruction until kb:artifacts-backfill repairs it', ['document_id' => $existing->id, 'disk' => $disk, 'markdown_path' => $path, 'error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * @param  array{disk: string, tmp: string, final: string}|null  $artifact
+     */
+    private function discardArtifact(?array $artifact): void
+    {
+        if ($artifact === null) {
+            return;
+        }
+        app(ConversionArtifactStore::class)->discardTemp($artifact['disk'], $artifact['tmp']);
+    }
+
+    /**
+     * After commit: publish the temp and, in `markdown_only`, drop the
+     * original. The row is already committed and points at the final path,
+     * so a publish failure here is a documented degrade (`contentFor()`
+     * falls back and says so, `kb:artifacts-backfill` repairs it) — logged,
+     * never a reason to skip the canonical indexer dispatch that follows
+     * or to fail a job whose retry would be a version-hash no-op (R14).
+     *
+     * @param  array{disk: string, tmp: string, final: string}|null  $artifact
+     * @param  array<string,mixed>  $metadata
+     */
+    private function publishArtifactOrLog(?array $artifact, KnowledgeDocument $document, string $sourceType, array $metadata): void
+    {
+        if ($artifact === null) {
+            return;
+        }
+        try {
+            $this->publishArtifact($artifact, $document, $sourceType, $metadata);
+        } catch (\Throwable $e) {
+            $this->discardArtifact($artifact);
+            Log::error('DocumentIngestor: artifact publish failed after commit; the row keeps its pointer and reads fall back to reconstruction until kb:artifacts-backfill repairs it', [
+                'document_id' => (int) $document->id,
+                'disk' => $artifact['disk'],
+                'markdown_path' => $artifact['final'],
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Move the temp into place (R4 — a failed move throws) and, in
+     * `markdown_only`, drop the original binary the artifact now stands
+     * for. A Markdown source IS its own artifact and is never dropped; and
+     * the original is a SHARED storage key (every version of the path, and
+     * on a shared disk every tenant with the same key, points at the same
+     * bytes), so it is dropped only when every row referencing it — any
+     * tenant, trashed rows included — already has an artifact to stand in
+     * for it; otherwise it is kept and the reason logged. Rows whose
+     * original was dropped are stamped `metadata.source_dropped = true` so
+     * the orphan sweeps never read the missing file as an orphan.
+     *
+     * @param  array{disk: string, tmp: string, final: string}  $artifact
+     * @param  array<string,mixed>  $metadata
+     */
+    private function publishArtifact(array $artifact, KnowledgeDocument $document, string $sourceType, array $metadata): void
+    {
+        $store = app(ConversionArtifactStore::class);
+        $store->publish($artifact['disk'], $artifact['tmp'], $artifact['final']);
+
+        if (! app(SourceRetentionResolver::class)->dropsOriginal() || $sourceType === 'markdown') {
+            return;
+        }
+        $prefix = array_key_exists('prefix', $metadata)
+            ? (string) $metadata['prefix']
+            : (string) config('kb.sources.path_prefix', '');
+        try {
+            $sourcePath = KbPath::normalize((string) $document->source_path);
+            $original = $prefix === '' ? $sourcePath : KbPath::normalize($prefix.'/'.$sourcePath);
+        } catch (\InvalidArgumentException) {
+            return;
+        }
+        $storage = Storage::disk($artifact['disk']);
+        if ($original === $artifact['final'] || ! $storage->exists($original)) {
+            return;
+        }
+
+        // ADR 0030 §3 — the original is dropped only once this row's final
+        // move has succeeded (publish() threw otherwise) AND every other
+        // referencing row's artifact is PRESENT on disk: a pointer whose file
+        // never landed (a publish that failed after commit, repaired later by
+        // kb:artifacts-backfill) does not stand in for the original.
+        $referencing = $this->rowsReferencingStorageKey($artifact['disk'], $original, $sourcePath);
+        $withoutArtifact = $referencing->first(function (KnowledgeDocument $row) use ($store, $artifact, $document): bool {
+            $rowMetadata = is_array($row->metadata) ? $row->metadata : [];
+            // A row ingested under full_copy (or before the stamp existed)
+            // still requires the original: its retention contract wins.
+            $rowMode = (string) ($rowMetadata['source_retention'] ?? SourceRetentionResolver::FULL_COPY);
+            if ((int) $row->id !== (int) $document->id && $rowMode === SourceRetentionResolver::FULL_COPY) {
+                return true;
+            }
+            if ($rowMode === SourceRetentionResolver::REFERENCE_ONLY) {
+                return false; // never needed the local source
+            }
+            if (! is_string($row->markdown_path) || $row->markdown_path === '') {
+                return true;
+            }
+            $rowDisk = (string) ($rowMetadata['disk'] ?? $artifact['disk']);
+
+            return ! $store->exists($rowDisk, $row->markdown_path);
+        });
+        if ($withoutArtifact !== null) {
+            Log::info('DocumentIngestor: markdown_only retention kept the original — another row referencing the same storage key still requires it (full_copy contract, or no artifact on disk yet)', [
+                'document_id' => (int) $document->id,
+                'blocking_document_id' => (int) $withoutArtifact->id,
+                'disk' => $artifact['disk'],
+                'path' => $original,
+            ]);
+
+            return;
+        }
+        if (! $storage->delete($original)) {
+            Log::warning('DocumentIngestor: markdown_only retention could not drop the original after the artifact commit', [
+                'document_id' => (int) $document->id,
+                'disk' => $artifact['disk'],
+                'path' => $original,
+            ]);
+
+            return;
+        }
+        foreach ($referencing as $row) {
+            $rowMetadata = is_array($row->metadata) ? $row->metadata : [];
+            if (($rowMetadata['source_dropped'] ?? false) === true) {
+                continue;
+            }
+            KnowledgeDocument::withoutGlobalScopes()->whereKey($row->id)->update(['metadata' => array_merge($rowMetadata, ['source_dropped' => true])]);
+        }
+    }
+
+    /**
+     * Every row — any tenant, any status, soft-deleted included — whose
+     * `(disk, prefix + source_path)` resolves to the given storage key. The
+     * same lookup `DocumentDeleter` guards the shared source file with.
+     *
+     * @return \Illuminate\Support\Collection<int, KnowledgeDocument>
+     */
+    private function rowsReferencingStorageKey(string $disk, string $fullPath, string $sourcePath): \Illuminate\Support\Collection
+    {
+        $rows = collect();
+        KnowledgeDocument::withoutGlobalScopes()
+            ->where('source_path', $sourcePath)
+            ->select(['id', 'source_path', 'markdown_path', 'metadata'])
+            ->orderBy('id')
+            ->chunkById(200, function ($chunk) use (&$rows, $disk, $fullPath): void {
+                foreach ($chunk as $row) {
+                    $rowMetadata = is_array($row->metadata) ? $row->metadata : [];
+                    $rowDisk = (string) ($rowMetadata['disk'] ?? config('kb.sources.disk', 'kb'));
+                    $rowPrefix = array_key_exists('prefix', $rowMetadata)
+                        ? (string) $rowMetadata['prefix']
+                        : (string) config('kb.sources.path_prefix', '');
+                    try {
+                        $rowFull = $rowPrefix === '' ? KbPath::normalize((string) $row->source_path) : KbPath::normalize($rowPrefix.'/'.$row->source_path);
+                    } catch (\InvalidArgumentException) {
+                        continue;
+                    }
+                    if ($rowDisk === $disk && $rowFull === $fullPath) {
+                        $rows->push($row);
+                    }
+                }
+            });
+
+        return $rows;
+    }
+
+    /**
+     * ADR 0030 §4 — `version_actor` comes from the trusted caller (the HTTP
+     * controller sets the authenticated principal after stripping the client
+     * value, `kb:ocr` sets the re-run actor); the ingestor only defaults it:
+     * `system:ocr` for a machine-read document, `system:ingest` otherwise.
+     * `version_reason` is free text, bounded to the column.
+     *
+     * @param  array<string,mixed>  $metadata
+     * @param  array{disk: string, tmp: string, final: string}|null  $artifact
+     * @return array<string, ?string>
+     */
+    private function versionProvenanceAttributes(array $metadata, string $documentHash, ?array $artifact): array
+    {
+        $actor = $metadata['version_actor'] ?? null;
+        if (! is_string($actor) || trim($actor) === '') {
+            $actor = (($metadata['converter']['provenance'] ?? null) === 'ocr') ? 'system:ocr' : 'system:ingest';
+        }
+        $reason = $metadata['version_reason'] ?? null;
+        $reason = is_string($reason) && trim($reason) !== '' ? mb_substr(trim($reason), 0, 1024) : null;
+
+        return [
+            'version_actor' => mb_substr(trim($actor), 0, 191),
+            'version_reason' => $reason,
+            'content_hash' => $artifact === null ? null : $documentHash,
+            'markdown_path' => $artifact['final'] ?? null,
+        ];
     }
 
     private function archivePreviousVersions(string $projectKey, string $sourcePath, int $currentDocumentId): void

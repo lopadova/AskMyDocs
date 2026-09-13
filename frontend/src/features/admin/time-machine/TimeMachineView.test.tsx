@@ -25,8 +25,8 @@ function withQueryClient(node: ReactNode): ReactNode {
 const TIMELINE = {
     data: {
         data: [
-            { id: 22, title: 'Decision v2', version_hash: 'bbbbbbbb11', status: 'active', is_canonical: true, canonical_type: 'decision', is_live: true, indexed_at: '2026-06-02T00:00:00Z', created_at: null },
-            { id: 11, title: 'Decision v1', version_hash: 'aaaaaaaa22', status: 'archived', is_canonical: false, canonical_type: null, is_live: false, indexed_at: '2026-06-01T00:00:00Z', created_at: null },
+            { id: 22, title: 'Decision v2', version_hash: 'bbbbbbbb11', status: 'active', is_canonical: true, canonical_type: 'decision', is_live: true, indexed_at: '2026-06-02T00:00:00Z', created_at: null, version_actor: 'system:ocr', version_reason: 'ocr re-run (fake)', content_hash: 'cafe', has_artifact: true, restored_by: 'user:7', restored_at: '2026-06-03T00:00:00Z' },
+            { id: 11, title: 'Decision v1', version_hash: 'aaaaaaaa22', status: 'archived', is_canonical: false, canonical_type: null, is_live: false, indexed_at: '2026-06-01T00:00:00Z', created_at: null, version_actor: null, version_reason: null, content_hash: null, has_artifact: false },
         ],
         meta: { project_key: 'eng', source_path: 'docs/dec.md', total: 2 },
     },
@@ -73,6 +73,74 @@ describe('TimeMachineView', () => {
         await waitFor(() => expect(screen.getByTestId('kb-time-machine-diff-summary')).toBeVisible());
         expect(screen.getByTestId('kb-time-machine-diff-summary')).toHaveTextContent('+1 / −1');
         expect(screen.getByTestId('kb-time-machine-diff-body')).toHaveTextContent('new');
+    });
+
+    it('shows who created each version and marks the ones with a stored document (v8.36)', async () => {
+        mockGet.mockResolvedValue(TIMELINE);
+        render(withQueryClient(<TimeMachineView docId={22} />));
+        await waitFor(() => expect(screen.getByTestId('kb-time-machine-version-22')).toBeVisible());
+
+        expect(screen.getByTestId('kb-time-machine-version-22')).toHaveAttribute('data-has-artifact', 'true');
+        // creation provenance first, the restore apart from it (ADR 0030 §6)
+        expect(screen.getByTestId('kb-time-machine-version-22-actor')).toHaveTextContent('system:ocr · ocr re-run (fake) · restored by user:7');
+        expect(screen.getByTestId('kb-time-machine-version-22-artifact')).toBeVisible();
+        // a row that predates the artifacts says so instead of inventing an actor
+        expect(screen.getByTestId('kb-time-machine-version-11')).toHaveAttribute('data-has-artifact', 'false');
+        expect(screen.getByTestId('kb-time-machine-version-11-actor')).toHaveTextContent('unknown actor');
+        expect(screen.queryByTestId('kb-time-machine-version-11-artifact')).toBeNull();
+    });
+
+    it('labels a diff as faithful only when both sides are stored documents (v8.36)', async () => {
+        mockGet.mockImplementation((url: string) => {
+            if (url.includes('/diff')) {
+                return Promise.resolve({ data: { data: { from: 11, to: 22, added: 1, removed: 0, rows: [{ type: 'add', text: 'new' }], from_source: 'reconstruction', to_source: 'artifact' } } });
+            }
+            return Promise.resolve(TIMELINE);
+        });
+        render(withQueryClient(<TimeMachineView docId={22} />));
+        await waitFor(() => expect(screen.getByTestId('kb-time-machine-version-11')).toBeVisible());
+
+        await userEvent.click(screen.getByTestId('kb-time-machine-version-11-from'));
+        await userEvent.click(screen.getByTestId('kb-time-machine-version-22-to'));
+
+        await waitFor(() => expect(screen.getByTestId('kb-time-machine-diff-source')).toBeVisible());
+        expect(screen.getByTestId('kb-time-machine-diff-source')).toHaveAttribute('data-diff-faithful', 'false');
+        expect(screen.getByTestId('kb-time-machine-diff-source')).toHaveTextContent('Index diff — the older side is reconstructed');
+    });
+
+    it('labels a diff as faithful when both sides are stored documents (v8.36)', async () => {
+        mockGet.mockImplementation((url: string) => {
+            if (url.includes('/diff')) {
+                return Promise.resolve({ data: { data: { from: 11, to: 22, added: 0, removed: 0, rows: [], from_source: 'artifact', to_source: 'artifact' } } });
+            }
+            return Promise.resolve(TIMELINE);
+        });
+        render(withQueryClient(<TimeMachineView docId={22} />));
+        await waitFor(() => expect(screen.getByTestId('kb-time-machine-version-11')).toBeVisible());
+
+        await userEvent.click(screen.getByTestId('kb-time-machine-version-11-from'));
+        await userEvent.click(screen.getByTestId('kb-time-machine-version-22-to'));
+
+        await waitFor(() => expect(screen.getByTestId('kb-time-machine-diff-source')).toBeVisible());
+        expect(screen.getByTestId('kb-time-machine-diff-source')).toHaveAttribute('data-diff-faithful', 'true');
+        expect(screen.getByTestId('kb-time-machine-diff-source')).toHaveTextContent('Faithful diff');
+    });
+
+    it('says nothing about the diff source when an older server omits it', async () => {
+        mockGet.mockImplementation((url: string) => {
+            if (url.includes('/diff')) {
+                return Promise.resolve({ data: { data: { from: 11, to: 22, added: 0, removed: 0, rows: [] } } });
+            }
+            return Promise.resolve(TIMELINE);
+        });
+        render(withQueryClient(<TimeMachineView docId={22} />));
+        await waitFor(() => expect(screen.getByTestId('kb-time-machine-version-11')).toBeVisible());
+
+        await userEvent.click(screen.getByTestId('kb-time-machine-version-11-from'));
+        await userEvent.click(screen.getByTestId('kb-time-machine-version-22-to'));
+
+        await waitFor(() => expect(screen.getByTestId('kb-time-machine-diff-summary')).toBeVisible());
+        expect(screen.queryByTestId('kb-time-machine-diff-source')).toBeNull();
     });
 
     it('restoring an archived version POSTs to restore-version', async () => {

@@ -99,6 +99,8 @@ final class AdminAuthorizationMatrixTest extends TestCase
             '/api/admin/kb/wiki-lint' => ['admin', 'super-admin'],
             '/api/admin/kb/wiki-pages' => ['admin', 'super-admin'],
             '/api/admin/kb/documents/1/versions' => ['admin', 'super-admin'],
+            // v8.36 / ADR 0030 — a version's content, same allow-set as the timeline.
+            '/api/admin/kb/documents/1/versions/1/content' => ['admin', 'super-admin'],
             // v8.36 / ADR 0029 — OCR status (GET) + re-run (POST, same controller/group).
             '/api/admin/kb/documents/1/ocr' => ['admin', 'super-admin'],
             '/api/admin/kb/collections' => ['admin', 'super-admin'],

@@ -229,6 +229,30 @@ final class OcrFigureStore
     }
 
     /**
+     * Remove ONE recorded run (`{assets dir}/{run}`) — the retention entry
+     * point (ADR 0030 §8): the prune purges a pruned version's run when no
+     * remaining row references it, while the `.ocr/` tree as a whole still
+     * goes with the last referencing row of the source. Grace-aware like the
+     * tree purge: a run still inside the in-flight window is kept and false
+     * is returned.
+     */
+    public function purgeRun(string $disk, string $sourcePath, string $prefix, string $runKey): bool
+    {
+        $storage = Storage::disk($disk);
+        $runDir = $this->runDirFor($sourcePath, $prefix, $runKey);
+        if (! $storage->directoryExists($runDir)) {
+            return false;
+        }
+        if ($this->isInFlight($storage, $runDir, now()->getTimestamp() - self::inFlightGraceSeconds())) {
+            Log::info('OcrFigureStore: OCR run inside the in-flight grace was kept', ['disk' => $disk, 'run_dir' => $runDir]);
+
+            return false;
+        }
+
+        return (bool) $storage->deleteDirectory($runDir);
+    }
+
+    /**
      * Remove the run directories under `$dir` that are older than the
      * in-flight grace, then the directory itself when nothing is left. A run
      * still inside the grace is kept (its row may be about to commit) and

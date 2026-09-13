@@ -60,6 +60,8 @@ class KbIngestController extends Controller
         $disk = (string) config('kb.sources.disk', 'kb');
         $prefix = (string) config('kb.sources.path_prefix', '');
         $defaultProject = (string) config('kb.ingest.default_project', 'default');
+        // ADR 0030 §4 — the audit identity of every version this request creates.
+        $actorId = $request->user()?->id;
 
         $storage = Storage::disk($disk);
 
@@ -106,12 +108,15 @@ class KbIngestController extends Controller
             // PR #115 review iteration 1 — capture TenantContext at
             // dispatch time so the queue worker re-binds the right
             // tenant before any tenant-aware Eloquent query runs (R30/R31).
+            // ADR 0030 §4 — the version actor is derived from the authenticated
+            // principal AFTER the client value was stripped (prepareDocument):
+            // a caller cannot forge `user:{id}` / `system:*` audit identities.
             IngestDocumentJob::dispatchForCurrentTenant(
                 projectKey: $item['project_key'],
                 relativePath: $item['source_path'],
                 disk: $disk,
                 title: $item['title'],
-                metadata: $item['metadata'],
+                metadata: array_merge($item['metadata'], $actorId !== null ? ['version_actor' => 'user:'.$actorId] : []),
                 mimeType: $item['mime_type'],
             );
 

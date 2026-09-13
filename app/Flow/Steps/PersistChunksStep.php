@@ -99,7 +99,9 @@ final class PersistChunksStep implements FlowStepHandler
             // payload through document reads. `isForced()` below still reads
             // the original bag, so this run replaces the version it re-ran.
             // Only the run-control keys go: the host-resolved `disk` /
-            // `prefix` this same job carries are persisted with the row.
+            // `prefix` this same job carries are persisted with the row, and
+            // `version_actor` (ADR 0030 §4) is a trusted input of this same
+            // job the ingestor still needs.
             metadata: \App\Services\Kb\Ocr\OcrService::stripRunControlKeys($combinedMetadata),
             embeddingResponse: $embeddingResponse,
             canonical: $canonical,

@@ -265,9 +265,13 @@ sets `KB_OCR_REUSE_ENABLED=false`: every ingest then runs the driver, records
 no `result.json` and is a **new run with its own attempt identity** (its own
 `{run}` directory, like a forced re-run), so a re-ingest never rewrites the
 figures a previous document version still references — that knob governs the
-recorded run (the raw OCR text and its reuse) only; figures follow `KB_OCR_FIGURES_ENABLED` and the retention mode
-(`reference_only` stores neither), so a deployment that must hold no OCR
-asset at all beside its scans turns figures off too, or runs `reference_only`. Second, on a shared disk two tenants with the same source
+recorded run (the raw OCR text and its reuse) only; figures follow
+`KB_OCR_FIGURES_ENABLED` and the retention mode, so a deployment that must
+hold no OCR asset at all beside its scans turns figures off too — and the
+same happens by policy when the effective `KB_SOURCE_RETENTION` is
+`reference_only`, the mode that promises no local copy at all: no run is
+recorded, no figure is stored, the Markdown carries no `images/` reference
+(ADR 0029 §5, ADR 0030 §3). Second, on a shared disk two tenants with the same source
 key and bytes share the run: the second tenant's ingest is `reused: true`
 and carries no FinOps row — no data crosses (both already hold the bytes),
 but the first tenant carries the cost; a deployment that isolates tenants by
@@ -356,9 +360,117 @@ the files that would fail while still quoting the ones the driver can take. The 
 backend's `SourceType::knownExtensions()`, images only while OCR is on —
 so the SPA keeps no second list of formats (R18).
 
+## Conversion artifacts on the Time Machine (W2, ADR 0030)
+
+The v8.7 Time Machine browsed, diffed and restored *versions* — but a version
+was a `knowledge_documents` row plus its chunks, so "diff" meant a diff of two
+chunk **reconstructions** (the indexed body, redacted, re-joined with blank
+lines), never of the document itself. W2 stores the exact Markdown the chunker
+received, per version, and makes every read of the Time Machine prefer it.
+
+```mermaid
+flowchart LR
+    C[Converter output<br/>markdown] --> T[temp file<br/>final.uuid.tmp]
+    T --> X{DB transaction<br/>row + chunks<br/>markdown_path = final}
+    X -- commit --> M[move temp → final<br/>.artifacts/{tenant}/{project}/{path}.versions/{hash}.md]
+    X -- rollback --> D[discard own temp only]
+    M --> R[contentFor: artifact]
+    R --> DF[diff · content · restore]
+    N[row without artifact] --> RC[contentFor: reconstruction]
+    RC --> DF
+```
+
+- **One core, both paths.** The write lives in `DocumentIngestor`'s shared
+  persistence (`persistDrafts()` for the Flow saga, `persistFromDrafts()` for
+  the direct path): the temp file is written **before** the transaction, the
+  row commits with `markdown_path` pointing at the final path, and the move
+  happens **after** commit. A rollback discards this attempt's temp and nothing
+  else; a concurrent identical ingest that already published the same bytes
+  wins — the final is re-hashed against the temp (the path *is* the content
+  hash; a truncated or replaced final is overwritten by the verified temp,
+  never kept) and the loser drops its own temp.
+- **The key is tenant- and project-namespaced, as safe segments.** A segment
+  is used verbatim only when it matches `^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$`,
+  and does not start with the reserved `h-` prefix; otherwise it becomes `h-` +
+  the full 64-hex SHA-256 of the value (injective: a verbatim segment can never
+  spell an encoded one); the composed
+  path is normalised and must stay inside `.artifacts/`, which the folder
+  walker and the orphan sweeps never read back as a source.
+- **Three nullable columns** record the version's provenance:
+  `version_actor` (`user:{id}`, `system:ingest`, `system:ocr`, …),
+  `version_reason` (free text, 1024 chars) and `content_hash` (SHA-256 of the
+  stored artifact, recorded when it is written: equal to `document_hash` by
+  construction on every ingested version — a correction is an ordinary new
+  version with its own hashes — and null where no artifact is stored; it is
+  the integrity check on the stored bytes, not a second identity). The actor is **derived
+  server-side**: the HTTP ingest and connector boundaries strip any
+  client-supplied `version_actor`, and the trusted caller sets it (the
+  authenticated principal for `POST /api/kb/ingest` and `restore`, the CLI /
+  connector default `system:ingest`, `system:ocr` for a `kb:ocr` re-run).
+- **Reads prefer the artifact and say so.** `contentFor()` returns the stored
+  Markdown when the row has one and the file is there, otherwise the chunk
+  reconstruction; `diff` reports `from_source` / `to_source` (`artifact` |
+  `reconstruction`, additive keys) so the UI labels a diff *faithful* only
+  when both sides are stored documents, and an *index diff* otherwise. A
+  missing file behind a non-null `markdown_path` is logged and degrades, never
+  a 500.
+- **Restore keeps the creation provenance and records itself apart.**
+  `version_actor` / `version_reason` say who *created* the version and never
+  change; a restore appends `{actor, at, previous_live_id}` to
+  `metadata.restores` and the versions surfaces expose the last one as
+  `restored_by` / `restored_at` (additive). The artifact is left untouched.
+- **A tampered artifact is never served as faithful.** `content_hash` is the
+  integrity check of the stored bytes: `contentFor()` re-hashes what it reads
+  and, on a mismatch, logs, falls back to the reconstruction and says so
+  (`integrity: mismatch` on the content endpoint, `from_integrity` /
+  `to_integrity` on the diff; `verified` when the hash matched, `null` when
+  there was nothing to check against). On a local disk every read, delete and
+  publish also resolves the real path and refuses one that a symlink under
+  `.artifacts/` makes resolve outside the root.
+- **`markdown_only` honours every row's contract.** Each row records the mode
+  it was ingested under (`metadata.source_retention`); a shared original is
+  dropped only when every row referencing that storage key — any tenant,
+  trashed included — was ingested under a mode that does not require it and
+  has its artifact present on disk. A `full_copy` row (or a pre-v8.36 row
+  without the stamp, which counts as `full_copy`) blocks the drop; a
+  `reference_only` row never needed the local source.
+- **Retention follows `KB_SOURCE_RETENTION`.** `full_copy` (default) stores
+  the artifact next to the original; `markdown_only` stores it and drops the
+  original binary after the artifact commit (a Markdown source is its own
+  artifact and is never dropped); `reference_only` stores nothing.
+- **Erasure covers it.** A hard delete removes the row's artifact; the prune
+  removes it with each pruned version, purges the OCR run directories no
+  remaining version references, and sweeps temp leftovers older than
+  `KB_CONVERSION_ARTIFACTS_TMP_MAX_AGE` plus artifacts no row (trashed rows
+  included) references any more. Both sweeps are deliberately **cross-tenant**
+  (the root is one shared tree; a file is deleted only at zero references
+  across every tenant) and cover the configured `KB_DISK` / `KB_PATH_PREFIX`
+  only. A soft delete leaves the artifact in place.
+- **`markdown_only` keeps the sweeps honest.** The original is dropped only
+  when every row referencing that storage key — any tenant, trashed rows
+  included — already has an artifact (a shared disk can hold the same key for
+  two tenants); the rows are then stamped `metadata.source_dropped`, so
+  `kb:ingest-folder --prune-orphans` never reads the missing file as an orphan,
+  and a PII-policy re-embed (`kb:reembed-project`) reads the artifact instead.
+  The backfill does not drop originals: it repairs history, it never changes it.
+- **Backfill is operator-only.** `kb:artifacts-backfill` re-converts live
+  rows without an artifact and writes one only when the reconversion hashes to
+  the row's `document_hash` (`hash_mismatch` is reported and nothing is
+  written — an artifact must agree with the version's chunks); `reference_only`
+  rows are `intentionally_missing`, a missing source is reported, not invented.
+
+The artifact is the converter's output **before** the PII seam. That is why
+it is readable only through the role-gated admin Time Machine surfaces and
+why `KbDocumentVersionsTool` returns metadata only: an MCP read of the content
+(or a diff of two) would hand the model un-redacted text. The agent-facing,
+redacted rendering of artifacts is the W4 export.
+
 ## Data model / contract
 
-No schema change. Everything lands in JSON columns that already exist:
+Three nullable columns on `knowledge_documents` (`version_actor`,
+`version_reason`, `content_hash`, mirrored in the SQLite test migrations) plus
+the `markdown_path` column ADR 0014 already declared; everything else lands in
+JSON columns that already exist:
 
 **`knowledge_documents.metadata.converter`** (excerpt)
 
@@ -411,6 +523,9 @@ No schema change. Everything lands in JSON columns that already exist:
 | `KB_OCR_MISTRAL_ALLOWED_HOSTS` | `api.mistral.eu,api.mistral.ai` | Exact host allow-list for the Mistral endpoint (https, port 443 only). |
 | `KB_OCR_MISTRAL_TIMEOUT` / `KB_OCR_MISTRAL_MAX_RESPONSE_BYTES` | `120` / `67108864` | Request timeout and response size cap. |
 | `KB_OCR_VISION_TIMEOUT` | `300` | Per-document timeout of the vision driver (rasterisation + calls). |
+| `KB_CONVERSION_ARTIFACTS_ENABLED` | `false` | W2 / ADR 0030 — store the converted Markdown of every version at `.artifacts/{tenant}/{project}/{source_path}.versions/{version_hash}.md`. OFF writes nothing new; artifacts already stored keep being read. |
+| `KB_CONVERSION_ARTIFACTS_TMP_MAX_AGE` | `3600` | Seconds after which `kb:prune-archived-versions` sweeps a `.tmp` a dead writer left beside an artifact. |
+| `KB_SOURCE_RETENTION` | `full_copy` | `full_copy` · `markdown_only` (drop the original binary after the artifact commit) · `reference_only` (no artifact, no `.ocr/` run). Wired for the first time in v8.36. |
 
 ## Tri-surface (R44)
 
@@ -422,6 +537,14 @@ No schema change. Everything lands in JSON columns that already exist:
 
 All three sit on `OcrService` (`status()`, `rerun()`); none re-implements the
 lookup or the gating.
+
+The Time Machine (W2) is tri-surface over `DocumentVersionService`:
+
+| Surface | Entry | Notes |
+|---|---|---|
+| PHP | `php artisan kb:doc-versions {document} --tenant=… [--diff=FROM:TO]` · `php artisan kb:artifacts-backfill --tenant=… [--project=] [--dry-run]` | The list prints actor, reason, artifact and content hash per version; `--diff` prints an artifact-aware diff with the source of each side. The backfill is operator-only maintenance (a storage repair that re-converts): a documented R44 exception. Both refuse a blank `--tenant`. |
+| HTTP | `GET /api/admin/kb/documents/{id}/versions` (now with `version_actor`, `version_reason`, `content_hash`, `has_artifact`) · `GET …/versions/diff?from&to` (now with `from_source`, `to_source`) · `GET …/versions/{versionId}/content` (new) · `POST …/restore-version` (now records the restore in `metadata.restores`, creation provenance untouched) | `role:admin\|super-admin`, R32 matrix row; the content endpoint is family-scoped (404 for a version outside the document's family). |
+| MCP | `KbDocumentVersionsTool` | **Read-only, metadata only.** Diff and content have no MCP twin by design: the artifact is un-redacted converter output (documented R44 exception). |
 
 ## Decision rationale (ADR-style)
 
@@ -481,6 +604,16 @@ modal, once as an IMAP attachment — on a deployment with `KB_OCR_ENABLED=true`
    reason `scanned_pdf`, three pages with their confidence and `remote: no`.
 
 ## Gotchas & operations
+
+- **Turning artifacts on populates nothing by itself.** Rows ingested before
+  `KB_CONVERSION_ARTIFACTS_ENABLED=true` keep diffing by reconstruction until
+  their next re-ingest or a `kb:artifacts-backfill --tenant=…` run.
+- **Turning it off is a stop, not a rollback.** Nothing already stored is
+  discarded or hidden; `contentFor()` keeps reading it and the UI keeps saying
+  *faithful* for those pairs.
+- **`markdown_only` is a one-way choice per ingest.** The original binary is
+  deleted once the artifact is committed; a later `kb:ocr` re-run of that
+  document reports `source_missing`-class refusals because the scan is gone.
 
 - **Enabling the flag does not re-process history.** Documents that ingested
   empty before v8.36 keep their empty text until re-ingested; `kb:ocr {id}`

@@ -24,6 +24,15 @@ test.describe('Admin Time Machine', () => {
         const timeline = page.getByTestId('kb-time-machine-timeline');
         const empty = page.getByTestId('kb-time-machine-empty');
         await expect(timeline.or(empty)).toBeVisible({ timeout: 15_000 });
+
+        // v8.36 / ADR 0030 — every real row carries the version provenance
+        // contract: an actor line (or "unknown actor" for rows that predate
+        // it) and an explicit has-artifact flag — never a missing attribute.
+        if (await timeline.isVisible()) {
+            const firstRow = page.locator('[data-testid^="kb-time-machine-version-"][data-version-status]').first();
+            await expect(firstRow).toHaveAttribute('data-has-artifact', /^(true|false)$/);
+            await expect(firstRow.locator('[data-testid$="-actor"]')).toBeVisible();
+        }
     });
 
     test('shows the error state for a non-existent document (real 404)', async ({ page }) => {
