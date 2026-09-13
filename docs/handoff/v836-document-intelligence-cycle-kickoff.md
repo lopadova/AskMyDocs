@@ -257,15 +257,20 @@ navigation in `docs-site/docs.json`; Playwright real-data E2E for every screen
 |---|---|---|---|---|---|---|
 | plan | `main` | `claude/plan-annota-gap-document-intelligence` | [#476](https://github.com/lopadova/AskMyDocs/pull/476) | `b20420a3` | — | merged 2026-09-12 (squash; 12 Copilot rounds) |
 | ADR 0029+0030 | `feature/v8.36` (from `main` @ `b20420a3`) | `feature/v8.36-adr-0029-0030` | [#477](https://github.com/lopadova/AskMyDocs/pull/477) | `7f9a1bfe` (squash on `feature/v8.36`; PR head `ad9fae6c`) | — | merged 2026-09-13 (16 Copilot rounds, labelled E2E green) |
-| W1 | `feature/v8.36` | `feature/v8.36-W1` | [#478](https://github.com/lopadova/AskMyDocs/pull/478) | (see PR) | — | PR open 2026-09-13, Copilot rounds 1–10 addressed, CI green on each head; E2E gate (`run-e2e`) on; merges after #477 (merged) |
-| W2 | `feature/v8.36` | `feature/v8.36-W2` | — | — | — | implemented 2026-09-13 on the W1 head (local suites green); PR opens after #478 merges |
+| W1 | `feature/v8.36` | `feature/v8.36-W1` | [#478](https://github.com/lopadova/AskMyDocs/pull/478) | `e48736f3` (squash on `feature/v8.36`; PR head `588857a6`) | — | merged 2026-09-13 (25 review rounds: Copilot rounds 1–22 addressed, Copilot then silent on the last four heads — R36 fallback: CI green incl. Playwright 4/4 + independent local review at 0 must-fix, recorded on the PR) |
+| W2 | `feature/v8.36` | `feature/v8.36-W2` | (opens 2026-09-13) | — | — | rebased on `e48736f3`; local suites green; PR → `feature/v8.36` |
 | v8.36 GA | `main` | — | — | — | — | — |
 | W3 | `feature/v8.37` | `feature/v8.37-W3` | — | — | — | not started |
 | W4 | `feature/v8.38` | `feature/v8.38-W4` | — | — | — | not started |
 | W5 | `feature/v8.39` | `feature/v8.39-W5` | — | — | — | not started |
 | W6 | `feature/v8.40` | `feature/v8.40-W6` | — | — | — | optional |
 
-Last updated: 2026-09-13 (ADR PR #477 merged as `7f9a1bfe`; W1 PR #478 in its final loop; W2 implemented locally on the W1 head).
+Last updated: 2026-09-13 (W1 PR #478 merged as `e48736f3`; W2 PR opening on the merged head).
+
+Follow-ups recorded during W1 (not in scope of a merged PR, to schedule):
+
+- **Storage-namespace backfill for pre-namespace rows.** Rows ingested before `metadata.disk` / `metadata.prefix` were persisted protect their `source_path` on *every* disk (deletion fails closed — `DocumentDeleter::documentReferencesStorageKey()`), so on a per-project disk they can keep a same-path orphan or its `.ocr/` tree alive until re-ingested. A backfill that stamps the namespace under operator confirmation (or a re-ingest) shrinks that set; candidate home: `kb:artifacts-backfill` (W2) or a dedicated `kb:namespace-backfill`.
+- **Retroactive Copilot review of #478** once the Copilot budget returns (R36): request it on the merged head and address any finding in a follow-up PR on `feature/v8.36`.
 
 ---
 
