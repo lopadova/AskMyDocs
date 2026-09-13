@@ -60,6 +60,11 @@ final class FakeOcrDriver implements OcrDriver
         return true;
     }
 
+    public function acceptsMultiFrameImages(): bool
+    {
+        return true;
+    }
+
     public function meteringMode(): OcrMeteringMode
     {
         return OcrMeteringMode::PerPage;

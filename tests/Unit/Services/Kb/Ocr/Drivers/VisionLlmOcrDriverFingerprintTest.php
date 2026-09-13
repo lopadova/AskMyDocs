@@ -28,4 +28,19 @@ final class VisionLlmOcrDriverFingerprintTest extends TestCase
         config(['kb.ocr.vision_llm.provider' => 'openai', 'kb.ocr.vision_llm.model' => 'gpt-4o-mini']);
         $this->assertStringContainsString('provider=openai;model=gpt-4o-mini;', app(VisionLlmOcrDriver::class)->fingerprint());
     }
+
+    /**
+     * The driver extracts no figures, so its Markdown must cite none: an
+     * image link the model emits anyway — the old `![Figure](figure)`
+     * placeholder, or an external URL of the model's choosing — becomes the
+     * italic description the prompt asks for (SEC-LLM-001 gate 6).
+     */
+    public function test_image_links_in_the_model_output_become_text_placeholders(): void
+    {
+        $this->assertSame('Intro *[Figure]* tail', VisionLlmOcrDriver::stripImageLinks('Intro ![Figure](figure) tail'));
+        $this->assertSame('*[Figure]*', VisionLlmOcrDriver::stripImageLinks('![](figure)'));
+        $this->assertSame('*[Figure: bar chart of revenue]*', VisionLlmOcrDriver::stripImageLinks('![bar chart of revenue](https://evil.example/track.png)'));
+        $this->assertSame('*[Figure 2: a diagram]*', VisionLlmOcrDriver::stripImageLinks('![Figure 2: a diagram](images/fig-1-1.png)'));
+        $this->assertSame('plain text with [a link](https://example.test) kept', VisionLlmOcrDriver::stripImageLinks('plain text with [a link](https://example.test) kept'));
+    }
 }

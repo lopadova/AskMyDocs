@@ -179,6 +179,7 @@ final class HostIngestionBridge implements ConnectorIngestionContract
         // disk before calling here; a refused image would otherwise sit as
         // orphan bytes nobody ingests or prunes (R4: the delete is checked).
         $removed = $connectorKey === 'imap' ? $this->removeRefusedSource($relativePath, $disk) : null;
+        $cleanupFailed = $connectorKey === 'imap' && $removed === null;
 
         // Written with the tenant the CONNECTOR passed — never the worker's
         // TenantContext, which may belong to another tenant by now (R30).
@@ -188,7 +189,21 @@ final class HostIngestionBridge implements ConnectorIngestionContract
             'relative_path' => $relativePath,
             'mime_type' => $mimeType,
             'source_removed' => $removed,
+            'cleanup_failed' => $cleanupFailed,
         ]);
+
+        // R14 — a cleanup that failed is not a refusal that succeeded: the
+        // orphan attachment is still on the disk. The failure reaches the
+        // sync job (the UID is NOT confirmed, so the next sync re-presents
+        // the attachment and the removal is retried) instead of a warning
+        // nobody reads while the bytes stay behind.
+        if ($cleanupFailed) {
+            throw new \RuntimeException(sprintf(
+                'Refused image attachment "%s" could not be removed from disk "%s"; the refusal is recorded but the source is still on disk.',
+                $relativePath,
+                $disk,
+            ));
+        }
     }
 
     /**
@@ -196,7 +211,9 @@ final class HostIngestionBridge implements ConnectorIngestionContract
      *                        with the global prefix, the disk is the caller's, never
      *                        `config('kb.sources.disk')` (a connector may target another)
      *
-     * @return bool|null null when the path could not be resolved (nothing deleted)
+     * @return bool|null true = removed; false = nothing to remove (absent, or kept
+     *                   because a document still references it); null = the removal
+     *                   FAILED (unresolvable path, disk error) — the caller raises it
      */
     private function removeRefusedSource(string $relativePath, string $disk): ?bool
     {
@@ -222,7 +239,8 @@ final class HostIngestionBridge implements ConnectorIngestionContract
                 return false;
             }
 
-            return (bool) $storage->delete($resolved['absolute']);
+            // R4 — a `false` from the disk is a failed removal, not "removed".
+            return $storage->delete($resolved['absolute']) ? true : null;
         } catch (\Throwable $e) {
             Log::warning('HostIngestionBridge: could not remove refused image source', [
                 'relative_path' => $relativePath,

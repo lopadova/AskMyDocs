@@ -211,6 +211,58 @@ final class KbUploadOcrTest extends TestCase
         $this->assertSame('image/jpeg', (string) $item->mime_type);
     }
 
+    /**
+     * ADR 0029 §2 — the client filename decides nothing: a JPEG uploaded as
+     * `scan.png` is staged as `.jpg` and recorded as `image/jpeg`, from the
+     * magic bytes the request already verified.
+     */
+    public function test_a_jpeg_uploaded_under_a_png_name_is_staged_as_what_its_bytes_are(): void
+    {
+        config(['kb.ocr.enabled' => true]);
+        $admin = $this->makeAdmin();
+        $disguised = UploadedFile::fake()->createWithContent('scan.png', "\xFF\xD8\xFF\xE0".str_repeat("\x00", 64));
+        $resp = $this->actingAs($admin)->post('/api/admin/kb/uploads', ['project_key' => 'legal', 'files' => [$disguised]])->assertStatus(201);
+
+        $item = \App\Models\KbIngestBatchItem::query()->findOrFail((string) $resp->json('items.0.id'));
+        $this->assertSame('image/jpeg', (string) $item->mime_type);
+        $this->assertStringEndsWith('.jpg', (string) $item->staging_path);
+        Storage::disk('kb-staging')->assertExists((string) $item->staging_path);
+    }
+
+    /**
+     * A multi-frame TIFF within the page cap is still refused for a driver
+     * that transcribes one frame per image — the modal says so before commit
+     * instead of quoting N pages the driver would never read (R14).
+     */
+    public function test_estimate_refuses_a_multi_frame_tiff_for_a_one_frame_driver(): void
+    {
+        config(['kb.ocr.enabled' => true, 'kb.ocr.max_pages' => 200, 'kb.ocr.driver' => 'tesseract']);
+        $admin = $this->makeAdmin();
+        $header = 'II'.pack('v', 42).pack('V', 8);
+        $ifds = '';
+        for ($i = 0; $i < 3; $i++) {
+            $offset = 8 + strlen($ifds);
+            $next = $i === 2 ? 0 : $offset + 2 + 12 + 4;
+            $ifds .= pack('v', 1).pack('v', 256).pack('v', 3).pack('V', 1).pack('V', 1).pack('V', $next);
+        }
+        $tiff = UploadedFile::fake()->createWithContent('multi.tiff', $header.$ifds);
+        $batchId = $this->actingAs($admin)->post('/api/admin/kb/uploads', ['project_key' => 'legal', 'files' => [$tiff]])
+            ->assertStatus(201)->json('batch.id');
+
+        $this->actingAs($admin)->getJson("/api/admin/kb/uploads/{$batchId}/estimate")
+            ->assertOk()
+            ->assertJsonPath('data.items.0.would_ocr', false)
+            ->assertJsonPath('data.items.0.pages', 3)
+            ->assertJsonPath('data.items.0.reason', 'multi_frame_image');
+
+        // The fake driver (like docling) reads every frame: quoted as 3 pages.
+        config(['kb.ocr.driver' => 'fake']);
+        $this->actingAs($admin)->getJson("/api/admin/kb/uploads/{$batchId}/estimate")
+            ->assertOk()
+            ->assertJsonPath('data.items.0.would_ocr', true)
+            ->assertJsonPath('data.items.0.pages', 3);
+    }
+
     public function test_estimate_counts_tiff_frames_and_applies_the_page_cap(): void
     {
         config(['kb.ocr.enabled' => true, 'kb.ocr.max_pages' => 2]);

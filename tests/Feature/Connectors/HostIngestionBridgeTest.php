@@ -196,6 +196,44 @@ final class HostIngestionBridgeTest extends TestCase
         $this->assertTrue($audit->metadata_json['metadata']['source_removed']);
     }
 
+    /**
+     * R14 — a cleanup that failed is not a refusal that succeeded: the
+     * failure reaches the sync job (the UID stays unconfirmed, so the next
+     * sync re-presents the attachment and the removal is retried) and the
+     * audit row says so, instead of a warning while the bytes stay behind.
+     */
+    public function test_refused_imap_image_whose_cleanup_fails_raises_instead_of_acknowledging(): void
+    {
+        Queue::fake();
+        Storage::fake('kb');
+        config()->set('kb.ocr.enabled', false);
+        config()->set('kb.sources.disk', 'kb');
+        config()->set('kb.sources.path_prefix', '');
+
+        /** @var HostIngestionBridge $bridge */
+        $bridge = $this->app->make(ConnectorIngestionContract::class);
+        try {
+            $bridge->dispatchIngestion(
+                projectKey: 'connector-email',
+                // Un-normalisable (traversal): the removal cannot resolve the key.
+                relativePath: 'connector-email/../escape/88.png',
+                disk: 'kb',
+                title: 'scan.png',
+                metadata: ['connector' => 'imap', 'installation_id' => 12, 'imap_uid' => '88', 'imap_doc_key' => 'INBOX:1:88', 'imap_mailbox' => 'INBOX'],
+                mimeType: 'image/png',
+                tenantId: 'acme',
+            );
+            $this->fail('a failed cleanup must not be acknowledged as a clean refusal');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('could not be removed', $e->getMessage());
+        }
+
+        Queue::assertNothingPushed();
+        $audit = KbCanonicalAudit::query()->where('event_type', 'connector_ingest_refused')->firstOrFail();
+        $this->assertNull($audit->metadata_json['metadata']['source_removed']);
+        $this->assertTrue($audit->metadata_json['metadata']['cleanup_failed']);
+    }
+
     public function test_refused_imap_image_keeps_a_source_a_live_row_still_references(): void
     {
         Queue::fake();

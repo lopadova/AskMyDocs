@@ -106,6 +106,12 @@ final class MistralOcrDriver implements OcrDriver
         return false;
     }
 
+    /** An image goes up as ONE `image_url` data URL; the API returns one page for it. */
+    public function acceptsMultiFrameImages(): bool
+    {
+        return false;
+    }
+
     public function meteringMode(): OcrMeteringMode
     {
         return OcrMeteringMode::PerPage;
@@ -197,6 +203,12 @@ final class MistralOcrDriver implements OcrDriver
                 }
             }
             $pages[] = new OcrPage(number: $number, markdown: trim($markdown), confidence: null, figures: $figures);
+        }
+        // SEC-EXTRESP-001 — an empty (or all-malformed) page list is an
+        // invalid answer, never a recorded run of zero pages the service
+        // would reuse and the converter would persist as an empty document.
+        if ($pages === []) {
+            throw new RuntimeException(sprintf('Mistral OCR returned no pages for "%s".', $request->filename));
         }
 
         return new OcrResult(

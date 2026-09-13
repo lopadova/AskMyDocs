@@ -9,6 +9,7 @@ use App\Jobs\IngestDocumentJob;
 use App\Models\KbIngestBatch;
 use App\Models\KbIngestBatchItem;
 use App\Services\Kb\Canonical\CanonicalParser;
+use App\Support\Kb\FileTypeSniffer;
 use App\Support\Kb\SourceType;
 use App\Support\KbPath;
 use App\Support\TenantContext;
@@ -124,15 +125,24 @@ final class KbUploadStagingService
             return;
         }
 
+        // ADR 0029 §2 — an image keeps its EXACT raster MIME read from its
+        // BYTES (the request verified the raster family from the same magic
+        // bytes; the client filename decides nothing): a JPEG uploaded as
+        // `scan.png` is staged as `.jpg`, committed and recorded as
+        // `image/jpeg`. The family label `image/png` is never what a jpeg
+        // is ingested as, and neither is its extension.
+        $imageMime = $sourceType === SourceType::IMAGE ? FileTypeSniffer::imageMimeOfPath((string) $file->getRealPath()) : null;
+        if ($sourceType === SourceType::IMAGE && $imageMime === null) {
+            // Defence in depth — the FormRequest already rejects these.
+            $this->createItem($batch, $itemId, $original, '', $destination, (string) $file->getClientMimeType(), $sourceType->value, (int) $file->getSize(), KbIngestBatchItem::STATUS_FAILED, false, null, 'File content is not a PNG, JPEG, TIFF or WebP image.');
+
+            return;
+        }
+        $mimeType = $imageMime ?? $sourceType->toMime();
+
         $dir = "{$batch->tenant_id}/{$batch->id}";
-        $storedName = "{$itemId}.{$this->stagingExtension($sourceType, $file)}";
+        $storedName = "{$itemId}.{$this->stagingExtension($sourceType, $imageMime)}";
         $stored = $disk->putFileAs($dir, $file, $storedName);
-        // ADR 0029 §2 — an image keeps its EXACT raster MIME (the sniffer
-        // verified the family from the magic bytes); the family label
-        // `image/png` is never what a jpeg is committed and ingested as.
-        $mimeType = $sourceType === SourceType::IMAGE
-            ? SourceType::imageMimeFromExtension($this->stagingExtension($sourceType, $file))
-            : $sourceType->toMime();
 
         if ($stored === false) {
             $this->createItem($batch, $itemId, $original, '', $destination, $mimeType, $sourceType->value, (int) $file->getSize(), KbIngestBatchItem::STATUS_FAILED, false, null, 'Failed to write to staging disk.');
@@ -449,14 +459,12 @@ final class KbUploadStagingService
             : KbPath::normalize($prefix.'/'.$destinationPath);
     }
 
-    private function stagingExtension(SourceType $type, ?UploadedFile $file = null): string
+    private function stagingExtension(SourceType $type, ?string $imageMime = null): string
     {
         if ($type === SourceType::IMAGE) {
-            // Keep the real raster format on disk (the sniffer already
-            // verified the magic bytes); png is only the fallback.
-            $ext = strtolower((string) $file?->getClientOriginalExtension());
-
-            return in_array($ext, SourceType::imageExtensions(), true) ? ($ext === 'jpeg' ? 'jpg' : ($ext === 'tif' ? 'tiff' : $ext)) : 'png';
+            // The real raster format on disk, from the sniffed MIME — never
+            // from the client filename (ADR 0029 §2); png only as fallback.
+            return SourceType::imageExtensionFromMime((string) $imageMime);
         }
 
         return match ($type) {

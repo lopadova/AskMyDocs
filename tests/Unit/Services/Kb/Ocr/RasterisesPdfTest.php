@@ -203,6 +203,33 @@ final class RasterisesPdfTest extends TestCase
         $this->driver()->clean($raster['dir']);
     }
 
+    /**
+     * Defence in depth behind `OcrDriver::acceptsMultiFrameImages()`: the
+     * rasteriser hands an image to the engine as ONE page, so a multi-frame
+     * TIFF that reached it would be transcribed for its first frame only —
+     * refused with the same reason the service uses, working dir removed.
+     */
+    public function test_a_multi_frame_tiff_never_becomes_a_single_page(): void
+    {
+        $header = 'II'.pack('v', 42).pack('V', 8);
+        $ifds = '';
+        for ($i = 0; $i < 2; $i++) {
+            $offset = 8 + strlen($ifds);
+            $next = $i === 1 ? 0 : $offset + 2 + 12 + 4;
+            $ifds .= pack('v', 1).pack('v', 256).pack('v', 3).pack('V', 1).pack('V', 1).pack('V', $next);
+        }
+        [$pdftoppm] = $this->pdftoppmStub();
+
+        try {
+            $this->driver()->run(new OcrRequest(bytes: $header.$ifds, mimeType: 'image/tiff', filename: 'two.tiff', options: []), $pdftoppm, 150, '/nonexistent/pdfinfo');
+            $this->fail('a multi-frame TIFF must be refused by the rasteriser');
+        } catch (OcrLimitExceededException $e) {
+            $this->assertSame('multi_frame_image', $e->reason);
+            $this->assertStringContainsString('2-frame TIFF', $e->getMessage());
+        }
+        $this->assertSame([], glob(sys_get_temp_dir().'/kb_ocr_*/input.img') ?: [], 'the working directory is removed on refusal');
+    }
+
     public function test_an_unreadable_produced_page_is_an_error_not_a_page(): void
     {
         [$pdftoppm] = $this->pdftoppmStub('not a png');

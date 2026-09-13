@@ -244,13 +244,21 @@ final class OcrService
             ? (string) $doc->metadata['prefix']
             : (string) config('kb.sources.path_prefix', '');
         $figuresEnabled = (bool) config('kb.ocr.figures.enabled', true);
+        // Idempotency (CLAUDE.md §5): the same bytes through the same driver
+        // produce the same result — reuse the recorded run instead of paying
+        // for it again (a re-ingest of identical bytes, an IMAP backfill, a
+        // GH-action full sync). `ocr.force` (kb:ocr) bypasses the reuse.
+        $reuseEnabled = (bool) config('kb.ocr.reuse.enabled', true);
+        $reuseAllowed = ! self::isForced($doc->metadata) && $reuseEnabled;
         // Engine-aware run key: bytes × driver × the driver's variant × the
         // figure switch — anything that shapes the output shapes the key.
-        // A forced re-run (kb:ocr) is a NEW attempt with its own identity:
+        // A run that will NOT be reused — a forced re-run (kb:ocr), or any
+        // run while reuse is off — is a NEW attempt with its own identity:
         // runs are immutable and a W2 artifact points at the exact run that
-        // produced it, so the previous run is never rewritten in place.
+        // produced it, so a previous run (and the figures a previous document
+        // version still references) is never rewritten in place.
         $variant = $driver->fingerprint().';figures='.($figuresEnabled ? '1' : '0');
-        if (self::isForced($doc->metadata)) {
+        if (! $reuseAllowed) {
             $variant .= ';attempt='.bin2hex(random_bytes(8));
         }
         $runKey = OcrFigureStore::runKeyFor($doc->bytes, $driver->name(), $variant);
@@ -260,11 +268,6 @@ final class OcrService
         // loudly with a reason instead of being billed page by page.
         $pages = $this->assertWithinLimits($doc->mimeType, $doc->bytes, $filename, $driver);
 
-        // Idempotency (CLAUDE.md §5): the same bytes through the same driver
-        // produce the same result — reuse the recorded run instead of paying
-        // for it again (a re-ingest of identical bytes, an IMAP backfill, a
-        // GH-action full sync). `ocr.force` (kb:ocr) bypasses the reuse.
-        $reuseAllowed = ! self::isForced($doc->metadata) && (bool) config('kb.ocr.reuse.enabled', true);
         $reused = null;
 
         if (self::isDryRun($doc->metadata)) {
@@ -326,10 +329,15 @@ final class OcrService
                         }
                     }
                     $written = $figuresEnabled ? $this->figures->store($disk, $doc->sourcePath, $prefix, $runKey, $allFigures) : [];
-                    $this->meter->meter($result, $driver, $doc->sourcePath);
-                    if ((bool) config('kb.ocr.reuse.enabled', true)) {
+                    // The immutable run is persisted while the reservation
+                    // is held, THEN metered: a `result.json` write that fails
+                    // after the FinOps row was written would let the job
+                    // retry with nothing to reuse and bill the same attempt
+                    // twice. The meter is best-effort and never throws.
+                    if ($reuseEnabled) {
                         $this->recordRun($disk, $doc->sourcePath, $prefix, $runKey, $result, $written);
                     }
+                    $this->meter->meter($result, $driver, $doc->sourcePath);
                 }
             } finally {
                 $reservation->release();
@@ -442,6 +450,17 @@ final class OcrService
                 $pages,
                 $maxPages,
             ), 'too_many_pages');
+        }
+        // Every frame was counted as a page above; a driver that transcribes
+        // one image per file would be billed for all of them and read the
+        // first — refused here, never a silent first frame (ADR 0029 §4).
+        if (! $expectsPdf && $pages > 1 && ! $driver->acceptsMultiFrameImages()) {
+            throw new OcrLimitExceededException(sprintf(
+                'OCR refused for "%s": a %d-frame TIFF is not supported by driver "%s", which OCRs one frame per image and would drop the others; split it into one image per page.',
+                $filename,
+                $pages,
+                $driver->name(),
+            ), 'multi_frame_image');
         }
 
         return $pages;

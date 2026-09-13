@@ -185,7 +185,11 @@ bounded: `OcrService::convert()` refuses a document over `KB_OCR_MAX_PAGES`
 (counted format-independently before conversion — the probe's parser for a
 PDF, the IFD chain for a multi-page TIFF, one for any other image) or
 `KB_OCR_MAX_BYTES` **before** any driver
-runs, with a machine-readable reason (`too_many_pages` / `too_many_bytes`)
+runs, with a machine-readable reason (`too_many_pages` / `too_many_bytes`;
+and `multi_frame_image` for a multi-page TIFF handed to a driver that
+transcribes one frame per image — `OcrDriver::acceptsMultiFrameImages()`,
+false for `tesseract`, `vision-llm` and `mistral-ocr`, true for `docling`
+— which would otherwise be billed for every frame and read the first)
 that `OcrCostEstimator` reports in advance together with
 `driver_available`, so the modal never promises a run the registry will
 refuse (R14); the estimate and the service read the page count from the
@@ -258,9 +262,12 @@ vector store, not the disk, as the protected surface): under the source's
 ACL, purged with it by the deleter's reference gate, never the redacted
 text (that lives only in the chunks). A deployment that must not hold raw
 OCR text beside its scans sets `KB_OCR_REUSE_ENABLED=false` — every ingest
-then runs the driver and records **no `result.json`**; both states are
-tested (R43). That knob governs the recorded run — the raw OCR text and its
-reuse — and nothing else: the figures under `{run}/images/` follow
+then runs the driver, records **no `result.json`** and is a **new run with
+its own attempt identity** (its own `{run}` directory, exactly like a forced
+re-run), so a re-ingest of the same bytes never rewrites the figures a
+previous document version still references; both states are tested (R43).
+That knob governs the recorded run — the raw OCR text and its reuse — and
+nothing else: the figures under `{run}/images/` follow
 `KB_OCR_FIGURES_ENABLED` (default on) and the retention mode of §5
 (`reference_only` stores neither run nor figures; `full_copy` and
 `markdown_only` store figures when the switch is on, whatever the reuse

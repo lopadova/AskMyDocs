@@ -62,6 +62,12 @@ final class TesseractOcrDriver implements OcrDriver
         return true;
     }
 
+    /** The rasteriser hands one image per file; tesseract would read the first frame only. */
+    public function acceptsMultiFrameImages(): bool
+    {
+        return false;
+    }
+
     public function meteringMode(): OcrMeteringMode
     {
         return OcrMeteringMode::PerPage;

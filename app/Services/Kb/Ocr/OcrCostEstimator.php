@@ -14,10 +14,13 @@ use Throwable;
 /**
  * v8.36 / ADR 0029 §8 — the number shown BEFORE commit on the upload modal.
  *
- * For every staged item: would OCR run (image → yes; PDF → only when the
- * text-layer probe finds no text and, for a remote driver, only when the
- * page count is exact — an unparseable PDF is `pages_uncountable`; anything
- * else → no), how many pages, and
+ * For every staged item: would OCR run (image → yes, unless it is a
+ * multi-frame TIFF the configured driver transcribes one frame of —
+ * `multi_frame_image`; PDF → only when the text-layer probe finds no text
+ * and, for a driver that refuses an unverified page count — remote, or
+ * unable to bound its own work — only when the count is exact: an
+ * unparseable PDF is `pages_uncountable`; anything else → no), how many
+ * pages, and
  * pages × `kb.ocr.rate_per_page`. The estimate reads the staged bytes
  * through the staging disk — it never runs a driver, so it is cheap and
  * side-effect free. With OCR disabled every item reports `would_ocr=false`
@@ -135,6 +138,12 @@ final class OcrCostEstimator
             $pages = $this->ocr->pageCountForBytes((string) $item->mime_type, (string) Storage::disk($stagingDisk)->get($stagingPath));
             if ($pages > $maxPages) {
                 return ['id' => $id, 'would_ocr' => false, 'pages' => $pages, 'cost' => 0.0, 'reason' => 'too_many_pages', 'pages_exact' => true];
+            }
+            // The same refusal the service applies: a driver that OCRs one
+            // frame per image never receives a multi-frame TIFF (R14 — the
+            // modal says so before commit instead of quoting N pages).
+            if ($pages > 1 && $this->registry->refusesMultiFrameImages((string) config('kb.ocr.driver', 'tesseract'))) {
+                return ['id' => $id, 'would_ocr' => false, 'pages' => $pages, 'cost' => 0.0, 'reason' => 'multi_frame_image', 'pages_exact' => true];
             }
 
             return $this->priced($id, $pages, 'image', true, $sdkMetered);

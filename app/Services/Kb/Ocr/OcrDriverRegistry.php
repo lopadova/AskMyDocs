@@ -121,6 +121,21 @@ final class OcrDriverRegistry
         return $driver->isRemote() || ! $driver->boundsWorkWithoutPageCount();
     }
 
+    /**
+     * Whether the named driver refuses a multi-frame image (a multi-page
+     * TIFF) because it transcribes one frame per file — the estimate names
+     * the refusal (`multi_frame_image`) before commit, the service enforces
+     * it before any work. Unknown name → true (refuse).
+     */
+    public function refusesMultiFrameImages(string $name): bool
+    {
+        if (! $this->has($name)) {
+            return true;
+        }
+
+        return ! $this->drivers[$name]->acceptsMultiFrameImages();
+    }
+
     public static function remoteAllowed(): bool
     {
         return config('kb.ocr.allow_remote', false) === true;

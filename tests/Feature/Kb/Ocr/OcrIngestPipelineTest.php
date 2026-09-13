@@ -327,9 +327,14 @@ final class OcrIngestPipelineTest extends TestCase
         // Past the in-flight grace (ADR 0029 §6): nothing can still be about
         // to reference the run, so the last row takes the whole tree with it.
         $this->travel(OcrFigureStore::inFlightGraceSeconds() + 60)->seconds();
-        app(DocumentDeleter::class)->delete($trashed, force: true);
+        $result = app(DocumentDeleter::class)->delete($trashed, force: true);
         Storage::disk('kb')->assertMissing($figure);
         $this->assertFalse(Storage::disk('kb')->directoryExists('scans/letter.png.ocr'));
+        // R27 additive: the hard delete reports the OCR cleanup, never
+        // silently (the source bytes were ingested from memory here, so the
+        // source object itself was never on the disk: `file_deleted` false).
+        $this->assertFalse($result['file_deleted']);
+        $this->assertTrue($result['ocr_assets_deleted']);
     }
 
     /**

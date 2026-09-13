@@ -7,6 +7,7 @@ namespace App\Services\Kb\Ocr\Drivers\Concerns;
 use App\Services\Kb\Ocr\OcrDriverUnavailableException;
 use App\Services\Kb\Ocr\OcrLimitExceededException;
 use App\Services\Kb\Ocr\OcrRequest;
+use App\Services\Kb\Ocr\TiffFrameCounter;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\Process\ExecutableFinder;
 use Symfony\Component\Process\Exception\ProcessFailedException;
@@ -46,7 +47,22 @@ trait RasterisesPdf
 
         $maxPx = max(500, (int) config('kb.ocr.raster.max_page_px', 6000));
         if (! $request->isPdf()) {
-            // An image IS the page: the same pixel and byte bounds apply
+            // An image IS the page — ONE page: the page cap counted every
+            // TIFF frame (ADR 0029 §4), but this rasteriser hands the file to
+            // the engine as a single image, so a multi-frame TIFF would be
+            // metered for N pages and transcribed for one. The service
+            // refuses it first (`acceptsMultiFrameImages()`); this is the
+            // defence in depth behind that gate, never a silent first frame.
+            $frames = TiffFrameCounter::count($request->bytes);
+            if ($frames > 1) {
+                $this->cleanupAfterFailure($dir, $e = new OcrLimitExceededException(sprintf(
+                    'OCR refused for "%s": a %d-frame TIFF cannot be OCR\'d frame by frame by this driver; split it into one image per page.',
+                    $request->filename,
+                    $frames,
+                ), 'multi_frame_image'));
+                throw $e;
+            }
+            // The same pixel and byte bounds apply
             // before an engine decodes it or a provider receives it — a
             // highly compressed file with huge dimensions is a decode bomb
             // whatever the source byte cap said.

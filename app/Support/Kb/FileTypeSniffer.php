@@ -97,6 +97,42 @@ final class FileTypeSniffer
      * ingest entry point — which receives bytes, not a file — applies the
      * same verification as the multipart upload (ADR 0029 §2).
      */
+    /**
+     * The exact raster MIME of a file on the local filesystem, from its
+     * leading bytes (`null` when they are not PNG / JPEG / TIFF / WebP).
+     */
+    public static function imageMimeOfPath(string $realPath): ?string
+    {
+        $head = self::readHead($realPath, 16);
+
+        return $head === null ? null : self::imageMimeOf($head);
+    }
+
+    /**
+     * The exact raster MIME of a file on a Laravel disk, from its leading
+     * bytes — a stream read of 16 bytes, never the whole object (a folder
+     * walk sees many files). `null` when the file cannot be read or its
+     * bytes are not PNG / JPEG / TIFF / WebP.
+     */
+    public static function imageMimeOnDisk(\Illuminate\Contracts\Filesystem\Filesystem $storage, string $path): ?string
+    {
+        try {
+            $stream = $storage->readStream($path);
+        } catch (\Throwable) {
+            return null;
+        }
+        if (! is_resource($stream)) {
+            return null;
+        }
+        try {
+            $head = fread($stream, 16);
+        } finally {
+            fclose($stream);
+        }
+
+        return $head === false ? null : self::imageMimeOf($head);
+    }
+
     public static function imageMimeOf(string $head): ?string
     {
         if (str_starts_with($head, self::BINARY_SIGNATURES['png'])) {

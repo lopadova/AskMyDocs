@@ -69,6 +69,12 @@ final class DoclingOcrDriver implements OcrDriver
         return false;
     }
 
+    /** Docling decodes a multi-page TIFF itself and emits one page-break per frame. */
+    public function acceptsMultiFrameImages(): bool
+    {
+        return true;
+    }
+
     public function meteringMode(): OcrMeteringMode
     {
         return OcrMeteringMode::PerPage;
@@ -117,9 +123,15 @@ final class DoclingOcrDriver implements OcrDriver
                 throw new \RuntimeException("Docling Markdown output could not be read: {$markdownFile}.");
             }
 
+            $pages = $this->parseMarkdownOutput($markdown, $dir);
+            if ($pages === []) {
+                // Never a recorded run of zero pages (reused, persisted as an
+                // empty document): an engine that produced nothing failed.
+                throw new \RuntimeException("Docling produced no pages for {$request->filename}.");
+            }
             $result = new OcrResult(
                 driver: $this->name(),
-                pages: $this->parseMarkdownOutput($markdown, $dir),
+                pages: $pages,
                 meta: ['engine' => 'docling'],
             );
         } catch (\Throwable $e) {

@@ -8,6 +8,7 @@ use App\Flow\Steps\StepTenantBinder;
 use App\Jobs\IngestDocumentJob;
 use App\Services\Kb\DocumentIngestor;
 use App\Services\Kb\Pipeline\SourceDocument;
+use App\Support\Kb\FileTypeSniffer;
 use App\Support\Kb\SourceType;
 use App\Support\KbPath;
 use Illuminate\Support\Facades\Storage;
@@ -114,9 +115,18 @@ final class DispatchIngestFanOutStep implements FlowStepHandler
                 continue;
             }
             // ADR 0029 §2 — an image is dispatched with its EXACT raster MIME
-            // (jpeg/tiff/webp), never the family label: the MIME reaches the
-            // converter registry and the document row as what the bytes are.
-            $mimeType = $sourceType === SourceType::IMAGE ? SourceType::imageMimeFromExtension($extension) : $sourceType->toMime();
+            // (jpeg/tiff/webp) read from its BYTES, never the family label and
+            // never the extension (a JPEG named `.png` is `image/jpeg`): the
+            // MIME reaches the converter registry and the document row as what
+            // the bytes are. Bytes that are no known raster are a per-file
+            // failure here (R14), never a job that dies in the converter.
+            $mimeType = $sourceType === SourceType::IMAGE
+                ? FileTypeSniffer::imageMimeOnDisk($storage, $fullPath)
+                : $sourceType->toMime();
+            if ($mimeType === null) {
+                $failures[] = ['path' => $relative, 'reason' => 'unrecognised_bytes: not a PNG, JPEG, TIFF or WebP image'];
+                continue;
+            }
 
             try {
                 if ($sync) {

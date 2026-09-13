@@ -115,17 +115,59 @@ final class OcrLimitsAndReuseTest extends TestCase
     #[Test]
     public function reuse_off_runs_the_driver_every_time_and_records_nothing(): void
     {
-        config(['kb.ocr.reuse.enabled' => false, 'kb.ocr.fake.pages' => [['markdown' => 'Alpha', 'confidence' => 0.8]]]);
+        config(['kb.ocr.reuse.enabled' => false, 'kb.ocr.fake.pages' => [['markdown' => 'Alpha', 'confidence' => 0.8, 'figures' => 1]]]);
         $converter = $this->app->make(OcrConverter::class);
         $first = $converter->convert($this->image());
         $run = $first->extractionMeta['ocr']['run'];
         Storage::disk('kb')->assertMissing("docs/scan.png.ocr/{$run}/result.json");
+        Storage::disk('kb')->assertExists("docs/scan.png.ocr/{$run}/images/fig-1-1.png");
 
-        config(['kb.ocr.fake.pages' => [['markdown' => 'Beta', 'confidence' => 0.2]]]);
+        config(['kb.ocr.fake.pages' => [['markdown' => 'Beta', 'confidence' => 0.2, 'figures' => 1]]]);
         $second = $converter->convert($this->image());
 
         $this->assertFalse($second->extractionMeta['ocr']['reused']);
         $this->assertStringContainsString('Beta', $second->markdown);
+        // With reuse off every ingest is a NEW run with its own identity
+        // (like a forced re-run): the deterministic key would point both
+        // ingests at ONE directory and the second would overwrite the
+        // figures the first document version still references.
+        $secondRun = $second->extractionMeta['ocr']['run'];
+        $this->assertNotSame($run, $secondRun, 'reuse off: a fresh attempt identity per ingest');
+        Storage::disk('kb')->assertExists("docs/scan.png.ocr/{$run}/images/fig-1-1.png");
+        Storage::disk('kb')->assertExists("docs/scan.png.ocr/{$secondRun}/images/fig-1-1.png");
+    }
+
+    /**
+     * ADR 0029 §4 — the page cap counted every TIFF frame, but a driver that
+     * hands the raster to its engine as ONE image would be metered for N
+     * pages and transcribe the first: refused before any work, never a
+     * silent first frame. `docling` decodes every frame and accepts it.
+     */
+    #[Test]
+    public function a_multi_frame_tiff_is_refused_for_a_driver_that_transcribes_one_frame_per_image(): void
+    {
+        Http::fake();
+        config(['kb.ocr.driver' => 'mistral-ocr', 'kb.ocr.allow_remote' => true, 'kb.ocr.mistral.api_key' => 'k']);
+        $this->assertTrue(app(\App\Services\Kb\Ocr\OcrDriverRegistry::class)->refusesMultiFrameImages('mistral-ocr'));
+        $this->assertTrue(app(\App\Services\Kb\Ocr\OcrDriverRegistry::class)->refusesMultiFrameImages('tesseract'));
+        $this->assertTrue(app(\App\Services\Kb\Ocr\OcrDriverRegistry::class)->refusesMultiFrameImages('vision-llm'));
+        $this->assertFalse(app(\App\Services\Kb\Ocr\OcrDriverRegistry::class)->refusesMultiFrameImages('docling'));
+        $this->assertTrue(app(\App\Services\Kb\Ocr\OcrDriverRegistry::class)->refusesMultiFrameImages('no-such-driver'), 'unknown → refuse');
+
+        try {
+            $this->app->make(OcrConverter::class)->convert($this->image('docs/multi.tiff', $this->tiffWithFrames(3)));
+            $this->fail('a multi-frame TIFF must be refused for a one-frame driver');
+        } catch (OcrLimitExceededException $e) {
+            $this->assertSame('multi_frame_image', $e->reason);
+            $this->assertStringContainsString('3-frame TIFF', $e->getMessage());
+            $this->assertStringContainsString('mistral-ocr', $e->getMessage());
+        }
+        Http::assertNothingSent();
+
+        // A single-frame TIFF is one page and runs.
+        config(['kb.ocr.driver' => 'fake']);
+        $one = $this->app->make(OcrConverter::class)->convert($this->image('docs/one.tiff', $this->tiffWithFrames(1)));
+        $this->assertSame(1, $one->extractionMeta['page_count']);
     }
 
     #[Test]

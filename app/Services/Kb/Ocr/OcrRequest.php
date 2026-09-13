@@ -26,9 +26,10 @@ final readonly class OcrRequest
 
     /**
      * The MIME the bytes actually are. The entry points dispatch the exact
-     * raster MIME (`SourceType::imageMimeFromExtension()`, ADR 0029 §2), but
-     * an extension is still a label: a driver that builds a data URL or picks
-     * an input format from the MIME reads the magic bytes and trusts those.
+     * raster MIME sniffed from the bytes (`FileTypeSniffer::imageMimeOf()`,
+     * ADR 0029 §2), but a declared MIME is still a label: a driver that
+     * builds a data URL or picks an input format from the MIME reads the
+     * magic bytes itself and trusts those.
      * Falls back to the declared MIME when the bytes match no known signature.
      */
     public function effectiveMimeType(): string

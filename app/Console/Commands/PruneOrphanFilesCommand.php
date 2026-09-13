@@ -297,11 +297,16 @@ class PruneOrphanFilesCommand extends Command
 
             // An orphan source is typically a failed first ingest; the OCR
             // run it may have produced (`{source}.ocr/`) has no row either
-            // and goes with it — the only sweep such a run ever gets.
+            // and goes with it — the only sweep such a run ever gets. A
+            // purge that fails is a failed sweep (R14): the source is gone
+            // but generated OCR data stayed behind, so the path counts as
+            // failed and the command exits non-zero, never a clean report.
             try {
                 app(OcrFigureStore::class)->purgeBeside($disk, $target);
             } catch (\Throwable $e) {
-                $this->warn("  ! could not purge OCR assets beside {$target}: {$e->getMessage()}");
+                $failed++;
+                $this->error("  ! source deleted but its OCR assets could not be purged beside {$target}: {$e->getMessage()}");
+                continue;
             }
 
             $deleted++;

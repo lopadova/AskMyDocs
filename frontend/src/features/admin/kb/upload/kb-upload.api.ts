@@ -129,10 +129,12 @@ export type OcrEstimateReason =
     | 'staged_file_missing'
     | 'too_many_pages'
     | 'too_many_bytes'
-    /** the PDF could not be parsed and the configured driver is remote: refused before egress */
+    /** the PDF could not be parsed and the configured driver refuses an unverified page count (remote, or unable to bound its own work): refused before any work */
     | 'pages_uncountable'
     /** the bytes do not carry the signature of the declared type: refused before any driver runs */
-    | 'unrecognised_bytes';
+    | 'unrecognised_bytes'
+    /** a multi-frame TIFF the configured driver would transcribe one frame of: refused before any work */
+    | 'multi_frame_image';
 
 export interface OcrEstimateItem {
     id: string;

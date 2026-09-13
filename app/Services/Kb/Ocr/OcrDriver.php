@@ -80,6 +80,16 @@ interface OcrDriver
     public function boundsWorkWithoutPageCount(): bool;
 
     /**
+     * Whether the driver OCRs EVERY frame of a multi-frame image (a
+     * multi-page TIFF). The page cap counts every IFD as a page (ADR 0029
+     * §4), so a driver that hands a raster to its engine as ONE image would
+     * be estimated and metered for N pages and transcribe only the first:
+     * such a driver answers false and the service refuses the file before
+     * any work (`multi_frame_image`) — split it into one image per page.
+     */
+    public function acceptsMultiFrameImages(): bool;
+
+    /**
      * @throws OcrDriverUnavailableException when the engine cannot run here
      * @throws \RuntimeException when recognition fails irrecoverably
      */

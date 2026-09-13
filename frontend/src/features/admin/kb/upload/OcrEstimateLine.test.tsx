@@ -171,6 +171,25 @@ describe('OcrEstimateLine', () => {
         expect(el.textContent).not.toContain('exceeds the OCR limits');
     });
 
+    it('ON with a multi-frame TIFF a one-frame driver refuses — names the refusal without quoting its pages', () => {
+        const multi: OcrEstimate = {
+            ...on,
+            driver: 'tesseract',
+            total_pages: 0,
+            total_cost: 0,
+            items: [{ id: 'm', would_ocr: false, pages: 3, pages_exact: true, cost: 0, reason: 'multi_frame_image' }],
+        };
+        render(<OcrEstimateLine state="ready" estimate={multi} />);
+        const el = screen.getByTestId('kb-upload-ocr-estimate');
+        expect(el).toHaveAttribute('role', 'alert');
+        expect(el.textContent).toContain('1 file is a multi-frame TIFF');
+        expect(el.textContent).toContain('tesseract');
+        expect(el.textContent).toContain('one image per page');
+        expect(el.textContent).toContain('refused before any driver runs');
+        expect(el.textContent).not.toContain('exceeds the OCR limits');
+        expect(el.textContent).not.toContain('cannot be verified');
+    });
+
     it('marks a floor page count with ≥ when the PDF could not be parsed', () => {
         const floor: OcrEstimate = { ...on, total_pages: 3, items: [{ id: 'f', would_ocr: true, pages: 3, pages_exact: false, cost: 0.012, reason: 'scanned_pdf' }] };
         render(<OcrEstimateLine state="ready" estimate={floor} />);

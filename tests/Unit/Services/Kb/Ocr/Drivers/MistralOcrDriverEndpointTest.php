@@ -30,6 +30,21 @@ final class MistralOcrDriverEndpointTest extends TestCase
         Http::assertNothingSent();
     }
 
+    /**
+     * SEC-EXTRESP-001 — a `pages: []` answer is an invalid response, never
+     * a recorded run of zero pages the service would reuse and the
+     * converter would persist as an empty document.
+     */
+    public function test_an_empty_page_list_is_an_invalid_response_not_an_empty_run(): void
+    {
+        config(['kb.ocr.allow_remote' => true, 'kb.ocr.mistral.api_key' => 'k', 'kb.ocr.mistral.url' => 'https://api.mistral.eu/v1/ocr', 'kb.ocr.mistral.allowed_hosts' => ['api.mistral.eu']]);
+        Http::fake(['https://api.mistral.eu/*' => Http::response(['pages' => [], 'model' => 'mistral-ocr-latest'], 200)]);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('returned no pages');
+        app(MistralOcrDriver::class)->recognise(new OcrRequest((string) base64_decode(\App\Services\Kb\Ocr\Drivers\FakeOcrDriver::PNG_1X1, true), 'image/png', 'scan.png'));
+    }
+
     public function test_the_preflight_reports_a_bad_endpoint_as_unavailable(): void
     {
         config(['kb.ocr.allow_remote' => true, 'kb.ocr.mistral.api_key' => 'k', 'kb.ocr.mistral.allowed_hosts' => ['api.mistral.eu']]);
