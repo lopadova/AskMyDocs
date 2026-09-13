@@ -83,6 +83,7 @@ final class TesseractOcrDriver implements OcrDriver
             (string) config('kb.ocr.tesseract.pdftoppm', 'pdftoppm'),
             (int) config('kb.ocr.tesseract.dpi', 200),
             $timeout,
+            (string) config('kb.ocr.tesseract.pdfinfo', 'pdfinfo'),
         );
 
         try {

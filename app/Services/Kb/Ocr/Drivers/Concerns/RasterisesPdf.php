@@ -25,10 +25,13 @@ trait RasterisesPdf
     /**
      * @return array{dir: string, pages: array<int, string>}
      */
-    protected function rasterise(OcrRequest $request, string $pdftoppmBinary, int $dpi, int $timeout = 300): array
+    protected function rasterise(OcrRequest $request, string $pdftoppmBinary, int $dpi, int $timeout = 300, string $pdfinfoBinary = 'pdfinfo'): array
     {
+        // Private to the worker's user (0700): the source and its rendered
+        // pages are document bytes on their way to an engine or a provider,
+        // never readable by another account on the host while they sit here.
         $dir = sys_get_temp_dir().'/kb_ocr_'.bin2hex(random_bytes(6));
-        if (! mkdir($dir, 0755, true) && ! is_dir($dir)) {
+        if (! mkdir($dir, 0700, true) && ! is_dir($dir)) {
             throw new \RuntimeException("Could not create OCR working directory {$dir}.");
         }
 
@@ -58,13 +61,23 @@ trait RasterisesPdf
         // WORK — a PDF the parser could not count (ADR 0029 §4) still renders
         // at most the cap, whatever its object table claims.
         $maxPages = max(1, (int) config('kb.ocr.max_pages', 200));
+        $dpi = min(600, max(50, $dpi));
         // The SOURCE byte cap (KB_OCR_MAX_BYTES) says nothing about what a
         // page renders to: a small file can declare a 200-inch MediaBox and
-        // rasterise to gigapixels. `-W/-H` clip the rendered area to a fixed
-        // pixel box (poppler only clips — a smaller page keeps its size), so
-        // the render itself is bounded before any byte check can run.
+        // rasterise to gigapixels. The bound is applied BEFORE the render, on
+        // the page geometry `pdfinfo` reports: the DPI is lowered so that no
+        // page's long side exceeds KB_OCR_RASTER_MAX_PAGE_PX, and a page that
+        // would need less than the 50-DPI floor to fit is refused outright.
+        // (`pdftoppm -W/-H` are crop sizes, not a scale bound: they would
+        // silently discard the text outside the box, never shrink the render.)
         $maxPx = max(500, (int) config('kb.ocr.raster.max_page_px', 6000));
-        $process = new Process([$pdftoppmBinary, '-r', (string) min(600, max(50, $dpi)), '-f', '1', '-l', (string) $maxPages, '-W', (string) $maxPx, '-H', (string) $maxPx, '-png', $input, $dir.'/page']);
+        try {
+            $dpi = $this->boundedDpi($input, $pdfinfoBinary, $maxPages, $dpi, $maxPx, $timeout, $request->filename);
+        } catch (\Throwable $e) {
+            $this->cleanupAfterFailure($dir, $e);
+            throw $e;
+        }
+        $process = new Process([$pdftoppmBinary, '-r', (string) $dpi, '-f', '1', '-l', (string) $maxPages, '-png', $input, $dir.'/page']);
         $process->setTimeout(max(1, $timeout));
         try {
             $process->mustRun();
@@ -97,13 +110,32 @@ trait RasterisesPdf
             throw $e;
         }
 
-        // RENDERED byte cap (ADR 0029 §4): what leaves for a remote vision
+        // RENDERED bounds (ADR 0029 §4): what leaves for a remote vision
         // provider — or what a local engine has to decode — is the rendered
-        // page, not the source file. A page over the cap is a deterministic
-        // refusal, raised before any egress and never retried.
+        // page, not the source file. The pixel box is re-measured on the PNG
+        // that was actually produced (defence in depth behind the pre-render
+        // DPI bound) and the byte cap applies to it; either over the limit is
+        // a deterministic refusal, raised before any egress and never retried.
         $maxRenderedBytes = max(1, (int) config('kb.ocr.raster.max_page_bytes', 10485760));
         foreach ($pages as $number => $path) {
             $size = (int) (filesize($path) ?: 0);
+            $dimensions = $this->measurePng($path);
+            if ($dimensions === null) {
+                $this->cleanupAfterFailure($dir, $e = new \RuntimeException(sprintf('pdftoppm produced an unreadable image for page %d of "%s".', $number, $request->filename)));
+                throw $e;
+            }
+            [$width, $height] = $dimensions;
+            if ($width > $maxPx || $height > $maxPx) {
+                $this->cleanupAfterFailure($dir, $e = new OcrLimitExceededException(sprintf(
+                    'OCR refused for "%s": page %d renders to %d×%d px, over KB_OCR_RASTER_MAX_PAGE_PX (%d).',
+                    $request->filename,
+                    $number,
+                    $width,
+                    $height,
+                    $maxPx,
+                ), 'rendered_page_too_large'));
+                throw $e;
+            }
             if ($size <= $maxRenderedBytes) {
                 continue;
             }
@@ -118,6 +150,77 @@ trait RasterisesPdf
         }
 
         return ['dir' => $dir, 'pages' => $pages];
+    }
+
+    /**
+     * The render DPI that keeps every page inside the pixel box, computed
+     * from the page geometry `pdfinfo` reports (points, 72 per inch) for the
+     * pages that will be rendered. A page that cannot fit even at the 50-DPI
+     * floor is refused before anything is rendered (`rendered_page_too_large`);
+     * a missing `pdfinfo` or an unparseable report is "cannot bound the
+     * render here" — an unavailable driver, never an unbounded render.
+     *
+     * @throws OcrDriverUnavailableException
+     * @throws OcrLimitExceededException
+     */
+    private function boundedDpi(string $input, string $pdfinfoBinary, int $maxPages, int $dpi, int $maxPx, int $timeout, string $filename): int
+    {
+        if ((new ExecutableFinder())->find($pdfinfoBinary) === null && ! is_executable($pdfinfoBinary)) {
+            throw new OcrDriverUnavailableException(
+                "pdfinfo binary \"{$pdfinfoBinary}\" not found — install poppler-utils or set KB_OCR_PDFINFO_BIN.",
+            );
+        }
+        $process = new Process([$pdfinfoBinary, '-f', '1', '-l', (string) $maxPages, $input]);
+        $process->setTimeout(max(1, $timeout));
+        $process->run();
+        // A PDF pdfinfo cannot read is still rendered (`-l` bounds the work);
+        // only its geometry matters here, and every page line it did print
+        // counts. No page line at all is an unbounded render: refuse.
+        $report = $process->getOutput();
+        $sides = [];
+        if (preg_match_all('/^Page(?:\s+(\d+))?\s+size:\s+([\d.]+)\s+x\s+([\d.]+)\s+pts/m', $report, $matches, PREG_SET_ORDER) > 0) {
+            foreach ($matches as $m) {
+                $sides[(int) ($m[1] !== '' ? $m[1] : 1)] = max((float) $m[2], (float) $m[3]);
+            }
+        }
+        if ($sides === []) {
+            throw new OcrLimitExceededException(sprintf(
+                'OCR refused for "%s": pdfinfo reported no page size, so the render cannot be bounded to KB_OCR_RASTER_MAX_PAGE_PX (%d).',
+                $filename,
+                $maxPx,
+            ), 'rendered_page_too_large');
+        }
+        $longest = max($sides);
+        $fitDpi = (int) floor($maxPx * 72 / max(1.0, $longest));
+        if ($fitDpi < 50) {
+            $page = (int) array_search($longest, $sides, true);
+            throw new OcrLimitExceededException(sprintf(
+                'OCR refused for "%s": page %d is %.0f pt on its long side and would exceed KB_OCR_RASTER_MAX_PAGE_PX (%d) even at 50 DPI.',
+                $filename,
+                $page,
+                $longest,
+                $maxPx,
+            ), 'rendered_page_too_large');
+        }
+
+        return min($dpi, $fitDpi);
+    }
+
+    /**
+     * @return array{0: int, 1: int}|null width and height, null when the file is not a decodable image
+     */
+    private function measurePng(string $path): ?array
+    {
+        try {
+            $info = getimagesize($path);
+        } catch (\Throwable) {
+            return null;
+        }
+        if ($info === false) {
+            return null;
+        }
+
+        return [(int) $info[0], (int) $info[1]];
     }
 
     /**

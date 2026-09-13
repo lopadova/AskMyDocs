@@ -150,6 +150,7 @@ TXT;
             (string) config('kb.ocr.vision_llm.pdftoppm', 'pdftoppm'),
             (int) config('kb.ocr.vision_llm.dpi', 150),
             (int) config('kb.ocr.vision_llm.timeout', 300),
+            (string) config('kb.ocr.vision_llm.pdfinfo', 'pdfinfo'),
         );
 
         try {

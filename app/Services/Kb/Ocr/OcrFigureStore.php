@@ -141,7 +141,12 @@ final class OcrFigureStore
      * reused by a new ingest would be purgeable before the new row commits.
      * Re-recording `result.json` with the same bytes refreshes the run's
      * newest file — the reservation the purge honours (ADR 0029 §6). A
-     * failed refresh is logged, never fatal: the reuse itself is valid.
+     * refresh that fails is a failed reuse: without it the run may be
+     * purged before the new row commits and the row would cite figures that
+     * no longer exist, so the caller's ingest fails (and the job retries)
+     * instead of committing a dangling reference.
+     *
+     * @throws RuntimeException
      */
     public function refreshReservation(string $disk, string $sourcePath, string $prefix, string $runKey): void
     {
@@ -149,11 +154,12 @@ final class OcrFigureStore
         try {
             $storage = Storage::disk($disk);
             $bytes = $storage->exists($path) ? $storage->get($path) : null;
-            if (! is_string($bytes) || $storage->put($path, $bytes) === false) {
-                Log::warning('OcrFigureStore: could not refresh the reservation of a reused run', ['disk' => $disk, 'path' => $path]);
-            }
+            $ok = is_string($bytes) && $storage->put($path, $bytes) !== false;
         } catch (\Throwable $e) {
-            Log::warning('OcrFigureStore: could not refresh the reservation of a reused run', ['disk' => $disk, 'path' => $path, 'error' => $e->getMessage()]);
+            throw new RuntimeException("OcrFigureStore: could not refresh the reservation of reused run {$path} on disk [{$disk}]: {$e->getMessage()}", 0, $e);
+        }
+        if (! $ok) {
+            throw new RuntimeException("OcrFigureStore: could not refresh the reservation of reused run {$path} on disk [{$disk}].");
         }
     }
 

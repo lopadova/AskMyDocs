@@ -203,6 +203,76 @@ final class OcrLimitsAndReuseTest extends TestCase
         $this->assertTrue((bool) $second->extractionMeta['ocr']['reused'], 'the recorded run is reused: no second driver call');
     }
 
+    /**
+     * ADR 0029 §4 — one pre-egress boundary for every ingress: bytes that do
+     * not carry the signature of the declared type never reach a driver,
+     * whichever entry point declared the label.
+     */
+    #[Test]
+    public function bytes_that_are_not_the_declared_type_are_refused_before_any_driver_runs(): void
+    {
+        try {
+            $this->app->make(OcrConverter::class)->convert($this->image('docs/fake.png', 'this is not an image at all'));
+            $this->fail('expected the byte signature check to refuse the document');
+        } catch (OcrLimitExceededException $e) {
+            $this->assertSame('unrecognised_bytes', $e->reason);
+            $this->assertStringContainsString('fake.png', $e->getMessage());
+        }
+        $this->assertFalse(Storage::disk('kb')->directoryExists('docs/fake.png.ocr'), 'nothing may be written for refused bytes');
+
+        // A PDF header is required where a PDF is declared.
+        $pdf = new SourceDocument(sourcePath: 'docs/fake.pdf', mimeType: 'application/pdf', bytes: (string) base64_decode(FakeOcrDriver::PNG_1X1, true), externalUrl: null, externalId: null, connectorType: 'local', metadata: []);
+        try {
+            $this->app->make(OcrService::class)->convert($pdf, 'ocr', 'forced');
+            $this->fail('a PNG declared as a PDF must be refused');
+        } catch (OcrLimitExceededException $e) {
+            $this->assertSame('unrecognised_bytes', $e->reason);
+        }
+    }
+
+    /**
+     * ADR 0029 §6 — a dry run holds no reference: it shows a recorded run
+     * read-only and never touches `.ocr/`, not even to refresh its reservation.
+     */
+    #[Test]
+    public function a_dry_run_shows_a_recorded_run_without_refreshing_its_reservation(): void
+    {
+        $converter = $this->app->make(OcrConverter::class);
+        $converter->convert($this->image());
+        $run = OcrFigureStore::runKeyFor((string) base64_decode(FakeOcrDriver::PNG_1X1, true), 'fake', 'fake;figures=1');
+        $result = "docs/scan.png.ocr/{$run}/result.json";
+        touch(Storage::disk('kb')->path($result), time() - 3600);
+        clearstatcache();
+        $before = Storage::disk('kb')->lastModified($result);
+
+        $preview = $converter->convert($this->image(metadata: ['dry_run' => true]));
+
+        $this->assertTrue((bool) $preview->extractionMeta['ocr']['reused']);
+        $this->assertTrue((bool) $preview->extractionMeta['ocr']['dry_run']);
+        clearstatcache();
+        $this->assertSame($before, Storage::disk('kb')->lastModified($result), 'a dry run never rewrites the recorded run');
+    }
+
+    /**
+     * ADR 0029 §6 — a reservation that cannot be refreshed is a loud failure
+     * (the ingest fails and the job retries), never a logged warning behind a
+     * row that would cite figures a purge may take before it commits.
+     * `OcrService::convert()` calls it unguarded under the run lock.
+     */
+    #[Test]
+    public function a_reservation_that_cannot_be_refreshed_fails_loudly(): void
+    {
+        $store = $this->app->make(OcrFigureStore::class);
+        $run = OcrFigureStore::runKeyFor((string) base64_decode(FakeOcrDriver::PNG_1X1, true), 'fake', 'fake;figures=1');
+
+        // No recorded run at that key: there is nothing to re-record, the
+        // reservation cannot be refreshed, and that is an exception — not a
+        // warning that lets the conversion commit a dangling reference.
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('could not refresh the reservation');
+        $store->refreshReservation('kb', 'docs/scan.png', '', $run);
+    }
+
     #[Test]
     public function the_limits_apply_even_when_ocr_is_forced(): void
     {

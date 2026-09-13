@@ -56,6 +56,24 @@ final class DoclingOcrDriverParseTest extends TestCase
         $this->assertSame([], $pages[1]->figures);
     }
 
+    /** KB_OCR_MAX_FIGURE_BYTES holds for every driver: an over-cap figure is neither read nor stored, and the link is replaced by a note. */
+    #[Test]
+    public function a_figure_over_the_per_figure_cap_is_omitted_and_never_read(): void
+    {
+        config(['kb.ocr.max_figure_bytes' => 4]);
+
+        $pages = $this->app->make(DoclingOcrDriver::class)->parseMarkdownOutput(
+            "Text\n\n![Figure](input_artifacts/image_1.png)\n\nAfter",
+            $this->dir,
+        );
+
+        $this->assertSame([], $pages[0]->figures);
+        $this->assertStringNotContainsString('](images/', $pages[0]->markdown, 'no link to a figure that is not stored');
+        $this->assertStringNotContainsString('input_artifacts/', $pages[0]->markdown);
+        $this->assertStringContainsString('omitted', $pages[0]->markdown);
+        $this->assertStringContainsString('After', $pages[0]->markdown);
+    }
+
     #[Test]
     public function traversal_and_non_image_links_are_left_as_text_and_never_read(): void
     {

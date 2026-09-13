@@ -10,6 +10,7 @@ use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
 use App\Services\Kb\Pipeline\ConvertedDocument;
 use App\Services\Kb\Pipeline\SourceDocument;
+use App\Support\Kb\FileTypeSniffer;
 use App\Support\KbPath;
 use App\Support\TenantContext;
 use Illuminate\Contracts\Cache\LockTimeoutException;
@@ -263,24 +264,20 @@ final class OcrService
         // produce the same result — reuse the recorded run instead of paying
         // for it again (a re-ingest of identical bytes, an IMAP backfill, a
         // GH-action full sync). `ocr.force` (kb:ocr) bypasses the reuse.
+        $reuseAllowed = ! self::isForced($doc->metadata) && (bool) config('kb.ocr.reuse.enabled', true);
         $reused = null;
-        if (! self::isForced($doc->metadata) && (bool) config('kb.ocr.reuse.enabled', true)) {
-            $reused = $this->reusableResult($disk, $doc->sourcePath, $prefix, $runKey, $driver->name());
-        }
 
-        if ($reused === null && self::isDryRun($doc->metadata)) {
+        if (self::isDryRun($doc->metadata)) {
             // A dry run previews the shape and the spend; it never runs the
-            // driver (paid, remote for some), never writes `.ocr/`, never
-            // meters. A recorded run is read-only and may still be shown.
-            return $this->dryRunPreview($doc, $converterName, $reason, $driver, $runKey, $start);
-        }
-
-        if ($reused !== null) {
+            // driver (paid, remote for some), never writes `.ocr/` — not even
+            // a reservation refresh — never meters. A recorded run is shown
+            // read-only, outside the reservation (it holds no reference).
+            $reused = $reuseAllowed ? $this->reusableResult($disk, $doc->sourcePath, $prefix, $runKey, $driver->name()) : null;
+            if ($reused === null) {
+                return $this->dryRunPreview($doc, $converterName, $reason, $driver, $runKey, $start);
+            }
             $result = $reused['result'];
             $written = $reused['written'];
-            // ADR 0029 §6 — a reuse is a new reference in flight: refresh the
-            // run's reservation so no purge removes it before the row commits.
-            $this->figures->refreshReservation($disk, $doc->sourcePath, $prefix, $runKey);
         } else {
             // A run directory is immutable, so its FIRST write is reserved
             // atomically: the reservation covers the recorded-run check, the
@@ -301,7 +298,13 @@ final class OcrService
                 ));
             }
             try {
-                if (! self::isForced($doc->metadata) && (bool) config('kb.ocr.reuse.enabled', true)) {
+                // The recorded-run check and the reservation refresh happen
+                // UNDER the run lock, so no purge can remove the tree between
+                // "its figures are all here" and "it is reserved again"
+                // (ADR 0029 §6): a reuse is a new reference in flight, and a
+                // refresh that fails is a failed ingest, never a row that
+                // cites figures a sweep may already have taken.
+                if ($reuseAllowed) {
                     $reused = $this->reusableResult($disk, $doc->sourcePath, $prefix, $runKey, $driver->name());
                 }
                 if ($reused !== null) {
@@ -384,6 +387,25 @@ final class OcrService
      */
     private function assertWithinLimits(string $mimeType, string $bytes, string $filename, OcrDriver $driver): int
     {
+        // One pre-egress boundary for EVERY ingress (multipart upload, JSON
+        // ingest, folder walk, connector): the bytes must carry the signature
+        // of what the declared MIME says they are — a PDF header, or one of
+        // the accepted raster formats — before any driver, remote or local,
+        // is handed them. A declared label is never trusted on its own.
+        $declared = strtolower(trim(explode(';', $mimeType, 2)[0]));
+        $expectsPdf = $declared === 'application/pdf';
+        $sniffed = $expectsPdf
+            ? (str_starts_with($bytes, '%PDF-') ? 'application/pdf' : null)
+            : FileTypeSniffer::imageMimeOf(substr($bytes, 0, 16));
+        if ($sniffed === null) {
+            throw new OcrLimitExceededException(sprintf(
+                'OCR refused for "%s": the bytes are not %s (declared "%s"); nothing is sent to a driver.',
+                $filename,
+                $expectsPdf ? 'a PDF' : 'a PNG, JPEG, TIFF or WebP image',
+                $declared,
+            ), 'unrecognised_bytes');
+        }
+
         $maxBytes = max(1, (int) config('kb.ocr.max_bytes', 26214400));
         if (strlen($bytes) > $maxBytes) {
             throw new OcrLimitExceededException(sprintf(

@@ -442,9 +442,12 @@ return [
 
         // Rendered-page bounds for the drivers that rasterise a PDF page by
         // page (tesseract, vision-llm): the source byte cap above bounds the
-        // FILE, these bound what a page RENDERS to — the pixel box pdftoppm
-        // clips each page to, and the PNG size a page may reach before it is
-        // decoded locally or posted to a vision provider (ADR 0029 §4).
+        // FILE, these bound what a page RENDERS to — the long side no page
+        // may exceed in pixels (the render DPI is lowered from the page
+        // geometry pdfinfo reports so every page fits; a page that cannot fit
+        // at 50 DPI is refused before rendering), and the PNG size a page may
+        // reach before it is decoded locally or posted to a vision provider
+        // (ADR 0029 §4).
         'raster' => [
             'max_page_px' => (int) env('KB_OCR_RASTER_MAX_PAGE_PX', 6000),
             'max_page_bytes' => (int) env('KB_OCR_RASTER_MAX_PAGE_BYTES', 10485760),
@@ -504,6 +507,7 @@ return [
         'tesseract' => [
             'binary' => env('KB_OCR_TESSERACT_BIN', 'tesseract'),
             'pdftoppm' => env('KB_OCR_PDFTOPPM_BIN', 'pdftoppm'),
+            'pdfinfo' => env('KB_OCR_PDFINFO_BIN', 'pdfinfo'),
             'lang' => env('KB_OCR_TESSERACT_LANG', 'eng'),
             'dpi' => (int) env('KB_OCR_TESSERACT_DPI', 200),
             'timeout' => (int) env('KB_OCR_TESSERACT_TIMEOUT', 300),
@@ -524,6 +528,7 @@ return [
             'model' => env('KB_OCR_VISION_MODEL') ?: null,
             'max_tokens' => (int) env('KB_OCR_VISION_MAX_TOKENS', 4000),
             'pdftoppm' => env('KB_OCR_PDFTOPPM_BIN', 'pdftoppm'),
+            'pdfinfo' => env('KB_OCR_PDFINFO_BIN', 'pdfinfo'),
             'dpi' => (int) env('KB_OCR_VISION_DPI', 150),
             'timeout' => (int) env('KB_OCR_VISION_TIMEOUT', 300),
         ],

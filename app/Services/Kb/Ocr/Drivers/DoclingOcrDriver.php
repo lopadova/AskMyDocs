@@ -84,8 +84,9 @@ final class DoclingOcrDriver implements OcrDriver
         $binary = (string) config('kb.ocr.docling.binary', 'docling');
         $timeout = (int) config('kb.ocr.docling.timeout', 600);
 
+        // Private to the worker's user (0700), like the rasteriser's directory.
         $dir = sys_get_temp_dir().'/kb_docling_'.bin2hex(random_bytes(6));
-        if (! mkdir($dir, 0755, true) && ! is_dir($dir)) {
+        if (! mkdir($dir, 0700, true) && ! is_dir($dir)) {
             throw new \RuntimeException("Could not create Docling working directory {$dir}.");
         }
 
@@ -178,9 +179,10 @@ final class DoclingOcrDriver implements OcrDriver
         foreach (array_values($raw) as $i => $body) {
             $number = $i + 1;
             $figures = [];
+            $maxFigureBytes = max(1, (int) config('kb.ocr.max_figure_bytes', 10 * 1024 * 1024));
             $body = (string) preg_replace_callback(
                 '/!\[([^\]]*)\]\(([^)]+)\)/',
-                function (array $m) use ($root, $number, &$figures): string {
+                function (array $m) use ($root, $number, $maxFigureBytes, &$figures): string {
                     $target = trim($m[2]);
                     if ($root === false || preg_match('#^input_artifacts/([A-Za-z0-9_.-]+)\.(png|jpe?g|webp|tiff?)$#i', $target, $tm) !== 1) {
                         return $m[0];
@@ -191,6 +193,16 @@ final class DoclingOcrDriver implements OcrDriver
                     }
                     $index = count($figures) + 1;
                     $ext = strtolower($tm[2]);
+                    // The per-figure cap (KB_OCR_MAX_FIGURE_BYTES) holds for
+                    // every driver, local ones included: a figure over it is
+                    // never read into memory nor stored — the link is replaced
+                    // by a note so the Markdown does not cite a missing file.
+                    $size = (int) (filesize($file) ?: 0);
+                    if ($size > $maxFigureBytes) {
+                        Log::warning('Docling figure omitted: over KB_OCR_MAX_FIGURE_BYTES', ['page' => $number, 'bytes' => $size, 'max' => $maxFigureBytes]);
+
+                        return sprintf('*Figure %d.%d omitted (%d bytes, over KB_OCR_MAX_FIGURE_BYTES)*', $number, $index, $size);
+                    }
                     $bytes = file_get_contents($file);
                     if ($bytes === false || $bytes === '') {
                         throw new \RuntimeException("Docling figure could not be read: {$file}.");
