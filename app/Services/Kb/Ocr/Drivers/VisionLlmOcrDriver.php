@@ -140,10 +140,13 @@ TXT;
             throw new OcrDriverUnavailableException($reason);
         }
 
+        // The SAME effective pair the fingerprint records: the resolved
+        // provider (tenant override included) and the configured model or
+        // that provider's default — so the recorded meta, the run identity
+        // and the SDK call never disagree on which engine ran.
         $providerName = config('kb.ocr.vision_llm.provider');
         $provider = $this->ai->provider(is_string($providerName) && $providerName !== '' ? $providerName : null);
-        $model = config('kb.ocr.vision_llm.model');
-        $model = is_string($model) && $model !== '' ? $model : null;
+        [, $model] = $this->effectiveEngine();
 
         $raster = $this->rasterise(
             $request,

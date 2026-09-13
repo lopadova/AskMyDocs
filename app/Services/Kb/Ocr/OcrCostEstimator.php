@@ -48,13 +48,13 @@ final class OcrCostEstimator
         // (vision-llm) is metered per token by the laravel/ai lifecycle hook
         // after the fact, so the estimate must not invent a page price for
         // it: cost stays 0 and `metering` says why.
-        $this->sdkMetered = $driverStatus['metering'] === OcrMeteringMode::Sdk->value;
+        $sdkMetered = $driverStatus['metering'] === OcrMeteringMode::Sdk->value;
 
         $items = [];
         $totalPages = 0;
         $totalCost = 0.0;
         foreach ($batch->items as $item) {
-            $row = $this->forItem($item, $stagingDisk, $enabled);
+            $row = $this->forItem($item, $stagingDisk, $enabled, $sdkMetered);
             $items[] = $row;
             if ($row['would_ocr']) {
                 $totalPages += $row['pages'];
@@ -75,14 +75,12 @@ final class OcrCostEstimator
             // the provider meters tokens and FinOps records the real spend.
             'metering' => $driverStatus['metering'],
             'currency' => $base['currency'],
-            'rate_per_page' => $this->sdkMetered ? 0.0 : $base['rate_per_page'],
+            'rate_per_page' => $sdkMetered ? 0.0 : $base['rate_per_page'],
             'total_pages' => $totalPages,
             'total_cost' => round($totalCost, 6),
             'items' => $items,
         ];
     }
-
-    private bool $sdkMetered = false;
 
     /**
      * @return array{available: bool, error: ?string, metering: string}
@@ -109,7 +107,7 @@ final class OcrCostEstimator
     /**
      * @return array{id: string, would_ocr: bool, pages: int, cost: float, reason: string, pages_exact: bool}
      */
-    private function forItem(KbIngestBatchItem $item, string $stagingDisk, bool $enabled): array
+    private function forItem(KbIngestBatchItem $item, string $stagingDisk, bool $enabled, bool $sdkMetered = false): array
     {
         $id = (string) $item->id;
         if (! $enabled) {
@@ -139,7 +137,7 @@ final class OcrCostEstimator
                 return ['id' => $id, 'would_ocr' => false, 'pages' => $pages, 'cost' => 0.0, 'reason' => 'too_many_pages', 'pages_exact' => true];
             }
 
-            return $this->priced($id, $pages, 'image');
+            return $this->priced($id, $pages, 'image', true, $sdkMetered);
         }
 
         if ($type !== SourceType::PDF) {
@@ -173,17 +171,17 @@ final class OcrCostEstimator
             return ['id' => $id, 'would_ocr' => false, 'pages' => $pages, 'cost' => 0.0, 'reason' => 'too_many_pages', 'pages_exact' => $exact];
         }
 
-        return $this->priced($id, $pages, $probe['verdict'] === PdfTextLayerProbe::MIXED ? 'mixed_pdf' : 'scanned_pdf', $exact);
+        return $this->priced($id, $pages, $probe['verdict'] === PdfTextLayerProbe::MIXED ? 'mixed_pdf' : 'scanned_pdf', $exact, $sdkMetered);
     }
 
     /**
      * @return array{id: string, would_ocr: bool, pages: int, cost: float, reason: string, pages_exact: bool}
      */
-    private function priced(string $id, int $pages, string $reason, bool $exact = true): array
+    private function priced(string $id, int $pages, string $reason, bool $exact = true, bool $sdkMetered = false): array
     {
         $estimate = $this->meter->estimate($pages);
 
-        return ['id' => $id, 'would_ocr' => true, 'pages' => $estimate['pages'], 'cost' => $this->sdkMetered ? 0.0 : $estimate['cost'], 'reason' => $reason, 'pages_exact' => $exact];
+        return ['id' => $id, 'would_ocr' => true, 'pages' => $estimate['pages'], 'cost' => $sdkMetered ? 0.0 : $estimate['cost'], 'reason' => $reason, 'pages_exact' => $exact];
     }
 
 }

@@ -60,10 +60,6 @@ interface OcrDriver
     public function meteringMode(): OcrMeteringMode;
 
     /**
-     * @throws OcrDriverUnavailableException when the engine cannot run here
-     * @throws \RuntimeException when recognition fails irrecoverably
-     */
-    /**
      * Worst-case wall-clock seconds one `recognise()` of `$pages` pages can
      * take under the driver's own timeouts (process / HTTP / per-page). The
      * service sizes the run-directory reservation from it, so the lease is
@@ -83,5 +79,9 @@ interface OcrDriver
      */
     public function boundsWorkWithoutPageCount(): bool;
 
+    /**
+     * @throws OcrDriverUnavailableException when the engine cannot run here
+     * @throws \RuntimeException when recognition fails irrecoverably
+     */
     public function recognise(OcrRequest $request): OcrResult;
 }

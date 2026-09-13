@@ -1,3 +1,5 @@
+import type { CSSProperties } from 'react';
+
 import type { OcrEstimate } from './kb-upload.api';
 
 /*
@@ -35,7 +37,7 @@ export function formatCost(amount: number, currency: string): string {
 }
 
 export function OcrEstimateLine({ state, estimate, errorMessage }: OcrEstimateLineProps) {
-    const base: React.CSSProperties = { margin: 0, fontSize: 11, color: 'var(--fg-2)' };
+    const base: CSSProperties = { margin: 0, fontSize: 11, color: 'var(--fg-2)' };
 
     if (state === 'loading') {
         return (
