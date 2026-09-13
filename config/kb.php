@@ -329,15 +329,14 @@ return [
     | Source retention policy (v8.11) — SCHEMA/CONFIG FOUNDATION
     |--------------------------------------------------------------------------
     |
-    | NOTE: this knob + the `knowledge_documents.markdown_path` column are the
+    | NOTE: this knob + the `knowledge_documents.markdown_path` column were the
     | foundation declared in v8.11.0; the INGEST WIRING that reads this mode and
-    | writes the markdown artifact / drops the original did NOT land in v8.11.x —
-    | it is W2 of the v8.36 Document Intelligence cycle (ADR 0030, behind
-    | KB_CONVERSION_ARTIFACTS_ENABLED). Until then ingest behaves as before
-    | (`reference_only`-style metadata + chunks, original kept on disk).
+    | writes the markdown artifact / drops the original landed in v8.36 (W2,
+    | ADR 0030) behind KB_CONVERSION_ARTIFACTS_ENABLED (below). With that flag
+    | off ingest behaves as before (metadata + chunks, original kept on disk).
     |
-    | Intended (once wired) — what is kept on ingest, globally (and per-connector
-    | via config/connectors.php overrides):
+    | What is kept on ingest, globally (one setting; there is no per-connector
+    | override today):
     |   - full_copy      : original binary on the KB disk + chunks + the
     |                      converted markdown as a first-class artifact
     |                      (knowledge_documents.markdown_path). Today's default
@@ -358,6 +357,28 @@ return [
         // the default only kicks in when the var is ABSENT. Same normalization
         // as the auto-wiki AI override knobs above.
         'mode' => env('KB_SOURCE_RETENTION') ?: 'full_copy',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Conversion artifacts on the Time Machine (v8.36 / ADR 0030)
+    |--------------------------------------------------------------------------
+    |
+    | With `enabled`, the exact Markdown the chunker received is stored per
+    | version at `{prefix}/.artifacts/{tenant}/{project}/{source_path}.versions/
+    | {version_hash}.md` and recorded in `knowledge_documents.markdown_path`,
+    | honouring `source_retention.mode` (`reference_only` stores nothing;
+    | `markdown_only` drops the original binary after the artifact commit).
+    | Diff / restore / the versions endpoints then read the document itself
+    | instead of a chunk reconstruction. Default OFF (R43): no new artifact is
+    | written, existing ones keep being read. `tmp_max_age_seconds` bounds the
+    | sweep of temp files a dead writer left behind (kb:prune-archived-versions).
+    |
+    */
+
+    'conversion_artifacts' => [
+        'enabled' => filter_var(env('KB_CONVERSION_ARTIFACTS_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+        'tmp_max_age_seconds' => (int) env('KB_CONVERSION_ARTIFACTS_TMP_MAX_AGE', 3600),
     ],
 
     /*

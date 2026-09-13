@@ -23,6 +23,10 @@ class KnowledgeDocument extends Model
         'title',
         'source_path',
         'markdown_path',
+        // --- v8.36 / ADR 0030 version provenance ----------------------
+        'version_actor',
+        'version_reason',
+        'content_hash',
         'mime_type',
         'language',
         'access_scope',

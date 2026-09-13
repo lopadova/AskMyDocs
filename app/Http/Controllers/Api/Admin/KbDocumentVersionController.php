@@ -43,6 +43,15 @@ final class KbDocumentVersionController extends Controller
             'is_live' => $v->status === 'active',
             'indexed_at' => $v->indexed_at,
             'created_at' => $v->created_at,
+            // v8.36 / ADR 0030 §4 — additive (R27): null / false on rows that
+            // predate the artifacts, never a changed key.
+            'version_actor' => $v->version_actor,
+            'version_reason' => $v->version_reason,
+            'content_hash' => $v->content_hash,
+            'has_artifact' => is_string($v->markdown_path) && $v->markdown_path !== '',
+            // ADR 0030 §6 — the last restore, kept apart from the creation provenance
+            'restored_by' => DocumentVersionService::lastRestoreOf($v)['actor'] ?? null,
+            'restored_at' => DocumentVersionService::lastRestoreOf($v)['at'] ?? null,
         ])->all();
 
         return response()->json([
@@ -97,6 +106,33 @@ final class KbDocumentVersionController extends Controller
                 'status' => $restored->status,
                 'is_canonical' => (bool) $restored->is_canonical,
                 'slug' => $restored->slug,
+            ],
+        ]);
+    }
+
+    /**
+     * GET /api/admin/kb/documents/{id}/versions/{versionId}/content
+     *
+     * v8.36 / ADR 0030 §5 — the version's content and which source it came
+     * from (`artifact` | `reconstruction`). `{versionId}` must belong to
+     * `{id}`'s family. Admin-only and un-redacted by design: this is the one
+     * read path that returns the converter's output before the PII seam,
+     * which is why it has no MCP twin (documented R44 exception).
+     */
+    public function content(int $id, int $versionId): JsonResponse
+    {
+        $anchor = $this->findOr404($id);
+        $version = $this->resolveFamilyMember($anchor, $versionId);
+        $content = $this->versions->contentFor($version);
+
+        return response()->json([
+            'data' => [
+                'id' => (int) $version->id,
+                'source' => $content['source'],
+                // ADR 0030 §5 — verified | mismatch | null (no content_hash to check against)
+                'integrity' => $content['integrity'] ?? null,
+                'content_hash' => $version->content_hash,
+                'content' => $content['content'],
             ],
         ]);
     }

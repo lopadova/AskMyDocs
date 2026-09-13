@@ -121,6 +121,18 @@ kb:delete / DELETE /api/kb/documents / --prune-orphans / kb:prune-deleted
 `language`, `access_scope`, `status`, `document_hash`, `version_hash` (both
 SHA-256), `metadata` JSON, `source_updated_at`, `indexed_at`, `created_at`,
 `updated_at`, `deleted_at` (soft delete).
+**Retention / version-provenance columns** (v8.11 + v8.36, ADR 0014/0030, all
+nullable): `markdown_path` (disk-relative path of the stored conversion artifact
+`.artifacts/{tenant}/{project}/{source_path}.versions/{version_hash}.md`, null
+when none is stored), `version_actor` (`user:{id}` · `system:ingest` ·
+`system:ocr` …, the CREATION provenance, immutable — a restore never rewrites it
+but appends `{actor, at, previous_live_id}` to `metadata.restores`, surfaced as
+`restored_by` / `restored_at`; derived server-side and stripped from client
+metadata), `version_reason` (free text ≤ 1024), `content_hash` (SHA-256 of the
+stored artifact — equals `document_hash` by construction, null without an
+artifact; an integrity check, not a second identity). `metadata.source_dropped`
+(`true`) marks a row whose original binary was dropped by `markdown_only`
+retention, so the orphan sweeps never read the missing file as an orphan.
 **Canonical columns** (nullable, added in phase 1): `doc_id`, `slug`,
 `canonical_type`, `canonical_status`, `is_canonical` (bool, default false),
 `retrieval_priority` (smallint 0–100, default 50), `source_of_truth`
@@ -335,6 +347,17 @@ rotation. `kb:rebuild-graph` is a no-op when no canonical docs exist.
   `kb_edges` are **project-scoped** (intra-project referential integrity) —
   cross-tenant isolation is the application-layer R30 `forTenant()` scope, not
   the FK. Never assume global slug uniqueness in new code.
+- **The artifact root and the OCR run directories are swept CROSS-TENANT
+  (deliberate R30 exception, ADR 0030 §3/§8).** `.artifacts/` is one physical
+  tree shared by every tenant (namespaced by safe segment) and an OCR run
+  directory is shared by every version born from the same bytes on a shared
+  disk, so `kb:prune-archived-versions` decides "no row references this file
+  any more" with `withoutGlobalScopes()` — live, archived and soft-deleted rows
+  of ALL tenants — and deletes only at zero references. Scoping that check to
+  one tenant would delete another tenant's artifact; the conservative direction
+  is the cross-tenant one. Both sweeps cover the configured `kb.sources.disk` /
+  `path_prefix` only; artifacts recorded under another `metadata.disk` are the
+  operator's to sweep. Same posture as the IMAP mailbox lock below.
 - **IMAP connections are serialized per mailbox, CROSS-TENANT (deliberate R30
   exception).** At most ONE live IMAP connection per account
   (host+port+username) exists at a time, across ALL surfaces (sync, health,

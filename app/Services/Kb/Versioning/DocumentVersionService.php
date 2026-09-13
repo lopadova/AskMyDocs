@@ -11,6 +11,7 @@ use App\Support\MarkdownDiff;
 use App\Support\TenantContext;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
 
 /**
@@ -27,7 +28,18 @@ use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
  */
 final class DocumentVersionService
 {
-    public function __construct(private readonly TenantContext $tenant) {}
+    public const SOURCE_ARTIFACT = 'artifact';
+
+    public const INTEGRITY_VERIFIED = 'verified';
+
+    public const INTEGRITY_MISMATCH = 'mismatch';
+
+    public const SOURCE_RECONSTRUCTION = 'reconstruction';
+
+    public function __construct(
+        private readonly TenantContext $tenant,
+        private readonly ConversionArtifactStore $artifacts,
+    ) {}
 
     /**
      * All versions (active + archived) for the doc's family, newest first.
@@ -42,7 +54,51 @@ final class DocumentVersionService
             ->where('source_path', $document->source_path)
             ->orderByDesc('indexed_at')
             ->orderByDesc('id')
-            ->get(['id', 'title', 'version_hash', 'status', 'is_canonical', 'canonical_type', 'indexed_at', 'created_at']);
+            ->get(['id', 'title', 'version_hash', 'status', 'is_canonical', 'canonical_type', 'indexed_at', 'created_at',
+                // v8.36 / ADR 0030 §4 — version provenance + the artifact pointer
+                'markdown_path', 'version_actor', 'version_reason', 'content_hash', 'metadata']);
+    }
+
+    /**
+     * v8.36 / ADR 0030 §5 — the version's content and where it came from:
+     * the stored artifact when `markdown_path` is set and the file is there,
+     * otherwise the chunk reconstruction. A missing file behind a non-null
+     * path is logged and degrades — it is not a 500 (R14 is about silent
+     * success; this says which source it used).
+     *
+     * @return array{content: string, source: string, integrity: string|null}
+     */
+    public function contentFor(KnowledgeDocument $version): array
+    {
+        $path = $version->markdown_path;
+        if (is_string($path) && $path !== '') {
+            $metadata = is_array($version->metadata) ? $version->metadata : [];
+            $disk = (string) ($metadata['disk'] ?? config('kb.sources.disk', 'kb'));
+            $content = $this->artifacts->read($disk, $path);
+            // ADR 0030 §5 — `content_hash` is the integrity check of the
+            // stored bytes: a truncated or replaced file is never reported
+            // as a faithful artifact; it degrades to the reconstruction and
+            // says so (`integrity: mismatch`), it is not a 500.
+            if ($content !== null && is_string($version->content_hash) && $version->content_hash !== '' && hash('sha256', $content) !== $version->content_hash) {
+                Log::warning('DocumentVersionService: artifact bytes do not match content_hash, falling back to reconstruction', [
+                    'document_id' => (int) $version->id,
+                    'disk' => $disk,
+                    'markdown_path' => $path,
+                ]);
+
+                return ['content' => $this->reconstructContent($version), 'source' => self::SOURCE_RECONSTRUCTION, 'integrity' => self::INTEGRITY_MISMATCH];
+            }
+            if ($content !== null) {
+                return ['content' => $content, 'source' => self::SOURCE_ARTIFACT, 'integrity' => is_string($version->content_hash) && $version->content_hash !== '' ? self::INTEGRITY_VERIFIED : null];
+            }
+            Log::warning('DocumentVersionService: artifact missing behind markdown_path, falling back to reconstruction', [
+                'document_id' => (int) $version->id,
+                'disk' => $disk,
+                'markdown_path' => $path,
+            ]);
+        }
+
+        return ['content' => $this->reconstructContent($version), 'source' => self::SOURCE_RECONSTRUCTION, 'integrity' => null];
     }
 
     /**
@@ -61,11 +117,18 @@ final class DocumentVersionService
     }
 
     /**
-     * @return array{from: int, to: int, added: int, removed: int, rows: list<array{type: string, text: string}>}
+     * Artifact-aware since v8.36 (ADR 0030 §5): each side is its stored
+     * artifact when there is one, its chunk reconstruction otherwise, and
+     * `from_source` / `to_source` say which — additive keys (R27), so the
+     * v8.7 shape is unchanged for every existing reader.
+     *
+     * @return array{from: int, to: int, added: int, removed: int, rows: list<array{type: string, text: string}>, from_source: string, to_source: string, from_integrity: string|null, to_integrity: string|null}
      */
     public function diff(KnowledgeDocument $from, KnowledgeDocument $to): array
     {
-        $diff = MarkdownDiff::compute($this->reconstructContent($from), $this->reconstructContent($to));
+        $fromContent = $this->contentFor($from);
+        $toContent = $this->contentFor($to);
+        $diff = MarkdownDiff::compute($fromContent['content'], $toContent['content']);
 
         return [
             'from' => (int) $from->id,
@@ -73,6 +136,10 @@ final class DocumentVersionService
             'added' => $diff['added'],
             'removed' => $diff['removed'],
             'rows' => $diff['rows'],
+            'from_source' => $fromContent['source'],
+            'to_source' => $toContent['source'],
+            'from_integrity' => $fromContent['integrity'] ?? null,
+            'to_integrity' => $toContent['integrity'] ?? null,
         ];
     }
 
@@ -97,6 +164,24 @@ final class DocumentVersionService
      * newly-activated version. The sweep runs at UPDATE-lock time and
      * captures any concurrent activations that the SELECT missed.
      */
+    /**
+     * The most recent restore recorded on a version (ADR 0030 §6), or null
+     * when it was never restored. Additive read model for the index surfaces.
+     *
+     * @return array{actor: string, at: string, previous_live_id: int|null}|null
+     */
+    public static function lastRestoreOf(KnowledgeDocument $version): ?array
+    {
+        $metadata = is_array($version->metadata) ? $version->metadata : [];
+        $restores = is_array($metadata['restores'] ?? null) ? $metadata['restores'] : [];
+        $last = $restores === [] ? null : end($restores);
+        if (! is_array($last) || ! is_string($last['actor'] ?? null) || ! is_string($last['at'] ?? null)) {
+            return null;
+        }
+
+        return ['actor' => $last['actor'], 'at' => $last['at'], 'previous_live_id' => isset($last['previous_live_id']) ? (int) $last['previous_live_id'] : null];
+    }
+
     public function restore(KnowledgeDocument $target, ?string $actor = null): KnowledgeDocument
     {
         $tenantId = $this->tenant->current();
@@ -152,7 +237,24 @@ final class DocumentVersionService
                 ]);
             }
 
-            $locked->update(array_merge(['status' => 'active', 'indexed_at' => now()], $identity));
+            // v8.36 / ADR 0030 §6 — `version_actor` / `version_reason` are the
+            // CREATION provenance of the version and stay immutable; a restore
+            // is appended to `metadata.restores` (actor, when, which live row it
+            // displaced), so the timeline keeps both who created a version and
+            // who brought it back. `markdown_path` is left untouched (the
+            // artifact was never deleted with the archive, only with the prune).
+            $lockedMetadata = is_array($locked->metadata) ? $locked->metadata : [];
+            $restores = is_array($lockedMetadata['restores'] ?? null) ? $lockedMetadata['restores'] : [];
+            $restores[] = [
+                'actor' => $actor ?? 'system:restore',
+                'at' => now()->toIso8601String(),
+                'previous_live_id' => $live?->id,
+            ];
+            $locked->update(array_merge([
+                'status' => 'active',
+                'indexed_at' => now(),
+                'metadata' => array_merge($lockedMetadata, ['restores' => $restores]),
+            ], $identity));
 
             // R21 — Sweep-archive any other active versions that may have been
             // activated by a concurrent restore transaction. When two threads

@@ -86,6 +86,14 @@ class ReembedDocumentJob implements ShouldQueue
                 $bytes = null;
             }
 
+            // v8.36 / ADR 0030 — `markdown_only` retention drops the original
+            // after the artifact commit: the stored artifact IS the bytes a
+            // re-embed needs (it hashes to the same version), so read it.
+            $artifactPath = $document->markdown_path;
+            if ($bytes === null && is_string($artifactPath) && $artifactPath !== '') {
+                $bytes = app(\App\Services\Kb\Versioning\ConversionArtifactStore::class)->read($resolved['disk'], $artifactPath);
+            }
+
             if ($bytes === null) {
                 Log::warning('ReembedDocumentJob: source markdown missing on disk; skipping re-embed.', [
                     'document_id' => $document->id,

@@ -106,6 +106,7 @@ export function TimeMachineView({ docId }: { docId: number }): ReactNode {
                             <p data-testid="kb-time-machine-diff-summary" style={{ fontSize: 12, color: 'var(--fg-2)' }}>
                                 +{diff.data.added} / −{diff.data.removed}
                             </p>
+                            <DiffSourceNote fromSource={diff.data.from_source} toSource={diff.data.to_source} />
                             {/* A styled <div> (not <pre>) — block-level <div>
                                 children are invalid inside <pre> (Copilot review). */}
                             <div data-testid="kb-time-machine-diff-body" style={{ background: 'var(--bg-2, rgba(255,255,255,.02))', border: '1px solid var(--panel-border)', borderRadius: 8, padding: 12, fontSize: 12, fontFamily: 'var(--font-mono, monospace)', overflowX: 'auto', margin: 0 }}>
@@ -130,6 +131,30 @@ export function TimeMachineView({ docId }: { docId: number }): ReactNode {
     );
 }
 
+/**
+ * v8.36 / ADR 0030 §5 — says whether the diff compares the stored documents
+ * (faithful) or chunk reconstructions (an index diff), so an operator never
+ * reads an index diff as the document's own history. Older servers omit the
+ * sources: then nothing is claimed either way.
+ */
+function DiffSourceNote({ fromSource, toSource }: { fromSource?: string; toSource?: string }): ReactNode {
+    if (!fromSource || !toSource) {
+        return null;
+    }
+    const faithful = fromSource === 'artifact' && toSource === 'artifact';
+    return (
+        <p
+            data-testid="kb-time-machine-diff-source"
+            data-diff-faithful={faithful ? 'true' : 'false'}
+            style={{ fontSize: 11.5, color: faithful ? 'var(--ok, #3fb950)' : 'var(--fg-3)', margin: '0 0 6px' }}
+        >
+            {faithful
+                ? 'Faithful diff — both versions compared from their stored documents.'
+                : `Index diff — ${fromSource === 'artifact' ? 'the newer side' : toSource === 'artifact' ? 'the older side' : 'both sides'} ${fromSource !== 'artifact' && toSource !== 'artifact' ? 'are' : 'is'} reconstructed from indexed chunks, not the stored document.`}
+        </p>
+    );
+}
+
 function VersionRow({
     v, isFrom, isTo, onPickFrom, onPickTo, onRestore, restoring,
 }: {
@@ -146,6 +171,7 @@ function VersionRow({
             data-testid={`kb-time-machine-version-${v.id}`}
             data-version-status={v.status}
             data-is-live={v.is_live ? 'true' : 'false'}
+            data-has-artifact={v.has_artifact ? 'true' : 'false'}
             style={{
                 display: 'flex', alignItems: 'center', gap: 10,
                 border: '1px solid var(--panel-border, rgba(255,255,255,.1))',
@@ -160,6 +186,17 @@ function VersionRow({
             <span style={{ fontSize: 11, color: v.is_live ? 'var(--ok, #3fb950)' : 'var(--fg-3)' }}>
                 {v.is_live ? 'live' : v.status}
             </span>
+            {/* v8.36 / ADR 0030 §4 — who created the version and why; null on rows that predate it */}
+            <span data-testid={`kb-time-machine-version-${v.id}-actor`} title={v.version_reason ?? undefined} style={{ fontSize: 11, color: 'var(--fg-3)', fontFamily: 'var(--font-mono, monospace)' }}>
+                {v.version_actor ?? 'unknown actor'}
+                {v.version_reason ? ` · ${v.version_reason}` : ''}
+                {v.restored_by ? ` · restored by ${v.restored_by}` : ''}
+            </span>
+            {v.has_artifact && (
+                <span data-testid={`kb-time-machine-version-${v.id}-artifact`} title="The converted document of this version is stored and diffs are faithful" style={{ fontSize: 10.5, padding: '1px 6px', borderRadius: 999, border: '1px solid var(--ok, #3fb950)', color: 'var(--ok, #3fb950)' }}>
+                    stored
+                </span>
+            )}
             <span style={{ flex: 1 }} />
             <button type="button" data-testid={`kb-time-machine-version-${v.id}-from`} onClick={onPickFrom} aria-pressed={isFrom} aria-label={`Diff from ${versionLabel(v)}`} style={pill(isFrom)}>From</button>
             <button type="button" data-testid={`kb-time-machine-version-${v.id}-to`} onClick={onPickTo} aria-pressed={isTo} aria-label={`Diff to ${versionLabel(v)}`} style={pill(isTo)}>To</button>

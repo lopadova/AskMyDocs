@@ -392,7 +392,7 @@ final class OcrIngestPipelineTest extends TestCase
             relativePath: 'scans/again.png',
             disk: 'kb',
             title: 'Again',
-            metadata: ['ocr' => ['force' => true, 'rerun_lock' => ['key' => 'kb:ocr:rerun:t:1', 'owner' => 'worker-a']], 'note' => 'kept'],
+            metadata: ['ocr' => ['force' => true, 'rerun_lock' => ['key' => 'kb:ocr:rerun:t:1', 'owner' => 'worker-a']], 'note' => 'kept', 'version_actor' => 'user:5'],
             mimeType: 'image/png',
             tenantId: app(TenantContext::class)->current(),
             runKey: 'ocr:forced-again',
@@ -413,6 +413,11 @@ final class OcrIngestPipelineTest extends TestCase
         // a later re-run or delete reads it back to resolve the same object.
         $this->assertSame('kb', $row->metadata['disk']);
         $this->assertSame('', $row->metadata['prefix']);
+        // ADR 0030 §4 — identical output is the SAME version, whose creation
+        // provenance is immutable: the re-run's actor does not rewrite it, and
+        // the actor travels as a column, never as stored metadata.
+        $this->assertSame('system:ocr', $row->version_actor);
+        $this->assertArrayNotHasKey('version_actor', $row->metadata, 'the actor is a column, not stored metadata');
         $this->assertNotSame($firstRun, (string) $row->metadata['converter']['ocr']['run'], 'the row must point at the run that was billed');
         $this->assertFalse((bool) $row->metadata['converter']['ocr']['reused']);
         // R16 — exactly two metered runs: the forced one was paid, not reused.

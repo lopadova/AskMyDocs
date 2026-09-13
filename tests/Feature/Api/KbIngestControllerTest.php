@@ -100,6 +100,46 @@ class KbIngestControllerTest extends TestCase
      * `dry_run` turns conversion into a preview: host-only controls that a
      * client must not be able to set through `documents.*.metadata`.
      */
+    /** ADR 0030 §4 — the version actor is the authenticated principal, never the payload. */
+    public function test_the_version_actor_is_the_principal_and_a_forged_one_is_stripped(): void
+    {
+        Queue::fake();
+        Storage::fake('kb');
+        $user = \App\Models\User::create(['name' => 'Ingester', 'email' => 'ingester-'.uniqid().'@demo.local', 'password' => bcrypt('secret123')]);
+
+        $this->actingAs($user)->postJson('/api/kb/ingest', [
+            'documents' => [[
+                'project_key' => 'erp-core',
+                'source_path' => 'docs/forged.md',
+                'content' => "# Forged\n\nBody.",
+                'metadata' => ['version_actor' => 'system:ocr', 'version_reason' => 'nightly sync'],
+            ]],
+        ])->assertStatus(202);
+
+        Queue::assertPushed(IngestDocumentJob::class, function (IngestDocumentJob $job) use ($user): bool {
+            return ($job->metadata['version_actor'] ?? null) === 'user:'.$user->id
+                && ($job->metadata['version_reason'] ?? null) === 'nightly sync';
+        });
+    }
+
+    /** Without a principal (token-less harness) the forged actor is simply gone; the ingestor defaults it. */
+    public function test_a_forged_version_actor_is_stripped_even_without_a_principal(): void
+    {
+        Queue::fake();
+        Storage::fake('kb');
+
+        $this->postJson('/api/kb/ingest', [
+            'documents' => [[
+                'project_key' => 'erp-core',
+                'source_path' => 'docs/forged2.md',
+                'content' => "# Forged\n\nBody.",
+                'metadata' => ['version_actor' => 'user:1'],
+            ]],
+        ])->assertStatus(202);
+
+        Queue::assertPushed(IngestDocumentJob::class, fn (IngestDocumentJob $job): bool => ! array_key_exists('version_actor', $job->metadata));
+    }
+
     public function test_strips_host_only_ocr_controls_from_client_metadata(): void
     {
         Queue::fake();

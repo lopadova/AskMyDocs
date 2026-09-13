@@ -31,6 +31,8 @@ commands grouped by concern with their exact signatures. Run `php artisan
 |---|---|
 | `kb:ingest {path} {--project=} {--title=} {--disk=}` | Ingest a single document via the configured disk |
 | `kb:ingest-folder {path?} {--project=} {--tenant=} {--disk=} {--pattern=} {--recursive} {--sync} {--limit=0} {--dry-run} {--prune-orphans} {--force-delete}` | Walk a folder and dispatch one ingestion job per supported file |
+| `kb:doc-versions {document} {--tenant=default} {--diff=}` | v8.36 — list a document's version family with actor, reason, stored artifact and content hash; `--diff=FROM:TO` prints an artifact-aware diff naming the source of each side. Read-only. See [Documents & OCR](/documents-and-ocr#conversion-artifacts-on-the-time-machine-w2-adr-0030) |
+| `kb:artifacts-backfill {--project=} {--tenant=default} {--dry-run}` | v8.36 — store the conversion artifact of live rows that have none; writes only when the reconversion hashes to the recorded `document_hash` (`hash_mismatch` writes nothing), `reference_only` rows are `intentionally_missing`. Operator-only (R44 exception). |
 | `kb:ocr {document} {--status} {--tenant=default}` | v8.36 — show the OCR status of a document (`--status`) or queue a forced OCR re-run through the standard ingest job (`metadata.ocr.force=true`); refuses when `KB_OCR_ENABLED=false`. See [Documents & OCR](/documents-and-ocr) |
 
 ## Promotion & deletion
@@ -71,9 +73,9 @@ See the [auto-wiki engine](/architecture/auto-wiki-engine).
 | Signature | Purpose |
 |---|---|
 | `kb:prune-deleted {--days=} {--tenant=} {--dry-run}` | Hard-delete soft-deleted docs past retention |
-| `kb:prune-archived-versions {--tenant=} {--keep=} {--dry-run}` | Drop old archived versions beyond the cap |
+| `kb:prune-archived-versions {--tenant=} {--keep=} {--dry-run}` | Drop old archived versions beyond the cap; since v8.36 also removes each pruned version's conversion artifact and sweeps stale `.tmp` files + orphan artifacts |
 | `kb:prune-embedding-cache {--days=} {--tenant=} {--dry-run}` | Evict cache rows past retention (not a full flush) |
-| `kb:prune-orphan-files {--disk=} {--project=} {--dry-run}` | Delete KB files with no matching row |
+| `kb:prune-orphan-files {--disk=} {--project=} {--dry-run}` | Delete KB files with no matching row; since v8.36 also removes dangling `.ocr/` trees and stale OCR runs older than `KB_OCR_PURGE_GRACE_SECONDS` |
 | `chat-log:prune {--days=} {--tenant=} {--dry-run}` | Rotate chat logs |
 | `notifications:prune {--days=} {--tenant=}` | Rotate notification events |
 | `widget:prune-sessions {--days=} {--tenant=} {--dry-run}` | Rotate widget sessions |
