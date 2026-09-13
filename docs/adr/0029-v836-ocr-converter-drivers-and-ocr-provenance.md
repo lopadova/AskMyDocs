@@ -195,7 +195,21 @@ vector store, not the disk, as the protected surface): under the source's
 ACL, purged with it by the deleter's reference gate, never the redacted
 text (that lives only in the chunks). A deployment that must not hold raw
 OCR text beside its scans sets `KB_OCR_REUSE_ENABLED=false` — every ingest
-then runs the driver and records nothing; both states are tested (R43). On
+then runs the driver and records nothing; both states are tested (R43).
+
+The `.ocr/` directory is **retention-aware**, like every other local copy
+(ADR 0014, ADR 0030 §3): it is written only when the effective
+`source_retention` mode keeps a local copy at all (`full_copy`,
+`markdown_only`). In `reference_only` — the mode that promises *metadata,
+external identifiers, chunks and embeddings, nothing else on our disk* —
+`OcrService` records no run and stores no figure: the driver runs, the text
+is chunked and embedded, the figures are counted in the metadata but not
+persisted (the Markdown carries no `images/` reference, the same shape as
+`KB_OCR_FIGURES_ENABLED=false`), and reuse is not available because there is
+nothing to reuse from. The resolver that decides this
+(`SourceRetentionResolver`, ADR 0030) lands with W2; until it does the flag
+`KB_OCR_ENABLED` is off, so no deployment holds an `.ocr/` directory it
+did not ask for. Both modes are tested (R43). On
 a shared disk two tenants with one source key and identical bytes share the
 run (the second is `reused: true` with no FinOps row; no data crosses, the
 first tenant carries the cost) — a deployment that isolates tenants by disk

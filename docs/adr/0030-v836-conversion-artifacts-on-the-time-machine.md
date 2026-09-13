@@ -132,10 +132,34 @@ is reported as `intentionally_missing` even when a legacy source file is still
 on disk — the flag never changes a tenant's retention policy.
 
 The artifact is the **raw** converted Markdown, not the redacted chunks: the
-raw markdown is already the `document_hash` idempotency anchor and already
-lives on disk as the user's source of truth (ADR 0020 Consequences); the
-vector store is the protected surface, the artifact is not a new one. OCR
-figures (ADR 0029) are **not** copied under the artifact: they stay at
+raw markdown is already the `document_hash` idempotency anchor. For a
+Markdown source that is byte for byte the user's own file; for a PDF, DOCX or
+OCR'd source it is **generated** text that did not exist on disk before —
+un-redacted, and therefore a data surface with its own controls, stated
+here rather than assumed:
+
+- **Access.** The artifact is readable only through the admin Time Machine
+  surfaces (`role:admin|super-admin`, R32 matrix row), scoped by tenant
+  (R30) and by the document's own family; it is never served to the chat,
+  the widget, retrieval or an MCP tool (§9, surfaces table). The vector
+  store stays the only surface the model reads, and it holds the redacted
+  chunks (ADR 0020).
+- **PII.** Redaction runs on chunks, not on the artifact, on purpose: the
+  artifact must hash to `document_hash` and be restorable as-is. So it is
+  treated like the original binary on the same disk — the same ACL, the same
+  disk, the same operators — and the only agent-facing rendering of it is
+  the W4 export, which passes every artifact through the tenant PII policy
+  before it leaves (ADR 0032).
+- **Erasure.** The artifact goes with its row: `DocumentDeleter`'s hard
+  delete removes it, `kb:prune-archived-versions` removes it with each
+  pruned version and sweeps orphans (§8), and a subject erasure that hard
+  deletes the document (ADR 0023) removes the artifact with the source.
+  Crypto-shred (ADR 0020 D6) targets the vault, which holds nothing about
+  the artifact; the artifact is removed by deletion, not by shredding.
+- **Retention.** No artifact is written in `reference_only`; `markdown_only`
+  replaces the original binary with the artifact rather than adding to it.
+
+OCR figures (ADR 0029) are **not** copied under the artifact: they stay at
 `{source_path}.ocr/{run}/images/`, and the artifact's `metadata.converter.ocr.run`
 names the run whose images it references.
 
@@ -197,10 +221,10 @@ the caller.
 return checked, logged, never silent). `DocumentDeleter`'s hard delete removes
 the artifact and, through the same *last referencing row* gate, the
 `{source_path}.ocr/` directory (ADR 0029 §6). ADR 0020 D6 crypto-shred applies
-unchanged: the artifact is raw markdown outside the AI boundary, the vault is
-the only link between a surrogate and a person, and shredding the vault leaves
-the artifact as the user's own source file — the same posture as the original
-on disk.
+unchanged: the artifact is raw markdown outside the AI boundary and the vault
+is the only link between a surrogate and a person — shredding the vault does
+not touch the artifact, and does not need to: the artifact is erased by
+deletion, with the row and the source it came from (§3, *Erasure*).
 
 ### 9. The MCP read surface the v8.7 feature never got
 
