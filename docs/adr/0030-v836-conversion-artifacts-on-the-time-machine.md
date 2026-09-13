@@ -90,7 +90,10 @@ verbatim**: each is admitted only when it matches
 `^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$` (no `/`, no `..`) and is otherwise
 replaced by `h-` + the first 24 hex of its SHA-256; the composed path is
 normalised with `KbPath::normalize()` and must resolve **inside** the artifact
-root (`realpath` containment where the disk is local). The `.artifacts/` root
+root — a string check on the normalised path (`str_starts_with($path,
+$root.'/')`), which is what a disk-agnostic store can verify; `KbPath::normalize()`
+has already rejected `.` and `..` segments, so no traversal survives to the
+check. The `.artifacts/` root
 is a generated-asset subtree (`KbPath::isGeneratedAsset()`, ADR 0029): the
 folder walker and the orphan sweeps never read it back as a source.
 
@@ -226,14 +229,19 @@ caller.
 ### 8. Retention and erasure cover the artifact and the OCR assets
 
 `kb:prune-archived-versions` deletes the artifact with the row it prunes (R4
-return checked, logged, never silent). The prune does **not** go through
-`DocumentDeleter` — it hard-deletes archived rows by query — so it carries
-its own OCR cleanup: each pruned row's recorded run
-(`metadata.converter.ocr.run`, the `{source_path}.ocr/{run}/` directory) is
-purged when no remaining row, live, archived or soft-deleted, of any tenant
-sharing that source key still references the same run; the `.ocr/` tree as a
-whole still goes with the *last referencing row* of the source, through
-`DocumentDeleter`'s hard delete (ADR 0029 §6). `DocumentDeleter`'s hard
+return checked, logged, never silent). The prune hard-deletes archived rows
+**by query** (one family at a time, R3) rather than through
+`DocumentDeleter::delete()` row by row — but it does not re-implement the
+reference rules: the decision whether a pruned row's recorded run
+(`metadata.converter.ocr.run`, the `{source_path}.ocr/{run}/` directory) may
+go is delegated to the deleter's gate, `DocumentDeleter::documentReferencingOcrRun()`,
+the same helper family as `documentReferencingStorageKey()` — a run is purged
+only when no remaining row, live, archived or soft-deleted, of any tenant
+sharing that source key still references it, and never while it is inside the
+in-flight grace (ADR 0029 §6); the `.ocr/` tree as a whole still goes with the
+*last referencing row* of the source, through `DocumentDeleter`'s hard delete.
+One gate, two callers: the hard delete and the prune cannot diverge on what
+"referenced" means. `DocumentDeleter`'s hard
 delete removes the artifact of the row it deletes unconditionally: each row
 owns its own artifact, unlike the shared source file. ADR 0020 D6 crypto-shred applies
 unchanged: the artifact is raw markdown outside the AI boundary and the vault

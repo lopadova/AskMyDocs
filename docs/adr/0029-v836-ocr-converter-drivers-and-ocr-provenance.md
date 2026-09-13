@@ -174,12 +174,15 @@ refuses it **before egress** with a third machine-readable reason,
 (`would_ocr = false`, `pages_exact = false`); a **local** driver runs on it
 only where the work is **bounded by construction** — a byte cap is not such
 a bound, since a small compressed file can still hold an unbounded page
-count or expensive image streams. The drivers that rasterise page by page
-(`tesseract`, `vision-llm`) qualify: `pdftoppm -f 1 -l KB_OCR_MAX_PAGES`
-renders at most the cap whatever the object table claims, and each page
-then runs under the driver's own per-page timeout, so CPU, memory and time
-are capped by the same numbers the verified path uses. A whole-file engine
-(`docling`) cannot be told the size of what it is handed and is refused
+count or expensive image streams. The local driver that rasterises page by
+page (`tesseract`) qualifies: `pdftoppm -f 1 -l KB_OCR_MAX_PAGES` renders at
+most the cap whatever the object table claims, and each page then runs under
+the driver's own per-page timeout, so CPU, memory and time are capped by the
+same numbers the verified path uses. `vision-llm` rasterises the same way but
+is a **remote** driver (each page is posted to the configured provider), so
+the egress rule above applies first and it is refused like `mistral-ocr`. A
+whole-file engine (`docling`) cannot be told the size of what it is handed and
+is refused
 like a remote one. The contract carries the fact
 (`OcrDriver::boundsWorkWithoutPageCount()`), the service and the estimate
 consult it, and where the run is allowed the estimate shows the floor with
@@ -283,6 +286,22 @@ ingest of the same bytes through the same engine waits (`KB_OCR_RUN_LOCK_WAIT`,
 default 300 s, then the job retries), looks again and reuses the run the first
 worker recorded — one bill, one directory, never two nondeterministic remote
 results interleaved in it.
+
+The reservation ends with `result.json`, but the row that will reference the
+run commits later — chunking, redaction and embedding sit in between — so a
+reference gate that counts committed rows only has a window in which a
+concurrent hard delete or orphan sweep sees no reference and would remove the
+figures a row is about to point at. The run directory itself is therefore the
+**durable reservation**: a run whose newest file is younger than
+`KB_OCR_PURGE_GRACE_SECONDS` (default 1800, well above the lease plus the
+longest ingest tail) is *in flight* and is never purged — neither by
+`DocumentDeleter`'s hard delete, which then keeps the tree and reports it,
+nor by the orphan sweep. A run that never gains a row (its ingest failed after
+recording, or the last row went while it was young) is a *dangling* tree —
+`{source}.ocr/` with the source gone from the disk and from every row of any
+tenant, trashed included — and `kb:prune-orphan-files` removes it once it has
+aged past the grace. No lock is held across the Flow steps and no reference
+count is kept on disk: recency is the reservation, the sweep is the reaper.
 
 A forced re-run (`ocr.force`, set only by `kb:ocr` / the HTTP re-run on the
 job they build) is a **new attempt with its own run identity** — the run key

@@ -208,8 +208,11 @@ references in the Markdown, formulas as LaTeX, a confidence per page.
   when the **last row referencing the source key** goes — the same
   reference gate `DocumentDeleter` already applies to the source file
   (`removeFile()` → `removeOcrAssets()`); `kb:prune-archived-versions`
-  passes through the same deleter. Deleting one archived row never removes a
-  run another row still references.
+  hard-deletes by query but asks the same deleter gate
+  (`documentReferencingOcrRun()`) before purging a pruned row's run (ADR 0030
+  §8). Deleting one archived row never removes a run another row still
+  references, and a run inside the in-flight grace is never purged (ADR 0029
+  §6).
 - Every page carries `ocr_confidence` in chunk metadata; `Reranker` Layer-4
   may read it as a soft signal later — **not** in this workstream.
 - **Extraction origin, not authorship.** ADR 0028's `provenance_tier`
@@ -391,8 +394,11 @@ layer.
 have one and falls back to `reconstructContent()` otherwise (R43: both branches
 tested); `restore` re-activates the artifact with the row. W3 creates versions
 on correction through the same service. Retention: `kb:prune-archived-versions`
-deletes the artifact with the row; ADR 0020 D5 crypto-shred applies to
-artifacts.
+deletes the artifact with the row. Erasure is by deletion, not by shredding:
+ADR 0020's crypto-shred targets the token vault, which holds nothing about the
+artifact, so a vault shred never erases stored Markdown — every hard delete
+goes through `DocumentDeleter`, and every one removes the artifact (ADR 0030
+§3, *Erasure*).
 
 **Why it is its own workstream.** It is the prerequisite of W3 and W4, and it
 gives *Semantic Time Travel* (parked since v8.0) the faithful "what did this

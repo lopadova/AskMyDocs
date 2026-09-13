@@ -145,8 +145,9 @@ flowchart LR
   The version model AskMyDocs already has — the archived `knowledge_documents`
   row and its chunks — finally carries the document itself. The converted
   Markdown becomes a stored artifact written in *both* ingest paths through
-  the one persistence core, three nullable columns record who created a
-  version and why, `diff` prefers artifacts and falls back to reconstruction
+  the one persistence core, three nullable columns arrive with it —
+  `version_actor` and `version_reason` record who created a version and why,
+  `content_hash` is the integrity hash of the stored artifact — `diff` prefers artifacts and falls back to reconstruction
   (both branches tested), and retention and deletion cover the artifact
   (crypto-shred targets the vault, which holds nothing about it — a vault shred
   never erases stored Markdown; deletion does).
