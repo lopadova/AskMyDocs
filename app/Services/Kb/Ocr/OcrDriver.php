@@ -26,6 +26,16 @@ interface OcrDriver
     public function isAvailable(): bool;
 
     /**
+     * Why `isAvailable()` is false, in the words an operator needs to act
+     * (`null` when the driver can run here). The preflight (estimate,
+     * re-run, status) and the conversion guard surface THIS reason, so a
+     * missing key, a binary off PATH or a non-allow-listed endpoint is
+     * named before any work is queued — never a generic "not available"
+     * that has to be diagnosed in the worker (R14).
+     */
+    public function unavailableReason(): ?string;
+
+    /**
      * Whether recognition sends the document bytes OUTSIDE the tenant's
      * infrastructure (an API call). ChunkRedactor protects the index, not
      * bytes that leave to be recognised, so remote drivers are a

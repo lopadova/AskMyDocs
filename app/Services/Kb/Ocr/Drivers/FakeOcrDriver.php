@@ -34,6 +34,11 @@ final class FakeOcrDriver implements OcrDriver
         return true;
     }
 
+    public function unavailableReason(): ?string
+    {
+        return null;
+    }
+
     public function isRemote(): bool
     {
         return false;

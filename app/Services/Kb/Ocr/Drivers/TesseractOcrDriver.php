@@ -33,9 +33,17 @@ final class TesseractOcrDriver implements OcrDriver
 
     public function isAvailable(): bool
     {
-        $binary = (string) config('kb.ocr.tesseract.binary', 'tesseract');
+        return $this->unavailableReason() === null;
+    }
 
-        return (new ExecutableFinder())->find($binary) !== null || is_executable($binary);
+    public function unavailableReason(): ?string
+    {
+        $binary = (string) config('kb.ocr.tesseract.binary', 'tesseract');
+        if ((new ExecutableFinder())->find($binary) !== null || is_executable($binary)) {
+            return null;
+        }
+
+        return 'tesseract binary not found — install tesseract-ocr or set KB_OCR_TESSERACT_BIN.';
     }
 
     public function isRemote(): bool
@@ -61,10 +69,9 @@ final class TesseractOcrDriver implements OcrDriver
 
     public function recognise(OcrRequest $request): OcrResult
     {
-        if (! $this->isAvailable()) {
-            throw new OcrDriverUnavailableException(
-                'tesseract binary not found — install tesseract-ocr or set KB_OCR_TESSERACT_BIN.',
-            );
+        $reason = $this->unavailableReason();
+        if ($reason !== null) {
+            throw new OcrDriverUnavailableException($reason);
         }
 
         $binary = (string) config('kb.ocr.tesseract.binary', 'tesseract');

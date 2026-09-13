@@ -92,6 +92,30 @@ final class FileTypeSniffer
     }
 
     /**
+     * The exact raster MIME the leading bytes carry (png / jpeg / tiff / webp),
+     * or null when they are none of the accepted formats. Public so the JSON
+     * ingest entry point — which receives bytes, not a file — applies the
+     * same verification as the multipart upload (ADR 0029 §2).
+     */
+    public static function imageMimeOf(string $head): ?string
+    {
+        if (str_starts_with($head, self::BINARY_SIGNATURES['png'])) {
+            return 'image/png';
+        }
+        if (str_starts_with($head, self::BINARY_SIGNATURES['jpeg'])) {
+            return 'image/jpeg';
+        }
+        if (str_starts_with($head, "II*\0") || str_starts_with($head, "MM\0*")) {
+            return 'image/tiff';
+        }
+        if (str_starts_with($head, 'RIFF') && substr($head, 8, 4) === 'WEBP') {
+            return 'image/webp';
+        }
+
+        return null;
+    }
+
+    /**
      * @param  array<int, string>  $signatures
      */
     private static function isImage(string $head): bool

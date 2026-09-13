@@ -95,8 +95,9 @@ final class OcrCostEstimator
         try {
             $driver = $this->registry->configured();
             $metering = $driver->meteringMode()->value;
-            if (! $driver->isAvailable()) {
-                return ['available' => false, 'error' => sprintf('OCR driver "%s" is not available on this host.', $driver->name()), 'metering' => $metering];
+            $unavailable = $driver->unavailableReason();
+            if ($unavailable !== null) {
+                return ['available' => false, 'error' => sprintf('OCR driver "%s" is not available on this host: %s', $driver->name(), $unavailable), 'metering' => $metering];
             }
 
             return ['available' => true, 'error' => null, 'metering' => $metering];

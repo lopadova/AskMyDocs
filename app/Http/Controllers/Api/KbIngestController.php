@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Services\Kb\Ocr\OcrService;
 use App\Jobs\IngestDocumentJob;
+use App\Support\Kb\FileTypeSniffer;
 use App\Support\Kb\SourceType;
 use App\Support\KbPath;
 use Illuminate\Http\JsonResponse;
@@ -185,7 +186,8 @@ class KbIngestController extends Controller
         // review). PHASE 2 re-decodes one document at a time at write time,
         // so peak memory stays bounded to a single decoded document.
         $isBinary = $sourceType->isBinary();
-        if ($isBinary && base64_decode((string) $doc['content'], true) === false) {
+        $decoded = $isBinary ? base64_decode((string) $doc['content'], true) : null;
+        if ($isBinary && $decoded === false) {
             throw ValidationException::withMessages([
                 'documents' => [sprintf(
                     'documents.*.content for binary mime_type "%s" must be valid base64 (source_path: %s).',
@@ -194,6 +196,24 @@ class KbIngestController extends Controller
                 )],
             ]);
         }
+        // v8.36 / ADR 0029 §2 — an image is verified from its bytes, exactly as
+        // the multipart upload does: the declared MIME is a label, the magic
+        // bytes are the fact. Anything that is not a PNG/JPEG/TIFF/WebP is
+        // refused, and the MIME that travels is the one the bytes carry.
+        if ($sourceType === SourceType::IMAGE) {
+            $sniffed = FileTypeSniffer::imageMimeOf(substr((string) $decoded, 0, 16));
+            if ($sniffed === null) {
+                throw ValidationException::withMessages([
+                    'documents' => [sprintf(
+                        'documents.*.content declared as %s for source_path "%s" is not a PNG, JPEG, TIFF or WebP image.',
+                        $mimeType,
+                        $sourcePath,
+                    )],
+                ]);
+            }
+            $mimeType = $sniffed;
+        }
+        unset($decoded); // PHASE 2 re-decodes one document at a time at write time
 
         return [
             'project_key' => $projectKey,

@@ -36,7 +36,24 @@ final class MistralOcrDriver implements OcrDriver
 
     public function isAvailable(): bool
     {
-        return trim((string) config('kb.ocr.mistral.api_key', '')) !== '';
+        return $this->unavailableReason() === null;
+    }
+
+    public function unavailableReason(): ?string
+    {
+        if (trim((string) config('kb.ocr.mistral.api_key', '')) === '') {
+            return 'Mistral OCR API key missing — set KB_OCR_MISTRAL_API_KEY (or MISTRAL_API_KEY).';
+        }
+        // The preflight (estimate, re-run) must say what recognise() will do:
+        // a malformed, non-https or non-allow-listed endpoint is "cannot run
+        // here", never a run queued to fail deterministically in the worker.
+        try {
+            $this->assertAllowedEndpoint((string) config('kb.ocr.mistral.url', ''));
+        } catch (OcrDriverUnavailableException $e) {
+            return $e->getMessage();
+        }
+
+        return null;
     }
 
     public function isRemote(): bool
@@ -96,10 +113,9 @@ final class MistralOcrDriver implements OcrDriver
 
     public function recognise(OcrRequest $request): OcrResult
     {
-        if (! $this->isAvailable()) {
-            throw new OcrDriverUnavailableException(
-                'Mistral OCR API key missing — set KB_OCR_MISTRAL_API_KEY (or MISTRAL_API_KEY).',
-            );
+        $reason = $this->unavailableReason();
+        if ($reason !== null) {
+            throw new OcrDriverUnavailableException($reason);
         }
 
         // The label is the family MIME (`image/png` for every raster): the

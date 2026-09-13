@@ -29,4 +29,18 @@ final class MistralOcrDriverEndpointTest extends TestCase
         }
         Http::assertNothingSent();
     }
+
+    public function test_the_preflight_reports_a_bad_endpoint_as_unavailable(): void
+    {
+        config(['kb.ocr.allow_remote' => true, 'kb.ocr.mistral.api_key' => 'k', 'kb.ocr.mistral.allowed_hosts' => ['api.mistral.eu']]);
+
+        config(['kb.ocr.mistral.url' => 'https://api.mistral.eu/v1/ocr']);
+        $this->assertTrue(app(MistralOcrDriver::class)->isAvailable());
+        config(['kb.ocr.mistral.url' => 'http://api.mistral.eu/v1/ocr']);
+        $this->assertFalse(app(MistralOcrDriver::class)->isAvailable(), 'not https');
+        config(['kb.ocr.mistral.url' => 'https://evil.example/v1/ocr']);
+        $this->assertFalse(app(MistralOcrDriver::class)->isAvailable(), 'not allow-listed');
+        config(['kb.ocr.mistral.url' => 'http:///not-a-url']);
+        $this->assertFalse(app(MistralOcrDriver::class)->isAvailable(), 'unparseable');
+    }
 }

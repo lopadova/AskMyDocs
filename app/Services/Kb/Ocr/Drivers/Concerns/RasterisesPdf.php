@@ -134,11 +134,11 @@ trait RasterisesPdf
         }
         $left = [];
         foreach (glob($dir.'/*') ?: [] as $file) {
-            if (is_file($file) && ! @unlink($file)) {
+            if (is_file($file) && ! self::remove($file, false)) {
                 $left[] = $file;
             }
         }
-        if ($left === [] && ! @rmdir($dir)) {
+        if ($left === [] && ! self::remove($dir, true)) {
             $left[] = $dir;
         }
         if ($left === []) {
@@ -146,6 +146,19 @@ trait RasterisesPdf
         }
         Log::error('OCR temp cleanup failed: document bytes remain on disk', ['dir' => $dir, 'left' => $left]);
         throw new \RuntimeException(sprintf('OCR temp cleanup failed, %d item(s) remain under %s.', count($left), $dir));
+    }
+
+    /**
+     * One removal, never suppressed: a warning the runtime raises as an
+     * ErrorException counts as a failure like a false return does.
+     */
+    private static function remove(string $path, bool $isDir): bool
+    {
+        try {
+            return $isDir ? rmdir($path) : unlink($path);
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     /**

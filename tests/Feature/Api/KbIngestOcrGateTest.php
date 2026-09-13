@@ -75,6 +75,29 @@ final class KbIngestOcrGateTest extends TestCase
         Queue::assertPushed(IngestDocumentJob::class, fn (IngestDocumentJob $job) => $job->mimeType === 'image/png' && $job->relativePath === 'scans/letter.png');
     }
 
+    /**
+     * ADR 0029 §2 — the JSON path verifies the bytes like the multipart upload:
+     * a declared image whose bytes are not a raster is refused, and a JPEG
+     * declared as image/png travels as image/jpeg.
+     */
+    public function test_on_an_image_is_verified_from_its_bytes_not_its_declared_mime(): void
+    {
+        config(['kb.ocr.enabled' => true]);
+        Queue::fake();
+
+        $pdfAsPng = $this->payload();
+        $pdfAsPng['documents'][0]['content'] = base64_encode('%PDF-1.4 not an image');
+        $message = (string) $this->postJson('/api/kb/ingest', $pdfAsPng)->assertStatus(422)->json('errors.documents.0');
+        $this->assertStringContainsString('is not a PNG, JPEG, TIFF or WebP image', $message);
+        Queue::assertNothingPushed();
+
+        $jpegAsPng = $this->payload();
+        $jpegAsPng['documents'][0]['source_path'] = 'scans/photo.jpg';
+        $jpegAsPng['documents'][0]['content'] = base64_encode("\xFF\xD8\xFF\xE0".str_repeat("\x00", 32));
+        $this->postJson('/api/kb/ingest', $jpegAsPng)->assertStatus(202);
+        Queue::assertPushed(IngestDocumentJob::class, fn (IngestDocumentJob $job) => $job->mimeType === 'image/jpeg' && $job->relativePath === 'scans/photo.jpg');
+    }
+
     public function test_on_an_image_still_requires_base64_content(): void
     {
         config(['kb.ocr.enabled' => true]);

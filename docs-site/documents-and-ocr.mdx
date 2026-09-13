@@ -401,7 +401,11 @@ modal, once as an IMAP attachment — on a deployment with `KB_OCR_ENABLED=true`
 - **Docling and Tesseract are host binaries.** `KB_OCR_DOCLING_BIN`,
   `KB_OCR_TESSERACT_BIN` and `KB_OCR_PDFTOPPM_BIN` must resolve on the queue
   worker, not only on the web pod; `OcrDriver::isAvailable()` is reported by
-  every status surface as `driver_available`.
+  every status surface as `driver_available`, and `OcrDriver::unavailableReason()`
+  names the cause (binary off PATH, missing API key, an endpoint outside
+  `KB_OCR_MISTRAL_ALLOWED_HOSTS`) in the estimate error and the re-run 422 —
+  a misconfiguration is refused at preflight, never queued to fail in the
+  worker.
 - **`fake` is refused outside `local` / `testing` / `development`.** The
   gate is an allow-list, so `APP_ENV=prod` or a misspelt name counts as
   production.

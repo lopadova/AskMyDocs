@@ -228,10 +228,12 @@ final class OcrService
 
         $start = hrtime(true);
         $driver = $this->driver();
-        if (! $driver->isAvailable()) {
+        $unavailable = $driver->unavailableReason();
+        if ($unavailable !== null) {
             throw new OcrDriverUnavailableException(sprintf(
-                'OCR driver "%s" is not available on this host.',
+                'OCR driver "%s" is not available on this host: %s',
                 $driver->name(),
+                $unavailable,
             ));
         }
 
@@ -649,8 +651,9 @@ final class OcrService
             // 422 with the registry's reason, never a 500.
             throw new UnprocessableEntityHttpException($e->getMessage(), $e);
         }
-        if (! $driver->isAvailable()) {
-            throw new UnprocessableEntityHttpException(sprintf('OCR driver "%s" is not available on this host.', $driver->name()));
+        $unavailable = $driver->unavailableReason();
+        if ($unavailable !== null) {
+            throw new UnprocessableEntityHttpException(sprintf('OCR driver "%s" is not available on this host: %s', $driver->name(), $unavailable));
         }
 
         $mime = strtolower(trim(explode(';', (string) $document->mime_type, 2)[0]));

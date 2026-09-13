@@ -34,9 +34,17 @@ final class DoclingOcrDriver implements OcrDriver
 
     public function isAvailable(): bool
     {
-        $binary = (string) config('kb.ocr.docling.binary', 'docling');
+        return $this->unavailableReason() === null;
+    }
 
-        return (new ExecutableFinder())->find($binary) !== null || is_executable($binary);
+    public function unavailableReason(): ?string
+    {
+        $binary = (string) config('kb.ocr.docling.binary', 'docling');
+        if ((new ExecutableFinder())->find($binary) !== null || is_executable($binary)) {
+            return null;
+        }
+
+        return 'docling binary not found — `pip install docling` or set KB_OCR_DOCLING_BIN.';
     }
 
     public function isRemote(): bool
@@ -68,10 +76,9 @@ final class DoclingOcrDriver implements OcrDriver
 
     public function recognise(OcrRequest $request): OcrResult
     {
-        if (! $this->isAvailable()) {
-            throw new OcrDriverUnavailableException(
-                'docling binary not found — `pip install docling` or set KB_OCR_DOCLING_BIN.',
-            );
+        $reason = $this->unavailableReason();
+        if ($reason !== null) {
+            throw new OcrDriverUnavailableException($reason);
         }
 
         $binary = (string) config('kb.ocr.docling.binary', 'docling');
@@ -109,7 +116,7 @@ final class DoclingOcrDriver implements OcrDriver
                 throw new \RuntimeException("Docling Markdown output could not be read: {$markdownFile}.");
             }
 
-            return new OcrResult(
+            $result = new OcrResult(
                 driver: $this->name(),
                 pages: $this->parseMarkdownOutput($markdown, $dir),
                 meta: ['engine' => 'docling'],
@@ -118,7 +125,11 @@ final class DoclingOcrDriver implements OcrDriver
             $this->removeDirAfterFailure($dir, $e);
             throw $e;
         }
+        // The figures' bytes are already in memory: the working tree goes
+        // BEFORE the result is returned (a leftover here is document data).
         $this->removeDir($dir);
+
+        return $result;
     }
 
     /**
@@ -224,12 +235,11 @@ final class DoclingOcrDriver implements OcrDriver
         );
         $left = [];
         foreach ($items as $item) {
-            $ok = $item->isDir() ? @rmdir($item->getPathname()) : @unlink($item->getPathname());
-            if (! $ok) {
+            if (! self::remove($item->getPathname(), $item->isDir())) {
                 $left[] = $item->getPathname();
             }
         }
-        if ($left === [] && ! @rmdir($dir)) {
+        if ($left === [] && ! self::remove($dir, true)) {
             $left[] = $dir;
         }
         if ($left === []) {
@@ -237,6 +247,19 @@ final class DoclingOcrDriver implements OcrDriver
         }
         Log::error('Docling temp cleanup failed: document bytes remain on disk', ['dir' => $dir, 'left' => $left]);
         throw new \RuntimeException(sprintf('Docling temp cleanup failed, %d item(s) remain under %s.', count($left), $dir));
+    }
+
+    /**
+     * One removal, never suppressed: a warning the runtime raises as an
+     * ErrorException counts as a failure like a false return does.
+     */
+    private static function remove(string $path, bool $isDir): bool
+    {
+        try {
+            return $isDir ? rmdir($path) : unlink($path);
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     private function removeDirAfterFailure(string $dir, \Throwable $primary): void

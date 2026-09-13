@@ -50,13 +50,18 @@ TXT;
 
     public function isAvailable(): bool
     {
+        return $this->unavailableReason() === null;
+    }
+
+    public function unavailableReason(): ?string
+    {
         try {
             $provider = config('kb.ocr.vision_llm.provider');
             $this->ai->provider(is_string($provider) && $provider !== '' ? $provider : null);
 
-            return true;
+            return null;
         } catch (\Throwable) {
-            return false;
+            return 'vision-llm OCR: no chat provider configured (KB_OCR_VISION_PROVIDER / AI_PROVIDER).';
         }
     }
 
@@ -130,10 +135,9 @@ TXT;
 
     public function recognise(OcrRequest $request): OcrResult
     {
-        if (! $this->isAvailable()) {
-            throw new OcrDriverUnavailableException(
-                'vision-llm OCR: no chat provider configured (KB_OCR_VISION_PROVIDER / AI_PROVIDER).',
-            );
+        $reason = $this->unavailableReason();
+        if ($reason !== null) {
+            throw new OcrDriverUnavailableException($reason);
         }
 
         $providerName = config('kb.ocr.vision_llm.provider');
