@@ -118,7 +118,13 @@ one hour and artifacts whose `(tenant, project, path, version_hash)` no row
 (trashed rows included, R2) references, only after that authoritative check.
 Failure, idempotency and a genuinely concurrent identical-ingest test cover
 all of it. In `markdown_only` the original binary is deleted only after the
-artifact commit (R4 return checked).
+**final move has succeeded** — `publish()` throws on a failed move, and the
+drop runs after it, never on the database commit alone — and only when every
+other row referencing the same storage key (any tenant, trashed included) has
+its artifact **present on disk**: a `markdown_path` whose file never landed (a
+publish that failed after commit, repaired later by the backfill) does not
+stand in for the original. A kept original is logged with the blocking row
+(R4 return checked on the delete).
 
 Turning the flag on populates nothing by itself, so `kb:artifacts-backfill
 {--project=} {--tenant=} {--dry-run}` — **operator-only maintenance, a
@@ -202,12 +208,15 @@ silent success, not to a documented degrade).
 ### 6. `restore` re-activates the artifact with the row
 
 Restoring an archived version already flips status and transfers canonical
-identity inside one transaction; it now also records
-`version_actor = user:{id}` (the restoring user) and
-`version_reason = "restore of #{id}"` on the re-activated row, and leaves
-`markdown_path` untouched — the artifact was never deleted with the archive,
-only with the prune. Nothing is re-embedded; the retained chunks are reused as
-before.
+identity inside one transaction. `version_actor` / `version_reason` are the
+**creation** provenance of the version and are never rewritten by a restore:
+the restore is recorded apart, appended to the row's `metadata.restores` as
+`{actor: user:{id}, at, previous_live_id}`, and the versions surfaces (HTTP,
+CLI, MCP) expose the last entry as the additive `restored_by` / `restored_at`
+(R27) — so the timeline says both who created a version and who brought it
+back, and a second restore does not erase the first. `markdown_path` is left
+untouched — the artifact was never deleted with the archive, only with the
+prune. Nothing is re-embedded; the retained chunks are reused as before.
 
 ### 7. Versions born from a correction go through the same service
 
