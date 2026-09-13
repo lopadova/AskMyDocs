@@ -63,5 +63,15 @@ interface OcrDriver
      */
     public function maxDurationSeconds(int $pages): int;
 
+    /**
+     * Whether the driver bounds its own work when the page count could NOT
+     * be verified before the run (a PDF the parser cannot read, ADR 0029 §4).
+     * True for drivers that rasterise page by page under `KB_OCR_MAX_PAGES`
+     * and a per-page timeout (the work is capped by construction, whatever
+     * the file claims); false for drivers that hand the whole file to an
+     * engine. A remote driver is refused such a document regardless.
+     */
+    public function boundsWorkWithoutPageCount(): bool;
+
     public function recognise(OcrRequest $request): OcrResult;
 }

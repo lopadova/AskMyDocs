@@ -54,6 +54,12 @@ final class DoclingOcrDriver implements OcrDriver
         return max(1, (int) config('kb.ocr.docling.timeout', 600));
     }
 
+    /** The whole file goes to the engine: nothing caps the pages it will render. */
+    public function boundsWorkWithoutPageCount(): bool
+    {
+        return false;
+    }
+
     public function meteringMode(): OcrMeteringMode
     {
         return OcrMeteringMode::PerPage;

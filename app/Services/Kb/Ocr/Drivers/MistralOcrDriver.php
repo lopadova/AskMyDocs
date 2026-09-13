@@ -80,6 +80,12 @@ final class MistralOcrDriver implements OcrDriver
         return max(1, (int) config('kb.ocr.mistral.timeout', 120));
     }
 
+    /** Remote, whole-file: never receives an unverifiable document. */
+    public function boundsWorkWithoutPageCount(): bool
+    {
+        return false;
+    }
+
     public function meteringMode(): OcrMeteringMode
     {
         return OcrMeteringMode::PerPage;

@@ -105,6 +105,22 @@ final class OcrDriverRegistry
         return $this->has($name) && $this->drivers[$name]->isRemote();
     }
 
+    /**
+     * Whether the named driver refuses a PDF whose page count could not be
+     * verified (ADR 0029 §4): remote, or unable to bound its own work.
+     * Answered WITHOUT the egress gate so the estimate can describe a driver
+     * the registry would refuse to run. Unknown name → true (refuse).
+     */
+    public function refusesUnverifiedPageCount(string $name): bool
+    {
+        if (! $this->has($name)) {
+            return true;
+        }
+        $driver = $this->drivers[$name];
+
+        return $driver->isRemote() || ! $driver->boundsWorkWithoutPageCount();
+    }
+
     public static function remoteAllowed(): bool
     {
         return config('kb.ocr.allow_remote', false) === true;

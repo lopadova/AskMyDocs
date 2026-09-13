@@ -48,6 +48,12 @@ final class TesseractOcrDriver implements OcrDriver
         return sprintf('lang=%s;dpi=%d', (string) config('kb.ocr.tesseract.lang', 'eng'), (int) config('kb.ocr.tesseract.dpi', 200));
     }
 
+    /** Page images are rendered up to KB_OCR_MAX_PAGES and each page runs under the process timeout: bounded by construction. */
+    public function boundsWorkWithoutPageCount(): bool
+    {
+        return true;
+    }
+
     public function meteringMode(): OcrMeteringMode
     {
         return OcrMeteringMode::PerPage;

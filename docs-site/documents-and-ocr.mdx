@@ -140,10 +140,15 @@ them is bounded in code before any egress (SEC-LLM-001 gates 2 and 7):
   (`too_many_pages` / `too_many_bytes`) that the estimate shows in advance.
 - A PDF the parser cannot read has no verified page count — the probe reports
   a `/Type /Page` object count as a **floor** (`pages_exact: false`), and a
-  lower bound cannot enforce a maximum. For a **remote** driver such a document
-  is refused before any byte leaves (reason `pages_uncountable`, shown by the
-  estimate too); a **local** driver may still run on it, bounded by
-  `KB_OCR_MAX_BYTES`, and the estimate marks its price as inexact.
+  lower bound cannot enforce a maximum. Such a document runs only where the
+  work is **bounded by construction**: never on a **remote** driver (refused
+  before any byte leaves, reason `pages_uncountable`, shown by the estimate
+  too), and among local drivers only on those that render page by page —
+  `tesseract` and `vision-llm` rasterise with `pdftoppm -l KB_OCR_MAX_PAGES`,
+  so the file renders at most the cap whatever its object table claims, each
+  page under the driver's timeout; `docling` hands the whole file to its
+  engine and is refused the same way. Where it runs, the estimate marks the
+  price as inexact.
 
 ### Same bytes, same driver, no second bill
 

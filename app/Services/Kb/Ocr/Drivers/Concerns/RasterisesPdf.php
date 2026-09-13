@@ -49,8 +49,11 @@ trait RasterisesPdf
 
         // DPI clamped to [50, 600]: below is unreadable, above is a memory
         // bomb on a 2 000-page scan (SEC-LIMITS-001). The driver's own timeout
-        // bounds the render, not a hard-coded one.
-        $process = new Process([$pdftoppmBinary, '-r', (string) min(600, max(50, $dpi)), '-png', $input, $dir.'/page']);
+        // bounds the render time; `-l KB_OCR_MAX_PAGES` bounds the render
+        // WORK — a PDF the parser could not count (ADR 0029 §4) still renders
+        // at most the cap, whatever its object table claims.
+        $maxPages = max(1, (int) config('kb.ocr.max_pages', 200));
+        $process = new Process([$pdftoppmBinary, '-r', (string) min(600, max(50, $dpi)), '-f', '1', '-l', (string) $maxPages, '-png', $input, $dir.'/page']);
         $process->setTimeout(max(1, $timeout));
         try {
             $process->mustRun();

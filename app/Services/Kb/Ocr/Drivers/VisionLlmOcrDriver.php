@@ -88,6 +88,12 @@ TXT;
         return $timeout * (1 + max(1, $pages));
     }
 
+    /** Page images are rendered up to KB_OCR_MAX_PAGES and each page is one bounded provider call. */
+    public function boundsWorkWithoutPageCount(): bool
+    {
+        return true;
+    }
+
     public function meteringMode(): OcrMeteringMode
     {
         return OcrMeteringMode::Sdk;

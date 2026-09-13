@@ -49,6 +49,12 @@ final class FakeOcrDriver implements OcrDriver
         return 1;
     }
 
+    /** No work at all. */
+    public function boundsWorkWithoutPageCount(): bool
+    {
+        return true;
+    }
+
     public function meteringMode(): OcrMeteringMode
     {
         return OcrMeteringMode::PerPage;

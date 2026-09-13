@@ -152,9 +152,9 @@ final class OcrCostEstimator
         $pages = max(1, (int) $probe['pages_total']);
         $exact = (bool) $probe['pages_exact'];
         // The same refusal the service applies (ADR 0029 §4): a floor is not
-        // a cap input, so an unparseable PDF is never sent to a remote
-        // driver — and the modal says so before commit (R14).
-        if (! $exact && $this->registry->isRemote((string) config('kb.ocr.driver', 'tesseract'))) {
+        // a cap input, so an unparseable PDF runs only on a local driver that
+        // bounds its own work — and the modal says so before commit (R14).
+        if (! $exact && $this->registry->refusesUnverifiedPageCount((string) config('kb.ocr.driver', 'tesseract'))) {
             return ['id' => $id, 'would_ocr' => false, 'pages' => $pages, 'cost' => 0.0, 'reason' => 'pages_uncountable', 'pages_exact' => false];
         }
         if ($pages > $maxPages) {

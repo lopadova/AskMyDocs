@@ -252,6 +252,14 @@ final class KbUploadOcrTest extends TestCase
             ->assertJsonPath('data.total_pages', 1)
             ->assertJsonPath('data.total_cost', 0.004);
 
+        // A whole-file local engine cannot be told the size of what it gets:
+        // refused too. Only page-by-page local drivers run on a floor.
+        config(['kb.ocr.driver' => 'docling']);
+        $this->actingAs($admin)->getJson("/api/admin/kb/uploads/{$batchId}/estimate")
+            ->assertOk()
+            ->assertJsonPath('data.items.0.would_ocr', false)
+            ->assertJsonPath('data.items.0.reason', 'pages_uncountable');
+
         // Remote driver with the egress knob OFF (R43): both refusals hold —
         // the driver cannot run here AND the count is unverifiable — and the
         // estimate reports both so the modal shows the disabled-driver warning.

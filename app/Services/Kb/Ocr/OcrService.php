@@ -389,15 +389,18 @@ final class OcrService
         // A lower bound cannot enforce a maximum: when the parser could not
         // read the PDF the count is a `/Type /Page` floor, and a malformed
         // or hostile file with more real pages than visible page objects
-        // would pass the cap. For a remote driver that is egress of an
-        // unbounded document, so an uncountable PDF is refused BEFORE any
-        // byte leaves (ADR 0029 §4). A local driver may still run on it:
-        // nothing leaves the tenant and KB_OCR_MAX_BYTES bounds the work.
-        if (! $exact && $driver->isRemote()) {
+        // would pass the cap. So an uncountable PDF runs only where the
+        // work is bounded by construction (ADR 0029 §4): never on a remote
+        // driver (that is egress of an unbounded document), and only on a
+        // local driver that renders page by page up to KB_OCR_MAX_PAGES
+        // under a per-page timeout — a whole-file engine gets nothing it
+        // could not be told the size of.
+        if (! $exact && ($driver->isRemote() || ! $driver->boundsWorkWithoutPageCount())) {
             throw new OcrLimitExceededException(sprintf(
-                'OCR refused for "%s": the page count could not be verified (the PDF could not be parsed) and driver "%s" is remote; an unverifiable document is never sent to a third party.',
+                'OCR refused for "%s": the page count could not be verified (the PDF could not be parsed) and driver "%s" %s; an unverifiable document only runs where the work is bounded by construction.',
                 $filename,
                 $driver->name(),
+                $driver->isRemote() ? 'is remote' : 'does not bound its own work',
             ), 'pages_uncountable');
         }
         if ($pages > $maxPages) {
