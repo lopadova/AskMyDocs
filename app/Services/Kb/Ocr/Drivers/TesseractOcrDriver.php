@@ -83,9 +83,11 @@ final class TesseractOcrDriver implements OcrDriver
             foreach ($raster['pages'] as $number => $imagePath) {
                 $pages[] = $this->recognisePage($binary, $lang, $timeout, $number, $imagePath);
             }
-        } finally {
-            $this->cleanup($raster['dir']);
+        } catch (\Throwable $e) {
+            $this->cleanupAfterFailure($raster['dir'], $e);
+            throw $e;
         }
+        $this->cleanup($raster['dir']);
 
         return new OcrResult(driver: $this->name(), pages: $pages, meta: ['lang' => $lang]);
     }

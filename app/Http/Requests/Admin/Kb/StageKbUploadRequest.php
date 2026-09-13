@@ -68,9 +68,17 @@ class StageKbUploadRequest extends FormRequest
         }
 
         try {
-            KbPath::normalize($subPath);
+            $normalized = KbPath::normalize($subPath);
         } catch (InvalidArgumentException $e) {
             $validator->errors()->add('sub_path', $e->getMessage());
+
+            return;
+        }
+        // ADR 0029 §6 — the converters' own output is never a source: a
+        // sub_path inside `{source}.ocr/` or `.artifacts/` would let an upload
+        // overwrite a recorded run or an artifact and self-ingest it.
+        if (KbPath::isGeneratedAsset($normalized.'/x')) {
+            $validator->errors()->add('sub_path', 'sub_path is inside a generated-asset directory (.ocr/ or .artifacts/) and cannot receive sources.');
         }
     }
 

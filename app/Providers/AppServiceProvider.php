@@ -101,9 +101,11 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(\App\Services\Kb\Ocr\OcrDriverRegistry::class, function ($app) {
             return new \App\Services\Kb\Ocr\OcrDriverRegistry($app, (array) config('kb.ocr.drivers', []));
         });
-        // Explicitly bound so the container injects it into PdfConverter's
-        // nullable `?OcrService` parameter (an unbound class with a default of
-        // null resolves to the default, never to an instance).
+        // Bound as a singleton so every consumer — PdfConverter's `?OcrService`,
+        // OcrConverter, the admin controller, the CLI, the estimator — shares
+        // ONE instance (the run-lock bookkeeping and the driver cache live on
+        // it); without the binding the container would build a fresh service
+        // per resolution.
         $this->app->singleton(\App\Services\Kb\Ocr\OcrService::class);
 
         // v8.15/W2 — digest card renderers (Discord/Slack/Teams). The registry

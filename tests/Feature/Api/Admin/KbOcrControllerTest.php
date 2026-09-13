@@ -171,6 +171,22 @@ final class KbOcrControllerTest extends TestCase
         Queue::assertNothingPushed();
     }
 
+    /**
+     * The re-run resolves the source with the same normaliser the ingest used:
+     * a prefix with backslashes or repeated separators reads the same object,
+     * never a false "not found".
+     */
+    public function test_rerun_resolves_the_source_through_the_normalised_prefix(): void
+    {
+        config(['kb.ocr.enabled' => true]);
+        Queue::fake();
+        $doc = $this->document('application/pdf', ['disk' => 'kb', 'prefix' => 'sub\\dir//']);
+        Storage::disk('kb')->put('sub/dir/'.$doc->source_path, '%PDF-1.4 x');
+
+        $this->actingAs($this->makeAdmin())->postJson("/api/admin/kb/documents/{$doc->id}/ocr")->assertSuccessful();
+        Queue::assertPushed(\App\Jobs\IngestDocumentJob::class, 1);
+    }
+
     public function test_rerun_queues_the_ingestion_with_ocr_forced_and_a_fresh_run_key(): void
     {
         config(['kb.ocr.enabled' => true]);

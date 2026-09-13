@@ -162,6 +162,25 @@ final class KbUploadOcrTest extends TestCase
             ->assertJsonPath('data.total_cost', 0.004);
     }
 
+    /**
+     * ADR 0029 §6 — the converters' own output is never a source: a sub_path
+     * inside `{source}.ocr/` or `.artifacts/` is refused at staging, so commit
+     * can never dispatch converter output as a source (the generated-asset
+     * guard the HTTP ingest entry point already applies).
+     */
+    public function test_staging_refuses_a_sub_path_inside_a_generated_asset_directory(): void
+    {
+        config(['kb.ocr.enabled' => true]);
+        $admin = $this->makeAdmin();
+
+        foreach (['.artifacts/evil', 'scans/letter.png.ocr/0123456789abcdef'] as $subPath) {
+            $this->actingAs($admin)->postJson('/api/admin/kb/uploads', ['project_key' => 'legal', 'sub_path' => $subPath, 'files' => [$this->png()]])
+                ->assertStatus(422)
+                ->assertJsonValidationErrors(['sub_path']);
+        }
+        $this->assertSame(0, \App\Models\KbIngestBatchItem::query()->count());
+    }
+
     public function test_estimate_flags_an_image_over_the_byte_cap(): void
     {
         config(['kb.ocr.enabled' => true, 'kb.ocr.max_bytes' => 10]);

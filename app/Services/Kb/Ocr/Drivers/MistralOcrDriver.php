@@ -57,6 +57,9 @@ final class MistralOcrDriver implements OcrDriver
     private function assertAllowedEndpoint(string $url): void
     {
         $parts = parse_url($url);
+        if ($parts === false) {
+            throw new OcrDriverUnavailableException('Mistral OCR endpoint URL (kb.ocr.mistral.url) is not a valid URL; refusing to send the document.');
+        }
         $host = strtolower((string) ($parts['host'] ?? ''));
         $scheme = strtolower((string) ($parts['scheme'] ?? ''));
         $allowed = array_values(array_filter(array_map(

@@ -67,17 +67,46 @@ TXT;
 
     public function fingerprint(): string
     {
-        // Everything that shapes the transcript: provider, model, DPI, token
-        // budget and the instructions themselves (a prompt change is a new
-        // engine as far as reuse is concerned).
+        // Everything that shapes the transcript: the EFFECTIVE provider and
+        // model — the same pair recognise() hands the SDK, so a tenant
+        // provider override or a changed provider default model is a new
+        // engine as far as reuse is concerned — DPI, token budget and the
+        // instructions themselves (a prompt change is a new engine too).
+        [$providerName, $model] = $this->effectiveEngine();
+
         return sprintf(
             'provider=%s;model=%s;dpi=%d;max_tokens=%d;prompt=%s',
-            (string) (config('kb.ocr.vision_llm.provider') ?: config('ai.provider', '')),
-            (string) (config('kb.ocr.vision_llm.model') ?: ''),
+            $providerName,
+            $model,
             (int) config('kb.ocr.vision_llm.dpi', 150),
             (int) config('kb.ocr.vision_llm.max_tokens', 4000),
             substr(hash('sha256', self::INSTRUCTIONS), 0, 12),
         );
+    }
+
+    /**
+     * The provider and model recognise() actually uses: the configured OCR
+     * provider or, when empty, the tenant's chat provider as AiManager
+     * resolves it; the configured OCR model or, when empty, that provider's
+     * default text model.
+     *
+     * @return array{0: string, 1: string}
+     */
+    private function effectiveEngine(): array
+    {
+        $configured = config('kb.ocr.vision_llm.provider');
+        $configured = is_string($configured) && $configured !== '' ? $configured : null;
+        try {
+            $providerName = $this->ai->provider($configured)->name();
+        } catch (\Throwable) {
+            $providerName = (string) ($configured ?? config('ai.default', ''));
+        }
+        $model = config('kb.ocr.vision_llm.model');
+        if (! is_string($model) || $model === '') {
+            $model = (string) (config("ai.providers.{$providerName}.models.text.default") ?? '');
+        }
+
+        return [$providerName, $model];
     }
 
     /** One rasterisation plus one provider call per page, each budgeted at the driver timeout. */
@@ -145,9 +174,11 @@ TXT;
                 [$markdown, $confidence] = $this->split((string) $response->text);
                 $pages[] = new OcrPage(number: $number, markdown: $markdown, confidence: $confidence);
             }
-        } finally {
-            $this->cleanup($raster['dir']);
+        } catch (\Throwable $e) {
+            $this->cleanupAfterFailure($raster['dir'], $e);
+            throw $e;
         }
+        $this->cleanup($raster['dir']);
 
         return new OcrResult(
             driver: $this->name(),

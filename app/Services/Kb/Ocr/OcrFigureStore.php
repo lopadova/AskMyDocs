@@ -51,8 +51,11 @@ final class OcrFigureStore
      */
     public function assetsDirFor(string $sourcePath, string $prefix = ''): string
     {
+        // The SAME key the ingest and the deleter resolve: prefix + source
+        // through KbPath::normalize() (backslashes, repeated separators and
+        // traversal segments handled once, not re-implemented here).
         $normalized = KbPath::normalize($sourcePath);
-        $dir = ltrim(trim($prefix, '/').'/'.ltrim($normalized, '/'), '/');
+        $dir = trim($prefix, '/') === '' ? $normalized : KbPath::normalize(trim($prefix, '/').'/'.$normalized);
 
         return $dir.self::DIR_SUFFIX;
     }
@@ -211,7 +214,11 @@ final class OcrFigureStore
             return false;
         }
 
-        return (bool) $storage->deleteDirectory($dir);
+        if (! $storage->deleteDirectory($dir)) {
+            throw new RuntimeException("OcrFigureStore: failed to remove OCR assets directory {$dir} on disk [{$disk}].");
+        }
+
+        return true;
     }
 
     /**

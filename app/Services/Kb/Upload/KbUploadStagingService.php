@@ -108,6 +108,15 @@ final class KbUploadStagingService
 
         $itemId = (string) Str::orderedUuid();
 
+        // Defence in depth (the FormRequest already refuses such a sub_path):
+        // a destination inside `{source}.ocr/` or `.artifacts/` is never
+        // staged, so commit can never dispatch converter output as a source.
+        if (KbPath::isGeneratedAsset($destination)) {
+            $this->createItem($batch, $itemId, $original, '', $destination, (string) $file->getClientMimeType(), $sourceType->value, (int) $file->getSize(), KbIngestBatchItem::STATUS_FAILED, false, null, 'Destination is inside a generated-asset directory (.ocr/ or .artifacts/).');
+
+            return;
+        }
+
         if ($sourceType === SourceType::UNKNOWN) {
             // Defence in depth — the FormRequest already rejects these.
             $this->createItem($batch, $itemId, $original, '', $destination, (string) $file->getClientMimeType(), SourceType::UNKNOWN->value, (int) $file->getSize(), KbIngestBatchItem::STATUS_FAILED, false, null, 'Unsupported file type.');

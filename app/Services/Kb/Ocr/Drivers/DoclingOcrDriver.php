@@ -11,6 +11,7 @@ use App\Services\Kb\Ocr\OcrMeteringMode;
 use App\Services\Kb\Ocr\OcrPage;
 use App\Services\Kb\Ocr\OcrRequest;
 use App\Services\Kb\Ocr\OcrResult;
+use Illuminate\Support\Facades\Log;
 use Symfony\Component\Process\ExecutableFinder;
 use Symfony\Component\Process\Exception\ProcessFailedException;
 use Symfony\Component\Process\Process;
@@ -84,8 +85,8 @@ final class DoclingOcrDriver implements OcrDriver
         $extension = $request->isPdf() ? 'pdf' : $this->imageExtension($request->effectiveMimeType());
         $input = $dir.'/input.'.$extension;
         if (file_put_contents($input, $request->bytes) === false) {
-            $this->removeDir($dir);
-            throw new \RuntimeException("Could not write Docling input to {$input}.");
+            $this->removeDirAfterFailure($dir, $e = new \RuntimeException("Could not write Docling input to {$input}."));
+            throw $e;
         }
 
         try {
@@ -103,16 +104,21 @@ final class DoclingOcrDriver implements OcrDriver
             if (! is_file($markdownFile)) {
                 throw new \RuntimeException('Docling produced no Markdown output.');
             }
-            $markdown = (string) file_get_contents($markdownFile);
+            $markdown = file_get_contents($markdownFile);
+            if ($markdown === false) {
+                throw new \RuntimeException("Docling Markdown output could not be read: {$markdownFile}.");
+            }
 
             return new OcrResult(
                 driver: $this->name(),
                 pages: $this->parseMarkdownOutput($markdown, $dir),
                 meta: ['engine' => 'docling'],
             );
-        } finally {
-            $this->removeDir($dir);
+        } catch (\Throwable $e) {
+            $this->removeDirAfterFailure($dir, $e);
+            throw $e;
         }
+        $this->removeDir($dir);
     }
 
     /**
@@ -174,7 +180,11 @@ final class DoclingOcrDriver implements OcrDriver
                     }
                     $index = count($figures) + 1;
                     $ext = strtolower($tm[2]);
-                    $figure = new OcrFigure($number, $index, (string) file_get_contents($file), $ext);
+                    $bytes = file_get_contents($file);
+                    if ($bytes === false || $bytes === '') {
+                        throw new \RuntimeException("Docling figure could not be read: {$file}.");
+                    }
+                    $figure = new OcrFigure($number, $index, $bytes, $ext);
                     $figures[] = $figure;
 
                     return sprintf('![%s](images/%s)', $m[1] !== '' ? $m[1] : "Figure {$number}.{$index}", $figure->fileName());
@@ -197,6 +207,12 @@ final class DoclingOcrDriver implements OcrDriver
         };
     }
 
+    /**
+     * Remove the working tree (source copy, Markdown, figures). A failed
+     * removal is never silent (SEC-RETENTION-001): what is left is logged and
+     * the call throws, so a job cannot report success while document bytes
+     * remain in /tmp. Failure paths use {@see removeDirAfterFailure()}.
+     */
     private function removeDir(string $dir): void
     {
         if (! is_dir($dir)) {
@@ -206,9 +222,29 @@ final class DoclingOcrDriver implements OcrDriver
             new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS),
             \RecursiveIteratorIterator::CHILD_FIRST,
         );
+        $left = [];
         foreach ($items as $item) {
-            $item->isDir() ? rmdir($item->getPathname()) : unlink($item->getPathname());
+            $ok = $item->isDir() ? @rmdir($item->getPathname()) : @unlink($item->getPathname());
+            if (! $ok) {
+                $left[] = $item->getPathname();
+            }
         }
-        rmdir($dir);
+        if ($left === [] && ! @rmdir($dir)) {
+            $left[] = $dir;
+        }
+        if ($left === []) {
+            return;
+        }
+        Log::error('Docling temp cleanup failed: document bytes remain on disk', ['dir' => $dir, 'left' => $left]);
+        throw new \RuntimeException(sprintf('Docling temp cleanup failed, %d item(s) remain under %s.', count($left), $dir));
+    }
+
+    private function removeDirAfterFailure(string $dir, \Throwable $primary): void
+    {
+        try {
+            $this->removeDir($dir);
+        } catch (\Throwable $e) {
+            Log::error('Docling temp cleanup failed after a driver error', ['dir' => $dir, 'cleanup_error' => $e->getMessage(), 'primary_error' => $primary->getMessage()]);
+        }
     }
 }

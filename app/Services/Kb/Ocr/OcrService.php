@@ -661,7 +661,10 @@ final class OcrService
             ? (string) $metadata['prefix']
             : (string) config('kb.sources.path_prefix', '');
         $sourcePath = KbPath::normalize((string) $document->source_path);
-        $fullPath = ltrim(trim($prefix, '/').'/'.ltrim($sourcePath, '/'), '/');
+        // The same key the ingest resolved: prefix + source through the one
+        // normaliser (a prefix with backslashes or repeated separators reads
+        // the same object, never a false "not found").
+        $fullPath = trim($prefix, '/') === '' ? $sourcePath : KbPath::normalize(trim($prefix, '/').'/'.$sourcePath);
 
         if (! Storage::disk($disk)->exists($fullPath)) {
             throw new UnprocessableEntityHttpException("Source file not found on disk [{$disk}]: {$sourcePath}.");
