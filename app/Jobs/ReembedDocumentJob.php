@@ -8,6 +8,7 @@ use App\Models\KnowledgeDocument;
 use App\Scopes\AccessScopeScope;
 use App\Services\Kb\DocumentIngestor;
 use App\Services\Kb\Pipeline\SourceDocument;
+use App\Support\KbPath;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Filesystem\FileNotFoundException;
@@ -73,7 +74,13 @@ class ReembedDocumentJob implements ShouldQueue
                 return; // deleted / archived since dispatch — nothing to do.
             }
 
-            $resolved = app(ConnectorIngestionContract::class)->resolveKbSourcePath((string) $document->source_path);
+            $metadata = is_array($document->metadata) ? $document->metadata : [];
+            // The source is read from the namespace the row RECORDED
+            // (`metadata.disk` / `metadata.prefix`), the connector's current
+            // one only for a legacy row: after a disk or prefix change the
+            // current path may hold ANOTHER file, and re-embedding those bytes
+            // would mint a new version instead of re-deriving this one.
+            $resolved = $this->resolveSourceFor($document, $metadata);
 
             // Swallow ONLY the missing-file case (Storage::get may return null OR
             // throw, depending on the disk's `throw` config / driver) — a logged
@@ -93,14 +100,10 @@ class ReembedDocumentJob implements ShouldQueue
             // converter would choke on, or OCR again) and only when its bytes
             // still hash to the version (R14: a corrupt artifact is a logged
             // skip, never a new version).
-            $metadata = is_array($document->metadata) ? $document->metadata : [];
             $artifactPath = $document->markdown_path;
             if ($bytes === null && is_string($artifactPath) && $artifactPath !== '') {
-                // The artifact lives on the disk the version RECORDED, not on
-                // the connector's current one: after a disk change the
-                // historical artifact is still where the row says it is.
-                $artifactDisk = is_string($metadata['disk'] ?? null) && $metadata['disk'] !== '' ? $metadata['disk'] : (string) $resolved['disk'];
-                $artifact = app(\App\Services\Kb\Versioning\ConversionArtifactStore::class)->read($artifactDisk, $artifactPath);
+                // The artifact lives on the same recorded disk.
+                $artifact = app(\App\Services\Kb\Versioning\ConversionArtifactStore::class)->read($resolved['disk'], $artifactPath);
                 if ($artifact !== null) {
                     $expected = (string) ($document->content_hash ?? $document->document_hash);
                     if (hash('sha256', $artifact) !== $expected) {
@@ -145,5 +148,23 @@ class ReembedDocumentJob implements ShouldQueue
         } finally {
             $tenantContext->set($previousTenant);
         }
+    }
+
+    /**
+     * @param  array<string, mixed>  $metadata
+     * @return array{disk: string, absolute: string}
+     */
+    private function resolveSourceFor(KnowledgeDocument $document, array $metadata): array
+    {
+        $current = app(ConnectorIngestionContract::class)->resolveKbSourcePath((string) $document->source_path);
+        if (! is_string($metadata['disk'] ?? null) || $metadata['disk'] === '') {
+            return ['disk' => (string) $current['disk'], 'absolute' => (string) $current['absolute']];
+        }
+        $prefix = array_key_exists('prefix', $metadata)
+            ? trim(str_replace('\\', '/', (string) $metadata['prefix']), '/')
+            : trim((string) config('kb.sources.path_prefix', ''), '/');
+        $relative = (string) $current['relative'];
+
+        return ['disk' => (string) $metadata['disk'], 'absolute' => KbPath::normalize($prefix === '' ? $relative : $prefix.'/'.$relative)];
     }
 }

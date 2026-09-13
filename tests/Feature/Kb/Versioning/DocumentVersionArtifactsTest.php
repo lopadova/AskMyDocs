@@ -376,6 +376,65 @@ final class DocumentVersionArtifactsTest extends TestCase
             ->assertExitCode(0);
     }
 
+    /** `has_artifact` is a VERIFIED claim: a readable file with no `content_hash` to check against is `unverified`, never "stored". */
+    public function test_a_readable_artifact_without_a_content_hash_is_unverified_and_not_claimed_as_stored(): void
+    {
+        $legacy = $this->version('v1', 'active', 'a', "# Doc\n\na\n");
+        $legacy->update(['content_hash' => null]);
+
+        $row = $this->actingAs($this->makeAdmin())->getJson("/api/admin/kb/documents/{$legacy->id}/versions")
+            ->assertOk()
+            ->json('data.0');
+        $this->assertSame('unverified', $row['artifact_state']);
+        $this->assertFalse($row['has_artifact']);
+        // …while the content endpoint still serves the stored bytes, with no integrity verdict.
+        $this->actingAs($this->makeAdmin())->getJson("/api/admin/kb/documents/{$legacy->id}/versions/{$legacy->id}/content")
+            ->assertOk()
+            ->assertJsonPath('data.source', 'artifact')
+            ->assertJsonPath('data.integrity', null);
+    }
+
+    /**
+     * SEC-PATH-001 — a symlink planted at an EXISTING ancestor of a path whose
+     * immediate parent does not exist yet is followed by a write: the
+     * containment check resolves the nearest existing ancestor, so
+     * `writeTemp()` refuses before any byte lands outside the root.
+     */
+    public function test_a_symlinked_ancestor_of_a_not_yet_created_artifact_directory_is_refused(): void
+    {
+        $store = app(ConversionArtifactStore::class);
+        $tenant = app(TenantContext::class)->current();
+        $root = rtrim(Storage::disk('kb')->path(''), '/');
+        $outside = sys_get_temp_dir().'/amd-outside-'.uniqid();
+        mkdir($outside, 0755, true);
+        mkdir($root.'/.artifacts/'.$tenant, 0755, true);
+        symlink($outside, $root.'/.artifacts/'.$tenant.'/eng'); // the project directory is a link; `docs/…versions` below it does not exist yet
+        $final = $store->pathFor($tenant, 'eng', 'docs/new.md', str_repeat('e', 64));
+        try {
+            $this->expectException(\RuntimeException::class);
+            $this->expectExceptionMessage('outside the artifact root');
+            $store->writeTemp('kb', $final, 'must never land outside');
+        } finally {
+            $this->assertSame([], glob($outside.'/*') ?: [], 'nothing was written through the link');
+            unlink($root.'/.artifacts/'.$tenant.'/eng');
+            rmdir($outside);
+        }
+    }
+
+    /** ADR 0030 §8 — the Flow hard-delete path (`deleteRowsOnly()`) removes the row's own artifact too, and reports it. */
+    public function test_delete_rows_only_removes_the_rows_own_artifact_and_reports_it(): void
+    {
+        $doc = $this->version('v1', 'active', 'index a', "# Doc\n\nartifact a\n");
+        $path = (string) $doc->markdown_path;
+        Storage::disk('kb')->assertExists($path);
+
+        $result = app(DocumentDeleter::class)->deleteRowsOnly($doc);
+
+        $this->assertTrue($result['artifact_deleted']);
+        Storage::disk('kb')->assertMissing($path);
+        $this->assertDatabaseMissing('knowledge_documents', ['id' => $doc->id]);
+    }
+
     /** SEC-PATH-001 — the artifact root a sweep enumerates and deletes under is normalized and never escapes through the configured prefix. */
     public function test_the_artifact_root_is_normalized_and_refuses_a_traversing_prefix(): void
     {

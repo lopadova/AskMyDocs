@@ -41,7 +41,15 @@ class PruneOrphanFilesCommand extends Command
     public function handle(): int
     {
         $disk = $this->resolveDisk();
-        $prefix = $this->normalizePrefix((string) config('kb.sources.path_prefix', ''));
+        try {
+            $prefix = $this->normalizePrefix((string) config('kb.sources.path_prefix', ''));
+        } catch (\InvalidArgumentException $e) {
+            // SEC-PATH-001 — a traversing prefix would make this command walk
+            // and delete outside the KB subtree: refused, never a sweep.
+            $this->error("KB_PATH_PREFIX cannot be used as a scan root: {$e->getMessage()}");
+
+            return self::FAILURE;
+        }
         $dryRun = (bool) $this->option('dry-run');
 
         $storage = Storage::disk($disk);
@@ -551,8 +559,14 @@ class PruneOrphanFilesCommand extends Command
     {
         $prefix = str_replace('\\', '/', $prefix);
         $prefix = preg_replace('#/+#', '/', $prefix) ?? $prefix;
+        $prefix = trim($prefix, '/');
+        if ($prefix === '') {
+            return '';
+        }
 
-        return trim($prefix, '/');
+        // R1 / SEC-PATH-001 — the same canonical rules as every KB path:
+        // `.` and `..` segments are rejected, never walked.
+        return KbPath::normalize($prefix);
     }
 
     private function applyPrefix(string $relative, string $prefix): string

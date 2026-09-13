@@ -291,6 +291,41 @@ final class ReembedTest extends TestCase
         $this->assertMatchesRegularExpression('/\[tok:[A-Za-z0-9_]+:[0-9a-f]+\]/', $text);
     }
 
+    /** The source is read from the namespace the version RECORDED: a different file at the connector's current path never mints a new version. */
+    public function test_job_reads_the_source_from_the_versions_recorded_namespace(): void
+    {
+        Storage::fake('kb');
+        Storage::fake('kb-archive');
+        config(['kb.sources.disk' => 'kb', 'kb.sources.path_prefix' => '']);
+        $this->fakeEmbeddingCache();
+        $recorded = "# Recorded\n\nContact Mario Rossi at ".self::EMAIL.".\n";
+        Storage::disk('kb-archive')->put('old/notes/5.md', $recorded);   // the version's own bytes, under its recorded prefix
+        Storage::disk('kb')->put('notes/5.md', "# Another file entirely\n\nWritten later at the current path.\n");
+        $hash = hash('sha256', $recorded);
+        $doc = KnowledgeDocument::create([
+            'tenant_id' => 'test-tenant', 'project_key' => 'support', 'source_type' => 'markdown', 'mime_type' => 'text/markdown',
+            'title' => 'Notes', 'source_path' => 'notes/5.md', 'language' => 'en',
+            'access_scope' => 'internal', 'status' => 'active',
+            'document_hash' => $hash, 'version_hash' => $hash,
+            'metadata' => ['disk' => 'kb-archive', 'prefix' => 'old'],
+        ]);
+        KnowledgeChunk::create([
+            'knowledge_document_id' => $doc->id, 'project_key' => 'support', 'chunk_order' => 0,
+            'chunk_hash' => hash('sha256', 'old'), 'heading_path' => '', 'chunk_text' => 'old [REDACTED] chunk',
+            'metadata' => [], 'embedding' => [0.1, 0.2, 0.3],
+        ]);
+        $this->setPolicy('tokenise');
+        $this->fakeEmbeddingCache();
+
+        (new ReembedDocumentJob($doc->id, 'test-tenant'))->handle(app(TenantContext::class), app(DocumentIngestor::class));
+
+        $this->assertSame(1, KnowledgeDocument::withoutGlobalScopes()->where('source_path', 'notes/5.md')->count(), 'no new version from the file at the current path');
+        $text = KnowledgeChunk::where('knowledge_document_id', $doc->id)->get()->pluck('chunk_text')->implode("\n");
+        $this->assertStringNotContainsString('Another file entirely', $text);
+        $this->assertStringNotContainsString('[REDACTED]', $text);
+        $this->assertMatchesRegularExpression('/\[tok:[A-Za-z0-9_]+:[0-9a-f]+\]/', $text);
+    }
+
     /** R14 — an artifact that no longer hashes to the version is a logged skip, never a new version or a converter run. */
     public function test_job_skips_a_corrupt_artifact(): void
     {

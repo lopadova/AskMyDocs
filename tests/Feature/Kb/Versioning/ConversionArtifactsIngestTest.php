@@ -286,6 +286,119 @@ Inert knob.", 'docs/inert.md');
         $this->assertNull($doc->markdown_path);
     }
 
+    /**
+     * ADR 0030 §3 — a sibling's artifact stands in for the original only when
+     * its bytes VERIFY (hash to the row's `content_hash`): a corrupt sibling
+     * artifact blocks the drop, so the last valid representation is never
+     * deleted.
+     */
+    public function test_markdown_only_keeps_the_original_while_a_referencing_rows_artifact_is_corrupt(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => true, 'kb.source_retention.mode' => 'markdown_only']);
+        $bytes = PdfFixtureBuilder::buildThreePageSample();
+        Storage::disk('kb')->put('reports/q8.pdf', $bytes);
+        $store = app(ConversionArtifactStore::class);
+        $tenant = app(TenantContext::class)->current();
+        $siblingPath = $store->pathFor($tenant, 'eng', 'reports/q8.pdf', str_repeat('a', 64));
+        Storage::disk('kb')->put($siblingPath, 'not the recorded bytes');
+        KnowledgeDocument::create([
+            'project_key' => 'eng', 'source_type' => 'pdf', 'title' => 'Q8 old', 'source_path' => 'reports/q8.pdf',
+            'mime_type' => 'application/pdf', 'language' => 'en', 'access_scope' => 'internal', 'status' => 'archived',
+            'document_hash' => str_repeat('a', 64), 'version_hash' => str_repeat('a', 64), 'content_hash' => str_repeat('a', 64),
+            'metadata' => ['disk' => 'kb', 'prefix' => '', 'source_retention' => 'markdown_only'], 'indexed_at' => now(),
+            'markdown_path' => $siblingPath,
+        ]);
+
+        $doc = app(DocumentIngestor::class)->ingest('eng', new SourceDocument(
+            sourcePath: 'reports/q8.pdf', mimeType: 'application/pdf', bytes: $bytes,
+            externalUrl: null, externalId: null, connectorType: 'local', metadata: ['disk' => 'kb', 'prefix' => ''],
+        ), 'Q8');
+
+        Storage::disk('kb')->assertExists((string) $doc->markdown_path);
+        Storage::disk('kb')->assertExists('reports/q8.pdf'); // kept: the sibling's artifact does not verify
+    }
+
+    /** A legacy pointer without `content_hash` becomes `verified` on the next identical re-ingest: the hash is recorded once the bytes are known to be the version's. */
+    public function test_an_identical_re_ingest_records_the_missing_content_hash_of_a_legacy_pointer(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => true]);
+        $markdown = "# Legacy pointer\n\nStored before the hash was recorded.";
+        $doc = $this->ingestMarkdown($markdown, 'docs/legacy-pointer.md');
+        $doc->update(['content_hash' => null]);
+
+        $again = $this->ingestMarkdown($markdown, 'docs/legacy-pointer.md');
+
+        $this->assertSame($doc->id, $again->id);
+        $this->assertSame(hash('sha256', $markdown), $doc->fresh()->content_hash);
+    }
+
+    /**
+     * ADR 0030 §3 / R21 — the `markdown_only` drop and the row commits of the
+     * same storage key share one lock. A single process cannot interleave two
+     * real transactions on SQLite, so each side is exercised against a lock
+     * HELD by "someone else": the drop keeps the original (and says so), the
+     * persist fails loudly instead of committing past a drop in progress.
+     */
+    public function test_markdown_only_drop_keeps_the_original_while_the_storage_key_is_locked_by_a_writer(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => true, 'kb.source_retention.mode' => 'markdown_only', 'kb.conversion_artifacts.source_lock_wait_seconds' => 0]);
+        $bytes = PdfFixtureBuilder::buildThreePageSample();
+        Storage::disk('kb')->put('reports/q9.pdf', $bytes);
+        $held = \Illuminate\Support\Facades\Cache::lock('kb:source:kb:'.sha1('reports/q9.pdf'), 60);
+        $this->assertTrue($held->get());
+        try {
+            // The persist itself must not wait on the lock: with wait 0 it fails loudly …
+            try {
+                app(DocumentIngestor::class)->ingest('eng', new SourceDocument(
+                    sourcePath: 'reports/q9.pdf', mimeType: 'application/pdf', bytes: $bytes,
+                    externalUrl: null, externalId: null, connectorType: 'local', metadata: ['disk' => 'kb', 'prefix' => ''],
+                ), 'Q9');
+                $this->fail('a persist under a held storage-key lock must fail loudly');
+            } catch (\Illuminate\Contracts\Cache\LockTimeoutException) {
+                // expected: the temp is discarded, nothing committed
+            }
+            $this->assertSame(0, KnowledgeDocument::withoutGlobalScopes()->where('source_path', 'reports/q9.pdf')->count());
+            $this->assertSame([], array_filter(Storage::disk('kb')->allFiles('.artifacts'), static fn (string $f): bool => str_ends_with($f, '.tmp')), 'no temp left behind');
+        } finally {
+            $held->release();
+        }
+
+        // … and once the key is free the same ingest commits and drops the original.
+        $doc = app(DocumentIngestor::class)->ingest('eng', new SourceDocument(
+            sourcePath: 'reports/q9.pdf', mimeType: 'application/pdf', bytes: $bytes,
+            externalUrl: null, externalId: null, connectorType: 'local', metadata: ['disk' => 'kb', 'prefix' => ''],
+        ), 'Q9');
+        Storage::disk('kb')->assertExists((string) $doc->markdown_path);
+        Storage::disk('kb')->assertMissing('reports/q9.pdf');
+    }
+
+    /** R43 — with the artifacts flag OFF (and for Markdown sources) no drop is possible, so an ingest never waits on the storage-key lock. */
+    public function test_off_an_ingest_never_waits_on_the_storage_key_lock(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => false, 'kb.source_retention.mode' => 'markdown_only', 'kb.conversion_artifacts.source_lock_wait_seconds' => 0]);
+        $bytes = PdfFixtureBuilder::buildThreePageSample();
+        Storage::disk('kb')->put('reports/q10.pdf', $bytes);
+        $held = \Illuminate\Support\Facades\Cache::lock('kb:source:kb:'.sha1('reports/q10.pdf'), 60);
+        $heldMd = \Illuminate\Support\Facades\Cache::lock('kb:source:kb:'.sha1('docs/held.md'), 60);
+        $this->assertTrue($held->get() && $heldMd->get());
+        try {
+            $doc = app(DocumentIngestor::class)->ingest('eng', new SourceDocument(
+                sourcePath: 'reports/q10.pdf', mimeType: 'application/pdf', bytes: $bytes,
+                externalUrl: null, externalId: null, connectorType: 'local', metadata: ['disk' => 'kb', 'prefix' => ''],
+            ), 'Q10');
+            $this->assertNotNull($doc->id);
+            Storage::disk('kb')->assertExists('reports/q10.pdf');
+
+            // A Markdown source is its own artifact and is never dropped: no lock even with the flag on.
+            config(['kb.conversion_artifacts.enabled' => true]);
+            $md = $this->ingestMarkdown("# Held\n\nNever dropped.", 'docs/held.md');
+            $this->assertNotNull($md->markdown_path);
+        } finally {
+            $held->release();
+            $heldMd->release();
+        }
+    }
+
     /** An unknown retention value is never a permissive one: it resolves to the configured mode, and the untrusted boundaries strip the key anyway. */
     public function test_an_unknown_source_retention_value_is_replaced_by_the_configured_mode(): void
     {

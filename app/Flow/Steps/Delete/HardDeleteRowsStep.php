@@ -89,10 +89,13 @@ final class HardDeleteRowsStep implements FlowStepHandler
                 'full_path' => $result['full_path'],
                 'canonical' => $result['canonical'],
                 'hard_deleted' => true,
+                // v8.36 / ADR 0030 §8 — the row's version artifact went with it
+                'artifact_deleted' => (bool) ($result['artifact_deleted'] ?? false),
             ],
             businessImpact: [
                 'hard_deleted' => true,
                 'canonical_was' => $result['canonical'],
+                'artifact_deleted' => (bool) ($result['artifact_deleted'] ?? false),
             ],
         );
     }

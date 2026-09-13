@@ -22,6 +22,9 @@ use App\Services\Kb\Versioning\ConversionArtifactStore;
 use App\Services\Kb\Versioning\SourceRetentionResolver;
 use App\Support\KbPath;
 use App\Support\TenantContext;
+use Illuminate\Contracts\Cache\LockTimeoutException;
+use Illuminate\Contracts\Filesystem\Filesystem;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -411,7 +414,7 @@ class DocumentIngestor
         // transaction discards this attempt's temp and nothing else.
         $artifact = $this->stageArtifact($projectKey, $sourcePath, $versionHash, $markdown, $metadata);
         try {
-            $document = DB::transaction(fn () => $this->persistDocumentAndChunks(
+            $document = $this->underSourceKeyLock($sourcePath, $metadata, $artifact !== null && $sourceType !== 'markdown', fn () => DB::transaction(fn () => $this->persistDocumentAndChunks(
                 $projectKey,
                 $sourcePath,
                 $title,
@@ -425,7 +428,7 @@ class DocumentIngestor
                 $canonical,
                 $replaceExisting,
                 $artifact,
-            ));
+            )));
         } catch (\Throwable $e) {
             $this->discardArtifact($artifact);
             throw $e;
@@ -503,7 +506,9 @@ class DocumentIngestor
         // this attempt's temp discarded on failure (one core, both paths).
         $artifact = $this->stageArtifact($projectKey, $sourcePath, $versionHash, $markdown, $metadata);
         try {
-            $document = DB::transaction(function () use (
+            // ADR 0030 §3 — the row commits under the storage key's lock, the
+            // one a `markdown_only` drop holds around its scan + delete.
+            $document = $this->underSourceKeyLock($sourcePath, $metadata, $artifact !== null && $sourceType !== 'markdown', fn () => DB::transaction(function () use (
                 $projectKey,
                 $sourcePath,
                 $title,
@@ -543,7 +548,7 @@ class DocumentIngestor
                 $this->mirrorSourceAccess($document, $metadata);
 
                 return $document;
-            });
+            }));
         } catch (\Throwable $e) {
             $this->discardArtifact($artifact);
             throw $e;
@@ -857,13 +862,31 @@ class DocumentIngestor
         try {
             $current = $store->read($disk, $path);
             if (is_string($current) && hash('sha256', $current) === $expected) {
+                $this->recordContentHashIfMissing($existing, $expected);
+
                 return;
             }
             $store->publish($disk, $store->writeTemp($disk, $path, $markdown), $path);
+            $this->recordContentHashIfMissing($existing, $expected);
             Log::info('DocumentIngestor: artifact repaired from an identical re-ingest', ['document_id' => $existing->id, 'disk' => $disk, 'markdown_path' => $path, 'was' => $current === null ? 'missing' : 'corrupt']);
         } catch (\Throwable $e) {
             Log::error('DocumentIngestor: artifact repair failed; reads keep falling back to reconstruction until kb:artifacts-backfill repairs it', ['document_id' => $existing->id, 'disk' => $disk, 'markdown_path' => $path, 'error' => $e->getMessage()]);
         }
+    }
+
+    /**
+     * A legacy pointer without `content_hash` (a row backfilled or repaired
+     * before the hash was recorded) stays `unverified` on every surface until
+     * the hash is persisted: once the stored bytes are known to be THE bytes
+     * of this version, record it so the artifact becomes `verified`.
+     */
+    private function recordContentHashIfMissing(KnowledgeDocument $existing, string $hash): void
+    {
+        if (is_string($existing->content_hash) && $existing->content_hash !== '') {
+            return;
+        }
+        KnowledgeDocument::withoutGlobalScopes()->whereKey($existing->id)->update(['content_hash' => $hash]);
+        $existing->content_hash = $hash;
     }
 
     /**
@@ -1040,34 +1063,48 @@ class DocumentIngestor
             return;
         }
 
-        // ADR 0030 §3 — the original is dropped only once this row's final
-        // move has succeeded (publish() threw otherwise) AND every other
-        // referencing row's artifact is PRESENT on disk: a pointer whose file
-        // never landed (a publish that failed after commit, repaired later by
-        // kb:artifacts-backfill) does not stand in for the original.
-        $referencing = $this->rowsReferencingStorageKey($artifact['disk'], $original, $sourcePath);
-        $withoutArtifact = $referencing->first(function (KnowledgeDocument $row) use ($store, $artifact, $document): bool {
-            $rowMetadata = is_array($row->metadata) ? $row->metadata : [];
-            // A row ingested under full_copy (or before the stamp existed)
-            // still requires the original: its retention contract wins.
-            $rowMode = (string) ($rowMetadata['source_retention'] ?? SourceRetentionResolver::FULL_COPY);
-            if ((int) $row->id !== (int) $document->id && $rowMode === SourceRetentionResolver::FULL_COPY) {
-                return true;
-            }
-            if ($rowMode === SourceRetentionResolver::REFERENCE_ONLY) {
-                return false; // never needed the local source
-            }
-            if (! is_string($row->markdown_path) || $row->markdown_path === '') {
-                return true;
-            }
-            $rowDisk = (string) ($rowMetadata['disk'] ?? $artifact['disk']);
-
-            return ! $store->exists($rowDisk, $row->markdown_path);
-        });
-        if ($withoutArtifact !== null) {
-            Log::info('DocumentIngestor: markdown_only retention kept the original — another row referencing the same storage key still requires it (full_copy contract, or no artifact on disk yet)', [
+        // ADR 0030 §3 — the reference scan and the delete run under the
+        // storage key's lock, the same lock the persist paths hold around
+        // their row commit (underSourceKeyLock()): a concurrent ingest of the
+        // same `(disk, path)` cannot commit a `full_copy` row between the scan
+        // and the delete. A lock that cannot be taken keeps the original —
+        // the conservative direction — and says so.
+        $lock = $this->sourceKeyLock($artifact['disk'], $original);
+        try {
+            $lock->block(self::sourceKeyLockWaitSeconds());
+        } catch (LockTimeoutException) {
+            Log::info('DocumentIngestor: markdown_only retention kept the original — the storage key is locked by a concurrent writer; the next identical ingest retries the drop', [
                 'document_id' => (int) $document->id,
-                'blocking_document_id' => (int) $withoutArtifact->id,
+                'disk' => $artifact['disk'],
+                'path' => $original,
+            ]);
+
+            return;
+        }
+        try {
+            $this->dropOriginalUnderLock($storage, $store, $artifact, $document, $original, $sourcePath);
+        } finally {
+            $lock->release();
+        }
+    }
+
+    /**
+     * @param  array{disk: string, tmp: string, final: string}  $artifact
+     */
+    private function dropOriginalUnderLock(Filesystem $storage, ConversionArtifactStore $store, array $artifact, KnowledgeDocument $document, string $original, string $sourcePath): void
+    {
+        // The original is dropped only once this row's final move has
+        // succeeded (publish() threw otherwise) AND every other referencing
+        // row's artifact is PRESENT on disk and VERIFIED (its bytes hash to
+        // the row's `content_hash`, `document_hash` for a legacy pointer): a
+        // pointer whose file never landed, or a corrupt sibling, does not
+        // stand in for the original — the last valid representation is never
+        // deleted. The scan streams (R3): the first blocking row ends it.
+        $blocking = $this->firstRowBlockingDrop($store, $artifact['disk'], $original, $sourcePath, (int) $document->id);
+        if ($blocking !== null) {
+            Log::info('DocumentIngestor: markdown_only retention kept the original — another row referencing the same storage key still requires it (full_copy contract, or no verified artifact on disk)', [
+                'document_id' => (int) $document->id,
+                'blocking_document_id' => $blocking,
                 'disk' => $artifact['disk'],
                 'path' => $original,
             ]);
@@ -1083,30 +1120,72 @@ class DocumentIngestor
 
             return;
         }
-        foreach ($referencing as $row) {
+        // Bounded pass (R3): every referencing row is stamped chunk by chunk,
+        // never materialised as a whole.
+        $this->eachRowReferencingStorageKey($artifact['disk'], $original, $sourcePath, function (KnowledgeDocument $row): bool {
             $rowMetadata = is_array($row->metadata) ? $row->metadata : [];
-            if (($rowMetadata['source_dropped'] ?? false) === true) {
-                continue;
+            if (($rowMetadata['source_dropped'] ?? false) !== true) {
+                KnowledgeDocument::withoutGlobalScopes()->whereKey($row->id)->update(['metadata' => array_merge($rowMetadata, ['source_dropped' => true])]);
             }
-            KnowledgeDocument::withoutGlobalScopes()->whereKey($row->id)->update(['metadata' => array_merge($rowMetadata, ['source_dropped' => true])]);
-        }
+
+            return true;
+        });
     }
 
     /**
-     * Every row — any tenant, any status, soft-deleted included — whose
-     * `(disk, prefix + source_path)` resolves to the given storage key. The
-     * same lookup `DocumentDeleter` guards the shared source file with.
-     *
-     * @return \Illuminate\Support\Collection<int, KnowledgeDocument>
+     * The id of the first row referencing the storage key that still requires
+     * the original, or null when none does.
      */
-    private function rowsReferencingStorageKey(string $disk, string $fullPath, string $sourcePath): \Illuminate\Support\Collection
+    private function firstRowBlockingDrop(ConversionArtifactStore $store, string $disk, string $fullPath, string $sourcePath, int $currentId): ?int
     {
-        $rows = collect();
+        $blocking = null;
+        $this->eachRowReferencingStorageKey($disk, $fullPath, $sourcePath, function (KnowledgeDocument $row) use ($store, $disk, $currentId, &$blocking): bool {
+            $rowMetadata = is_array($row->metadata) ? $row->metadata : [];
+            // A row ingested under full_copy (or before the stamp existed)
+            // still requires the original: its retention contract wins.
+            $rowMode = (string) ($rowMetadata['source_retention'] ?? SourceRetentionResolver::FULL_COPY);
+            if ((int) $row->id !== $currentId && $rowMode === SourceRetentionResolver::FULL_COPY) {
+                $blocking = (int) $row->id;
+
+                return false;
+            }
+            if ($rowMode === SourceRetentionResolver::REFERENCE_ONLY) {
+                return true; // never needed the local source
+            }
+            if (! is_string($row->markdown_path) || $row->markdown_path === '') {
+                $blocking = (int) $row->id;
+
+                return false;
+            }
+            $rowDisk = (string) ($rowMetadata['disk'] ?? $disk);
+            $expected = is_string($row->content_hash) && $row->content_hash !== '' ? $row->content_hash : (string) $row->document_hash;
+            if (! $store->verifies($rowDisk, $row->markdown_path, $expected)) {
+                $blocking = (int) $row->id;
+
+                return false;
+            }
+
+            return true;
+        });
+
+        return $blocking;
+    }
+
+    /**
+     * Stream every row — any tenant, any status, soft-deleted included — whose
+     * `(disk, prefix + source_path)` resolves to the given storage key, in
+     * id order and in bounded chunks (R3); the callback returns false to stop.
+     * The same lookup `DocumentDeleter` guards the shared source file with.
+     *
+     * @param  callable(KnowledgeDocument): bool  $each
+     */
+    private function eachRowReferencingStorageKey(string $disk, string $fullPath, string $sourcePath, callable $each): void
+    {
         KnowledgeDocument::withoutGlobalScopes()
             ->where('source_path', $sourcePath)
-            ->select(['id', 'source_path', 'markdown_path', 'metadata'])
+            ->select(['id', 'source_path', 'markdown_path', 'content_hash', 'document_hash', 'metadata'])
             ->orderBy('id')
-            ->chunkById(200, function ($chunk) use (&$rows, $disk, $fullPath): void {
+            ->chunkById(200, function ($chunk) use ($disk, $fullPath, $each): bool {
                 foreach ($chunk as $row) {
                     $rowMetadata = is_array($row->metadata) ? $row->metadata : [];
                     $rowDisk = (string) ($rowMetadata['disk'] ?? config('kb.sources.disk', 'kb'));
@@ -1118,13 +1197,80 @@ class DocumentIngestor
                     } catch (\InvalidArgumentException) {
                         continue;
                     }
-                    if ($rowDisk === $disk && $rowFull === $fullPath) {
-                        $rows->push($row);
+                    if ($rowDisk !== $disk || $rowFull !== $fullPath) {
+                        continue;
+                    }
+                    if (! $each($row)) {
+                        return false;
                     }
                 }
-            });
 
-        return $rows;
+                return true;
+            });
+    }
+
+    /** Seconds a writer waits for the storage key's lock before giving up (`kb.conversion_artifacts.source_lock_wait_seconds`). */
+    private static function sourceKeyLockWaitSeconds(): int
+    {
+        return max(0, (int) config('kb.conversion_artifacts.source_lock_wait_seconds', 10));
+    }
+
+    /** Seconds the storage key's lock lives when its holder dies (`kb.conversion_artifacts.source_lock_seconds`). */
+    private static function sourceKeyLockSeconds(): int
+    {
+        return max(1, (int) config('kb.conversion_artifacts.source_lock_seconds', 60));
+    }
+
+    /**
+     * The lock every writer of a storage key shares with the `markdown_only`
+     * drop: held around a row commit (persist paths) and around the
+     * reference scan + delete (drop), so neither can slip between the other's
+     * two halves. Needs an atomic lock store (Redis in production): on a
+     * per-host store the two halves of different pods are not serialized.
+     */
+    private function sourceKeyLock(string $disk, string $fullPath): \Illuminate\Contracts\Cache\Lock
+    {
+        return Cache::lock('kb:source:'.$disk.':'.sha1($fullPath), self::sourceKeyLockSeconds());
+    }
+
+    /**
+     * Run `$commit` under the storage key's lock (see sourceKeyLock()) — but
+     * ONLY when a `markdown_only` drop of the same key is possible at all
+     * (`$needed`: an artifact is being stored for a non-Markdown source): with
+     * the artifacts flag off, in `reference_only`, in a dry run, or for a
+     * Markdown source (never dropped) there is nothing to serialize against
+     * and an ingest never waits on, nor depends on, a lock store (R43). A
+     * lock that cannot be taken in time fails the persist loudly — a queued
+     * ingest retries, a caller sees the error — never a silent commit past
+     * a drop in progress.
+     *
+     * @template T
+     *
+     * @param  array<string,mixed>  $metadata
+     * @param  callable(): T  $commit
+     * @return T
+     */
+    private function underSourceKeyLock(string $sourcePath, array $metadata, bool $needed, callable $commit): mixed
+    {
+        if (! $needed) {
+            return $commit();
+        }
+        $disk = (string) ($metadata['disk'] ?? config('kb.sources.disk', 'kb'));
+        $prefix = array_key_exists('prefix', $metadata)
+            ? (string) $metadata['prefix']
+            : (string) config('kb.sources.path_prefix', '');
+        try {
+            $fullPath = $prefix === '' ? KbPath::normalize($sourcePath) : KbPath::normalize($prefix.'/'.$sourcePath);
+        } catch (\InvalidArgumentException) {
+            return $commit();
+        }
+        $lock = $this->sourceKeyLock($disk, $fullPath);
+        $lock->block(self::sourceKeyLockWaitSeconds());
+        try {
+            return $commit();
+        } finally {
+            $lock->release();
+        }
     }
 
     /**

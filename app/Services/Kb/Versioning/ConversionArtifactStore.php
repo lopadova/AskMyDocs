@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Kb\Versioning;
 
 use App\Support\KbPath;
-use Illuminate\Contracts\Filesystem\Filesystem;
+use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -174,7 +174,7 @@ final class ConversionArtifactStore
     }
 
     /** True only when a file at the final path carries exactly this attempt's bytes. */
-    private function finalMatchesTemp(Filesystem $storage, string $tmpPath, string $finalPath): bool
+    private function finalMatchesTemp(FilesystemAdapter $storage, string $tmpPath, string $finalPath): bool
     {
         if (! $storage->exists($finalPath)) {
             return false;
@@ -197,7 +197,7 @@ final class ConversionArtifactStore
      * local disk; an adapter that refuses to overwrite gets the stale file
      * removed first (the window between the two is the smallest available).
      */
-    private function moveOver(Filesystem $storage, string $tmpPath, string $finalPath): bool
+    private function moveOver(FilesystemAdapter $storage, string $tmpPath, string $finalPath): bool
     {
         try {
             if ($storage->move($tmpPath, $finalPath)) {
@@ -238,6 +238,22 @@ final class ConversionArtifactStore
     }
 
     /**
+     * Whether a published artifact is readable AND its bytes hash to
+     * `$expectedHash` — the only sense in which an artifact "stands in" for
+     * an original (ADR 0030 §3): a pointer proves nothing, a corrupt file
+     * less than nothing.
+     */
+    public function verifies(string $disk, string $path, string $expectedHash): bool
+    {
+        if ($expectedHash === '') {
+            return false;
+        }
+        $bytes = $this->read($disk, $path);
+
+        return is_string($bytes) && hash('sha256', $bytes) === $expectedHash;
+    }
+
+    /**
      * ADR 0030 §3 — on a LOCAL disk the lexical containment of the key is
      * not enough: a symlink planted under `.artifacts/` can make a contained
      * key resolve outside the root. So every read, delete and publish on a
@@ -258,17 +274,57 @@ final class ConversionArtifactStore
             return;
         }
         $storage = Storage::disk($disk);
-        $realRoot = realpath($storage->path($root));
-        if ($realRoot === false) {
-            return; // the root does not exist yet: nothing can resolve outside it
-        }
+        // The nearest EXISTING ancestor of the path is what a write would
+        // follow: a symlink planted at any existing ancestor (the root not
+        // yet created, a nested `.versions` directory) redirects the write,
+        // so a missing immediate parent is never treated as safe.
         $absolute = $storage->path($path);
-        $real = realpath($absolute) ?: realpath(dirname($absolute));
-        if ($real === false) {
-            return; // neither the file nor its parent exists yet
+        $real = self::nearestExistingRealPath($absolute);
+        if ($real === null) {
+            return; // nothing of the path exists yet, not even the disk root: nothing can be followed
         }
-        if ($real !== $realRoot && ! str_starts_with($real, $realRoot.DIRECTORY_SEPARATOR)) {
+        // The DISK root is the trust anchor: whatever exists of the path must
+        // resolve inside it — an artifact root that is itself a symlink to
+        // the outside is refused like any other link — and, once the artifact
+        // root exists, inside that root as well.
+        $realDisk = realpath($storage->path(''));
+        if ($realDisk === false) {
+            return; // the disk itself does not exist yet
+        }
+        if (! self::isWithin($real, $realDisk)) {
+            // Outside the disk is outside the artifact root a fortiori.
             throw new RuntimeException("ConversionArtifactStore: [{$disk}] {$path} resolves outside the artifact root (symlink?); refused.");
+        }
+        $realRoot = realpath($storage->path($root));
+        if ($realRoot !== false && ! self::isWithin($real, $realRoot)) {
+            throw new RuntimeException("ConversionArtifactStore: [{$disk}] {$path} resolves outside the artifact root (symlink?); refused.");
+        }
+    }
+
+    private static function isWithin(string $real, string $boundary): bool
+    {
+        return $real === $boundary || str_starts_with($real, rtrim($boundary, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR);
+    }
+
+    /**
+     * The real path of the deepest existing ancestor of `$absolute` (the
+     * path itself when it exists), or null when nothing of it exists. Walks
+     * up to the filesystem root: `dirname()` reaches a fixpoint there, so the
+     * loop always terminates and never fails open on a deep path.
+     */
+    private static function nearestExistingRealPath(string $absolute): ?string
+    {
+        $candidate = $absolute;
+        while (true) {
+            $real = realpath($candidate);
+            if ($real !== false) {
+                return $real;
+            }
+            $parent = dirname($candidate);
+            if ($parent === $candidate) {
+                return null;
+            }
+            $candidate = $parent;
         }
     }
 
@@ -370,58 +426,85 @@ final class ConversionArtifactStore
         $removed = 0;
         $failed = 0;
         try {
-            $files = $storage->allFiles($root);
+            // Lazy walk (R3): the tree is streamed, never materialised — only
+            // the stale temps are ever held.
+            foreach ($this->filesUnder($storage, $root) as $file) {
+                if (! str_ends_with($file, self::TMP_SUFFIX)) {
+                    continue;
+                }
+                $this->sweepOneTemp($storage, $disk, $file, $cutoff, $dryRun, $removed, $failed);
+            }
         } catch (\Throwable $e) {
             // The local adapter refuses to walk through a symbolic link
             // (SymbolicLinkEncountered): a planted link under the root is a
             // refused sweep, reported as such — never a clean zero.
             Log::warning('ConversionArtifactStore: could not enumerate the artifact root for the temp sweep', ['disk' => $disk, 'root' => $root, 'error' => $e->getMessage()]);
-
-            return ['removed' => 0, 'failed' => 1];
-        }
-        foreach ($files as $file) {
-            if (! str_ends_with($file, self::TMP_SUFFIX)) {
-                continue;
-            }
-            try {
-                $this->assertContainedOnDisk($disk, $file);
-                if ($storage->lastModified($file) > $cutoff) {
-                    continue;
-                }
-            } catch (\Throwable $e) {
-                Log::warning('ConversionArtifactStore: temp file skipped by the sweep', ['disk' => $disk, 'path' => $file, 'error' => $e->getMessage()]);
-                $failed++;
-                continue;
-            }
-            if ($dryRun || $storage->delete($file)) {
-                $removed++;
-                continue;
-            }
-            Log::warning('ConversionArtifactStore: could not remove stale artifact temp file', ['disk' => $disk, 'path' => $file]);
             $failed++;
         }
 
         return ['removed' => $removed, 'failed' => $failed];
     }
 
+    private function sweepOneTemp(FilesystemAdapter $storage, string $disk, string $file, int $cutoff, bool $dryRun, int &$removed, int &$failed): void
+    {
+        try {
+            $this->assertContainedOnDisk($disk, $file);
+            if ($storage->lastModified($file) > $cutoff) {
+                return;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('ConversionArtifactStore: temp file skipped by the sweep', ['disk' => $disk, 'path' => $file, 'error' => $e->getMessage()]);
+            $failed++;
+
+            return;
+        }
+        if ($dryRun || $storage->delete($file)) {
+            $removed++;
+
+            return;
+        }
+        Log::warning('ConversionArtifactStore: could not remove stale artifact temp file', ['disk' => $disk, 'path' => $file]);
+        $failed++;
+    }
+
     /**
-     * Every published artifact under the root, disk-relative, temps excluded.
-     * Throws when the root cannot be walked (a local adapter refuses a
-     * symbolic link under it): the caller reports a failed sweep (R14).
+     * Lazily yield every file path under `$root` (deep), one at a time —
+     * Flysystem's directory listing is a generator, unlike `allFiles()`,
+     * which materialises the whole tree.
      *
-     * @return list<string>
+     * @return \Generator<int, string>
      */
-    public function listArtifacts(string $disk, string $prefix): array
+    private function filesUnder(FilesystemAdapter $storage, string $root): \Generator
+    {
+        /** @var \League\Flysystem\FilesystemOperator $driver */
+        $driver = $storage->getDriver();
+        foreach ($driver->listContents($root, true) as $attributes) {
+            if ($attributes->isFile()) {
+                yield $attributes->path();
+            }
+        }
+    }
+
+    /**
+     * Every published artifact under the root, disk-relative, temps excluded,
+     * yielded lazily (R3: the tree is never materialised — a consumer batches
+     * as it reads). Throws when the root cannot be walked (a local adapter
+     * refuses a symbolic link under it): the caller reports a failed sweep
+     * (R14).
+     *
+     * @return \Generator<int, string>
+     */
+    public function listArtifacts(string $disk, string $prefix): \Generator
     {
         $storage = Storage::disk($disk);
         $root = $this->rootFor($prefix);
         if (! $storage->directoryExists($root)) {
-            return [];
+            return;
         }
-
-        return array_values(array_filter(
-            $storage->allFiles($root),
-            static fn (string $file): bool => str_ends_with($file, '.md'),
-        ));
+        foreach ($this->filesUnder($storage, $root) as $file) {
+            if (str_ends_with($file, '.md')) {
+                yield $file;
+            }
+        }
     }
 }

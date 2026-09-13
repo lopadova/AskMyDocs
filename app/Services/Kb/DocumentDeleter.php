@@ -311,9 +311,9 @@ class DocumentDeleter
      * separate Flow step (with its own observability + dry-run handling)
      * AFTER the DB rows are gone.
      *
-     * @return array{mode: string, document_id: int, project_key: string, source_path: string, file_deleted: bool, canonical: array<string, mixed>|null, disk: string, full_path: string}
+     * @return array{mode: string, document_id: int, project_key: string, source_path: string, file_deleted: bool, artifact_deleted: bool, canonical: array{is_canonical: bool, doc_id: ?string, slug: ?string, canonical_type: ?string, canonical_status: ?string}, disk: string, full_path: string}
      */
-    public function deleteRowsOnly(KnowledgeDocument $document): array
+    public function deleteRowsOnly(KnowledgeDocument $document, bool $removeArtifact = true): array
     {
         $documentId = (int) $document->id;
         $projectKey = (string) $document->project_key;
@@ -343,12 +343,23 @@ class DocumentDeleter
             $this->writeDeprecationAudit($document);
         });
 
+        // v8.36 / ADR 0030 §8 — each row owns its own version artifact: it
+        // goes with the row on EVERY hard-delete path (the Flow saga reaches
+        // here, then removes the shared source file in its own step — the
+        // artifact is not the source and `keep_file` does not cover it). A
+        // caller that reports the removal itself (the prune) opts out.
+        $artifactDeleted = $removeArtifact
+            ? $this->removeArtifact($disk, $document->markdown_path, $documentId)
+            : true;
+
         return [
             'mode' => 'hard_rows_only',
             'document_id' => $documentId,
             'project_key' => $projectKey,
             'source_path' => $sourcePath,
             'file_deleted' => false,
+            // additive (R27): whether the row's version artifact is gone
+            'artifact_deleted' => $artifactDeleted,
             'canonical' => $canonicalSnapshot,
             'disk' => $disk,
             'full_path' => (string) ($fullPath ?? ''),

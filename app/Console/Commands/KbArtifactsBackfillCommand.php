@@ -64,7 +64,7 @@ final class KbArtifactsBackfillCommand extends Command
         $dryRun = (bool) $this->option('dry-run');
         $project = trim((string) ($this->option('project') ?? ''));
 
-        $counts = ['already_stored' => 0, 'written' => 0, 'intentionally_missing' => 0, 'source_missing' => 0, 'hash_mismatch' => 0, 'conversion_failed' => 0];
+        $counts = ['already_stored' => 0, 'written' => 0, 'intentionally_missing' => 0, 'source_missing' => 0, 'hash_mismatch' => 0, 'conversion_failed' => 0, 'ocr_unverified' => 0];
         $previous = $tenants->current();
         $tenants->set($tenant);
         try {
@@ -114,6 +114,14 @@ final class KbArtifactsBackfillCommand extends Command
         if (is_string($pointer) && $pointer !== '') {
             $current = $store->read($disk, $pointer);
             if (is_string($current) && hash('sha256', $current) === (string) $row->document_hash) {
+                // A stored file that IS the version's bytes is verified: a
+                // row whose `content_hash` was never recorded (a legacy
+                // pointer) gets it now, so the Time Machine can claim
+                // integrity instead of `unverified` forever.
+                if (! $dryRun && (! is_string($row->content_hash) || $row->content_hash === '')) {
+                    $row->update(['content_hash' => (string) $row->document_hash]);
+                }
+
                 return 'already_stored';
             }
             $this->line("  #{$row->id} {$row->source_path}: artifact pointer set but the file is ".($current === null ? 'missing' : 'corrupt').'; repairing');
@@ -135,6 +143,11 @@ final class KbArtifactsBackfillCommand extends Command
 
         try {
             $bytes = (string) $storage->get($fullPath);
+            // `--dry-run` never spends: the marker rides the source metadata
+            // so `OcrService::isDryRun()` short-circuits the driver, the
+            // `.ocr/` writes and the metering (a recorded run is still
+            // read back, read-only, and verified; a row that would need a
+            // fresh OCR run is reported, not converted).
             $converted = $registry->resolveConverter((string) $row->mime_type)->convert(new SourceDocument(
                 sourcePath: $sourcePath,
                 mimeType: (string) $row->mime_type,
@@ -142,12 +155,21 @@ final class KbArtifactsBackfillCommand extends Command
                 externalUrl: null,
                 externalId: null,
                 connectorType: 'local',
-                metadata: ['disk' => $disk, 'prefix' => $prefix],
+                metadata: array_merge(['disk' => $disk, 'prefix' => $prefix], $dryRun ? ['dry_run' => true] : []),
             ));
         } catch (\Throwable $e) {
             $this->line("  #{$row->id} {$sourcePath}: conversion_failed ({$e->getMessage()})");
 
             return 'conversion_failed';
+        }
+        $ocrMeta = is_array($converted->extractionMeta['ocr'] ?? null) ? $converted->extractionMeta['ocr'] : [];
+        // A recorded run read back in dry-run (`reused`) carries the real
+        // Markdown and is verified like any other; only a PREVIEW (no run to
+        // read back, none started) cannot be.
+        if ($dryRun && ($ocrMeta['dry_run'] ?? false) === true && ($ocrMeta['reused'] ?? false) !== true) {
+            $this->line("  #{$row->id} {$sourcePath}: would need an OCR run to verify; not run in dry-run (ocr_unverified)");
+
+            return 'ocr_unverified';
         }
 
         $hash = hash('sha256', $converted->markdown);
@@ -191,13 +213,14 @@ final class KbArtifactsBackfillCommand extends Command
     private function report(array $counts, bool $dryRun): void
     {
         $this->info(sprintf(
-            'already_stored=%d written=%d intentionally_missing=%d source_missing=%d hash_mismatch=%d conversion_failed=%d%s',
+            'already_stored=%d written=%d intentionally_missing=%d source_missing=%d hash_mismatch=%d conversion_failed=%d%s%s',
             $counts['already_stored'],
             $counts['written'],
             $counts['intentionally_missing'],
             $counts['source_missing'],
             $counts['hash_mismatch'],
             $counts['conversion_failed'],
+            $counts['ocr_unverified'] > 0 ? " ocr_unverified={$counts['ocr_unverified']}" : '',
             $dryRun ? ' (dry-run)' : '',
         ));
     }

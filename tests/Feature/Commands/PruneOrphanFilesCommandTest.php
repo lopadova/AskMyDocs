@@ -50,6 +50,16 @@ class PruneOrphanFilesCommandTest extends TestCase
         ]);
     }
 
+    /** SEC-PATH-001 — a traversing `KB_PATH_PREFIX` is refused before any walk or delete. */
+    public function test_a_traversing_prefix_is_refused_before_any_scan(): void
+    {
+        config()->set('kb.sources.path_prefix', '../outside');
+
+        $this->artisan('kb:prune-orphan-files')
+            ->expectsOutputToContain('KB_PATH_PREFIX cannot be used as a scan root')
+            ->assertExitCode(1);
+    }
+
     public function test_dry_run_lists_orphans_without_deleting(): void
     {
         Storage::fake('kb');

@@ -159,7 +159,23 @@ every referencing row was ingested under a mode that does not require it — a
 `full_copy` row (or a pre-v8.36 row without the stamp, which counts as
 `full_copy`) blocks the drop even with its artifact present; a
 `reference_only` row never needed the local source; a `markdown_only` row
-needs its artifact on disk. The stamp is **host-owned**: `source_retention`
+needs its artifact on disk. A sibling's artifact stands in for the original only when it **verifies** —
+its bytes hash to the row's `content_hash` (`document_hash` for a legacy
+pointer) — a pointer proves nothing and a corrupt sibling less than nothing,
+so the last valid representation is never deleted; the scan streams the
+referencing rows (R3) and stops at the first that still requires the
+original. The scan and the delete run under the storage key's lock
+(`kb:source:{disk}:{sha1(key)}`), the same lock every persist path holds
+around its row commit, so a concurrent ingest of the same `(disk, path)`
+cannot commit a `full_copy` row between the two halves; a lock that cannot be
+taken keeps the original (the conservative direction). The lock is taken only
+where a drop is possible at all — an artifact being stored for a non-Markdown
+source — so with the flag off, in `reference_only`, in a dry run or for a
+Markdown source an ingest never waits on it (R43). Like the OCR run lock it
+**needs an atomic lock store (Redis) in production**: on a per-host store the
+two halves of different pods are not serialized. Wait and TTL are
+`KB_CONVERSION_ARTIFACTS_SOURCE_LOCK_WAIT` / `_TTL` (10 s / 60 s). The stamp is
+**host-owned**: `source_retention`
 (and `source_dropped`) are stripped at the HTTP ingest and connector
 boundaries by `OcrService::stripTrustedOnlyKeys()` like `version_actor`, set
 server-side from the configured mode at ingest, validated against the known
@@ -350,8 +366,11 @@ the `.ocr/` tree as a whole still goes with the *last referencing row* of the
 source, through `DocumentDeleter`'s hard delete. One gate, three callers (the
 hard delete, the prune, the orphan sweep): they cannot diverge on what
 "referenced" means. `DocumentDeleter`'s hard
-delete removes the artifact of the row it deletes unconditionally: each row
-owns its own artifact, unlike the shared source file. ADR 0020 Decision 6
+delete removes the artifact of the row it deletes unconditionally — on the
+direct path and on the Flow saga's `deleteRowsOnly()` step alike, reported as
+`artifact_deleted` (additive) and untouched by `keep_file`, which covers the
+shared source only: each row owns its own artifact, unlike the shared source
+file. ADR 0020 Decision 6
 crypto-shred applies unchanged and **stops at the AI boundary**: it shreds the
 vault, which is the only link between a surrogate and a person, and it does not
 touch the artifact — raw Markdown before the PII seam — nor the OCR run, nor
@@ -366,13 +385,21 @@ erasure of any raw asset.
 `is_live`, `version_actor`, `version_reason`, `content_hash`,
 `has_artifact`, `artifact_state`, `restored_by`, `restored_at` (§6), `indexed_at`, tenant-scoped through the same service (R30,
 R44). `has_artifact` is a **read + verified** claim on every surface (HTTP,
-MCP, CLI), never the pointer alone: the ingestor deliberately keeps
-`markdown_path` when a post-commit publish fails and a file can be truncated
-later, so each surface derives it from `DocumentVersionService::artifactStateFor()`
-— the same read + hash check `contentFor()` serves content with — and exposes
-the additive `artifact_state` (`none` · `verified` · `unverified` · `missing`
-· `mismatch`) so an operator never reads a "stored" badge over a file that
-cannot be read. It reads; it never restores. `kb:doc-versions {document} {--tenant=}` is
+MCP, CLI) — true only for `artifact_state = verified`, never the pointer
+alone: the ingestor deliberately keeps `markdown_path` when a post-commit
+publish fails and a file can be truncated later, so each surface derives it
+from `DocumentVersionService::artifactStateFor()` — the same read + hash check
+`contentFor()` serves content with — and exposes the additive `artifact_state`
+(`none` · `verified` · `unverified` · `missing` · `mismatch`) so an operator
+never reads a "stored" badge over a file that cannot be read. `unverified` (a
+readable file with no `content_hash` to check against — a legacy pointer) still
+serves content, with no integrity verdict, and is not claimed as stored; the
+identical re-ingest and the backfill record the hash once the bytes are known
+to be the version's, and the state becomes `verified`. The family a timeline
+verifies is bounded by the retention cap (`KB_KEEP_ARCHIVED_VERSIONS`, the
+prune), so the per-version read is bounded too. The restore ledger
+(`metadata.restores`, §6) is host-owned like `version_actor`: stripped at the
+untrusted boundaries, appended by the restore path only. It reads; it never restores. `kb:doc-versions {document} {--tenant=}` is
 the CLI over the same service — `--tenant` validated non-empty and the
 document resolved with `forTenant()`, never the process-global default.
 `restore` stays HTTP-only and human-only, and `kb:artifacts-backfill` (§3)

@@ -135,49 +135,26 @@ final class PruneArchivedVersionsCommand extends Command
         $orphansFailed = 0;
         $deleter = app(DocumentDeleter::class);
         try {
-            $published = $artifacts->listArtifacts($disk, $prefix);
+            // The listing is lazy (R3): batches of 500 paths are judged and
+            // released as the tree is walked, never the whole corpus at once.
+            // A refused walk (a symbolic link under the root) ends the sweep
+            // where it stands: earlier batches stay swept, the failure is
+            // counted and reported, the exit is non-zero (partial, reported).
+            $batch = [];
+            foreach ($artifacts->listArtifacts($disk, $prefix) as $path) {
+                $batch[] = $path;
+                if (count($batch) < 500) {
+                    continue;
+                }
+                $this->sweepArtifactBatch($artifacts, $deleter, $disk, $batch, $dryRun, $orphans, $orphansFailed);
+                $batch = [];
+            }
+            if ($batch !== []) {
+                $this->sweepArtifactBatch($artifacts, $deleter, $disk, $batch, $dryRun, $orphans, $orphansFailed);
+            }
         } catch (\Throwable $e) {
             $this->error("  ! could not enumerate the artifact root on disk [{$disk}]: {$e->getMessage()}");
-            $this->info(sprintf('artifact_temps_swept=%d artifact_temps_failed=%d artifact_orphans_removed=0 artifact_orphans_failed=1%s', $temps['removed'], $temps['failed'], $dryRun ? ' (dry-run)' : ''));
-
-            return $temps['failed'] + 1;
-        }
-        foreach (array_chunk($published, 500) as $batch) {
-            // Authoritative check first: a path is an orphan only when NO row —
-            // live, archived or soft-deleted — points at it ON THIS DISK.
-            // Artifact disks are independent storage objects: a row whose
-            // recorded disk is another one references another file with the
-            // same path, and must neither keep this orphan alive nor be
-            // ignored; a row that never recorded its disk references the path
-            // wherever the sweep looks (fail closed, as for source files).
-            $referenced = [];
-            $rows = KnowledgeDocument::withoutGlobalScopes()
-                ->whereIn('markdown_path', $batch)
-                ->select(['id', 'markdown_path', 'metadata'])
-                ->cursor();
-            foreach ($rows as $row) {
-                $metadata = is_array($row->metadata) ? $row->metadata : [];
-                if ($deleter->documentRecordsStorageNamespace($row) && (string) $metadata['disk'] !== $disk) {
-                    continue;
-                }
-                $referenced[(string) $row->markdown_path] = true;
-            }
-            foreach ($batch as $path) {
-                if (isset($referenced[$path])) {
-                    continue;
-                }
-                if ($dryRun) {
-                    $orphans++;
-                    continue;
-                }
-                $removal = $artifacts->remove($disk, $path);
-                if ($removal === ConversionArtifactStore::FAILED) {
-                    $orphansFailed++;
-                    $this->error("  ! could not remove orphan artifact [{$disk}] {$path}");
-                    continue;
-                }
-                $orphans++;
-            }
+            $orphansFailed++;
         }
         $this->info(sprintf(
             'artifact_temps_swept=%d artifact_temps_failed=%d artifact_orphans_removed=%d artifact_orphans_failed=%d%s',
@@ -189,6 +166,48 @@ final class PruneArchivedVersionsCommand extends Command
         ));
 
         return $temps['failed'] + $orphansFailed;
+    }
+
+    /**
+     * @param  list<string>  $batch
+     */
+    private function sweepArtifactBatch(ConversionArtifactStore $artifacts, DocumentDeleter $deleter, string $disk, array $batch, bool $dryRun, int &$orphans, int &$orphansFailed): void
+    {
+        // Authoritative check first: a path is an orphan only when NO row —
+        // live, archived or soft-deleted — points at it ON THIS DISK.
+        // Artifact disks are independent storage objects: a row whose
+        // recorded disk is another one references another file with the
+        // same path, and must neither keep this orphan alive nor be
+        // ignored; a row that never recorded its disk references the path
+        // wherever the sweep looks (fail closed, as for source files).
+        $referenced = [];
+        $rows = KnowledgeDocument::withoutGlobalScopes()
+            ->whereIn('markdown_path', $batch)
+            ->select(['id', 'markdown_path', 'metadata'])
+            ->cursor();
+        foreach ($rows as $row) {
+            $metadata = is_array($row->metadata) ? $row->metadata : [];
+            if ($deleter->documentRecordsStorageNamespace($row) && (string) $metadata['disk'] !== $disk) {
+                continue;
+            }
+            $referenced[(string) $row->markdown_path] = true;
+        }
+        foreach ($batch as $path) {
+            if (isset($referenced[$path])) {
+                continue;
+            }
+            if ($dryRun) {
+                $orphans++;
+                continue;
+            }
+            $removal = $artifacts->remove($disk, $path);
+            if ($removal === ConversionArtifactStore::FAILED) {
+                $orphansFailed++;
+                $this->error("  ! could not remove orphan artifact [{$disk}] {$path}");
+                continue;
+            }
+            $orphans++;
+        }
     }
 
     /**
@@ -205,7 +224,11 @@ final class PruneArchivedVersionsCommand extends Command
             ->select('project_key', 'source_path', DB::raw('count(*) as version_count'))
             ->groupBy('project_key', 'source_path')
             ->havingRaw('count(*) > ?', [$keep])
-            ->get();
+            // Streamed (R3): one family at a time, never every family of the
+            // corpus in memory. A cursor is a single streamed query, so the
+            // groups that vanish as their surplus is pruned never shift a
+            // page the way an offset-based chunk would.
+            ->cursor();
 
         foreach ($families as $family) {
             $surplusCount = max(0, (int) $family->version_count - $keep);
@@ -249,7 +272,7 @@ final class PruneArchivedVersionsCommand extends Command
                 // touched here.
                 $runsToCheck = [];
                 foreach ($surplus as $row) {
-                    $deleter->deleteRowsOnly($row);
+                    $deleter->deleteRowsOnly($row, removeArtifact: false);
                     // v8.36 / ADR 0030 §8 — the artifact goes with the row it
                     // belongs to; a refused delete is counted and reported
                     // (R14), an already-missing file is simply absent.

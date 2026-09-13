@@ -38,6 +38,8 @@ final class OcrServiceMetadataTest extends TestCase
         // ADR 0030 §3 — the retention contract and the dropped-original stamp are host-owned: a client cannot
         // mark a `full_copy` row as one that no longer needs its shared original.
         $this->assertSame(['title' => 't'], OcrService::stripTrustedOnlyKeys(['title' => 't', 'source_retention' => 'reference_only', 'source_dropped' => true]));
+        // ADR 0030 §6 — the restore ledger is appended by the trusted restore path only.
+        $this->assertSame(['title' => 't'], OcrService::stripTrustedOnlyKeys(['title' => 't', 'restores' => [['actor' => 'user:1', 'at' => '2026-01-01T00:00:00Z']]]));
     }
 
     public function test_the_persist_step_strips_only_the_run_control_keys_and_keeps_the_trusted_actor(): void

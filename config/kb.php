@@ -379,6 +379,12 @@ return [
     'conversion_artifacts' => [
         'enabled' => filter_var(env('KB_CONVERSION_ARTIFACTS_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
         'tmp_max_age_seconds' => (int) env('KB_CONVERSION_ARTIFACTS_TMP_MAX_AGE', 3600),
+        // ADR 0030 §3 — the per-storage-key lock a `markdown_only` drop and the
+        // row commits of the same key share (needs an atomic lock store, Redis
+        // in production): how long a writer waits for it, and how long it
+        // lives when its holder dies.
+        'source_lock_wait_seconds' => (int) env('KB_CONVERSION_ARTIFACTS_SOURCE_LOCK_WAIT', 10),
+        'source_lock_seconds' => (int) env('KB_CONVERSION_ARTIFACTS_SOURCE_LOCK_TTL', 60),
     ],
 
     /*

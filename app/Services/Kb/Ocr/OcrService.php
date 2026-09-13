@@ -446,6 +446,11 @@ final class OcrService
         // which could otherwise mark a `full_copy` row as one that no longer
         // needs its shared original.
         unset($metadata['source_retention'], $metadata['source_dropped']);
+        // ADR 0030 §6 — `restores` is the Time Machine's restore ledger
+        // (who brought a version back, when): appended by the trusted
+        // restore path only, never accepted from a client that could
+        // fabricate a restore actor and timestamp.
+        unset($metadata['restores']);
         // `ocr` is a host-owned block: a scalar a client put there carries
         // nothing the pipeline reads and would only trip the array accessors
         // downstream, so it is dropped with the reserved keys.
@@ -491,6 +496,23 @@ final class OcrService
      *
      * @param  array<string, mixed>  $metadata
      */
+    /**
+     * The retention contract a conversion runs under: the row's own valid
+     * stamp when the metadata carries one (a re-run, a replay), the
+     * configured mode otherwise.
+     *
+     * @param  array<string, mixed>  $metadata
+     */
+    public static function retentionModeOf(array $metadata): string
+    {
+        $mode = $metadata['source_retention'] ?? null;
+        if (is_string($mode) && in_array($mode, SourceRetentionResolver::MODES, true)) {
+            return $mode;
+        }
+
+        return app(SourceRetentionResolver::class)->mode();
+    }
+
     public static function isDryRun(array $metadata): bool
     {
         return ($metadata['dry_run'] ?? false) === true;
@@ -543,8 +565,12 @@ final class OcrService
         // The retention mode is wired by KB_CONVERSION_ARTIFACTS_ENABLED
         // (ADR 0030 §2): with that flag off a deployment that set the knob
         // while it was a foundation keeps figures and reuse as before (R43).
+        // The contract is the ROW's when the conversion is a re-run of an
+        // existing version (its stamped `metadata.source_retention` rides the
+        // job); a first conversion has no stamp yet and gets the configured
+        // mode — never the configured mode for a row that recorded another.
         $retainsLocal = ! app(ConversionArtifactStore::class)->enabled()
-            || app(SourceRetentionResolver::class)->retainsMarkdown();
+            || self::retentionModeOf($doc->metadata) !== SourceRetentionResolver::REFERENCE_ONLY;
         $figuresEnabled = (bool) config('kb.ocr.figures.enabled', true) && $retainsLocal;
         $reuseEnabled = (bool) config('kb.ocr.reuse.enabled', true) && $retainsLocal;
         // Idempotency (CLAUDE.md §5): the same bytes through the same driver

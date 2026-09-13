@@ -313,6 +313,63 @@ final class ArtifactsRetentionCommandsTest extends TestCase
         Storage::disk('kb')->assertExists("docs/legacy.md.ocr/{$protected}/result.json"); // legacy row: fail closed
     }
 
+    /** A verified pointer whose `content_hash` was never recorded gets it from the backfill (not in dry-run), so the Time Machine can claim integrity. */
+    public function test_backfill_records_the_content_hash_of_a_verified_legacy_pointer(): void
+    {
+        $tenant = app(TenantContext::class)->current();
+        $legacy = $this->row(1, 'active', "# Doc\n\nversion 1\n", 'docs/legacy-pointer.md');
+        $legacy->update(['content_hash' => null]);
+
+        $this->artisan('kb:artifacts-backfill', ['--tenant' => $tenant, '--dry-run' => true])
+            ->expectsOutputToContain('already_stored=1 written=0')
+            ->assertExitCode(0);
+        $this->assertNull($legacy->fresh()->content_hash);
+
+        $this->artisan('kb:artifacts-backfill', ['--tenant' => $tenant])
+            ->expectsOutputToContain('already_stored=1 written=0')
+            ->assertExitCode(0);
+        $this->assertSame($legacy->document_hash, $legacy->fresh()->content_hash);
+    }
+
+    /**
+     * `--dry-run` never spends: an OCR row whose recorded run can be read back
+     * is verified from it (reported like any other row), while a row that
+     * would need a fresh run is reported as `ocr_unverified`, not converted —
+     * the driver is never called and no `.ocr/` run is written.
+     */
+    public function test_backfill_dry_run_verifies_from_a_recorded_ocr_run_and_never_spends(): void
+    {
+        config(['kb.ocr.enabled' => true, 'kb.ocr.driver' => 'fake', 'kb.ocr.fake.pages' => [['markdown' => 'scanned text']]]);
+        // The ingest below embeds: no provider leaves the test (R13).
+        $cache = \Mockery::mock(\App\Services\Kb\EmbeddingCacheService::class);
+        $cache->shouldReceive('generate')->andReturnUsing(
+            fn (array $texts) => new \App\Ai\EmbeddingsResponse(embeddings: array_map(fn () => array_fill(0, 8, 0.0), $texts), provider: 'fake', model: 'fake-8'),
+        );
+        $this->app->instance(\App\Services\Kb\EmbeddingCacheService::class, $cache);
+        $tenant = app(TenantContext::class)->current();
+        $png = (string) base64_decode(\App\Services\Kb\Ocr\Drivers\FakeOcrDriver::PNG_1X1, true);
+        Storage::disk('kb')->put('scans/recorded.png', $png);
+        $recorded = app(\App\Services\Kb\DocumentIngestor::class)->ingest('eng', new \App\Services\Kb\Pipeline\SourceDocument(
+            sourcePath: 'scans/recorded.png', mimeType: 'image/png', bytes: $png,
+            externalUrl: null, externalId: null, connectorType: 'local', metadata: ['disk' => 'kb', 'prefix' => ''],
+        ), 'Recorded');
+        $this->assertNotNull($recorded->markdown_path);
+        Storage::disk('kb')->delete((string) $recorded->markdown_path); // the artifact is gone; the run is recorded
+        // A scan nobody ever OCR'd: no run to read back.
+        Storage::disk('kb')->put('scans/fresh.png', $png.'fresh');
+        $fresh = $this->row(2, 'active', null, 'scans/fresh.png');
+        $fresh->update(['mime_type' => 'image/png', 'source_type' => 'image']);
+        $runsBefore = count(Storage::disk('kb')->allFiles('scans'));
+
+        $this->artisan('kb:artifacts-backfill', ['--tenant' => $tenant, '--dry-run' => true])
+            ->expectsOutputToContain('already_stored=0 written=1 intentionally_missing=0 source_missing=0 hash_mismatch=0 conversion_failed=0 ocr_unverified=1 (dry-run)')
+            ->assertExitCode(0);
+
+        Storage::disk('kb')->assertMissing((string) $recorded->markdown_path);
+        $this->assertSame($runsBefore, count(Storage::disk('kb')->allFiles('scans')), 'a dry run writes no OCR run');
+        Storage::disk('kb')->assertMissing('scans/fresh.png.ocr');
+    }
+
     /** R14 — a configured prefix that cannot form an artifact root is a reported failure, never an unhandled crash. */
     public function test_prune_reports_a_traversing_prefix_as_a_failed_sweep(): void
     {

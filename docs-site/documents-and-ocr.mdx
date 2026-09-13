@@ -576,6 +576,8 @@ JSON columns that already exist:
 | `KB_OCR_VISION_TIMEOUT` | `300` | Per-document timeout of the vision driver (rasterisation + calls). |
 | `KB_CONVERSION_ARTIFACTS_ENABLED` | `false` | W2 / ADR 0030 — store the converted Markdown of every version at `.artifacts/{tenant}/{project}/{source_path}.versions/{version_hash}.md`. OFF writes nothing new; artifacts already stored keep being read. |
 | `KB_CONVERSION_ARTIFACTS_TMP_MAX_AGE` | `3600` | Seconds after which `kb:prune-archived-versions` sweeps a `.tmp` a dead writer left beside an artifact. |
+| `KB_CONVERSION_ARTIFACTS_SOURCE_LOCK_WAIT` | `10` | Seconds a row commit or a `markdown_only` drop waits for the storage key's lock (needs an atomic lock store — Redis — in production). |
+| `KB_CONVERSION_ARTIFACTS_SOURCE_LOCK_TTL` | `60` | Seconds that lock lives when its holder dies. |
 | `KB_SOURCE_RETENTION` | `full_copy` | `full_copy` · `markdown_only` (drop the original binary after the artifact commit) · `reference_only` (no artifact, no `.ocr/` run). Wired for the first time in v8.36. |
 
 ## Tri-surface (R44)
@@ -594,7 +596,7 @@ The Time Machine (W2) is tri-surface over `DocumentVersionService`:
 | Surface | Entry | Notes |
 |---|---|---|
 | PHP | `php artisan kb:doc-versions {document} --tenant=… [--diff=FROM:TO]` · `php artisan kb:artifacts-backfill --tenant=… [--project=] [--dry-run]` | The list prints actor, reason, artifact and content hash per version; `--diff` prints an artifact-aware diff with the source of each side. The backfill is operator-only maintenance (a storage repair that re-converts): a documented R44 exception. Both refuse a blank `--tenant`. |
-| HTTP | `GET /api/admin/kb/documents/{id}/versions` (now with `version_actor`, `version_reason`, `content_hash`, `has_artifact` — a read + verified claim, never the pointer alone — and `artifact_state`: `none` · `verified` · `unverified` · `missing` · `mismatch`) · `GET …/versions/diff?from&to` (now with `from_source`, `to_source`) · `GET …/versions/{versionId}/content` (new) · `POST …/restore-version` (now records the restore in `metadata.restores`, creation provenance untouched) | `role:admin\|super-admin`, R32 matrix row; the content endpoint is family-scoped (404 for a version outside the document's family). |
+| HTTP | `GET /api/admin/kb/documents/{id}/versions` (now with `version_actor`, `version_reason`, `content_hash`, `has_artifact` — true only for a readable artifact whose bytes hash to `content_hash`, never the pointer alone — and `artifact_state`: `none` · `verified` · `unverified` · `missing` · `mismatch`) · `GET …/versions/diff?from&to` (now with `from_source`, `to_source`) · `GET …/versions/{versionId}/content` (new) · `POST …/restore-version` (now records the restore in `metadata.restores`, creation provenance untouched) | `role:admin\|super-admin`, R32 matrix row; the content endpoint is family-scoped (404 for a version outside the document's family). |
 | MCP | `KbDocumentVersionsTool` | **Read-only, metadata only.** Diff and content have no MCP twin by design: the artifact is un-redacted converter output (documented R44 exception). |
 
 ## Decision rationale (ADR-style)
@@ -662,9 +664,22 @@ modal, once as an IMAP attachment — on a deployment with `KB_OCR_ENABLED=true`
   pointerless row under its own retention contract) or a
   `kb:artifacts-backfill --tenant=…` run.
 - **A "stored" badge is a verified claim.** `has_artifact` is derived from the
-  same read + hash check the content endpoint uses; `artifact_state` says
-  `missing` or `mismatch` when the pointer no longer resolves to the recorded
-  bytes, and `kb:artifacts-backfill` repairs those rows.
+  same read + hash check the content endpoint uses and is true only for
+  `verified`; `artifact_state` says `missing` or `mismatch` when the pointer no
+  longer resolves to the recorded bytes (the UI shows a warning badge), and
+  `unverified` for a legacy pointer without a `content_hash` — the next
+  identical re-ingest or `kb:artifacts-backfill` records the hash and makes it
+  `verified`; the backfill repairs the missing and mismatching rows.
+- **`kb:artifacts-backfill --dry-run` never spends.** The dry-run marker rides
+  the conversion, so a row that would need a fresh OCR run to verify is reported
+  as `ocr_unverified` instead of run (a recorded run is still read back).
+- **The `markdown_only` drop is serialized with writers.** The reference scan and
+  the delete run under the storage key's lock the persist paths hold around
+  their row commit (only where a drop is possible: an artifact stored for a
+  non-Markdown source — nothing waits on it with the flag off), and a sibling
+  artifact counts only when its bytes verify. Like the OCR run lock it needs an
+  atomic lock store (Redis) in production; `KB_CONVERSION_ARTIFACTS_SOURCE_LOCK_WAIT`
+  / `KB_CONVERSION_ARTIFACTS_SOURCE_LOCK_TTL` tune it (10 s / 60 s).
 - **A refused delete is a failed prune.** `kb:prune-archived-versions` reports
   `artifacts_failed` / `artifact_temps_failed` / `artifact_orphans_failed` /
   `ocr_failed` and exits non-zero when the disk refused a removal (or a

@@ -59,7 +59,7 @@ class KbDocumentVersionsTool extends Tool
             'version_actor' => $v->version_actor,
             'version_reason' => $v->version_reason,
             'content_hash' => $v->content_hash,
-            'has_artifact' => DocumentVersionService::isReadableArtifactState($artifactState),
+            'has_artifact' => DocumentVersionService::isVerifiedArtifactState($artifactState),
             'artifact_state' => $artifactState,
             'restored_by' => DocumentVersionService::lastRestoreOf($v)['actor'] ?? null,
             'restored_at' => DocumentVersionService::lastRestoreOf($v)['at'] ?? null,

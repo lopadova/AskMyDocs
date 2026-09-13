@@ -85,10 +85,16 @@ final class DocumentVersionService
         return $this->readArtifact($version)['state'];
     }
 
-    /** Whether an artifact state means the stored bytes are readable and serve the version's content. */
-    public static function isReadableArtifactState(string $state): bool
+    /**
+     * Whether an artifact state backs the `has_artifact` claim: only
+     * `verified` — readable AND hashing to `content_hash`. `unverified` (a
+     * readable file with no hash to check against) serves content, but it
+     * is a diagnostic state, not a claim of integrity; the identical
+     * re-ingest and the backfill record the hash and make it `verified`.
+     */
+    public static function isVerifiedArtifactState(string $state): bool
     {
-        return in_array($state, [self::ARTIFACT_VERIFIED, self::ARTIFACT_UNVERIFIED], true);
+        return $state === self::ARTIFACT_VERIFIED;
     }
 
     /**
@@ -292,6 +298,51 @@ final class DocumentVersionService
                 ]);
             }
 
+            // R21 — Sweep-archive any other active versions that may have been
+            // activated by a concurrent restore transaction. When two threads
+            // restore different archived versions concurrently, PostgreSQL
+            // EvalPlanQual re-evaluates WHERE status='active' after a blocked
+            // lock is released; the formerly-active row is now archived so
+            // $live above returns null, causing this thread to miss the version
+            // that the concurrent transaction just activated. This fresh
+            // SELECT runs after our own UPDATE — READ COMMITTED gives each
+            // statement a new snapshot — so it sees the row that transaction
+            // activated. Its canonical identity is CARRIED onto the target
+            // before it is vacated (never left on no row: the family would lose
+            // its slug/doc_id), the transfer is audited like the ordinary one,
+            // and the row is archived, upholding the one-active-per-family
+            // invariant unconditionally.
+            $displacedIds = $live !== null ? [(int) $live->id] : [];
+            $concurrentlyActive = KnowledgeDocument::query()
+                ->forTenant($tenantId)
+                ->where('project_key', $locked->project_key)
+                ->where('source_path', $locked->source_path)
+                ->where('status', 'active')
+                ->where('id', '!=', $locked->id)
+                ->lockForUpdate()
+                ->get();
+            foreach ($concurrentlyActive as $other) {
+                $displacedIds[] = (int) $other->id;
+                if ($identity === [] && (bool) $other->is_canonical) {
+                    $identity = [
+                        'is_canonical' => true,
+                        'doc_id' => $other->doc_id,
+                        'slug' => $other->slug,
+                        'canonical_status' => $other->canonical_status,
+                        'retrieval_priority' => $other->retrieval_priority,
+                    ];
+                    $restoreCanonical = true;
+                }
+                // Vacate BEFORE the target takes the identity (composite uniques).
+                $other->update([
+                    'status' => 'archived',
+                    'is_canonical' => false,
+                    'doc_id' => null,
+                    'slug' => null,
+                    'canonical_status' => null,
+                ]);
+            }
+
             // v8.36 / ADR 0030 §6 — `version_actor` / `version_reason` are the
             // CREATION provenance of the version and stay immutable; a restore
             // is appended to `metadata.restores` (actor, when, which live row it
@@ -303,37 +354,13 @@ final class DocumentVersionService
             $restores[] = [
                 'actor' => $actor ?? 'system:restore',
                 'at' => now()->toIso8601String(),
-                'previous_live_id' => $live?->id,
+                'previous_live_id' => $displacedIds[0] ?? null,
             ];
             $locked->update(array_merge([
                 'status' => 'active',
                 'indexed_at' => now(),
                 'metadata' => array_merge($lockedMetadata, ['restores' => $restores]),
             ], $identity));
-
-            // R21 — Sweep-archive any other active versions that may have been
-            // activated by a concurrent restore transaction. When two threads
-            // restore different archived versions concurrently, PostgreSQL
-            // EvalPlanQual re-evaluates WHERE status='active' after a blocked
-            // lock is released; the formerly-active row is now archived so
-            // $live above returns null, causing this thread to miss the version
-            // that the concurrent transaction just activated. This UPDATE runs
-            // at UPDATE-lock-acquisition time (not at SELECT scan time) so it
-            // captures any such version and upholds the one-active-per-family
-            // invariant unconditionally.
-            KnowledgeDocument::query()
-                ->forTenant($tenantId)
-                ->where('project_key', $locked->project_key)
-                ->where('source_path', $locked->source_path)
-                ->where('status', 'active')
-                ->where('id', '!=', $locked->id)
-                ->update([
-                    'status' => 'archived',
-                    'is_canonical' => false,
-                    'doc_id' => null,
-                    'slug' => null,
-                    'canonical_status' => null,
-                ]);
 
             if ($restoreCanonical && (bool) config('kb.canonical.audit_enabled', true)) {
                 KbCanonicalAudit::create([
@@ -342,7 +369,7 @@ final class DocumentVersionService
                     'slug' => $identity['slug'] ?? null,
                     'event_type' => 'updated',
                     'actor' => $actor ?? 'time-machine:restore',
-                    'before_json' => ['restored_from_status' => 'archived', 'previous_live_id' => $live?->id],
+                    'before_json' => ['restored_from_status' => 'archived', 'previous_live_id' => $displacedIds[0] ?? null, 'displaced_ids' => $displacedIds],
                     'after_json' => ['restored_version_id' => (int) $locked->id, 'version_hash' => $locked->version_hash],
                     'metadata_json' => ['action' => 'version_restore'],
                 ]);
