@@ -100,9 +100,16 @@ converter. The split is therefore:
 - `OcrConverter` claims **only** the four image MIMEs (`image/png`,
   `image/jpeg`, `image/tiff`, `image/webp`) and only while the flag is on.
 - `PdfConverter` stays the **sole** `application/pdf` match. When OCR is on it
-  runs `PdfTextLayerProbe` over the first `KB_OCR_PROBE_PAGES` pages; fewer than
-  `KB_OCR_PROBE_MIN_CHARS` extractable characters (or an ingest carrying
-  `metadata.ocr.force = true`) routes the document to the same `OcrService`
+  runs `PdfTextLayerProbe`, which decides **per page** over every page up to
+  `KB_OCR_MAX_PAGES` (`KB_OCR_PROBE_PAGES=0`, the default; a positive value
+  bounds the window and is a documented trade-off — a scanned page beyond it
+  is not seen): a page with fewer than `KB_OCR_PROBE_MIN_CHARS` extractable
+  characters that carries an image is a scanned page. No text page at all is
+  `empty`; text pages **and** scanned pages is `mixed` — a typed cover over
+  scanned body pages — and the whole document is routed to OCR so no page is
+  silently lost (reason `mixed_pdf`, the scanned page numbers recorded);
+  otherwise `present`. `empty`, `mixed` and an ingest carrying
+  `metadata.ocr.force = true` route the document to the same `OcrService`
   the image path uses. A file the parser cannot read at all (`unreadable`) is
   **not** treated as a scan: the converter first runs the `pdftotext` fallback
   it always had (`KB_PDFTOTEXT_BIN`), keeps the text path when that yields
@@ -188,7 +195,10 @@ the vector store, not the disk, as the protected surface), sits under the
 same ACL, and is purged with the source — the redacted text lives only in
 the chunks. A deployment that must not hold raw OCR text beside its scans
 sets `KB_OCR_REUSE_ENABLED=false`: every ingest then runs the driver and
-records nothing. Second, on a shared disk two tenants with the same source
+records no `result.json` — that knob governs the recorded run (the raw OCR
+text) only; figures follow `KB_OCR_FIGURES_ENABLED` and the retention mode
+(`reference_only` stores neither), so a deployment that must hold no OCR
+asset at all beside its scans turns figures off too, or runs `reference_only`. Second, on a shared disk two tenants with the same source
 key and bytes share the run: the second tenant's ingest is `reused: true`
 and carries no FinOps row — no data crosses (both already hold the bytes),
 but the first tenant carries the cost; a deployment that isolates tenants by
@@ -217,9 +227,12 @@ and `mediaItems` lists the paths. The layout is:
 {prefix}/{dir}/{basename}.ocr/{run}/images/fig-{page}-{n}.png
 ```
 
-`{run}` is the full 64-hex SHA-256 of the bytes that were OCR'd, the driver and
-its fingerprint — a truncated digest would be an identifier two different
-inputs could share, and one run directory would then serve the wrong text.
+`{run}` is the full 64-hex `sha256(bytes · driver name · variant)`, where the
+variant is the driver's `fingerprint()` plus the figure switch (`;figures=0|1`)
+and, for a forced re-run only, a fresh per-attempt salt (`;attempt=…`) — so a
+forced run is a new immutable directory, never the recorded one rewritten. A
+truncated digest would be an identifier two different inputs could share, and
+one run directory would then serve the wrong text.
 Two versions of the same source path therefore never overwrite each
 other's pixels, a re-run on identical bytes lands on the same directory (the
 same idempotency the ingest itself has), and a stored artifact (W2) can point
@@ -300,7 +313,7 @@ No schema change. Everything lands in JSON columns that already exist:
 | `KB_OCR_ENABLED` | `false` | The switch. Gates every entry point and the PDF fallback. |
 | `KB_OCR_DRIVER` | `tesseract` | `tesseract` · `docling` · `mistral-ocr` · `vision-llm` · `fake` (non-production only) |
 | `KB_OCR_ALLOW_REMOTE` | `false` | Final-egress policy for `mistral-ocr` / `vision-llm`. Strict `true` only. |
-| `KB_OCR_PROBE_PAGES` / `KB_OCR_PROBE_MIN_CHARS` | `3` / `20` | Text-layer probe window and threshold. |
+| `KB_OCR_PROBE_PAGES` / `KB_OCR_PROBE_MIN_CHARS` | `0` / `20` | Text-layer probe: `0` probes every page up to `KB_OCR_MAX_PAGES` (per-page verdict, `mixed` routes to OCR); a positive value bounds the window. A page under the threshold that carries an image is a scanned page. |
 | `KB_PDFTOTEXT_BIN` | `pdftotext` | Poppler binary the PDF converter falls back to before OCR when smalot cannot parse a file. |
 | `KB_OCR_RATE_PER_PAGE` | `0.004` | Per-page rate for locally-priced drivers and the estimate. |
 | `KB_OCR_FIGURES_ENABLED` | `true` | Write figures to `{source}.ocr/{run}/images/`. |

@@ -122,6 +122,8 @@ export type OcrEstimateReason =
     | 'ocr_disabled'
     | 'image'
     | 'scanned_pdf'
+    /** text pages and scanned pages in one PDF: the whole document is OCR'd so no page is lost */
+    | 'mixed_pdf'
     | 'text_layer_present'
     | 'not_ocr_able'
     | 'staged_file_missing'

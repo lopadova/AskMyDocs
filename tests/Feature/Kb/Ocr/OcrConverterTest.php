@@ -176,6 +176,24 @@ final class OcrConverterTest extends TestCase
         $this->assertSame([], $converted->mediaItems);
     }
 
+    /**
+     * ADR 0029 §1 — a typed cover over scanned body pages is `mixed`: the
+     * whole document is routed to OCR so the scanned pages are not lost.
+     */
+    public function test_on_a_mixed_pdf_is_routed_to_ocr_so_no_scanned_page_is_lost(): void
+    {
+        config(['kb.ocr.enabled' => true]);
+        $pdf = PdfFixtureBuilder::build(['Cover page with plenty of typed text on it.', '   ', ' '], [2, 3]);
+
+        $converted = $this->app->make(PdfConverter::class)->convert($this->pdf($pdf));
+
+        $this->assertSame(PdfTextLayerProbe::MIXED, $converted->extractionMeta['text_layer_probe']);
+        $this->assertSame('mixed_pdf', $converted->extractionMeta['ocr']['reason']);
+        $this->assertSame('ocr', $converted->extractionMeta['provenance']);
+        $this->assertStringContainsString('## Page 1', $converted->markdown);
+        $this->assertStringContainsString('Fake OCR output of scan.pdf.', $converted->markdown);
+    }
+
     public function test_on_a_scanned_pdf_is_routed_to_ocr_by_the_text_layer_probe(): void
     {
         config(['kb.ocr.enabled' => true]);

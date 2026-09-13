@@ -475,13 +475,17 @@ return [
             'enabled' => (bool) env('KB_OCR_REUSE_ENABLED', true),
         ],
 
-        // PDF text-layer probe: a PDF whose first N probed pages carry fewer
-        // than `min_text_chars` extractable characters is treated as scanned
-        // and routed to OCR (PdfConverter fallback, recorded in
-        // extractionMeta.text_layer_probe). `force` on the ingest metadata
-        // (`metadata.ocr.force = true`, set by kb:ocr) bypasses the probe.
+        // PDF text-layer probe, decided PER PAGE: a page with fewer than
+        // `min_text_chars` extractable characters that carries an image is a
+        // scanned page. No text page at all → `empty` (routed to OCR); text
+        // pages AND scanned pages → `mixed` (the whole document is routed to
+        // OCR so no page is lost); otherwise `present` (today's text path).
+        // Recorded in extractionMeta.text_layer_probe. `pages` = 0 probes
+        // every page up to KB_OCR_MAX_PAGES; a positive value bounds the
+        // window (a scanned page beyond it is not seen). `force` on the
+        // ingest metadata (`metadata.ocr.force = true`, kb:ocr) bypasses it.
         'text_layer_probe' => [
-            'pages' => (int) env('KB_OCR_PROBE_PAGES', 3),
+            'pages' => (int) env('KB_OCR_PROBE_PAGES', 0),
             'min_text_chars' => (int) env('KB_OCR_PROBE_MIN_CHARS', 20),
         ],
 

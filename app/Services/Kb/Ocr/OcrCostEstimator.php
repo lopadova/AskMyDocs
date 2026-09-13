@@ -173,7 +173,7 @@ final class OcrCostEstimator
             return ['id' => $id, 'would_ocr' => false, 'pages' => $pages, 'cost' => 0.0, 'reason' => 'too_many_pages', 'pages_exact' => $exact];
         }
 
-        return $this->priced($id, $pages, 'scanned_pdf', $exact);
+        return $this->priced($id, $pages, $probe['verdict'] === PdfTextLayerProbe::MIXED ? 'mixed_pdf' : 'scanned_pdf', $exact);
     }
 
     /**

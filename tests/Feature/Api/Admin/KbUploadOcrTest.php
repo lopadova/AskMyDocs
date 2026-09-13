@@ -333,6 +333,7 @@ final class KbUploadOcrTest extends TestCase
             'files' => [
                 $this->png('a.png'),
                 UploadedFile::fake()->createWithContent('scanned.pdf', PdfFixtureBuilder::build(['  ', ' ', '   '])),
+                UploadedFile::fake()->createWithContent('mixed.pdf', PdfFixtureBuilder::build(['Cover page with plenty of typed text on it.', '   '], [2])),
                 UploadedFile::fake()->createWithContent('text.pdf', PdfFixtureBuilder::buildThreePageSample()),
                 UploadedFile::fake()->createWithContent('notes.md', "# Notes\n\nbody"),
             ],
@@ -359,12 +360,19 @@ final class KbUploadOcrTest extends TestCase
         $this->assertSame('scanned_pdf', $scanned['reason']);
         $this->assertEqualsWithDelta(0.012, $scanned['cost'], 0.000001);
 
+        // ADR 0029 §1 — a typed cover over a scanned page is priced for the
+        // whole document (both pages are OCR'd) and says why.
+        $mixed = $items[$byName['mixed.pdf']['id']];
+        $this->assertTrue($mixed['would_ocr']);
+        $this->assertSame(2, $mixed['pages']);
+        $this->assertSame('mixed_pdf', $mixed['reason']);
+
         $this->assertFalse($items[$byName['text.pdf']['id']]['would_ocr']);
         $this->assertSame('text_layer_present', $items[$byName['text.pdf']['id']]['reason']);
         $this->assertFalse($items[$byName['notes.md']['id']]['would_ocr']);
         $this->assertSame('not_ocr_able', $items[$byName['notes.md']['id']]['reason']);
 
-        $this->assertSame(4, $estimate['total_pages']);
-        $this->assertEqualsWithDelta(0.016, $estimate['total_cost'], 0.000001);
+        $this->assertSame(6, $estimate['total_pages']); // 1 image + 3 scanned + 2 mixed
+        $this->assertEqualsWithDelta(0.024, $estimate['total_cost'], 0.000001);
     }
 }

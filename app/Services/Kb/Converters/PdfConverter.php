@@ -140,6 +140,12 @@ final class PdfConverter implements ConverterInterface
         if ($probe['verdict'] === PdfTextLayerProbe::PRESENT) {
             return ['reason' => null, 'probe' => PdfTextLayerProbe::PRESENT];
         }
+        if ($probe['verdict'] === PdfTextLayerProbe::MIXED) {
+            // Text pages AND scanned pages (a typed cover over scanned body
+            // pages): the whole document goes to OCR so no page is lost — the
+            // text pages are OCR'd too; the probe names the scanned ones.
+            return ['reason' => 'mixed_pdf', 'probe' => PdfTextLayerProbe::MIXED, 'scanned_pages' => $probe['scanned_pages']];
+        }
         if ($probe['verdict'] === PdfTextLayerProbe::UNREADABLE) {
             try {
                 $pages = $this->extractWithPdftotext($doc->bytes);
