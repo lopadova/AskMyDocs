@@ -103,8 +103,12 @@ final class PersistChunksStep implements FlowStepHandler
             metadata: \App\Services\Kb\Ocr\OcrService::stripRunControlKeys($combinedMetadata),
             embeddingResponse: $embeddingResponse,
             canonical: $canonical,
-            // ADR 0029 — a forced OCR re-run replaces the version it re-ran.
-            replaceExisting: \App\Services\Kb\Ocr\OcrService::isForced($combinedMetadata),
+            // ADR 0029 — a forced OCR re-run replaces the version it re-ran,
+            // and so does any FRESH (billed, recorded) run: with reuse off,
+            // or a recorded run redone because a figure went missing, the
+            // row must point at the run that produced it, never keep the old
+            // `converter.ocr` block while the new run's assets sit unreferenced.
+            replaceExisting: \App\Services\Kb\Ocr\OcrService::isForced($combinedMetadata) || \App\Services\Kb\Ocr\OcrService::isFreshOcrRun($combinedMetadata),
         );
 
         $output = [

@@ -8,6 +8,7 @@ use App\Services\Kb\Ocr\OcrDriver;
 use App\Services\Kb\Ocr\OcrDriverUnavailableException;
 use App\Services\Kb\Ocr\OcrFigure;
 use App\Services\Kb\Ocr\OcrFigureBudget;
+use App\Services\Kb\Ocr\ImageBounds;
 use App\Services\Kb\Ocr\OcrMarkdown;
 use App\Services\Kb\Ocr\OcrMeteringMode;
 use App\Services\Kb\Ocr\OcrPage;
@@ -58,7 +59,7 @@ final class DoclingOcrDriver implements OcrDriver
 
     public function fingerprint(): string
     {
-        return 'docling;bin='.basename((string) config('kb.ocr.docling.binary', 'docling'));
+        return 'docling;bin='.(string) config('kb.ocr.docling.binary', 'docling');
     }
 
     /** One bounded process for the whole document. */
@@ -89,6 +90,14 @@ final class DoclingOcrDriver implements OcrDriver
         $reason = $this->unavailableReason();
         if ($reason !== null) {
             throw new OcrDriverUnavailableException($reason);
+        }
+
+        // A source image goes to the engine AS IS: the same pixel box and
+        // page byte cap every rendered page obeys apply to it BEFORE the
+        // process starts (ADR 0029 §4) — a small file declaring bomb-sized
+        // dimensions is refused, never decoded.
+        if (! $request->isPdf()) {
+            ImageBounds::assertWithinRasterBounds($request->bytes, $request->filename);
         }
 
         $binary = (string) config('kb.ocr.docling.binary', 'docling');

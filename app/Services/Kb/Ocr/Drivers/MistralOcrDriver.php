@@ -168,7 +168,7 @@ final class MistralOcrDriver implements OcrDriver
         // page BEFORE the request is built — a small file can declare
         // dimensions whose decoded allocation is a bomb (ADR 0029 §4).
         if (! $request->isPdf()) {
-            ImageBounds::assertWithinPixelBox($request->bytes, $request->filename);
+            ImageBounds::assertWithinRasterBounds($request->bytes, $request->filename);
         }
         $dataUrl = 'data:'.$mime.';base64,'.base64_encode($request->bytes);
         $document = $request->isPdf()

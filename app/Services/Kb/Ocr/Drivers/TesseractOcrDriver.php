@@ -64,7 +64,16 @@ final class TesseractOcrDriver implements OcrDriver
 
     public function fingerprint(): string
     {
-        return sprintf('lang=%s;dpi=%d', (string) config('kb.ocr.tesseract.lang', 'eng'), (int) config('kb.ocr.tesseract.dpi', 200));
+        // The executables are part of the engine: another tesseract build or
+        // another rasteriser is another transcript, never a reused run.
+        return sprintf(
+            'lang=%s;dpi=%d;bin=%s;pdftoppm=%s;pdfinfo=%s',
+            (string) config('kb.ocr.tesseract.lang', 'eng'),
+            (int) config('kb.ocr.tesseract.dpi', 200),
+            (string) config('kb.ocr.tesseract.binary', 'tesseract'),
+            (string) config('kb.ocr.tesseract.pdftoppm', 'pdftoppm'),
+            (string) config('kb.ocr.tesseract.pdfinfo', 'pdfinfo'),
+        );
     }
 
     /** Page images are rendered up to KB_OCR_MAX_PAGES and each page runs under the process timeout: bounded by construction. */

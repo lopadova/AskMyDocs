@@ -136,7 +136,9 @@ export type OcrEstimateReason =
     /** the bytes do not carry the signature of the declared type: refused before any driver runs */
     | 'unrecognised_bytes'
     /** a multi-frame TIFF the configured driver would transcribe one frame of: refused before any work */
-    | 'multi_frame_image';
+    | 'multi_frame_image'
+    /** an image over the raster bounds (pixel box / page byte cap) every page must fit: refused before any driver decodes or posts it */
+    | 'rendered_page_too_large';
 
 export interface OcrEstimateItem {
     id: string;

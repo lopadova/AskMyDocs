@@ -105,6 +105,31 @@ final class MistralOcrDriverEndpointTest extends TestCase
         Http::assertSentCount(1);
     }
 
+    /**
+     * The page byte cap (KB_OCR_RASTER_MAX_PAGE_BYTES) applies to a source
+     * image posted as is, exactly as it applies to a rendered page: a file
+     * within the pixel box but over the cap is refused before any egress.
+     */
+    public function test_a_source_image_over_the_page_byte_cap_is_refused_before_any_egress(): void
+    {
+        config(['kb.ocr.allow_remote' => true, 'kb.ocr.mistral.api_key' => 'k', 'kb.ocr.mistral.url' => 'https://api.mistral.eu/v1/ocr', 'kb.ocr.mistral.allowed_hosts' => ['api.mistral.eu'], 'kb.ocr.raster.max_page_bytes' => 16]);
+        Http::fake(['https://api.mistral.eu/*' => Http::response(['pages' => [['index' => 0, 'markdown' => 'ok']]], 200)]);
+        $png = "\x89PNG\r\n\x1a\n".pack('N', 13).'IHDR'.pack('NN', 2, 2)."\x08\x02\x00\x00\x00".pack('N', 0);
+
+        try {
+            app(MistralOcrDriver::class)->recognise(new OcrRequest($png, 'image/png', 'heavy.png'));
+            $this->fail('an image over the page byte cap must be refused');
+        } catch (\App\Services\Kb\Ocr\OcrLimitExceededException $e) {
+            $this->assertSame('rendered_page_too_large', $e->reason);
+            $this->assertStringContainsString('KB_OCR_RASTER_MAX_PAGE_BYTES (16)', $e->getMessage());
+        }
+        Http::assertNothingSent();
+
+        config(['kb.ocr.raster.max_page_bytes' => 1024]);
+        $this->assertCount(1, app(MistralOcrDriver::class)->recognise(new OcrRequest($png, 'image/png', 'heavy.png'))->pages);
+        Http::assertSentCount(1);
+    }
+
     /** The run's aggregate figure budget applies to a remote response too: a figure past it is dropped and its link becomes text. */
     public function test_figures_past_the_run_budget_are_dropped(): void
     {

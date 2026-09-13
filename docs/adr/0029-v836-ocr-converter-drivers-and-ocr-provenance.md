@@ -233,7 +233,13 @@ box (defence in depth), and a rendered page over
 `KB_OCR_RASTER_MAX_PAGE_BYTES` (default 10 MiB) or over the box is a
 deterministic refusal (`rendered_page_too_large`) raised **before** the page
 is decoded locally or posted to a vision provider, with the working directory
-removed. For
+removed. A **source image** is a page too: the drivers that decode or post
+it as is (`docling`, `mistral-ocr`) apply the same pixel box and page byte
+cap to the source bytes before the engine starts or the request is built —
+the source cap admitted the file, the page cap decides whether it may be a
+page — and the upload estimate takes that decision on the staged bytes
+(`ImageBounds::refusalReason()`, after the page-count and frame gates) so
+the modal states `rendered_page_too_large` before commit. For
 `vision-llm` this is the egress invariant made concrete: what leaves is a
 rendered page, and no rendered page leaves unbounded. A
 whole-file engine (`docling`) cannot be told the size of what it is handed and
@@ -324,10 +330,15 @@ serve the wrong text or figures to a document and defeat the reuse lookup;
 the full digest makes the identity collision-free for every practical
 purpose. The **variant** is what `OcrService` composes from everything that
 shapes the output: the engine variant each driver declares
-(`OcrDriver::fingerprint()`: effective provider + model for `vision-llm`,
-model + endpoint for `mistral-ocr`, language + DPI for `tesseract`, the
-binary for `docling`), the figure switch (`;figures=0|1`, because the
-Markdown differs), and — for a forced re-run only — a fresh per-attempt salt
+(`OcrDriver::fingerprint()`: effective provider + model + rasteriser for
+`vision-llm`, model + endpoint for `mistral-ocr`, language + DPI + the
+`tesseract` / `pdftoppm` / `pdfinfo` executables for `tesseract`, the full
+binary path for `docling` — the executables ARE the engine for a local
+driver, another build is another transcript), the caps that shape the
+output (the page cap `;pages=N`, the raster bounds `;raster=<px>:<bytes>`,
+the figure switch and budget `;figures=0` / `;figures=1:<bytes>:<count>:<total>`
+— a lowered cap must never reuse a run recorded under a wider one), and —
+for a forced re-run or a run with reuse off — a fresh per-attempt salt
 (`;attempt=<16 hex>`), so `ocr.force` always lands on a **new** immutable
 run and never reuses or rewrites the recorded one (§6); the `ocr.force` /
 `ocr.rerun_lock` / `dry_run` keys are inputs of that one job and are stripped
@@ -395,7 +406,11 @@ the Flow's `tenant:project:path` idempotency from collapsing the job; it does
 **not** bypass the ingestor's version idempotency, which is content-addressed
 (`version_hash` of the converted Markdown). So the force flag travels to
 persistence as well: `PersistChunksStep` passes `replaceExisting = true`
-(from `OcrService::isForced()`) into `DocumentIngestor::persistDrafts()`,
+(from `OcrService::isForced()`, or `OcrService::isFreshOcrRun()` — any run
+that actually called the driver, `converter.ocr.reused === false`, such as
+every ingest with reuse off or a recorded run redone because a figure went
+missing; `DocumentIngestor::ingest()` applies the same rule on the direct
+path) into `DocumentIngestor::persistDrafts()`,
 which then skips the same-hash short-circuit and **replaces in place** the
 live version's chunk set and its `metadata.converter.ocr` block (run key,
 attempt, confidence) — the row points at the new run, no second version is

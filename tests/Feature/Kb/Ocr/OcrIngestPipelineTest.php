@@ -421,4 +421,53 @@ final class OcrIngestPipelineTest extends TestCase
         $this->assertSame([], array_intersect($firstChunkIds, $chunkIds), 'chunks are replaced, not kept beside the new set');
         $this->assertCount(count($firstChunkIds), $chunkIds, 'chunks are replaced, not duplicated');
     }
+
+    /**
+     * ADR 0029 — with reuse off every ingest is a FRESH, billed run with its
+     * own assets: an identical re-ingest (same version hash) must replace the
+     * row's `converter.ocr` block with the run that was just paid for, on
+     * BOTH ingestion paths (the direct ingestor and the Flow job), never keep
+     * the old run while the new one's figures sit unreferenced.
+     */
+    public function test_with_reuse_off_an_identical_re_ingest_replaces_the_row_with_the_fresh_run_on_both_paths(): void
+    {
+        config(['kb.ocr.reuse.enabled' => false, 'kb.ocr.fake.pages' => [['markdown' => 'Alpha', 'confidence' => 0.8, 'figures' => 1]]]);
+        Storage::disk('kb')->put('scans/fresh.png', (string) base64_decode(FakeOcrDriver::PNG_1X1, true));
+
+        $first = app(DocumentIngestor::class)->ingest('legal', $this->image('scans/fresh.png'), title: 'Fresh');
+        $firstRun = (string) $first->metadata['converter']['ocr']['run'];
+        $this->assertFalse((bool) $first->metadata['converter']['ocr']['reused']);
+
+        // Direct path: DocumentIngestor::ingest() again on identical bytes.
+        $second = app(DocumentIngestor::class)->ingest('legal', $this->image('scans/fresh.png'), title: 'Fresh');
+        $this->assertSame($first->id, $second->id, 'identical output is the same version, never a second row');
+        $secondRun = (string) $second->fresh()->metadata['converter']['ocr']['run'];
+        $this->assertNotSame($firstRun, $secondRun, 'the direct path points the row at the run that was billed');
+        $this->assertSame(2, UsageRecord::query()->where('purpose_tag', 'ocr')->count());
+
+        // Flow path: the queued job (PersistChunksStep) on the same bytes, no force.
+        Queue::fake();
+        $job = new IngestDocumentJob(
+            projectKey: 'legal',
+            relativePath: 'scans/fresh.png',
+            disk: 'kb',
+            title: 'Fresh',
+            metadata: ['note' => 'kept'],
+            mimeType: 'image/png',
+            tenantId: app(TenantContext::class)->current(),
+            runKey: 'ocr:fresh-again',
+        );
+        $this->app->call([$job, 'handle']);
+
+        $rows = KnowledgeDocument::query()->where('source_path', 'scans/fresh.png')->get();
+        $this->assertCount(1, $rows);
+        $row = $rows->first();
+        $thirdRun = (string) $row->metadata['converter']['ocr']['run'];
+        $this->assertNotSame($secondRun, $thirdRun, 'the Flow path points the row at the run that was billed');
+        $this->assertFalse((bool) $row->metadata['converter']['ocr']['reused']);
+        $this->assertSame('kept', $row->metadata['note']);
+        // R16 — exactly three metered runs, one per ingest.
+        $this->assertSame(3, UsageRecord::query()->where('purpose_tag', 'ocr')->count());
+        Storage::disk('kb')->assertExists("scans/fresh.png.ocr/{$thirdRun}/images/fig-1-1.png");
+    }
 }

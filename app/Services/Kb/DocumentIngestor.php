@@ -119,6 +119,13 @@ class DocumentIngestor
             'converter' => $converted->extractionMeta,
         ]);
 
+        // ADR 0029 — the same rule as the Flow path (PersistChunksStep): a
+        // forced or otherwise FRESH OCR run replaces the identical version
+        // it re-produced, so the row points at the run that was billed.
+        $replace = $forceReembed
+            || \App\Services\Kb\Ocr\OcrService::isForced($combinedMetadata)
+            || \App\Services\Kb\Ocr\OcrService::isFreshOcrRun($combinedMetadata);
+
         return $this->persistFromDrafts(
             projectKey: $projectKey,
             sourcePath: $normalizedSource->sourcePath,
@@ -128,7 +135,7 @@ class DocumentIngestor
             markdown: $converted->markdown,
             chunkDrafts: $chunkDrafts,
             metadata: $combinedMetadata,
-            forceReembed: $forceReembed,
+            forceReembed: $replace,
         );
     }
 

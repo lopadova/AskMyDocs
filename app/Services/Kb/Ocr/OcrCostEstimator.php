@@ -7,6 +7,7 @@ namespace App\Services\Kb\Ocr;
 use App\FinOps\OcrCallMeter;
 use App\Models\KbIngestBatch;
 use App\Models\KbIngestBatchItem;
+use App\Services\Kb\Ocr\ImageBounds;
 use App\Support\Kb\FileTypeSniffer;
 use App\Support\Kb\SourceType;
 use Illuminate\Support\Facades\Storage;
@@ -79,7 +80,7 @@ final class OcrCostEstimator
             // would OCR, or one OCR itself refused (over a cap, uncountable,
             // multi-frame) — a text PDF, a text file or an unreadable object
             // is ingestible (or fails) without any driver.
-            $needsDriver = $row['would_ocr'] || in_array($row['reason'], ['too_many_pages', 'too_many_bytes', 'pages_uncountable', 'multi_frame_image'], true);
+            $needsDriver = $row['would_ocr'] || in_array($row['reason'], ['too_many_pages', 'too_many_bytes', 'pages_uncountable', 'multi_frame_image', 'rendered_page_too_large'], true);
             if (! $row['driver_available'] && $needsDriver) {
                 $blockedPdf = $blockedPdf || $kind === SourceType::PDF;
                 $blockedImage = $blockedImage || $kind === SourceType::IMAGE;
@@ -213,6 +214,15 @@ final class OcrCostEstimator
             // modal says so before commit instead of quoting N pages).
             if ($pages > 1 && $this->registry->refusesMultiFrameImages((string) config('kb.ocr.driver', 'tesseract'))) {
                 return ['id' => $id, 'would_ocr' => false, 'pages' => $pages, 'cost' => 0.0, 'reason' => 'multi_frame_image', 'pages_exact' => true];
+            }
+            // The raster bounds the driver applies to an image it decodes or
+            // posts as is (pixel box, page byte cap) — checked in the order
+            // the run checks them, after the count and frame gates: refused
+            // here with the same reason, never priced as a run conversion
+            // will refuse (R14).
+            $rasterRefusal = ImageBounds::refusalReason($imageBytes);
+            if ($rasterRefusal !== null) {
+                return ['id' => $id, 'would_ocr' => false, 'pages' => $pages, 'cost' => 0.0, 'reason' => $rasterRefusal, 'pages_exact' => true];
             }
 
             return $this->priced($id, $pages, 'image', true, $sdkMetered);

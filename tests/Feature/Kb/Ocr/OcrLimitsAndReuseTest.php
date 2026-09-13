@@ -223,7 +223,7 @@ final class OcrLimitsAndReuseTest extends TestCase
             // waits, then gives up loudly (retryable) — it never writes into
             // a directory that is being removed. (Real clock: `block()` is
             // timed on it, a frozen `travel()` clock would never elapse.)
-            config(['kb.ocr.assets_lock.wait_seconds' => 1, 'kb.ocr.reuse_enabled' => false]);
+            config(['kb.ocr.assets_lock.wait_seconds' => 1, 'kb.ocr.reuse.enabled' => false]);
             try {
                 $this->app->make(OcrConverter::class)->convert($this->image());
                 $this->fail('expected the writer to give up on a held assets lock');
@@ -679,6 +679,32 @@ final class OcrLimitsAndReuseTest extends TestCase
         $second = $converter->convert($this->image());
         $this->assertNotSame($first->extractionMeta['ocr']['run'], $second->extractionMeta['ocr']['run']);
         $this->assertFalse((bool) $second->extractionMeta['ocr']['reused']);
+    }
+
+    /**
+     * The raster bounds shape what a run admits (a page over them is
+     * refused): a run recorded under a wider box or byte cap must not be
+     * reused once either cap is lowered — the reuse would present a
+     * transcript the current bounds would refuse to produce.
+     */
+    #[Test]
+    public function the_run_key_changes_with_the_raster_caps(): void
+    {
+        $converter = $this->app->make(OcrConverter::class);
+        $first = $converter->convert($this->image());
+
+        config(['kb.ocr.raster.max_page_px' => 4000]);
+        $second = $converter->convert($this->image());
+        $this->assertNotSame($first->extractionMeta['ocr']['run'], $second->extractionMeta['ocr']['run'], 'the pixel box is part of the run identity');
+        $this->assertFalse((bool) $second->extractionMeta['ocr']['reused']);
+
+        config(['kb.ocr.raster.max_page_bytes' => 5 * 1024 * 1024]);
+        $third = $converter->convert($this->image());
+        $this->assertNotSame($second->extractionMeta['ocr']['run'], $third->extractionMeta['ocr']['run'], 'the page byte cap is part of the run identity');
+        $this->assertFalse((bool) $third->extractionMeta['ocr']['reused']);
+
+        $again = $converter->convert($this->image());
+        $this->assertTrue((bool) $again->extractionMeta['ocr']['reused'], 'unchanged caps reuse the run recorded under them');
     }
 
     /**

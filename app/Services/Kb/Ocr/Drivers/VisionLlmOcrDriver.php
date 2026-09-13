@@ -100,12 +100,15 @@ TXT;
         [$providerName, $model] = $this->effectiveEngine();
 
         return sprintf(
-            'provider=%s;model=%s;dpi=%d;max_tokens=%d;prompt=%s',
+            'provider=%s;model=%s;dpi=%d;max_tokens=%d;prompt=%s;pdftoppm=%s;pdfinfo=%s',
             $providerName,
             $model,
             (int) config('kb.ocr.vision_llm.dpi', 150),
             (int) config('kb.ocr.vision_llm.max_tokens', 4000),
             substr(hash('sha256', self::INSTRUCTIONS), 0, 12),
+            // The rasteriser is part of the engine too (another render is another page image).
+            (string) config('kb.ocr.vision_llm.pdftoppm', 'pdftoppm'),
+            (string) config('kb.ocr.vision_llm.pdfinfo', 'pdfinfo'),
         );
     }
 

@@ -206,6 +206,41 @@ final class KbUploadOcrTest extends TestCase
     }
 
     /**
+     * The estimate takes the SAME decision the driver takes on a source
+     * image decoded or posted as is (ADR 0029 §4): over the pixel box or the
+     * page byte cap it is refused as `rendered_page_too_large`, never priced.
+     */
+    public function test_estimate_flags_an_image_over_the_raster_bounds(): void
+    {
+        config(['kb.ocr.enabled' => true]);
+        $admin = $this->makeAdmin();
+        // PNG signature + IHDR declaring 9000×10 px: tiny bytes, over the default 6000 px box.
+        $wide = "\x89PNG\r\n\x1a\n".pack('N', 13).'IHDR'.pack('NN', 9000, 10)."\x08\x02\x00\x00\x00".pack('N', 0);
+        $batchId = $this->actingAs($admin)->post('/api/admin/kb/uploads', [
+            'project_key' => 'legal',
+            'files' => [UploadedFile::fake()->createWithContent('wide.png', $wide), $this->png('small.png')],
+        ])->assertStatus(201)->json('batch.id');
+
+        $this->actingAs($admin)->getJson("/api/admin/kb/uploads/{$batchId}/estimate")
+            ->assertOk()
+            ->assertJsonPath('data.items.0.would_ocr', false)
+            // Counted, then refused — like `too_many_pages` / `multi_frame_image`.
+            ->assertJsonPath('data.items.0.pages', 1)
+            ->assertJsonPath('data.items.0.reason', 'rendered_page_too_large')
+            ->assertJsonPath('data.items.0.driver_available', true)
+            ->assertJsonPath('data.items.1.would_ocr', true)
+            ->assertJsonPath('data.total_pages', 1);
+
+        // The page byte cap refuses the small file too once lowered under it.
+        config(['kb.ocr.raster.max_page_bytes' => 16]);
+        $this->actingAs($admin)->getJson("/api/admin/kb/uploads/{$batchId}/estimate")
+            ->assertOk()
+            ->assertJsonPath('data.items.1.would_ocr', false)
+            ->assertJsonPath('data.items.1.reason', 'rendered_page_too_large')
+            ->assertJsonPath('data.total_pages', 0);
+    }
+
+    /**
      * The preflight is input-aware: a batch that holds a PDF needs the
      * rasteriser's Poppler binaries and is told so before commit, while an
      * image-only batch is not refused for a dependency it never uses.

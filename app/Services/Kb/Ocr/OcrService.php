@@ -242,7 +242,10 @@ final class OcrService
         // The page cap shapes the output too: a page-by-page driver on a PDF
         // whose count could not be verified records at most the cap, so a
         // changed cap must not reuse a run made under the old one.
-        return $fingerprint.';pages='.max(1, (int) config('kb.ocr.max_pages', 200)).';figures='.($figuresEnabled
+        // The raster bounds shape what a run admits (a page over them is
+        // refused): a lowered cap must not reuse a run recorded under a
+        // wider one.
+        return $fingerprint.';pages='.max(1, (int) config('kb.ocr.max_pages', 200)).';raster='.ImageBounds::maxPagePx().':'.ImageBounds::maxPageBytes().';figures='.($figuresEnabled
             ? sprintf('1:%d:%d:%d', (int) config('kb.ocr.max_figure_bytes', 10485760), (int) config('kb.ocr.max_figures_per_run', 200), (int) config('kb.ocr.max_figures_total_bytes', 104857600))
             : '0');
     }
@@ -350,6 +353,22 @@ final class OcrService
         $ocr = $metadata['ocr'] ?? null;
 
         return is_array($ocr) && ($ocr['force'] ?? false) === true;
+    }
+
+    /**
+     * Whether the conversion this metadata describes ran the OCR driver
+     * (a fresh, recorded, billed run — `converter.ocr.reused === false`)
+     * rather than reusing a recorded one. A fresh run replaces the identical
+     * version it re-produced (PersistChunksStep / DocumentIngestor), so the
+     * row always points at the run that was billed.
+     *
+     * @param  array<string, mixed>  $metadata
+     */
+    public static function isFreshOcrRun(array $metadata): bool
+    {
+        $ocr = $metadata['converter']['ocr'] ?? null;
+
+        return is_array($ocr) && ($ocr['reused'] ?? null) === false;
     }
 
     /**

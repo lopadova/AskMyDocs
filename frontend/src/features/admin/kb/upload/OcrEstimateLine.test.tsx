@@ -214,6 +214,25 @@ describe('OcrEstimateLine', () => {
         expect(el.textContent).not.toContain('cannot be verified');
     });
 
+    it('ON with an image over the raster bounds — names the bounds a page must fit', () => {
+        const est: OcrEstimate = {
+            ...on,
+            total_pages: 1,
+            total_cost: 0.004,
+            items: [
+                { id: 'w', would_ocr: false, pages: 0, pages_exact: true, cost: 0, reason: 'rendered_page_too_large' },
+                { id: 'a', would_ocr: true, pages: 1, pages_exact: true, cost: 0.004, reason: 'image' },
+            ],
+        };
+        render(<OcrEstimateLine state="ready" estimate={est} />);
+        const el = screen.getByTestId('kb-upload-ocr-estimate');
+        expect(el).toHaveAttribute('data-state', 'ready');
+        expect(el.textContent).toContain('1 file exceeds the raster bounds a page must fit (KB_OCR_RASTER_MAX_PAGE_PX / KB_OCR_RASTER_MAX_PAGE_BYTES)');
+        expect(el.textContent).toContain('refused before any driver runs');
+        expect(el.textContent).not.toContain('KB_OCR_MAX_PAGES / KB_OCR_MAX_BYTES');
+        expect(el.textContent).toContain('1 file');
+    });
+
     it('ON with a staged file that cannot be read — states the failure instead of "no file needs OCR"', () => {
         const unreadable: OcrEstimate = {
             ...on,

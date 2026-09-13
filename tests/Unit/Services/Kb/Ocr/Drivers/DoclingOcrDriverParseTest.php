@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Tests\Unit\Services\Kb\Ocr\Drivers;
 
 use App\Services\Kb\Ocr\Drivers\DoclingOcrDriver;
+use App\Services\Kb\Ocr\OcrLimitExceededException;
+use App\Services\Kb\Ocr\OcrRequest;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
@@ -130,5 +132,39 @@ final class DoclingOcrDriverParseTest extends TestCase
         // never cites a path the store did not write (one rule, every driver).
         $this->assertSame(implode("\n", ['*[Figure: a]*', '*[Figure: b]*', '*[Figure: c]*', '*[Figure: d]*', '*[Figure: e]*']), $pages[0]->markdown);
         $this->assertStringNotContainsString('](', $pages[0]->markdown, 'no image link survives');
+    }
+
+    /**
+     * ADR 0029 §4 — a source image goes to the engine as is, so the raster
+     * bounds (pixel box + page byte cap) apply BEFORE the process starts: a
+     * tiny file declaring bomb-sized dimensions, or one over the page byte
+     * cap, is refused with `rendered_page_too_large` and never decoded.
+     */
+    #[Test]
+    public function an_oversized_source_image_is_refused_before_the_engine_starts(): void
+    {
+        // An executable that exists so the availability preflight passes; the
+        // refusal must come from the bounds, never from running it.
+        config(['kb.ocr.docling.binary' => '/bin/sh', 'kb.ocr.raster.max_page_px' => 500]);
+        $wide = "\x89PNG\r\n\x1a\n".pack('N', 13).'IHDR'.pack('NN', 900, 10)."\x08\x02\x00\x00\x00".pack('N', 0);
+
+        try {
+            $this->app->make(DoclingOcrDriver::class)->recognise(new OcrRequest($wide, 'image/png', 'wide.png'));
+            $this->fail('an image over the pixel box must be refused');
+        } catch (OcrLimitExceededException $e) {
+            $this->assertSame('rendered_page_too_large', $e->reason);
+            $this->assertStringContainsString('900×10 px', $e->getMessage());
+        }
+
+        config(['kb.ocr.raster.max_page_px' => 6000, 'kb.ocr.raster.max_page_bytes' => 16]);
+        try {
+            $this->app->make(DoclingOcrDriver::class)->recognise(new OcrRequest($wide, 'image/png', 'heavy.png'));
+            $this->fail('an image over the page byte cap must be refused');
+        } catch (OcrLimitExceededException $e) {
+            $this->assertSame('rendered_page_too_large', $e->reason);
+            $this->assertStringContainsString('KB_OCR_RASTER_MAX_PAGE_BYTES', $e->getMessage());
+        }
+        $engineDirs = array_filter(glob(sys_get_temp_dir().'/kb_docling_*') ?: [], static fn (string $d): bool => preg_match('/kb_docling_[0-9a-f]{12}$/', $d) === 1);
+        $this->assertSame([], $engineDirs, 'no working directory: the engine never started');
     }
 }

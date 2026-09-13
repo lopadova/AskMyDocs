@@ -70,10 +70,11 @@ export function OcrEstimateLine({ state, estimate, errorMessage }: OcrEstimateLi
     // A staged object that is gone or cannot be read is a failure the modal
     // must state (R14): commit will fail that item, whatever OCR would do.
     const unreadable = estimate.items.filter((i) => i.reason === 'staged_file_missing' || i.reason === 'staged_file_unreadable');
-    const overLimit = estimate.items.filter((i) => i.reason === 'too_many_pages' || i.reason === 'too_many_bytes' || i.reason === 'pages_uncountable' || i.reason === 'multi_frame_image');
+    const overLimit = estimate.items.filter((i) => i.reason === 'too_many_pages' || i.reason === 'too_many_bytes' || i.reason === 'pages_uncountable' || i.reason === 'multi_frame_image' || i.reason === 'rendered_page_too_large');
     const uncountable = estimate.items.filter((i) => i.reason === 'pages_uncountable').length;
     const multiFrame = estimate.items.filter((i) => i.reason === 'multi_frame_image').length;
-    const capped = overLimit.length - uncountable - multiFrame;
+    const tooLarge = estimate.items.filter((i) => i.reason === 'rendered_page_too_large').length;
+    const capped = overLimit.length - uncountable - multiFrame - tooLarge;
     const files = (k: number) => `${k} file${k === 1 ? '' : 's'}`;
     // One refusal sentence, reused by every branch that mentions refused
     // files, so a mixed batch names the real reason for each group (R14).
@@ -86,6 +87,7 @@ export function OcrEstimateLine({ state, estimate, errorMessage }: OcrEstimateLi
             capped > 0 ? `${files(capped)} exceed${capped === 1 ? 's' : ''} the OCR limits (KB_OCR_MAX_PAGES / KB_OCR_MAX_BYTES)` : '',
             uncountable > 0 ? `${files(uncountable)} ha${uncountable === 1 ? 's' : 've'} a page count that cannot be verified (the PDF could not be parsed), which the configured ${estimate.driver} driver refuses to run without` : '',
             multiFrame > 0 ? `${files(multiFrame)} ${multiFrame === 1 ? 'is a multi-frame TIFF' : 'are multi-frame TIFFs'} the ${estimate.driver} driver would transcribe one frame of (split into one image per page)` : '',
+            tooLarge > 0 ? `${files(tooLarge)} exceed${tooLarge === 1 ? 's' : ''} the raster bounds a page must fit (KB_OCR_RASTER_MAX_PAGE_PX / KB_OCR_RASTER_MAX_PAGE_BYTES)` : '',
         ].filter(Boolean).join('; ') + ' — refused before any driver runs.';
     // A staged object whose bytes are no raster the OCR path serves (a file
     // replaced or corrupted since upload) is refused at commit with the same

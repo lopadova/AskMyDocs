@@ -158,10 +158,15 @@ them is bounded in code before any egress (SEC-LLM-001 gates 2 and 7):
   only bound applied before the render, so it must be complete: a failed
   report, or fewer page sizes than the pages to render, is a refusal
   (`rendered_page_too_large`), never a render checked only afterwards.
-- `mistral-ocr` sends a source image as is, so it measures it against the
-  same pixel box the rasterising drivers apply to a rendered page
-  (`KB_OCR_RASTER_MAX_PAGE_PX`) before the request is built — a small file
-  declaring bomb-sized dimensions never leaves (`rendered_page_too_large`).
+- `mistral-ocr` posts a source image as is and `docling` decodes it as is,
+  so both measure it against the same bounds the rasterising drivers apply
+  to a rendered page — the pixel box `KB_OCR_RASTER_MAX_PAGE_PX` **and** the
+  page byte cap `KB_OCR_RASTER_MAX_PAGE_BYTES` — before the request is built
+  or the engine starts: a small file declaring bomb-sized dimensions, or one
+  heavier than a page may weigh, never leaves and is never decoded
+  (`rendered_page_too_large`). The upload estimate takes the same decision on
+  the staged bytes, after the page-count and frame gates, so the modal states
+  the refusal before commit instead of pricing a run that cannot start.
 - `mistral-ocr` posts only to an `https` URL whose host is in the exact
   allow-list `KB_OCR_MISTRAL_ALLOWED_HOSTS` (default `api.mistral.eu,
   api.mistral.ai`), validates the response's content type and size, caps
@@ -251,9 +256,12 @@ When the same bytes arrive again through the same driver — an identical
 re-ingest, an IMAP backfill, a GitHub-Action full sync — `OcrService` reuses
 the recorded pages instead of calling the driver: no spend, no FinOps row, the
 document metadata says `reused: true`. The run key embeds the engine — driver
-name, its fingerprint (model, language, DPI, binary) and the figure switch —
-so the same bytes through another engine are a different, immutable run, and
-switching the model never serves stale text. `kb:ocr` (`metadata.ocr.force`)
+name, its fingerprint (model, language, DPI, the executables a local driver
+runs — `tesseract`, `pdftoppm`, `pdfinfo`, the full `docling` path) and the
+caps that shape the output (the page cap, the raster bounds, the figure
+switch and budget) — so the same bytes through another engine are a
+different, immutable run, switching the model never serves stale text, and a
+lowered cap never reuses a run recorded under a wider one. `kb:ocr` (`metadata.ocr.force`)
 bypasses the reuse on purpose; a run whose figures went missing is re-done.
 
 Two consequences are stated, not hidden. First, `result.json` is the **raw**
@@ -264,7 +272,11 @@ the chunks. A deployment that must not hold raw OCR text beside its scans
 sets `KB_OCR_REUSE_ENABLED=false`: every ingest then runs the driver, records
 no `result.json` and is a **new run with its own attempt identity** (its own
 `{run}` directory, like a forced re-run), so a re-ingest never rewrites the
-figures a previous document version still references — that knob governs the
+figures a previous document version still references; and, exactly like a
+forced re-run, that fresh run **replaces in place** the byte-identical
+version it re-produced (`OcrService::isFreshOcrRun()` drives
+`replaceExisting` on both ingestion paths), so the row always names the run
+that was billed and the superseded run is left for the sweep — that knob governs the
 recorded run (the raw OCR text and its reuse) only; figures follow `KB_OCR_FIGURES_ENABLED` and the retention mode
 (`reference_only` stores neither), so a deployment that must hold no OCR
 asset at all beside its scans turns figures off too, or runs `reference_only`. Second, on a shared disk two tenants with the same source
@@ -297,9 +309,11 @@ and `mediaItems` lists the paths. The layout is:
 ```
 
 `{run}` is the full 64-hex `sha256(bytes · driver name · variant)`, where the
-variant is the driver's `fingerprint()` plus the figure switch (`;figures=0|1`)
-and, for a forced re-run only, a fresh per-attempt salt (`;attempt=…`) — so a
-forced run is a new immutable directory, never the recorded one rewritten. A
+variant is the driver's `fingerprint()` plus the page cap (`;pages=N`), the
+raster bounds (`;raster=<px>:<bytes>`), the figure switch and budget
+(`;figures=0` or `;figures=1:<bytes>:<count>:<total>`) and, for a forced
+re-run or a run with reuse off, a fresh per-attempt salt (`;attempt=…`) — so
+such a run is a new immutable directory, never the recorded one rewritten. A
 truncated digest would be an identifier two different inputs could share, and
 one run directory would then serve the wrong text.
 Two versions of the same source path therefore never overwrite each
@@ -402,7 +416,7 @@ No schema change. Everything lands in JSON columns that already exist:
 | `KB_OCR_FIGURES_ENABLED` | `true` | Write figures to `{source}.ocr/{run}/images/`. |
 | `KB_OCR_JOB_TIMEOUT` | `3600` | Wall-clock budget of one OCR run, enforced by every driver (`OcrRunBudget`: a page-by-page engine bounds each process — `pdfinfo`, `pdftoppm`, every page, every provider call — by what is left when it starts and stops with `run_too_long` once it is spent; a whole-file engine's timeout is capped by it). Any process or provider call that hits its timeout is the same terminal `run_too_long` (the same page would time out again), never a generic error the job retries. The run lease, the ingest job timeout (`OcrService::jobTimeoutFor()`) and the re-run lock are all derived from it, so the queue's `retry_after` (`REDIS_QUEUE_RETRY_AFTER` / `DB_QUEUE_RETRY_AFTER`) only has to exceed this budget plus its margins (~520 s) — a shorter value is logged at every dispatch it endangers, because Laravel would re-reserve a still-running job on another worker. |
 | `KB_OCR_MAX_PAGES` / `KB_OCR_MAX_BYTES` | `200` / `26214400` | Refuse before any driver runs; reasons `too_many_pages` / `too_many_bytes`. Pages are counted format-independently (PDF parser, TIFF frames, 1 for other images); an unparseable PDF has only a floor and is refused for a remote driver with `pages_uncountable`. The same gate verifies the bytes against the declared type (a `%PDF-` header, or a PNG / JPEG / TIFF / WebP signature) for **every** ingress — upload, JSON ingest, folder walk, connector — and refuses anything else with `unrecognised_bytes`, so no driver, remote or local, is ever handed a mislabelled file. A multi-frame TIFF is refused with `multi_frame_image` by every driver that transcribes one frame per image (`tesseract`, `vision-llm`, `mistral-ocr`; `docling` accepts it). `KB_OCR_MAX_BYTES` bounds the **source file**; what a page renders to is bounded separately (next row). |
-| `KB_OCR_RASTER_MAX_PAGE_PX` / `KB_OCR_RASTER_MAX_PAGE_BYTES` | `6000` / `10485760` | Rendered-page bounds for the page-by-page drivers (`tesseract`, `vision-llm`): the render DPI is lowered from the page geometry `pdfinfo` reports so that no page's long side exceeds `PX` pixels (a small file can declare a 200-inch page; one that cannot fit at 50 DPI is refused before rendering), the produced PNG is re-measured, and a rendered page over either bound is refused with `rendered_page_too_large` **before** it is decoded locally or posted to the vision provider. `KB_OCR_PDFINFO_BIN` names the `pdfinfo` binary (poppler-utils, beside `pdftoppm`). |
+| `KB_OCR_RASTER_MAX_PAGE_PX` / `KB_OCR_RASTER_MAX_PAGE_BYTES` | `6000` / `10485760` | Bounds a page must fit — a rendered page for the page-by-page drivers (`tesseract`, `vision-llm`), a source image decoded or posted as is for `docling` / `mistral-ocr` (and the same refusal in the upload estimate); both are part of the run identity, so lowering either never reuses a run recorded under a wider bound. For the rasterising drivers: the render DPI is lowered from the page geometry `pdfinfo` reports so that no page's long side exceeds `PX` pixels (a small file can declare a 200-inch page; one that cannot fit at 50 DPI is refused before rendering), the produced PNG is re-measured, and a rendered page over either bound is refused with `rendered_page_too_large` **before** it is decoded locally or posted to the vision provider. `KB_OCR_PDFINFO_BIN` names the `pdfinfo` binary (poppler-utils, beside `pdftoppm`). |
 | `KB_OCR_MAX_FIGURE_BYTES` | `10485760` | Largest figure a driver may hand back. |
 | `KB_OCR_MAX_FIGURES` / `KB_OCR_MAX_FIGURES_TOTAL_BYTES` | `200` / `104857600` | Aggregate figure budget of one run (count / total bytes): every accepted figure is held in memory until the run is recorded, so a document inside the page and byte caps must not carry an unbounded number of sub-cap figures. A figure past the budget is omitted before it is read (the Markdown says so). |
 | `KB_OCR_RUN_LOCK_WAIT` | `300` | Seconds a worker waits for the reservation of a run directory another worker is writing before letting the job retry; the recorded run is then reused. Needs an atomic lock store (Redis) in production. |
