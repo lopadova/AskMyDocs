@@ -109,6 +109,34 @@ final class MistralOcrDriver implements OcrDriver
         return false;
     }
 
+    /**
+     * Read the response body in bounded chunks: the read stops — and the
+     * stream is closed — the moment the cap is exceeded, so the worker never
+     * holds more than `max_response_bytes` (+ one chunk) of an untrusted answer.
+     *
+     * @throws RuntimeException when the body exceeds `$maxBody`
+     */
+    private function readBounded(\Psr\Http\Message\StreamInterface $stream, int $maxBody): string
+    {
+        $buffer = '';
+        try {
+            while (! $stream->eof()) {
+                $chunk = $stream->read(65536);
+                if ($chunk === '') {
+                    break;
+                }
+                $buffer .= $chunk;
+                if (strlen($buffer) > $maxBody) {
+                    throw new RuntimeException('Mistral OCR response exceeds the configured size limit.');
+                }
+            }
+        } finally {
+            $stream->close();
+        }
+
+        return $buffer;
+    }
+
     /** An image goes up as ONE `image_url` data URL; the API returns one page for it. */
     public function acceptsMultiFrameImages(): bool
     {
@@ -142,9 +170,14 @@ final class MistralOcrDriver implements OcrDriver
         // The host was allow-listed above; a redirect would let the endpoint
         // send the document bytes somewhere that was not (SEC-SSRF-001), so
         // the client never follows one — a 3xx is a failed call, not a hop.
+        // `stream => true`: the body is NOT buffered by the client — it is
+        // read below in bounded chunks and abandoned the moment it exceeds
+        // the cap, so an allow-listed endpoint cannot exhaust the worker's
+        // memory before the size check runs (SEC-EXTRESP-001).
         $response = Http::withToken((string) config('kb.ocr.mistral.api_key'))
             ->acceptJson()
             ->withoutRedirecting()
+            ->withOptions(['stream' => true])
             ->timeout((int) config('kb.ocr.mistral.timeout', 120))
             ->post($url, [
                 'model' => (string) config('kb.ocr.mistral.model', 'mistral-ocr-latest'),
@@ -167,11 +200,7 @@ final class MistralOcrDriver implements OcrDriver
             throw new RuntimeException('Mistral OCR response is not JSON (content-type "'.mb_substr($contentType, 0, 60).'").');
         }
         $maxBody = max(1, (int) config('kb.ocr.mistral.max_response_bytes', 64 * 1024 * 1024));
-        if (strlen($response->body()) > $maxBody) {
-            throw new RuntimeException('Mistral OCR response exceeds the configured size limit.');
-        }
-
-        $payload = $response->json();
+        $payload = json_decode($this->readBounded($response->toPsrResponse()->getBody(), $maxBody), true);
         if (! is_array($payload) || ! isset($payload['pages']) || ! is_array($payload['pages'])) {
             throw new RuntimeException('Mistral OCR response has no `pages` list.');
         }

@@ -90,7 +90,7 @@ final class SourceTypeTest extends TestCase
         $this->assertSame('application/octet-stream', SourceType::UNKNOWN->toMime());
     }
 
-    public function test_is_binary_only_true_for_pdf_and_docx(): void
+    public function test_is_binary_true_for_pdf_docx_and_image_only(): void
     {
         $this->assertFalse(SourceType::MARKDOWN->isBinary());
         $this->assertFalse(SourceType::TEXT->isBinary());

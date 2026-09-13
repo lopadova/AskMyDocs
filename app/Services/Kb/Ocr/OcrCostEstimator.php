@@ -140,8 +140,8 @@ final class OcrCostEstimator
             // it was uploaded under (the sniffer accepts any raster and the
             // batch row only stores the family MIME), so the modal can never
             // quote a run the ingest will refuse.
-            $imageBytes = Storage::disk($stagingDisk)->get($stagingPath);
-            if (! is_string($imageBytes)) {
+            $imageBytes = $this->readStaged($stagingDisk, $stagingPath);
+            if ($imageBytes === null) {
                 // R14 — a failed read is not an empty image to price.
                 return ['id' => $id, 'would_ocr' => false, 'pages' => 0, 'cost' => 0.0, 'reason' => 'staged_file_unreadable', 'pages_exact' => true];
             }
@@ -168,8 +168,8 @@ final class OcrCostEstimator
             return ['id' => $id, 'would_ocr' => false, 'pages' => 0, 'cost' => 0.0, 'reason' => 'staged_file_missing', 'pages_exact' => true];
         }
 
-        $bytes = Storage::disk($stagingDisk)->get($stagingPath);
-        if (! is_string($bytes)) {
+        $bytes = $this->readStaged($stagingDisk, $stagingPath);
+        if ($bytes === null) {
             // R14 — a failed read is not an empty scan to price as one page.
             return ['id' => $id, 'would_ocr' => false, 'pages' => 0, 'cost' => 0.0, 'reason' => 'staged_file_unreadable', 'pages_exact' => true];
         }
@@ -195,6 +195,23 @@ final class OcrCostEstimator
         }
 
         return $this->priced($id, $pages, $probe['verdict'] === PdfTextLayerProbe::MIXED ? 'mixed_pdf' : 'scanned_pdf', $exact, $sdkMetered);
+    }
+
+    /**
+     * The staged bytes, or null when the object cannot be read — a Flysystem
+     * adapter may THROW on an unreadable or concurrently deleted object as
+     * readily as return a non-string; both are the item's own
+     * `staged_file_unreadable` state, never a 500 for the whole estimate.
+     */
+    private function readStaged(string $stagingDisk, string $stagingPath): ?string
+    {
+        try {
+            $bytes = Storage::disk($stagingDisk)->get($stagingPath);
+        } catch (\Throwable) {
+            return null;
+        }
+
+        return is_string($bytes) ? $bytes : null;
     }
 
     /**

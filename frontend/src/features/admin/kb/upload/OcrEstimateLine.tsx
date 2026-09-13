@@ -67,6 +67,9 @@ export function OcrEstimateLine({ state, estimate, errorMessage }: OcrEstimateLi
     }
 
     const pending = estimate.items.filter((i) => i.would_ocr);
+    // A staged object that is gone or cannot be read is a failure the modal
+    // must state (R14): commit will fail that item, whatever OCR would do.
+    const unreadable = estimate.items.filter((i) => i.reason === 'staged_file_missing' || i.reason === 'staged_file_unreadable');
     const overLimit = estimate.items.filter((i) => i.reason === 'too_many_pages' || i.reason === 'too_many_bytes' || i.reason === 'pages_uncountable' || i.reason === 'multi_frame_image');
     const uncountable = estimate.items.filter((i) => i.reason === 'pages_uncountable').length;
     const multiFrame = estimate.items.filter((i) => i.reason === 'multi_frame_image').length;
@@ -84,6 +87,10 @@ export function OcrEstimateLine({ state, estimate, errorMessage }: OcrEstimateLi
             uncountable > 0 ? `${files(uncountable)} ha${uncountable === 1 ? 's' : 've'} a page count that cannot be verified (the PDF could not be parsed), which the configured ${estimate.driver} driver refuses to run without` : '',
             multiFrame > 0 ? `${files(multiFrame)} ${multiFrame === 1 ? 'is a multi-frame TIFF' : 'are multi-frame TIFFs'} the ${estimate.driver} driver would transcribe one frame of (split into one image per page)` : '',
         ].filter(Boolean).join('; ') + ' — refused before any driver runs.';
+    const unreadableNote = unreadable.length === 0
+        ? ''
+        : `${files(unreadable.length)} cannot be read on the staging disk (missing or unreadable) — committing will fail ${unreadable.length === 1 ? 'it' : 'them'}.`;
+    const problems = [refusal, unreadableNote].filter(Boolean).join(' ');
 
     // R14 — never promise a run the server will refuse: the driver cannot
     // run here (missing binary, remote driver without KB_OCR_ALLOW_REMOTE).
@@ -99,10 +106,10 @@ export function OcrEstimateLine({ state, estimate, errorMessage }: OcrEstimateLi
         );
     }
 
-    if (pending.length === 0 && overLimit.length > 0) {
+    if (pending.length === 0 && problems !== '') {
         return (
             <p data-testid="kb-upload-ocr-estimate" data-state="ready" data-ocr-enabled="true" data-ocr-pages="0" role="alert" style={{ ...base, color: 'var(--err)' }}>
-                {refusal}
+                {problems}
             </p>
         );
     }
@@ -131,7 +138,7 @@ export function OcrEstimateLine({ state, estimate, errorMessage }: OcrEstimateLi
                 ? <>metered per token by the provider (no page rate, so no estimate up front); FinOps records the real spend<span data-testid="kb-upload-ocr-estimate-metering" data-metering="sdk" /></>
                 : <>estimated <strong data-testid="kb-upload-ocr-estimate-cost">{formatCost(estimate.total_cost, estimate.currency)}</strong>{' '}
                 at {formatCost(estimate.rate_per_page, estimate.currency)}/page, metered by FinOps</>}.
-            {overLimit.length > 0 ? ` ${refusal}` : ''}
+            {problems !== '' ? ` ${problems}` : ''}
         </p>
     );
 }

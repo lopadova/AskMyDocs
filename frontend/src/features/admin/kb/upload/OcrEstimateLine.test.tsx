@@ -190,6 +190,41 @@ describe('OcrEstimateLine', () => {
         expect(el.textContent).not.toContain('cannot be verified');
     });
 
+    it('ON with a staged file that cannot be read — states the failure instead of "no file needs OCR"', () => {
+        const unreadable: OcrEstimate = {
+            ...on,
+            total_pages: 0,
+            total_cost: 0,
+            items: [
+                { id: 'u', would_ocr: false, pages: 0, pages_exact: true, cost: 0, reason: 'staged_file_unreadable' },
+                { id: 'm', would_ocr: false, pages: 0, pages_exact: true, cost: 0, reason: 'staged_file_missing' },
+            ],
+        };
+        render(<OcrEstimateLine state="ready" estimate={unreadable} />);
+        const el = screen.getByTestId('kb-upload-ocr-estimate');
+        expect(el).toHaveAttribute('role', 'alert');
+        expect(el.textContent).toContain('2 files cannot be read on the staging disk');
+        expect(el.textContent).toContain('committing will fail them');
+        expect(el.textContent).not.toContain('No file needs OCR');
+    });
+
+    it('ON with pending files AND an unreadable one — the failure is stated next to the estimate', () => {
+        const mixed: OcrEstimate = {
+            ...on,
+            total_pages: 2,
+            total_cost: 0.008,
+            items: [
+                { id: 'ok', would_ocr: true, pages: 2, pages_exact: true, cost: 0.008, reason: 'scanned_pdf' },
+                { id: 'u', would_ocr: false, pages: 0, pages_exact: true, cost: 0, reason: 'staged_file_unreadable' },
+            ],
+        };
+        render(<OcrEstimateLine state="ready" estimate={mixed} />);
+        const text = screen.getByTestId('kb-upload-ocr-estimate').textContent ?? '';
+        expect(text).toContain('OCR will run on 1 file');
+        expect(text).toContain('1 file cannot be read on the staging disk');
+        expect(text).toContain('committing will fail it');
+    });
+
     it('marks a floor page count with ≥ when the PDF could not be parsed', () => {
         const floor: OcrEstimate = { ...on, total_pages: 3, items: [{ id: 'f', would_ocr: true, pages: 3, pages_exact: false, cost: 0.012, reason: 'scanned_pdf' }] };
         render(<OcrEstimateLine state="ready" estimate={floor} />);

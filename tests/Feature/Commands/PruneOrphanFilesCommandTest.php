@@ -152,6 +152,28 @@ class PruneOrphanFilesCommandTest extends TestCase
         $this->assertTrue(Storage::disk('kb')->directoryExists("docs/orphan.md.ocr/{$run}"));
     }
 
+    /**
+     * The reference gate resolves each row's RECORDED disk + prefix: a row
+     * on another disk that shares the logical `source_path` does not keep an
+     * orphaned tree on this disk alive.
+     */
+    public function test_a_row_on_another_disk_does_not_protect_a_dangling_ocr_tree_on_this_one(): void
+    {
+        Storage::fake('kb');
+        Storage::fake('kb-other');
+        $run = str_repeat('abcdef0123456789', 4);
+        Storage::disk('kb')->put("docs/elsewhere.md.ocr/{$run}/result.json", '{}');
+        // Same logical path, recorded on ANOTHER disk: not a reference to this key.
+        $other = $this->seedDoc('docs/elsewhere.md', 'he');
+        KnowledgeDocument::withoutGlobalScopes()->whereKey($other->id)->update(['metadata' => json_encode(['disk' => 'kb-other', 'prefix' => ''])]);
+
+        $this->travel(OcrFigureStore::inFlightGraceSeconds() + 60)->seconds();
+        $this->artisan('kb:prune-orphan-files')
+            ->expectsOutputToContain('dangling_ocr=1 purged=1')
+            ->assertSuccessful();
+        $this->assertFalse(Storage::disk('kb')->directoryExists('docs/elsewhere.md.ocr'));
+    }
+
     public function test_a_dangling_ocr_tree_is_swept_only_once_it_has_aged_past_the_in_flight_grace(): void
     {
         Storage::fake('kb');

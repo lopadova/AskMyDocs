@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Services\Kb\DocumentDeleter;
 use App\Services\Kb\Ocr\OcrFigureStore;
 use App\Models\KnowledgeDocument;
 use App\Support\KbDiskResolver;
@@ -48,7 +49,7 @@ class PruneOrphanFilesCommand extends Command
         // from the disk AND from every row (a hard delete that kept an
         // in-flight run, a failed first ingest whose source was never
         // written): nothing else ever sweeps them.
-        $danglingOcr = $this->detectDanglingOcrTrees($storage, $allFiles, $prefix);
+        $danglingOcr = $this->detectDanglingOcrTrees($storage, $allFiles, $prefix, $disk);
 
         if ($markdownFiles === [] && $danglingOcr === []) {
             $this->info("No markdown files found on disk [{$disk}].");
@@ -112,7 +113,7 @@ class PruneOrphanFilesCommand extends Command
      * @param  array<int,string>  $allFiles
      * @return array<int,string> disk-relative source keys (the tree is `{key}.ocr`)
      */
-    private function detectDanglingOcrTrees($storage, array $allFiles, string $prefix): array
+    private function detectDanglingOcrTrees($storage, array $allFiles, string $prefix, string $disk): array
     {
         $onDisk = array_flip(array_map(static fn (string $f): string => KbPath::normalize($f), $allFiles));
         $suffix = OcrFigureStore::DIR_SUFFIX;
@@ -136,19 +137,18 @@ class PruneOrphanFilesCommand extends Command
             return [];
         }
 
+        // The reference gate is the deleter's: a row protects the tree only
+        // when its RECORDED disk + prefix resolve to this very key on this
+        // very disk — a row on another disk, or under another prefix, that
+        // happens to share the logical `source_path` must not keep an
+        // orphaned tree alive forever (nor, conversely, be ignored).
+        $deleter = app(DocumentDeleter::class);
         $dangling = [];
-        foreach (array_chunk($keys, 1000) as $chunk) {
-            $relative = array_map(fn (string $k): string => $this->stripPrefix($k, $prefix), $chunk);
-            $known = array_flip(KnowledgeDocument::withoutGlobalScopes()
-                ->whereIn('source_path', $relative)
-                ->pluck('source_path')
-                ->all());
-            foreach ($chunk as $i => $key) {
-                if (isset($known[$relative[$i]])) {
-                    continue;
-                }
-                $dangling[] = $key;
+        foreach ($keys as $key) {
+            if ($deleter->documentReferencingStorageKey($disk, $key, $this->stripPrefix($key, $prefix)) !== null) {
+                continue;
             }
+            $dangling[] = $key;
         }
         sort($dangling);
 

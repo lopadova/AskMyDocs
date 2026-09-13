@@ -324,11 +324,15 @@ final class OcrService
                     // SEC-EXTRESP-001 — the input cap bounds what leaves; the
                     // RESPONSE of a remote driver is validated against the
                     // same number before anything is stored, recorded or
-                    // metered: more pages than the document has (or than the
-                    // cap admits) is an invalid answer, not extra spend.
-                    if ($driver->isRemote() && $result->pageCount() > $pages) {
+                    // metered. A remote driver only ever receives an EXACT
+                    // page count (an uncountable PDF never leaves), so the
+                    // answer must carry exactly that many pages: more is
+                    // spend the cap did not admit, fewer is a truncated
+                    // document that would be recorded, reused and metered
+                    // as if it were complete.
+                    if ($driver->isRemote() && $result->pageCount() !== $pages) {
                         throw new \RuntimeException(sprintf(
-                            'OCR driver "%s" returned %d pages for "%s" (at most %d allowed); the response is discarded — nothing is stored, recorded or metered.',
+                            'OCR driver "%s" returned %d pages for "%s", a %d-page document; the response is discarded — nothing is stored, recorded or metered.',
                             $driver->name(),
                             $result->pageCount(),
                             $filename,
@@ -693,9 +697,9 @@ final class OcrService
      * @return array{dispatched: bool, document_id: int, source_path: string, driver: string, run_key: string}
      *
      * @throws UnprocessableEntityHttpException when OCR is disabled, the driver is
-     *   unavailable, the source is not OCR-able, the file is gone from disk, or
-     *   the job would refuse it anyway (page/byte cap, unverifiable page count
-     *   on a remote driver)
+     *   unavailable, the source is not OCR-able, the file is gone from disk or
+     *   cannot be read, or the job would refuse it anyway (page/byte cap,
+     *   unverifiable page count on a remote driver)
      */
     public function rerun(KnowledgeDocument $document, string $actor): array
     {
@@ -740,12 +744,17 @@ final class OcrService
         // R14 — the same limits the job enforces, checked here so a re-run
         // the job would refuse (page/byte cap, unverifiable page count on a
         // remote driver) is a 422 now, not a queued failure later.
-        $bytes = Storage::disk($disk)->get($fullPath);
+        // R14 — `exists()` does not promise the read: an unreadable source
+        // (a thrown adapter error, or a non-string / empty read) is the same
+        // deliberate 422 as a missing one — never empty bytes fed to the
+        // limit check and a queued re-run that dies later, never a raw 500.
+        try {
+            $bytes = Storage::disk($disk)->get($fullPath);
+        } catch (\Throwable $e) {
+            throw new UnprocessableEntityHttpException("Source file could not be read on disk [{$disk}]: {$sourcePath}.", $e);
+        }
         if (! is_string($bytes) || $bytes === '') {
-            // R14 — `exists()` does not promise the read: an unreadable
-            // source is a loud failure, never empty bytes fed to the limit
-            // check and a queued re-run that dies later.
-            throw new \RuntimeException("Source file could not be read on disk [{$disk}]: {$sourcePath}.");
+            throw new UnprocessableEntityHttpException("Source file could not be read on disk [{$disk}]: {$sourcePath}.");
         }
         try {
             $this->assertWithinLimits((string) $document->mime_type, $bytes, basename($sourcePath), $driver);

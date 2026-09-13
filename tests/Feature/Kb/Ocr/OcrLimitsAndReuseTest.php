@@ -386,21 +386,59 @@ final class OcrLimitsAndReuseTest extends TestCase
      * stored, recorded or metered.
      */
     #[Test]
-    public function a_remote_response_with_more_pages_than_the_document_is_discarded_before_anything_is_recorded(): void
+    public function a_remote_response_whose_page_count_differs_from_the_document_is_discarded_before_anything_is_recorded(): void
     {
+        config(['kb.ocr.driver' => 'mistral-ocr', 'kb.ocr.allow_remote' => true, 'kb.ocr.mistral.api_key' => 'k']);
+
+        // More pages than the one-page image: spend the cap never admitted.
         Http::fake(['https://api.mistral.eu/*' => Http::response(['pages' => [
             ['index' => 0, 'markdown' => 'one'], ['index' => 1, 'markdown' => 'two'], ['index' => 2, 'markdown' => 'three'],
         ]], 200)]);
-        config(['kb.ocr.driver' => 'mistral-ocr', 'kb.ocr.allow_remote' => true, 'kb.ocr.mistral.api_key' => 'k']);
-
         try {
             $this->app->make(OcrConverter::class)->convert($this->image());
             $this->fail('three pages for a one-page image must be refused');
         } catch (\RuntimeException $e) {
             $this->assertStringContainsString('returned 3 pages', $e->getMessage());
-            $this->assertStringContainsString('at most 1 allowed', $e->getMessage());
+            $this->assertStringContainsString('a 1-page document', $e->getMessage());
         }
         $this->assertSame([], Storage::disk('kb')->allFiles('docs/scan.png.ocr'), 'nothing recorded, no figure stored');
+    }
+
+    /** Fewer pages than the document: a truncated answer that would otherwise be recorded, reused and metered as if complete. */
+    #[Test]
+    public function a_remote_response_with_fewer_pages_than_the_document_is_discarded_too(): void
+    {
+        config(['kb.ocr.driver' => 'mistral-ocr', 'kb.ocr.allow_remote' => true, 'kb.ocr.mistral.api_key' => 'k']);
+        Http::fake(['https://api.mistral.eu/*' => Http::response(['pages' => [['index' => 0, 'markdown' => 'only one']]], 200)]);
+        $scan = new SourceDocument(
+            sourcePath: 'docs/two.pdf',
+            mimeType: 'application/pdf',
+            bytes: \Tests\Fixtures\Pdf\PdfFixtureBuilder::build(['  ', '  '], [1, 2]),
+            externalUrl: null,
+            externalId: null,
+            connectorType: 'local',
+            metadata: [],
+        );
+        try {
+            $this->app->make(\App\Services\Kb\Converters\PdfConverter::class)->convert($scan);
+            $this->fail('one page for a two-page scan must be refused');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('returned 1 pages', $e->getMessage());
+            $this->assertStringContainsString('a 2-page document', $e->getMessage());
+        }
+        $this->assertSame([], Storage::disk('kb')->allFiles('docs/two.pdf.ocr'), 'nothing recorded');
+    }
+
+    /** SEC-EXTRESP-001 — the response body is read in bounded chunks and abandoned past the cap, never buffered whole first. */
+    #[Test]
+    public function mistral_abandons_a_response_larger_than_the_cap_while_reading_it(): void
+    {
+        config(['kb.ocr.driver' => 'mistral-ocr', 'kb.ocr.allow_remote' => true, 'kb.ocr.mistral.api_key' => 'k', 'kb.ocr.mistral.max_response_bytes' => 256]);
+        Http::fake(['https://api.mistral.eu/*' => Http::response(['pages' => [['index' => 0, 'markdown' => str_repeat('x', 4096)]]], 200)]);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('exceeds the configured size limit');
+        $this->app->make(OcrConverter::class)->convert($this->image());
     }
 
     #[Test]

@@ -29,20 +29,44 @@ final class OcrMarkdown
             $keep['images/'.$name] = true;
         }
 
-        return (string) preg_replace_callback(
+        // Inline images: `![alt](target)` — kept only for a stored figure.
+        $markdown = (string) preg_replace_callback(
             '/!\[([^\]]*)\]\(([^)]*)\)/',
-            static function (array $m) use ($keep): string {
-                if (isset($keep[trim($m[2])])) {
-                    return $m[0];
-                }
-                $alt = trim($m[1]);
-                if ($alt === '' || strcasecmp($alt, 'figure') === 0) {
-                    return '*[Figure]*';
-                }
+            static fn (array $m): string => isset($keep[trim($m[2])]) ? $m[0] : self::placeholder($m[1]),
+            $markdown,
+        );
+        // Reference-style images — `![alt][id]`, `![alt][]`, `![alt]` — resolve
+        // through a `[id]: url` definition the renderer honours just as it
+        // honours an inline target; the store never writes a figure that way,
+        // so every one of them becomes text (the definition line itself stays:
+        // without an image reference it is at most a plain link).
+        $markdown = (string) preg_replace_callback(
+            '/!\[([^\]]*)\](?:\[[^\]]*\])?(?!\()/',
+            static fn (array $m): string => self::placeholder($m[1]),
+            $markdown,
+        );
 
-                return str_starts_with(strtolower($alt), 'figure') ? "*[{$alt}]*" : "*[Figure: {$alt}]*";
+        // Raw `<img>` tags: the SPA renderer does not render raw HTML today,
+        // but the persisted Markdown must not depend on that (ADR 0030 exports
+        // it, other renderers may read it): a tag becomes the same text.
+        return (string) preg_replace_callback(
+            '/<img\b[^>]*>/i',
+            static function (array $m): string {
+                $alt = preg_match('/\balt\s*=\s*(?:"([^"]*)"|\'([^\']*)\')/i', $m[0], $a) === 1 ? ($a[1] !== '' ? $a[1] : ($a[2] ?? '')) : '';
+
+                return self::placeholder($alt);
             },
             $markdown,
         );
+    }
+
+    private static function placeholder(string $alt): string
+    {
+        $alt = trim($alt);
+        if ($alt === '' || strcasecmp($alt, 'figure') === 0) {
+            return '*[Figure]*';
+        }
+
+        return str_starts_with(strtolower($alt), 'figure') ? "*[{$alt}]*" : "*[Figure: {$alt}]*";
     }
 }
