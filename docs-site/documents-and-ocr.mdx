@@ -167,9 +167,11 @@ them is bounded in code before any egress (SEC-LLM-001 gates 2 and 7):
   api.mistral.ai`), validates the response's content type and size, caps
   each returned figure at `KB_OCR_MAX_FIGURE_BYTES`, stores a figure under
   the format its **bytes** are (a blob that is no raster is dropped),
-  validates the page numbering (every `index` a whole number inside the
-  returned list, no number claimed twice — a duplicate would collide two
-  figures on one path, an out-of-range one would persist a bogus page) and
+  validates every page entry (each one an object; every `index` a whole
+  number inside the returned list, no number claimed twice — a duplicate
+  would collide two figures on one path, an out-of-range one would persist
+  a bogus page, a malformed entry is an invalid response, never one silently
+  dropped from a result recorded as complete) and
   treats an empty page list as an invalid answer, never a recorded run of
   zero pages.
 - A remote driver's **response** is validated against the same page number
@@ -220,6 +222,13 @@ time its run could legitimately have taken. A second worker ingesting the same b
 for it, looks again, and reuses the run the first worker recorded — one bill,
 one directory, never two nondeterministic remote results interleaved in it. A
 forced re-run has its own attempt identity and never touches a recorded run.
+A recorded run is looked up by the driver's **identity** (name, fingerprint,
+capabilities), not by its availability: identical bytes re-ingested after a
+deployment that switched remote egress off, or lost a binary, still reuse the
+run that driver recorded — a reuse is a read, no egress, no bill — and the
+egress gate / availability check applies only when a driver call is actually
+needed. The run key also carries `KB_OCR_MAX_PAGES` (a page-by-page driver on
+an unverified PDF records at most the cap), so a changed cap is a new run.
 The **write phase** of a run (figures + `result.json`, never the driver call)
 and a purge of the `{source}.ocr/` directory exclude each other on a second,
 per-directory lock: a purge holds it for the whole removal and re-checks the
@@ -335,9 +344,10 @@ caps, or a staged object whose bytes are no raster — or no PDF — any more,
 `unrecognised_bytes`), so the modal never promises a run the server will not
 perform (R14). The driver verdict is per **kind** of input: every item carries
 its own `driver_available` (a PDF needs the rasteriser's Poppler binaries, an
-image does not), the batch flag is false as soon as one staged item is
-blocked, and the modal names only the files that would fail while still
-quoting the ones the driver can take. The modal's file picker filters on the extensions
+image does not), the batch flag is false as soon as one staged item that
+**needs** the driver (it would OCR, or OCR itself refused it) is blocked —
+a text PDF or a text file never blocks a batch — and the modal names only
+the files that would fail while still quoting the ones the driver can take. The modal's file picker filters on the extensions
 `GET /api/auth/me` delivers under `kb_upload.accepted_extensions` — the
 backend's `SourceType::knownExtensions()`, images only while OCR is on —
 so the SPA keeps no second list of formats (R18).
@@ -386,7 +396,7 @@ No schema change. Everything lands in JSON columns that already exist:
 | `KB_PDFTOTEXT_BIN` | `pdftotext` | Poppler binary the PDF converter falls back to before OCR when smalot cannot parse a file. |
 | `KB_OCR_RATE_PER_PAGE` | `0.004` | Per-page rate for locally-priced drivers and the estimate. |
 | `KB_OCR_FIGURES_ENABLED` | `true` | Write figures to `{source}.ocr/{run}/images/`. |
-| `KB_OCR_JOB_TIMEOUT` | `3600` | Wall-clock budget of one OCR run, enforced by every driver (`OcrRunBudget`: a page-by-page engine bounds each process by what is left and stops with `run_too_long` once it is spent — a deterministic refusal the job never retries; a whole-file engine's timeout is capped by it). The run lease, the ingest job timeout (`OcrService::jobTimeoutFor()`) and the re-run lock are all derived from it, so the queue's `retry_after` (`REDIS_QUEUE_RETRY_AFTER` / `DB_QUEUE_RETRY_AFTER`) only has to exceed this budget plus its margins (~520 s) — a shorter value is logged at every dispatch it endangers, because Laravel would re-reserve a still-running job on another worker. |
+| `KB_OCR_JOB_TIMEOUT` | `3600` | Wall-clock budget of one OCR run, enforced by every driver (`OcrRunBudget`: a page-by-page engine bounds each process — `pdfinfo`, `pdftoppm`, every page, every provider call — by what is left when it starts and stops with `run_too_long` once it is spent; a whole-file engine's timeout is capped by it). Any process or provider call that hits its timeout is the same terminal `run_too_long` (the same page would time out again), never a generic error the job retries. The run lease, the ingest job timeout (`OcrService::jobTimeoutFor()`) and the re-run lock are all derived from it, so the queue's `retry_after` (`REDIS_QUEUE_RETRY_AFTER` / `DB_QUEUE_RETRY_AFTER`) only has to exceed this budget plus its margins (~520 s) — a shorter value is logged at every dispatch it endangers, because Laravel would re-reserve a still-running job on another worker. |
 | `KB_OCR_MAX_PAGES` / `KB_OCR_MAX_BYTES` | `200` / `26214400` | Refuse before any driver runs; reasons `too_many_pages` / `too_many_bytes`. Pages are counted format-independently (PDF parser, TIFF frames, 1 for other images); an unparseable PDF has only a floor and is refused for a remote driver with `pages_uncountable`. The same gate verifies the bytes against the declared type (a `%PDF-` header, or a PNG / JPEG / TIFF / WebP signature) for **every** ingress — upload, JSON ingest, folder walk, connector — and refuses anything else with `unrecognised_bytes`, so no driver, remote or local, is ever handed a mislabelled file. A multi-frame TIFF is refused with `multi_frame_image` by every driver that transcribes one frame per image (`tesseract`, `vision-llm`, `mistral-ocr`; `docling` accepts it). `KB_OCR_MAX_BYTES` bounds the **source file**; what a page renders to is bounded separately (next row). |
 | `KB_OCR_RASTER_MAX_PAGE_PX` / `KB_OCR_RASTER_MAX_PAGE_BYTES` | `6000` / `10485760` | Rendered-page bounds for the page-by-page drivers (`tesseract`, `vision-llm`): the render DPI is lowered from the page geometry `pdfinfo` reports so that no page's long side exceeds `PX` pixels (a small file can declare a 200-inch page; one that cannot fit at 50 DPI is refused before rendering), the produced PNG is re-measured, and a rendered page over either bound is refused with `rendered_page_too_large` **before** it is decoded locally or posted to the vision provider. `KB_OCR_PDFINFO_BIN` names the `pdfinfo` binary (poppler-utils, beside `pdftoppm`). |
 | `KB_OCR_MAX_FIGURE_BYTES` | `10485760` | Largest figure a driver may hand back. |

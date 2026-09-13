@@ -230,6 +230,37 @@ final class KbUploadOcrTest extends TestCase
         $this->assertStringContainsString('pdftoppm', (string) $response->json('data.driver_error'));
     }
 
+    /** R30 — the estimate reads the batch through the tenant-scoped binding: a foreign batch is a 404, never another tenant's staged metadata. */
+    public function test_estimate_is_tenant_scoped(): void
+    {
+        config(['kb.ocr.enabled' => true]);
+        $admin = $this->makeAdmin();
+        $tenant = app(\App\Support\TenantContext::class);
+        $previous = $tenant->current();
+        $tenant->set('acme');
+        $foreign = \App\Models\KbIngestBatch::create(['project_key' => 'x', 'status' => \App\Models\KbIngestBatch::STATUS_STAGED]);
+        $tenant->set($previous);
+
+        $this->actingAs($admin)->getJson("/api/admin/kb/uploads/{$foreign->id}/estimate")->assertStatus(404);
+    }
+
+    /** A batch with nothing that needs the driver (a text PDF) is not blocked by a prerequisite only a scan would need. */
+    public function test_estimate_does_not_block_a_batch_that_needs_no_driver(): void
+    {
+        config(['kb.ocr.enabled' => true, 'kb.ocr.driver' => 'tesseract', 'kb.ocr.tesseract.binary' => '/bin/sh', 'kb.ocr.tesseract.pdftoppm' => '/nonexistent/pdftoppm', 'kb.ocr.tesseract.pdfinfo' => '/bin/sh']);
+        $admin = $this->makeAdmin();
+        $batchId = $this->actingAs($admin)->post('/api/admin/kb/uploads', ['project_key' => 'legal', 'files' => [
+            UploadedFile::fake()->createWithContent('text.pdf', PdfFixtureBuilder::build(['This page carries plenty of extractable text for the probe to count.'])),
+        ]])->assertStatus(201)->json('batch.id');
+
+        $this->actingAs($admin)->getJson("/api/admin/kb/uploads/{$batchId}/estimate")
+            ->assertOk()
+            ->assertJsonPath('data.items.0.reason', 'text_layer_present')
+            ->assertJsonPath('data.items.0.driver_available', false)
+            ->assertJsonPath('data.driver_available', true)
+            ->assertJsonPath('data.driver_error', null);
+    }
+
     /**
      * The PDF branch applies the SAME signature check the service applies
      * before a driver runs: a staged object that is no PDF any more is

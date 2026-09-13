@@ -654,6 +654,45 @@ final class OcrLimitsAndReuseTest extends TestCase
         $this->assertNotSame($second->extractionMeta['ocr']['run'], $third->extractionMeta['ocr']['run'], 'figures off is another output');
     }
 
+    /** The page cap shapes what a page-by-page driver records for an unverified PDF: a changed cap is a new run. */
+    #[Test]
+    public function the_run_key_changes_with_the_page_cap(): void
+    {
+        $converter = $this->app->make(OcrConverter::class);
+        $first = $converter->convert($this->image());
+        config(['kb.ocr.max_pages' => 50]);
+        $second = $converter->convert($this->image());
+        $this->assertNotSame($first->extractionMeta['ocr']['run'], $second->extractionMeta['ocr']['run']);
+        $this->assertFalse((bool) $second->extractionMeta['ocr']['reused']);
+    }
+
+    /**
+     * A recorded run stays reusable when the driver that produced it cannot
+     * run here today (remote egress switched off after a deployment): the
+     * lookup needs the driver's identity, the gate applies only before a
+     * driver call — a reuse is a read, no egress, no bill.
+     */
+    #[Test]
+    public function a_recorded_run_is_reused_even_when_its_driver_cannot_run_here_any_more(): void
+    {
+        config(['kb.ocr.driver' => 'mistral-ocr', 'kb.ocr.allow_remote' => true, 'kb.ocr.mistral.api_key' => 'k', 'kb.ocr.mistral.url' => 'https://api.mistral.eu/v1/ocr', 'kb.ocr.mistral.allowed_hosts' => ['api.mistral.eu']]);
+        Http::fake(['https://api.mistral.eu/*' => Http::response(['pages' => [['index' => 0, 'markdown' => 'Recorded by mistral']]], 200)]);
+        $converter = $this->app->make(OcrConverter::class);
+        $first = $converter->convert($this->image());
+        $this->assertFalse((bool) $first->extractionMeta['ocr']['reused']);
+        Http::assertSentCount(1);
+
+        config(['kb.ocr.allow_remote' => false]);
+        $again = $converter->convert($this->image());
+        $this->assertTrue((bool) $again->extractionMeta['ocr']['reused'], 'the recorded run is reused without the driver');
+        $this->assertStringContainsString('Recorded by mistral', $again->markdown);
+        Http::assertSentCount(1);
+
+        // Other bytes have no recorded run: the gate refuses the call.
+        $this->expectException(\App\Services\Kb\Ocr\OcrDriverUnavailableException::class);
+        $converter->convert($this->image('docs/other.png', "\x89PNG\r\n\x1a\n".pack('N', 13).'IHDR'.pack('NN', 2, 2)."\x08\x02\x00\x00\x00".pack('N', 0)));
+    }
+
     #[Test]
     public function the_run_key_changes_with_the_engine_so_another_driver_never_overwrites_a_run(): void
     {

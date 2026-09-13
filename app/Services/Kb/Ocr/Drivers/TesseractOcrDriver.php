@@ -14,6 +14,7 @@ use App\Services\Kb\Ocr\OcrResult;
 use App\Services\Kb\Ocr\OcrRunBudget;
 use Symfony\Component\Process\ExecutableFinder;
 use Symfony\Component\Process\Exception\ProcessFailedException;
+use Symfony\Component\Process\Exception\ProcessTimedOutException;
 use Symfony\Component\Process\Process;
 
 /**
@@ -102,8 +103,9 @@ final class TesseractOcrDriver implements OcrDriver
             $request,
             (string) config('kb.ocr.tesseract.pdftoppm', 'pdftoppm'),
             (int) config('kb.ocr.tesseract.dpi', 200),
-            $budget->bound($timeout),
+            $timeout,
             (string) config('kb.ocr.tesseract.pdfinfo', 'pdfinfo'),
+            $budget,
         );
 
         try {
@@ -141,6 +143,9 @@ final class TesseractOcrDriver implements OcrDriver
         $text->setTimeout($timeout);
         try {
             $text->mustRun();
+        } catch (ProcessTimedOutException) {
+            // Terminal: the same page would time out again (`run_too_long`).
+            throw OcrRunBudget::timedOut('page '.$number, 'tesseract', $timeout);
         } catch (ProcessFailedException $e) {
             // ProcessFailedException embeds stdout — the recognised text. Keep
             // the diagnostic bounded and free of page content (SEC-LOG-001).

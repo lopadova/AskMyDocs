@@ -254,7 +254,11 @@ would pay for every document again. `OcrService` therefore records each run
 at `{source}.ocr/{run}/result.json` (pages, confidence, figure descriptors,
 driver, engine meta) next to the figures, and reuses it when the same bytes
 arrive through the same engine (the run key embeds the driver fingerprint) —
-no driver call, no FinOps row, `metadata.converter.ocr.reused = true`.
+no driver call, no FinOps row, `metadata.converter.ocr.reused = true`. The
+lookup needs only the driver's identity: a run recorded by a driver that
+cannot run here today (remote egress off, a binary gone) is still reused —
+the egress gate and the availability check apply before a driver call, never
+before the lookup.
 `kb:ocr` (`metadata.ocr.force`) bypasses the reuse on purpose; a run whose
 figures went missing is redone. The recorded text is **raw** OCR output on
 the KB disk, the same posture as the source file itself (ADR 0020 keeps the

@@ -145,6 +145,39 @@ final class RasterisesPdfTest extends TestCase
         $this->assertNotSame([], $raster['pages']);
     }
 
+    /**
+     * Each subprocess is bounded by what is LEFT of the run budget when it
+     * starts, and a render that outlives it is the terminal `run_too_long`
+     * — never a generic error the job retries three times.
+     */
+    public function test_a_render_that_outlives_the_run_budget_is_a_terminal_refusal(): void
+    {
+        $slow = $this->temp('pdftoppm_slow_');
+        file_put_contents($slow, "#!/bin/sh\nsleep 3\n");
+        chmod($slow, 0755);
+        $pdfinfo = $this->pdfinfoStub("Page    1 size: 612 x 792 pts\n");
+        // 1 s left of the budget: the render is bounded to it.
+        $budget = \App\Services\Kb\Ocr\OcrRunBudget::startedAt(microtime(true) - 99.0, 100);
+
+        try {
+            $this->driver()->run($this->pdf('slow.pdf'), $slow, 150, $pdfinfo, $budget);
+            $this->fail('a render past the budget must be refused');
+        } catch (OcrLimitExceededException $e) {
+            $this->assertSame('run_too_long', $e->reason);
+            $this->assertStringContainsString('pdftoppm exceeded its timeout', $e->getMessage());
+        }
+        $this->assertSame([], glob(sys_get_temp_dir().'/kb_ocr_*/input.pdf') ?: [], 'the working directory is removed on refusal');
+
+        // A budget already spent refuses before pdfinfo even runs.
+        $spent = \App\Services\Kb\Ocr\OcrRunBudget::startedAt(microtime(true) - 200.0, 100);
+        try {
+            $this->driver()->run($this->pdf('spent.pdf'), $slow, 150, $pdfinfo, $spent);
+            $this->fail('a spent budget must refuse');
+        } catch (OcrLimitExceededException $e) {
+            $this->assertSame('run_too_long', $e->reason);
+        }
+    }
+
     public function test_a_missing_pdfinfo_binary_is_an_unavailable_driver_not_an_unbounded_render(): void
     {
         [$pdftoppm, $argv] = $this->pdftoppmStub();
@@ -288,9 +321,9 @@ final class RasterisesPdfTest extends TestCase
             use RasterisesPdf;
 
             /** @return array{dir: string, pages: array<int, string>} */
-            public function run(OcrRequest $request, string $pdftoppm, int $dpi, string $pdfinfo): array
+            public function run(OcrRequest $request, string $pdftoppm, int $dpi, string $pdfinfo, ?\App\Services\Kb\Ocr\OcrRunBudget $budget = null): array
             {
-                return $this->rasterise($request, $pdftoppm, $dpi, 30, $pdfinfo);
+                return $this->rasterise($request, $pdftoppm, $dpi, 30, $pdfinfo, $budget);
             }
 
             public function clean(string $dir): void

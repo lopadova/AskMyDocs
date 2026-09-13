@@ -186,9 +186,11 @@ TXT;
             $request,
             (string) config('kb.ocr.vision_llm.pdftoppm', 'pdftoppm'),
             (int) config('kb.ocr.vision_llm.dpi', 150),
-            $budget->bound((int) config('kb.ocr.vision_llm.timeout', 300)),
+            (int) config('kb.ocr.vision_llm.timeout', 300),
             (string) config('kb.ocr.vision_llm.pdfinfo', 'pdfinfo'),
+            $budget,
         );
+        $callTimeout = (int) config('kb.ocr.vision_llm.timeout', 300);
 
         try {
             $pages = [];
@@ -211,13 +213,25 @@ TXT;
                 );
 
                 // The filename is user-controlled and adds nothing to the
-                // task: it never enters the prompt (SEC-LLM-001 gate 4).
-                $response = $agent->prompt(
-                    "Transcribe page {$number}.",
-                    [new Base64Image(base64_encode($bytes), $mime)],
-                    $provider->name(),
-                    $model,
-                );
+                // task: it never enters the prompt (SEC-LLM-001 gate 4). The
+                // provider call is bounded by what is left of the run budget
+                // (the SDK's per-call timeout, the same seam SdkChat uses); a
+                // call that outlives it is the terminal `run_too_long`.
+                $bound = $budget->bound($callTimeout);
+                try {
+                    $response = $agent->prompt(
+                        "Transcribe page {$number}.",
+                        [new Base64Image(base64_encode($bytes), $mime)],
+                        $provider->name(),
+                        $model,
+                        $bound,
+                    );
+                } catch (\Throwable $e) {
+                    if ($budget->remaining() <= 0) {
+                        throw OcrRunBudget::timedOut($request->filename, "the vision provider call for page {$number}", $bound);
+                    }
+                    throw $e;
+                }
 
                 [$markdown, $confidence] = $this->split((string) $response->text);
                 $pages[] = new OcrPage(number: $number, markdown: self::stripImageLinks($markdown), confidence: $confidence);

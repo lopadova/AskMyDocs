@@ -150,4 +150,35 @@ final class OcrDriverRegistry
     {
         return $this->resolve((string) config('kb.ocr.driver', 'tesseract'));
     }
+
+    /**
+     * The registered driver by name WITHOUT the egress gate: its identity
+     * (name, fingerprint, capabilities) is what a run key is derived from,
+     * and a recorded run must stay reusable when the driver that produced
+     * it cannot run here today (remote egress switched off, a binary gone
+     * after a deployment) — reuse is a read, nothing leaves and nothing is
+     * billed. The gate applies before `recognise()`, not before the lookup.
+     *
+     * @throws OcrDriverUnavailableException when the name is not registered (or `fake` in production)
+     */
+    public function identity(string $name): OcrDriver
+    {
+        if (! $this->has($name)) {
+            throw new OcrDriverUnavailableException(sprintf(
+                'Unknown OCR driver "%s". Registered: %s.',
+                $name,
+                implode(', ', $this->names()),
+            ));
+        }
+        if ($name === 'fake' && ! app()->environment(['local', 'testing', 'development'])) {
+            throw new OcrDriverUnavailableException('The "fake" OCR driver is not available in production.');
+        }
+
+        return $this->drivers[$name];
+    }
+
+    public function configuredIdentity(): OcrDriver
+    {
+        return $this->identity((string) config('kb.ocr.driver', 'tesseract'));
+    }
 }

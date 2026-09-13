@@ -48,6 +48,21 @@ final class OcrRunBudget
     }
 
     /**
+     * A process or provider call that hit its timeout is the same terminal
+     * refusal: the same page would time out again, so the job never retries
+     * it (`run_too_long`, never a generic error re-run three times).
+     */
+    public static function timedOut(string $filename, string $what, int $timeout): OcrLimitExceededException
+    {
+        return new OcrLimitExceededException(sprintf(
+            'OCR refused for "%s": %s exceeded its timeout (%d s, bounded by KB_OCR_JOB_TIMEOUT) — nothing is recorded or metered.',
+            $filename,
+            $what,
+            $timeout,
+        ), 'run_too_long');
+    }
+
+    /**
      * @throws OcrLimitExceededException  once the budget is spent (`run_too_long`)
      */
     public function assertRemaining(string $filename, ?float $now = null): void

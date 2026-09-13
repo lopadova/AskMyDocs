@@ -17,6 +17,7 @@ use App\Services\Kb\Ocr\OcrRunBudget;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\Process\ExecutableFinder;
 use Symfony\Component\Process\Exception\ProcessFailedException;
+use Symfony\Component\Process\Exception\ProcessTimedOutException;
 use Symfony\Component\Process\Process;
 
 /**
@@ -159,6 +160,9 @@ final class DoclingOcrDriver implements OcrDriver
     {
         try {
             $process->mustRun();
+        } catch (ProcessTimedOutException) {
+            // Terminal (`run_too_long`): the same document would time out again.
+            throw OcrRunBudget::timedOut('the document', $label, (int) ($process->getTimeout() ?? 0));
         } catch (ProcessFailedException $e) {
             $stderr = trim(preg_replace('/\s+/', ' ', $process->getErrorOutput()) ?? '');
             throw new \RuntimeException(sprintf(

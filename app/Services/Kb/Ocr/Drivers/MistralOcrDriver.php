@@ -185,16 +185,28 @@ final class MistralOcrDriver implements OcrDriver
         // read below in bounded chunks and abandoned the moment it exceeds
         // the cap, so an allow-listed endpoint cannot exhaust the worker's
         // memory before the size check runs (SEC-EXTRESP-001).
-        $response = Http::withToken((string) config('kb.ocr.mistral.api_key'))
-            ->acceptJson()
-            ->withoutRedirecting()
-            ->withOptions(['stream' => true])
-            ->timeout(OcrRunBudget::start()->bound((int) config('kb.ocr.mistral.timeout', 120)))
-            ->post($url, [
-                'model' => (string) config('kb.ocr.mistral.model', 'mistral-ocr-latest'),
-                'document' => $document,
-                'include_image_base64' => (bool) config('kb.ocr.figures.enabled', true),
-            ]);
+        $budget = OcrRunBudget::start();
+        $callTimeout = $budget->bound((int) config('kb.ocr.mistral.timeout', 120));
+        try {
+            $response = Http::withToken((string) config('kb.ocr.mistral.api_key'))
+                ->acceptJson()
+                ->withoutRedirecting()
+                ->withOptions(['stream' => true])
+                ->timeout($callTimeout)
+                ->post($url, [
+                    'model' => (string) config('kb.ocr.mistral.model', 'mistral-ocr-latest'),
+                    'document' => $document,
+                    'include_image_base64' => (bool) config('kb.ocr.figures.enabled', true),
+                ]);
+        } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            // A call that ran out of its (budget-bounded) timeout is the
+            // terminal `run_too_long`; any other transport failure stays a
+            // retryable error.
+            if ($budget->remaining() <= 0 || str_contains(strtolower($e->getMessage()), 'timed out')) {
+                throw OcrRunBudget::timedOut($request->filename, 'the Mistral OCR call', $callTimeout);
+            }
+            throw $e;
+        }
 
         if (! $response->successful()) {
             throw new RuntimeException(sprintf(
@@ -229,9 +241,15 @@ final class MistralOcrDriver implements OcrDriver
         // an out-of-range index would persist a bogus `## Page` heading —
         // the service's count check (exactly the admitted pages) sees
         // neither, so both are refused here before anything is stored.
-        $entries = array_values(array_filter($payload['pages'], 'is_array'));
+        // Every entry counts: a malformed one is an invalid response, never
+        // an entry silently dropped from a result that is then recorded as
+        // complete (SEC-EXTRESP-001).
+        $entries = array_values($payload['pages']);
         $seen = [];
         foreach ($entries as $i => $page) {
+            if (! is_array($page)) {
+                throw new RuntimeException(sprintf('Mistral OCR returned a malformed page entry (%s) for "%s".', gettype($page), $request->filename));
+            }
             $index = $page['index'] ?? $i;
             if (! is_int($index) || $index < 0 || $index >= count($entries)) {
                 throw new RuntimeException(sprintf(

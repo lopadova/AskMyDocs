@@ -231,7 +231,7 @@ final class OcrService
 
     /**
      * The engine variant a run key is derived from: the driver's fingerprint
-     * plus the figure switch and, when figures are on, the figure caps
+     * plus the page cap, the figure switch and, when figures are on, the figure caps
      * (`KB_OCR_MAX_FIGURE_BYTES`, `KB_OCR_MAX_FIGURES`,
      * `KB_OCR_MAX_FIGURES_TOTAL_BYTES`) — they shape the output too (a
      * figure past them is omitted, the Markdown rewritten), so a changed cap
@@ -239,7 +239,10 @@ final class OcrService
      */
     public static function runVariant(string $fingerprint, bool $figuresEnabled): string
     {
-        return $fingerprint.';figures='.($figuresEnabled
+        // The page cap shapes the output too: a page-by-page driver on a PDF
+        // whose count could not be verified records at most the cap, so a
+        // changed cap must not reuse a run made under the old one.
+        return $fingerprint.';pages='.max(1, (int) config('kb.ocr.max_pages', 200)).';figures='.($figuresEnabled
             ? sprintf('1:%d:%d:%d', (int) config('kb.ocr.max_figure_bytes', 10485760), (int) config('kb.ocr.max_figures_per_run', 200), (int) config('kb.ocr.max_figures_total_bytes', 104857600))
             : '0');
     }
@@ -413,15 +416,25 @@ final class OcrService
         }
 
         $start = hrtime(true);
-        $driver = $this->driver();
-        $unavailable = $driver->unavailableReason(self::isPdfMime($doc->mimeType));
-        if ($unavailable !== null) {
-            throw new OcrDriverUnavailableException(sprintf(
-                'OCR driver "%s" is not available on this host: %s',
-                $driver->name(),
-                $unavailable,
-            ));
-        }
+        // The driver's IDENTITY (name, fingerprint, capabilities) is enough
+        // for the limits, the run key and the recorded-run lookup: a run
+        // recorded by a driver that cannot run here today (remote egress
+        // switched off, a binary gone after a deployment) is still reused —
+        // a read, no egress, no bill. The gate below runs only when a driver
+        // call is actually needed.
+        $driver = $this->registry->configuredIdentity();
+        $forPdf = self::isPdfMime($doc->mimeType);
+        $assertRunnable = function () use ($driver, $forPdf): void {
+            $this->registry->configured(); // egress gate (ADR 0029 §7)
+            $unavailable = $driver->unavailableReason($forPdf);
+            if ($unavailable !== null) {
+                throw new OcrDriverUnavailableException(sprintf(
+                    'OCR driver "%s" is not available on this host: %s',
+                    $driver->name(),
+                    $unavailable,
+                ));
+            }
+        };
 
         $filename = basename($doc->sourcePath);
         $disk = (string) ($doc->metadata['disk'] ?? config('kb.sources.disk', 'kb'));
@@ -466,6 +479,8 @@ final class OcrService
             // read-only, outside the reservation (it holds no reference).
             $reused = $reuseAllowed ? $this->reusableResult($disk, $doc->sourcePath, $prefix, $runKey, $driver->name()) : null;
             if ($reused === null) {
+                $assertRunnable();
+
                 return $this->dryRunPreview($doc, $converterName, $reason, $driver, $runKey, $start);
             }
             $result = $reused['result'];
@@ -504,6 +519,7 @@ final class OcrService
                     $written = $reused['written'];
                     $this->underAssetsLock($disk, $doc->sourcePath, $prefix, fn () => $this->figures->refreshReservation($disk, $doc->sourcePath, $prefix, $runKey));
                 } else {
+                    $assertRunnable();
                     $result = $driver->recognise(new OcrRequest(
                         bytes: $doc->bytes,
                         mimeType: $doc->mimeType,

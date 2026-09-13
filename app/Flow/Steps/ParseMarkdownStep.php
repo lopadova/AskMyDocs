@@ -146,9 +146,18 @@ final class ParseMarkdownStep implements FlowStepHandler
         return FlowStepResult::success($output, $impact);
     }
 
+    /**
+     * The same key the ingest and the deleter resolve: prefix + source
+     * through the ONE normaliser (`KbPath::normalize()` — backslashes,
+     * repeated separators and traversal segments handled once), never a
+     * hand-rolled join a `..` in a stored or configured prefix could slip
+     * past (SEC-PATH-001).
+     */
     private function resolveStoragePath(string $normalizedRelativePath, string $prefix): string
     {
-        return ltrim(trim($prefix, '/').'/'.ltrim($normalizedRelativePath, '/'), '/');
+        $prefix = trim(str_replace('\\', '/', $prefix), '/');
+
+        return $prefix === '' ? $normalizedRelativePath : KbPath::normalize($prefix.'/'.$normalizedRelativePath);
     }
 
     private function tryParseCanonical(string $projectKey, string $sourcePath, string $markdown): ?\App\Services\Kb\Canonical\CanonicalParsedDocument

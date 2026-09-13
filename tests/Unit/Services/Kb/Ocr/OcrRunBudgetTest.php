@@ -37,6 +37,14 @@ final class OcrRunBudgetTest extends TestCase
     }
 
     #[Test]
+    public function a_process_that_hit_its_timeout_is_the_same_terminal_refusal(): void
+    {
+        $e = OcrRunBudget::timedOut('scan.pdf', 'pdftoppm', 7);
+        $this->assertSame('run_too_long', $e->reason);
+        $this->assertStringContainsString('pdftoppm exceeded its timeout (7 s', $e->getMessage());
+    }
+
+    #[Test]
     public function the_budget_comes_from_config_and_caps_the_effective_worst_case(): void
     {
         config(['kb.ocr.job_timeout' => 900, 'kb.ocr.tesseract.timeout' => 300]);

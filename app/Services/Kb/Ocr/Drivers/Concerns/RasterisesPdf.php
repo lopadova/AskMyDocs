@@ -7,10 +7,12 @@ namespace App\Services\Kb\Ocr\Drivers\Concerns;
 use App\Services\Kb\Ocr\OcrDriverUnavailableException;
 use App\Services\Kb\Ocr\OcrLimitExceededException;
 use App\Services\Kb\Ocr\OcrRequest;
+use App\Services\Kb\Ocr\OcrRunBudget;
 use App\Services\Kb\Ocr\TiffFrameCounter;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\Process\ExecutableFinder;
 use Symfony\Component\Process\Exception\ProcessFailedException;
+use Symfony\Component\Process\Exception\ProcessTimedOutException;
 use Symfony\Component\Process\Process;
 
 /**
@@ -45,7 +47,7 @@ trait RasterisesPdf
         return null;
     }
 
-    protected function rasterise(OcrRequest $request, string $pdftoppmBinary, int $dpi, int $timeout = 300, string $pdfinfoBinary = 'pdfinfo'): array
+    protected function rasterise(OcrRequest $request, string $pdftoppmBinary, int $dpi, int $timeout = 300, string $pdfinfoBinary = 'pdfinfo', ?OcrRunBudget $budget = null): array
     {
         // Private to the worker's user (0700): the source and its rendered
         // pages are document bytes on their way to an engine or a provider,
@@ -113,16 +115,26 @@ trait RasterisesPdf
         // would need less than the 50-DPI floor to fit is refused outright.
         // (`pdftoppm -W/-H` are crop sizes, not a scale bound: they would
         // silently discard the text outside the box, never shrink the render.)
+        // Each subprocess is bounded by what is LEFT of the run budget when
+        // it starts (pdfinfo, then pdftoppm), never by a value computed once
+        // that each could consume in full; a timeout is the terminal
+        // `run_too_long`, never a generic error the job retries.
         try {
-            $dpi = $this->boundedDpi($input, $pdfinfoBinary, $maxPages, $dpi, $maxPx, $timeout, $request->filename);
+            $budget?->assertRemaining($request->filename);
+            $dpi = $this->boundedDpi($input, $pdfinfoBinary, $maxPages, $dpi, $maxPx, $budget?->bound($timeout) ?? $timeout, $request->filename);
+            $budget?->assertRemaining($request->filename);
         } catch (\Throwable $e) {
             $this->cleanupAfterFailure($dir, $e);
             throw $e;
         }
+        $renderTimeout = max(1, $budget?->bound($timeout) ?? $timeout);
         $process = new Process([$pdftoppmBinary, '-r', (string) $dpi, '-f', '1', '-l', (string) $maxPages, '-png', $input, $dir.'/page']);
-        $process->setTimeout(max(1, $timeout));
+        $process->setTimeout($renderTimeout);
         try {
             $process->mustRun();
+        } catch (ProcessTimedOutException $e) {
+            $this->cleanupAfterFailure($dir, $e = OcrRunBudget::timedOut($request->filename, 'pdftoppm', $renderTimeout));
+            throw $e;
         } catch (ProcessFailedException $e) {
             $this->cleanupAfterFailure($dir, $e);
             $stderr = trim(preg_replace('/\s+/', ' ', $process->getErrorOutput()) ?? '');
@@ -230,7 +242,11 @@ trait RasterisesPdf
         }
         $process = new Process([$pdfinfoBinary, '-f', '1', '-l', (string) $maxPages, $input]);
         $process->setTimeout(max(1, $timeout));
-        $process->run();
+        try {
+            $process->run();
+        } catch (ProcessTimedOutException) {
+            throw OcrRunBudget::timedOut($filename, 'pdfinfo', max(1, $timeout));
+        }
         // The geometry is the ONLY bound applied before the (expensive)
         // render, so it has to be complete: a pdfinfo that failed may have
         // printed the sizes of some pages and not of an oversized one, and a

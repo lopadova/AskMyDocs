@@ -127,6 +127,17 @@ final class MistralOcrDriverEndpointTest extends TestCase
         $this->assertStringContainsString('*[Figure: b]*', $result->pages[0]->markdown);
     }
 
+    /** SEC-EXTRESP-001 — a malformed page entry is an invalid response, never an entry silently dropped from a result recorded as complete. */
+    public function test_a_malformed_page_entry_is_an_invalid_response(): void
+    {
+        config(['kb.ocr.allow_remote' => true, 'kb.ocr.mistral.api_key' => 'k', 'kb.ocr.mistral.url' => 'https://api.mistral.eu/v1/ocr', 'kb.ocr.mistral.allowed_hosts' => ['api.mistral.eu']]);
+        Http::fake(['https://api.mistral.eu/*' => Http::response(['pages' => [['index' => 0, 'markdown' => 'ok'], 'bad']], 200)]);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('malformed page entry (string)');
+        app(MistralOcrDriver::class)->recognise(new OcrRequest('%PDF-1.4 x', 'application/pdf', 'a.pdf'));
+    }
+
     /** Pages come back in page order whatever order the provider listed them in. */
     public function test_pages_are_ordered_by_their_index(): void
     {
