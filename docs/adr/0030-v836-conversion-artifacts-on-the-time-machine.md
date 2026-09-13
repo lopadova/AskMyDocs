@@ -111,8 +111,14 @@ A database transaction cannot roll back a filesystem write, so the publish is
 **compensated, not "inside" the transaction**, and race-safe against two
 concurrent identical ingests: each writer writes to its own temporary name
 (`{final}.{uuid}.tmp`), commits the row with the **final** path recorded, and
-only after commit moves its temp file into place (`exists()` on the final path
-→ the identical bytes are already there, drop the temp). The loser of the
+only after commit moves its temp file into place. A final file that already
+exists is **not** taken on faith: the path is the content hash, so the store
+re-hashes what is there — identical bytes → the temp is dropped; anything else
+(a truncated or replaced file) → the verified temp is moved over it, an atomic
+rename on a local disk, so a corrupt pre-existing artifact is repaired by the
+next identical ingest instead of being kept and later reported as
+`integrity: mismatch` (§5) while the temp that was correct is thrown away.
+The loser of the
 unique-constraint race never touches the final path: its failure branch
 deletes **its own temp file only**. A crash between commit and move leaves a
 row whose artifact is missing — `contentFor()` falls back to reconstruction
@@ -128,8 +134,10 @@ one hour and artifacts whose `(tenant, project, path, version_hash)` no row
 (trashed rows included, R2) references, only after that authoritative check.
 Failure, idempotency and a genuinely concurrent identical-ingest test cover
 all of it. In `markdown_only` the original binary is deleted only after the
-**final move has succeeded** — `publish()` throws on a failed move, and the
-drop runs after it, never on the database commit alone — and only when every
+**final move has succeeded** — `publish()` throws on a failed move, reuses a
+pre-existing final only after re-hashing it (a corrupt one is replaced, never
+kept), and the drop runs after it, never on the database commit alone — and
+only when every
 other row referencing the same storage key (any tenant, trashed included) has
 its artifact **present on disk**: a `markdown_path` whose file never landed (a
 publish that failed after commit, repaired later by the backfill) does not

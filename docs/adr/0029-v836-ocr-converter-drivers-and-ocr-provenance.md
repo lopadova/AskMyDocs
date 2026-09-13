@@ -199,12 +199,22 @@ Two byte limits, not one. `KB_OCR_MAX_BYTES` bounds the **source file**; it
 says nothing about what a page renders to — a small compressed PDF can declare
 a 200-inch MediaBox and rasterise to gigapixels, or carry image streams that
 expand far beyond the file. The page-by-page drivers therefore bound the
-**rendered page** separately: `pdftoppm -W/-H KB_OCR_RASTER_MAX_PAGE_PX`
-(default 6000) clips every page to a fixed pixel box before it is rendered
-(poppler only clips — a smaller page keeps its size), and a rendered page over
-`KB_OCR_RASTER_MAX_PAGE_BYTES` (default 10 MiB) is a deterministic refusal
-(`rendered_page_too_large`) raised **before** the page is decoded locally or
-posted to a vision provider, with the working directory removed. For
+**rendered page** separately, and **before the render**: the rasteriser reads
+the page geometry `pdfinfo` reports (points, 72 per inch) for the pages that
+will be rendered and lowers the render DPI so that no page's long side exceeds
+`KB_OCR_RASTER_MAX_PAGE_PX` (default 6000) — `pdftoppm -W/-H` are crop sizes,
+not a scale bound, and are not used: a crop would silently discard the text
+outside the box, never shrink the render. A page that would need less than the
+50-DPI floor to fit (a 200-inch MediaBox) is refused before anything is
+rendered; a PDF for which `pdfinfo` reports no page size is refused the same
+way (an unbounded render is never attempted); a missing `pdfinfo`
+(`KB_OCR_PDFINFO_BIN`, poppler-utils beside `pdftoppm`) is an unavailable
+driver. The PNG that was actually produced is re-measured against the same
+box (defence in depth), and a rendered page over
+`KB_OCR_RASTER_MAX_PAGE_BYTES` (default 10 MiB) or over the box is a
+deterministic refusal (`rendered_page_too_large`) raised **before** the page
+is decoded locally or posted to a vision provider, with the working directory
+removed. For
 `vision-llm` this is the egress invariant made concrete: what leaves is a
 rendered page, and no rendered page leaves unbounded. A
 whole-file engine (`docling`) cannot be told the size of what it is handed and
