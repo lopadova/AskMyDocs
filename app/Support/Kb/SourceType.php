@@ -214,4 +214,24 @@ enum SourceType: string
     {
         return ['png', 'jpg', 'jpeg', 'tif', 'tiff', 'webp'];
     }
+
+    /**
+     * The exact raster MIME an image extension stands for (ADR 0029 §2).
+     * `toMime()` returns the FAMILY label (`image/png`) because a source type
+     * is one value per family; every entry point that knows the extension —
+     * the folder walker, the upload staging — dispatches this exact MIME
+     * instead, so `knowledge_documents.mime_type` and the converter request
+     * name what the bytes are. Unknown extensions fall back to the family
+     * label; the OCR drivers still read the magic bytes before they build a
+     * data URL or pick an input format (`OcrRequest::effectiveMimeType()`).
+     */
+    public static function imageMimeFromExtension(string $extension): string
+    {
+        return match (strtolower(ltrim($extension, '.'))) {
+            'jpg', 'jpeg' => 'image/jpeg',
+            'tif', 'tiff' => 'image/tiff',
+            'webp' => 'image/webp',
+            default => 'image/png',
+        };
+    }
 }

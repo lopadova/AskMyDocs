@@ -187,6 +187,9 @@ final class KbUploadOcrTest extends TestCase
         $item = \App\Models\KbIngestBatchItem::query()->findOrFail((string) $resp->json('items.0.id'));
         $this->assertStringEndsWith('.jpg', (string) $item->staging_path);
         Storage::disk('kb-staging')->assertExists((string) $item->staging_path);
+        // ADR 0029 §2 — the exact raster MIME, never the family label, is what
+        // the commit dispatches and the document row records.
+        $this->assertSame('image/jpeg', (string) $item->mime_type);
     }
 
     public function test_estimate_counts_tiff_frames_and_applies_the_page_cap(): void

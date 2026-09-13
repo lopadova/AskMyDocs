@@ -25,12 +25,11 @@ final readonly class OcrRequest
     }
 
     /**
-     * The MIME the bytes actually are. Callers carry the FAMILY MIME
-     * (`image/png` for every raster — uploads, the folder walker and
-     * `knowledge_documents` all store `SourceType::IMAGE->toMime()`), so a
-     * driver that builds a data URL or picks an input format from the MIME
-     * must read the magic bytes, not the label. Falls back to the declared
-     * MIME when the bytes match no known signature.
+     * The MIME the bytes actually are. The entry points dispatch the exact
+     * raster MIME (`SourceType::imageMimeFromExtension()`, ADR 0029 §2), but
+     * an extension is still a label: a driver that builds a data URL or picks
+     * an input format from the MIME reads the magic bytes and trusts those.
+     * Falls back to the declared MIME when the bytes match no known signature.
      */
     public function effectiveMimeType(): string
     {

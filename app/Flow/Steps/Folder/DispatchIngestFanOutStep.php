@@ -113,10 +113,14 @@ final class DispatchIngestFanOutStep implements FlowStepHandler
                 $failures[] = ['path' => $relative, 'reason' => 'unsupported_extension: '.$extension];
                 continue;
             }
+            // ADR 0029 §2 — an image is dispatched with its EXACT raster MIME
+            // (jpeg/tiff/webp), never the family label: the MIME reaches the
+            // converter registry and the document row as what the bytes are.
+            $mimeType = $sourceType === SourceType::IMAGE ? SourceType::imageMimeFromExtension($extension) : $sourceType->toMime();
 
             try {
                 if ($sync) {
-                    $this->ingestSync($storage, $disk, $prefix, $projectKey, $fullPath, $relative, $sourceType);
+                    $this->ingestSync($storage, $disk, $prefix, $projectKey, $fullPath, $relative, $mimeType);
                 } else {
                     IngestDocumentJob::dispatch(
                         projectKey: $projectKey,
@@ -124,7 +128,7 @@ final class DispatchIngestFanOutStep implements FlowStepHandler
                         disk: $disk,
                         title: null,
                         metadata: [],
-                        mimeType: $sourceType->toMime(),
+                        mimeType: $mimeType,
                         tenantId: $tenantId,
                     );
                 }
@@ -161,7 +165,7 @@ final class DispatchIngestFanOutStep implements FlowStepHandler
         string $projectKey,
         string $fullPath,
         string $relative,
-        SourceType $sourceType,
+        string $mimeType,
     ): void {
         if (! $storage->exists($fullPath)) {
             throw new RuntimeException("File vanished before ingestion: {$fullPath}");
@@ -172,7 +176,7 @@ final class DispatchIngestFanOutStep implements FlowStepHandler
             projectKey: $projectKey,
             source: new SourceDocument(
                 sourcePath: $relative,
-                mimeType: $sourceType->toMime(),
+                mimeType: $mimeType,
                 bytes: $bytes,
                 externalUrl: null,
                 externalId: null,

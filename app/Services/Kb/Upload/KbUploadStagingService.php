@@ -118,16 +118,22 @@ final class KbUploadStagingService
         $dir = "{$batch->tenant_id}/{$batch->id}";
         $storedName = "{$itemId}.{$this->stagingExtension($sourceType, $file)}";
         $stored = $disk->putFileAs($dir, $file, $storedName);
+        // ADR 0029 §2 — an image keeps its EXACT raster MIME (the sniffer
+        // verified the family from the magic bytes); the family label
+        // `image/png` is never what a jpeg is committed and ingested as.
+        $mimeType = $sourceType === SourceType::IMAGE
+            ? SourceType::imageMimeFromExtension($this->stagingExtension($sourceType, $file))
+            : $sourceType->toMime();
 
         if ($stored === false) {
-            $this->createItem($batch, $itemId, $original, '', $destination, $sourceType->toMime(), $sourceType->value, (int) $file->getSize(), KbIngestBatchItem::STATUS_FAILED, false, null, 'Failed to write to staging disk.');
+            $this->createItem($batch, $itemId, $original, '', $destination, $mimeType, $sourceType->value, (int) $file->getSize(), KbIngestBatchItem::STATUS_FAILED, false, null, 'Failed to write to staging disk.');
 
             return;
         }
 
         [$isCanonical, $warning] = $this->detectCanonical($sourceType, $disk, (string) $stored);
 
-        $this->createItem($batch, $itemId, $original, (string) $stored, $destination, $sourceType->toMime(), $sourceType->value, (int) $file->getSize(), KbIngestBatchItem::STATUS_STAGED, $isCanonical, $warning, null);
+        $this->createItem($batch, $itemId, $original, (string) $stored, $destination, $mimeType, $sourceType->value, (int) $file->getSize(), KbIngestBatchItem::STATUS_STAGED, $isCanonical, $warning, null);
     }
 
     /**

@@ -73,6 +73,29 @@ final class DispatchIngestFanOutStepTest extends TestCase
         Queue::assertPushed(IngestDocumentJob::class, fn (IngestDocumentJob $job) => $job->relativePath === 'docs/b.png' && $job->mimeType === 'image/png');
     }
 
+    /**
+     * ADR 0029 §2 — an image is dispatched with its EXACT raster MIME, never
+     * the family label `image/png`: the MIME reaches the converter registry
+     * and the document row as what the bytes are.
+     */
+    public function test_images_are_dispatched_with_their_exact_raster_mime(): void
+    {
+        Queue::fake();
+        config(['kb.ocr.enabled' => true]);
+        foreach (['docs/a.jpg', 'docs/b.jpeg', 'docs/c.tif', 'docs/d.tiff', 'docs/e.webp', 'docs/f.PNG'] as $path) {
+            Storage::disk('kb')->put($path, 'bytes');
+        }
+        $step = $this->app->make(DispatchIngestFanOutStep::class);
+
+        $result = $step->execute($this->context(['docs/a.jpg', 'docs/b.jpeg', 'docs/c.tif', 'docs/d.tiff', 'docs/e.webp', 'docs/f.PNG']));
+
+        $this->assertSame(6, $result->output['dispatched_count']);
+        $expected = ['docs/a.jpg' => 'image/jpeg', 'docs/b.jpeg' => 'image/jpeg', 'docs/c.tif' => 'image/tiff', 'docs/d.tiff' => 'image/tiff', 'docs/e.webp' => 'image/webp', 'docs/f.PNG' => 'image/png'];
+        foreach ($expected as $path => $mime) {
+            Queue::assertPushed(IngestDocumentJob::class, fn (IngestDocumentJob $job) => $job->relativePath === $path && $job->mimeType === $mime);
+        }
+    }
+
     public function test_invalid_path_recorded_as_failure_not_thrown(): void
     {
         Queue::fake();

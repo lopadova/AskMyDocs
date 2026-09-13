@@ -90,6 +90,13 @@ overlapping `supports()` predicates at boot (R23). A converter cannot look at
 the bytes to decide, so "OCR when the PDF is scanned" cannot be a second PDF
 converter. The split is therefore:
 
+- Every entry point dispatches an image with its **exact** raster MIME
+  (`image/jpeg`, `image/tiff`, `image/webp`, `image/png`) derived from the
+  extension — the folder walker and the upload staging through
+  `SourceType::imageMimeFromExtension()`, connectors with the MIME they carry —
+  so the converter registry and `knowledge_documents.mime_type` name what the
+  bytes are; the OCR drivers still read the magic bytes before they build a
+  data URL or pick an input format, so the label is never trusted for that.
 - `OcrConverter` claims **only** the four image MIMEs (`image/png`,
   `image/jpeg`, `image/tiff`, `image/webp`) and only while the flag is on.
 - `PdfConverter` stays the **sole** `application/pdf` match. When OCR is on it
