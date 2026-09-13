@@ -71,26 +71,60 @@ are tested on both ingest paths (R43).
 ### 3. The converted Markdown is a stored artifact — one core, both paths, compensated
 
 The exact string the chunker receives — after conversion and **before**
-chunking — is written to the `kb` disk at
-`{source_path}.versions/{version_hash}.md` and its path recorded in
-`knowledge_documents.markdown_path`, in `DocumentIngestor::persistDocumentAndChunks()`,
+chunking — is written to the `kb` disk (under `KB_PATH_PREFIX`) at
+`.artifacts/{tenant_id}/{project_key}/{source_path}.versions/{version_hash}.md`
+and its path recorded in `knowledge_documents.markdown_path`, in
+`DocumentIngestor::persistDocumentAndChunks()`,
 which both the Flow saga (`ParseMarkdownStep` converts → `PersistChunksStep` →
 `persistDrafts()`) and the direct path (`ingest()` → `persistFromDrafts()`)
 already share — **one core, both paths**, exactly as `ChunkRedactor` is wired.
 
-The write is **compensated, not "inside" the transaction**: the file is written
-first, the row records the path and commits, and if the commit fails the file
-is deleted in the failure branch. The path is unique per version row —
-`version_hash` is already unique per `(project_key, source_path)` and the row
-about to be inserted is the only one that can ever reference it — so no two
-rows (versions, or tenants on a shared disk, whose source keys differ by
-prefix) share an artifact and the compensating delete has nothing to race:
-there is nothing to reference-count. `kb:prune-archived-versions` additionally
-sweeps artifacts whose `version_hash` no row (trashed rows included, R2)
-references — orphans left by a crash between the write and the commit — and
-only after that authoritative check. Failure, idempotency and
-concurrent-version tests cover all three. In `markdown_only` the original
-binary is deleted only after the artifact commit (R4 return checked).
+`source_path` is prefix-free and the prefix is one global setting, so tenant
+and project are part of the key explicitly — **as safe segments, never
+verbatim**: each is admitted only when it matches
+`^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$` (no `/`, no `..`) and is otherwise
+replaced by `h-` + the first 24 hex of its SHA-256; the composed path is
+normalised with `KbPath::normalize()` and must resolve **inside** the artifact
+root (`realpath` containment where the disk is local). The `.artifacts/` root
+is a generated-asset subtree (`KbPath::isGeneratedAsset()`, ADR 0029): the
+folder walker and the orphan sweeps never read it back as a source.
+
+A database transaction cannot roll back a filesystem write, so the publish is
+**compensated, not "inside" the transaction**, and race-safe against two
+concurrent identical ingests: each writer writes to its own temporary name
+(`{final}.{uuid}.tmp`), commits the row with the **final** path recorded, and
+only after commit moves its temp file into place (`exists()` on the final path
+→ the identical bytes are already there, drop the temp). The loser of the
+unique-constraint race never touches the final path: its failure branch
+deletes **its own temp file only**. A crash between commit and move leaves a
+row whose artifact is missing — `contentFor()` falls back to reconstruction
+and says so (§5), and `kb:artifacts-backfill` repairs it. Today's database
+uniqueness is `uq_kb_doc_version = (project_key, source_path, version_hash)`
+— the tenant migration deferred rebuilding the composite uniques with
+`tenant_id` — so identical content at one path cannot be stored for two
+tenants today (a pre-existing limitation this ADR neither introduces nor
+fixes); the path already carries `tenant_id`, so the day the unique is rebuilt
+the artifact identity matches. There is nothing to reference-count.
+`kb:prune-archived-versions` additionally sweeps `.tmp` leftovers older than
+one hour and artifacts whose `(tenant, project, path, version_hash)` no row
+(trashed rows included, R2) references, only after that authoritative check.
+Failure, idempotency and a genuinely concurrent identical-ingest test cover
+all of it. In `markdown_only` the original binary is deleted only after the
+artifact commit (R4 return checked).
+
+Turning the flag on populates nothing by itself, so `kb:artifacts-backfill
+{--project=} {--tenant=} {--dry-run}` — **operator-only maintenance, a
+documented R44 exception** (a storage repair that can re-run OCR and spend;
+its authorization boundary is the console, `--tenant` validated as
+`kb:reembed-project` does) — re-converts every live row without an artifact
+whose effective retention mode retains Markdown (`full_copy`, `markdown_only`)
+and whose source is still on disk, and writes the artifact **without** creating
+a version when the converted bytes hash to the stored `document_hash`; a
+`hash_mismatch` (an engine changed since) is reported and **nothing is
+written** — an artifact must agree with the version's chunks; a missing source
+is reported, not invented; and a row whose effective mode is `reference_only`
+is reported as `intentionally_missing` even when a legacy source file is still
+on disk — the flag never changes a tenant's retention policy.
 
 The artifact is the **raw** converted Markdown, not the redacted chunks: the
 raw markdown is already the `document_hash` idempotency anchor and already
