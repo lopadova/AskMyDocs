@@ -440,6 +440,16 @@ return [
         // base64 images inside the response body).
         'max_figure_bytes' => (int) env('KB_OCR_MAX_FIGURE_BYTES', 10485760),
 
+        // Rendered-page bounds for the drivers that rasterise a PDF page by
+        // page (tesseract, vision-llm): the source byte cap above bounds the
+        // FILE, these bound what a page RENDERS to — the pixel box pdftoppm
+        // clips each page to, and the PNG size a page may reach before it is
+        // decoded locally or posted to a vision provider (ADR 0029 §4).
+        'raster' => [
+            'max_page_px' => (int) env('KB_OCR_RASTER_MAX_PAGE_PX', 6000),
+            'max_page_bytes' => (int) env('KB_OCR_RASTER_MAX_PAGE_BYTES', 10485760),
+        ],
+
         // Recorded-run reuse (ADR 0029 §5): the raw OCR pages of a run are
         // kept at {source}.ocr/{run}/result.json — beside the figures, under
         // the source's own ACL, purged with it — so identical bytes through

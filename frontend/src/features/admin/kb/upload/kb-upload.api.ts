@@ -146,6 +146,8 @@ export interface OcrEstimate {
     /** false when the configured driver cannot run here (binary missing, remote driver with KB_OCR_ALLOW_REMOTE off) */
     driver_available: boolean;
     driver_error: string | null;
+    /** per_page: total_cost = pages × rate_per_page; sdk: no page rate — the provider meters tokens, FinOps records the real spend */
+    metering: 'per_page' | 'sdk';
     currency: string;
     rate_per_page: number;
     total_pages: number;

@@ -34,7 +34,7 @@ final class OcrCostEstimator
 
     /**
      * @return array{
-     *   enabled: bool, driver: string, driver_available: bool, driver_error: ?string, currency: string, rate_per_page: float,
+     *   enabled: bool, driver: string, driver_available: bool, driver_error: ?string, metering: string, currency: string, rate_per_page: float,
      *   total_pages: int, total_cost: float,
      *   items: list<array{id: string, would_ocr: bool, pages: int, cost: float, reason: string, pages_exact: bool}>
      * }
@@ -43,6 +43,12 @@ final class OcrCostEstimator
     {
         $enabled = (bool) config('kb.ocr.enabled', false);
         $batch->loadMissing('items');
+        $driverStatus = $this->driverStatus($enabled);
+        // ADR 0029 §10 — `pages × rate` is the PerPage price; an Sdk driver
+        // (vision-llm) is metered per token by the laravel/ai lifecycle hook
+        // after the fact, so the estimate must not invent a page price for
+        // it: cost stays 0 and `metering` says why.
+        $this->sdkMetered = $driverStatus['metering'] === OcrMeteringMode::Sdk->value;
 
         $items = [];
         $totalPages = 0;
@@ -57,7 +63,6 @@ final class OcrCostEstimator
         }
 
         $base = $this->meter->estimate(0);
-        $driverStatus = $this->driverStatus($enabled);
 
         return [
             'enabled' => $enabled,
@@ -66,31 +71,37 @@ final class OcrCostEstimator
             // refuse (remote driver with the knob off, binary missing).
             'driver_available' => $driverStatus['available'],
             'driver_error' => $driverStatus['error'],
+            // per_page: total_cost = pages × rate_per_page; sdk: no page rate,
+            // the provider meters tokens and FinOps records the real spend.
+            'metering' => $driverStatus['metering'],
             'currency' => $base['currency'],
-            'rate_per_page' => $base['rate_per_page'],
+            'rate_per_page' => $this->sdkMetered ? 0.0 : $base['rate_per_page'],
             'total_pages' => $totalPages,
             'total_cost' => round($totalCost, 6),
             'items' => $items,
         ];
     }
 
+    private bool $sdkMetered = false;
+
     /**
-     * @return array{available: bool, error: ?string}
+     * @return array{available: bool, error: ?string, metering: string}
      */
     private function driverStatus(bool $enabled): array
     {
         if (! $enabled) {
-            return ['available' => false, 'error' => null];
+            return ['available' => false, 'error' => null, 'metering' => OcrMeteringMode::PerPage->value];
         }
         try {
             $driver = $this->registry->configured();
+            $metering = $driver->meteringMode()->value;
             if (! $driver->isAvailable()) {
-                return ['available' => false, 'error' => sprintf('OCR driver "%s" is not available on this host.', $driver->name())];
+                return ['available' => false, 'error' => sprintf('OCR driver "%s" is not available on this host.', $driver->name()), 'metering' => $metering];
             }
 
-            return ['available' => true, 'error' => null];
+            return ['available' => true, 'error' => null, 'metering' => $metering];
         } catch (Throwable $e) {
-            return ['available' => false, 'error' => $e->getMessage()];
+            return ['available' => false, 'error' => $e->getMessage(), 'metering' => OcrMeteringMode::PerPage->value];
         }
     }
 
@@ -171,7 +182,7 @@ final class OcrCostEstimator
     {
         $estimate = $this->meter->estimate($pages);
 
-        return ['id' => $id, 'would_ocr' => true, 'pages' => $estimate['pages'], 'cost' => $estimate['cost'], 'reason' => $reason, 'pages_exact' => $exact];
+        return ['id' => $id, 'would_ocr' => true, 'pages' => $estimate['pages'], 'cost' => $this->sdkMetered ? 0.0 : $estimate['cost'], 'reason' => $reason, 'pages_exact' => $exact];
     }
 
 }

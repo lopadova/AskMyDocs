@@ -242,7 +242,10 @@ Every OCR run is a FinOps line item with `purpose_tag = ocr`:
 
 The upload modal asks `GET /api/admin/kb/uploads/{batch}/estimate` in the
 review step — before commit — and shows how many files and pages would be
-OCR'd, with which driver, at what estimated cost. The estimate reads the
+OCR'd, with which driver, at what estimated cost — for a `per_page` driver;
+for an Sdk-metered driver (`vision-llm`) the response says `metering: sdk`,
+carries no page price (`rate_per_page` and every `cost` are `0`) and the modal
+says the provider meters tokens, so no page price is ever invented. The estimate reads the
 staged bytes and runs the probe; it never runs a driver, so it is free. It
 also says when the run would be refused (`driver_available: false` — a remote
 driver with the knob off, a missing binary — or a file over the page/byte
@@ -292,7 +295,8 @@ No schema change. Everything lands in JSON columns that already exist:
 | `KB_PDFTOTEXT_BIN` | `pdftotext` | Poppler binary the PDF converter falls back to before OCR when smalot cannot parse a file. |
 | `KB_OCR_RATE_PER_PAGE` | `0.004` | Per-page rate for locally-priced drivers and the estimate. |
 | `KB_OCR_FIGURES_ENABLED` | `true` | Write figures to `{source}.ocr/{run}/images/`. |
-| `KB_OCR_MAX_PAGES` / `KB_OCR_MAX_BYTES` | `200` / `26214400` | Refuse before any driver runs; reasons `too_many_pages` / `too_many_bytes`. Pages are counted format-independently (PDF parser, TIFF frames, 1 for other images); an unparseable PDF has only a floor and is refused for a remote driver with `pages_uncountable`. |
+| `KB_OCR_MAX_PAGES` / `KB_OCR_MAX_BYTES` | `200` / `26214400` | Refuse before any driver runs; reasons `too_many_pages` / `too_many_bytes`. Pages are counted format-independently (PDF parser, TIFF frames, 1 for other images); an unparseable PDF has only a floor and is refused for a remote driver with `pages_uncountable`. `KB_OCR_MAX_BYTES` bounds the **source file**; what a page renders to is bounded separately (next row). |
+| `KB_OCR_RASTER_MAX_PAGE_PX` / `KB_OCR_RASTER_MAX_PAGE_BYTES` | `6000` / `10485760` | Rendered-page bounds for the page-by-page drivers (`tesseract`, `vision-llm`): `pdftoppm` clips each page to a `PX × PX` pixel box (a small file can declare a 200-inch page), and a rendered page over the byte cap is refused with `rendered_page_too_large` **before** it is decoded locally or posted to the vision provider. |
 | `KB_OCR_MAX_FIGURE_BYTES` | `10485760` | Largest figure a driver may hand back. |
 | `KB_OCR_RUN_LOCK_WAIT` | `300` | Seconds a worker waits for the reservation of a run directory another worker is writing before letting the job retry; the recorded run is then reused. Needs an atomic lock store (Redis) in production. |
 | `KB_OCR_REUSE_ENABLED` | `true` | Record each run at `{source}.ocr/{run}/result.json` and reuse it for identical bytes through the same engine. |

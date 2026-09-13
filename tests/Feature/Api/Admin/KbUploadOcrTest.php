@@ -131,6 +131,37 @@ final class KbUploadOcrTest extends TestCase
         $this->assertStringContainsString('KB_OCR_ALLOW_REMOTE', (string) $this->actingAs($admin)->getJson("/api/admin/kb/uploads/{$batchId}/estimate")->json('data.driver_error'));
     }
 
+    /**
+     * ADR 0029 §10 — an Sdk-metered driver (vision-llm) has no page rate: the
+     * estimate must not price it as `pages × rate`; it says `metering: sdk`
+     * and reports no cost, and the modal says the provider meters tokens.
+     */
+    public function test_estimate_reports_no_page_price_for_an_sdk_metered_driver(): void
+    {
+        config(['kb.ocr.enabled' => true, 'kb.ocr.driver' => 'vision-llm', 'kb.ocr.allow_remote' => true]);
+        $admin = $this->makeAdmin();
+        $batchId = $this->actingAs($admin)->post('/api/admin/kb/uploads', [
+            'project_key' => 'legal',
+            'files' => [$this->png('scan.png')],
+        ])->assertStatus(201)->json('batch.id');
+
+        $this->actingAs($admin)->getJson("/api/admin/kb/uploads/{$batchId}/estimate")
+            ->assertOk()
+            ->assertJsonPath('data.driver', 'vision-llm')
+            ->assertJsonPath('data.metering', 'sdk')
+            ->assertJsonPath('data.rate_per_page', 0)
+            ->assertJsonPath('data.total_cost', 0)
+            ->assertJsonPath('data.items.0.would_ocr', true)
+            ->assertJsonPath('data.items.0.cost', 0);
+
+        // The per-page driver keeps its price (the additive contract, R27).
+        config(['kb.ocr.driver' => 'fake']);
+        $this->actingAs($admin)->getJson("/api/admin/kb/uploads/{$batchId}/estimate")
+            ->assertOk()
+            ->assertJsonPath('data.metering', 'per_page')
+            ->assertJsonPath('data.total_cost', 0.004);
+    }
+
     public function test_estimate_flags_an_image_over_the_byte_cap(): void
     {
         config(['kb.ocr.enabled' => true, 'kb.ocr.max_bytes' => 10]);

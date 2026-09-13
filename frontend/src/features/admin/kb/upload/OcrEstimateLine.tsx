@@ -120,8 +120,10 @@ export function OcrEstimateLine({ state, estimate, errorMessage }: OcrEstimateLi
         >
             OCR will run on <strong>{pending.length}</strong> file{pending.length === 1 ? '' : 's'} (
             {pending.some((i) => !i.pages_exact) ? '≥ ' : ''}{estimate.total_pages} page{estimate.total_pages === 1 ? '' : 's'}) with the <code>{estimate.driver}</code>{' '}
-            driver — estimated <strong data-testid="kb-upload-ocr-estimate-cost">{formatCost(estimate.total_cost, estimate.currency)}</strong>{' '}
-            at {formatCost(estimate.rate_per_page, estimate.currency)}/page, metered by FinOps.
+            driver — {estimate.metering === 'sdk'
+                ? <>metered per token by the provider (no page rate, so no estimate up front); FinOps records the real spend<span data-testid="kb-upload-ocr-estimate-metering" data-metering="sdk" /></>
+                : <>estimated <strong data-testid="kb-upload-ocr-estimate-cost">{formatCost(estimate.total_cost, estimate.currency)}</strong>{' '}
+                at {formatCost(estimate.rate_per_page, estimate.currency)}/page, metered by FinOps</>}.
             {overLimit.length > 0 ? ` ${refusal}` : ''}
         </p>
     );

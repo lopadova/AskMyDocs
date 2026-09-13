@@ -12,6 +12,7 @@ const on: OcrEstimate = {
     driver: 'fake',
     driver_available: true,
     driver_error: null,
+    metering: 'per_page',
     currency: 'USD',
     rate_per_page: 0.004,
     total_pages: 3,
@@ -69,6 +70,17 @@ describe('OcrEstimateLine', () => {
         expect(el.textContent).toContain('3 pages');
         expect(el.textContent).toContain('fake');
         expect(screen.getByTestId('kb-upload-ocr-estimate-cost').textContent).toContain('0.012');
+    });
+
+    it('ON flag state with an SDK-metered driver — says the provider meters tokens instead of inventing a page price', () => {
+        const sdk: OcrEstimate = { ...on, driver: 'vision-llm', metering: 'sdk', rate_per_page: 0, total_cost: 0, items: on.items.map((i) => ({ ...i, cost: 0 })) };
+        render(<OcrEstimateLine state="ready" estimate={sdk} />);
+        const el = screen.getByTestId('kb-upload-ocr-estimate');
+        expect(el.textContent).toContain('2 files');
+        expect(el.textContent).toContain('vision-llm');
+        expect(el.textContent).toContain('metered per token by the provider');
+        expect(screen.getByTestId('kb-upload-ocr-estimate-metering')).toHaveAttribute('data-metering', 'sdk');
+        expect(screen.queryByTestId('kb-upload-ocr-estimate-cost')).not.toBeInTheDocument();
     });
 
     it('ON flag state with nothing to OCR — says so explicitly instead of a zero cost', () => {

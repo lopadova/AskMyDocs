@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Kb\Ocr\Drivers\Concerns;
 
 use App\Services\Kb\Ocr\OcrDriverUnavailableException;
+use App\Services\Kb\Ocr\OcrLimitExceededException;
 use App\Services\Kb\Ocr\OcrRequest;
 use Symfony\Component\Process\ExecutableFinder;
 use Symfony\Component\Process\Exception\ProcessFailedException;
@@ -53,7 +54,13 @@ trait RasterisesPdf
         // WORK — a PDF the parser could not count (ADR 0029 §4) still renders
         // at most the cap, whatever its object table claims.
         $maxPages = max(1, (int) config('kb.ocr.max_pages', 200));
-        $process = new Process([$pdftoppmBinary, '-r', (string) min(600, max(50, $dpi)), '-f', '1', '-l', (string) $maxPages, '-png', $input, $dir.'/page']);
+        // The SOURCE byte cap (KB_OCR_MAX_BYTES) says nothing about what a
+        // page renders to: a small file can declare a 200-inch MediaBox and
+        // rasterise to gigapixels. `-W/-H` clip the rendered area to a fixed
+        // pixel box (poppler only clips — a smaller page keeps its size), so
+        // the render itself is bounded before any byte check can run.
+        $maxPx = max(500, (int) config('kb.ocr.raster.max_page_px', 6000));
+        $process = new Process([$pdftoppmBinary, '-r', (string) min(600, max(50, $dpi)), '-f', '1', '-l', (string) $maxPages, '-W', (string) $maxPx, '-H', (string) $maxPx, '-png', $input, $dir.'/page']);
         $process->setTimeout(max(1, $timeout));
         try {
             $process->mustRun();
@@ -84,6 +91,26 @@ trait RasterisesPdf
         if ($pages === []) {
             $this->cleanup($dir);
             throw new \RuntimeException('pdftoppm produced no pages.');
+        }
+
+        // RENDERED byte cap (ADR 0029 §4): what leaves for a remote vision
+        // provider — or what a local engine has to decode — is the rendered
+        // page, not the source file. A page over the cap is a deterministic
+        // refusal, raised before any egress and never retried.
+        $maxRenderedBytes = max(1, (int) config('kb.ocr.raster.max_page_bytes', 10485760));
+        foreach ($pages as $number => $path) {
+            $size = (int) (filesize($path) ?: 0);
+            if ($size <= $maxRenderedBytes) {
+                continue;
+            }
+            $this->cleanup($dir);
+            throw new OcrLimitExceededException(sprintf(
+                'OCR refused for "%s": page %d renders to %d bytes, over KB_OCR_RASTER_MAX_PAGE_BYTES (%d).',
+                $request->filename,
+                $number,
+                $size,
+                $maxRenderedBytes,
+            ), 'rendered_page_too_large');
         }
 
         return ['dir' => $dir, 'pages' => $pages];
