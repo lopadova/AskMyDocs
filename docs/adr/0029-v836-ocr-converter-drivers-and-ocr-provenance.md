@@ -56,13 +56,28 @@ With the flag off it claims nothing, so the registry behaves as v8.35 (image →
 "No converter registered", PDF → `PdfConverter`).
 
 `PdfConverter` stays the **sole** `application/pdf` match in both flag states.
-When OCR is on it runs `PdfTextLayerProbe` over the first `KB_OCR_PROBE_PAGES`
-pages; fewer than `KB_OCR_PROBE_MIN_CHARS` extractable characters, an
-unreadable file, or an ingest carrying `metadata.ocr.force = true` (what
-`kb:ocr` sets) routes the bytes to the same `OcrService` the image converter
-uses. The verdict (`present` · `empty` · `unreadable` · `skipped`) is recorded
-in `extractionMeta['text_layer_probe']`; a PDF with a text layer keeps its
-current path, byte for byte. No two converters ever claim one MIME: a
+When OCR is on it runs `PdfTextLayerProbe`, which decides **per page** over
+the whole probe window — every page up to `KB_OCR_MAX_PAGES`
+(`KB_OCR_PROBE_PAGES=0`, the default; a positive value bounds the window and
+is a documented trade-off: a scanned page beyond it is not seen, and a page
+the OCR cap would refuse cannot change the verdict). A page with fewer than
+`KB_OCR_PROBE_MIN_CHARS` extractable characters that carries an image XObject
+is a *scanned* page; one with neither is *blank* (a separator — never a reason
+to OCR by itself). No text page at all is `empty`; text pages **and** scanned
+pages is `mixed` — a typed cover over scanned body pages, scans stapled to a
+memo — and the **whole document** is routed to OCR so no page is silently
+lost (the text pages are OCR'd too; a per-page hybrid that keeps the parsed
+text of text pages is a later refinement, not this cycle's); otherwise
+`present`. `empty`, `mixed`, an unreadable file that `pdftotext` cannot read
+either, or an ingest carrying `metadata.ocr.force = true` (what `kb:ocr`
+sets) routes the bytes to the same `OcrService` the image converter uses,
+with `reason` `scanned_pdf` / `mixed_pdf` / `forced`. The verdict (`present`
+· `mixed` · `empty` · `unreadable` · `skipped`) is recorded in
+`extractionMeta['text_layer_probe']`, the scanned page numbers with it; a PDF
+whose every content page has a text layer keeps its current path, byte for
+byte. Regression cases: a cover over scanned pages is `mixed` and OCR'd, a
+blank separator inside a text PDF is `present`, a bounded window is blind
+beyond it. No two converters ever claim one MIME: a
 converter-mutex test (the twin of the chunker one) proves it in both states.
 
 ### 2. `SourceType` always knows `IMAGE`; the flag gates acceptance at the entry points
@@ -243,8 +258,16 @@ vector store, not the disk, as the protected surface): under the source's
 ACL, purged with it by the deleter's reference gate, never the redacted
 text (that lives only in the chunks). A deployment that must not hold raw
 OCR text beside its scans sets `KB_OCR_REUSE_ENABLED=false` — every ingest
-then runs the driver and records nothing **beside the scan**; both states
-are tested (R43). That knob governs the `.ocr/` run only. Whether the
+then runs the driver and records **no `result.json`**; both states are
+tested (R43). That knob governs the recorded run — the raw OCR text and its
+reuse — and nothing else: the figures under `{run}/images/` follow
+`KB_OCR_FIGURES_ENABLED` (default on) and the retention mode of §5
+(`reference_only` stores neither run nor figures; `full_copy` and
+`markdown_only` store figures when the switch is on, whatever the reuse
+knob says), and the W2 artifact follows ADR 0030. So the two flags compose
+as a matrix, not a hierarchy: reuse off + figures on = figures on disk, no
+raw text; a deployment that must hold **no** OCR asset beside its scans sets
+both off, or runs `reference_only`. Whether the
 converted Markdown of an OCR'd document is kept as a *version artifact* is
 ADR 0030's decision (`KB_CONVERSION_ARTIFACTS_ENABLED` under the effective
 `source_retention` mode), and the two compose without surprises: a
@@ -283,19 +306,23 @@ the paths — at
 {prefix}/{dir of source_path}/{basename}.ocr/{run}/images/fig-{page}-{n}.png
 ```
 
-where `{run}` is the **full 64-hex** `sha256(bytes · driver name · driver
-fingerprint)` — never a truncated prefix: a 16-hex prefix is a 64-bit
-identifier two different tuples could share, and one immutable run directory
-would then serve the wrong text or figures to a document and defeat the reuse
-lookup; the full digest makes the identity collision-free for every practical
-purpose — the fingerprint being the
-engine variant each driver declares (`OcrDriver::fingerprint()`: model for
-`vision-llm` / `mistral-ocr`, language + DPI for `tesseract`, the binary for
-`docling`). Two versions of one source path never overwrite each other's
-pixels; the same bytes through another engine land in another run; a re-run
-with identical input and engine lands on the same, immutable run (the
-ingest's own idempotency); a W2 artifact points at the exact run that
-produced it. A run is referenced by every row that carries it, so the deleter
+where `{run}` is the **full 64-hex** `sha256(bytes · driver name · variant)`
+— never a truncated prefix: a 16-hex prefix is a 64-bit identifier two
+different tuples could share, and one immutable run directory would then
+serve the wrong text or figures to a document and defeat the reuse lookup;
+the full digest makes the identity collision-free for every practical
+purpose. The **variant** is what `OcrService` composes from everything that
+shapes the output: the engine variant each driver declares
+(`OcrDriver::fingerprint()`: effective provider + model for `vision-llm`,
+model + endpoint for `mistral-ocr`, language + DPI for `tesseract`, the
+binary for `docling`), the figure switch (`;figures=0|1`, because the
+Markdown differs), and — for a forced re-run only — a fresh per-attempt salt
+(`;attempt=<16 hex>`), so `ocr.force` always lands on a **new** immutable
+run and never reuses or rewrites the recorded one (§6). Two versions of one
+source path never overwrite each other's pixels; the same bytes through
+another engine land in another run; an ordinary re-ingest with identical
+input and engine lands on the same, immutable run (the ingest's own
+idempotency); a W2 artifact points at the exact run that produced it. A run is referenced by every row that carries it, so the deleter
 removes `.ocr/` only when the last row referencing the source key goes. Tenant
 separation is the source file's own — the assets inherit the namespace (disk +
 prefix + path) of the file they sit beside. That namespace is not

@@ -53,11 +53,13 @@ references in the Markdown, formulas as LaTeX, a confidence per page.
   (OFF → `supports()` is false for every MIME and the registry falls through
   as in v8.35). The registry resolves by MIME alone (`supports(string $mime)`),
   so **scanned PDFs are not claimed by `OcrConverter`**: `PdfConverter` stays
-  the sole `application/pdf` match and, when OCR is on and a cheap text-layer
-  probe (`PdfTextLayerProbe`, smalot over the first `KB_OCR_PROBE_PAGES`
-  pages, verdict recorded in `extractionMeta.text_layer_probe`) returns a
-  confident **no-text** verdict — or the ingest metadata carries `ocr.force`
-  (set by `kb:ocr`) — it delegates to the same `OcrService`. A parser
+  the sole `application/pdf` match and, when OCR is on and the text-layer
+  probe (`PdfTextLayerProbe`, smalot, **per page** over every page up to
+  `KB_OCR_MAX_PAGES` — `KB_OCR_PROBE_PAGES` bounds the window — verdict
+  recorded in `extractionMeta.text_layer_probe`) returns `empty` (no text
+  page) or `mixed` (text pages and scanned pages: the whole document is OCR'd
+  so no page is lost, reason `mixed_pdf`) — or the ingest metadata carries
+  `ocr.force` (set by `kb:ocr`) — it delegates to the same `OcrService`. A parser
   failure is **not** "no text": on an `unreadable` verdict the converter
   first tries the `pdftotext` fallback it has always had, keeps the text path
   when that yields text, and goes to OCR only when neither parser can read
