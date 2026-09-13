@@ -454,11 +454,15 @@ applies (`DocumentDeleter::documentResolvesToStorageKey()`): a file is
 known only when a row's **recorded** disk and prefix resolve to it on the
 swept disk, so a row carrying the same logical path on another disk or
 under another prefix never protects a file — or the tree beside it — here.
-A row that recorded no namespace (ingested before it was persisted)
-protects the file on its path wherever a deleting consumer looks — the
-orphan sweep, the dangling-tree sweep and the connector bridge all ask the
-same gate, and every one of them only ever deletes, so a legacy row fails
-closed rather than guessing a disk. The decision is taken over the whole
+A row that recorded no disk (`metadata.disk`, persisted with the prefix by
+every ingest since the namespace was recorded; a prefix-only record counts
+as legacy) protects the file on its path wherever a deleting consumer looks
+— the orphan sweep, the dangling-tree sweep, the connector bridge and the
+deleter's own hard delete all apply the one predicate
+(`DocumentDeleter::documentReferencesStorageKey()`), and every one of them
+only ever deletes, so a legacy row fails closed rather than guessing a
+disk. The fail-closed set shrinks only by re-ingest (a namespace backfill
+is a follow-up, recorded in the hand-off). The decision is taken over the whole
 table (`withoutGlobalScopes()`, as the dangling-tree check does): the admin
 command runner executes the sweep under the caller's project scope, and a
 hidden row must never turn its file into an orphan.

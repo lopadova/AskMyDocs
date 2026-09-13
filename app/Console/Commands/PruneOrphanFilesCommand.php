@@ -140,7 +140,9 @@ class PruneOrphanFilesCommand extends Command
         // when its RECORDED disk + prefix resolve to this very key on this
         // very disk — a row on another disk, or under another prefix, that
         // happens to share the logical `source_path` must not keep an
-        // orphaned tree alive forever (nor, conversely, be ignored).
+        // orphaned tree alive forever (nor, conversely, be ignored). A row
+        // that never recorded its disk (ingested before the namespace was
+        // persisted) protects the tree on any disk: deletion fails closed.
         $deleter = app(DocumentDeleter::class);
         $dangling = [];
         foreach ($keys as $key) {
@@ -303,7 +305,7 @@ class PruneOrphanFilesCommand extends Command
         foreach (array_chunk($relativePaths, 1000) as $chunk) {
             // A file is known only when a row's RECORDED namespace resolves
             // to this very key on this very disk — the same test the
-            // dangling-tree sweep applies (`documentResolvesToStorageKey()`):
+            // dangling-tree sweep applies (`documentReferencesStorageKey()`):
             // a row carrying the same logical path on another disk, or under
             // another prefix, references another object, and the file here
             // (with any `.ocr/` tree beside it) is an orphan of this namespace.
@@ -325,16 +327,12 @@ class PruneOrphanFilesCommand extends Command
                 if (isset($known[$relative])) {
                     continue;
                 }
-                // A row that never recorded its namespace (ingested before it
-                // was persisted) protects the file on its path wherever the
-                // sweep looks: deletion fails closed, the pre-namespace
-                // behaviour — never "a stranger to its own file".
-                if (! $deleter->documentRecordsStorageNamespace($row)) {
-                    $known[$relative] = true;
-
-                    continue;
-                }
-                if ($deleter->documentResolvesToStorageKey($row, $disk, $this->applyPrefix($relative, $prefix))) {
+                // A row that never recorded its disk (ingested before the
+                // namespace was persisted) protects the file on its path
+                // wherever the sweep looks — deletion fails closed, the
+                // pre-namespace behaviour, never "a stranger to its own
+                // file"; the predicate carries that rule for every consumer.
+                if ($deleter->documentReferencesStorageKey($row, $disk, $this->applyPrefix($relative, $prefix))) {
                     $known[$relative] = true;
                 }
             }

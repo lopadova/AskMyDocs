@@ -184,11 +184,11 @@ class PruneOrphanFilesCommandTest extends TestCase
 
     /**
      * A row ingested before the storage namespace was persisted (no
-     * `metadata.disk` / `metadata.prefix`) protects the file on its path
-     * wherever the sweep looks — deletion fails closed — and, where the
-     * deleter must resolve such a row, the disk is the one its project
-     * resolves to, never the bare default that would make every legacy row
-     * on a per-project disk a stranger to its own file.
+     * `metadata.disk`) protects the file on its path wherever a deleting
+     * consumer looks — the orphan sweep and the deleter's public reference
+     * gate alike — so deletion fails closed and never guesses a disk that
+     * would make every legacy row on a per-project disk a stranger to its
+     * own file.
      */
     public function test_a_legacy_row_without_a_recorded_namespace_protects_its_file_on_a_per_project_disk(): void
     {

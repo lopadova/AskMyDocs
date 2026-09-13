@@ -703,20 +703,6 @@ class DocumentDeleter
     }
 
     /**
-     * Return the first remaining row that resolves to the same physical
-     * storage object. The lookup deliberately crosses tenant/access/soft-delete
-     * scopes: a shared bucket key is global infrastructure state, so deleting
-     * tenant A's row must not remove bytes still referenced by tenant B.
-     *
-     * Rows are narrowed by the logical source path in SQL, then streamed so a
-     * long version history stays memory-safe. Disk + prefix are resolved from
-     * the immutable ingest metadata with the same fallbacks used by deletion
-     * (`kb.sources.disk` / `kb.sources.path_prefix`); a row that never
-     * recorded its namespace (ingested before it was persisted) IS a reference
-     * whenever its logical path matches — every consumer of this gate only
-     * ever deletes, so a legacy row fails closed rather than guessing a disk.
-     */
-    /**
      * Public reference gate for callers that hold a resolved storage key and
      * must not delete a file a knowledge_documents row (any tenant, trashed
      * included) still points at — the connector bridge's refused-image path.
@@ -727,6 +713,18 @@ class DocumentDeleter
         return $this->firstDocumentReferencingStorageKey($disk, $fullPath, $sourcePath);
     }
 
+    /**
+     * Return the first remaining row that resolves to the same physical
+     * storage object. The lookup deliberately crosses tenant/access/soft-delete
+     * scopes: a shared bucket key is global infrastructure state, so deleting
+     * tenant A's row must not remove bytes still referenced by tenant B.
+     *
+     * Rows are narrowed by the logical source path in SQL, then streamed so a
+     * long version history stays memory-safe. Each row is judged by
+     * {@see documentReferencesStorageKey()}: the recorded namespace resolved
+     * with deletion's fallbacks, or — for a row that never recorded its disk
+     * — a reference by path, fail closed.
+     */
     private function firstDocumentReferencingStorageKey(
         string $disk,
         string $fullPath,
@@ -738,21 +736,35 @@ class DocumentDeleter
         $documents = KnowledgeDocument::query()
             ->withoutGlobalScopes()
             ->where('source_path', $normalizedSourcePath)
-            ->select(['id', 'project_key', 'source_path', 'metadata'])
+            ->select(['id', 'source_path', 'metadata'])
             ->cursor();
 
         foreach ($documents as $document) {
-            if (! $this->documentRecordsStorageNamespace($document)) {
-                // Fail closed: a namespace-less row on this path references
-                // the object as far as any deletion may assume.
-                return (int) $document->id;
-            }
-            if ($this->documentResolvesToStorageKey($document, $disk, $normalizedFullPath)) {
+            if ($this->documentReferencesStorageKey($document, $disk, $normalizedFullPath)) {
                 return (int) $document->id;
             }
         }
 
         return null;
+    }
+
+    /**
+     * THE one test of "this row references that physical object", shared by
+     * every deleting consumer (this gate — the dangling-tree sweep, the
+     * connector bridge, the deleter's own hard delete — and the orphan-file
+     * sweep): a row that recorded its storage namespace references the
+     * object only when that namespace resolves to `$fullPath` on `$disk`;
+     * a row that never recorded its disk (ingested before the namespace was
+     * persisted) references the object on every disk its logical path
+     * matches — deletion fails closed, it never guesses a disk.
+     */
+    public function documentReferencesStorageKey(KnowledgeDocument $document, string $disk, string $fullPath): bool
+    {
+        if (! $this->documentRecordsStorageNamespace($document)) {
+            return true;
+        }
+
+        return $this->documentResolvesToStorageKey($document, $disk, $fullPath);
     }
 
     /**
@@ -772,12 +784,11 @@ class DocumentDeleter
     /**
      * Whether this row's RECORDED storage namespace (`metadata.disk` /
      * `metadata.prefix`, deletion's configured defaults when absent) resolves its
-     * `source_path` to exactly `$fullPath` on `$disk` — the one test of
-     * "this row references that physical object", shared by the dangling
-     * OCR-tree sweep and the orphan-file sweep so neither can be fooled by a
-     * row that carries the same logical path on another disk or prefix.
+     * `source_path` to exactly `$fullPath` on `$disk`. Only ever reached for
+     * a row that recorded its disk ({@see documentReferencesStorageKey()});
+     * a row without one is never resolved to a guessed disk.
      */
-    public function documentResolvesToStorageKey(KnowledgeDocument $document, string $disk, string $fullPath): bool
+    private function documentResolvesToStorageKey(KnowledgeDocument $document, string $disk, string $fullPath): bool
     {
         $metadata = is_array($document->metadata) ? $document->metadata : [];
         // The same fallbacks deletion applies (`kb.sources.disk` /
