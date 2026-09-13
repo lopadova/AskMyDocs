@@ -34,6 +34,9 @@ trait RasterisesPdf
         $extension = $request->isPdf() ? 'pdf' : 'img';
         $input = $dir.'/input.'.$extension;
         if (file_put_contents($input, $request->bytes) === false) {
+            // Never leave the working directory behind on a failed attempt
+            // (SEC-RETENTION-001): nothing else will ever remove it.
+            $this->cleanup($dir);
             throw new \RuntimeException("Could not write OCR input to {$input}.");
         }
 
