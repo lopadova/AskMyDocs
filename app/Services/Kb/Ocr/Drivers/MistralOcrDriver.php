@@ -7,6 +7,7 @@ namespace App\Services\Kb\Ocr\Drivers;
 use App\Services\Kb\Ocr\OcrDriver;
 use App\Services\Kb\Ocr\OcrDriverUnavailableException;
 use App\Services\Kb\Ocr\OcrFigure;
+use App\Services\Kb\Ocr\OcrFigureBudget;
 use App\Services\Kb\Ocr\OcrMarkdown;
 use App\Services\Kb\Ocr\OcrMeteringMode;
 use App\Services\Kb\Ocr\OcrPage;
@@ -15,6 +16,7 @@ use App\Services\Kb\Ocr\OcrResult;
 use App\Support\Kb\FileTypeSniffer;
 use App\Support\Kb\SourceType;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
 /**
@@ -205,6 +207,10 @@ final class MistralOcrDriver implements OcrDriver
             throw new RuntimeException('Mistral OCR response has no `pages` list.');
         }
         $maxFigureBytes = max(1, (int) config('kb.ocr.max_figure_bytes', 10 * 1024 * 1024));
+        // One budget for the whole response: count and total bytes across
+        // pages (SEC-LIMITS-001) — a page list inside the caps could still
+        // carry an unbounded number of sub-cap figures.
+        $budget = OcrFigureBudget::fromConfig();
 
         $pages = [];
         // SEC-EXTRESP-001 — the provider's page numbering is untrusted: a
@@ -248,6 +254,13 @@ final class MistralOcrDriver implements OcrDriver
                 // a reader would fail to decode.
                 $figureMime = FileTypeSniffer::imageMimeOf(substr($bytes, 0, 16));
                 if ($figureMime === null) {
+                    continue;
+                }
+                // A figure the run's budget does not admit is dropped: its
+                // placeholder link becomes text below, never a reference.
+                if (! $budget->admit(strlen($bytes))) {
+                    Log::warning('Mistral OCR figure omitted: the run\'s figure budget is exhausted', ['page' => $number, 'bytes' => strlen($bytes), 'max_count' => $budget->maxCount(), 'max_bytes' => $budget->maxBytes()]);
+
                     continue;
                 }
                 $figure = new OcrFigure($number, $n + 1, $bytes, SourceType::imageExtensionFromMime($figureMime), (string) ($image['id'] ?? ''));

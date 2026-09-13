@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react';
 
-import type { OcrEstimate } from './kb-upload.api';
+import type { OcrEstimate, OcrEstimateItem } from './kb-upload.api';
 
 /*
  * v8.36 / ADR 0029 §8 — the OCR line shown on the upload modal BEFORE commit.
@@ -105,13 +105,20 @@ export function OcrEstimateLine({ state, estimate, errorMessage }: OcrEstimateLi
     // R14 — never promise a run the server will refuse: the driver cannot
     // run here (missing binary, remote driver without KB_OCR_ALLOW_REMOTE).
     // Files the limits already refuse count too: their reason must not read
-    // as if a disabled driver were about to receive them.
-    const needing = pending.length + overLimit.length;
-    if (needing > 0 && !estimate.driver_available) {
+    // as if a disabled driver were about to receive them. The verdict is per
+    // KIND of input (a PDF needs Poppler, an image does not): in a mixed
+    // batch only the blocked files are named, and the ones the driver can
+    // still take are quoted next to them.
+    const available = (i: OcrEstimateItem) => i.driver_available ?? estimate.driver_available;
+    const blocked = [...pending, ...overLimit].filter((i) => !available(i));
+    if (blocked.length > 0) {
+        const runnable = pending.filter(available);
+        const runnablePages = runnable.reduce((sum, i) => sum + i.pages, 0);
         return (
             <p data-testid="kb-upload-ocr-estimate" data-state="ready" data-ocr-enabled="true" data-ocr-driver-available="false" role="alert" aria-busy={false} style={{ ...base, color: 'var(--err)' }}>
-                {files(needing)} would need OCR, but the <code>{estimate.driver}</code> driver cannot run on this server
-                {estimate.driver_error ? ` (${estimate.driver_error})` : ''}. Committing will fail those files.
+                {files(blocked.length)} would need OCR, but the <code>{estimate.driver}</code> driver cannot run on this server
+                {estimate.driver_error ? ` (${estimate.driver_error})` : ''}. Committing will fail {blocked.length === 1 ? 'that file' : 'those files'}.
+                {runnable.length > 0 ? ` OCR will still run on ${files(runnable.length)} (${runnable.some((i) => !i.pages_exact) ? '≥ ' : ''}${runnablePages} page${runnablePages === 1 ? '' : 's'}).` : ''}
                 {unreadableNote !== '' ? ` ${unreadableNote}` : ''}
             </p>
         );

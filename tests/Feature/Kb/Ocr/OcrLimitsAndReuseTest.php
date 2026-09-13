@@ -611,9 +611,18 @@ final class OcrLimitsAndReuseTest extends TestCase
         $this->assertSame(OcrService::RUN_LOCK_TTL, OcrService::leaseFor($registry->resolve('fake'), 1));
 
         // The re-run lock is re-armed at attempt start and must outlive ONE
-        // attempt: the job timeout + the queue retry_after + the largest backoff.
-        $job = new \App\Jobs\IngestDocumentJob(projectKey: 'p', relativePath: 'a.pdf', disk: 'kb');
-        $this->assertGreaterThan($job->timeout + 330 + max($job->backoff), OcrService::RERUN_LOCK_TTL);
+        // attempt: the job timeout + the queue retry_after + the largest
+        // backoff. For an OCR-able document the job budget IS the driver's
+        // worst case, so the lease is derived from it — a 200-page Tesseract
+        // run can never outlive its own lock; a Markdown job keeps the floor.
+        config(['kb.ocr.driver' => 'tesseract', 'kb.ocr.max_pages' => 200]);
+        $job = new \App\Jobs\IngestDocumentJob(projectKey: 'p', relativePath: 'a.pdf', disk: 'kb', mimeType: 'application/pdf');
+        $this->assertSame(OcrService::leaseFor($tesseract, 200), $job->timeout, 'the job budget is the driver worst case');
+        $this->assertGreaterThan($job->timeout + 330 + max($job->backoff), OcrService::rerunLockTtlFor('application/pdf'));
+        $this->assertGreaterThan(OcrService::RERUN_LOCK_TTL, OcrService::rerunLockTtlFor('application/pdf'));
+        $markdownJob = new \App\Jobs\IngestDocumentJob(projectKey: 'p', relativePath: 'a.md', disk: 'kb', mimeType: 'text/markdown');
+        $this->assertSame(OcrService::RERUN_LOCK_TTL, OcrService::rerunLockTtlFor('text/markdown'));
+        $this->assertGreaterThan($markdownJob->timeout + 330 + max($markdownJob->backoff), OcrService::rerunLockTtlFor('text/markdown'));
     }
 
     #[Test]

@@ -41,18 +41,18 @@ final class OcrCostEstimator
      * @return array{
      *   enabled: bool, driver: string, driver_available: bool, driver_error: ?string, metering: string, currency: string, rate_per_page: float,
      *   total_pages: int, total_cost: float,
-     *   items: list<array{id: string, would_ocr: bool, pages: int, cost: float, reason: string, pages_exact: bool}>
+     *   items: list<array{id: string, would_ocr: bool, pages: int, cost: float, reason: string, pages_exact: bool, driver_available: bool}>
      * }
      */
     public function forBatch(KbIngestBatch $batch, string $stagingDisk): array
     {
         $enabled = (bool) config('kb.ocr.enabled', false);
         $batch->loadMissing('items');
-        // The preflight asks the driver about the inputs THIS batch holds:
-        // a PDF needs the rasteriser's Poppler binaries, an image-only batch
-        // must not be refused for a dependency it never uses.
-        $forPdf = $batch->items->contains(static fn (KbIngestBatchItem $item): bool => (string) $item->source_type === SourceType::PDF->value);
-        $driverStatus = $this->driverStatus($enabled, $forPdf);
+        // The preflight asks the driver about each KIND of input: a PDF
+        // needs the rasteriser's Poppler binaries, an image does not — so a
+        // mixed batch reports the PDF as blocked and the image as runnable,
+        // exactly as `OcrService::convert()` will treat each (R14).
+        $driverStatus = $this->driverStatus($enabled);
         // ADR 0029 §10 — `pages × rate` is the PerPage price; an Sdk driver
         // (vision-llm) is metered per token by the laravel/ai lifecycle hook
         // after the fact, so the estimate must not invent a page price for
@@ -62,13 +62,37 @@ final class OcrCostEstimator
         $items = [];
         $totalPages = 0;
         $totalCost = 0.0;
+        $blockedPdf = false;
+        $blockedImage = false;
         foreach ($batch->items as $item) {
             $row = $this->forItem($item, $stagingDisk, $enabled, $sdkMetered);
+            // Per item (R27 additive): whether the configured driver can run
+            // THIS kind of input here. The batch flag below is false as soon
+            // as one staged item is blocked, and `driver_error` names why.
+            $kind = SourceType::tryFrom((string) $item->source_type);
+            $row['driver_available'] = match ($kind) {
+                SourceType::PDF => $driverStatus['available_pdf'],
+                SourceType::IMAGE => $driverStatus['available_image'],
+                default => true,
+            };
+            if (! $row['driver_available'] && ($row['would_ocr'] || $row['reason'] !== 'not_ocr_able')) {
+                $blockedPdf = $blockedPdf || $kind === SourceType::PDF;
+                $blockedImage = $blockedImage || $kind === SourceType::IMAGE;
+            }
             $items[] = $row;
             if ($row['would_ocr']) {
                 $totalPages += $row['pages'];
                 $totalCost += $row['cost'];
             }
+        }
+        // No staged item to judge by: the conservative answer (every kind).
+        $anyItem = $items !== [];
+        $available = $anyItem
+            ? ! $blockedPdf && ! $blockedImage
+            : $driverStatus['available_pdf'] && $driverStatus['available_image'];
+        $error = $blockedPdf ? $driverStatus['error_pdf'] : ($blockedImage ? $driverStatus['error_image'] : null);
+        if (! $anyItem && ! $available) {
+            $error = $driverStatus['error_pdf'] ?? $driverStatus['error_image'];
         }
 
         $base = $this->meter->estimate(0);
@@ -77,9 +101,11 @@ final class OcrCostEstimator
             'enabled' => $enabled,
             'driver' => (string) config('kb.ocr.driver', 'tesseract'),
             // R14 — the modal must never promise a run the registry will
-            // refuse (remote driver with the knob off, binary missing).
-            'driver_available' => $driverStatus['available'],
-            'driver_error' => $driverStatus['error'],
+            // refuse (remote driver with the knob off, binary missing): false
+            // as soon as one staged item needs a prerequisite the driver
+            // lacks here; each item carries its own `driver_available`.
+            'driver_available' => $available,
+            'driver_error' => $error,
             // per_page: total_cost = pages × rate_per_page; sdk: no page rate,
             // the provider meters tokens and FinOps records the real spend.
             'metering' => $driverStatus['metering'],
@@ -94,22 +120,24 @@ final class OcrCostEstimator
     /**
      * @return array{available: bool, error: ?string, metering: string}
      */
-    private function driverStatus(bool $enabled, bool $forPdf): array
+    /**
+     * @return array{available_pdf: bool, available_image: bool, error_pdf: ?string, error_image: ?string, metering: string}
+     */
+    private function driverStatus(bool $enabled): array
     {
         if (! $enabled) {
-            return ['available' => false, 'error' => null, 'metering' => OcrMeteringMode::PerPage->value];
+            return ['available_pdf' => false, 'available_image' => false, 'error_pdf' => null, 'error_image' => null, 'metering' => OcrMeteringMode::PerPage->value];
         }
         try {
             $driver = $this->registry->configured();
             $metering = $driver->meteringMode()->value;
-            $unavailable = $driver->unavailableReason($forPdf);
-            if ($unavailable !== null) {
-                return ['available' => false, 'error' => sprintf('OCR driver "%s" is not available on this host: %s', $driver->name(), $unavailable), 'metering' => $metering];
-            }
+            $format = static fn (?string $reason): ?string => $reason === null ? null : sprintf('OCR driver "%s" is not available on this host: %s', $driver->name(), $reason);
+            $pdf = $format($driver->unavailableReason(true));
+            $image = $format($driver->unavailableReason(false));
 
-            return ['available' => true, 'error' => null, 'metering' => $metering];
+            return ['available_pdf' => $pdf === null, 'available_image' => $image === null, 'error_pdf' => $pdf, 'error_image' => $image, 'metering' => $metering];
         } catch (Throwable $e) {
-            return ['available' => false, 'error' => $e->getMessage(), 'metering' => OcrMeteringMode::PerPage->value];
+            return ['available_pdf' => false, 'available_image' => false, 'error_pdf' => $e->getMessage(), 'error_image' => $e->getMessage(), 'metering' => OcrMeteringMode::PerPage->value];
         }
     }
 
@@ -196,6 +224,12 @@ final class OcrCostEstimator
         }
         if (strlen($bytes) > $maxBytes) {
             return ['id' => $id, 'would_ocr' => false, 'pages' => 0, 'cost' => 0.0, 'reason' => 'too_many_bytes', 'pages_exact' => true];
+        }
+        // The SAME signature check `OcrService::assertWithinLimits()` applies
+        // before a driver runs: a staged object that is no PDF any more is
+        // refused with the reason commit would give, never probed as a scan.
+        if (! str_starts_with($bytes, '%PDF-')) {
+            return ['id' => $id, 'would_ocr' => false, 'pages' => 0, 'cost' => 0.0, 'reason' => 'unrecognised_bytes', 'pages_exact' => true];
         }
         // One parse: the probe reports the total page count too (a floor,
         // `pages_exact = false`, when the parser cannot read the file).

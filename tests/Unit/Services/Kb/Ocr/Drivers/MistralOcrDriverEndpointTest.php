@@ -77,6 +77,28 @@ final class MistralOcrDriverEndpointTest extends TestCase
         ];
     }
 
+    /** The run's aggregate figure budget applies to a remote response too: a figure past it is dropped and its link becomes text. */
+    public function test_figures_past_the_run_budget_are_dropped(): void
+    {
+        config(['kb.ocr.allow_remote' => true, 'kb.ocr.mistral.api_key' => 'k', 'kb.ocr.mistral.url' => 'https://api.mistral.eu/v1/ocr', 'kb.ocr.mistral.allowed_hosts' => ['api.mistral.eu'], 'kb.ocr.max_figures_per_run' => 1]);
+        $jpeg = "\xFF\xD8\xFF\xE0".str_repeat("\x00", 16);
+        Http::fake(['https://api.mistral.eu/*' => Http::response(['pages' => [[
+            'index' => 0,
+            'markdown' => "![a](img-0.jpeg)\n\n![b](img-1.jpeg)",
+            'images' => [
+                ['id' => 'img-0.jpeg', 'image_base64' => base64_encode($jpeg)],
+                ['id' => 'img-1.jpeg', 'image_base64' => base64_encode($jpeg)],
+            ],
+        ]]], 200)]);
+
+        $result = app(MistralOcrDriver::class)->recognise(new OcrRequest((string) base64_decode(\App\Services\Kb\Ocr\Drivers\FakeOcrDriver::PNG_1X1, true), 'image/png', 'scan.png'));
+
+        $this->assertCount(1, $result->pages[0]->figures);
+        $this->assertStringContainsString('(images/fig-1-1.jpg)', $result->pages[0]->markdown);
+        $this->assertStringNotContainsString('img-1.jpeg', $result->pages[0]->markdown);
+        $this->assertStringContainsString('*[Figure: b]*', $result->pages[0]->markdown);
+    }
+
     /** Pages come back in page order whatever order the provider listed them in. */
     public function test_pages_are_ordered_by_their_index(): void
     {

@@ -139,7 +139,7 @@ class IngestDocumentJob implements ShouldQueue
             // it for this attempt (it may have lapsed while the job waited in
             // the queue). If a NEWER re-run took it over in the meantime this
             // job must not produce a duplicate paid run: fail loudly (R14).
-            if (! OcrService::renewRerunLock($this->metadata)) {
+            if (! OcrService::renewRerunLock($this->metadata, $this->mimeType)) {
                 $superseded = new \RuntimeException("IngestDocumentJob superseded by a newer OCR re-run for {$this->disk}:{$this->relativePath} — the re-run lock is now held by another owner.");
                 if ($this->job === null) {
                     throw $superseded;

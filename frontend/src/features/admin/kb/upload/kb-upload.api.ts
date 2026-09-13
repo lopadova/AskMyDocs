@@ -146,6 +146,13 @@ export interface OcrEstimateItem {
     pages_exact: boolean;
     cost: number;
     reason: OcrEstimateReason;
+    /**
+     * Whether the configured driver can run THIS kind of input here (a PDF
+     * needs the rasteriser's Poppler binaries, an image does not), so a mixed
+     * batch names only the files that would fail. Absent on older servers:
+     * fall back to the batch-level `driver_available`.
+     */
+    driver_available?: boolean;
 }
 
 export interface OcrEstimate {

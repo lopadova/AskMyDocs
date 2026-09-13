@@ -68,6 +68,32 @@ final class DoclingOcrDriverParseTest extends TestCase
         $this->assertSame([], $pages[1]->figures);
     }
 
+    /** The run's aggregate budget (KB_OCR_MAX_FIGURES / KB_OCR_MAX_FIGURES_TOTAL_BYTES): a figure past it is omitted before it is read, across pages. */
+    #[Test]
+    public function figures_past_the_run_budget_are_omitted_and_never_read(): void
+    {
+        file_put_contents($this->dir.'/input_artifacts/image_2.png', 'MOREBYTES');
+        config(['kb.ocr.max_figures_per_run' => 1]);
+
+        $pages = $this->app->make(DoclingOcrDriver::class)->parseMarkdownOutput(
+            "![One](input_artifacts/image_1.png)\n\n<!-- page break -->\n![Two](input_artifacts/image_2.png)\n\nAfter",
+            $this->dir,
+        );
+
+        $this->assertCount(1, $pages[0]->figures);
+        $this->assertSame([], $pages[1]->figures, 'the second figure is past the count budget');
+        $this->assertStringContainsString('figure budget reached', $pages[1]->markdown);
+        $this->assertStringNotContainsString('](images/', $pages[1]->markdown);
+
+        config(['kb.ocr.max_figures_per_run' => 10, 'kb.ocr.max_figures_total_bytes' => strlen('PNGBYTES') + 1]);
+        $pages = $this->app->make(DoclingOcrDriver::class)->parseMarkdownOutput(
+            "![One](input_artifacts/image_1.png)\n![Two](input_artifacts/image_2.png)",
+            $this->dir,
+        );
+        $this->assertCount(1, $pages[0]->figures, 'the second figure is past the byte budget');
+        $this->assertStringContainsString('figure budget reached', $pages[0]->markdown);
+    }
+
     /** KB_OCR_MAX_FIGURE_BYTES holds for every driver: an over-cap figure is neither read nor stored, and the link is replaced by a note. */
     #[Test]
     public function a_figure_over_the_per_figure_cap_is_omitted_and_never_read(): void

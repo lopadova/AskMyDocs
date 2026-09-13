@@ -231,9 +231,21 @@ trait RasterisesPdf
         $process = new Process([$pdfinfoBinary, '-f', '1', '-l', (string) $maxPages, $input]);
         $process->setTimeout(max(1, $timeout));
         $process->run();
-        // A PDF pdfinfo cannot read is still rendered (`-l` bounds the work);
-        // only its geometry matters here, and every page line it did print
-        // counts. No page line at all is an unbounded render: refuse.
+        // The geometry is the ONLY bound applied before the (expensive)
+        // render, so it has to be complete: a pdfinfo that failed may have
+        // printed the sizes of some pages and not of an oversized one, and a
+        // DPI computed from that subset would rasterise the missing page
+        // unbounded. A failed report, no page size at all, or fewer sizes
+        // than the pages that will be rendered is a refusal, never a render
+        // checked only afterwards.
+        if (! $process->isSuccessful()) {
+            throw new OcrLimitExceededException(sprintf(
+                'OCR refused for "%s": pdfinfo could not report the page geometry (exit %s), so the render cannot be bounded to KB_OCR_RASTER_MAX_PAGE_PX (%d).',
+                $filename,
+                (string) $process->getExitCode(),
+                $maxPx,
+            ), 'rendered_page_too_large');
+        }
         $report = $process->getOutput();
         $sides = [];
         if (preg_match_all('/^Page(?:\s+(\d+))?\s+size:\s+([\d.]+)\s+x\s+([\d.]+)\s+pts/m', $report, $matches, PREG_SET_ORDER) > 0) {
@@ -245,6 +257,16 @@ trait RasterisesPdf
             throw new OcrLimitExceededException(sprintf(
                 'OCR refused for "%s": pdfinfo reported no page size, so the render cannot be bounded to KB_OCR_RASTER_MAX_PAGE_PX (%d).',
                 $filename,
+                $maxPx,
+            ), 'rendered_page_too_large');
+        }
+        $expected = preg_match('/^Pages:\s+(\d+)/m', $report, $pm) === 1 ? min((int) $pm[1], $maxPages) : null;
+        if ($expected !== null && count($sides) < $expected) {
+            throw new OcrLimitExceededException(sprintf(
+                'OCR refused for "%s": pdfinfo reported the size of %d of the %d pages to render, so the render cannot be bounded to KB_OCR_RASTER_MAX_PAGE_PX (%d).',
+                $filename,
+                count($sides),
+                $expected,
                 $maxPx,
             ), 'rendered_page_too_large');
         }

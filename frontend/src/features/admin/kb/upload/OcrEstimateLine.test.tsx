@@ -102,6 +102,30 @@ describe('OcrEstimateLine', () => {
         expect(screen.queryByTestId('kb-upload-ocr-estimate-cost')).toBeNull();
     });
 
+    it('ON mixed batch where only the PDF needs a missing prerequisite — names the blocked file and still quotes the image', () => {
+        const mixed: OcrEstimate = {
+            ...on,
+            driver: 'tesseract',
+            driver_available: false,
+            driver_error: 'OCR driver "tesseract" is not available on this host: pdftoppm binary "pdftoppm" not found',
+            total_pages: 3,
+            total_cost: 0.012,
+            items: [
+                { id: 'img', would_ocr: true, pages: 1, pages_exact: true, cost: 0.004, reason: 'image', driver_available: true },
+                { id: 'pdf', would_ocr: true, pages: 2, pages_exact: true, cost: 0.008, reason: 'scanned_pdf', driver_available: false },
+                { id: 'txt', would_ocr: false, pages: 0, pages_exact: true, cost: 0, reason: 'text_layer_present', driver_available: false },
+            ],
+        };
+        render(<OcrEstimateLine state="ready" estimate={mixed} />);
+        const el = screen.getByTestId('kb-upload-ocr-estimate');
+        expect(el).toHaveAttribute('data-ocr-driver-available', 'false');
+        const text = el.textContent ?? '';
+        expect(text).toContain('1 file would need OCR, but the tesseract driver cannot run on this server');
+        expect(text).toContain('pdftoppm');
+        expect(text).toContain('Committing will fail that file');
+        expect(text).toContain('OCR will still run on 1 file (1 page)');
+    });
+
     it('ON with a file over the limits — says it will be refused', () => {
         const over: OcrEstimate = {
             ...on,

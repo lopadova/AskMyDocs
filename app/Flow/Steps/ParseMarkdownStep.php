@@ -49,7 +49,16 @@ final class ParseMarkdownStep implements FlowStepHandler
         $metadata = is_array($rawMetadata) ? $rawMetadata : [];
 
         $normalizedPath = KbPath::normalize($relativePath);
-        $fullPath = $this->resolveStoragePath($normalizedPath);
+        // v8.36 — the prefix the source was ingested under travels with the
+        // job (`metadata.prefix`, recorded by the ingest and preserved by
+        // `OcrService::rerun()`): a re-run resolves the SAME object the row
+        // records even when `kb.sources.path_prefix` has changed since,
+        // instead of passing the preflight on one prefix and reading (or
+        // failing on) another here. Absent → the prefix configured today.
+        $prefix = array_key_exists('prefix', $metadata) && is_string($metadata['prefix'])
+            ? $metadata['prefix']
+            : (string) config('kb.sources.path_prefix', '');
+        $fullPath = $this->resolveStoragePath($normalizedPath, $prefix);
         $storage = Storage::disk($disk);
 
         if (! $storage->exists($fullPath)) {
@@ -68,7 +77,7 @@ final class ParseMarkdownStep implements FlowStepHandler
 
         $combinedMetadata = array_merge($metadata, [
             'disk' => $disk,
-            'prefix' => (string) config('kb.sources.path_prefix', ''),
+            'prefix' => $prefix,
         ]);
         if ($context->dryRun) {
             // v8.36 — converters with a persistence seam (OCR figures, paid
@@ -137,9 +146,8 @@ final class ParseMarkdownStep implements FlowStepHandler
         return FlowStepResult::success($output, $impact);
     }
 
-    private function resolveStoragePath(string $normalizedRelativePath): string
+    private function resolveStoragePath(string $normalizedRelativePath, string $prefix): string
     {
-        $prefix = (string) config('kb.sources.path_prefix', '');
         return ltrim(trim($prefix, '/').'/'.ltrim($normalizedRelativePath, '/'), '/');
     }
 

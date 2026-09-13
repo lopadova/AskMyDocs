@@ -439,6 +439,12 @@ return [
         // Largest single figure a driver may hand back (remote drivers return
         // base64 images inside the response body).
         'max_figure_bytes' => (int) env('KB_OCR_MAX_FIGURE_BYTES', 10485760),
+        // Aggregate figure budget of ONE run (every accepted figure is held
+        // in memory until the run is recorded): how many figures a run may
+        // keep and how many bytes they may add up to; a figure over the
+        // budget is omitted, and the Markdown says so.
+        'max_figures_per_run' => (int) env('KB_OCR_MAX_FIGURES', 200),
+        'max_figures_total_bytes' => (int) env('KB_OCR_MAX_FIGURES_TOTAL_BYTES', 104857600), // 100 MiB
 
         // Rendered-page bounds for the drivers that rasterise a PDF page by
         // page (tesseract, vision-llm): the source byte cap above bounds the

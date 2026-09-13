@@ -7,6 +7,7 @@ namespace App\Services\Kb\Ocr\Drivers;
 use App\Services\Kb\Ocr\OcrDriver;
 use App\Services\Kb\Ocr\OcrDriverUnavailableException;
 use App\Services\Kb\Ocr\OcrFigure;
+use App\Services\Kb\Ocr\OcrFigureBudget;
 use App\Services\Kb\Ocr\OcrMarkdown;
 use App\Services\Kb\Ocr\OcrMeteringMode;
 use App\Services\Kb\Ocr\OcrPage;
@@ -190,13 +191,15 @@ final class DoclingOcrDriver implements OcrDriver
         $root = realpath($dir);
         $raw = preg_split('/\n?<!--\s*page\s*break\s*-->\n?|\f/i', $markdown) ?: [$markdown];
         $pages = [];
+        // One budget for the whole run: count and total bytes across pages.
+        $budget = OcrFigureBudget::fromConfig();
         foreach (array_values($raw) as $i => $body) {
             $number = $i + 1;
             $figures = [];
             $maxFigureBytes = max(1, (int) config('kb.ocr.max_figure_bytes', 10 * 1024 * 1024));
             $body = (string) preg_replace_callback(
                 '/!\[([^\]]*)\]\(([^)]+)\)/',
-                function (array $m) use ($root, $number, $maxFigureBytes, &$figures): string {
+                function (array $m) use ($root, $number, $maxFigureBytes, $budget, &$figures): string {
                     $target = trim($m[2]);
                     if ($root === false || preg_match('#^input_artifacts/([A-Za-z0-9_.-]+)\.(png|jpe?g|webp|tiff?)$#i', $target, $tm) !== 1) {
                         return $m[0];
@@ -216,6 +219,13 @@ final class DoclingOcrDriver implements OcrDriver
                         Log::warning('Docling figure omitted: over KB_OCR_MAX_FIGURE_BYTES', ['page' => $number, 'bytes' => $size, 'max' => $maxFigureBytes]);
 
                         return sprintf('*Figure %d.%d omitted (%d bytes, over KB_OCR_MAX_FIGURE_BYTES)*', $number, $index, $size);
+                    }
+                    // The run's aggregate budget (count + total bytes): a
+                    // figure it does not admit is omitted before it is read.
+                    if (! $budget->admit($size)) {
+                        Log::warning('Docling figure omitted: the run\'s figure budget is exhausted', ['page' => $number, 'bytes' => $size, 'max_count' => $budget->maxCount(), 'max_bytes' => $budget->maxBytes()]);
+
+                        return sprintf('*Figure %d.%d omitted (figure budget reached: KB_OCR_MAX_FIGURES / KB_OCR_MAX_FIGURES_TOTAL_BYTES)*', $number, $index);
                     }
                     $bytes = file_get_contents($file);
                     if ($bytes === false || $bytes === '') {

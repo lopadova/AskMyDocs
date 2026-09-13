@@ -108,6 +108,43 @@ final class RasterisesPdfTest extends TestCase
         $this->assertSame('', trim((string) file_get_contents($argv)), 'pdftoppm never ran');
     }
 
+    /**
+     * The geometry is the only bound applied BEFORE the render, so it must be
+     * complete: a pdfinfo that fails (it may have printed some sizes and not
+     * an oversized page's) or reports fewer sizes than the pages to render
+     * is a refusal, never a render whose size is checked only afterwards.
+     */
+    public function test_a_failed_or_incomplete_geometry_report_is_refused_before_rendering(): void
+    {
+        [$pdftoppm, $argv] = $this->pdftoppmStub();
+        $failing = $this->pdfinfoStub("Pages:          3\nPage    1 size: 612 x 792 pts\n", exitCode: 1);
+        try {
+            $this->driver()->run($this->pdf('x.pdf'), $pdftoppm, 150, $failing);
+            $this->fail('a failed pdfinfo must be refused');
+        } catch (OcrLimitExceededException $e) {
+            $this->assertSame('rendered_page_too_large', $e->reason);
+            $this->assertStringContainsString('exit 1', $e->getMessage());
+        }
+        $this->assertSame('', trim((string) file_get_contents($argv)), 'pdftoppm never ran');
+
+        $partial = $this->pdfinfoStub("Pages:          3\nPage    1 size: 612 x 792 pts\nPage    2 size: 612 x 792 pts\n");
+        try {
+            $this->driver()->run($this->pdf('x.pdf'), $pdftoppm, 150, $partial);
+            $this->fail('a partial geometry report must be refused');
+        } catch (OcrLimitExceededException $e) {
+            $this->assertSame('rendered_page_too_large', $e->reason);
+            $this->assertStringContainsString('2 of the 3 pages', $e->getMessage());
+        }
+        $this->assertSame('', trim((string) file_get_contents($argv)), 'pdftoppm never ran');
+
+        // Only the pages that WILL be rendered count: a report bounded by
+        // `-l KB_OCR_MAX_PAGES` on a longer document is complete.
+        config(['kb.ocr.max_pages' => 2]);
+        $raster = $this->driver()->run($this->pdf('x.pdf'), $pdftoppm, 150, $partial);
+        $this->driver()->clean($raster['dir']);
+        $this->assertNotSame([], $raster['pages']);
+    }
+
     public function test_a_missing_pdfinfo_binary_is_an_unavailable_driver_not_an_unbounded_render(): void
     {
         [$pdftoppm, $argv] = $this->pdftoppmStub();
@@ -287,12 +324,12 @@ final class RasterisesPdfTest extends TestCase
     }
 
     /** A pdfinfo stub that prints `$report`. */
-    private function pdfinfoStub(string $report): string
+    private function pdfinfoStub(string $report, int $exitCode = 0): string
     {
         $out = $this->temp('pdfinfo_report_');
         file_put_contents($out, $report);
         $stub = $this->temp('pdfinfo_stub_');
-        file_put_contents($stub, "#!/bin/sh\ncat ".escapeshellarg($out)."\n");
+        file_put_contents($stub, "#!/bin/sh\ncat ".escapeshellarg($out)."\nexit {$exitCode}\n");
         chmod($stub, 0755);
 
         return $stub;

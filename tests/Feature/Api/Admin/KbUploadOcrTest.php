@@ -223,8 +223,33 @@ final class KbUploadOcrTest extends TestCase
         ]])->assertStatus(201)->json('batch.id');
         $response = $this->actingAs($admin)->getJson("/api/admin/kb/uploads/{$withPdf}/estimate")
             ->assertOk()
-            ->assertJsonPath('data.driver_available', false);
+            ->assertJsonPath('data.driver_available', false)
+            // Per item: the image the driver can still take, the PDF it cannot.
+            ->assertJsonPath('data.items.0.driver_available', true)
+            ->assertJsonPath('data.items.1.driver_available', false);
         $this->assertStringContainsString('pdftoppm', (string) $response->json('data.driver_error'));
+    }
+
+    /**
+     * The PDF branch applies the SAME signature check the service applies
+     * before a driver runs: a staged object that is no PDF any more is
+     * refused with the reason commit would give, never probed as a scan.
+     */
+    public function test_estimate_refuses_a_staged_pdf_whose_bytes_are_no_longer_a_pdf(): void
+    {
+        config(['kb.ocr.enabled' => true]);
+        $admin = $this->makeAdmin();
+        $batchId = $this->actingAs($admin)->post('/api/admin/kb/uploads', ['project_key' => 'legal', 'files' => [
+            UploadedFile::fake()->createWithContent('scan.pdf', PdfFixtureBuilder::build(['  '])),
+        ]])->assertStatus(201)->json('batch.id');
+        $item = KbIngestBatchItem::query()->where('batch_id', $batchId)->firstOrFail();
+        Storage::disk('kb-staging')->put((string) $item->staging_path, (string) base64_decode(FakeOcrDriver::PNG_1X1, true));
+
+        $this->actingAs($admin)->getJson("/api/admin/kb/uploads/{$batchId}/estimate")
+            ->assertOk()
+            ->assertJsonPath('data.items.0.would_ocr', false)
+            ->assertJsonPath('data.items.0.reason', 'unrecognised_bytes')
+            ->assertJsonPath('data.total_pages', 0);
     }
 
     /**

@@ -152,9 +152,12 @@ them is bounded in code before any egress (SEC-LLM-001 gates 2 and 7):
   applies unchanged and an unknown provider is a refusal, not a fallback.
 - `tesseract` and `vision-llm` rasterise a PDF themselves with Poppler
   (`pdftoppm` + `pdfinfo`): the preflight (`OcrDriver::unavailableReason(forPdf)`)
-  names a missing binary for a PDF — the estimate does so when the batch holds
-  one, the status and re-run for a PDF document — while an image-only batch is
-  never refused for a dependency it does not use.
+  names a missing binary for a PDF — the estimate per staged PDF item, the
+  status and re-run for a PDF document — while an image is never refused for
+  a dependency it does not use. The page geometry `pdfinfo` reports is the
+  only bound applied before the render, so it must be complete: a failed
+  report, or fewer page sizes than the pages to render, is a refusal
+  (`rendered_page_too_large`), never a render checked only afterwards.
 - `mistral-ocr` posts only to an `https` URL whose host is in the exact
   allow-list `KB_OCR_MISTRAL_ALLOWED_HOSTS` (default `api.mistral.eu,
   api.mistral.ai`), validates the response's content type and size, caps
@@ -320,9 +323,13 @@ says the provider meters tokens, so no page price is ever invented. The estimate
 staged bytes and runs the probe; it never runs a driver, so it is free. It
 also says when the run would be refused (`driver_available: false` — a remote
 driver with the knob off, a missing binary — or a file over the page/byte
-caps, or a staged object whose bytes are no raster any more,
+caps, or a staged object whose bytes are no raster — or no PDF — any more,
 `unrecognised_bytes`), so the modal never promises a run the server will not
-perform (R14). The modal's file picker filters on the extensions
+perform (R14). The driver verdict is per **kind** of input: every item carries
+its own `driver_available` (a PDF needs the rasteriser's Poppler binaries, an
+image does not), the batch flag is false as soon as one staged item is
+blocked, and the modal names only the files that would fail while still
+quoting the ones the driver can take. The modal's file picker filters on the extensions
 `GET /api/auth/me` delivers under `kb_upload.accepted_extensions` — the
 backend's `SourceType::knownExtensions()`, images only while OCR is on —
 so the SPA keeps no second list of formats (R18).
@@ -374,6 +381,7 @@ No schema change. Everything lands in JSON columns that already exist:
 | `KB_OCR_MAX_PAGES` / `KB_OCR_MAX_BYTES` | `200` / `26214400` | Refuse before any driver runs; reasons `too_many_pages` / `too_many_bytes`. Pages are counted format-independently (PDF parser, TIFF frames, 1 for other images); an unparseable PDF has only a floor and is refused for a remote driver with `pages_uncountable`. The same gate verifies the bytes against the declared type (a `%PDF-` header, or a PNG / JPEG / TIFF / WebP signature) for **every** ingress — upload, JSON ingest, folder walk, connector — and refuses anything else with `unrecognised_bytes`, so no driver, remote or local, is ever handed a mislabelled file. A multi-frame TIFF is refused with `multi_frame_image` by every driver that transcribes one frame per image (`tesseract`, `vision-llm`, `mistral-ocr`; `docling` accepts it). `KB_OCR_MAX_BYTES` bounds the **source file**; what a page renders to is bounded separately (next row). |
 | `KB_OCR_RASTER_MAX_PAGE_PX` / `KB_OCR_RASTER_MAX_PAGE_BYTES` | `6000` / `10485760` | Rendered-page bounds for the page-by-page drivers (`tesseract`, `vision-llm`): the render DPI is lowered from the page geometry `pdfinfo` reports so that no page's long side exceeds `PX` pixels (a small file can declare a 200-inch page; one that cannot fit at 50 DPI is refused before rendering), the produced PNG is re-measured, and a rendered page over either bound is refused with `rendered_page_too_large` **before** it is decoded locally or posted to the vision provider. `KB_OCR_PDFINFO_BIN` names the `pdfinfo` binary (poppler-utils, beside `pdftoppm`). |
 | `KB_OCR_MAX_FIGURE_BYTES` | `10485760` | Largest figure a driver may hand back. |
+| `KB_OCR_MAX_FIGURES` / `KB_OCR_MAX_FIGURES_TOTAL_BYTES` | `200` / `104857600` | Aggregate figure budget of one run (count / total bytes): every accepted figure is held in memory until the run is recorded, so a document inside the page and byte caps must not carry an unbounded number of sub-cap figures. A figure past the budget is omitted before it is read (the Markdown says so). |
 | `KB_OCR_RUN_LOCK_WAIT` | `300` | Seconds a worker waits for the reservation of a run directory another worker is writing before letting the job retry; the recorded run is then reused. Needs an atomic lock store (Redis) in production. |
 | `KB_OCR_REUSE_ENABLED` | `true` | Record each run at `{source}.ocr/{run}/result.json` and reuse it for identical bytes through the same engine. Off: nothing is recorded and every ingest is a new run with its own attempt identity (own `{run}` directory), never a rewrite of a previous run's figures. |
 | `KB_OCR_PURGE_GRACE_SECONDS` | `1800` | Seconds a recorded run counts as in flight: it is recorded before the row that references it commits, so a hard delete or the orphan sweep that finds no referencing row inside this window keeps the run instead of removing the figures a row is about to point at; `kb:prune-orphan-files` removes an unreferenced run once it has aged past it — under the run's own reservation, so a run a worker is reusing at that moment is never taken — and, while OCR is on, sweeps orphan **image** sources (a failed first ingest) together with the tree beside them, as it does orphan Markdown files. The sweep recognises a tree by the store's layout (`{source}.ocr/{64-hex run key}/result.json` or `…/images/…`): a directory that merely ends in `.ocr` holding ordinary sources is never mistaken for one. |
@@ -385,7 +393,7 @@ No schema change. Everything lands in JSON columns that already exist:
 
 | Surface | Entry | Notes |
 |---|---|---|
-| PHP | `php artisan kb:ocr {document} [--status] --tenant=…` | `--status` prints driver, reason, pages, confidence; without it, queues a forced re-run through the standard `IngestDocumentJob` (`metadata.ocr.force = true`, a fresh run key so the Flow's idempotency does not collapse it; the host-only `ocr.force` / `ocr.rerun_lock` / `dry_run` keys drive that job and are stripped before the row is persisted, so a later ingest built from the document's metadata is never forced again). Refuses a blank `--tenant`; one re-run per document at a time — a second call while one is queued is refused (the HTTP surface answers 409), and the lock is released when the job finishes. |
+| PHP | `php artisan kb:ocr {document} [--status] --tenant=…` | `--status` prints driver, reason, pages, confidence; without it, queues a forced re-run through the standard `IngestDocumentJob` (`metadata.ocr.force = true`, a fresh run key so the Flow's idempotency does not collapse it; the host-only `ocr.force` / `ocr.rerun_lock` / `dry_run` keys drive that job and are stripped before the row is persisted, so a later ingest built from the document's metadata is never forced again). Refuses a blank `--tenant`; one re-run per document at a time — a second call while one is queued is refused (the HTTP surface answers 409), and the lock is released when the job finishes; its lease is derived from the job budget (`OcrService::rerunLockTtlFor()`: the driver's worst case plus the retry window), so a long page-by-page run never outlives its own lock and lets a second re-run start a duplicate paid run. |
 | HTTP | `GET /api/admin/kb/documents/{id}/ocr` · `POST …/ocr` (202) · `GET /api/admin/kb/uploads/{batch}/estimate` | `role:admin\|super-admin`, R32 matrix row; tenant-scoped 404 for a foreign id. |
 | MCP | `KbOcrStatusTool` | **Read-only by design.** Re-running a conversion spends money and rewrites grounding; by the cycle's invariant that is a human decision — a documented R44 exception. |
 

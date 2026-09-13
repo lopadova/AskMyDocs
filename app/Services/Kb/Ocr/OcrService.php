@@ -81,6 +81,27 @@ final class OcrService
         return max(self::RUN_LOCK_TTL, $driver->maxDurationSeconds(max(1, $pages)) + self::RUN_LOCK_MARGIN);
     }
 
+    /**
+     * Margin the re-run lock keeps over one attempt's budget: the queue's
+     * `retry_after` window (a worker that dies is noticed after it) plus the
+     * largest job backoff, so the lock can never lapse between an attempt
+     * that timed out and the retry that re-arms it.
+     */
+    public const RERUN_LOCK_MARGIN = 400;
+
+    /**
+     * Lease of the per-document re-run lock for a document with `$mimeType`:
+     * one attempt of the job it guards plus the margin, never below
+     * RERUN_LOCK_TTL. The job budget of an OCR-able document is the
+     * configured driver's declared worst case (jobTimeoutFor()), so a
+     * 200-page page-by-page run cannot outlive its own lock and let a second
+     * `kb:ocr` / HTTP re-run start a duplicate paid run while it is still OCRing.
+     */
+    public static function rerunLockTtlFor(?string $mimeType): int
+    {
+        return max(self::RERUN_LOCK_TTL, self::jobTimeoutFor($mimeType) + self::RERUN_LOCK_MARGIN);
+    }
+
     /** The queue timeout of an ingest job that will not OCR (the pre-v8.36 value). */
     public const DEFAULT_JOB_TIMEOUT = 300;
 
@@ -205,15 +226,17 @@ final class OcrService
      *
      * @param  array<string, mixed>  $metadata
      */
-    public static function renewRerunLock(array $metadata): bool
+    public static function renewRerunLock(array $metadata, ?string $mimeType = null): bool
     {
         $lock = $metadata['ocr']['rerun_lock'] ?? null;
         if (! is_array($lock) || ! is_string($lock['key'] ?? null) || ! is_string($lock['owner'] ?? null)) {
             return true;
         }
         try {
-            // Lapsed while queued: re-acquire under the same owner, fresh TTL.
-            if (Cache::lock($lock['key'], self::RERUN_LOCK_TTL, $lock['owner'])->get()) {
+            // Lapsed while queued: re-acquire under the same owner, with a
+            // lease that outlives THIS attempt's budget (the job timeout of
+            // an OCR-able document is the driver's worst case).
+            if (Cache::lock($lock['key'], self::rerunLockTtlFor($mimeType), $lock['owner'])->get()) {
                 return true;
             }
 
@@ -876,7 +899,7 @@ final class OcrService
         // backstop for a worker that dies mid-run. Needs an atomic shared
         // lock store (Redis in production) to hold across pods.
         $lockKey = self::rerunLockKey($this->tenants->current(), (int) $document->id);
-        $lock = Cache::lock($lockKey, self::RERUN_LOCK_TTL);
+        $lock = Cache::lock($lockKey, self::rerunLockTtlFor((string) $document->mime_type));
         if (! $lock->get()) {
             throw new ConflictHttpException('An OCR re-run for this document is already queued.');
         }
