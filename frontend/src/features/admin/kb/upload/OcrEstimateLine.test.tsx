@@ -284,6 +284,26 @@ describe('OcrEstimateLine', () => {
         expect(screen.getByTestId('kb-upload-ocr-estimate').textContent).toContain('≥ 3 pages');
     });
 
+    it('every settled branch announces aria-busy=false (R11 async-state contract)', () => {
+        const settled: Array<[string, OcrEstimate]> = [
+            ['off', { ...on, enabled: false, total_pages: 0, total_cost: 0, items: [] }],
+            ['ready', on],
+            ['nothing', { ...on, total_pages: 0, total_cost: 0, items: [on.items[2]] }],
+            ['unavailable', { ...on, driver_available: false }],
+            ['refused', { ...on, total_pages: 0, total_cost: 0, items: [{ id: 'x', would_ocr: false, pages: 0, pages_exact: true, cost: 0, reason: 'too_many_pages' }] }],
+        ];
+        for (const [, estimate] of settled) {
+            const { unmount } = render(<OcrEstimateLine state="ready" estimate={estimate} />);
+            expect(screen.getByTestId('kb-upload-ocr-estimate')).toHaveAttribute('aria-busy', 'false');
+            unmount();
+        }
+        const { unmount } = render(<OcrEstimateLine state="error" estimate={undefined} />);
+        expect(screen.getByTestId('kb-upload-ocr-estimate')).toHaveAttribute('aria-busy', 'false');
+        unmount();
+        render(<OcrEstimateLine state="loading" estimate={undefined} />);
+        expect(screen.getByTestId('kb-upload-ocr-estimate')).toHaveAttribute('aria-busy', 'true');
+    });
+
     it('formatCost falls back on an unknown currency code instead of throwing', () => {
         expect(formatCost(0.5, 'NOTACODE')).toBe('0.5000 NOTACODE');
         expect(formatCost(0.012, 'USD')).toContain('0.012');

@@ -55,7 +55,7 @@ TXT;
         return $this->unavailableReason() === null;
     }
 
-    public function unavailableReason(): ?string
+    public function unavailableReason(bool $forPdf = true): ?string
     {
         try {
             $configured = config('kb.ocr.vision_llm.provider');
@@ -71,8 +71,17 @@ TXT;
         if (! is_string($key) || trim($key) === '') {
             return sprintf('vision-llm OCR: provider "%s" has no API key configured.', $providerName);
         }
+        if (! $forPdf) {
+            return null;
+        }
 
-        return null;
+        // A PDF is rasterised locally before any page reaches the provider:
+        // the Poppler binaries are a prerequisite the preflight must name,
+        // never a failure the worker meets before the first provider call.
+        return $this->popplerUnavailableReason(
+            (string) config('kb.ocr.vision_llm.pdftoppm', 'pdftoppm'),
+            (string) config('kb.ocr.vision_llm.pdfinfo', 'pdfinfo'),
+        );
     }
 
     public function isRemote(): bool
@@ -156,7 +165,7 @@ TXT;
 
     public function recognise(OcrRequest $request): OcrResult
     {
-        $reason = $this->unavailableReason();
+        $reason = $this->unavailableReason($request->isPdf());
         if ($reason !== null) {
             throw new OcrDriverUnavailableException($reason);
         }

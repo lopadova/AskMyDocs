@@ -92,7 +92,13 @@ final class PersistChunksStep implements FlowStepHandler
             sourceType: (string) $chunkOutput['source_type'],
             markdown: (string) $parseOutput['markdown'],
             chunkDrafts: $drafts,
-            metadata: $combinedMetadata,
+            // The host-only control keys (`ocr.force`, `ocr.rerun_lock`,
+            // `dry_run`) drive THIS run and must not be stored: a row that
+            // kept them would force the next ingest built from its metadata
+            // (the admin raw edit re-dispatches it) and expose the lock
+            // payload through document reads. `isForced()` below still reads
+            // the original bag, so this run replaces the version it re-ran.
+            metadata: \App\Services\Kb\Ocr\OcrService::stripTrustedOnlyKeys($combinedMetadata),
             embeddingResponse: $embeddingResponse,
             canonical: $canonical,
             // ADR 0029 — a forced OCR re-run replaces the version it re-ran.

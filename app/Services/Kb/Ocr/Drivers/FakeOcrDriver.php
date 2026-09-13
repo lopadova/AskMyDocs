@@ -34,7 +34,7 @@ final class FakeOcrDriver implements OcrDriver
         return true;
     }
 
-    public function unavailableReason(): ?string
+    public function unavailableReason(bool $forPdf = true): ?string
     {
         return null;
     }

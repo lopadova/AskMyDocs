@@ -200,6 +200,59 @@ final class OcrLimitsAndReuseTest extends TestCase
         Storage::disk('kb')->assertMissing($figure);
     }
 
+    /**
+     * The purge and the converter's write phase share the assets-directory
+     * lock: a purge cannot remove the tree while a converter is writing into
+     * it (a run that started after the purge enumerated an empty directory
+     * would otherwise be deleted with its parent), and a converter waits for
+     * a purge in progress instead of writing into a directory being removed.
+     */
+    #[Test]
+    public function the_purge_and_the_write_phase_exclude_each_other_on_the_assets_directory(): void
+    {
+        config(['kb.ocr.fake.pages' => [['markdown' => 'Alpha', 'confidence' => 0.8, 'figures' => 1]]]);
+        $first = $this->app->make(OcrConverter::class)->convert($this->image());
+        $run = $first->extractionMeta['ocr']['run'];
+        $figure = "docs/scan.png.ocr/{$run}/images/fig-1-1.png";
+
+        $assetsDir = $this->app->make(OcrFigureStore::class)->assetsDirFor('docs/scan.png', '');
+        $holder = \Illuminate\Support\Facades\Cache::lock(OcrService::assetsLockKey('kb', $assetsDir), 30);
+        $this->assertTrue($holder->get(), 'simulate a purge holding the assets directory');
+        try {
+            // A converter that must write while a purge holds the directory
+            // waits, then gives up loudly (retryable) — it never writes into
+            // a directory that is being removed. (Real clock: `block()` is
+            // timed on it, a frozen `travel()` clock would never elapse.)
+            config(['kb.ocr.assets_lock.wait_seconds' => 1, 'kb.ocr.reuse_enabled' => false]);
+            try {
+                $this->app->make(OcrConverter::class)->convert($this->image());
+                $this->fail('expected the writer to give up on a held assets lock');
+            } catch (\RuntimeException $e) {
+                $this->assertStringContainsString('being purged', $e->getMessage());
+            }
+
+        } finally {
+            $holder->release();
+        }
+
+        // The converse, once the run has aged past the grace: the purge
+        // finds the assets lock held by a writer and defers. (The lock is
+        // taken AFTER the travel: the store's clock moved with it.)
+        $this->travel(OcrFigureStore::inFlightGraceSeconds() + 60)->seconds();
+        $writer = \Illuminate\Support\Facades\Cache::lock(OcrService::assetsLockKey('kb', $assetsDir), 30);
+        $this->assertTrue($writer->get(), 'simulate a converter in its write phase');
+        try {
+            $this->assertFalse($this->app->make(OcrFigureStore::class)->purge('kb', 'docs/scan.png'), 'deferred: a converter is writing');
+            Storage::disk('kb')->assertExists($figure);
+        } finally {
+            $writer->release();
+        }
+
+        $this->assertTrue($this->app->make(OcrFigureStore::class)->purge('kb', 'docs/scan.png'), 'released: removed');
+        Storage::disk('kb')->assertMissing($figure);
+        $this->assertTrue(\Illuminate\Support\Facades\Cache::lock(OcrService::assetsLockKey('kb', $assetsDir), 1)->get(), 'the purge released the assets lock');
+    }
+
     #[Test]
     public function a_recorded_run_whose_figure_went_missing_is_redone(): void
     {

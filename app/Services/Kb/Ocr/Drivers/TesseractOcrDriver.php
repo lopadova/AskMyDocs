@@ -36,14 +36,23 @@ final class TesseractOcrDriver implements OcrDriver
         return $this->unavailableReason() === null;
     }
 
-    public function unavailableReason(): ?string
+    public function unavailableReason(bool $forPdf = true): ?string
     {
         $binary = (string) config('kb.ocr.tesseract.binary', 'tesseract');
-        if ((new ExecutableFinder())->find($binary) !== null || is_executable($binary)) {
+        if ((new ExecutableFinder())->find($binary) === null && ! is_executable($binary)) {
+            return 'tesseract binary not found — install tesseract-ocr or set KB_OCR_TESSERACT_BIN.';
+        }
+        if (! $forPdf) {
             return null;
         }
 
-        return 'tesseract binary not found — install tesseract-ocr or set KB_OCR_TESSERACT_BIN.';
+        // A PDF is rasterised here before the engine sees a page: the
+        // Poppler binaries are as much a prerequisite as tesseract itself,
+        // and the preflight must say so before a scanned-PDF job is queued.
+        return $this->popplerUnavailableReason(
+            (string) config('kb.ocr.tesseract.pdftoppm', 'pdftoppm'),
+            (string) config('kb.ocr.tesseract.pdfinfo', 'pdfinfo'),
+        );
     }
 
     public function isRemote(): bool
@@ -75,7 +84,7 @@ final class TesseractOcrDriver implements OcrDriver
 
     public function recognise(OcrRequest $request): OcrResult
     {
-        $reason = $this->unavailableReason();
+        $reason = $this->unavailableReason($request->isPdf());
         if ($reason !== null) {
             throw new OcrDriverUnavailableException($reason);
         }

@@ -42,7 +42,13 @@ class IngestDocumentJob implements ShouldQueue
 
     public int $tries = 3;
 
-    public int $timeout = 300;
+    /**
+     * Queue timeout. 300 s for every document that will not OCR; for an
+     * image or a PDF while OCR is on it is sized at dispatch from the
+     * configured driver's declared worst case (OcrService::jobTimeoutFor()),
+     * so the worker never kills a run its lease still reserves.
+     */
+    public int $timeout = OcrService::DEFAULT_JOB_TIMEOUT;
 
     /** @var array<int,int> */
     public array $backoff = [10, 30, 60];
@@ -75,6 +81,7 @@ class IngestDocumentJob implements ShouldQueue
         public readonly ?string $runKey = null,
     ) {
         $this->onQueue(config('kb.ingest.queue', 'kb-ingest'));
+        $this->timeout = OcrService::jobTimeoutFor($mimeType);
     }
 
     /**

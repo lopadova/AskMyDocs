@@ -27,17 +27,29 @@ final class DoclingOcrDriverParseTest extends TestCase
 
     protected function tearDown(): void
     {
+        // R7 — no `@`-silenced cleanup: a directory that cannot be removed
+        // is reported (after the framework teardown, R41), never left behind
+        // silently for the next run; an already-removed one is fine.
+        $failed = [];
         foreach (glob($this->dir.'/input_artifacts/*') ?: [] as $f) {
-            unlink($f);
-        }
-        @rmdir($this->dir.'/input_artifacts');
-        foreach (glob($this->dir.'/*') ?: [] as $f) {
-            if (is_file($f)) {
-                unlink($f);
+            if (! unlink($f)) {
+                $failed[] = $f;
             }
         }
-        @rmdir($this->dir);
+        foreach (glob($this->dir.'/*') ?: [] as $f) {
+            if (is_file($f) && ! unlink($f)) {
+                $failed[] = $f;
+            }
+        }
+        foreach ([$this->dir.'/input_artifacts', $this->dir] as $d) {
+            if (is_dir($d) && ! rmdir($d)) {
+                $failed[] = $d;
+            }
+        }
         parent::tearDown();
+        if ($failed !== []) {
+            throw new \RuntimeException('Test cleanup left artifacts behind: '.implode(', ', $failed));
+        }
     }
 
     #[Test]

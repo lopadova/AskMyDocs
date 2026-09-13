@@ -49,7 +49,7 @@ export function OcrEstimateLine({ state, estimate, errorMessage }: OcrEstimateLi
 
     if (state === 'error' || !estimate) {
         return (
-            <p data-testid="kb-upload-ocr-estimate" data-state="error" role="alert" style={{ ...base, color: 'var(--err)' }}>
+            <p data-testid="kb-upload-ocr-estimate" data-state="error" role="alert" aria-busy={false} style={{ ...base, color: 'var(--err)' }}>
                 OCR estimate unavailable{errorMessage ? `: ${errorMessage}` : ''}. You can still commit.
             </p>
         );
@@ -58,7 +58,7 @@ export function OcrEstimateLine({ state, estimate, errorMessage }: OcrEstimateLi
     if (!estimate.enabled) {
         const imageCount = estimate.items.filter((i) => i.reason === 'ocr_disabled').length;
         return (
-            <p data-testid="kb-upload-ocr-estimate" data-state="ready" data-ocr-enabled="false" role="status" aria-live="polite" style={base}>
+            <p data-testid="kb-upload-ocr-estimate" data-state="ready" data-ocr-enabled="false" role="status" aria-live="polite" aria-busy={false} style={base}>
                 OCR is disabled on this server (<code>KB_OCR_ENABLED=false</code>): scanned PDFs are ingested as
                 empty documents and images are refused
                 {imageCount > 0 ? ` — ${imageCount} staged image or PDF file${imageCount === 1 ? '' : 's'} would need it` : ''}.
@@ -109,7 +109,7 @@ export function OcrEstimateLine({ state, estimate, errorMessage }: OcrEstimateLi
     const needing = pending.length + overLimit.length;
     if (needing > 0 && !estimate.driver_available) {
         return (
-            <p data-testid="kb-upload-ocr-estimate" data-state="ready" data-ocr-enabled="true" data-ocr-driver-available="false" role="alert" style={{ ...base, color: 'var(--err)' }}>
+            <p data-testid="kb-upload-ocr-estimate" data-state="ready" data-ocr-enabled="true" data-ocr-driver-available="false" role="alert" aria-busy={false} style={{ ...base, color: 'var(--err)' }}>
                 {files(needing)} would need OCR, but the <code>{estimate.driver}</code> driver cannot run on this server
                 {estimate.driver_error ? ` (${estimate.driver_error})` : ''}. Committing will fail those files.
                 {unreadableNote !== '' ? ` ${unreadableNote}` : ''}
@@ -119,7 +119,7 @@ export function OcrEstimateLine({ state, estimate, errorMessage }: OcrEstimateLi
 
     if (pending.length === 0 && problems !== '') {
         return (
-            <p data-testid="kb-upload-ocr-estimate" data-state="ready" data-ocr-enabled="true" data-ocr-pages="0" role="alert" style={{ ...base, color: 'var(--err)' }}>
+            <p data-testid="kb-upload-ocr-estimate" data-state="ready" data-ocr-enabled="true" data-ocr-pages="0" role="alert" aria-busy={false} style={{ ...base, color: 'var(--err)' }}>
                 {problems}
             </p>
         );
@@ -127,7 +127,7 @@ export function OcrEstimateLine({ state, estimate, errorMessage }: OcrEstimateLi
 
     if (pending.length === 0) {
         return (
-            <p data-testid="kb-upload-ocr-estimate" data-state="ready" data-ocr-enabled="true" data-ocr-pages="0" role="status" aria-live="polite" style={base}>
+            <p data-testid="kb-upload-ocr-estimate" data-state="ready" data-ocr-enabled="true" data-ocr-pages="0" role="status" aria-live="polite" aria-busy={false} style={base}>
                 No file needs OCR — every PDF has a text layer.
             </p>
         );
@@ -141,6 +141,7 @@ export function OcrEstimateLine({ state, estimate, errorMessage }: OcrEstimateLi
             data-ocr-pages={String(estimate.total_pages)}
             role="status"
             aria-live="polite"
+            aria-busy={false}
             style={base}
         >
             OCR will run on <strong>{pending.length}</strong> file{pending.length === 1 ? '' : 's'} (

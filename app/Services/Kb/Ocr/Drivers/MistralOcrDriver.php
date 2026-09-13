@@ -42,7 +42,7 @@ final class MistralOcrDriver implements OcrDriver
         return $this->unavailableReason() === null;
     }
 
-    public function unavailableReason(): ?string
+    public function unavailableReason(bool $forPdf = true): ?string
     {
         if (trim((string) config('kb.ocr.mistral.api_key', '')) === '') {
             return 'Mistral OCR API key missing — set KB_OCR_MISTRAL_API_KEY (or MISTRAL_API_KEY).';

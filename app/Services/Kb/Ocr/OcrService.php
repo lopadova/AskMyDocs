@@ -81,6 +81,89 @@ final class OcrService
         return max(self::RUN_LOCK_TTL, $driver->maxDurationSeconds(max(1, $pages)) + self::RUN_LOCK_MARGIN);
     }
 
+    /** The queue timeout of an ingest job that will not OCR (the pre-v8.36 value). */
+    public const DEFAULT_JOB_TIMEOUT = 300;
+
+    /**
+     * Queue timeout for an `IngestDocumentJob` of a document with `$mimeType`,
+     * consistent with the configured driver's declared worst case: an
+     * image or a PDF while OCR is on may run the driver for up to
+     * `leaseFor(driver, KB_OCR_MAX_PAGES)` — a Docling call of its own
+     * timeout, a page-by-page engine for the whole cap — and a worker that
+     * killed the job at the default 300 s would abandon a run its lease still
+     * reserves, retry, wait on its own reservation and fail. Anything else
+     * (text, Markdown, OCR off, a driver that cannot be resolved here) keeps
+     * the default, so the policy costs nothing on the paths OCR never takes.
+     */
+    public static function jobTimeoutFor(?string $mimeType): int
+    {
+        if (! (bool) config('kb.ocr.enabled', false)) {
+            return self::DEFAULT_JOB_TIMEOUT;
+        }
+        $mime = \App\Support\Kb\SourceType::normaliseMime((string) ($mimeType ?? 'text/markdown'));
+        if (! self::isPdfMime($mime) && ! in_array($mime, \App\Support\Kb\SourceType::imageMimes(), true)) {
+            return self::DEFAULT_JOB_TIMEOUT;
+        }
+        try {
+            $driver = app(OcrDriverRegistry::class)->configured();
+        } catch (\Throwable) {
+            // An unresolvable driver refuses the run deterministically in the
+            // worker (no retries): the default budget is more than enough.
+            return self::DEFAULT_JOB_TIMEOUT;
+        }
+
+        return max(self::DEFAULT_JOB_TIMEOUT, self::leaseFor($driver, max(1, (int) config('kb.ocr.max_pages', 200))));
+    }
+
+    private static function isPdfMime(string $mimeType): bool
+    {
+        return strtolower(trim(explode(';', $mimeType, 2)[0])) === 'application/pdf';
+    }
+
+    /**
+     * Lease of the per-assets-directory lock (seconds): held by a converter
+     * for the WRITE phase of a run (figures + `result.json`, never the
+     * driver call) and by a purge for the whole removal of the directory,
+     * so a purge that found the directory empty can never delete it under
+     * a run that started writing into it after the enumeration.
+     */
+    public const ASSETS_LOCK_SECONDS = 300;
+
+    /** Default seconds a converter waits for a purge that holds the assets lock (`kb.ocr.assets_lock.wait_seconds`). */
+    public const ASSETS_LOCK_WAIT_SECONDS = 90;
+
+    public static function assetsLockKey(string $disk, string $assetsDir): string
+    {
+        return 'kb:ocr:assets:'.$disk.':'.sha1($assetsDir);
+    }
+
+    /**
+     * Run `$write` while holding the assets-directory lock of `$sourcePath`
+     * (see ASSETS_LOCK_SECONDS). A purge in progress is waited for; one that
+     * does not finish in time is a retryable failure, never a write into a
+     * directory that is being removed.
+     *
+     * @template T
+     *
+     * @param  \Closure(): T  $write
+     * @return T
+     */
+    private function underAssetsLock(string $disk, string $sourcePath, string $prefix, \Closure $write): mixed
+    {
+        $assetsDir = KbPath::normalize($this->figures->assetsDirFor($sourcePath, $prefix));
+        $lock = Cache::lock(self::assetsLockKey($disk, $assetsDir), self::ASSETS_LOCK_SECONDS);
+        try {
+            $lock->block(max(1, (int) config('kb.ocr.assets_lock.wait_seconds', self::ASSETS_LOCK_WAIT_SECONDS)));
+        } catch (LockTimeoutException) {
+            throw new \RuntimeException(sprintf('OCR assets directory "%s" is being purged on disk [%s]; retry once the purge has finished.', $assetsDir, $disk));
+        }
+        try {
+            return $write();
+        } finally {
+            $lock->release();
+        }
+    }
+
     public static function runLockKey(string $disk, string $runDir): string
     {
         return 'kb:ocr:run:'.$disk.':'.sha1($runDir);
@@ -243,7 +326,7 @@ final class OcrService
 
         $start = hrtime(true);
         $driver = $this->driver();
-        $unavailable = $driver->unavailableReason();
+        $unavailable = $driver->unavailableReason(self::isPdfMime($doc->mimeType));
         if ($unavailable !== null) {
             throw new OcrDriverUnavailableException(sprintf(
                 'OCR driver "%s" is not available on this host: %s',
@@ -327,7 +410,7 @@ final class OcrService
                 if ($reused !== null) {
                     $result = $reused['result'];
                     $written = $reused['written'];
-                    $this->figures->refreshReservation($disk, $doc->sourcePath, $prefix, $runKey);
+                    $this->underAssetsLock($disk, $doc->sourcePath, $prefix, fn () => $this->figures->refreshReservation($disk, $doc->sourcePath, $prefix, $runKey));
                 } else {
                     $result = $driver->recognise(new OcrRequest(
                         bytes: $doc->bytes,
@@ -360,15 +443,23 @@ final class OcrService
                             $allFigures[] = $figure;
                         }
                     }
-                    $written = $figuresEnabled ? $this->figures->store($disk, $doc->sourcePath, $prefix, $runKey, $allFigures) : [];
-                    // The immutable run is persisted while the reservation
-                    // is held, THEN metered: a `result.json` write that fails
-                    // after the FinOps row was written would let the job
-                    // retry with nothing to reuse and bill the same attempt
-                    // twice. The meter is best-effort and never throws.
-                    if ($reuseEnabled) {
-                        $this->recordRun($disk, $doc->sourcePath, $prefix, $runKey, $result, $written);
-                    }
+                    // The write phase runs under the assets-directory lock
+                    // the purge takes for the whole removal of the tree: a
+                    // sweep that found the directory empty a moment ago can
+                    // never delete it under these writes (ADR 0029 §6).
+                    $written = $this->underAssetsLock($disk, $doc->sourcePath, $prefix, function () use ($disk, $doc, $prefix, $runKey, $allFigures, $figuresEnabled, $reuseEnabled, $result): array {
+                        $written = $figuresEnabled ? $this->figures->store($disk, $doc->sourcePath, $prefix, $runKey, $allFigures) : [];
+                        // The immutable run is persisted while the reservation
+                        // is held, THEN metered: a `result.json` write that
+                        // fails after the FinOps row was written would let the
+                        // job retry with nothing to reuse and bill the same
+                        // attempt twice. The meter is best-effort and never throws.
+                        if ($reuseEnabled) {
+                            $this->recordRun($disk, $doc->sourcePath, $prefix, $runKey, $result, $written);
+                        }
+
+                        return $written;
+                    });
                     $this->meter->meter($result, $driver, $doc->sourcePath);
                 }
             } finally {
@@ -677,7 +768,7 @@ final class OcrService
         try {
             $configured = $this->driver();
             $driver = $configured->name();
-            $available = $configured->isAvailable();
+            $available = $configured->unavailableReason(self::isPdfMime((string) $document->mime_type)) === null;
         } catch (\Throwable) {
             $driver = (string) config('kb.ocr.driver', 'tesseract');
         }
@@ -731,12 +822,12 @@ final class OcrService
             // 422 with the registry's reason, never a 500.
             throw new UnprocessableEntityHttpException($e->getMessage(), $e);
         }
-        $unavailable = $driver->unavailableReason();
+        $mime = strtolower(trim(explode(';', (string) $document->mime_type, 2)[0]));
+        $unavailable = $driver->unavailableReason($mime === 'application/pdf');
         if ($unavailable !== null) {
             throw new UnprocessableEntityHttpException(sprintf('OCR driver "%s" is not available on this host: %s', $driver->name(), $unavailable));
         }
 
-        $mime = strtolower(trim(explode(';', (string) $document->mime_type, 2)[0]));
         $ocrable = $mime === 'application/pdf' || in_array($mime, \App\Support\Kb\SourceType::imageMimes(), true);
         if (! $ocrable) {
             throw new UnprocessableEntityHttpException("Document mime type \"{$mime}\" is not OCR-able (PDF or image only).");

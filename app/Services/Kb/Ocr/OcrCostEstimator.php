@@ -48,7 +48,11 @@ final class OcrCostEstimator
     {
         $enabled = (bool) config('kb.ocr.enabled', false);
         $batch->loadMissing('items');
-        $driverStatus = $this->driverStatus($enabled);
+        // The preflight asks the driver about the inputs THIS batch holds:
+        // a PDF needs the rasteriser's Poppler binaries, an image-only batch
+        // must not be refused for a dependency it never uses.
+        $forPdf = $batch->items->contains(static fn (KbIngestBatchItem $item): bool => (string) $item->source_type === SourceType::PDF->value);
+        $driverStatus = $this->driverStatus($enabled, $forPdf);
         // ADR 0029 §10 — `pages × rate` is the PerPage price; an Sdk driver
         // (vision-llm) is metered per token by the laravel/ai lifecycle hook
         // after the fact, so the estimate must not invent a page price for
@@ -90,7 +94,7 @@ final class OcrCostEstimator
     /**
      * @return array{available: bool, error: ?string, metering: string}
      */
-    private function driverStatus(bool $enabled): array
+    private function driverStatus(bool $enabled, bool $forPdf): array
     {
         if (! $enabled) {
             return ['available' => false, 'error' => null, 'metering' => OcrMeteringMode::PerPage->value];
@@ -98,7 +102,7 @@ final class OcrCostEstimator
         try {
             $driver = $this->registry->configured();
             $metering = $driver->meteringMode()->value;
-            $unavailable = $driver->unavailableReason();
+            $unavailable = $driver->unavailableReason($forPdf);
             if ($unavailable !== null) {
                 return ['available' => false, 'error' => sprintf('OCR driver "%s" is not available on this host: %s', $driver->name(), $unavailable), 'metering' => $metering];
             }

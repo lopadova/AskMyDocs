@@ -150,6 +150,11 @@ them is bounded in code before any egress (SEC-LLM-001 gates 2 and 7):
 - `vision-llm` resolves provider and model through `AiManager` — the same
   choke point every chat call passes — so the platform's provider policy
   applies unchanged and an unknown provider is a refusal, not a fallback.
+- `tesseract` and `vision-llm` rasterise a PDF themselves with Poppler
+  (`pdftoppm` + `pdfinfo`): the preflight (`OcrDriver::unavailableReason(forPdf)`)
+  names a missing binary for a PDF — the estimate does so when the batch holds
+  one, the status and re-run for a PDF document — while an image-only batch is
+  never refused for a dependency it does not use.
 - `mistral-ocr` posts only to an `https` URL whose host is in the exact
   allow-list `KB_OCR_MISTRAL_ALLOWED_HOSTS` (default `api.mistral.eu,
   api.mistral.ai`), validates the response's content type and size, caps
@@ -208,6 +213,18 @@ time its run could legitimately have taken. A second worker ingesting the same b
 for it, looks again, and reuses the run the first worker recorded — one bill,
 one directory, never two nondeterministic remote results interleaved in it. A
 forced re-run has its own attempt identity and never touches a recorded run.
+The **write phase** of a run (figures + `result.json`, never the driver call)
+and a purge of the `{source}.ocr/` directory exclude each other on a second,
+per-directory lock: a purge holds it for the whole removal and re-checks the
+directory before deleting it, so a run that starts writing after the purge
+enumerated an empty directory is never deleted with its parent; a purge that
+finds the lock held defers to the next sweep. The **queue timeout** of the
+ingest job follows the same worst case: an image or a PDF while OCR is on is
+dispatched with `IngestDocumentJob::$timeout` sized from the configured
+driver's `maxDurationSeconds(KB_OCR_MAX_PAGES)` plus the lease margin
+(`OcrService::jobTimeoutFor()`), never the 300 s default that would kill a
+Docling call or a page-by-page run its lease still reserves; text, Markdown
+and every ingest with OCR off keep 300 s.
 
 A recorded run lives at `{source}.ocr/{run}/result.json` next to its figures.
 When the same bytes arrive again through the same driver — an identical
@@ -368,7 +385,7 @@ No schema change. Everything lands in JSON columns that already exist:
 
 | Surface | Entry | Notes |
 |---|---|---|
-| PHP | `php artisan kb:ocr {document} [--status] --tenant=…` | `--status` prints driver, reason, pages, confidence; without it, queues a forced re-run through the standard `IngestDocumentJob` (`metadata.ocr.force = true`, a fresh run key so the Flow's idempotency does not collapse it). Refuses a blank `--tenant`; one re-run per document at a time — a second call while one is queued is refused (the HTTP surface answers 409), and the lock is released when the job finishes. |
+| PHP | `php artisan kb:ocr {document} [--status] --tenant=…` | `--status` prints driver, reason, pages, confidence; without it, queues a forced re-run through the standard `IngestDocumentJob` (`metadata.ocr.force = true`, a fresh run key so the Flow's idempotency does not collapse it; the host-only `ocr.force` / `ocr.rerun_lock` / `dry_run` keys drive that job and are stripped before the row is persisted, so a later ingest built from the document's metadata is never forced again). Refuses a blank `--tenant`; one re-run per document at a time — a second call while one is queued is refused (the HTTP surface answers 409), and the lock is released when the job finishes. |
 | HTTP | `GET /api/admin/kb/documents/{id}/ocr` · `POST …/ocr` (202) · `GET /api/admin/kb/uploads/{batch}/estimate` | `role:admin\|super-admin`, R32 matrix row; tenant-scoped 404 for a foreign id. |
 | MCP | `KbOcrStatusTool` | **Read-only by design.** Re-running a conversion spends money and rewrites grounding; by the cycle's invariant that is a human decision — a documented R44 exception. |
 

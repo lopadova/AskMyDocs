@@ -37,7 +37,8 @@ final class VisionLlmOcrDriverFingerprintTest extends TestCase
         $this->assertFalse(app(VisionLlmOcrDriver::class)->isAvailable());
 
         config(['ai.providers.openai.key' => 'k']);
-        $this->assertNull(app(VisionLlmOcrDriver::class)->unavailableReason());
+        // For an image: the PDF preflight also needs Poppler (PopplerPreflightTest).
+        $this->assertNull(app(VisionLlmOcrDriver::class)->unavailableReason(false));
     }
 
     /**

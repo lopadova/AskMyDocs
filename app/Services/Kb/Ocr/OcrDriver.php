@@ -32,8 +32,15 @@ interface OcrDriver
      * missing key, a binary off PATH or a non-allow-listed endpoint is
      * named before any work is queued — never a generic "not available"
      * that has to be diagnosed in the worker (R14).
+     *
+     * `$forPdf` names the input the caller will hand over: a driver that
+     * rasterises PDFs itself (tesseract, vision-llm) needs Poppler's
+     * `pdftoppm` / `pdfinfo` for a PDF but not for a raster image, so a
+     * PDF preflight must report those binaries too, while an image-only
+     * batch is not refused for a dependency it never uses. The default is
+     * the conservative answer (a PDF may come).
      */
-    public function unavailableReason(): ?string;
+    public function unavailableReason(bool $forPdf = true): ?string;
 
     /**
      * Whether recognition sends the document bytes OUTSIDE the tenant's

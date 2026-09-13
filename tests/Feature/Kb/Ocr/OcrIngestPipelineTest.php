@@ -391,7 +391,7 @@ final class OcrIngestPipelineTest extends TestCase
             relativePath: 'scans/again.png',
             disk: 'kb',
             title: 'Again',
-            metadata: ['ocr' => ['force' => true]],
+            metadata: ['ocr' => ['force' => true, 'rerun_lock' => ['key' => 'kb:ocr:rerun:t:1', 'owner' => 'worker-a']], 'note' => 'kept'],
             mimeType: 'image/png',
             tenantId: app(TenantContext::class)->current(),
             runKey: 'ocr:forced-again',
@@ -402,6 +402,12 @@ final class OcrIngestPipelineTest extends TestCase
         $this->assertCount(1, $rows, 'identical output is the same version, never a second row');
         $row = $rows->first();
         $this->assertSame($first->id, $row->id);
+        // The host-only control keys drove this run and are not stored: a
+        // row that kept `ocr.force` would force the next ingest built from
+        // its metadata (the admin raw edit), and `rerun_lock` would expose
+        // the lock payload through document reads.
+        $this->assertArrayNotHasKey('ocr', $row->metadata, 'ocr.force / ocr.rerun_lock are never persisted');
+        $this->assertSame('kept', $row->metadata['note']);
         $this->assertNotSame($firstRun, (string) $row->metadata['converter']['ocr']['run'], 'the row must point at the run that was billed');
         $this->assertFalse((bool) $row->metadata['converter']['ocr']['reused']);
         // R16 — exactly two metered runs: the forced one was paid, not reused.

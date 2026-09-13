@@ -241,6 +241,29 @@ final class OcrFigureStore
             return false;
         }
 
+        // The whole removal — enumeration, each run, the directory itself —
+        // runs under the assets-directory lock a converter holds for its
+        // write phase (OcrService::underAssetsLock()): the per-run locks
+        // protect the runs that EXIST at enumeration time, this one protects
+        // the directory against a run that starts writing into it after
+        // that, which the final deleteDirectory() would otherwise take with
+        // it. A lock that cannot be taken is a converter writing right now:
+        // the tree is kept, like a run in flight.
+        $assetsLock = Cache::lock(OcrService::assetsLockKey($disk, KbPath::normalize($dir)), OcrService::ASSETS_LOCK_SECONDS);
+        if (! $assetsLock->get()) {
+            Log::info('OcrFigureStore: OCR assets directory is being written to; the purge is deferred to the next sweep', ['disk' => $disk, 'dir' => $dir]);
+
+            return false;
+        }
+        try {
+            return $this->purgeUnderAssetsLock($storage, $disk, $dir);
+        } finally {
+            $assetsLock->release();
+        }
+    }
+
+    private function purgeUnderAssetsLock(Filesystem $storage, string $disk, string $dir): bool
+    {
         $threshold = now()->getTimestamp() - self::inFlightGraceSeconds();
         $kept = [];
         foreach ($storage->directories($dir) as $runDir) {
@@ -281,6 +304,15 @@ final class OcrFigureStore
             return false;
         }
 
+        // Re-checked under the lock: a run recorded between the enumeration
+        // and this point (a writer that took the lock before the purge and
+        // finished after the enumeration began) is a run to keep, never one
+        // to remove with its parent.
+        if ($storage->directories($dir) !== []) {
+            Log::info('OcrFigureStore: a run appeared under the OCR assets directory during the purge; the directory is kept', ['disk' => $disk, 'dir' => $dir]);
+
+            return false;
+        }
         if (! $storage->deleteDirectory($dir)) {
             throw new RuntimeException("OcrFigureStore: failed to remove OCR assets directory {$dir} on disk [{$disk}].");
         }

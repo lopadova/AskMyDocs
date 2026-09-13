@@ -325,7 +325,10 @@ model + endpoint for `mistral-ocr`, language + DPI for `tesseract`, the
 binary for `docling`), the figure switch (`;figures=0|1`, because the
 Markdown differs), and — for a forced re-run only — a fresh per-attempt salt
 (`;attempt=<16 hex>`), so `ocr.force` always lands on a **new** immutable
-run and never reuses or rewrites the recorded one (§6). Two versions of one
+run and never reuses or rewrites the recorded one (§6); the `ocr.force` /
+`ocr.rerun_lock` / `dry_run` keys are inputs of that one job and are stripped
+before the row is persisted (`OcrService::stripTrustedOnlyKeys()`), so a later
+ingest built from the row's metadata is never forced again. Two versions of one
 source path never overwrite each other's pixels; the same bytes through
 another engine land in another run; an ordinary re-ingest with identical
 input and engine lands on the same, immutable run (the ingest's own

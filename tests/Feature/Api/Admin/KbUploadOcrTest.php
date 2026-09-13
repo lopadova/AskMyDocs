@@ -202,6 +202,32 @@ final class KbUploadOcrTest extends TestCase
     }
 
     /**
+     * The preflight is input-aware: a batch that holds a PDF needs the
+     * rasteriser's Poppler binaries and is told so before commit, while an
+     * image-only batch is not refused for a dependency it never uses.
+     */
+    public function test_estimate_names_a_missing_poppler_binary_only_when_a_pdf_is_staged(): void
+    {
+        config(['kb.ocr.enabled' => true, 'kb.ocr.driver' => 'tesseract', 'kb.ocr.tesseract.binary' => '/bin/sh', 'kb.ocr.tesseract.pdftoppm' => '/nonexistent/pdftoppm', 'kb.ocr.tesseract.pdfinfo' => '/bin/sh']);
+        $admin = $this->makeAdmin();
+
+        $images = $this->actingAs($admin)->post('/api/admin/kb/uploads', ['project_key' => 'legal', 'files' => [$this->png('a.png')]])
+            ->assertStatus(201)->json('batch.id');
+        $this->actingAs($admin)->getJson("/api/admin/kb/uploads/{$images}/estimate")
+            ->assertOk()
+            ->assertJsonPath('data.driver_available', true);
+
+        $withPdf = $this->actingAs($admin)->post('/api/admin/kb/uploads', ['project_key' => 'legal', 'files' => [
+            $this->png('b.png'),
+            UploadedFile::fake()->createWithContent('scan.pdf', PdfFixtureBuilder::build(['  '])),
+        ]])->assertStatus(201)->json('batch.id');
+        $response = $this->actingAs($admin)->getJson("/api/admin/kb/uploads/{$withPdf}/estimate")
+            ->assertOk()
+            ->assertJsonPath('data.driver_available', false);
+        $this->assertStringContainsString('pdftoppm', (string) $response->json('data.driver_error'));
+    }
+
+    /**
      * The estimate applies the SAME magic-byte check the service applies
      * before a driver runs: a staged object replaced since upload by bytes
      * that are no raster is refused with the reason commit would give,

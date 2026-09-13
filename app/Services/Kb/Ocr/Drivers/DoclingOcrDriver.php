@@ -38,7 +38,7 @@ final class DoclingOcrDriver implements OcrDriver
         return $this->unavailableReason() === null;
     }
 
-    public function unavailableReason(): ?string
+    public function unavailableReason(bool $forPdf = true): ?string
     {
         $binary = (string) config('kb.ocr.docling.binary', 'docling');
         if ((new ExecutableFinder())->find($binary) !== null || is_executable($binary)) {

@@ -26,6 +26,25 @@ trait RasterisesPdf
     /**
      * @return array{dir: string, pages: array<int, string>}
      */
+    /**
+     * The PDF rasterisation prerequisites, as the preflight names them:
+     * `pdftoppm` renders the pages, `pdfinfo` reports the geometry the
+     * render is bounded with — a missing one is a run that fails before
+     * the engine sees a page, so it is reported before the job is queued.
+     */
+    protected function popplerUnavailableReason(string $pdftoppmBinary, string $pdfinfoBinary): ?string
+    {
+        $finder = new ExecutableFinder();
+        if ($finder->find($pdftoppmBinary) === null && ! is_executable($pdftoppmBinary)) {
+            return "pdftoppm binary \"{$pdftoppmBinary}\" not found — install poppler-utils or set KB_OCR_PDFTOPPM_BIN (required to rasterise PDFs).";
+        }
+        if ($finder->find($pdfinfoBinary) === null && ! is_executable($pdfinfoBinary)) {
+            return "pdfinfo binary \"{$pdfinfoBinary}\" not found — install poppler-utils or set KB_OCR_PDFINFO_BIN (required to bound a PDF render).";
+        }
+
+        return null;
+    }
+
     protected function rasterise(OcrRequest $request, string $pdftoppmBinary, int $dpi, int $timeout = 300, string $pdfinfoBinary = 'pdfinfo'): array
     {
         // Private to the worker's user (0700): the source and its rendered
