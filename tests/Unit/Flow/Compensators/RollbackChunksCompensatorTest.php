@@ -71,6 +71,39 @@ final class RollbackChunksCompensatorTest extends TestCase
         $this->assertSame(0, KnowledgeChunk::count(), 'chunks must cascade away with the parent doc.');
     }
 
+    /** v8.36 / ADR 0030 §8 — the compensated row's own version artifact goes with it; the source stays. */
+    public function test_removes_the_rows_version_artifact_but_preserves_the_source(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('kb');
+        config(['kb.sources.disk' => 'kb', 'kb.sources.path_prefix' => '', 'kb.conversion_artifacts.enabled' => true]);
+        $cache = Mockery::mock(EmbeddingCacheService::class);
+        $cache->shouldReceive('generate')->once()->andReturn(new EmbeddingsResponse(
+            embeddings: [[0.1, 0.2, 0.3]],
+            provider: 'openai',
+            model: 'text-embedding-3-small',
+        ));
+        $this->app->instance(EmbeddingCacheService::class, $cache);
+        \Illuminate\Support\Facades\Storage::disk('kb')->put('docs/intro.md', "# Heading\n\nBody.");
+        $document = $this->app->make(DocumentIngestor::class)->ingestMarkdown(
+            projectKey: 'demo',
+            sourcePath: 'docs/intro.md',
+            title: 'Intro',
+            markdown: "# Heading\n\nBody.",
+        );
+        $artifact = (string) $document->markdown_path;
+        $this->assertNotSame('', $artifact);
+        \Illuminate\Support\Facades\Storage::disk('kb')->assertExists($artifact);
+
+        $this->app->make(RollbackChunksCompensator::class)->compensate(
+            new FlowContext(flowRunId: 'rollback-run', definitionName: 'kb.ingest', input: ['tenant_id' => 'default']),
+            FlowStepResult::success(output: ['knowledge_document_id' => (int) $document->id]),
+        );
+
+        $this->assertSame(0, KnowledgeDocument::withTrashed()->count());
+        \Illuminate\Support\Facades\Storage::disk('kb')->assertMissing($artifact);
+        \Illuminate\Support\Facades\Storage::disk('kb')->assertExists('docs/intro.md'); // the source is never the flow's to destroy
+    }
+
     public function test_no_op_when_document_already_deleted(): void
     {
         $compensator = $this->app->make(RollbackChunksCompensator::class);

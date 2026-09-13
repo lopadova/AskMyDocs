@@ -153,7 +153,10 @@ final class PruneArchivedVersionsCommand extends Command
                 $this->sweepArtifactBatch($artifacts, $deleter, $disk, $batch, $dryRun, $orphans, $orphansFailed);
             }
         } catch (\Throwable $e) {
-            $this->error("  ! could not enumerate the artifact root on disk [{$disk}]: {$e->getMessage()}");
+            // The walk is lazy, so the enumeration and the batches share this
+            // guard: the class says which one gave up (an adapter refusing a
+            // symlink, a DB error in a batch, a disk `throw` on delete).
+            $this->error('  ! artifact orphan sweep aborted on disk ['.$disk.'] ('.$e::class."): {$e->getMessage()}");
             $orphansFailed++;
         }
         $this->info(sprintf(
@@ -224,10 +227,13 @@ final class PruneArchivedVersionsCommand extends Command
             ->select('project_key', 'source_path', DB::raw('count(*) as version_count'))
             ->groupBy('project_key', 'source_path')
             ->havingRaw('count(*) > ?', [$keep])
-            // Streamed (R3): one family at a time, never every family of the
-            // corpus in memory. A cursor is a single streamed query, so the
-            // groups that vanish as their surplus is pruned never shift a
-            // page the way an offset-based chunk would.
+            // Streamed (R3): families are HYDRATED one at a time (the pgsql
+            // driver still buffers the grouped result set client-side, so
+            // this bounds model memory, not the result set). A cursor is a
+            // single query, so the groups that vanish as their surplus is
+            // pruned never shift a page the way an offset-based chunk would;
+            // deleting from the same table inside the loop is safe because
+            // the grouped result is computed before the first row is read.
             ->cursor();
 
         foreach ($families as $family) {

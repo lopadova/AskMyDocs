@@ -1141,9 +1141,11 @@ class DocumentIngestor
         $blocking = null;
         $this->eachRowReferencingStorageKey($disk, $fullPath, $sourcePath, function (KnowledgeDocument $row) use ($store, $disk, $currentId, &$blocking): bool {
             $rowMetadata = is_array($row->metadata) ? $row->metadata : [];
-            // A row ingested under full_copy (or before the stamp existed)
-            // still requires the original: its retention contract wins.
-            $rowMode = (string) ($rowMetadata['source_retention'] ?? SourceRetentionResolver::FULL_COPY);
+            // A row ingested under full_copy (or before the stamp existed, or
+            // with a stamp that is not a known mode) still requires the
+            // original: its retention contract wins, and an invalid value is
+            // the conservative `full_copy` — never a mode that permits the drop.
+            $rowMode = $this->sourceRetentionOf($rowMetadata);
             if ((int) $row->id !== $currentId && $rowMode === SourceRetentionResolver::FULL_COPY) {
                 $blocking = (int) $row->id;
 
@@ -1215,10 +1217,26 @@ class DocumentIngestor
         return max(0, (int) config('kb.conversion_artifacts.source_lock_wait_seconds', 10));
     }
 
-    /** Seconds the storage key's lock lives when its holder dies (`kb.conversion_artifacts.source_lock_seconds`). */
+    /**
+     * Seconds the storage key's lock lives when its holder dies
+     * (`kb.conversion_artifacts.source_lock_seconds`). A value that is not a
+     * positive number of seconds — `0`, a negative, a non-number — is not a
+     * shorter lock: it is the documented default (60 s), and it says so once.
+     * A 1-second clamp would let the serialization lapse mid-commit on a
+     * large document and nobody would know (SEC-SETTING-SHAPE-001).
+     */
     private static function sourceKeyLockSeconds(): int
     {
-        return max(1, (int) config('kb.conversion_artifacts.source_lock_seconds', 60));
+        $configured = config('kb.conversion_artifacts.source_lock_seconds', 60);
+        if (is_numeric($configured) && (int) $configured >= 1) {
+            return (int) $configured;
+        }
+        Log::warning('DocumentIngestor: kb.conversion_artifacts.source_lock_seconds is not a positive number of seconds; using the default', [
+            'configured' => is_scalar($configured) ? $configured : gettype($configured),
+            'default' => 60,
+        ]);
+
+        return 60;
     }
 
     /**

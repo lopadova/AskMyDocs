@@ -438,7 +438,7 @@ final class ConversionArtifactStore
             // The local adapter refuses to walk through a symbolic link
             // (SymbolicLinkEncountered): a planted link under the root is a
             // refused sweep, reported as such — never a clean zero.
-            Log::warning('ConversionArtifactStore: could not enumerate the artifact root for the temp sweep', ['disk' => $disk, 'root' => $root, 'error' => $e->getMessage()]);
+            Log::warning('ConversionArtifactStore: temp sweep aborted', ['disk' => $disk, 'root' => $root, 'exception' => $e::class, 'error' => $e->getMessage()]);
             $failed++;
         }
 

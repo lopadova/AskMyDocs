@@ -490,13 +490,6 @@ final class OcrService
     }
 
     /**
-     * `Flow::dryRun()` reaches the converter through ParseMarkdownStep, which
-     * marks the SourceDocument; a dry run must have NO write and NO cost
-     * side effect — no driver call, no figure write, no ledger row.
-     *
-     * @param  array<string, mixed>  $metadata
-     */
-    /**
      * The retention contract a conversion runs under: the row's own valid
      * stamp when the metadata carries one (a re-run, a replay), the
      * configured mode otherwise.
@@ -513,6 +506,13 @@ final class OcrService
         return app(SourceRetentionResolver::class)->mode();
     }
 
+    /**
+     * `Flow::dryRun()` reaches the converter through ParseMarkdownStep, which
+     * marks the SourceDocument; a dry run must have NO write and NO cost
+     * side effect — no driver call, no figure write, no ledger row.
+     *
+     * @param  array<string, mixed>  $metadata
+     */
     public static function isDryRun(array $metadata): bool
     {
         return ($metadata['dry_run'] ?? false) === true;

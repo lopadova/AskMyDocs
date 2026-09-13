@@ -367,10 +367,13 @@ source, through `DocumentDeleter`'s hard delete. One gate, three callers (the
 hard delete, the prune, the orphan sweep): they cannot diverge on what
 "referenced" means. `DocumentDeleter`'s hard
 delete removes the artifact of the row it deletes unconditionally — on the
-direct path and on the Flow saga's `deleteRowsOnly()` step alike, reported as
-`artifact_deleted` (additive) and untouched by `keep_file`, which covers the
-shared source only: each row owns its own artifact, unlike the shared source
-file. ADR 0020 Decision 6
+direct path, on the Flow saga's `deleteRowsOnly()` step and on the ingest
+saga's compensation (`deleteDbOnly()`, which preserves the source it never
+wrote but not the artifact the failing flow did) alike, reported as
+`artifact_deleted` (additive: what *this* call did — a caller that opts out
+and handles the artifact itself gets `false`, never a claim about work not
+done) and untouched by `keep_file`, which covers the shared source only: each
+row owns its own artifact, unlike the shared source file. ADR 0020 Decision 6
 crypto-shred applies unchanged and **stops at the AI boundary**: it shreds the
 vault, which is the only link between a surrogate and a person, and it does not
 touch the artifact — raw Markdown before the PII seam — nor the OCR run, nor

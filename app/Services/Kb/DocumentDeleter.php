@@ -273,6 +273,12 @@ class DocumentDeleter
      * Per Copilot PR #115 review iteration 1 (R4 + R14 — never silently
      * destroy operator-supplied data on a recoverable failure).
      *
+     * v8.36 / ADR 0030 §8 — the row's version artifact is NOT the source: it
+     * was written by the failing flow for this very row, so it goes with the
+     * row here too (otherwise the compensated row would leave a raw artifact
+     * behind until the orphan sweep). The `.ocr/` tree stays with the
+     * preserved source (`ocr_assets_deleted` is false by construction).
+     *
      * @return array{mode: string, document_id: int, project_key: string, source_path: string, file_deleted: bool, ocr_assets_deleted: bool, artifact_deleted: bool, canonical: array<string, mixed>|null}
      */
     public function deleteDbOnly(KnowledgeDocument $document): array
@@ -280,6 +286,9 @@ class DocumentDeleter
         $documentId = (int) $document->id;
         $projectKey = (string) $document->project_key;
         $sourcePath = (string) $document->source_path;
+
+        $metadata = is_array($document->metadata) ? $document->metadata : [];
+        $disk = (string) ($metadata['disk'] ?? config('kb.sources.disk', 'kb'));
 
         $canonicalSnapshot = $this->canonicalSnapshot($document);
 
@@ -292,12 +301,16 @@ class DocumentDeleter
             $this->writeDeprecationAudit($document);
         });
 
+        $artifactDeleted = $this->removeArtifact($disk, $document->markdown_path, $documentId);
+
         return [
             'mode' => 'hard_db_only',
             'document_id' => $documentId,
             'project_key' => $projectKey,
             'source_path' => $sourcePath,
             'file_deleted' => false,
+            'ocr_assets_deleted' => false,
+            'artifact_deleted' => $artifactDeleted,
             'canonical' => $canonicalSnapshot,
         ];
     }
@@ -310,6 +323,11 @@ class DocumentDeleter
      * `hard-delete-rows` step so the file removal step can run as a
      * separate Flow step (with its own observability + dry-run handling)
      * AFTER the DB rows are gone.
+     *
+     * `artifact_deleted` reports what THIS call did to the row's version
+     * artifact: true when none remains after it, false when one may — either
+     * a delete error, or a caller that opted out (`$removeArtifact = false`)
+     * and handles the artifact itself. Never a claim about work not done here.
      *
      * @return array{mode: string, document_id: int, project_key: string, source_path: string, file_deleted: bool, artifact_deleted: bool, canonical: array{is_canonical: bool, doc_id: ?string, slug: ?string, canonical_type: ?string, canonical_status: ?string}, disk: string, full_path: string}
      */
@@ -347,10 +365,10 @@ class DocumentDeleter
         // goes with the row on EVERY hard-delete path (the Flow saga reaches
         // here, then removes the shared source file in its own step — the
         // artifact is not the source and `keep_file` does not cover it). A
-        // caller that reports the removal itself (the prune) opts out.
+        // caller that reports the removal itself (the prune) opts out — and
+        // then this call claims nothing about the artifact (false).
         $artifactDeleted = $removeArtifact
-            ? $this->removeArtifact($disk, $document->markdown_path, $documentId)
-            : true;
+            && $this->removeArtifact($disk, $document->markdown_path, $documentId);
 
         return [
             'mode' => 'hard_rows_only',

@@ -370,6 +370,48 @@ final class ArtifactsRetentionCommandsTest extends TestCase
         Storage::disk('kb')->assertMissing('scans/fresh.png.ocr');
     }
 
+    /**
+     * ADR 0030 §3 — the backfill reconverts under the ROW's retention
+     * contract, never the knob of the day: a version recorded with figures
+     * and a reusable run (`full_copy` / `markdown_only`) is backfilled after
+     * the global mode moved to `reference_only` by reading its recorded run
+     * back — the same Markdown, the same hash, no new run spent. Under the
+     * global mode the converter would disable figures and reuse, produce a
+     * different Markdown and report a mismatch on a version that is intact.
+     */
+    public function test_backfill_reconverts_under_the_rows_retention_contract_not_the_current_mode(): void
+    {
+        config(['kb.ocr.enabled' => true, 'kb.ocr.driver' => 'fake', 'kb.ocr.fake.pages' => [['markdown' => 'scanned text', 'confidence' => 0.9, 'figures' => 1]]]);
+        $cache = \Mockery::mock(\App\Services\Kb\EmbeddingCacheService::class);
+        $cache->shouldReceive('generate')->andReturnUsing(
+            fn (array $texts) => new \App\Ai\EmbeddingsResponse(embeddings: array_map(fn () => array_fill(0, 8, 0.0), $texts), provider: 'fake', model: 'fake-8'),
+        );
+        $this->app->instance(\App\Services\Kb\EmbeddingCacheService::class, $cache);
+        $tenant = app(TenantContext::class)->current();
+        $png = (string) base64_decode(\App\Services\Kb\Ocr\Drivers\FakeOcrDriver::PNG_1X1, true);
+        Storage::disk('kb')->put('scans/contract.png', $png);
+        $recorded = app(\App\Services\Kb\DocumentIngestor::class)->ingest('eng', new \App\Services\Kb\Pipeline\SourceDocument(
+            sourcePath: 'scans/contract.png', mimeType: 'image/png', bytes: $png,
+            externalUrl: null, externalId: null, connectorType: 'local', metadata: ['disk' => 'kb', 'prefix' => ''],
+        ), 'Contract');
+        $this->assertSame('full_copy', $recorded->metadata['source_retention']);
+        $artifact = (string) $recorded->markdown_path;
+        $this->assertStringContainsString('images/', (string) Storage::disk('kb')->get($artifact), 'the recorded version references its figure');
+        Storage::disk('kb')->delete($artifact);
+        $runsBefore = count(Storage::disk('kb')->allFiles('scans'));
+
+        config(['kb.source_retention.mode' => 'reference_only']); // the knob of the day
+
+        $this->artisan('kb:artifacts-backfill', ['--tenant' => $tenant])
+            ->expectsOutputToContain('already_stored=0 written=1 intentionally_missing=0 source_missing=0 hash_mismatch=0 conversion_failed=0')
+            ->assertExitCode(0);
+
+        Storage::disk('kb')->assertExists($artifact);
+        $this->assertSame((string) $recorded->document_hash, hash('sha256', (string) Storage::disk('kb')->get($artifact)));
+        $this->assertSame($runsBefore, count(Storage::disk('kb')->allFiles('scans')), 'the recorded run is read back, not spent again');
+        $this->assertSame('full_copy', $recorded->fresh()->metadata['source_retention'], 'the row keeps its own contract');
+    }
+
     /** R14 — a configured prefix that cannot form an artifact root is a reported failure, never an unhandled crash. */
     public function test_prune_reports_a_traversing_prefix_as_a_failed_sweep(): void
     {

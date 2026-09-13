@@ -102,7 +102,12 @@ final class KbArtifactsBackfillCommand extends Command
     private function backfill(KnowledgeDocument $row, ConversionArtifactStore $store, PipelineRegistry $registry, string $tenant, bool $dryRun): string
     {
         $metadata = is_array($row->metadata) ? $row->metadata : [];
-        $rowMode = (string) ($metadata['source_retention'] ?? SourceRetentionResolver::FULL_COPY);
+        // The ROW's contract decides — a persisted invalid value resolves to
+        // `full_copy` (the conservative mode), as it does everywhere else.
+        $stamp = $metadata['source_retention'] ?? null;
+        $rowMode = is_string($stamp) && in_array($stamp, SourceRetentionResolver::MODES, true)
+            ? $stamp
+            : SourceRetentionResolver::FULL_COPY;
         if ($rowMode === SourceRetentionResolver::REFERENCE_ONLY) {
             return 'intentionally_missing';
         }
@@ -119,7 +124,10 @@ final class KbArtifactsBackfillCommand extends Command
                 // pointer) gets it now, so the Time Machine can claim
                 // integrity instead of `unverified` forever.
                 if (! $dryRun && (! is_string($row->content_hash) || $row->content_hash === '')) {
-                    $row->update(['content_hash' => (string) $row->document_hash]);
+                    // The same integrity-only write as the identical re-ingest
+                    // (DocumentIngestor::recordContentHashIfMissing): no
+                    // `updated_at` bump, no observer — the version did not change.
+                    KnowledgeDocument::withoutGlobalScopes()->whereKey($row->id)->update(['content_hash' => (string) $row->document_hash]);
                 }
 
                 return 'already_stored';
@@ -148,6 +156,13 @@ final class KbArtifactsBackfillCommand extends Command
             // `.ocr/` writes and the metering (a recorded run is still
             // read back, read-only, and verified; a row that would need a
             // fresh OCR run is reported, not converted).
+            // The reconversion runs under the ROW's retention contract, never
+            // the knob of the day: `OcrService::retentionModeOf()` reads the
+            // stamp to decide figure output and run reuse, so a `full_copy` /
+            // `markdown_only` version backfilled after the global mode moved
+            // to `reference_only` reads its recorded run back and reproduces
+            // the recorded Markdown instead of spending a new run whose hash
+            // could never match.
             $converted = $registry->resolveConverter((string) $row->mime_type)->convert(new SourceDocument(
                 sourcePath: $sourcePath,
                 mimeType: (string) $row->mime_type,
@@ -155,7 +170,7 @@ final class KbArtifactsBackfillCommand extends Command
                 externalUrl: null,
                 externalId: null,
                 connectorType: 'local',
-                metadata: array_merge(['disk' => $disk, 'prefix' => $prefix], $dryRun ? ['dry_run' => true] : []),
+                metadata: array_merge(['disk' => $disk, 'prefix' => $prefix, 'source_retention' => $rowMode], $dryRun ? ['dry_run' => true] : []),
             ));
         } catch (\Throwable $e) {
             $this->line("  #{$row->id} {$sourcePath}: conversion_failed ({$e->getMessage()})");

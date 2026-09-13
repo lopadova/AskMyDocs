@@ -387,6 +387,11 @@ final class DocumentVersionArtifactsTest extends TestCase
             ->json('data.0');
         $this->assertSame('unverified', $row['artifact_state']);
         $this->assertFalse($row['has_artifact']);
+        // R44 — the MCP surface says exactly the same (one core: DocumentVersionService).
+        $tool = new \App\Mcp\Tools\KbDocumentVersionsTool;
+        $payload = json_decode((string) $tool->handle(new \Laravel\Mcp\Request(['document_id' => $legacy->id]), app(DocumentVersionService::class), app(TenantContext::class))->content(), true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame('unverified', $payload['versions'][0]['artifact_state']);
+        $this->assertFalse($payload['versions'][0]['has_artifact']);
         // …while the content endpoint still serves the stored bytes, with no integrity verdict.
         $this->actingAs($this->makeAdmin())->getJson("/api/admin/kb/documents/{$legacy->id}/versions/{$legacy->id}/content")
             ->assertOk()

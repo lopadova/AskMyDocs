@@ -577,7 +577,7 @@ JSON columns that already exist:
 | `KB_CONVERSION_ARTIFACTS_ENABLED` | `false` | W2 / ADR 0030 — store the converted Markdown of every version at `.artifacts/{tenant}/{project}/{source_path}.versions/{version_hash}.md`. OFF writes nothing new; artifacts already stored keep being read. |
 | `KB_CONVERSION_ARTIFACTS_TMP_MAX_AGE` | `3600` | Seconds after which `kb:prune-archived-versions` sweeps a `.tmp` a dead writer left beside an artifact. |
 | `KB_CONVERSION_ARTIFACTS_SOURCE_LOCK_WAIT` | `10` | Seconds a row commit or a `markdown_only` drop waits for the storage key's lock (needs an atomic lock store — Redis — in production). |
-| `KB_CONVERSION_ARTIFACTS_SOURCE_LOCK_TTL` | `60` | Seconds that lock lives when its holder dies. |
+| `KB_CONVERSION_ARTIFACTS_SOURCE_LOCK_TTL` | `60` | Seconds that lock lives when its holder dies. A value that is not a positive number of seconds (`0`, a negative, a non-number) is not a shorter lock: the default applies and a warning says so once per ingest. |
 | `KB_SOURCE_RETENTION` | `full_copy` | `full_copy` · `markdown_only` (drop the original binary after the artifact commit) · `reference_only` (no artifact, no `.ocr/` run). Wired for the first time in v8.36. |
 
 ## Tri-surface (R44)

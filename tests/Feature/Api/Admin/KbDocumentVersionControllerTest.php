@@ -180,6 +180,43 @@ final class KbDocumentVersionControllerTest extends TestCase
         $this->assertSame(1, $activeCount, 'Exactly one active version must exist after sweep');
     }
 
+    /**
+     * R21 / R10 §9 — the same post-race state, but the concurrently activated
+     * row is the CANONICAL one: its identity must be carried onto the target
+     * before it is vacated (never left on no row), and the transfer audited
+     * with the displaced row on record.
+     */
+    public function test_restore_sweep_carries_the_canonical_identity_of_a_concurrently_activated_version(): void
+    {
+        $admin = $this->makeAdmin();
+        $target = $this->makeVersion('v1fff', 'archived', 'old body');
+        $this->makeVersion('v2ggg', 'archived', 'mid body');
+        $concurrentlyActive = $this->makeVersion('v3hhh', 'active', 'concurrent body', canonical: true);
+
+        $this->actingAs($admin)
+            ->postJson("/api/admin/kb/documents/{$target->id}/restore-version")
+            ->assertOk()
+            ->assertJsonPath('data.status', 'active')
+            ->assertJsonPath('data.slug', 'dec-1');
+
+        $target->refresh();
+        $concurrentlyActive->refresh();
+        $this->assertSame('active', $target->status);
+        $this->assertTrue((bool) $target->is_canonical, 'the identity moved onto the restored version');
+        $this->assertSame('dec-1', $target->slug);
+        $this->assertSame('dec-1', $target->doc_id);
+        $this->assertSame('archived', $concurrentlyActive->status);
+        $this->assertFalse((bool) $concurrentlyActive->is_canonical, 'the swept row is vacated');
+        $this->assertNull($concurrentlyActive->slug);
+        $this->assertSame(1, KnowledgeDocument::query()->where('project_key', 'eng')->where('source_path', 'docs/dec.md')->where('slug', 'dec-1')->count(), 'the slug lives on exactly one row');
+
+        $audit = \App\Models\KbCanonicalAudit::query()->where('project_key', 'eng')->where('event_type', 'updated')->latest('id')->first();
+        $this->assertNotNull($audit, 'the identity transfer is audited');
+        $this->assertSame('dec-1', $audit->slug);
+        $this->assertSame([(int) $concurrentlyActive->id], $audit->before_json['displaced_ids']);
+        $this->assertSame((int) $target->id, $audit->after_json['restored_version_id']);
+    }
+
     public function test_restoring_the_live_version_is_422(): void
     {
         $admin = $this->makeAdmin();

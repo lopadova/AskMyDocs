@@ -335,11 +335,12 @@ Inert knob.", 'docs/inert.md');
     /**
      * ADR 0030 §3 / R21 — the `markdown_only` drop and the row commits of the
      * same storage key share one lock. A single process cannot interleave two
-     * real transactions on SQLite, so each side is exercised against a lock
-     * HELD by "someone else": the drop keeps the original (and says so), the
-     * persist fails loudly instead of committing past a drop in progress.
+     * real transactions on SQLite, so the PERSIST side is exercised against a
+     * lock HELD by "someone else": it fails loudly instead of committing past
+     * a drop in progress, and commits (then drops) once the key is free. The
+     * drop side is exercised by the test right after this one.
      */
-    public function test_markdown_only_drop_keeps_the_original_while_the_storage_key_is_locked_by_a_writer(): void
+    public function test_a_persist_under_a_held_storage_key_lock_fails_loudly_and_commits_once_the_key_is_free(): void
     {
         config(['kb.conversion_artifacts.enabled' => true, 'kb.source_retention.mode' => 'markdown_only', 'kb.conversion_artifacts.source_lock_wait_seconds' => 0]);
         $bytes = PdfFixtureBuilder::buildThreePageSample();
@@ -370,6 +371,91 @@ Inert knob.", 'docs/inert.md');
         ), 'Q9');
         Storage::disk('kb')->assertExists((string) $doc->markdown_path);
         Storage::disk('kb')->assertMissing('reports/q9.pdf');
+    }
+
+    /**
+     * ADR 0030 §3 / R21 — the DROP side against a lock held by someone else:
+     * the row commit (first take of the key) goes through, the drop (second
+     * take) cannot get the key and keeps the original — the conservative
+     * direction — while the version and its artifact are committed as usual.
+     * The persist has already released its lock when the drop asks, so the
+     * "held" lock is injected on the second take of the same key only.
+     */
+    public function test_markdown_only_drop_keeps_the_original_when_the_storage_key_is_locked_by_a_concurrent_writer(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => true, 'kb.source_retention.mode' => 'markdown_only', 'kb.conversion_artifacts.source_lock_wait_seconds' => 0]);
+        $bytes = PdfFixtureBuilder::buildThreePageSample();
+        Storage::disk('kb')->put('reports/q11.pdf', $bytes);
+        $key = 'kb:source:kb:'.sha1('reports/q11.pdf');
+        $store = \Illuminate\Support\Facades\Cache::store();
+        $takes = 0;
+        $heldByAnotherWriter = new class implements \Illuminate\Contracts\Cache\Lock
+        {
+            public function get($callback = null)
+            {
+                return false;
+            }
+
+            public function block($seconds, $callback = null)
+            {
+                throw new \Illuminate\Contracts\Cache\LockTimeoutException;
+            }
+
+            public function release()
+            {
+                return false;
+            }
+
+            public function owner()
+            {
+                return 'another-writer';
+            }
+
+            public function forceRelease()
+            {
+            }
+        };
+        \Illuminate\Support\Facades\Cache::partialMock()
+            ->shouldReceive('lock')
+            ->andReturnUsing(function (string $name, int $seconds = 0, $owner = null) use ($store, $key, &$takes, $heldByAnotherWriter) {
+                if ($name !== $key) {
+                    return $store->lock($name, $seconds, $owner);
+                }
+                $takes++;
+
+                return $takes === 1 ? $store->lock($name, $seconds, $owner) : $heldByAnotherWriter;
+            });
+
+        $doc = app(DocumentIngestor::class)->ingest('eng', new SourceDocument(
+            sourcePath: 'reports/q11.pdf', mimeType: 'application/pdf', bytes: $bytes,
+            externalUrl: null, externalId: null, connectorType: 'local', metadata: ['disk' => 'kb', 'prefix' => ''],
+        ), 'Q11');
+
+        $this->assertSame(2, $takes, 'the persist takes the key once, the drop asks for it once more');
+        $this->assertSame(1, KnowledgeDocument::withoutGlobalScopes()->where('source_path', 'reports/q11.pdf')->count(), 'the version is committed');
+        Storage::disk('kb')->assertExists((string) $doc->markdown_path);
+        Storage::disk('kb')->assertExists('reports/q11.pdf'); // a drop that cannot take the key keeps the original
+        $this->assertSame('markdown_only', $doc->fresh()->metadata['source_retention'], 'the contract is recorded; the next identical ingest retries the drop');
+    }
+
+    /** SEC-SETTING-SHAPE-001 — a lock TTL that is not a positive number of seconds is the documented default, not a 1-second lock, and it is said once. */
+    public function test_a_non_positive_lock_ttl_falls_back_to_the_default_and_warns(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => true, 'kb.source_retention.mode' => 'markdown_only', 'kb.conversion_artifacts.source_lock_seconds' => 0]);
+        \Illuminate\Support\Facades\Log::spy();
+        $bytes = PdfFixtureBuilder::buildThreePageSample();
+        Storage::disk('kb')->put('reports/q12.pdf', $bytes);
+
+        $doc = app(DocumentIngestor::class)->ingest('eng', new SourceDocument(
+            sourcePath: 'reports/q12.pdf', mimeType: 'application/pdf', bytes: $bytes,
+            externalUrl: null, externalId: null, connectorType: 'local', metadata: ['disk' => 'kb', 'prefix' => ''],
+        ), 'Q12');
+
+        Storage::disk('kb')->assertExists((string) $doc->markdown_path);
+        Storage::disk('kb')->assertMissing('reports/q12.pdf');
+        \Illuminate\Support\Facades\Log::shouldHaveReceived('warning')
+            ->with(Mockery::on(static fn (string $message): bool => str_contains($message, 'source_lock_seconds')), Mockery::on(static fn (array $context): bool => ($context['default'] ?? null) === 60 && ($context['configured'] ?? null) === 0))
+            ->atLeast()->once();
     }
 
     /** R43 — with the artifacts flag OFF (and for Markdown sources) no drop is possible, so an ingest never waits on the storage-key lock. */
