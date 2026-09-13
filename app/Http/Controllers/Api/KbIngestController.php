@@ -151,6 +151,14 @@ class KbIngestController extends Controller
         } catch (\InvalidArgumentException $e) {
             throw ValidationException::withMessages(['documents' => [$e->getMessage()]]);
         }
+        // v8.36 / ADR 0029 §6 — the converters' own output (`{source}.ocr/`,
+        // `.artifacts/`) is never a source: accepting such a path would let a
+        // client overwrite a recorded run or an artifact and re-ingest it.
+        if (KbPath::isGeneratedAsset($sourcePath)) {
+            throw ValidationException::withMessages([
+                'documents' => [sprintf('source_path "%s" is inside a generated-asset directory (.ocr/ or .artifacts/) and cannot be ingested as a source.', $sourcePath)],
+            ]);
+        }
 
         $mimeType = trim((string) ($doc['mime_type'] ?? 'text/markdown'));
         $sourceType = SourceType::fromMime($mimeType);

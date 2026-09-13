@@ -300,4 +300,27 @@ class KbIngestControllerTest extends TestCase
         Queue::assertNothingPushed();
         Storage::disk('kb')->assertMissing('docs/ok.md');
     }
+
+
+    /**
+     * v8.36 / ADR 0029 §6 — the converters' own output (`{source}.ocr/`,
+     * `.artifacts/`) is never a source: a client must not be able to overwrite
+     * a recorded run or an artifact and re-ingest it through the batch API.
+     */
+    public function test_rejects_a_source_path_inside_a_generated_asset_directory(): void
+    {
+        Queue::fake();
+        Storage::fake('kb');
+
+        foreach (['scans/letter.png.ocr/abc123/result.json', '.artifacts/legal/scans/letter.png/deadbeef.md'] as $path) {
+            $this->postJson('/api/kb/ingest', [
+                'documents' => [['source_path' => $path, 'content' => '# forged run']],
+            ])
+                ->assertStatus(422)
+                ->assertJsonValidationErrors(['documents']);
+        }
+
+        Queue::assertNothingPushed();
+        Storage::disk('kb')->assertDirectoryEmpty('/');
+    }
 }

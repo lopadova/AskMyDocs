@@ -452,6 +452,12 @@ return [
             'wait_seconds' => (int) env('KB_OCR_RUN_LOCK_WAIT', 300),
         ],
 
+        // Seconds a recorded run counts as IN FLIGHT: it is recorded before the
+        // row that references it commits, so a hard delete or orphan sweep
+        // that sees no referencing row inside this grace keeps the run instead
+        // of removing the figures a row is about to point at (ADR 0029 §6).
+        'purge_grace_seconds' => (int) env('KB_OCR_PURGE_GRACE_SECONDS', 1800),
+
         'reuse' => [
             'enabled' => (bool) env('KB_OCR_REUSE_ENABLED', true),
         ],

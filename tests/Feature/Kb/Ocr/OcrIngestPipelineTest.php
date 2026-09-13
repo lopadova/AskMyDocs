@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Kb\Ocr;
 
 use App\Ai\EmbeddingsResponse;
+use App\Jobs\IngestDocumentJob;
 use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
 use App\Services\Kb\DocumentDeleter;
@@ -15,6 +16,7 @@ use App\Services\Kb\Ocr\OcrFigureStore;
 use App\Services\Kb\Pipeline\SourceDocument;
 use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Mockery;
 use Padosoft\LaravelAiFinOps\Models\UsageRecord;
@@ -284,8 +286,85 @@ final class OcrIngestPipelineTest extends TestCase
         Storage::disk('kb')->assertExists($figure);
 
         $trashed = KnowledgeDocument::withTrashed()->findOrFail($document->id);
+        // Past the in-flight grace (ADR 0029 §6): nothing can still be about
+        // to reference the run, so the last row takes the whole tree with it.
+        $this->travel(OcrFigureStore::inFlightGraceSeconds() + 60)->seconds();
         app(DocumentDeleter::class)->delete($trashed, force: true);
         Storage::disk('kb')->assertMissing($figure);
         $this->assertFalse(Storage::disk('kb')->directoryExists('scans/letter.png.ocr'));
+    }
+
+    /**
+     * ADR 0029 §6 — the run is recorded (and its lock released) before the
+     * row that references it commits, so the reference gate has a window in
+     * which a concurrent hard delete sees no reference. The run directory is
+     * the durable reservation: inside the in-flight grace a hard delete keeps
+     * it, and `kb:prune-orphan-files` removes the dangling tree once aged.
+     */
+    public function test_hard_delete_inside_the_in_flight_grace_keeps_the_run_and_the_orphan_sweep_removes_it_once_aged(): void
+    {
+        $document = app(DocumentIngestor::class)->ingest('legal', $this->image('scans/race.png'), title: 'Race');
+        $run = OcrFigureStore::runKeyFor((string) base64_decode(FakeOcrDriver::PNG_1X1, true), 'fake', 'fake;figures=1');
+        $figure = "scans/race.png.ocr/{$run}/images/fig-1-1.png";
+        Storage::disk('kb')->assertExists($figure);
+
+        app(DocumentDeleter::class)->delete($document, force: true);
+        $this->assertSame(0, KnowledgeDocument::withTrashed()->where('id', $document->id)->count());
+        Storage::disk('kb')->assertExists($figure); // a run inside the grace is a reservation, not garbage
+
+        // Still inside the grace: the sweep lists the tree but keeps it.
+        $this->artisan('kb:prune-orphan-files')
+            ->expectsOutputToContain('dangling_ocr=1 purged=0 in_flight=1')
+            ->assertSuccessful();
+        Storage::disk('kb')->assertExists($figure);
+
+        $this->travel(OcrFigureStore::inFlightGraceSeconds() + 60)->seconds();
+        $this->artisan('kb:prune-orphan-files')
+            ->expectsOutputToContain('dangling_ocr=1 purged=1 in_flight=0')
+            ->assertSuccessful();
+        $this->assertFalse(Storage::disk('kb')->directoryExists('scans/race.png.ocr'));
+    }
+
+
+    /**
+     * A forced re-run (kb:ocr / POST …/ocr) whose Markdown is byte-identical
+     * to the recorded version is still a NEW, billed run: the row's
+     * `converter.ocr.run` and its chunks follow the run that was paid for,
+     * instead of being dropped by the same-hash guard while the row keeps
+     * pointing at the previous run (Copilot #478 round 3).
+     */
+    public function test_a_forced_re_run_with_identical_output_replaces_the_recorded_run_on_the_row(): void
+    {
+        Storage::disk('kb')->put('scans/again.png', (string) base64_decode(FakeOcrDriver::PNG_1X1, true));
+        $first = app(DocumentIngestor::class)->ingest('legal', $this->image('scans/again.png'), title: 'Again');
+        $firstRun = (string) $first->metadata['converter']['ocr']['run'];
+        $firstChunkIds = KnowledgeChunk::query()->where('knowledge_document_id', $first->id)->pluck('id')->all();
+        $this->assertNotSame([], $firstChunkIds);
+        $this->assertSame(1, UsageRecord::query()->where('purpose_tag', 'ocr')->count());
+
+        Queue::fake();
+        $job = new IngestDocumentJob(
+            projectKey: 'legal',
+            relativePath: 'scans/again.png',
+            disk: 'kb',
+            title: 'Again',
+            metadata: ['ocr' => ['force' => true]],
+            mimeType: 'image/png',
+            tenantId: app(TenantContext::class)->current(),
+            runKey: 'ocr:forced-again',
+        );
+        $this->app->call([$job, 'handle']);
+
+        $rows = KnowledgeDocument::query()->where('source_path', 'scans/again.png')->get();
+        $this->assertCount(1, $rows, 'identical output is the same version, never a second row');
+        $row = $rows->first();
+        $this->assertSame($first->id, $row->id);
+        $this->assertNotSame($firstRun, (string) $row->metadata['converter']['ocr']['run'], 'the row must point at the run that was billed');
+        $this->assertFalse((bool) $row->metadata['converter']['ocr']['reused']);
+        // R16 — exactly two metered runs: the forced one was paid, not reused.
+        $this->assertSame(2, UsageRecord::query()->where('purpose_tag', 'ocr')->count());
+        $chunkIds = KnowledgeChunk::query()->where('knowledge_document_id', $row->id)->pluck('id')->all();
+        $this->assertSame([], array_intersect($firstChunkIds, $chunkIds), 'chunks are replaced, not kept beside the new set');
+        $this->assertCount(count($firstChunkIds), $chunkIds, 'chunks are replaced, not duplicated');
     }
 }

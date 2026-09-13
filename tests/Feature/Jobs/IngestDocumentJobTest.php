@@ -454,4 +454,37 @@ MD,
 
         $this->assertSame('custom-queue-name', $job->queue);
     }
+
+
+    /**
+     * Uncertainty is not ownership: with the lock store unreachable the job
+     * must not run a billable OCR pass it cannot prove is still its own. The
+     * attempt is retryable (the queue's tries/backoff), never a silent run
+     * that the same-owner check used to wave through (Copilot #478 round 3).
+     */
+    public function test_an_unreachable_rerun_lock_store_makes_the_attempt_retryable_not_a_run(): void
+    {
+        Storage::fake('kb');
+        Storage::disk('kb')->put('note.md', '# note');
+        config()->set('kb.sources.disk', 'kb');
+        config()->set('kb.sources.path_prefix', '');
+        \Illuminate\Support\Facades\Cache::partialMock()
+            ->shouldReceive('lock')
+            ->andThrow(new RuntimeException('lock store down'));
+
+        $job = new IngestDocumentJob(
+            projectKey: 'demo',
+            relativePath: 'note.md',
+            disk: 'kb',
+            metadata: ['ocr' => ['rerun_lock' => ['key' => 'ocr-rerun:demo:note.md', 'owner' => 'job-a']]],
+        );
+
+        try {
+            $this->app->call([$job, 'handle']);
+            $this->fail('an unreachable lock store must not let the attempt run');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('lock store unavailable', $e->getMessage());
+        }
+        $this->assertSame(0, KnowledgeDocument::query()->count(), 'nothing was ingested');
+    }
 }

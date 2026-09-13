@@ -95,6 +95,8 @@ final class PersistChunksStep implements FlowStepHandler
             metadata: $combinedMetadata,
             embeddingResponse: $embeddingResponse,
             canonical: $canonical,
+            // ADR 0029 — a forced OCR re-run replaces the version it re-ran.
+            replaceExisting: \App\Services\Kb\Ocr\OcrService::isForced($combinedMetadata),
         );
 
         $output = [

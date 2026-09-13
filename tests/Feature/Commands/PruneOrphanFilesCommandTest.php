@@ -3,6 +3,7 @@
 namespace Tests\Feature\Commands;
 
 use App\Models\KnowledgeDocument;
+use App\Services\Kb\Ocr\OcrFigureStore;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
@@ -110,6 +111,8 @@ class PruneOrphanFilesCommandTest extends TestCase
 
         $this->seedDoc('docs/kept.md', 'hk');
 
+        // Past the in-flight grace (ADR 0029 §6): the run is not a reservation any more.
+        $this->travel(OcrFigureStore::inFlightGraceSeconds() + 60)->seconds();
         $this->artisan('kb:prune-orphan-files')
             ->expectsOutputToContain('scanned=2 orphans=1 deleted=1 failed=0')
             ->assertSuccessful();
@@ -118,6 +121,44 @@ class PruneOrphanFilesCommandTest extends TestCase
         $this->assertFalse(Storage::disk('kb')->directoryExists('docs/orphan.md.ocr'), 'the orphan run goes with its source');
         Storage::disk('kb')->assertExists('docs/kept.md');
         Storage::disk('kb')->assertExists('docs/kept.md.ocr/fedcba9876543210/notes.md'); // a run beside a live source is neither a candidate nor purged
+    }
+
+    /**
+     * A `.ocr` tree whose source is gone from the disk and from every row
+     * (a hard delete that kept an in-flight run) is swept here — grace-aware:
+     * a run recorded inside the in-flight window is kept, an aged one goes.
+     * The source-row check is cross-tenant and includes trashed rows (the
+     * deleter's R30 exception), and a tree beside a still-referenced key is
+     * never a candidate.
+     */
+    public function test_a_dangling_ocr_tree_is_swept_only_once_it_has_aged_past_the_in_flight_grace(): void
+    {
+        Storage::fake('kb');
+        Storage::disk('kb')->put('docs/gone.md.ocr/0123456789abcdef/images/fig-1-1.png', 'figure');
+        Storage::disk('kb')->put('docs/gone.md.ocr/0123456789abcdef/result.json', '{}');
+        // Source gone from the disk but a soft-deleted row of ANOTHER tenant
+        // still references the key: the tree is that row's, not dangling.
+        Storage::disk('kb')->put('docs/theirs.md.ocr/fedcba9876543210/result.json', '{}');
+        $theirs = $this->seedDoc('docs/theirs.md', 'ht');
+        KnowledgeDocument::withoutGlobalScopes()->whereKey($theirs->id)->update(['tenant_id' => 'other-tenant', 'deleted_at' => now()]);
+
+        $this->artisan('kb:prune-orphan-files', ['--dry-run' => true])
+            ->expectsOutputToContain('docs/gone.md.ocr')
+            ->expectsOutputToContain('0 of 0 orphan file(s) and 1 dangling OCR tree(s)')
+            ->assertSuccessful();
+        Storage::disk('kb')->assertExists('docs/gone.md.ocr/0123456789abcdef/result.json');
+
+        $this->artisan('kb:prune-orphan-files')
+            ->expectsOutputToContain('dangling_ocr=1 purged=0 in_flight=1 ocr_failed=0')
+            ->assertSuccessful();
+        Storage::disk('kb')->assertExists('docs/gone.md.ocr/0123456789abcdef/result.json');
+
+        $this->travel(OcrFigureStore::inFlightGraceSeconds() + 60)->seconds();
+        $this->artisan('kb:prune-orphan-files')
+            ->expectsOutputToContain('dangling_ocr=1 purged=1 in_flight=0 ocr_failed=0')
+            ->assertSuccessful();
+        $this->assertFalse(Storage::disk('kb')->directoryExists('docs/gone.md.ocr'));
+        Storage::disk('kb')->assertExists('docs/theirs.md.ocr/fedcba9876543210/result.json');
     }
 
     public function test_soft_deleted_documents_protect_their_file_from_being_flagged_orphan(): void

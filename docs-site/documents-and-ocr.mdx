@@ -144,10 +144,11 @@ them is bounded in code before any egress (SEC-LLM-001 gates 2 and 7):
   work is **bounded by construction**: never on a **remote** driver (refused
   before any byte leaves, reason `pages_uncountable`, shown by the estimate
   too), and among local drivers only on those that render page by page —
-  `tesseract` and `vision-llm` rasterise with `pdftoppm -l KB_OCR_MAX_PAGES`,
-  so the file renders at most the cap whatever its object table claims, each
-  page under the driver's timeout; `docling` hands the whole file to its
-  engine and is refused the same way. Where it runs, the estimate marks the
+  `tesseract` rasterises with `pdftoppm -l KB_OCR_MAX_PAGES`, so the file
+  renders at most the cap whatever its object table claims, each page under
+  the driver's timeout; `docling` hands the whole file to its engine and is
+  refused the same way, and `vision-llm`, which also rasterises page by page,
+  is a remote driver and is refused before egress like `mistral-ocr`. Where it runs, the estimate marks the
   price as inexact.
 
 ### Same bytes, same driver, no second bill
@@ -295,6 +296,7 @@ No schema change. Everything lands in JSON columns that already exist:
 | `KB_OCR_MAX_FIGURE_BYTES` | `10485760` | Largest figure a driver may hand back. |
 | `KB_OCR_RUN_LOCK_WAIT` | `300` | Seconds a worker waits for the reservation of a run directory another worker is writing before letting the job retry; the recorded run is then reused. Needs an atomic lock store (Redis) in production. |
 | `KB_OCR_REUSE_ENABLED` | `true` | Record each run at `{source}.ocr/{run}/result.json` and reuse it for identical bytes through the same engine. |
+| `KB_OCR_PURGE_GRACE_SECONDS` | `1800` | Seconds a recorded run counts as in flight: it is recorded before the row that references it commits, so a hard delete or the orphan sweep that finds no referencing row inside this window keeps the run instead of removing the figures a row is about to point at; `kb:prune-orphan-files` removes an unreferenced run once it has aged past it. |
 | `KB_OCR_MISTRAL_ALLOWED_HOSTS` | `api.mistral.eu,api.mistral.ai` | Exact host allow-list for the Mistral endpoint (https, port 443 only). |
 | `KB_OCR_MISTRAL_TIMEOUT` / `KB_OCR_MISTRAL_MAX_RESPONSE_BYTES` | `120` / `67108864` | Request timeout and response size cap. |
 | `KB_OCR_VISION_TIMEOUT` | `300` | Per-document timeout of the vision driver (rasterisation + calls). |

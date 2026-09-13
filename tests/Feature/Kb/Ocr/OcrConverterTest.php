@@ -159,6 +159,23 @@ final class OcrConverterTest extends TestCase
         $this->assertSame([], $converted->mediaItems);
     }
 
+    /**
+     * A driver that rewrites its own image links (Docling) must not leave the
+     * Markdown citing files that are not stored when figures are off: every
+     * generated `images/fig-…` reference goes, the text around it stays.
+     */
+    public function test_on_figures_disabled_strips_the_figure_links_a_driver_wrote_itself(): void
+    {
+        config(['kb.ocr.enabled' => true, 'kb.ocr.figures.enabled' => false, 'kb.ocr.fake.pages' => [
+            ['markdown' => "Intro line.\n\n![Figure 1.1](images/fig-1-1.png)\n\nOutro line.", 'figures' => 1],
+        ]]);
+        $converted = $this->app->make(OcrConverter::class)->convert($this->image());
+
+        $this->assertStringNotContainsString('images/fig-', $converted->markdown);
+        $this->assertStringContainsString("Intro line.\n\nOutro line.", $converted->markdown);
+        $this->assertSame([], $converted->mediaItems);
+    }
+
     public function test_on_a_scanned_pdf_is_routed_to_ocr_by_the_text_layer_probe(): void
     {
         config(['kb.ocr.enabled' => true]);

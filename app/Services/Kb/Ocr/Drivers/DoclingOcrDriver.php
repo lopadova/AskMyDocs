@@ -81,7 +81,7 @@ final class DoclingOcrDriver implements OcrDriver
             throw new \RuntimeException("Could not create Docling working directory {$dir}.");
         }
 
-        $extension = $request->isPdf() ? 'pdf' : $this->imageExtension($request->mimeType);
+        $extension = $request->isPdf() ? 'pdf' : $this->imageExtension($request->effectiveMimeType());
         $input = $dir.'/input.'.$extension;
         if (file_put_contents($input, $request->bytes) === false) {
             $this->removeDir($dir);

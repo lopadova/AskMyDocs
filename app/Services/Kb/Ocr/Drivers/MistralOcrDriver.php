@@ -99,7 +99,10 @@ final class MistralOcrDriver implements OcrDriver
             );
         }
 
-        $mime = strtolower(trim(explode(';', $request->mimeType, 2)[0]));
+        // The label is the family MIME (`image/png` for every raster): the
+        // data URL must name what the bytes actually are or the API rejects
+        // or mis-decodes a JPEG/TIFF/WebP sent as PNG.
+        $mime = $request->effectiveMimeType();
         $dataUrl = 'data:'.$mime.';base64,'.base64_encode($request->bytes);
         $document = $request->isPdf()
             ? ['type' => 'document_url', 'document_url' => $dataUrl]

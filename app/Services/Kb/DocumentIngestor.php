@@ -315,14 +315,23 @@ class DocumentIngestor
         array $metadata,
         EmbeddingsResponse $embeddingResponse,
         ?CanonicalParsedDocument $canonical,
+        bool $replaceExisting = false,
     ): KnowledgeDocument {
         $documentHash = hash('sha256', $markdown);
         $versionHash = $documentHash;
 
-        $existing = $this->findExistingVersion($projectKey, $sourcePath, $versionHash);
-        if ($existing !== null) {
-            $existing->update(['indexed_at' => now()]);
-            return $existing;
+        // v8.36 / ADR 0029 — a forced OCR re-run (`metadata.ocr.force`) that
+        // produced byte-identical Markdown is still a NEW run: its chunks and
+        // its `converter.ocr` block (run key, attempt, confidence) replace the
+        // existing version's instead of being dropped by the same-hash guard
+        // — otherwise the row would keep pointing at the previous run while
+        // the new one was billed and recorded. Same mechanics as forceReembed.
+        if (! $replaceExisting) {
+            $existing = $this->findExistingVersion($projectKey, $sourcePath, $versionHash);
+            if ($existing !== null) {
+                $existing->update(['indexed_at' => now()]);
+                return $existing;
+            }
         }
 
         return DB::transaction(fn () => $this->persistDocumentAndChunks(
@@ -337,6 +346,7 @@ class DocumentIngestor
             $chunkDrafts,
             $embeddingResponse,
             $canonical,
+            $replaceExisting,
         ));
     }
 

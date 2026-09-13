@@ -123,7 +123,7 @@ TXT;
             $pages = [];
             foreach ($raster['pages'] as $number => $imagePath) {
                 $bytes = (string) file_get_contents($imagePath);
-                $mime = $request->isPdf() ? 'image/png' : strtolower(trim(explode(';', $request->mimeType, 2)[0]));
+                $mime = $request->isPdf() ? 'image/png' : $request->effectiveMimeType();
 
                 $agent = new SdkAnonymousAgent(
                     instructions: self::INSTRUCTIONS,

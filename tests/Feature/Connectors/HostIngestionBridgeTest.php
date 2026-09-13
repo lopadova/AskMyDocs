@@ -161,6 +161,41 @@ final class HostIngestionBridgeTest extends TestCase
         $this->assertTrue($audit->metadata_json['metadata']['source_removed']);
     }
 
+    /**
+     * The orphan is removed from the disk the CONNECTOR wrote to, never from
+     * `config('kb.sources.disk')` — a connector may target another disk, and
+     * deleting the same key on the wrong one leaves the bytes it meant to
+     * drop while reporting `source_removed` (Copilot #478 round 3).
+     */
+    public function test_refused_imap_image_is_removed_from_the_disk_the_connector_wrote_to(): void
+    {
+        Queue::fake();
+        Storage::fake('kb');
+        Storage::fake('kb-attachments');
+        config()->set('kb.ocr.enabled', false);
+        config()->set('kb.sources.disk', 'kb');
+        config()->set('kb.sources.path_prefix', '');
+        $path = 'connector-email/connectors/imap/installation-12/inbox/55.png';
+        Storage::disk('kb-attachments')->put($path, 'PNG');
+
+        /** @var HostIngestionBridge $bridge */
+        $bridge = $this->app->make(ConnectorIngestionContract::class);
+        $bridge->dispatchIngestion(
+            projectKey: 'connector-email',
+            relativePath: $path,
+            disk: 'kb-attachments',
+            title: 'scan.png',
+            metadata: ['connector' => 'imap', 'installation_id' => 12, 'imap_uid' => '55', 'imap_doc_key' => 'INBOX:1:55', 'imap_mailbox' => 'INBOX'],
+            mimeType: 'image/png',
+            tenantId: 'acme',
+        );
+
+        Queue::assertNothingPushed();
+        Storage::disk('kb-attachments')->assertMissing($path);
+        $audit = KbCanonicalAudit::query()->where('event_type', 'connector_ingest_refused')->firstOrFail();
+        $this->assertTrue($audit->metadata_json['metadata']['source_removed']);
+    }
+
     public function test_refused_imap_image_keeps_a_source_a_live_row_still_references(): void
     {
         Queue::fake();

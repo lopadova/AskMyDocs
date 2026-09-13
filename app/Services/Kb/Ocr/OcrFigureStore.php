@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Services\Kb\Ocr;
 
 use App\Support\KbPath;
+use Illuminate\Contracts\Filesystem\Filesystem;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 
@@ -30,6 +32,19 @@ use RuntimeException;
 final class OcrFigureStore
 {
     public const DIR_SUFFIX = '.ocr';
+
+    /**
+     * Seconds a recorded run is treated as IN FLIGHT and never purged (ADR
+     * 0029 §6). The run is recorded — and the run lock released — before the
+     * row that will reference it commits (chunking, redaction and embedding
+     * run in between), so a reference gate that counts committed rows only
+     * has a window in which a concurrent hard delete or orphan sweep sees no
+     * reference and would remove the figures a row is about to point at.
+     * The run directory itself is the durable reservation: while it is
+     * younger than this grace nothing purges it; a run that never gains a
+     * row is removed by the orphan sweep once it has aged past it.
+     */
+    public const IN_FLIGHT_GRACE_SECONDS = 1800;
 
     /**
      * Disk-relative directory that holds a document's OCR assets.
@@ -152,6 +167,20 @@ final class OcrFigureStore
         return $this->purgeAt($disk, $fullPath.self::DIR_SUFFIX);
     }
 
+    /**
+     * Grace during which a recorded run counts as in flight (see the constant).
+     */
+    public static function inFlightGraceSeconds(): int
+    {
+        return max(0, (int) config('kb.ocr.purge_grace_seconds', self::IN_FLIGHT_GRACE_SECONDS));
+    }
+
+    /**
+     * Remove the run directories under `$dir` that are older than the
+     * in-flight grace, then the directory itself when nothing is left. A run
+     * still inside the grace is kept (its row may be about to commit) and
+     * reported; returns true only when the whole directory is gone.
+     */
     private function purgeAt(string $disk, string $dir): bool
     {
         $storage = Storage::disk($disk);
@@ -159,6 +188,48 @@ final class OcrFigureStore
             return false;
         }
 
+        $threshold = now()->getTimestamp() - self::inFlightGraceSeconds();
+        $kept = [];
+        foreach ($storage->directories($dir) as $runDir) {
+            if ($this->isInFlight($storage, $runDir, $threshold)) {
+                $kept[] = $runDir;
+                continue;
+            }
+            if (! $storage->deleteDirectory($runDir)) {
+                throw new RuntimeException("OcrFigureStore: failed to remove OCR run {$runDir} on disk [{$disk}].");
+            }
+        }
+
+        if ($kept !== []) {
+            Log::info('OcrFigureStore: OCR runs inside the in-flight grace were kept; the orphan sweep removes them once aged', [
+                'disk' => $disk,
+                'dir' => $dir,
+                'kept' => $kept,
+                'grace_seconds' => self::inFlightGraceSeconds(),
+            ]);
+
+            return false;
+        }
+
         return (bool) $storage->deleteDirectory($dir);
+    }
+
+    /**
+     * A run is in flight while its newest file — `result.json` once recorded,
+     * otherwise whatever the reservation holder has written so far — is
+     * younger than the threshold.
+     */
+    private function isInFlight(Filesystem $storage, string $runDir, int $threshold): bool
+    {
+        $result = $runDir.'/result.json';
+        if ($storage->exists($result)) {
+            return $storage->lastModified($result) > $threshold;
+        }
+        $newest = 0;
+        foreach ($storage->allFiles($runDir) as $file) {
+            $newest = max($newest, (int) $storage->lastModified($file));
+        }
+
+        return $newest > $threshold;
     }
 }

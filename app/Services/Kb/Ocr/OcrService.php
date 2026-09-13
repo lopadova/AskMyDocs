@@ -132,8 +132,12 @@ final class OcrService
 
             // Still ours (within TTL): nothing to do.
             return Cache::restoreLock($lock['key'], $lock['owner'])->isOwnedByCurrentProcess();
-        } catch (\Throwable) {
-            return true;
+        } catch (\Throwable $e) {
+            // Uncertainty is not ownership: with the lock store unreachable the
+            // job must not walk into a billable run it cannot prove is still
+            // its own. A retryable error lets the attempt run once the store
+            // is back (the job's tries/backoff), instead of a silent duplicate.
+            throw new \RuntimeException('OCR re-run lock store unavailable; retry the attempt: '.$e->getMessage(), 0, $e);
         }
     }
 
@@ -633,7 +637,14 @@ final class OcrService
             throw new UnprocessableEntityHttpException('OCR is disabled (KB_OCR_ENABLED=false).');
         }
 
-        $driver = $this->driver();
+        try {
+            $driver = $this->driver();
+        } catch (OcrDriverUnavailableException $e) {
+            // A remote driver with KB_OCR_ALLOW_REMOTE off (or an unknown
+            // name) is the same "cannot run here" the line below reports: a
+            // 422 with the registry's reason, never a 500.
+            throw new UnprocessableEntityHttpException($e->getMessage(), $e);
+        }
         if (! $driver->isAvailable()) {
             throw new UnprocessableEntityHttpException(sprintf('OCR driver "%s" is not available on this host.', $driver->name()));
         }
@@ -770,6 +781,13 @@ final class OcrService
         $sections = [];
         foreach ($result->pages as $page) {
             $body = trim($page->markdown);
+            if (! $figuresEnabled) {
+                // A driver that rewrote its own image links (Docling) must not
+                // leave the Markdown citing files that are not stored: strip
+                // every generated `images/fig-…` reference, then the empty
+                // lines it leaves behind.
+                $body = trim((string) preg_replace('/\n{3,}/', "\n\n", (string) preg_replace('/!\[[^\]]*\]\(images\/fig-[^)\s]+\)/', '', $body)));
+            }
             if ($figuresEnabled) {
                 foreach ($page->figures as $figure) {
                     $ref = sprintf('![Figure %d.%d](images/%s)', $figure->page, $figure->index, $figure->fileName());

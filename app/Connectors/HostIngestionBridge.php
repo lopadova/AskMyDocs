@@ -99,7 +99,7 @@ final class HostIngestionBridge implements ConnectorIngestionContract
         // does not re-present the same attachment every run; re-enabling OCR
         // and re-syncing (backfill) picks it up.
         if ($this->refusesImageWithoutOcr($mimeType)) {
-            $this->recordRefusedImage($projectKey, $relativePath, $mimeType, $metadata, $tenantId);
+            $this->recordRefusedImage($projectKey, $relativePath, $mimeType, $metadata, $tenantId, $disk);
             $this->imapSyncProgress->recordSuccessfulDispatch($progressMetadata, $tenantId);
 
             return;
@@ -162,6 +162,7 @@ final class HostIngestionBridge implements ConnectorIngestionContract
         string $mimeType,
         array $metadata,
         string $tenantId,
+        string $disk,
     ): void {
         $connectorKey = is_string($metadata['connector'] ?? null) ? $metadata['connector'] : 'unknown';
         $installationId = isset($metadata['installation_id']) ? (int) $metadata['installation_id'] : null;
@@ -177,7 +178,7 @@ final class HostIngestionBridge implements ConnectorIngestionContract
         // The IMAP connector has already written the attachment to the KB
         // disk before calling here; a refused image would otherwise sit as
         // orphan bytes nobody ingests or prunes (R4: the delete is checked).
-        $removed = $connectorKey === 'imap' ? $this->removeRefusedSource($relativePath) : null;
+        $removed = $connectorKey === 'imap' ? $this->removeRefusedSource($relativePath, $disk) : null;
 
         // Written with the tenant the CONNECTOR passed — never the worker's
         // TenantContext, which may belong to another tenant by now (R30).
@@ -191,20 +192,24 @@ final class HostIngestionBridge implements ConnectorIngestionContract
     }
 
     /**
+     * @param  string  $disk  the disk the connector wrote to — the path is resolved
+     *                        with the global prefix, the disk is the caller's, never
+     *                        `config('kb.sources.disk')` (a connector may target another)
+     *
      * @return bool|null null when the path could not be resolved (nothing deleted)
      */
-    private function removeRefusedSource(string $relativePath): ?bool
+    private function removeRefusedSource(string $relativePath, string $disk): ?bool
     {
         try {
             $resolved = $this->resolveKbSourcePath($relativePath);
-            $storage = Storage::disk($resolved['disk']);
+            $storage = Storage::disk($disk);
             if (! $storage->exists($resolved['absolute'])) {
                 return false;
             }
             // The IMAP connector names attachments by UID: a backfill can
             // re-present the SAME key a live row (ingested while OCR was on)
             // still points at. Same reference gate as DocumentDeleter (R4).
-            $referencedBy = $this->deleter->documentReferencingStorageKey($resolved['disk'], $resolved['absolute'], $relativePath);
+            $referencedBy = $this->deleter->documentReferencingStorageKey($disk, $resolved['absolute'], $relativePath);
             if ($referencedBy !== null) {
                 Log::info('HostIngestionBridge: refused image source kept, still referenced by a document', [
                     'relative_path' => $relativePath,
