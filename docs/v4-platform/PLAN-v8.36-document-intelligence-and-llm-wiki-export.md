@@ -396,9 +396,10 @@ tested); `restore` re-activates the artifact with the row. W3 creates versions
 on correction through the same service. Retention: `kb:prune-archived-versions`
 deletes the artifact with the row. Erasure is by deletion, not by shredding:
 ADR 0020's crypto-shred targets the token vault, which holds nothing about the
-artifact, so a vault shred never erases stored Markdown — every hard delete
-goes through `DocumentDeleter`, and every one removes the artifact (ADR 0030
-§3, *Erasure*).
+artifact, so a vault shred never erases stored Markdown — every hard-delete
+path removes the artifact: `DocumentDeleter` row by row, and the batch prune
+(`kb:prune-archived-versions`, which hard-deletes by query) through the same
+cleanup and reference gates (ADR 0030 §3 *Erasure*, §8).
 
 **Why it is its own workstream.** It is the prerequisite of W3 and W4, and it
 gives *Semantic Time Travel* (parked since v8.0) the faithful "what did this

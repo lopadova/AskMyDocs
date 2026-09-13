@@ -99,6 +99,8 @@ interface OcrDriver
     public function isAvailable(): bool;                 // binary / key / package present
     public function isRemote(): bool;                    // sends the bytes out of the tenant
     public function meteringMode(): OcrMeteringMode;     // PerPage | Sdk
+    public function maxDurationSeconds(int $pages): int;  // declared worst case: sizes the run-directory lease (§6)
+    public function boundsWorkWithoutPageCount(): bool;  // may run on an uncountable PDF: work bounded by construction (§4)
     public function recognise(OcrRequest $request): OcrResult;
 }
 ```
@@ -180,7 +182,20 @@ most the cap whatever the object table claims, and each page then runs under
 the driver's own per-page timeout, so CPU, memory and time are capped by the
 same numbers the verified path uses. `vision-llm` rasterises the same way but
 is a **remote** driver (each page is posted to the configured provider), so
-the egress rule above applies first and it is refused like `mistral-ocr`. A
+the egress rule above applies first and it is refused like `mistral-ocr`.
+
+Two byte limits, not one. `KB_OCR_MAX_BYTES` bounds the **source file**; it
+says nothing about what a page renders to — a small compressed PDF can declare
+a 200-inch MediaBox and rasterise to gigapixels, or carry image streams that
+expand far beyond the file. The page-by-page drivers therefore bound the
+**rendered page** separately: `pdftoppm -W/-H KB_OCR_RASTER_MAX_PAGE_PX`
+(default 6000) clips every page to a fixed pixel box before it is rendered
+(poppler only clips — a smaller page keeps its size), and a rendered page over
+`KB_OCR_RASTER_MAX_PAGE_BYTES` (default 10 MiB) is a deterministic refusal
+(`rendered_page_too_large`) raised **before** the page is decoded locally or
+posted to a vision provider, with the working directory removed. For
+`vision-llm` this is the egress invariant made concrete: what leaves is a
+rendered page, and no rendered page leaves unbounded. A
 whole-file engine (`docling`) cannot be told the size of what it is handed and
 is refused
 like a remote one. The contract carries the fact
@@ -379,7 +394,12 @@ modal asks `GET /api/admin/kb/uploads/{batch}/estimate` in its review step and
 shows, per staged item, whether OCR would run (`image` · `scanned_pdf` ·
 `text_layer_present` · `not_ocr_able` · `ocr_disabled`), the page count and
 `pages × rate` — computed by `OcrCostEstimator` from the staged bytes and the
-probe, never by running a driver.
+probe, never by running a driver. `pages × rate` is the **PerPage** price
+only: for an **Sdk**-metered driver (`vision-llm`) there is no page rate to
+multiply, so the estimate says `metering: sdk`, carries no price
+(`rate_per_page` and every `cost` are `0`, the additive R27 shape) and the
+modal says the provider meters tokens and FinOps records the real spend —
+never a `pages × rate` figure that the SDK hook would not honour.
 
 ### 11. Default-OFF, both states tested
 
