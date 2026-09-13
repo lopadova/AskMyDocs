@@ -217,8 +217,10 @@ and `mediaItems` lists the paths. The layout is:
 {prefix}/{dir}/{basename}.ocr/{run}/images/fig-{page}-{n}.png
 ```
 
-`{run}` is the first 16 hex characters of the SHA-256 of the bytes that were
-OCR'd. Two versions of the same source path therefore never overwrite each
+`{run}` is the full 64-hex SHA-256 of the bytes that were OCR'd, the driver and
+its fingerprint — a truncated digest would be an identifier two different
+inputs could share, and one run directory would then serve the wrong text.
+Two versions of the same source path therefore never overwrite each
 other's pixels, a re-run on identical bytes lands on the same directory (the
 same idempotency the ingest itself has), and a stored artifact (W2) can point
 at the run that produced it. The Markdown references `images/fig-3-1.png`

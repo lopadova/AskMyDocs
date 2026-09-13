@@ -16,8 +16,10 @@ use RuntimeException;
  *
  *   {prefix}/{dir of source_path}/{basename}.ocr/{run}/images/fig-{page}-{n}.png
  *
- * `{run}` is content-addressed — the first 16 hex chars of the SHA-256 of
- * the bytes that were OCR'd — so two versions of the same source path never
+ * `{run}` is content-addressed — the full 64-hex SHA-256 of the bytes that
+ * were OCR'd, the driver and its fingerprint (a truncated digest would be a
+ * 64-bit identifier two different inputs could share, and then one run
+ * directory would serve the wrong text) — so two versions of the same source path never
  * overwrite each other's pixels (a re-run on identical bytes lands on the
  * same directory, which is exactly the idempotency the ingest has), and a
  * W2 artifact can point at the run that produced it. Tenant separation is
@@ -67,7 +69,7 @@ final class OcrFigureStore
      */
     public static function runKeyFor(string $bytes, string $driver = '', string $fingerprint = ''): string
     {
-        return substr(hash('sha256', $bytes."\0".$driver."\0".$fingerprint), 0, 16);
+        return hash('sha256', $bytes."\0".$driver."\0".$fingerprint);
     }
 
     /**
@@ -75,8 +77,8 @@ final class OcrFigureStore
      */
     public function runDirFor(string $sourcePath, string $prefix, string $runKey): string
     {
-        if (! preg_match('/^[a-f0-9]{16}$/', $runKey)) {
-            throw new RuntimeException('OcrFigureStore: run key must be 16 lowercase hex chars.');
+        if (! preg_match('/^[a-f0-9]{64}$/', $runKey)) {
+            throw new RuntimeException('OcrFigureStore: run key must be the 64 lowercase hex chars of a SHA-256.');
         }
 
         return $this->assetsDirFor($sourcePath, $prefix).'/'.$runKey;

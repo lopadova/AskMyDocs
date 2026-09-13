@@ -107,7 +107,7 @@ class PruneOrphanFilesCommandTest extends TestCase
         Storage::disk('kb')->put('docs/orphan.md', 'o');
         Storage::disk('kb')->put('docs/orphan.md.ocr/0123456789abcdef/images/fig-1-1.png', 'figure');
         Storage::disk('kb')->put('docs/orphan.md.ocr/0123456789abcdef/result.json', '{}');
-        Storage::disk('kb')->put('docs/kept.md.ocr/fedcba9876543210/notes.md', 'not a source');
+        Storage::disk('kb')->put('docs/kept.md.ocr/fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210/notes.md', 'not a source');
 
         $this->seedDoc('docs/kept.md', 'hk');
 
@@ -120,7 +120,7 @@ class PruneOrphanFilesCommandTest extends TestCase
         Storage::disk('kb')->assertMissing('docs/orphan.md');
         $this->assertFalse(Storage::disk('kb')->directoryExists('docs/orphan.md.ocr'), 'the orphan run goes with its source');
         Storage::disk('kb')->assertExists('docs/kept.md');
-        Storage::disk('kb')->assertExists('docs/kept.md.ocr/fedcba9876543210/notes.md'); // a run beside a live source is neither a candidate nor purged
+        Storage::disk('kb')->assertExists('docs/kept.md.ocr/fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210/notes.md'); // a run beside a live source is neither a candidate nor purged
     }
 
     /**
@@ -138,7 +138,7 @@ class PruneOrphanFilesCommandTest extends TestCase
         Storage::disk('kb')->put('docs/gone.md.ocr/0123456789abcdef/result.json', '{}');
         // Source gone from the disk but a soft-deleted row of ANOTHER tenant
         // still references the key: the tree is that row's, not dangling.
-        Storage::disk('kb')->put('docs/theirs.md.ocr/fedcba9876543210/result.json', '{}');
+        Storage::disk('kb')->put('docs/theirs.md.ocr/fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210/result.json', '{}');
         $theirs = $this->seedDoc('docs/theirs.md', 'ht');
         KnowledgeDocument::withoutGlobalScopes()->whereKey($theirs->id)->update(['tenant_id' => 'other-tenant', 'deleted_at' => now()]);
 
@@ -158,7 +158,7 @@ class PruneOrphanFilesCommandTest extends TestCase
             ->expectsOutputToContain('dangling_ocr=1 purged=1 in_flight=0 ocr_failed=0')
             ->assertSuccessful();
         $this->assertFalse(Storage::disk('kb')->directoryExists('docs/gone.md.ocr'));
-        Storage::disk('kb')->assertExists('docs/theirs.md.ocr/fedcba9876543210/result.json');
+        Storage::disk('kb')->assertExists('docs/theirs.md.ocr/fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210/result.json');
     }
 
     public function test_soft_deleted_documents_protect_their_file_from_being_flagged_orphan(): void
