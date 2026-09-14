@@ -11,7 +11,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('tenant_brandings', function (Blueprint $table): void {
-            $table->string('tenant_id', 50)->primary();
+            $table->string('tenant_id', 50)->default('default')->primary();
             $table->string('logo_path', 500);
             $table->string('mime_type', 100);
             $table->string('original_name', 255)->nullable();
