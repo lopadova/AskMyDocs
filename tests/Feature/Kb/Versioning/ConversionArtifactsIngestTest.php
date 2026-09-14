@@ -646,6 +646,36 @@ Inert knob.", 'docs/inert.md');
             ->atLeast()->once();
     }
 
+    /** ADR 0030 §3 / R21 — a `reference_only` version stores no artifact but still requires the shared original: its commit takes the storage-key lock too, so it can never commit past a concurrent drop's reference scan. */
+    public function test_a_reference_only_ingest_commits_under_the_storage_key_lock_while_the_flag_is_on(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => true, 'kb.source_retention.mode' => 'reference_only', 'kb.conversion_artifacts.source_lock_wait_seconds' => 0]);
+        $bytes = PdfFixtureBuilder::buildThreePageSample();
+        Storage::disk('kb')->put('reports/q14.pdf', $bytes);
+        $held = \Illuminate\Support\Facades\Cache::lock('kb:source:kb:'.sha1('reports/q14.pdf'), 60);
+        $this->assertTrue($held->get());
+        try {
+            try {
+                app(DocumentIngestor::class)->ingest('eng', new SourceDocument(
+                    sourcePath: 'reports/q14.pdf', mimeType: 'application/pdf', bytes: $bytes,
+                    externalUrl: null, externalId: null, connectorType: 'local', metadata: ['disk' => 'kb', 'prefix' => ''],
+                ), 'Q14');
+                $this->fail('a reference_only commit under a held storage-key lock must fail loudly');
+            } catch (\Illuminate\Contracts\Cache\LockTimeoutException) {
+                // expected: nothing committed past the drop in progress
+            }
+            $this->assertSame(0, KnowledgeDocument::withoutGlobalScopes()->where('source_path', 'reports/q14.pdf')->count());
+        } finally {
+            $held->release();
+        }
+        $doc = app(DocumentIngestor::class)->ingest('eng', new SourceDocument(
+            sourcePath: 'reports/q14.pdf', mimeType: 'application/pdf', bytes: $bytes,
+            externalUrl: null, externalId: null, connectorType: 'local', metadata: ['disk' => 'kb', 'prefix' => ''],
+        ), 'Q14');
+        $this->assertNull($doc->markdown_path);
+        $this->assertSame('reference_only', $doc->fresh()->metadata['source_retention']);
+    }
+
     /** R43 — with the artifacts flag OFF (and for Markdown sources) no drop is possible, so an ingest never waits on the storage-key lock. */
     public function test_off_an_ingest_never_waits_on_the_storage_key_lock(): void
     {

@@ -461,9 +461,12 @@ flowchart LR
   and, on a mismatch, logs, falls back to the reconstruction and says so
   (`integrity: mismatch` on the content endpoint, `from_integrity` /
   `to_integrity` on the diff; `verified` when the hash matched, `null` when
-  there was nothing to check against). On a local disk every read, delete and
-  publish also resolves the real path and refuses one that a symlink under
-  `.artifacts/` makes resolve outside the root.
+  there was nothing to check against). A stored pointer must already be
+  canonical (no `.`/`..`, no `//`, no `\\`) or it is refused on every disk —
+  on an object store that lexical check is the whole check; on a local disk
+  every read, delete and publish also resolves the real path and refuses one
+  that a symlink under `.artifacts/` makes resolve outside the root, and
+  containment is asserted before any existence probe.
 - **`markdown_only` honours every row's contract.** Each row records the mode
   it was ingested under (`metadata.source_retention`); a shared original is
   dropped only when every row referencing that storage key — any tenant,
@@ -687,8 +690,10 @@ modal, once as an IMAP attachment — on a deployment with `KB_OCR_ENABLED=true`
   as `ocr_unverified` instead of run (a recorded run is still read back).
 - **The `markdown_only` drop is serialized with writers.** The reference scan and
   the delete run under the storage key's lock the persist paths hold around
-  their row commit (only where a drop is possible: an artifact stored for a
-  non-Markdown source — nothing waits on it with the flag off), and a sibling
+  their row commit (every non-Markdown commit while the flag is on, a
+  `reference_only` version included since it still requires the shared
+  original — nothing waits on it with the flag off, in a dry run or for a
+  Markdown source), and a sibling
   artifact counts only when its bytes verify. Like the OCR run lock it needs an
   atomic lock store (Redis) in production; `KB_CONVERSION_ARTIFACTS_SOURCE_LOCK_WAIT`
   / `KB_CONVERSION_ARTIFACTS_SOURCE_LOCK_TTL` tune it (10 s / 60 s). The gate

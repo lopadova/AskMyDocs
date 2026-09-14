@@ -117,7 +117,13 @@ Object stores have no symlinks: there the lexical check is the whole check.
 `.artifacts` is a **reserved** segment: `KB_PATH_PREFIX` must not contain it
 (the containment boundary is the only such segment of a path; a prefix
 carrying one would draw it one level above the real root), and a stored
-pointer with more than one is refused. The `.artifacts/` root
+pointer with more than one is refused. A stored pointer is held to the same
+canonical rule as a composed one: it must already be what `KbPath::normalize()`
+would make of it (no `.`/`..`, no `//`, no `\`) or it is refused on every disk —
+on an object store the lexical check is the whole check, so
+`.artifacts/../outside.md` is never read, deleted or probed; and containment
+is asserted before any `exists()`, so a symlink under `.artifacts/` is never
+followed by the probe. The `.artifacts/` root
 is a generated-asset subtree (`KbPath::isGeneratedAsset()`, ADR 0029): the
 folder walker and the orphan sweeps never read it back as a source.
 
@@ -189,9 +195,11 @@ ingest, the identical re-ingest whose artifact was just verified, repaired or
 published for the first time, `kb:artifacts-backfill` after a write — so an original re-uploaded after a
 drop, or kept because the key was locked, is dropped the next time any of
 them leaves a verified artifact behind; a lock that cannot be
-taken keeps the original (the conservative direction). The lock is taken only
-where a drop is possible at all — an artifact being stored for a non-Markdown
-source — so with the flag off, in `reference_only`, in a dry run or for a
+taken keeps the original (the conservative direction). The lock is taken for
+**every** commit of a non-Markdown source while the flag is on, whatever the
+row's own contract — a `reference_only` version stores no artifact but still
+requires the shared original, so it must not commit past a concurrent drop's
+reference scan — and only there: with the flag off, in a dry run or for a
 Markdown source an ingest never waits on it (R43). Like the OCR run lock it
 **needs an atomic lock store (Redis) in production**: on a per-host store the
 two halves of different pods are not serialized. Wait and TTL are

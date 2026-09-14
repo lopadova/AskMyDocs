@@ -495,6 +495,43 @@ final class DocumentVersionArtifactsTest extends TestCase
         $this->assertTrue($result['artifact_deleted']);
     }
 
+    /** R14 — a removal the store refuses (a pointer outside the artifact root, a disk that refuses) is reported as NOT deleted, never masked by a raw "the path is not there" probe. */
+    public function test_hard_delete_reports_a_refused_artifact_removal_as_not_deleted(): void
+    {
+        $doc = $this->version('v1', 'active', 'index a', "# Doc\n\nartifact a\n");
+        // The pointer names a path the store will not touch (not under an artifact root) and that does not exist.
+        KnowledgeDocument::withoutGlobalScopes()->whereKey($doc->id)->update(['markdown_path' => 'outside/not-an-artifact.md']);
+        Storage::disk('kb')->assertMissing('outside/not-an-artifact.md');
+
+        $result = app(DocumentDeleter::class)->delete($doc->fresh(), force: true);
+
+        $this->assertDatabaseMissing('knowledge_documents', ['id' => $doc->id]);
+        $this->assertFalse($result['artifact_deleted'], 'a refused removal is reported, even when the raw path happens not to exist');
+    }
+
+    /**
+     * SEC-PATH-001 — on an object store the lexical check is the whole
+     * check, so the key must be canonical before the root is derived:
+     * `.artifacts/../outside.md` is refused without touching the disk.
+     */
+    public function test_containment_refuses_a_non_canonical_pointer_on_an_object_store_disk(): void
+    {
+        config(['filesystems.disks.objstore' => ['driver' => 's3', 'key' => 'k', 'secret' => 's', 'region' => 'eu-west-1', 'bucket' => 'b']]);
+        $store = app(ConversionArtifactStore::class);
+        foreach (['.artifacts/../outside.md', '.artifacts/t/../../outside.md', '.artifacts//t/p/x.md.versions/'.str_repeat('a', 64).'.md', '.artifacts\\t\\p\\x.md'] as $path) {
+            $refused = false;
+            try {
+                $store->assertContainedOnDisk('objstore', $path);
+            } catch (\RuntimeException $e) {
+                $refused = true;
+                $this->assertStringContainsString('not a canonical artifact path', $e->getMessage());
+            }
+            $this->assertTrue($refused, "[{$path}] must be refused");
+        }
+        $this->assertNull($store->read('kb', '.artifacts/../outside.md'));
+        $this->assertSame(ConversionArtifactStore::FAILED, $store->remove('kb', '.artifacts/../outside.md'));
+    }
+
     public function test_soft_delete_leaves_the_artifact_in_place(): void
     {
         $doc = $this->version('v1', 'active', 'index a', "# Doc\n\nartifact a\n");

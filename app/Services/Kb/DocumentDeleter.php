@@ -615,8 +615,10 @@ class DocumentDeleter
     /**
      * Remove the row's own version artifact (ADR 0030 §8). Returns true when
      * NO artifact remains for the row afterwards (deleted, never written, or
-     * already gone); false when one is still on the disk — a delete error
-     * the caller reports instead of a warning nobody reads (R14).
+     * already gone); false when the removal was refused or failed (the disk
+     * refused, or the pointer is not a contained artifact path) — this call
+     * then cannot assert that nothing remains, and the caller reports it
+     * instead of a warning nobody reads (R14).
      */
     private function removeArtifact(string $disk, mixed $markdownPath, int $documentId): bool
     {
@@ -624,9 +626,11 @@ class DocumentDeleter
             return true;
         }
         try {
-            app(ConversionArtifactStore::class)->delete($disk, $markdownPath);
-
-            return ! Storage::disk($disk)->exists($markdownPath);
+            // The store says what happened — removed, absent (already gone),
+            // failed (the disk refused, or the path is not contained) — and a
+            // refusal is reported as such, never masked by a raw probe that
+            // bypasses the store's containment check.
+            return app(ConversionArtifactStore::class)->remove($disk, $markdownPath) !== ConversionArtifactStore::FAILED;
         } catch (\Throwable $e) {
             Log::warning('DocumentDeleter: failed to remove conversion artifact', [
                 'document_id' => $documentId,

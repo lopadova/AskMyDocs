@@ -279,6 +279,20 @@ final class ConversionArtifactStore
      */
     public function assertContainedOnDisk(string $disk, string $path): void
     {
+        // The lexical check is the WHOLE check on an object store (no
+        // symlinks, no realpath), so the key must be canonical before the
+        // root is derived: `.artifacts/../outside.md` is not under the root,
+        // whatever its first segment says (R1 — KbPath refuses `.` / `..`,
+        // collapses `//`, converts `\`; a stored pointer that is not already
+        // canonical is refused, never quietly reinterpreted).
+        try {
+            $canonical = KbPath::normalize($path);
+        } catch (\InvalidArgumentException $e) {
+            throw new RuntimeException("ConversionArtifactStore: [{$disk}] {$path} is not a canonical artifact path: {$e->getMessage()}", 0, $e);
+        }
+        if ($canonical !== $path) {
+            throw new RuntimeException("ConversionArtifactStore: [{$disk}] {$path} is not a canonical artifact path.");
+        }
         $root = $this->artifactRootOf($path);
         if ($root === null) {
             throw new RuntimeException("ConversionArtifactStore: [{$disk}] {$path} is not under an artifact root.");
@@ -363,11 +377,14 @@ final class ConversionArtifactStore
     public function read(string $disk, string $path): ?string
     {
         try {
+            // Containment FIRST: on a local disk `exists()` would already
+            // follow a symlink planted under `.artifacts/` and probe a path
+            // outside the root before the check ran — every read fails closed.
+            $this->assertContainedOnDisk($disk, $path);
             $storage = Storage::disk($disk);
             if (! $storage->exists($path)) {
                 return null;
             }
-            $this->assertContainedOnDisk($disk, $path);
             $bytes = $storage->get($path);
 
             return is_string($bytes) ? $bytes : null;
@@ -386,9 +403,9 @@ final class ConversionArtifactStore
 
     /**
      * Remove a published artifact. False when nothing was there or the disk
-     * refused (logged) — never an exception: retention and erasure must
-     * finish their database work whatever the disk says. Callers that must
-     * REPORT a refusal apart from an already-missing file use {@see remove()}.
+     * refused (logged) — never an exception. A convenience wrapper with no
+     * production caller: every retention and erasure path uses {@see remove()}
+     * so a refusal is reported apart from an already-missing file.
      */
     public function delete(string $disk, string $path): bool
     {
@@ -405,11 +422,13 @@ final class ConversionArtifactStore
     public function remove(string $disk, string $path): string
     {
         try {
+            // Containment FIRST (see read()): a delete never probes a path the
+            // check would refuse.
+            $this->assertContainedOnDisk($disk, $path);
             $storage = Storage::disk($disk);
             if (! $storage->exists($path)) {
                 return self::ABSENT;
             }
-            $this->assertContainedOnDisk($disk, $path);
             if (! $storage->delete($path)) {
                 Log::warning('ConversionArtifactStore: could not delete artifact', ['disk' => $disk, 'path' => $path]);
 

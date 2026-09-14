@@ -431,7 +431,7 @@ class DocumentIngestor
         // transaction discards this attempt's temp and nothing else.
         $artifact = $this->stageArtifact($projectKey, $sourcePath, $versionHash, $markdown, $metadata);
         try {
-            $document = $this->underSourceKeyLock($sourcePath, $metadata, $artifact !== null && $sourceType !== 'markdown', fn () => DB::transaction(fn () => $this->persistDocumentAndChunks(
+            $document = $this->underSourceKeyLock($sourcePath, $metadata, $this->sourceKeyLockNeeded($sourceType, $metadata), fn () => DB::transaction(fn () => $this->persistDocumentAndChunks(
                 $projectKey,
                 $sourcePath,
                 $title,
@@ -525,7 +525,7 @@ class DocumentIngestor
         try {
             // ADR 0030 §3 — the row commits under the storage key's lock, the
             // one a `markdown_only` drop holds around its scan + delete.
-            $document = $this->underSourceKeyLock($sourcePath, $metadata, $artifact !== null && $sourceType !== 'markdown', fn () => DB::transaction(function () use (
+            $document = $this->underSourceKeyLock($sourcePath, $metadata, $this->sourceKeyLockNeeded($sourceType, $metadata), fn () => DB::transaction(function () use (
                 $projectKey,
                 $sourcePath,
                 $title,
@@ -1376,6 +1376,31 @@ class DocumentIngestor
     private function sourceKeyLock(string $disk, string $fullPath): \Illuminate\Contracts\Cache\Lock
     {
         return Cache::lock('kb:source:'.$disk.':'.sha1($fullPath), self::sourceKeyLockSeconds());
+    }
+
+    /**
+     * Whether a row commit must be serialized with the `markdown_only` drop of
+     * its storage key: every commit of a NON-Markdown source while the flag is
+     * on — whatever this row's own contract. A `reference_only` version stores
+     * no artifact but still requires the shared original, so it must not
+     * commit past a concurrent drop's reference scan (it would then require a
+     * file already gone); a dry run commits nothing; a Markdown source is its
+     * own artifact and is never dropped; with the flag off no drop is
+     * possible at all (R43: nothing waits on the lock store).
+     *
+     * @param  array<string,mixed>  $metadata
+     */
+    private function sourceKeyLockNeeded(string $sourceType, array $metadata): bool
+    {
+        // `dry_run` never reaches a persist today (stripped by
+        // OcrService::stripTrustedOnlyKeys() at the HTTP boundary and by
+        // stripRunControlKeys() in PersistChunksStep): the arm mirrors
+        // stageArtifact() so a dry run, which commits nothing, waits on nothing.
+        if ($sourceType === 'markdown' || ($metadata['dry_run'] ?? false) === true) {
+            return false;
+        }
+
+        return app(ConversionArtifactStore::class)->enabled();
     }
 
     /**
