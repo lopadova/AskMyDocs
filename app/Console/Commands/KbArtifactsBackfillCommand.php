@@ -233,7 +233,17 @@ final class KbArtifactsBackfillCommand extends Command
             return 'hash_mismatch';
         }
 
-        $final = $store->pathFor($tenant, (string) $row->project_key, $sourcePath, (string) $row->version_hash, $prefix);
+        // The row's RECORDED prefix composes the path: one that cannot form an
+        // artifact root (a traversal, the reserved `.artifacts` segment) is
+        // this row's failure, reported — never an abort that loses the counts
+        // of the rows already repaired (R14).
+        try {
+            $final = $store->pathFor($tenant, (string) $row->project_key, $sourcePath, (string) $row->version_hash, $prefix);
+        } catch (\Throwable $e) {
+            $this->line("  #{$row->id} {$sourcePath}: conversion_failed (the recorded prefix cannot form an artifact root: {$e->getMessage()})");
+
+            return 'conversion_failed';
+        }
         if ($dryRun) {
             $this->line("  #{$row->id} {$sourcePath}: would write {$final}");
 
@@ -242,11 +252,14 @@ final class KbArtifactsBackfillCommand extends Command
         // Pointer first, bytes second — the same order as ingest (row commits
         // with the path, then the move): the orphan sweep only deletes files
         // no row points at, so a file published before its pointer would be
-        // inside that window. On failure the row goes back to exactly what
-        // it was: no pointer, or the previous pointer (still `missing` /
-        // `mismatch` for the next run — never turned into an orphan).
-        $previous = ['markdown_path' => $row->markdown_path, 'content_hash' => $row->content_hash];
-        // Bound to the row's own tenant (R30) and checked (R4): a row deleted
+        // inside that window. On failure the pointer STAYS: it names the
+        // version's bytes and the file is simply not there yet — the
+        // `missing` state the next run repairs. Restoring the previous
+        // pointer would race a concurrent repair of the same version (its
+        // publish lands between this attempt's failure and the restore, and
+        // the healthy file becomes an orphan): a pointer is never rolled
+        // back, only repaired forward.
+        // Bound to the row's own tenant (R30) and checked (R4): a row hard-deleted
         // between the chunk read and this write takes no pointer, so nothing
         // is published for it — bytes no row points at would be an orphan
         // reported as a repair.
@@ -261,24 +274,7 @@ final class KbArtifactsBackfillCommand extends Command
             $tmp = $store->writeTemp($disk, $final, $converted->markdown);
             $store->publish($disk, $tmp, $final);
         } catch (\Throwable $e) {
-            // A concurrent repair (an identical re-ingest) may have published
-            // the very bytes meanwhile: a verified artifact at the path keeps
-            // the pointer it now deserves instead of being orphaned by this
-            // attempt's revert (the same rule as the ingestor's pointerless
-            // publish).
-            if ($store->verifies($disk, $final, $hash)) {
-                $this->line("  #{$row->id} {$sourcePath}: written {$final} (this attempt failed to publish, a concurrent one had: {$e->getMessage()})");
-
-                return 'written';
-            }
-            if ($row->updateUnscopedWithinOwnTenant($previous) === 0) {
-                $this->line("  #{$row->id} {$sourcePath}: conversion_failed (could not publish: {$e->getMessage()}; the row changed underneath, its pointer was not restored)");
-
-                return 'conversion_failed';
-            }
-            $row->markdown_path = $previous['markdown_path'];
-            $row->content_hash = $previous['content_hash'];
-            $this->line("  #{$row->id} {$sourcePath}: conversion_failed (could not publish: {$e->getMessage()})");
+            $this->line("  #{$row->id} {$sourcePath}: conversion_failed (could not publish: {$e->getMessage()}; the pointer is kept as `missing` for the next run)");
 
             return 'conversion_failed';
         }

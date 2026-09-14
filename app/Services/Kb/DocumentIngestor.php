@@ -810,7 +810,10 @@ class DocumentIngestor
     /**
      * Write this version's Markdown to a temp file beside its final artifact
      * path — or return null when nothing is to be stored (flag off,
-     * `reference_only` retention, dry run).
+     * `reference_only` retention, dry run). A configured prefix that cannot
+     * form an artifact root (a traversal, the reserved `.artifacts` segment)
+     * throws here, BEFORE anything is committed: it fails the ingest loudly —
+     * a misconfiguration is not a document to store half-way (R14).
      *
      * @param  array<string,mixed>  $metadata
      * @return array{disk: string, tmp: string, final: string}|null
@@ -865,8 +868,11 @@ class DocumentIngestor
         $disk = (string) ($existingMetadata['disk'] ?? config('kb.sources.disk', 'kb'));
         $path = $existing->markdown_path;
         if (! is_string($path) || $path === '') {
-            $this->publishArtifactOfPointerlessVersion($existing, $markdown, $existingMetadata, $disk, $store);
-            if (is_string($existing->markdown_path) && $existing->markdown_path !== '') {
+            // The retention tail runs only once a VERIFIED artifact is there
+            // (the publish returned, or a concurrent one had): a failed
+            // publish leaves a `missing` pointer, and the gate would only
+            // refuse on it.
+            if ($this->publishArtifactOfPointerlessVersion($existing, $markdown, $existingMetadata, $disk, $store) && is_string($existing->markdown_path)) {
                 $this->finalizeSourceRetentionOrLog($existing, $disk, $existing->markdown_path);
             }
 
@@ -945,21 +951,28 @@ class DocumentIngestor
      * Publish the artifact of a version that never had one (ingested before
      * the flag was on) from an identical re-ingest: pointer first, bytes
      * second — the same order as a fresh ingest, so the orphan sweep never
-     * sees a published file no row points at — and the pointer taken back
-     * when the publish fails, so the row is left exactly as it was.
+     * sees a published file no row points at. When the publish fails the
+     * pointer is KEPT: it names the version's bytes (`content_hash` is the
+     * hash of exactly those), the file behind it is simply not there yet —
+     * the `missing` state every reader degrades on and the next identical
+     * re-ingest or `kb:artifacts-backfill` repairs. Taking it back would race
+     * a concurrent repair of the same version (its publish lands between this
+     * attempt's failure and the rollback, and the row would point at nothing
+     * while a verified file sits on disk as an orphan); a pointer is never
+     * rolled back, only repaired forward.
      *
      * @param  array<string,mixed>  $existingMetadata
      */
-    private function publishArtifactOfPointerlessVersion(KnowledgeDocument $existing, string $markdown, array $existingMetadata, string $disk, ConversionArtifactStore $store): void
+    private function publishArtifactOfPointerlessVersion(KnowledgeDocument $existing, string $markdown, array $existingMetadata, string $disk, ConversionArtifactStore $store): bool
     {
         if ($this->sourceRetentionOf($existingMetadata) === SourceRetentionResolver::REFERENCE_ONLY) {
-            return;
+            return false;
         }
         $hash = hash('sha256', $markdown);
         if ($hash !== (string) $existing->document_hash) {
             Log::warning('DocumentIngestor: converted bytes do not match the recorded document_hash; no artifact published', ['document_id' => $existing->id]);
 
-            return;
+            return false;
         }
         $prefix = array_key_exists('prefix', $existingMetadata)
             ? (string) $existingMetadata['prefix']
@@ -968,33 +981,36 @@ class DocumentIngestor
         try {
             $final = $store->pathFor(app(TenantContext::class)->current(), (string) $existing->project_key, KbPath::normalize((string) $existing->source_path), (string) $existing->version_hash, $prefix);
             if ($existing->updateUnscopedWithinOwnTenant(['markdown_path' => $final, 'content_hash' => $hash]) === 0) {
-                // No row took the pointer (the row changed underneath): bytes
-                // published now would be an orphan nobody points at (R4).
+                // No row took the pointer (the row is no longer in the table):
+                // bytes published now would be an orphan nobody points at (R4).
                 Log::warning('DocumentIngestor: no artifact published — the pointerless row is no longer the one read', ['document_id' => (int) $existing->id]);
 
-                return;
+                return false;
             }
             $store->publish($disk, $store->writeTemp($disk, $final, $markdown), $final);
             $existing->markdown_path = $final;
             $existing->content_hash = $hash;
             Log::info('DocumentIngestor: artifact published for a version that predated the artifacts, from an identical re-ingest', ['document_id' => $existing->id, 'disk' => $disk, 'markdown_path' => $final]);
+
+            return true;
         } catch (\Throwable $e) {
-            // Two identical re-ingests of the same pointerless version can
-            // repair it at once: when THIS attempt fails but a verified
-            // artifact is already at the path (the other attempt's), the
-            // pointer stays — it points at the version's bytes — instead of
-            // erasing a healthy publication until the next repair.
-            if ($final !== null && $store->verifies($disk, $final, $hash)) {
+            // The pointer stays (see the docblock): the row is in the
+            // repairable `missing` state, never rolled back under a
+            // concurrent repair's feet. Read-only after the fact, a verified
+            // file at the path means a concurrent repair already published
+            // these very bytes: the row is healthy and this is not an error.
+            if ($final !== null) {
                 $existing->markdown_path = $final;
                 $existing->content_hash = $hash;
-                Log::warning('DocumentIngestor: artifact publish failed but a verified artifact is already at the path (a concurrent repair); pointer kept', ['document_id' => $existing->id, 'disk' => $disk, 'markdown_path' => $final, 'error' => $e->getMessage()]);
+            }
+            if ($final !== null && $store->verifies($disk, $final, $hash)) {
+                Log::warning('DocumentIngestor: this artifact publish failed but a concurrent repair had already published these bytes; pointer kept, artifact verified', ['document_id' => $existing->id, 'disk' => $disk, 'markdown_path' => $final, 'error' => $e->getMessage()]);
 
-                return;
+                return true;
             }
-            if ($final !== null) {
-                $existing->updateUnscopedWithinOwnTenant(['markdown_path' => null, 'content_hash' => null]);
-            }
-            Log::error('DocumentIngestor: artifact publish failed for a version that predated the artifacts; kb:artifacts-backfill can repair it', ['document_id' => $existing->id, 'disk' => $disk, 'error' => $e->getMessage()]);
+            Log::error('DocumentIngestor: artifact publish failed for a version that predated the artifacts; the pointer is kept (state: missing) and the next identical re-ingest or kb:artifacts-backfill repairs it', ['document_id' => $existing->id, 'disk' => $disk, 'markdown_path' => $final, 'error' => $e->getMessage()]);
+
+            return false;
         }
     }
 
@@ -1240,8 +1256,15 @@ class DocumentIngestor
 
                 return false;
             }
-            if ($rowMode === SourceRetentionResolver::REFERENCE_ONLY) {
-                return true; // never needed the local source
+            if ((int) $row->id !== $currentId && $rowMode === SourceRetentionResolver::REFERENCE_ONLY) {
+                // A `reference_only` sibling stored NOTHING that could stand
+                // in for the original (no artifact by design): the shared
+                // original is the only thing a re-embed or a `kb:ocr` re-run
+                // of that version can read, so it blocks the drop — the most
+                // conservative arm (ADR 0030 §3).
+                $blocking = (int) $row->id;
+
+                return false;
             }
             if (! is_string($row->markdown_path) || $row->markdown_path === '') {
                 $blocking = (int) $row->id;

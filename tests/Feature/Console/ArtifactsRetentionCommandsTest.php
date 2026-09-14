@@ -571,6 +571,46 @@ final class ArtifactsRetentionCommandsTest extends TestCase
         $this->assertNotNull($fine->fresh()->markdown_path, 'the rows after the unresolvable one are still processed');
     }
 
+    /** R14 / SEC-PATH-001 — a configured prefix carrying the reserved `.artifacts` segment is a reported failed sweep, never a root drawn one level up. */
+    public function test_prune_reports_a_prefix_carrying_the_reserved_segment_as_a_failed_sweep(): void
+    {
+        config(['kb.sources.path_prefix' => 'a/.artifacts']);
+
+        $this->artisan('kb:prune-archived-versions')
+            ->expectsOutputToContain('reserved')
+            ->expectsOutputToContain('artifact_temps_swept=0 artifact_temps_failed=1 artifact_orphans_removed=0 artifact_orphans_failed=1')
+            ->assertExitCode(1);
+    }
+
+    /** A publish that fails leaves the pointer as the repairable `missing` state — never rolled back under a concurrent repair's feet — and the next run repairs it. */
+    public function test_backfill_keeps_the_pointer_of_a_failed_publish_and_repairs_it_on_the_next_run(): void
+    {
+        $tenant = app(TenantContext::class)->current();
+        Storage::disk('kb')->put('docs/refused.md', "# Doc\n\nversion 1\n");
+        $row = $this->row(1, 'active', null, 'docs/refused.md');
+        $healthy = Storage::disk('kb');
+        $root = $healthy->path('');
+        $adapter = new \Tests\Fixtures\Storage\WriteRefusingAdapter(new \League\Flysystem\Local\LocalFilesystemAdapter($root), static fn (string $path): bool => str_ends_with($path, '.tmp'));
+        Storage::set('kb', new \Illuminate\Filesystem\FilesystemAdapter(new \League\Flysystem\Filesystem($adapter), $adapter, ['root' => $root]));
+
+        $this->artisan('kb:artifacts-backfill', ['--tenant' => $tenant])
+            ->expectsOutputToContain('; the pointer is kept as `missing` for the next run)')
+            ->expectsOutputToContain('already_stored=0 written=0 intentionally_missing=0 source_missing=0 hash_mismatch=0 conversion_failed=1')
+            ->assertExitCode(0);
+        $pointer = (string) $row->fresh()->markdown_path;
+        $this->assertNotSame('', $pointer, 'the pointer names the version\'s bytes');
+        $this->assertSame((string) $row->document_hash, $row->fresh()->content_hash);
+        $this->assertSame('missing', app(\App\Services\Kb\Versioning\DocumentVersionService::class)->artifactStateFor($row->fresh()));
+
+        Storage::set('kb', $healthy);
+        $this->artisan('kb:artifacts-backfill', ['--tenant' => $tenant])
+            ->expectsOutputToContain('artifact pointer set but the file is missing; repairing')
+            ->expectsOutputToContain('already_stored=0 written=1')
+            ->assertExitCode(0);
+        Storage::disk('kb')->assertExists($pointer);
+        $this->assertSame('verified', app(\App\Services\Kb\Versioning\DocumentVersionService::class)->artifactStateFor($row->fresh()));
+    }
+
     /** R14 — a configured prefix that cannot form an artifact root is a reported failure, never an unhandled crash. */
     public function test_prune_reports_a_traversing_prefix_as_a_failed_sweep(): void
     {

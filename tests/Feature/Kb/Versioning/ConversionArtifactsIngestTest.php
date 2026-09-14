@@ -119,6 +119,36 @@ final class ConversionArtifactsIngestTest extends TestCase
         $this->assertSame([], Storage::disk('kb')->allFiles('.artifacts'));
     }
 
+    /** ADR 0030 §3 — a `reference_only` sibling stored nothing that could stand in for the shared original: it blocks a later `markdown_only` version's drop. */
+    public function test_a_reference_only_sibling_blocks_the_markdown_only_drop_of_the_shared_original(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => true, 'kb.source_retention.mode' => 'reference_only']);
+        $bytes = PdfFixtureBuilder::buildThreePageSample();
+        Storage::disk('kb')->put('reports/shared.pdf', $bytes);
+        $first = app(DocumentIngestor::class)->ingest('eng', new SourceDocument(
+            sourcePath: 'reports/shared.pdf', mimeType: 'application/pdf', bytes: $bytes,
+            externalUrl: null, externalId: null, connectorType: 'local', metadata: ['disk' => 'kb', 'prefix' => ''],
+        ), 'Shared v1');
+        $this->assertNull($first->markdown_path);
+        $this->assertSame('reference_only', $first->fresh()->metadata['source_retention']);
+
+        // The knob moves; a NEW version of the same source (different bytes) is ingested under markdown_only …
+        config(['kb.source_retention.mode' => 'markdown_only']);
+        $revised = PdfFixtureBuilder::buildSinglePage('A revised second version of the shared source.');
+        Storage::disk('kb')->put('reports/shared.pdf', $revised);
+        $second = app(DocumentIngestor::class)->ingest('eng', new SourceDocument(
+            sourcePath: 'reports/shared.pdf', mimeType: 'application/pdf', bytes: $revised,
+            externalUrl: null, externalId: null, connectorType: 'local', metadata: ['disk' => 'kb', 'prefix' => ''],
+        ), 'Shared v2');
+        $this->assertNotSame($first->id, $second->id, 'a new version');
+        $this->assertNotNull($second->markdown_path);
+        $this->assertSame('markdown_only', $second->fresh()->metadata['source_retention']);
+
+        // … and the shared original stays: the reference_only version has nothing else to be re-run from.
+        Storage::disk('kb')->assertExists('reports/shared.pdf');
+        $this->assertArrayNotHasKey('source_dropped', $second->fresh()->metadata);
+    }
+
     public function test_markdown_only_retention_drops_the_original_binary_after_the_artifact_commit(): void
     {
         config(['kb.conversion_artifacts.enabled' => true, 'kb.source_retention.mode' => 'markdown_only']);
@@ -479,8 +509,36 @@ Inert knob.", 'docs/inert.md');
         $this->assertSame(str_repeat('a', 64), KnowledgeDocument::withoutGlobalScopes()->whereKey($doc->id)->value('content_hash'));
     }
 
-    /** Two identical re-ingests can repair the same pointerless version at once: an attempt that fails while a verified artifact is already at the path keeps the pointer instead of erasing the other attempt's publication. */
-    public function test_a_failed_pointerless_publish_keeps_the_pointer_when_a_verified_artifact_is_already_there(): void
+    /** A failed pointerless publish leaves the pointer as the repairable `missing` state (never rolled back), and the next identical re-ingest repairs it. */
+    public function test_a_failed_pointerless_publish_keeps_the_pointer_as_missing_and_the_next_re_ingest_repairs_it(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => false]);
+        $markdown = "# Pointerless\n\nRepaired forward.";
+        $doc = $this->ingestMarkdown($markdown, 'docs/pointerless-missing.md');
+        $this->assertNull($doc->markdown_path);
+        config(['kb.conversion_artifacts.enabled' => true]);
+        $healthy = Storage::disk('kb');
+        $root = $healthy->path('');
+        $adapter = new \Tests\Fixtures\Storage\WriteRefusingAdapter(new \League\Flysystem\Local\LocalFilesystemAdapter($root), static fn (string $path): bool => str_ends_with($path, '.tmp'));
+        Storage::set('kb', new \Illuminate\Filesystem\FilesystemAdapter(new \League\Flysystem\Filesystem($adapter), $adapter, ['root' => $root]));
+
+        $again = $this->ingestMarkdown($markdown, 'docs/pointerless-missing.md');
+
+        $this->assertSame($doc->id, $again->id);
+        $pointer = (string) $again->fresh()->markdown_path;
+        $this->assertNotSame('', $pointer, 'the pointer stays: the version\'s bytes, not there yet');
+        $this->assertSame(hash('sha256', $markdown), $again->fresh()->content_hash);
+        $this->assertSame('missing', app(\App\Services\Kb\Versioning\DocumentVersionService::class)->artifactStateFor($again->fresh()));
+
+        Storage::set('kb', $healthy);
+        $repaired = $this->ingestMarkdown($markdown, 'docs/pointerless-missing.md');
+        $this->assertSame($doc->id, $repaired->id);
+        Storage::disk('kb')->assertExists($pointer);
+        $this->assertSame('verified', app(\App\Services\Kb\Versioning\DocumentVersionService::class)->artifactStateFor($repaired->fresh()));
+    }
+
+    /** Two identical re-ingests can repair the same pointerless version at once: the pointer an attempt keeps on failure resolves to the other worker's verified publication. */
+    public function test_a_failed_pointerless_publish_keeps_the_pointer_and_a_concurrent_repairs_verified_artifact_stands(): void
     {
         config(['kb.conversion_artifacts.enabled' => true]);
         $markdown = "# Pointerless\n\nRepaired by two workers.";

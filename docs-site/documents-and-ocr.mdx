@@ -590,7 +590,7 @@ JSON columns that already exist:
 | `KB_CONVERSION_ARTIFACTS_SOURCE_LOCK_WAIT` | `10` | Seconds a row commit or a `markdown_only` drop waits for the storage key's lock (needs an atomic lock store — Redis — in production). |
 | `KB_CONVERSION_ARTIFACTS_SOURCE_LOCK_TTL` | `60` | Seconds that lock lives when its holder dies. A value that is not a positive number of seconds (`0`, a negative, a non-number) is not a shorter lock: the default applies and a warning says so once per ingest. |
 | `KB_VERSIONS_TIMELINE_LIMIT` | `100` | The most versions a Time Machine listing (HTTP `?limit=`, MCP `limit`, CLI `--limit`) hydrates and verifies per call (R3); every surface pages with an offset (`?offset=`, `offset`, `--offset`) and returns the family `total` and `truncated` when it holds more than the page reaches — the UI offers "Load older versions". A non-positive value is the default, with a warning. |
-| `KB_SOURCE_RETENTION` | `full_copy` | `full_copy` · `markdown_only` (drop the original binary after the artifact commit) · `reference_only` (no artifact, no `.ocr/` run). Wired for the first time in v8.36. |
+| `KB_SOURCE_RETENTION` | `full_copy` | `full_copy` · `markdown_only` (drop the original binary after the artifact commit) · `reference_only` (no artifact, no `.ocr/` run — the mode governs the derived data; the source a copy-based entry point wrote stays, it is what a re-run reads from, `kb:prune-orphan-files` keeps it as referenced, and a `reference_only` row blocks a `markdown_only` sibling's drop of the shared original). Wired for the first time in v8.36. |
 
 ## Tri-surface (R44)
 

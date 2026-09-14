@@ -451,6 +451,36 @@ final class DocumentVersionArtifactsTest extends TestCase
         $store->rootFor('../outside');
     }
 
+    /** SEC-PATH-001 — `.artifacts` is a reserved segment: a prefix carrying it would draw the containment boundary one level above the real root. */
+    public function test_the_artifact_root_refuses_a_prefix_carrying_the_reserved_segment(): void
+    {
+        $store = app(ConversionArtifactStore::class);
+        foreach (['a/.artifacts', '.artifacts', '.artifacts/b', 'x/.artifacts/y'] as $prefix) {
+            try {
+                $store->rootFor($prefix);
+                $this->fail("prefix [{$prefix}] must be refused");
+            } catch (\RuntimeException $e) {
+                $this->assertStringContainsString('reserved', $e->getMessage());
+            }
+        }
+        $this->assertSame('a/artifacts/.artifacts', $store->rootFor('a/artifacts'), 'only the exact reserved segment is refused');
+        try {
+            $store->pathFor('t', 'p', 'docs/x.md', str_repeat('a', 64), 'a/.artifacts');
+            $this->fail('pathFor() goes through the same root');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('reserved', $e->getMessage());
+        }
+        // A stored pointer is held to the same rule: more than one `.artifacts` segment is not contained.
+        try {
+            $store->read('kb', 'a/.artifacts/.artifacts/t/p/x.md.versions/'.str_repeat('a', 64).'.md');
+        } catch (\Throwable) {
+            // read() never throws — it logs and returns null; the assertion below covers it
+        }
+        $this->assertNull($store->read('kb', 'a/.artifacts/.artifacts/t/p/x.md.versions/'.str_repeat('a', 64).'.md'));
+        $this->expectException(\RuntimeException::class);
+        $store->assertContainedOnDisk('kb', 'a/.artifacts/.artifacts/t/p/x.md.versions/'.str_repeat('a', 64).'.md');
+    }
+
     public function test_hard_delete_removes_the_rows_own_artifact(): void
     {
         $doc = $this->version('v1', 'active', 'index a', "# Doc\n\nartifact a\n");

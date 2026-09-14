@@ -63,6 +63,15 @@ final class ConversionArtifactStore
         if ($prefix === '') {
             return self::ROOT;
         }
+        // `.artifacts` is a RESERVED segment: the containment check finds the
+        // root as the only such segment of a path, so a prefix carrying one
+        // (`a/.artifacts`) would put the real root (`a/.artifacts/.artifacts`)
+        // inside a boundary drawn one level up, and a symlink planted there
+        // could pass containment across namespaces. Refused for every path
+        // this class composes; a stored path is checked by artifactRootOf().
+        if (in_array(self::ROOT, explode('/', $prefix), true)) {
+            throw new RuntimeException('ConversionArtifactStore: the configured path prefix must not contain the reserved `'.self::ROOT.'` segment.');
+        }
         // SEC-PATH-001 — the prefix is configuration, but a sweep enumerates
         // and DELETES under the root it composes: a traversal segment or a
         // stray `//` must never make maintenance operate outside
@@ -234,6 +243,10 @@ final class ConversionArtifactStore
 
     public function exists(string $disk, string $path): bool
     {
+        // Contained like every other path-taking read: a caller never learns
+        // anything about a path outside the artifact root.
+        $this->assertContainedOnDisk($disk, $path);
+
         return Storage::disk($disk)->exists($path);
     }
 
@@ -334,6 +347,13 @@ final class ConversionArtifactStore
         $segments = explode('/', $path);
         $at = array_search(self::ROOT, $segments, true);
         if ($at === false || $at === count($segments) - 1) {
+            return null;
+        }
+        // A path this class is HANDED (a stored pointer) is held to the same
+        // rule as one it composes: exactly one `.artifacts` segment. A second
+        // one (a pointer written while a prefix carried the reserved segment)
+        // would draw the boundary one level above the real root — refused.
+        if (in_array(self::ROOT, array_slice($segments, $at + 1), true)) {
             return null;
         }
 

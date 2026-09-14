@@ -70,8 +70,18 @@ the flag was on keeps it — `contentFor()` (§5) still reads it and still says
 which source it used. Turning the flag off is therefore a stop, not a
 rollback; nothing already stored is discarded or hidden. With the flag on, `source_retention`
 (ADR 0014) is finally wired: in `full_copy` (the default) and `markdown_only`
-the converter output is stored; in `reference_only` it is not. Both states
-are tested on both ingest paths (R43).
+the converter output is stored; in `reference_only` it is not. The mode
+governs the **derived** data — the artifact and the `.ocr/` run — and never
+removes the source a copy-based entry point (HTTP ingest, a connector) wrote
+under the row's `source_path`: that file is what a forced re-embed and a
+`kb:ocr` re-run read from, and `reference_only` stores nothing that could
+stand in for it (`markdown_only` is the mode that drops the original, and it
+can only because the artifact does — and a `reference_only` sibling on the
+same storage key blocks that drop, §3). A `reference_only` row still
+references its `source_path`, so `kb:prune-orphan-files` keeps the file: the
+mode saves the derived copies, not the original. A deployment that wants no
+local binary of a copy-based source uses `markdown_only`. Both states are
+tested on both ingest paths (R43).
 
 ### 3. The converted Markdown is a stored artifact — one core, both paths, compensated
 
@@ -103,7 +113,11 @@ survives it — and, on a **local** disk, a `realpath` check on every read,
 delete and publish (the file's real path when it exists, its parent's
 otherwise, and the published file's after the move) that refuses a path a
 symlink planted under `.artifacts/` makes resolve outside the real root.
-Object stores have no symlinks: there the lexical check is the whole check. The `.artifacts/` root
+Object stores have no symlinks: there the lexical check is the whole check.
+`.artifacts` is a **reserved** segment: `KB_PATH_PREFIX` must not contain it
+(the containment boundary is the only such segment of a path; a prefix
+carrying one would draw it one level above the real root), and a stored
+pointer with more than one is refused. The `.artifacts/` root
 is a generated-asset subtree (`KbPath::isGeneratedAsset()`, ADR 0029): the
 folder walker and the orphan sweeps never read it back as a source.
 
@@ -158,8 +172,10 @@ contract**: every row records the mode it was ingested under
 every referencing row was ingested under a mode that does not require it — a
 `full_copy` row (or a pre-v8.36 row without the stamp, which counts as
 `full_copy`) blocks the drop even with its artifact present; a
-`reference_only` row never needed the local source; a `markdown_only` row
-needs its artifact on disk. A sibling's artifact stands in for the original only when it **verifies** —
+`reference_only` row stored nothing that could stand in for the original (no
+artifact by design) and blocks the drop too — the shared original is the only
+thing a re-embed or a `kb:ocr` re-run of that version can read; a
+`markdown_only` row needs its artifact on disk. A sibling's artifact stands in for the original only when it **verifies** —
 its bytes hash to the row's `content_hash` (`document_hash` for a legacy
 pointer) — a pointer proves nothing and a corrupt sibling less than nothing,
 so the last valid representation is never deleted; the scan streams the
