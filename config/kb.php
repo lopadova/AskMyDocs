@@ -1,5 +1,14 @@
 <?php
 
+$kbFilesystemDisk = env('KB_FILESYSTEM_DISK');
+
+// Laravel Cloud registers its bucket under the disk name exposed by
+// FILESYSTEM_DISK. Prefer an explicit KB override everywhere else, while
+// allowing Cloud to provide the actual configured disk name automatically.
+$kbFilesystemDisk ??= env('LARAVEL_CLOUD_DISK_CONFIG') !== null
+    ? env('FILESYSTEM_DISK', 'kb')
+    : 'kb';
+
 return [
     'embeddings_dimensions' => env('KB_EMBEDDINGS_DIMENSIONS', 1536),
     'default_min_similarity' => env('KB_MIN_SIMILARITY', 0.30),
@@ -686,7 +695,7 @@ return [
         | Change to 's3' (and provide AWS_* env) to serve docs from S3.
         | See config/filesystems.php for the disk definitions.
         */
-        'disk' => env('KB_FILESYSTEM_DISK', 'kb'),
+        'disk' => $kbFilesystemDisk,
 
         /*
         | Optional path prefix applied to every ingested path. Useful when
@@ -905,7 +914,7 @@ return [
     | holds promoted markdown ready for indexing.
     */
     'raw_disk' => env('KB_RAW_DISK', 'kb-raw'),
-    'canonical_disk' => env('KB_FILESYSTEM_DISK', 'kb'),
+    'canonical_disk' => $kbFilesystemDisk,
 
     /*
     |--------------------------------------------------------------------------
