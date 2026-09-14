@@ -84,6 +84,20 @@ final class KbArtifactsBackfillCommand extends Command
         }
         $this->report($counts, $dryRun);
 
+        // A row whose artifact this run could not produce — a disk it could
+        // not resolve or that refused it, a source that is gone, a conversion
+        // that threw — is a partial failure an operator or a scheduler must
+        // see (R14): non-zero, never a green exit that hides it, in a dry run
+        // too (these are observations, not actions: the preview predicts the
+        // real run's exit, as `kb:prune-archived-versions --dry-run` does).
+        // `hash_mismatch` is informational (a recorded version the source no
+        // longer produces; nothing to repair from here); a retention tail
+        // that could not be finalized is reported on the row's line and
+        // retried by the next run, not counted here.
+        if (($counts['conversion_failed'] + $counts['disk_unavailable'] + $counts['source_missing']) > 0) {
+            return self::FAILURE;
+        }
+
         return self::SUCCESS;
     }
 

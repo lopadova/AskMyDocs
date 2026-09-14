@@ -69,6 +69,7 @@ class KbDocumentVersionsTool extends Tool
         $rows = $versions->versionsFor($document, $limit, $offset)->map(function (KnowledgeDocument $v) use ($versions): array {
             // ADR 0030 §5 — read + verified, never the pointer alone.
             $artifactState = $versions->artifactStateFor($v);
+            $restore = DocumentVersionService::lastRestoreOf($v);
 
             return [
             'id' => (int) $v->id,
@@ -81,8 +82,8 @@ class KbDocumentVersionsTool extends Tool
             'content_hash' => $v->content_hash,
             'has_artifact' => DocumentVersionService::isVerifiedArtifactState($artifactState),
             'artifact_state' => $artifactState,
-            'restored_by' => DocumentVersionService::lastRestoreOf($v)['actor'] ?? null,
-            'restored_at' => DocumentVersionService::lastRestoreOf($v)['at'] ?? null,
+            'restored_by' => $restore['actor'] ?? null,
+            'restored_at' => $restore['at'] ?? null,
             'indexed_at' => $v->indexed_at?->toIso8601String(),
             ];
         })->all();

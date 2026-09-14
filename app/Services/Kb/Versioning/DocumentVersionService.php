@@ -175,7 +175,16 @@ final class DocumentVersionService
             return ['state' => self::ARTIFACT_NONE, 'content' => null, 'disk' => null, 'path' => null];
         }
         $metadata = is_array($version->metadata) ? $version->metadata : [];
-        $disk = (string) ($metadata['disk'] ?? config('kb.sources.disk', 'kb'));
+        // The recorded disk is used only when it is a usable disk name: a
+        // row whose `metadata.disk` is present but not a non-empty string
+        // (a JSON null, a stray scalar) reads from the configured disk, never
+        // from '' or 'Array'. The value is host-stamped (clients and
+        // connectors cannot set it — OcrService::stripTrustedOnlyKeys()), so
+        // the sibling readers (backfill, prune snapshot, ingestor) keep the
+        // plain `(string) ($metadata['disk'] ?? …)` form: this read is the
+        // one that serves content to an operator, hence the extra guard.
+        $recordedDisk = $metadata['disk'] ?? null;
+        $disk = is_string($recordedDisk) && $recordedDisk !== '' ? $recordedDisk : (string) config('kb.sources.disk', 'kb');
         $content = $this->artifacts->read($disk, $path);
         if ($content === null) {
             return ['state' => self::ARTIFACT_MISSING, 'content' => null, 'disk' => $disk, 'path' => $path];

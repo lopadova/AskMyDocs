@@ -240,13 +240,16 @@ final class ArtifactsRetentionCommandsTest extends TestCase
 
         $this->artisan('kb:artifacts-backfill', ['--tenant' => $tenant, '--dry-run' => true])
             ->expectsOutputToContain('already_stored=1 written=2 intentionally_missing=0 source_missing=1 hash_mismatch=1 conversion_failed=0 (dry-run)')
-            ->assertExitCode(0);
+            ->assertExitCode(1); // the preview predicts the real run's exit: a missing source is an observation, not an action
         $this->assertNull($match->fresh()->markdown_path);
         $this->assertSame('not the recorded bytes', Storage::disk('kb')->get((string) $corrupt->markdown_path));
 
+        // The real run settled every row but one (`source_missing`): a
+        // partial failure exits non-zero (R14); `hash_mismatch` alone is
+        // informational.
         $this->artisan('kb:artifacts-backfill', ['--tenant' => $tenant])
             ->expectsOutputToContain('already_stored=1 written=2 intentionally_missing=0 source_missing=1 hash_mismatch=1 conversion_failed=0')
-            ->assertExitCode(0);
+            ->assertExitCode(1);
         $this->assertSame("# Doc\n\nversion 6\n", Storage::disk('kb')->get((string) $corrupt->fresh()->markdown_path));
 
         $written = $match->fresh();
@@ -601,7 +604,7 @@ final class ArtifactsRetentionCommandsTest extends TestCase
         $this->artisan('kb:artifacts-backfill', ['--tenant' => $tenant])
             ->expectsOutputToContain('disk_unavailable (disk [nowhere] cannot be resolved here')
             ->expectsOutputToContain('already_stored=0 written=1 intentionally_missing=0 source_missing=0 hash_mismatch=0 conversion_failed=0 disk_unavailable=1')
-            ->assertExitCode(0);
+            ->assertExitCode(1); // a row it could not reach is a partial failure (R14)
 
         $this->assertNotNull($fine->fresh()->markdown_path, 'the rows after the unresolvable one are still processed');
     }
@@ -623,7 +626,7 @@ final class ArtifactsRetentionCommandsTest extends TestCase
             $this->artisan('kb:artifacts-backfill', ['--tenant' => $tenant])
                 ->expectsOutputToContain('docs/unreachable.md: disk_unavailable (disk [kb] refused the read')
                 ->expectsOutputToContain('already_stored=0 written=1 intentionally_missing=0 source_missing=0 hash_mismatch=0 conversion_failed=0 disk_unavailable=1')
-                ->assertExitCode(0);
+                ->assertExitCode(1); // a row it could not reach is a partial failure (R14)
         } finally {
             Storage::set('kb', $healthy);
         }
@@ -839,7 +842,7 @@ final class ArtifactsRetentionCommandsTest extends TestCase
         $this->artisan('kb:artifacts-backfill', ['--tenant' => $tenant])
             ->expectsOutputToContain('; the pointer is kept as `missing` for the next run)')
             ->expectsOutputToContain('already_stored=0 written=0 intentionally_missing=0 source_missing=0 hash_mismatch=0 conversion_failed=1')
-            ->assertExitCode(0);
+            ->assertExitCode(1); // a refused publish is a partial failure (R14)
         $pointer = (string) $row->fresh()->markdown_path;
         $this->assertNotSame('', $pointer, 'the pointer names the version\'s bytes');
         $this->assertSame((string) $row->document_hash, $row->fresh()->content_hash);

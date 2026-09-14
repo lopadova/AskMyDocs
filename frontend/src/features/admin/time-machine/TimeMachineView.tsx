@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { getDiff, getVersions, restoreVersion, type DocVersion } from './timemachine.api';
+import { getDiff, getVersions, restoreVersion, type DocVersion, type VersionContentIntegrity, type VersionContentSource } from './timemachine.api';
 
 /**
  * v8.7/W5 — Cloud Time Machine: browse a document's version timeline, diff
@@ -204,7 +204,7 @@ export function TimeMachineView({ docId }: { docId: number }): ReactNode {
  * "To" are chosen independently, so neither is necessarily the newer or the
  * older version and the note never says so.
  */
-function indexDiffSides(fromSource: string, toSource: string): string {
+function indexDiffSides(fromSource: VersionContentSource, toSource: VersionContentSource): string {
     if (fromSource !== 'artifact' && toSource !== 'artifact') {
         return 'both the From and the To side are';
     }
@@ -217,7 +217,7 @@ function indexDiffSides(fromSource: string, toSource: string): string {
  * reads an index diff as the document's own history. Older servers omit the
  * sources: then nothing is claimed either way.
  */
-function DiffSourceNote({ fromSource, toSource, fromIntegrity, toIntegrity }: { fromSource?: string; toSource?: string; fromIntegrity?: string | null; toIntegrity?: string | null }): ReactNode {
+function DiffSourceNote({ fromSource, toSource, fromIntegrity, toIntegrity }: { fromSource?: VersionContentSource; toSource?: VersionContentSource; fromIntegrity?: VersionContentIntegrity; toIntegrity?: VersionContentIntegrity }): ReactNode {
     if (!fromSource || !toSource) {
         return null;
     }
@@ -244,7 +244,7 @@ function DiffSourceNote({ fromSource, toSource, fromIntegrity, toIntegrity }: { 
     );
 }
 
-function unverifiedSides(fromIntegrity?: string | null, toIntegrity?: string | null): string {
+function unverifiedSides(fromIntegrity?: VersionContentIntegrity, toIntegrity?: VersionContentIntegrity): string {
     const from = fromIntegrity !== 'verified';
     const to = toIntegrity !== 'verified';
     if (from && to) {

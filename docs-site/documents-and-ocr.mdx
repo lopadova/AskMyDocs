@@ -539,8 +539,12 @@ flowchart LR
   missing or corrupt — is re-converted and gets its artifact only when the
   reconversion hashes to the row's `document_hash` (`hash_mismatch` is
   reported and nothing is written — an artifact must agree with the version's
-  chunks); a missing source is reported, not invented. An identical re-ingest
-  with the flag on repairs or publishes a version's artifact the same way.
+  chunks); a missing source is reported, not invented. The command exits
+  non-zero when any row ended `source_missing`, `conversion_failed` or
+  `disk_unavailable` — a row whose artifact it could not produce —
+  `hash_mismatch` being informational, and `--dry-run` predicts the same
+  exit code. An identical re-ingest with the flag on repairs or publishes a
+  version's artifact the same way.
 
 The artifact is the converter's output **before** the PII seam. That is why
 it is readable only through the role-gated admin Time Machine surfaces and
