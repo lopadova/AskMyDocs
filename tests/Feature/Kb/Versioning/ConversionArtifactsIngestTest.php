@@ -538,6 +538,36 @@ Inert knob.", 'docs/inert.md');
         $this->assertNotSame('ocr', $doc->fresh()->metadata['generation_source'] ?? null);
     }
 
+    /**
+     * ADR 0030 §3 — a pre-v8.36 row that never recorded its disk is an
+     * AMBIGUOUS reference (it may live on any disk its path matches): it
+     * blocks the `markdown_only` drop on every disk, the same fail-closed
+     * rule the deleter applies — never mapped to the configured disk and
+     * skipped when the ingest names another.
+     */
+    public function test_a_legacy_row_without_a_recorded_disk_blocks_the_drop_on_every_disk(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => true, 'kb.source_retention.mode' => 'markdown_only', 'kb.sources.disk' => 'kb-configured']);
+        Storage::fake('kb-configured'); // resolvable but empty: the assertion below is the only reason this test can fail
+        $bytes = PdfFixtureBuilder::buildThreePageSample();
+        Storage::disk('kb')->put('reports/legacy.pdf', $bytes);
+        // The legacy row: same source path, an older version, no `metadata.disk` at all.
+        KnowledgeDocument::create([
+            'project_key' => 'eng', 'source_path' => 'reports/legacy.pdf', 'source_type' => 'pdf', 'title' => 'Legacy',
+            'mime_type' => 'application/pdf', 'language' => 'it', 'access_scope' => 'internal', 'status' => 'archived',
+            'document_hash' => str_repeat('1', 64), 'version_hash' => str_repeat('1', 64), 'metadata' => [], 'indexed_at' => now()->subDay(),
+        ]);
+
+        $doc = app(DocumentIngestor::class)->ingest('eng', new SourceDocument(
+            sourcePath: 'reports/legacy.pdf', mimeType: 'application/pdf', bytes: $bytes,
+            externalUrl: null, externalId: null, connectorType: 'local', metadata: ['disk' => 'kb', 'prefix' => ''],
+        ), 'Legacy');
+
+        Storage::disk('kb')->assertExists((string) $doc->markdown_path);
+        Storage::disk('kb')->assertExists('reports/legacy.pdf'); // the legacy row still needs it — on this disk too
+        $this->assertArrayNotHasKey('source_dropped', $doc->fresh()->metadata);
+    }
+
     /** SEC-SETTING-SHAPE-001 — a lock TTL that is not a positive number of seconds is the documented default, not a 1-second lock, and it is said once. */
     public function test_a_non_positive_lock_ttl_falls_back_to_the_default_and_warns(): void
     {

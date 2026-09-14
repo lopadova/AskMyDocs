@@ -443,8 +443,12 @@ flowchart LR
 - **Reads prefer the artifact and say so.** `contentFor()` returns the stored
   Markdown when the row has one and the file is there, otherwise the chunk
   reconstruction; `diff` reports `from_source` / `to_source` (`artifact` |
-  `reconstruction`, additive keys) so the UI labels a diff *faithful* only
-  when both sides are stored documents, and an *index diff* otherwise. A
+  `reconstruction`, additive keys) and `from_integrity` / `to_integrity`
+  (`verified` · `mismatch` · null) so the UI labels a diff *faithful* only
+  when both sides are stored documents **verified** against their recorded
+  hashes, *stored but not verified* when both are stored documents but a side
+  has no `content_hash` to check against (a legacy pointer), and an *index
+  diff* whenever a side is reconstructed. A
   missing file behind a non-null `markdown_path` is logged and degrades, never
   a 500.
 - **Restore keeps the creation provenance and records itself apart.**
@@ -488,14 +492,21 @@ flowchart LR
   included) references any more. Both sweeps are deliberately **cross-tenant**
   (the root is one shared tree; a file is deleted only at zero references
   across every tenant) and cover the configured `KB_FILESYSTEM_DISK` / `KB_PATH_PREFIX`
-  only. A soft delete leaves the artifact in place.
+  namespace plus every `(metadata.disk, metadata.prefix)` a row with an
+  artifact pointer recorded (a disk this deployment cannot resolve is counted
+  as `artifact_namespaces_skipped`, see below). A soft delete leaves the
+  artifact in place.
 - **`markdown_only` keeps the sweeps honest.** The original is dropped only
   when every row referencing that storage key — any tenant, trashed rows
   included — already has an artifact (a shared disk can hold the same key for
   two tenants); the rows are then stamped `metadata.source_dropped`, so
   `kb:ingest-folder --prune-orphans` never reads the missing file as an orphan,
   and a PII-policy re-embed (`kb:reembed-project`) reads the artifact instead.
-  The backfill does not drop originals: it repairs history, it never changes it.
+  The backfill applies the same contract: once a row's artifact is verified
+  (written by this run, or already there) a `markdown_only` row's original goes
+  through the same gate and the rows are stamped — `full_copy` rows keep
+  theirs, `--dry-run` never drops, and the summary line counts what went
+  (`originals_dropped`).
 - **Backfill is operator-only and judges each row on its own contract.**
   `kb:artifacts-backfill` walks every live row: a row stamped
   `reference_only` is `intentionally_missing` whatever `KB_SOURCE_RETENTION`
@@ -699,6 +710,11 @@ modal, once as an IMAP attachment — on a deployment with `KB_OCR_ENABLED=true`
   `ocr_failed` and exits non-zero when the disk refused a removal (or a
   planted symlink under `.artifacts/` stopped a sweep): the rows are gone,
   the bytes are not.
+- **A version restored during the prune is never pruned.** Every candidate is
+  re-read and locked in the deleting transaction and pruned only if it is
+  still archived; a version a Time Machine restore activated between the
+  selection and the delete is skipped and counted (`restored_meanwhile`,
+  additive, printed when non-zero).
 - **Turning it off is a stop, not a rollback.** Nothing already stored is
   discarded or hidden; `contentFor()` keeps reading it and the UI keeps saying
   *faithful* for those pairs.

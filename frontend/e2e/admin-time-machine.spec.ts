@@ -90,6 +90,7 @@ test.describe('Admin Time Machine', () => {
         // v8.36 / ADR 0030 §5 — the note says whether the diff compares the
         // stored documents (faithful) or chunk reconstructions; it is never absent.
         await expect(page.getByTestId('kb-time-machine-diff-source')).toHaveAttribute('data-diff-faithful', /^(true|false)$/);
+        await expect(page.getByTestId('kb-time-machine-diff-source')).toHaveAttribute('data-diff-state', /^(faithful|unverified|index)$/);
         await expect(page.getByTestId('kb-time-machine-diff-body')).toBeVisible();
     });
 

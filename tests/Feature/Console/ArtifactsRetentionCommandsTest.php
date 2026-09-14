@@ -282,6 +282,46 @@ final class ArtifactsRetentionCommandsTest extends TestCase
         Storage::disk('kb')->assertExists($legacyPath);
     }
 
+    /**
+     * R21 — the surplus is SELECTED as archived, but a Time Machine restore
+     * can activate a row between that read and the delete: every candidate
+     * is re-read and locked in the deleting transaction and pruned only if
+     * it is still archived. Simulated here by activating the oldest candidate
+     * the moment the batch hydrates it (the `retrieved` model event), i.e.
+     * after the SELECT and before the lock. `lockForUpdate()` is a no-op on
+     * SQLite, so this asserts the re-check; the serialization itself is
+     * pgsql's `SELECT … FOR UPDATE` inside the same transaction. The listener
+     * is registered on the per-test application's dispatcher (Testbench
+     * rebuilds the app, and `DatabaseServiceProvider::boot()` re-binds
+     * `Model::setEventDispatcher()`, for every test), so it never outlives
+     * this test.
+     */
+    public function test_prune_never_deletes_a_version_restored_after_the_batch_was_selected(): void
+    {
+        config(['kb.versioning.keep_archived' => 1]);
+        $this->row(1, 'archived');
+        $restored = $this->row(2, 'archived');
+        $this->row(3, 'archived');
+        $this->row(4, 'active');
+        $flipped = false;
+        KnowledgeDocument::retrieved(static function (KnowledgeDocument $model) use ($restored, &$flipped): void {
+            if ($flipped || (int) $model->id !== (int) $restored->id || $model->status !== 'archived') {
+                return;
+            }
+            $flipped = true;
+            // The concurrent restore: activates the row (query builder, no events) once the batch has read it.
+            \Illuminate\Support\Facades\DB::table('knowledge_documents')->where('id', $restored->id)->update(['status' => 'active']);
+        });
+
+        $this->artisan('kb:prune-archived-versions')
+            ->expectsOutputToContain('archived_versions_pruned=1 artifacts_removed=0 artifacts_absent=0 artifacts_failed=0 ocr_runs_purged=0 ocr_runs_kept=0 ocr_failed=0 restored_meanwhile=1')
+            ->assertExitCode(0);
+
+        $this->assertTrue($flipped, 'the simulated restore ran');
+        $this->assertSame('active', KnowledgeDocument::withoutGlobalScopes()->whereKey($restored->id)->value('status'), 'the restored version survives the prune');
+        $this->assertSame(3, KnowledgeDocument::withoutGlobalScopes()->count());
+    }
+
     /** ADR 0030 §8 — the sweep covers every artifact namespace the corpus records, not only the configured disk. */
     public function test_prune_sweeps_every_recorded_artifact_disk(): void
     {
@@ -470,12 +510,65 @@ final class ArtifactsRetentionCommandsTest extends TestCase
 
         $this->artisan('kb:artifacts-backfill', ['--tenant' => $tenant])
             ->expectsOutputToContain('(original dropped: markdown_only)')
-            ->expectsOutputToContain('already_stored=0 written=1 intentionally_missing=0 source_missing=0 hash_mismatch=0 conversion_failed=0')
+            ->expectsOutputToContain('already_stored=0 written=1 intentionally_missing=0 source_missing=0 hash_mismatch=0 conversion_failed=0 originals_dropped=1')
             ->assertExitCode(0);
 
         Storage::disk('kb')->assertExists($artifact);
         Storage::disk('kb')->assertMissing('scans/dropme.png');
         $this->assertTrue($row->fresh()->metadata['source_dropped']);
+    }
+
+    /** ADR 0030 §3 — a verified artifact already there is the same precondition as a fresh write: the row's `markdown_only` contract is finalized on `already_stored` too. */
+    public function test_backfill_finalizes_the_rows_retention_contract_on_an_already_stored_artifact(): void
+    {
+        config(['kb.ocr.enabled' => true, 'kb.ocr.driver' => 'fake', 'kb.ocr.fake.pages' => [['markdown' => 'scanned text']]]);
+        $cache = \Mockery::mock(\App\Services\Kb\EmbeddingCacheService::class);
+        $cache->shouldReceive('generate')->andReturnUsing(
+            fn (array $texts) => new \App\Ai\EmbeddingsResponse(embeddings: array_map(fn () => array_fill(0, 8, 0.0), $texts), provider: 'fake', model: 'fake-8'),
+        );
+        $this->app->instance(\App\Services\Kb\EmbeddingCacheService::class, $cache);
+        $tenant = app(TenantContext::class)->current();
+        $png = (string) base64_decode(\App\Services\Kb\Ocr\Drivers\FakeOcrDriver::PNG_1X1, true);
+        Storage::disk('kb')->put('scans/back.png', $png);
+        config(['kb.source_retention.mode' => 'markdown_only']);
+        $row = app(\App\Services\Kb\DocumentIngestor::class)->ingest('eng', new \App\Services\Kb\Pipeline\SourceDocument(
+            sourcePath: 'scans/back.png', mimeType: 'image/png', bytes: $png,
+            externalUrl: null, externalId: null, connectorType: 'local', metadata: ['disk' => 'kb', 'prefix' => ''],
+        ), 'Back');
+        Storage::disk('kb')->assertMissing('scans/back.png');
+        // The original comes back (a restore from backup) while the verified artifact is still there.
+        Storage::disk('kb')->put('scans/back.png', $png);
+        KnowledgeDocument::withoutGlobalScopes()->whereKey($row->id)->update(['metadata' => array_diff_key($row->fresh()->metadata, ['source_dropped' => true])]);
+
+        $this->artisan('kb:artifacts-backfill', ['--tenant' => $tenant, '--dry-run' => true])
+            ->expectsOutputToContain('already_stored=1 written=0')
+            ->assertExitCode(0);
+        Storage::disk('kb')->assertExists('scans/back.png'); // a dry run finalizes nothing
+
+        $this->artisan('kb:artifacts-backfill', ['--tenant' => $tenant])
+            ->expectsOutputToContain('already_stored (original dropped: markdown_only)')
+            ->expectsOutputToContain('already_stored=1 written=0 intentionally_missing=0 source_missing=0 hash_mismatch=0 conversion_failed=0 originals_dropped=1')
+            ->assertExitCode(0);
+
+        Storage::disk('kb')->assertMissing('scans/back.png');
+        $this->assertTrue($row->fresh()->metadata['source_dropped']);
+    }
+
+    /** R14 — a row whose recorded disk cannot be resolved here is one reported row, never an abort that leaves the rest of the corpus unprocessed. */
+    public function test_backfill_reports_a_row_on_an_unresolvable_disk_and_goes_on(): void
+    {
+        $tenant = app(TenantContext::class)->current();
+        $lost = $this->row(1, 'active', null, 'docs/lost.md');
+        $lost->update(['markdown_path' => '.artifacts/x/eng/docs/lost.md.versions/h.md', 'metadata' => ['disk' => 'nowhere', 'prefix' => '']]);
+        Storage::disk('kb')->put('docs/fine.md', "# Doc\n\nversion 2\n");
+        $fine = $this->row(2, 'active', null, 'docs/fine.md');
+
+        $this->artisan('kb:artifacts-backfill', ['--tenant' => $tenant])
+            ->expectsOutputToContain('disk_unresolvable (disk [nowhere] cannot be resolved here')
+            ->expectsOutputToContain('already_stored=0 written=1 intentionally_missing=0 source_missing=0 hash_mismatch=0 conversion_failed=0 disk_unresolvable=1')
+            ->assertExitCode(0);
+
+        $this->assertNotNull($fine->fresh()->markdown_path, 'the rows after the unresolvable one are still processed');
     }
 
     /** R14 — a configured prefix that cannot form an artifact root is a reported failure, never an unhandled crash. */

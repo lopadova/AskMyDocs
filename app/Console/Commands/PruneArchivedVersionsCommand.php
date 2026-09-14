@@ -51,7 +51,7 @@ final class PruneArchivedVersionsCommand extends Command
                 $result = $this->pruneTenant($tenantId, $keep, $dryRun, $artifacts);
                 $failed += $result['artifacts_failed'] + $result['ocr_failed'];
                 $this->info(sprintf(
-                    '[%s] archived_versions_pruned=%d artifacts_removed=%d artifacts_absent=%d artifacts_failed=%d ocr_runs_purged=%d ocr_runs_kept=%d ocr_failed=%d%s',
+                    '[%s] archived_versions_pruned=%d artifacts_removed=%d artifacts_absent=%d artifacts_failed=%d ocr_runs_purged=%d ocr_runs_kept=%d ocr_failed=%d%s%s',
                     $tenantId,
                     $result['pruned'],
                     $result['artifacts_removed'],
@@ -60,6 +60,7 @@ final class PruneArchivedVersionsCommand extends Command
                     $result['ocr_purged'],
                     $result['ocr_kept'],
                     $result['ocr_failed'],
+                    $result['restored_meanwhile'] > 0 ? " restored_meanwhile={$result['restored_meanwhile']}" : '',
                     $dryRun ? ' (dry-run)' : '',
                 ));
             }
@@ -175,7 +176,7 @@ final class PruneArchivedVersionsCommand extends Command
             ->whereNotNull('metadata->disk')
             ->select(['metadata->disk as artifact_disk', 'metadata->prefix as artifact_prefix'])
             ->distinct()
-            ->get();
+            ->cursor(); // hydrated one pair at a time (R3: bounds model memory; the pgsql driver still buffers the result set)
         foreach ($recorded as $row) {
             $disk = (string) $row->artifact_disk;
             // A JSON `null` prefix is read as the configured one: the JSON
@@ -294,11 +295,11 @@ final class PruneArchivedVersionsCommand extends Command
     }
 
     /**
-     * @return array{pruned: int, artifacts_removed: int, artifacts_absent: int, artifacts_failed: int, ocr_purged: int, ocr_kept: int, ocr_failed: int}
+     * @return array{pruned: int, restored_meanwhile: int, artifacts_removed: int, artifacts_absent: int, artifacts_failed: int, ocr_purged: int, ocr_kept: int, ocr_failed: int}
      */
     private function pruneTenant(string $tenantId, int $keep, bool $dryRun, ConversionArtifactStore $artifacts): array
     {
-        $result = ['pruned' => 0, 'artifacts_removed' => 0, 'artifacts_absent' => 0, 'artifacts_failed' => 0, 'ocr_purged' => 0, 'ocr_kept' => 0, 'ocr_failed' => 0];
+        $result = ['pruned' => 0, 'restored_meanwhile' => 0, 'artifacts_removed' => 0, 'artifacts_absent' => 0, 'artifacts_failed' => 0, 'ocr_purged' => 0, 'ocr_kept' => 0, 'ocr_failed' => 0];
         $deleter = app(DocumentDeleter::class);
         // Families with MORE than `keep` archived versions.
         $families = KnowledgeDocument::query()
@@ -349,7 +350,6 @@ final class PruneArchivedVersionsCommand extends Command
                 if ($surplus->isEmpty()) {
                     break;
                 }
-                $result['pruned'] += $surplus->count();
                 // Hard delete through the deleter's row path — chunks, the
                 // graph nodes an archived canonical version may still own,
                 // and the deprecation audit row, in one transaction per row
@@ -357,8 +357,33 @@ final class PruneArchivedVersionsCommand extends Command
                 // source file is shared with the live version and is never
                 // touched here.
                 $runsToCheck = [];
-                foreach ($surplus as $row) {
-                    $deleter->deleteRowsOnly($row, removeArtifact: false);
+                foreach ($surplus as $candidate) {
+                    // R21 — the batch was SELECTED as archived; a Time Machine
+                    // restore can activate a row between that read and this
+                    // delete. The row is re-read and locked in the deleting
+                    // transaction and pruned only if it is still archived:
+                    // a version restored meanwhile is skipped and counted,
+                    // never deleted under the operator's feet.
+                    $row = DB::transaction(function () use ($tenantId, $candidate, $deleter): ?KnowledgeDocument {
+                        $locked = KnowledgeDocument::query()
+                            ->forTenant($tenantId)
+                            ->whereKey($candidate->id)
+                            ->where('status', 'archived')
+                            ->lockForUpdate()
+                            ->first();
+                        if ($locked === null) {
+                            return null;
+                        }
+                        $deleter->deleteRowsOnly($locked, removeArtifact: false);
+
+                        return $locked;
+                    });
+                    if ($row === null) {
+                        $result['restored_meanwhile']++;
+
+                        continue;
+                    }
+                    $result['pruned']++;
                     // v8.36 / ADR 0030 §8 — the artifact goes with the row it
                     // belongs to; a refused delete is counted and reported
                     // (R14), an already-missing file is simply absent.

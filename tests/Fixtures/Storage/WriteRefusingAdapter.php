@@ -10,8 +10,9 @@ use League\Flysystem\FilesystemAdapter;
 use League\Flysystem\UnableToWriteFile;
 
 /**
- * A Flysystem adapter that reads, lists, deletes and moves like the one it
- * wraps but REFUSES every write whose path matches a predicate — the way a
+ * A Flysystem adapter that reads, lists and deletes like the one it wraps
+ * but REFUSES every write, move or copy whose DESTINATION matches a
+ * predicate — the way a
  * full disk or a lost mount refuses a temp file while the files already
  * there stay readable. Lets a test drive a publish failure on a real local
  * disk without mocking a final class.
@@ -112,11 +113,17 @@ final class WriteRefusingAdapter implements FilesystemAdapter
 
     public function move(string $source, string $destination, Config $config): void
     {
+        if (($this->refuses)($destination)) {
+            throw \League\Flysystem\UnableToMoveFile::because('write refused by the test adapter', $source, $destination);
+        }
         $this->inner->move($source, $destination, $config);
     }
 
     public function copy(string $source, string $destination, Config $config): void
     {
+        if (($this->refuses)($destination)) {
+            throw \League\Flysystem\UnableToCopyFile::because('write refused by the test adapter', $source, $destination);
+        }
         $this->inner->copy($source, $destination, $config);
     }
 }

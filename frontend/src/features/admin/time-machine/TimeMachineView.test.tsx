@@ -167,10 +167,10 @@ describe('TimeMachineView', () => {
         expect(screen.getByTestId('kb-time-machine-diff-source')).toHaveTextContent('Index diff — both the From and the To side are reconstructed');
     });
 
-    it('labels a diff as faithful when both sides are stored documents (v8.36)', async () => {
+    it('labels a diff as faithful only when both sides are stored documents VERIFIED against their hashes (v8.36)', async () => {
         mockGet.mockImplementation((url: string) => {
             if (url.includes('/diff')) {
-                return Promise.resolve({ data: { data: { from: 11, to: 22, added: 0, removed: 0, rows: [], from_source: 'artifact', to_source: 'artifact' } } });
+                return Promise.resolve({ data: { data: { from: 11, to: 22, added: 0, removed: 0, rows: [], from_source: 'artifact', to_source: 'artifact', from_integrity: 'verified', to_integrity: 'verified' } } });
             }
             return Promise.resolve(TIMELINE);
         });
@@ -182,7 +182,45 @@ describe('TimeMachineView', () => {
 
         await waitFor(() => expect(screen.getByTestId('kb-time-machine-diff-source')).toBeVisible());
         expect(screen.getByTestId('kb-time-machine-diff-source')).toHaveAttribute('data-diff-faithful', 'true');
+        expect(screen.getByTestId('kb-time-machine-diff-source')).toHaveAttribute('data-diff-state', 'faithful');
         expect(screen.getByTestId('kb-time-machine-diff-source')).toHaveTextContent('Faithful diff');
+    });
+
+    it('never calls a diff faithful when a stored side has no hash to verify against (legacy pointer)', async () => {
+        mockGet.mockImplementation((url: string) => {
+            if (url.includes('/diff')) {
+                return Promise.resolve({ data: { data: { from: 11, to: 22, added: 0, removed: 0, rows: [], from_source: 'artifact', to_source: 'artifact', from_integrity: null, to_integrity: 'verified' } } });
+            }
+            return Promise.resolve(TIMELINE);
+        });
+        render(withQueryClient(<TimeMachineView docId={22} />));
+        await waitFor(() => expect(screen.getByTestId('kb-time-machine-version-11')).toBeVisible());
+
+        await userEvent.click(screen.getByTestId('kb-time-machine-version-11-from'));
+        await userEvent.click(screen.getByTestId('kb-time-machine-version-22-to'));
+
+        await waitFor(() => expect(screen.getByTestId('kb-time-machine-diff-source')).toBeVisible());
+        expect(screen.getByTestId('kb-time-machine-diff-source')).toHaveAttribute('data-diff-faithful', 'false');
+        expect(screen.getByTestId('kb-time-machine-diff-source')).toHaveAttribute('data-diff-state', 'unverified');
+        expect(screen.getByTestId('kb-time-machine-diff-source')).toHaveTextContent('Stored documents compared, but not verified — the From side has no recorded hash');
+    });
+
+    it('names both sides when neither stored document has a hash to verify against', async () => {
+        mockGet.mockImplementation((url: string) => {
+            if (url.includes('/diff')) {
+                return Promise.resolve({ data: { data: { from: 11, to: 22, added: 0, removed: 0, rows: [], from_source: 'artifact', to_source: 'artifact', from_integrity: null, to_integrity: null } } });
+            }
+            return Promise.resolve(TIMELINE);
+        });
+        render(withQueryClient(<TimeMachineView docId={22} />));
+        await waitFor(() => expect(screen.getByTestId('kb-time-machine-version-11')).toBeVisible());
+
+        await userEvent.click(screen.getByTestId('kb-time-machine-version-11-from'));
+        await userEvent.click(screen.getByTestId('kb-time-machine-version-22-to'));
+
+        await waitFor(() => expect(screen.getByTestId('kb-time-machine-diff-source')).toBeVisible());
+        expect(screen.getByTestId('kb-time-machine-diff-source')).toHaveAttribute('data-diff-state', 'unverified');
+        expect(screen.getByTestId('kb-time-machine-diff-source')).toHaveTextContent('both the From and the To side have no recorded hash');
     });
 
     it('says nothing about the diff source when an older server omits it', async () => {

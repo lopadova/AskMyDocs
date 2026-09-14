@@ -46,6 +46,9 @@ final class KbArtifactsBackfillCommand extends Command
 
     protected $description = 'Store or repair the conversion artifact of live documents, each judged on its own retention contract (ADR 0030); refuses hash mismatches';
 
+    /** Originals removed by this run under a `markdown_only` contract (reported in the summary line). */
+    private int $originalsDropped = 0;
+
     public function handle(
         ConversionArtifactStore $store,
         PipelineRegistry $registry,
@@ -66,7 +69,8 @@ final class KbArtifactsBackfillCommand extends Command
         $dryRun = (bool) $this->option('dry-run');
         $project = trim((string) ($this->option('project') ?? ''));
 
-        $counts = ['already_stored' => 0, 'written' => 0, 'intentionally_missing' => 0, 'source_missing' => 0, 'hash_mismatch' => 0, 'conversion_failed' => 0, 'ocr_unverified' => 0];
+        $counts = ['already_stored' => 0, 'written' => 0, 'intentionally_missing' => 0, 'source_missing' => 0, 'hash_mismatch' => 0, 'conversion_failed' => 0, 'ocr_unverified' => 0, 'disk_unresolvable' => 0];
+        $this->originalsDropped = 0;
         $previous = $tenants->current();
         $tenants->set($tenant);
         try {
@@ -117,8 +121,21 @@ final class KbArtifactsBackfillCommand extends Command
         $prefix = array_key_exists('prefix', $metadata)
             ? (string) $metadata['prefix']
             : (string) config('kb.sources.path_prefix', '');
+        // A row whose recorded disk this deployment cannot resolve is ONE
+        // reported row in its own bucket (`disk_unresolvable`: an operator /
+        // configuration condition, not a missing source — it re-reports
+        // identically until the disk is configured), never an abort that
+        // leaves every later row unprocessed (R14).
+        try {
+            $storage = Storage::disk($disk);
+        } catch (\Throwable $e) {
+            $this->line("  #{$row->id} {$row->source_path}: disk_unresolvable (disk [{$disk}] cannot be resolved here: {$e->getMessage()})");
+
+            return 'disk_unresolvable';
+        }
         $pointer = $row->markdown_path;
         if (is_string($pointer) && $pointer !== '') {
+            // read() never throws: an unreadable pointer is null → repaired below.
             $current = $store->read($disk, $pointer);
             if (is_string($current) && hash('sha256', $current) === (string) $row->document_hash) {
                 // A stored file that IS the version's bytes is verified: a
@@ -132,6 +149,24 @@ final class KbArtifactsBackfillCommand extends Command
                     // one read is reported, not silently skipped (R4).
                     if ($row->updateUnscopedWithinOwnTenant(['content_hash' => (string) $row->document_hash]) === 0) {
                         $this->line("  #{$row->id} {$row->source_path}: verified, but the content_hash could not be recorded (row changed underneath)");
+                    } else {
+                        $row->content_hash = (string) $row->document_hash;
+                    }
+                }
+                // A verified artifact is the precondition of the row's
+                // retention contract, whichever run stored it: a
+                // `markdown_only` row whose finalization failed before (or
+                // whose original came back) is repaired here too, best
+                // effort, exactly as after a write. `--dry-run` never drops:
+                // the gate is a disk write.
+                if (! $dryRun) {
+                    try {
+                        if ($ingestor->finalizeSourceRetention($row, $disk, $pointer)) {
+                            $this->originalsDropped++;
+                            $this->line("  #{$row->id} {$row->source_path}: already_stored (original dropped: markdown_only)");
+                        }
+                    } catch (\Throwable $e) {
+                        $this->line("  #{$row->id} {$row->source_path}: already_stored (retention not finalized: {$e->getMessage()})");
                     }
                 }
 
@@ -147,7 +182,6 @@ final class KbArtifactsBackfillCommand extends Command
 
             return 'source_missing';
         }
-        $storage = Storage::disk($disk);
         if (! $storage->exists($fullPath)) {
             $this->line("  #{$row->id} {$sourcePath}: source_missing");
 
@@ -265,6 +299,9 @@ final class KbArtifactsBackfillCommand extends Command
 
             return 'written';
         }
+        if ($dropped) {
+            $this->originalsDropped++;
+        }
         $this->line("  #{$row->id} {$sourcePath}: written {$final}".($dropped ? ' (original dropped: markdown_only)' : ''));
 
         return 'written';
@@ -275,8 +312,13 @@ final class KbArtifactsBackfillCommand extends Command
      */
     private function report(array $counts, bool $dryRun): void
     {
+        // Additive, printed only when non-zero (like `ocr_unverified`):
+        // `disk_unresolvable` (rows on a disk this deployment cannot resolve —
+        // a configuration condition) and `originals_dropped` (originals the
+        // run removed under a `markdown_only` contract — a destructive
+        // outcome that must be visible in the one line operators read).
         $this->info(sprintf(
-            'already_stored=%d written=%d intentionally_missing=%d source_missing=%d hash_mismatch=%d conversion_failed=%d%s%s',
+            'already_stored=%d written=%d intentionally_missing=%d source_missing=%d hash_mismatch=%d conversion_failed=%d%s%s%s%s',
             $counts['already_stored'],
             $counts['written'],
             $counts['intentionally_missing'],
@@ -284,6 +326,8 @@ final class KbArtifactsBackfillCommand extends Command
             $counts['hash_mismatch'],
             $counts['conversion_failed'],
             $counts['ocr_unverified'] > 0 ? " ocr_unverified={$counts['ocr_unverified']}" : '',
+            $counts['disk_unresolvable'] > 0 ? " disk_unresolvable={$counts['disk_unresolvable']}" : '',
+            $this->originalsDropped > 0 ? " originals_dropped={$this->originalsDropped}" : '',
             $dryRun ? ' (dry-run)' : '',
         ));
     }

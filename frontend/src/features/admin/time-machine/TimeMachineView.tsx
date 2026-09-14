@@ -174,7 +174,7 @@ export function TimeMachineView({ docId }: { docId: number }): ReactNode {
                             <p data-testid="kb-time-machine-diff-summary" style={{ fontSize: 12, color: 'var(--fg-2)' }}>
                                 +{diff.data.added} / −{diff.data.removed}
                             </p>
-                            <DiffSourceNote fromSource={diff.data.from_source} toSource={diff.data.to_source} />
+                            <DiffSourceNote fromSource={diff.data.from_source} toSource={diff.data.to_source} fromIntegrity={diff.data.from_integrity} toIntegrity={diff.data.to_integrity} />
                             {/* A styled <div> (not <pre>) — block-level <div>
                                 children are invalid inside <pre> (Copilot review). */}
                             <div data-testid="kb-time-machine-diff-body" style={{ background: 'var(--bg-2, rgba(255,255,255,.02))', border: '1px solid var(--panel-border)', borderRadius: 8, padding: 12, fontSize: 12, fontFamily: 'var(--font-mono, monospace)', overflowX: 'auto', margin: 0 }}>
@@ -217,22 +217,40 @@ function indexDiffSides(fromSource: string, toSource: string): string {
     return fromSource !== 'artifact' ? 'the From side is' : 'the To side is';
 }
 
-function DiffSourceNote({ fromSource, toSource }: { fromSource?: string; toSource?: string }): ReactNode {
+function DiffSourceNote({ fromSource, toSource, fromIntegrity, toIntegrity }: { fromSource?: string; toSource?: string; fromIntegrity?: string | null; toIntegrity?: string | null }): ReactNode {
     if (!fromSource || !toSource) {
         return null;
     }
-    const faithful = fromSource === 'artifact' && toSource === 'artifact';
+    const stored = fromSource === 'artifact' && toSource === 'artifact';
+    // A "faithful" claim is a VERIFIED claim (ADR 0030 §5): both sides read
+    // from their stored document AND both hashed to the recorded
+    // content_hash. A stored document with no hash to check against (a
+    // legacy pointer, `integrity: null`) is compared, but not vouched for.
+    const faithful = stored && fromIntegrity === 'verified' && toIntegrity === 'verified';
+    const state: 'faithful' | 'unverified' | 'index' = faithful ? 'faithful' : stored ? 'unverified' : 'index';
     return (
         <p
             data-testid="kb-time-machine-diff-source"
             data-diff-faithful={faithful ? 'true' : 'false'}
-            style={{ fontSize: 11.5, color: faithful ? 'var(--ok, #3fb950)' : 'var(--fg-3)', margin: '0 0 6px' }}
+            data-diff-state={state}
+            style={{ fontSize: 11.5, color: faithful ? 'var(--ok, #3fb950)' : state === 'unverified' ? 'var(--warn, #d29922)' : 'var(--fg-3)', margin: '0 0 6px' }}
         >
-            {faithful
-                ? 'Faithful diff — both versions compared from their stored documents.'
-                : `Index diff — ${indexDiffSides(fromSource, toSource)} reconstructed from indexed chunks, not the stored document.`}
+            {state === 'faithful'
+                ? 'Faithful diff — both versions compared from their stored documents, verified against their recorded hashes.'
+                : state === 'unverified'
+                    ? `Stored documents compared, but not verified — ${unverifiedSides(fromIntegrity, toIntegrity)} no recorded hash to check against.`
+                    : `Index diff — ${indexDiffSides(fromSource, toSource)} reconstructed from indexed chunks, not the stored document.`}
         </p>
     );
+}
+
+function unverifiedSides(fromIntegrity?: string | null, toIntegrity?: string | null): string {
+    const from = fromIntegrity !== 'verified';
+    const to = toIntegrity !== 'verified';
+    if (from && to) {
+        return 'both the From and the To side have';
+    }
+    return from ? 'the From side has' : 'the To side has';
 }
 
 function VersionRow({

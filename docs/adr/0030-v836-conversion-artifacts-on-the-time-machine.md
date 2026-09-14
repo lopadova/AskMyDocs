@@ -303,8 +303,11 @@ hash matched, `null` when there was nothing to check against — a row without
 `from_integrity` / `to_integrity` (additive, R27), so a tampered artifact is
 never presented as a faithful side. Otherwise `reconstructContent()`. `diff()` uses `contentFor()` on both sides and reports
 which source each side came from (`from_source` / `to_source` ∈
-`artifact | reconstruction`) so the UI can say when a diff is faithful and when
-it is an index diff. Both branches are tested (R43): two versions with
+`artifact | reconstruction`) and the integrity verdict of each side, so the UI
+can say when a diff is faithful (both sides stored **and** verified), when the
+stored documents are compared but a side has no hash to verify against (a
+legacy pointer — never presented as verified history), and when it is an index
+diff. Both branches are tested (R43): two versions with
 artifacts diff the artifacts; two without fall back; a mixed pair falls back
 on the side that lacks one and says so. A missing file behind a non-null
 `markdown_path` is logged and falls back — it is not a 500 (R14 applies to

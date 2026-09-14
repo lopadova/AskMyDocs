@@ -1281,7 +1281,20 @@ class DocumentIngestor
             ->chunkById(200, function ($chunk) use ($disk, $fullPath, $each): bool {
                 foreach ($chunk as $row) {
                     $rowMetadata = is_array($row->metadata) ? $row->metadata : [];
-                    $rowDisk = (string) ($rowMetadata['disk'] ?? config('kb.sources.disk', 'kb'));
+                    // A row that never recorded its disk (pre-v8.36) is an
+                    // AMBIGUOUS reference: it may live on any disk its logical
+                    // path matches, so it counts on this one too — the same
+                    // fail-closed rule as DocumentDeleter::documentReferencesStorageKey().
+                    // Only a row whose RECORDED namespace resolves elsewhere is
+                    // skipped.
+                    if (! array_key_exists('disk', $rowMetadata)) {
+                        if (! $each($row)) {
+                            return false;
+                        }
+
+                        continue;
+                    }
+                    $rowDisk = (string) $rowMetadata['disk'];
                     $rowPrefix = array_key_exists('prefix', $rowMetadata)
                         ? (string) $rowMetadata['prefix']
                         : (string) config('kb.sources.path_prefix', '');
