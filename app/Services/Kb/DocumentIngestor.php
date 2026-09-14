@@ -18,6 +18,7 @@ use App\Services\Kb\Pipeline\ChunkDraft;
 use App\Services\Kb\Pipeline\PipelineRegistry;
 use App\Services\Kb\Pipeline\SourceDocument;
 use App\Support\Canonical\GenerationSource;
+use App\Services\Kb\Versioning\ArtifactPublishFailedException;
 use App\Services\Kb\Versioning\ConversionArtifactStore;
 use App\Services\Kb\Versioning\SourceRetentionResolver;
 use App\Support\KbPath;
@@ -389,6 +390,11 @@ class DocumentIngestor
      * `maybe-dispatch-canonical-indexer` step owns it so a compensator
      * can short-circuit if the indexer is mocked-to-fail in a saga test.
      *
+     * A post-commit artifact publish that fails throws
+     * {@see ArtifactPublishFailedException} AFTER the row is committed: the
+     * step fails, the job retries, and the retry — an identical re-ingest —
+     * repairs the pointer through the same-hash path (ADR 0030 §3).
+     *
      * @param  list<ChunkDraft>     $chunkDrafts
      * @param  array<string,mixed>  $metadata
      */
@@ -450,7 +456,7 @@ class DocumentIngestor
             $this->discardArtifact($artifact);
             throw $e;
         }
-        $this->publishArtifactOrLog($artifact, $document);
+        $this->publishArtifactOrThrow($artifact, $document);
 
         return $document;
     }
@@ -570,9 +576,19 @@ class DocumentIngestor
             $this->discardArtifact($artifact);
             throw $e;
         }
-        $this->publishArtifactOrLog($artifact, $document);
-
-        $this->dispatchCanonicalIndexerIfCanonical($document);
+        // The row is committed: the graph projection is dispatched FIRST, so
+        // an artifact publish that fails (and throws, below) never withholds
+        // the canonical indexer from a version that exists. A dispatch that
+        // throws (a queue connection down, an inline `sync` run failing)
+        // still discards this attempt's temp: the row stays, its pointer is
+        // the repairable `missing` state, and nothing leased is left behind.
+        try {
+            $this->dispatchCanonicalIndexerIfCanonical($document);
+        } catch (\Throwable $e) {
+            $this->discardArtifact($artifact);
+            throw $e;
+        }
+        $this->publishArtifactOrThrow($artifact, $document);
 
         return $document;
     }
@@ -850,8 +866,11 @@ class DocumentIngestor
      * The disk is the version's RECORDED namespace (the configured one only
      * for a legacy row), never the incoming request's: after `kb.sources.disk`
      * changes the historical artifact still lives where the row says.
-     * A failed repair is logged and the row keeps falling back to
-     * reconstruction, exactly as before the re-ingest.
+     * A failed repair is logged AND thrown ({@see ArtifactPublishFailedException}):
+     * the row keeps falling back to reconstruction exactly as before the
+     * re-ingest, and the caller — the ingest job, a connector sync — sees
+     * the failure and retries instead of reporting a document whose
+     * artifact silently never landed (R14).
      *
      * @param  array<string,mixed>  $metadata
      */
@@ -890,14 +909,14 @@ class DocumentIngestor
             if (is_string($current) && hash('sha256', $current) === $expected) {
                 $this->recordContentHashIfMissing($existing, $expected);
             } else {
-                $store->publish($disk, $store->writeTemp($disk, $path, $markdown), $path);
+                $this->writeAndPublishOrDiscard($store, $disk, $path, $markdown);
                 $this->recordContentHashIfMissing($existing, $expected);
                 Log::info('DocumentIngestor: artifact repaired from an identical re-ingest', ['document_id' => $existing->id, 'disk' => $disk, 'markdown_path' => $path, 'was' => $current === null ? 'missing' : 'corrupt']);
             }
         } catch (\Throwable $e) {
-            Log::error('DocumentIngestor: artifact repair failed; reads keep falling back to reconstruction until kb:artifacts-backfill repairs it', ['document_id' => $existing->id, 'disk' => $disk, 'markdown_path' => $path, 'error' => $e->getMessage()]);
+            Log::error('DocumentIngestor: artifact repair failed; reads keep falling back to reconstruction until the next identical re-ingest or kb:artifacts-backfill repairs it', ['document_id' => $existing->id, 'disk' => $disk, 'markdown_path' => $path, 'error' => $e->getMessage()]);
 
-            return;
+            throw new ArtifactPublishFailedException((int) $existing->id, $disk, $path, $e->getMessage(), $e);
         }
         // ADR 0030 §3 — the row's retention contract is finalized on every
         // identical re-ingest whose artifact is verified, not only on the
@@ -907,12 +926,14 @@ class DocumentIngestor
     }
 
     /**
-     * The retention tail of an identical re-ingest is best effort, like the
-     * artifact publish of a fresh one (publishArtifactOrLog()): the row is
-     * already correct, and a failure here (a recorded disk since removed from
-     * the config, a lock store outage) must not fail a job whose retry would
-     * be a version-hash no-op (R14) — it is logged, and the next identical
-     * ingest or the backfill retries the drop.
+     * The retention tail — the `markdown_only` drop of the original — is
+     * best effort on every path (a fresh ingest, an identical re-ingest, the
+     * backfill): the row and its artifact are already correct, and a failure
+     * here (a recorded disk since removed from the config, a lock store
+     * outage) is logged, never a reason to fail a job whose retry would be a
+     * version-hash no-op with nothing left to publish (R14); the next
+     * identical ingest or the backfill retries the drop. The artifact
+     * PUBLISH is not best effort: see publishArtifactOrThrow().
      */
     private function finalizeSourceRetentionOrLog(KnowledgeDocument $existing, string $disk, string $final): void
     {
@@ -959,7 +980,10 @@ class DocumentIngestor
      * a concurrent repair of the same version (its publish lands between this
      * attempt's failure and the rollback, and the row would point at nothing
      * while a verified file sits on disk as an orphan); a pointer is never
-     * rolled back, only repaired forward.
+     * rolled back, only repaired forward. The failure is thrown
+     * ({@see ArtifactPublishFailedException}) once the pointer is kept — a
+     * concurrent repair that already published these bytes is the one
+     * exception: the row is healthy, nothing is thrown.
      *
      * @param  array<string,mixed>  $existingMetadata
      */
@@ -987,7 +1011,7 @@ class DocumentIngestor
 
                 return false;
             }
-            $store->publish($disk, $store->writeTemp($disk, $final, $markdown), $final);
+            $this->writeAndPublishOrDiscard($store, $disk, $final, $markdown);
             $existing->markdown_path = $final;
             $existing->content_hash = $hash;
             Log::info('DocumentIngestor: artifact published for a version that predated the artifacts, from an identical re-ingest', ['document_id' => $existing->id, 'disk' => $disk, 'markdown_path' => $final]);
@@ -1010,7 +1034,7 @@ class DocumentIngestor
             }
             Log::error('DocumentIngestor: artifact publish failed for a version that predated the artifacts; the pointer is kept (state: missing) and the next identical re-ingest or kb:artifacts-backfill repairs it', ['document_id' => $existing->id, 'disk' => $disk, 'markdown_path' => $final, 'error' => $e->getMessage()]);
 
-            return false;
+            throw new ArtifactPublishFailedException((int) $existing->id, $disk, (string) $final, $e->getMessage(), $e);
         }
     }
 
@@ -1018,7 +1042,7 @@ class DocumentIngestor
      * The retention contract a persisted row lives under: its own stamp when
      * it carries a valid one, `full_copy` otherwise — a row without the stamp
      * predates v8.36 and, once persisted, counts as `full_copy` wherever a
-     * drop is decided (publishArtifact(), the backfill, the pointerless
+     * drop is decided (publishArtifactOrThrow(), the backfill, the pointerless
      * repair). Never the configured mode of the day.
      *
      * @param  array<string,mixed>  $metadata
@@ -1070,6 +1094,24 @@ class DocumentIngestor
     }
 
     /**
+     * Write the temp and move it into place; when the publish throws, THIS
+     * attempt's temp goes with it (and its lease), never left for the age
+     * sweep — the same discipline as a fresh ingest's failed publish.
+     *
+     * @throws \Throwable the publish failure, after the discard
+     */
+    private function writeAndPublishOrDiscard(ConversionArtifactStore $store, string $disk, string $final, string $markdown): void
+    {
+        $tmp = $store->writeTemp($disk, $final, $markdown);
+        try {
+            $store->publish($disk, $tmp, $final);
+        } catch (\Throwable $e) {
+            $store->discardTemp($disk, $tmp);
+            throw $e;
+        }
+    }
+
+    /**
      * @param  array{disk: string, tmp: string, final: string}|null  $artifact
      */
     private function discardArtifact(?array $artifact): void
@@ -1081,52 +1123,46 @@ class DocumentIngestor
     }
 
     /**
-     * After commit: publish the temp and, in `markdown_only`, drop the
-     * original. The row is already committed and points at the final path,
-     * so a publish failure here is a documented degrade (`contentFor()`
-     * falls back and says so, `kb:artifacts-backfill` repairs it) — logged,
-     * never a reason to skip the canonical indexer dispatch that follows
-     * or to fail a job whose retry would be a version-hash no-op (R14).
+     * After commit: move the temp into place and, in `markdown_only`, drop
+     * the original. The row is already committed and points at the final
+     * path, so a publish that fails leaves the version in the documented
+     * `missing` state (`contentFor()` falls back and says so, the pointer is
+     * never rolled back) — and it PROPAGATES as
+     * {@see ArtifactPublishFailedException}: the ingest job retries, and the
+     * retry is an identical re-ingest that repairs the pointer through the
+     * same-hash path (`repairArtifactOfExistingVersion()`), so a disk that
+     * refused a write for a moment never leaves a silently degraded version
+     * behind; `kb:artifacts-backfill` covers the rows nobody re-ingests. A
+     * caller whose retry would NOT take that path — `forceReembed` /
+     * `replaceExisting` replace the chunk set again instead — catches the
+     * exception and logs it (ReembedDocumentJob): the row is correct, only
+     * its artifact is missing. The retention tail that follows a successful
+     * publish stays best effort (finalizeSourceRetentionOrLog()).
      *
      * @param  array{disk: string, tmp: string, final: string}|null  $artifact
+     *
+     * @throws ArtifactPublishFailedException
      */
-    private function publishArtifactOrLog(?array $artifact, KnowledgeDocument $document): void
+    private function publishArtifactOrThrow(?array $artifact, KnowledgeDocument $document): void
     {
         if ($artifact === null) {
             return;
         }
         try {
-            $this->publishArtifact($artifact, $document);
+            // Move the temp into place (R4 — a failed move throws).
+            app(ConversionArtifactStore::class)->publish($artifact['disk'], $artifact['tmp'], $artifact['final']);
         } catch (\Throwable $e) {
             $this->discardArtifact($artifact);
-            Log::error('DocumentIngestor: artifact publish failed after commit; the row keeps its pointer and reads fall back to reconstruction until kb:artifacts-backfill repairs it', [
+            Log::error('DocumentIngestor: artifact publish failed after commit; the row keeps its pointer (state: missing) and the retry — an identical re-ingest — or kb:artifacts-backfill repairs it', [
                 'document_id' => (int) $document->id,
                 'disk' => $artifact['disk'],
                 'markdown_path' => $artifact['final'],
                 'error' => $e->getMessage(),
             ]);
-        }
-    }
 
-    /**
-     * Move the temp into place (R4 — a failed move throws) and, in
-     * `markdown_only`, drop the original binary the artifact now stands
-     * for. A Markdown source IS its own artifact and is never dropped; and
-     * the original is a SHARED storage key (every version of the path, and
-     * on a shared disk every tenant with the same key, points at the same
-     * bytes), so it is dropped only when every row referencing it — any
-     * tenant, trashed rows included — already has an artifact to stand in
-     * for it; otherwise it is kept and the reason logged. Rows whose
-     * original was dropped are stamped `metadata.source_dropped = true` so
-     * the orphan sweeps never read the missing file as an orphan.
-     *
-     * @param  array{disk: string, tmp: string, final: string}  $artifact
-     */
-    private function publishArtifact(array $artifact, KnowledgeDocument $document): void
-    {
-        $store = app(ConversionArtifactStore::class);
-        $store->publish($artifact['disk'], $artifact['tmp'], $artifact['final']);
-        $this->finalizeSourceRetention($document, $artifact['disk'], $artifact['final']);
+            throw new ArtifactPublishFailedException((int) $document->id, $artifact['disk'], $artifact['final'], $e->getMessage(), $e);
+        }
+        $this->finalizeSourceRetentionOrLog($document, $artifact['disk'], $artifact['final']);
     }
 
     /**
@@ -1139,7 +1175,15 @@ class DocumentIngestor
      * to stand in for it, and the rows are stamped `source_dropped`. Three
      * callers, one gate: the fresh ingest, the identical re-ingest whose
      * artifact was just verified, repaired or published for the first time,
-     * `kb:artifacts-backfill`.
+     * `kb:artifacts-backfill`. A Markdown source IS its own artifact and is
+     * never dropped; the original is a SHARED storage key (every version of
+     * the path, and on a shared disk every tenant with the same key, points
+     * at the same bytes), so it is dropped only when every row referencing
+     * it — any tenant, trashed rows included — already has a verified
+     * artifact to stand in for it; otherwise it is kept and the reason
+     * logged. Rows whose original was dropped are stamped
+     * `metadata.source_dropped = true` so the orphan sweeps never read the
+     * missing file as an orphan.
      *
      * @return bool true when THIS call dropped the original
      */

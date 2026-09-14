@@ -10,6 +10,7 @@ use App\Models\KnowledgeDocument;
 use App\Services\Kb\DocumentIngestor;
 use App\Services\Kb\EmbeddingCacheService;
 use App\Services\Kb\Pipeline\SourceDocument;
+use App\Services\Kb\Versioning\ArtifactPublishFailedException;
 use App\Services\Kb\Versioning\ConversionArtifactStore;
 use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -509,8 +510,8 @@ Inert knob.", 'docs/inert.md');
         $this->assertSame(str_repeat('a', 64), KnowledgeDocument::withoutGlobalScopes()->whereKey($doc->id)->value('content_hash'));
     }
 
-    /** A failed pointerless publish leaves the pointer as the repairable `missing` state (never rolled back), and the next identical re-ingest repairs it. */
-    public function test_a_failed_pointerless_publish_keeps_the_pointer_as_missing_and_the_next_re_ingest_repairs_it(): void
+    /** A failed pointerless publish leaves the pointer as the repairable `missing` state (never rolled back), THROWS so the job retries, and the next identical re-ingest repairs it. */
+    public function test_a_failed_pointerless_publish_keeps_the_pointer_as_missing_throws_and_the_next_re_ingest_repairs_it(): void
     {
         config(['kb.conversion_artifacts.enabled' => false]);
         $markdown = "# Pointerless\n\nRepaired forward.";
@@ -522,13 +523,22 @@ Inert knob.", 'docs/inert.md');
         $adapter = new \Tests\Fixtures\Storage\WriteRefusingAdapter(new \League\Flysystem\Local\LocalFilesystemAdapter($root), static fn (string $path): bool => str_ends_with($path, '.tmp'));
         Storage::set('kb', new \Illuminate\Filesystem\FilesystemAdapter(new \League\Flysystem\Filesystem($adapter), $adapter, ['root' => $root]));
 
-        $again = $this->ingestMarkdown($markdown, 'docs/pointerless-missing.md');
+        $thrown = null;
+        try {
+            $this->ingestMarkdown($markdown, 'docs/pointerless-missing.md');
+        } catch (ArtifactPublishFailedException $e) {
+            $thrown = $e;
+        }
+        $this->assertInstanceOf(ArtifactPublishFailedException::class, $thrown, 'a refused publish is a failed ingest, never a silently degraded version (R14)');
+        $this->assertSame((int) $doc->id, $thrown->documentId);
 
-        $this->assertSame($doc->id, $again->id);
-        $pointer = (string) $again->fresh()->markdown_path;
+        $again = $doc->fresh();
+        $pointer = (string) $again->markdown_path;
         $this->assertNotSame('', $pointer, 'the pointer stays: the version\'s bytes, not there yet');
-        $this->assertSame(hash('sha256', $markdown), $again->fresh()->content_hash);
-        $this->assertSame('missing', app(\App\Services\Kb\Versioning\DocumentVersionService::class)->artifactStateFor($again->fresh()));
+        $this->assertSame($thrown->markdownPath, $pointer);
+        $this->assertSame(hash('sha256', $markdown), $again->content_hash);
+        $this->assertSame('missing', app(\App\Services\Kb\Versioning\DocumentVersionService::class)->artifactStateFor($again));
+        $this->assertSame(1, KnowledgeDocument::withoutGlobalScopes()->where('source_path', 'docs/pointerless-missing.md')->count(), 'no second version: the row was already there');
 
         Storage::set('kb', $healthy);
         $repaired = $this->ingestMarkdown($markdown, 'docs/pointerless-missing.md');
@@ -558,6 +568,229 @@ Inert knob.", 'docs/inert.md');
         $this->assertSame($final, $again->fresh()->markdown_path, 'the pointer stays on the verified artifact');
         $this->assertSame(hash('sha256', $markdown), $again->fresh()->content_hash);
         Storage::disk('kb')->assertExists($final);
+    }
+
+    /**
+     * A fresh ingest whose post-commit publish fails (the move is refused)
+     * keeps the committed row and its pointer (state `missing`, never
+     * rolled back) and THROWS `ArtifactPublishFailedException`, so the
+     * ingest job's `$tries` retry — an identical re-ingest — takes the
+     * repair path and publishes once the disk is back. The attempt's temp
+     * is discarded; nothing of it is left for the sweep.
+     */
+    public function test_a_fresh_ingest_whose_publish_fails_after_commit_throws_keeps_the_pointer_and_the_retry_repairs_it(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => true]);
+        $markdown = "# Refused move\n\nRetry repairs.";
+        $healthy = Storage::disk('kb');
+        $root = $healthy->path('');
+        // The temp lands (the write is before the transaction); the MOVE onto the final `.md` is refused.
+        $adapter = new \Tests\Fixtures\Storage\WriteRefusingAdapter(new \League\Flysystem\Local\LocalFilesystemAdapter($root), static fn (string $path): bool => str_contains($path, '.versions/') && str_ends_with($path, '.md'));
+        Storage::set('kb', new \Illuminate\Filesystem\FilesystemAdapter(new \League\Flysystem\Filesystem($adapter), $adapter, ['root' => $root]));
+
+        $thrown = null;
+        try {
+            $this->ingestMarkdown($markdown, 'docs/refused-move.md');
+        } catch (ArtifactPublishFailedException $e) {
+            $thrown = $e;
+        }
+        $this->assertInstanceOf(ArtifactPublishFailedException::class, $thrown);
+
+        $doc = KnowledgeDocument::withoutGlobalScopes()->where('source_path', 'docs/refused-move.md')->first();
+        $this->assertNotNull($doc, 'the row committed before the publish and stays');
+        $this->assertSame((int) $doc->id, $thrown->documentId);
+        $this->assertSame('active', $doc->status);
+        $this->assertSame($thrown->markdownPath, (string) $doc->markdown_path);
+        $this->assertSame(hash('sha256', $markdown), $doc->content_hash);
+        $this->assertSame('missing', app(\App\Services\Kb\Versioning\DocumentVersionService::class)->artifactStateFor($doc));
+        $this->assertSame([], array_values(array_filter(Storage::disk('kb')->allFiles(), static fn (string $f): bool => str_ends_with($f, ConversionArtifactStore::TMP_SUFFIX))), 'the failed attempt discards its temp');
+
+        Storage::set('kb', $healthy);
+        $repaired = $this->ingestMarkdown($markdown, 'docs/refused-move.md');
+        $this->assertSame((int) $doc->id, (int) $repaired->id, 'the retry is an identical re-ingest: same version, no new row');
+        Storage::disk('kb')->assertExists((string) $doc->markdown_path);
+        $this->assertSame('verified', app(\App\Services\Kb\Versioning\DocumentVersionService::class)->artifactStateFor($repaired->fresh()));
+    }
+
+    /** A canonical version whose artifact publish fails still gets its graph projection: the indexer is dispatched before the publish, so the throw withholds nothing from a row that exists. */
+    public function test_a_canonical_version_is_indexed_even_when_its_artifact_publish_fails(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => true]);
+        \Illuminate\Support\Facades\Queue::fake();
+        $markdown = <<<'MD'
+---
+id: DEC-2026-0777
+slug: dec-artifact-refused
+type: decision
+status: accepted
+---
+
+# Refused artifact
+
+Still a decision.
+MD;
+        $healthy = Storage::disk('kb');
+        $root = $healthy->path('');
+        $adapter = new \Tests\Fixtures\Storage\WriteRefusingAdapter(new \League\Flysystem\Local\LocalFilesystemAdapter($root), static fn (string $path): bool => str_contains($path, '.versions/') && str_ends_with($path, '.md'));
+        Storage::set('kb', new \Illuminate\Filesystem\FilesystemAdapter(new \League\Flysystem\Filesystem($adapter), $adapter, ['root' => $root]));
+
+        try {
+            $this->ingestMarkdown($markdown, 'decisions/dec-artifact-refused.md');
+            $this->fail('the refused publish must throw');
+        } catch (ArtifactPublishFailedException) {
+            // expected
+        } finally {
+            Storage::set('kb', $healthy);
+        }
+
+        $doc = KnowledgeDocument::withoutGlobalScopes()->where('source_path', 'decisions/dec-artifact-refused.md')->first();
+        $this->assertNotNull($doc);
+        $this->assertTrue((bool) $doc->is_canonical);
+        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\CanonicalIndexerJob::class, static fn (\App\Jobs\CanonicalIndexerJob $job): bool => (int) $job->documentId === (int) $doc->id);
+    }
+
+    /** A canonical indexer dispatch that throws (the queue connection down) propagates, keeps the committed row, and discards this attempt's staged temp — nothing leased is left for the sweep. */
+    public function test_a_failing_indexer_dispatch_propagates_and_discards_the_staged_temp(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => true]);
+        \Illuminate\Support\Facades\Queue::shouldReceive('connection')->andThrow(new \RuntimeException('queue connection down'));
+        $markdown = <<<'MD'
+---
+id: DEC-2026-0779
+slug: dec-indexer-down
+type: decision
+status: accepted
+---
+
+# Indexer down
+
+Still a decision.
+MD;
+
+        try {
+            $this->ingestMarkdown($markdown, 'decisions/dec-indexer-down.md');
+            $this->fail('the failing dispatch must propagate');
+        } catch (\RuntimeException $e) {
+            $this->assertSame('queue connection down', $e->getMessage());
+        }
+
+        $doc = KnowledgeDocument::withoutGlobalScopes()->where('source_path', 'decisions/dec-indexer-down.md')->first();
+        $this->assertNotNull($doc, 'the row committed before the dispatch and stays');
+        $this->assertNotNull($doc->markdown_path, 'the pointer is kept (state: missing) — repaired forward');
+        $temps = array_values(array_filter(Storage::disk('kb')->allFiles(), static fn (string $f): bool => str_ends_with($f, ConversionArtifactStore::TMP_SUFFIX)));
+        $this->assertSame([], $temps, 'the staged temp of the failed attempt is discarded');
+        $this->assertFalse(Storage::disk('kb')->exists((string) $doc->markdown_path), 'nothing was published');
+    }
+
+    /**
+     * A forced re-embed (ReembedDocumentJob) whose artifact publish is
+     * refused is DONE — row, chunks and embeddings are committed — so the
+     * job logs the missing artifact instead of failing: a retry would not
+     * take the same-hash repair path (`forceReembed` replaces the chunk set
+     * again) and would end in `failed_jobs` reporting a failure that is not one.
+     */
+    public function test_a_forced_reembed_whose_publish_fails_completes_and_logs_the_missing_artifact(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => true]);
+        $markdown = "# Reembed\n\nRefused publish, done anyway.";
+        Storage::disk('kb')->put('docs/reembed-refused.md', $markdown);
+        $doc = $this->ingestMarkdown($markdown, 'docs/reembed-refused.md', ['disk' => 'kb', 'prefix' => '']);
+        $pointer = (string) $doc->markdown_path;
+        Storage::disk('kb')->delete($pointer); // so the re-embed's publish has to move, and the move is refused
+        $healthy = Storage::disk('kb');
+        $root = $healthy->path('');
+        $adapter = new \Tests\Fixtures\Storage\WriteRefusingAdapter(new \League\Flysystem\Local\LocalFilesystemAdapter($root), static fn (string $path): bool => str_contains($path, '.versions/') && str_ends_with($path, '.md'));
+        Storage::set('kb', new \Illuminate\Filesystem\FilesystemAdapter(new \League\Flysystem\Filesystem($adapter), $adapter, ['root' => $root]));
+        \Illuminate\Support\Facades\Log::spy();
+
+        try {
+            (new \App\Jobs\ReembedDocumentJob((int) $doc->id, app(TenantContext::class)->current()))->handle(app(TenantContext::class), app(DocumentIngestor::class));
+        } finally {
+            Storage::set('kb', $healthy);
+        }
+
+        \Illuminate\Support\Facades\Log::shouldHaveReceived('warning')->once()->withArgs(static fn (string $message): bool => str_contains($message, 're-embedded but its conversion artifact could not be published'));
+        $fresh = $doc->fresh();
+        $this->assertSame('active', $fresh->status);
+        $this->assertSame($pointer, (string) $fresh->markdown_path, 'the pointer is kept');
+        $this->assertGreaterThan(0, $fresh->chunks()->count(), 'the re-embed is done');
+        $this->assertSame('missing', app(\App\Services\Kb\Versioning\DocumentVersionService::class)->artifactStateFor($fresh));
+    }
+
+    /** The artifact branch of the re-embed (original dropped, the stored artifact re-chunked) gets the same outcome: done, logged, never a failed job. */
+    public function test_a_forced_reembed_from_the_artifact_whose_publish_fails_completes_and_logs_the_missing_artifact(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => true]);
+        $markdown = "# Reembed from artifact\n\nRefused publish, done anyway.";
+        $doc = $this->ingestMarkdown($markdown, 'docs/reembed-artifact-refused.md', ['disk' => 'kb', 'prefix' => '']);
+        $pointer = (string) $doc->markdown_path;
+        Storage::disk('kb')->assertExists($pointer);
+        // No source on disk: the job re-chunks the stored artifact (the `markdown_only` shape).
+        Storage::disk('kb')->delete('docs/reembed-artifact-refused.md');
+        $healthy = Storage::disk('kb');
+        $root = $healthy->path('');
+        // The job's read of the artifact (the first) must succeed; every LATER read of the final path fails (the disk
+        // went away between the read and the publish), and the move onto it is refused — so the post-commit publish
+        // can neither verify the file in place nor move the temp over it.
+        $reads = 0;
+        $adapter = new \Tests\Fixtures\Storage\WriteRefusingAdapter(
+            new \League\Flysystem\Local\LocalFilesystemAdapter($root),
+            static fn (string $path): bool => $path === $pointer,
+            static function (string $path, string $operation) use ($pointer, &$reads): bool {
+                return $path === $pointer && $operation === 'read' && ++$reads > 1;
+            },
+        );
+        Storage::set('kb', new \Illuminate\Filesystem\FilesystemAdapter(new \League\Flysystem\Filesystem($adapter), $adapter, ['root' => $root]));
+        \Illuminate\Support\Facades\Log::spy();
+
+        try {
+            (new \App\Jobs\ReembedDocumentJob((int) $doc->id, app(TenantContext::class)->current()))->handle(app(TenantContext::class), app(DocumentIngestor::class));
+        } finally {
+            Storage::set('kb', $healthy);
+        }
+
+        \Illuminate\Support\Facades\Log::shouldHaveReceived('warning')->once()->withArgs(static fn (string $message): bool => str_contains($message, 're-embedded but its conversion artifact could not be published'));
+        $fresh = $doc->fresh();
+        $this->assertSame('active', $fresh->status);
+        $this->assertSame($pointer, (string) $fresh->markdown_path, 'the pointer is kept');
+        $this->assertGreaterThan(0, $fresh->chunks()->count(), 'the re-embed is done');
+    }
+
+    /**
+     * An identical re-ingest that finds the artifact missing behind an
+     * existing pointer repairs it — and when THAT publish is refused, the
+     * failure is thrown too (the pointer kept), so a connector sync or the
+     * ingest job sees it and the next attempt repairs.
+     */
+    public function test_a_failed_repair_of_an_existing_pointer_throws_keeps_the_pointer_and_the_next_re_ingest_repairs_it(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => true]);
+        $markdown = "# Repair refused\n\nThen repaired.";
+        $doc = $this->ingestMarkdown($markdown, 'docs/repair-refused.md');
+        $pointer = (string) $doc->markdown_path;
+        Storage::disk('kb')->assertExists($pointer);
+        Storage::disk('kb')->delete($pointer); // the artifact went missing behind the pointer
+        $healthy = Storage::disk('kb');
+        $root = $healthy->path('');
+        $adapter = new \Tests\Fixtures\Storage\WriteRefusingAdapter(new \League\Flysystem\Local\LocalFilesystemAdapter($root), static fn (string $path): bool => str_ends_with($path, '.tmp'));
+        Storage::set('kb', new \Illuminate\Filesystem\FilesystemAdapter(new \League\Flysystem\Filesystem($adapter), $adapter, ['root' => $root]));
+
+        $thrown = null;
+        try {
+            $this->ingestMarkdown($markdown, 'docs/repair-refused.md');
+        } catch (ArtifactPublishFailedException $e) {
+            $thrown = $e;
+        }
+        $this->assertInstanceOf(ArtifactPublishFailedException::class, $thrown);
+        $this->assertSame($pointer, $thrown->markdownPath);
+        $this->assertSame($pointer, (string) $doc->fresh()->markdown_path, 'the pointer is kept');
+        $this->assertSame('missing', app(\App\Services\Kb\Versioning\DocumentVersionService::class)->artifactStateFor($doc->fresh()));
+
+        Storage::set('kb', $healthy);
+        $repaired = $this->ingestMarkdown($markdown, 'docs/repair-refused.md');
+        $this->assertSame((int) $doc->id, (int) $repaired->id);
+        Storage::disk('kb')->assertExists($pointer);
+        $this->assertSame('verified', app(\App\Services\Kb\Versioning\DocumentVersionService::class)->artifactStateFor($repaired->fresh()));
     }
 
     /**

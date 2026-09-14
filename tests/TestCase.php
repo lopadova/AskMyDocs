@@ -661,6 +661,10 @@ abstract class TestCase extends OrchestraTestCase
     {
         parent::setUp();
 
+        // Process-global "warned once" flags of the artifact store must not
+        // leak between tests (R16: restore the global state you mutate).
+        \App\Services\Kb\Versioning\ConversionArtifactStore::resetWarnings();
+
         if ($this->app !== null && $this->app->bound(\App\Support\TenantContext::class)) {
             $this->app->make(\App\Support\TenantContext::class)->set(self::FALLBACK_TEST_TENANT);
         }

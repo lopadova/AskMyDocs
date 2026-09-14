@@ -91,9 +91,11 @@ when that env is false the slot never runs regardless of its `SCHEDULE_*` value.
   graph node, deprecation audit); since v8.36 each pruned version's conversion
   artifact goes with it (and its OCR run, when no row whose recorded disk +
   prefix resolve to that run directory still names it), and the run sweeps
-  stale `.tmp` files (`KB_CONVERSION_ARTIFACTS_TMP_MAX_AGE`) and artifacts no
-  row references on that disk. Every refused removal is counted (`*_failed`)
-  and makes the command exit non-zero.
+  stale `.tmp` files (older than `KB_CONVERSION_ARTIFACTS_TMP_MAX_AGE` and no
+  longer leased by a live writer — `KB_CONVERSION_ARTIFACTS_TMP_LEASE`; an
+  aged temp still leased is reported `artifact_temps_in_flight` and kept) and
+  artifacts no row references on that disk. Every refused removal is counted
+  (`*_failed`) and makes the command exit non-zero.
 - **`kb:prune-staging-batches`** — purge stale drag-and-drop upload staging
   batches and their staged files on the `kb-staging` disk once past
   `KB_STAGING_RETENTION_HOURS` (default 24; `--hours=N` overrides). Keeps the
@@ -106,7 +108,10 @@ when that env is false the slot never runs regardless of its `SCHEDULE_*` value.
   once older than `KB_OCR_PURGE_GRACE_SECONDS` (a younger run is an in-flight
   reservation and is kept, reported as `in_flight`). The reference decision is
   `DocumentDeleter`'s gate, the same the hard delete and
-  `kb:prune-archived-versions` use.
+  `kb:prune-archived-versions` use. The disk is walked once, lazily, and
+  sources are judged in batches of 1000: a scan the disk refuses deletes
+  nothing and exits non-zero, and an OCR tree whose source the disk refuses to
+  probe is kept and counted (`tree_probe_failed`, exit non-zero).
 - **`kb:rebuild-graph`** — rebuild `kb_nodes` + `kb_edges` from canonical docs.
   No-op when no canonical docs exist. See [canonical & promotion](/canonical-and-promotion).
 - **`kb:health-recompute`** / **`kb:stale-review-sweep`** — recompute KB health

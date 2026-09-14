@@ -4,7 +4,6 @@ namespace Tests\Feature\Commands;
 
 use App\Models\KnowledgeDocument;
 use App\Services\Kb\Ocr\OcrFigureStore;
-use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 use Mockery;
@@ -488,13 +487,55 @@ class PruneOrphanFilesCommandTest extends TestCase
         Storage::disk('kb')->assertMissing('docs/real-orphan.md');
     }
 
+    /** R14 — a disk that refuses the probe of a tree's source keeps the tree (fail closed) and exits non-zero, never a crash after the walk. */
+    public function test_a_refused_source_probe_keeps_the_ocr_tree_and_is_reported(): void
+    {
+        Storage::fake('kb');
+        Storage::disk('kb')->put('docs/gone.md.ocr/'.self::RUN.'/result.json', '{}');
+        $this->travel(OcrFigureStore::inFlightGraceSeconds() + 60)->seconds();
+        $healthy = Storage::disk('kb');
+        $root = $healthy->path('');
+        $adapter = new \Tests\Fixtures\Storage\WriteRefusingAdapter(new \League\Flysystem\Local\LocalFilesystemAdapter($root), static fn (string $path): bool => false, static fn (string $path): bool => $path === 'docs/gone.md');
+        Storage::set('kb', new \Illuminate\Filesystem\FilesystemAdapter(new \League\Flysystem\Filesystem($adapter), $adapter, ['root' => $root]));
+
+        try {
+            $this->artisan('kb:prune-orphan-files')
+                ->expectsOutputToContain('could not probe the source of OCR tree docs/gone.md.ocr')
+                ->expectsOutputToContain('tree_probe_failed=1')
+                ->assertExitCode(1);
+        } finally {
+            Storage::set('kb', $healthy);
+        }
+        Storage::disk('kb')->assertExists('docs/gone.md.ocr/'.self::RUN.'/result.json');
+    }
+
+    /** R14 — a walk the disk refuses (a planted symbolic link, a bucket page that fails) is a reported failed sweep; nothing is deleted. */
+    public function test_a_refused_walk_is_reported_and_deletes_nothing(): void
+    {
+        $driver = Mockery::mock(\League\Flysystem\FilesystemOperator::class);
+        $driver->shouldReceive('listContents')->with('', true)->andThrow(\League\Flysystem\SymbolicLinkEncountered::atLocation('docs/link'));
+        $fake = Mockery::mock(\Illuminate\Filesystem\FilesystemAdapter::class);
+        $fake->shouldReceive('getDriver')->andReturn($driver);
+        $fake->shouldNotReceive('delete');
+        Storage::shouldReceive('disk')->with('kb')->andReturn($fake);
+
+        $this->artisan('kb:prune-orphan-files')
+            ->expectsOutputToContain('Could not complete the scan of disk [kb] (League\\Flysystem\\SymbolicLinkEncountered)')
+            ->assertExitCode(1);
+    }
+
     public function test_delete_failure_is_surfaced_as_nonzero_exit(): void
     {
         // Don't use Storage::fake — it always succeeds on delete. Use a
         // Mockery spy for the whole disk instead. R4: never swallow failures.
-        $fake = Mockery::mock(Filesystem::class);
-        $fake->shouldReceive('allFiles')
-            ->andReturn(['docs/orphan.md']);
+        // The command walks the disk lazily through the Flysystem driver's
+        // listing (R3), so that is the seam the fake answers on.
+        $driver = Mockery::mock(\League\Flysystem\FilesystemOperator::class);
+        $driver->shouldReceive('listContents')
+            ->with('', true)
+            ->andReturn(new \League\Flysystem\DirectoryListing([new \League\Flysystem\FileAttributes('docs/orphan.md')]));
+        $fake = Mockery::mock(\Illuminate\Filesystem\FilesystemAdapter::class);
+        $fake->shouldReceive('getDriver')->andReturn($driver);
         $fake->shouldReceive('delete')
             ->with('docs/orphan.md')
             ->andReturn(false);

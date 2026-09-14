@@ -149,7 +149,27 @@ The loser of the
 unique-constraint race never touches the final path: its failure branch
 deletes **its own temp file only**. A crash between commit and move leaves a
 row whose artifact is missing — `contentFor()` falls back to reconstruction
-and says so (§5), and `kb:artifacts-backfill` repairs it. Today's database
+and says so (§5), and `kb:artifacts-backfill` repairs it. A publish that
+**fails** after commit (the disk refuses the move, or the temp write of a
+repair) keeps the pointer in that same `missing` state — never rolled back,
+a rollback would race a concurrent repair of the same version — and
+**throws** `ArtifactPublishFailedException` once the pointer is kept: the
+ingest job's retry (`$tries = 3`) is an identical re-ingest that takes the
+repair path and publishes once the disk is back — a **new** flow run, because
+the job salts its idempotency key with the attempt number (with flow
+persistence on, the store hands the recorded run back for a key whatever its
+status, so an unsalted retry would receive the failed run and execute
+nothing) — and a connector sync sees a failed document instead of a silently
+degraded one (R14). On the direct path (`ingest()` / `ingestMarkdown()`) the
+canonical indexer is dispatched **before** the publish, so it is never
+withheld from a version that exists; on the Flow saga the `persist-chunks`
+step fails and the `maybe-dispatch-canonical-indexer` step of that attempt
+does not run — the row stays (compensators fire only for downstream
+failures), and the retry that repairs the artifact runs the indexer step.
+Only the retention tail that follows a successful publish (the
+`markdown_only` drop) stays best effort: a job whose retry would be a
+version-hash no-op with nothing left to publish is not failed for it.
+Today's database
 uniqueness is `uq_kb_doc_version = (project_key, source_path, version_hash)`
 — the tenant migration deferred rebuilding the composite uniques with
 `tenant_id` — so identical content at one path cannot be stored for two
@@ -157,8 +177,17 @@ tenants today (a pre-existing limitation this ADR neither introduces nor
 fixes); the path already carries `tenant_id`, so the day the unique is rebuilt
 the artifact identity matches. There is nothing to reference-count.
 `kb:prune-archived-versions` additionally sweeps `.tmp` leftovers older than
-one hour and artifacts whose `(tenant, project, path, version_hash)` no row
-(trashed rows included, R2) references, only after that authoritative check.
+one hour **that no live writer leases** — a writer takes a cache lease on its
+temp (`kb:artifact-temp:{sha1(disk|tmp)}`, `KB_CONVERSION_ARTIFACTS_TMP_LEASE`,
+default 7200 s, the primary guard: it must be at least the age threshold, and
+is warned when shorter) before the bytes land and gives it back at publish or
+discard, so a temp still inside a slow transaction is reported
+`artifact_temps_in_flight` and never deleted under its writer's feet, whatever
+its age; the age threshold remains the second guard for a lease the store lost
+or a cache store that cannot lock (reported once, never an ingest outage) — and
+artifacts whose
+`(tenant, project, path, version_hash)` no row (trashed rows included, R2)
+references, only after that authoritative check.
 Failure and idempotency tests cover all of it, including a sequential
 winner/loser test of two identical publishes (the loser discards only its
 own temp). A process-level race test is not feasible in the suite — SQLite

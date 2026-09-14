@@ -372,7 +372,9 @@ return [
     | Diff / restore / the versions endpoints then read the document itself
     | instead of a chunk reconstruction. Default OFF (R43): no new artifact is
     | written, existing ones keep being read. `tmp_max_age_seconds` bounds the
-    | sweep of temp files a dead writer left behind (kb:prune-archived-versions).
+    | sweep of temp files a dead writer left behind (kb:prune-archived-versions);
+    | a temp whose writer still holds its lease (`tmp_lease_seconds`) is never
+    | swept, however old.
     |
     */
 
@@ -385,6 +387,16 @@ return [
         // lives when its holder dies.
         'source_lock_wait_seconds' => (int) env('KB_CONVERSION_ARTIFACTS_SOURCE_LOCK_WAIT', 10),
         'source_lock_seconds' => (int) env('KB_CONVERSION_ARTIFACTS_SOURCE_LOCK_TTL', 60),
+        // How long a writer's lease on its artifact temp file lives (taken
+        // before the temp is written, released by the publish or the discard):
+        // the temp sweep never removes a leased temp, whatever its age, so a
+        // slow transaction is never mistaken for a dead writer. The lease is
+        // the primary guard and must be >= `tmp_max_age_seconds` (warned
+        // otherwise): a lease shorter than the age threshold could only
+        // protect temps the threshold already protects. Needs a lock-capable
+        // cache store (Redis in production); a store that cannot lock leaves
+        // the age threshold alone in charge, reported once.
+        'tmp_lease_seconds' => (int) env('KB_CONVERSION_ARTIFACTS_TMP_LEASE', 7200),
     ],
 
     /*

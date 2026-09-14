@@ -68,6 +68,32 @@ class KbIngestCommandTest extends TestCase
         $this->assertGreaterThan(0, KnowledgeChunk::count());
     }
 
+    /** R14 — a refused artifact publish is one error line naming the committed document and the repair, never a stack trace. */
+    public function test_a_refused_artifact_publish_is_reported_with_the_committed_document_and_exits_non_zero(): void
+    {
+        Storage::fake('kb');
+        Storage::disk('kb')->put('docs/refused.md', "# Title\n\nBody paragraph.");
+        config()->set('kb.sources.disk', 'kb');
+        config()->set('kb.sources.path_prefix', '');
+        config()->set('kb.conversion_artifacts.enabled', true);
+        $healthy = Storage::disk('kb');
+        $root = $healthy->path('');
+        $adapter = new \Tests\Fixtures\Storage\WriteRefusingAdapter(new \League\Flysystem\Local\LocalFilesystemAdapter($root), static fn (string $path): bool => str_contains($path, '.versions/') && str_ends_with($path, '.md'));
+        Storage::set('kb', new \Illuminate\Filesystem\FilesystemAdapter(new \League\Flysystem\Filesystem($adapter), $adapter, ['root' => $root]));
+
+        try {
+            $this->artisan('kb:ingest', ['path' => 'docs/refused.md', '--project' => 'demo'])
+                ->expectsOutputToContain('was ingested from kb://docs/refused.md, but its conversion artifact could not be published on disk [kb]')
+                ->assertExitCode(1);
+        } finally {
+            Storage::set('kb', $healthy);
+        }
+
+        $doc = KnowledgeDocument::first();
+        $this->assertNotNull($doc, 'the document is committed; only its artifact is missing');
+        $this->assertNotNull($doc->markdown_path);
+    }
+
     public function test_applies_configured_path_prefix(): void
     {
         Storage::fake('kb');

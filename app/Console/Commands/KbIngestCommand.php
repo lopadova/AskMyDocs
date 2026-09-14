@@ -30,18 +30,34 @@ class KbIngestCommand extends Command
         }
 
         $markdown = Storage::disk($disk)->get($fullPath);
+        if (! is_string($markdown)) {
+            // `exists()` said yes, `get()` said nothing (an adapter that
+            // refuses the read without `throw`): one line, not a TypeError.
+            $this->error("Disk [{$disk}] returned no bytes for {$fullPath}; nothing was ingested.");
+
+            return self::FAILURE;
+        }
         $title = (string) ($this->option('title') ?? pathinfo($relativePath, PATHINFO_FILENAME));
 
-        $document = $ingestor->ingestMarkdown(
-            projectKey: $projectKey,
-            sourcePath: $relativePath,
-            title: $title,
-            markdown: $markdown,
-            metadata: [
-                'disk' => $disk,
-                'prefix' => $prefix,
-            ],
-        );
+        try {
+            $document = $ingestor->ingestMarkdown(
+                projectKey: $projectKey,
+                sourcePath: $relativePath,
+                title: $title,
+                markdown: $markdown,
+                metadata: [
+                    'disk' => $disk,
+                    'prefix' => $prefix,
+                ],
+            );
+        } catch (\App\Services\Kb\Versioning\ArtifactPublishFailedException $e) {
+            // The document IS committed (the row is there, the version reads
+            // through reconstruction); only its artifact is missing. Say so
+            // in one line, with the repair, instead of a stack trace (R14).
+            $this->error("Document #{$e->documentId} was ingested from {$disk}://{$fullPath}, but its conversion artifact could not be published on disk [{$e->disk}] ({$e->markdownPath}); re-run this command or `kb:artifacts-backfill` to repair it.");
+
+            return self::FAILURE;
+        }
 
         $this->info("Ingested document #{$document->id} ({$title}) from {$disk}://{$fullPath}.");
 

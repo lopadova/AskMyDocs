@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Services\Kb\Versioning;
 
+use App\Support\Kb\LazyDiskListing;
 use App\Support\KbPath;
 use Illuminate\Filesystem\FilesystemAdapter;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -37,12 +39,29 @@ use RuntimeException;
  * re-hashed against the temp (the key is the content hash, so the bytes must
  * be the same — a corrupt final is replaced by the verified temp) and the
  * loser drops its own temp only. Every write checks its return (R4).
+ *
+ * A temp is LEASED while its writer is alive: `writeTemp()` takes a cache
+ * lease (`kb:artifact-temp:{sha1(disk|tmp)}`, `tmp_lease_seconds`) before the
+ * bytes land and `publish()` / `discardTemp()` release it, so the temp sweep
+ * never removes a file a writer is about to move into place — the file's age
+ * alone cannot tell a slow transaction from a dead writer, and a temp deleted
+ * under a live writer's feet fails its publish after the row committed
+ * (Copilot review 10). The lease is the PRIMARY guard: it outlives the age
+ * threshold (`tmp_lease_seconds` >= `tmp_max_age_seconds`, warned otherwise),
+ * so a temp still leased is never age-eligible; a held lease is `in_flight`
+ * to the sweep, and the age threshold is the second guard for a lease the
+ * store lost (`cache:clear`) or a store that cannot lease at all.
  */
 final class ConversionArtifactStore
 {
     public const ROOT = '.artifacts';
 
     public const TMP_SUFFIX = '.tmp';
+
+    public const DEFAULT_TMP_LEASE_SECONDS = 7200;
+
+    /** @var array<string,bool> configuration warnings already emitted by this process (once, not once per write) */
+    private static array $warned = [];
 
     private const SAFE_SEGMENT = '/^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$/';
 
@@ -52,6 +71,150 @@ final class ConversionArtifactStore
     public function enabled(): bool
     {
         return (bool) config('kb.conversion_artifacts.enabled', false);
+    }
+
+    /**
+     * Seconds a writer's temp lease lives (`kb.conversion_artifacts.tmp_lease_seconds`)
+     * — long enough for the source-key lock wait, the row's transaction and
+     * the move; a value that is not a positive number of seconds is a
+     * misconfiguration reported once per process and replaced by the
+     * default, never a lease that expires at once (fail closed on the
+     * sweep's side). A lease shorter than `tmp_max_age_seconds` is honoured
+     * but reported once: it could then only protect temps the age threshold
+     * already protects, and a writer slower than the age threshold would be
+     * swept under — the lease must be the longer of the two.
+     */
+    public static function tempLeaseSeconds(): int
+    {
+        $configured = config('kb.conversion_artifacts.tmp_lease_seconds', self::DEFAULT_TMP_LEASE_SECONDS);
+        $seconds = self::DEFAULT_TMP_LEASE_SECONDS;
+        if (is_numeric($configured) && (int) $configured > 0) {
+            $seconds = (int) $configured;
+        } else {
+            self::warnOnce('lease_shape', 'ConversionArtifactStore: kb.conversion_artifacts.tmp_lease_seconds is not a positive number of seconds; using the default', [
+                'configured' => $configured,
+                'default' => self::DEFAULT_TMP_LEASE_SECONDS,
+            ]);
+        }
+        $maxAge = (int) config('kb.conversion_artifacts.tmp_max_age_seconds', 3600);
+        if ($seconds < $maxAge) {
+            self::warnOnce('lease_vs_age', 'ConversionArtifactStore: kb.conversion_artifacts.tmp_lease_seconds is shorter than tmp_max_age_seconds; a writer slower than the age threshold is not protected by its lease', [
+                'tmp_lease_seconds' => $seconds,
+                'tmp_max_age_seconds' => $maxAge,
+            ]);
+        }
+
+        return $seconds;
+    }
+
+    /** @param  array<string,mixed>  $context */
+    private static function warnOnce(string $key, string $message, array $context): void
+    {
+        if (self::$warned[$key] ?? false) {
+            return;
+        }
+        self::$warned[$key] = true;
+        Log::warning($message, $context);
+    }
+
+    /** Test seam: forget which configuration warnings this process already emitted. */
+    public static function resetWarnings(): void
+    {
+        self::$warned = [];
+    }
+
+    /** The cache lease key of a temp file (one per attempt: the temp name carries a UUID). */
+    public static function tempLeaseKey(string $disk, string $tmpPath): string
+    {
+        return 'kb:artifact-temp:'.sha1($disk.'|'.$tmpPath);
+    }
+
+    /**
+     * The lease owner is derived from the key, so the writer needs no
+     * instance state to release it (the store is resolved anew at every
+     * step) and a sweeper's probe — a random owner — can never release a
+     * writer's lease.
+     */
+    private static function tempLeaseOwner(string $disk, string $tmpPath): string
+    {
+        return 'writer:'.sha1('owner|'.$disk.'|'.$tmpPath);
+    }
+
+    /**
+     * True when the default cache store can hold locks. A store that cannot
+     * (apc, session, storage, a custom store) leaves the artifact temps
+     * unleased — the age threshold is the documented second guard — and the
+     * gap is reported once per process, never an ingest outage. An explicit
+     * capability check, not a broad catch: a failure INSIDE a real lock
+     * provider must stay a failure, never a silent "unleased". A
+     * process-local provider (the array store) leases only within its own
+     * process — the same caveat the source-key lock carries: Redis in
+     * production.
+     */
+    private static function canLease(): bool
+    {
+        try {
+            $store = Cache::getStore();
+        } catch (\Throwable) {
+            // A manager that cannot name its store (a partial test double
+            // stubbing `lock()` only): the lock attempt itself decides.
+            return true;
+        }
+        if (! is_object($store)) {
+            return true; // a double that answers nothing: the lock attempt decides
+        }
+        if ($store instanceof \Illuminate\Contracts\Cache\LockProvider) {
+            return true;
+        }
+        self::warnOnce('no_lock_store', 'ConversionArtifactStore: the cache store cannot hold locks, so artifact temp files are not leased; only tmp_max_age_seconds protects an in-flight temp from the sweep', ['store' => get_debug_type($store)]);
+
+        return false;
+    }
+
+    private static function takeTempLease(string $disk, string $tmpPath): void
+    {
+        if (! self::canLease()) {
+            return;
+        }
+        $lease = Cache::lock(self::tempLeaseKey($disk, $tmpPath), self::tempLeaseSeconds(), self::tempLeaseOwner($disk, $tmpPath));
+        if (! $lease->get()) {
+            // The temp name is unique per attempt: the only way not to get
+            // the lease is a lock store that refuses — refused, not written
+            // (an unleased temp would be the sweep's to delete mid-write).
+            throw new RuntimeException(sprintf('ConversionArtifactStore: could not lease artifact temp file [%s] %s.', $disk, $tmpPath));
+        }
+    }
+
+    private static function releaseTempLease(string $disk, string $tmpPath): void
+    {
+        try {
+            Cache::restoreLock(self::tempLeaseKey($disk, $tmpPath), self::tempLeaseOwner($disk, $tmpPath))->release();
+        } catch (\Throwable $e) {
+            // An expired or already-released lease, or a store that never
+            // leased: nothing to hold any more.
+            Log::debug('ConversionArtifactStore: artifact temp lease not released', ['disk' => $disk, 'path' => $tmpPath, 'error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * True while a writer holds the temp's lease. The probe takes the lease
+     * for one second under its own owner and gives it straight back: a held
+     * lease refuses the probe, a free one is free again at once — never
+     * taken from a writer, never left behind. A store that cannot lock
+     * holds no lease: false, and the age threshold decides.
+     */
+    public static function tempLeaseHeld(string $disk, string $tmpPath): bool
+    {
+        if (! self::canLease()) {
+            return false;
+        }
+        $probe = Cache::lock(self::tempLeaseKey($disk, $tmpPath), 1);
+        if (! $probe->get()) {
+            return true;
+        }
+        $probe->release();
+
+        return false;
     }
 
     /**
@@ -139,7 +302,11 @@ final class ConversionArtifactStore
         // come after the bytes had already landed outside the root.
         $this->assertContainedOnDisk($disk, $finalPath);
         $tmp = $finalPath.'.'.Str::uuid().self::TMP_SUFFIX;
+        // Leased BEFORE the bytes land: a temp the sweep can see is a temp
+        // the sweep can already tell is in flight.
+        self::takeTempLease($disk, $tmp);
         if (! Storage::disk($disk)->put($tmp, $markdown)) {
+            self::releaseTempLease($disk, $tmp);
             throw new RuntimeException(sprintf('ConversionArtifactStore: could not write artifact temp file [%s] %s.', $disk, $tmp));
         }
 
@@ -159,6 +326,18 @@ final class ConversionArtifactStore
      * @throws RuntimeException when the move fails and nothing verified is at the final path (R4)
      */
     public function publish(string $disk, string $tmpPath, string $finalPath): void
+    {
+        try {
+            $this->publishLeased($disk, $tmpPath, $finalPath);
+        } finally {
+            // Moved, discarded or refused: the attempt is over either way,
+            // and a temp a failed publish left behind is the sweep's to take
+            // once aged (`discardArtifact()` removes it before that).
+            self::releaseTempLease($disk, $tmpPath);
+        }
+    }
+
+    private function publishLeased(string $disk, string $tmpPath, string $finalPath): void
     {
         $storage = Storage::disk($disk);
         $this->assertContainedOnDisk($disk, $finalPath);
@@ -225,9 +404,13 @@ final class ConversionArtifactStore
         return (bool) $storage->move($tmpPath, $finalPath);
     }
 
-    /** Delete this attempt's temp file only — never another writer's, never the final path. */
+    /** Delete this attempt's temp file only — never another writer's, never the final path — and give its lease back. */
     public function discardTemp(string $disk, string $tmpPath): void
     {
+        // The lease goes first, whatever the path looks like: releasing a
+        // lease that was never taken is a no-op, holding one past the
+        // discard is a temp the sweep would report in flight for nothing.
+        self::releaseTempLease($disk, $tmpPath);
         if (! str_ends_with($tmpPath, self::TMP_SUFFIX)) {
             return;
         }
@@ -444,34 +627,40 @@ final class ConversionArtifactStore
     }
 
     /**
-     * Sweep temp files older than `$maxAgeSeconds` under the artifact root
-     * — leftovers of a writer that died between temp and move. Every entry
-     * is checked against the real artifact root before it is read or
-     * removed (a symlinked parent under `.artifacts/` would otherwise let
-     * the sweep reach outside it); a refused entry is skipped and counted
-     * as failed, as is a delete the disk refuses, so the retention command
-     * can report them instead of a clean run (R14).
+     * Sweep temp files under the artifact root that are older than
+     * `$maxAgeSeconds` AND that no writer holds a lease on — leftovers of a
+     * writer that died between temp and move. The age is checked first (a
+     * stat, free) and the lease only for the temps old enough to be swept
+     * (a cache round-trip): an aged temp still leased is a writer's, however
+     * old (a long transaction is not a dead writer) — kept and counted as
+     * `in_flight`, the one case an operator cares about. Every entry is
+     * checked against the real artifact root
+     * before it is read or removed (a symlinked parent under `.artifacts/`
+     * would otherwise let the sweep reach outside it); a refused entry is
+     * skipped and counted as failed, as is a delete the disk refuses, so
+     * the retention command can report them instead of a clean run (R14).
      *
-     * @return array{removed: int, failed: int}
+     * @return array{removed: int, failed: int, in_flight: int}
      */
     public function sweepTemps(string $disk, string $prefix, int $maxAgeSeconds, bool $dryRun = false): array
     {
         $storage = Storage::disk($disk);
         $root = $this->rootFor($prefix);
         if (! $storage->directoryExists($root)) {
-            return ['removed' => 0, 'failed' => 0];
+            return ['removed' => 0, 'failed' => 0, 'in_flight' => 0];
         }
         $cutoff = time() - max(0, $maxAgeSeconds);
         $removed = 0;
         $failed = 0;
+        $inFlight = 0;
         try {
             // Lazy walk (R3): the tree is streamed, never materialised — only
             // the stale temps are ever held.
-            foreach ($this->filesUnder($storage, $root) as $file) {
+            foreach (LazyDiskListing::files($storage, $root) as $file) {
                 if (! str_ends_with($file, self::TMP_SUFFIX)) {
                     continue;
                 }
-                $this->sweepOneTemp($storage, $disk, $file, $cutoff, $dryRun, $removed, $failed);
+                $this->sweepOneTemp($storage, $disk, $file, $cutoff, $dryRun, $removed, $failed, $inFlight);
             }
         } catch (\Throwable $e) {
             // The local adapter refuses to walk through a symbolic link
@@ -481,14 +670,19 @@ final class ConversionArtifactStore
             $failed++;
         }
 
-        return ['removed' => $removed, 'failed' => $failed];
+        return ['removed' => $removed, 'failed' => $failed, 'in_flight' => $inFlight];
     }
 
-    private function sweepOneTemp(FilesystemAdapter $storage, string $disk, string $file, int $cutoff, bool $dryRun, int &$removed, int &$failed): void
+    private function sweepOneTemp(FilesystemAdapter $storage, string $disk, string $file, int $cutoff, bool $dryRun, int &$removed, int &$failed, int &$inFlight): void
     {
         try {
             $this->assertContainedOnDisk($disk, $file);
             if ($storage->lastModified($file) > $cutoff) {
+                return;
+            }
+            if (self::tempLeaseHeld($disk, $file)) {
+                $inFlight++;
+
                 return;
             }
         } catch (\Throwable $e) {
@@ -507,24 +701,6 @@ final class ConversionArtifactStore
     }
 
     /**
-     * Lazily yield every file path under `$root` (deep), one at a time —
-     * Flysystem's directory listing is a generator, unlike `allFiles()`,
-     * which materialises the whole tree.
-     *
-     * @return \Generator<int, string>
-     */
-    private function filesUnder(FilesystemAdapter $storage, string $root): \Generator
-    {
-        /** @var \League\Flysystem\FilesystemOperator $driver */
-        $driver = $storage->getDriver();
-        foreach ($driver->listContents($root, true) as $attributes) {
-            if ($attributes->isFile()) {
-                yield $attributes->path();
-            }
-        }
-    }
-
-    /**
      * Every published artifact under the root, disk-relative, temps excluded,
      * yielded lazily (R3: the tree is never materialised — a consumer batches
      * as it reads). Throws when the root cannot be walked (a local adapter
@@ -540,7 +716,7 @@ final class ConversionArtifactStore
         if (! $storage->directoryExists($root)) {
             return;
         }
-        foreach ($this->filesUnder($storage, $root) as $file) {
+        foreach (LazyDiskListing::files($storage, $root) as $file) {
             if (str_ends_with($file, '.md')) {
                 yield $file;
             }

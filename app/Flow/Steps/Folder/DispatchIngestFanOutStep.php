@@ -83,6 +83,7 @@ final class DispatchIngestFanOutStep implements FlowStepHandler
 
         $dispatched = 0;
         $failures = [];
+        $artifactFailures = [];
         $storage = Storage::disk($disk);
 
         foreach ($files as $fullPath) {
@@ -143,6 +144,17 @@ final class DispatchIngestFanOutStep implements FlowStepHandler
                     );
                 }
                 $dispatched++;
+            } catch (\App\Services\Kb\Versioning\ArtifactPublishFailedException $e) {
+                // The document IS ingested (row, chunks, embeddings committed);
+                // only its conversion artifact is missing — the pointer is
+                // kept as `missing` and repaired forward (ADR 0030 §3). Counted
+                // as dispatched, reported apart: never a file "not ingested".
+                $dispatched++;
+                $artifactFailures[] = [
+                    'path' => $relative,
+                    'document_id' => $e->documentId,
+                    'reason' => $e->getMessage(),
+                ];
             } catch (\Throwable $e) {
                 $failures[] = [
                     'path' => $relative,
@@ -160,10 +172,15 @@ final class DispatchIngestFanOutStep implements FlowStepHandler
                 'dispatched_count' => $dispatched,
                 'failure_count' => count($failures),
                 'failures' => $failures,
+                // Additive (R27): ingested documents whose artifact publish
+                // was refused — done, degraded, repairable.
+                'artifact_failure_count' => count($artifactFailures),
+                'artifact_failures' => $artifactFailures,
             ],
             businessImpact: [
                 'dispatched_count' => $dispatched,
                 'failure_count' => count($failures),
+                'artifact_failure_count' => count($artifactFailures),
             ],
         );
     }
@@ -180,7 +197,13 @@ final class DispatchIngestFanOutStep implements FlowStepHandler
         if (! $storage->exists($fullPath)) {
             throw new RuntimeException("File vanished before ingestion: {$fullPath}");
         }
-        $bytes = (string) $storage->get($fullPath);
+        $bytes = $storage->get($fullPath);
+        if (! is_string($bytes)) {
+            // `exists()` said yes, `get()` said nothing (a bucket 5xx, a mount
+            // gone between the two calls): a per-file failure, never an empty
+            // document ingested at the real source path (R14).
+            throw new RuntimeException("Disk [{$disk}] returned no bytes for {$fullPath}");
+        }
         $title = pathinfo($relative, PATHINFO_FILENAME);
         $this->ingestor->ingest(
             projectKey: $projectKey,

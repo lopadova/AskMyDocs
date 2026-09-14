@@ -69,7 +69,7 @@ final class KbArtifactsBackfillCommand extends Command
         $dryRun = (bool) $this->option('dry-run');
         $project = trim((string) ($this->option('project') ?? ''));
 
-        $counts = ['already_stored' => 0, 'written' => 0, 'intentionally_missing' => 0, 'source_missing' => 0, 'hash_mismatch' => 0, 'conversion_failed' => 0, 'ocr_unverified' => 0, 'disk_unresolvable' => 0];
+        $counts = ['already_stored' => 0, 'written' => 0, 'intentionally_missing' => 0, 'source_missing' => 0, 'hash_mismatch' => 0, 'conversion_failed' => 0, 'ocr_unverified' => 0, 'disk_unavailable' => 0];
         $this->originalsDropped = 0;
         $previous = $tenants->current();
         $tenants->set($tenant);
@@ -121,17 +121,18 @@ final class KbArtifactsBackfillCommand extends Command
         $prefix = array_key_exists('prefix', $metadata)
             ? (string) $metadata['prefix']
             : (string) config('kb.sources.path_prefix', '');
-        // A row whose recorded disk this deployment cannot resolve is ONE
-        // reported row in its own bucket (`disk_unresolvable`: an operator /
-        // configuration condition, not a missing source — it re-reports
-        // identically until the disk is configured), never an abort that
-        // leaves every later row unprocessed (R14).
+        // A row whose recorded disk this deployment cannot resolve — or
+        // cannot reach when its source is probed below — is ONE reported row
+        // in its own bucket (`disk_unavailable`: an operator / infrastructure
+        // condition, not a missing source — it re-reports identically until
+        // the disk is configured or back), never an abort that leaves every
+        // later row unprocessed (R14).
         try {
             $storage = Storage::disk($disk);
         } catch (\Throwable $e) {
-            $this->line("  #{$row->id} {$row->source_path}: disk_unresolvable (disk [{$disk}] cannot be resolved here: {$e->getMessage()})");
+            $this->line("  #{$row->id} {$row->source_path}: disk_unavailable (disk [{$disk}] cannot be resolved here: {$e->getMessage()})");
 
-            return 'disk_unresolvable';
+            return 'disk_unavailable';
         }
         $pointer = $row->markdown_path;
         if (is_string($pointer) && $pointer !== '') {
@@ -182,14 +183,31 @@ final class KbArtifactsBackfillCommand extends Command
 
             return 'source_missing';
         }
-        if (! $storage->exists($fullPath)) {
+        // The probe and the read are the disk's answers, not the row's:
+        // an adapter that throws (a lost mount, a bucket that refuses) is
+        // `disk_unavailable` for this row — never `source_missing` (the
+        // source may well be there) nor `conversion_failed` (nothing was
+        // converted), and never an unhandled crash mid-corpus (R14).
+        try {
+            $sourceExists = $storage->exists($fullPath);
+            $bytes = $sourceExists ? $storage->get($fullPath) : null;
+        } catch (\Throwable $e) {
+            $this->line("  #{$row->id} {$sourcePath}: disk_unavailable (disk [{$disk}] refused the read: {$e->getMessage()})");
+
+            return 'disk_unavailable';
+        }
+        if (! $sourceExists) {
             $this->line("  #{$row->id} {$sourcePath}: source_missing");
 
             return 'source_missing';
         }
+        if (! is_string($bytes)) {
+            $this->line("  #{$row->id} {$sourcePath}: disk_unavailable (disk [{$disk}] returned no bytes for a source it reports as present)");
+
+            return 'disk_unavailable';
+        }
 
         try {
-            $bytes = (string) $storage->get($fullPath);
             // `--dry-run` never spends: the marker rides the source metadata
             // so `OcrService::isDryRun()` short-circuits the driver, the
             // `.ocr/` writes and the metering (a recorded run is still
@@ -270,10 +288,16 @@ final class KbArtifactsBackfillCommand extends Command
         }
         $row->markdown_path = $final;
         $row->content_hash = $hash;
+        $tmp = null;
         try {
             $tmp = $store->writeTemp($disk, $final, $converted->markdown);
             $store->publish($disk, $tmp, $final);
         } catch (\Throwable $e) {
+            // This attempt's temp goes with it (as after an ingest's failed
+            // publish), not left for the age sweep.
+            if ($tmp !== null) {
+                $store->discardTemp($disk, $tmp);
+            }
             $this->line("  #{$row->id} {$sourcePath}: conversion_failed (could not publish: {$e->getMessage()}; the pointer is kept as `missing` for the next run)");
 
             return 'conversion_failed';
@@ -309,8 +333,9 @@ final class KbArtifactsBackfillCommand extends Command
     private function report(array $counts, bool $dryRun): void
     {
         // Additive, printed only when non-zero (like `ocr_unverified`):
-        // `disk_unresolvable` (rows on a disk this deployment cannot resolve —
-        // a configuration condition) and `originals_dropped` (originals the
+        // `disk_unavailable` (rows on a disk this deployment cannot resolve
+        // or reach — a configuration / infrastructure condition) and
+        // `originals_dropped` (originals the
         // run removed under a `markdown_only` contract — a destructive
         // outcome that must be visible in the one line operators read).
         $this->info(sprintf(
@@ -322,7 +347,7 @@ final class KbArtifactsBackfillCommand extends Command
             $counts['hash_mismatch'],
             $counts['conversion_failed'],
             $counts['ocr_unverified'] > 0 ? " ocr_unverified={$counts['ocr_unverified']}" : '',
-            $counts['disk_unresolvable'] > 0 ? " disk_unresolvable={$counts['disk_unresolvable']}" : '',
+            $counts['disk_unavailable'] > 0 ? " disk_unavailable={$counts['disk_unavailable']}" : '',
             $this->originalsDropped > 0 ? " originals_dropped={$this->originalsDropped}" : '',
             $dryRun ? ' (dry-run)' : '',
         ));

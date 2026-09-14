@@ -176,7 +176,7 @@ class IngestDocumentJob implements ShouldQueue
                     // handles content-level dedup, so re-dispatching the same
                     // path under the same tenant short-circuits at the engine
                     // level (existing FlowRun returned).
-                    idempotencyKey: $this->buildIdempotencyKey($this->tenantId),
+                    idempotencyKey: $this->idempotencyKeyFor($this->tenantId, $this->attempts()),
                     correlationId: $this->tenantId,
                 ),
             );
@@ -297,7 +297,20 @@ class IngestDocumentJob implements ShouldQueue
         ]);
     }
 
-    private function buildIdempotencyKey(string $tenantId): string
+    /**
+     * The flow idempotency key of one ATTEMPT of this job.
+     *
+     * The first attempt keeps the legacy key (`tenant:project:path[:runKey]`),
+     * so a duplicate dispatch of the same path still short-circuits to the
+     * run already recorded. A RETRY is salted with its attempt number: with
+     * flow persistence on, the store returns the recorded run for a key
+     * whatever its status — a `failed` one included — so an unsalted retry
+     * would get the failed run back without executing a single step and
+     * die in `failed_jobs` having repaired nothing (Copilot review 11 on
+     * ADR 0030: the retry of a refused artifact publish IS the identical
+     * re-ingest that repairs it, and it must actually run).
+     */
+    public function idempotencyKeyFor(string $tenantId, int $attempt = 1): string
     {
         // FlowExecutionOptions enforces ≤ 255 characters for the key.
         // tenant_id (≤ 50) + ":" + project_key (often ≤ 64) + ":" +
@@ -306,15 +319,15 @@ class IngestDocumentJob implements ShouldQueue
         // prefix and surface a fixed-length key. The hash is content-
         // agnostic (path-only) so tenant + project + path uniquely
         // identify the row regardless of file bytes.
-        $raw = "{$tenantId}:{$this->projectKey}:{$this->relativePath}";
-        if ($this->runKey !== null && $this->runKey !== '') {
-            $raw .= ':'.$this->runKey;
+        $salt = ($this->runKey !== null && $this->runKey !== '') ? ':'.$this->runKey : '';
+        if ($attempt > 1) {
+            $salt .= ':attempt'.$attempt;
         }
+        $raw = "{$tenantId}:{$this->projectKey}:{$this->relativePath}{$salt}";
         if (strlen($raw) <= 200) {
             return $raw;
         }
-        $tail = $this->relativePath.(($this->runKey !== null && $this->runKey !== '') ? ':'.$this->runKey : '');
 
-        return "{$tenantId}:{$this->projectKey}:".hash('sha256', $tail);
+        return "{$tenantId}:{$this->projectKey}:".hash('sha256', $this->relativePath.$salt);
     }
 }

@@ -5,10 +5,12 @@ namespace App\Console\Commands;
 use App\Services\Kb\DocumentDeleter;
 use App\Services\Kb\Ocr\OcrFigureStore;
 use App\Models\KnowledgeDocument;
+use App\Support\Kb\LazyDiskListing;
 use App\Support\KbDiskResolver;
 use App\Support\Kb\SourceType;
 use App\Support\KbPath;
 use Illuminate\Console\Command;
+use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Support\Facades\Storage;
 
 /**
@@ -17,9 +19,13 @@ use Illuminate\Support\Facades\Storage;
  * delete them. Designed to run as a nightly `--dry-run` from the
  * scheduler so operators can inspect leftovers before purging.
  *
- * Memory-safe (R3): paths are chunked into batches of 1000 against a
- * single `whereIn('source_path', ...)` query per chunk; no whole-table
- * `->get()` is ever issued even on corpora with millions of rows.
+ * Memory-safe (R3): the disk is walked ONCE, lazily (Flysystem's listing is
+ * a generator — `allFiles()` would materialise the whole tree), and sources
+ * are judged in batches of 1000 against a single `whereIn('source_path',
+ * ...)` query per batch; what the pass keeps is bounded by what it reports
+ * (the orphans, one entry per OCR tree, one per OCR run), never by the
+ * number of files on the disk. No whole-table `->get()` is ever issued even
+ * on corpora with millions of rows.
  *
  * Soft-delete aware (R2) and scope-blind: the orphan decision is taken
  * over the whole table (`withoutGlobalScopes()` — trashed rows, every
@@ -54,37 +60,58 @@ class PruneOrphanFilesCommand extends Command
 
         $storage = Storage::disk($disk);
 
-        // Scope the listing to the configured prefix so we never report or
-        // delete files outside the KB subtree (R8). On bucket-backed disks
-        // this is also a large performance win (avoid a full bucket walk).
-        $allFiles = $prefix === '' ? $storage->allFiles() : $storage->allFiles($prefix);
-        $markdownFiles = $this->filterMarkdown($allFiles);
+        // ONE lazy pass over the disk, scoped to the configured prefix so we
+        // never report or delete files outside the KB subtree (R8; on
+        // bucket-backed disks also a large performance win): sources are
+        // judged in batches as the walk goes (`orphans`), and the OCR trees
+        // and runs the walk meets are indexed by their directory — bounded
+        // by the trees, never by the files under them (R3).
+        try {
+            $scan = $this->scan($storage, $prefix, $disk);
+        } catch (\Throwable $e) {
+            // The local adapter refuses to walk through a symbolic link
+            // (SymbolicLinkEncountered), a bucket may refuse a page, the
+            // per-batch lookup may lose the database: a scan that stops is
+            // a refused sweep, reported with the class that gave up and
+            // non-zero — never a clean "no orphans" over a tree that was
+            // never read (R14). Nothing was deleted: every decision comes
+            // after the scan.
+            $this->error("Could not complete the scan of disk [{$disk}] (".$e::class."): {$e->getMessage()}. Nothing was deleted.");
+
+            return self::FAILURE;
+        }
+        $orphans = $scan['orphans'];
+        $scanned = $scan['scanned'];
         // v8.36 / ADR 0029 §6 — `{source}.ocr/` trees whose source is gone
         // from the disk AND from every row (a hard delete that kept an
         // in-flight run, a failed first ingest whose source was never
         // written): nothing else ever sweeps them.
-        $danglingOcr = $this->detectDanglingOcrTrees($storage, $allFiles, $prefix, $disk);
+        $treeProbeFailed = 0;
+        $danglingOcr = $this->detectDanglingOcrTrees($storage, $scan['trees'], $prefix, $disk, $treeProbeFailed);
         // …and, inside trees a row still references, the runs no row names
         // any more (a version pruned while its run was in flight, a forced
         // re-run whose old run nothing points at): the deleter purges a tree
         // only with its last row, so these have no other reaper.
-        $staleRuns = $this->detectStaleOcrRuns($allFiles, $prefix, $danglingOcr, $disk);
+        $staleRuns = $this->detectStaleOcrRuns($scan['runs'], $scan['trees'], $prefix, $danglingOcr, $disk);
 
-        if ($markdownFiles === [] && $danglingOcr === [] && $staleRuns === []) {
-            $this->info("No source files found on disk [{$disk}].");
+        // A tree whose source the disk refused to probe is reported and
+        // kept (fail closed); the run exits non-zero so the refusal is never
+        // read as a clean sweep (R14).
+        $probeSuffix = $treeProbeFailed > 0 ? " tree_probe_failed={$treeProbeFailed}" : '';
+        $probeExit = $treeProbeFailed > 0 ? self::FAILURE : self::SUCCESS;
 
-            return self::SUCCESS;
+        if ($scanned === 0 && $danglingOcr === [] && $staleRuns === []) {
+            $this->info("No source files found on disk [{$disk}].{$probeSuffix}");
+
+            return $probeExit;
         }
 
-        $relativePaths = $this->toRelativePaths($markdownFiles, $prefix);
-        $orphans = $this->detectOrphans($relativePaths, $prefix, $disk);
-        $scanned = count($relativePaths);
         $orphanCount = count($orphans);
 
         if ($orphanCount === 0 && $danglingOcr === [] && $staleRuns === []) {
-            $this->info("Scanned {$scanned} source file(s) on disk [{$disk}] — no orphans found.");
+            $this->info("Scanned {$scanned} source file(s) on disk [{$disk}] — no orphans found.{$probeSuffix}");
 
-            return self::SUCCESS;
+            return $probeExit;
         }
 
         if ($dryRun) {
@@ -92,15 +119,16 @@ class PruneOrphanFilesCommand extends Command
             $this->renderDanglingOcrDryRun($danglingOcr, $disk);
             $this->renderStaleOcrRunsDryRun($staleRuns, $disk);
             $this->line(sprintf(
-                'DRY-RUN: %d of %d orphan file(s), %d dangling OCR tree(s) and %d stale OCR run(s) found on disk [%s]. No changes made.',
+                'DRY-RUN: %d of %d orphan file(s), %d dangling OCR tree(s) and %d stale OCR run(s) found on disk [%s]. No changes made.%s',
                 $orphanCount,
                 $scanned,
                 count($danglingOcr),
                 count($staleRuns),
                 $disk,
+                $probeSuffix,
             ));
 
-            return self::SUCCESS;
+            return $probeExit;
         }
 
         [$deleted, $failed, $orphanOcrKept] = $this->deleteOrphans($storage, $orphans, $prefix, $disk);
@@ -108,7 +136,7 @@ class PruneOrphanFilesCommand extends Command
         [$runsPurged, $runsInFlight, $runsFailed] = $this->purgeStaleOcrRuns($staleRuns, $disk, $prefix);
 
         $this->info(sprintf(
-            'Disk [%s]: scanned=%d orphans=%d deleted=%d failed=%d orphan_ocr_kept=%d dangling_ocr=%d purged=%d in_flight=%d ocr_failed=%d stale_runs=%d runs_purged=%d runs_in_flight=%d runs_failed=%d',
+            'Disk [%s]: scanned=%d orphans=%d deleted=%d failed=%d orphan_ocr_kept=%d dangling_ocr=%d purged=%d in_flight=%d ocr_failed=%d stale_runs=%d runs_purged=%d runs_in_flight=%d runs_failed=%d%s',
             $disk,
             $scanned,
             $orphanCount,
@@ -123,9 +151,106 @@ class PruneOrphanFilesCommand extends Command
             $runsPurged,
             $runsInFlight,
             $runsFailed,
+            $probeSuffix,
         ));
 
-        return ($failed === 0 && $ocrFailed === 0 && $runsFailed === 0) ? self::SUCCESS : self::FAILURE;
+        return ($failed === 0 && $ocrFailed === 0 && $runsFailed === 0 && $treeProbeFailed === 0) ? self::SUCCESS : self::FAILURE;
+    }
+
+    /**
+     * The single lazy pass over the disk. Every file is classified once:
+     * a file with the OCR run layout (`{key}.ocr/{run}/result.json`,
+     * `{key}.ocr/{run}/images/{figure}`) indexes its tree and its run; any
+     * other generated asset (a file under a `*.ocr/` directory or under
+     * `.artifacts/`, ADR 0029 / 0030) is never a source; a source file is
+     * judged against the table in batches of 1000 relative paths, and only
+     * the orphans are kept. Nothing proportional to the number of files
+     * survives the walk (R3).
+     *
+     * A run is indexed from the SAME strict layout that names its tree
+     * (`ocrTreeSourceKey()`): a run directory holding only files of another
+     * shape (`{run}/notes.txt`) names no tree and no run — the store writes
+     * only `result.json` and `images/{figure}` (`OcrFigureStore`), and a
+     * lenient match would let a source directory that merely ends in `.ocr`
+     * be read as a tree (see ocrTreeSourceKey()). Such residue, if it ever
+     * exists, is not this sweep's to find.
+     *
+     * The orphan list is deduplicated once more at the end and sorted: a
+     * disk listing never yields a path twice, but two raw paths can
+     * normalize to the same key across batches, and the operator's table
+     * and the delete order must not depend on the adapter's walk order.
+     * `scanned` counts the source files walked (deduplicated within a
+     * batch), not distinct keys.
+     *
+     * @return array{scanned: int, orphans: array<int,string>, trees: array<string,bool>, runs: array<string,array{0:string,1:string}>}
+     *
+     * @throws \Throwable when the disk refuses the walk (reported by the caller, R14)
+     */
+    private function scan(FilesystemAdapter $storage, string $prefix, string $disk): array
+    {
+        $extensions = $this->sourceExtensions();
+        $suffix = OcrFigureStore::DIR_SUFFIX;
+        $scanned = 0;
+        $orphans = [];
+        $trees = [];
+        $runs = [];
+        $batch = [];
+        foreach (LazyDiskListing::files($storage, $prefix) as $raw) {
+            $normalized = KbPath::normalize($raw);
+            $key = self::ocrTreeSourceKey($normalized, $suffix);
+            if ($key !== null) {
+                // `true` until the tree pass asks the disk whether the source
+                // key is still there — once per tree, never per file.
+                $trees[$key] = $trees[$key] ?? true;
+                $run = explode('/', substr($normalized, strlen($key) + strlen($suffix) + 1), 2)[0];
+                $runs[$key.'|'.$run] = [$key, $run];
+
+                continue;
+            }
+            if (KbPath::isGeneratedAsset($normalized)) {
+                continue; // never a source (ADR 0029 / 0030)
+            }
+            if (! in_array(strtolower((string) pathinfo($normalized, PATHINFO_EXTENSION)), $extensions, true)) {
+                continue;
+            }
+            $relative = $this->stripPrefix($normalized, $prefix);
+            if (isset($batch[$relative])) {
+                continue;
+            }
+            $batch[$relative] = true;
+            $scanned++;
+            if (count($batch) < 1000) {
+                continue;
+            }
+            array_push($orphans, ...$this->detectOrphans(array_keys($batch), $prefix, $disk));
+            $batch = [];
+        }
+        if ($batch !== []) {
+            array_push($orphans, ...$this->detectOrphans(array_keys($batch), $prefix, $disk));
+        }
+        $orphans = array_values(array_unique($orphans));
+        sort($orphans);
+
+        return ['scanned' => $scanned, 'orphans' => $orphans, 'trees' => $trees, 'runs' => $runs];
+    }
+
+    /**
+     * The extensions a source file may carry. v8.36 / ADR 0029 — while OCR
+     * is on, an image is a source like a Markdown file: an orphan scan (a
+     * failed first ingest) and the `.ocr/` tree beside it would otherwise
+     * stay on the disk forever. With OCR off images are not sources and are
+     * never touched (R43).
+     *
+     * @return array<int,string>
+     */
+    private function sourceExtensions(): array
+    {
+        $extensions = ['md', 'markdown'];
+        if (filter_var(config('kb.ocr.enabled', false), FILTER_VALIDATE_BOOLEAN)) {
+            $extensions = array_merge($extensions, SourceType::imageExtensions());
+        }
+
+        return $extensions;
     }
 
     /**
@@ -135,34 +260,25 @@ class PruneOrphanFilesCommand extends Command
      * ADR 0030 §8). A tree beside an orphan file is not scanned: it goes with
      * the file.
      *
-     * @param  array<int,string>  $allFiles
+     * @param  array<string,array{0:string,1:string}>  $runs  indexed by the scan, one entry per run directory
+     * @param  array<string,bool>  $trees  source key → whether the source is on the disk (decided by the tree pass)
      * @param  array<int,string>  $danglingOcr
      * @return array<int,array{0:string,1:string}> [disk-relative source key, run]
      */
-    private function detectStaleOcrRuns(array $allFiles, string $prefix, array $danglingOcr, string $disk): array
+    private function detectStaleOcrRuns(array $runs, array $trees, string $prefix, array $danglingOcr, string $disk): array
     {
-        $onDisk = array_flip(array_map(static fn (string $f): string => KbPath::normalize($f), $allFiles));
         $dangling = array_flip($danglingOcr);
-        $suffix = OcrFigureStore::DIR_SUFFIX;
-        $runs = [];
-        foreach ($allFiles as $file) {
-            $normalized = KbPath::normalize($file);
-            $at = strpos($normalized, $suffix.'/');
-            if ($at === false) {
+        $candidateRuns = [];
+        foreach ($runs as $id => [$key, $run]) {
+            if (isset($dangling[$key]) || ($trees[$key] ?? false) !== true) {
                 continue;
             }
-            $key = substr($normalized, 0, $at);
-            if ($key === '' || isset($dangling[$key]) || ! isset($onDisk[$key])) {
-                continue;
-            }
-            $rest = substr($normalized, $at + strlen($suffix) + 1);
-            $run = explode('/', $rest, 2)[0];
             if (preg_match('/^[a-f0-9]{64}$/', $run) !== 1) {
                 continue;
             }
-            $runs[$key.'|'.$run] = [$key, $run];
+            $candidateRuns[$id] = [$key, $run];
         }
-        if ($runs === []) {
+        if ($candidateRuns === []) {
             return [];
         }
 
@@ -174,12 +290,12 @@ class PruneOrphanFilesCommand extends Command
         // shared disk accumulates runs and the nightly sweep must not scale
         // its query count with them.
         $deleter = app(DocumentDeleter::class);
-        // `$key` is already KbPath::normalize()d (detect loop above), so the
-        // stripped path is the normalized key the batch gate answers with.
-        $candidates = array_values(array_map(fn (array $pair): array => [$this->stripPrefix($pair[0], $prefix), $pair[1]], $runs));
+        // `$key` is already KbPath::normalize()d (the scan), so the stripped
+        // path is the normalized key the batch gate answers with.
+        $candidates = array_values(array_map(fn (array $pair): array => [$this->stripPrefix($pair[0], $prefix), $pair[1]], $candidateRuns));
         $referenced = $deleter->documentsReferencingOcrRuns($disk, $prefix, $candidates);
         $stale = [];
-        foreach ($runs as [$key, $run]) {
+        foreach ($candidateRuns as [$key, $run]) {
             if (isset($referenced[$this->stripPrefix($key, $prefix).'|'.$run])) {
                 continue;
             }
@@ -243,23 +359,22 @@ class PruneOrphanFilesCommand extends Command
      * the deleter's reference gate). A tree beside an orphan FILE is not
      * listed here: it goes with the file in {@see deleteOrphans()}.
      *
-     * @param  array<int,string>  $allFiles
+     * The disk is asked whether the source is still there ONCE per tree
+     * (`fileExists()` — one stat per tree, not per file: the price of not
+     * holding a set of every path on the disk, R3), and the answer is
+     * written back into `$trees` for the stale-run pass. A probe
+     * the disk refuses (a lost mount, a bucket answering 5xx) is a tree
+     * treated as if its source were present — never dangling, never a
+     * candidate for the stale-run pass — counted in `$probeFailed` and
+     * reported by the caller, never an unhandled crash after the walk was
+     * paid for (R14).
+     *
+     * @param  array<string,bool>  $trees  source key → on disk (filled here)
      * @return array<int,string> disk-relative source keys (the tree is `{key}.ocr`)
      */
-    private function detectDanglingOcrTrees($storage, array $allFiles, string $prefix, string $disk): array
+    private function detectDanglingOcrTrees(FilesystemAdapter $storage, array &$trees, string $prefix, string $disk, int &$probeFailed): array
     {
-        $onDisk = array_flip(array_map(static fn (string $f): string => KbPath::normalize($f), $allFiles));
-        $suffix = OcrFigureStore::DIR_SUFFIX;
-        $sourceKeys = [];
-        foreach ($allFiles as $file) {
-            $key = self::ocrTreeSourceKey(KbPath::normalize($file), $suffix);
-            if ($key === null || isset($onDisk[$key])) {
-                continue; // not a generated tree, or source still on disk: handled with the file
-            }
-            $sourceKeys[$key] = true;
-        }
-        $keys = array_keys($sourceKeys);
-        if ($keys === []) {
+        if ($trees === []) {
             return [];
         }
 
@@ -272,7 +387,22 @@ class PruneOrphanFilesCommand extends Command
         // persisted) protects the tree on any disk: deletion fails closed.
         $deleter = app(DocumentDeleter::class);
         $dangling = [];
-        foreach ($keys as $key) {
+        foreach (array_keys($trees) as $key) {
+            try {
+                $trees[$key] = $storage->fileExists($key);
+            } catch (\Throwable $e) {
+                $probeFailed++;
+                // Fail closed: an unanswered probe keeps the tree, and the
+                // stale-run pass reads the source as absent (`false`) so no
+                // run under it is judged either.
+                $trees[$key] = false;
+                $this->error("  ! could not probe the source of OCR tree {$key}".OcrFigureStore::DIR_SUFFIX." on disk [{$disk}] ({$e->getMessage()}); kept");
+
+                continue;
+            }
+            if ($trees[$key]) {
+                continue; // source still on disk: handled with the file
+            }
             if ($deleter->documentReferencingStorageKey($disk, $key, $this->stripPrefix($key, $prefix)) !== null) {
                 continue;
             }
@@ -372,56 +502,14 @@ class PruneOrphanFilesCommand extends Command
     }
 
     /**
-     * @param  array<int,string>  $files
-     * @return array<int,string>
-     */
-    private function filterMarkdown(array $files): array
-    {
-        // v8.36 / ADR 0029 — while OCR is on, an image is a source like a
-        // Markdown file: an orphan scan (a failed first ingest) and the
-        // `.ocr/` tree beside it would otherwise stay on the disk forever.
-        // With OCR off images are not sources and are never touched (R43).
-        $extensions = ['md', 'markdown'];
-        if (filter_var(config('kb.ocr.enabled', false), FILTER_VALIDATE_BOOLEAN)) {
-            $extensions = array_merge($extensions, SourceType::imageExtensions());
-        }
-
-        return array_values(array_filter($files, function (string $path) use ($extensions): bool {
-            if (KbPath::isGeneratedAsset($path)) {
-                return false; // never a source (ADR 0029 / 0030)
-            }
-
-            return in_array(strtolower((string) pathinfo($path, PATHINFO_EXTENSION)), $extensions, true);
-        }));
-    }
-
-    /**
-     * Normalise every disk path and strip the KB_PATH_PREFIX so we can
-     * compare against `knowledge_documents.source_path` directly
-     * (DocumentIngestor stores paths without the prefix).
-     *
-     * @param  array<int,string>  $files
-     * @return array<int,string>
-     */
-    private function toRelativePaths(array $files, string $prefix): array
-    {
-        $out = [];
-        foreach ($files as $raw) {
-            $normalized = KbPath::normalize($raw);
-            $relative = $this->stripPrefix($normalized, $prefix);
-            $out[] = $relative;
-        }
-
-        return array_values(array_unique($out));
-    }
-
-    /**
      * Memory-safe orphan detection (R3). For each chunk of up to 1000 paths
      * we ask the DB which ones are known, then subtract them from the chunk
      * in PHP. This keeps the `IN (...)` list well under the driver-specific
-     * limits and never loads the whole `knowledge_documents` table.
+     * limits and never loads the whole `knowledge_documents` table. The
+     * scan calls it once per batch of relative paths it has walked, so the
+     * caller never holds more than one batch either.
      *
-     * @param  array<int,string>  $relativePaths
+     * @param  array<int,string>  $relativePaths  normalized, prefix-free
      * @return array<int,string>
      */
     private function detectOrphans(array $relativePaths, string $prefix, string $disk): array

@@ -421,7 +421,20 @@ flowchart LR
   else; a concurrent identical ingest that already published the same bytes
   wins — the final is re-hashed against the temp (the path *is* the content
   hash; a truncated or replaced final is overwritten by the verified temp,
-  never kept) and the loser drops its own temp.
+  never kept) and the loser drops its own temp. A publish that **fails**
+  after commit keeps the pointer (state `missing`, never rolled back) and
+  **throws** `ArtifactPublishFailedException`: the ingest job retries, and the
+  retry — an identical re-ingest — repairs the pointer through the same-hash
+  path; a connector sync reports a failed document, never a silently degraded
+  one. The retry is a **new** flow run (the job salts its idempotency key per
+  attempt, so a persisted failed run is never handed back to the attempt meant
+  to repair). On the direct path the canonical indexer is dispatched before the
+  publish; on the Flow saga the failed `persist-chunks` step skips the indexer
+  step of that attempt and the repairing retry runs it. A writer holds a cache
+  **lease** on its temp (`KB_CONVERSION_ARTIFACTS_TMP_LEASE`, the primary
+  guard — at least the age threshold) from the write to the publish or
+  discard, so the temp sweep never removes a file a live writer is about to
+  move into place.
 - **The key is tenant- and project-namespaced, as safe segments.** A segment
   is used verbatim only when it matches `^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$`,
   and does not start with the reserved `h-` prefix; otherwise it becomes `h-` +
@@ -491,7 +504,8 @@ flowchart LR
 - **Erasure covers it.** A hard delete removes the row's artifact; the prune
   removes it with each pruned version, purges the OCR run directories no
   remaining version references, and sweeps temp leftovers older than
-  `KB_CONVERSION_ARTIFACTS_TMP_MAX_AGE` plus artifacts no row (trashed rows
+  `KB_CONVERSION_ARTIFACTS_TMP_MAX_AGE` that no live writer leases (a leased
+  temp is reported `artifact_temps_in_flight`, whatever its age) plus artifacts no row (trashed rows
   included) references any more. Both sweeps are deliberately **cross-tenant**
   (the root is one shared tree; a file is deleted only at zero references
   across every tenant) and cover the configured `KB_FILESYSTEM_DISK` / `KB_PATH_PREFIX`
@@ -589,7 +603,8 @@ JSON columns that already exist:
 | `KB_OCR_MISTRAL_TIMEOUT` / `KB_OCR_MISTRAL_MAX_RESPONSE_BYTES` | `120` / `67108864` | Request timeout and response size cap. |
 | `KB_OCR_VISION_TIMEOUT` | `300` | Per-document timeout of the vision driver (rasterisation + calls). |
 | `KB_CONVERSION_ARTIFACTS_ENABLED` | `false` | W2 / ADR 0030 — store the converted Markdown of every version at `.artifacts/{tenant}/{project}/{source_path}.versions/{version_hash}.md`. OFF writes nothing new; artifacts already stored keep being read. |
-| `KB_CONVERSION_ARTIFACTS_TMP_MAX_AGE` | `3600` | Seconds after which `kb:prune-archived-versions` sweeps a `.tmp` a dead writer left beside an artifact. |
+| `KB_CONVERSION_ARTIFACTS_TMP_MAX_AGE` | `3600` | Seconds after which `kb:prune-archived-versions` sweeps a `.tmp` a dead writer left beside an artifact — one no live writer holds the lease of. |
+| `KB_CONVERSION_ARTIFACTS_TMP_LEASE` | `7200` | Seconds a writer's cache lease on its temp file lives (taken before the temp is written, released at publish or discard): a leased temp is never swept, whatever its age, so a slow transaction is not mistaken for a dead writer. The primary guard — must be at least `KB_CONVERSION_ARTIFACTS_TMP_MAX_AGE` (warned once when shorter); a non-positive value is the default, with a warning. Needs a lock-capable cache store (Redis in production); a store that cannot lock leaves the age threshold alone in charge, reported once, never an ingest outage. |
 | `KB_CONVERSION_ARTIFACTS_SOURCE_LOCK_WAIT` | `10` | Seconds a row commit or a `markdown_only` drop waits for the storage key's lock (needs an atomic lock store — Redis — in production). |
 | `KB_CONVERSION_ARTIFACTS_SOURCE_LOCK_TTL` | `60` | Seconds that lock lives when its holder dies. A value that is not a positive number of seconds (`0`, a negative, a non-number) is not a shorter lock: the default applies and a warning says so once per ingest. |
 | `KB_VERSIONS_TIMELINE_LIMIT` | `100` | The most versions a Time Machine listing (HTTP `?limit=`, MCP `limit`, CLI `--limit`) hydrates and verifies per call (R3); every surface pages with an offset (`?offset=`, `offset`, `--offset`) and returns the family `total` and `truncated` when it holds more than the page reaches — the UI offers "Load older versions". A non-positive value is the default, with a warning. |

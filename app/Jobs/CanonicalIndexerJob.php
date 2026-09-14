@@ -118,7 +118,7 @@ class CanonicalIndexerJob implements ShouldQueue
                     // DB layer (replaceEdgesFor wipes the outgoing set,
                     // KbNode::firstOrCreate dedupes targets) so a forced
                     // re-run under a fresh idempotency window converges.
-                    idempotencyKey: $this->buildIdempotencyKey(),
+                    idempotencyKey: $this->buildIdempotencyKey($this->attempts()),
                     correlationId: $this->tenantId,
                 ),
             );
@@ -180,7 +180,16 @@ class CanonicalIndexerJob implements ShouldQueue
      * handle), we fall back to a deterministic 'missing' marker — the
      * inner step then no-ops the doc anyway.
      */
-    public function buildIdempotencyKey(): string
+    /**
+     * The first attempt keeps the plain key (a duplicate dispatch of the same
+     * version short-circuits to the run already recorded); a RETRY is salted
+     * with its attempt number — with flow persistence on, the store hands the
+     * recorded run back for a key whatever its status, a failed one included,
+     * so an unsalted retry would execute nothing and die in `failed_jobs`
+     * with the graph never projected (the same rule as
+     * IngestDocumentJob::idempotencyKeyFor()).
+     */
+    public function buildIdempotencyKey(int $attempt = 1): string
     {
         $versionHash = (string) (KnowledgeDocument::query()
             ->whereKey($this->documentId)
@@ -188,7 +197,7 @@ class CanonicalIndexerJob implements ShouldQueue
 
         $base = "canonical-index:{$this->tenantId}:{$this->documentId}:{$versionHash}";
         if (! $this->forceReindex) {
-            return $base;
+            return $attempt > 1 ? "{$base}:attempt{$attempt}" : $base;
         }
 
         // Use hrtime() to dodge same-millisecond collisions when two

@@ -56,6 +56,27 @@ class ReembedDocumentJob implements ShouldQueue
         $this->onQueue(config('kb.ingest.queue', 'kb-ingest'));
     }
 
+    /**
+     * The re-embed IS done — row, chunks and embeddings committed and
+     * correct; only the conversion artifact behind the pointer is missing
+     * (state `missing`, repaired by the next identical ingest or
+     * `kb:artifacts-backfill`). A retry here would not repair it:
+     * `forceReembed` replaces the chunk set again instead of taking the
+     * same-hash repair path, and three retries would then report a failed
+     * re-embed for a document that was re-embedded. Logged, not failed
+     * (ADR 0030 §3).
+     */
+    private function logArtifactNotPublished(\App\Services\Kb\Versioning\ArtifactPublishFailedException $e): void
+    {
+        Log::warning('ReembedDocumentJob: document re-embedded but its conversion artifact could not be published; kb:artifacts-backfill or the next identical ingest repairs it', [
+            'document_id' => $e->documentId,
+            'disk' => $e->disk,
+            'markdown_path' => $e->markdownPath,
+            'tenant_id' => $this->tenantId,
+            'error' => $e->getMessage(),
+        ]);
+    }
+
     public function handle(TenantContext $tenantContext, DocumentIngestor $ingestor): void
     {
         $previousTenant = $tenantContext->current();
@@ -115,7 +136,14 @@ class ReembedDocumentJob implements ShouldQueue
 
                         return;
                     }
-                    $ingestor->reembedFromMarkdown($document, $artifact);
+                    // The same "done, artifact missing" outcome as the disk
+                    // branch below: a refused publish is logged, never a
+                    // failed job for a document that was re-embedded.
+                    try {
+                        $ingestor->reembedFromMarkdown($document, $artifact);
+                    } catch (\App\Services\Kb\Versioning\ArtifactPublishFailedException $e) {
+                        $this->logArtifactNotPublished($e);
+                    }
 
                     return;
                 }
@@ -131,20 +159,24 @@ class ReembedDocumentJob implements ShouldQueue
                 return;
             }
 
-            $ingestor->ingest(
-                projectKey: (string) $document->project_key,
-                source: new SourceDocument(
-                    sourcePath: (string) $document->source_path,
-                    mimeType: $document->mime_type !== null && $document->mime_type !== '' ? (string) $document->mime_type : 'text/markdown',
-                    bytes: (string) $bytes,
-                    externalUrl: null,
-                    externalId: null,
-                    connectorType: is_string($metadata['connector'] ?? null) ? $metadata['connector'] : 'local',
-                    metadata: $metadata,
-                ),
-                title: (string) $document->title,
-                forceReembed: true,
-            );
+            try {
+                $ingestor->ingest(
+                    projectKey: (string) $document->project_key,
+                    source: new SourceDocument(
+                        sourcePath: (string) $document->source_path,
+                        mimeType: $document->mime_type !== null && $document->mime_type !== '' ? (string) $document->mime_type : 'text/markdown',
+                        bytes: (string) $bytes,
+                        externalUrl: null,
+                        externalId: null,
+                        connectorType: is_string($metadata['connector'] ?? null) ? $metadata['connector'] : 'local',
+                        metadata: $metadata,
+                    ),
+                    title: (string) $document->title,
+                    forceReembed: true,
+                );
+            } catch (\App\Services\Kb\Versioning\ArtifactPublishFailedException $e) {
+                $this->logArtifactNotPublished($e);
+            }
         } finally {
             $tenantContext->set($previousTenant);
         }

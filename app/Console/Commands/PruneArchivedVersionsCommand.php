@@ -129,26 +129,29 @@ final class PruneArchivedVersionsCommand extends Command
     {
         $skipped = 0;
         $namespaces = $this->artifactNamespaces($skipped);
-        $totals = ['temps' => 0, 'temps_failed' => 0, 'orphans' => 0, 'orphans_failed' => 0];
+        $totals = ['temps' => 0, 'temps_failed' => 0, 'temps_in_flight' => 0, 'orphans' => 0, 'orphans_failed' => 0];
         foreach ($namespaces as [$disk, $prefix]) {
             $outcome = $this->sweepArtifactNamespace($artifacts, $disk, $prefix, $dryRun);
             if (count($namespaces) > 1) {
-                $this->line(sprintf('  [%s%s] temps_swept=%d temps_failed=%d orphans_removed=%d orphans_failed=%d', $disk, $prefix === '' ? '' : ':'.$prefix, $outcome['temps'], $outcome['temps_failed'], $outcome['orphans'], $outcome['orphans_failed']));
+                $this->line(sprintf('  [%s%s] temps_swept=%d temps_failed=%d orphans_removed=%d orphans_failed=%d%s', $disk, $prefix === '' ? '' : ':'.$prefix, $outcome['temps'], $outcome['temps_failed'], $outcome['orphans'], $outcome['orphans_failed'], $outcome['temps_in_flight'] > 0 ? " temps_in_flight={$outcome['temps_in_flight']}" : ''));
             }
             foreach ($outcome as $k => $v) {
                 $totals[$k] += $v;
             }
         }
-        // `artifact_namespaces_skipped` is additive and printed only when a
-        // recorded namespace could not be swept (a disk this deployment cannot
-        // resolve): a permanent leak that must be observable in the summary
-        // the scheduler logs, not only in a warning line.
+        // Additive, printed only when non-zero: `artifact_temps_in_flight`
+        // (temps a live writer holds the lease of — kept, whatever their age)
+        // and `artifact_namespaces_skipped` (a recorded namespace that could
+        // not be swept — a disk this deployment cannot resolve: a permanent
+        // leak that must be observable in the summary the scheduler logs,
+        // not only in a warning line).
         $this->info(sprintf(
-            'artifact_temps_swept=%d artifact_temps_failed=%d artifact_orphans_removed=%d artifact_orphans_failed=%d%s%s',
+            'artifact_temps_swept=%d artifact_temps_failed=%d artifact_orphans_removed=%d artifact_orphans_failed=%d%s%s%s',
             $totals['temps'],
             $totals['temps_failed'],
             $totals['orphans'],
             $totals['orphans_failed'],
+            $totals['temps_in_flight'] > 0 ? " artifact_temps_in_flight={$totals['temps_in_flight']}" : '',
             $skipped > 0 ? " artifact_namespaces_skipped={$skipped}" : '',
             $dryRun ? ' (dry-run)' : '',
         ));
@@ -205,7 +208,7 @@ final class PruneArchivedVersionsCommand extends Command
     }
 
     /**
-     * @return array{temps: int, temps_failed: int, orphans: int, orphans_failed: int}
+     * @return array{temps: int, temps_failed: int, temps_in_flight: int, orphans: int, orphans_failed: int}
      */
     private function sweepArtifactNamespace(ConversionArtifactStore $artifacts, string $disk, string $prefix, bool $dryRun): array
     {
@@ -218,7 +221,7 @@ final class PruneArchivedVersionsCommand extends Command
             // reported as a failed sweep, never an unhandled crash).
             $this->error("  ! could not sweep the artifact root on disk [{$disk}]: {$e->getMessage()}");
 
-            return ['temps' => 0, 'temps_failed' => 1, 'orphans' => 0, 'orphans_failed' => 1];
+            return ['temps' => 0, 'temps_failed' => 1, 'temps_in_flight' => 0, 'orphans' => 0, 'orphans_failed' => 1];
         }
         $orphans = 0;
         $orphansFailed = 0;
@@ -249,7 +252,7 @@ final class PruneArchivedVersionsCommand extends Command
             $orphansFailed++;
         }
 
-        return ['temps' => $temps['removed'], 'temps_failed' => $temps['failed'], 'orphans' => $orphans, 'orphans_failed' => $orphansFailed];
+        return ['temps' => $temps['removed'], 'temps_failed' => $temps['failed'], 'temps_in_flight' => $temps['in_flight'], 'orphans' => $orphans, 'orphans_failed' => $orphansFailed];
     }
 
     /**
@@ -342,6 +345,12 @@ final class PruneArchivedVersionsCommand extends Command
                     ->where('status', 'archived')
                     ->where('project_key', $family->project_key)
                     ->where('source_path', $family->source_path)
+                    // NULL `indexed_at` sorts LAST on every driver, as on the
+                    // timeline (DocumentVersionService::versionsFor()): under a
+                    // plain DESC PostgreSQL puts NULLs first, and a row that
+                    // never recorded when it was indexed would then be kept
+                    // as the family's "newest" while a real version is pruned.
+                    ->orderByRaw('CASE WHEN indexed_at IS NULL THEN 1 ELSE 0 END')
                     ->orderByDesc('indexed_at')
                     ->orderByDesc('id')
                     ->skip($keep)

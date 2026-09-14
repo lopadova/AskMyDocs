@@ -32,6 +32,9 @@ use Symfony\Component\Yaml\Yaml;
  */
 final class BenchmarkRunner
 {
+    /** @var list<string> */
+    private array $corpusFailures = [];
+
     /** Doc-types to ingest, keyed filename => mime. */
     private const MIME = [
         'md' => 'text/markdown',
@@ -76,6 +79,10 @@ final class BenchmarkRunner
             'project' => $projectKey,
             'k' => $k,
             'corpus_count' => $corpusCount,
+            // Additive (R27): the corpus files that could not be ingested —
+            // a scorecard over a truncated corpus must say so, never pass as
+            // a clean run with a smaller denominator (R14).
+            'corpus_failures' => $this->corpusFailures,
             'query_count' => count($rows),
             'queries' => $rows,
             'aggregate' => $aggregate,
@@ -86,6 +93,7 @@ final class BenchmarkRunner
 
     private function ingestCorpus(string $corpusDir, string $projectKey): int
     {
+        $this->corpusFailures = [];
         $count = 0;
         foreach (glob(rtrim($corpusDir, '/').'/*') ?: [] as $path) {
             $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
@@ -103,11 +111,34 @@ final class BenchmarkRunner
                 connectorType: 'local',
                 metadata: [],
             );
-            $this->ingestor->ingest($projectKey, $source, pathinfo($name, PATHINFO_FILENAME));
+            // Per-file failure, never an abort of the corpus (R14): a document
+            // that cannot be ingested — or whose conversion artifact could not
+            // be published after commit — is logged with its name and the
+            // load goes on, so the benchmark reports what it actually ran
+            // against instead of silently benchmarking a truncated corpus.
+            try {
+                $this->ingestor->ingest($projectKey, $source, pathinfo($name, PATHINFO_FILENAME));
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('BenchmarkRunner: corpus file could not be ingested; skipped', ['file' => $name, 'exception' => $e::class, 'error' => $e->getMessage()]);
+                $this->corpusFailures[] = $name;
+
+                continue;
+            }
             $count++;
         }
 
         return $count;
+    }
+
+    /**
+     * Corpus files the last `ingestCorpus()` could not ingest (by name), so
+     * a report can say the run covered a partial corpus.
+     *
+     * @return list<string>
+     */
+    public function corpusFailures(): array
+    {
+        return $this->corpusFailures;
     }
 
     /** @return list<array<string,mixed>> */

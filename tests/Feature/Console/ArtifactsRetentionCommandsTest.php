@@ -336,7 +336,9 @@ final class ArtifactsRetentionCommandsTest extends TestCase
         // … while an orphan and a stale temp on that same disk are swept, like on the configured one.
         $orphan = $store->pathFor($tenant, 'eng', 'docs/gone.md', str_repeat('a', 63).'b');
         $store->publish('kb2', $store->writeTemp('kb2', $orphan, 'orphan on kb2'), $orphan);
-        $staleTemp = $store->writeTemp('kb2', $kept, 'stale temp');
+        // A dead writer's leftover: its lease has lapsed, only the file remains.
+        $staleTemp = $kept.'.dead-writer.tmp';
+        Storage::disk('kb2')->put($staleTemp, 'stale temp');
         touch(Storage::disk('kb2')->path($staleTemp), time() - 7200);
         // A row recording a disk this deployment does not know is reported, not swept (nothing to sweep it on).
         $unknown = $this->row(2, 'active', null, 'docs/unknown.md');
@@ -564,11 +566,160 @@ final class ArtifactsRetentionCommandsTest extends TestCase
         $fine = $this->row(2, 'active', null, 'docs/fine.md');
 
         $this->artisan('kb:artifacts-backfill', ['--tenant' => $tenant])
-            ->expectsOutputToContain('disk_unresolvable (disk [nowhere] cannot be resolved here')
-            ->expectsOutputToContain('already_stored=0 written=1 intentionally_missing=0 source_missing=0 hash_mismatch=0 conversion_failed=0 disk_unresolvable=1')
+            ->expectsOutputToContain('disk_unavailable (disk [nowhere] cannot be resolved here')
+            ->expectsOutputToContain('already_stored=0 written=1 intentionally_missing=0 source_missing=0 hash_mismatch=0 conversion_failed=0 disk_unavailable=1')
             ->assertExitCode(0);
 
         $this->assertNotNull($fine->fresh()->markdown_path, 'the rows after the unresolvable one are still processed');
+    }
+
+    /** R14 — a disk that refuses the source probe (a lost mount, a bucket answering 5xx) is `disk_unavailable` for that row — never `source_missing`, never a crash mid-corpus. */
+    public function test_backfill_reports_a_disk_that_refuses_the_source_probe_and_goes_on(): void
+    {
+        $tenant = app(TenantContext::class)->current();
+        Storage::disk('kb')->put('docs/unreachable.md', "# Doc\n\nversion 1\n");
+        $unreachable = $this->row(1, 'active', null, 'docs/unreachable.md');
+        Storage::disk('kb')->put('docs/fine.md', "# Doc\n\nversion 2\n");
+        $fine = $this->row(2, 'active', null, 'docs/fine.md');
+        $healthy = Storage::disk('kb');
+        $root = $healthy->path('');
+        $adapter = new \Tests\Fixtures\Storage\WriteRefusingAdapter(new \League\Flysystem\Local\LocalFilesystemAdapter($root), static fn (string $path): bool => false, static fn (string $path): bool => $path === 'docs/unreachable.md');
+        Storage::set('kb', new \Illuminate\Filesystem\FilesystemAdapter(new \League\Flysystem\Filesystem($adapter), $adapter, ['root' => $root]));
+
+        try {
+            $this->artisan('kb:artifacts-backfill', ['--tenant' => $tenant])
+                ->expectsOutputToContain('docs/unreachable.md: disk_unavailable (disk [kb] refused the read')
+                ->expectsOutputToContain('already_stored=0 written=1 intentionally_missing=0 source_missing=0 hash_mismatch=0 conversion_failed=0 disk_unavailable=1')
+                ->assertExitCode(0);
+        } finally {
+            Storage::set('kb', $healthy);
+        }
+
+        $this->assertNull($unreachable->fresh()->markdown_path, 'nothing was written for the row the disk refused');
+        $this->assertNotNull($fine->fresh()->markdown_path, 'the rows after the refused one are still processed');
+    }
+
+    /**
+     * A temp a live writer holds the lease of is never swept, however old
+     * (a slow transaction is not a dead writer): kept and reported
+     * `in_flight`. Once the lease is gone — the writer died and its lease
+     * expired — the age threshold takes it. Publishing releases the lease.
+     */
+    public function test_prune_keeps_a_leased_temp_however_old_and_sweeps_it_once_the_lease_is_gone(): void
+    {
+        $this->row(9, 'active', 'live');
+        $store = app(ConversionArtifactStore::class);
+        $final = $store->pathFor(app(TenantContext::class)->current(), 'eng', 'docs/slow.md', str_repeat('c', 64));
+        $leased = $store->writeTemp('kb', $final, 'a slow transaction');
+        touch(Storage::disk('kb')->path($leased), time() - 7200); // far past KB_CONVERSION_ARTIFACTS_TMP_MAX_AGE
+        $this->assertTrue(ConversionArtifactStore::tempLeaseHeld('kb', $leased));
+
+        $this->artisan('kb:prune-archived-versions')
+            ->expectsOutputToContain('artifact_temps_swept=0 artifact_temps_failed=0 artifact_orphans_removed=0 artifact_orphans_failed=0 artifact_temps_in_flight=1')
+            ->assertExitCode(0);
+        Storage::disk('kb')->assertExists($leased);
+
+        // The writer died: its lease lapses (forced here; the TTL does it in production).
+        Cache::lock(ConversionArtifactStore::tempLeaseKey('kb', $leased))->forceRelease();
+        $this->assertFalse(ConversionArtifactStore::tempLeaseHeld('kb', $leased));
+        $this->artisan('kb:prune-archived-versions')
+            ->expectsOutputToContain('artifact_temps_swept=1 artifact_temps_failed=0 artifact_orphans_removed=0 artifact_orphans_failed=0')
+            ->assertExitCode(0);
+        Storage::disk('kb')->assertMissing($leased);
+
+        // A publish gives the lease back; so does a discard.
+        $published = $store->writeTemp('kb', $final, 'published');
+        $store->publish('kb', $published, $final);
+        $this->assertFalse(ConversionArtifactStore::tempLeaseHeld('kb', $published));
+        $discarded = $store->writeTemp('kb', $final, 'discarded');
+        $store->discardTemp('kb', $discarded);
+        $this->assertFalse(ConversionArtifactStore::tempLeaseHeld('kb', $discarded));
+        Storage::disk('kb')->assertMissing($discarded);
+    }
+
+    /** A lease length that is not a positive number of seconds is reported and replaced by the default, never a lease that expires at once. */
+    public function test_a_non_positive_temp_lease_falls_back_to_the_default(): void
+    {
+        config(['kb.conversion_artifacts.tmp_lease_seconds' => 0]);
+        $this->assertSame(ConversionArtifactStore::DEFAULT_TMP_LEASE_SECONDS, ConversionArtifactStore::tempLeaseSeconds());
+        config(['kb.conversion_artifacts.tmp_lease_seconds' => 45]);
+        $this->assertSame(45, ConversionArtifactStore::tempLeaseSeconds());
+    }
+
+    /**
+     * The surplus of a family is chosen by recency with NULL `indexed_at`
+     * LAST, as on the timeline: an archived row that never recorded when it
+     * was indexed is the OLDEST, pruned first — never kept as the family's
+     * newest while a dated version is pruned. SQLite happens to order NULLs
+     * last under DESC on its own, so the outcome alone cannot fail here: the
+     * ordering the command SENDS is asserted from the query log, which does
+     * fail without the explicit `CASE` PostgreSQL needs.
+     */
+    public function test_prune_treats_an_archived_version_without_indexed_at_as_the_oldest(): void
+    {
+        config(['kb.versioning.keep_archived' => 1]);
+        $this->row(9, 'active', 'live');
+        $dated = $this->row(8, 'archived', 'dated');
+        $undated = $this->row(7, 'archived', 'undated');
+        \Illuminate\Support\Facades\DB::table('knowledge_documents')->where('id', $undated->id)->update(['indexed_at' => null]);
+
+        \Illuminate\Support\Facades\DB::enableQueryLog();
+        $this->artisan('kb:prune-archived-versions')
+            ->expectsOutputToContain('archived_versions_pruned=1 artifacts_removed=1')
+            ->assertExitCode(0);
+        $surplusQueries = array_values(array_filter(
+            \Illuminate\Support\Facades\DB::getQueryLog(),
+            static fn (array $q): bool => str_contains($q['query'], '"status" = ?') && in_array('archived', $q['bindings'], true) && str_contains($q['query'], 'order by') && str_contains($q['query'], 'offset'),
+        ));
+        \Illuminate\Support\Facades\DB::disableQueryLog();
+        $this->assertNotEmpty($surplusQueries, 'the surplus query was issued');
+        foreach ($surplusQueries as $q) {
+            $this->assertMatchesRegularExpression('/order by CASE WHEN indexed_at IS NULL THEN 1 ELSE 0 END, "indexed_at" desc, "id" desc/', $q['query'], 'NULL indexed_at sorts last on every driver, before the recency order');
+        }
+
+        $this->assertDatabaseMissing('knowledge_documents', ['id' => $undated->id]);
+        $this->assertDatabaseHas('knowledge_documents', ['id' => $dated->id]);
+        Storage::disk('kb')->assertExists((string) $dated->markdown_path);
+    }
+
+    /** The lease is the primary guard: one shorter than the age threshold is honoured but reported, once per process, not once per write. */
+    public function test_a_temp_lease_shorter_than_the_age_threshold_is_reported_once(): void
+    {
+        config(['kb.conversion_artifacts.tmp_lease_seconds' => 100, 'kb.conversion_artifacts.tmp_max_age_seconds' => 3600]);
+        \Illuminate\Support\Facades\Log::spy();
+
+        $this->assertSame(100, ConversionArtifactStore::tempLeaseSeconds());
+        $this->assertSame(100, ConversionArtifactStore::tempLeaseSeconds());
+
+        \Illuminate\Support\Facades\Log::shouldHaveReceived('warning')->once()->withArgs(static fn (string $message): bool => str_contains($message, 'shorter than tmp_max_age_seconds'));
+    }
+
+    /**
+     * R43 / R14 — a cache store that cannot lock (apc, session, a custom
+     * store) never turns the artifact write into an outage: the temp is
+     * written unleased, the gap is reported once, and the age threshold
+     * alone decides the sweep.
+     */
+    public function test_a_cache_store_without_locks_leaves_the_temp_unleased_and_the_age_threshold_in_charge(): void
+    {
+        Cache::extend('nolock', static fn ($app) => Cache::repository(new \Tests\Fixtures\Cache\NoLockStore));
+        config(['cache.stores.nolock' => ['driver' => 'nolock'], 'cache.default' => 'nolock']);
+        \Illuminate\Support\Facades\Log::spy();
+        $this->row(9, 'active', 'live');
+        $store = app(ConversionArtifactStore::class);
+        $final = $store->pathFor(app(TenantContext::class)->current(), 'eng', 'docs/nolock.md', str_repeat('d', 64));
+
+        $tmp = $store->writeTemp('kb', $final, 'written without a lease');
+
+        Storage::disk('kb')->assertExists($tmp);
+        $this->assertFalse(ConversionArtifactStore::tempLeaseHeld('kb', $tmp));
+        \Illuminate\Support\Facades\Log::shouldHaveReceived('warning')->once()->withArgs(static fn (string $message): bool => str_contains($message, 'cannot hold locks'));
+
+        touch(Storage::disk('kb')->path($tmp), time() - 7200);
+        $this->artisan('kb:prune-archived-versions')
+            ->expectsOutputToContain('artifact_temps_swept=1 artifact_temps_failed=0 artifact_orphans_removed=0 artifact_orphans_failed=0')
+            ->assertExitCode(0);
+        Storage::disk('kb')->assertMissing($tmp);
     }
 
     /** R14 / SEC-PATH-001 — a configured prefix carrying the reserved `.artifacts` segment is a reported failed sweep, never a root drawn one level up. */

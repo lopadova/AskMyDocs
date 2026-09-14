@@ -44,6 +44,56 @@ final class DispatchIngestFanOutStepTest extends TestCase
         Queue::assertPushed(IngestDocumentJob::class, 2);
     }
 
+    /** ADR 0030 §3 — a synchronous ingest whose artifact publish is refused is INGESTED (counted as dispatched) and reported apart, never a file "not ingested". */
+    public function test_sync_ingest_whose_artifact_publish_fails_counts_as_dispatched_and_is_reported_apart(): void
+    {
+        $this->stubEmbeddings();
+        config(['kb.conversion_artifacts.enabled' => true, 'kb.sources.disk' => 'kb', 'kb.sources.path_prefix' => '']);
+        Storage::disk('kb')->put('docs/refused.md', "# Refused\n\nArtifact move refused.");
+        $healthy = Storage::disk('kb');
+        $root = $healthy->path('');
+        $adapter = new \Tests\Fixtures\Storage\WriteRefusingAdapter(new \League\Flysystem\Local\LocalFilesystemAdapter($root), static fn (string $path): bool => str_contains($path, '.versions/') && str_ends_with($path, '.md'));
+        Storage::set('kb', new \Illuminate\Filesystem\FilesystemAdapter(new \League\Flysystem\Filesystem($adapter), $adapter, ['root' => $root]));
+
+        try {
+            $result = $this->app->make(DispatchIngestFanOutStep::class)->execute($this->context(['docs/refused.md'], sync: true));
+        } finally {
+            Storage::set('kb', $healthy);
+        }
+
+        $this->assertSame(1, $result->output['dispatched_count'], 'the document is ingested');
+        $this->assertSame(0, $result->output['failure_count']);
+        $this->assertSame(1, $result->output['artifact_failure_count']);
+        $this->assertSame('docs/refused.md', $result->output['artifact_failures'][0]['path']);
+        $doc = \App\Models\KnowledgeDocument::withoutGlobalScopes()->where('source_path', 'docs/refused.md')->first();
+        $this->assertNotNull($doc);
+        $this->assertSame((int) $doc->id, $result->output['artifact_failures'][0]['document_id']);
+        $this->assertNotNull($doc->markdown_path, 'the pointer is kept as `missing`');
+    }
+
+    /** R14 — a disk that reports a file present but returns no bytes is a per-file failure, never an empty document ingested at the real path. */
+    public function test_sync_ingest_of_a_file_the_disk_returns_no_bytes_for_is_a_failure_not_an_empty_document(): void
+    {
+        $this->stubEmbeddings();
+        config(['kb.sources.disk' => 'kb', 'kb.sources.path_prefix' => '']);
+        Storage::disk('kb')->put('docs/unreadable.md', "# Unreadable\n\nBytes withheld.");
+        $healthy = Storage::disk('kb');
+        $root = $healthy->path('');
+        $adapter = new \Tests\Fixtures\Storage\WriteRefusingAdapter(new \League\Flysystem\Local\LocalFilesystemAdapter($root), static fn (string $path): bool => false, static fn (string $path, string $operation): bool => $operation === 'read' && $path === 'docs/unreadable.md');
+        Storage::set('kb', new \Illuminate\Filesystem\FilesystemAdapter(new \League\Flysystem\Filesystem($adapter), $adapter, ['root' => $root]));
+
+        try {
+            $result = $this->app->make(DispatchIngestFanOutStep::class)->execute($this->context(['docs/unreadable.md'], sync: true));
+        } finally {
+            Storage::set('kb', $healthy);
+        }
+
+        $this->assertSame(0, $result->output['dispatched_count']);
+        $this->assertSame(1, $result->output['failure_count']);
+        $this->assertStringContainsString('returned no bytes', $result->output['failures'][0]['reason']);
+        $this->assertSame(0, \App\Models\KnowledgeDocument::withoutGlobalScopes()->where('source_path', 'docs/unreadable.md')->count(), 'no empty document was ingested');
+    }
+
     public function test_unsupported_extension_recorded_as_failure_not_thrown(): void
     {
         Queue::fake();
@@ -184,7 +234,20 @@ final class DispatchIngestFanOutStepTest extends TestCase
     /**
      * @param  list<string>  $files
      */
-    private function context(array $files, string $tenantId = 'default', bool $dryRun = false): FlowContext
+    private function stubEmbeddings(): void
+    {
+        $cache = \Mockery::mock(\App\Services\Kb\EmbeddingCacheService::class);
+        $cache->shouldReceive('generate')->andReturnUsing(
+            static fn (array $texts) => new \App\Ai\EmbeddingsResponse(
+                embeddings: array_map(static fn () => array_fill(0, 8, 0.0), $texts),
+                provider: 'fake',
+                model: 'fake-8',
+            ),
+        );
+        $this->app->instance(\App\Services\Kb\EmbeddingCacheService::class, $cache);
+    }
+
+    private function context(array $files, string $tenantId = 'default', bool $dryRun = false, bool $sync = false): FlowContext
     {
         return new FlowContext(
             flowRunId: 'r',
@@ -192,7 +255,7 @@ final class DispatchIngestFanOutStepTest extends TestCase
             input: [
                 'tenant_id' => $tenantId,
                 'project_key' => 'p',
-                'sync' => false,
+                'sync' => $sync,
                 'prefix' => '',
             ],
             stepOutputs: [
