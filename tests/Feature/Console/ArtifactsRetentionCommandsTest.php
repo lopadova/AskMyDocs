@@ -684,6 +684,29 @@ final class ArtifactsRetentionCommandsTest extends TestCase
         $this->assertNotNull($fine->fresh()->markdown_path, 'the rows after the unresolvable one are still processed');
     }
 
+    /**
+     * R14 — a zero-byte source is unreadable, not a document. Reconverting
+     * nothing would write an empty artifact and report it as a completed
+     * repair, so the backfill refuses it exactly like `kb:ingest` does, and
+     * the rest of the corpus still runs.
+     */
+    public function test_backfill_refuses_a_zero_byte_source_instead_of_writing_an_empty_artifact(): void
+    {
+        $tenant = app(TenantContext::class)->current();
+        Storage::disk('kb')->put('docs/empty.md', '');
+        $empty = $this->row(1, 'active', null, 'docs/empty.md');
+        Storage::disk('kb')->put('docs/fine.md', "# Doc\n\nversion 2\n");
+        $fine = $this->row(2, 'active', null, 'docs/fine.md');
+
+        $this->artisan('kb:artifacts-backfill', ['--tenant' => $tenant])
+            ->expectsOutputToContain('returned no bytes for a source it reports as present')
+            ->expectsOutputToContain('disk_unavailable=1')
+            ->assertExitCode(1);
+
+        $this->assertNull($empty->fresh()->markdown_path, 'no artifact is written for an empty source');
+        $this->assertNotNull($fine->fresh()->markdown_path, 'the rest of the corpus still runs');
+    }
+
     /** R14 — a disk that refuses the source probe (a lost mount, a bucket answering 5xx) is `disk_unavailable` for that row — never `source_missing`, never a crash mid-corpus. */
     public function test_backfill_reports_a_disk_that_refuses_the_source_probe_and_goes_on(): void
     {

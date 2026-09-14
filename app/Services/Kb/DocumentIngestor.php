@@ -1563,10 +1563,14 @@ class DocumentIngestor
     /**
      * Run `$commit` under the storage key's lock (see sourceKeyLock()) — but
      * ONLY when a `markdown_only` drop of the same key is possible at all
-     * (`$needed`: an artifact is being stored for a non-Markdown source): with
-     * the artifacts flag off, in `reference_only`, in a dry run, or for a
-     * Markdown source (never dropped) there is nothing to serialize against
-     * and an ingest never waits on, nor depends on, a lock store (R43). A
+     * (`$needed`, i.e. {@see sourceKeyLockNeeded()}: a non-Markdown source
+     * while the artifacts flag is on): with the flag off, in a dry run, or for
+     * a Markdown source (never dropped) there is nothing to serialize against
+     * and an ingest never waits on, nor depends on, a lock store (R43).
+     * `reference_only` DOES lock: it stores no artifact of its own, so it
+     * depends on the shared original and must not commit past a concurrent
+     * drop's reference scan — removing that lock would reintroduce the race
+     * (`test_a_reference_only_ingest_commits_under_the_storage_key_lock_while_the_flag_is_on`). A
      * lock that cannot be taken in time fails the persist loudly — a queued
      * ingest retries, a caller sees the error — never a silent commit past
      * a drop in progress.

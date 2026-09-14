@@ -216,7 +216,13 @@ final class KbArtifactsBackfillCommand extends Command
 
             return 'source_missing';
         }
-        if (! is_string($bytes)) {
+        if (! is_string($bytes) || $bytes === '') {
+            // `exists()` said yes, `get()` said nothing (an adapter that
+            // refuses the read without `throw`, a zero-byte object). The empty
+            // case is the same refusal as the other entry points
+            // (`kb:ingest`): reconverting nothing would write an empty
+            // artifact and report it as a completed repair, so the row is
+            // reported unreadable instead (R14).
             $this->line("  #{$row->id} {$sourcePath}: disk_unavailable (disk [{$disk}] returned no bytes for a source it reports as present)");
 
             return 'disk_unavailable';
