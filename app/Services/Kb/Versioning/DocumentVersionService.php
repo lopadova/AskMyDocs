@@ -7,6 +7,7 @@ namespace App\Services\Kb\Versioning;
 use App\Models\KbCanonicalAudit;
 use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
+use App\Services\Kb\Canonical\CanonicalParser;
 use App\Support\Kb\StorageNamespace;
 use App\Support\MarkdownDiff;
 use App\Support\TenantContext;
@@ -15,6 +16,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
+use Symfony\Component\Yaml\Yaml;
 
 /**
  * v8.7/W5 — Cloud Time Machine: browse + restore document versions.
@@ -25,8 +27,9 @@ use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
  * retained history: it lists the version timeline for a doc's
  * `(tenant, project_key, source_path)` family, reconstructs a version's
  * content from its chunks, diffs two versions, and restores an archived
- * version (status flip + canonical-identity transfer, transactional +
- * audited). Reuses retained chunks/embeddings — no re-embedding.
+ * version (status flip + the version's own canonical identity, recomputed
+ * from its retained frontmatter; transactional + audited). Reuses retained
+ * chunks/embeddings — no re-embedding.
  */
 final class DocumentVersionService
 {
@@ -52,6 +55,7 @@ final class DocumentVersionService
     public function __construct(
         private readonly TenantContext $tenant,
         private readonly ConversionArtifactStore $artifacts,
+        private readonly CanonicalParser $parser,
     ) {}
 
     /**
@@ -376,27 +380,6 @@ final class DocumentVersionService
     }
 
     /**
-     * Restore an archived version to live. Archives the current live
-     * version of the same family, transfers its canonical identity (when
-     * canonical) to the target, activates the target, and writes a
-     * `kb_canonical_audit` row for canonical restores. Transactional so a
-     * partial flip can never leave two live versions or a vacated identity.
-     *
-     * R21 — The target is re-fetched with lockForUpdate() as the FIRST
-     * statement inside the transaction so concurrent restore calls for the
-     * same version are serialised. The "already live" guard is also inside
-     * the lock boundary so a TOCTOU race between the controller check and
-     * the transaction commit cannot yield a double-restore.
-     *
-     * A final sweep UPDATE after activation enforces the one-active-per-
-     * family invariant even when two threads concurrently restore different
-     * archived versions: PostgreSQL EvalPlanQual can cause the $live SELECT
-     * FOR UPDATE to return null (the previously-active row was archived by
-     * the competing transaction), leaving this thread unaware of the
-     * newly-activated version. The sweep runs at UPDATE-lock time and
-     * captures any concurrent activations that the SELECT missed.
-     */
-    /**
      * The most recent restore recorded on a version (ADR 0030 §6), or null
      * when it was never restored. Additive read model for the index surfaces.
      *
@@ -414,6 +397,38 @@ final class DocumentVersionService
         return ['actor' => $last['actor'], 'at' => $last['at'], 'previous_live_id' => isset($last['previous_live_id']) ? (int) $last['previous_live_id'] : null];
     }
 
+    /**
+     * Restore an archived version to live. Archives the current live version
+     * of the same family, settles the canonical identity, activates the
+     * target, and writes a `kb_canonical_audit` row for canonical restores.
+     * Transactional so a partial flip can never leave two live versions or a
+     * vacated identity.
+     *
+     * v8.36 — the identity is the restored version's OWN, recomputed from the
+     * frontmatter the archive retained through the same parser + validator the
+     * ingest path runs: a restore is the re-ingest of older bytes, so the
+     * canonical identity follows the CONTENT. A version that never declared a
+     * slug takes none (the family's slug is left unheld, exactly as after
+     * ingesting non-canonical bytes); a LEGACY version archived before the
+     * frontmatter was persisted has none of its own, so it still carries the
+     * outgoing live/swept row's. A reclaimed slug or doc_id already held by
+     * another row degrades the restore to non-canonical with a logged warning
+     * rather than raising on the composite unique.
+     *
+     * R21 — The target is re-fetched with lockForUpdate() as the FIRST
+     * statement inside the transaction so concurrent restore calls for the
+     * same version are serialised. The "already live" guard is also inside
+     * the lock boundary so a TOCTOU race between the controller check and
+     * the transaction commit cannot yield a double-restore.
+     *
+     * A final sweep UPDATE after activation enforces the one-active-per-
+     * family invariant even when two threads concurrently restore different
+     * archived versions: PostgreSQL EvalPlanQual can cause the $live SELECT
+     * FOR UPDATE to return null (the previously-active row was archived by
+     * the competing transaction), leaving this thread unaware of the
+     * newly-activated version. The sweep runs at UPDATE-lock time and
+     * captures any concurrent activations that the SELECT missed.
+     */
     public function restore(KnowledgeDocument $target, ?string $actor = null): KnowledgeDocument
     {
         $tenantId = $this->tenant->current();
@@ -445,16 +460,32 @@ final class DocumentVersionService
                 ->lockForUpdate()
                 ->first();
 
-            $restoreCanonical = $live !== null && (bool) $live->is_canonical;
-            $identity = $restoreCanonical
-                ? [
+            // v8.36 — the restored version's canonical identity is ITS OWN,
+            // reconstructed from the frontmatter the archive retained. A
+            // restore is the re-ingest of an older version's bytes, and under
+            // ingest the canonical identity follows the CONTENT: taking
+            // whatever the live row happened to hold would mark content
+            // canonical that never declared it (and would silently demote a
+            // canonical version restored over a non-canonical one).
+            $ownIdentity = $this->canonicalIdentityFromFrontmatter($locked);
+            $targetWasCanonical = $ownIdentity !== null || $locked->canonical_type !== null;
+            $identity = $ownIdentity ?? [];
+            // Legacy rows (archived before the frontmatter was persisted) keep
+            // no identity of their own: `canonical_type` is all that survives,
+            // so for THOSE the family's identity is carried from the outgoing
+            // live version — the only place the slug still exists.
+            $carryFromLive = $targetWasCanonical && $ownIdentity === null;
+            $restoreCanonical = $ownIdentity !== null;
+            if ($carryFromLive && $live !== null && (bool) $live->is_canonical) {
+                $identity = [
                     'is_canonical' => true,
                     'doc_id' => $live->doc_id,
                     'slug' => $live->slug,
                     'canonical_status' => $live->canonical_status,
                     'retrieval_priority' => $live->retrieval_priority,
-                ]
-                : [];
+                ];
+                $restoreCanonical = true;
+            }
 
             if ($live !== null) {
                 // Vacate the outgoing live version's canonical identity FIRST
@@ -478,11 +509,13 @@ final class DocumentVersionService
             // that the concurrent transaction just activated. This fresh
             // SELECT runs after our own UPDATE — READ COMMITTED gives each
             // statement a new snapshot — so it sees the row that transaction
-            // activated. Its canonical identity is CARRIED onto the target
-            // before it is vacated (never left on no row: the family would lose
-            // its slug/doc_id), the transfer is audited like the ordinary one,
-            // and the row is archived, upholding the one-active-per-family
-            // invariant unconditionally.
+            // activated. The row is always vacated and archived, upholding the
+            // one-active-per-family invariant unconditionally; its canonical
+            // identity is carried onto the target ONLY when the target is a
+            // legacy version with none of its own (the identity rule above) —
+            // otherwise the family's slug is deliberately left unheld, exactly
+            // as it would be after ingesting non-canonical bytes. A carried
+            // transfer is audited like the ordinary one.
             $displacedIds = $live !== null ? [(int) $live->id] : [];
             $concurrentlyActive = KnowledgeDocument::query()
                 ->forTenant($tenantId)
@@ -494,7 +527,9 @@ final class DocumentVersionService
                 ->get();
             foreach ($concurrentlyActive as $other) {
                 $displacedIds[] = (int) $other->id;
-                if ($identity === [] && (bool) $other->is_canonical) {
+                // Same rule as above: only a legacy row with no identity of its
+                // own borrows the swept version's.
+                if ($carryFromLive && $identity === [] && (bool) $other->is_canonical) {
                     $identity = [
                         'is_canonical' => true,
                         'doc_id' => $other->doc_id,
@@ -527,6 +562,30 @@ final class DocumentVersionService
                 'at' => now()->toIso8601String(),
                 'previous_live_id' => $displacedIds[0] ?? null,
             ];
+            // The family's ACTIVE rows have been vacated above, but the
+            // reclaimed slug/doc_id can still be held by an archived sibling
+            // (a re-ingest that dropped the frontmatter vacates nothing) or by
+            // a live row of ANOTHER source path in the same project. Writing
+            // it anyway raises a QueryException on `uq_kb_doc_slug` /
+            // `uq_kb_doc_doc_id` — a 500 with a raw SQL message. The restore's
+            // job is to bring the CONTENT back, so a taken slot degrades the
+            // row to non-canonical, loudly, rather than failing the restore or
+            // stealing the slot from its current holder.
+            if ($identity !== []) {
+                $holderId = $this->conflictingCanonicalHolderId($locked, $identity, $tenantId);
+                if ($holderId !== null) {
+                    Log::warning('DocumentVersionService: restoring without the canonical identity — its slug or doc_id is held by another document', [
+                        'knowledge_document_id' => (int) $locked->id,
+                        'project_key' => (string) $locked->project_key,
+                        'slug' => $identity['slug'] ?? null,
+                        'doc_id' => $identity['doc_id'] ?? null,
+                        'held_by_document_id' => $holderId,
+                    ]);
+                    $identity = [];
+                    $restoreCanonical = false;
+                }
+            }
+
             $locked->update(array_merge([
                 'status' => 'active',
                 'indexed_at' => now(),
@@ -548,5 +607,101 @@ final class DocumentVersionService
         });
 
         return $target->fresh() ?? throw new \RuntimeException('Restored version has been deleted.');
+    }
+
+    /**
+     * The canonical identity a version declares in ITS OWN retained
+     * frontmatter, or null when it declares none.
+     *
+     * `vacateCanonicalIdentifiersOnPreviousVersions()` clears `doc_id`,
+     * `slug`, `canonical_status` and `is_canonical` when a version is
+     * archived but PRESERVES `frontmatter_json` (and `canonical_type`)
+     * precisely so the identity can be reconstructed: the markdown is the
+     * source of truth and the columns are its projection (CLAUDE.md §6).
+     * `retrieval_priority` survives the archive on the row itself, so it is
+     * read back from the column with the frontmatter as a fallback.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function canonicalIdentityFromFrontmatter(KnowledgeDocument $version): ?array
+    {
+        $frontmatter = $version->frontmatter_json;
+        if (! is_array($frontmatter) || $frontmatter === []) {
+            return null;
+        }
+        // `_derived` is the ingestor's own sub-map, not authored frontmatter.
+        unset($frontmatter['_derived']);
+        if ($frontmatter === []) {
+            return null;
+        }
+
+        // The identity is recomputed through the SAME parser + validator the
+        // ingest path runs, so a restore can never resurrect an identity that
+        // ingestion would have refused (an invalid status, a slug that does
+        // not match the pattern, a missing type). Anything the parser turns
+        // down degrades to a non-canonical restore, exactly as re-ingesting
+        // those bytes would.
+        try {
+            $document = $this->parser->parse("---\n".Yaml::dump($frontmatter, 4, 2)."---\n\n");
+        } catch (\Throwable $e) {
+            Log::warning('DocumentVersionService: a version\'s retained frontmatter could not be re-read; restoring it without a canonical identity', [
+                'knowledge_document_id' => (int) $version->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+        if (! $this->parser->validate($document)->valid || $document->slug === null || $document->slug === '') {
+            return null;
+        }
+
+        return [
+            'is_canonical' => true,
+            'doc_id' => $document->docId,
+            'slug' => $document->slug,
+            'canonical_type' => $document->type?->value,
+            'canonical_status' => $document->status?->value,
+            'retrieval_priority' => $document->retrievalPriority,
+        ];
+    }
+
+    /**
+     * The id of another row in this tenant + project that already holds the
+     * slug or doc_id the restore is about to reclaim, or null when the slots
+     * are free.
+     *
+     * The composite uniques are `(project_key, slug)` and
+     * `(project_key, doc_id)`, and only the family's ACTIVE rows are vacated
+     * before the assignment — an archived sibling of this family (a re-ingest
+     * that dropped the frontmatter never vacates) or a live row of ANOTHER
+     * source path can still hold the value. Writing it anyway raises a
+     * `QueryException` the restore has no business turning into a 500.
+     *
+     * @param  array<string, mixed>  $identity
+     */
+    private function conflictingCanonicalHolderId(KnowledgeDocument $locked, array $identity, string $tenantId): ?int
+    {
+        $slug = $identity['slug'] ?? null;
+        $docId = $identity['doc_id'] ?? null;
+        if (! is_string($slug) && ! is_string($docId)) {
+            return null;
+        }
+
+        $holder = KnowledgeDocument::query()
+            ->forTenant($tenantId)
+            ->where('project_key', $locked->project_key)
+            ->where('id', '!=', $locked->id)
+            ->where(static function ($query) use ($slug, $docId): void {
+                if (is_string($slug)) {
+                    $query->orWhere('slug', $slug);
+                }
+                if (is_string($docId)) {
+                    $query->orWhere('doc_id', $docId);
+                }
+            })
+            ->lockForUpdate()
+            ->first();
+
+        return $holder !== null ? (int) $holder->id : null;
     }
 }

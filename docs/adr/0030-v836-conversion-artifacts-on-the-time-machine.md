@@ -442,8 +442,35 @@ silent success, not to a documented degrade).
 
 ### 6. `restore` re-activates the artifact with the row
 
-Restoring an archived version already flips status and transfers canonical
-identity inside one transaction. `version_actor` / `version_reason` are the
+Restoring an archived version flips status and settles the canonical identity
+inside one transaction. The identity is the restored version's **own**: a
+restore is the re-ingest of an older version's bytes, and under ingest the
+canonical identity follows the CONTENT, so it is reconstructed from the
+frontmatter the archive retained
+(`vacateCanonicalIdentifiersOnPreviousVersions()` clears `doc_id` / `slug` /
+`canonical_status` / `is_canonical` but preserves `frontmatter_json` and
+`canonical_type` precisely for this) and through the SAME parser + validator
+the ingest path runs — a frontmatter the parser would refuse (an invalid
+status, a slug that does not match the pattern, a missing type) cannot come
+back as an identity here either. Restoring a canonical version over a
+non-canonical live one therefore reclaims its slug instead of being silently
+demoted, and restoring a version that never declared a slug does NOT inherit
+the live row's — the family's slug is left unheld, exactly as it would be
+after ingesting those bytes.
+
+Two cases the rule has to answer explicitly. A **legacy** row archived before
+the frontmatter was persisted (`canonical_type` survived, the frontmatter did
+not) retains no identity of its own, and the outgoing live version is the only
+place its slug still exists: there it is carried, as before. And a reclaimed
+slug or doc_id can still be **held by a row the restore does not vacate** — an
+archived sibling (a re-ingest that dropped the frontmatter vacates nothing) or
+a live row of another source path in the same project; only the family's
+active rows are vacated. Writing it anyway would raise on `uq_kb_doc_slug` /
+`uq_kb_doc_doc_id`, i.e. a 500 carrying raw SQL. The restore's job is to bring
+the CONTENT back, so a taken slot degrades the row to non-canonical with a
+warning naming the holder, rather than failing the restore or taking the slug
+from whoever holds it now.
+ `version_actor` / `version_reason` are the
 **creation** provenance of the version and are never rewritten by a restore:
 the restore is recorded apart, appended to the row's `metadata.restores` as
 `{actor: user:{id}, at, previous_live_id}`, and the versions surfaces (HTTP,

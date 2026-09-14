@@ -404,6 +404,15 @@ class DocumentDeleterTest extends TestCase
         $this->assertFalse($deleter->documentReferencesStorageKey($recorded, 'kb', 'docs/recorded.md'), 'a recorded disk elsewhere is not a reference here');
         $this->assertTrue($deleter->documentReferencesStorageKey($recorded, 'other-disk', 'docs/recorded.md'));
 
+        // A namespace that IS recorded but cannot be RESOLVED (a prefix that
+        // will not normalize) is the same ambiguity, and fails closed the same
+        // way: a reference, never "recorded, elsewhere". Anything else would
+        // let a deleting consumer remove bytes this row may still own.
+        $unresolvable = $this->makeDocument(['metadata' => ['disk' => 'kb', 'prefix' => '../outside'], 'source_path' => 'docs/unresolvable.md', 'document_hash' => hash('sha256', 'u'), 'version_hash' => hash('sha256', 'u')]);
+        $this->assertTrue($deleter->documentRecordsStorageNamespace($unresolvable), 'the disk IS recorded');
+        $this->assertTrue($deleter->documentReferencesStorageKey($unresolvable, 'kb', 'docs/unresolvable.md'));
+        $this->assertTrue($deleter->documentReferencesStorageKey($unresolvable, 'other-disk', 'docs/unresolvable.md'));
+
         // The artifact reference gate answers alike for every shape (judged in PHP through StorageNamespace,
         // so a malformed value — an array — counts as a reference exactly like a null or an empty one).
         foreach ([['', 'empty'], [null, 'null']] as [$value, $label]) { // pairs: a null array KEY would collapse onto ''

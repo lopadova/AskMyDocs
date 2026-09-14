@@ -1099,6 +1099,76 @@ MD;
         $this->assertArrayNotHasKey('source_dropped', $doc->fresh()->metadata);
     }
 
+    /**
+     * ADR 0030 §3 — a row that DID record a disk but whose recorded namespace
+     * cannot be RESOLVED (a prefix that will not normalize) is the same
+     * ambiguity as a missing disk, so it fails closed the same way: it blocks
+     * the `markdown_only` drop rather than being skipped as "lives elsewhere".
+     * Skipping it would delete bytes that row may still need.
+     */
+    public function test_a_row_whose_recorded_prefix_cannot_be_resolved_blocks_the_drop(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => true, 'kb.source_retention.mode' => 'markdown_only']);
+        $bytes = PdfFixtureBuilder::buildThreePageSample();
+        Storage::disk('kb')->put('reports/unresolvable.pdf', $bytes);
+        // Same disk and source path, but a prefix that KbPath::normalize() refuses.
+        KnowledgeDocument::create([
+            'project_key' => 'eng', 'source_path' => 'reports/unresolvable.pdf', 'source_type' => 'pdf', 'title' => 'Legacy',
+            'mime_type' => 'application/pdf', 'language' => 'it', 'access_scope' => 'internal', 'status' => 'archived',
+            'document_hash' => str_repeat('2', 64), 'version_hash' => str_repeat('2', 64),
+            'metadata' => ['disk' => 'kb', 'prefix' => '../outside'], 'indexed_at' => now()->subDay(),
+        ]);
+
+        $doc = app(DocumentIngestor::class)->ingest('eng', new SourceDocument(
+            sourcePath: 'reports/unresolvable.pdf', mimeType: 'application/pdf', bytes: $bytes,
+            externalUrl: null, externalId: null, connectorType: 'local', metadata: ['disk' => 'kb', 'prefix' => ''],
+        ), 'Unresolvable');
+
+        Storage::disk('kb')->assertExists((string) $doc->markdown_path);
+        Storage::disk('kb')->assertExists('reports/unresolvable.pdf');
+        $this->assertArrayNotHasKey('source_dropped', $doc->fresh()->metadata);
+    }
+
+    /**
+     * The other half of the same rule: an ambiguous row BLOCKS a drop, but it
+     * is never STAMPED `source_dropped`. The stamp says "my original was
+     * dropped by retention" and both the orphan sweeps and the backfill read
+     * it as fact — claiming it for a row whose namespace does not name this
+     * key would make a real orphan permanently invisible.
+     */
+    public function test_an_ambiguous_row_is_never_stamped_source_dropped(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => true, 'kb.source_retention.mode' => 'markdown_only']);
+        $bytes = PdfFixtureBuilder::buildThreePageSample();
+        Storage::disk('kb')->put('reports/ambiguous.pdf', $bytes);
+        // A row with NO recorded disk (ambiguous) but a VERIFIED artifact and
+        // `markdown_only` retention: it does not block the drop, so the drop
+        // happens and the stamping pass runs over it.
+        $store = app(ConversionArtifactStore::class);
+        $markdown = "# Ambiguous\n\nstored\n";
+        $hash = hash('sha256', $markdown);
+        $final = $store->pathFor(app(TenantContext::class)->current(), 'eng', 'reports/ambiguous.pdf', $hash);
+        $store->publish('kb', $store->writeTemp('kb', $final, $markdown), $final);
+        $legacy = KnowledgeDocument::create([
+            'project_key' => 'eng', 'source_path' => 'reports/ambiguous.pdf', 'source_type' => 'pdf', 'title' => 'Legacy',
+            'mime_type' => 'application/pdf', 'language' => 'it', 'access_scope' => 'internal', 'status' => 'archived',
+            'document_hash' => $hash, 'version_hash' => $hash, 'content_hash' => $hash, 'markdown_path' => $final,
+            'metadata' => ['source_retention' => 'markdown_only'], 'indexed_at' => now()->subDay(),
+        ]);
+
+        app(DocumentIngestor::class)->ingest('eng', new SourceDocument(
+            sourcePath: 'reports/ambiguous.pdf', mimeType: 'application/pdf', bytes: $bytes,
+            externalUrl: null, externalId: null, connectorType: 'local', metadata: ['disk' => 'kb', 'prefix' => ''],
+        ), 'Ambiguous');
+
+        // The drop went ahead (nothing blocked it) …
+        Storage::disk('kb')->assertMissing('reports/ambiguous.pdf');
+        // … but the ambiguous row was never told its original was dropped: its
+        // recorded namespace does not name this key, and both the orphan
+        // sweeps and the backfill read that flag as fact.
+        $this->assertArrayNotHasKey('source_dropped', (array) $legacy->fresh()->metadata);
+    }
+
     /** SEC-SETTING-SHAPE-001 — a lock TTL that is not a positive number of seconds is the documented default, not a 1-second lock, and it is said once. */
     public function test_a_non_positive_lock_ttl_falls_back_to_the_default_and_warns(): void
     {

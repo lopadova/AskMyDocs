@@ -34,15 +34,29 @@ final class KbDocumentVersionControllerTest extends TestCase
         app(PermissionRegistrar::class)->forgetCachedPermissions();
     }
 
+    /**
+     * `$canonical` gives the row a LIVE canonical identity. `$wasCanonical`
+     * builds an ARCHIVED canonical version faithfully: archiving vacates
+     * `doc_id`/`slug`/`canonical_status`/`is_canonical` but PRESERVES
+     * `canonical_type` and `frontmatter_json`, which is what a restore
+     * reconstructs the identity from. `$legacyCanonical` is the pre-v8.36
+     * shape of the same thing: `canonical_type` survived, the frontmatter was
+     * never persisted, so the identity can only be carried from the outgoing
+     * live version.
+     */
     private function makeVersion(
         string $hashSeed,
         string $status,
         string $body,
         bool $canonical = false,
+        bool $wasCanonical = false,
+        bool $legacyCanonical = false,
+        string $slug = 'dec-1',
+        string $sourcePath = 'docs/dec.md',
     ): KnowledgeDocument {
         $doc = KnowledgeDocument::create(array_merge([
             'project_key' => 'eng',
-            'source_path' => 'docs/dec.md',
+            'source_path' => $sourcePath,
             'source_type' => 'markdown',
             'title' => 'Decision',
             'mime_type' => 'text/markdown',
@@ -55,12 +69,29 @@ final class KbDocumentVersionControllerTest extends TestCase
             'indexed_at' => now()->subMinutes(strlen($hashSeed)),
         ], $canonical ? [
             'is_canonical' => true,
-            'doc_id' => 'dec-1',
-            'slug' => 'dec-1',
+            'doc_id' => $slug,
+            'slug' => $slug,
             'canonical_type' => 'decision',
             'canonical_status' => 'accepted',
             'retrieval_priority' => 80,
-        ] : []));
+            'frontmatter_json' => ['id' => $slug, 'slug' => $slug, 'type' => 'decision', 'status' => 'accepted'],
+        ] : ($legacyCanonical ? [
+            'is_canonical' => false,
+            'doc_id' => null,
+            'slug' => null,
+            'canonical_type' => 'decision',
+            'canonical_status' => null,
+            'retrieval_priority' => 80,
+            'frontmatter_json' => null,
+        ] : ($wasCanonical ? [
+            'is_canonical' => false,
+            'doc_id' => null,
+            'slug' => null,
+            'canonical_type' => 'decision',
+            'canonical_status' => null,
+            'retrieval_priority' => 80,
+            'frontmatter_json' => ['id' => $slug, 'slug' => $slug, 'type' => 'decision', 'status' => 'accepted'],
+        ] : []))));
 
         KnowledgeChunk::create([
             'knowledge_document_id' => $doc->id,
@@ -105,24 +136,27 @@ final class KbDocumentVersionControllerTest extends TestCase
             ->assertJsonPath('data.removed', 1);
     }
 
-    public function test_restore_makes_an_archived_version_live_and_transfers_canonical_identity(): void
+    public function test_restore_makes_an_archived_version_live_and_reclaims_its_own_canonical_identity(): void
     {
         $admin = $this->makeAdmin();
-        // The archived version is the "older canonical" — its identity was
-        // vacated when archived, so it currently has no slug.
-        $archived = $this->makeVersion('v1aaa', 'archived', 'old body');
+        // The archived version declared a DIFFERENT slug from the live one, so
+        // the assertions can tell "reconstructed from its own frontmatter"
+        // apart from "copied off whatever was live".
+        $archived = $this->makeVersion('v1aaa', 'archived', 'old body', wasCanonical: true, slug: 'dec-older');
         $live = $this->makeVersion('v2bbb', 'active', 'new body', canonical: true);
 
         $this->actingAs($admin)->postJson("/api/admin/kb/documents/{$archived->id}/restore-version")
             ->assertOk()
             ->assertJsonPath('data.status', 'active')
             ->assertJsonPath('data.is_canonical', true)
-            ->assertJsonPath('data.slug', 'dec-1');
+            ->assertJsonPath('data.slug', 'dec-older');
 
         $archived->refresh();
         $live->refresh();
         $this->assertSame('active', $archived->status);
-        $this->assertSame('dec-1', $archived->slug);
+        $this->assertSame('dec-older', $archived->slug, 'its own slug, not the live row\'s');
+        $this->assertSame('dec-older', $archived->doc_id);
+        $this->assertSame('decision', $archived->canonical_type, 'the type comes back with the identity');
         $this->assertTrue((bool) $archived->is_canonical);
         // The outgoing live version is archived + its identity vacated.
         $this->assertSame('archived', $live->status);
@@ -181,15 +215,138 @@ final class KbDocumentVersionControllerTest extends TestCase
     }
 
     /**
-     * R21 / R10 §9 — the same post-race state, but the concurrently activated
-     * row is the CANONICAL one: its identity must be carried onto the target
-     * before it is vacated (never left on no row), and the transfer audited
-     * with the displaced row on record.
+     * R10 — a restore is the re-ingest of an older version's bytes, so the
+     * canonical identity follows the CONTENT. Restoring an archived canonical
+     * version over a NON-canonical live one must reclaim its own identity from
+     * the frontmatter the archive retained; deriving it from the live row
+     * (which has none) would silently demote it.
      */
-    public function test_restore_sweep_carries_the_canonical_identity_of_a_concurrently_activated_version(): void
+    public function test_restoring_a_canonical_version_over_a_non_canonical_live_one_reclaims_its_own_identity(): void
     {
         $admin = $this->makeAdmin();
-        $target = $this->makeVersion('v1fff', 'archived', 'old body');
+        $archived = $this->makeVersion('v1iii', 'archived', 'old canonical body', wasCanonical: true);
+        $live = $this->makeVersion('v2jjj', 'active', 'plain body');
+
+        $this->actingAs($admin)->postJson("/api/admin/kb/documents/{$archived->id}/restore-version")
+            ->assertOk()
+            ->assertJsonPath('data.is_canonical', true)
+            ->assertJsonPath('data.slug', 'dec-1');
+
+        $archived->refresh();
+        $this->assertTrue((bool) $archived->is_canonical);
+        $this->assertSame('dec-1', $archived->slug);
+        $this->assertSame('dec-1', $archived->doc_id);
+        $this->assertSame('accepted', $archived->canonical_status);
+        $this->assertSame('archived', $live->refresh()->status);
+    }
+
+    /**
+     * R10 — the other direction: restoring a version that was NEVER canonical
+     * over a canonical live one must not mark that content canonical with the
+     * live row's slug. The family's slug is simply left unheld, exactly as it
+     * would be if those bytes were re-ingested.
+     */
+    public function test_restoring_a_non_canonical_version_does_not_inherit_the_live_canonical_identity(): void
+    {
+        $admin = $this->makeAdmin();
+        $archived = $this->makeVersion('v1kkk', 'archived', 'plain body');
+        $live = $this->makeVersion('v2lll', 'active', 'canonical body', canonical: true);
+
+        $this->actingAs($admin)->postJson("/api/admin/kb/documents/{$archived->id}/restore-version")
+            ->assertOk()
+            ->assertJsonPath('data.is_canonical', false)
+            ->assertJsonPath('data.slug', null);
+
+        $archived->refresh();
+        $this->assertFalse((bool) $archived->is_canonical, 'content that never declared a slug is not canonical');
+        $this->assertNull($archived->slug);
+        $this->assertNull($archived->doc_id);
+        $this->assertSame('archived', $live->refresh()->status);
+        $this->assertSame(
+            0,
+            KnowledgeDocument::query()->where('project_key', 'eng')->where('slug', 'dec-1')->count(),
+            'the slug is left unheld rather than attached to content that never declared it',
+        );
+    }
+
+    /**
+     * R14 / R21 — the reclaimed slug can still be held by a row the restore
+     * does NOT vacate: an archived sibling (a re-ingest that dropped the
+     * frontmatter vacates nothing) or a live row of another source path.
+     * Writing it anyway raises on `uq_kb_doc_slug` — a 500 with a raw SQL
+     * message. The content comes back regardless; only the identity is
+     * dropped, and the refusal is logged with the holder named.
+     */
+    public function test_a_reclaimed_slug_held_by_another_document_degrades_the_restore_instead_of_failing_it(): void
+    {
+        $admin = $this->makeAdmin();
+        $archived = $this->makeVersion('v1mmm', 'archived', 'old body', wasCanonical: true);
+        $live = $this->makeVersion('v2nnn', 'active', 'new body');
+        // Another FAMILY in the same project already holds `dec-1`.
+        $holder = $this->makeVersion('v3ooo', 'active', 'other doc', canonical: true, sourcePath: 'docs/other.md');
+        \Illuminate\Support\Facades\Log::spy();
+
+        $this->actingAs($admin)->postJson("/api/admin/kb/documents/{$archived->id}/restore-version")
+            ->assertOk()
+            ->assertJsonPath('data.status', 'active')
+            ->assertJsonPath('data.is_canonical', false);
+
+        $archived->refresh();
+        $this->assertSame('active', $archived->status, 'the content is restored either way');
+        $this->assertNull($archived->slug);
+        $this->assertFalse((bool) $archived->is_canonical);
+        $this->assertSame('dec-1', $holder->refresh()->slug, "the slug stays with its current holder");
+        $this->assertSame('archived', $live->refresh()->status);
+        \Illuminate\Support\Facades\Log::shouldHaveReceived('warning')
+            ->withArgs(static fn (string $message): bool => str_contains($message, 'held by another document'))
+            ->once();
+    }
+
+    /**
+     * R10 — the reconstruction runs the SAME parser + validator the ingest
+     * path runs, so a restore can never resurrect an identity ingestion would
+     * have refused. A retained frontmatter with an invalid status degrades to
+     * a non-canonical restore instead of writing a status no enum accepts.
+     */
+    public function test_frontmatter_the_parser_would_reject_does_not_come_back_as_a_canonical_identity(): void
+    {
+        $admin = $this->makeAdmin();
+        $archived = $this->makeVersion('v1ppp', 'archived', 'old body', wasCanonical: true);
+        KnowledgeDocument::withoutGlobalScopes()->whereKey($archived->id)->update([
+            'frontmatter_json' => ['id' => 'dec-1', 'slug' => 'Dec 1 NOT A SLUG', 'type' => 'decision', 'status' => 'not-a-status'],
+        ]);
+        $this->makeVersion('v2qqq', 'active', 'new body');
+
+        $this->actingAs($admin)->postJson("/api/admin/kb/documents/{$archived->id}/restore-version")
+            ->assertOk()
+            ->assertJsonPath('data.status', 'active')
+            ->assertJsonPath('data.is_canonical', false);
+
+        $archived->refresh();
+        $this->assertNull($archived->slug);
+        $this->assertNull($archived->canonical_status, 'an invalid status never reaches the column');
+        $this->assertFalse((bool) $archived->is_canonical);
+    }
+
+    /**
+     * R10 §9 — a LEGACY canonical version (archived before the frontmatter was
+     * persisted, so it retains `canonical_type` but no identity of its own)
+     * carries the outgoing canonical version's identity: there the live row is
+     * the only place the slug still exists, so leaving it unheld would lose it.
+     * The transfer is audited with the displaced row on record.
+     *
+     * R21 note: the post-activation SWEEP branch that carries the identity off
+     * a CONCURRENTLY activated row cannot be reached in this suite — it
+     * requires a second transaction to activate a row between this one's
+     * SELECT and its UPDATE, and the suite is single-process on SQLite. This
+     * test therefore covers the ordinary `$live` path of the same rule; the
+     * sweep is the same three lines, stated here rather than pretended
+     * (the concurrency exception ADR 0030 already records).
+     */
+    public function test_restore_of_a_legacy_canonical_version_carries_the_outgoing_identity(): void
+    {
+        $admin = $this->makeAdmin();
+        $target = $this->makeVersion('v1fff', 'archived', 'old body', legacyCanonical: true);
         $this->makeVersion('v2ggg', 'archived', 'mid body');
         $concurrentlyActive = $this->makeVersion('v3hhh', 'active', 'concurrent body', canonical: true);
 

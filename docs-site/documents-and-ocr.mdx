@@ -503,6 +503,17 @@ flowchart LR
   change; a restore appends `{actor, at, previous_live_id}` to
   `metadata.restores` and the versions surfaces expose the last one as
   `restored_by` / `restored_at` (additive). The artifact is left untouched.
+  The restored version's **canonical identity is its own**, reconstructed from
+  the frontmatter the archive retained and re-validated by the same parser the
+  ingest path runs: a restore is the re-ingest of older bytes, so a canonical
+  version restored over a non-canonical live one reclaims its slug, and a
+  version that never declared one does not inherit the live row's. Only a
+  legacy row archived before the frontmatter was persisted still carries the
+  outgoing version's identity — there it is the only copy left. If the slug or
+  doc_id is already held by another document (an archived sibling, or another
+  source path in the same project), the content is restored **without** the
+  identity and a warning names the holder — never a failed restore, and never
+  a slug taken from its current owner.
 - **A tampered artifact is never served as faithful.** `content_hash` is the
   integrity check of the stored bytes: `contentFor()` re-hashes what it reads
   and, on a mismatch, logs, falls back to the reconstruction and says so

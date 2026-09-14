@@ -1317,7 +1317,9 @@ class DocumentDeleter
      * before the namespace was persisted, or stamped with an unusable value;
      * {@see \App\Support\Kb\StorageNamespace}) references the object on every
      * disk its logical path matches — deletion fails closed, it never guesses
-     * a disk.
+     * a disk. A recorded namespace that will not RESOLVE (a prefix or source
+     * path that does not normalize) is the same ambiguity and counts as a
+     * reference too.
      */
     public function documentReferencesStorageKey(KnowledgeDocument $document, string $disk, string $fullPath): bool
     {
@@ -1365,11 +1367,24 @@ class DocumentDeleter
             ? (string) $metadata['prefix']
             : (string) config('kb.sources.path_prefix', '');
         $candidateFullPath = $this->resolveFullPath($candidatePrefix, (string) $document->source_path);
+        if ($candidateFullPath === null) {
+            // The row records a namespace that cannot be resolved (a prefix or
+            // source path that will not normalize). That is not proof it lives
+            // elsewhere: it is the SAME ambiguity as a missing disk, so it
+            // fails closed and counts as a reference — a deleting consumer
+            // keeps the object rather than removing bytes this row may own.
+            return true;
+        }
 
         try {
             $normalizedFullPath = KbPath::normalize($fullPath);
         } catch (\InvalidArgumentException) {
-            return false;
+            // The QUERY path is the un-normalizable one this time, so the
+            // comparison cannot be made either way. Same direction as every
+            // other ambiguity here: a reference, so a deleting consumer keeps
+            // the object. Answering false would let a recorded row lose its
+            // bytes on a path a legacy row would have protected.
+            return true;
         }
 
         return $candidateDisk === $disk && $candidateFullPath === $normalizedFullPath;

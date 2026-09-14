@@ -1385,6 +1385,9 @@ class DocumentIngestor
         }
         // Bounded pass (R3): every referencing row is stamped chunk by chunk,
         // never materialised as a whole.
+        // `includeAmbiguous: false` — only rows whose recorded namespace really
+        // names this key are stamped; an ambiguous one is left alone rather
+        // than told its original was dropped (see the scan's docblock).
         $this->eachRowReferencingStorageKey($artifact['disk'], $original, $sourcePath, function (KnowledgeDocument $row): bool {
             $rowMetadata = is_array($row->metadata) ? $row->metadata : [];
             if (($rowMetadata['source_dropped'] ?? false) !== true && $row->updateUnscopedWithinOwnTenant(['metadata' => array_merge($rowMetadata, ['source_dropped' => true])]) === 0) {
@@ -1392,7 +1395,7 @@ class DocumentIngestor
             }
 
             return true;
-        });
+        }, includeAmbiguous: false);
 
         return true;
     }
@@ -1451,9 +1454,19 @@ class DocumentIngestor
      * id order and in bounded chunks (R3); the callback returns false to stop.
      * The same lookup `DocumentDeleter` guards the shared source file with.
      *
+     * `$includeAmbiguous` decides what a row whose namespace CANNOT be resolved
+     * (no usable recorded disk, or a prefix that will not normalize) means to
+     * the caller, because the fail-closed direction is not the same for both:
+     *  - the scan that decides whether a drop may happen passes `true` — an
+     *    ambiguous row may own this object, so it blocks and the bytes stay;
+     *  - the pass that STAMPS `source_dropped` on the rows whose original was
+     *    dropped passes `false` — stamping a row whose namespace does not name
+     *    this key records a claim nothing supports, and the orphan sweeps and
+     *    the backfill both read that flag as fact.
+     *
      * @param  callable(KnowledgeDocument): bool  $each
      */
-    private function eachRowReferencingStorageKey(string $disk, string $fullPath, string $sourcePath, callable $each): void
+    private function eachRowReferencingStorageKey(string $disk, string $fullPath, string $sourcePath, callable $each, bool $includeAmbiguous = true): void
     {
         KnowledgeDocument::withoutGlobalScopes()
             ->where('source_path', $sourcePath)
@@ -1461,7 +1474,7 @@ class DocumentIngestor
             // OWN tenant (updateUnscopedWithinOwnTenant, R30).
             ->select(['id', 'tenant_id', 'source_path', 'markdown_path', 'content_hash', 'document_hash', 'metadata'])
             ->orderBy('id')
-            ->chunkById(200, function ($chunk) use ($disk, $fullPath, $each): bool {
+            ->chunkById(200, function ($chunk) use ($disk, $fullPath, $each, $includeAmbiguous): bool {
                 foreach ($chunk as $row) {
                     $rowMetadata = is_array($row->metadata) ? $row->metadata : [];
                     // A row that never recorded a usable disk (pre-v8.36, or a
@@ -1473,7 +1486,7 @@ class DocumentIngestor
                     // skipped.
                     $rowDisk = StorageNamespace::recordedDisk($rowMetadata);
                     if ($rowDisk === null) {
-                        if (! $each($row)) {
+                        if ($includeAmbiguous && ! $each($row)) {
                             return false;
                         }
 
@@ -1485,6 +1498,15 @@ class DocumentIngestor
                     try {
                         $rowFull = $rowPrefix === '' ? KbPath::normalize((string) $row->source_path) : KbPath::normalize($rowPrefix.'/'.$row->source_path);
                     } catch (\InvalidArgumentException) {
+                        // A recorded namespace that cannot be resolved is not
+                        // proof the row lives elsewhere — it is the SAME
+                        // ambiguity as a missing disk, so it is handed to the
+                        // caller under the same rule (`$includeAmbiguous`):
+                        // it blocks a drop, and it is never stamped.
+                        if ($includeAmbiguous && ! $each($row)) {
+                            return false;
+                        }
+
                         continue;
                     }
                     if ($rowDisk !== $disk || $rowFull !== $fullPath) {
