@@ -808,12 +808,31 @@ MD;
         $final = $store->pathFor(app(TenantContext::class)->current(), 'eng', 'docs/gone.md', str_repeat('b', 64));
         $tmp = $store->writeTemp('kb', $final, 'bytes of a deleted row');
 
-        $published = app(DocumentIngestor::class)->publishArtifactForRow('kb', $tmp, $final, 999999);
+        $published = app(DocumentIngestor::class)->publishArtifactForRow('kb', $tmp, $final, 999999, app(TenantContext::class)->current());
 
         $this->assertFalse($published);
         Storage::disk('kb')->assertMissing($final);
         Storage::disk('kb')->assertMissing($tmp);
         $this->assertFalse(ConversionArtifactStore::tempLeaseHeld('kb', $tmp));
+    }
+
+    /** R30 — the post-commit re-check is bound to the tenant the caller names: a caller naming another tenant never publishes bytes for this row, and the refusal is logged for what it is. */
+    public function test_publish_for_a_row_of_another_tenant_discards_the_temp(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => true]);
+        $doc = $this->ingestMarkdown("# Mine\n\nBody.", 'docs/mine.md', ['disk' => 'kb', 'prefix' => '']);
+        $final = (string) $doc->markdown_path;
+        Storage::disk('kb')->delete($final);
+        $store = app(ConversionArtifactStore::class);
+        $tmp = $store->writeTemp('kb', $final, "# Mine\n\nBody.");
+        \Illuminate\Support\Facades\Log::spy();
+
+        $published = app(DocumentIngestor::class)->publishArtifactForRow('kb', $tmp, $final, (int) $doc->id, 'other-tenant');
+
+        $this->assertFalse($published);
+        \Illuminate\Support\Facades\Log::shouldHaveReceived('warning')->once()->withArgs(static fn (string $message): bool => str_contains($message, 'belongs to another tenant'));
+        Storage::disk('kb')->assertMissing($final);
+        Storage::disk('kb')->assertMissing($tmp);
     }
 
     /**

@@ -383,8 +383,8 @@ class PruneOrphanFilesCommand extends Command
         // very disk — a row on another disk, or under another prefix, that
         // happens to share the logical `source_path` must not keep an
         // orphaned tree alive forever (nor, conversely, be ignored). A row
-        // that never recorded its disk (ingested before the namespace was
-        // persisted) protects the tree on any disk: deletion fails closed.
+        // without a usable recorded disk (absent, null or empty —
+        // StorageNamespace) protects the tree on any disk: deletion fails closed.
         $deleter = app(DocumentDeleter::class);
         $dangling = [];
         foreach (array_keys($trees) as $key) {
@@ -542,8 +542,8 @@ class PruneOrphanFilesCommand extends Command
                 if (isset($known[$relative])) {
                     continue;
                 }
-                // A row that never recorded its disk (ingested before the
-                // namespace was persisted) protects the file on its path
+                // A row without a usable recorded disk (absent, null or empty —
+                // StorageNamespace) protects the file on its path
                 // wherever the sweep looks — deletion fails closed, the
                 // pre-namespace behaviour, never "a stranger to its own
                 // file"; the predicate carries that rule for every consumer.

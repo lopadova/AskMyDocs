@@ -288,6 +288,19 @@ class CanonicalIndexerJobTest extends TestCase
         $this->assertNotSame($job->buildIdempotencyKey(2), $job->buildIdempotencyKey(3));
     }
 
+    /** R30 — the version hash that salts the key is read within the job's tenant: a foreign row's hash never builds this tenant's key. */
+    public function test_idempotency_key_never_borrows_another_tenants_version_hash(): void
+    {
+        $doc = $this->seedCanonicalDoc('acme', 'dec-key-4', 'decision', 'K4');
+
+        $own = new CanonicalIndexerJob($doc->id, 'test-tenant');
+        $foreign = new CanonicalIndexerJob($doc->id, 'other-tenant');
+
+        $this->assertStringContainsString($doc->version_hash, $own->buildIdempotencyKey());
+        $this->assertStringNotContainsString($doc->version_hash, $foreign->buildIdempotencyKey());
+        $this->assertStringEndsWith(':missing', $foreign->buildIdempotencyKey());
+    }
+
     public function test_idempotency_key_changes_when_version_hash_changes(): void
     {
         // Iter5 (PR #116) — Copilot finding: a key based ONLY on

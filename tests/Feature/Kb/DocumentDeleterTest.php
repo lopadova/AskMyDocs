@@ -384,6 +384,34 @@ class DocumentDeleterTest extends TestCase
         Storage::disk('archive')->assertExists('history/docs/shared.md');
     }
 
+    /**
+     * The recorded storage namespace has ONE reading (StorageNamespace): only
+     * a non-empty string disk is recorded. A null, empty or malformed value
+     * is a legacy, ambiguous row that references its path on every disk —
+     * the same answer the artifact gate gives — never "recorded, elsewhere".
+     */
+    public function test_a_null_empty_or_malformed_recorded_disk_is_a_legacy_reference_on_every_disk(): void
+    {
+        $deleter = app(DocumentDeleter::class);
+        foreach ([['disk' => null, 'prefix' => ''], ['disk' => '', 'prefix' => ''], ['disk' => ['x'], 'prefix' => ''], ['prefix' => ''], []] as $i => $metadata) {
+            $document = $this->makeDocument(['metadata' => $metadata, 'source_path' => 'docs/legacy-'.$i.'.md', 'document_hash' => hash('sha256', json_encode($metadata)), 'version_hash' => hash('sha256', json_encode($metadata))]);
+            $this->assertFalse($deleter->documentRecordsStorageNamespace($document), json_encode($metadata));
+            $this->assertTrue($deleter->documentReferencesStorageKey($document, 'kb', $document->source_path), json_encode($metadata));
+            $this->assertTrue($deleter->documentReferencesStorageKey($document, 'other-disk', $document->source_path), json_encode($metadata));
+        }
+        $recorded = $this->makeDocument(['metadata' => ['disk' => 'other-disk', 'prefix' => ''], 'source_path' => 'docs/recorded.md', 'document_hash' => hash('sha256', 'r'), 'version_hash' => hash('sha256', 'r')]);
+        $this->assertTrue($deleter->documentRecordsStorageNamespace($recorded));
+        $this->assertFalse($deleter->documentReferencesStorageKey($recorded, 'kb', 'docs/recorded.md'), 'a recorded disk elsewhere is not a reference here');
+        $this->assertTrue($deleter->documentReferencesStorageKey($recorded, 'other-disk', 'docs/recorded.md'));
+
+        // The artifact reference gate answers alike for the shapes a host-stamped disk can take (absent / null / '';
+        // a malformed value is not reachable — stripped at every untrusted boundary — and not expressible in portable SQL).
+        $pointer = '.artifacts/t/demo/docs/legacy.md.versions/'.str_repeat('a', 64).'.md';
+        $this->makeDocument(['metadata' => ['disk' => '', 'prefix' => ''], 'source_path' => 'docs/legacy-pointer.md', 'markdown_path' => $pointer, 'document_hash' => hash('sha256', 'p'), 'version_hash' => hash('sha256', 'p')]);
+        $this->assertTrue($deleter->artifactReferenced('kb', $pointer));
+        $this->assertTrue($deleter->artifactReferenced('other-disk', $pointer));
+    }
+
     public function test_hard_delete_refuses_storage_call_for_traversal_path(): void
     {
         // Iteration 4 (PR #116) — R1 + R4 + R14. KbPath::normalize()

@@ -12,6 +12,7 @@ use App\Models\KnowledgeDocument;
 use App\Services\Kb\Ocr\OcrFigureStore;
 use App\Services\Kb\Versioning\ConversionArtifactStore;
 use App\Services\Kb\Analysis\ChangeAnalysisGate;
+use App\Support\Kb\StorageNamespace;
 use App\Support\KbPath;
 use App\Support\LikeEscaper;
 use DateTimeInterface;
@@ -291,7 +292,7 @@ class DocumentDeleter
         $sourcePath = (string) $document->source_path;
 
         $metadata = is_array($document->metadata) ? $document->metadata : [];
-        $disk = (string) ($metadata['disk'] ?? config('kb.sources.disk', 'kb'));
+        $disk = StorageNamespace::diskOf($metadata);
 
         $canonicalSnapshot = $this->canonicalSnapshot($document);
 
@@ -344,7 +345,7 @@ class DocumentDeleter
         $sourcePath = (string) $document->source_path;
 
         $metadata = is_array($document->metadata) ? $document->metadata : [];
-        $disk = (string) ($metadata['disk'] ?? config('kb.sources.disk', 'kb'));
+        $disk = StorageNamespace::diskOf($metadata);
         $prefix = array_key_exists('prefix', $metadata)
             ? (string) $metadata['prefix']
             : (string) config('kb.sources.path_prefix', '');
@@ -460,7 +461,7 @@ class DocumentDeleter
         $sourcePath = (string) $document->source_path;
 
         $metadata = is_array($document->metadata) ? $document->metadata : [];
-        $disk = (string) ($metadata['disk'] ?? config('kb.sources.disk', 'kb'));
+        $disk = StorageNamespace::diskOf($metadata);
         $prefix = array_key_exists('prefix', $metadata)
             ? (string) $metadata['prefix']
             : (string) config('kb.sources.path_prefix', '');
@@ -628,8 +629,9 @@ class DocumentDeleter
      * The path is the content hash, so an identical ingest that ran between
      * a caller's decision and this call recreated the very same path for a
      * new row: without the re-check the caller would delete a live row's
-     * artifact. A row that never recorded its disk references the path
-     * wherever the check looks (fail closed). Returns the store's outcome,
+     * artifact. A row without a usable recorded disk (absent, null or empty —
+     * StorageNamespace) references the path wherever the check looks (fail
+     * closed). Returns the store's outcome,
      * or `KEPT` when the re-check found a referencing row.
      */
     public function removeArtifactIfUnreferenced(string $disk, string $path): string
@@ -659,11 +661,11 @@ class DocumentDeleter
     /**
      * Whether any row — live, archived or trashed, any tenant — points at
      * this artifact path on this disk. A row whose `metadata.disk` is
-     * absent OR null counts as a reference (fail closed): the gate is the
-     * conservative side, deliberately wider than the prune's snapshot
-     * (`documentRecordsStorageNamespace()`, which reads a present-but-null
-     * disk as "recorded, elsewhere") — a path such a row points at is kept,
-     * never deleted under it.
+     * absent, null or empty counts as a reference (fail closed) — the shapes
+     * a host-stamped disk can take, so the prune's snapshot
+     * (`documentRecordsStorageNamespace()` / StorageNamespace) and this gate
+     * answer alike: a path such a row points at is kept, never deleted
+     * under it.
      */
     public function artifactReferenced(string $disk, string $path): bool
     {
@@ -698,7 +700,9 @@ class DocumentDeleter
     {
         return KnowledgeDocument::withoutGlobalScopes()
             ->where(function ($q) use ($disk): void {
-                $q->where('metadata->disk', $disk)->orWhereNull('metadata->disk');
+                // A recorded disk that matches, or no usable recorded disk
+                // at all (absent / null / empty — StorageNamespace).
+                $q->where('metadata->disk', $disk)->orWhereNull('metadata->disk')->orWhere('metadata->disk', '');
             });
     }
 
@@ -996,8 +1000,9 @@ class DocumentDeleter
      * Rows are narrowed by the logical source path in SQL, then streamed so a
      * long version history stays memory-safe. Each row is judged by
      * {@see documentReferencesStorageKey()}: the recorded namespace resolved
-     * with deletion's fallbacks, or — for a row that never recorded its disk
-     * — a reference by path, fail closed.
+     * with deletion's fallbacks, or — for a row without a usable recorded
+     * disk ({@see \App\Support\Kb\StorageNamespace}) — a reference by path,
+     * fail closed.
      */
     private function firstDocumentReferencingStorageKey(
         string $disk,
@@ -1028,9 +1033,11 @@ class DocumentDeleter
      * connector bridge, the deleter's own hard delete — and the orphan-file
      * sweep): a row that recorded its storage namespace references the
      * object only when that namespace resolves to `$fullPath` on `$disk`;
-     * a row that never recorded its disk (ingested before the namespace was
-     * persisted) references the object on every disk its logical path
-     * matches — deletion fails closed, it never guesses a disk.
+     * a row without a usable recorded disk (absent, null or empty — ingested
+     * before the namespace was persisted, or stamped with an unusable value;
+     * {@see \App\Support\Kb\StorageNamespace}) references the object on every
+     * disk its logical path matches — deletion fails closed, it never guesses
+     * a disk.
      */
     public function documentReferencesStorageKey(KnowledgeDocument $document, string $disk, string $fullPath): bool
     {
@@ -1044,15 +1051,18 @@ class DocumentDeleter
     /**
      * Whether the row persisted the storage namespace its file lives in.
      * The disk is the decisive half (`metadata.disk`; the ingest job records
-     * it together with `metadata.prefix`): a row without it is a legacy row,
-     * whatever else its metadata carries, and is never resolved to a guessed
-     * disk by a deleting consumer.
+     * it together with `metadata.prefix`): a row without a non-empty string
+     * there is a legacy (or ambiguous) row, whatever else its metadata
+     * carries, and is never resolved to a guessed disk by a deleting
+     * consumer.
      */
     public function documentRecordsStorageNamespace(KnowledgeDocument $document): bool
     {
-        $metadata = is_array($document->metadata) ? $document->metadata : [];
-
-        return array_key_exists('disk', $metadata);
+        // One reading for every consumer (StorageNamespace): a null, empty
+        // or malformed `metadata.disk` is NOT a recorded namespace but an
+        // ambiguous legacy row — treated as a reference wherever a deleting
+        // consumer looks, never resolved to a guessed disk.
+        return StorageNamespace::recordedDisk($document->metadata) !== null;
     }
 
     /**
@@ -1066,10 +1076,11 @@ class DocumentDeleter
     {
         $metadata = is_array($document->metadata) ? $document->metadata : [];
         // The same fallbacks deletion applies (`kb.sources.disk` /
-        // `kb.sources.path_prefix`). A row that recorded no disk never
-        // reaches a resolution in the deleting consumers — they treat it as
-        // a reference by path ({@see documentRecordsStorageNamespace()}).
-        $candidateDisk = (string) ($metadata['disk'] ?? config('kb.sources.disk', 'kb'));
+        // `kb.sources.path_prefix`). A row without a usable recorded disk
+        // (absent, null or empty — StorageNamespace) never reaches a
+        // resolution in the deleting consumers — they treat it as a
+        // reference by path ({@see documentRecordsStorageNamespace()}).
+        $candidateDisk = StorageNamespace::diskOf($metadata);
         $candidatePrefix = array_key_exists('prefix', $metadata)
             ? (string) $metadata['prefix']
             : (string) config('kb.sources.path_prefix', '');

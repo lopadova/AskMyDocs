@@ -185,6 +185,13 @@ discard, so a temp still inside a slow transaction is reported
 `artifact_temps_in_flight` and never deleted under its writer's feet, whatever
 its age; the age threshold remains the second guard for a lease the store lost
 or a cache store that cannot lock (reported once, never an ingest outage). The
+artifact **path lock** has no such fallback: a publish or a removal without it
+would race every other writer of the path, so on a store that cannot lock both
+are refused (the publish throws and discards its temp, the removal is reported
+`failed`) — a lock-capable cache store (Redis in production) is a requirement
+of the feature, not a tuning knob. The one documented exception is a store that
+implements the lock contract without providing exclusion — the `null` store
+grants every lock — which `canLease()` cannot tell apart. The
 artifact root itself is checked before it is probed or listed (a `.artifacts`
 that is a symlink out of the disk is a refused sweep, never an enumeration of
 the outside), and a temp path is checked like a final one before it is read,
@@ -407,8 +414,10 @@ orphan sweep — goes through ONE gate,
 **path's lock** (`kb:artifact:{disk}:{sha1(path)}`, the lock a publish holds
 around its post-commit move, sharing the source-lock wait / TTL knobs) the
 references are re-checked and the file is removed only when no row of any
-tenant — live, archived, trashed, a row without a recorded disk included —
-still points at it on that disk. The path is the content hash, so an identical
+tenant — live, archived, trashed, a row without a usable recorded disk
+(absent, null or empty `metadata.disk`: a legacy, ambiguous row, one reading
+for every consumer in `App\Support\Kb\StorageNamespace`) included — still
+points at it on that disk. The path is the content hash, so an identical
 ingest that ran between a caller's decision (the prune's snapshot, a hard
 delete's row transaction) and the removal recreated the very same path for a
 new row: the re-check keeps it (`artifacts_kept` for a pruned row,
@@ -440,8 +449,8 @@ by disk, prefix, source path and run key, so a run is purged only when no
 remaining row, live, archived or soft-deleted, of any tenant whose **recorded
 namespace resolves to that very directory** still names it (a same-named row
 under another disk or prefix references another directory and neither keeps
-this one alive nor is ignored; a legacy row without a recorded disk counts as
-a reference, fail closed) — the orphan sweep asks the same predicate for all
+this one alive nor is ignored; a legacy row without a usable recorded disk —
+absent, null or empty — counts as a reference, fail closed) — the orphan sweep asks the same predicate for all
 its candidates at once (`documentsReferencingOcrRuns()`, one bounded query per
 500 `(source, run)` pairs, never one query per run) — never while it is inside the in-flight grace (ADR
 0029 §6), and only under the run's own reservation — the lock a converter

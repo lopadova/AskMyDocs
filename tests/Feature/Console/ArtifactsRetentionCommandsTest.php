@@ -158,36 +158,85 @@ final class ArtifactsRetentionCommandsTest extends TestCase
     }
 
     /**
-     * The orphan sweep's snapshot and the removal gate deliberately disagree
-     * on a row whose recorded disk is a JSON null: the snapshot reads it as
-     * "recorded, elsewhere" (a candidate), the gate as a reference (fail
-     * closed). Such a path is kept, counted as `artifact_orphans_kept`, and
-     * never deleted under the row.
+     * An orphan candidate that a row takes BETWEEN the sweep's snapshot and
+     * the removal (an identical ingest recreating the content-addressed
+     * path) is kept by the gate's locked re-check, counted as
+     * `artifact_orphans_kept`, never deleted under the new row — on the real
+     * run and in the dry-run preview alike.
      */
-    public function test_prune_keeps_an_orphan_candidate_a_row_with_a_null_disk_points_at_and_counts_it(): void
+    public function test_prune_keeps_an_orphan_candidate_a_row_took_after_the_snapshot_and_counts_it(): void
+    {
+        $this->app->bind(\App\Services\Kb\DocumentDeleter::class, \Tests\Fixtures\Kb\RaceInsertingDeleter::class);
+        $store = app(ConversionArtifactStore::class);
+        $tenant = app(TenantContext::class)->current();
+        $raced = $store->pathFor($tenant, 'eng', 'docs/raced.md', str_repeat('d', 64));
+        $store->publish('kb', $store->writeTemp('kb', $raced, 'a row takes this path meanwhile'), $raced);
+        $orphan = $store->pathFor($tenant, 'eng', 'docs/gone.md', str_repeat('e', 64));
+        $store->publish('kb', $store->writeTemp('kb', $orphan, 'nobody points here'), $orphan);
+        $takePath = function (string $disk, string $path): void {
+            if (KnowledgeDocument::withoutGlobalScopes()->where('markdown_path', $path)->exists()) {
+                return;
+            }
+            $this->row(5, 'archived', null, basename(dirname($path, 1), '.versions'))->forceFill(['markdown_path' => $path])->save();
+        };
+        try {
+            \Tests\Fixtures\Kb\RaceInsertingDeleter::$beforeGate = static function (string $disk, string $path) use ($raced, $takePath): void {
+                if ($path === $raced) {
+                    $takePath($disk, $path);
+                }
+            };
+
+            $this->artisan('kb:prune-archived-versions')
+                ->expectsOutputToContain('artifact_orphans_removed=1 artifact_orphans_failed=0 artifact_orphans_kept=1')
+                ->assertExitCode(0);
+            Storage::disk('kb')->assertExists($raced);
+            Storage::disk('kb')->assertMissing($orphan);
+
+            // The preview asks the gate's question too: a candidate a row took
+            // since the snapshot is reported kept, and nothing is deleted.
+            $late = $store->pathFor($tenant, 'eng', 'docs/late.md', str_repeat('f', 64));
+            $store->publish('kb', $store->writeTemp('kb', $late, 'taken during the preview'), $late);
+            \Tests\Fixtures\Kb\RaceInsertingDeleter::$beforeGate = static function (string $disk, string $path) use ($late, $takePath): void {
+                if ($path === $late) {
+                    $takePath($disk, $path);
+                }
+            };
+            $this->artisan('kb:prune-archived-versions', ['--dry-run' => true])
+                ->expectsOutputToContain('artifact_orphans_removed=0 artifact_orphans_failed=0 artifact_orphans_kept=1 (dry-run)')
+                ->assertExitCode(0);
+            Storage::disk('kb')->assertExists($late);
+        } finally {
+            \Tests\Fixtures\Kb\RaceInsertingDeleter::$beforeGate = null;
+        }
+    }
+
+    /**
+     * A row whose recorded disk is unusable (a JSON null, an empty string) is
+     * a legacy, ambiguous reference for the snapshot AND the gate alike
+     * (StorageNamespace): its artifact is never an orphan candidate on any
+     * disk, so nothing is counted and nothing is deleted under it.
+     */
+    public function test_prune_never_treats_a_row_with_a_null_or_empty_disk_as_recorded_elsewhere(): void
     {
         $store = app(ConversionArtifactStore::class);
         $tenant = app(TenantContext::class)->current();
-        $kept = $store->pathFor($tenant, 'eng', 'docs/legacy.md', str_repeat('d', 64));
-        $store->publish('kb', $store->writeTemp('kb', $kept, 'a legacy row points here'), $kept);
-        $legacy = $this->row(5, 'archived', null, 'docs/legacy.md');
-        $legacy->forceFill(['markdown_path' => $kept, 'metadata' => ['disk' => null, 'prefix' => '']])->save();
-        $orphan = $store->pathFor($tenant, 'eng', 'docs/gone.md', str_repeat('e', 64));
-        $store->publish('kb', $store->writeTemp('kb', $orphan, 'nobody points here'), $orphan);
+        $nullDisk = $store->pathFor($tenant, 'eng', 'docs/null-disk.md', str_repeat('d', 64));
+        $store->publish('kb', $store->writeTemp('kb', $nullDisk, 'null disk'), $nullDisk);
+        $this->row(5, 'archived', null, 'docs/null-disk.md')->forceFill(['markdown_path' => $nullDisk, 'metadata' => ['disk' => null, 'prefix' => '']])->save();
+        $emptyDisk = $store->pathFor($tenant, 'eng', 'docs/empty-disk.md', str_repeat('e', 64));
+        $store->publish('kb', $store->writeTemp('kb', $emptyDisk, 'empty disk'), $emptyDisk);
+        $this->row(6, 'archived', null, 'docs/empty-disk.md')->forceFill(['markdown_path' => $emptyDisk, 'metadata' => ['disk' => '', 'prefix' => '']])->save();
 
-        // The preview answers the same question: the kept candidate is reported kept, nothing is deleted.
-        $this->artisan('kb:prune-archived-versions', ['--dry-run' => true])
-            ->expectsOutputToContain('artifact_orphans_removed=1 artifact_orphans_failed=0 artifact_orphans_kept=1 (dry-run)')
-            ->assertExitCode(0);
-        Storage::disk('kb')->assertExists($kept);
-        Storage::disk('kb')->assertExists($orphan);
-
+        // Neither is a candidate at all: nothing removed and nothing KEPT by
+        // the gate either (the old "recorded, elsewhere" reading would have
+        // reported them as two kept candidates).
         $this->artisan('kb:prune-archived-versions')
-            ->expectsOutputToContain('artifact_orphans_removed=1 artifact_orphans_failed=0 artifact_orphans_kept=1')
+            ->expectsOutputToContain('artifact_orphans_removed=0 artifact_orphans_failed=0')
+            ->doesntExpectOutputToContain('artifact_orphans_kept=')
             ->assertExitCode(0);
 
-        Storage::disk('kb')->assertExists($kept);
-        Storage::disk('kb')->assertMissing($orphan);
+        Storage::disk('kb')->assertExists($nullDisk);
+        Storage::disk('kb')->assertExists($emptyDisk);
     }
 
     /** R43 — with the flag OFF the prune still removes pruned rows' artifacts and keeps referenced ones. */
@@ -756,6 +805,41 @@ final class ArtifactsRetentionCommandsTest extends TestCase
             ->expectsOutputToContain('artifact_temps_swept=1 artifact_temps_failed=0 artifact_orphans_removed=0 artifact_orphans_failed=0')
             ->assertExitCode(0);
         Storage::disk('kb')->assertMissing($tmp);
+    }
+
+    /**
+     * R14 — without a lock-capable store the artifact PATH lock is
+     * unavailable, and a publish or a removal without it would race every
+     * other writer of the path: both are refused (the orphan is reported
+     * `failed`, exit non-zero; a publish throws and discards its temp), never
+     * run unguarded. Only the temp lease degrades to "unleased".
+     */
+    public function test_a_cache_store_without_locks_refuses_artifact_removal_and_publish(): void
+    {
+        Cache::extend('nolock', static fn ($app) => Cache::repository(new \Tests\Fixtures\Cache\NoLockStore));
+        config(['cache.stores.nolock' => ['driver' => 'nolock'], 'cache.default' => 'nolock']);
+        $store = app(ConversionArtifactStore::class);
+        $tenant = app(TenantContext::class)->current();
+        $orphan = $store->pathFor($tenant, 'eng', 'docs/gone.md', str_repeat('e', 64));
+        Storage::disk('kb')->put($orphan, 'nobody points here');
+
+        $this->artisan('kb:prune-archived-versions')
+            ->expectsOutputToContain('artifact_orphans_removed=0 artifact_orphans_failed=1')
+            ->assertExitCode(1);
+        Storage::disk('kb')->assertExists($orphan);
+
+        $final = $store->pathFor($tenant, 'eng', 'docs/unlocked.md', str_repeat('f', 64));
+        $tmp = $store->writeTemp('kb', $final, 'written without a lease');
+        $thrown = null;
+        try {
+            app(\App\Services\Kb\DocumentIngestor::class)->publishArtifactForRow('kb', $tmp, $final, 999999, $tenant);
+        } catch (\RuntimeException $e) {
+            $thrown = $e;
+        }
+        $this->assertNotNull($thrown, 'a publish without the path lock must be refused');
+        $this->assertStringContainsString('cannot hold locks', $thrown->getMessage());
+        Storage::disk('kb')->assertMissing($tmp);
+        Storage::disk('kb')->assertMissing($final);
     }
 
     /** SEC-PATH-001 — a `.artifacts` root that is a symlink out of the disk is refused before it is probed or listed: a reported failed sweep, never an enumeration of the outside. */

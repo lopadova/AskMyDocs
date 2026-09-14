@@ -191,8 +191,11 @@ class CanonicalIndexerJob implements ShouldQueue
      */
     public function buildIdempotencyKey(int $attempt = 1): string
     {
+        // Bound to the job's tenant (R30): a stale or foreign id never lends
+        // another tenant's version hash to this tenant's key.
         $versionHash = (string) (KnowledgeDocument::query()
             ->whereKey($this->documentId)
+            ->where('tenant_id', $this->tenantId)
             ->value('version_hash') ?? 'missing');
 
         $base = "canonical-index:{$this->tenantId}:{$this->documentId}:{$versionHash}";

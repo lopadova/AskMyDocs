@@ -13,6 +13,7 @@ use App\Services\Kb\Pipeline\SourceDocument;
 use App\Services\Kb\Versioning\ConversionArtifactStore;
 use App\Services\Kb\Versioning\SourceRetentionResolver;
 use App\Support\Kb\FileTypeSniffer;
+use App\Support\Kb\StorageNamespace;
 use App\Support\KbPath;
 use App\Support\TenantContext;
 use Illuminate\Contracts\Cache\LockTimeoutException;
@@ -594,7 +595,7 @@ final class OcrService
         };
 
         $filename = basename($doc->sourcePath);
-        $disk = (string) ($doc->metadata['disk'] ?? config('kb.sources.disk', 'kb'));
+        $disk = StorageNamespace::diskOf($doc->metadata);
         $prefix = array_key_exists('prefix', $doc->metadata)
             ? (string) $doc->metadata['prefix']
             : (string) config('kb.sources.path_prefix', '');
@@ -1123,7 +1124,7 @@ final class OcrService
         }
 
         $metadata = is_array($document->metadata) ? $document->metadata : [];
-        $disk = (string) ($metadata['disk'] ?? config('kb.sources.disk', 'kb'));
+        $disk = StorageNamespace::diskOf($metadata);
         $prefix = array_key_exists('prefix', $metadata)
             ? (string) $metadata['prefix']
             : (string) config('kb.sources.path_prefix', '');

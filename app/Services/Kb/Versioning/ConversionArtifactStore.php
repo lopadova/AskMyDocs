@@ -135,13 +135,20 @@ final class ConversionArtifactStore
      * moves the new bytes in — never a live row's artifact deleted under it.
      * Shares the wait / TTL knobs of the source-key lock
      * (`source_lock_wait_seconds` / `source_lock_seconds`). A cache store
-     * that cannot lock runs the callback unserialized (reported once with
-     * the lease warning): the reference re-check still runs.
+     * that cannot lock makes the lock unavailable: the call is REFUSED
+     * (throws) — a publish discards its temp and rethrows, a removal is
+     * reported `failed` — never run unguarded. Only the temp lease degrades
+     * (`canLease()`); the age threshold is its second guard.
      */
     public function underPathLock(string $disk, string $path, callable $fn): mixed
     {
         if (! self::canLease()) {
-            return $fn();
+            // A publish or a removal without the lock is a race with every
+            // other writer of the path: refused (fail closed, R14) — the
+            // caller discards its temp or reports `failed` — never run
+            // unguarded. Only the temp lease degrades to "unleased"; the
+            // age threshold is its second guard.
+            throw new RuntimeException('ConversionArtifactStore: the cache store cannot hold locks, so the artifact path lock is unavailable; publish and removal are refused (configure a lock-capable cache store — Redis in production).');
         }
         $lock = Cache::lock('kb:artifact:'.$disk.':'.sha1($path), self::pathLockSeconds());
         $lock->block(self::pathLockWaitSeconds());
@@ -196,8 +203,11 @@ final class ConversionArtifactStore
      * capability check, not a broad catch: a failure INSIDE a real lock
      * provider must stay a failure, never a silent "unleased". A
      * process-local provider (the array store) leases only within its own
-     * process — the same caveat the source-key lock carries: Redis in
-     * production.
+     * process, and the null store implements the contract but grants every
+     * lock unconditionally (no mutual exclusion at all) — the same caveat
+     * the source-key lock carries: Redis in production. The artifact PATH
+     * lock (`underPathLock()`) has no degraded mode: without a provider it
+     * refuses.
      */
     private static function canLease(): bool
     {
@@ -214,7 +224,7 @@ final class ConversionArtifactStore
         if ($store instanceof \Illuminate\Contracts\Cache\LockProvider) {
             return true;
         }
-        self::warnOnce('no_lock_store', 'ConversionArtifactStore: the cache store cannot hold locks, so artifact temp files are not leased; only tmp_max_age_seconds protects an in-flight temp from the sweep', ['store' => get_debug_type($store)]);
+        self::warnOnce('no_lock_store', 'ConversionArtifactStore: the cache store cannot hold locks — artifact temp files are not leased (only tmp_max_age_seconds protects an in-flight temp from the sweep) and artifact publish/removal are REFUSED; configure a lock-capable cache store (Redis in production)', ['store' => get_debug_type($store)]);
 
         return false;
     }

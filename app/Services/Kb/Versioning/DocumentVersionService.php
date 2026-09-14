@@ -7,6 +7,7 @@ namespace App\Services\Kb\Versioning;
 use App\Models\KbCanonicalAudit;
 use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
+use App\Support\Kb\StorageNamespace;
 use App\Support\MarkdownDiff;
 use App\Support\TenantContext;
 use Illuminate\Support\Collection;
@@ -175,16 +176,10 @@ final class DocumentVersionService
             return ['state' => self::ARTIFACT_NONE, 'content' => null, 'disk' => null, 'path' => null];
         }
         $metadata = is_array($version->metadata) ? $version->metadata : [];
-        // The recorded disk is used only when it is a usable disk name: a
-        // row whose `metadata.disk` is present but not a non-empty string
-        // (a JSON null, a stray scalar) reads from the configured disk, never
-        // from '' or 'Array'. The value is host-stamped (clients and
-        // connectors cannot set it — OcrService::stripTrustedOnlyKeys()), so
-        // the sibling readers (backfill, prune snapshot, ingestor) keep the
-        // plain `(string) ($metadata['disk'] ?? …)` form: this read is the
-        // one that serves content to an operator, hence the extra guard.
-        $recordedDisk = $metadata['disk'] ?? null;
-        $disk = is_string($recordedDisk) && $recordedDisk !== '' ? $recordedDisk : (string) config('kb.sources.disk', 'kb');
+        // One reading for every consumer (StorageNamespace): a row whose
+        // `metadata.disk` is not a non-empty string reads from the configured
+        // disk, never from '' or 'Array'.
+        $disk = StorageNamespace::diskOf($metadata);
         $content = $this->artifacts->read($disk, $path);
         if ($content === null) {
             return ['state' => self::ARTIFACT_MISSING, 'content' => null, 'disk' => $disk, 'path' => $path];

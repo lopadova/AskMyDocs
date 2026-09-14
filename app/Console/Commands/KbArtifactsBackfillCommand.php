@@ -11,6 +11,7 @@ use App\Services\Kb\Pipeline\SourceDocument;
 use App\Services\Kb\Versioning\ConversionArtifactStore;
 use App\Services\Kb\Versioning\SourceRetentionResolver;
 use App\Support\KbPath;
+use App\Support\Kb\StorageNamespace;
 use App\Support\TenantContext;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Storage;
@@ -131,7 +132,7 @@ final class KbArtifactsBackfillCommand extends Command
         if ($rowMode === SourceRetentionResolver::REFERENCE_ONLY) {
             return 'intentionally_missing';
         }
-        $disk = (string) ($metadata['disk'] ?? config('kb.sources.disk', 'kb'));
+        $disk = StorageNamespace::diskOf($metadata);
         $prefix = array_key_exists('prefix', $metadata)
             ? (string) $metadata['prefix']
             : (string) config('kb.sources.path_prefix', '');
@@ -306,7 +307,7 @@ final class KbArtifactsBackfillCommand extends Command
             // Under the path's lock, re-checking the row (the same publish an
             // ingest does): a failed publish discards its temp, never left
             // for the age sweep.
-            $published = $ingestor->publishArtifactForRow($disk, $store->writeTemp($disk, $final, $converted->markdown), $final, (int) $row->id);
+            $published = $ingestor->publishArtifactForRow($disk, $store->writeTemp($disk, $final, $converted->markdown), $final, (int) $row->id, $tenant);
         } catch (\Throwable $e) {
             $this->line("  #{$row->id} {$sourcePath}: conversion_failed (could not publish: {$e->getMessage()}; the pointer is kept as `missing` for the next run)");
 

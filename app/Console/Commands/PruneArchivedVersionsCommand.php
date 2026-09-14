@@ -8,6 +8,7 @@ use App\Models\KnowledgeDocument;
 use App\Services\Kb\DocumentDeleter;
 use App\Services\Kb\Ocr\OcrFigureStore;
 use App\Services\Kb\Versioning\ConversionArtifactStore;
+use App\Support\Kb\StorageNamespace;
 use App\Support\TenantContext;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -272,26 +273,26 @@ final class PruneArchivedVersionsCommand extends Command
         // Artifact disks are independent storage objects: a row whose
         // recorded disk is another one references another file with the
         // same path, and must neither keep this orphan alive nor be
-        // ignored; a row that never recorded its disk references the path
-        // wherever the sweep looks (fail closed, as for source files).
+        // ignored; a row without a usable recorded disk (absent, null or
+        // empty — StorageNamespace) references the path wherever the sweep
+        // looks (fail closed, as for source files).
         $referenced = [];
         $rows = KnowledgeDocument::withoutGlobalScopes()
             ->whereIn('markdown_path', $batch)
             ->select(['id', 'markdown_path', 'metadata'])
             ->cursor();
         foreach ($rows as $row) {
-            $metadata = is_array($row->metadata) ? $row->metadata : [];
-            if ($deleter->documentRecordsStorageNamespace($row) && (string) $metadata['disk'] !== $disk) {
+            $recorded = StorageNamespace::recordedDisk($row->metadata);
+            if ($recorded !== null && $recorded !== $disk) {
                 continue;
             }
             $referenced[(string) $row->markdown_path] = true;
         }
         // The preview answers the same question the removal will (the
         // gate's reference check, without the lock and without the delete),
-        // asked ONCE per batch (R3): a candidate a row points at on this
-        // disk — a legacy row with a null recorded disk, an ingest that
-        // recreated the path since the snapshot — is reported kept, never
-        // as a removal the real run would not make.
+        // asked ONCE per batch (R3): a candidate a row took since the
+        // snapshot (an ingest that recreated the content-addressed path) is
+        // reported kept, never as a removal the real run would not make.
         $gateKeeps = $dryRun ? $deleter->artifactsReferenced($disk, array_keys(array_diff_key(array_flip($batch), $referenced))) : [];
         foreach ($batch as $path) {
             if (isset($referenced[$path])) {
@@ -427,7 +428,7 @@ final class PruneArchivedVersionsCommand extends Command
                     // belongs to; a refused delete is counted and reported
                     // (R14), an already-missing file is simply absent.
                     $metadata = is_array($row->metadata) ? $row->metadata : [];
-                    $disk = (string) ($metadata['disk'] ?? config('kb.sources.disk', 'kb'));
+                    $disk = StorageNamespace::diskOf($metadata);
                     $prefix = array_key_exists('prefix', $metadata)
                         ? (string) $metadata['prefix']
                         : (string) config('kb.sources.path_prefix', '');

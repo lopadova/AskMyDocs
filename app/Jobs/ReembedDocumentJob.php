@@ -9,6 +9,7 @@ use App\Scopes\AccessScopeScope;
 use App\Services\Kb\DocumentIngestor;
 use App\Services\Kb\Pipeline\SourceDocument;
 use App\Support\KbPath;
+use App\Support\Kb\StorageNamespace;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Filesystem\FileNotFoundException;
@@ -195,7 +196,8 @@ class ReembedDocumentJob implements ShouldQueue
     private function resolveSourceFor(KnowledgeDocument $document, array $metadata): array
     {
         $current = app(ConnectorIngestionContract::class)->resolveKbSourcePath((string) $document->source_path);
-        if (! is_string($metadata['disk'] ?? null) || $metadata['disk'] === '') {
+        $recorded = StorageNamespace::recordedDisk($metadata);
+        if ($recorded === null) {
             return ['disk' => (string) $current['disk'], 'absolute' => (string) $current['absolute']];
         }
         $prefix = array_key_exists('prefix', $metadata)
@@ -203,6 +205,6 @@ class ReembedDocumentJob implements ShouldQueue
             : trim((string) config('kb.sources.path_prefix', ''), '/');
         $relative = (string) $current['relative'];
 
-        return ['disk' => (string) $metadata['disk'], 'absolute' => KbPath::normalize($prefix === '' ? $relative : $prefix.'/'.$relative)];
+        return ['disk' => $recorded, 'absolute' => KbPath::normalize($prefix === '' ? $relative : $prefix.'/'.$relative)];
     }
 }

@@ -21,6 +21,7 @@ use App\Support\Canonical\GenerationSource;
 use App\Services\Kb\Versioning\ArtifactPublishFailedException;
 use App\Services\Kb\Versioning\ConversionArtifactStore;
 use App\Services\Kb\Versioning\SourceRetentionResolver;
+use App\Support\Kb\StorageNamespace;
 use App\Support\KbPath;
 use App\Support\TenantContext;
 use Illuminate\Contracts\Cache\LockTimeoutException;
@@ -843,7 +844,7 @@ class DocumentIngestor
         if (($metadata['dry_run'] ?? false) === true) {
             return null;
         }
-        $disk = (string) ($metadata['disk'] ?? config('kb.sources.disk', 'kb'));
+        $disk = StorageNamespace::diskOf($metadata);
         $prefix = array_key_exists('prefix', $metadata)
             ? (string) $metadata['prefix']
             : (string) config('kb.sources.path_prefix', '');
@@ -884,7 +885,7 @@ class DocumentIngestor
             return;
         }
         $existingMetadata = is_array($existing->metadata) ? $existing->metadata : [];
-        $disk = (string) ($existingMetadata['disk'] ?? config('kb.sources.disk', 'kb'));
+        $disk = StorageNamespace::diskOf($existingMetadata);
         $path = $existing->markdown_path;
         if (! is_string($path) || $path === '') {
             // The retention tail runs only once a VERIFIED artifact is there
@@ -909,7 +910,7 @@ class DocumentIngestor
             if (is_string($current) && hash('sha256', $current) === $expected) {
                 $this->recordContentHashIfMissing($existing, $expected);
             } else {
-                if (! $this->writeAndPublishOrDiscard($disk, $path, $markdown, (int) $existing->id)) {
+                if (! $this->writeAndPublishOrDiscard($disk, $path, $markdown, $existing)) {
                     return; // the row is gone meanwhile: nothing to repair
                 }
                 $this->recordContentHashIfMissing($existing, $expected);
@@ -1013,7 +1014,7 @@ class DocumentIngestor
 
                 return false;
             }
-            if (! $this->writeAndPublishOrDiscard($disk, $final, $markdown, (int) $existing->id)) {
+            if (! $this->writeAndPublishOrDiscard($disk, $final, $markdown, $existing)) {
                 return false; // the row is gone meanwhile: nothing to stand in for
             }
             $existing->markdown_path = $final;
@@ -1104,27 +1105,43 @@ class DocumentIngestor
      * a hard delete or prune can commit its row removal between this row's
      * commit and its publish, and a stale sweep could otherwise remove a
      * recreated version's artifact under it. Under the lock the row is
-     * re-checked to still point at `$final` — a row deleted meanwhile has
-     * nothing to stand in for, so its bytes are never published as an
-     * orphan: the temp is discarded and false is returned. A publish that
-     * fails discards the temp (and its lease) and rethrows: nothing is left
-     * for the age sweep.
+     * re-checked to exist, to belong to the tenant the caller names, and to
+     * still point at `$final` — a row deleted, repointed, or of another
+     * tenant has nothing to stand in for, so its bytes are never published
+     * as an orphan: the temp is discarded and false is returned (each cause
+     * logged for what it is). A publish that fails discards the temp (and
+     * its lease) and rethrows: nothing is left for the age sweep.
      *
-     * @return bool true when the artifact is in place; false when the row no longer points at the path
+     * @param  string  $tenantId  the row's OWN tenant (R30 — never the ambient context); empty is a caller bug
+     * @return bool true when the artifact is in place; false when the row is gone, belongs to another tenant, or no longer points at the path
      *
+     * @throws \LogicException on an empty `$tenantId` (a caller bug, loud — never a silent no-op)
      * @throws \Throwable the publish failure, after the discard
      */
-    public function publishArtifactForRow(string $disk, string $tmp, string $final, int $documentId): bool
+    public function publishArtifactForRow(string $disk, string $tmp, string $final, int $documentId, string $tenantId): bool
     {
+        if ($tenantId === '') {
+            app(ConversionArtifactStore::class)->discardTemp($disk, $tmp);
+            throw new \LogicException('DocumentIngestor::publishArtifactForRow() needs the row\'s own tenant id (an unhydrated tenant_id, an empty --tenant): refusing rather than publishing nothing silently.');
+        }
         $store = app(ConversionArtifactStore::class);
         try {
-            return (bool) $store->underPathLock($disk, $final, function () use ($store, $disk, $tmp, $final, $documentId): bool {
-                $stillPointsThere = KnowledgeDocument::withoutGlobalScopes()
-                    ->whereKey($documentId)
-                    ->where('markdown_path', $final)
-                    ->exists();
-                if (! $stillPointsThere) {
-                    Log::warning('DocumentIngestor: artifact not published — the row no longer points at the path (deleted or repointed meanwhile); temp discarded', ['document_id' => $documentId, 'disk' => $disk, 'markdown_path' => $final]);
+            return (bool) $store->underPathLock($disk, $final, function () use ($store, $disk, $tmp, $final, $documentId, $tenantId): bool {
+                // The row must exist, be the caller's tenant's (R30 — the
+                // caller names the row's tenant explicitly, as
+                // KnowledgeDocument::updateUnscopedWithinOwnTenant() does,
+                // never the ambient context) and still point at the path;
+                // each miss is logged for what it is (R14), and the temp is
+                // discarded: nothing to stand in for.
+                $row = KnowledgeDocument::withoutGlobalScopes()->whereKey($documentId)->first(['id', 'tenant_id', 'markdown_path']);
+                $refusal = match (true) {
+                    $row === null => 'the row is gone (deleted meanwhile)',
+                    (string) $row->tenant_id !== $tenantId => 'the row belongs to another tenant than the caller named',
+                    $row->markdown_path !== $final => 'the row no longer points at the path (repointed meanwhile)',
+                    default => null,
+                };
+                if ($refusal !== null) {
+                    Log::warning("DocumentIngestor: artifact not published — {$refusal}; temp discarded", ['document_id' => $documentId, 'tenant_id' => $tenantId, 'disk' => $disk, 'markdown_path' => $final]);
                     $store->discardTemp($disk, $tmp);
 
                     return false;
@@ -1146,11 +1163,11 @@ class DocumentIngestor
      *
      * @throws \Throwable the publish failure, after the discard
      */
-    private function writeAndPublishOrDiscard(string $disk, string $final, string $markdown, int $documentId): bool
+    private function writeAndPublishOrDiscard(string $disk, string $final, string $markdown, KnowledgeDocument $row): bool
     {
         $tmp = app(ConversionArtifactStore::class)->writeTemp($disk, $final, $markdown);
 
-        return $this->publishArtifactForRow($disk, $tmp, $final, $documentId);
+        return $this->publishArtifactForRow($disk, $tmp, $final, (int) $row->id, (string) $row->tenant_id);
     }
 
     /**
@@ -1191,8 +1208,8 @@ class DocumentIngestor
             return;
         }
         try {
-            if (! $this->publishArtifactForRow($artifact['disk'], $artifact['tmp'], $artifact['final'], (int) $document->id)) {
-                return; // the row is gone: nothing to stand in for, nothing published
+            if (! $this->publishArtifactForRow($artifact['disk'], $artifact['tmp'], $artifact['final'], (int) $document->id, (string) $document->tenant_id)) {
+                return; // the row is gone, repointed, or another tenant's: nothing to stand in for, nothing published
             }
         } catch (\Throwable $e) {
             // publishArtifactForRow() owns the temp: it discarded it before rethrowing.
@@ -1358,7 +1375,7 @@ class DocumentIngestor
 
                 return false;
             }
-            $rowDisk = (string) ($rowMetadata['disk'] ?? $disk);
+            $rowDisk = StorageNamespace::recordedDisk($rowMetadata) ?? $disk;
             $expected = is_string($row->content_hash) && $row->content_hash !== '' ? $row->content_hash : (string) $row->document_hash;
             if (! $store->verifies($rowDisk, $row->markdown_path, $expected)) {
                 $blocking = (int) $row->id;
@@ -1391,20 +1408,21 @@ class DocumentIngestor
             ->chunkById(200, function ($chunk) use ($disk, $fullPath, $each): bool {
                 foreach ($chunk as $row) {
                     $rowMetadata = is_array($row->metadata) ? $row->metadata : [];
-                    // A row that never recorded its disk (pre-v8.36) is an
+                    // A row that never recorded a usable disk (pre-v8.36, or a
+                    // null/empty/malformed value — StorageNamespace) is an
                     // AMBIGUOUS reference: it may live on any disk its logical
                     // path matches, so it counts on this one too — the same
                     // fail-closed rule as DocumentDeleter::documentReferencesStorageKey().
                     // Only a row whose RECORDED namespace resolves elsewhere is
                     // skipped.
-                    if (! array_key_exists('disk', $rowMetadata)) {
+                    $rowDisk = StorageNamespace::recordedDisk($rowMetadata);
+                    if ($rowDisk === null) {
                         if (! $each($row)) {
                             return false;
                         }
 
                         continue;
                     }
-                    $rowDisk = (string) $rowMetadata['disk'];
                     $rowPrefix = array_key_exists('prefix', $rowMetadata)
                         ? (string) $rowMetadata['prefix']
                         : (string) config('kb.sources.path_prefix', '');
@@ -1512,7 +1530,7 @@ class DocumentIngestor
         if (! $needed) {
             return $commit();
         }
-        $disk = (string) ($metadata['disk'] ?? config('kb.sources.disk', 'kb'));
+        $disk = StorageNamespace::diskOf($metadata);
         $prefix = array_key_exists('prefix', $metadata)
             ? (string) $metadata['prefix']
             : (string) config('kb.sources.path_prefix', '');
