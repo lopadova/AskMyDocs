@@ -989,7 +989,9 @@ MD;
         $published = app(DocumentIngestor::class)->publishArtifactForRow('kb', $tmp, $final, (int) $doc->id, 'other-tenant');
 
         $this->assertFalse($published);
-        \Illuminate\Support\Facades\Log::shouldHaveReceived('warning')->once()->withArgs(static fn (string $message): bool => str_contains($message, 'belongs to another tenant'));
+        // The re-check is SCOPED to the named tenant in SQL (R30): another
+        // tenant's row is simply not this caller's row and reads as absent.
+        \Illuminate\Support\Facades\Log::shouldHaveReceived('warning')->once()->withArgs(static fn (string $message): bool => str_contains($message, 'no row of this tenant carries that id'));
         Storage::disk('kb')->assertMissing($final);
         Storage::disk('kb')->assertMissing($tmp);
     }
@@ -1389,6 +1391,37 @@ MD;
 
         $this->assertArrayNotHasKey('source_dropped', $doc->fresh()->metadata ?? [], 'nothing stands in for the source: the row stays visible to the sweeps');
         \Illuminate\Support\Facades\Log::shouldHaveReceived('error')->withArgs(static fn (string $message): bool => str_contains($message, 'could NOT be published'))->once();
+    }
+
+    /**
+     * ADR 0030 §3 / R43 — on a store that cannot exclude concurrent holders
+     * the storage key gives no serialization at all, so an artifact-enabled
+     * ingest of a non-Markdown source is REFUSED rather than committed
+     * believing it is serialized; and the `markdown_only` drop keeps the
+     * original for the same reason.
+     */
+    public function test_a_store_that_cannot_exclude_refuses_the_ingest_and_keeps_the_original(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => true, 'kb.source_retention.mode' => 'markdown_only']);
+        config(['cache.stores.nullish' => ['driver' => 'null'], 'cache.default' => 'nullish']);
+        $bytes = PdfFixtureBuilder::buildThreePageSample();
+        Storage::disk('kb')->put('reports/q20.pdf', $bytes);
+
+        $thrown = null;
+        try {
+            app(DocumentIngestor::class)->ingest('eng', new SourceDocument(
+                sourcePath: 'reports/q20.pdf', mimeType: 'application/pdf', bytes: $bytes,
+                externalUrl: null, externalId: null, connectorType: 'local', metadata: ['disk' => 'kb', 'prefix' => ''],
+            ), 'Q20');
+        } catch (\RuntimeException $e) {
+            $thrown = $e;
+        }
+
+        $this->assertInstanceOf(\RuntimeException::class, $thrown, 'the ingest is refused, never committed unserialized');
+        $this->assertStringContainsString('the storage key lock is unavailable', $thrown->getMessage());
+        $this->assertSame(0, KnowledgeDocument::withoutGlobalScopes()->where('source_path', 'reports/q20.pdf')->count());
+        Storage::disk('kb')->assertExists('reports/q20.pdf'); // the original is untouched
+        $this->assertSame([], array_filter(Storage::disk('kb')->allFiles('.artifacts'), static fn (string $f): bool => ! str_ends_with($f, '.tmp')), 'nothing published');
     }
 
     /**

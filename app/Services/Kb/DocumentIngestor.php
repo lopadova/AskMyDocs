@@ -1142,10 +1142,15 @@ class DocumentIngestor
                 // never the ambient context) and still point at the path;
                 // each miss is logged for what it is (R14), and the temp is
                 // discarded: nothing to stand in for.
-                $row = KnowledgeDocument::withoutGlobalScopes()->whereKey($documentId)->first(['id', 'tenant_id', 'markdown_path']);
+                // Scoped to the caller's tenant IN SQL (R30), never read
+                // cross-tenant and judged afterwards: a row of another tenant
+                // is simply not this caller's row, and reads as absent.
+                $row = KnowledgeDocument::withoutGlobalScopes()
+                    ->whereKey($documentId)
+                    ->where('tenant_id', $tenantId)
+                    ->first(['id', 'tenant_id', 'markdown_path']);
                 $refusal = match (true) {
-                    $row === null => 'the row is gone (deleted meanwhile)',
-                    (string) $row->tenant_id !== $tenantId => 'the row belongs to another tenant than the caller named',
+                    $row === null => 'no row of this tenant carries that id (deleted meanwhile, or another tenant\'s)',
                     $row->markdown_path !== $final => 'the row no longer points at the path (repointed meanwhile)',
                     default => null,
                 };
@@ -1299,6 +1304,18 @@ class DocumentIngestor
         // same `(disk, path)` cannot commit a `full_copy` row between the scan
         // and the delete. A lock that cannot be taken keeps the original —
         // the conservative direction — and says so.
+        if (! ConversionArtifactStore::cacheStoreCanLock()) {
+            // No serialization at all on this store: the drop keeps the
+            // original (the conservative direction) rather than deleting a
+            // shared file believing it is serialized.
+            Log::warning('DocumentIngestor: markdown_only retention kept the original — the cache store cannot exclude concurrent holders, so the storage key lock is unavailable', [
+                'document_id' => (int) $document->id,
+                'disk' => $artifact['disk'],
+                'path' => $original,
+            ]);
+
+            return false;
+        }
         $lock = $this->sourceKeyLock($artifact['disk'], $original);
         try {
             $lock->block(SourceKeyLock::waitSeconds());
@@ -1551,6 +1568,13 @@ class DocumentIngestor
             $fullPath = $prefix === '' ? KbPath::normalize($sourcePath) : KbPath::normalize($prefix.'/'.$sourcePath);
         } catch (\InvalidArgumentException) {
             return $commit();
+        }
+        if (! ConversionArtifactStore::cacheStoreCanLock()) {
+            // The same posture as the artifact path lock: a store that cannot
+            // lock — or one that grants every lock without excluding anyone —
+            // gives no serialization at all, and a commit that assumed one
+            // would be worse than a refused ingest (SEC-FAILCLOSED-001).
+            throw new \RuntimeException('DocumentIngestor: the cache store cannot hold locks, so the storage key lock is unavailable; the ingest is refused (configure a lock-capable cache store — Redis in production).');
         }
         $lock = $this->sourceKeyLock($disk, $fullPath);
         $lock->block(SourceKeyLock::waitSeconds());

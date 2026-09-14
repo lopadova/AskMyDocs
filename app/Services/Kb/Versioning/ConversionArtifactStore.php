@@ -154,7 +154,7 @@ final class ConversionArtifactStore
      * that cannot lock makes the lock unavailable: the call is REFUSED
      * (throws) — a publish discards its temp and rethrows, a removal is
      * reported `failed` — never run unguarded. Only the temp lease degrades
-     * (`canLease()`); the age threshold is its second guard. The lock has a
+     * (`cacheStoreCanLock()`); the age threshold is its second guard. The lock has a
      * TTL and no renewal, so the callback receives a {@see HeldLock} and
      * asserts, right before its irreversible step, that it still owns it —
      * a lapsed lock is a refusal (LockLostException), never a race.
@@ -163,7 +163,7 @@ final class ConversionArtifactStore
      */
     public function underPathLock(string $disk, string $path, callable $fn): mixed
     {
-        if (! self::canLease()) {
+        if (! self::cacheStoreCanLock()) {
             // A publish or a removal without the lock is a race with every
             // other writer of the path: refused (fail closed, R14) — the
             // caller discards its temp or reports `failed` — never run
@@ -223,13 +223,15 @@ final class ConversionArtifactStore
      * capability check, not a broad catch: a failure INSIDE a real lock
      * provider must stay a failure, never a silent "unleased". A
      * process-local provider (the array store) leases only within its own
-     * process, and the null store implements the contract but grants every
-     * lock unconditionally (no mutual exclusion at all) — the same caveat
-     * the source-key lock carries: Redis in production. The artifact PATH
-     * lock (`underPathLock()`) has no degraded mode: without a provider it
-     * refuses.
+     * process — the caveat the source-key lock carries too: Redis in
+     * production. The null store, which implements the contract but grants
+     * every lock unconditionally (no mutual exclusion at all), is REJECTED
+     * here like a store that cannot lock: interface presence is not
+     * exclusion. The artifact PATH lock (`underPathLock()`), the storage KEY
+     * lock and the orphan-source sweep all refuse on a store this method
+     * turns down.
      */
-    private static function canLease(): bool
+    public static function cacheStoreCanLock(): bool
     {
         try {
             $store = Cache::getStore();
@@ -241,6 +243,14 @@ final class ConversionArtifactStore
         if (! is_object($store)) {
             return true; // a double that answers nothing: the lock attempt decides
         }
+        if ($store instanceof \Illuminate\Cache\NullStore) {
+            // It implements the interface and grants EVERY lock: interface
+            // presence is not mutual exclusion, and two writers would both
+            // "hold" the path. Treated exactly like a store that cannot lock.
+            self::warnOnce('null_lock_store', 'ConversionArtifactStore: the cache store grants every lock without excluding anyone (null driver) — artifact temp files are not leased and artifact publish/removal are REFUSED; configure a real lock-capable cache store (Redis in production)', ['store' => get_debug_type($store)]);
+
+            return false;
+        }
         if ($store instanceof \Illuminate\Contracts\Cache\LockProvider) {
             return true;
         }
@@ -251,7 +261,7 @@ final class ConversionArtifactStore
 
     private static function takeTempLease(string $disk, string $tmpPath): void
     {
-        if (! self::canLease()) {
+        if (! self::cacheStoreCanLock()) {
             return;
         }
         $lease = Cache::lock(self::tempLeaseKey($disk, $tmpPath), self::tempLeaseSeconds(), self::tempLeaseOwner($disk, $tmpPath));
@@ -283,7 +293,7 @@ final class ConversionArtifactStore
      */
     public static function tempLeaseHeld(string $disk, string $tmpPath): bool
     {
-        if (! self::canLease()) {
+        if (! self::cacheStoreCanLock()) {
             return false;
         }
         $probe = Cache::lock(self::tempLeaseKey($disk, $tmpPath), 1);
@@ -452,8 +462,11 @@ final class ConversionArtifactStore
 
             return;
         }
-        // A concurrent writer may have published between the two calls.
+        // A concurrent writer may have published between the two calls —
+        // and this branch REPORTS SUCCESS on the strength of what it found
+        // there, which licenses the retention tail: asserted like the move.
         if ($this->finalMatchesTemp($storage, $tmpPath, $finalPath)) {
+            $held?->assertHeld('artifact publish');
             $this->discardTemp($disk, $tmpPath);
 
             return;
@@ -505,6 +518,9 @@ final class ConversionArtifactStore
             if (! $storage->delete($finalPath)) {
                 return false;
             }
+            // The delete is a round-trip of its own: between it and the move
+            // another holder could take the path this one just emptied.
+            $held?->assertHeld('artifact replace move');
         }
 
         return (bool) $storage->move($tmpPath, $finalPath);

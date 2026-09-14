@@ -817,6 +817,38 @@ final class ArtifactsRetentionCommandsTest extends TestCase
     }
 
     /**
+     * ADR 0030 §3 — the `null` store IMPLEMENTS the lock contract and grants
+     * every lock without excluding anyone: interface presence is not mutual
+     * exclusion, so it is detected and refused exactly like a store that
+     * cannot lock at all. Reported once, and every holder of a key refuses:
+     * the ingest, the `markdown_only` drop and the orphan-source sweep.
+     */
+    public function test_the_null_store_grants_every_lock_and_is_refused_like_a_store_that_cannot_lock(): void
+    {
+        config(['cache.stores.nullish' => ['driver' => 'null'], 'cache.default' => 'nullish']);
+        \Illuminate\Support\Facades\Log::spy();
+
+        // It IS a LockProvider, and its lock grants unconditionally …
+        $this->assertInstanceOf(\Illuminate\Contracts\Cache\LockProvider::class, Cache::getStore());
+        $this->assertTrue(Cache::lock('kb:proof', 60)->get());
+        $this->assertTrue(Cache::lock('kb:proof', 60)->get(), 'two holders at once: no exclusion');
+
+        // … and is refused all the same.
+        $this->assertFalse(ConversionArtifactStore::cacheStoreCanLock());
+        $this->assertFalse(ConversionArtifactStore::cacheStoreCanLock());
+        \Illuminate\Support\Facades\Log::shouldHaveReceived('warning')->withArgs(static fn (string $message): bool => str_contains($message, 'grants every lock without excluding anyone'))->once();
+
+        // The orphan-source sweep reports it rather than deleting under it.
+        config(['kb.conversion_artifacts.enabled' => true, 'kb.sources.orphan_grace_seconds' => 0]);
+        Storage::disk('kb')->put('docs/nullstore-orphan.md', 'x');
+        $this->assertSame(
+            ConversionArtifactStore::FAILED,
+            app(\App\Services\Kb\DocumentDeleter::class)->removeSourceFileIfUnreferenced('kb', 'docs/nullstore-orphan.md', 'docs/nullstore-orphan.md'),
+        );
+        Storage::disk('kb')->assertExists('docs/nullstore-orphan.md');
+    }
+
+    /**
      * R43 / R14 — a cache store that cannot lock (apc, session, a custom
      * store) never turns the artifact write into an outage: the temp is
      * written unleased, the gap is reported once, and the age threshold

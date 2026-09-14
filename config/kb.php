@@ -941,6 +941,16 @@ return [
     ],
 
     'sources' => [
+        // ADR 0030 §3 — seconds a source file must be untouched before
+        // `kb:prune-orphan-files` may consider it an orphan. An ingest reads
+        // and converts its source (an OCR run takes minutes) BEFORE it takes
+        // the storage key's lock: in that window the file has no row and no
+        // holder, and a sweep would delete it out from under the conversion.
+        // `0` disables the grace and restores the pre-v8.36 behaviour.
+        // Read (and validated) by DocumentDeleter::orphanSourceGraceSeconds():
+        // NOT cast here, or `off` / `1h` / `` would coerce to 0 — a silently
+        // disabled grace, indistinguishable from the explicit `0`.
+        'orphan_grace_seconds' => env('KB_ORPHAN_SOURCE_GRACE_SECONDS', 3600),
         /*
         | Laravel filesystem disk used to read KB markdown files.
         | Change to 's3' (and provide AWS_* env) to serve docs from S3.

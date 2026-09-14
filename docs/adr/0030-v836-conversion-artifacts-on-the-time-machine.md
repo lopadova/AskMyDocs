@@ -189,9 +189,13 @@ artifact **path lock** has no such fallback: a publish or a removal without it
 would race every other writer of the path, so on a store that cannot lock both
 are refused (the publish throws and discards its temp, the removal is reported
 `failed`) — a lock-capable cache store (Redis in production) is a requirement
-of the feature, not a tuning knob. The one documented exception is a store that
-implements the lock contract without providing exclusion — the `null` store
-grants every lock — which `canLease()` cannot tell apart. Both locks (the
+of the feature, not a tuning knob. The `null` store, which implements the lock
+contract and grants every lock without excluding anyone, is detected by
+`ConversionArtifactStore::cacheStoreCanLock()` (`$store instanceof NullStore`), reported once and refused
+exactly like a store that cannot lock — the publish, the removal, the
+`markdown_only` drop, the orphan-source sweep and every artifact-enabled
+ingest. What stays undetectable is a provider whose locks do not exclude
+ACROSS processes (the array store, process-local by design). Both locks (the
 storage key's and the artifact path's) have a TTL and no renewal, so no holder
 assumes its work fits inside it: the critical section receives its lock
 (`App\Support\Kb\HeldLock`) and asserts, right before its irreversible step —
@@ -225,7 +229,15 @@ since the OCR assets lock is older than this ADR — and every artifact-enabled
 ingest rolls back and retries, and every prune reports `failed`, until
 `CACHE_STORE` names a lock-capable store (Redis in production). The orphan-file sweep's deletion of a
 source re-checks the references first (a row that took the key between the
-snapshot and the delete keeps its file, `kept_meanwhile`) and, while artifacts
+snapshot and the delete keeps its file, `kept_meanwhile`), keeps any source
+younger than `KB_ORPHAN_SOURCE_GRACE_SECONDS` (an ingest reads and converts
+its source BEFORE it takes the key's lock, so in that window the file has
+neither a row nor a holder). The grace narrows that window; it does not
+close it, and it keys on when the BYTES were written, not on when the
+conversion started — so a first ingest of a file staged earlier
+(`kb:ingest-folder` over a corpus copied days ago, a job that waited in a
+backed-up queue) gets no protection from it at all. The reservation that
+would close both is a recorded follow-up and, while artifacts
 are on, runs under the same storage key lock (`App\Support\Kb\SourceKeyLock`,
 shared with the `markdown_only` drop and the row commits of non-Markdown
 sources — a Markdown source's commit takes no lock, so for it the re-check alone

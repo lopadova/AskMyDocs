@@ -577,7 +577,7 @@ class PruneOrphanFilesCommand extends Command
 
     /**
      * @param  array<int,string>  $orphans
-     * @return array{0:int,1:int,2:int,3:int} [deleted (a file that vanished between the snapshot and the gate counts here: the end state is the same), failed, ocr trees kept (in flight), kept meanwhile (a row took the key after the snapshot, or a writer holds it right now)]
+     * @return array{0:int,1:int,2:int,3:int} [deleted (a file that vanished between the snapshot and the gate counts here: the end state is the same), failed (a refused re-check, a lapsed lock, a disk that cannot date its files, or a cache store that cannot exclude concurrent holders), ocr trees kept (in flight), kept meanwhile (a row took the key after the snapshot, a writer holds it right now, or the file is younger than the in-flight grace)]
      */
     private function deleteOrphans($storage, array $orphans, string $prefix, string $disk): array
     {
@@ -595,6 +595,11 @@ class PruneOrphanFilesCommand extends Command
             // and a `markdown_only` drop hold): a row that took the key since
             // the snapshot keeps its file — it is simply not an orphan any more.
             $outcome = $deleter->removeSourceFileIfUnreferenced($disk, $target, $relative);
+            if ($outcome === DocumentDeleter::KEPT_IN_FLIGHT) {
+                $keptMeanwhile++;
+                $this->line("  ~ kept (younger than the in-flight grace: an ingest may be converting it): {$target}");
+                continue;
+            }
             if ($outcome === ConversionArtifactStore::KEPT) {
                 $keptMeanwhile++;
                 $this->line("  ~ kept (a row references it now, or a writer holds its key): {$target}");
@@ -639,14 +644,48 @@ class PruneOrphanFilesCommand extends Command
      */
     private function renderDryRun($storage, array $orphans, string $disk, string $prefix): void
     {
+        // The in-flight grace IS knowable in a preview — it reads a
+        // modification time, not who holds a key at that instant — so the
+        // preview says which candidates the real run would not touch yet,
+        // instead of promising deletions that will not happen.
+        $grace = DocumentDeleter::orphanSourceGraceSeconds();
         $rows = [];
+        $graced = 0;
         foreach ($orphans as $relative) {
             $target = $this->applyPrefix($relative, $prefix);
-            $size = $storage->exists($target) ? $storage->size($target) : 0;
-            $rows[] = [$target, $this->formatSize($size)];
+            $exists = $storage->exists($target);
+            $size = $exists ? $storage->size($target) : 0;
+            $verdict = $this->dryRunVerdict($storage, $target, $grace, $exists);
+            $graced += $verdict === self::DRY_RUN_KEPT ? 1 : 0;
+            $rows[] = [$target, $this->formatSize($size), $verdict];
         }
 
-        $this->table(['Path on disk ['.$disk.']', 'Size'], $rows);
+        $this->table(['Path on disk ['.$disk.']', 'Size', 'Verdict'], $rows);
+        if ($graced > 0) {
+            $this->line("  ~ {$graced} of them are younger than the in-flight grace and would be kept.");
+        }
+    }
+
+    private const DRY_RUN_KEPT = 'kept (in-flight grace)';
+
+    /**
+     * What the real run would do with this candidate. A file the disk cannot
+     * date is the case the real run reports `failed` — never a promised
+     * deletion (a file that VANISHED is still "would delete": the real run
+     * counts `absent` as deleted, the end state being the same).
+     */
+    private function dryRunVerdict($storage, string $target, int $grace, bool $exists): string
+    {
+        if ($grace <= 0 || ! $exists) {
+            return 'would delete';
+        }
+        try {
+            return (now()->getTimestamp() - (int) $storage->lastModified($target)) < $grace
+                ? self::DRY_RUN_KEPT
+                : 'would delete';
+        } catch (\Throwable) {
+            return 'cannot date (would be reported failed)';
+        }
     }
 
     private function stripPrefix(string $path, string $prefix): string

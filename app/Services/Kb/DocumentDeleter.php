@@ -736,6 +736,54 @@ class DocumentDeleter
         return $referenced;
     }
 
+    /** A source kept because it is still within the in-flight grace — distinct from a key a row or a writer holds. */
+    public const KEPT_IN_FLIGHT = 'kept_in_flight';
+
+    /** Whether the file is still on the disk; true also when the disk refuses to say (the conservative reading before a delete). */
+    private function sourceStillThere(string $disk, string $fullPath): bool
+    {
+        try {
+            return Storage::disk($disk)->exists($fullPath);
+        } catch (\Throwable) {
+            return true; // cannot prove it is gone: treat it as present
+        }
+    }
+
+    /** @var array<string, true> disks already reported as unable to date a file */
+    private static array $warnedUndatableDisks = [];
+
+    /** Test seam: forget which disks were reported as unable to date a file. */
+    public static function resetWarnings(): void
+    {
+        self::$warnedUndatableDisks = [];
+    }
+
+    /**
+     * Seconds a source file must be untouched before the orphan sweep may
+     * consider it (`kb.sources.orphan_grace_seconds`, `0` disables the
+     * grace): an ingest reads and converts its source before it takes the
+     * storage key's lock, and during that window the file has no row and no
+     * holder. A value that is not a number of seconds is NOT a disabled
+     * grace — it is the default, reported once (SEC-SETTING-SHAPE-001: a
+     * malformed setting must not coerce to the permissive reading).
+     */
+    public static function orphanSourceGraceSeconds(): int
+    {
+        $configured = config('kb.sources.orphan_grace_seconds', 3600);
+        if (is_numeric($configured) && (int) $configured >= 0) {
+            return (int) $configured;
+        }
+        if (! isset(self::$warnedUndatableDisks['__grace_shape'])) {
+            self::$warnedUndatableDisks['__grace_shape'] = true;
+            Log::warning('DocumentDeleter: kb.sources.orphan_grace_seconds is not a number of seconds; using the default', [
+                'configured' => is_scalar($configured) ? $configured : gettype($configured),
+                'default' => 3600,
+            ]);
+        }
+
+        return 3600;
+    }
+
     /**
      * Remove an orphan SOURCE file (the orphan-file sweep's deletion) after
      * re-checking that no row of any tenant references the key any more
@@ -754,13 +802,67 @@ class DocumentDeleter
      * or a disk that refused is FAILED — reported, never a stack trace
      * mid-sweep and never a delete under a live row.
      *
-     * @return string one of ConversionArtifactStore::REMOVED | ABSENT | KEPT | FAILED
+     * A source younger than the in-flight grace is KEPT_IN_FLIGHT before any
+     * of that: an ingest reads and converts its source BEFORE it takes the
+     * key's lock, so in that window the file has neither a row nor a holder.
+     * A disk that cannot date a file cannot prove it is old: that is FAILED
+     * (reported, exit non-zero), never a sweep that reads as clean.
+     *
+     * @return string one of ConversionArtifactStore::REMOVED | ABSENT | KEPT | FAILED, or self::KEPT_IN_FLIGHT
      */
     public function removeSourceFileIfUnreferenced(string $disk, string $fullPath, string $sourcePath): string
     {
+        // An ingest READS and CONVERTS its source before it takes the storage
+        // key's lock — an OCR run can take minutes — so between the two there
+        // is no row to find and no lock to block on: the sweep would see a
+        // perfectly ordinary orphan and delete the file out from under the
+        // conversion. A file younger than the grace is therefore never an
+        // orphan to decide today (the same in-flight posture the OCR run
+        // sweep already takes). The window is not closed by this — a
+        // conversion slower than the grace is still exposed, and the lock
+        // covers only the commit half — so the grace is configurable and the
+        // residual is recorded in the hand-off with the ingest-side
+        // reservation that would close it.
+        $grace = self::orphanSourceGraceSeconds();
+        if ($grace > 0) {
+            try {
+                $age = now()->getTimestamp() - (int) Storage::disk($disk)->lastModified($fullPath);
+            } catch (\Throwable $e) {
+                // Flysystem throws for a MISSING object too: a file that
+                // vanished between the snapshot and this call is `absent`
+                // (the end state the caller wanted), not an undatable disk.
+                if (! $this->sourceStillThere($disk, $fullPath)) {
+                    return ConversionArtifactStore::ABSENT;
+                }
+                // A disk that cannot date a file cannot prove it is old, and
+                // a sweep that keeps everything for that reason must not read
+                // as clean (R14): reported once per disk, counted, exit
+                // non-zero.
+                if (! isset(self::$warnedUndatableDisks[$disk])) {
+                    self::$warnedUndatableDisks[$disk] = true;
+                    Log::warning('DocumentDeleter: orphan sources cannot be dated on this disk, so none can be judged against the in-flight grace; the sweep reports them failed', ['disk' => $disk, 'path' => $fullPath, 'error' => $e->getMessage()]);
+                }
+
+                return ConversionArtifactStore::FAILED;
+            }
+            if ($age < $grace) {
+                Log::info('DocumentDeleter: orphan source kept — younger than the in-flight grace; an ingest may be converting it right now', ['disk' => $disk, 'path' => $fullPath, 'age_seconds' => $age, 'grace_seconds' => $grace]);
+
+                return self::KEPT_IN_FLIGHT;
+            }
+        }
         $lock = null;
         $held = null;
         if (app(ConversionArtifactStore::class)->enabled()) {
+            if (! ConversionArtifactStore::cacheStoreCanLock()) {
+                // A store that cannot lock — or one that grants every lock
+                // without excluding anyone — gives no serialization: the
+                // delete is refused and reported, never run believing the
+                // key is held (SEC-FAILCLOSED-001).
+                Log::warning('DocumentDeleter: orphan source not removed — the cache store cannot exclude concurrent holders, so the storage key lock is unavailable', ['disk' => $disk, 'path' => $fullPath]);
+
+                return ConversionArtifactStore::FAILED;
+            }
             try {
                 $lock = SourceKeyLock::make($disk, $fullPath);
                 $lock->block(SourceKeyLock::waitSeconds());

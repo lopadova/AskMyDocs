@@ -20,6 +20,9 @@ class PruneOrphanFilesCommandTest extends TestCase
     {
         parent::setUp();
         config()->set('kb.sources.disk', 'kb');
+        // The in-flight grace is exercised by its own test; every other case
+        // here writes its fixture and sweeps in the same instant.
+        config()->set('kb.sources.orphan_grace_seconds', 0);
         config()->set('kb.sources.path_prefix', '');
         config()->set('kb.canonical_disk', 'kb');
         config()->set('kb.raw_disk', 'kb-raw');
@@ -257,6 +260,114 @@ class PruneOrphanFilesCommandTest extends TestCase
         $this->assertFalse(Storage::disk('kb')->directoryExists('docs/orphan.md.ocr'), 'the orphan run goes with its source');
         Storage::disk('kb')->assertExists('docs/kept.md');
         Storage::disk('kb')->assertExists('docs/kept.md.ocr/fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210/notes.md'); // a run beside a live source is neither a candidate nor purged
+    }
+
+    /**
+     * ADR 0030 §3 — an ingest READS and CONVERTS its source before it takes
+     * the storage key's lock (an OCR run takes minutes): in that window the
+     * file has no row and no holder, and a sweep would delete it out from
+     * under the conversion. A source younger than the in-flight grace is
+     * therefore kept and counted, and swept normally once it has aged.
+     */
+    public function test_a_source_younger_than_the_in_flight_grace_is_kept_and_swept_once_aged(): void
+    {
+        config(['kb.sources.orphan_grace_seconds' => 3600]);
+        Storage::fake('kb');
+        Storage::disk('kb')->put('docs/just-written.md', 'being converted right now');
+
+        $this->artisan('kb:prune-orphan-files')
+            ->expectsOutputToContain('scanned=1 orphans=1 deleted=0 failed=0 orphan_ocr_kept=0 dangling_ocr=0 purged=0 in_flight=0 ocr_failed=0 stale_runs=0 runs_purged=0 runs_in_flight=0 runs_failed=0 kept_meanwhile=1')
+            ->assertSuccessful();
+        Storage::disk('kb')->assertExists('docs/just-written.md');
+
+        $this->travel(3600 + 60)->seconds();
+
+        $this->artisan('kb:prune-orphan-files')
+            ->expectsOutputToContain('scanned=1 orphans=1 deleted=1 failed=0')
+            ->assertSuccessful();
+        Storage::disk('kb')->assertMissing('docs/just-written.md');
+    }
+
+    /**
+     * The preview says what the real run would do: the in-flight grace is a
+     * modification time, not a race, so a `--dry-run` that promised to delete
+     * a file the real run keeps would be worse than no preview at all.
+     */
+    public function test_the_dry_run_previews_the_in_flight_grace(): void
+    {
+        config(['kb.sources.orphan_grace_seconds' => 3600]);
+        Storage::fake('kb');
+        Storage::disk('kb')->put('docs/fresh.md', 'being converted right now');
+
+        $this->artisan('kb:prune-orphan-files --dry-run')
+            ->expectsOutputToContain('kept (in-flight grace)')
+            ->expectsOutputToContain('1 of them are younger than the in-flight grace and would be kept.')
+            ->assertSuccessful();
+
+        $this->travel(3600 + 60)->seconds();
+
+        $this->artisan('kb:prune-orphan-files --dry-run')
+            ->expectsOutputToContain('would delete')
+            ->doesntExpectOutputToContain('younger than the in-flight grace and would be kept')
+            ->assertSuccessful();
+        Storage::disk('kb')->assertExists('docs/fresh.md'); // a dry run deletes nothing
+    }
+
+    /**
+     * A malformed grace is NOT a disabled grace: `off` would coerce to `0`
+     * if the config cast it, silently turning the protection off for every
+     * sweep. The value is read and validated where it is used, and a shape
+     * that is not a number of seconds falls back to the default, reported
+     * once (SEC-SETTING-SHAPE-001).
+     */
+    public function test_a_malformed_grace_falls_back_to_the_default_rather_than_disabling_itself(): void
+    {
+        config(['kb.sources.orphan_grace_seconds' => 'off']);
+        \Illuminate\Support\Facades\Log::spy();
+
+        $this->assertSame(3600, \App\Services\Kb\DocumentDeleter::orphanSourceGraceSeconds());
+        $this->assertSame(3600, \App\Services\Kb\DocumentDeleter::orphanSourceGraceSeconds());
+
+        \Illuminate\Support\Facades\Log::shouldHaveReceived('warning')->withArgs(static fn (string $message): bool => str_contains($message, 'orphan_grace_seconds is not a number of seconds'))->once();
+
+        // …and the config file must hand that shape through UNCAST: an
+        // `(int)` there would make `off` arrive as 0 — a silently disabled
+        // grace the reader could never tell from the explicit `0`.
+        $_SERVER['KB_ORPHAN_SOURCE_GRACE_SECONDS'] = 'off';
+        try {
+            $raw = (require dirname(__DIR__, 3).'/config/kb.php')['sources']['orphan_grace_seconds'];
+        } finally {
+            unset($_SERVER['KB_ORPHAN_SOURCE_GRACE_SECONDS']);
+        }
+        $this->assertSame('off', $raw, 'config/kb.php must not cast the grace: the reader validates it');
+    }
+
+    /**
+     * A file that vanished between the snapshot and the gate reads as
+     * `absent`, not as a disk that cannot date its files: the end state is
+     * the one the sweep wanted, and the run stays clean.
+     */
+    public function test_a_source_that_vanished_before_the_gate_is_absent_not_a_failure(): void
+    {
+        config(['kb.sources.orphan_grace_seconds' => 3600]);
+        Storage::fake('kb');
+        Storage::disk('kb')->put('docs/vanishing.md', 'x');
+        Storage::disk('kb')->put('docs/orphan.md', 'o');
+        $this->app->bind(\App\Services\Kb\DocumentDeleter::class, \Tests\Fixtures\Kb\RaceInsertingDeleter::class);
+        try {
+            \Tests\Fixtures\Kb\RaceInsertingDeleter::$beforeSourceGate = static function (string $disk, string $fullPath, string $sourcePath): void {
+                if ($sourcePath === 'docs/vanishing.md') {
+                    Storage::disk('kb')->delete($fullPath); // removed by a hard delete meanwhile
+                }
+            };
+            $this->travel(3600 + 60)->seconds();
+
+            $this->artisan('kb:prune-orphan-files')
+                ->expectsOutputToContain('scanned=2 orphans=2 deleted=2 failed=0')
+                ->assertSuccessful();
+        } finally {
+            \Tests\Fixtures\Kb\RaceInsertingDeleter::$beforeSourceGate = null;
+        }
     }
 
     /**

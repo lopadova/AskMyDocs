@@ -444,8 +444,10 @@ flowchart LR
   production): on a store that cannot lock, a publish is refused (thrown and
   its temp discarded) and a removal is reported `failed` — never run
   unguarded — while only the temp lease degrades to the age threshold. The
-  one exception the code cannot detect is a store that implements the lock
-  contract without exclusion (the `null` store grants every lock). Neither
+  `null` store, which implements the lock contract and grants every lock
+  without excluding anyone, is detected and refused exactly like a store that
+  cannot lock; what stays undetectable is a provider whose locks do not
+  exclude ACROSS processes (the array store, process-local by design). Neither
   lock is renewed: every critical section asserts, right before its
   irreversible step, that it still owns its lock (`HeldLock`) — a lapsed TTL
   is a refusal (the commit rolls back, the original is kept, the publish
@@ -632,6 +634,7 @@ JSON columns that already exist:
 | `KB_CONVERSION_ARTIFACTS_ENABLED` | `false` | W2 / ADR 0030 — store the converted Markdown of every version at `.artifacts/{tenant}/{project}/{source_path}.versions/{version_hash}.md`. OFF writes nothing new; artifacts already stored keep being read. |
 | `KB_CONVERSION_ARTIFACTS_TMP_MAX_AGE` | `3600` | Seconds after which `kb:prune-archived-versions` sweeps a `.tmp` a dead writer left beside an artifact — one no live writer holds the lease of. |
 | `KB_CONVERSION_ARTIFACTS_TMP_LEASE` | `7200` | Seconds a writer's cache lease on its temp file lives (taken before the temp is written, released at publish or discard): a leased temp is never swept, whatever its age, so a slow transaction is not mistaken for a dead writer. The primary guard — a value shorter than `KB_CONVERSION_ARTIFACTS_TMP_MAX_AGE` is raised to it (reported once), so the effective lease always outlives the sweep threshold; a non-positive value is the default, with a warning. Needs a lock-capable cache store (Redis in production); a store that cannot lock leaves the age threshold alone in charge, reported once, never an ingest outage. |
+| `KB_ORPHAN_SOURCE_GRACE_SECONDS` | `3600` | Seconds a source file must be untouched before `kb:prune-orphan-files` may consider it an orphan. An ingest reads and converts its source — an OCR run takes minutes — BEFORE it takes the storage key's lock, so in that window the file has neither a row nor a holder and an ordinary-looking orphan may be a conversion's input; a younger file is kept and counted `kept_meanwhile`. `0` disables the grace. It narrows the window without closing it, and it keys on when the BYTES were written rather than on when the conversion started: a conversion slower than the grace is still exposed, and a first ingest of a file staged earlier (a folder sync over a corpus copied days ago, a job that waited in a backed-up queue) gets no protection from it at all. The reservation that would close both is a recorded follow-up. |
 | `KB_CONVERSION_ARTIFACTS_SOURCE_LOCK_WAIT` | `10` | Seconds a row commit or a `markdown_only` drop waits for the storage key's lock (needs an atomic lock store — Redis — in production). |
 | `KB_CONVERSION_ARTIFACTS_SOURCE_LOCK_TTL` | `60` | Seconds that lock lives when its holder dies. A value that is not a positive number of seconds (`0`, a negative, a non-number) is not a shorter lock: the default applies and a warning says so once per ingest. |
 | `KB_VERSIONS_TIMELINE_LIMIT` | `100` | The most versions a Time Machine listing (HTTP `?limit=`, MCP `limit`, CLI `--limit`) hydrates and verifies per call (R3); every surface pages with an offset (`?offset=`, `offset`, `--offset`) and returns the family `total` and `truncated` when it holds more than the page reaches — the UI offers "Load older versions". A non-positive value is the default, with a warning. |
