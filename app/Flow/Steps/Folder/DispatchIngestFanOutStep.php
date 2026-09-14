@@ -198,10 +198,11 @@ final class DispatchIngestFanOutStep implements FlowStepHandler
             throw new RuntimeException("File vanished before ingestion: {$fullPath}");
         }
         $bytes = $storage->get($fullPath);
-        if (! is_string($bytes)) {
+        if (! is_string($bytes) || $bytes === '') {
             // `exists()` said yes, `get()` said nothing (a bucket 5xx, a mount
-            // gone between the two calls): a per-file failure, never an empty
-            // document ingested at the real source path (R14).
+            // gone between the two calls, a zero-byte object): a per-file
+            // failure, never an empty document ingested at the real source
+            // path that archives the valid version under it (R14).
             throw new RuntimeException("Disk [{$disk}] returned no bytes for {$fullPath}");
         }
         $title = pathinfo($relative, PATHINFO_FILENAME);

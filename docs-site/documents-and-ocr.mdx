@@ -434,7 +434,12 @@ flowchart LR
   **lease** on its temp (`KB_CONVERSION_ARTIFACTS_TMP_LEASE`, the primary
   guard — at least the age threshold) from the write to the publish or
   discard, so the temp sweep never removes a file a live writer is about to
-  move into place.
+  move into place. The publish itself runs under the artifact **path's lock**
+  after re-checking that the row still points there, and every removal of an
+  artifact (hard delete, prune, orphan sweep) re-checks the references under
+  the same lock before deleting — an identical ingest that recreated the same
+  content-addressed path meanwhile keeps its artifact (`artifacts_kept` for a
+  pruned or deleted row, `artifact_orphans_kept` for an orphan candidate).
 - **The key is tenant- and project-namespaced, as safe segments.** A segment
   is used verbatim only when it matches `^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$`,
   and does not start with the reserved `h-` prefix; otherwise it becomes `h-` +

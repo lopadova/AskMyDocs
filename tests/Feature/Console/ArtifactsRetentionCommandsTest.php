@@ -157,6 +157,39 @@ final class ArtifactsRetentionCommandsTest extends TestCase
         Storage::disk('kb')->assertExists($freshTmp);
     }
 
+    /**
+     * The orphan sweep's snapshot and the removal gate deliberately disagree
+     * on a row whose recorded disk is a JSON null: the snapshot reads it as
+     * "recorded, elsewhere" (a candidate), the gate as a reference (fail
+     * closed). Such a path is kept, counted as `artifact_orphans_kept`, and
+     * never deleted under the row.
+     */
+    public function test_prune_keeps_an_orphan_candidate_a_row_with_a_null_disk_points_at_and_counts_it(): void
+    {
+        $store = app(ConversionArtifactStore::class);
+        $tenant = app(TenantContext::class)->current();
+        $kept = $store->pathFor($tenant, 'eng', 'docs/legacy.md', str_repeat('d', 64));
+        $store->publish('kb', $store->writeTemp('kb', $kept, 'a legacy row points here'), $kept);
+        $legacy = $this->row(5, 'archived', null, 'docs/legacy.md');
+        $legacy->forceFill(['markdown_path' => $kept, 'metadata' => ['disk' => null, 'prefix' => '']])->save();
+        $orphan = $store->pathFor($tenant, 'eng', 'docs/gone.md', str_repeat('e', 64));
+        $store->publish('kb', $store->writeTemp('kb', $orphan, 'nobody points here'), $orphan);
+
+        // The preview answers the same question: the kept candidate is reported kept, nothing is deleted.
+        $this->artisan('kb:prune-archived-versions', ['--dry-run' => true])
+            ->expectsOutputToContain('artifact_orphans_removed=1 artifact_orphans_failed=0 artifact_orphans_kept=1 (dry-run)')
+            ->assertExitCode(0);
+        Storage::disk('kb')->assertExists($kept);
+        Storage::disk('kb')->assertExists($orphan);
+
+        $this->artisan('kb:prune-archived-versions')
+            ->expectsOutputToContain('artifact_orphans_removed=1 artifact_orphans_failed=0 artifact_orphans_kept=1')
+            ->assertExitCode(0);
+
+        Storage::disk('kb')->assertExists($kept);
+        Storage::disk('kb')->assertMissing($orphan);
+    }
+
     /** R43 — with the flag OFF the prune still removes pruned rows' artifacts and keeps referenced ones. */
     public function test_prune_off_still_removes_pruned_artifacts_and_keeps_referenced_ones(): void
     {
@@ -720,6 +753,65 @@ final class ArtifactsRetentionCommandsTest extends TestCase
             ->expectsOutputToContain('artifact_temps_swept=1 artifact_temps_failed=0 artifact_orphans_removed=0 artifact_orphans_failed=0')
             ->assertExitCode(0);
         Storage::disk('kb')->assertMissing($tmp);
+    }
+
+    /** SEC-PATH-001 — a `.artifacts` root that is a symlink out of the disk is refused before it is probed or listed: a reported failed sweep, never an enumeration of the outside. */
+    public function test_prune_refuses_a_symlinked_artifact_root_before_listing_it(): void
+    {
+        $outside = sys_get_temp_dir().'/askmydocs-outside-'.uniqid();
+        mkdir($outside, 0755, true);
+        file_put_contents($outside.'/stray.md', 'outside the disk');
+        $diskRoot = Storage::disk('kb')->path('');
+        $this->assertTrue(symlink($outside, rtrim($diskRoot, '/').'/.artifacts'));
+
+        try {
+            $this->artisan('kb:prune-archived-versions')
+                ->expectsOutputToContain('artifact_temps_swept=0 artifact_temps_failed=1 artifact_orphans_removed=0 artifact_orphans_failed=1')
+                ->assertExitCode(1);
+            $this->assertFileExists($outside.'/stray.md', 'nothing outside the disk was touched');
+        } finally {
+            unlink(rtrim($diskRoot, '/').'/.artifacts');
+            unlink($outside.'/stray.md');
+            rmdir($outside);
+        }
+    }
+
+    /**
+     * ADR 0030 §8 — the reference gate: an artifact a row still points at is
+     * never removed, whoever asks. The hard delete of a row whose artifact
+     * path a NEWER identical version recreated meanwhile keeps the file
+     * (nothing of the deleted row remains there), and the prune reports the
+     * same outcome as `artifacts_kept`.
+     */
+    public function test_the_reference_gate_keeps_an_artifact_a_newer_identical_version_points_at(): void
+    {
+        $pruned = $this->row(1, 'archived', 'shared bytes');
+        $path = (string) $pruned->markdown_path;
+        // The identical version recreated after the prune's snapshot: another row, the same content-addressed path.
+        $recreated = $this->row(9, 'active');
+        \Illuminate\Support\Facades\DB::table('knowledge_documents')->where('id', $recreated->id)->update(['markdown_path' => $path, 'content_hash' => $pruned->content_hash]);
+        $deleter = app(\App\Services\Kb\DocumentDeleter::class);
+
+        $this->assertSame(ConversionArtifactStore::KEPT, $deleter->removeArtifactIfUnreferenced('kb', $path));
+        Storage::disk('kb')->assertExists($path);
+
+        $outcome = $deleter->deleteRowsOnly($pruned);
+        $this->assertTrue($outcome['artifact_deleted'], 'nothing of the deleted row remains at the path');
+        Storage::disk('kb')->assertExists($path);
+
+        // The prune: with keep=1 the two oldest archived versions go; the
+        // live row points at the path of one of them (the recreated
+        // identical version), so that artifact is kept and reported.
+        $shared = $this->row(2, 'archived', 'old 2');
+        $this->row(3, 'archived', 'old 3');
+        $this->row(4, 'archived', 'old 4');
+        \Illuminate\Support\Facades\DB::table('knowledge_documents')->where('id', $recreated->id)->update(['markdown_path' => $shared->markdown_path, 'content_hash' => $shared->content_hash]);
+        config(['kb.versioning.keep_archived' => 1]);
+        $this->artisan('kb:prune-archived-versions')
+            ->expectsOutputToContain('archived_versions_pruned=2 artifacts_removed=1 artifacts_absent=0 artifacts_failed=0 ocr_runs_purged=0 ocr_runs_kept=0 ocr_failed=0 artifacts_kept=1')
+            ->assertExitCode(0);
+        Storage::disk('kb')->assertExists((string) $shared->markdown_path);
+        $this->assertDatabaseMissing('knowledge_documents', ['id' => $shared->id]);
     }
 
     /** R14 / SEC-PATH-001 — a configured prefix carrying the reserved `.artifacts` segment is a reported failed sweep, never a root drawn one level up. */

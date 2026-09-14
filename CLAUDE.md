@@ -351,9 +351,14 @@ rotation. `kb:rebuild-graph` is a no-op when no canonical docs exist.
   (deliberate R30 exception, ADR 0030 §3/§8).** `.artifacts/` is one physical
   tree shared by every tenant (namespaced by safe segment) and an OCR run
   directory is shared by every version born from the same bytes on a shared
-  disk, so `kb:prune-archived-versions` decides "no row references this file
-  any more" with `withoutGlobalScopes()` — live, archived and soft-deleted rows
-  of ALL tenants — and deletes only at zero references. Scoping that check to
+  disk, so "no row references this file any more" is decided with
+  `withoutGlobalScopes()` — live, archived and soft-deleted rows of ALL tenants
+  — and a file is deleted only at zero references. That read lives in ONE
+  place, `DocumentDeleter::artifactReferenced()` behind
+  `removeArtifactIfUnreferenced()`, and is the gate for EVERY artifact
+  removal: hard delete (`DELETE /api/kb/documents`, `kb:delete --force`,
+  `kb:prune-deleted`, the Flow compensation), the per-row prune and the orphan
+  sweep of `kb:prune-archived-versions`. Scoping that check to
   one tenant would delete another tenant's artifact; the conservative direction
   is the cross-tenant one. The sweeps cover the configured `kb.sources.disk` /
   `path_prefix` namespace PLUS every `(metadata.disk, metadata.prefix)` recorded

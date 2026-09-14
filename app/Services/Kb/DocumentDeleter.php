@@ -15,6 +15,7 @@ use App\Services\Kb\Analysis\ChangeAnalysisGate;
 use App\Support\KbPath;
 use App\Support\LikeEscaper;
 use DateTimeInterface;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -276,7 +277,9 @@ class DocumentDeleter
      * v8.36 / ADR 0030 §8 — the row's version artifact is NOT the source: it
      * was written by the failing flow for this very row, so it goes with the
      * row here too (otherwise the compensated row would leave a raw artifact
-     * behind until the orphan sweep). The `.ocr/` tree stays with the
+     * behind until the orphan sweep) — THROUGH the reference gate: the path
+     * is the content hash, so a newer identical version that took the same
+     * path meanwhile keeps its artifact. The `.ocr/` tree stays with the
      * preserved source (`ocr_assets_deleted` is false by construction).
      *
      * @return array{mode: string, document_id: int, project_key: string, source_path: string, file_deleted: bool, ocr_assets_deleted: bool, artifact_deleted: bool, canonical: array<string, mixed>|null}
@@ -301,7 +304,7 @@ class DocumentDeleter
             $this->writeDeprecationAudit($document);
         });
 
-        $artifactDeleted = $this->removeArtifact($disk, $document->markdown_path, $documentId);
+        $artifactDeleted = $this->removeArtifact($disk, $document->markdown_path);
 
         return [
             'mode' => 'hard_db_only',
@@ -325,9 +328,12 @@ class DocumentDeleter
      * AFTER the DB rows are gone.
      *
      * `artifact_deleted` reports what THIS call did to the row's version
-     * artifact: true when none remains after it, false when one may — either
-     * a delete error, or a caller that opted out (`$removeArtifact = false`)
-     * and handles the artifact itself. Never a claim about work not done here.
+     * artifact: true when none remains FOR THIS ROW after it — deleted, never
+     * written, already gone, or now owned by a newer identical version that
+     * points at the same path (the reference gate keeps it) — false when one
+     * may — either a delete error, or a caller that opted out
+     * (`$removeArtifact = false`) and handles the artifact itself. Never a
+     * claim about work not done here.
      *
      * @return array{mode: string, document_id: int, project_key: string, source_path: string, file_deleted: bool, artifact_deleted: bool, canonical: array{is_canonical: bool, doc_id: ?string, slug: ?string, canonical_type: ?string, canonical_status: ?string}, disk: string, full_path: string}
      */
@@ -368,7 +374,7 @@ class DocumentDeleter
         // caller that reports the removal itself (the prune) opts out — and
         // then this call claims nothing about the artifact (false).
         $artifactDeleted = $removeArtifact
-            && $this->removeArtifact($disk, $document->markdown_path, $documentId);
+            && $this->removeArtifact($disk, $document->markdown_path);
 
         return [
             'mode' => 'hard_rows_only',
@@ -480,10 +486,11 @@ class DocumentDeleter
             ? ['file_deleted' => false, 'ocr_assets_deleted' => false]
             : $this->removeFileAndOcrAssets($disk, $fullPath, $documentId, $sourcePath);
 
-        // v8.36 / ADR 0030 §8 — each row owns its own version artifact: it
-        // goes with the row, no reference gate needed (the source file above
-        // is shared across versions; the artifact is not).
-        $artifactDeleted = $this->removeArtifact($disk, $document->markdown_path, $documentId);
+        // v8.36 / ADR 0030 §8 — the row's version artifact goes with the row
+        // THROUGH the reference gate: the path is the content hash, so a
+        // newer identical version that took the same path meanwhile keeps
+        // its artifact (nothing of this row remains there).
+        $artifactDeleted = $this->removeArtifact($disk, $document->markdown_path);
 
         return [
             'mode' => 'hard',
@@ -613,34 +620,110 @@ class DocumentDeleter
     }
 
     /**
+     * ADR 0030 §8 — the ONE gate every artifact removal goes through (the
+     * hard delete, the prune of a version, the orphan sweep): under the
+     * artifact path's lock — the lock a publish holds around its move — the
+     * references are re-checked and the file is removed only when NO row of
+     * any tenant (live, archived, trashed) still points at it on this disk.
+     * The path is the content hash, so an identical ingest that ran between
+     * a caller's decision and this call recreated the very same path for a
+     * new row: without the re-check the caller would delete a live row's
+     * artifact. A row that never recorded its disk references the path
+     * wherever the check looks (fail closed). Returns the store's outcome,
+     * or `KEPT` when the re-check found a referencing row.
+     */
+    public function removeArtifactIfUnreferenced(string $disk, string $path): string
+    {
+        $store = app(ConversionArtifactStore::class);
+        try {
+            return $store->underPathLock($disk, $path, function () use ($store, $disk, $path): string {
+                if ($this->artifactReferenced($disk, $path)) {
+                    return ConversionArtifactStore::KEPT;
+                }
+
+                return $store->remove($disk, $path);
+            });
+        } catch (\Throwable $e) {
+            // The gate keeps the store's contract — never an exception: a
+            // lock that could not be taken (contention past the wait, a lock
+            // store outage) or a reference check the database refused is a
+            // removal that did NOT happen, reported as `failed` so the caller
+            // counts it and exits non-zero (R14), never a stack trace that
+            // loses the rest of a prune mid-corpus.
+            Log::warning('DocumentDeleter: artifact removal not attempted — the reference gate could not decide', ['disk' => $disk, 'markdown_path' => $path, 'exception' => $e::class, 'error' => $e->getMessage()]);
+
+            return ConversionArtifactStore::FAILED;
+        }
+    }
+
+    /**
+     * Whether any row — live, archived or trashed, any tenant — points at
+     * this artifact path on this disk. A row whose `metadata.disk` is
+     * absent OR null counts as a reference (fail closed): the gate is the
+     * conservative side, deliberately wider than the prune's snapshot
+     * (`documentRecordsStorageNamespace()`, which reads a present-but-null
+     * disk as "recorded, elsewhere") — a path such a row points at is kept,
+     * never deleted under it.
+     */
+    public function artifactReferenced(string $disk, string $path): bool
+    {
+        return $this->artifactReferenceQuery($disk)->where('markdown_path', $path)->exists();
+    }
+
+    /**
+     * The batch form of {@see artifactReferenced()} for a preview that has
+     * no lock to hold: one query per batch (R3), the same predicate. Returns
+     * the referenced paths as keys.
+     *
+     * @param  list<string>  $paths
+     * @return array<string, true>
+     */
+    public function artifactsReferenced(string $disk, array $paths): array
+    {
+        if ($paths === []) {
+            return [];
+        }
+        $referenced = [];
+        foreach (array_chunk($paths, 500) as $chunk) {
+            $rows = $this->artifactReferenceQuery($disk)->whereIn('markdown_path', $chunk)->distinct()->pluck('markdown_path');
+            foreach ($rows as $path) {
+                $referenced[(string) $path] = true;
+            }
+        }
+
+        return $referenced;
+    }
+
+    private function artifactReferenceQuery(string $disk): Builder
+    {
+        return KnowledgeDocument::withoutGlobalScopes()
+            ->where(function ($q) use ($disk): void {
+                $q->where('metadata->disk', $disk)->orWhereNull('metadata->disk');
+            });
+    }
+
+    /**
      * Remove the row's own version artifact (ADR 0030 §8). Returns true when
-     * NO artifact remains for the row afterwards (deleted, never written, or
-     * already gone); false when the removal was refused or failed (the disk
+     * NO artifact remains FOR THE ROW afterwards (deleted, never written,
+     * already gone, or now owned by a newer identical version that points
+     * at the same path); false when the removal was refused or failed (the disk
      * refused, or the pointer is not a contained artifact path) — this call
      * then cannot assert that nothing remains, and the caller reports it
      * instead of a warning nobody reads (R14).
      */
-    private function removeArtifact(string $disk, mixed $markdownPath, int $documentId): bool
+    private function removeArtifact(string $disk, mixed $markdownPath): bool
     {
         if (! is_string($markdownPath) || $markdownPath === '') {
             return true;
         }
-        try {
-            // The store says what happened — removed, absent (already gone),
-            // failed (the disk refused, or the path is not contained) — and a
-            // refusal is reported as such, never masked by a raw probe that
-            // bypasses the store's containment check.
-            return app(ConversionArtifactStore::class)->remove($disk, $markdownPath) !== ConversionArtifactStore::FAILED;
-        } catch (\Throwable $e) {
-            Log::warning('DocumentDeleter: failed to remove conversion artifact', [
-                'document_id' => $documentId,
-                'disk' => $disk,
-                'markdown_path' => $markdownPath,
-                'error' => $e->getMessage(),
-            ]);
-
-            return false;
-        }
+        // The gate says what happened — removed, absent (already gone),
+        // kept (a newer identical version points at the same path now:
+        // nothing of THIS row remains there), failed (the disk refused, the
+        // path is not contained, or the gate could not decide — logged
+        // there, never an exception here) — and a refusal is reported as
+        // such, never masked by a raw probe that bypasses the store's
+        // containment check.
+        return $this->removeArtifactIfUnreferenced($disk, $markdownPath) !== ConversionArtifactStore::FAILED;
     }
 
     /**

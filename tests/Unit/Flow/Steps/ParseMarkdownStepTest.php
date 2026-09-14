@@ -122,6 +122,37 @@ final class ParseMarkdownStepTest extends TestCase
         $step->execute($context);
     }
 
+    /**
+     * R14 — a zero-byte object (a truncated upload, a bucket answering with
+     * an empty body) is a FAILED step, never an empty version that would
+     * archive the valid live one. Every queued ingest reads through here.
+     */
+    public function test_failure_path_throws_when_the_disk_returns_no_bytes(): void
+    {
+        Storage::fake('kb');
+        Storage::disk('kb')->put('docs/empty.md', '');
+        config()->set('kb.sources.disk', 'kb');
+        config()->set('kb.sources.path_prefix', '');
+
+        $step = $this->app->make(ParseMarkdownStep::class);
+        $context = new FlowContext(
+            flowRunId: 'test-run-empty',
+            definitionName: 'kb.ingest',
+            input: [
+                'tenant_id' => 'default',
+                'project_key' => 'demo',
+                'source_path' => 'docs/empty.md',
+                'disk' => 'kb',
+                'mime_type' => 'text/markdown',
+                'metadata' => [],
+            ],
+        );
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('returned no bytes');
+        $step->execute($context);
+    }
+
     public function test_dry_run_does_not_mutate_database(): void
     {
         Storage::fake('kb');

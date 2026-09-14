@@ -288,17 +288,18 @@ final class KbArtifactsBackfillCommand extends Command
         }
         $row->markdown_path = $final;
         $row->content_hash = $hash;
-        $tmp = null;
         try {
-            $tmp = $store->writeTemp($disk, $final, $converted->markdown);
-            $store->publish($disk, $tmp, $final);
+            // Under the path's lock, re-checking the row (the same publish an
+            // ingest does): a failed publish discards its temp, never left
+            // for the age sweep.
+            $published = $ingestor->publishArtifactForRow($disk, $store->writeTemp($disk, $final, $converted->markdown), $final, (int) $row->id);
         } catch (\Throwable $e) {
-            // This attempt's temp goes with it (as after an ingest's failed
-            // publish), not left for the age sweep.
-            if ($tmp !== null) {
-                $store->discardTemp($disk, $tmp);
-            }
             $this->line("  #{$row->id} {$sourcePath}: conversion_failed (could not publish: {$e->getMessage()}; the pointer is kept as `missing` for the next run)");
+
+            return 'conversion_failed';
+        }
+        if (! $published) {
+            $this->line("  #{$row->id} {$sourcePath}: conversion_failed (the row changed underneath; nothing written)");
 
             return 'conversion_failed';
         }

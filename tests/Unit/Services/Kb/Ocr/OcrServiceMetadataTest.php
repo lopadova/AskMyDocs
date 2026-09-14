@@ -40,6 +40,12 @@ final class OcrServiceMetadataTest extends TestCase
         $this->assertSame(['title' => 't'], OcrService::stripTrustedOnlyKeys(['title' => 't', 'source_retention' => 'reference_only', 'source_dropped' => true]));
         // ADR 0030 §6 — the restore ledger is appended by the trusted restore path only.
         $this->assertSame(['title' => 't'], OcrService::stripTrustedOnlyKeys(['title' => 't', 'restores' => [['actor' => 'user:1', 'at' => '2026-01-01T00:00:00Z']]]));
+        // `converter` is the host's record of how the text was obtained: a
+        // client bag carrying one would read as a re-run of an existing
+        // version (`retentionModeOf()`) and turn a `reference_only`
+        // deployment into one that records runs and stores figures.
+        $this->assertSame(['title' => 't'], OcrService::stripTrustedOnlyKeys(['title' => 't', 'converter' => ['provenance' => 'ocr', 'ocr' => ['run' => str_repeat('a', 64)]]]));
+        $this->assertSame(['title' => 't', 'converter_hints' => ['lang' => 'it']], OcrService::stripTrustedOnlyKeys(['title' => 't', 'converter' => 'ocr', 'converter_hints' => ['lang' => 'it', 'converter' => 'ocr']]));
     }
 
     public function test_the_persist_step_strips_only_the_run_control_keys_and_keeps_the_trusted_actor(): void

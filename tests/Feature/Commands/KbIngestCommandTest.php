@@ -124,6 +124,22 @@ class KbIngestCommandTest extends TestCase
         $this->assertSame(0, KnowledgeDocument::count());
     }
 
+    /** R14 — `exists()` said yes, `get()` returned nothing: one error line, exit 1, no empty version. */
+    public function test_fails_cleanly_when_the_file_has_no_bytes(): void
+    {
+        Storage::fake('kb');
+        Storage::disk('kb')->put('empty.md', '');
+        config()->set('kb.sources.disk', 'kb');
+
+        $this->artisan('kb:ingest', [
+            'path' => 'empty.md',
+        ])
+            ->expectsOutputToContain('returned no bytes')
+            ->assertFailed();
+
+        $this->assertSame(0, KnowledgeDocument::count());
+    }
+
     public function test_disk_cli_option_overrides_config(): void
     {
         Storage::fake('other');

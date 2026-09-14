@@ -382,9 +382,10 @@ return [
         'enabled' => filter_var(env('KB_CONVERSION_ARTIFACTS_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
         'tmp_max_age_seconds' => (int) env('KB_CONVERSION_ARTIFACTS_TMP_MAX_AGE', 3600),
         // ADR 0030 §3 — the per-storage-key lock a `markdown_only` drop and the
-        // row commits of the same key share (needs an atomic lock store, Redis
-        // in production): how long a writer waits for it, and how long it
-        // lives when its holder dies.
+        // row commits of the same key share, and the per-artifact-path lock a
+        // publish shares with every delete and sweep of that path (needs an
+        // atomic lock store, Redis in production): how long a holder waits
+        // for it, and how long it lives when its holder dies.
         'source_lock_wait_seconds' => (int) env('KB_CONVERSION_ARTIFACTS_SOURCE_LOCK_WAIT', 10),
         'source_lock_seconds' => (int) env('KB_CONVERSION_ARTIFACTS_SOURCE_LOCK_TTL', 60),
         // How long a writer's lease on its artifact temp file lives (taken

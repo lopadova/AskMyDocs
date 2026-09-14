@@ -467,6 +467,14 @@ final class OcrService
         if (array_key_exists('ocr', $metadata) && ! is_array($metadata['ocr'])) {
             unset($metadata['ocr']);
         }
+        // `converter` is the host's record of how the text was obtained,
+        // written by the converter after the fact (and carried back from the
+        // row only by trusted replays, which never cross this boundary): a
+        // client or connector bag carrying one would be read as a re-run of
+        // an existing version by `retentionModeOf()` and could turn a
+        // `reference_only` deployment into one that records OCR runs and
+        // stores figures — a client input is not a retention policy.
+        unset($metadata['converter']);
         // ADR 0029 §8 — `converter_hints` is the connectors' namespaced bag
         // for the chunkers; a key in it that describes how the text was
         // obtained is a forgery (`provenance=ocr` would record a plain
@@ -510,8 +518,14 @@ final class OcrService
 
     /**
      * The retention contract a conversion runs under: the row's own valid
-     * stamp when the metadata carries one (a re-run, a replay), the
-     * configured mode otherwise.
+     * stamp when the metadata carries one (a re-run, a replay); `full_copy`
+     * for a re-run or replay of a row that predates the stamp — the same
+     * rule the ingestor applies when it REPLACES such a row
+     * (`DocumentIngestor::stampSourceRetention()`), so an OCR re-run after
+     * `KB_SOURCE_RETENTION` moved to `reference_only` still records its run
+     * and keeps its figures for a version that was ingested to keep them;
+     * the configured mode only for a FIRST conversion (no stamp, no prior
+     * conversion, not forced).
      *
      * @param  array<string, mixed>  $metadata
      */
@@ -520,6 +534,12 @@ final class OcrService
         $mode = $metadata['source_retention'] ?? null;
         if (is_string($mode) && in_array($mode, SourceRetentionResolver::MODES, true)) {
             return $mode;
+        }
+        // A forced re-run (`ocr.force`) or a replay carrying a previous
+        // conversion's provenance (`converter`) is a re-run of an EXISTING
+        // version: a stamp-less one predates v8.36 and counts as `full_copy`.
+        if (self::isForced($metadata) || is_array($metadata['converter'] ?? null)) {
+            return SourceRetentionResolver::FULL_COPY;
         }
 
         return app(SourceRetentionResolver::class)->mode();

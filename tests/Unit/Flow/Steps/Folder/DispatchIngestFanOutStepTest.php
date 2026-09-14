@@ -71,6 +71,21 @@ final class DispatchIngestFanOutStepTest extends TestCase
         $this->assertNotNull($doc->markdown_path, 'the pointer is kept as `missing`');
     }
 
+    /** R14 — a zero-byte object is not a source: a per-file failure, never an empty version archiving the valid one. */
+    public function test_sync_ingest_of_a_zero_byte_file_is_a_failure_not_an_empty_document(): void
+    {
+        $this->stubEmbeddings();
+        config(['kb.sources.disk' => 'kb', 'kb.sources.path_prefix' => '']);
+        Storage::disk('kb')->put('docs/empty.md', '');
+
+        $result = $this->app->make(DispatchIngestFanOutStep::class)->execute($this->context(['docs/empty.md'], sync: true));
+
+        $this->assertSame(0, $result->output['dispatched_count']);
+        $this->assertSame(1, $result->output['failure_count']);
+        $this->assertStringContainsString('returned no bytes', $result->output['failures'][0]['reason']);
+        $this->assertSame(0, \App\Models\KnowledgeDocument::withoutGlobalScopes()->where('source_path', 'docs/empty.md')->count());
+    }
+
     /** R14 — a disk that reports a file present but returns no bytes is a per-file failure, never an empty document ingested at the real path. */
     public function test_sync_ingest_of_a_file_the_disk_returns_no_bytes_for_is_a_failure_not_an_empty_document(): void
     {

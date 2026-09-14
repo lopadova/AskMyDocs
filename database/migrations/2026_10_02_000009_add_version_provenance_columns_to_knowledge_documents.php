@@ -19,10 +19,20 @@ return new class extends Migration
 {
     public function up(): void
     {
+        // Idempotent: this file was renamed from the `..._000008_...` prefix
+        // it shared with another migration, so an environment that already
+        // ran it under the old name re-enters here — each column is added
+        // only when absent (a duplicate-column error would abort the batch).
         Schema::table('knowledge_documents', function (Blueprint $table) {
-            $table->string('version_actor', 191)->nullable()->after('markdown_path');
-            $table->string('version_reason', 1024)->nullable()->after('version_actor');
-            $table->string('content_hash', 64)->nullable()->after('version_reason');
+            if (! Schema::hasColumn('knowledge_documents', 'version_actor')) {
+                $table->string('version_actor', 191)->nullable()->after('markdown_path');
+            }
+            if (! Schema::hasColumn('knowledge_documents', 'version_reason')) {
+                $table->string('version_reason', 1024)->nullable()->after('version_actor');
+            }
+            if (! Schema::hasColumn('knowledge_documents', 'content_hash')) {
+                $table->string('content_hash', 64)->nullable()->after('version_reason');
+            }
         });
     }
 

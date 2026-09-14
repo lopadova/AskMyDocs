@@ -184,8 +184,11 @@ is warned when shorter) before the bytes land and gives it back at publish or
 discard, so a temp still inside a slow transaction is reported
 `artifact_temps_in_flight` and never deleted under its writer's feet, whatever
 its age; the age threshold remains the second guard for a lease the store lost
-or a cache store that cannot lock (reported once, never an ingest outage) — and
-artifacts whose
+or a cache store that cannot lock (reported once, never an ingest outage). The
+artifact root itself is checked before it is probed or listed (a `.artifacts`
+that is a symlink out of the disk is a refused sweep, never an enumeration of
+the outside), and a temp path is checked like a final one before it is read,
+moved or discarded — and artifacts whose
 `(tenant, project, path, version_hash)` no row (trashed rows included, R2)
 references, only after that authoritative check.
 Failure and idempotency tests cover all of it, including a sequential
@@ -398,6 +401,25 @@ caller.
 
 ### 8. Retention and erasure cover the artifact and the OCR assets
 
+Every removal of an artifact — the hard delete, the prune of a version, the
+orphan sweep — goes through ONE gate,
+`DocumentDeleter::removeArtifactIfUnreferenced(disk, path)`: under the artifact
+**path's lock** (`kb:artifact:{disk}:{sha1(path)}`, the lock a publish holds
+around its post-commit move, sharing the source-lock wait / TTL knobs) the
+references are re-checked and the file is removed only when no row of any
+tenant — live, archived, trashed, a row without a recorded disk included —
+still points at it on that disk. The path is the content hash, so an identical
+ingest that ran between a caller's decision (the prune's snapshot, a hard
+delete's row transaction) and the removal recreated the very same path for a
+new row: the re-check keeps it (`artifacts_kept` for a pruned row,
+`artifact_orphans_kept` for an orphan candidate that gained a row — simply no
+orphan any more). The gate is the cross-tenant read for EVERY artifact
+removal — hard delete (HTTP, `kb:delete --force`, `kb:prune-deleted`, the
+Flow compensation), the prune and the orphan sweep — not only the sweep. On the publish side
+`DocumentIngestor::publishArtifactForRow()` re-checks, under the same lock,
+that its row still points at the path before moving the temp in: a row hard
+deleted between commit and publish has nothing to stand in for, so its bytes
+are discarded, never published as an orphan.
 `kb:prune-archived-versions` deletes the artifact with the row it prunes and
 **reports** what happened to it — `artifacts_removed` / `artifacts_absent` /
 `artifacts_failed` per tenant, the temp and orphan sweeps likewise

@@ -717,6 +717,29 @@ MD;
         $this->assertSame('missing', app(\App\Services\Kb\Versioning\DocumentVersionService::class)->artifactStateFor($fresh));
     }
 
+    /** A source that reads as zero bytes is a missing source to the re-embed: the stored artifact is re-chunked, never an empty replay that replaces the valid chunks. */
+    public function test_a_forced_reembed_treats_a_zero_byte_source_as_missing_and_re_chunks_the_artifact(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => true]);
+        $markdown = "# Zero bytes\n\nThe artifact stands in.";
+        Storage::disk('kb')->put('docs/zero.md', $markdown);
+        $doc = $this->ingestMarkdown($markdown, 'docs/zero.md', ['disk' => 'kb', 'prefix' => '']);
+        $chunksBefore = $doc->chunks()->count();
+        $this->assertGreaterThan(0, $chunksBefore);
+        // Discriminator (R16): with the chunk set gone, only the artifact
+        // branch restores it — the "source missing → skip" branch would leave zero.
+        $doc->chunks()->delete();
+        Storage::disk('kb')->put('docs/zero.md', ''); // the source went zero bytes (a truncated object)
+
+        (new \App\Jobs\ReembedDocumentJob((int) $doc->id, app(TenantContext::class)->current()))->handle(app(TenantContext::class), app(DocumentIngestor::class));
+
+        $fresh = $doc->fresh();
+        $this->assertSame('active', $fresh->status);
+        $this->assertSame($chunksBefore, $fresh->chunks()->count(), 're-chunked from the artifact, not from the empty read');
+        $this->assertSame(hash('sha256', $markdown), $fresh->document_hash, 'no empty version replaced the valid one');
+        $this->assertSame(1, KnowledgeDocument::withoutGlobalScopes()->where('source_path', 'docs/zero.md')->count());
+    }
+
     /** The artifact branch of the re-embed (original dropped, the stored artifact re-chunked) gets the same outcome: done, logged, never a failed job. */
     public function test_a_forced_reembed_from_the_artifact_whose_publish_fails_completes_and_logs_the_missing_artifact(): void
     {
@@ -754,6 +777,43 @@ MD;
         $this->assertSame('active', $fresh->status);
         $this->assertSame($pointer, (string) $fresh->markdown_path, 'the pointer is kept');
         $this->assertGreaterThan(0, $fresh->chunks()->count(), 'the re-embed is done');
+    }
+
+    /** SEC-PATH-001 — a temp path outside the artifact root is refused by publish() and discardTemp() before any storage operation. */
+    public function test_publish_and_discard_refuse_a_temp_path_outside_the_artifact_root(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => true]);
+        $store = app(ConversionArtifactStore::class);
+        $final = $store->pathFor(app(TenantContext::class)->current(), 'eng', 'docs/x.md', str_repeat('a', 64));
+        Storage::disk('kb')->put('docs/stray.tmp', 'not ours');
+
+        try {
+            $store->publish('kb', 'docs/stray.tmp', $final);
+            $this->fail('a temp outside the artifact root must be refused');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('not under an artifact root', $e->getMessage());
+        }
+        Storage::disk('kb')->assertExists('docs/stray.tmp');
+        Storage::disk('kb')->assertMissing($final);
+
+        $store->discardTemp('kb', 'docs/stray.tmp');
+        Storage::disk('kb')->assertExists('docs/stray.tmp'); // a discard never deletes outside the artifact root
+    }
+
+    /** ADR 0030 §8 — a row hard-deleted between its commit and its publish has nothing to stand in for: the temp is discarded, never published as an orphan. */
+    public function test_publish_for_a_row_that_no_longer_points_at_the_path_discards_the_temp(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => true]);
+        $store = app(ConversionArtifactStore::class);
+        $final = $store->pathFor(app(TenantContext::class)->current(), 'eng', 'docs/gone.md', str_repeat('b', 64));
+        $tmp = $store->writeTemp('kb', $final, 'bytes of a deleted row');
+
+        $published = app(DocumentIngestor::class)->publishArtifactForRow('kb', $tmp, $final, 999999);
+
+        $this->assertFalse($published);
+        Storage::disk('kb')->assertMissing($final);
+        Storage::disk('kb')->assertMissing($tmp);
+        $this->assertFalse(ConversionArtifactStore::tempLeaseHeld('kb', $tmp));
     }
 
     /**

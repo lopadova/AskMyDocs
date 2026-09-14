@@ -113,6 +113,12 @@ class ReembedDocumentJob implements ShouldQueue
             } catch (FileNotFoundException|UnableToReadFile $e) {
                 $bytes = null;
             }
+            if ($bytes === '') {
+                // A zero-byte read is not a source: it takes the same branch
+                // as a missing one (the stored artifact, or a logged skip) —
+                // never an empty replay that replaces the valid chunks.
+                $bytes = null;
+            }
 
             // v8.36 / ADR 0030 — `markdown_only` retention drops the original
             // after the artifact commit: the stored artifact IS the converted

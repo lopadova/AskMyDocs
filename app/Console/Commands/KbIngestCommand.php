@@ -30,9 +30,10 @@ class KbIngestCommand extends Command
         }
 
         $markdown = Storage::disk($disk)->get($fullPath);
-        if (! is_string($markdown)) {
+        if (! is_string($markdown) || $markdown === '') {
             // `exists()` said yes, `get()` said nothing (an adapter that
-            // refuses the read without `throw`): one line, not a TypeError.
+            // refuses the read without `throw`, a zero-byte object): one
+            // line, not a TypeError and never an empty version (R14).
             $this->error("Disk [{$disk}] returned no bytes for {$fullPath}; nothing was ingested.");
 
             return self::FAILURE;

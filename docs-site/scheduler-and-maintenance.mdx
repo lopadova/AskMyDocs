@@ -94,8 +94,13 @@ when that env is false the slot never runs regardless of its `SCHEDULE_*` value.
   stale `.tmp` files (older than `KB_CONVERSION_ARTIFACTS_TMP_MAX_AGE` and no
   longer leased by a live writer — `KB_CONVERSION_ARTIFACTS_TMP_LEASE`; an
   aged temp still leased is reported `artifact_temps_in_flight` and kept) and
-  artifacts no row references on that disk. Every refused removal is counted
-  (`*_failed`) and makes the command exit non-zero.
+  artifacts no row references on that disk; every removal re-checks the
+  references under the artifact path's lock (an identical ingest that
+  recreated the path meanwhile keeps it: `artifacts_kept` on the per-tenant
+  line, `artifact_orphans_kept` on the sweep line — the orphan sweep reports
+  the kept candidates in `--dry-run` too, the per-tenant prune reports
+  nothing in a dry run). Every refused removal is counted (`*_failed`) and
+  makes the command exit non-zero.
 - **`kb:prune-staging-batches`** — purge stale drag-and-drop upload staging
   batches and their staged files on the `kb-staging` disk once past
   `KB_STAGING_RETENTION_HOURS` (default 24; `--hours=N` overrides). Keeps the

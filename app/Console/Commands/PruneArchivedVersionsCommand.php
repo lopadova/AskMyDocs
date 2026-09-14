@@ -48,10 +48,10 @@ final class PruneArchivedVersionsCommand extends Command
         try {
             foreach ($tenantIds as $tenantId) {
                 $tenants->set($tenantId);
-                $result = $this->pruneTenant($tenantId, $keep, $dryRun, $artifacts);
+                $result = $this->pruneTenant($tenantId, $keep, $dryRun);
                 $failed += $result['artifacts_failed'] + $result['ocr_failed'];
                 $this->info(sprintf(
-                    '[%s] archived_versions_pruned=%d artifacts_removed=%d artifacts_absent=%d artifacts_failed=%d ocr_runs_purged=%d ocr_runs_kept=%d ocr_failed=%d%s%s',
+                    '[%s] archived_versions_pruned=%d artifacts_removed=%d artifacts_absent=%d artifacts_failed=%d ocr_runs_purged=%d ocr_runs_kept=%d ocr_failed=%d%s%s%s',
                     $tenantId,
                     $result['pruned'],
                     $result['artifacts_removed'],
@@ -61,6 +61,9 @@ final class PruneArchivedVersionsCommand extends Command
                     $result['ocr_kept'],
                     $result['ocr_failed'],
                     $result['restored_meanwhile'] > 0 ? " restored_meanwhile={$result['restored_meanwhile']}" : '',
+                    // additive, printed only when the reference gate kept an
+                    // artifact a newer identical version points at
+                    $result['artifacts_kept'] > 0 ? " artifacts_kept={$result['artifacts_kept']}" : '',
                     $dryRun ? ' (dry-run)' : '',
                 ));
             }
@@ -129,11 +132,11 @@ final class PruneArchivedVersionsCommand extends Command
     {
         $skipped = 0;
         $namespaces = $this->artifactNamespaces($skipped);
-        $totals = ['temps' => 0, 'temps_failed' => 0, 'temps_in_flight' => 0, 'orphans' => 0, 'orphans_failed' => 0];
+        $totals = ['temps' => 0, 'temps_failed' => 0, 'temps_in_flight' => 0, 'orphans' => 0, 'orphans_failed' => 0, 'orphans_kept' => 0];
         foreach ($namespaces as [$disk, $prefix]) {
             $outcome = $this->sweepArtifactNamespace($artifacts, $disk, $prefix, $dryRun);
             if (count($namespaces) > 1) {
-                $this->line(sprintf('  [%s%s] temps_swept=%d temps_failed=%d orphans_removed=%d orphans_failed=%d%s', $disk, $prefix === '' ? '' : ':'.$prefix, $outcome['temps'], $outcome['temps_failed'], $outcome['orphans'], $outcome['orphans_failed'], $outcome['temps_in_flight'] > 0 ? " temps_in_flight={$outcome['temps_in_flight']}" : ''));
+                $this->line(sprintf('  [%s%s] temps_swept=%d temps_failed=%d orphans_removed=%d orphans_failed=%d%s%s', $disk, $prefix === '' ? '' : ':'.$prefix, $outcome['temps'], $outcome['temps_failed'], $outcome['orphans'], $outcome['orphans_failed'], $outcome['temps_in_flight'] > 0 ? " temps_in_flight={$outcome['temps_in_flight']}" : '', $outcome['orphans_kept'] > 0 ? " orphans_kept={$outcome['orphans_kept']}" : ''));
             }
             foreach ($outcome as $k => $v) {
                 $totals[$k] += $v;
@@ -146,12 +149,15 @@ final class PruneArchivedVersionsCommand extends Command
         // leak that must be observable in the summary the scheduler logs,
         // not only in a warning line).
         $this->info(sprintf(
-            'artifact_temps_swept=%d artifact_temps_failed=%d artifact_orphans_removed=%d artifact_orphans_failed=%d%s%s%s',
+            'artifact_temps_swept=%d artifact_temps_failed=%d artifact_orphans_removed=%d artifact_orphans_failed=%d%s%s%s%s',
             $totals['temps'],
             $totals['temps_failed'],
             $totals['orphans'],
             $totals['orphans_failed'],
             $totals['temps_in_flight'] > 0 ? " artifact_temps_in_flight={$totals['temps_in_flight']}" : '',
+            // …and `artifact_orphans_kept`: orphan candidates a row took
+            // since the snapshot (an identical ingest recreating the path)
+            $totals['orphans_kept'] > 0 ? " artifact_orphans_kept={$totals['orphans_kept']}" : '',
             $skipped > 0 ? " artifact_namespaces_skipped={$skipped}" : '',
             $dryRun ? ' (dry-run)' : '',
         ));
@@ -208,7 +214,7 @@ final class PruneArchivedVersionsCommand extends Command
     }
 
     /**
-     * @return array{temps: int, temps_failed: int, temps_in_flight: int, orphans: int, orphans_failed: int}
+     * @return array{temps: int, temps_failed: int, temps_in_flight: int, orphans: int, orphans_failed: int, orphans_kept: int}
      */
     private function sweepArtifactNamespace(ConversionArtifactStore $artifacts, string $disk, string $prefix, bool $dryRun): array
     {
@@ -221,10 +227,11 @@ final class PruneArchivedVersionsCommand extends Command
             // reported as a failed sweep, never an unhandled crash).
             $this->error("  ! could not sweep the artifact root on disk [{$disk}]: {$e->getMessage()}");
 
-            return ['temps' => 0, 'temps_failed' => 1, 'temps_in_flight' => 0, 'orphans' => 0, 'orphans_failed' => 1];
+            return ['temps' => 0, 'temps_failed' => 1, 'temps_in_flight' => 0, 'orphans' => 0, 'orphans_failed' => 1, 'orphans_kept' => 0];
         }
         $orphans = 0;
         $orphansFailed = 0;
+        $orphansKept = 0;
         $deleter = app(DocumentDeleter::class);
         try {
             // The listing is lazy (R3): batches of 500 paths are judged and
@@ -238,11 +245,11 @@ final class PruneArchivedVersionsCommand extends Command
                 if (count($batch) < 500) {
                     continue;
                 }
-                $this->sweepArtifactBatch($artifacts, $deleter, $disk, $batch, $dryRun, $orphans, $orphansFailed);
+                $this->sweepArtifactBatch($deleter, $disk, $batch, $dryRun, $orphans, $orphansFailed, $orphansKept);
                 $batch = [];
             }
             if ($batch !== []) {
-                $this->sweepArtifactBatch($artifacts, $deleter, $disk, $batch, $dryRun, $orphans, $orphansFailed);
+                $this->sweepArtifactBatch($deleter, $disk, $batch, $dryRun, $orphans, $orphansFailed, $orphansKept);
             }
         } catch (\Throwable $e) {
             // The walk is lazy, so the enumeration and the batches share this
@@ -252,13 +259,13 @@ final class PruneArchivedVersionsCommand extends Command
             $orphansFailed++;
         }
 
-        return ['temps' => $temps['removed'], 'temps_failed' => $temps['failed'], 'temps_in_flight' => $temps['in_flight'], 'orphans' => $orphans, 'orphans_failed' => $orphansFailed];
+        return ['temps' => $temps['removed'], 'temps_failed' => $temps['failed'], 'temps_in_flight' => $temps['in_flight'], 'orphans' => $orphans, 'orphans_failed' => $orphansFailed, 'orphans_kept' => $orphansKept];
     }
 
     /**
      * @param  list<string>  $batch
      */
-    private function sweepArtifactBatch(ConversionArtifactStore $artifacts, DocumentDeleter $deleter, string $disk, array $batch, bool $dryRun, int &$orphans, int &$orphansFailed): void
+    private function sweepArtifactBatch(DocumentDeleter $deleter, string $disk, array $batch, bool $dryRun, int &$orphans, int &$orphansFailed, int &$orphansKept): void
     {
         // Authoritative check first: a path is an orphan only when NO row —
         // live, archived or soft-deleted — points at it ON THIS DISK.
@@ -279,15 +286,38 @@ final class PruneArchivedVersionsCommand extends Command
             }
             $referenced[(string) $row->markdown_path] = true;
         }
+        // The preview answers the same question the removal will (the
+        // gate's reference check, without the lock and without the delete),
+        // asked ONCE per batch (R3): a candidate a row points at on this
+        // disk — a legacy row with a null recorded disk, an ingest that
+        // recreated the path since the snapshot — is reported kept, never
+        // as a removal the real run would not make.
+        $gateKeeps = $dryRun ? $deleter->artifactsReferenced($disk, array_keys(array_diff_key(array_flip($batch), $referenced))) : [];
         foreach ($batch as $path) {
             if (isset($referenced[$path])) {
                 continue;
             }
-            if ($dryRun) {
-                $orphans++;
+            if ($dryRun && isset($gateKeeps[$path])) {
+                $orphansKept++;
+
                 continue;
             }
-            $removal = $artifacts->remove($disk, $path);
+            if ($dryRun) {
+                $orphans++;
+
+                continue;
+            }
+            // The snapshot above chose the candidates; the removal itself
+            // re-checks the references under the path's lock (the lock a
+            // publish holds): a row that took the path since the snapshot —
+            // an identical ingest recreating this content-addressed file —
+            // keeps it, and it is simply not an orphan any more.
+            $removal = $deleter->removeArtifactIfUnreferenced($disk, $path);
+            if ($removal === ConversionArtifactStore::KEPT) {
+                $orphansKept++;
+
+                continue;
+            }
             if ($removal === ConversionArtifactStore::FAILED) {
                 $orphansFailed++;
                 $this->error("  ! could not remove orphan artifact [{$disk}] {$path}");
@@ -298,11 +328,11 @@ final class PruneArchivedVersionsCommand extends Command
     }
 
     /**
-     * @return array{pruned: int, restored_meanwhile: int, artifacts_removed: int, artifacts_absent: int, artifacts_failed: int, ocr_purged: int, ocr_kept: int, ocr_failed: int}
+     * @return array{pruned: int, restored_meanwhile: int, artifacts_removed: int, artifacts_absent: int, artifacts_kept: int, artifacts_failed: int, ocr_purged: int, ocr_kept: int, ocr_failed: int}
      */
-    private function pruneTenant(string $tenantId, int $keep, bool $dryRun, ConversionArtifactStore $artifacts): array
+    private function pruneTenant(string $tenantId, int $keep, bool $dryRun): array
     {
-        $result = ['pruned' => 0, 'restored_meanwhile' => 0, 'artifacts_removed' => 0, 'artifacts_absent' => 0, 'artifacts_failed' => 0, 'ocr_purged' => 0, 'ocr_kept' => 0, 'ocr_failed' => 0];
+        $result = ['pruned' => 0, 'restored_meanwhile' => 0, 'artifacts_removed' => 0, 'artifacts_absent' => 0, 'artifacts_kept' => 0, 'artifacts_failed' => 0, 'ocr_purged' => 0, 'ocr_kept' => 0, 'ocr_failed' => 0];
         $deleter = app(DocumentDeleter::class);
         // Families with MORE than `keep` archived versions.
         $families = KnowledgeDocument::query()
@@ -402,10 +432,25 @@ final class PruneArchivedVersionsCommand extends Command
                         ? (string) $metadata['prefix']
                         : (string) config('kb.sources.path_prefix', '');
                     if (is_string($row->markdown_path) && $row->markdown_path !== '') {
-                        $removal = $artifacts->remove($disk, $row->markdown_path);
-                        $result['artifacts_'.$removal]++;
-                        if ($removal === ConversionArtifactStore::FAILED) {
-                            $this->error("  ! could not remove the artifact of pruned version #{$row->id} [{$disk}] {$row->markdown_path}");
+                        // Through the deleter's reference gate (ADR 0030 §8):
+                        // under the path's lock the references are re-checked,
+                        // so an identical ingest that recreated the same
+                        // content-addressed path meanwhile keeps its artifact
+                        // (`artifacts_kept`), never deleted under its row.
+                        $removal = $deleter->removeArtifactIfUnreferenced($disk, $row->markdown_path);
+                        match ($removal) {
+                            ConversionArtifactStore::REMOVED => $result['artifacts_removed']++,
+                            ConversionArtifactStore::ABSENT => $result['artifacts_absent']++,
+                            ConversionArtifactStore::KEPT => $result['artifacts_kept']++,
+                            // An outcome this command does not know is a
+                            // removal it cannot vouch for: counted and
+                            // reported as failed (exit non-zero), never an
+                            // UnhandledMatchError that aborts the prune
+                            // mid-corpus and loses every count so far.
+                            default => $result['artifacts_failed']++,
+                        };
+                        if (! in_array($removal, [ConversionArtifactStore::REMOVED, ConversionArtifactStore::ABSENT, ConversionArtifactStore::KEPT], true)) {
+                            $this->error("  ! could not remove the artifact of pruned version #{$row->id} [{$disk}] {$row->markdown_path} ({$removal})");
                         }
                     }
                     // …and so does the row's recorded OCR run — but only when

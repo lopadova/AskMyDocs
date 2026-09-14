@@ -271,6 +271,7 @@ Follow-ups recorded during W1 (not in scope of a merged PR, to schedule):
 
 - **Storage-namespace backfill for pre-namespace rows.** Rows ingested before `metadata.disk` / `metadata.prefix` were persisted protect their `source_path` on *every* disk (deletion fails closed — `DocumentDeleter::documentReferencesStorageKey()`), so on a per-project disk they can keep a same-path orphan or its `.ocr/` tree alive until re-ingested. A backfill that stamps the namespace under operator confirmation (or a re-ingest) shrinks that set; candidate home: `kb:artifacts-backfill` (W2) or a dedicated `kb:namespace-backfill`.
 - **Retroactive Copilot review of #478** once the Copilot budget returns (R36): request it on the merged head and address any finding in a follow-up PR on `feature/v8.36`.
+- **Copilot-mirror sync of the cross-tenant exceptions (SYNC-AI-001, recorded during W2).** `.github/copilot-instructions.md` §5 never carried the CLAUDE.md §6 bullets on the cross-tenant artifact/OCR sweeps (now the `DocumentDeleter::artifactReferenced()` gate for every artifact removal) and the IMAP mailbox lock, and its last bullet still claims the `kb_edges` composite FK makes cross-tenant edges impossible (CLAUDE.md §6 corrects this: the FK is project-scoped, isolation is the R30 `forTenant()` scope). A separate docs-only sync commit on `feature/v8.36`.
 
 ---
 

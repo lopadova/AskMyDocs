@@ -123,6 +123,54 @@ final class ConversionArtifactStore
         self::$warned = [];
     }
 
+    /**
+     * ADR 0030 §3/§8 — the lock every actor on an artifact PATH shares: a
+     * publish holds it around the post-commit move (after re-checking that
+     * its row still points there), and every delete or sweep of the path
+     * holds it around its reference re-check + removal
+     * (`DocumentDeleter::removeArtifactIfUnreferenced()`). The path is the
+     * content hash, so a concurrent identical ingest recreates the SAME path
+     * a hard delete or prune is about to remove; with the lock, the remover
+     * either sees the recreated row (kept) or removes before the publish
+     * moves the new bytes in — never a live row's artifact deleted under it.
+     * Shares the wait / TTL knobs of the source-key lock
+     * (`source_lock_wait_seconds` / `source_lock_seconds`). A cache store
+     * that cannot lock runs the callback unserialized (reported once with
+     * the lease warning): the reference re-check still runs.
+     */
+    public function underPathLock(string $disk, string $path, callable $fn): mixed
+    {
+        if (! self::canLease()) {
+            return $fn();
+        }
+        $lock = Cache::lock('kb:artifact:'.$disk.':'.sha1($path), self::pathLockSeconds());
+        $lock->block(self::pathLockWaitSeconds());
+        try {
+            return $fn();
+        } finally {
+            try {
+                $lock->release();
+            } catch (\Throwable $e) {
+                // A release the store refused (a blip) must never turn a
+                // publish or removal that DID happen into a failure; the
+                // lock lapses with its TTL.
+                Log::debug('ConversionArtifactStore: artifact path lock not released', ['disk' => $disk, 'path' => $path, 'error' => $e->getMessage()]);
+            }
+        }
+    }
+
+    private static function pathLockWaitSeconds(): int
+    {
+        return max(0, (int) config('kb.conversion_artifacts.source_lock_wait_seconds', 10));
+    }
+
+    private static function pathLockSeconds(): int
+    {
+        $configured = config('kb.conversion_artifacts.source_lock_seconds', 60);
+
+        return is_numeric($configured) && (int) $configured >= 1 ? (int) $configured : 60;
+    }
+
     /** The cache lease key of a temp file (one per attempt: the temp name carries a UUID). */
     public static function tempLeaseKey(string $disk, string $tmpPath): string
     {
@@ -328,6 +376,11 @@ final class ConversionArtifactStore
     public function publish(string $disk, string $tmpPath, string $finalPath): void
     {
         try {
+            // Both paths are checked before any storage operation (SEC-PATH-001):
+            // the temp is read, deleted and moved FROM, and a caller-supplied
+            // `.tmp` outside the artifact root would otherwise be probed and
+            // moved like one of ours.
+            $this->assertContainedOnDisk($disk, $tmpPath);
             $this->publishLeased($disk, $tmpPath, $finalPath);
         } finally {
             // Moved, discarded or refused: the attempt is over either way,
@@ -415,6 +468,10 @@ final class ConversionArtifactStore
             return;
         }
         try {
+            // Containment before the probe and the delete (SEC-PATH-001), as
+            // for every other path this store touches: a `.tmp` outside the
+            // artifact root is refused, never probed on the configured disk.
+            $this->assertContainedOnDisk($disk, $tmpPath);
             $storage = Storage::disk($disk);
             if ($storage->exists($tmpPath) && ! $storage->delete($tmpPath)) {
                 Log::warning('ConversionArtifactStore: could not remove artifact temp file', ['disk' => $disk, 'path' => $tmpPath]);
@@ -584,6 +641,9 @@ final class ConversionArtifactStore
 
     public const FAILED = 'failed';
 
+    /** A removal refused by the reference gate: a row (a newer identical version) still points at the path. */
+    public const KEPT = 'kept';
+
     /**
      * Remove a published artifact. False when nothing was there or the disk
      * refused (logged) — never an exception. A convenience wrapper with no
@@ -627,6 +687,23 @@ final class ConversionArtifactStore
     }
 
     /**
+     * The artifact ROOT is checked before it is probed or listed
+     * (SEC-PATH-001): a `.artifacts` that is itself a symlink to a directory
+     * outside the disk would otherwise be enumerated — recursively, outside
+     * the disk — before any individual entry could be refused. A sentinel
+     * path under the root resolves through the root's real path, so the
+     * same containment check refuses the link; a root that does not exist
+     * yet is simply absent.
+     *
+     * @throws RuntimeException when the root resolves outside the disk
+     */
+    private function assertRootContained(string $disk, string $root): void
+    {
+        // A sentinel that can never be an artifact (no `.md`, never listed).
+        $this->assertContainedOnDisk($disk, $root.'/.root-probe');
+    }
+
+    /**
      * Sweep temp files under the artifact root that are older than
      * `$maxAgeSeconds` AND that no writer holds a lease on — leftovers of a
      * writer that died between temp and move. The age is checked first (a
@@ -646,6 +723,7 @@ final class ConversionArtifactStore
     {
         $storage = Storage::disk($disk);
         $root = $this->rootFor($prefix);
+        $this->assertRootContained($disk, $root);
         if (! $storage->directoryExists($root)) {
             return ['removed' => 0, 'failed' => 0, 'in_flight' => 0];
         }
@@ -713,6 +791,7 @@ final class ConversionArtifactStore
     {
         $storage = Storage::disk($disk);
         $root = $this->rootFor($prefix);
+        $this->assertRootContained($disk, $root);
         if (! $storage->directoryExists($root)) {
             return;
         }

@@ -909,7 +909,9 @@ class DocumentIngestor
             if (is_string($current) && hash('sha256', $current) === $expected) {
                 $this->recordContentHashIfMissing($existing, $expected);
             } else {
-                $this->writeAndPublishOrDiscard($store, $disk, $path, $markdown);
+                if (! $this->writeAndPublishOrDiscard($disk, $path, $markdown, (int) $existing->id)) {
+                    return; // the row is gone meanwhile: nothing to repair
+                }
                 $this->recordContentHashIfMissing($existing, $expected);
                 Log::info('DocumentIngestor: artifact repaired from an identical re-ingest', ['document_id' => $existing->id, 'disk' => $disk, 'markdown_path' => $path, 'was' => $current === null ? 'missing' : 'corrupt']);
             }
@@ -1011,7 +1013,9 @@ class DocumentIngestor
 
                 return false;
             }
-            $this->writeAndPublishOrDiscard($store, $disk, $final, $markdown);
+            if (! $this->writeAndPublishOrDiscard($disk, $final, $markdown, (int) $existing->id)) {
+                return false; // the row is gone meanwhile: nothing to stand in for
+            }
             $existing->markdown_path = $final;
             $existing->content_hash = $hash;
             Log::info('DocumentIngestor: artifact published for a version that predated the artifacts, from an identical re-ingest', ['document_id' => $existing->id, 'disk' => $disk, 'markdown_path' => $final]);
@@ -1094,21 +1098,59 @@ class DocumentIngestor
     }
 
     /**
-     * Write the temp and move it into place; when the publish throws, THIS
-     * attempt's temp goes with it (and its lease), never left for the age
-     * sweep — the same discipline as a fresh ingest's failed publish.
+     * ADR 0030 §3/§8 — move a committed row's temp into place under the
+     * artifact PATH's lock, the lock every delete and sweep of the path
+     * holds around its reference re-check (`DocumentDeleter::removeArtifactIfUnreferenced()`):
+     * a hard delete or prune can commit its row removal between this row's
+     * commit and its publish, and a stale sweep could otherwise remove a
+     * recreated version's artifact under it. Under the lock the row is
+     * re-checked to still point at `$final` — a row deleted meanwhile has
+     * nothing to stand in for, so its bytes are never published as an
+     * orphan: the temp is discarded and false is returned. A publish that
+     * fails discards the temp (and its lease) and rethrows: nothing is left
+     * for the age sweep.
+     *
+     * @return bool true when the artifact is in place; false when the row no longer points at the path
      *
      * @throws \Throwable the publish failure, after the discard
      */
-    private function writeAndPublishOrDiscard(ConversionArtifactStore $store, string $disk, string $final, string $markdown): void
+    public function publishArtifactForRow(string $disk, string $tmp, string $final, int $documentId): bool
     {
-        $tmp = $store->writeTemp($disk, $final, $markdown);
+        $store = app(ConversionArtifactStore::class);
         try {
-            $store->publish($disk, $tmp, $final);
+            return (bool) $store->underPathLock($disk, $final, function () use ($store, $disk, $tmp, $final, $documentId): bool {
+                $stillPointsThere = KnowledgeDocument::withoutGlobalScopes()
+                    ->whereKey($documentId)
+                    ->where('markdown_path', $final)
+                    ->exists();
+                if (! $stillPointsThere) {
+                    Log::warning('DocumentIngestor: artifact not published — the row no longer points at the path (deleted or repointed meanwhile); temp discarded', ['document_id' => $documentId, 'disk' => $disk, 'markdown_path' => $final]);
+                    $store->discardTemp($disk, $tmp);
+
+                    return false;
+                }
+                $store->publish($disk, $tmp, $final);
+
+                return true;
+            });
         } catch (\Throwable $e) {
             $store->discardTemp($disk, $tmp);
             throw $e;
         }
+    }
+
+    /**
+     * Write the temp and publish it for the row (see publishArtifactForRow()).
+     *
+     * @return bool true when the artifact is in place; false when the row no longer points at the path
+     *
+     * @throws \Throwable the publish failure, after the discard
+     */
+    private function writeAndPublishOrDiscard(string $disk, string $final, string $markdown, int $documentId): bool
+    {
+        $tmp = app(ConversionArtifactStore::class)->writeTemp($disk, $final, $markdown);
+
+        return $this->publishArtifactForRow($disk, $tmp, $final, $documentId);
     }
 
     /**
@@ -1149,10 +1191,11 @@ class DocumentIngestor
             return;
         }
         try {
-            // Move the temp into place (R4 — a failed move throws).
-            app(ConversionArtifactStore::class)->publish($artifact['disk'], $artifact['tmp'], $artifact['final']);
+            if (! $this->publishArtifactForRow($artifact['disk'], $artifact['tmp'], $artifact['final'], (int) $document->id)) {
+                return; // the row is gone: nothing to stand in for, nothing published
+            }
         } catch (\Throwable $e) {
-            $this->discardArtifact($artifact);
+            // publishArtifactForRow() owns the temp: it discarded it before rethrowing.
             Log::error('DocumentIngestor: artifact publish failed after commit; the row keeps its pointer (state: missing) and the retry — an identical re-ingest — or kb:artifacts-backfill repairs it', [
                 'document_id' => (int) $document->id,
                 'disk' => $artifact['disk'],
