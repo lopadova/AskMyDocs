@@ -42,21 +42,67 @@ final class DocumentVersionService
     ) {}
 
     /**
-     * All versions (active + archived) for the doc's family, newest first.
+     * The versions (active + archived) of the doc's family, newest first —
+     * at most `$limit` of them (`kb.versioning.timeline_limit` when null),
+     * skipping the newest `$offset` (the page cursor: every surface exposes
+     * it, so a family larger than the bound is still reachable page by
+     * page). The timeline is BOUNDED (R3): every caller hydrates each row
+     * and reads + hashes its artifact, and a family grows without bound
+     * while the prune is delayed or `keep_archived` is high; the surfaces
+     * say when the family is larger than what they show (`truncated`).
+     * Rows without `indexed_at` sort LAST on every driver (PostgreSQL would
+     * put NULLs first under DESC and fill the window with them).
      *
      * @return Collection<int, KnowledgeDocument>
      */
-    public function versionsFor(KnowledgeDocument $document): Collection
+    public function versionsFor(KnowledgeDocument $document, ?int $limit = null, int $offset = 0): Collection
+    {
+        return $this->familyQuery($document)
+            ->orderByRaw('CASE WHEN indexed_at IS NULL THEN 1 ELSE 0 END')
+            ->orderByDesc('indexed_at')
+            ->orderByDesc('id')
+            ->offset(max(0, $offset))
+            ->limit(self::timelineLimit($limit))
+            ->get(['id', 'title', 'version_hash', 'status', 'is_canonical', 'canonical_type', 'indexed_at', 'created_at',
+                // v8.36 / ADR 0030 §4 — version provenance + the artifact pointer
+                'markdown_path', 'version_actor', 'version_reason', 'content_hash', 'metadata']);
+    }
+
+    /** How many versions the doc's family holds in total (the timeline shows at most `timelineLimit()` of them). */
+    public function familySizeFor(KnowledgeDocument $document): int
+    {
+        return $this->familyQuery($document)->count();
+    }
+
+    /**
+     * The bound on a timeline listing: the caller's positive limit, capped by
+     * `kb.versioning.timeline_limit` (a non-positive configured value is the
+     * default of 100, never "unbounded").
+     */
+    public static function timelineLimit(?int $requested = null): int
+    {
+        $configured = config('kb.versioning.timeline_limit', 100);
+        $max = is_numeric($configured) && (int) $configured >= 1 ? (int) $configured : 100;
+        if ($max !== (int) $configured || ! is_numeric($configured)) {
+            Log::warning('DocumentVersionService: kb.versioning.timeline_limit is not a positive number of versions; using the default', [
+                'configured' => is_scalar($configured) ? $configured : gettype($configured),
+                'default' => 100,
+            ]);
+        }
+        if ($requested === null || $requested < 1) {
+            return $max;
+        }
+
+        return min($requested, $max);
+    }
+
+    /** @return \Illuminate\Database\Eloquent\Builder<KnowledgeDocument> */
+    private function familyQuery(KnowledgeDocument $document): \Illuminate\Database\Eloquent\Builder
     {
         return KnowledgeDocument::query()
             ->forTenant($this->tenant->current())
             ->where('project_key', $document->project_key)
-            ->where('source_path', $document->source_path)
-            ->orderByDesc('indexed_at')
-            ->orderByDesc('id')
-            ->get(['id', 'title', 'version_hash', 'status', 'is_canonical', 'canonical_type', 'indexed_at', 'created_at',
-                // v8.36 / ADR 0030 §4 — version provenance + the artifact pointer
-                'markdown_path', 'version_actor', 'version_reason', 'content_hash', 'metadata']);
+            ->where('source_path', $document->source_path);
     }
 
     public const ARTIFACT_NONE = 'none';

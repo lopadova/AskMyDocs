@@ -72,6 +72,9 @@ describe('TimeMachineView', () => {
 
         await waitFor(() => expect(screen.getByTestId('kb-time-machine-diff-summary')).toBeVisible());
         expect(screen.getByTestId('kb-time-machine-diff-summary')).toHaveTextContent('+1 / −1');
+        // R11 — the diff region carries the canonical async state itself.
+        expect(screen.getByTestId('kb-time-machine-diff')).toHaveAttribute('data-state', 'ready');
+        expect(screen.getByTestId('kb-time-machine-diff')).toHaveAttribute('aria-busy', 'false');
         expect(screen.getByTestId('kb-time-machine-diff-body')).toHaveTextContent('new');
     });
 
@@ -209,6 +212,83 @@ describe('TimeMachineView', () => {
         await waitFor(() => {
             expect(mockPost).toHaveBeenCalledWith('/api/admin/kb/documents/11/restore-version');
         });
+        // R11 / R15 — the mutation is announced and exposed on the container, not only as disabled buttons.
+        const status = screen.getByTestId('kb-time-machine-restore-status');
+        expect(status).toHaveAttribute('role', 'status');
+        expect(status).toHaveAttribute('aria-live', 'polite');
+        await waitFor(() => expect(status).toHaveAttribute('data-restore-state', 'restored'));
+        expect(status).toHaveAttribute('data-state', 'ready'); // R11 vocabulary; the domain nuance is data-restore-state
+        expect(status).toHaveTextContent('Version 11 restored and live.');
+        expect(screen.getByTestId('kb-time-machine-timeline')).toHaveAttribute('data-restore-state', 'restored');
+        expect(screen.getByTestId('kb-time-machine-timeline')).toHaveAttribute('aria-busy', 'false');
+    });
+
+    it('announces the restore in progress and marks the timeline busy', async () => {
+        mockGet.mockResolvedValue(TIMELINE);
+        let resolvePost: (value: unknown) => void = () => undefined;
+        mockPost.mockReturnValue(new Promise((resolve) => { resolvePost = resolve; }));
+        render(withQueryClient(<TimeMachineView docId={22} />));
+        await waitFor(() => expect(screen.getByTestId('kb-time-machine-version-11')).toBeVisible());
+
+        await userEvent.click(screen.getByTestId('kb-time-machine-version-11-restore'));
+        await waitFor(() => expect(screen.getByTestId('kb-time-machine-restore-status')).toHaveAttribute('data-restore-state', 'restoring'));
+        expect(screen.getByTestId('kb-time-machine-restore-status')).toHaveAttribute('data-state', 'loading');
+        expect(screen.getByTestId('kb-time-machine-restore-status')).toHaveTextContent('Restoring version…');
+        expect(screen.getByTestId('kb-time-machine-timeline')).toHaveAttribute('aria-busy', 'true');
+        expect(screen.getByTestId('kb-time-machine-version-11-restore')).toBeDisabled();
+
+        resolvePost({ data: { data: { id: 11, status: 'active' } } });
+        await waitFor(() => expect(screen.getByTestId('kb-time-machine-restore-status')).toHaveAttribute('data-restore-state', 'restored'));
+    });
+
+    it('clears the previous restore failure when a retry starts', async () => {
+        mockGet.mockResolvedValue(TIMELINE);
+        mockPost.mockRejectedValueOnce(new Error('already live')).mockResolvedValueOnce({ data: { data: { id: 11, status: 'active' } } });
+        render(withQueryClient(<TimeMachineView docId={22} />));
+        await waitFor(() => expect(screen.getByTestId('kb-time-machine-version-11')).toBeVisible());
+
+        await userEvent.click(screen.getByTestId('kb-time-machine-version-11-restore'));
+        await screen.findByTestId('kb-time-machine-restore-error');
+        await userEvent.click(screen.getByTestId('kb-time-machine-version-11-restore'));
+        await waitFor(() => expect(screen.getByTestId('kb-time-machine-restore-status')).toHaveAttribute('data-restore-state', 'restored'));
+        expect(screen.queryByTestId('kb-time-machine-restore-error')).not.toBeInTheDocument();
+    });
+
+    it('says when the family holds more versions than the bounded page and loads the older ones on demand', async () => {
+        const olderRow = { id: 5, title: 'Decision v0', version_hash: 'dddddddd00', status: 'archived', is_canonical: false, canonical_type: null, is_live: false, indexed_at: '2026-05-01T00:00:00Z', created_at: null, version_actor: null, version_reason: null, content_hash: null, has_artifact: false };
+        mockGet.mockImplementation((url: string) => {
+            if (url.includes('offset=2')) {
+                return Promise.resolve({ data: { data: [olderRow], meta: { ...TIMELINE.data.meta, total: 3, limit: 2, offset: 2, truncated: false } } });
+            }
+            return Promise.resolve({ data: { data: TIMELINE.data.data, meta: { ...TIMELINE.data.meta, total: 3, limit: 2, offset: 0, truncated: true } } });
+        });
+        render(withQueryClient(<TimeMachineView docId={22} />));
+        const note = await screen.findByTestId('kb-time-machine-truncated');
+        expect(note).toHaveTextContent('Showing the newest 2 of 3 versions.');
+        expect(screen.getByTestId('kb-time-machine-source')).toHaveTextContent('3 versions');
+        const older = screen.getByTestId('kb-time-machine-load-older');
+        expect(older).toHaveTextContent('Load older versions (1 more)');
+
+        await userEvent.click(older);
+        await waitFor(() => expect(screen.getByTestId('kb-time-machine-version-5')).toBeVisible());
+        expect(mockGet).toHaveBeenCalledWith('/api/admin/kb/documents/22/versions?offset=2');
+        // the whole family is reachable now: no note, no button
+        expect(screen.queryByTestId('kb-time-machine-truncated')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('kb-time-machine-load-older')).not.toBeInTheDocument();
+    });
+
+    it('surfaces a failure to load older versions instead of swallowing it', async () => {
+        mockGet.mockImplementation((url: string) => {
+            if (url.includes('offset=2')) {
+                return Promise.reject(new Error('boom 500'));
+            }
+            return Promise.resolve({ data: { data: TIMELINE.data.data, meta: { ...TIMELINE.data.meta, total: 3, limit: 2, offset: 0, truncated: true } } });
+        });
+        render(withQueryClient(<TimeMachineView docId={22} />));
+        await userEvent.click(await screen.findByTestId('kb-time-machine-load-older'));
+        const err = await screen.findByTestId('kb-time-machine-load-older-error');
+        expect(err).toHaveTextContent('boom 500');
+        expect(screen.getByTestId('kb-time-machine-load-older')).toHaveAttribute('data-state', 'error');
     });
 
     it('surfaces a restore failure instead of swallowing it', async () => {
@@ -245,6 +325,7 @@ describe('TimeMachineView', () => {
 
         const diffErr = await screen.findByTestId('kb-time-machine-diff-error');
         expect(diffErr).toHaveAttribute('data-state', 'error');
+        expect(screen.getByTestId('kb-time-machine-diff')).toHaveAttribute('data-state', 'error');
         expect(diffErr).toHaveTextContent('diff 500');
         expect(screen.queryByTestId('kb-time-machine-diff-summary')).not.toBeInTheDocument();
     });

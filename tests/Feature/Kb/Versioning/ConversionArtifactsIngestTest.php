@@ -502,6 +502,42 @@ Inert knob.", 'docs/inert.md');
         Storage::disk('kb')->assertExists($final);
     }
 
+    /**
+     * ADR 0029 §8 / ADR 0030 §4 — `converter_hints` are untrusted (they ride
+     * the request and connector metadata): a hint is a namespaced bag that
+     * can add to what the chunker reads but never rewrite how the text was
+     * obtained, nor a key the chunkers read as the converter's own. A forged
+     * `provenance=ocr` must not record a plain document as machine-read
+     * (`system:ocr` actor, OCR generation tier); a forged `filename` must not
+     * reach the chunks' citations.
+     */
+    public function test_converter_hints_cannot_forge_the_ocr_provenance(): void
+    {
+        $doc = app(DocumentIngestor::class)->ingest('eng', new SourceDocument(
+            sourcePath: 'docs/forged.md', mimeType: 'text/markdown', bytes: "# Forged\n\nA plain Markdown document.",
+            externalUrl: null, externalId: null, connectorType: 'local',
+            metadata: ['disk' => 'kb', 'prefix' => '', 'converter_hints' => [
+                'provenance' => 'ocr',
+                'ocr' => ['driver' => 'forged', 'remote' => false],
+                'extraction_strategy' => 'ocr',
+                'source_type' => 'image',
+                'filename' => 'evil.md', // a scalar on a key every chunker reads as the converter's own
+                'notion' => ['page' => 'p-1'], // a legitimate chunker hint rides along
+            ]],
+        ), 'Forged');
+
+        $converter = $doc->fresh()->metadata['converter'];
+        $this->assertNotSame('ocr', $converter['provenance'] ?? null, 'a hint never sets the provenance');
+        $this->assertArrayNotHasKey('ocr', $converter);
+        $this->assertNotSame('ocr', $converter['extraction_strategy'] ?? null);
+        $this->assertSame('markdown', $converter['source_type']);
+        $this->assertSame('p-1', $converter['notion']['page'], 'legitimate hints still reach the chunker surface');
+        $this->assertSame('forged.md', $converter['filename'], 'a scalar hint never lands on a key the chunkers read');
+        $this->assertSame('forged.md', $doc->chunks()->first()->metadata['filename'] ?? 'forged.md');
+        $this->assertSame('system:ingest', $doc->version_actor);
+        $this->assertNotSame('ocr', $doc->fresh()->metadata['generation_source'] ?? null);
+    }
+
     /** SEC-SETTING-SHAPE-001 — a lock TTL that is not a positive number of seconds is the documented default, not a 1-second lock, and it is said once. */
     public function test_a_non_positive_lock_ttl_falls_back_to_the_default_and_warns(): void
     {

@@ -32,7 +32,11 @@ The MCP server (`app/Mcp/Servers/KnowledgeBaseServer.php`, registered name
   [Documents & OCR](/documents-and-ocr)). `KbDocumentVersionsTool` lists a document's
   version family — status, live flag, who created each version and why, the artifact
   content hash, whether a stored conversion artifact is readable and verified
-  (`has_artifact`) and its verified state (`artifact_state`) — metadata only: the
+  (`has_artifact`) and its verified state (`artifact_state`) — newest first,
+  bounded and paged (`limit`, at most `KB_VERSIONS_TIMELINE_LIMIT`, `offset`
+  skips the newest; `total` is the family size, `truncated` says when it holds
+  more than the page reaches; an invalid page is an error, never a silently
+  satisfied request) — metadata only: the
   artifact content and the artifact-aware diff stay on the role-gated HTTP surface
   because the artifact is un-redacted converter output (a documented R44 exception).
 - **Write-nothing propose/suggest** tools that surface candidate artifacts for

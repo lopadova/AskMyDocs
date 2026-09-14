@@ -38,7 +38,24 @@ export type VersionContentIntegrity = 'verified' | 'mismatch' | null;
 
 export interface VersionTimeline {
     data: DocVersion[];
-    meta: { project_key: string; source_path: string; total: number };
+    meta: {
+        project_key: string;
+        source_path: string;
+        /** the family size — the listing may hold fewer rows (see `truncated`) */
+        total: number;
+        /** v8.36 — additive (R27): the most versions the listing returns per call */
+        limit?: number;
+        /** v8.36 — additive (R27): newest versions skipped by this page */
+        offset?: number;
+        /** v8.36 — additive (R27): true when the family holds more versions than this page reaches */
+        truncated?: boolean;
+    };
+}
+
+/** v8.36 — page cursor of the bounded listing (`?limit=` 1..max, `?offset=` newest skipped). */
+export interface VersionTimelinePage {
+    limit?: number;
+    offset?: number;
 }
 
 export interface DiffRow {
@@ -59,8 +76,12 @@ export interface VersionDiff {
     to_integrity?: VersionContentIntegrity;
 }
 
-export async function getVersions(docId: number): Promise<VersionTimeline> {
-    const { data } = await api.get<VersionTimeline>(`/api/admin/kb/documents/${docId}/versions`);
+export async function getVersions(docId: number, page: VersionTimelinePage = {}): Promise<VersionTimeline> {
+    const params = new URLSearchParams();
+    if (page.limit !== undefined) params.set('limit', String(page.limit));
+    if (page.offset !== undefined) params.set('offset', String(page.offset));
+    const query = params.toString();
+    const { data } = await api.get<VersionTimeline>(`/api/admin/kb/documents/${docId}/versions${query ? `?${query}` : ''}`);
     return data;
 }
 

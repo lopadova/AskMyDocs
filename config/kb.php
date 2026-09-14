@@ -647,6 +647,9 @@ return [
 
     'versioning' => [
         'keep_archived' => (int) env('KB_KEEP_ARCHIVED_VERSIONS', 10),
+        // The most versions a timeline listing (HTTP, MCP, CLI) hydrates and
+        // verifies per call (R3); the surfaces report `truncated` beyond it.
+        'timeline_limit' => (int) env('KB_VERSIONS_TIMELINE_LIMIT', 100),
     ],
 
     /*

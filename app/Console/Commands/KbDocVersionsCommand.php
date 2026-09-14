@@ -22,6 +22,8 @@ final class KbDocVersionsCommand extends Command
     protected $signature = 'kb:doc-versions
                             {document : knowledge_documents id of any version in the family}
                             {--tenant=default : Tenant that owns the document}
+                            {--limit= : Versions to list (1..the configured maximum, default the maximum)}
+                            {--offset=0 : Newest versions to skip (the page cursor)}
                             {--diff= : Diff two versions of the family, as FROM:TO ids}';
 
     protected $description = 'List a document\'s version family (actor, reason, artifact) and optionally diff two versions';
@@ -46,8 +48,26 @@ final class KbDocVersionsCommand extends Command
                 return self::FAILURE;
             }
 
-            $family = $versions->versionsFor($document);
-            $this->info(sprintf('%s · %s · %d version(s)', $document->project_key, $document->source_path, $family->count()));
+            $limitOption = trim((string) ($this->option('limit') ?? ''));
+            if ($limitOption !== '' && (! ctype_digit($limitOption) || (int) $limitOption < 1)) {
+                $this->error('--limit must be a positive integer.');
+
+                return self::FAILURE;
+            }
+            $offsetOption = trim((string) ($this->option('offset') ?? '0'));
+            if (! ctype_digit($offsetOption)) {
+                $this->error('--offset must be a non-negative integer.');
+
+                return self::FAILURE;
+            }
+            $limit = DocumentVersionService::timelineLimit($limitOption === '' ? null : (int) $limitOption);
+            $offset = (int) $offsetOption;
+            $total = $versions->familySizeFor($document);
+            $family = $versions->versionsFor($document, $limit, $offset);
+            $this->info(sprintf('%s · %s · %d version(s)', $document->project_key, $document->source_path, $total));
+            if ($total > $offset + $family->count()) {
+                $this->warn(sprintf('Showing versions %d-%d of %d (--limit, max %d; --offset to page).', $offset + 1, $offset + $family->count(), $total, DocumentVersionService::timelineLimit()));
+            }
             $this->table(
                 ['id', 'status', 'actor', 'reason', 'artifact', 'content_hash', 'indexed_at'],
                 $family->map(static fn (KnowledgeDocument $v): array => [

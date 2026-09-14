@@ -13,6 +13,10 @@ export function TimeMachineView({ docId }: { docId: number }): ReactNode {
     const [fromId, setFromId] = useState<number | null>(null);
     const [toId, setToId] = useState<number | null>(null);
     const [restoreError, setRestoreError] = useState<string | null>(null);
+    const [restoredId, setRestoredId] = useState<number | null>(null);
+    // Older pages of a bounded family (R3): appended by "Load older versions".
+    const [older, setOlder] = useState<DocVersion[]>([]);
+    const [olderError, setOlderError] = useState<string | null>(null);
 
     const timeline = useQuery({
         queryKey: ['kb-time-machine', docId],
@@ -29,8 +33,15 @@ export function TimeMachineView({ docId }: { docId: number }): ReactNode {
 
     const restoreMutation = useMutation({
         mutationFn: (versionId: number) => restoreVersion(versionId),
-        onSuccess: () => {
+        onMutate: () => {
+            // A retry starts clean: the previous outcome (either way) is gone.
+            setRestoredId(null);
             setRestoreError(null);
+        },
+        onSuccess: (restored) => {
+            setRestoreError(null);
+            setRestoredId(restored.id);
+            setOlder([]);
             qc.invalidateQueries({ queryKey: ['kb-time-machine', docId] });
         },
         onError: (err: unknown) => {
@@ -38,7 +49,31 @@ export function TimeMachineView({ docId }: { docId: number }): ReactNode {
         },
     });
 
-    const versions = timeline.data?.data ?? [];
+    const loadOlder = useMutation({
+        mutationFn: () => getVersions(docId, { offset: (timeline.data?.data.length ?? 0) + older.length }),
+        onSuccess: (page) => {
+            setOlderError(null);
+            setOlder((current) => [...current, ...page.data]);
+        },
+        onError: (err: unknown) => {
+            setOlderError(err instanceof Error ? err.message : 'Could not load older versions.');
+        },
+    });
+
+    const versions = [...(timeline.data?.data ?? []), ...older];
+    const familyTotal = timeline.data?.meta.total ?? versions.length;
+    const hasOlder = familyTotal > versions.length;
+    const restoring = restoreMutation.isPending;
+    const pick = (setter: (id: number) => void) => (id: number) => {
+        setRestoredId(null); // the announcement is about the last action, not a permanent banner
+        setter(id);
+    };
+    // R11 — the restore mutation is an observable async state of its own:
+    // announced (role="status", aria-live) and exposed on the timeline
+    // container (aria-busy + data-state), not only as disabled buttons.
+    const restoreState: 'idle' | 'restoring' | 'restored' | 'error' = restoring ? 'restoring' : restoreError ? 'error' : restoredId !== null ? 'restored' : 'idle';
+    const diffEnabled = fromId !== null && toId !== null && fromId !== toId;
+    const diffState: 'idle' | 'loading' | 'ready' | 'error' = !diffEnabled ? 'idle' : diff.isLoading ? 'loading' : diff.isError ? 'error' : diff.data ? 'ready' : 'idle';
 
     return (
         <div data-testid="kb-time-machine-view" style={{ padding: 24 }}>
@@ -60,6 +95,21 @@ export function TimeMachineView({ docId }: { docId: number }): ReactNode {
                     {restoreError}
                 </p>
             )}
+            <p
+                data-testid="kb-time-machine-restore-status"
+                data-state={restoreState === 'restoring' ? 'loading' : restoreState === 'error' ? 'error' : restoreState === 'restored' ? 'ready' : 'idle'}
+                data-restore-state={restoreState}
+                role="status"
+                aria-live="polite"
+                style={{ fontSize: 12, color: 'var(--fg-3)', margin: restoreState === 'idle' || restoreState === 'error' ? 0 : '0 0 8px', minHeight: 0 }}
+            >
+                {restoreState === 'restoring' ? 'Restoring version…' : restoreState === 'restored' ? `Version ${restoredId} restored and live.` : ''}
+            </p>
+            {timeline.data && hasOlder && (
+                <p data-testid="kb-time-machine-truncated" role="note" style={{ fontSize: 11.5, color: 'var(--warn, #d29922)', margin: '0 0 8px' }}>
+                    Showing the newest {versions.length} of {familyTotal} versions.
+                </p>
+            )}
 
             {timeline.isLoading && (
                 <p data-testid="kb-time-machine-loading" data-state="loading" style={{ color: 'var(--fg-3)' }}>Loading…</p>
@@ -76,24 +126,42 @@ export function TimeMachineView({ docId }: { docId: number }): ReactNode {
             )}
 
             {versions.length > 0 && (
-                <div data-testid="kb-time-machine-timeline" data-state="ready" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div data-testid="kb-time-machine-timeline" data-state="ready" data-restore-state={restoreState} aria-busy={restoring} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     {versions.map((v) => (
                         <VersionRow
                             key={v.id}
                             v={v}
                             isFrom={fromId === v.id}
                             isTo={toId === v.id}
-                            onPickFrom={() => setFromId(v.id)}
-                            onPickTo={() => setToId(v.id)}
+                            onPickFrom={() => pick(setFromId)(v.id)}
+                            onPickTo={() => pick(setToId)(v.id)}
                             onRestore={() => restoreMutation.mutate(v.id)}
-                            restoring={restoreMutation.isPending}
+                            restoring={restoring}
                         />
                     ))}
+                    {hasOlder && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                            <button
+                                type="button"
+                                data-testid="kb-time-machine-load-older"
+                                data-state={loadOlder.isPending ? 'loading' : olderError ? 'error' : 'idle'}
+                                aria-busy={loadOlder.isPending}
+                                disabled={loadOlder.isPending}
+                                onClick={() => loadOlder.mutate()}
+                                style={pill(false)}
+                            >
+                                {loadOlder.isPending ? 'Loading older versions…' : `Load older versions (${familyTotal - versions.length} more)`}
+                            </button>
+                            {olderError && (
+                                <span data-testid="kb-time-machine-load-older-error" role="alert" style={{ color: 'var(--err)', fontSize: 12 }}>{olderError}</span>
+                            )}
+                        </div>
+                    )}
                 </div>
             )}
 
-            {fromId !== null && toId !== null && fromId !== toId && (
-                <section data-testid="kb-time-machine-diff" style={{ marginTop: 20 }}>
+            {diffEnabled && (
+                <section data-testid="kb-time-machine-diff" data-state={diffState} aria-busy={diff.isLoading} style={{ marginTop: 20 }}>
                     <h2 style={{ fontSize: 13, color: 'var(--fg-1)' }}>Diff</h2>
                     {diff.isLoading && <p data-testid="kb-time-machine-diff-loading" data-state="loading" style={{ color: 'var(--fg-3)' }}>Diffing…</p>}
                     {diff.isError && (

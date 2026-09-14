@@ -404,10 +404,19 @@ readable file with no `content_hash` to check against — a legacy pointer) stil
 serves content, with no integrity verdict, and is not claimed as stored; the
 identical re-ingest and the backfill record the hash once the bytes are known
 to be the version's, and the state becomes `verified`. The family a timeline
-verifies is bounded by the retention cap (`KB_KEEP_ARCHIVED_VERSIONS`, the
-prune), so the per-version read is bounded too. The restore ledger
+verifies is **bounded by the listing itself** (R3), not by the retention cap:
+the prune runs daily and `KB_KEEP_ARCHIVED_VERSIONS` can be set high, so a
+family can hold hundreds of versions and every row costs a read + hash.
+`DocumentVersionService::versionsFor()` lists at most
+`KB_VERSIONS_TIMELINE_LIMIT` (default 100) versions per call, newest first
+(rows without `indexed_at` last on every driver — PostgreSQL would otherwise
+put them first and fill the window), and every surface pages with an offset
+and reports the family `total`, the `limit`, the `offset` and `truncated`
+(additive, R27 — `total` was the listed count while the two were always
+equal; it is the family size now). An invalid page is refused (HTTP 422, an
+MCP error, a CLI failure), never silently satisfied. The restore ledger
 (`metadata.restores`, §6) is host-owned like `version_actor`: stripped at the
-untrusted boundaries, appended by the restore path only. It reads; it never restores. `kb:doc-versions {document} {--tenant=}` is
+untrusted boundaries, appended by the restore path only. It reads; it never restores. `kb:doc-versions {document} {--tenant=} {--limit=} {--offset=}` is
 the CLI over the same service — `--tenant` validated non-empty and the
 document resolved with `forTenant()`, never the process-global default.
 `restore` stays HTTP-only and human-only, and `kb:artifacts-backfill` (§3)
@@ -439,7 +448,7 @@ table below.
 
 | Capability | PHP / CLI | HTTP | MCP |
 |---|---|---|---|
-| List a document's versions | `kb:doc-versions {document} {--tenant=}` · `DocumentVersionService::versionsFor()` | `GET /api/admin/kb/documents/{id}/versions` (existing; now returns actor/reason/hash) | `KbDocumentVersionsTool` (read) |
+| List a document's versions | `kb:doc-versions {document} {--tenant=} {--limit=} {--offset=}` · `DocumentVersionService::versionsFor()` | `GET /api/admin/kb/documents/{id}/versions` (existing; now returns actor/reason/hash, bounded + paged with `?limit=&offset=`) | `KbDocumentVersionsTool` (read; `limit` / `offset`) |
 | Diff two versions (artifact-aware) | `kb:doc-versions {document} --diff=A:B {--tenant=}` · `DocumentVersionService::diff()` | `GET /api/admin/kb/documents/{id}/versions/diff?from&to` (existing; now reports the source of each side) | — (documented R44 exception, see below) |
 | Restore a version | `DocumentVersionService::restore()` | `POST /api/admin/kb/documents/{id}/restore-version` (existing; now records actor/reason) | — (write; human-only by design) |
 | Read a version's artifact | `DocumentVersionService::contentFor()` | `GET /api/admin/kb/documents/{id}/versions/{versionId}/content` | — (documented R44 exception, see below) |

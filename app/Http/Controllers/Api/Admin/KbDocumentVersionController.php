@@ -29,11 +29,23 @@ final class KbDocumentVersionController extends Controller
     /**
      * GET /api/admin/kb/documents/{id}/versions
      */
-    public function index(int $id): JsonResponse
+    public function index(Request $request, int $id): JsonResponse
     {
         $document = $this->findOr404($id);
+        // R3 — the listing is bounded and paged: `?limit=` (1..configured
+        // max, default the max) and `?offset=` (newest skipped); an invalid
+        // value is a 422, never a silently satisfied request (R14).
+        // `meta.total` is the family size and `meta.truncated` says when it
+        // holds more than the page (R27, additive).
+        $validated = $request->validate([
+            'limit' => ['sometimes', 'integer', 'min:1'],
+            'offset' => ['sometimes', 'integer', 'min:0'],
+        ]);
+        $limit = DocumentVersionService::timelineLimit(isset($validated['limit']) ? (int) $validated['limit'] : null);
+        $offset = (int) ($validated['offset'] ?? 0);
+        $total = $this->versions->familySizeFor($document);
 
-        $rows = $this->versions->versionsFor($document)->map(function (KnowledgeDocument $v): array {
+        $rows = $this->versions->versionsFor($document, $limit, $offset)->map(function (KnowledgeDocument $v): array {
             // ADR 0030 §5 — a stored artifact is one that can be READ and
             // VERIFIED (hashes to content_hash), not a pointer: the same check the content endpoint
             // serves with, so the UI never shows the "stored" badge over a
@@ -69,7 +81,10 @@ final class KbDocumentVersionController extends Controller
             'meta' => [
                 'project_key' => $document->project_key,
                 'source_path' => $document->source_path,
-                'total' => count($rows),
+                'total' => $total,
+                'limit' => $limit,
+                'offset' => $offset,
+                'truncated' => $total > $offset + count($rows),
             ],
         ]);
     }

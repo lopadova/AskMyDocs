@@ -85,6 +85,7 @@ test.describe('Admin Time Machine', () => {
         await first.getByRole('button', { name: /^Diff from/ }).click();
         await second.getByRole('button', { name: /^Diff to/ }).click();
         await expect(page.getByTestId('kb-time-machine-diff')).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByTestId('kb-time-machine-diff')).toHaveAttribute('data-state', 'ready', { timeout: 15_000 });
         await expect(page.getByTestId('kb-time-machine-diff-summary')).toBeVisible({ timeout: 15_000 });
         // v8.36 / ADR 0030 §5 — the note says whether the diff compares the
         // stored documents (faithful) or chunk reconstructions; it is never absent.

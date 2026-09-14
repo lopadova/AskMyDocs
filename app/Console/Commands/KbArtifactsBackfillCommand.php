@@ -212,12 +212,38 @@ final class KbArtifactsBackfillCommand extends Command
         // it was: no pointer, or the previous pointer (still `missing` /
         // `mismatch` for the next run — never turned into an orphan).
         $previous = ['markdown_path' => $row->markdown_path, 'content_hash' => $row->content_hash];
-        $row->update(['markdown_path' => $final, 'content_hash' => $hash]);
+        // Bound to the row's own tenant (R30) and checked (R4): a row deleted
+        // between the chunk read and this write takes no pointer, so nothing
+        // is published for it — bytes no row points at would be an orphan
+        // reported as a repair.
+        if ($row->updateUnscopedWithinOwnTenant(['markdown_path' => $final, 'content_hash' => $hash]) === 0) {
+            $this->line("  #{$row->id} {$sourcePath}: conversion_failed (the row changed underneath; nothing written)");
+
+            return 'conversion_failed';
+        }
+        $row->markdown_path = $final;
+        $row->content_hash = $hash;
         try {
             $tmp = $store->writeTemp($disk, $final, $converted->markdown);
             $store->publish($disk, $tmp, $final);
         } catch (\Throwable $e) {
-            $row->update($previous);
+            // A concurrent repair (an identical re-ingest) may have published
+            // the very bytes meanwhile: a verified artifact at the path keeps
+            // the pointer it now deserves instead of being orphaned by this
+            // attempt's revert (the same rule as the ingestor's pointerless
+            // publish).
+            if ($store->verifies($disk, $final, $hash)) {
+                $this->line("  #{$row->id} {$sourcePath}: written {$final} (this attempt failed to publish, a concurrent one had: {$e->getMessage()})");
+
+                return 'written';
+            }
+            if ($row->updateUnscopedWithinOwnTenant($previous) === 0) {
+                $this->line("  #{$row->id} {$sourcePath}: conversion_failed (could not publish: {$e->getMessage()}; the row changed underneath, its pointer was not restored)");
+
+                return 'conversion_failed';
+            }
+            $row->markdown_path = $previous['markdown_path'];
+            $row->content_hash = $previous['content_hash'];
             $this->line("  #{$row->id} {$sourcePath}: conversion_failed (could not publish: {$e->getMessage()})");
 
             return 'conversion_failed';

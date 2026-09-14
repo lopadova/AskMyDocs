@@ -35,6 +35,10 @@ class KbDocumentVersionsTool extends Tool
             'document_id' => $schema->integer()
                 ->description('The knowledge_documents id of any version in the family.')
                 ->required(),
+            'limit' => $schema->integer()
+                ->description('Versions to list (1..the configured maximum, default the maximum); `truncated` says when the family holds more than the page.'),
+            'offset' => $schema->integer()
+                ->description('Newest versions to skip (the page cursor, default 0).'),
         ];
     }
 
@@ -46,7 +50,18 @@ class KbDocumentVersionsTool extends Tool
             return Response::error("Document {$id} not found.");
         }
 
-        $rows = $versions->versionsFor($document)->map(function (KnowledgeDocument $v) use ($versions): array {
+        $requestedLimit = $request->get('limit');
+        if ($requestedLimit !== null && (! is_numeric($requestedLimit) || (int) $requestedLimit < 1)) {
+            return Response::error('limit must be a positive integer.');
+        }
+        $requestedOffset = $request->get('offset');
+        if ($requestedOffset !== null && (! is_numeric($requestedOffset) || (int) $requestedOffset < 0)) {
+            return Response::error('offset must be a non-negative integer.');
+        }
+        $limit = DocumentVersionService::timelineLimit($requestedLimit === null ? null : (int) $requestedLimit);
+        $offset = (int) ($requestedOffset ?? 0);
+        $total = $versions->familySizeFor($document);
+        $rows = $versions->versionsFor($document, $limit, $offset)->map(function (KnowledgeDocument $v) use ($versions): array {
             // ADR 0030 §5 — read + verified, never the pointer alone.
             $artifactState = $versions->artifactStateFor($v);
 
@@ -70,7 +85,10 @@ class KbDocumentVersionsTool extends Tool
         return Response::json([
             'project_key' => $document->project_key,
             'source_path' => $document->source_path,
-            'total' => count($rows),
+            'total' => $total,
+            'limit' => $limit,
+            'offset' => $offset,
+            'truncated' => $total > $offset + count($rows),
             'versions' => $rows,
         ]);
     }

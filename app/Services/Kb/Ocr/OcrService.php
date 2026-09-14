@@ -425,6 +425,16 @@ final class OcrService
      * @param  array<string, mixed>  $metadata
      * @return array<string, mixed>
      */
+    /**
+     * Extraction-metadata keys only a converter may set (ADR 0029 §8): they
+     * decide the version's actor (`system:ocr`), its generation tier and the
+     * chunker it goes through. Never accepted from `converter_hints` — the
+     * untrusted boundaries strip them there (stripTrustedOnlyKeys()) and the
+     * ingestor refuses them again when it projects the hints
+     * (DocumentIngestor::projectChunkerHints()).
+     */
+    public const TRUSTED_ONLY_EXTRACTION_KEYS = ['provenance', 'ocr', 'converter', 'source_type', 'extraction_strategy'];
+
     public static function stripTrustedOnlyKeys(array $metadata): array
     {
         // ADR 0030 §4 — the version actor is an audit identity: derived by the
@@ -456,6 +466,15 @@ final class OcrService
         // downstream, so it is dropped with the reserved keys.
         if (array_key_exists('ocr', $metadata) && ! is_array($metadata['ocr'])) {
             unset($metadata['ocr']);
+        }
+        // ADR 0029 §8 — `converter_hints` is the connectors' namespaced bag
+        // for the chunkers; a key in it that describes how the text was
+        // obtained is a forgery (`provenance=ocr` would record a plain
+        // document as machine-read) and never reaches the row.
+        if (is_array($metadata['converter_hints'] ?? null)) {
+            foreach (self::TRUSTED_ONLY_EXTRACTION_KEYS as $key) {
+                unset($metadata['converter_hints'][$key]);
+            }
         }
 
         return self::stripRunControlKeys($metadata);

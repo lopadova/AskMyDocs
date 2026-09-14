@@ -217,6 +217,77 @@ final class KbDocumentVersionControllerTest extends TestCase
         $this->assertSame((int) $target->id, $audit->after_json['restored_version_id']);
     }
 
+    /**
+     * R3 / R27 — the timeline is bounded and paged on every surface: `total`
+     * is the family size, `limit` / `offset` the page, `truncated` says when
+     * the family holds more than the page reaches; the order is newest first
+     * by `indexed_at` (strictly — the seeds have distinct timestamps) with
+     * NULL `indexed_at` last on every driver; an invalid page is refused,
+     * never silently satisfied.
+     */
+    public function test_the_timeline_is_bounded_and_paged_on_every_surface_and_says_so(): void
+    {
+        config(['kb.versioning.timeline_limit' => 2]);
+        $admin = $this->makeAdmin();
+        // makeVersion(): indexed_at = now - strlen(seed) minutes → a longer seed is OLDER.
+        $oldest = $this->makeVersion('v1aaaaaa', 'archived', 'one');
+        $middle = $this->makeVersion('v2bbbb', 'archived', 'two');
+        $live = $this->makeVersion('v3', 'active', 'three');
+        $never = $this->makeVersion('v0zzzzzzzz', 'archived', 'zero');
+        $never->update(['indexed_at' => null]); // a row without indexed_at sorts LAST, whatever the driver
+
+        $page1 = $this->actingAs($admin)->getJson("/api/admin/kb/documents/{$live->id}/versions")->assertOk();
+        $this->assertSame([$live->id, $middle->id], array_column($page1->json('data'), 'id'), 'newest first, strictly by indexed_at');
+        $this->assertSame(4, $page1->json('meta.total'));
+        $this->assertSame(2, $page1->json('meta.limit'));
+        $this->assertSame(0, $page1->json('meta.offset'));
+        $this->assertTrue($page1->json('meta.truncated'));
+
+        $page2 = $this->actingAs($admin)->getJson("/api/admin/kb/documents/{$live->id}/versions?offset=2")->assertOk();
+        $this->assertSame([$oldest->id, $never->id], array_column($page2->json('data'), 'id'), 'the second page continues the order; the NULL indexed_at row comes last');
+        $this->assertSame(2, $page2->json('meta.offset'));
+        $this->assertFalse($page2->json('meta.truncated'), 'the last page says the family is fully reached');
+
+        $one = $this->actingAs($admin)->getJson("/api/admin/kb/documents/{$live->id}/versions?limit=1")->assertOk();
+        $this->assertCount(1, $one->json('data'));
+        $this->assertSame(1, $one->json('meta.limit'));
+        $this->assertSame(2, $this->actingAs($admin)->getJson("/api/admin/kb/documents/{$live->id}/versions?limit=999")->json('meta.limit'), 'a request never exceeds the configured maximum');
+        $this->actingAs($admin)->getJson("/api/admin/kb/documents/{$live->id}/versions?limit=0")->assertStatus(422);
+        $this->actingAs($admin)->getJson("/api/admin/kb/documents/{$live->id}/versions?limit=abc")->assertStatus(422);
+        $this->actingAs($admin)->getJson("/api/admin/kb/documents/{$live->id}/versions?offset=-1")->assertStatus(422);
+
+        $tool = new \App\Mcp\Tools\KbDocumentVersionsTool;
+        $service = app(\App\Services\Kb\Versioning\DocumentVersionService::class);
+        $payload = json_decode((string) $tool->handle(new \Laravel\Mcp\Request(['document_id' => $live->id, 'limit' => 1, 'offset' => 1]), $service, app(TenantContext::class))->content(), true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame([$middle->id], array_column($payload['versions'], 'id'));
+        $this->assertSame(4, $payload['total']);
+        $this->assertSame(1, $payload['limit']);
+        $this->assertSame(1, $payload['offset']);
+        $this->assertTrue($payload['truncated']);
+        $this->assertTrue($tool->handle(new \Laravel\Mcp\Request(['document_id' => $live->id, 'limit' => 0]), $service, app(TenantContext::class))->isError(), 'an invalid page is refused on the MCP surface too');
+
+        $this->artisan('kb:doc-versions', ['document' => $live->id, '--tenant' => app(TenantContext::class)->current(), '--limit' => 1, '--offset' => 1])
+            ->expectsOutputToContain('4 version(s)')
+            ->expectsOutputToContain('Showing versions 2-2 of 4 (--limit, max 2; --offset to page).')
+            ->assertExitCode(0);
+        $this->artisan('kb:doc-versions', ['document' => $live->id, '--tenant' => app(TenantContext::class)->current(), '--limit' => 'abc'])
+            ->expectsOutputToContain('--limit must be a positive integer.')
+            ->assertExitCode(1);
+    }
+
+    /** SEC-SETTING-SHAPE-001 — a non-positive `timeline_limit` is the default bound (100), never "unbounded", and it warns. */
+    public function test_a_non_positive_timeline_limit_is_the_default_bound_and_warns(): void
+    {
+        config(['kb.versioning.timeline_limit' => 0]);
+        \Illuminate\Support\Facades\Log::spy();
+
+        $this->assertSame(100, \App\Services\Kb\Versioning\DocumentVersionService::timelineLimit());
+        $this->assertSame(5, \App\Services\Kb\Versioning\DocumentVersionService::timelineLimit(5));
+        \Illuminate\Support\Facades\Log::shouldHaveReceived('warning')
+            ->with(\Mockery::on(static fn (string $message): bool => str_contains($message, 'timeline_limit')), \Mockery::on(static fn (array $context): bool => ($context['default'] ?? null) === 100))
+            ->atLeast()->once();
+    }
+
     public function test_restoring_the_live_version_is_422(): void
     {
         $admin = $this->makeAdmin();

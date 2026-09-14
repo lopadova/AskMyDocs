@@ -159,6 +159,17 @@ class DocumentIngestor
      *
      * Any non-array hint payload is silently dropped — the chunker's
      * DerivedMetadataReader guards against missing/malformed shapes.
+     *
+     * Hints are UNTRUSTED (they ride the request / connector metadata), so
+     * the surface is closed on three sides: a hint is a namespaced BAG (an
+     * array under the connector's key, or `_derived`) — a scalar hint would
+     * land on a key a chunker reads as the converter's own (`filename` goes
+     * into every chunk's citation) and is dropped; the keys that describe how
+     * the text was obtained (OcrService::TRUSTED_ONLY_EXTRACTION_KEYS —
+     * `converter_hints.provenance=ocr` would record a plain document as
+     * machine-read, `system:ocr` actor and OCR generation tier) are refused
+     * even as bags; and the converter's own output wins over every hint, the
+     * host-resolved `source_type` over both (ADR 0029 §8).
      */
     private function projectChunkerHints(
         \App\Services\Kb\Pipeline\ConvertedDocument $converted,
@@ -170,9 +181,20 @@ class DocumentIngestor
         $hints = $source->metadata['converter_hints'] ?? null;
         if (is_array($hints)) {
             foreach ($hints as $key => $value) {
-                if (is_string($key) && $key !== '') {
-                    $extra[$key] = $value;
+                if (! is_string($key) || $key === '') {
+                    continue;
                 }
+                if (in_array($key, \App\Services\Kb\Ocr\OcrService::TRUSTED_ONLY_EXTRACTION_KEYS, true)) {
+                    Log::warning('DocumentIngestor: converter hint dropped — the key describes how the text was obtained and is set by the converter only', ['key' => $key, 'source_path' => $source->sourcePath]);
+
+                    continue;
+                }
+                if (! is_array($value)) {
+                    Log::warning('DocumentIngestor: converter hint dropped — a hint is a namespaced bag, never a scalar the chunkers would read as the converter\'s own', ['key' => $key, 'source_path' => $source->sourcePath]);
+
+                    continue;
+                }
+                $extra[$key] = $value;
             }
         }
 
@@ -181,21 +203,16 @@ class DocumentIngestor
             $extra['_derived'] = $derived;
         }
 
-        if ($extra === ['source_type' => $sourceType] && ! isset($converted->extractionMeta['source_type'])) {
-            // No connector hints to merge — only tag the source_type so
-            // chunkers that dispatch on it have the token available.
-            return new \App\Services\Kb\Pipeline\ConvertedDocument(
-                markdown: $converted->markdown,
-                mediaItems: $converted->mediaItems,
-                extractionMeta: array_merge($converted->extractionMeta, $extra),
-                sourceMimeType: $converted->sourceMimeType,
-            );
-        }
-
+        // The converter's own output wins over every hint (a hint can only
+        // ADD to the surface the chunker reads, never rewrite what the
+        // converter reported), and the host-resolved `source_type` wins over
+        // both: it is what the chunker was resolved on, so the two never
+        // disagree — not even on a replay that carries the row's stored
+        // converter block.
         return new \App\Services\Kb\Pipeline\ConvertedDocument(
             markdown: $converted->markdown,
             mediaItems: $converted->mediaItems,
-            extractionMeta: array_merge($converted->extractionMeta, $extra),
+            extractionMeta: array_merge($extra, $converted->extractionMeta, ['source_type' => $sourceType]),
             sourceMimeType: $converted->sourceMimeType,
         );
     }
