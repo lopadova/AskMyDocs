@@ -170,10 +170,17 @@ class PruneOrphanFilesCommand extends Command
         // prefix, the source path — so a same-named row under another
         // namespace neither keeps a stale run alive nor is mistaken for the
         // one being swept (ADR 0030 §8).
+        // One bounded query per 500 candidates (R3), never one per run: a
+        // shared disk accumulates runs and the nightly sweep must not scale
+        // its query count with them.
         $deleter = app(DocumentDeleter::class);
+        // `$key` is already KbPath::normalize()d (detect loop above), so the
+        // stripped path is the normalized key the batch gate answers with.
+        $candidates = array_values(array_map(fn (array $pair): array => [$this->stripPrefix($pair[0], $prefix), $pair[1]], $runs));
+        $referenced = $deleter->documentsReferencingOcrRuns($disk, $prefix, $candidates);
         $stale = [];
         foreach ($runs as [$key, $run]) {
-            if ($deleter->documentReferencingOcrRun($disk, $prefix, $this->stripPrefix($key, $prefix), $run) !== null) {
+            if (isset($referenced[$this->stripPrefix($key, $prefix).'|'.$run])) {
                 continue;
             }
             $stale[] = [$key, $run];

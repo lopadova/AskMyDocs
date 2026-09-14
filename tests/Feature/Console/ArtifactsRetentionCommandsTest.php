@@ -282,6 +282,38 @@ final class ArtifactsRetentionCommandsTest extends TestCase
         Storage::disk('kb')->assertExists($legacyPath);
     }
 
+    /** ADR 0030 §8 — the sweep covers every artifact namespace the corpus records, not only the configured disk. */
+    public function test_prune_sweeps_every_recorded_artifact_disk(): void
+    {
+        Storage::fake('kb2');
+        $store = app(ConversionArtifactStore::class);
+        $tenant = app(TenantContext::class)->current();
+        // A row that recorded its artifact on the second disk keeps it alive there …
+        $kept = $store->pathFor($tenant, 'eng', 'docs/second.md', str_repeat('f', 64));
+        $store->publish('kb2', $store->writeTemp('kb2', $kept, 'kept on kb2'), $kept);
+        $row = $this->row(1, 'active', null, 'docs/second.md');
+        $row->update(['markdown_path' => $kept, 'content_hash' => hash('sha256', 'kept on kb2'), 'metadata' => ['disk' => 'kb2', 'prefix' => '']]);
+        // … while an orphan and a stale temp on that same disk are swept, like on the configured one.
+        $orphan = $store->pathFor($tenant, 'eng', 'docs/gone.md', str_repeat('a', 63).'b');
+        $store->publish('kb2', $store->writeTemp('kb2', $orphan, 'orphan on kb2'), $orphan);
+        $staleTemp = $store->writeTemp('kb2', $kept, 'stale temp');
+        touch(Storage::disk('kb2')->path($staleTemp), time() - 7200);
+        // A row recording a disk this deployment does not know is reported, not swept (nothing to sweep it on).
+        $unknown = $this->row(2, 'active', null, 'docs/unknown.md');
+        $unknown->update(['markdown_path' => '.artifacts/x/eng/docs/unknown.md.versions/h.md', 'metadata' => ['disk' => 'nowhere', 'prefix' => '']]);
+
+        $this->artisan('kb:prune-archived-versions')
+            ->expectsOutputToContain('[kb] temps_swept=0 temps_failed=0 orphans_removed=0 orphans_failed=0')
+            ->expectsOutputToContain('[kb2] temps_swept=1 temps_failed=0 orphans_removed=1 orphans_failed=0')
+            ->expectsOutputToContain('rows record artifacts on disk [nowhere], which cannot be resolved here')
+            ->expectsOutputToContain('artifact_temps_swept=1 artifact_temps_failed=0 artifact_orphans_removed=1 artifact_orphans_failed=0 artifact_namespaces_skipped=1')
+            ->assertExitCode(0);
+
+        Storage::disk('kb2')->assertExists($kept);
+        Storage::disk('kb2')->assertMissing($orphan);
+        Storage::disk('kb2')->assertMissing($staleTemp);
+    }
+
     /**
      * ADR 0030 §8 — an OCR run directory is namespaced by disk, prefix,
      * source path and run: a row naming the same run under another prefix

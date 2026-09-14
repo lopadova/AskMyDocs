@@ -88,24 +88,23 @@ final class KbDocVersionsCommand extends Command
                 return self::SUCCESS;
             }
 
-            return $this->printDiff($versions, $family, $diffOption);
+            return $this->printDiff($versions, $document, $diffOption);
         } finally {
             $tenants->set($previous);
         }
     }
 
-    /**
-     * @param  \Illuminate\Support\Collection<int, KnowledgeDocument>  $family
-     */
-    private function printDiff(DocumentVersionService $versions, $family, string $spec): int
+    private function printDiff(DocumentVersionService $versions, KnowledgeDocument $document, string $spec): int
     {
         if (preg_match('/^(\d+):(\d+)$/', $spec, $m) !== 1) {
             $this->error('--diff expects FROM:TO version ids.');
 
             return self::FAILURE;
         }
-        $from = $family->first(static fn (KnowledgeDocument $v): bool => (int) $v->id === (int) $m[1]);
-        $to = $family->first(static fn (KnowledgeDocument $v): bool => (int) $v->id === (int) $m[2]);
+        // Both ids are resolved against the WHOLE family, not the listed page:
+        // a version beyond --limit / --offset is still this document's.
+        $from = $versions->versionInFamily($document, (int) $m[1]);
+        $to = $versions->versionInFamily($document, (int) $m[2]);
         if ($from === null || $to === null) {
             $this->error('Both --diff ids must belong to this document family.');
 

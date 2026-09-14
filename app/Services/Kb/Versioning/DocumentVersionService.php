@@ -75,6 +75,16 @@ final class DocumentVersionService
     }
 
     /**
+     * One version of the doc's family by id — resolved against the WHOLE
+     * family (tenant-scoped), never against a listed page: a diff or a
+     * restore may name a version the bounded listing did not show.
+     */
+    public function versionInFamily(KnowledgeDocument $document, int $id): ?KnowledgeDocument
+    {
+        return $this->familyQuery($document)->whereKey($id)->first();
+    }
+
+    /**
      * The bound on a timeline listing: the caller's positive limit, capped by
      * `kb.versioning.timeline_limit` (a non-positive configured value is the
      * default of 100, never "unbounded").

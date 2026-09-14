@@ -363,7 +363,9 @@ remaining row, live, archived or soft-deleted, of any tenant whose **recorded
 namespace resolves to that very directory** still names it (a same-named row
 under another disk or prefix references another directory and neither keeps
 this one alive nor is ignored; a legacy row without a recorded disk counts as
-a reference, fail closed), never while it is inside the in-flight grace (ADR
+a reference, fail closed) — the orphan sweep asks the same predicate for all
+its candidates at once (`documentsReferencingOcrRuns()`, one bounded query per
+500 `(source, run)` pairs, never one query per run) — never while it is inside the in-flight grace (ADR
 0029 §6), and only under the run's own reservation — the lock a converter
 holds from its recorded-run check to its commit — so a run being reused at
 that very moment is never deleted between its figure check and its commit;
@@ -386,6 +388,15 @@ the source. Those are erased by deletion only: the documents that contain the
 subject are hard-deleted (row by row or by the prune) and the artifact, the
 run and the source go with them (§3, *Erasure*). A shred alone is not an
 erasure of any raw asset.
+
+The sweep set is not the configured namespace alone: `kb:prune-archived-versions`
+sweeps temps and orphans on the configured `(disk, prefix)` **and** on every
+`(metadata.disk, metadata.prefix)` a row with an artifact pointer recorded —
+the same pair `stageArtifact()` composes the artifact path from — as long as
+the disk resolves on this deployment; a disk that does not is reported per
+namespace and counted (`artifact_namespaces_skipped`, additive in the summary
+line), never silently left to leak. The batched gate above and the single gate
+are one predicate.
 
 ### 9. The MCP read surface the v8.7 feature never got
 

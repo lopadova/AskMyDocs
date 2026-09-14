@@ -144,6 +144,43 @@ class PruneOrphanFilesCommandTest extends TestCase
     }
 
     /**
+     * ADR 0030 §8 — the stale-run gate judges every candidate `(source, run)`
+     * pair in one batched query: two sources sharing one run KEY are two
+     * candidates (a reference to `a.md`'s run never protects `b.md`'s), a row
+     * naming the run under ANOTHER prefix references another directory, and a
+     * legacy row (no recorded disk) protects its run, fail closed.
+     */
+    public function test_the_stale_run_gate_judges_each_source_run_pair_and_its_namespace(): void
+    {
+        Storage::fake('kb');
+        $run = self::RUN;
+        foreach (['a', 'b', 'c', 'd'] as $name) {
+            Storage::disk('kb')->put("docs/{$name}.md", $name);
+            Storage::disk('kb')->put("docs/{$name}.md.ocr/{$run}/result.json", '{}');
+        }
+        // a.md: a live row names the run under THIS namespace → referenced.
+        $this->seedDoc('docs/a.md', 'ha')->update(['metadata' => ['disk' => 'kb', 'prefix' => '', 'converter' => ['ocr' => ['run' => $run]]]]);
+        // b.md: a live row, but it does not name the run → the run beside b.md is stale (the same key as a.md's does not protect it).
+        $this->seedDoc('docs/b.md', 'hb');
+        // c.md: a live row in THIS namespace keeps the source; the only row naming the run records
+        // another prefix → it references another directory, so c.md's run here is stale.
+        $this->seedDoc('docs/c.md', 'hc');
+        $this->seedDoc('docs/c.md', 'hc2', prefix: 'elsewhere')->update(['status' => 'archived', 'metadata' => ['disk' => 'kb', 'prefix' => 'elsewhere', 'converter' => ['ocr' => ['run' => $run]]]]);
+        // d.md: a legacy row (no recorded disk) names the run → fail closed, kept.
+        $this->seedDoc('docs/d.md', 'hd')->update(['metadata' => ['converter' => ['ocr' => ['run' => $run]]]]);
+
+        $this->travel(OcrFigureStore::inFlightGraceSeconds() + 60)->seconds();
+        $this->artisan('kb:prune-orphan-files')
+            ->expectsOutputToContain('orphans=0 deleted=0 failed=0 orphan_ocr_kept=0 dangling_ocr=0 purged=0 in_flight=0 ocr_failed=0 stale_runs=2 runs_purged=2 runs_in_flight=0 runs_failed=0')
+            ->assertSuccessful();
+
+        Storage::disk('kb')->assertExists("docs/a.md.ocr/{$run}/result.json");
+        Storage::disk('kb')->assertMissing("docs/b.md.ocr/{$run}/result.json");
+        Storage::disk('kb')->assertMissing("docs/c.md.ocr/{$run}/result.json");
+        Storage::disk('kb')->assertExists("docs/d.md.ocr/{$run}/result.json");
+    }
+
+    /**
      * A `.ocr` tree whose source is gone from the disk and from every row
      * (a hard delete that kept an in-flight run) is swept here — grace-aware:
      * a run recorded inside the in-flight window is kept, an aged one goes.

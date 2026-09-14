@@ -179,16 +179,9 @@ final class KbDocumentVersionController extends Controller
      */
     private function resolveFamilyMember(KnowledgeDocument $anchor, int $versionId): KnowledgeDocument
     {
-        $version = KnowledgeDocument::query()
-            ->forTenant($this->tenant->current())
-            ->where('project_key', $anchor->project_key)
-            ->where('source_path', $anchor->source_path)
-            ->find($versionId);
-
-        if ($version === null) {
-            throw new NotFoundHttpException('Version not found in this document family.');
-        }
-
-        return $version;
+        // One definition of "the same family" for every surface (R44):
+        // DocumentVersionService::versionInFamily(), tenant-scoped.
+        return $this->versions->versionInFamily($anchor, $versionId)
+            ?? throw new NotFoundHttpException('Version not found in this document family.');
     }
 }

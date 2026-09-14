@@ -44,22 +44,27 @@ class KbDocumentVersionsTool extends Tool
 
     public function handle(Request $request, DocumentVersionService $versions, TenantContext $tenants): Response
     {
-        $id = (int) ($request->get('document_id') ?? 0);
+        $id = self::integerArgument($request->get('document_id'));
+        if ($id === null || $id === false || $id < 1) {
+            return Response::error('document_id must be a positive integer.');
+        }
         $document = KnowledgeDocument::query()->forTenant($tenants->current())->find($id);
         if ($document === null) {
             return Response::error("Document {$id} not found.");
         }
 
-        $requestedLimit = $request->get('limit');
-        if ($requestedLimit !== null && (! is_numeric($requestedLimit) || (int) $requestedLimit < 1)) {
+        // The schema says integer and so does the check: `1.5`, `1e2` or
+        // `" 7"` are refused, never truncated into a page nobody asked for.
+        $requestedLimit = self::integerArgument($request->get('limit'));
+        if ($requestedLimit === false || ($requestedLimit !== null && $requestedLimit < 1)) {
             return Response::error('limit must be a positive integer.');
         }
-        $requestedOffset = $request->get('offset');
-        if ($requestedOffset !== null && (! is_numeric($requestedOffset) || (int) $requestedOffset < 0)) {
+        $requestedOffset = self::integerArgument($request->get('offset'));
+        if ($requestedOffset === false || ($requestedOffset !== null && $requestedOffset < 0)) {
             return Response::error('offset must be a non-negative integer.');
         }
-        $limit = DocumentVersionService::timelineLimit($requestedLimit === null ? null : (int) $requestedLimit);
-        $offset = (int) ($requestedOffset ?? 0);
+        $limit = DocumentVersionService::timelineLimit($requestedLimit);
+        $offset = $requestedOffset ?? 0;
         $total = $versions->familySizeFor($document);
         $rows = $versions->versionsFor($document, $limit, $offset)->map(function (KnowledgeDocument $v) use ($versions): array {
             // ADR 0030 §5 — read + verified, never the pointer alone.
@@ -91,5 +96,25 @@ class KbDocumentVersionsTool extends Tool
             'truncated' => $total > $offset + count($rows),
             'versions' => $rows,
         ]);
+    }
+
+    /**
+     * An argument as an ACTUAL integer: PHP int, or a string of digits with
+     * an optional sign — null when absent, false when it is anything else
+     * (a float, scientific notation, padding, an array).
+     */
+    private static function integerArgument(mixed $value): int|null|false
+    {
+        if ($value === null) {
+            return null;
+        }
+        if (is_int($value)) {
+            return $value;
+        }
+        if (is_string($value) && preg_match('/^[+-]?\d+$/', $value) === 1) {
+            return (int) $value;
+        }
+
+        return false;
     }
 }

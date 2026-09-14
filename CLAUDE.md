@@ -355,9 +355,11 @@ rotation. `kb:rebuild-graph` is a no-op when no canonical docs exist.
   any more" with `withoutGlobalScopes()` — live, archived and soft-deleted rows
   of ALL tenants — and deletes only at zero references. Scoping that check to
   one tenant would delete another tenant's artifact; the conservative direction
-  is the cross-tenant one. Both sweeps cover the configured `kb.sources.disk` /
-  `path_prefix` only; artifacts recorded under another `metadata.disk` are the
-  operator's to sweep. Same posture as the IMAP mailbox lock below.
+  is the cross-tenant one. The sweeps cover the configured `kb.sources.disk` /
+  `path_prefix` namespace PLUS every `(metadata.disk, metadata.prefix)` recorded
+  by a row with an artifact pointer whose disk this deployment can resolve; a
+  disk unknown here is reported (`artifact_namespaces_skipped`), not swept.
+  Same posture as the IMAP mailbox lock below.
 - **IMAP connections are serialized per mailbox, CROSS-TENANT (deliberate R30
   exception).** At most ONE live IMAP connection per account
   (host+port+username) exists at a time, across ALL surfaces (sync, health,

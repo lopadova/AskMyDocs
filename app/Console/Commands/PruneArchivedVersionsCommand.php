@@ -11,6 +11,7 @@ use App\Services\Kb\Versioning\ConversionArtifactStore;
 use App\Support\TenantContext;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * v8.7/W5 — Cloud Time Machine retention.
@@ -113,12 +114,100 @@ final class PruneArchivedVersionsCommand extends Command
     }
 
     /**
+     * Sweeps EVERY artifact namespace the corpus records — the configured
+     * `(disk, prefix)` and every `(metadata.disk, metadata.prefix)` a row
+     * with an artifact pointer persisted, as long as the disk is configured
+     * — so a deployment with a second artifact disk (a project or connector
+     * disk) does not leak temps and orphans there forever. The summary line
+     * aggregates the namespaces; one line per namespace precedes it when
+     * there is more than one.
+     *
      * @return int failures (temps or orphans the disk refused, or entries refused by the containment check)
      */
     private function sweepArtifacts(ConversionArtifactStore $artifacts, bool $dryRun): int
     {
-        $disk = (string) config('kb.sources.disk', 'kb');
-        $prefix = (string) config('kb.sources.path_prefix', '');
+        $skipped = 0;
+        $namespaces = $this->artifactNamespaces($skipped);
+        $totals = ['temps' => 0, 'temps_failed' => 0, 'orphans' => 0, 'orphans_failed' => 0];
+        foreach ($namespaces as [$disk, $prefix]) {
+            $outcome = $this->sweepArtifactNamespace($artifacts, $disk, $prefix, $dryRun);
+            if (count($namespaces) > 1) {
+                $this->line(sprintf('  [%s%s] temps_swept=%d temps_failed=%d orphans_removed=%d orphans_failed=%d', $disk, $prefix === '' ? '' : ':'.$prefix, $outcome['temps'], $outcome['temps_failed'], $outcome['orphans'], $outcome['orphans_failed']));
+            }
+            foreach ($outcome as $k => $v) {
+                $totals[$k] += $v;
+            }
+        }
+        // `artifact_namespaces_skipped` is additive and printed only when a
+        // recorded namespace could not be swept (a disk this deployment cannot
+        // resolve): a permanent leak that must be observable in the summary
+        // the scheduler logs, not only in a warning line.
+        $this->info(sprintf(
+            'artifact_temps_swept=%d artifact_temps_failed=%d artifact_orphans_removed=%d artifact_orphans_failed=%d%s%s',
+            $totals['temps'],
+            $totals['temps_failed'],
+            $totals['orphans'],
+            $totals['orphans_failed'],
+            $skipped > 0 ? " artifact_namespaces_skipped={$skipped}" : '',
+            $dryRun ? ' (dry-run)' : '',
+        ));
+
+        return $totals['temps_failed'] + $totals['orphans_failed'];
+    }
+
+    /**
+     * The configured namespace first, then every distinct `(disk, prefix)`
+     * recorded on a row that points at an artifact — read in SQL (JSON
+     * selectors, portable), never by decoding every row — and whose disk this
+     * deployment can resolve (an unknown or unconstructible disk cannot be
+     * swept: reported per namespace and counted in `$skipped`).
+     *
+     * @return list<array{0: string, 1: string}>
+     */
+    private function artifactNamespaces(int &$skipped): array
+    {
+        $configuredDisk = (string) config('kb.sources.disk', 'kb');
+        $configuredPrefix = (string) config('kb.sources.path_prefix', '');
+        $namespaces = [$configuredDisk.'|'.$configuredPrefix => [$configuredDisk, $configuredPrefix]];
+        $recorded = KnowledgeDocument::query()
+            ->withoutGlobalScopes()
+            ->whereNotNull('markdown_path')
+            ->whereNotNull('metadata->disk')
+            ->select(['metadata->disk as artifact_disk', 'metadata->prefix as artifact_prefix'])
+            ->distinct()
+            ->get();
+        foreach ($recorded as $row) {
+            $disk = (string) $row->artifact_disk;
+            // A JSON `null` prefix is read as the configured one: the JSON
+            // selector cannot tell an absent key (configured prefix, as the
+            // deleter resolves it) from an explicit null (`''` there); ingest
+            // never writes an explicit null, so the two agree in practice.
+            $prefix = (string) ($row->artifact_prefix ?? $configuredPrefix);
+            if ($disk === '' || isset($namespaces[$disk.'|'.$prefix])) {
+                continue;
+            }
+            try {
+                Storage::disk($disk); // resolves configured AND runtime-registered disks; throws for an unknown one
+            } catch (\Throwable $e) {
+                // Unknown disk (InvalidArgumentException) or an adapter that
+                // cannot be constructed here: either way nothing can be swept
+                // on it, and the run must not abort after the row prune (R14).
+                $this->warn("  ! rows record artifacts on disk [{$disk}], which cannot be resolved here ({$e->getMessage()}): not swept");
+                $skipped++;
+
+                continue;
+            }
+            $namespaces[$disk.'|'.$prefix] = [$disk, $prefix];
+        }
+
+        return array_values($namespaces);
+    }
+
+    /**
+     * @return array{temps: int, temps_failed: int, orphans: int, orphans_failed: int}
+     */
+    private function sweepArtifactNamespace(ConversionArtifactStore $artifacts, string $disk, string $prefix, bool $dryRun): array
+    {
         $maxAge = max(0, (int) config('kb.conversion_artifacts.tmp_max_age_seconds', 3600));
 
         try {
@@ -127,9 +216,8 @@ final class PruneArchivedVersionsCommand extends Command
             // A configured prefix that cannot form an artifact root (R14:
             // reported as a failed sweep, never an unhandled crash).
             $this->error("  ! could not sweep the artifact root on disk [{$disk}]: {$e->getMessage()}");
-            $this->info(sprintf('artifact_temps_swept=0 artifact_temps_failed=1 artifact_orphans_removed=0 artifact_orphans_failed=1%s', $dryRun ? ' (dry-run)' : ''));
 
-            return 2;
+            return ['temps' => 0, 'temps_failed' => 1, 'orphans' => 0, 'orphans_failed' => 1];
         }
         $orphans = 0;
         $orphansFailed = 0;
@@ -159,16 +247,8 @@ final class PruneArchivedVersionsCommand extends Command
             $this->error('  ! artifact orphan sweep aborted on disk ['.$disk.'] ('.$e::class."): {$e->getMessage()}");
             $orphansFailed++;
         }
-        $this->info(sprintf(
-            'artifact_temps_swept=%d artifact_temps_failed=%d artifact_orphans_removed=%d artifact_orphans_failed=%d%s',
-            $temps['removed'],
-            $temps['failed'],
-            $orphans,
-            $orphansFailed,
-            $dryRun ? ' (dry-run)' : '',
-        ));
 
-        return $temps['failed'] + $orphansFailed;
+        return ['temps' => $temps['removed'], 'temps_failed' => $temps['failed'], 'orphans' => $orphans, 'orphans_failed' => $orphansFailed];
     }
 
     /**

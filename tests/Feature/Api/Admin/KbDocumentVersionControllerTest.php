@@ -265,6 +265,11 @@ final class KbDocumentVersionControllerTest extends TestCase
         $this->assertSame(1, $payload['offset']);
         $this->assertTrue($payload['truncated']);
         $this->assertTrue($tool->handle(new \Laravel\Mcp\Request(['document_id' => $live->id, 'limit' => 0]), $service, app(TenantContext::class))->isError(), 'an invalid page is refused on the MCP surface too');
+        $this->assertTrue($tool->handle(new \Laravel\Mcp\Request(['document_id' => $live->id, 'limit' => '1.5']), $service, app(TenantContext::class))->isError(), 'a decimal is not an integer: refused, never truncated');
+        $this->assertTrue($tool->handle(new \Laravel\Mcp\Request(['document_id' => $live->id, 'offset' => '1e2']), $service, app(TenantContext::class))->isError(), 'scientific notation is not an integer');
+        $digits = json_decode((string) $tool->handle(new \Laravel\Mcp\Request(['document_id' => $live->id, 'limit' => '1']), $service, app(TenantContext::class))->content(), true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame(1, $digits['limit'], 'a string of digits is an integer');
+        $this->assertTrue($tool->handle(new \Laravel\Mcp\Request(['document_id' => "{$live->id}.9"]), $service, app(TenantContext::class))->isError(), 'document_id is held to the same integer contract');
 
         $this->artisan('kb:doc-versions', ['document' => $live->id, '--tenant' => app(TenantContext::class)->current(), '--limit' => 1, '--offset' => 1])
             ->expectsOutputToContain('4 version(s)')
@@ -273,6 +278,10 @@ final class KbDocumentVersionControllerTest extends TestCase
         $this->artisan('kb:doc-versions', ['document' => $live->id, '--tenant' => app(TenantContext::class)->current(), '--limit' => 'abc'])
             ->expectsOutputToContain('--limit must be a positive integer.')
             ->assertExitCode(1);
+        // `--diff` names versions of the FAMILY, whatever the listed page shows.
+        $this->artisan('kb:doc-versions', ['document' => $live->id, '--tenant' => app(TenantContext::class)->current(), '--limit' => 1, '--diff' => "{$oldest->id}:{$live->id}"])
+            ->expectsOutputToContain("diff #{$oldest->id}")
+            ->assertExitCode(0);
     }
 
     /** SEC-SETTING-SHAPE-001 — a non-positive `timeline_limit` is the default bound (100), never "unbounded", and it warns. */

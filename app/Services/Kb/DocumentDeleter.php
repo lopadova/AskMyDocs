@@ -829,6 +829,78 @@ class DocumentDeleter
     }
 
     /**
+     * The batched form of {@see documentReferencingOcrRun()} for the orphan
+     * sweep (R3): every candidate `(source path, run)` of a namespace is
+     * judged with ONE bounded query per 500 candidates instead of one query
+     * per run — a shared disk accumulates runs, and the nightly sweep must not
+     * grow a query per run. Returns, for every candidate that IS referenced,
+     * the id of the first row referencing it, keyed
+     * `"{normalized source path}|{run}"` (`KbPath::normalize()` of the
+     * candidate's path — two spellings of one path are one candidate); an
+     * absent key means no row of any tenant (trashed included) names the run
+     * under this namespace. A candidate whose path cannot be normalized is
+     * not judged (absent, like the single gate's null).
+     *
+     * @param  list<array{0: string, 1: string}>  $candidates  [source path (disk-relative, prefix stripped), run]
+     * @return array<string, int>
+     */
+    public function documentsReferencingOcrRuns(string $disk, string $prefix, array $candidates): array
+    {
+        $referenced = [];
+        foreach (array_chunk($candidates, 500) as $chunk) {
+            $wanted = [];
+            $paths = [];
+            $runs = [];
+            foreach ($chunk as [$sourcePath, $run]) {
+                try {
+                    $normalizedSourcePath = KbPath::normalize($sourcePath);
+                } catch (\InvalidArgumentException) {
+                    continue;
+                }
+                $fullPath = $this->resolveFullPath($prefix, $normalizedSourcePath);
+                if ($fullPath === null) {
+                    continue;
+                }
+                $wanted[$normalizedSourcePath.'|'.$run] = $fullPath;
+                $paths[$normalizedSourcePath] = true;
+                $runs[$run] = true;
+            }
+            if ($wanted === []) {
+                continue;
+            }
+            // Narrowed in SQL on both halves (paths × runs, each list ≤ 500),
+            // then each row is matched to its exact candidate and judged on
+            // its recorded namespace — the same predicate as the single gate.
+            // Bindings stay strings: an all-digit path would become an int
+            // array key and be bound as one.
+            $rows = KnowledgeDocument::query()
+                ->withoutGlobalScopes()
+                ->whereIn('source_path', array_map('strval', array_keys($paths)))
+                ->whereIn('metadata->converter->ocr->run', array_map('strval', array_keys($runs)))
+                ->select(['id', 'source_path', 'metadata'])
+                ->orderBy('id')
+                ->cursor();
+            foreach ($rows as $row) {
+                $metadata = is_array($row->metadata) ? $row->metadata : [];
+                $run = $metadata['converter']['ocr']['run'] ?? null;
+                if (! is_string($run)) {
+                    continue;
+                }
+                // The row matched an already-normalized path in SQL: its key is that path as stored.
+                $key = (string) $row->source_path.'|'.$run;
+                if (! isset($wanted[$key]) || isset($referenced[$key])) {
+                    continue;
+                }
+                if ($this->documentReferencesStorageKey($row, $disk, $wanted[$key])) {
+                    $referenced[$key] = (int) $row->id;
+                }
+            }
+        }
+
+        return $referenced;
+    }
+
+    /**
      * Return the first remaining row that resolves to the same physical
      * storage object. The lookup deliberately crosses tenant/access/soft-delete
      * scopes: a shared bucket key is global infrastructure state, so deleting

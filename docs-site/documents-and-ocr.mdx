@@ -685,6 +685,15 @@ modal, once as an IMAP attachment — on a deployment with `KB_OCR_ENABLED=true`
   ingest, an identical re-ingest whose artifact was just verified, repaired or
   published for the first time, a `kb:artifacts-backfill` write — so an original re-uploaded after a drop, or
   kept because the key was locked, is dropped the next time round.
+- **The sweeps cover every artifact namespace the corpus records.**
+  `kb:prune-archived-versions` sweeps temps and orphans on the configured
+  `(disk, prefix)` and on every `(metadata.disk, metadata.prefix)` a row with
+  an artifact pointer recorded (one line per namespace when there is more than
+  one; a disk this deployment cannot resolve is reported per namespace and
+  counted as `artifact_namespaces_skipped` in the summary line, not swept). The
+  stale-OCR-run gate of `kb:prune-orphan-files` judges all candidates of a
+  namespace with one bounded query per 500 candidate `(source, run)` pairs,
+  never one query per run.
 - **A refused delete is a failed prune.** `kb:prune-archived-versions` reports
   `artifacts_failed` / `artifact_temps_failed` / `artifact_orphans_failed` /
   `ocr_failed` and exits non-zero when the disk refused a removal (or a
