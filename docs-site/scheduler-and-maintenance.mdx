@@ -86,6 +86,12 @@ when that env is false the slot never runs regardless of its `SCHEDULE_*` value.
   [dimension gotcha](/troubleshooting#embedding-dimension-gotcha).
 - **`kb:prune-deleted`** — hard-delete documents soft-deleted longer than
   `KB_SOFT_DELETE_RETENTION_DAYS`, cascading chunks + graph + file on disk.
+  Since v8.36 it also prints `files_kept=N` per tenant when non-zero: rows
+  whose source file was NOT removed — still referenced by another version, or
+  (with conversion artifacts on) its storage key held by a writer, its cache
+  store unable to lock, or the lock lapsed mid-section. The rows are gone
+  either way and it is not an error; `kb:prune-orphan-files` takes those bytes
+  once nothing references them. A clean run prints no such line.
 - **`kb:prune-archived-versions`** — drop old archived document versions beyond
   the per-family retention cap, each through the deleter's row path (chunks,
   graph node, deprecation audit); since v8.36 each pruned version's conversion

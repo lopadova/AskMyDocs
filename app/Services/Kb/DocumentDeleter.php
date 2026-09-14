@@ -14,6 +14,7 @@ use App\Services\Kb\Versioning\ConversionArtifactStore;
 use App\Services\Kb\Versioning\DocumentVersionService;
 use App\Services\Kb\Analysis\ChangeAnalysisGate;
 use App\Support\Kb\HeldLock;
+use App\Support\Kb\LockLostException;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use App\Support\Kb\SourceKeyLock;
 use App\Support\Kb\StorageNamespace;
@@ -980,9 +981,81 @@ class DocumentDeleter
     }
 
     /**
-     * @return array{file_deleted: bool, ocr_assets_deleted: ?bool}  null = the purge was not attempted
+     * @return array{file_deleted: bool, ocr_assets_deleted: ?bool}  null = the
+     *         outcome is not known here — the purge did not run, or the
+     *         section was refused after it; the caller probes the disk rather
+     *         than reporting an assumed "clean"
      */
     private function removeSourceObject(string $disk, string $fullPath, int $documentId, string $sourcePath): array
+    {
+        // ADR 0030 §3 — the shared source is removed under the SAME storage
+        // key lock a row commit and a `markdown_only` drop hold, so a hard
+        // delete cannot slip between a concurrent ingest's reference scan and
+        // its commit. (It does not cover that ingest's READ/CONVERT phase,
+        // which starts before any lock exists — the residual the sweep's
+        // in-flight grace narrows and the recorded reservation follow-up
+        // would close.) With artifacts off nothing else takes that lock, so
+        // none is taken here either (R43).
+        if (! app(ConversionArtifactStore::class)->enabled()) {
+            return $this->removeSourceObjectUnderLock($disk, $fullPath, $documentId, $sourcePath, null);
+        }
+        if (! ConversionArtifactStore::cacheStoreCanLock()) {
+            Log::warning('DocumentDeleter: source file kept — the cache store cannot exclude concurrent holders, so the storage key lock is unavailable', ['document_id' => $documentId, 'disk' => $disk, 'full_path' => $fullPath]);
+
+            return ['file_deleted' => false, 'ocr_assets_deleted' => null];
+        }
+        $lock = null;
+        try {
+            $lock = SourceKeyLock::make($disk, $fullPath);
+            $lock->block(SourceKeyLock::waitSeconds());
+        } catch (LockTimeoutException) {
+            Log::info('DocumentDeleter: source file kept — a writer holds its storage key right now; the orphan sweep takes it once nothing references it', ['document_id' => $documentId, 'disk' => $disk, 'full_path' => $fullPath]);
+            // `block()` does not hold the lock when it times out; released
+            // for symmetry with the arm below so neither reads as the odd one.
+            HeldLock::releaseQuietly($lock);
+
+            return ['file_deleted' => false, 'ocr_assets_deleted' => null];
+        } catch (\Throwable $e) {
+            // The database deletion has already committed: a lock store that
+            // refuses keeps the file, it never fails the delete after the
+            // fact ("a stale/missing file must never stop a DB deletion").
+            Log::warning('DocumentDeleter: source file kept — the storage key lock could not be taken', ['document_id' => $documentId, 'disk' => $disk, 'full_path' => $fullPath, 'exception' => $e::class, 'error' => $e->getMessage()]);
+            HeldLock::releaseQuietly($lock);
+
+            return ['file_deleted' => false, 'ocr_assets_deleted' => null];
+        }
+        try {
+            return $this->removeSourceObjectUnderLock($disk, $fullPath, $documentId, $sourcePath, new HeldLock($lock, 'storage key'));
+        } catch (LockLostException $e) {
+            // The message names the step the lapse was caught before (the
+            // OCR purge, or the delete that follows it), so an operator is
+            // not told "nothing happened" when the purge already ran; the
+            // caller's own probe reports whether a `.ocr/` tree remains.
+            Log::warning('DocumentDeleter: source file kept — the storage key lock lapsed mid-section', ['document_id' => $documentId, 'disk' => $disk, 'full_path' => $fullPath, 'error' => $e->getMessage()]);
+
+            return ['file_deleted' => false, 'ocr_assets_deleted' => null];
+        } catch (\Throwable $e) {
+            // The database deletion has already committed, so NOTHING from
+            // this section may escape: an ownership probe is a driver
+            // round-trip (Redis `get`) and a blip there must keep the file
+            // exactly like a refused acquisition, never fail a delete after
+            // the fact. `HeldLock` already converts a probe that throws into
+            // a refusal, and `removeOcrAssets()` catches its own — so today
+            // this arm is belt-and-braces. It stays because the cost of the
+            // alternative is a committed delete that reports a failure, and
+            // the next step added to the section must not be able to cause it.
+            Log::warning('DocumentDeleter: source file kept — the guarded removal could not complete', ['document_id' => $documentId, 'disk' => $disk, 'full_path' => $fullPath, 'exception' => $e::class, 'error' => $e->getMessage()]);
+
+            return ['file_deleted' => false, 'ocr_assets_deleted' => null];
+        } finally {
+            HeldLock::releaseQuietly($lock);
+        }
+    }
+
+    /**
+     * @return array{file_deleted: bool, ocr_assets_deleted: ?bool}  null = the purge was not attempted
+     */
+    private function removeSourceObjectUnderLock(string $disk, string $fullPath, int $documentId, string $sourcePath, ?HeldLock $held): array
     {
         try {
             $referencingDocumentId = $this->firstDocumentReferencingStorageKey(
@@ -1036,6 +1109,10 @@ class DocumentDeleter
         // v8.36 / ADR 0029 — the OCR assets (`{fullPath}.ocr/`) belong to the
         // same storage key and pass the same reference gate above: they go
         // when the last row referencing the source goes, never before.
+        // This is the FIRST irreversible step of the section, so it asserts
+        // too: a run purged under a lapsed lock is a paid re-run for whoever
+        // holds the key now.
+        $held?->assertHeld('OCR asset purge');
         $ocrAssetsDeleted = $this->removeOcrAssets($disk, $fullPath, $documentId);
 
         try {
@@ -1043,8 +1120,16 @@ class DocumentDeleter
             if (! $storage->exists($fullPath)) {
                 return ['file_deleted' => false, 'ocr_assets_deleted' => $ocrAssetsDeleted];
             }
+            // The reference scan and the OCR purge above are round-trips: the
+            // delete runs only while the key is still ours (a lapse throws,
+            // the caller keeps the file).
+            $held?->assertHeld('source file removal');
 
             return ['file_deleted' => (bool) $storage->delete($fullPath), 'ocr_assets_deleted' => $ocrAssetsDeleted];
+        } catch (LockLostException $e) {
+            // Order matters: LockLostException IS a RuntimeException, and the
+            // catch-all below would report a lapsed lock as a disk failure.
+            throw $e;
         } catch (\Throwable $e) {
             // A stale/missing file on the disk must never stop a DB deletion
             // from completing — log and move on.

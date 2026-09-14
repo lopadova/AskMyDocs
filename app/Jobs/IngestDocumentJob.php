@@ -308,8 +308,10 @@ class IngestDocumentJob implements ShouldQueue
      * The flow idempotency key of one ATTEMPT of this job.
      *
      * The first attempt keeps the legacy key (`tenant:project:path[:runKey]`
-     * — unless the path is long, or wears the reserved `h-` marker, in which
-     * case it is hashed to `tenant:project:h-<sha256>` instead),
+     * — unless the path is long, carries a `:` (which would make the
+     * concatenation ambiguous against the attempt salt), or wears the
+     * reserved `h-` marker, in which case the whole length-prefixed tuple is
+     * digested to `tenant:project:h-<sha256>` instead),
      * so a duplicate dispatch of the same path still short-circuits to the
      * run already recorded. A RETRY is salted with its attempt number: with
      * flow persistence on, the store returns the recorded run for a key
@@ -322,27 +324,58 @@ class IngestDocumentJob implements ShouldQueue
     public function idempotencyKeyFor(string $tenantId, int $attempt = 1): string
     {
         // FlowExecutionOptions enforces ≤ 255 characters for the key.
-        // tenant_id (≤ 50) + ":" + project_key (often ≤ 64) + ":" +
-        // source_path can exceed that limit on long deeply-nested paths,
-        // so for safety we hash the tail beyond a comfortable plain
-        // prefix and surface a fixed-length key. The hash is content-
-        // agnostic (path-only) so tenant + project + path uniquely
-        // identify the row regardless of file bytes.
+        // tenant_id (≤ 50) + ":" + project_key (≤ 120, the column width) +
+        // ":" + source_path can exceed that limit on long deeply-nested
+        // paths, so beyond a comfortable plain budget the WHOLE tuple is
+        // digested (not a tail) into a fixed-length key. The digest is
+        // content-agnostic (path-only) so tenant + project + path uniquely
+        // identify the row regardless of file bytes: 50 + 1 + 120 + 1 + 2
+        // (the `h-` marker) + 64 = 238 bytes worst case.
         $salt = ($this->runKey !== null && $this->runKey !== '') ? ':'.$this->runKey : '';
         if ($attempt > 1) {
             $salt .= ':attempt'.$attempt;
         }
         $raw = "{$tenantId}:{$this->projectKey}:{$this->relativePath}{$salt}";
-        // The hashed form carries the reserved marker, and a path that
-        // ALREADY starts with the marker is hashed whatever its length: the
-        // two forms are then disjoint, so a document literally named
+        // The plain form survives only where it is UNAMBIGUOUS. `:` is the
+        // separator AND the salt marker, so a path (or run key) carrying one
+        // makes the concatenation ambiguous: `docs/a.md` on attempt 2 and
+        // `docs/a.md:attempt2` on attempt 1 compose the very same string,
+        // and the retry that must repair a refused publish would be handed
+        // the OTHER document's recorded run and die having repaired nothing.
+        // `KbPath::normalize()` permits `:`, and `source_path` comes from the
+        // client, so this is reachable, not theoretical. A path that ALREADY
+        // starts with the reserved marker is hashed whatever its length too:
+        // the two forms are then disjoint, so a document literally named
         // `h-<64 hex>` can never share a key with the long path that hashes
         // to it (the same injectivity rule as
         // ConversionArtifactStore::safeSegment()).
-        if (strlen($raw) <= 200 && ! str_starts_with($this->relativePath, self::HASHED_PATH_MARKER)) {
+        $ambiguous = str_contains($this->relativePath, ':')
+            || str_contains((string) $this->runKey, ':')
+            || str_contains($tenantId, ':')
+            || str_contains($this->projectKey, ':');
+        if (strlen($raw) <= 200
+            && ! $ambiguous
+            && ! str_starts_with($this->relativePath, self::HASHED_PATH_MARKER)) {
             return $raw;
         }
 
-        return "{$tenantId}:{$this->projectKey}:".self::HASHED_PATH_MARKER.hash('sha256', $this->relativePath.$salt);
+        // The hashed form digests a LENGTH-PREFIXED tuple, never the
+        // concatenation above: `path:attempt2` on attempt 1 and `path` on
+        // attempt 2 compose the same bytes, so a concatenated digest would
+        // give a retry the key of a different job (and hand it that job's
+        // recorded run). Length prefixes, not JSON: a source path is raw
+        // filesystem bytes and need not be valid UTF-8 — a file from a
+        // Windows share must not fail to ingest because its name cannot be
+        // encoded.
+        $runKey = ($this->runKey !== null && $this->runKey !== '') ? $this->runKey : '';
+        $digest = hash('sha256', implode('|', [
+            strlen($tenantId), $tenantId,
+            strlen($this->projectKey), $this->projectKey,
+            strlen($this->relativePath), $this->relativePath,
+            strlen($runKey), $runKey,
+            $attempt,
+        ]));
+
+        return "{$tenantId}:{$this->projectKey}:".self::HASHED_PATH_MARKER.$digest;
     }
 }

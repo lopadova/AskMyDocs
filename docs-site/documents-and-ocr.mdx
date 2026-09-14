@@ -452,14 +452,23 @@ flowchart LR
   irreversible step, that it still owns its lock (`HeldLock`) — a lapsed TTL
   is a refusal (the commit rolls back, the original is kept, the publish
   discards its temp, the removal is `failed`) — a check right before the step,
-  not a renewal, so the window shrinks to the step itself. A lock that records no
-  acquisition owner at all (a third-party store registered with
-  `Cache::extend()`; ownership is read by capability, from Laravel's lock or
-  from any lock answering `isOwnedByCurrentProcess()`) cannot prove ownership,
-  so its guarded step is refused as well — a stop rather than a degradation:
+  not a renewal, so the window shrinks to the step itself. A lock that cannot prove ownership — ownership is
+  read by capability, from any lock exposing a callable
+  `isOwnedByCurrentProcess()` that answers a boolean, so a probe that is
+  missing, not public, or answers anything else (a third-party store
+  registered with `Cache::extend()`) does not qualify — has its guarded step
+  refused as well — a stop rather than a degradation:
   every artifact-enabled ingest rolls back and retries and every prune reports
   `failed`, until `CACHE_STORE` names a lock-capable store. Reported once per
   class.
+  The **source file** of a hard delete takes the storage key's lock the same
+  way: the reference scan, the `.ocr/` purge and the delete all run under it,
+  each irreversible step asserting the TTL has not lapsed. Every refusal — a
+  key another writer holds right now, a store that cannot lock, a lapse
+  mid-section — keeps the file for the orphan sweep and reports
+  `file_deleted: false`; the row is already committed, and a stale file never
+  fails a deletion. With artifacts off nothing else takes that lock, so the
+  hard delete takes none either.
 - **The key is tenant- and project-namespaced, as safe segments.** A segment
   is used verbatim only when it matches `^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$`,
   and does not start with the reserved `h-` prefix; otherwise it becomes `h-` +

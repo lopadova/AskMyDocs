@@ -7,6 +7,8 @@ namespace App\Flow\Compensators;
 use App\Flow\Steps\StepTenantBinder;
 use App\Models\KnowledgeDocument;
 use App\Services\Kb\DocumentDeleter;
+use App\Support\TenantContext;
+use Illuminate\Support\Facades\Log;
 use Padosoft\LaravelFlow\FlowCompensator;
 use Padosoft\LaravelFlow\FlowContext;
 use Padosoft\LaravelFlow\FlowStepResult;
@@ -55,9 +57,31 @@ final class RollbackChunksCompensator implements FlowCompensator
         // R2 — soft-deleted rows must remain reachable here so the
         // compensator can promote a soft delete to a hard delete on the
         // (rare) re-entry path.
-        $document = KnowledgeDocument::withTrashed()->find($documentId);
+        // R30 — and scoped to the tenant the context just bound: a stale or
+        // replayed flow output naming another tenant's id must find nothing,
+        // never delete that tenant's row (and, since v8.36, its artifact).
+        $document = KnowledgeDocument::withTrashed()
+            ->forTenant(app(TenantContext::class)->current())
+            ->find($documentId);
         if ($document === null) {
-            // Already gone — saga rollback is idempotent by contract.
+            // Already gone — saga rollback is idempotent by contract. But
+            // "gone" and "not visible to me" are different facts and only one
+            // of them is benign: a replayed/cross-tenant output, or a request
+            // -scoped access scope narrowing the read, would leave the orphan
+            // row AND its chunks in place while the compensation reported
+            // nothing at all (R14). Probe once, unscoped, and say so.
+            $existsElsewhere = KnowledgeDocument::withoutGlobalScopes()
+                ->withTrashed()
+                ->whereKey($documentId)
+                ->exists();
+            if ($existsElsewhere) {
+                Log::warning('RollbackChunksCompensator: the row exists but is not visible under the bound tenant scope — nothing was rolled back', [
+                    'knowledge_document_id' => $documentId,
+                    'tenant_id' => app(TenantContext::class)->current(),
+                    'flow_run_id' => $context->flowRunId,
+                ]);
+            }
+
             return;
         }
 

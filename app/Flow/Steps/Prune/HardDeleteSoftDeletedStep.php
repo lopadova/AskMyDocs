@@ -42,6 +42,13 @@ final class HardDeleteSoftDeletedStep implements FlowStepHandler
         $cutoff = $this->parseCutoff($context->input['cutoff_iso'] ?? null);
 
         $deleted = 0;
+        // v8.36 / ADR 0030 §3 — a hard delete can legitimately KEEP the
+        // source file (another writer holds its storage key, the cache store
+        // cannot exclude anyone, the lock lapsed mid-section). The rows are
+        // gone either way, so a run that left bytes behind must SAY so
+        // (R14): otherwise "Pruned N document(s)" reads as a completed
+        // cleanup and the orphan sweep's later work looks unexplained.
+        $filesKept = 0;
         // R3 — chunkById uses `id > ?` cursoring so it stays correct even
         // though forceDelete() removes each row as we iterate.
         // R30 — explicit tenant scope on the read.
@@ -50,9 +57,13 @@ final class HardDeleteSoftDeletedStep implements FlowStepHandler
             ->onlyTrashed()
             ->where('deleted_at', '<', $cutoff)
             ->orderBy('id')
-            ->chunkById(100, function ($rows) use (&$deleted): void {
+            ->chunkById(100, function ($rows) use (&$deleted, &$filesKept): void {
                 foreach ($rows as $row) {
-                    $this->deleter->delete($row, force: true);
+                    $hadFile = $row->source_path !== null && $row->source_path !== '';
+                    $result = $this->deleter->delete($row, force: true);
+                    if ($hadFile && ($result['file_deleted'] ?? false) === false) {
+                        $filesKept++;
+                    }
                     $deleted++;
                 }
             });
@@ -62,8 +73,12 @@ final class HardDeleteSoftDeletedStep implements FlowStepHandler
                 'tenant_id' => $tenantId,
                 'cutoff_iso' => $cutoff->format(\DateTimeInterface::ATOM),
                 'deleted_count' => $deleted,
+                // Additive (R27). Counts a row whose source was NOT removed —
+                // including the ordinary case of a file another version still
+                // references, which is why it is reported, not failed.
+                'files_kept' => $filesKept,
             ],
-            businessImpact: ['deleted_count' => $deleted],
+            businessImpact: ['deleted_count' => $deleted, 'files_kept' => $filesKept],
         );
     }
 

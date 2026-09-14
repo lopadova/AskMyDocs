@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Support\Kb;
 
-use Illuminate\Cache\Lock;
 use Illuminate\Contracts\Cache\Lock as LockContract;
 use Illuminate\Support\Facades\Log;
 
@@ -66,8 +65,27 @@ final class HeldLock
     {
         // Capability, not inheritance: a third-party lock that records its
         // acquisition owner answers the question just as well as Laravel's
-        // own, and is verified rather than rejected.
-        if (! $this->lock instanceof Lock && ! method_exists($this->lock, 'isOwnedByCurrentProcess')) {
+        // own, and is verified rather than rejected. `is_callable`, not
+        // `method_exists`: a NON-PUBLIC `isOwnedByCurrentProcess()` exists
+        // but cannot be called, and calling it would raise an Error instead
+        // of the refusal this class owes its caller.
+        // The probe is a driver round-trip (Redis `get`), and on a
+        // `__call`-backed proxy or a test double it may THROW rather than
+        // answer. A throw is not an answer either, so it converges on the
+        // same refusal instead of escaping as a type this class's callers
+        // (which catch LockLostException) would miss.
+        try {
+            $owned = is_callable([$this->lock, 'isOwnedByCurrentProcess'])
+                ? $this->lock->isOwnedByCurrentProcess()
+                : null;
+        } catch (\Throwable) {
+            $owned = null;
+        }
+        // `null` covers every shape of "cannot answer": no callable probe at
+        // all, a probe that threw, and a probe that answered something other
+        // than a bool. None is an answer, and none may be read as "lost" —
+        // the operator must see WHY.
+        if (! is_bool($owned)) {
             if (! isset(self::$warned[$this->lock::class])) {
                 self::$warned[$this->lock::class] = true;
                 Log::warning('HeldLock: the cache lock class records no acquisition owner to compare against owner(), so a lapsed TTL cannot be detected; every guarded step is REFUSED on this store — an ingest fails and retries, a prune reports failed. Configure a lock-capable cache store (Redis in production)', ['lock' => $this->lock::class]);
@@ -75,7 +93,7 @@ final class HeldLock
 
             throw new LockLostException(sprintf('%s lock ownership cannot be verified before %s on %s: refusing rather than running unguarded.', $this->name, $operation, $this->lock::class));
         }
-        if ($this->lock->isOwnedByCurrentProcess()) {
+        if ($owned) {
             return;
         }
         throw new LockLostException(sprintf('%s lock lost before %s: its TTL lapsed while the critical section ran (or the store lost it); refusing rather than running unguarded.', $this->name, $operation));

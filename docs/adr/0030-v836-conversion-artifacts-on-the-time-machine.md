@@ -218,10 +218,11 @@ does — best-effort, and it never turns a landed commit into a failure).
 Preventing it needs a key lock taken inside the transaction, so the database
 serializes the row's visibility with the key; that is recorded as a follow-up.
 
-Ownership itself is read by capability — Laravel's lock, or any lock
-answering `isOwnedByCurrentProcess()` — and a lock class with no recorded
-acquisition owner (a store registered with `Cache::extend()` returning a bare
-contract implementation) cannot prove ownership at all, so the step is
+Ownership itself is read by capability — not by class: any lock exposing a
+callable `isOwnedByCurrentProcess()` that answers a boolean can prove it. A
+lock whose probe is missing, not public, or answers anything other than a
+boolean (a store registered with `Cache::extend()` returning a bare contract
+implementation) cannot prove ownership at all, so the step is
 refused there too, reported once per class: the same posture as a store that
 cannot lock. On such a store that is a stop, not a degradation: every ingest
 that converts through OCR — whatever `KB_CONVERSION_ARTIFACTS_ENABLED` says,
@@ -243,6 +244,17 @@ shared with the `markdown_only` drop and the row commits of non-Markdown
 sources — a Markdown source's commit takes no lock, so for it the re-check alone
 narrows the window); a key a writer holds right now is kept as in flight. With
 artifacts off nothing else takes that lock, so the sweep takes none either.
+The **hard delete** of a source takes that same key lock (HTTP, `kb:delete
+--force`, `kb:prune-deleted`, the Flow compensation): the reference scan, the
+`.ocr/` purge and the `delete()` all run under it, each irreversible step
+asserting the TTL has not lapsed (`HeldLock`). Every refusal keeps the file for
+the sweep rather than failing the delete — the row is already committed, and a
+stale file must never fail a deletion: a key a writer holds right now
+(`LockTimeoutException`), a cache store that cannot exclude anyone, any other
+acquisition failure, and a lapse mid-section are all `file_deleted: false`. With
+artifacts off nothing else takes that lock, so the hard delete takes none either
+(R43). The residual is the same one the sweep carries: the ingest's
+READ/CONVERT phase begins before any lock exists.
 The
 artifact root itself is checked before it is probed or listed (a `.artifacts`
 that is a symlink out of the disk is a refused sweep, never an enumeration of

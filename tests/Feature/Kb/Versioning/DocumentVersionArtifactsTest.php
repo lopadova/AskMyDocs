@@ -10,13 +10,16 @@ use App\Models\User;
 use App\Services\Kb\DocumentDeleter;
 use App\Services\Kb\Versioning\ConversionArtifactStore;
 use App\Services\Kb\Versioning\DocumentVersionService;
+use App\Support\Kb\SourceKeyLock;
 use App\Support\TenantContext;
 use Database\Seeders\RbacSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Spatie\Permission\PermissionRegistrar;
+use Tests\Fixtures\Cache\NoLockStore;
 use Tests\TestCase;
 
 /**
@@ -583,6 +586,80 @@ final class DocumentVersionArtifactsTest extends TestCase
         }
         $this->assertNull($store->read('kb', '.artifacts/../outside.md'));
         $this->assertSame(ConversionArtifactStore::FAILED, $store->remove('kb', '.artifacts/../outside.md'));
+    }
+
+    /**
+     * ADR 0030 §3 — a hard delete whose storage key is held by somebody else
+     * right now KEEPS the shared source file. The row is already gone; the
+     * bytes are left for the orphan sweep to take once nothing references
+     * them. Deleting anyway is precisely the race the key lock exists for:
+     * the holder may be an ingest that has read those bytes and not yet
+     * committed its row.
+     */
+    public function test_hard_delete_keeps_the_source_file_while_another_holder_owns_its_storage_key(): void
+    {
+        config(['kb.conversion_artifacts.source_lock_wait_seconds' => 0]);
+        $doc = $this->version('v1', 'active', 'index a');
+        Storage::disk('kb')->put('docs/dec.md', "# Doc\n\nthe shared source\n");
+        $holder = SourceKeyLock::make('kb', 'docs/dec.md');
+        $this->assertTrue($holder->get(), 'the test holds exactly the key the deleter needs');
+
+        try {
+            $result = app(DocumentDeleter::class)->delete($doc, force: true);
+        } finally {
+            $holder->release();
+        }
+
+        $this->assertDatabaseMissing('knowledge_documents', ['id' => $doc->id]);
+        $this->assertFalse($result['file_deleted'], 'the file is kept while another holder owns the key');
+        Storage::disk('kb')->assertExists('docs/dec.md');
+    }
+
+    /**
+     * R14 / R43 — a cache store that cannot exclude concurrent holders
+     * (apc, session, a custom store, the null driver) leaves the source
+     * file in place rather than deleting it unguarded. Failing closed here
+     * costs one orphan the sweep collects; failing open costs another
+     * version its bytes.
+     */
+    public function test_hard_delete_keeps_the_source_file_when_the_cache_store_cannot_lock(): void
+    {
+        $doc = $this->version('v1', 'active', 'index a');
+        Storage::disk('kb')->put('docs/dec.md', "# Doc\n\nthe shared source\n");
+        Cache::extend('nolock', static fn ($app) => Cache::repository(new NoLockStore));
+        config(['cache.stores.nolock' => ['driver' => 'nolock'], 'cache.default' => 'nolock']);
+        $this->assertFalse(ConversionArtifactStore::cacheStoreCanLock(), 'the store cannot exclude anyone');
+
+        $result = app(DocumentDeleter::class)->delete($doc, force: true);
+
+        $this->assertDatabaseMissing('knowledge_documents', ['id' => $doc->id]);
+        $this->assertFalse($result['file_deleted'], 'without an exclusive key the shared source is left to the sweep');
+        Storage::disk('kb')->assertExists('docs/dec.md');
+    }
+
+    /**
+     * R43 — the OFF state of the same knob. This round introduced a
+     * cache-store-capability dependency into a delete path that never had
+     * one; with artifacts off nothing else takes the storage key lock, so
+     * the hard delete must take none either and remove the file even on a
+     * store that cannot lock. Without this, reordering the two guards would
+     * silently stop every artifacts-off deployment from reaping its sources
+     * and no test would turn red.
+     */
+    public function test_with_artifacts_off_the_hard_delete_removes_the_source_even_on_a_store_that_cannot_lock(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => false]);
+        $doc = $this->version('v1', 'active', 'index a');
+        Storage::disk('kb')->put('docs/dec.md', "# Doc\n\nthe shared source\n");
+        Cache::extend('nolock', static fn ($app) => Cache::repository(new NoLockStore));
+        config(['cache.stores.nolock' => ['driver' => 'nolock'], 'cache.default' => 'nolock']);
+        $this->assertFalse(ConversionArtifactStore::cacheStoreCanLock(), 'the store cannot exclude anyone');
+
+        $result = app(DocumentDeleter::class)->delete($doc, force: true);
+
+        $this->assertDatabaseMissing('knowledge_documents', ['id' => $doc->id]);
+        $this->assertTrue($result['file_deleted'], 'with artifacts off the lock is not taken, so it cannot refuse the delete');
+        Storage::disk('kb')->assertMissing('docs/dec.md');
     }
 
     public function test_soft_delete_leaves_the_artifact_in_place(): void
