@@ -11,6 +11,7 @@ use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
 use App\Services\Kb\Ocr\OcrFigureStore;
 use App\Services\Kb\Versioning\ConversionArtifactStore;
+use App\Services\Kb\Versioning\DocumentVersionService;
 use App\Services\Kb\Analysis\ChangeAnalysisGate;
 use App\Support\Kb\HeldLock;
 use Illuminate\Contracts\Cache\LockTimeoutException;
@@ -647,8 +648,14 @@ class DocumentDeleter
                 // The re-check may have outlived the lock's TTL: the delete is
                 // refused on a lock this holder no longer owns (→ `failed`).
                 $held->assertHeld('artifact removal');
+                $outcome = $store->remove($disk, $path);
+                if ($outcome === ConversionArtifactStore::REMOVED) {
+                    // A file WE removed never leaves a "stored" badge standing
+                    // for the rest of the memo window (ADR 0030 §5).
+                    DocumentVersionService::forgetArtifactStateMemo($disk, $path);
+                }
 
-                return $store->remove($disk, $path);
+                return $outcome;
             });
         } catch (\Throwable $e) {
             // The gate keeps the store's contract — never an exception: a

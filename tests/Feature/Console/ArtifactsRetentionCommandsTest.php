@@ -751,8 +751,9 @@ final class ArtifactsRetentionCommandsTest extends TestCase
     /** A lease length that is not a positive number of seconds is reported and replaced by the default, never a lease that expires at once. */
     public function test_a_non_positive_temp_lease_falls_back_to_the_default(): void
     {
-        config(['kb.conversion_artifacts.tmp_lease_seconds' => 0]);
+        config(['kb.conversion_artifacts.tmp_lease_seconds' => 0, 'kb.conversion_artifacts.tmp_max_age_seconds' => 30]);
         $this->assertSame(ConversionArtifactStore::DEFAULT_TMP_LEASE_SECONDS, ConversionArtifactStore::tempLeaseSeconds());
+        // A positive lease longer than the age threshold is honoured verbatim.
         config(['kb.conversion_artifacts.tmp_lease_seconds' => 45]);
         $this->assertSame(45, ConversionArtifactStore::tempLeaseSeconds());
     }
@@ -793,16 +794,26 @@ final class ArtifactsRetentionCommandsTest extends TestCase
         Storage::disk('kb')->assertExists((string) $dated->markdown_path);
     }
 
-    /** The lease is the primary guard: one shorter than the age threshold is honoured but reported, once per process, not once per write. */
-    public function test_a_temp_lease_shorter_than_the_age_threshold_is_reported_once(): void
+    /**
+     * The lease is the primary guard, so one configured shorter than the age
+     * threshold is RAISED past it — not merely reported, and not to the
+     * threshold itself: the lease is taken before the bytes are written and
+     * the temp becomes sweepable at `mtime + max_age`, so a lease of exactly
+     * the threshold would lapse at that very instant and the sweep would
+     * delete the temp under the slow writer it exists for. Reported once per
+     * process, not once per write.
+     */
+    public function test_a_temp_lease_shorter_than_the_age_threshold_is_raised_past_it_and_reported_once(): void
     {
         config(['kb.conversion_artifacts.tmp_lease_seconds' => 100, 'kb.conversion_artifacts.tmp_max_age_seconds' => 3600]);
         \Illuminate\Support\Facades\Log::spy();
 
-        $this->assertSame(100, ConversionArtifactStore::tempLeaseSeconds());
-        $this->assertSame(100, ConversionArtifactStore::tempLeaseSeconds());
+        // Raised PAST the threshold, not to it: a lease ending exactly when
+        // the temp becomes sweepable would leave the slow writer unprotected.
+        $this->assertSame(7200, ConversionArtifactStore::tempLeaseSeconds(), 'the effective lease outlives the sweep threshold');
+        $this->assertSame(7200, ConversionArtifactStore::tempLeaseSeconds());
 
-        \Illuminate\Support\Facades\Log::shouldHaveReceived('warning')->once()->withArgs(static fn (string $message): bool => str_contains($message, 'shorter than tmp_max_age_seconds'));
+        \Illuminate\Support\Facades\Log::shouldHaveReceived('warning')->once()->withArgs(static fn (string $message): bool => str_contains($message, 'raising the effective lease past the age threshold'));
     }
 
     /**

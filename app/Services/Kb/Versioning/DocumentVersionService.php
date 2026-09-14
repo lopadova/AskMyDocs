@@ -11,6 +11,7 @@ use App\Support\Kb\StorageNamespace;
 use App\Support\MarkdownDiff;
 use App\Support\TenantContext;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
@@ -32,8 +33,11 @@ final class DocumentVersionService
     /** The timeline-limit misconfiguration has been reported by this process (test seam: resetWarnings()). */
     private static bool $warnedTimelineLimit = false;
 
+    private static bool $warnedArtifactStateCache = false;
+
     public static function resetWarnings(): void
     {
+        self::$warnedArtifactStateCache = false;
         self::$warnedTimelineLimit = false;
     }
 
@@ -148,10 +152,105 @@ final class DocumentVersionService
      * against), `missing` (pointer set, nothing readable there), `mismatch`
      * (readable, does not hash to `content_hash`). Every surface that claims
      * "this version has a stored artifact" derives it from here.
+     *
+     * The check READS the bytes, so a timeline page of `timeline_limit`
+     * versions would fetch that many objects from a bucket on every listing
+     * and on every "load older" page. `verified` — and ONLY `verified` — is
+     * therefore memoized for `kb.versioning.artifact_state_cache_seconds`
+     * (0 disables it, R43) under a key carrying the bytes' identity: disk,
+     * path and `content_hash`, all three immutable for a published artifact.
+     *
+     * The asymmetry is the point. A state that can be repaired — `missing`,
+     * `mismatch`, `unverified`, `none` — is never memoized, so the identical
+     * re-ingest and `kb:artifacts-backfill` that republish the bytes show as
+     * repaired on the very next listing; only the state that cannot improve
+     * on its own is cached. What the window can then hide is the one
+     * transition left: a verified file deleted or tampered WITHIN it, whose
+     * badge may lag by up to the TTL — while the content and diff endpoints
+     * re-read every time and report `missing` / `mismatch` faithfully. The
+     * badge is a diagnostic; the served bytes are the contract.
      */
     public function artifactStateFor(KnowledgeDocument $version): string
     {
-        return $this->readArtifact($version)['state'];
+        $seconds = self::artifactStateCacheSeconds();
+        $hash = $version->content_hash;
+        if ($seconds < 1 || ! is_string($hash) || $hash === '') {
+            return $this->readArtifact($version)['state'];
+        }
+        $metadata = is_array($version->metadata) ? $version->metadata : [];
+        // The VALUE is the verified hash, so the key needs only (disk, path):
+        // one key per artifact, which the removal gate can forget without
+        // knowing which rows pointed at it.
+        $key = self::artifactStateCacheKey(StorageNamespace::diskOf($metadata), (string) $version->markdown_path);
+        try {
+            if (Cache::get($key) === $hash) {
+                return self::ARTIFACT_VERIFIED;
+            }
+        } catch (\Throwable $e) {
+            // A cache that refuses is never an outage on a read path (R14):
+            // the state is computed, just not memoized.
+            Log::warning('DocumentVersionService: artifact state memo not read; verifying', ['document_id' => (int) $version->id, 'error' => $e->getMessage()]);
+
+            return $this->readArtifact($version)['state'];
+        }
+        $state = $this->readArtifact($version)['state'];
+        if ($state !== self::ARTIFACT_VERIFIED) {
+            return $state; // repairable: never memoized, so a repair shows on the next listing
+        }
+        try {
+            Cache::put($key, $hash, $seconds);
+        } catch (\Throwable $e) {
+            Log::warning('DocumentVersionService: artifact state not memoized; verifying on every read', ['document_id' => (int) $version->id, 'error' => $e->getMessage()]);
+        }
+
+        return $state;
+    }
+
+    /** One key per artifact `(disk, path)`; the value is the `content_hash` proved verified. */
+    public static function artifactStateCacheKey(string $disk, string $path): string
+    {
+        return 'kb:artifact-state:'.$disk.':'.sha1($path);
+    }
+
+    /**
+     * Forget an artifact's memoized verification. Called by the ONE gate
+     * every removal goes through (`DocumentDeleter::removeArtifactIfUnreferenced()`),
+     * so a file WE delete never leaves a "stored" badge standing for the rest
+     * of the window: what the window can still hide is an external deletion
+     * or tampering, which the content and diff endpoints report faithfully
+     * anyway. A cache that refuses is logged, never a removal turned into a
+     * failure (R14).
+     */
+    public static function forgetArtifactStateMemo(string $disk, string $path): void
+    {
+        try {
+            Cache::forget(self::artifactStateCacheKey($disk, $path));
+        } catch (\Throwable $e) {
+            Log::warning('DocumentVersionService: artifact state memo not forgotten after a removal; the badge may lag until it expires', ['disk' => $disk, 'markdown_path' => $path, 'error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Seconds an artifact state stays memoized. `0` disables the memo
+     * deliberately and silently (every read verifies); a negative or
+     * non-numeric value disables it too — the safe direction — and is
+     * reported once per process, never a stale badge from a
+     * misconfiguration.
+     */
+    public static function artifactStateCacheSeconds(): int
+    {
+        $configured = config('kb.versioning.artifact_state_cache_seconds', 300);
+        if (is_numeric($configured) && (int) $configured >= 0) {
+            return (int) $configured;
+        }
+        if (! self::$warnedArtifactStateCache) {
+            self::$warnedArtifactStateCache = true;
+            Log::warning('DocumentVersionService: kb.versioning.artifact_state_cache_seconds is not a number of seconds; verifying every read', [
+                'configured' => is_scalar($configured) ? $configured : gettype($configured),
+            ]);
+        }
+
+        return 0;
     }
 
     /**

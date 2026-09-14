@@ -1009,7 +1009,13 @@ class DocumentIngestor
             : (string) config('kb.sources.path_prefix', '');
         $final = null;
         try {
-            $final = $store->pathFor(app(TenantContext::class)->current(), (string) $existing->project_key, KbPath::normalize((string) $existing->source_path), (string) $existing->version_hash, $prefix);
+            // The row is the authority on its namespace, not the ambient
+            // context: the pointer update and the publish both check
+            // `$existing->tenant_id`, so the path must be composed from the
+            // same tenant or a context that moved between the lookup and
+            // this repair would point the row at another tenant's
+            // content-addressed path (R30).
+            $final = $store->pathFor((string) $existing->tenant_id, (string) $existing->project_key, KbPath::normalize((string) $existing->source_path), (string) $existing->version_hash, $prefix);
             if ($existing->updateUnscopedWithinOwnTenant(['markdown_path' => $final, 'content_hash' => $hash]) === 0) {
                 // No row took the pointer (the row is no longer in the table):
                 // bytes published now would be an orphan nobody points at (R4).

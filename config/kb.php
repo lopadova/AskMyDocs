@@ -394,9 +394,10 @@ return [
         // before the temp is written, released by the publish or the discard):
         // the temp sweep never removes a leased temp, whatever its age, so a
         // slow transaction is never mistaken for a dead writer. The lease is
-        // the primary guard and must be >= `tmp_max_age_seconds` (warned
-        // otherwise): a lease shorter than the age threshold could only
-        // protect temps the threshold already protects. Needs a lock-capable
+        // the primary guard: one configured shorter than `tmp_max_age_seconds`
+        // is RAISED to it and reported once — a lease that expired before the
+        // sweep may delete would make a slow writer indistinguishable from a
+        // dead one exactly in the window the lease exists for. Needs a lock-capable
         // cache store (Redis in production); a store that cannot lock leaves
         // the age threshold alone in charge, reported once.
         'tmp_lease_seconds' => (int) env('KB_CONVERSION_ARTIFACTS_TMP_LEASE', 7200),
@@ -665,6 +666,17 @@ return [
         // The most versions a timeline listing (HTTP, MCP, CLI) hydrates and
         // verifies per call (R3); the surfaces report `truncated` beyond it.
         'timeline_limit' => (int) env('KB_VERSIONS_TIMELINE_LIMIT', 100),
+        // ADR 0030 §5 — a version's artifact state is a READ + hash check, so
+        // a timeline page would fetch one object per row from a bucket on
+        // every listing. The result is memoized for this many seconds under a
+        // key carrying disk + path + content_hash (all immutable for a
+        // published artifact, so a republished version never reads a stale
+        // entry). `0` verifies on every read: the badge can then never lag,
+        // at the cost of one object read per listed version. A file deleted
+        // or tampered inside the window may keep its badge until the entry
+        // expires; the content and diff endpoints always re-read and report
+        // `missing` / `mismatch` faithfully.
+        'artifact_state_cache_seconds' => (int) env('KB_VERSIONS_ARTIFACT_STATE_CACHE', 300),
     ],
 
     /*

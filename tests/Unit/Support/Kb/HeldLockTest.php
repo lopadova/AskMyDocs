@@ -47,13 +47,63 @@ final class HeldLockTest extends TestCase
     }
 
     /**
-     * The one branch that does NOT refuse: a lock class that is not
-     * Laravel's own exposes no current owner to compare, so the assertion
-     * is inert there — documented, and reported once per process (the
-     * report resets through the test seam). A regression pins it so the
-     * fail-open shape stays deliberate and visible (SEC-FAILCLOSED-001).
+     * Capability, not inheritance: a third-party lock that DOES record its
+     * acquisition owner answers the ownership question just as well as
+     * Laravel's own, so it is verified — passing while it owns the lock,
+     * refusing once it does not — instead of being rejected outright.
      */
-    public function test_a_third_party_lock_without_an_owner_to_compare_passes_and_warns_once(): void
+    public function test_a_third_party_lock_that_records_its_owner_is_verified_not_refused(): void
+    {
+        $capable = new class implements \Illuminate\Contracts\Cache\Lock
+        {
+            public bool $mine = true;
+
+            public function get($callback = null)
+            {
+                return true;
+            }
+
+            public function block($seconds, $callback = null)
+            {
+                return true;
+            }
+
+            public function release()
+            {
+                return true;
+            }
+
+            public function owner()
+            {
+                return 'me';
+            }
+
+            public function forceRelease()
+            {
+            }
+
+            public function isOwnedByCurrentProcess()
+            {
+                return $this->mine;
+            }
+        };
+        $held = new HeldLock($capable, 'test');
+
+        $held->assertHeld('the step'); // owned: no throw, no refusal
+
+        $capable->mine = false;
+        $this->expectException(LockLostException::class);
+        $held->assertHeld('the step');
+    }
+
+    /**
+     * A lock that records no acquisition owner cannot answer the ownership
+     * question at all, so the step is REFUSED — the same posture as a store
+     * that cannot lock (SEC-FAILCLOSED-001), never an assertion that
+     * silently passes. The reason is reported once per class (the report
+     * resets through the test seam).
+     */
+    public function test_a_third_party_lock_without_an_owner_to_compare_is_refused_and_warns_once(): void
     {
         $bare = new class implements \Illuminate\Contracts\Cache\Lock
         {
@@ -84,12 +134,24 @@ final class HeldLockTest extends TestCase
         \Illuminate\Support\Facades\Log::spy();
         $held = new HeldLock($bare, 'test');
 
-        $held->assertHeld('the step'); // inert: no throw
-        $held->assertHeld('the step');
-        \Illuminate\Support\Facades\Log::shouldHaveReceived('warning')->once()->withArgs(static fn (string $message): bool => str_contains($message, 'has no owner to compare'));
+        foreach ([1, 2] as $attempt) {
+            $thrown = null;
+            try {
+                $held->assertHeld('the step');
+            } catch (LockLostException $e) {
+                $thrown = $e;
+            }
+            $this->assertInstanceOf(LockLostException::class, $thrown, "attempt {$attempt} must refuse");
+            $this->assertStringContainsString('ownership cannot be verified before the step', $thrown->getMessage());
+        }
+        \Illuminate\Support\Facades\Log::shouldHaveReceived('warning')->once()->withArgs(static fn (string $message): bool => str_contains($message, 'records no acquisition owner'));
 
         HeldLock::resetWarnings();
-        $held->assertHeld('the step');
-        \Illuminate\Support\Facades\Log::shouldHaveReceived('warning')->twice()->withArgs(static fn (string $message): bool => str_contains($message, 'has no owner to compare'));
+        try {
+            $held->assertHeld('the step');
+        } catch (LockLostException) {
+            // expected again: the refusal does not depend on the report
+        }
+        \Illuminate\Support\Facades\Log::shouldHaveReceived('warning')->twice()->withArgs(static fn (string $message): bool => str_contains($message, 'records no acquisition owner'));
     }
 }

@@ -48,7 +48,7 @@ use RuntimeException;
  * alone cannot tell a slow transaction from a dead writer, and a temp deleted
  * under a live writer's feet fails its publish after the row committed
  * (Copilot review 10). The lease is the PRIMARY guard: it outlives the age
- * threshold (`tmp_lease_seconds` >= `tmp_max_age_seconds`, warned otherwise),
+ * threshold (a shorter `tmp_lease_seconds` is raised past `tmp_max_age_seconds`, reported once),
  * so a temp still leased is never age-eligible; a held lease is `in_flight`
  * to the sweep, and the age threshold is the second guard for a lease the
  * store lost (`cache:clear`) or a store that cannot lease at all.
@@ -80,10 +80,15 @@ final class ConversionArtifactStore
      * the move; a value that is not a positive number of seconds is a
      * misconfiguration reported once per process and replaced by the
      * default, never a lease that expires at once (fail closed on the
-     * sweep's side). A lease shorter than `tmp_max_age_seconds` is honoured
-     * but reported once: it could then only protect temps the age threshold
-     * already protects, and a writer slower than the age threshold would be
-     * swept under — the lease must be the longer of the two.
+     * sweep's side). A lease shorter than `tmp_max_age_seconds` is RAISED
+     * past it and reported once. Past, not to: the lease is taken BEFORE the
+     * bytes are written and the sweep may delete from `mtime + max_age`
+     * onwards, so a lease of exactly the threshold would lapse at the very
+     * instant the temp becomes sweepable — zero margin for the writer the
+     * lease exists for, one slower than the threshold. The clamp therefore
+     * reproduces the shipped relationship (double the threshold, at least a
+     * minute more), and the configured value is reported, never silently
+     * honoured.
      */
     public static function tempLeaseSeconds(): int
     {
@@ -99,10 +104,20 @@ final class ConversionArtifactStore
         }
         $maxAge = (int) config('kb.conversion_artifacts.tmp_max_age_seconds', 3600);
         if ($seconds < $maxAge) {
-            self::warnOnce('lease_vs_age', 'ConversionArtifactStore: kb.conversion_artifacts.tmp_lease_seconds is shorter than tmp_max_age_seconds; a writer slower than the age threshold is not protected by its lease', [
-                'tmp_lease_seconds' => $seconds,
+            // Clamped, not merely reported: a lease that expires before the
+            // sweep may delete makes its writer indistinguishable from a dead
+            // one exactly in the window the lease exists for.
+            $effective = max($maxAge * 2, $maxAge + 60);
+            self::warnOnce('lease_vs_age', 'ConversionArtifactStore: kb.conversion_artifacts.tmp_lease_seconds is shorter than tmp_max_age_seconds; raising the effective lease past the age threshold so a slow writer is never swept under', [
+                // `$configured`, not `$seconds`: an invalid value was already
+                // replaced by the default above, and reporting that as
+                // "configured" would contradict the first warning.
+                'configured_tmp_lease_seconds' => is_scalar($configured) ? $configured : gettype($configured),
                 'tmp_max_age_seconds' => $maxAge,
+                'effective_tmp_lease_seconds' => $effective,
             ]);
+
+            return $effective;
         }
 
         return $seconds;

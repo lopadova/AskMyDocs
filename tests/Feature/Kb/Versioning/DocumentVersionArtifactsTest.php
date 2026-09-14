@@ -253,6 +253,59 @@ final class DocumentVersionArtifactsTest extends TestCase
     }
 
     /**
+     * ADR 0030 §5 / R43 — the timeline badge is a READ plus a hash check, so
+     * a `verified` state is memoized: a page does not re-read one object per
+     * row on every listing. Only the state that cannot improve on its own is
+     * cached — within the window a deleted file keeps its badge, while the
+     * content endpoint re-reads and reports the truth.
+     */
+    public function test_a_verified_artifact_state_is_memoized_for_the_configured_window(): void
+    {
+        config(['kb.versioning.artifact_state_cache_seconds' => 300]);
+        $version = $this->version('v1', 'active', 'index a', "# Doc\n\nartifact a\n");
+        $service = app(DocumentVersionService::class);
+        $this->assertSame(DocumentVersionService::ARTIFACT_VERIFIED, $service->artifactStateFor($version));
+
+        Storage::disk('kb')->delete((string) $version->markdown_path);
+
+        $this->assertSame(DocumentVersionService::ARTIFACT_VERIFIED, $service->artifactStateFor($version), 'the badge lags by at most the window');
+        $this->assertSame(DocumentVersionService::SOURCE_RECONSTRUCTION, $service->contentFor($version)['source'], 'the served bytes never lag: the content path always re-reads');
+    }
+
+    /** R43 (OFF path) — with the window at 0 every read verifies: the badge cannot lag at all. */
+    public function test_with_the_memo_disabled_every_read_verifies(): void
+    {
+        config(['kb.versioning.artifact_state_cache_seconds' => 0]);
+        $version = $this->version('v1', 'active', 'index a', "# Doc\n\nartifact a\n");
+        $service = app(DocumentVersionService::class);
+        $this->assertSame(DocumentVersionService::ARTIFACT_VERIFIED, $service->artifactStateFor($version));
+
+        Storage::disk('kb')->delete((string) $version->markdown_path);
+
+        $this->assertSame(DocumentVersionService::ARTIFACT_MISSING, $service->artifactStateFor($version));
+    }
+
+    /**
+     * The asymmetry that makes the memo safe: a repairable state is never
+     * cached, so the identical re-ingest or `kb:artifacts-backfill` that
+     * republishes the bytes shows as repaired on the very next listing —
+     * never a "missing" badge frozen for the whole window.
+     */
+    public function test_a_repairable_state_is_never_memoized_so_a_repair_shows_at_once(): void
+    {
+        config(['kb.versioning.artifact_state_cache_seconds' => 300]);
+        $version = $this->version('v1', 'active', 'index a', "# Doc\n\nartifact a\n");
+        $path = (string) $version->markdown_path;
+        Storage::disk('kb')->delete($path);
+        $service = app(DocumentVersionService::class);
+        $this->assertSame(DocumentVersionService::ARTIFACT_MISSING, $service->artifactStateFor($version));
+
+        Storage::disk('kb')->put($path, "# Doc\n\nartifact a\n"); // the backfill republishes the same bytes
+
+        $this->assertSame(DocumentVersionService::ARTIFACT_VERIFIED, $service->artifactStateFor($version), 'a repair is visible at once');
+    }
+
+    /**
      * ADR 0030 §3 — on a local disk a symlink under `.artifacts/` cannot make
      * a contained key resolve outside the root: read and delete refuse it.
      */

@@ -1210,6 +1210,45 @@ MD;
         $this->assertNull($refAgain->fresh()->markdown_path);
     }
 
+    /**
+     * ADR 0030 §3 / R30 — the repair of a version that predates the
+     * artifacts composes its path from the ROW's tenant, not from the
+     * ambient context: the pointer update and the publish both authorize
+     * against `$existing->tenant_id`, so a context that moved between the
+     * lookup and the repair (or a caller outside the current-tenant job)
+     * must not point the row at another tenant's content-addressed path.
+     */
+    public function test_the_repair_of_a_pointerless_version_composes_the_path_from_the_rows_tenant(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => true]);
+        $markdown = "# Legacy\n\nBody.";
+        $existing = $this->ingestMarkdown($markdown, 'docs/legacy-tenant.md', ['disk' => 'kb', 'prefix' => '']);
+        $existing->updateUnscopedWithinOwnTenant(['markdown_path' => null, 'content_hash' => null]);
+        $existing = KnowledgeDocument::withoutGlobalScopes()->findOrFail($existing->id);
+        $rowTenant = (string) $existing->tenant_id;
+        $this->assertNotSame('', $rowTenant);
+        Storage::disk('kb')->delete(Storage::disk('kb')->allFiles('.artifacts'));
+
+        // The context has moved on since the row was read.
+        app(TenantContext::class)->set('another-tenant');
+
+        $method = new \ReflectionMethod(DocumentIngestor::class, 'publishArtifactOfPointerlessVersion');
+        $published = $method->invoke(
+            app(DocumentIngestor::class),
+            $existing,
+            $markdown,
+            ['disk' => 'kb', 'prefix' => ''],
+            'kb',
+            app(ConversionArtifactStore::class),
+        );
+
+        $this->assertTrue($published);
+        $final = (string) KnowledgeDocument::withoutGlobalScopes()->findOrFail($existing->id)->markdown_path;
+        $this->assertStringContainsString('.artifacts/'.$rowTenant.'/', $final, "the row's own tenant namespace");
+        $this->assertStringNotContainsString('another-tenant', $final);
+        Storage::disk('kb')->assertExists($final);
+    }
+
     /** The repair of an existing version goes to the disk the version RECORDED, not to the incoming request's. */
     public function test_an_identical_re_ingest_repairs_the_artifact_on_the_versions_recorded_disk(): void
     {

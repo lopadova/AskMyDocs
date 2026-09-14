@@ -179,8 +179,8 @@ the artifact identity matches. There is nothing to reference-count.
 `kb:prune-archived-versions` additionally sweeps `.tmp` leftovers older than
 one hour **that no live writer leases** — a writer takes a cache lease on its
 temp (`kb:artifact-temp:{sha1(disk|tmp)}`, `KB_CONVERSION_ARTIFACTS_TMP_LEASE`,
-default 7200 s, the primary guard: it must be at least the age threshold, and
-is warned when shorter) before the bytes land and gives it back at publish or
+default 7200 s, the primary guard: one configured shorter than the age
+threshold is raised to it and reported once) before the bytes land and gives it back at publish or
 discard, so a temp still inside a slow transaction is reported
 `artifact_temps_in_flight` and never deleted under its writer's feet, whatever
 its age; the age threshold remains the second guard for a lease the store lost
@@ -202,7 +202,13 @@ publish discards its temp, the removal is `failed`). It is a check right before
 the step, not a renewal: the window shrinks to the step itself, it does not
 close — and a third-party lock class with no owner to compare (a store
 registered with `Cache::extend()` returning a bare contract implementation)
-leaves the check inert, reported once. The orphan-file sweep's deletion of a
+cannot prove ownership at all — ownership is read by capability, from
+Laravel's lock or from any lock answering `isOwnedByCurrentProcess()` — so
+the step is refused there too, reported once per class: the same posture as a
+store that cannot lock. On such a store that is a stop, not a degradation:
+every artifact-enabled ingest rolls back and retries and every prune reports
+`failed`, until `CACHE_STORE` names a lock-capable store (Redis in
+production). The orphan-file sweep's deletion of a
 source re-checks the references first (a row that took the key between the
 snapshot and the delete keeps its file, `kept_meanwhile`) and, while artifacts
 are on, runs under the same storage key lock (`App\Support\Kb\SourceKeyLock`,
@@ -521,7 +527,8 @@ readable file with no `content_hash` to check against — a legacy pointer) stil
 serves content, with no integrity verdict, and is not claimed as stored; the
 identical re-ingest and the backfill record the hash once the bytes are known
 to be the version's, and the state becomes `verified`. The family a timeline
-verifies is **bounded by the listing itself** (R3), not by the retention cap:
+verifies is **bounded by the listing itself** (R3) and amortized by a memo,
+not by the retention cap:
 the prune runs daily and `KB_KEEP_ARCHIVED_VERSIONS` can be set high, so a
 family can hold hundreds of versions and every row costs a read + hash.
 `DocumentVersionService::versionsFor()` lists at most
@@ -531,7 +538,20 @@ put them first and fill the window), and every surface pages with an offset
 and reports the family `total`, the `limit`, the `offset` and `truncated`
 (additive, R27 — `total` was the listed count while the two were always
 equal; it is the family size now). An invalid page is refused (HTTP 422, an
-MCP error, a CLI failure), never silently satisfied. The restore ledger
+MCP error, a CLI failure), never silently satisfied. The state each listed
+row shows is memoized for `KB_VERSIONS_ARTIFACT_STATE_CACHE` seconds (default
+300; `0` verifies on every read) under a key carrying disk + path +
+`content_hash` — immutable for a published artifact, so a republished or
+repointed version cannot read a stale entry, and a row with no hash to key on
+is never memoized: a page costs one object read per row the first time and
+none while the memo stands. Only `verified` is memoized: the repairable
+states are always re-read, so the identical re-ingest and the backfill that
+republish the bytes show as repaired on the next listing. A verified file
+deleted or tampered inside the window may keep its badge until the entry
+expires; `…/versions/{id}/content` and
+`…/versions/diff` always re-read and report `missing` / `mismatch`, so the
+memo can only make a badge lag, never make served bytes unfaithful. The
+restore ledger
 (`metadata.restores`, §6) is host-owned like `version_actor`: stripped at the
 untrusted boundaries, appended by the restore path only. It reads; it never restores. `kb:doc-versions {document} {--tenant=} {--limit=} {--offset=}` is
 the CLI over the same service — `--tenant` validated non-empty and the

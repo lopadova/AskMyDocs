@@ -450,7 +450,14 @@ flowchart LR
   irreversible step, that it still owns its lock (`HeldLock`) — a lapsed TTL
   is a refusal (the commit rolls back, the original is kept, the publish
   discards its temp, the removal is `failed`) — a check right before the step,
-  not a renewal, so the window shrinks to the step itself.
+  not a renewal, so the window shrinks to the step itself. A lock that records no
+  acquisition owner at all (a third-party store registered with
+  `Cache::extend()`; ownership is read by capability, from Laravel's lock or
+  from any lock answering `isOwnedByCurrentProcess()`) cannot prove ownership,
+  so its guarded step is refused as well — a stop rather than a degradation:
+  every artifact-enabled ingest rolls back and retries and every prune reports
+  `failed`, until `CACHE_STORE` names a lock-capable store. Reported once per
+  class.
 - **The key is tenant- and project-namespaced, as safe segments.** A segment
   is used verbatim only when it matches `^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$`,
   and does not start with the reserved `h-` prefix; otherwise it becomes `h-` +
@@ -624,10 +631,11 @@ JSON columns that already exist:
 | `KB_OCR_VISION_TIMEOUT` | `300` | Per-document timeout of the vision driver (rasterisation + calls). |
 | `KB_CONVERSION_ARTIFACTS_ENABLED` | `false` | W2 / ADR 0030 — store the converted Markdown of every version at `.artifacts/{tenant}/{project}/{source_path}.versions/{version_hash}.md`. OFF writes nothing new; artifacts already stored keep being read. |
 | `KB_CONVERSION_ARTIFACTS_TMP_MAX_AGE` | `3600` | Seconds after which `kb:prune-archived-versions` sweeps a `.tmp` a dead writer left beside an artifact — one no live writer holds the lease of. |
-| `KB_CONVERSION_ARTIFACTS_TMP_LEASE` | `7200` | Seconds a writer's cache lease on its temp file lives (taken before the temp is written, released at publish or discard): a leased temp is never swept, whatever its age, so a slow transaction is not mistaken for a dead writer. The primary guard — must be at least `KB_CONVERSION_ARTIFACTS_TMP_MAX_AGE` (warned once when shorter); a non-positive value is the default, with a warning. Needs a lock-capable cache store (Redis in production); a store that cannot lock leaves the age threshold alone in charge, reported once, never an ingest outage. |
+| `KB_CONVERSION_ARTIFACTS_TMP_LEASE` | `7200` | Seconds a writer's cache lease on its temp file lives (taken before the temp is written, released at publish or discard): a leased temp is never swept, whatever its age, so a slow transaction is not mistaken for a dead writer. The primary guard — a value shorter than `KB_CONVERSION_ARTIFACTS_TMP_MAX_AGE` is raised to it (reported once), so the effective lease always outlives the sweep threshold; a non-positive value is the default, with a warning. Needs a lock-capable cache store (Redis in production); a store that cannot lock leaves the age threshold alone in charge, reported once, never an ingest outage. |
 | `KB_CONVERSION_ARTIFACTS_SOURCE_LOCK_WAIT` | `10` | Seconds a row commit or a `markdown_only` drop waits for the storage key's lock (needs an atomic lock store — Redis — in production). |
 | `KB_CONVERSION_ARTIFACTS_SOURCE_LOCK_TTL` | `60` | Seconds that lock lives when its holder dies. A value that is not a positive number of seconds (`0`, a negative, a non-number) is not a shorter lock: the default applies and a warning says so once per ingest. |
 | `KB_VERSIONS_TIMELINE_LIMIT` | `100` | The most versions a Time Machine listing (HTTP `?limit=`, MCP `limit`, CLI `--limit`) hydrates and verifies per call (R3); every surface pages with an offset (`?offset=`, `offset`, `--offset`) and returns the family `total` and `truncated` when it holds more than the page reaches — the UI offers "Load older versions". A non-positive value is the default, with a warning. |
+| `KB_VERSIONS_ARTIFACT_STATE_CACHE` | `300` | Seconds a version's artifact state stays memoized for the timeline badges. The state is a READ of the stored bytes plus a SHA-256 check, so a page of `KB_VERSIONS_TIMELINE_LIMIT` versions would fetch that many objects from a bucket on every listing and every "load older" page; the memo is keyed by disk + path + `content_hash` — all three immutable for a published artifact, so a republished or repointed version never reads a stale entry, and a row with no hash to key on is never memoized. `0` verifies on every read (no lag, one object read per listed version). Only `verified` is memoized: a repairable state (`missing`, `mismatch`, `unverified`) is always re-read, so an identical re-ingest or a `kb:artifacts-backfill` run shows as repaired on the very next listing. What the window can hide is the one transition left — a verified file deleted or tampered inside it, whose badge may lag by up to the TTL — while `…/versions/{id}/content` and `…/versions/diff` re-read every time and report `missing` / `mismatch` faithfully. |
 | `KB_SOURCE_RETENTION` | `full_copy` | `full_copy` · `markdown_only` (drop the original binary after the artifact commit) · `reference_only` (no artifact, no `.ocr/` run — the mode governs the derived data; the source a copy-based entry point wrote stays, it is what a re-run reads from, `kb:prune-orphan-files` keeps it as referenced, and a `reference_only` row blocks a `markdown_only` sibling's drop of the shared original). Wired for the first time in v8.36. |
 
 ## Tri-surface (R44)
@@ -713,9 +721,12 @@ modal, once as an IMAP attachment — on a deployment with `KB_OCR_ENABLED=true`
   their next identical re-ingest (which publishes the artifact for a
   pointerless row under its own retention contract) or a
   `kb:artifacts-backfill --tenant=…` run.
-- **A "stored" badge is a verified claim.** `has_artifact` is derived from the
-  same read + hash check the content endpoint uses and is true only for
-  `verified`; `artifact_state` says `missing` or `mismatch` when the pointer no
+- **A "stored" badge is a verified claim, memoized.** `has_artifact` is derived
+  from the same read + hash check the content endpoint uses and is true only for
+  `verified` — memoized for `KB_VERSIONS_ARTIFACT_STATE_CACHE` seconds so a
+  timeline page does not re-read one object per row on every listing (the key
+  carries the bytes' identity; the content and diff endpoints never read the
+  memo); `artifact_state` says `missing` or `mismatch` when the pointer no
   longer resolves to the recorded bytes (the UI shows a warning badge), and
   `unverified` for a legacy pointer without a `content_hash` — the next
   identical re-ingest or `kb:artifacts-backfill` records the hash and makes it
