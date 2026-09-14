@@ -15,6 +15,10 @@ use App\Http\Controllers\SpaController;
 use App\Http\Controllers\TestingController;
 use Illuminate\Support\Facades\Route;
 
+// Public editorial landing. Explicit route also serves the directory URL in Herd.
+Route::get('/landing', fn () => response()->file(public_path('landing/index.html')))
+    ->name('landing');
+
 /*
 |--------------------------------------------------------------------------
 | Auth Routes (guest only)
