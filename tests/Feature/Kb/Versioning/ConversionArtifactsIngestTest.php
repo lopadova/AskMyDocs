@@ -469,6 +469,116 @@ Inert knob.", 'docs/inert.md');
         $this->assertSame('markdown_only', $doc->fresh()->metadata['source_retention'], 'the contract is recorded; the next identical ingest retries the drop');
     }
 
+    /**
+     * A storage-key lock whose TTL lapsed while its holder still ran: the
+     * store now reports another owner. `acquire()` succeeds (the holder took
+     * it), the owner comparison fails (someone else has it now).
+     */
+    private function lapsedStorageKeyLock(string $name, int $seconds): \Illuminate\Cache\Lock
+    {
+        return new class($name, $seconds) extends \Illuminate\Cache\Lock
+        {
+            public function acquire()
+            {
+                return true;
+            }
+
+            public function release()
+            {
+                return true;
+            }
+
+            public function forceRelease()
+            {
+            }
+
+            protected function getCurrentOwner()
+            {
+                return 'another-writer';
+            }
+        };
+    }
+
+    /**
+     * ADR 0030 §3 — the row commit asserts, inside the transaction, that the
+     * storage-key lock is still its own: a lock that lapsed mid-commit rolls
+     * the row back (LockLostException, the job retries) instead of landing a
+     * row between a concurrent `markdown_only` drop's scan and its delete.
+     * Nothing is committed, the temp is discarded, the original is untouched.
+     */
+    public function test_a_row_commit_whose_storage_key_lock_lapsed_rolls_back_and_leaves_nothing(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => true, 'kb.source_retention.mode' => 'markdown_only', 'kb.conversion_artifacts.source_lock_wait_seconds' => 0]);
+        $bytes = PdfFixtureBuilder::buildThreePageSample();
+        Storage::disk('kb')->put('reports/q15.pdf', $bytes);
+        $key = 'kb:source:kb:'.sha1('reports/q15.pdf');
+        $store = \Illuminate\Support\Facades\Cache::store();
+        \Illuminate\Support\Facades\Cache::partialMock()
+            ->shouldReceive('lock')
+            ->andReturnUsing(fn (string $name, int $seconds = 0, $owner = null) => $name === $key
+                ? $this->lapsedStorageKeyLock($name, $seconds)
+                : $store->lock($name, $seconds, $owner));
+
+        $thrown = null;
+        try {
+            app(DocumentIngestor::class)->ingest('eng', new SourceDocument(
+                sourcePath: 'reports/q15.pdf', mimeType: 'application/pdf', bytes: $bytes,
+                externalUrl: null, externalId: null, connectorType: 'local', metadata: ['disk' => 'kb', 'prefix' => ''],
+            ), 'Q15');
+        } catch (\App\Support\Kb\LockLostException $e) {
+            $thrown = $e;
+        }
+
+        $this->assertInstanceOf(\App\Support\Kb\LockLostException::class, $thrown, 'a commit past a lapsed storage-key lock must be refused');
+        $this->assertStringContainsString('row commit', $thrown->getMessage());
+        $this->assertSame(0, KnowledgeDocument::withoutGlobalScopes()->where('source_path', 'reports/q15.pdf')->count(), 'the transaction rolled back');
+        $this->assertSame(0, KnowledgeChunk::withoutGlobalScopes()->where('project_key', 'eng')->count());
+        $this->assertSame([], Storage::disk('kb')->allFiles('.artifacts'), 'the temp is discarded, nothing published');
+        Storage::disk('kb')->assertExists('reports/q15.pdf');
+    }
+
+    /**
+     * ADR 0030 §3 — the DROP asserts the storage-key lock right before the
+     * delete: a lock that lapsed during the reference scan refuses the drop —
+     * the original stays (the conservative direction), the version and its
+     * artifact are committed as usual, and the refusal is logged. The persist
+     * (first take of the key) is real; the lapsed lock is injected on the
+     * drop's take only.
+     */
+    public function test_markdown_only_drop_keeps_the_original_when_the_storage_key_lock_lapses_during_the_scan(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => true, 'kb.source_retention.mode' => 'markdown_only', 'kb.conversion_artifacts.source_lock_wait_seconds' => 0]);
+        $bytes = PdfFixtureBuilder::buildThreePageSample();
+        Storage::disk('kb')->put('reports/q16.pdf', $bytes);
+        $key = 'kb:source:kb:'.sha1('reports/q16.pdf');
+        $store = \Illuminate\Support\Facades\Cache::store();
+        $takes = 0;
+        \Illuminate\Support\Facades\Cache::partialMock()
+            ->shouldReceive('lock')
+            ->andReturnUsing(function (string $name, int $seconds = 0, $owner = null) use ($store, $key, &$takes) {
+                if ($name !== $key) {
+                    return $store->lock($name, $seconds, $owner);
+                }
+                $takes++;
+
+                return $takes === 1 ? $store->lock($name, $seconds, $owner) : $this->lapsedStorageKeyLock($name, $seconds);
+            });
+        \Illuminate\Support\Facades\Log::spy();
+
+        $doc = app(DocumentIngestor::class)->ingest('eng', new SourceDocument(
+            sourcePath: 'reports/q16.pdf', mimeType: 'application/pdf', bytes: $bytes,
+            externalUrl: null, externalId: null, connectorType: 'local', metadata: ['disk' => 'kb', 'prefix' => ''],
+        ), 'Q16');
+
+        $this->assertSame(2, $takes, 'the persist takes the key once, the drop asks for it once more');
+        $this->assertSame(1, KnowledgeDocument::withoutGlobalScopes()->where('source_path', 'reports/q16.pdf')->count(), 'the version is committed');
+        Storage::disk('kb')->assertExists((string) $doc->markdown_path);
+        Storage::disk('kb')->assertExists('reports/q16.pdf'); // a drop whose lock lapsed keeps the original
+        $this->assertSame('markdown_only', $doc->fresh()->metadata['source_retention'], 'the contract is recorded; the next identical ingest retries the drop');
+        $this->assertArrayNotHasKey('source_dropped', $doc->fresh()->metadata ?? []);
+        \Illuminate\Support\Facades\Log::shouldHaveReceived('warning')->once()->withArgs(static fn (string $message): bool => str_contains($message, 'the storage key lock lapsed during the reference scan'));
+    }
+
     /** ADR 0030 §3 — the retention contract is finalized on the identical re-ingest too: an original re-uploaded after a `markdown_only` drop is dropped again and the rows stamped. */
     public function test_an_identical_re_ingest_after_a_re_upload_drops_the_original_again(): void
     {
@@ -816,6 +926,55 @@ MD;
         $this->assertFalse(ConversionArtifactStore::tempLeaseHeld('kb', $tmp));
     }
 
+    /**
+     * ADR 0030 §3 — the artifact path lock has a TTL and no renewal: a section
+     * that outlives it refuses its irreversible step (LockLostException)
+     * instead of running under another holder.
+     */
+    public function test_a_path_lock_lost_during_the_section_refuses_the_step(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => true]);
+        $store = app(ConversionArtifactStore::class);
+        $path = $store->pathFor(app(TenantContext::class)->current(), 'eng', 'docs/lost.md', str_repeat('c', 64));
+
+        try {
+            $store->underPathLock('kb', $path, static function (\App\Support\Kb\HeldLock $held) use ($path): void {
+                \Illuminate\Support\Facades\Cache::lock('kb:artifact:kb:'.sha1($path))->forceRelease(); // the TTL lapsed mid-section
+                $held->assertHeld('the step');
+            });
+            $this->fail('a lapsed path lock must refuse the step');
+        } catch (\App\Support\Kb\LockLostException $e) {
+            $this->assertStringContainsString('artifact path lock lost', $e->getMessage());
+        }
+    }
+
+    /** A temp write that THROWS (an adapter raising UnableToWriteFile) gives its lease back and leaves no partial temp behind. */
+    public function test_a_temp_write_that_throws_releases_the_lease_and_leaves_nothing(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => true]);
+        $store = app(ConversionArtifactStore::class);
+        $final = $store->pathFor(app(TenantContext::class)->current(), 'eng', 'docs/refused-write.md', str_repeat('d', 64));
+        $healthy = Storage::disk('kb');
+        $root = $healthy->path('');
+        $adapter = new \Tests\Fixtures\Storage\WriteRefusingAdapter(new \League\Flysystem\Local\LocalFilesystemAdapter($root), static fn (string $path): bool => str_ends_with($path, '.tmp'));
+        // `throw => true`: the disk rethrows UnableToWriteFile instead of answering `false` — the branch under test.
+        Storage::set('kb', new \Illuminate\Filesystem\FilesystemAdapter(new \League\Flysystem\Filesystem($adapter), $adapter, ['root' => $root, 'throw' => true]));
+        $thrown = null;
+        try {
+            $store->writeTemp('kb', $final, 'refused');
+        } catch (\Throwable $e) {
+            $thrown = $e;
+        } finally {
+            Storage::set('kb', $healthy);
+        }
+        $this->assertNotNull($thrown, 'the refused write must propagate');
+        $this->assertStringContainsString('write refused', $thrown->getMessage(), 'the adapter\'s own exception propagates, after the lease is given back');
+        // The adapter recorded the temp path it refused: its lease — taken BEFORE the write — must be gone.
+        $this->assertNotNull($adapter->lastRefusedPath, 'the adapter refused the temp write');
+        $this->assertFalse(ConversionArtifactStore::tempLeaseHeld('kb', $adapter->lastRefusedPath), 'the lease is given back when the write throws');
+        Storage::disk('kb')->assertMissing($adapter->lastRefusedPath);
+    }
+
     /** R30 — the post-commit re-check is bound to the tenant the caller names: a caller naming another tenant never publishes bytes for this row, and the refusal is logged for what it is. */
     public function test_publish_for_a_row_of_another_tenant_discards_the_temp(): void
     {
@@ -955,7 +1114,7 @@ MD;
         Storage::disk('kb')->assertMissing('reports/q12.pdf');
         \Illuminate\Support\Facades\Log::shouldHaveReceived('warning')
             ->with(Mockery::on(static fn (string $message): bool => str_contains($message, 'source_lock_seconds')), Mockery::on(static fn (array $context): bool => ($context['default'] ?? null) === 60 && ($context['configured'] ?? null) === 0))
-            ->atLeast()->once();
+            ->once(); // the fallback is reported once per process, not once per lock taken
     }
 
     /** ADR 0030 §3 / R21 — a `reference_only` version stores no artifact but still requires the shared original: its commit takes the storage-key lock too, so it can never commit past a concurrent drop's reference scan. */

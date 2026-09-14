@@ -191,7 +191,26 @@ are refused (the publish throws and discards its temp, the removal is reported
 `failed`) — a lock-capable cache store (Redis in production) is a requirement
 of the feature, not a tuning knob. The one documented exception is a store that
 implements the lock contract without providing exclusion — the `null` store
-grants every lock — which `canLease()` cannot tell apart. The
+grants every lock — which `canLease()` cannot tell apart. Both locks (the
+storage key's and the artifact path's) have a TTL and no renewal, so no holder
+assumes its work fits inside it: the critical section receives its lock
+(`App\Support\Kb\HeldLock`) and asserts, right before its irreversible step —
+the row commit, the `markdown_only` delete, the artifact publish or removal,
+the orphan source's delete — that the lock is still its own; a lapsed lock is a
+refusal (`LockLostException`: the commit rolls back, the original is kept, the
+publish discards its temp, the removal is `failed`). It is a check right before
+the step, not a renewal: the window shrinks to the step itself, it does not
+close — and a third-party lock class with no owner to compare (a store
+registered with `Cache::extend()` returning a bare contract implementation)
+leaves the check inert, reported once. The orphan-file sweep's deletion of a
+source re-checks the references first (a row that took the key between the
+snapshot and the delete keeps its file, `kept_meanwhile`) and, while artifacts
+are on, runs under the same storage key lock (`App\Support\Kb\SourceKeyLock`,
+shared with the `markdown_only` drop and the row commits of non-Markdown
+sources — a Markdown source's commit takes no lock, so for it the re-check alone
+narrows the window); a key a writer holds right now is kept as in flight. With
+artifacts off nothing else takes that lock, so the sweep takes none either.
+The
 artifact root itself is checked before it is probed or listed (a `.artifacts`
 that is a symlink out of the disk is a refused sweep, never an enumeration of
 the outside), and a temp path is checked like a final one before it is read,
@@ -415,8 +434,8 @@ orphan sweep — goes through ONE gate,
 around its post-commit move, sharing the source-lock wait / TTL knobs) the
 references are re-checked and the file is removed only when no row of any
 tenant — live, archived, trashed, a row without a usable recorded disk
-(absent, null or empty `metadata.disk`: a legacy, ambiguous row, one reading
-for every consumer in `App\Support\Kb\StorageNamespace`) included — still
+(absent, null, empty or malformed `metadata.disk`: a legacy, ambiguous row,
+one reading for every consumer in `App\Support\Kb\StorageNamespace`) included — still
 points at it on that disk. The path is the content hash, so an identical
 ingest that ran between a caller's decision (the prune's snapshot, a hard
 delete's row transaction) and the removal recreated the very same path for a

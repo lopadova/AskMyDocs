@@ -12,11 +12,13 @@ use App\Models\KnowledgeDocument;
 use App\Services\Kb\Ocr\OcrFigureStore;
 use App\Services\Kb\Versioning\ConversionArtifactStore;
 use App\Services\Kb\Analysis\ChangeAnalysisGate;
+use App\Support\Kb\HeldLock;
+use Illuminate\Contracts\Cache\LockTimeoutException;
+use App\Support\Kb\SourceKeyLock;
 use App\Support\Kb\StorageNamespace;
 use App\Support\KbPath;
 use App\Support\LikeEscaper;
 use DateTimeInterface;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -638,10 +640,13 @@ class DocumentDeleter
     {
         $store = app(ConversionArtifactStore::class);
         try {
-            return $store->underPathLock($disk, $path, function () use ($store, $disk, $path): string {
+            return $store->underPathLock($disk, $path, function (HeldLock $held) use ($store, $disk, $path): string {
                 if ($this->artifactReferenced($disk, $path)) {
                     return ConversionArtifactStore::KEPT;
                 }
+                // The re-check may have outlived the lock's TTL: the delete is
+                // refused on a lock this holder no longer owns (→ `failed`).
+                $held->assertHeld('artifact removal');
 
                 return $store->remove($disk, $path);
             });
@@ -660,22 +665,22 @@ class DocumentDeleter
 
     /**
      * Whether any row — live, archived or trashed, any tenant — points at
-     * this artifact path on this disk. A row whose `metadata.disk` is
-     * absent, null or empty counts as a reference (fail closed) — the shapes
-     * a host-stamped disk can take, so the prune's snapshot
-     * (`documentRecordsStorageNamespace()` / StorageNamespace) and this gate
-     * answer alike: a path such a row points at is kept, never deleted
-     * under it.
+     * this artifact path on this disk. A row without a usable recorded disk
+     * (absent, null, empty or malformed — StorageNamespace, judged in PHP so
+     * every shape counts) is a reference (fail closed): the prune's snapshot
+     * (`documentRecordsStorageNamespace()`) and this gate answer alike, and a
+     * path such a row points at is kept, never deleted under it.
      */
     public function artifactReferenced(string $disk, string $path): bool
     {
-        return $this->artifactReferenceQuery($disk)->where('markdown_path', $path)->exists();
+        return $this->artifactsReferenced($disk, [$path]) !== [];
     }
 
     /**
-     * The batch form of {@see artifactReferenced()} for a preview that has
-     * no lock to hold: one query per batch (R3), the same predicate. Returns
-     * the referenced paths as keys.
+     * The reference predicate, batched: {@see artifactReferenced()} is its
+     * single-path wrapper (inside the locked gate), the dry-run preview
+     * calls it directly — one query per chunk of 500 (R3). Returns the
+     * referenced paths as keys.
      *
      * @param  list<string>  $paths
      * @return array<string, true>
@@ -687,23 +692,99 @@ class DocumentDeleter
         }
         $referenced = [];
         foreach (array_chunk($paths, 500) as $chunk) {
-            $rows = $this->artifactReferenceQuery($disk)->whereIn('markdown_path', $chunk)->distinct()->pluck('markdown_path');
-            foreach ($rows as $path) {
-                $referenced[(string) $path] = true;
+            // The rows are narrowed by path in SQL (the `markdown_path`
+            // index); the namespace is judged in PHP with the ONE reading
+            // every consumer shares (StorageNamespace): a recorded disk
+            // that matches, or no usable recorded disk at all (absent,
+            // null, empty OR malformed — a shape SQL cannot express
+            // portably), counts as a reference. Fail closed.
+            $rows = KnowledgeDocument::withoutGlobalScopes()
+                ->whereIn('markdown_path', $chunk)
+                ->select(['id', 'markdown_path', 'metadata'])
+                ->cursor();
+            $wanted = count(array_unique($chunk));
+            $found = 0; // per chunk: `$referenced` accumulates across chunks and must not satisfy this chunk's target
+            foreach ($rows as $row) {
+                $recorded = StorageNamespace::recordedDisk($row->metadata);
+                if ($recorded !== null && $recorded !== $disk) {
+                    continue;
+                }
+                $path = (string) $row->markdown_path;
+                if (isset($referenced[$path])) {
+                    continue;
+                }
+                $referenced[$path] = true;
+                $found++;
+                if ($found >= $wanted) {
+                    break; // every path of this chunk is referenced: nothing left to learn from the remaining rows
+                }
             }
         }
 
         return $referenced;
     }
 
-    private function artifactReferenceQuery(string $disk): Builder
+    /**
+     * Remove an orphan SOURCE file (the orphan-file sweep's deletion) after
+     * re-checking that no row of any tenant references the key any more
+     * (ADR 0030 §3): a row that took the key between the sweep's snapshot
+     * and this call keeps its file (KEPT) — the re-check narrows the window
+     * for every source. While conversion artifacts are on, the re-check and
+     * the delete also run under the storage key's lock — the lock the
+     * `markdown_only` drop and the row commits of non-Markdown sources hold
+     * — so the sweep cannot slip between their two halves (a Markdown
+     * source's commit takes no lock: for it the re-check alone stands); a key
+     * a writer holds right now is in flight and kept (KEPT, the next sweep
+     * decides), and the delete runs only while the lock is still owned (a
+     * lapsed TTL is a refusal). With artifacts off nothing else takes that
+     * lock, so none is taken here either (R43: the sweep never depends on a
+     * lock store it was not configured for). A re-check the database refused
+     * or a disk that refused is FAILED — reported, never a stack trace
+     * mid-sweep and never a delete under a live row.
+     *
+     * @return string one of ConversionArtifactStore::REMOVED | ABSENT | KEPT | FAILED
+     */
+    public function removeSourceFileIfUnreferenced(string $disk, string $fullPath, string $sourcePath): string
     {
-        return KnowledgeDocument::withoutGlobalScopes()
-            ->where(function ($q) use ($disk): void {
-                // A recorded disk that matches, or no usable recorded disk
-                // at all (absent / null / empty — StorageNamespace).
-                $q->where('metadata->disk', $disk)->orWhereNull('metadata->disk')->orWhere('metadata->disk', '');
-            });
+        $lock = null;
+        $held = null;
+        if (app(ConversionArtifactStore::class)->enabled()) {
+            try {
+                $lock = SourceKeyLock::make($disk, $fullPath);
+                $lock->block(SourceKeyLock::waitSeconds());
+                $held = new HeldLock($lock, 'storage key');
+            } catch (LockTimeoutException) {
+                // Another holder (a row commit, a drop) is on this key right
+                // now: the file is in flight, not an orphan to decide today.
+                Log::info('DocumentDeleter: orphan source kept — the storage key is held by a concurrent writer; the next sweep decides', ['disk' => $disk, 'path' => $fullPath]);
+
+                return ConversionArtifactStore::KEPT;
+            } catch (\Throwable $e) {
+                Log::warning('DocumentDeleter: orphan source not removed — the storage key lock could not be taken', ['disk' => $disk, 'path' => $fullPath, 'exception' => $e::class, 'error' => $e->getMessage()]);
+
+                return ConversionArtifactStore::FAILED;
+            }
+        }
+        try {
+            if ($this->firstDocumentReferencingStorageKey($disk, $fullPath, $sourcePath) !== null) {
+                return ConversionArtifactStore::KEPT;
+            }
+            $storage = Storage::disk($disk);
+            if (! $storage->exists($fullPath)) {
+                return ConversionArtifactStore::ABSENT;
+            }
+            // Right before the irreversible step, after the existence probe
+            // (a network round-trip on a bucket disk): a lapsed TTL refuses.
+            $held?->assertHeld('orphan source removal');
+
+            return $storage->delete($fullPath) ? ConversionArtifactStore::REMOVED : ConversionArtifactStore::FAILED;
+        } catch (\Throwable $e) {
+            Log::warning('DocumentDeleter: orphan source not removed — the reference gate could not decide', ['disk' => $disk, 'path' => $fullPath, 'exception' => $e::class, 'error' => $e->getMessage()]);
+
+            return ConversionArtifactStore::FAILED;
+        } finally {
+            HeldLock::releaseQuietly($lock);
+        }
     }
 
     /**

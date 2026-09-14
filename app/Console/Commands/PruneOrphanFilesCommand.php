@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Services\Kb\DocumentDeleter;
 use App\Services\Kb\Ocr\OcrFigureStore;
+use App\Services\Kb\Versioning\ConversionArtifactStore;
 use App\Models\KnowledgeDocument;
 use App\Support\Kb\LazyDiskListing;
 use App\Support\KbDiskResolver;
@@ -18,6 +19,15 @@ use Illuminate\Support\Facades\Storage;
  * `knowledge_documents` (including soft-deleted rows) and optionally
  * delete them. Designed to run as a nightly `--dry-run` from the
  * scheduler so operators can inspect leftovers before purging.
+ *
+ * The dry run lists the snapshot's candidates and re-checks nothing:
+ * `kept_meanwhile` is a real-run outcome only (a row that took the key
+ * between the snapshot and the delete, or a writer holding the key at that
+ * instant) — a preview cannot know who will hold a key when the real run
+ * reaches it, and re-running the same snapshot predicate a moment later
+ * would only pretend to. (The artifact sweep of `kb:prune-archived-versions`
+ * previews `artifact_orphans_kept` because THAT gate re-reads rows, not
+ * locks.)
  *
  * Memory-safe (R3): the disk is walked ONCE, lazily (Flysystem's listing is
  * a generator — `allFiles()` would materialise the whole tree), and sources
@@ -131,12 +141,12 @@ class PruneOrphanFilesCommand extends Command
             return $probeExit;
         }
 
-        [$deleted, $failed, $orphanOcrKept] = $this->deleteOrphans($storage, $orphans, $prefix, $disk);
+        [$deleted, $failed, $orphanOcrKept, $keptMeanwhile] = $this->deleteOrphans($storage, $orphans, $prefix, $disk);
         [$purged, $inFlight, $ocrFailed] = $this->purgeDanglingOcrTrees($danglingOcr, $disk);
         [$runsPurged, $runsInFlight, $runsFailed] = $this->purgeStaleOcrRuns($staleRuns, $disk, $prefix);
 
         $this->info(sprintf(
-            'Disk [%s]: scanned=%d orphans=%d deleted=%d failed=%d orphan_ocr_kept=%d dangling_ocr=%d purged=%d in_flight=%d ocr_failed=%d stale_runs=%d runs_purged=%d runs_in_flight=%d runs_failed=%d%s',
+            'Disk [%s]: scanned=%d orphans=%d deleted=%d failed=%d orphan_ocr_kept=%d dangling_ocr=%d purged=%d in_flight=%d ocr_failed=%d stale_runs=%d runs_purged=%d runs_in_flight=%d runs_failed=%d%s%s',
             $disk,
             $scanned,
             $orphanCount,
@@ -151,6 +161,9 @@ class PruneOrphanFilesCommand extends Command
             $runsPurged,
             $runsInFlight,
             $runsFailed,
+            // Additive, printed only when non-zero: orphan candidates a row
+            // took between the snapshot and the locked re-check (kept).
+            $keptMeanwhile > 0 ? " kept_meanwhile={$keptMeanwhile}" : '',
             $probeSuffix,
         ));
 
@@ -564,20 +577,30 @@ class PruneOrphanFilesCommand extends Command
 
     /**
      * @param  array<int,string>  $orphans
-     * @return array{0:int,1:int,2:int} [deleted, failed, ocr trees kept (in flight)]
+     * @return array{0:int,1:int,2:int,3:int} [deleted (a file that vanished between the snapshot and the gate counts here: the end state is the same), failed, ocr trees kept (in flight), kept meanwhile (a row took the key after the snapshot, or a writer holds it right now)]
      */
     private function deleteOrphans($storage, array $orphans, string $prefix, string $disk): array
     {
         $deleted = 0;
         $failed = 0;
         $ocrKept = 0;
+        $keptMeanwhile = 0;
+        $deleter = app(DocumentDeleter::class);
 
         foreach ($orphans as $relative) {
             $target = $this->applyPrefix($relative, $prefix);
 
-            $ok = $storage->delete($target);
-
-            if ($ok !== true) {
+            // The snapshot chose the candidate; the deletion re-checks the
+            // references under the storage key's lock (the lock a row commit
+            // and a `markdown_only` drop hold): a row that took the key since
+            // the snapshot keeps its file — it is simply not an orphan any more.
+            $outcome = $deleter->removeSourceFileIfUnreferenced($disk, $target, $relative);
+            if ($outcome === ConversionArtifactStore::KEPT) {
+                $keptMeanwhile++;
+                $this->line("  ~ kept (a row references it now, or a writer holds its key): {$target}");
+                continue;
+            }
+            if ($outcome === ConversionArtifactStore::FAILED) {
                 $failed++;
                 $this->error("  ! failed to delete: {$target}");
                 continue;
@@ -608,7 +631,7 @@ class PruneOrphanFilesCommand extends Command
             $deleted++;
         }
 
-        return [$deleted, $failed, $ocrKept];
+        return [$deleted, $failed, $ocrKept, $keptMeanwhile];
     }
 
     /**

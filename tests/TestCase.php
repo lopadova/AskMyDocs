@@ -665,6 +665,8 @@ abstract class TestCase extends OrchestraTestCase
         // leak between tests (R16: restore the global state you mutate).
         \App\Services\Kb\Versioning\ConversionArtifactStore::resetWarnings();
         \App\Services\Kb\Versioning\DocumentVersionService::resetWarnings();
+        \App\Support\Kb\HeldLock::resetWarnings();
+        \App\Support\Kb\SourceKeyLock::resetWarnings();
 
         if ($this->app !== null && $this->app->bound(\App\Support\TenantContext::class)) {
             $this->app->make(\App\Support\TenantContext::class)->set(self::FALLBACK_TEST_TENANT);

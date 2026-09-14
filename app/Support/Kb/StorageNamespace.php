@@ -13,13 +13,10 @@ namespace App\Support\Kb;
  * A disk is RECORDED only when it is a non-empty string. Absent, null, empty
  * or malformed (a stray scalar, an array) all mean "legacy or ambiguous":
  * such a row is never resolved to a guessed disk, references its logical
- * path wherever an in-PHP consumer looks (fail closed), and reads through
- * the configured disk — never through '' or 'Array'. The one SQL consumer
- * (`DocumentDeleter::artifactReferenceQuery()`) matches absent, null and
- * empty; a malformed value is not expressible portably there — and not
- * reachable either: `metadata.disk` is host-stamped as a string at ingest
- * and stripped from client and connector payloads
- * (`OcrService::stripTrustedOnlyKeys()`).
+ * path wherever a deleting consumer looks (fail closed), and reads through
+ * the configured disk — never through '' or 'Array'. Every consumer judges
+ * the namespace in PHP through this class (the SQL only narrows by path),
+ * so a malformed value gets the same answer as a null one.
  */
 final class StorageNamespace
 {

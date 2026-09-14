@@ -211,6 +211,32 @@ final class ArtifactsRetentionCommandsTest extends TestCase
     }
 
     /**
+     * ADR 0030 §3 — the gate's lock has a TTL and no renewal: a re-check that
+     * outlived it refuses the delete (`failed`, exit non-zero) instead of
+     * removing the artifact under whoever holds the path now.
+     */
+    public function test_prune_refuses_an_orphan_removal_whose_path_lock_lapsed_during_the_re_check(): void
+    {
+        $this->app->bind(\App\Services\Kb\DocumentDeleter::class, \Tests\Fixtures\Kb\RaceInsertingDeleter::class);
+        $store = app(ConversionArtifactStore::class);
+        $orphan = $store->pathFor(app(TenantContext::class)->current(), 'eng', 'docs/gone.md', str_repeat('e', 64));
+        $store->publish('kb', $store->writeTemp('kb', $orphan, 'nobody points here'), $orphan);
+        try {
+            \Tests\Fixtures\Kb\RaceInsertingDeleter::$insideGate = static function (string $disk, string $path): void {
+                Cache::lock('kb:artifact:'.$disk.':'.sha1($path))->forceRelease(); // the TTL lapsed mid-section
+            };
+
+            $this->artisan('kb:prune-archived-versions')
+                ->expectsOutputToContain('could not remove orphan artifact [kb]')
+                ->expectsOutputToContain('artifact_orphans_removed=0 artifact_orphans_failed=1')
+                ->assertExitCode(1);
+        } finally {
+            \Tests\Fixtures\Kb\RaceInsertingDeleter::$insideGate = null;
+        }
+        Storage::disk('kb')->assertExists($orphan);
+    }
+
+    /**
      * A row whose recorded disk is unusable (a JSON null, an empty string) is
      * a legacy, ambiguous reference for the snapshot AND the gate alike
      * (StorageNamespace): its artifact is never an orphan candidate on any

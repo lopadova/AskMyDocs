@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Kb\Versioning;
 
+use App\Support\Kb\HeldLock;
 use App\Support\Kb\LazyDiskListing;
 use App\Support\KbPath;
 use Illuminate\Filesystem\FilesystemAdapter;
@@ -138,7 +139,12 @@ final class ConversionArtifactStore
      * that cannot lock makes the lock unavailable: the call is REFUSED
      * (throws) — a publish discards its temp and rethrows, a removal is
      * reported `failed` — never run unguarded. Only the temp lease degrades
-     * (`canLease()`); the age threshold is its second guard.
+     * (`canLease()`); the age threshold is its second guard. The lock has a
+     * TTL and no renewal, so the callback receives a {@see HeldLock} and
+     * asserts, right before its irreversible step, that it still owns it —
+     * a lapsed lock is a refusal (LockLostException), never a race.
+     *
+     * @param  callable(HeldLock): mixed  $fn
      */
     public function underPathLock(string $disk, string $path, callable $fn): mixed
     {
@@ -153,16 +159,15 @@ final class ConversionArtifactStore
         $lock = Cache::lock('kb:artifact:'.$disk.':'.sha1($path), self::pathLockSeconds());
         $lock->block(self::pathLockWaitSeconds());
         try {
-            return $fn();
+            // The section receives its lock so it can assert, right before
+            // its irreversible step, that the TTL has not lapsed under it
+            // (HeldLock::assertHeld() → LockLostException, refused).
+            return $fn(new HeldLock($lock, 'artifact path'));
         } finally {
-            try {
-                $lock->release();
-            } catch (\Throwable $e) {
-                // A release the store refused (a blip) must never turn a
-                // publish or removal that DID happen into a failure; the
-                // lock lapses with its TTL.
-                Log::debug('ConversionArtifactStore: artifact path lock not released', ['disk' => $disk, 'path' => $path, 'error' => $e->getMessage()]);
-            }
+            // A release the store refused (a blip) must never turn a publish
+            // or removal that DID happen into a failure; the lock lapses
+            // with its TTL.
+            HeldLock::releaseQuietly($lock);
         }
     }
 
@@ -363,8 +368,18 @@ final class ConversionArtifactStore
         // Leased BEFORE the bytes land: a temp the sweep can see is a temp
         // the sweep can already tell is in flight.
         self::takeTempLease($disk, $tmp);
-        if (! Storage::disk($disk)->put($tmp, $markdown)) {
-            self::releaseTempLease($disk, $tmp);
+        try {
+            $written = Storage::disk($disk)->put($tmp, $markdown);
+        } catch (\Throwable $e) {
+            // A write that THROWS (an adapter raising UnableToWriteFile) must
+            // not leave a leased, half-written temp the sweep cannot see for
+            // tmp_lease_seconds: the lease is given back and any partial
+            // bytes removed before the failure propagates.
+            $this->discardTemp($disk, $tmp);
+            throw $e;
+        }
+        if (! $written) {
+            $this->discardTemp($disk, $tmp);
             throw new RuntimeException(sprintf('ConversionArtifactStore: could not write artifact temp file [%s] %s.', $disk, $tmp));
         }
 

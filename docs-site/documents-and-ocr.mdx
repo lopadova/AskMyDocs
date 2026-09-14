@@ -445,7 +445,12 @@ flowchart LR
   its temp discarded) and a removal is reported `failed` — never run
   unguarded — while only the temp lease degrades to the age threshold. The
   one exception the code cannot detect is a store that implements the lock
-  contract without exclusion (the `null` store grants every lock).
+  contract without exclusion (the `null` store grants every lock). Neither
+  lock is renewed: every critical section asserts, right before its
+  irreversible step, that it still owns its lock (`HeldLock`) — a lapsed TTL
+  is a refusal (the commit rolls back, the original is kept, the publish
+  discards its temp, the removal is `failed`) — a check right before the step,
+  not a renewal, so the window shrinks to the step itself.
 - **The key is tenant- and project-namespaced, as safe segments.** A segment
   is used verbatim only when it matches `^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$`,
   and does not start with the reserved `h-` prefix; otherwise it becomes `h-` +

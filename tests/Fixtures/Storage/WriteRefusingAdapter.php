@@ -55,9 +55,13 @@ final class WriteRefusingAdapter implements FilesystemAdapter
         return $this->inner->directoryExists($path);
     }
 
+    /** The last path whose write this adapter refused (a test seam: the caller's temp name carries a UUID). */
+    public ?string $lastRefusedPath = null;
+
     public function write(string $path, string $contents, Config $config): void
     {
         if (($this->refuses)($path)) {
+            $this->lastRefusedPath = $path;
             throw UnableToWriteFile::atLocation($path, 'write refused by the test adapter');
         }
         $this->inner->write($path, $contents, $config);
@@ -66,6 +70,7 @@ final class WriteRefusingAdapter implements FilesystemAdapter
     public function writeStream(string $path, $contents, Config $config): void
     {
         if (($this->refuses)($path)) {
+            $this->lastRefusedPath = $path;
             throw UnableToWriteFile::atLocation($path, 'write refused by the test adapter');
         }
         $this->inner->writeStream($path, $contents, $config);

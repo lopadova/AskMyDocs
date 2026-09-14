@@ -21,12 +21,14 @@ use App\Support\Canonical\GenerationSource;
 use App\Services\Kb\Versioning\ArtifactPublishFailedException;
 use App\Services\Kb\Versioning\ConversionArtifactStore;
 use App\Services\Kb\Versioning\SourceRetentionResolver;
+use App\Support\Kb\HeldLock;
+use App\Support\Kb\LockLostException;
+use App\Support\Kb\SourceKeyLock;
 use App\Support\Kb\StorageNamespace;
 use App\Support\KbPath;
 use App\Support\TenantContext;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Contracts\Filesystem\Filesystem;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -438,7 +440,7 @@ class DocumentIngestor
         // transaction discards this attempt's temp and nothing else.
         $artifact = $this->stageArtifact($projectKey, $sourcePath, $versionHash, $markdown, $metadata);
         try {
-            $document = $this->underSourceKeyLock($sourcePath, $metadata, $this->sourceKeyLockNeeded($sourceType, $metadata), fn () => DB::transaction(fn () => $this->persistDocumentAndChunks(
+            $document = $this->underSourceKeyLock($sourcePath, $metadata, $this->sourceKeyLockNeeded($sourceType, $metadata), fn (?HeldLock $held = null) => DB::transaction(fn () => $this->commitOnlyIfStillHeld($held, $this->persistDocumentAndChunks(
                 $projectKey,
                 $sourcePath,
                 $title,
@@ -452,7 +454,7 @@ class DocumentIngestor
                 $canonical,
                 $replaceExisting,
                 $artifact,
-            )));
+            ))));
         } catch (\Throwable $e) {
             $this->discardArtifact($artifact);
             throw $e;
@@ -532,7 +534,7 @@ class DocumentIngestor
         try {
             // ADR 0030 §3 — the row commits under the storage key's lock, the
             // one a `markdown_only` drop holds around its scan + delete.
-            $document = $this->underSourceKeyLock($sourcePath, $metadata, $this->sourceKeyLockNeeded($sourceType, $metadata), fn () => DB::transaction(function () use (
+            $document = $this->underSourceKeyLock($sourcePath, $metadata, $this->sourceKeyLockNeeded($sourceType, $metadata), fn (?HeldLock $held = null) => DB::transaction(function () use (
                 $projectKey,
                 $sourcePath,
                 $title,
@@ -546,6 +548,7 @@ class DocumentIngestor
                 $canonical,
                 $forceReembed,
                 $artifact,
+                $held,
             ) {
                 $document = $this->persistDocumentAndChunks(
                     $projectKey,
@@ -571,7 +574,7 @@ class DocumentIngestor
                 // retries; an over-shared document does not announce itself.
                 $this->mirrorSourceAccess($document, $metadata);
 
-                return $document;
+                return $this->commitOnlyIfStillHeld($held, $document);
             }));
         } catch (\Throwable $e) {
             $this->discardArtifact($artifact);
@@ -1126,7 +1129,7 @@ class DocumentIngestor
         }
         $store = app(ConversionArtifactStore::class);
         try {
-            return (bool) $store->underPathLock($disk, $final, function () use ($store, $disk, $tmp, $final, $documentId, $tenantId): bool {
+            return (bool) $store->underPathLock($disk, $final, function (HeldLock $held) use ($store, $disk, $tmp, $final, $documentId, $tenantId): bool {
                 // The row must exist, be the caller's tenant's (R30 — the
                 // caller names the row's tenant explicitly, as
                 // KnowledgeDocument::updateUnscopedWithinOwnTenant() does,
@@ -1146,6 +1149,10 @@ class DocumentIngestor
 
                     return false;
                 }
+                // The lock's TTL may have lapsed during the re-check: a lost
+                // lock is a refusal (thrown → the temp is discarded below), never
+                // a move under another holder's publish or removal.
+                $held->assertHeld('artifact publish');
                 $store->publish($disk, $tmp, $final);
 
                 return true;
@@ -1277,7 +1284,7 @@ class DocumentIngestor
         // the conservative direction — and says so.
         $lock = $this->sourceKeyLock($artifact['disk'], $original);
         try {
-            $lock->block(self::sourceKeyLockWaitSeconds());
+            $lock->block(SourceKeyLock::waitSeconds());
         } catch (LockTimeoutException) {
             Log::info('DocumentIngestor: markdown_only retention kept the original — the storage key is locked by a concurrent writer; the next identical ingest retries the drop', [
                 'document_id' => (int) $document->id,
@@ -1288,9 +1295,21 @@ class DocumentIngestor
             return false;
         }
         try {
-            return $this->dropOriginalUnderLock($storage, $store, $artifact, $document, $original, $sourcePath);
+            return $this->dropOriginalUnderLock($storage, $store, $artifact, $document, $original, $sourcePath, new HeldLock($lock, 'storage key'));
+        } catch (LockLostException $e) {
+            // The scan outlived the lock's TTL: the delete is refused (the
+            // conservative direction — the original stays, the next identical
+            // ingest retries the drop), never run past a lapsed lock.
+            Log::warning('DocumentIngestor: markdown_only retention kept the original — the storage key lock lapsed during the reference scan; the next identical ingest retries the drop', [
+                'document_id' => (int) $document->id,
+                'disk' => $artifact['disk'],
+                'path' => $original,
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
         } finally {
-            $lock->release();
+            HeldLock::releaseQuietly($lock);
         }
     }
 
@@ -1298,7 +1317,7 @@ class DocumentIngestor
      * @param  array{disk: string, final: string}  $artifact
      * @return bool true when the original was dropped
      */
-    private function dropOriginalUnderLock(Filesystem $storage, ConversionArtifactStore $store, array $artifact, KnowledgeDocument $document, string $original, string $sourcePath): bool
+    private function dropOriginalUnderLock(Filesystem $storage, ConversionArtifactStore $store, array $artifact, KnowledgeDocument $document, string $original, string $sourcePath, HeldLock $held): bool
     {
         // The original is dropped only once this row's final move has
         // succeeded (publish() threw otherwise) AND every other referencing
@@ -1318,6 +1337,9 @@ class DocumentIngestor
 
             return false;
         }
+        // The scan may have outlived the lock's TTL: the irreversible step is
+        // refused on a lock this holder no longer owns (LockLostException).
+        $held->assertHeld('markdown_only drop of the original');
         if (! $storage->delete($original)) {
             Log::warning('DocumentIngestor: markdown_only retention could not drop the original after the artifact commit', [
                 'document_id' => (int) $document->id,
@@ -1443,44 +1465,18 @@ class DocumentIngestor
             });
     }
 
-    /** Seconds a writer waits for the storage key's lock before giving up (`kb.conversion_artifacts.source_lock_wait_seconds`). */
-    private static function sourceKeyLockWaitSeconds(): int
-    {
-        return max(0, (int) config('kb.conversion_artifacts.source_lock_wait_seconds', 10));
-    }
-
-    /**
-     * Seconds the storage key's lock lives when its holder dies
-     * (`kb.conversion_artifacts.source_lock_seconds`). A value that is not a
-     * positive number of seconds — `0`, a negative, a non-number — is not a
-     * shorter lock: it is the documented default (60 s), and it says so once.
-     * A 1-second clamp would let the serialization lapse mid-commit on a
-     * large document and nobody would know (SEC-SETTING-SHAPE-001).
-     */
-    private static function sourceKeyLockSeconds(): int
-    {
-        $configured = config('kb.conversion_artifacts.source_lock_seconds', 60);
-        if (is_numeric($configured) && (int) $configured >= 1) {
-            return (int) $configured;
-        }
-        Log::warning('DocumentIngestor: kb.conversion_artifacts.source_lock_seconds is not a positive number of seconds; using the default', [
-            'configured' => is_scalar($configured) ? $configured : gettype($configured),
-            'default' => 60,
-        ]);
-
-        return 60;
-    }
-
     /**
      * The lock every writer of a storage key shares with the `markdown_only`
-     * drop: held around a row commit (persist paths) and around the
-     * reference scan + delete (drop), so neither can slip between the other's
-     * two halves. Needs an atomic lock store (Redis in production): on a
-     * per-host store the two halves of different pods are not serialized.
+     * drop and with the orphan-file sweep's deletion of a source
+     * ({@see SourceKeyLock}): held around a row commit (persist paths) and
+     * around the reference scan + delete (drop, sweep), so none can slip
+     * between another's two halves. Needs an atomic lock store (Redis in
+     * production): on a per-host store the halves of different pods are not
+     * serialized.
      */
     private function sourceKeyLock(string $disk, string $fullPath): \Illuminate\Contracts\Cache\Lock
     {
-        return Cache::lock('kb:source:'.$disk.':'.sha1($fullPath), self::sourceKeyLockSeconds());
+        return SourceKeyLock::make($disk, $fullPath);
     }
 
     /**
@@ -1522,7 +1518,7 @@ class DocumentIngestor
      * @template T
      *
      * @param  array<string,mixed>  $metadata
-     * @param  callable(): T  $commit
+     * @param  callable(?HeldLock): T  $commit  receives the held lock (null when none was needed) to assert before it commits
      * @return T
      */
     private function underSourceKeyLock(string $sourcePath, array $metadata, bool $needed, callable $commit): mixed
@@ -1540,12 +1536,31 @@ class DocumentIngestor
             return $commit();
         }
         $lock = $this->sourceKeyLock($disk, $fullPath);
-        $lock->block(self::sourceKeyLockWaitSeconds());
+        $lock->block(SourceKeyLock::waitSeconds());
         try {
-            return $commit();
+            // The commit receives its lock: it asserts, inside the
+            // transaction and before it commits, that the TTL has not lapsed
+            // (commitOnlyIfStillHeld()) — a lost lock rolls the row back.
+            return $commit(new HeldLock($lock, 'storage key'));
         } finally {
-            $lock->release();
+            HeldLock::releaseQuietly($lock);
         }
+    }
+
+    /**
+     * The last statement of a row commit that runs under the storage key's
+     * lock: the lock has a TTL and no renewal, so before the transaction
+     * commits the row the holder asserts the lock is still its own — a
+     * commit past a lapsed lock could land between a concurrent
+     * `markdown_only` drop's scan and its delete. A lost lock throws
+     * (LockLostException), the transaction rolls back, the job retries.
+     * A commit that needed no lock (`$held` null) passes through.
+     */
+    private function commitOnlyIfStillHeld(?HeldLock $held, KnowledgeDocument $document): KnowledgeDocument
+    {
+        $held?->assertHeld('row commit');
+
+        return $document;
     }
 
     /**

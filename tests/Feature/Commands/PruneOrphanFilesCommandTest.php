@@ -112,6 +112,123 @@ class PruneOrphanFilesCommandTest extends TestCase
     }
 
     /**
+     * ADR 0030 §3 — the deletion re-checks the references before deleting: a
+     * row that took the path between the sweep's snapshot and the delete (an
+     * ingest committing meanwhile) keeps its file, reported `kept_meanwhile`,
+     * never deleted under the new row. (The storage key lock the gate takes
+     * while artifacts are on is proven by the two tests right after this
+     * one: a key a writer holds is kept as in flight, a key whose lock
+     * lapsed is refused.)
+     */
+    public function test_an_orphan_a_row_took_after_the_snapshot_is_kept_and_counted(): void
+    {
+        Storage::fake('kb');
+        Storage::disk('kb')->put('docs/raced.md', 'r');
+        Storage::disk('kb')->put('docs/orphan.md', 'o');
+        $this->app->bind(\App\Services\Kb\DocumentDeleter::class, \Tests\Fixtures\Kb\RaceInsertingDeleter::class);
+        try {
+            \Tests\Fixtures\Kb\RaceInsertingDeleter::$beforeSourceGate = function (string $disk, string $fullPath, string $sourcePath): void {
+                if ($sourcePath === 'docs/raced.md' && KnowledgeDocument::withoutGlobalScopes()->where('source_path', $sourcePath)->doesntExist()) {
+                    $this->seedDoc('docs/raced.md', 'hr'); // an ingest commits the row meanwhile
+                }
+            };
+
+            $this->artisan('kb:prune-orphan-files')
+                ->expectsOutputToContain('kept (a row references it now, or a writer holds its key): docs/raced.md')
+                ->expectsOutputToContain('scanned=2 orphans=2 deleted=1 failed=0 orphan_ocr_kept=0 dangling_ocr=0 purged=0 in_flight=0 ocr_failed=0 stale_runs=0 runs_purged=0 runs_in_flight=0 runs_failed=0 kept_meanwhile=1')
+                ->assertSuccessful();
+        } finally {
+            \Tests\Fixtures\Kb\RaceInsertingDeleter::$beforeSourceGate = null;
+        }
+
+        Storage::disk('kb')->assertExists('docs/raced.md');
+        Storage::disk('kb')->assertMissing('docs/orphan.md');
+    }
+
+    /**
+     * ADR 0030 §3 / R43 (ON path) — while conversion artifacts are on, the
+     * deletion runs under the storage key's lock: a key a writer holds right
+     * now (a row commit, a `markdown_only` drop in progress) is in flight,
+     * kept and counted `kept_meanwhile`, never deleted under the writer; the
+     * other orphan, whose key is free, is deleted as usual.
+     */
+    public function test_with_artifacts_on_an_orphan_whose_storage_key_a_writer_holds_is_kept_as_in_flight(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => true, 'kb.conversion_artifacts.source_lock_wait_seconds' => 0]);
+        Storage::fake('kb');
+        Storage::disk('kb')->put('docs/inflight.md', 'x');
+        Storage::disk('kb')->put('docs/orphan.md', 'o');
+        $writer = \Illuminate\Support\Facades\Cache::lock('kb:source:kb:'.sha1('docs/inflight.md'), 60);
+        $this->assertTrue($writer->get(), 'a concurrent writer holds the key');
+        try {
+            $this->artisan('kb:prune-orphan-files')
+                ->expectsOutputToContain('kept (a row references it now, or a writer holds its key): docs/inflight.md')
+                ->expectsOutputToContain('scanned=2 orphans=2 deleted=1 failed=0 orphan_ocr_kept=0 dangling_ocr=0 purged=0 in_flight=0 ocr_failed=0 stale_runs=0 runs_purged=0 runs_in_flight=0 runs_failed=0 kept_meanwhile=1')
+                ->assertSuccessful();
+        } finally {
+            $writer->release();
+        }
+
+        Storage::disk('kb')->assertExists('docs/inflight.md');
+        Storage::disk('kb')->assertMissing('docs/orphan.md');
+
+        // Once the key is free the same file is an orphan again and goes.
+        $this->artisan('kb:prune-orphan-files')
+            ->expectsOutputToContain('scanned=1 orphans=1 deleted=1 failed=0')
+            ->assertSuccessful();
+        Storage::disk('kb')->assertMissing('docs/inflight.md');
+    }
+
+    /**
+     * ADR 0030 §3 — the delete runs only while the lock is still owned: a
+     * storage-key lock whose TTL lapsed during the re-check (the store now
+     * reports another owner) refuses the deletion — `failed`, exit non-zero
+     * — never a delete under whoever holds the key now. The lapsed lock is
+     * injected for that key only; the other orphan's key is real and free.
+     */
+    public function test_with_artifacts_on_an_orphan_whose_storage_key_lock_lapsed_is_refused_and_reported_failed(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => true, 'kb.conversion_artifacts.source_lock_wait_seconds' => 0]);
+        Storage::fake('kb');
+        Storage::disk('kb')->put('docs/lapsed.md', 'x');
+        Storage::disk('kb')->put('docs/orphan.md', 'o');
+        $key = 'kb:source:kb:'.sha1('docs/lapsed.md');
+        $store = \Illuminate\Support\Facades\Cache::store();
+        $lapsed = new class($key, 60) extends \Illuminate\Cache\Lock
+        {
+            public function acquire()
+            {
+                return true;
+            }
+
+            public function release()
+            {
+                return true;
+            }
+
+            public function forceRelease()
+            {
+            }
+
+            protected function getCurrentOwner()
+            {
+                return 'another-writer'; // the TTL lapsed and someone else took the key
+            }
+        };
+        \Illuminate\Support\Facades\Cache::partialMock()
+            ->shouldReceive('lock')
+            ->andReturnUsing(fn (string $name, int $seconds = 0, $owner = null) => $name === $key ? $lapsed : $store->lock($name, $seconds, $owner));
+
+        $this->artisan('kb:prune-orphan-files')
+            ->expectsOutputToContain('failed to delete: docs/lapsed.md')
+            ->expectsOutputToContain('scanned=2 orphans=2 deleted=1 failed=1')
+            ->assertExitCode(1);
+
+        Storage::disk('kb')->assertExists('docs/lapsed.md'); // refused, never deleted past a lapsed lock
+        Storage::disk('kb')->assertMissing('docs/orphan.md');
+    }
+
+    /**
      * v8.36 / ADR 0029 — an orphan source (a failed first ingest) may have
      * left an OCR run beside it; the sweep removes both, and never treats
      * the run's own files as orphan candidates.
@@ -536,8 +653,13 @@ class PruneOrphanFilesCommandTest extends TestCase
             ->andReturn(new \League\Flysystem\DirectoryListing([new \League\Flysystem\FileAttributes('docs/orphan.md')]));
         $fake = Mockery::mock(\Illuminate\Filesystem\FilesystemAdapter::class);
         $fake->shouldReceive('getDriver')->andReturn($driver);
+        // The gate probes the file before deleting it; the branch under test is the disk REFUSING the delete.
+        $fake->shouldReceive('exists')
+            ->with('docs/orphan.md')
+            ->andReturn(true);
         $fake->shouldReceive('delete')
             ->with('docs/orphan.md')
+            ->once()
             ->andReturn(false);
 
         Storage::shouldReceive('disk')

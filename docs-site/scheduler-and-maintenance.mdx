@@ -106,7 +106,15 @@ when that env is false the slot never runs regardless of its `SCHEDULE_*` value.
   `KB_STAGING_RETENTION_HOURS` (default 24; `--hours=N` overrides). Keeps the
   staging area from accumulating abandoned review sessions.
 - **`kb:prune-orphan-files`** — remove markdown files on the KB disk with no
-  matching `knowledge_documents` row. Since v8.36 it is also the reaper of the
+  matching `knowledge_documents` row; each deletion re-checks the references
+  first, so a row that took the path between the snapshot and the delete
+  keeps its file (`kept_meanwhile`, printed when non-zero); while conversion
+  artifacts are on the re-check and the delete also run under the storage
+  key's lock (the lock the `markdown_only` drop and non-Markdown row commits
+  hold — a key a writer holds right now is kept as in flight, a lock that
+  lapsed is a reported failure). `--dry-run` lists the snapshot's candidates
+  and previews no `kept_meanwhile`: it is a real-run outcome (who holds a key
+  at that instant), not something a preview can know. Since v8.36 it is also the reaper of the
   OCR run store: a `{source}.ocr/` tree whose source is gone from the disk and
   from every row of any tenant (trashed included) is *dangling*, and a run
   inside a live tree that no row names any more is *stale* — both are removed

@@ -385,7 +385,9 @@ return [
         // row commits of the same key share, and the per-artifact-path lock a
         // publish shares with every delete and sweep of that path (needs an
         // atomic lock store, Redis in production): how long a holder waits
-        // for it, and how long it lives when its holder dies.
+        // for it, and how long it lives when its holder dies. Neither lock is
+        // renewed: a holder asserts it still owns the lock right before its
+        // irreversible step (App\Support\Kb\HeldLock) and refuses otherwise.
         'source_lock_wait_seconds' => (int) env('KB_CONVERSION_ARTIFACTS_SOURCE_LOCK_WAIT', 10),
         'source_lock_seconds' => (int) env('KB_CONVERSION_ARTIFACTS_SOURCE_LOCK_TTL', 60),
         // How long a writer's lease on its artifact temp file lives (taken
