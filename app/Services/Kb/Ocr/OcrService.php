@@ -13,6 +13,7 @@ use App\Services\Kb\Pipeline\SourceDocument;
 use App\Services\Kb\Versioning\ConversionArtifactStore;
 use App\Services\Kb\Versioning\SourceRetentionResolver;
 use App\Support\Kb\FileTypeSniffer;
+use App\Support\Kb\HeldLock;
 use App\Support\Kb\StorageNamespace;
 use App\Support\KbPath;
 use App\Support\TenantContext;
@@ -211,9 +212,14 @@ final class OcrService
      * does not finish in time is a retryable failure, never a write into a
      * directory that is being removed.
      *
+     * ADR 0030 §3 — the write phase RECEIVES the lock (`HeldLock`) so it can
+     * assert, right before each of its own irreversible writes, that the TTL
+     * has not lapsed while it ran: a long figure write must not continue
+     * under a purge that has since taken the directory.
+     *
      * @template T
      *
-     * @param  \Closure(): T  $write
+     * @param  \Closure(HeldLock): T  $write
      * @return T
      */
     private function underAssetsLock(string $disk, string $sourcePath, string $prefix, \Closure $write): mixed
@@ -226,7 +232,7 @@ final class OcrService
             throw new \RuntimeException(sprintf('OCR assets directory "%s" is being purged on disk [%s]; retry once the purge has finished.', $assetsDir, $disk));
         }
         try {
-            return $write();
+            return $write(new HeldLock($lock, 'OCR assets directory'));
         } finally {
             $lock->release();
         }
@@ -732,7 +738,7 @@ final class OcrService
                     // the purge takes for the whole removal of the tree: a
                     // sweep that found the directory empty a moment ago can
                     // never delete it under these writes (ADR 0029 §6).
-                    $written = $this->underAssetsLock($disk, $doc->sourcePath, $prefix, function () use ($disk, $doc, $prefix, $runKey, $allFigures, $figuresEnabled, $reuseEnabled, $result): array {
+                    $written = $this->underAssetsLock($disk, $doc->sourcePath, $prefix, function (HeldLock $held) use ($disk, $doc, $prefix, $runKey, $allFigures, $figuresEnabled, $reuseEnabled, $result): array {
                         $written = $figuresEnabled ? $this->figures->store($disk, $doc->sourcePath, $prefix, $runKey, $allFigures) : [];
                         // The immutable run is persisted while the reservation
                         // is held, THEN metered: a `result.json` write that
@@ -740,6 +746,13 @@ final class OcrService
                         // job retry with nothing to reuse and bill the same
                         // attempt twice. The meter is best-effort and never throws.
                         if ($reuseEnabled) {
+                            // The figure write above can be long: the run is
+                            // recorded only while the directory lock is still
+                            // ours, so a purge that took the tree meanwhile
+                            // never gets a `result.json` written back into it
+                            // (an assertion right after taking the lock would
+                            // prove nothing — nothing has happened yet).
+                            $held->assertHeld('OCR run record');
                             $this->recordRun($disk, $doc->sourcePath, $prefix, $runKey, $result, $written);
                         }
 

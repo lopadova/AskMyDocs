@@ -260,6 +260,51 @@ class PruneOrphanFilesCommandTest extends TestCase
     }
 
     /**
+     * ADR 0030 §3 — the OCR run purge asserts its reservation right before
+     * the removal: the in-flight scan reads the directory, and a TTL that
+     * lapsed across it means another converter may hold the run now. The
+     * purge is then deferred (kept, the next sweep decides), never a tree
+     * deleted under the converter that reserved it.
+     */
+    public function test_a_run_purge_whose_reservation_lapsed_during_the_scan_is_deferred(): void
+    {
+        Storage::fake('kb');
+        $run = self::RUN;
+        Storage::disk('kb')->put('docs/orphan.md', 'o');
+        Storage::disk('kb')->put("docs/orphan.md.ocr/{$run}/result.json", '{}');
+        $runDir = "docs/orphan.md.ocr/{$run}";
+        $key = \App\Services\Kb\Ocr\OcrService::runLockKey('kb', $runDir);
+        $store = \Illuminate\Support\Facades\Cache::store();
+        $lapsed = new class($key, 60) extends \Illuminate\Cache\Lock
+        {
+            public function acquire()
+            {
+                return true;
+            }
+
+            public function release()
+            {
+                return true;
+            }
+
+            public function forceRelease() {}
+
+            protected function getCurrentOwner()
+            {
+                return 'another-converter'; // the reservation lapsed during the scan
+            }
+        };
+        \Illuminate\Support\Facades\Cache::partialMock()
+            ->shouldReceive('lock')
+            ->andReturnUsing(fn (string $name, int $seconds = 0, $owner = null) => $name === $key ? $lapsed : $store->lock($name, $seconds, $owner));
+
+        $this->travel(OcrFigureStore::inFlightGraceSeconds() + 60)->seconds();
+
+        $this->assertFalse(app(OcrFigureStore::class)->purgeRun('kb', 'docs/orphan.md', '', $run), 'the purge is deferred, not performed');
+        Storage::disk('kb')->assertExists("{$runDir}/result.json");
+    }
+
+    /**
      * ADR 0030 §8 — the stale-run gate judges every candidate `(source, run)`
      * pair in one batched query: two sources sharing one run KEY are two
      * candidates (a reference to `a.md`'s run never protects `b.md`'s), a row

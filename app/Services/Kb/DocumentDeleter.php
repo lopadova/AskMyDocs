@@ -647,8 +647,13 @@ class DocumentDeleter
                 }
                 // The re-check may have outlived the lock's TTL: the delete is
                 // refused on a lock this holder no longer owns (→ `failed`).
+                // Asserted HERE and again inside the removal: the store
+                // answers `absent` before its late assertion, and the caller
+                // reads anything but `failed` as "nothing remains" — so a
+                // probe made under a lapsed lock must not license that. The
+                // late one covers the containment check and the probe.
                 $held->assertHeld('artifact removal');
-                $outcome = $store->remove($disk, $path);
+                $outcome = $store->remove($disk, $path, $held);
                 if ($outcome === ConversionArtifactStore::REMOVED) {
                     // A file WE removed never leaves a "stored" badge standing
                     // for the rest of the memo window (ADR 0030 §5).

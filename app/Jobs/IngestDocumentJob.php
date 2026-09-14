@@ -43,6 +43,13 @@ class IngestDocumentJob implements ShouldQueue
     public int $tries = 3;
 
     /**
+     * The marker of a HASHED source path in the idempotency key. Reserved:
+     * a literal path starting with it is hashed too, so the verbatim and the
+     * hashed forms never overlap.
+     */
+    private const HASHED_PATH_MARKER = 'h-';
+
+    /**
      * Queue timeout. 300 s for every document that will not OCR; for an
      * image or a PDF while OCR is on it is sized at dispatch from the
      * configured driver's declared worst case (OcrService::jobTimeoutFor()),
@@ -300,7 +307,9 @@ class IngestDocumentJob implements ShouldQueue
     /**
      * The flow idempotency key of one ATTEMPT of this job.
      *
-     * The first attempt keeps the legacy key (`tenant:project:path[:runKey]`),
+     * The first attempt keeps the legacy key (`tenant:project:path[:runKey]`
+     * — unless the path is long, or wears the reserved `h-` marker, in which
+     * case it is hashed to `tenant:project:h-<sha256>` instead),
      * so a duplicate dispatch of the same path still short-circuits to the
      * run already recorded. A RETRY is salted with its attempt number: with
      * flow persistence on, the store returns the recorded run for a key
@@ -324,10 +333,16 @@ class IngestDocumentJob implements ShouldQueue
             $salt .= ':attempt'.$attempt;
         }
         $raw = "{$tenantId}:{$this->projectKey}:{$this->relativePath}{$salt}";
-        if (strlen($raw) <= 200) {
+        // The hashed form carries the reserved marker, and a path that
+        // ALREADY starts with the marker is hashed whatever its length: the
+        // two forms are then disjoint, so a document literally named
+        // `h-<64 hex>` can never share a key with the long path that hashes
+        // to it (the same injectivity rule as
+        // ConversionArtifactStore::safeSegment()).
+        if (strlen($raw) <= 200 && ! str_starts_with($this->relativePath, self::HASHED_PATH_MARKER)) {
             return $raw;
         }
 
-        return "{$tenantId}:{$this->projectKey}:".hash('sha256', $this->relativePath.$salt);
+        return "{$tenantId}:{$this->projectKey}:".self::HASHED_PATH_MARKER.hash('sha256', $this->relativePath.$salt);
     }
 }

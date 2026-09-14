@@ -1211,6 +1211,238 @@ MD;
     }
 
     /**
+     * ADR 0030 §3 — the publish and the removal assert the path lock
+     * IMMEDIATELY before their irreversible step, not once far upstream:
+     * the containment checks and the existence probes between are storage
+     * round-trips, and a TTL that lapses across them must refuse rather than
+     * move or delete under whoever holds the path now.
+     */
+    public function test_publish_and_remove_refuse_a_lock_that_lapsed_after_their_probes(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => true]);
+        $doc = $this->ingestMarkdown("# Kept\n\nBody.", 'docs/kept.md', ['disk' => 'kb', 'prefix' => '']);
+        $final = (string) $doc->markdown_path;
+        $store = app(ConversionArtifactStore::class);
+
+        $lapsed = new class('kb:artifact:test', 60) extends \Illuminate\Cache\Lock
+        {
+            public function acquire()
+            {
+                return true;
+            }
+
+            public function release()
+            {
+                return true;
+            }
+
+            public function forceRelease() {}
+
+            protected function getCurrentOwner()
+            {
+                return 'another-holder';
+            }
+        };
+        $held = new \App\Support\Kb\HeldLock($lapsed, 'artifact path');
+        \Illuminate\Support\Facades\Log::spy();
+
+        // The removal: the file exists, the probe passes, the lock does not.
+        $this->assertSame(ConversionArtifactStore::FAILED, $store->remove('kb', $final, $held));
+        Storage::disk('kb')->assertExists($final);
+
+        // The publish: the temp stays where the discard can take it, the
+        // final keeps the bytes that were already there.
+        $tmp = $store->writeTemp('kb', $final, "# Other\n\nBytes.");
+        $thrown = null;
+        try {
+            $store->publish('kb', $tmp, $final, $held);
+        } catch (\App\Support\Kb\LockLostException $e) {
+            $thrown = $e;
+        }
+        $this->assertInstanceOf(\App\Support\Kb\LockLostException::class, $thrown);
+        $this->assertSame("# Kept\n\nBody.", Storage::disk('kb')->get($final), 'the final was not overwritten under a lapsed lock');
+        // WHERE the refusal happened, not merely that it happened: this
+        // warning comes from the comparison of the final's bytes with the
+        // temp's, so both probes ran BEFORE the lock was asserted — an
+        // assertion still sitting upstream of them could not produce it.
+        \Illuminate\Support\Facades\Log::shouldHaveReceived('warning')->withArgs(static fn (string $message): bool => str_contains($message, 'does not match its content hash'))->once();
+        $store->discardTemp('kb', $tmp);
+    }
+
+    /**
+     * ADR 0030 §3 — the one window the key lock cannot close: Laravel issues
+     * the COMMIT after the transaction closure returns, so a TTL that lapses
+     * in that last stretch leaves the row invisible to a holder that takes
+     * the key. The outcome is reconciled, not assumed: the original is
+     * probed and, when it is gone while the row's artifact stands in for it,
+     * the row is stamped `source_dropped` and the loss reported.
+     */
+    public function test_a_key_lock_that_lapses_across_the_commit_reconciles_the_row_instead_of_assuming(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => true, 'kb.source_retention.mode' => 'full_copy']);
+        $bytes = PdfFixtureBuilder::buildThreePageSample();
+        // The original IS on the disk when the commit starts: only a source
+        // that was there and is gone afterwards was taken by a holder.
+        Storage::disk('kb')->put('reports/q17.pdf', $bytes);
+        $key = 'kb:source:kb:'.sha1('reports/q17.pdf');
+        $store = \Illuminate\Support\Facades\Cache::store();
+        $lapsingAfterCommit = new class($key, 60) extends \Illuminate\Cache\Lock
+        {
+            public int $checks = 0;
+
+            public function acquire()
+            {
+                return true;
+            }
+
+            public function release()
+            {
+                return true;
+            }
+
+            public function forceRelease() {}
+
+            protected function getCurrentOwner()
+            {
+                // Owned while the transaction runs; once it returns the key
+                // is another holder's — and that holder, a `markdown_only`
+                // drop that never saw the uncommitted row, takes the original
+                // with it. That is the whole scenario, reproduced here.
+                if (++$this->checks <= 1) {
+                    return $this->owner;
+                }
+                Storage::disk('kb')->delete('reports/q17.pdf');
+
+                return 'another-holder';
+            }
+        };
+        \Illuminate\Support\Facades\Cache::partialMock()
+            ->shouldReceive('lock')
+            ->andReturnUsing(fn (string $name, int $seconds = 0, $owner = null) => $name === $key ? $lapsingAfterCommit : $store->lock($name, $seconds, $owner));
+        \Illuminate\Support\Facades\Log::spy();
+
+        $doc = app(DocumentIngestor::class)->ingest('eng', new SourceDocument(
+            sourcePath: 'reports/q17.pdf', mimeType: 'application/pdf', bytes: $bytes,
+            externalUrl: null, externalId: null, connectorType: 'local', metadata: ['disk' => 'kb', 'prefix' => ''],
+        ), 'Q17');
+
+        $this->assertTrue((bool) ($doc->fresh()->metadata['source_dropped'] ?? false), 'the row records that its original is gone');
+        Storage::disk('kb')->assertExists((string) $doc->markdown_path); // the artifact stands in for the source
+        \Illuminate\Support\Facades\Log::shouldHaveReceived('error')->once()->withArgs(static fn (string $message): bool => str_contains($message, 'the original was dropped by a concurrent holder'));
+    }
+
+    /**
+     * `source_dropped` says "an artifact stands in for the original", so it
+     * is stamped only once that artifact is really on the disk: a publish
+     * that fails after the original was taken leaves the row UNSTAMPED and
+     * reported, so the orphan sweep keeps seeing it.
+     */
+    public function test_a_publish_that_fails_after_the_original_was_taken_leaves_the_row_unstamped(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => true, 'kb.source_retention.mode' => 'full_copy']);
+        $bytes = PdfFixtureBuilder::buildThreePageSample();
+        Storage::disk('kb')->put('reports/q19.pdf', $bytes);
+        $key = 'kb:source:kb:'.sha1('reports/q19.pdf');
+        $store = \Illuminate\Support\Facades\Cache::store();
+        $lapsingAfterCommit = new class($key, 60) extends \Illuminate\Cache\Lock
+        {
+            public int $checks = 0;
+
+            public function acquire()
+            {
+                return true;
+            }
+
+            public function release()
+            {
+                return true;
+            }
+
+            public function forceRelease() {}
+
+            protected function getCurrentOwner()
+            {
+                if (++$this->checks <= 1) {
+                    return $this->owner;
+                }
+                Storage::disk('kb')->delete('reports/q19.pdf'); // the concurrent holder takes the original
+
+                return 'another-holder';
+            }
+        };
+        \Illuminate\Support\Facades\Cache::partialMock()
+            ->shouldReceive('lock')
+            ->andReturnUsing(fn (string $name, int $seconds = 0, $owner = null) => $name === $key ? $lapsingAfterCommit : $store->lock($name, $seconds, $owner));
+        // The row is repointed the instant it commits: the publish then finds
+        // nothing to stand in for and refuses.
+        \Illuminate\Support\Facades\Event::listen('eloquent.created: '.KnowledgeDocument::class, static function (KnowledgeDocument $row): void {
+            if ($row->source_path === 'reports/q19.pdf') {
+                KnowledgeDocument::withoutGlobalScopes()->whereKey($row->id)->update(['markdown_path' => null]);
+            }
+        });
+        \Illuminate\Support\Facades\Log::spy();
+
+        $doc = app(DocumentIngestor::class)->ingest('eng', new SourceDocument(
+            sourcePath: 'reports/q19.pdf', mimeType: 'application/pdf', bytes: $bytes,
+            externalUrl: null, externalId: null, connectorType: 'local', metadata: ['disk' => 'kb', 'prefix' => ''],
+        ), 'Q19');
+
+        $this->assertArrayNotHasKey('source_dropped', $doc->fresh()->metadata ?? [], 'nothing stands in for the source: the row stays visible to the sweeps');
+        \Illuminate\Support\Facades\Log::shouldHaveReceived('error')->withArgs(static fn (string $message): bool => str_contains($message, 'could NOT be published'))->once();
+    }
+
+    /**
+     * The other half of the reconciliation: a source that was NEVER on this
+     * disk (an ingest from bytes — a benchmark corpus, an API batch) must
+     * not be stamped `source_dropped` because the lock lapsed and the probe
+     * found nothing. Only a source that WAS there and is gone afterwards was
+     * taken by a holder; anything else is a TTL to raise, reported as such.
+     */
+    public function test_a_lapse_across_the_commit_never_stamps_a_source_that_was_never_on_the_disk(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => true, 'kb.source_retention.mode' => 'full_copy']);
+        $bytes = PdfFixtureBuilder::buildThreePageSample();
+        // Deliberately NOT on the disk: the ingest carries the bytes itself.
+        $key = 'kb:source:kb:'.sha1('reports/q18.pdf');
+        $store = \Illuminate\Support\Facades\Cache::store();
+        $lapsingAfterCommit = new class($key, 60) extends \Illuminate\Cache\Lock
+        {
+            public int $checks = 0;
+
+            public function acquire()
+            {
+                return true;
+            }
+
+            public function release()
+            {
+                return true;
+            }
+
+            public function forceRelease() {}
+
+            protected function getCurrentOwner()
+            {
+                return ++$this->checks <= 1 ? $this->owner : 'another-holder';
+            }
+        };
+        \Illuminate\Support\Facades\Cache::partialMock()
+            ->shouldReceive('lock')
+            ->andReturnUsing(fn (string $name, int $seconds = 0, $owner = null) => $name === $key ? $lapsingAfterCommit : $store->lock($name, $seconds, $owner));
+        \Illuminate\Support\Facades\Log::spy();
+
+        $doc = app(DocumentIngestor::class)->ingest('eng', new SourceDocument(
+            sourcePath: 'reports/q18.pdf', mimeType: 'application/pdf', bytes: $bytes,
+            externalUrl: null, externalId: null, connectorType: 'local', metadata: ['disk' => 'kb', 'prefix' => ''],
+        ), 'Q18');
+
+        $this->assertArrayNotHasKey('source_dropped', $doc->fresh()->metadata ?? [], 'nothing was taken: nothing is stamped');
+        Storage::disk('kb')->assertExists((string) $doc->markdown_path);
+        \Illuminate\Support\Facades\Log::shouldHaveReceived('warning')->withArgs(static fn (string $message): bool => str_contains($message, 'no original was taken'))->once();
+        \Illuminate\Support\Facades\Log::shouldNotHaveReceived('error');
+    }
+
+    /**
      * ADR 0030 §3 / R30 — the repair of a version that predates the
      * artifacts composes its path from the ROW's tenant, not from the
      * ambient context: the pointer update and the publish both authorize

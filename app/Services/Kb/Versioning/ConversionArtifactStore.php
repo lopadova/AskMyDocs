@@ -413,7 +413,7 @@ final class ConversionArtifactStore
      *
      * @throws RuntimeException when the move fails and nothing verified is at the final path (R4)
      */
-    public function publish(string $disk, string $tmpPath, string $finalPath): void
+    public function publish(string $disk, string $tmpPath, string $finalPath, ?HeldLock $held = null): void
     {
         try {
             // Both paths are checked before any storage operation (SEC-PATH-001):
@@ -421,7 +421,7 @@ final class ConversionArtifactStore
             // `.tmp` outside the artifact root would otherwise be probed and
             // moved like one of ours.
             $this->assertContainedOnDisk($disk, $tmpPath);
-            $this->publishLeased($disk, $tmpPath, $finalPath);
+            $this->publishLeased($disk, $tmpPath, $finalPath, $held);
         } finally {
             // Moved, discarded or refused: the attempt is over either way,
             // and a temp a failed publish left behind is the sweep's to take
@@ -430,16 +430,23 @@ final class ConversionArtifactStore
         }
     }
 
-    private function publishLeased(string $disk, string $tmpPath, string $finalPath): void
+    private function publishLeased(string $disk, string $tmpPath, string $finalPath, ?HeldLock $held = null): void
     {
         $storage = Storage::disk($disk);
         $this->assertContainedOnDisk($disk, $finalPath);
         if ($this->finalMatchesTemp($storage, $tmpPath, $finalPath)) {
+            // This branch REPORTS SUCCESS (the bytes are already there), and
+            // the caller reads that as licence to drop the original: it is
+            // asserted like the move, after the two byte-probes above.
+            $held?->assertHeld('artifact publish');
             $this->discardTemp($disk, $tmpPath);
 
             return;
         }
-        if ($this->moveOver($storage, $tmpPath, $finalPath)) {
+        // The probes above are storage round-trips: the lock is asserted HERE,
+        // immediately before the move, and again inside moveOver() before its
+        // replace branch deletes — never once, far upstream (ADR 0030 §3).
+        if ($this->moveOver($storage, $tmpPath, $finalPath, $held)) {
             // The move may have followed a symlinked parent: verify what landed.
             $this->assertContainedOnDisk($disk, $finalPath);
 
@@ -478,8 +485,9 @@ final class ConversionArtifactStore
      * local disk; an adapter that refuses to overwrite gets the stale file
      * removed first (the window between the two is the smallest available).
      */
-    private function moveOver(FilesystemAdapter $storage, string $tmpPath, string $finalPath): bool
+    private function moveOver(FilesystemAdapter $storage, string $tmpPath, string $finalPath, ?HeldLock $held = null): bool
     {
+        $held?->assertHeld('artifact publish');
         try {
             if ($storage->move($tmpPath, $finalPath)) {
                 return true;
@@ -490,8 +498,13 @@ final class ConversionArtifactStore
         if (! $storage->exists($tmpPath)) {
             return false;
         }
-        if ($storage->exists($finalPath) && ! $storage->delete($finalPath)) {
-            return false;
+        if ($storage->exists($finalPath)) {
+            // The replace branch DELETES what is there: assert again, the
+            // probes since the first assertion were storage round-trips.
+            $held?->assertHeld('artifact replace');
+            if (! $storage->delete($finalPath)) {
+                return false;
+            }
         }
 
         return (bool) $storage->move($tmpPath, $finalPath);
@@ -692,7 +705,7 @@ final class ConversionArtifactStore
      */
     public function delete(string $disk, string $path): bool
     {
-        return $this->remove($disk, $path) === self::REMOVED;
+        return $this->remove($disk, $path) === self::REMOVED; // no path lock here: the wrapper has no production caller (see above)
     }
 
     /**
@@ -702,7 +715,7 @@ final class ConversionArtifactStore
      * logged). Retention commands count the three apart so a refused delete
      * is never reported as a completed cleanup (R14).
      */
-    public function remove(string $disk, string $path): string
+    public function remove(string $disk, string $path, ?HeldLock $held = null): string
     {
         try {
             // Containment FIRST (see read()): a delete never probes a path the
@@ -710,8 +723,18 @@ final class ConversionArtifactStore
             $this->assertContainedOnDisk($disk, $path);
             $storage = Storage::disk($disk);
             if (! $storage->exists($path)) {
+                // `absent` is read by the caller as "nothing remains for the
+                // row": a probe made under a lapsed lock must not license
+                // that either (→ `failed`).
+                $held?->assertHeld('artifact removal');
+
                 return self::ABSENT;
             }
+            // The containment check and the probe are storage round-trips:
+            // the lock is asserted HERE, immediately before the delete, so a
+            // TTL that lapsed across them refuses instead of deleting what a
+            // concurrent publisher has since put there (→ `failed`).
+            $held?->assertHeld('artifact removal');
             if (! $storage->delete($path)) {
                 Log::warning('ConversionArtifactStore: could not delete artifact', ['disk' => $disk, 'path' => $path]);
 

@@ -195,20 +195,35 @@ grants every lock — which `canLease()` cannot tell apart. Both locks (the
 storage key's and the artifact path's) have a TTL and no renewal, so no holder
 assumes its work fits inside it: the critical section receives its lock
 (`App\Support\Kb\HeldLock`) and asserts, right before its irreversible step —
-the row commit, the `markdown_only` delete, the artifact publish or removal,
-the orphan source's delete — that the lock is still its own; a lapsed lock is a
+the row commit, the `markdown_only` delete, the artifact publish or removal
+(including the branch that reports the bytes already published, which
+licenses the drop), the orphan source's delete, and on the OCR side the run
+record after a long figure write, the purge of a run and the purge of the
+assets directory — that the lock is still its own; a lapsed lock is a
 refusal (`LockLostException`: the commit rolls back, the original is kept, the
 publish discards its temp, the removal is `failed`). It is a check right before
 the step, not a renewal: the window shrinks to the step itself, it does not
-close — and a third-party lock class with no owner to compare (a store
-registered with `Cache::extend()` returning a bare contract implementation)
-cannot prove ownership at all — ownership is read by capability, from
-Laravel's lock or from any lock answering `isOwnedByCurrentProcess()` — so
-the step is refused there too, reported once per class: the same posture as a
-store that cannot lock. On such a store that is a stop, not a degradation:
-every artifact-enabled ingest rolls back and retries and every prune reports
-`failed`, until `CACHE_STORE` names a lock-capable store (Redis in
-production). The orphan-file sweep's deletion of a
+close — and on a row commit it cannot shrink below the COMMIT itself, which
+Laravel issues after the transaction closure returns: a TTL that lapses in
+that last stretch leaves the row invisible to a holder that takes the key.
+That case is therefore reconciled rather than assumed
+(`DocumentIngestor::reconcileIfKeyLockLapsedAcrossCommit()`: compare the
+original's presence before and after, stamp `source_dropped` only when it was
+taken and the row's artifact stands in for it, report at `error` when nothing
+does — best-effort, and it never turns a landed commit into a failure).
+Preventing it needs a key lock taken inside the transaction, so the database
+serializes the row's visibility with the key; that is recorded as a follow-up.
+
+Ownership itself is read by capability — Laravel's lock, or any lock
+answering `isOwnedByCurrentProcess()` — and a lock class with no recorded
+acquisition owner (a store registered with `Cache::extend()` returning a bare
+contract implementation) cannot prove ownership at all, so the step is
+refused there too, reported once per class: the same posture as a store that
+cannot lock. On such a store that is a stop, not a degradation: every ingest
+that converts through OCR — whatever `KB_CONVERSION_ARTIFACTS_ENABLED` says,
+since the OCR assets lock is older than this ADR — and every artifact-enabled
+ingest rolls back and retries, and every prune reports `failed`, until
+`CACHE_STORE` names a lock-capable store (Redis in production). The orphan-file sweep's deletion of a
 source re-checks the references first (a row that took the key between the
 snapshot and the delete keeps its file, `kept_meanwhile`) and, while artifacts
 are on, runs under the same storage key lock (`App\Support\Kb\SourceKeyLock`,

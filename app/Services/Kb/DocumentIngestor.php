@@ -1158,8 +1158,13 @@ class DocumentIngestor
                 // The lock's TTL may have lapsed during the re-check: a lost
                 // lock is a refusal (thrown → the temp is discarded below), never
                 // a move under another holder's publish or removal.
+                // Asserted HERE and again inside the publish: the store's
+                // own early returns (identical bytes already published) come
+                // before its late assertion, and a `true` from those under a
+                // lapsed lock would license the `markdown_only` drop that
+                // follows. The late one covers the probes in between.
                 $held->assertHeld('artifact publish');
-                $store->publish($disk, $tmp, $final);
+                $store->publish($disk, $tmp, $final, $held);
 
                 return true;
             });
@@ -1218,13 +1223,19 @@ class DocumentIngestor
     private function publishArtifactOrThrow(?array $artifact, KnowledgeDocument $document): void
     {
         if ($artifact === null) {
+            $this->stampSourceTakenIfPending($document, false);
+
             return;
         }
         try {
             if (! $this->publishArtifactForRow($artifact['disk'], $artifact['tmp'], $artifact['final'], (int) $document->id, (string) $document->tenant_id)) {
+                $this->stampSourceTakenIfPending($document, false);
+
                 return; // the row is gone, repointed, or another tenant's: nothing to stand in for, nothing published
             }
+            $this->stampSourceTakenIfPending($document, true);
         } catch (\Throwable $e) {
+            $this->stampSourceTakenIfPending($document, false);
             // publishArtifactForRow() owns the temp: it discarded it before rethrowing.
             Log::error('DocumentIngestor: artifact publish failed after commit; the row keeps its pointer (state: missing) and the retry — an identical re-ingest — or kb:artifacts-backfill repairs it', [
                 'document_id' => (int) $document->id,
@@ -1543,13 +1554,163 @@ class DocumentIngestor
         }
         $lock = $this->sourceKeyLock($disk, $fullPath);
         $lock->block(SourceKeyLock::waitSeconds());
+        $held = new HeldLock($lock, 'storage key');
+        // Presence BEFORE the commit: only a source that WAS there and is
+        // gone afterwards is a holder having taken it. An ingest whose bytes
+        // never touched this disk (a benchmark corpus, an API batch) must not
+        // be stamped `source_dropped` for a file that never existed.
+        $wasPresent = $this->originalPresentQuietly($disk, $fullPath);
+        $this->sourceTakenDuringCommit = null; // never carry a previous call's verdict into this one
         try {
             // The commit receives its lock: it asserts, inside the
             // transaction and before it commits, that the TTL has not lapsed
             // (commitOnlyIfStillHeld()) — a lost lock rolls the row back.
-            return $commit(new HeldLock($lock, 'storage key'));
+            $result = $commit($held);
+            // …and once more AFTER the transaction returns, because Laravel
+            // issues the COMMIT itself when the closure returns: the row
+            // becomes visible to a concurrent drop or sweep only then. A TTL
+            // that lapsed across that last stretch means the key could have
+            // been taken while this row was still invisible, so the state is
+            // reconciled and reported rather than assumed (see the method).
+            $this->reconcileIfKeyLockLapsedAcrossCommit($held, $disk, $fullPath, $result, $wasPresent);
+
+            return $result;
         } finally {
             HeldLock::releaseQuietly($lock);
+        }
+    }
+
+    /**
+     * The one window the storage key's lock cannot close by itself: the
+     * in-transaction assertion happens before the closure returns, and
+     * Laravel issues the COMMIT after it, so between the two the row is
+     * still invisible while the lock may already have lapsed. A concurrent
+     * `markdown_only` drop or orphan sweep could then take the key, not see
+     * this row, and delete the shared original.
+     *
+     * Closing it properly needs the row's visibility and the key to be
+     * serialized by the SAME authority — a database-level key lock taken
+     * inside the transaction — which is recorded as a follow-up (the cache
+     * lock cannot make an uncommitted row visible). Until then the outcome
+     * is not assumed: when the lock lapsed across the commit, the original
+     * is probed and, if it is gone, the row is stamped `source_dropped` so
+     * the sweeps and the Time Machine read a consistent state — the
+     * artifact published right after this call is what stands in for it —
+     * and the loss is reported at `error` when nothing does (R14: never a
+     * row that silently references a file no longer there).
+     */
+    private function reconcileIfKeyLockLapsedAcrossCommit(HeldLock $held, string $disk, string $fullPath, mixed $result, ?bool $wasPresent): void
+    {
+        // The row is COMMITTED by the time this runs: reconciliation is
+        // best-effort diagnosis and must never turn a decision already taken
+        // into a failure — a cache blip on the ownership read, a database
+        // that refuses the stamp, a broken log channel (the same principle as
+        // HeldLock::releaseQuietly()).
+        try {
+            $this->reconcileKeyLockLapse($held, $disk, $fullPath, $result, $wasPresent);
+        } catch (\Throwable $e) {
+            Log::warning('DocumentIngestor: the post-commit key-lock reconciliation could not complete; the row is committed and its artifact publish follows', ['disk' => $disk, 'path' => $fullPath, 'exception' => $e::class, 'error' => $e->getMessage()]);
+        }
+    }
+
+    /** @see reconcileIfKeyLockLapsedAcrossCommit() — the body it guards. */
+    private function reconcileKeyLockLapse(HeldLock $held, string $disk, string $fullPath, mixed $result, ?bool $wasPresent): void
+    {
+        try {
+            $held->assertHeld('the commit that just landed');
+
+            return;
+        } catch (LockLostException $e) {
+            $lapse = $e->getMessage();
+        }
+        $present = $this->originalPresentQuietly($disk, $fullPath);
+        if ($present === null) {
+            Log::warning('DocumentIngestor: the storage key lock lapsed across the commit and the original could not be probed', ['disk' => $disk, 'path' => $fullPath, 'error' => $lapse]);
+
+            return;
+        }
+        if ($wasPresent !== true || $present) {
+            // Either the original is still there, or it was never on this
+            // disk to begin with: nothing was taken, and the lapse is a TTL
+            // to raise, not an incident.
+            Log::warning('DocumentIngestor: the storage key lock lapsed across the commit; no original was taken — raise kb.conversion_artifacts.source_lock_seconds above the longest ingest transaction', ['disk' => $disk, 'path' => $fullPath, 'original_before' => $wasPresent, 'original_after' => $present, 'error' => $lapse]);
+
+            return;
+        }
+        $document = $result instanceof KnowledgeDocument ? $result : null;
+        $artifact = $document !== null ? (string) $document->markdown_path : '';
+        if ($document === null || $artifact === '') {
+            Log::error('DocumentIngestor: the original is gone and no artifact stands in for it — the storage key lock lapsed across the commit while a concurrent drop or sweep held the key; re-ingest the source', ['disk' => $disk, 'path' => $fullPath, 'document_id' => $document?->id, 'error' => $lapse]);
+
+            return;
+        }
+        // Detected here — under the lock, the only place ownership can still
+        // be read — but NOT stamped here: `source_dropped` says "an artifact
+        // stands in for the original", and the artifact is only moved into
+        // place after this call. A stamp written now would survive a publish
+        // that then fails, leaving a row with no source, no artifact and the
+        // very flag that silences the orphan sweep. The verdict is therefore
+        // handed to the publish step (stampSourceTakenIfPending()).
+        $this->sourceTakenDuringCommit = ['document_id' => (int) $document->id, 'disk' => $disk, 'path' => $fullPath, 'markdown_path' => $artifact, 'error' => $lapse];
+        Log::error('DocumentIngestor: the original was dropped by a concurrent holder while this row committed; its artifact must stand in for the source', ['disk' => $disk, 'path' => $fullPath, 'document_id' => (int) $document->id, 'markdown_path' => $artifact, 'error' => $lapse]);
+    }
+
+    /**
+     * The verdict of the last post-commit reconciliation, consumed by the
+     * publish step: the row's original was taken by a concurrent holder while
+     * it committed, so it must be stamped `source_dropped` — but only once
+     * its artifact is really on the disk to stand in for it.
+     *
+     * @var array{document_id: int, disk: string, path: string, markdown_path: string, error: string}|null
+     */
+    private ?array $sourceTakenDuringCommit = null;
+
+    /**
+     * Stamp the row whose original a concurrent holder took while it
+     * committed, now that its artifact is (or is not) in place. `$published`
+     * false means nothing stands in for the source: that is reported, never
+     * stamped — the orphan sweep must keep seeing the row.
+     */
+    private function stampSourceTakenIfPending(KnowledgeDocument $document, bool $published): void
+    {
+        $verdict = $this->sourceTakenDuringCommit;
+        $this->sourceTakenDuringCommit = null;
+        if ($verdict === null || $verdict['document_id'] !== (int) $document->id) {
+            return;
+        }
+        if (! $published) {
+            Log::error('DocumentIngestor: the original was taken while this row committed and its artifact could NOT be published — the row is left unstamped so the sweeps still see it; re-ingest the source', $verdict);
+
+            return;
+        }
+        try {
+            $metadata = is_array($document->metadata) ? $document->metadata : [];
+            if (($metadata['source_dropped'] ?? false) === true) {
+                return;
+            }
+            if ($document->updateUnscopedWithinOwnTenant(['metadata' => array_merge($metadata, ['source_dropped' => true])]) === 0) {
+                // The row is no longer the one read — the very holder this
+                // exists for may have repointed or removed it: say so instead
+                // of claiming a stamp that did not land (R4).
+                Log::error('DocumentIngestor: source_dropped could NOT be stamped after the publish — the row is no longer the one read', $verdict);
+
+                return;
+            }
+            $document->metadata = array_merge($metadata, ['source_dropped' => true]);
+        } catch (\Throwable $e) {
+            // Best-effort, like the reconciliation it completes: the row and
+            // its artifact are both committed by now.
+            Log::warning('DocumentIngestor: source_dropped could not be stamped after the publish', $verdict + ['exception' => $e::class, 'error' => $e->getMessage()]);
+        }
+    }
+
+    /** Whether the original is on the disk right now; null when the disk could not say. */
+    private function originalPresentQuietly(string $disk, string $fullPath): ?bool
+    {
+        try {
+            return Storage::disk($disk)->exists($fullPath);
+        } catch (\Throwable) {
+            return null;
         }
     }
 

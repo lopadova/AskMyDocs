@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Services\Kb\Ocr;
 
+use App\Support\Kb\HeldLock;
+use App\Support\Kb\LockLostException;
 use App\Support\KbPath;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Cache;
@@ -238,7 +240,8 @@ final class OcrFigureStore
      * `refreshReservation()` — so a run a worker is reusing at this very
      * moment is never deleted between its figure check and its commit: a
      * reservation that cannot be taken is a run in flight. Returns false
-     * when there is nothing to remove or the run is kept (in flight);
+     * when there is nothing to remove, the run is kept (in flight), or the
+     * reservation lapsed during the scan (the purge is deferred);
      * throws when the disk refuses the removal (R14 — never a silent
      * "kept").
      *
@@ -257,17 +260,27 @@ final class OcrFigureStore
 
             return false;
         }
+        $held = new HeldLock($reservation, 'OCR run reservation');
         try {
             if ($this->isInFlight($storage, $runDir, now()->getTimestamp() - self::inFlightGraceSeconds())) {
                 Log::info('OcrFigureStore: OCR run inside the in-flight grace was kept', ['disk' => $disk, 'run_dir' => $runDir]);
 
                 return false;
             }
+            // The in-flight scan reads the directory: assert the reservation
+            // is still ours right before the removal, so a TTL that lapsed
+            // across the scan defers the purge instead of deleting a run a
+            // converter has since reserved (ADR 0030 §3).
+            $held->assertHeld('OCR run purge');
             if (! $storage->deleteDirectory($runDir)) {
                 throw new RuntimeException("OcrFigureStore: failed to remove OCR run {$runDir} on disk [{$disk}].");
             }
 
             return true;
+        } catch (LockLostException $e) {
+            Log::warning('OcrFigureStore: OCR run purge deferred — the reservation lapsed during the in-flight scan; the next sweep decides', ['disk' => $disk, 'run_dir' => $runDir, 'error' => $e->getMessage()]);
+
+            return false;
         } finally {
             $reservation->release();
         }
@@ -301,13 +314,13 @@ final class OcrFigureStore
             return false;
         }
         try {
-            return $this->purgeUnderAssetsLock($storage, $disk, $dir);
+            return $this->purgeUnderAssetsLock($storage, $disk, $dir, new HeldLock($assetsLock, 'OCR assets directory'));
         } finally {
             $assetsLock->release();
         }
     }
 
-    private function purgeUnderAssetsLock(Filesystem $storage, string $disk, string $dir): bool
+    private function purgeUnderAssetsLock(Filesystem $storage, string $disk, string $dir, HeldLock $held): bool
     {
         $threshold = now()->getTimestamp() - self::inFlightGraceSeconds();
         $kept = [];
@@ -330,16 +343,24 @@ final class OcrFigureStore
                     $kept[] = $runDir;
                     continue;
                 }
+                // The scan is a storage round-trip: a reservation whose TTL
+                // lapsed across it keeps the run (the next sweep decides),
+                // never deletes one a converter has since reserved.
+                (new HeldLock($reservation, 'OCR run reservation'))->assertHeld('OCR run purge');
                 if (! $storage->deleteDirectory($runDir)) {
                     throw new RuntimeException("OcrFigureStore: failed to remove OCR run {$runDir} on disk [{$disk}].");
                 }
+            } catch (LockLostException $e) {
+                Log::warning('OcrFigureStore: OCR run kept — its reservation lapsed during the in-flight scan; the next sweep decides', ['disk' => $disk, 'run_dir' => $runDir, 'error' => $e->getMessage()]);
+                $kept[] = $runDir;
+                continue;
             } finally {
                 $reservation->release();
             }
         }
 
         if ($kept !== []) {
-            Log::info('OcrFigureStore: OCR runs inside the in-flight grace were kept; the orphan sweep removes them once aged', [
+            Log::info('OcrFigureStore: OCR runs were kept — inside the in-flight grace, reserved by a converter, or their reservation lapsed during the scan; the orphan sweep removes them once aged', [
                 'disk' => $disk,
                 'dir' => $dir,
                 'kept' => $kept,
@@ -355,6 +376,18 @@ final class OcrFigureStore
         // to remove with its parent.
         if ($storage->directories($dir) !== []) {
             Log::info('OcrFigureStore: a run appeared under the OCR assets directory during the purge; the directory is kept', ['disk' => $disk, 'dir' => $dir]);
+
+            return false;
+        }
+        // The enumeration, N per-run removals and this re-listing are all
+        // storage round-trips: the tree's own removal asserts the directory
+        // lock is still ours, so a TTL outlived by a large purge keeps the
+        // directory instead of taking it from a writer that has since
+        // started (ADR 0030 §3).
+        try {
+            $held->assertHeld('OCR assets directory purge');
+        } catch (LockLostException $e) {
+            Log::warning('OcrFigureStore: OCR assets directory kept — the lock lapsed during the purge; the next sweep decides', ['disk' => $disk, 'dir' => $dir, 'error' => $e->getMessage()]);
 
             return false;
         }
