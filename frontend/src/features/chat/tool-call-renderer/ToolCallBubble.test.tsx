@@ -1,6 +1,14 @@
-import { describe, it, expect } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { ToolCallBubble, type ToolCallData } from './ToolCallBubble';
+
+const { getMock, postMock } = vi.hoisted(() => ({ getMock: vi.fn(), postMock: vi.fn() }));
+vi.mock('../../../lib/api', () => ({ api: { get: getMock, post: postMock } }));
+vi.mock('./McpAppFrame', () => ({
+    McpAppFrame: ({ app, conversationId }: { app: { id: string }; conversationId: number }) => (
+        <div data-testid={`mock-mcp-app-${app.id}`}>conversation {conversationId}</div>
+    ),
+}));
 
 function makeToolCall(overrides: Partial<ToolCallData> = {}): ToolCallData {
     return {
@@ -60,5 +68,139 @@ describe('ToolCallBubble', () => {
     it('renders the denied label and lock icon when status is denied', () => {
         render(<ToolCallBubble toolCall={makeToolCall({ status: 'denied' })} />);
         expect(screen.getByText(/denied/i)).toBeInTheDocument();
+    });
+
+    it('renders an MCP App only for a successful scoped tool call', () => {
+        render(
+            <ToolCallBubble
+                conversationId={17}
+                toolCall={makeToolCall({ app: { id: '01APP', fallback: 'Fallback' } })}
+            />,
+        );
+
+        expect(screen.getByTestId('mock-mcp-app-01APP')).toHaveTextContent('conversation 17');
+    });
+
+    it('resumes a confirmation-scoped MCP call through the authenticated conversation endpoint', async () => {
+        postMock.mockResolvedValueOnce({ data: { status: 'completed', artifact: { text: 'Write completed.' } } });
+        render(
+            <ToolCallBubble
+                conversationId={17}
+                toolCall={makeToolCall({
+                    status: 'confirmation_required',
+                    pending_interaction_id: '01K2PENDING',
+                    prompt: { message: 'Confirm this write.' },
+                    result: null,
+                })}
+            />,
+        );
+
+        fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+
+        await waitFor(() => expect(postMock).toHaveBeenCalledWith(
+            '/api/conversations/mcp/interactions/01K2PENDING',
+            { conversation_id: '17', response: { confirmed: true } },
+        ));
+        expect(await screen.findByTestId('chat-tool-call-tool_42-resumed-result')).toHaveTextContent('Write completed.');
+        expect(screen.getByTestId('chat-tool-call-tool_42')).toHaveAttribute('data-tool-status', 'ok');
+    });
+
+    it('polls a persisted MCP task and renders its final artifact', async () => {
+        getMock.mockResolvedValueOnce({
+            data: {
+                task_id: '01M0TASK',
+                status: 'completed',
+                artifact: { text: 'Generated report.' },
+                terminal: true,
+            },
+        });
+        render(
+            <ToolCallBubble
+                conversationId={17}
+                toolCall={makeToolCall({
+                    status: 'task_accepted',
+                    task_id: '01M0TASK',
+                    task: { status: 'working', poll_interval_ms: 1000 },
+                    result: null,
+                })}
+            />,
+        );
+
+        await waitFor(() => expect(getMock).toHaveBeenCalledWith(
+            '/api/conversations/mcp/tasks/01M0TASK',
+            { params: { conversation_id: '17' } },
+        ));
+        expect(await screen.findByTestId('chat-tool-call-tool_42-resumed-result')).toHaveTextContent('Generated report.');
+        expect(screen.getByTestId('chat-tool-call-tool_42')).toHaveAttribute('data-tool-status', 'ok');
+    });
+
+    it('submits task input through the task-scoped endpoint', async () => {
+        getMock.mockResolvedValueOnce({
+            data: {
+                task_id: '01M0TASKINPUT',
+                status: 'input_required',
+                input_requests: { approval: { method: 'elicitation/create' } },
+            },
+        });
+        postMock.mockResolvedValueOnce({
+            data: {
+                task_id: '01M0TASKINPUT',
+                status: 'completed',
+                artifact: { text: 'Approved result.' },
+                terminal: true,
+            },
+        });
+        render(
+            <ToolCallBubble
+                conversationId={18}
+                toolCall={makeToolCall({ status: 'task_accepted', task_id: '01M0TASKINPUT', result: null })}
+            />,
+        );
+
+        const input = await screen.findByLabelText('MCP input responses');
+        fireEvent.change(input, { target: { value: '{"approval":{"approved":true}}' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Send input' }));
+
+        await waitFor(() => expect(postMock).toHaveBeenCalledWith(
+            '/api/conversations/mcp/tasks/01M0TASKINPUT/input',
+            {
+                conversation_id: '18',
+                input_responses: { approval: { approved: true } },
+            },
+        ));
+        expect(await screen.findByTestId('chat-tool-call-tool_42-resumed-result')).toHaveTextContent('Approved result.');
+    });
+
+    it('requests cooperative cancellation without marking the task cancelled prematurely', async () => {
+        getMock.mockResolvedValueOnce({
+            data: {
+                task_id: '01M0TASKCANCEL',
+                status: 'working',
+                poll_interval_ms: 30_000,
+            },
+        });
+        postMock.mockResolvedValueOnce({
+            data: {
+                task_id: '01M0TASKCANCEL',
+                status: 'working',
+                poll_interval_ms: 30_000,
+                cancel_requested: true,
+            },
+        });
+        render(
+            <ToolCallBubble
+                conversationId={19}
+                toolCall={makeToolCall({ status: 'task_accepted', task_id: '01M0TASKCANCEL', result: null })}
+            />,
+        );
+
+        fireEvent.click(await screen.findByRole('button', { name: 'Cancel task' }));
+
+        await waitFor(() => expect(postMock).toHaveBeenCalledWith(
+            '/api/conversations/mcp/tasks/01M0TASKCANCEL/cancel',
+            { conversation_id: '19' },
+        ));
+        expect(screen.getByTestId('chat-tool-call-tool_42')).toHaveAttribute('data-tool-status', 'cancel_requested');
+        expect(screen.getByRole('button', { name: 'Cancellation requested' })).toBeDisabled();
     });
 });

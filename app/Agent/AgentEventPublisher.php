@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Agent;
 
+use App\Mcp\Debug\McpActivityDebugPayload;
 use App\Models\AgentRun;
 use App\Models\AgentRunEvent;
 use App\Services\Widget\WidgetPiiMasker;
@@ -14,6 +15,7 @@ final readonly class AgentEventPublisher
     public function __construct(
         private AgentMessageCatalog $messages,
         private WidgetPiiMasker $masker,
+        private McpActivityDebugPayload $mcpDebug,
     ) {}
 
     /**
@@ -42,6 +44,15 @@ final readonly class AgentEventPublisher
                 ->firstOrFail();
             $sequence = $locked->last_sequence + 1;
             $safeParameters = $this->masker->maskArray($messageParameters) ?? [];
+            if (array_key_exists('mcp_debug', $data)) {
+                if (! $this->mcpDebug->enabled()) {
+                    unset($data['mcp_debug']);
+                } elseif (is_array($data['mcp_debug'])) {
+                    $data['mcp_debug'] = $this->mcpDebug->sanitize($data['mcp_debug']);
+                } else {
+                    unset($data['mcp_debug']);
+                }
+            }
             $safeData = $this->masker->maskArray($data) ?? [];
             $copy = $messageKey === null
                 ? ['locale' => $locked->locale, 'message_key' => null, 'message_params' => [], 'message' => null]

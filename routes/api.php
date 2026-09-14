@@ -1127,6 +1127,16 @@ Route::middleware([
     \Illuminate\Session\Middleware\StartSession::class,
     'auth:sanctum',
     'tenant.authorize',
+    'can:manageConnectors',
+])
+    ->get('/admin/connectors/mcp/shadow-reports', [\App\Http\Controllers\Api\Admin\McpShadowReportController::class, 'index'])
+    ->name('api.admin.connectors.mcp.shadow-reports');
+
+Route::middleware([
+    \Illuminate\Cookie\Middleware\EncryptCookies::class,
+    \Illuminate\Session\Middleware\StartSession::class,
+    'auth:sanctum',
+    'tenant.authorize',
     'can:manageMcpTools',
 ])
     ->prefix('admin/mcp/tokens')

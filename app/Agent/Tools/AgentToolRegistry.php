@@ -5,23 +5,27 @@ declare(strict_types=1);
 namespace App\Agent\Tools;
 
 use App\Agent\AgentExecutionContext;
+use App\Ai\Tools\Sources\McpConnectorChatToolSource;
 use App\Mcp\Client\McpToolAuthorizer;
 use App\Mcp\Client\Registry\McpServerRegistry;
+use App\Mcp\Runtime\McpRuntimeGate;
 use App\Models\McpServer;
 use App\Models\User;
 use Padosoft\AskMyDocsConnectorApi\Models\ApiRoute;
-use Padosoft\AskMyDocsConnectorApi\Services\ApiToolRegistry as ConnectorToolRegistry;
+use Padosoft\AskMyDocsConnectorApi\Support\RouteMode;
+use Padosoft\AskMyDocsConnectorApi\Support\RouteStatus;
 
 final readonly class AgentToolRegistry
 {
     public function __construct(
-        private ConnectorToolRegistry $connectors,
         private McpServerRegistry $mcpServers,
         private McpToolAuthorizer $mcpAuthorizer,
+        private McpConnectorChatToolSource $connectorMcp,
+        private McpRuntimeGate $mcpRuntime,
     ) {}
 
     /**
-     * @param list<AgentToolDefinition> $clientTools
+     * @param  list<AgentToolDefinition>  $clientTools
      * @return array<string,AgentToolDefinition>
      */
     public function forContext(
@@ -30,7 +34,7 @@ final readonly class AgentToolRegistry
         array $clientTools = [],
     ): array {
         $tools = ['search_knowledge_base' => $this->knowledgeTool()];
-        $this->mergeMcpTools($tools, $user);
+        $this->mergeMcpTools($tools, $context, $user);
         $this->mergeApiTools($tools, $context);
 
         foreach ($clientTools as $tool) {
@@ -73,23 +77,29 @@ final readonly class AgentToolRegistry
             return;
         }
 
-        $registered = $this->connectors->activeToolsForTenant($context->tenantId, $context->projectKey);
-        $routeIds = array_values(array_filter(array_map(
-            static fn (array $tool): int => (int) ($tool['route_id'] ?? 0),
-            $registered,
-        )));
+        $scopes = $context->projectKey === null || $context->projectKey === ''
+            ? ['']
+            : ['', $context->projectKey];
         $routes = ApiRoute::query()
             ->forTenant($context->tenantId)
-            ->whereIn('id', $routeIds)
-            ->with(['listRelations.detailRoute'])
+            ->whereHas('connector', fn ($query) => $query->where('is_active', true))
+            ->where('status', RouteStatus::Active->value)
+            ->whereIn('mode', [RouteMode::Tool->value, RouteMode::Both->value])
+            ->whereIn('project_key', $scopes)
+            ->with(['connector:id,name,description,project_key', 'listRelations.detailRoute'])
             ->get()
-            ->keyBy('id');
+            ->sortBy('id');
 
-        foreach ($registered as $registeredTool) {
-            $route = $routes->get((int) ($registeredTool['route_id'] ?? 0));
-            $definition = $registeredTool['definition'] ?? [];
+        foreach ($routes as $route) {
+            $definition = is_array($route->tool_definition) ? $route->tool_definition : [
+                'name' => $route->slug,
+                'description' => $route->description ?? $route->name,
+                'input_schema' => is_array($route->input_schema)
+                    ? $route->input_schema
+                    : ['type' => 'object', 'properties' => [], 'required' => []],
+            ];
             $name = is_array($definition) ? (string) ($definition['name'] ?? '') : '';
-            if (! $route instanceof ApiRoute || $name === '' || isset($tools[$name])) {
+            if ($name === '' || isset($tools[$name])) {
                 continue;
             }
 
@@ -97,11 +107,20 @@ final readonly class AgentToolRegistry
             $readOnly = in_array($method, ['GET', 'HEAD', 'OPTIONS'], true);
             $pagination = is_array($route->pagination) ? $route->pagination : null;
             $physicalMaximum = $pagination === null ? 1 : max(1, (int) config('agent.limits.physical_hard', 100));
-            $outboundRelations = $route->listRelations->map(static fn ($relation): array => [
-                'detail_route_id' => $relation->detail_route_id,
-                'detail_tool' => $relation->detailRoute?->slug,
-                'field_map' => $relation->field_map,
-            ])->values()->all();
+            $outboundRelations = $route->listRelations->map(static function ($relation): array {
+                $detail = $relation->detailRoute;
+                $definition = $detail instanceof ApiRoute && is_array($detail->tool_definition)
+                    ? $detail->tool_definition
+                    : [];
+
+                return [
+                    'detail_route_id' => $relation->detail_route_id,
+                    'detail_tool' => is_string($definition['name'] ?? null)
+                        ? $definition['name']
+                        : $detail?->slug,
+                    'field_map' => $relation->field_map,
+                ];
+            })->values()->all();
 
             $tools[$name] = new AgentToolDefinition(
                 name: $name,
@@ -118,8 +137,13 @@ final readonly class AgentToolRegistry
                 physicalMaximum: $physicalMaximum,
                 executorReference: $route->id,
                 metadata: [
+                    'source_key' => 'api:'.$route->api_connector_id,
+                    'source_name' => (string) ($route->connector?->name ?? $route->name),
+                    'source_description' => $route->connector?->description,
+                    'source_project_key' => $route->connector?->project_key,
                     'endpoint_type' => $route->endpoint_type->value,
                     'items_path' => $route->items_path,
+                    'output_schema' => is_array($route->output_schema) ? $route->output_schema : null,
                     'pagination' => $pagination,
                     'relations' => $outboundRelations,
                 ],
@@ -128,9 +152,22 @@ final readonly class AgentToolRegistry
     }
 
     /** @param array<string,AgentToolDefinition> $tools */
-    private function mergeMcpTools(array &$tools, ?User $user): void
-    {
-        if (! $user instanceof User || ! (bool) config('mcp.enabled', false)) {
+    private function mergeMcpTools(
+        array &$tools,
+        AgentExecutionContext $context,
+        ?User $user,
+    ): void {
+        if (! $user instanceof User) {
+            return;
+        }
+
+        if ($this->mcpRuntime->usesConnector($context->tenantId)) {
+            $this->mergeConnectorMcpTools($tools, $context, $user);
+
+            return;
+        }
+
+        if (! (bool) config('mcp.enabled', false)) {
             return;
         }
 
@@ -151,21 +188,156 @@ final readonly class AgentToolRegistry
                     continue;
                 }
                 $schema = $definition['inputSchema'] ?? $definition['input_schema'] ?? [];
+                $annotations = is_array($definition['annotations'] ?? null) ? $definition['annotations'] : [];
                 $tools[$name] = new AgentToolDefinition(
                     name: $name,
                     displayName: $name,
                     description: (string) ($definition['description'] ?? $name),
                     kind: 'mcp',
                     inputSchema: is_array($schema) ? $schema : ['type' => 'object', 'properties' => []],
-                    readOnly: (bool) ($definition['readOnlyHint'] ?? false),
-                    idempotent: (bool) ($definition['idempotentHint'] ?? false),
+                    readOnly: (bool) ($annotations['readOnlyHint'] ?? $definition['readOnlyHint'] ?? false),
+                    idempotent: (bool) ($annotations['idempotentHint'] ?? $definition['idempotentHint'] ?? false),
                     physicalMinimum: 1,
                     physicalLikely: 1,
                     physicalMaximum: 1,
                     executorReference: $server->id,
+                    metadata: [
+                        'source_key' => 'mcp:legacy:'.$server->id,
+                        'source_name' => (string) $server->name,
+                        'mcp_runtime' => 'legacy',
+                        'server_id' => $server->id,
+                        'server_name' => (string) $server->name,
+                        'output_schema' => is_array($definition['outputSchema'] ?? null)
+                            ? $definition['outputSchema']
+                            : null,
+                        'agent_capability_hint' => data_get($definition, '_meta.askmydocs/agent-capability'),
+                    ],
                 );
             }
         }
+    }
+
+    /** @param array<string,AgentToolDefinition> $tools */
+    private function mergeConnectorMcpTools(
+        array &$tools,
+        AgentExecutionContext $context,
+        User $user,
+    ): void {
+        $catalog = $this->connectorMcp->catalog($user, $context->projectKey);
+        $remoteNames = $this->connectorRemoteToolMap($catalog);
+
+        foreach ($catalog as $definition) {
+            $name = is_string($definition['name'] ?? null) ? $definition['name'] : '';
+            if ($name === '' || isset($tools[$name])) {
+                continue;
+            }
+
+            $annotations = is_array($definition['annotations'] ?? null)
+                ? $definition['annotations']
+                : [];
+            $provenance = is_array($definition['provenance'] ?? null)
+                ? $definition['provenance']
+                : [];
+            $inputSchema = is_array($definition['inputSchema'] ?? null)
+                ? $definition['inputSchema']
+                : ['type' => 'object', 'properties' => []];
+            $inputSchema['type'] ??= 'object';
+            $inputSchema['properties'] ??= [];
+            $remoteName = is_string($provenance['tool_remote_name'] ?? null)
+                ? $provenance['tool_remote_name']
+                : $name;
+            $risk = is_string($definition['risk'] ?? null) ? $definition['risk'] : 'unknown';
+            $readOnly = (bool) ($annotations['readOnlyHint'] ?? ($risk === 'read'));
+            $idempotent = (bool) ($annotations['idempotentHint'] ?? $readOnly);
+            $hint = is_array($definition['agentCapability'] ?? null)
+                ? $definition['agentCapability']
+                : data_get($definition, '_meta.askmydocs/agent-capability');
+            $hint = is_array($hint) ? $hint : null;
+            $connectionId = is_string($provenance['connection_id'] ?? null)
+                ? $provenance['connection_id']
+                : '';
+            $hint = $this->localizeConnectorHint($hint, $connectionId, $remoteNames);
+
+            $tools[$name] = new AgentToolDefinition(
+                name: $name,
+                displayName: $remoteName,
+                description: is_string($definition['description'] ?? null)
+                    ? $definition['description']
+                    : $remoteName,
+                kind: 'mcp',
+                inputSchema: $inputSchema,
+                readOnly: $readOnly,
+                idempotent: $idempotent,
+                physicalMinimum: 1,
+                physicalLikely: 1,
+                physicalMaximum: 1,
+                executorReference: $name,
+                metadata: [
+                    'source_key' => 'mcp:'.(string) ($provenance['connection_id'] ?? ''),
+                    'source_name' => (string) ($provenance['server_name'] ?? $remoteName),
+                    'mcp_runtime' => 'connector',
+                    'risk' => $risk,
+                    'confirmation_required' => (bool) ($definition['confirmationRequired'] ?? false),
+                    'output_schema' => is_array($definition['outputSchema'] ?? null)
+                        ? $definition['outputSchema']
+                        : null,
+                    'agent_capability_hint' => $hint,
+                    'provenance' => $provenance,
+                    'meta' => is_array($definition['_meta'] ?? null) ? $definition['_meta'] : null,
+                ],
+            );
+        }
+    }
+
+    /**
+     * @param  list<array<string,mixed>>  $catalog
+     * @return array<string,array<string,string>> connection id => remote name => local name
+     */
+    private function connectorRemoteToolMap(array $catalog): array
+    {
+        $map = [];
+        foreach ($catalog as $definition) {
+            $provenance = is_array($definition['provenance'] ?? null) ? $definition['provenance'] : [];
+            $connectionId = is_string($provenance['connection_id'] ?? null)
+                ? $provenance['connection_id']
+                : '';
+            $remoteName = is_string($provenance['tool_remote_name'] ?? null)
+                ? $provenance['tool_remote_name']
+                : '';
+            $localName = is_string($definition['name'] ?? null) ? $definition['name'] : '';
+            if ($connectionId !== '' && $remoteName !== '' && $localName !== '') {
+                $map[$connectionId][$remoteName] = $localName;
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * @param  array<string,mixed>|null  $hint
+     * @param  array<string,array<string,string>>  $remoteNames
+     * @return array<string,mixed>|null
+     */
+    private function localizeConnectorHint(?array $hint, string $connectionId, array $remoteNames): ?array
+    {
+        if ($hint === null || ! is_array($hint['next_tools'] ?? null)) {
+            return $hint;
+        }
+
+        $localized = array_values(array_unique(array_filter(array_map(
+            static fn (mixed $name): ?string => is_string($name)
+                ? ($remoteNames[$connectionId][$name] ?? null)
+                : null,
+            $hint['next_tools'],
+        ))));
+
+        if ($localized === []) {
+            unset($hint['next_tools']);
+        } else {
+            $hint['next_tools'] = $localized;
+        }
+
+        return $hint === [] ? null : $hint;
     }
 
     /** @return list<array<string,mixed>> */

@@ -17,6 +17,9 @@ final class AgentRun extends Model
     public const STATUS_RUNNING = 'running';
     public const STATUS_WAITING_CLIENT_TOOL = 'waiting_client_tool';
     public const STATUS_AWAITING_CONFIRMATION = 'awaiting_confirmation';
+    public const STATUS_AWAITING_MCP_CONFIRMATION = 'awaiting_mcp_confirmation';
+    public const STATUS_AWAITING_MCP_INPUT = 'awaiting_mcp_input';
+    public const STATUS_WAITING_MCP_TASK = 'waiting_mcp_task';
     public const STATUS_COMPLETED = 'completed';
     public const STATUS_PARTIAL = 'partial';
     public const STATUS_FAILED = 'failed';
@@ -56,6 +59,7 @@ final class AgentRun extends Model
     public function widgetSession(): BelongsTo { return $this->belongsTo(WidgetSession::class); }
     public function events(): HasMany { return $this->hasMany(AgentRunEvent::class); }
     public function toolExecutions(): HasMany { return $this->hasMany(AgentToolExecution::class); }
+    public function plannerShadowReports(): HasMany { return $this->hasMany(AgentPlannerShadowReport::class); }
 
     public function isTerminal(): bool
     {

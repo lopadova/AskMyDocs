@@ -1,9 +1,22 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { Fragment, useEffect, useRef, type ReactNode } from 'react';
 import { MessageBubble } from './MessageBubble';
+import { AgentActivityBar } from './AgentActivityBar';
 import { Icon } from '../../components/Icons';
+import { Button } from '../../components/Button';
+import { useChatStore } from './chat.store';
+import { Alert, AlertDescription, AlertIcon, AlertTitle } from '../../components/ui/alert';
+import type { AgentRunEvent } from '../../lib/agent-run-events';
 import { mapStatusToDataState, type SdkStatus } from './map-status-to-data-state';
 import type { RenderableMessage } from './message-shape-adapters';
-import { getMessageId, getTextContent } from './message-shape-adapters';
+import {
+    getAgentActivity,
+    getAgentRunId,
+    getMessageId,
+    getTextContent,
+} from './message-shape-adapters';
+import type { AgentArtifactSelection } from './AgentTableArtifact';
+
+const noop = (): void => undefined;
 
 export interface MessageThreadProps {
     conversationId: number | null;
@@ -60,6 +73,13 @@ export interface MessageThreadProps {
      * Wired by ChatView (admin-gated); forwarded to each MessageBubble.
      */
     onOpenSource?: (citation: import('./chat.api').MessageCitation) => void;
+    onMcpAppMessage?: (content: string, appId: string) => Promise<void>;
+    onAgentArtifactSelection?: (selection: AgentArtifactSelection) => Promise<void>;
+    agentEvents?: AgentRunEvent[];
+    activeAgentRunId?: string | null;
+    awaitingAgentConfirmation?: boolean;
+    onCancelAgent?: () => void;
+    onContinueAgent?: () => void;
 }
 
 /**
@@ -89,6 +109,13 @@ export function MessageThread({
     onEditUserMessage,
     showCounterfactual = true,
     onOpenSource,
+    onMcpAppMessage,
+    onAgentArtifactSelection,
+    agentEvents = [],
+    activeAgentRunId = null,
+    awaitingAgentConfirmation = false,
+    onCancelAgent,
+    onContinueAgent,
 }: MessageThreadProps): ReactNode {
     const threadRef = useRef<HTMLDivElement>(null);
 
@@ -128,7 +155,14 @@ export function MessageThread({
             top: threadRef.current.scrollHeight,
             behavior: isStreaming ? 'auto' : 'smooth',
         });
-    }, [messages.length, sdkStatus, totalTextLength, isStreaming]);
+    }, [
+        messages.length,
+        sdkStatus,
+        totalTextLength,
+        isStreaming,
+        agentEvents.length,
+        agentEvents.at(-1)?.sequence,
+    ]);
 
     const state = mapStatusToDataState({
         conversationId,
@@ -146,14 +180,24 @@ export function MessageThread({
             aria-label="Conversation messages"
             aria-live="polite"
             aria-busy={isLoadingHistory || isStreaming}
-            className="grid-bg chat-thread-scroll"
+            className="chat-thread-scroll"
         >
             <div className="chat-thread-content">
                 {state === 'empty' && <EmptyThread />}
                 {state === 'error' && (
-                    <div data-testid="chat-thread-error" role="alert" style={errorStyle}>
-                        {error?.message ?? 'Could not load messages.'}
-                    </div>
+                    <Alert
+                        variant="destructive"
+                        className="chat-thread-alert"
+                        data-testid="chat-thread-error"
+                    >
+                        <AlertIcon>
+                            <Icon.Alert size={16} />
+                        </AlertIcon>
+                        <AlertTitle>We couldn’t complete that request</AlertTitle>
+                        <AlertDescription>
+                            {error?.message ?? 'Could not load messages.'}
+                        </AlertDescription>
+                    </Alert>
                 )}
                 {/*
                   * Render the thread only when a conversation is
@@ -183,6 +227,10 @@ export function MessageThread({
                             break;
                         }
                     }
+                    const activeRunHasPersistedActivity = activeAgentRunId !== null && messages.some((message) => (
+                        getAgentRunId(message) === activeAgentRunId && getAgentActivity(message).length > 0
+                    ));
+
                     return messages.map((m, i) => {
                         const isLast = i === messages.length - 1;
                         const streaming = isStreaming && isLast && m.role === 'assistant';
@@ -208,19 +256,58 @@ export function MessageThread({
                             m.role === 'user' && !isStreaming && onEditUserMessage
                                 ? (newText: string) => onEditUserMessage(i, numericId, newText)
                                 : undefined;
-                        return (
+                        const persistedActivity = m.role === 'assistant' ? getAgentActivity(m) : [];
+                        const messageRunId = getAgentRunId(m);
+                        const showLiveActivityAfterMessage = m.role === 'user'
+                            && activeAgentRunId !== null
+                            && messageRunId === activeAgentRunId
+                            && !activeRunHasPersistedActivity
+                            && (isStreaming || awaitingAgentConfirmation || agentEvents.length > 0);
+
+                        const renderMessage = (activityInfo: ReactNode = null) => (
                             <MessageBubble
-                                key={getMessageId(m)}
                                 conversationId={conversationId}
                                 message={m}
                                 projectKey={projectKey}
                                 streaming={streaming}
+                                activityInfo={activityInfo}
                                 onRegenerate={regenerateHandler}
                                 onBranch={branchHandler}
                                 onEditSubmit={editHandler}
                                 showCounterfactual={showCounterfactual}
                                 onOpenSource={onOpenSource}
+                                onMcpAppMessage={onMcpAppMessage}
+                                onAgentArtifactSelection={onAgentArtifactSelection}
                             />
+                        );
+
+                        return (
+                            <Fragment key={getMessageId(m)}>
+                                {persistedActivity.length > 0 ? (
+                                    <AgentActivityBar
+                                        events={persistedActivity}
+                                        active={false}
+                                        awaitingConfirmation={false}
+                                        onCancel={noop}
+                                        onContinue={noop}
+                                        instanceId={`message-${String(mid)}`}
+                                        embedded
+                                    >
+                                        {renderMessage}
+                                    </AgentActivityBar>
+                                ) : renderMessage()}
+                                {showLiveActivityAfterMessage && (
+                                    <AgentActivityBar
+                                        events={agentEvents}
+                                        active={isStreaming}
+                                        awaitingConfirmation={awaitingAgentConfirmation}
+                                        onCancel={onCancelAgent ?? noop}
+                                        onContinue={onContinueAgent ?? noop}
+                                        instanceId={`run-${activeAgentRunId}`}
+                                        embedded
+                                    />
+                                )}
+                            </Fragment>
                         );
                     });
                 })()}
@@ -229,70 +316,30 @@ export function MessageThread({
     );
 }
 
-const errorStyle = {
-    padding: '12px 14px',
-    borderRadius: 10,
-    background: 'rgba(239,68,68,.08)',
-    border: '1px solid rgba(239,68,68,.3)',
-    color: 'var(--err)',
-    fontSize: 13,
-} as const;
-
 function EmptyThread(): ReactNode {
+    const setDraft = useChatStore((state) => state.setDraft);
     const prompts = [
         'How does PTO work for new hires?',
         'Show me the remote work policy',
         'What’s the incident response checklist?',
     ];
     return (
-        <div
-            data-testid="chat-thread-empty"
-            style={{
-                maxWidth: 560,
-                margin: '64px auto',
-                padding: 24,
-                background: 'var(--panel-solid)',
-                border: '1px solid var(--panel-border)',
-                borderRadius: 14,
-                textAlign: 'center',
-            }}
-        >
-            <div
-                style={{
-                    width: 40,
-                    height: 40,
-                    margin: '0 auto 10px',
-                    background: 'var(--grad-accent)',
-                    borderRadius: 10,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                }}
-            >
-                <Icon.Sparkles size={18} />
-            </div>
-            <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>Ask your knowledge base</div>
-            <div style={{ fontSize: 13, color: 'var(--fg-2)', marginBottom: 18, lineHeight: 1.6 }}>
-                Answers are grounded in your canonical docs. Every reply cites the
-                sources it pulled from.
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {prompts.map((p, i) => (
-                    <button
-                        key={i}
-                        type="button"
-                        data-testid={`chat-suggested-prompt-${i}`}
-                        className="btn"
-                        style={{
-                            justifyContent: 'flex-start',
-                            fontSize: 12.5,
-                            color: 'var(--fg-1)',
-                            background: 'var(--bg-2)',
-                            border: '1px solid var(--panel-border)',
-                        }}
+        <div data-testid="chat-thread-empty" className="chat-empty-state">
+            <span className="chat-empty-icon" aria-hidden="true"><Icon.Sparkles size={24} /></span>
+            <h2>What would you like to explore?</h2>
+            <p>Ask your knowledge base. Follow the sources. Keep the conversation going.</p>
+            <div className="chat-empty-prompts">
+                {prompts.map((prompt, index) => (
+                    <Button
+                        key={prompt}
+                        variant="quiet"
+                        size="md"
+                        data-testid={`chat-suggested-prompt-${index}`}
+                        trailingIcon={<Icon.Chevron size={14} />}
+                        onClick={() => setDraft(prompt)}
                     >
-                        {p}
-                    </button>
+                        {prompt}
+                    </Button>
                 ))}
             </div>
         </div>

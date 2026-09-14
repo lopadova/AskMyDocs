@@ -10,11 +10,17 @@ use App\Models\Conversation;
 use App\Models\User;
 use App\Services\Kb\KbSearchService;
 use App\Services\Kb\Retrieval\SearchResult;
+use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
 use Mockery;
+use Padosoft\AskMyDocsConnectorBase\Support\TenantContext as ConnectorTenantContext;
+use Padosoft\AskMyDocsConnectorMcp\Models\McpAppInstance;
+use Padosoft\AskMyDocsConnectorMcp\Models\McpConnection;
+use Padosoft\AskMyDocsConnectorMcp\Models\McpConnectionTool;
+use Padosoft\AskMyDocsConnectorMcp\Models\McpServerDefinition;
 use Tests\TestCase;
 
 /**
@@ -489,6 +495,70 @@ final class MessageStreamControllerTest extends TestCase
             }
         }
         $this->assertSame('Hello world.', $reconstructed);
+    }
+
+    public function test_mcp_app_context_is_authorized_and_added_to_the_next_model_turn(): void
+    {
+        config()->set('connector-mcp.enabled', true);
+        config()->set('connector-mcp.runtime_mode', 'active');
+        config()->set('connector-mcp.apps.advanced_enabled', true);
+        app(TenantContext::class)->set('test-tenant');
+        app(ConnectorTenantContext::class)->set('test-tenant');
+        $server = McpServerDefinition::query()->create([
+            'tenant_id' => 'test-tenant',
+            'name' => 'App context MCP',
+            'transport' => 'auto',
+            'auth_mode' => 'none',
+            'endpoint' => 'https://app-context.example.test/mcp',
+            'status' => McpServerDefinition::STATUS_ACTIVE,
+        ]);
+        $connection = McpConnection::query()->create([
+            'tenant_id' => 'test-tenant',
+            'mcp_connector_server_id' => $server->getKey(),
+            'mode' => 'shared',
+            'label' => 'App context',
+            'status' => McpConnection::STATUS_ACTIVE,
+        ]);
+        $tool = McpConnectionTool::query()->create([
+            'tenant_id' => 'test-tenant',
+            'mcp_connector_connection_id' => $connection->getKey(),
+            'remote_name' => 'reports.show',
+            'local_name' => 'app_context_reports_show_12345678',
+            'input_schema_json' => ['type' => 'object'],
+            'risk' => 'read',
+            'policy' => 'disabled',
+            'enabled' => false,
+            'confirmation_required' => false,
+        ]);
+        $instance = McpAppInstance::query()->create([
+            'tenant_id' => 'test-tenant',
+            'mcp_connector_connection_id' => $connection->getKey(),
+            'mcp_connector_tool_id' => $tool->getKey(),
+            'actor_type' => $this->user->getMorphClass(),
+            'actor_id' => (string) $this->user->getKey(),
+            'conversation_id' => (string) $this->conversation->getKey(),
+            'resource_uri' => 'ui://reports/show.html',
+            'tool_input' => [],
+            'tool_result' => [],
+            'model_context' => [
+                'content' => [['type' => 'text', 'text' => 'The selected region is Europe.']],
+                'structuredContent' => ['region' => 'EU'],
+            ],
+            'expires_at' => now()->addHour(),
+        ]);
+        $this->mockSearchWithGroundedChunks();
+        $this->mockAnthropicResponse(content: 'Europe is selected.');
+
+        $this->postStream('/conversations/'.$this->conversation->id.'/messages/stream', [
+            'content' => 'Continue from the app selection.',
+            'mcp_app_id' => $instance->public_id,
+        ]);
+
+        $payload = json_decode((string) Http::recorded()->first()[0]->body(), true, flags: JSON_THROW_ON_ERROR);
+        $system = (string) ($payload['system'] ?? '');
+        $this->assertStringContainsString('## Current MCP App context', $system);
+        $this->assertStringContainsString('The selected region is Europe.', $system);
+        $this->assertStringContainsString('"region":"EU"', $system);
     }
 
     // ---- helpers ----

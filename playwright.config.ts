@@ -21,6 +21,13 @@ import { defineConfig, devices } from '@playwright/test';
  */
 const baseURL = process.env.E2E_BASE_URL ?? 'http://127.0.0.1:8000';
 const skipWebServer = process.env.E2E_SKIP_WEBSERVER === '1';
+const localWebServerUrl = new URL(baseURL);
+const localWebServerHost = localWebServerUrl.hostname;
+const localWebServerPort = localWebServerUrl.port || (localWebServerUrl.protocol === 'https:' ? '443' : '80');
+const outboundBaseURL = process.env.E2E_OUTBOUND_BASE_URL ?? 'http://127.0.0.1:8001';
+const outboundWebServerUrl = new URL(outboundBaseURL);
+const outboundWebServerHost = outboundWebServerUrl.hostname;
+const outboundWebServerPort = outboundWebServerUrl.port || (outboundWebServerUrl.protocol === 'https:' ? '443' : '80');
 
 /**
  * Environment for the dev-spawned `php artisan serve` processes.
@@ -50,7 +57,12 @@ const serveEnv = {
     // long test matrix. The authenticated widget demo selects
     // the shared file store explicitly for its credential only.
     CACHE_STORE: 'array',
-    SANCTUM_STATEFUL_DOMAINS: '127.0.0.1,127.0.0.1:8000,localhost,localhost:8000',
+    SANCTUM_STATEFUL_DOMAINS: [
+        localWebServerHost,
+        `${localWebServerHost}:${localWebServerPort}`,
+        'localhost',
+        `localhost:${localWebServerPort}`,
+    ].join(','),
     // Local E2E has no long-running queue worker. Pin the
     // connection explicitly instead of inheriting a developer
     // `.env` value such as `database`, otherwise KB ingest jobs
@@ -144,7 +156,12 @@ const serveEnv = {
     // Seeders that install API tools (E2eAgentRetrievalSeeder) run INSIDE the
     // app, so the outbound target has to be readable from the server's own
     // environment, not just from the spec process.
-    E2E_OUTBOUND_BASE_URL: process.env.E2E_OUTBOUND_BASE_URL ?? 'http://127.0.0.1:8001',
+    E2E_OUTBOUND_BASE_URL: outboundBaseURL,
+    MCP_CONNECTOR_ENABLED: 'true',
+    MCP_CONNECTOR_OAUTH_ENABLED: 'true',
+    MCP_CONNECTOR_OAUTH_ALLOW_INSECURE_LOCAL: 'true',
+    MCP_CONNECTOR_RUNTIME_MODE: 'active',
+    MCP_CONNECTOR_INTERNAL_ENDPOINT_ALLOWLIST: '127.0.0.1',
 };
 
 /**
@@ -161,8 +178,6 @@ const serveEnv = {
  * process, a real HTTP round trip, the same application and database. No
  * route is mocked, so R13 still holds.
  */
-const outboundBaseURL = process.env.E2E_OUTBOUND_BASE_URL ?? 'http://127.0.0.1:8001';
-
 export default defineConfig({
     testDir: './frontend/e2e',
     fullyParallel: true,
@@ -223,7 +238,7 @@ export default defineConfig({
               // drifts across patch / minor framework upgrades. PR #82
               // set the env var without the flag, so the workers
               // configuration was never actually applied.
-              command: 'php artisan serve --no-reload --host=127.0.0.1 --port=8000',
+              command: `php artisan serve --no-reload --host=${localWebServerHost} --port=${localWebServerPort}`,
               // `/healthz` returns a plain 200 with no auth / no DB hit.
               // The previous `baseURL` poll on `/` was hitting the home
               // route (auth middleware → 302 to /login) which CI's webServer
@@ -240,7 +255,7 @@ export default defineConfig({
               // The outbound target. Same application, same database, its own
               // process — so a request the app makes to it is served by a
               // worker that is not the one waiting on the response.
-              command: 'php artisan serve --no-reload --host=127.0.0.1 --port=8001',
+              command: `php artisan serve --no-reload --host=${outboundWebServerHost} --port=${outboundWebServerPort}`,
               url: `${outboundBaseURL}/healthz`,
               reuseExistingServer: !process.env.CI,
               timeout: 120_000,
@@ -248,16 +263,21 @@ export default defineConfig({
               stdout: 'pipe',
               stderr: 'pipe',
           },
+          {
+              command: 'node frontend/e2e/fixtures/mcp-server.mjs',
+              url: 'http://127.0.0.1:3536/healthz',
+              reuseExistingServer: !process.env.CI,
+              timeout: 30_000,
+              stdout: 'pipe',
+              stderr: 'pipe',
+          },
         ],
     projects: [
-        // Setup projects are chained sequentially via `dependencies` so
-        // they don't all hammer /testing/reset (migrate:fresh on real
-        // Postgres) at the same instant. Even with
-        // PHP_CLI_SERVER_WORKERS=4 + --no-reload (see webServer.env
-        // above) three parallel migrate:fresh requests
-        // queue + sometimes lock the server long enough for downstream
-        // requests to ECONNREFUSED. Chaining keeps the API surface
-        // exercised one-at-a-time during boot.
+        // Setup projects are chained sequentially via `dependencies`.
+        // Only the root `setup` project resets and seeds the database;
+        // the role-specific setup projects authenticate against that same
+        // snapshot. Resetting again in a downstream setup invalidates the
+        // password-hash-backed Laravel sessions already written to disk.
         //
         // Every BROWSER project below depends on `system-admin-setup`, the
         // tail of that chain, rather than on the one setup it appears to

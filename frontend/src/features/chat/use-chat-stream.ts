@@ -220,16 +220,20 @@ export function useChatStream(options: UseChatStreamOptions): UseChatHelpers<UIM
             // call as an SPA request via
             // `EnsureFrontendRequestsAreStateful` — match the axios
             // instance's default header set.
-            prepareSendMessagesRequest: ({ messages }) => {
+            prepareSendMessagesRequest: ({ messages, body: requestBody }) => {
                 const last = messages[messages.length - 1];
                 const content = last?.parts
                     ?.filter((p): p is { type: 'text'; text: string } => p.type === 'text')
                     .map((p) => p.text)
                     .join('') ?? '';
                 const liveFilters = filtersRef.current;
-                const body: { content: string; filters?: FilterState } = { content };
+                const body: { content: string; filters?: FilterState; mcp_app_id?: string } = { content };
                 if (liveFilters && !isFilterStateEmpty(liveFilters)) {
                     body.filters = liveFilters;
+                }
+                const appId = requestBody?.mcp_app_id;
+                if (typeof appId === 'string' && /^[0-9A-HJKMNP-TV-Z]{26}$/.test(appId)) {
+                    body.mcp_app_id = appId;
                 }
                 // Multi-value Accept: SSE on the success path, JSON
                 // on the auth/error path. Laravel's auth + Sanctum

@@ -5,7 +5,12 @@ declare(strict_types=1);
 namespace App\Agent;
 
 use App\Contracts\AgentRunHandler;
+use App\Mcp\Apps\McpAppTurnContext;
 use App\Models\AgentRun;
+use App\Models\Conversation;
+use App\Models\User;
+use App\Services\Widget\WidgetPiiMasker;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /** Queue entry point that owns run lifecycle, collection and final synthesis. */
@@ -16,12 +21,20 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
         private AgentAnswerSynthesizer $synthesizer,
         private AgentEventPublisher $events,
         private AgentResultProjector $projector,
+        private McpAppTurnContext $mcpAppContext,
+        private AgentTurnContextBuilder $turnContextBuilder,
+        private WidgetPiiMasker $masker,
     ) {}
 
     public function handle(AgentRun $run): void
     {
         $run->refresh();
-        if ($run->isTerminal() || $run->status === AgentRun::STATUS_AWAITING_CONFIRMATION) {
+        if ($run->isTerminal() || in_array($run->status, [
+            AgentRun::STATUS_AWAITING_CONFIRMATION,
+            AgentRun::STATUS_AWAITING_MCP_CONFIRMATION,
+            AgentRun::STATUS_AWAITING_MCP_INPUT,
+            AgentRun::STATUS_WAITING_MCP_TASK,
+        ], true)) {
             return;
         }
 
@@ -56,8 +69,9 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
         }
 
         try {
-            $outcome = $this->loop->run($run, $context);
-            if ($outcome->awaitingConfirmation()) {
+            $turnContext = $this->turnContext($run);
+            $outcome = $this->loop->run($run, $context, $turnContext);
+            if ($outcome->requiresInteraction()) {
                 return;
             }
 
@@ -66,6 +80,7 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
                 trim((string) data_get($run->input_json, 'question', '')),
                 $context,
                 $outcome,
+                $turnContext,
             );
             $status = $outcome->decision === 'partial' || $answer->completeness === 'partial'
                 ? AgentRun::STATUS_PARTIAL
@@ -97,6 +112,15 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
             if ($run->status === AgentRun::STATUS_CANCELLED) {
                 return;
             }
+            Log::error('Agent run failed.', [
+                'run_id' => $run->run_id,
+                'tenant_id' => $run->tenant_id,
+                'project_key' => $run->project_key,
+                'status_before_failure' => $run->status,
+                'exception_class' => $exception::class,
+                'exception_message' => $this->masker->maskString(mb_substr($exception->getMessage(), 0, 1000)),
+                'exception_trace' => $exception->getTraceAsString(),
+            ]);
             $run->forceFill([
                 'status' => AgentRun::STATUS_FAILED,
                 'error_code' => $this->errorCode($exception),
@@ -110,6 +134,34 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
                 canCancel: false,
             );
         }
+    }
+
+    private function turnContext(AgentRun $run): ?string
+    {
+        $appId = data_get($run->input_json, 'mcp_app_id');
+        $user = $run->user;
+        $conversation = $run->conversation;
+        $mcpAppContext = null;
+
+        if (is_string($appId) && $user instanceof User && $conversation instanceof Conversation) {
+            $previousTimezone = date_default_timezone_get();
+            try {
+                // Connector timestamps are persisted in the application timezone.
+                // Agent runs use the actor's timezone for localized output, so use
+                // the storage timezone while authorizing expiry-bound app context.
+                date_default_timezone_set((string) config('app.timezone', 'UTC'));
+
+                $mcpAppContext = $this->mcpAppContext->resolve($appId, $user, $conversation);
+            } finally {
+                date_default_timezone_set($previousTimezone);
+            }
+        }
+
+        $context = $this->turnContextBuilder->build($run, $mcpAppContext);
+
+        return $context === []
+            ? null
+            : json_encode($context, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
 
     private function context(AgentRun $run): AgentExecutionContext

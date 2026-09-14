@@ -107,6 +107,33 @@ export interface AgentRunOverview {
         average_duration_ms: number | null;
     };
     status_counts: Record<string, number>;
+    planner_shadow: {
+        reports: number;
+        agreement_rate: number | null;
+        agreements: number;
+        disagreements: number;
+        invalid_plan_rate: number | null;
+        errors: number;
+        fallbacks: number;
+        validation_corrections: number;
+        premature_insufficient_avoided: number;
+        average_candidates: number | null;
+        average_router_latency_ms: number | null;
+        average_planner_latency_ms: number | null;
+        average_tokens: number | null;
+    };
+    mcp_transport: {
+        executions: number;
+        physical_requests: number;
+        negotiation_cache_hit_rate: number | null;
+        average_oauth_refresh_ms: number | null;
+        average_endpoint_guard_dns_ms: number | null;
+        average_discovery_ms: number | null;
+        average_tool_call_ms: number | null;
+        average_decode_ms: number | null;
+        recoveries: Record<string, number>;
+        error_codes: Record<string, number>;
+    };
     policy: Record<string, number>;
     recent_runs: Array<{
         run_id: string;

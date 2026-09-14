@@ -7,6 +7,7 @@ use App\Ai\StreamChunk;
 use App\Ai\AiResponse;
 use App\FinOps\ChatTraceContext;
 use App\FinOps\ChatTurnCostResolver;
+use App\Mcp\Apps\McpAppTurnContext;
 use App\Mcp\Client\McpToolCallingService;
 use App\Models\ChatLog;
 use App\Models\Conversation;
@@ -104,6 +105,7 @@ class MessageStreamController extends Controller
         ChatLogManager $chatLog,
         FewShotService $fewShot,
         ConfidenceCalculator $confidence,
+        McpAppTurnContext $mcpAppContext,
     ): Response {
         // Force JSON for both authorization (403) and validation
         // (422) failures: SSE clients send `Accept: text/event-stream`,
@@ -123,7 +125,10 @@ class MessageStreamController extends Controller
 
         try {
             $validated = $request->validate(array_merge(
-                ['content' => ['required', 'string', 'max:10000']],
+                [
+                    'content' => ['required', 'string', 'max:10000'],
+                    'mcp_app_id' => ['sometimes', 'string', 'ulid'],
+                ],
                 $this->retrievalFilterRules(),
             ));
         } catch (ValidationException $e) {
@@ -137,6 +142,11 @@ class MessageStreamController extends Controller
         $projectKey = $conversation->project_key;
         $userId = $request->user()->id;
         $filters = $this->buildRetrievalFilters($request, $projectKey);
+        $appContext = $mcpAppContext->resolve(
+            is_string($validated['mcp_app_id'] ?? null) ? $validated['mcp_app_id'] : null,
+            $request->user(),
+            $conversation,
+        );
 
         // Persist user message BEFORE the stream starts. If the client
         // disconnects mid-stream the user turn is still saved and the
@@ -164,6 +174,7 @@ class MessageStreamController extends Controller
         $chunks = $result->primary;
 
         $shouldRefuse = $retrieval->shouldRefuse($result);
+        $hasLiveTools = $toolCallingService->canHandleToolCalling($request->user(), $projectKey);
 
         // Capture session id at controller entry — header() reads from
         // request state which we want to lock before the streaming
@@ -173,7 +184,7 @@ class MessageStreamController extends Controller
         $clientIp = $request->ip();
         $userAgent = $request->userAgent();
 
-        if ($shouldRefuse) {
+        if ($shouldRefuse && ! $hasLiveTools) {
             return $this->streamRefusal(
                 request: $request,
                 conversation: $conversation,
@@ -197,6 +208,9 @@ class MessageStreamController extends Controller
             $retrieval->promptContext($result),
             ['projectKey' => $projectKey, 'fewShotExamples' => $fewShotExamples],
         ))->render();
+        if ($appContext !== null) {
+            $systemPrompt .= "\n\n## Current MCP App context\n".$appContext;
+        }
 
         $citations = $retrieval->buildCitations($result);
 
@@ -205,7 +219,7 @@ class MessageStreamController extends Controller
         // metered call + this turn's chat_logs row share it.
         $traceId = ChatTraceContext::newTraceId();
         $toolResponse = null;
-        if ($toolCallingService->canHandleToolCalling($request->user())) {
+        if ($hasLiveTools) {
             $toolResponse = ChatTraceContext::within($traceId, fn (): AiResponse => $toolCallingService->chatWithTools(
                 systemPrompt: $systemPrompt,
                 messages: $history,
@@ -217,6 +231,7 @@ class MessageStreamController extends Controller
                     // ADR 0028 phase 3 - same verdict as the sync channel, so
                     // streaming is not a way around the firewall.
                     'provenance_firewall' => app(ProvenanceToolFirewall::class)->assess($result)->toArray(),
+                    'project_key' => $projectKey,
                 ],
             ));
         }
@@ -875,6 +890,12 @@ class MessageStreamController extends Controller
                 'status' => (string) ($toolCall['status'] ?? 'completed'),
                 'server_id' => $toolCall['server_id'] ?? null,
                 'server_name' => $toolCall['server_name'] ?? null,
+                'source' => $toolCall['source'] ?? null,
+                'provenance' => is_array($toolCall['provenance'] ?? null) ? $toolCall['provenance'] : [],
+                'pending_interaction_id' => $toolCall['pending_interaction_id'] ?? null,
+                'prompt' => is_array($toolCall['prompt'] ?? null) ? $toolCall['prompt'] : null,
+                'task_id' => $toolCall['task_id'] ?? null,
+                'task' => is_array($toolCall['task'] ?? null) ? $toolCall['task'] : null,
                 'error' => $toolCall['error'] ?? null,
             ],
             $toolCalls,

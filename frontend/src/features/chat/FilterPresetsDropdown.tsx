@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Button } from '../../components/Button';
+import { Icon } from '../../components/Icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
     chatFilterPresetsApi,
@@ -106,30 +108,19 @@ export function FilterPresetsDropdown({ filters, onLoad }: FilterPresetsDropdown
 
     return (
         <div ref={dropdownRef} style={{ position: 'relative' }}>
-            <button
-                type="button"
+            <Button
+                variant="quiet"
+                size="sm"
+                leadingIcon={<Icon.Book size={13} />}
                 data-testid="chat-filter-presets-trigger"
+                className="chat-filter-preset-trigger"
                 aria-label="Saved filter presets"
                 aria-expanded={open}
                 aria-haspopup="menu"
                 onClick={() => setOpen((v) => !v)}
-                style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 4,
-                    padding: '3px 9px',
-                    border: '1px solid var(--panel-border, rgba(255,255,255,.30))',
-                    borderRadius: 99,
-                    background: 'transparent',
-                    color: 'var(--fg-2)',
-                    cursor: 'pointer',
-                    fontSize: 11.5,
-                    lineHeight: 1.4,
-                }}
             >
-                <span aria-hidden="true">★</span>
                 Presets
-            </button>
+            </Button>
 
             {open && (
                 <div

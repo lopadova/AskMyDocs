@@ -12,6 +12,7 @@ final readonly class AgentAnswer implements JsonSerializable
      * @param list<array<string,mixed>> $citations
      * @param list<array<string,mixed>> $toolSources
      * @param list<string> $limitations
+     * @param array<string,mixed>|null $artifact
      */
     public function __construct(
         public string $answer,
@@ -20,6 +21,8 @@ final readonly class AgentAnswer implements JsonSerializable
         public array $citations,
         public array $toolSources,
         public array $limitations = [],
+        public ?array $artifact = null,
+        public bool $requiresSelection = false,
     ) {}
 
     /** @return array<string,mixed> */
@@ -32,6 +35,8 @@ final readonly class AgentAnswer implements JsonSerializable
             'citations' => $this->citations,
             'tool_sources' => $this->toolSources,
             'limitations' => $this->limitations,
+            'artifact' => $this->artifact,
+            'requires_selection' => $this->requiresSelection,
         ];
     }
 }

@@ -110,6 +110,8 @@ final class AdminAuthorizationMatrixTest extends TestCase
             '/api/admin/connectors' => ['admin', 'super-admin'],        // manageConnectors
             '/api/admin/api-connectors' => ['admin', 'super-admin'],    // manageConnectors (v8.27 Connettore API)
             '/api/admin/api-connectors/1/relations' => ['admin', 'super-admin'], // manageConnectors (list→detail relations)
+            '/api/admin/connectors/mcp' => ['admin', 'super-admin'], // package controller → manageConnectors
+            '/api/admin/connectors/mcp/shadow-reports' => ['admin', 'super-admin'], // manageConnectors
             '/api/admin/agent-runs/overview' => ['admin', 'super-admin'], // manageConnectors (agent activity overview)
             '/api/admin/ingestion/queue' => ['admin', 'super-admin'],   // manageConnectors (v8.21 Ciclo 2)
             '/api/admin/mcp-servers' => ['super-admin'],                // manageMcpTools
@@ -163,6 +165,8 @@ final class AdminAuthorizationMatrixTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        config()->set('connector-mcp.enabled', true);
+        config()->set('connector-mcp.runtime_mode', 'active');
         $this->seed(RbacSeeder::class);
         Cache::flush();
         Tenant::query()->updateOrCreate(

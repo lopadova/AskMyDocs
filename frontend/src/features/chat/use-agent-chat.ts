@@ -11,7 +11,9 @@ import {
     chatApi,
     isFilterStateEmpty,
     type AgentTurnStarted,
+    type AgentSelectionRequest,
     type FilterState,
+    type LiveSourceSelection,
     type Message,
 } from './chat.api';
 
@@ -20,6 +22,7 @@ type ChatStatus = UseChatHelpers<UIMessage>['status'];
 export interface UseAgentChatOptions {
     conversationId: number | null;
     filters: FilterState;
+    liveSources?: LiveSourceSelection;
     initialMessages?: Message[];
     onFinish?: () => void;
     onError?: (error: Error) => void;
@@ -30,6 +33,11 @@ export interface AgentConfirmation {
     logicalExtension: number;
 }
 
+interface AgentMessageOptions {
+    mcpAppId?: string;
+    selection?: AgentSelectionRequest;
+}
+
 export interface UseAgentChatResult {
     messages: Message[];
     status: ChatStatus;
@@ -37,7 +45,7 @@ export interface UseAgentChatResult {
     events: AgentRunEvent[];
     activeRun: AgentTurnStarted | null;
     confirmation: AgentConfirmation | null;
-    sendMessage: (message: { text: string }) => Promise<void>;
+    sendMessage: (message: { text: string }, options?: AgentMessageOptions) => Promise<void>;
     stop: () => void;
     regenerate: () => void;
     continueRun: () => Promise<void>;
@@ -45,7 +53,7 @@ export interface UseAgentChatResult {
 }
 
 export function useAgentChat(options: UseAgentChatOptions): UseAgentChatResult {
-    const { conversationId, filters, initialMessages, onFinish, onError } = options;
+    const { conversationId, filters, liveSources, initialMessages, onFinish, onError } = options;
     const [messages, setMessages] = useState<Message[]>(initialMessages ?? []);
     const [status, setStatus] = useState<ChatStatus>('ready');
     const [error, setError] = useState<Error | null>(null);
@@ -58,10 +66,12 @@ export function useAgentChat(options: UseAgentChatOptions): UseAgentChatResult {
     const lastSequenceRef = useRef(0);
     const generationRef = useRef(0);
     const filtersRef = useRef(filters);
+    const liveSourcesRef = useRef(liveSources);
     const initialMessagesRef = useRef(initialMessages);
     const callbacksRef = useRef({ onFinish, onError });
 
     filtersRef.current = filters;
+    liveSourcesRef.current = liveSources;
     initialMessagesRef.current = initialMessages;
     callbacksRef.current = { onFinish, onError };
 
@@ -154,7 +164,10 @@ export function useAgentChat(options: UseAgentChatOptions): UseAgentChatResult {
         callbacksRef.current.onError?.(next);
     }, []);
 
-    const sendMessage = useCallback(async ({ text }: { text: string }): Promise<void> => {
+    const sendMessage = useCallback(async (
+        { text }: { text: string },
+        messageOptions?: AgentMessageOptions,
+    ): Promise<void> => {
         if (conversationId === null) throw new Error('A conversation is required.');
         const generation = ++generationRef.current;
         abortRef.current?.abort();
@@ -172,6 +185,9 @@ export function useAgentChat(options: UseAgentChatOptions): UseAgentChatResult {
                 conversationId,
                 text,
                 isFilterStateEmpty(liveFilters) ? undefined : liveFilters,
+                messageOptions?.mcpAppId,
+                messageOptions?.selection,
+                liveSourcesRef.current,
             );
             if (generation !== generationRef.current) return;
             runRef.current = run;

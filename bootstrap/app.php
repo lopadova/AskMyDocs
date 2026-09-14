@@ -192,6 +192,9 @@ return Application::configure(basePath: dirname(__DIR__))
         // ("Too many simultaneous connections"). Same sweep/cadence.
         (new \App\Connectors\Scheduling\SerializedSyncScheduler)->registerSchedules($schedule);
         (new \App\Connectors\Scheduling\ImapBackfillScheduler)->registerSchedules($schedule);
+        $schedule->command('mcp-connectors:shadow')
+            ->everySixHours()
+            ->withoutOverlapping();
 
         // v4.3/W3 — Nightly eval-harness regression run. Two gates,
         // BOTH must be true for the cron to fire:

@@ -15,6 +15,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Auth;
+use Padosoft\AskMyDocsConnectorBase\Support\TenantContext as PackageTenantContext;
 
 final class ExecuteAgentRunJob implements ShouldQueue
 {
@@ -31,7 +32,11 @@ final class ExecuteAgentRunJob implements ShouldQueue
         $this->onQueue((string) config('agent.queue', 'agent'));
     }
 
-    public function handle(AgentRunHandler $handler, TenantContext $tenants): void
+    public function handle(
+        AgentRunHandler $handler,
+        TenantContext $tenants,
+        PackageTenantContext $packageTenants,
+    ): void
     {
         $run = AgentRun::query()
             ->forTenant($this->tenantId)
@@ -55,6 +60,7 @@ final class ExecuteAgentRunJob implements ShouldQueue
             // into the next job (especially an anonymous widget run).
             Auth::forgetGuards();
             $tenants->reset();
+            $packageTenants->reset();
             App::setLocale($previousLocale);
             date_default_timezone_set($previousTimezone);
         }

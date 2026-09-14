@@ -14,6 +14,7 @@ use Illuminate\Session\ArraySessionHandler;
 use Illuminate\Session\Store;
 use Illuminate\Support\Facades\Hash;
 use Padosoft\AiActCompliance\MultiTenancy\Models\Tenant;
+use Padosoft\AskMyDocsConnectorBase\Support\TenantContext as ConnectorTenantContext;
 use Symfony\Component\HttpFoundation\Response;
 use Tests\TestCase;
 
@@ -114,6 +115,7 @@ final class AuthorizeTenantHeaderTest extends TestCase
         $this->assertPassesThrough($request);
 
         $this->assertSame('acme', app(TenantContext::class)->current());
+        $this->assertSame('acme', app(ConnectorTenantContext::class)->current());
     }
 
     public function test_rejects_and_forgets_a_remembered_tenant_after_membership_is_revoked(): void
@@ -214,6 +216,11 @@ final class AuthorizeTenantHeaderTest extends TestCase
     private function dispatch(Request $request): Response
     {
         app(TenantContext::class)->set(
+            is_string($request->header('X-Tenant-Id'))
+                ? (string) $request->header('X-Tenant-Id')
+                : 'default',
+        );
+        app(ConnectorTenantContext::class)->set(
             is_string($request->header('X-Tenant-Id'))
                 ? (string) $request->header('X-Tenant-Id')
                 : 'default',

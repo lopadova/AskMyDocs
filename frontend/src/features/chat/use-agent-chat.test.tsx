@@ -23,6 +23,7 @@ const assistantMessage: Message = {
     created_at: '2026-08-08T12:00:01Z',
 };
 const emptyMessages: Message[] = [];
+const mcpAppId = '01M0Z3DKWB6QXBF5MKB3HZW4HJ';
 
 function completedEvent(): AgentRunEvent {
     return {
@@ -69,9 +70,19 @@ describe('useAgentChat', () => {
             onFinish,
         }));
 
-        await act(async () => result.current.sendMessage({ text: 'Dammi gli ordini' }));
+        await act(async () => result.current.sendMessage(
+            { text: 'Dammi gli ordini' },
+            { mcpAppId },
+        ));
 
-        expect(chatApi.startAgentTurn).toHaveBeenCalledWith(7, 'Dammi gli ordini', undefined);
+        expect(chatApi.startAgentTurn).toHaveBeenCalledWith(
+            7,
+            'Dammi gli ordini',
+            undefined,
+            mcpAppId,
+            undefined,
+            undefined,
+        );
         expect(result.current.messages).toEqual([userMessage, assistantMessage]);
         expect(result.current.events.at(-1)?.message).toBe('La risposta è pronta.');
         expect(result.current.status).toBe('ready');
@@ -108,6 +119,66 @@ describe('useAgentChat', () => {
         expect(eventFetch).toHaveBeenCalledOnce();
         expect(result.current.messages).toEqual([userMessage, assistantMessage]);
         expect(result.current.events.at(-1)?.type).toBe('run.completed');
+    });
+
+    it('passes a structured artifact selection to the agent endpoint', async () => {
+        vi.spyOn(chatApi, 'startAgentTurn').mockResolvedValue({
+            run_id: 'run-selection',
+            status: 'queued',
+            locale: 'it-IT',
+            events_url: '/agent-runs/run-selection/events',
+            cancel_url: '/agent-runs/run-selection/cancel',
+            continue_url: '/agent-runs/run-selection/continue',
+            user_message: userMessage,
+        });
+        vi.spyOn(chatApi, 'listMessages').mockResolvedValue([userMessage, assistantMessage]);
+        vi.stubGlobal('fetch', vi.fn(async () => eventResponse(completedEvent())));
+        const { result } = renderHook(() => useAgentChat({
+            conversationId: 7,
+            filters: {},
+            initialMessages: emptyMessages,
+        }));
+
+        await act(async () => result.current.sendMessage(
+            { text: 'Ho scelto Riccardo Lorini.' },
+            { selection: { message_id: 90, row_key: '102' } },
+        ));
+
+        expect(chatApi.startAgentTurn).toHaveBeenCalledWith(
+            7,
+            'Ho scelto Riccardo Lorini.',
+            undefined,
+            undefined,
+            { message_id: 90, row_key: '102' },
+            undefined,
+        );
+    });
+
+    it('passes the current live-source allowlist to every new run', async () => {
+        vi.spyOn(chatApi, 'startAgentTurn').mockResolvedValue({
+            run_id: 'run-sources', status: 'queued', locale: 'it-IT',
+            events_url: '/events', cancel_url: '/cancel', continue_url: '/continue', user_message: userMessage,
+        });
+        vi.spyOn(chatApi, 'listMessages').mockResolvedValue([userMessage, assistantMessage]);
+        vi.stubGlobal('fetch', vi.fn(async () => eventResponse(completedEvent())));
+        const liveSources = { api: [], mcp: ['mcp:hubhive'] };
+        const { result } = renderHook(() => useAgentChat({
+            conversationId: 7,
+            filters: {},
+            liveSources,
+            initialMessages: emptyMessages,
+        }));
+
+        await act(async () => result.current.sendMessage({ text: 'Usa solo HubHive' }));
+
+        expect(chatApi.startAgentTurn).toHaveBeenCalledWith(
+            7,
+            'Usa solo HubHive',
+            undefined,
+            undefined,
+            undefined,
+            liveSources,
+        );
     });
 
     it('cancels the current backend run when stopped', async () => {

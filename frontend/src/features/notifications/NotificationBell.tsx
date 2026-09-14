@@ -3,6 +3,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { notificationsApi, type NotificationRow } from './notifications.api';
 import { summariseNotificationEvent } from './summarise';
 import { selectCurrentHash, useTeamStore } from '../../lib/team-store';
+import { Button } from '../../components/Button';
+import { Icon } from '../../components/Icons';
 
 /**
  * v8.0/W1.4 — Top-bar notification bell.
@@ -95,9 +97,12 @@ export function NotificationBell(): ReactNode {
     const actionError = markReadMut.error ?? markAllReadMut.error;
 
     return (
-        <div className="relative inline-block">
-            <button
-                type="button"
+        <div className="notification-bell">
+            <Button
+                variant={open ? 'secondary' : 'quiet'}
+                size="sm"
+                iconOnly
+                className="app-topbar-icon-button notification-bell-trigger"
                 data-testid="notif-bell"
                 data-state={state}
                 aria-busy={isBusy}
@@ -105,29 +110,29 @@ export function NotificationBell(): ReactNode {
                 aria-expanded={open}
                 aria-haspopup="dialog"
                 onClick={() => setOpen((o) => !o)}
-                className="relative inline-flex items-center justify-center rounded p-2 hover:bg-gray-100"
             >
-                <span aria-hidden="true">🔔</span>
+                <Icon.Bell size={15} />
                 {unread > 0 && (
                     <span
                         data-testid="notif-bell-badge"
                         aria-hidden="true"
-                        className="absolute -right-1 -top-1 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-600 px-1 text-xs font-semibold text-white"
+                        className="notification-bell-badge"
                     >
                         {unread > 99 ? '99+' : unread}
                     </span>
                 )}
-            </button>
+            </Button>
 
             {state === 'error' && (
-                <button
-                    type="button"
+                <Button
+                    variant="quiet"
+                    size="sm"
                     data-testid="notif-bell-retry"
                     onClick={() => void countQuery.refetch()}
-                    className="ml-2 text-xs text-red-600 underline"
+                    className="notification-bell-retry"
                 >
                     Retry
-                </button>
+                </Button>
             )}
 
             {open && (
@@ -137,12 +142,16 @@ export function NotificationBell(): ReactNode {
                     role="dialog"
                     aria-label="Notifications"
                     aria-busy={listQuery.isFetching}
-                    className="absolute right-0 z-50 mt-2 w-80 rounded border border-gray-200 bg-white shadow-lg"
+                    className="notification-popover"
                 >
-                    <div className="flex items-center justify-between border-b border-gray-100 px-3 py-2">
-                        <span className="text-sm font-semibold">Notifications</span>
-                        <button
-                            type="button"
+                    <div className="notification-popover-header">
+                        <div>
+                            <span className="notification-popover-eyebrow">Workspace</span>
+                            <strong>Notifications</strong>
+                        </div>
+                        <Button
+                            variant="quiet"
+                            size="sm"
                             data-testid="notif-bell-mark-all-read"
                             onClick={() => markAllReadMut.mutate()}
                             // Copilot iter-5 #1 — the bulk button must
@@ -155,36 +164,35 @@ export function NotificationBell(): ReactNode {
                                 markAllReadMut.isPending
                                 || (unread === 0 && (listQuery.data?.data ?? []).length === 0)
                             }
-                            className="text-xs text-blue-600 hover:underline disabled:text-gray-400"
                         >
                             Mark all read
-                        </button>
+                        </Button>
                     </div>
 
                     {actionError && (
                         <div
                             data-testid="notif-bell-action-error"
                             role="alert"
-                            className="border-b border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700"
+                            className="notification-popover-alert"
                         >
-                            Action failed. Please retry.
-                            <button
-                                type="button"
+                            <span>Action failed. Please retry.</span>
+                            <Button
+                                variant="quiet"
+                                size="sm"
                                 data-testid="notif-bell-action-error-dismiss"
                                 onClick={() => {
                                     markReadMut.reset();
                                     markAllReadMut.reset();
                                 }}
-                                className="ml-2 underline"
                             >
                                 Dismiss
-                            </button>
+                            </Button>
                         </div>
                     )}
 
-                    <ul className="max-h-80 divide-y divide-gray-100 overflow-y-auto">
+                    <ul className="notification-popover-list">
                         {listQuery.isLoading && (
-                            <li data-testid="notif-bell-loading" className="px-3 py-4 text-center text-sm text-gray-500">
+                            <li data-testid="notif-bell-loading" className="notification-popover-state">
                                 Loading…
                             </li>
                         )}
@@ -192,46 +200,51 @@ export function NotificationBell(): ReactNode {
                             <li
                                 data-testid="notif-bell-list-error"
                                 role="alert"
-                                className="px-3 py-4 text-center text-sm text-red-700"
+                                className="notification-popover-state is-error"
                             >
-                                Could not load notifications.
-                                <button
-                                    type="button"
+                                <span>Could not load notifications.</span>
+                                <Button
+                                    variant="quiet"
+                                    size="sm"
                                     data-testid="notif-bell-list-retry"
                                     onClick={() => void listQuery.refetch()}
-                                    className="ml-2 underline"
                                 >
                                     Retry
-                                </button>
+                                </Button>
                             </li>
                         )}
                         {!listQuery.isLoading && !listQuery.isError && (listQuery.data?.data ?? []).length === 0 && (
-                            <li data-testid="notif-bell-empty" className="px-3 py-4 text-center text-sm text-gray-500">
-                                No unread notifications
+                            <li data-testid="notif-bell-empty" className="notification-popover-empty">
+                                <span aria-hidden="true"><Icon.Check size={16} /></span>
+                                <strong>You’re all caught up</strong>
+                                <small>No unread notifications</small>
                             </li>
                         )}
                         {!listQuery.isError && (listQuery.data?.data ?? []).map((row: NotificationRow) => (
-                            <li key={row.id} className="px-3 py-2">
-                                <div className="flex items-start justify-between gap-2">
-                                    <div className="flex-1 text-sm">
-                                        <div className="font-medium">{summariseNotificationEvent(row)}</div>
-                                        <div className="text-xs text-gray-500">{new Date(row.created_at).toLocaleString()}</div>
+                            <li key={row.id} className="notification-popover-row">
+                                <span className="notification-popover-row-icon" aria-hidden="true">
+                                    <Icon.Bell size={13} />
+                                </span>
+                                <div className="notification-popover-row-body">
+                                    <div className="notification-popover-row-copy">
+                                        <strong>{summariseNotificationEvent(row)}</strong>
+                                        <small>{new Date(row.created_at).toLocaleString()}</small>
                                     </div>
-                                    <button
-                                        type="button"
+                                    <Button
+                                        variant="quiet"
+                                        size="sm"
                                         data-testid={`notif-bell-row-${row.id}-mark-read`}
                                         onClick={() => markReadMut.mutate(row.id)}
                                         disabled={markReadMut.isPending}
-                                        className="text-xs text-blue-600 hover:underline"
                                     >
                                         Mark read
-                                    </button>
+                                    </Button>
                                 </div>
                             </li>
                         ))}
                     </ul>
 
-                    <div className="border-t border-gray-100 px-3 py-2 text-center">
+                    <div className="notification-popover-footer">
                         {/* Copilot iter-5 #6 — kept as <a href> rather
                           * than `<Link>` so the bell stays renderable
                           * in Vitest without a `<RouterProvider>` test
@@ -250,10 +263,11 @@ export function NotificationBell(): ReactNode {
                         <a
                             data-testid="notif-bell-see-all"
                             href={notificationsHref}
-                            className="text-sm text-blue-600 hover:underline"
+                            className="notification-see-all"
                             onClick={() => setOpen(false)}
                         >
-                            See all
+                            <span>See all notifications</span>
+                            <Icon.Chevron size={13} />
                         </a>
                     </div>
                 </div>
@@ -261,4 +275,3 @@ export function NotificationBell(): ReactNode {
         </div>
     );
 }
-

@@ -46,6 +46,11 @@ describe('getToolCalls — legacy AppMessage shape', () => {
                     server_id: 7,
                     arguments: { owner: 'lopadova' },
                     result: { repositories: ['a'] },
+                    app: {
+                        id: '01APP',
+                        resource_uri: 'ui://github/repositories.html',
+                        fallback: 'Repository list',
+                    },
                 },
             ]),
         );
@@ -57,6 +62,11 @@ describe('getToolCalls — legacy AppMessage shape', () => {
             status: 'ok',
             server_name: 'github',
             server_id: 7,
+            app: {
+                id: '01APP',
+                resource_uri: 'ui://github/repositories.html',
+                fallback: 'Repository list',
+            },
         });
     });
 
@@ -80,13 +90,26 @@ describe('getToolCalls — legacy AppMessage shape', () => {
     });
 
     it('preserves each known status (pending/ok/error/timeout/denied)', () => {
-        const statuses = ['pending', 'ok', 'error', 'timeout', 'denied'] as const;
+        const statuses = ['pending', 'ok', 'error', 'timeout', 'denied', 'task_accepted'] as const;
         for (const status of statuses) {
             const [call] = getToolCalls(
                 makeAppMessage([{ id: 't', name: 'n', status }]),
             );
             expect(call.status).toBe(status);
         }
+    });
+
+    it('preserves the local task handle without exposing the remote task id', () => {
+        const [call] = getToolCalls(makeAppMessage([{
+            id: 'task-call',
+            name: 'report_generate',
+            status: 'task_accepted',
+            task_id: '01M0LOCALTASK',
+            task: { status: 'working', poll_interval_ms: 1000 },
+        }]));
+
+        expect(call.task_id).toBe('01M0LOCALTASK');
+        expect(call.task).toEqual({ status: 'working', poll_interval_ms: 1000 });
     });
 });
 

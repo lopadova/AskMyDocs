@@ -5,30 +5,38 @@ declare(strict_types=1);
 namespace App\Agent;
 
 use App\Agent\Budget\AgentBudgetTracker;
+use App\Agent\Capabilities\AgentCapabilitySnapshotBuilder;
 use App\Agent\Evidence\AgentEvidenceEnvelope;
 use App\Agent\Evidence\AgentEvidenceFactory;
 use App\Agent\Planning\AgentArgumentResolver;
+use App\Agent\Planning\AgentAmbiguousSelectionGuard;
 use App\Agent\Planning\AgentPlan;
 use App\Agent\Planning\AgentPlannedAction;
-use App\Agent\Planning\AgentPlanner;
+use App\Agent\Planning\AgentPlanningCoordinator;
+use App\Agent\Tools\AgentLiveSourceSelection;
 use App\Agent\Tools\AgentServerToolRunner;
 use App\Agent\Tools\AgentToolActionResult;
 use App\Agent\Tools\AgentToolDefinition;
 use App\Agent\Tools\AgentToolRegistry;
+use App\Mcp\Debug\McpActivityDebugPayload;
 use App\Models\AgentRun;
 use App\Models\AgentToolExecution;
 use App\Models\User;
 use App\Services\Kb\Chat\ChatRetrievalService;
 use App\Services\Widget\WidgetPiiMasker;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /** Bounded plan → act → observe → re-plan data-retrieval loop. */
 final readonly class AgentLoop
 {
     public function __construct(
-        private AgentPlanner $planner,
+        private AgentPlanningCoordinator $planner,
+        private AgentCapabilitySnapshotBuilder $capabilities,
         private AgentToolRegistry $registry,
+        private AgentLiveSourceSelection $liveSources,
         private AgentArgumentResolver $arguments,
+        private AgentAmbiguousSelectionGuard $ambiguousSelection,
         private AgentServerToolRunner $serverTools,
         private ChatRetrievalService $retrieval,
         private AgentEvidenceFactory $evidenceFactory,
@@ -36,9 +44,14 @@ final readonly class AgentLoop
         private AgentRunControl $control,
         private WidgetPiiMasker $masker,
         private AgentRetrievalFiltersFactory $retrievalFilters,
+        private McpActivityDebugPayload $mcpDebug,
     ) {}
 
-    public function run(AgentRun $run, AgentExecutionContext $context): AgentLoopOutcome
+    public function run(
+        AgentRun $run,
+        AgentExecutionContext $context,
+        ?string $turnContext = null,
+    ): AgentLoopOutcome
     {
         $question = trim((string) data_get($run->input_json, 'question', ''));
         if ($question === '') {
@@ -48,8 +61,21 @@ final readonly class AgentLoop
         $budget = new AgentBudgetTracker($run);
         $filters = $this->retrievalFilters->forRun($run, $context);
         [$evidence, $completed, $results, $retrieved] = $this->restore($run);
+        $selectedRecord = data_get($run->input_json, 'selection.record');
+        if (is_array($selectedRecord)) {
+            // A row selected in a prior turn is a first-class dependency source.
+            // The planner may refer to it as {"$from":"current_selection","path":"id"}.
+            $results['current_selection'] = $selectedRecord;
+            $results['selected_row'] = $selectedRecord;
+        }
         $user = $run->user;
-        $tools = $this->registry->forContext($context, $user instanceof User ? $user : null);
+        $tools = array_filter(
+            $this->registry->forContext($context, $user instanceof User ? $user : null),
+            static fn (AgentToolDefinition $tool): bool => $tool->readOnly
+                && ! (bool) ($tool->metadata['confirmation_required'] ?? false),
+        );
+        $tools = $this->liveSources->apply($tools, data_get($run->input_json, 'live_sources'));
+        $capabilitySnapshot = $this->capabilities->build($tools);
 
         if (! $retrieved) {
             $this->control->ensureActive($run);
@@ -86,7 +112,37 @@ final readonly class AgentLoop
                 $completed === [] ? 'plan.created' : 'plan.updated',
                 $completed === [] ? 'plan.created' : 'plan.updated',
             );
-            $plan = $this->planner->decide($question, $context, $tools, $evidence, $this->plannerHistory($completed));
+            try {
+                $plan = $this->planner->decide(
+                    $run,
+                    (int) ($budget->snapshot()['iterations'] ?? 1),
+                    $question,
+                    $context,
+                    $tools,
+                    $capabilitySnapshot,
+                    $evidence,
+                    $this->plannerHistory($completed),
+                    $results,
+                    $turnContext,
+                );
+            } catch (Throwable $exception) {
+                if (! $this->hasSuccessfulAction($completed) || ! $evidence->hasEvidence()) {
+                    throw $exception;
+                }
+
+                Log::warning('Agent replanning failed after evidence was collected; continuing to synthesis.', [
+                    'run_id' => $run->run_id,
+                    'iteration' => (int) ($budget->snapshot()['iterations'] ?? 1),
+                    'completed_action_count' => count($completed),
+                    'exception_class' => $exception::class,
+                    'exception_message' => $this->masker->maskString(mb_substr($exception->getMessage(), 0, 1000)),
+                    'exception_trace' => $exception->getTraceAsString(),
+                ]);
+                $evidence->addWarning('planner_recovery', 'agent_planner');
+                $this->checkpoint($run, $evidence, $completed, $results, $retrieved);
+
+                return $this->outcome('partial', $evidence, $completed, 'planner_recovery');
+            }
             $run->forceFill(['plan_json' => $plan->jsonSerialize()])->save();
             $this->events->publish(
                 $run,
@@ -121,11 +177,32 @@ final readonly class AgentLoop
                         'tool.failed',
                         'tool.failed',
                         ['tool' => $tool->displayName],
-                        ['tool' => $tool->name, 'action_id' => $action->id, 'error_code' => $code],
+                        [
+                            'tool' => $tool->name,
+                            'action_id' => $action->id,
+                            'error_code' => $code,
+                        ] + $this->activityToolData($tool),
                         $this->progress($budget, $plan),
                     );
                     $this->checkpoint($run, $evidence, $completed, $results, $retrieved);
                     continue;
+                }
+                if ($this->hasSuccessfulObservation($evidence, $tool->name, $resolved)) {
+                    $evidence->addWarning('duplicate_call_avoided', $tool->name);
+                    $this->checkpoint($run, $evidence, $completed, $results, $retrieved);
+
+                    return $this->outcome('answer', $evidence, $completed, 'duplicate_call_avoided');
+                }
+                $selection = data_get($run->input_json, 'selection');
+                if ($this->ambiguousSelection->blocks(
+                    $evidence->apiTools(),
+                    $resolved,
+                    is_array($selection) ? $selection : null,
+                )) {
+                    $evidence->addWarning('ambiguous_selection_required', $tool->name);
+                    $this->checkpoint($run, $evidence, $completed, $results, $retrieved);
+
+                    return $this->outcome('answer', $evidence, $completed, 'ambiguous_selection_required');
                 }
                 $decision = $budget->reserve($tool, $resolved, $tool->physicalLikely);
                 if ($decision->requiresConfirmation()) {
@@ -173,21 +250,52 @@ final readonly class AgentLoop
                         $evidence->addWarning($result->stopReason, $tool->name);
                     }
 
+                    $eventData = [
+                        'tool' => $tool->name,
+                        'action_id' => $action->id,
+                        'physical_requests' => $result->physicalRequests,
+                        'complete' => $result->complete,
+                        'stop_reason' => $result->stopReason,
+                    ] + $this->activityToolData($tool);
+                    if (! $result->complete && is_array($result->stats['mcp'] ?? null)) {
+                        $eventData['mcp_interaction'] = $result->stats['mcp'];
+                    }
+                    $debug = $this->mcpDebug->capture(
+                        $tool,
+                        $resolved,
+                        $result->body,
+                        (int) round((microtime(true) - $started) * 1000),
+                        $result->successful() ? 'ok' : 'error',
+                    );
+                    if ($debug !== null) {
+                        $eventData['mcp_debug'] = $debug;
+                    }
+
                     $this->events->publish(
                         $run,
                         $result->successful() ? 'tool.completed' : 'tool.failed',
                         $result->successful() ? 'tool.completed' : 'tool.failed',
                         ['tool' => $tool->displayName],
-                        [
-                            'tool' => $tool->name,
-                            'action_id' => $action->id,
-                            'physical_requests' => $result->physicalRequests,
-                            'complete' => $result->complete,
-                            'stop_reason' => $result->stopReason,
-                        ],
+                        $eventData,
                         $this->progress($budget, $plan),
                     );
                     $this->checkpoint($run, $evidence, $completed, $results, $retrieved);
+
+                    if (in_array($result->stopReason, [
+                        'mcp_confirmation_required',
+                        'mcp_input_required',
+                        'mcp_task_accepted',
+                    ], true)) {
+                        $interaction = is_array($result->stats['mcp'] ?? null) ? $result->stats['mcp'] : [];
+                        $this->control->awaitMcpInteraction($run, $result->stopReason, $interaction);
+                        $decision = match ($result->stopReason) {
+                            'mcp_confirmation_required' => 'awaiting_mcp_confirmation',
+                            'mcp_input_required' => 'awaiting_mcp_input',
+                            default => 'waiting_mcp_task',
+                        };
+
+                        return $this->outcome($decision, $evidence, $completed, $result->stopReason);
+                    }
 
                     if ($result->stopReason === 'physical_hard_limit') {
                         $this->control->awaitConfirmation($run, $this->extensionFor($result->stopReason));
@@ -207,12 +315,29 @@ final readonly class AgentLoop
                         'status' => 'failed',
                         'error_code' => $this->errorCode($exception),
                     ];
+                    $eventData = [
+                        'tool' => $tool->name,
+                        'action_id' => $action->id,
+                        'error_code' => $this->errorCode($exception),
+                    ] + $this->activityToolData($tool);
+                    $debug = $this->mcpDebug->capture(
+                        $tool,
+                        $resolved,
+                        null,
+                        (int) round((microtime(true) - $started) * 1000),
+                        'error',
+                        $exception,
+                    );
+                    if ($debug !== null) {
+                        $eventData['mcp_debug'] = $debug;
+                    }
+
                     $this->events->publish(
                         $run,
                         'tool.failed',
                         'tool.failed',
                         ['tool' => $tool->displayName],
-                        ['tool' => $tool->name, 'action_id' => $action->id, 'error_code' => $this->errorCode($exception)],
+                        $eventData,
                         $this->progress($budget, $plan),
                     );
                     $this->checkpoint($run, $evidence, $completed, $results, $retrieved);
@@ -260,7 +385,9 @@ final readonly class AgentLoop
                     'tool.progress',
                     'tool.progress',
                     ['completed' => $completed, 'estimated' => $estimated],
-                    ['tool' => $tool->name, 'action_id' => $action->id] + $event,
+                    ['tool' => $tool->name, 'action_id' => $action->id]
+                        + $this->activityToolData($tool)
+                        + $event,
                     $this->progress($budget, $plan),
                 );
                 $this->control->ensureActive($run);
@@ -292,7 +419,11 @@ final readonly class AgentLoop
             'tool.started',
             'tool.started',
             ['tool' => $tool->displayName],
-            ['tool' => $tool->name, 'action_id' => $action->id, 'purpose' => $action->purpose],
+            [
+                'tool' => $tool->name,
+                'action_id' => $action->id,
+                'purpose' => $action->purpose,
+            ] + $this->activityToolData($tool),
             $this->progress($budget, $plan),
         );
 
@@ -324,6 +455,32 @@ final readonly class AgentLoop
             'latency_ms' => (int) round((microtime(true) - $started) * 1000),
             'completed_at' => now(),
         ])->save();
+    }
+
+    /** @return array<string,string> */
+    private function activityToolData(AgentToolDefinition $tool): array
+    {
+        $data = [
+            'tool_kind' => $tool->kind,
+            'tool_display_name' => $tool->displayName,
+        ];
+        if ($tool->kind !== 'mcp') {
+            return $data;
+        }
+
+        $provenance = is_array($tool->metadata['provenance'] ?? null)
+            ? $tool->metadata['provenance']
+            : [];
+        $serverName = $provenance['server_name'] ?? $tool->metadata['server_name'] ?? null;
+        $remoteName = $provenance['tool_remote_name'] ?? $tool->displayName;
+        if (is_string($serverName) && $serverName !== '') {
+            $data['mcp_server_name'] = $serverName;
+        }
+        if (is_string($remoteName) && $remoteName !== '') {
+            $data['mcp_tool_name'] = $remoteName;
+        }
+
+        return $data;
     }
 
     private function recordSkippedExecution(
@@ -387,11 +544,76 @@ final readonly class AgentLoop
             'id' => $action['id'] ?? null,
             'tool' => $action['tool'] ?? null,
             'status' => $action['status'] ?? null,
-            'result_summary' => is_array($action['result'] ?? null)
-                ? array_slice($action['result'], 0, 10, true)
-                : null,
+            'result_top_level_keys' => is_array($action['result'] ?? null)
+                ? array_slice(array_keys($action['result']), 0, 20)
+                : [],
             'error_code' => $action['error_code'] ?? null,
         ], array_slice($completed, -20));
+    }
+
+    /** @param list<array<string,mixed>> $completed */
+    private function hasSuccessfulAction(array $completed): bool
+    {
+        foreach ($completed as $action) {
+            if (($action['status'] ?? null) === 'completed') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** @param array<string,mixed> $arguments */
+    private function hasSuccessfulObservation(
+        AgentEvidenceEnvelope $evidence,
+        string $toolName,
+        array $arguments,
+    ): bool {
+        $maskedArguments = $this->masker->maskArray($arguments) ?? [];
+        $signature = $this->stableSignature($maskedArguments);
+
+        foreach ($evidence->apiTools() as $observation) {
+            if (($observation['tool'] ?? null) !== $toolName) {
+                continue;
+            }
+            $result = is_array($observation['result'] ?? null) ? $observation['result'] : [];
+            $status = strtolower((string) ($result['status'] ?? ''));
+            if (isset($result['error']) || in_array($status, ['error', 'failed', 'cancelled'], true)) {
+                continue;
+            }
+            $observedArguments = is_array($observation['arguments'] ?? null)
+                ? $observation['arguments']
+                : [];
+            if (hash_equals($signature, $this->stableSignature($observedArguments))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** @param array<string,mixed> $value */
+    private function stableSignature(array $value): string
+    {
+        return hash('sha256', json_encode(
+            $this->stableValue($value),
+            JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES,
+        ));
+    }
+
+    private function stableValue(mixed $value): mixed
+    {
+        if (! is_array($value)) {
+            return $value;
+        }
+        if (! array_is_list($value)) {
+            ksort($value);
+        }
+        foreach ($value as $key => $nested) {
+            $value[$key] = $this->stableValue($nested);
+        }
+
+        return $value;
     }
 
     private function progress(AgentBudgetTracker $budget, AgentPlan $plan): AgentProgress

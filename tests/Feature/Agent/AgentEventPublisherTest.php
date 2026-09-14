@@ -86,6 +86,52 @@ final class AgentEventPublisherTest extends TestCase
         $this->assertStringNotContainsString('admin@example.com', json_encode($event->toArray()));
     }
 
+    public function test_local_mcp_debug_payload_is_key_redacted_before_persistence(): void
+    {
+        config()->set('app.env', 'local');
+        $run = $this->makeRun('it-IT');
+
+        $event = app(AgentEventPublisher::class)->publish(
+            $run,
+            'tool.completed',
+            'tool.completed',
+            ['tool' => 'Gescat'],
+            [
+                'mcp_debug' => [
+                    'method' => 'tools/call',
+                    'parameters' => [
+                        'authorization' => 'Bearer super-secret-token',
+                        'nested' => ['access_token' => 'secret', 'email' => 'admin@example.com'],
+                    ],
+                    'response' => ['ok' => true],
+                ],
+            ],
+        );
+
+        $this->assertSame('[REDACTED]', data_get($event->payload_json, 'data.mcp_debug.parameters.authorization'));
+        $this->assertSame('[REDACTED]', data_get($event->payload_json, 'data.mcp_debug.parameters.nested.access_token'));
+        $this->assertSame('[EMAIL]', data_get($event->payload_json, 'data.mcp_debug.parameters.nested.email'));
+        $this->assertStringNotContainsString('super-secret-token', (string) json_encode($event->payload_json));
+    }
+
+    public function test_mcp_debug_payload_is_not_persisted_outside_local_or_stage(): void
+    {
+        config()->set('app.env', 'production');
+        $run = $this->makeRun('en-US');
+
+        $event = app(AgentEventPublisher::class)->publish(
+            $run,
+            'tool.completed',
+            'tool.completed',
+            ['tool' => 'Gescat'],
+            ['tool' => 'gescat', 'mcp_debug' => ['parameters' => ['secret' => 'must-not-persist']]],
+        );
+
+        $this->assertSame('gescat', data_get($event->payload_json, 'data.tool'));
+        $this->assertArrayNotHasKey('mcp_debug', $event->payload_json['data']);
+        $this->assertStringNotContainsString('must-not-persist', (string) json_encode($event->payload_json));
+    }
+
     private function makeRun(string $locale): AgentRun
     {
         return AgentRun::create([

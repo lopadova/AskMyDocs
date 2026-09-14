@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Agent\AgentEventPublisher;
 use App\Ai\AiManager;
 use App\Ai\AiResponse;
 use App\FinOps\ChatTraceContext;
 use App\FinOps\ChatTurnCostResolver;
 use App\Mcp\Client\McpToolCallingService;
+use App\Models\AgentRunEvent;
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Services\ChatLog\ChatLogEntry;
@@ -34,17 +36,63 @@ class MessageController extends Controller
      */
     private const SELF_REFUSAL_SENTINEL = '__NO_GROUNDED_ANSWER__';
 
-    public function index(Request $request, Conversation $conversation): JsonResponse
-    {
+    private const AGENT_ACTIVITY_DATA_KEYS = [
+        'tool', 'tool_kind', 'tool_display_name', 'mcp_server_name',
+        'mcp_tool_name', 'mcp_debug', 'action_id', 'error_code',
+    ];
+
+    public function index(
+        Request $request,
+        Conversation $conversation,
+        AgentEventPublisher $agentEvents,
+    ): JsonResponse {
         if ($conversation->user_id !== $request->user()->id) {
             abort(403);
         }
 
         $messages = $conversation->messages()
             ->orderBy('id')
-            ->get(['id', 'role', 'content', 'metadata', 'rating', 'created_at']);
+            ->get(['id', 'agent_run_id', 'role', 'content', 'metadata', 'rating', 'created_at']);
+
+        $runIds = $messages->pluck('agent_run_id')->filter()->unique()->values();
+        $activityByRun = $runIds->isEmpty()
+            ? collect()
+            : AgentRunEvent::query()
+                ->with('run:id,run_id')
+                ->whereIn('agent_run_id', $runIds)
+                ->orderBy('agent_run_id')
+                ->orderBy('sequence')
+                ->get()
+                ->groupBy('agent_run_id')
+                ->map(fn (Collection $events): array => $events
+                    ->map(fn (AgentRunEvent $event): array => $this->agentActivityEvent($event, $agentEvents))
+                    ->values()
+                    ->all());
+
+        $messages->each(function (Message $message) use ($activityByRun): void {
+            $activity = $message->agent_run_id === null
+                ? []
+                : ($activityByRun->get($message->agent_run_id) ?? []);
+            if ($activity !== []) {
+                $message->setAttribute('metadata', array_merge(
+                    is_array($message->metadata) ? $message->metadata : [],
+                    ['agent_activity' => $activity],
+                ));
+            }
+            $message->makeHidden('agent_run_id');
+        });
 
         return response()->json($messages);
+    }
+
+    /** @return array<string,mixed> */
+    private function agentActivityEvent(AgentRunEvent $event, AgentEventPublisher $publisher): array
+    {
+        $serialized = $publisher->serialize($event);
+        $data = is_array($serialized['data'] ?? null) ? $serialized['data'] : [];
+        $serialized['data'] = array_intersect_key($data, array_flip(self::AGENT_ACTIVITY_DATA_KEYS));
+
+        return $serialized;
     }
 
     public function store(
@@ -104,12 +152,13 @@ class MessageController extends Controller
         // it falls back to the legacy single-project DTO.
         $result = $retrieval->retrieve($question, $projectKey, $filters);
         $chunks = $result->primary;
+        $hasLiveTools = $toolCallingService->canHandleToolCalling($request->user(), $projectKey);
 
         // 3b. T3.3 — deterministic refusal short-circuit. If too few chunks
         // pass the shared grounding gate (rerank_score OR vector floor, read
         // shape-agnostically — see RetrievalGrounding), save a refusal
         // assistant message and return WITHOUT calling the LLM.
-        if ($retrieval->shouldRefuse($result)) {
+        if ($retrieval->shouldRefuse($result) && ! $hasLiveTools) {
             return $this->refusalResponse(
                 request: $request,
                 chatLog: $chatLog,
@@ -606,6 +655,12 @@ class MessageController extends Controller
                 'status' => (string) ($toolCall['status'] ?? 'completed'),
                 'server_id' => $toolCall['server_id'] ?? null,
                 'server_name' => $toolCall['server_name'] ?? null,
+                'source' => $toolCall['source'] ?? null,
+                'provenance' => is_array($toolCall['provenance'] ?? null) ? $toolCall['provenance'] : [],
+                'pending_interaction_id' => $toolCall['pending_interaction_id'] ?? null,
+                'prompt' => is_array($toolCall['prompt'] ?? null) ? $toolCall['prompt'] : null,
+                'task_id' => $toolCall['task_id'] ?? null,
+                'task' => is_array($toolCall['task'] ?? null) ? $toolCall['task'] : null,
                 'error' => $toolCall['error'] ?? null,
             ],
             $toolCalls,

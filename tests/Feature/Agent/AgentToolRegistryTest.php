@@ -6,9 +6,16 @@ namespace Tests\Feature\Agent;
 
 use App\Agent\AgentExecutionContext;
 use App\Agent\Tools\AgentToolRegistry;
+use App\Models\User;
+use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
 use Padosoft\AskMyDocsConnectorApi\Models\ApiConnector;
 use Padosoft\AskMyDocsConnectorApi\Models\ApiRoute;
+use Padosoft\AskMyDocsConnectorBase\Support\TenantContext as ConnectorTenantContext;
+use Padosoft\AskMyDocsConnectorMcp\Models\McpConnection;
+use Padosoft\AskMyDocsConnectorMcp\Models\McpConnectionTool;
+use Padosoft\AskMyDocsConnectorMcp\Models\McpServerDefinition;
 use Tests\TestCase;
 
 final class AgentToolRegistryTest extends TestCase
@@ -28,6 +35,8 @@ final class AgentToolRegistryTest extends TestCase
         $this->assertTrue($tools['get_orders']->readOnly);
         $this->assertSame(100, $tools['get_orders']->physicalMaximum);
         $this->assertSame('page', data_get($tools['get_orders']->metadata, 'pagination.type'));
+        $this->assertStringStartsWith('api:', (string) data_get($tools['get_orders']->metadata, 'source_key'));
+        $this->assertSame('get_orders', data_get($tools['get_orders']->metadata, 'source_name'));
     }
 
     public function test_connector_tools_can_be_disabled_without_removing_knowledge_search(): void
@@ -36,6 +45,127 @@ final class AgentToolRegistryTest extends TestCase
         $this->route('acme', 'orders', 'get_orders');
 
         $tools = app(AgentToolRegistry::class)->forContext($this->context('acme', 'orders'));
+
+        $this->assertSame(['search_knowledge_base'], array_keys($tools));
+    }
+
+    public function test_capability_catalog_indexes_all_active_api_routes_beyond_legacy_prompt_cap(): void
+    {
+        config()->set('connector-api.tools.max_per_conversation', 16);
+        for ($index = 1; $index <= 25; $index++) {
+            $this->route('acme', 'orders', 'orders_tool_'.$index);
+        }
+
+        $tools = app(AgentToolRegistry::class)->forContext($this->context('acme', 'orders'));
+
+        $this->assertCount(26, $tools);
+        $this->assertArrayHasKey('orders_tool_25', $tools);
+    }
+
+    public function test_active_mcp_connector_tools_are_exposed_to_the_agent_with_runtime_metadata(): void
+    {
+        config()->set('connector-mcp.enabled', true);
+        config()->set('connector-mcp.runtime_mode', 'active');
+        app(TenantContext::class)->set('acme');
+        app(ConnectorTenantContext::class)->set('acme');
+        $user = User::query()->create([
+            'name' => 'Agent MCP user',
+            'email' => 'agent-mcp-registry@example.test',
+            'password' => Hash::make('secret-pass-123'),
+        ]);
+        $tool = $this->mcpTool('acme', 'orders', 'list_my_orders_12345678');
+        $this->mcpTool('acme', 'billing', 'list_my_invoices_12345678');
+        $this->mcpTool('other', 'orders', 'foreign_mcp_tool_12345678');
+
+        $tools = app(AgentToolRegistry::class)->forContext(
+            $this->context('acme', 'orders'),
+            $user,
+        );
+
+        $this->assertSame(['search_knowledge_base', $tool->local_name], array_keys($tools));
+        $definition = $tools[$tool->local_name];
+        $this->assertSame('mcp', $definition->kind);
+        $this->assertSame('list-my-orders', $definition->displayName);
+        $this->assertTrue($definition->readOnly);
+        $this->assertTrue($definition->idempotent);
+        $this->assertSame('connector', $definition->metadata['mcp_runtime']);
+        $this->assertSame($tool->connection->public_id, data_get($definition->metadata, 'provenance.connection_id'));
+        $this->assertSame('mcp:'.$tool->connection->public_id, data_get($definition->metadata, 'source_key'));
+        $this->assertSame('list_my_orders_12345678', data_get($definition->metadata, 'provenance.server_name'));
+    }
+
+    public function test_mcp_next_tool_hints_are_localized_within_the_same_connection(): void
+    {
+        config()->set('connector-mcp.enabled', true);
+        config()->set('connector-mcp.runtime_mode', 'active');
+        app(TenantContext::class)->set('acme');
+        app(ConnectorTenantContext::class)->set('acme');
+        $user = User::query()->create([
+            'name' => 'Agent MCP relations user',
+            'email' => 'agent-mcp-relations@example.test',
+            'password' => Hash::make('secret-pass-123'),
+        ]);
+        $search = $this->mcpTool('acme', 'orders', 'orders_search_12345678');
+        $search->forceFill(['meta_json' => [
+            'askmydocs/agent-capability' => [
+                'entity' => 'order',
+                'operation' => 'search',
+                'collection_path' => 'data.items',
+                'identity_fields' => ['id', 'reference'],
+                'next_tools' => ['orders.get', 'foreign.get'],
+            ],
+        ]])->save();
+        $detail = McpConnectionTool::query()->create([
+            'tenant_id' => 'acme',
+            'mcp_connector_connection_id' => $search->connection->getKey(),
+            'remote_name' => 'orders.get',
+            'local_name' => 'orders_get_87654321',
+            'description' => 'Get an order.',
+            'input_schema_json' => ['type' => 'object', 'properties' => []],
+            'annotations_json' => ['readOnlyHint' => true, 'idempotentHint' => true],
+            'risk' => 'read',
+            'policy' => 'enabled',
+            'enabled' => true,
+            'confirmation_required' => false,
+        ]);
+
+        $tools = app(AgentToolRegistry::class)->forContext(
+            $this->context('acme', 'orders'),
+            $user,
+        );
+
+        $this->assertSame(
+            [$detail->local_name],
+            data_get($tools[$search->local_name]->metadata, 'agent_capability_hint.next_tools'),
+        );
+        $this->assertSame('data.items', data_get(
+            $tools[$search->local_name]->metadata,
+            'agent_capability_hint.collection_path',
+        ));
+        $this->assertArrayNotHasKey(
+            'agent_capability_hint',
+            $tools[$search->local_name]->plannerPayload()['metadata'],
+        );
+    }
+
+    public function test_off_mcp_connector_runtime_does_not_leak_new_catalog_tools(): void
+    {
+        config()->set('connector-mcp.enabled', true);
+        config()->set('connector-mcp.runtime_mode', 'off');
+        config()->set('mcp.enabled', false);
+        app(TenantContext::class)->set('acme');
+        app(ConnectorTenantContext::class)->set('acme');
+        $user = User::query()->create([
+            'name' => 'Agent MCP off user',
+            'email' => 'agent-mcp-off@example.test',
+            'password' => Hash::make('secret-pass-123'),
+        ]);
+        $this->mcpTool('acme', 'orders', 'hidden_mcp_tool_12345678');
+
+        $tools = app(AgentToolRegistry::class)->forContext(
+            $this->context('acme', 'orders'),
+            $user,
+        );
 
         $this->assertSame(['search_knowledge_base'], array_keys($tools));
     }
@@ -68,6 +198,44 @@ final class AgentToolRegistryTest extends TestCase
                 'input_schema' => ['type' => 'object', 'properties' => []],
             ],
         ]);
+    }
+
+    private function mcpTool(string $tenant, string $project, string $localName): McpConnectionTool
+    {
+        app(ConnectorTenantContext::class)->set($tenant);
+        $server = McpServerDefinition::query()->create([
+            'tenant_id' => $tenant,
+            'name' => $localName,
+            'catalog_scope' => 'tenant',
+            'transport' => 'auto',
+            'auth_mode' => 'none',
+            'endpoint' => 'https://'.$localName.'.example.test/mcp',
+            'status' => McpServerDefinition::STATUS_ACTIVE,
+        ]);
+        $connection = McpConnection::query()->create([
+            'tenant_id' => $tenant,
+            'mcp_connector_server_id' => $server->getKey(),
+            'mode' => 'shared',
+            'label' => $localName,
+            'project_key' => $project,
+            'status' => McpConnection::STATUS_ACTIVE,
+        ]);
+        $tool = McpConnectionTool::query()->create([
+            'tenant_id' => $tenant,
+            'mcp_connector_connection_id' => $connection->getKey(),
+            'remote_name' => str($localName)->beforeLast('_12345678')->replace('_', '-')->toString(),
+            'local_name' => $localName,
+            'description' => 'Read MCP data.',
+            'input_schema_json' => ['type' => 'object', 'properties' => []],
+            'annotations_json' => ['readOnlyHint' => true, 'idempotentHint' => true],
+            'risk' => 'read',
+            'policy' => 'enabled',
+            'enabled' => true,
+            'confirmation_required' => false,
+        ]);
+        app(ConnectorTenantContext::class)->set('acme');
+
+        return $tool;
     }
 
     private function context(string $tenant, string $project): AgentExecutionContext

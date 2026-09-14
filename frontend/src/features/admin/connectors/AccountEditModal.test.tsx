@@ -2,7 +2,7 @@ import type { ComponentProps } from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { AccountEditModal } from './AccountEditModal';
+import { AccountEditModal, type AccountEditModalProps } from './AccountEditModal';
 import type { ConnectorEntry, ConnectorInstallationDto, CredentialFieldSchema } from './connectors.api';
 
 /*
@@ -60,20 +60,20 @@ function exportReady() {
 }
 
 interface Handlers {
-    onSubmitDetails?: ReturnType<typeof vi.fn>;
-    onSubmitConnection?: ReturnType<typeof vi.fn>;
-    onTestConnection?: ReturnType<typeof vi.fn>;
-    onSubmitSettings?: ReturnType<typeof vi.fn>;
-    onClose?: ReturnType<typeof vi.fn>;
+    onSubmitDetails?: AccountEditModalProps['onSubmitDetails'];
+    onSubmitConnection?: AccountEditModalProps['onSubmitConnection'];
+    onTestConnection?: AccountEditModalProps['onTestConnection'];
+    onSubmitSettings?: AccountEditModalProps['onSubmitSettings'];
+    onClose?: AccountEditModalProps['onClose'];
     initialTab?: 'details' | 'connection' | 'settings';
 }
 
 function renderModal(h: Handlers = {}) {
     const handlers = {
-        onSubmitDetails: h.onSubmitDetails ?? vi.fn().mockResolvedValue(undefined),
-        onSubmitConnection: h.onSubmitConnection ?? vi.fn().mockResolvedValue(undefined),
-        onTestConnection: h.onTestConnection ?? vi.fn().mockResolvedValue({ ok: true }),
-        onSubmitSettings: h.onSubmitSettings ?? vi.fn().mockResolvedValue(undefined),
+        onSubmitDetails: h.onSubmitDetails ?? vi.fn<AccountEditModalProps['onSubmitDetails']>().mockResolvedValue(undefined),
+        onSubmitConnection: h.onSubmitConnection ?? vi.fn<AccountEditModalProps['onSubmitConnection']>().mockResolvedValue(undefined),
+        onTestConnection: h.onTestConnection ?? vi.fn<AccountEditModalProps['onTestConnection']>().mockResolvedValue({ ok: true }),
+        onSubmitSettings: h.onSubmitSettings ?? vi.fn<AccountEditModalProps['onSubmitSettings']>().mockResolvedValue(undefined),
         onClose: h.onClose ?? vi.fn(),
     };
     render(

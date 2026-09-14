@@ -59,9 +59,12 @@ test.describe('Chat agent transport — real durable run and event feed', () => 
         await input.fill('How many days per week can I work remotely?');
         await send.click();
 
-        const activity = page.getByTestId('agent-activity-bar');
-        await expect(activity).toHaveAttribute('data-state', 'settled', { timeout: 30_000 });
+        const information = page.getByRole('button', { name: 'Answer information' });
+        await expect(information).toBeVisible({ timeout: 30_000 });
+        await information.click();
+        const activity = page.getByRole('dialog', { name: 'Answer information' });
         await expect(activity).toContainText('The answer is ready.');
+        await page.getByRole('button', { name: 'Close information' }).click();
 
         const assistant = page.locator('[data-testid^="chat-message-"][data-role="assistant"]').last();
         await expect(assistant).toContainText('I completed the search with the available information.', { timeout: 30_000 });

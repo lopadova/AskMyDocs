@@ -1,4 +1,5 @@
 import { api } from '../../lib/api';
+import type { AgentRunEvent } from '../../lib/agent-run-events';
 
 /*
  * Chat HTTP layer. Thin typed wrappers over the existing Laravel
@@ -47,6 +48,28 @@ export interface FilterState {
     date_from?: string | null;
     date_to?: string | null;
     languages?: string[];
+}
+
+export type LiveSourceKind = 'api' | 'mcp';
+
+export interface LiveSourceOption {
+    key: string;
+    kind: LiveSourceKind;
+    name: string;
+    description: string | null;
+    project_key: string | null;
+    tool_count: number;
+}
+
+export interface LiveSourceCatalog {
+    api: LiveSourceOption[];
+    mcp: LiveSourceOption[];
+}
+
+/** Explicit per-turn allowlist. Empty arrays disable that live-source kind. */
+export interface LiveSourceSelection {
+    api: string[];
+    mcp: string[];
 }
 
 /**
@@ -173,6 +196,59 @@ export interface MessageMetadata {
     runner_up_count?: number;
     counterfactual?: CounterfactualPanel[];
     counterfactual_count?: number;
+    agent_artifact?: AgentTableArtifact | null;
+    agent_selection?: AgentSelectionMetadata | null;
+    agent_run_id?: string | null;
+    agent_activity?: AgentRunEvent[];
+    requires_selection?: boolean;
+    locale?: string;
+}
+
+export interface AgentSelectionDisplayField {
+    key: string;
+    label: string;
+    value: string | number | boolean | null;
+}
+
+export interface AgentSelectionMetadata {
+    source_message_id?: number | null;
+    source_execution_id?: number | null;
+    tool?: string | null;
+    row_key: string;
+    label: string;
+    record: Record<string, unknown>;
+    display?: {
+        title?: string | null;
+        fields?: AgentSelectionDisplayField[];
+    } | null;
+}
+
+export interface AgentTableArtifactColumn {
+    key: string;
+    label: string;
+}
+
+export interface AgentTableArtifactRow {
+    key: string;
+    label: string;
+    values: Record<string, string | number | boolean | null>;
+}
+
+export interface AgentTableArtifact {
+    component_type: 'ui-data-table';
+    interaction_mode: 'view' | 'selection';
+    source_execution_id: number | null;
+    tool: string | null;
+    title: string;
+    columns: AgentTableArtifactColumn[];
+    rows: AgentTableArtifactRow[];
+    total_rows: number;
+    truncated: boolean;
+}
+
+export interface AgentSelectionRequest {
+    message_id: number;
+    row_key: string;
 }
 
 export interface Message {
@@ -284,16 +360,36 @@ export const chatApi = {
         conversationId: number,
         content: string,
         filters?: FilterState,
+        mcpAppId?: string,
+        selection?: AgentSelectionRequest,
+        liveSources?: LiveSourceSelection,
     ): Promise<AgentTurnStarted> {
-        const payload = filters && !isFilterStateEmpty(filters)
-            ? { content, filters }
-            : { content };
+        const payload: { content: string; filters?: FilterState; mcp_app_id?: string; selection?: AgentSelectionRequest; live_sources?: LiveSourceSelection } = { content };
+        if (filters && !isFilterStateEmpty(filters)) {
+            payload.filters = filters;
+        }
+        if (mcpAppId && /^[0-9A-HJKMNP-TV-Z]{26}$/.test(mcpAppId)) {
+            payload.mcp_app_id = mcpAppId;
+        }
+        if (selection) {
+            payload.selection = selection;
+        }
+        if (liveSources) {
+            payload.live_sources = liveSources;
+        }
         const { data } = await api.post<AgentTurnStarted>(
             `/conversations/${conversationId}/messages/agent`,
             payload,
         );
 
         return data;
+    },
+
+    async listLiveSources(projectKey?: string | null): Promise<LiveSourceCatalog> {
+        const { data } = await api.get<{ data: LiveSourceCatalog }>('/api/chat/live-sources', {
+            params: projectKey ? { project_key: projectKey } : undefined,
+        });
+        return data.data;
     },
 
     async cancelAgentRun(url: string): Promise<void> {
