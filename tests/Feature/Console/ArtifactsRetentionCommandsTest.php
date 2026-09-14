@@ -583,7 +583,7 @@ final class ArtifactsRetentionCommandsTest extends TestCase
         $fine = $this->row(2, 'active', null, 'docs/fine.md');
         $healthy = Storage::disk('kb');
         $root = $healthy->path('');
-        $adapter = new \Tests\Fixtures\Storage\WriteRefusingAdapter(new \League\Flysystem\Local\LocalFilesystemAdapter($root), static fn (string $path): bool => false, static fn (string $path): bool => $path === 'docs/unreachable.md');
+        $adapter = new \Tests\Fixtures\Storage\WriteRefusingAdapter(new \League\Flysystem\Local\LocalFilesystemAdapter($root), static fn (string $path): bool => false, static fn (string $path, string $operation): bool => $path === 'docs/unreachable.md');
         Storage::set('kb', new \Illuminate\Filesystem\FilesystemAdapter(new \League\Flysystem\Filesystem($adapter), $adapter, ['root' => $root]));
 
         try {

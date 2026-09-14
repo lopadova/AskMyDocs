@@ -28,6 +28,14 @@ use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
  */
 final class DocumentVersionService
 {
+    /** The timeline-limit misconfiguration has been reported by this process (test seam: resetWarnings()). */
+    private static bool $warnedTimelineLimit = false;
+
+    public static function resetWarnings(): void
+    {
+        self::$warnedTimelineLimit = false;
+    }
+
     public const SOURCE_ARTIFACT = 'artifact';
 
     public const INTEGRITY_VERIFIED = 'verified';
@@ -93,7 +101,11 @@ final class DocumentVersionService
     {
         $configured = config('kb.versioning.timeline_limit', 100);
         $max = is_numeric($configured) && (int) $configured >= 1 ? (int) $configured : 100;
-        if ($max !== (int) $configured || ! is_numeric($configured)) {
+        if (($max !== (int) $configured || ! is_numeric($configured)) && ! self::$warnedTimelineLimit) {
+            // Once per process, not once per call: the limit is read by every
+            // surface (HTTP / MCP / CLI) on every page, and a misconfiguration
+            // must stay visible without sustained noise.
+            self::$warnedTimelineLimit = true;
             Log::warning('DocumentVersionService: kb.versioning.timeline_limit is not a positive number of versions; using the default', [
                 'configured' => is_scalar($configured) ? $configured : gettype($configured),
                 'default' => 100,

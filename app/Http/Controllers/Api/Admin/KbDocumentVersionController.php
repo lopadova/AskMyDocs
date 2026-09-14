@@ -46,6 +46,8 @@ final class KbDocumentVersionController extends Controller
         $total = $this->versions->familySizeFor($document);
 
         $rows = $this->versions->versionsFor($document, $limit, $offset)->map(function (KnowledgeDocument $v): array {
+            // ADR 0030 §6 — the last restore, read once per row.
+            $restore = DocumentVersionService::lastRestoreOf($v);
             // ADR 0030 §5 — a stored artifact is one that can be READ and
             // VERIFIED (hashes to content_hash), not a pointer: the same check the content endpoint
             // serves with, so the UI never shows the "stored" badge over a
@@ -71,8 +73,8 @@ final class KbDocumentVersionController extends Controller
             // additive (R27): none · verified · unverified · missing · mismatch
             'artifact_state' => $artifactState,
             // ADR 0030 §6 — the last restore, kept apart from the creation provenance
-            'restored_by' => DocumentVersionService::lastRestoreOf($v)['actor'] ?? null,
-            'restored_at' => DocumentVersionService::lastRestoreOf($v)['at'] ?? null,
+            'restored_by' => $restore['actor'] ?? null,
+            'restored_at' => $restore['at'] ?? null,
             ];
         })->all();
 

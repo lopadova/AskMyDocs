@@ -200,12 +200,6 @@ export function TimeMachineView({ docId }: { docId: number }): ReactNode {
 }
 
 /**
- * v8.36 / ADR 0030 §5 — says whether the diff compares the stored documents
- * (faithful) or chunk reconstructions (an index diff), so an operator never
- * reads an index diff as the document's own history. Older servers omit the
- * sources: then nothing is claimed either way.
- */
-/**
  * Names the reconstructed side(s) by the pick that selected them — "From" /
  * "To" are chosen independently, so neither is necessarily the newer or the
  * older version and the note never says so.
@@ -217,6 +211,12 @@ function indexDiffSides(fromSource: string, toSource: string): string {
     return fromSource !== 'artifact' ? 'the From side is' : 'the To side is';
 }
 
+/**
+ * v8.36 / ADR 0030 §5 — says whether the diff compares the stored documents
+ * (faithful) or chunk reconstructions (an index diff), so an operator never
+ * reads an index diff as the document's own history. Older servers omit the
+ * sources: then nothing is claimed either way.
+ */
 function DiffSourceNote({ fromSource, toSource, fromIntegrity, toIntegrity }: { fromSource?: string; toSource?: string; fromIntegrity?: string | null; toIntegrity?: string | null }): ReactNode {
     if (!fromSource || !toSource) {
         return null;
