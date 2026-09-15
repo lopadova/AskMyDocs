@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
@@ -10,6 +10,7 @@ import { useAuthStore } from '../../../lib/auth-store';
 const mockGet = vi.fn();
 const mockPost = vi.fn();
 const mockPatch = vi.fn();
+const mockDelete = vi.fn();
 
 /** Minimal valid `/api/auth/me` payload for the post-mutation switcher sync. */
 const ME_FIXTURE = {
@@ -22,8 +23,8 @@ const ME_FIXTURE = {
 };
 
 const TEAMS_FIXTURE = [
-    { slug: 'default', name: 'Default', hash: '37a8eec1ce19', status: 'system', is_default: true, can_manage: false, project_count: 1, member_count: 1 },
-    { slug: 'acme', name: 'Acme Corp', hash: '822b33ad87c1', status: 'active', is_default: false, can_manage: true, project_count: 2, member_count: 3 },
+    { slug: 'default', name: 'Default', hash: '37a8eec1ce19', status: 'system', is_default: true, can_manage: false, logo_url: null, project_count: 1, member_count: 1 },
+    { slug: 'acme', name: 'Acme Corp', hash: '822b33ad87c1', status: 'active', is_default: false, can_manage: true, logo_url: null, project_count: 2, member_count: 3 },
 ];
 
 /** Route api.get by URL: the me() switcher-sync vs the teams list. */
@@ -38,9 +39,11 @@ beforeEach(() => {
     mockGet.mockReset();
     mockPost.mockReset();
     mockPatch.mockReset();
+    mockDelete.mockReset();
     vi.spyOn(api, 'get').mockImplementation(mockGet);
     vi.spyOn(api, 'post').mockImplementation(mockPost);
     vi.spyOn(api, 'patch').mockImplementation(mockPatch);
+    vi.spyOn(api, 'delete').mockImplementation(mockDelete);
 });
 
 afterEach(() => {
@@ -85,7 +88,28 @@ describe('TeamsList', () => {
         await waitFor(() => expect(screen.getByTestId('admin-team-row-acme')).toBeVisible());
 
         expect(screen.getByTestId('admin-team-row-acme-edit')).toBeVisible();
+        expect(screen.getByTestId('admin-team-row-acme-logo')).toBeVisible();
         expect(screen.queryByTestId('admin-team-row-default-edit')).not.toBeInTheDocument();
+    });
+
+    it('uploads a tenant logo from the logo dialog', async () => {
+        mockGet.mockImplementation(routeGet(TEAMS_FIXTURE));
+        mockPost.mockResolvedValue({ data: { data: { logo_url: '/api/tenant-logos/acme' } } });
+        render(withQueryClient(<TeamsList />));
+        await screen.findByTestId('admin-team-row-acme');
+
+        await userEvent.click(screen.getByTestId('admin-team-row-acme-logo'));
+        expect(await screen.findByTestId('admin-team-logo-dialog')).toHaveAttribute('data-state', 'ready');
+        const file = new File(['png'], 'logo.png', { type: 'image/png' });
+        await userEvent.upload(screen.getByTestId('admin-team-logo-file'), file);
+        fireEvent.submit(screen.getByTestId('admin-team-logo-dialog'));
+
+        await waitFor(() => {
+            expect(mockPost).toHaveBeenCalledWith(
+                '/api/admin/teams/acme/logo',
+                expect.any(FormData),
+            );
+        });
     });
 
     it('filters rows by free-text across name/slug', async () => {

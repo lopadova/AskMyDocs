@@ -17,6 +17,7 @@ export type Team = {
      */
     hash: string;
     name: string;
+    logo_url?: string | null;
     projects: TeamProject[];
 };
 
