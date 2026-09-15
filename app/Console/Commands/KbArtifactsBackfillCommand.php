@@ -164,7 +164,7 @@ final class KbArtifactsBackfillCommand extends Command
                 // actually runs this command for.
                 if (! $dryRun && (string) $row->content_hash !== (string) $row->document_hash) {
                     // The same integrity-only write as the identical re-ingest
-                    // (DocumentIngestor::recordContentHashIfMissing): bound to
+                    // (DocumentIngestor::recordContentHashIfDiffers): bound to
                     // the row's own tenant (R30). A row that is no longer the
                     // one read is reported, not silently skipped (R4).
                     if ($row->updateUnscopedWithinOwnTenant(['content_hash' => (string) $row->document_hash]) === 0) {

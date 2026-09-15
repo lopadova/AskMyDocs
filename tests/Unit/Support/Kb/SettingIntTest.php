@@ -83,6 +83,11 @@ final class SettingIntTest extends TestCase
         $keys = [
             'tmp_max_age_seconds', 'source_lock_wait_seconds', 'source_lock_seconds', 'tmp_lease_seconds',
             'orphan_grace_seconds', 'orphan_scan_max_items', 'timeline_limit', 'artifact_state_cache_seconds',
+            // v8.36 / ADR 0030 §3 — SourceInFlight validates both through
+            // SettingInt::whole(): inflight_reservation_seconds directly
+            // (SourceInFlight::seconds()) and job_timeout as the floor its
+            // default is built from (SourceInFlight::defaultSeconds()).
+            'inflight_reservation_seconds', 'job_timeout',
         ];
 
         foreach ($keys as $key) {

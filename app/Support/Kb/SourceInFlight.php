@@ -35,11 +35,21 @@ use Illuminate\Support\Facades\Log;
  *
  * Same posture as the temp lease and the OCR run reservation: a cache store
  * that cannot lock gets NO reservation and NO false confidence — `reserve()`
- * returns null and `held()` returns false, so the sweep falls back to the
- * grace exactly as before (R43). The TTL is a backstop for a worker killed
- * mid-conversion, not the mechanism: a reservation is released in a
+ * and `acquireForRemoval()` both return null, so the caller falls back to
+ * the age grace exactly as before (R43). The TTL is a backstop for a worker
+ * killed mid-conversion, not the mechanism: a reservation is released in a
  * `finally`, and one that outlives its holder expires rather than pinning a
  * file forever.
+ *
+ * A CONTENDED key is a different case from a store that cannot lock at all,
+ * and the two callers treat it differently on purpose. `reserve()` (an
+ * ingest about to READ) throws {@see SourceReservationContendedException}:
+ * proceeding unreserved would mean converting for a possibly minutes-long
+ * window with no exclusion. `acquireForRemoval()` (a DELETING consumer
+ * about to decide) returns null on contention: that is the expected,
+ * frequent, non-exceptional case — the file is in flight and the caller
+ * keeps it, never fails a whole sweep over one orphan that turned out not
+ * to be one.
  */
 final class SourceInFlight
 {
@@ -110,19 +120,18 @@ final class SourceInFlight
     }
 
     /**
-     * Reserve the source for this ingest, or null when there is nothing to
-     * reserve: a store that cannot exclude anyone (no reservation is better
-     * than one nobody honours).
+     * Reserve the source for this ingest, or null ONLY when the store
+     * cannot exclude anyone at all (R43 — no reservation is better than one
+     * nobody honours, and the age grace is the sole guard from here on).
      *
-     * A contended key is NOT silently accepted as "someone else is protecting
-     * it": that is only true while the other holder is still running, and the
-     * cases where it is not — two tenants ingesting the same physical object,
-     * a retry starting under the TTL a killed worker left behind, a sweep
-     * probe winning the acquire race — are exactly the ones this feature
-     * exists for. So a short block lets a just-released holder (or a probe)
-     * hand over, and a reservation we still could not take is REPORTED: from
-     * there on only the age grace guards this ingest, and an operator can see
-     * that in the log rather than discover it as a deleted source.
+     * A CONTENDED key throws rather than degrading (see the class docblock):
+     * a short block first lets a just-released holder hand over, and a
+     * reservation still not taken after that is
+     * {@see SourceReservationContendedException} — the caller must fail
+     * this attempt rather than convert unprotected.
+     *
+     * @throws SourceReservationContendedException the key is held by
+     *         another holder right now.
      */
     public static function reserve(string $disk, string $fullPath): ?LockContract
     {
@@ -135,11 +144,11 @@ final class SourceInFlight
                 return $lock;
             }
         } catch (LockTimeoutException) {
-            // fall through to the report below
+            throw new SourceReservationContendedException($disk, $fullPath);
         } catch (\Throwable $e) {
-            // A store that threw cannot be said to have refused: report it the
-            // same way and let the grace stand, never fail the ingest over a
-            // guard it takes for the sweep's benefit.
+            // A store that threw cannot be said to have refused: report it
+            // the same way as R43 and let the grace stand — a driver blip is
+            // not "someone else is protecting it".
             Log::warning('SourceInFlight: could not reserve the source; only the age grace guards this ingest', [
                 'disk' => $disk,
                 'path' => $fullPath,
@@ -148,24 +157,32 @@ final class SourceInFlight
 
             return null;
         }
-        Log::warning('SourceInFlight: the source is already reserved by another holder; only the age grace guards this ingest', [
-            'disk' => $disk,
-            'path' => $fullPath,
-        ]);
 
-        return null;
+        throw new SourceReservationContendedException($disk, $fullPath);
     }
 
     /**
-     * Is someone reading or converting this object right now? Probed the way
-     * the temp lease is probed: try to take it for a moment and give it back
-     * — a reservation we could take was nobody's. The release is owner-scoped
-     * by the cache store, so a probe can never take a reservation away from
-     * its holder.
+     * Seconds a deleting consumer holds the reservation for while it decides
+     * and removes: comparable in scope to `SourceKeyLock`'s own 60 s default
+     * (age check + storage-key lock wait + reference re-check + delete —
+     * never a minutes-long conversion), never `seconds()` — a deleter that
+     * crashed mid-hold must not pin a legitimate re-ingest of the SAME file
+     * for up to an hour.
+     */
+    private const DELETION_HOLD_SECONDS = 60;
+
+    /**
+     * Is someone reading or converting this object right now? A READ-ONLY
+     * probe — try to take it for a moment and give it back — for callers
+     * that do not act on the answer (the `--dry-run` preview). A caller that
+     * IS about to remove the file must use {@see acquireForRemoval()}
+     * instead: a probe here would leave the exact TOCTOU gap this class
+     * exists to close, since a new ingest could reserve the instant after
+     * this returns and before the removal runs.
      *
-     * Throws whatever the cache store throws: the callers decide (a deleting
-     * consumer that cannot ask must not delete — see
-     * `DocumentDeleter::removeSourceFileIfUnreferenced()`).
+     * The release is owner-scoped by the cache store, so a probe can never
+     * take a reservation away from its holder. Throws whatever the cache
+     * store throws: the caller decides.
      */
     public static function held(string $disk, string $fullPath): bool
     {
@@ -179,6 +196,30 @@ final class SourceInFlight
         $probe->release();
 
         return false;
+    }
+
+    /**
+     * Take the reservation for a DELETING consumer, held through the whole
+     * decision-and-removal window instead of released after a probe: null
+     * here means "an ingest holds it right now" — the file is in flight —
+     * and the caller must keep it, never slip a delete between a probe and
+     * the removal itself (the TOCTOU {@see held()}'s docblock warns against).
+     *
+     * Unlike `reserve()`, contention here is NOT exceptional: it is the
+     * expected, frequent outcome for most orphan candidates that turn out
+     * not to be orphans, so it returns null rather than throwing — the
+     * caller reports `KEPT_IN_FLIGHT` and moves on to the next candidate,
+     * never failing a whole sweep over one file in flight.
+     *
+     * Assumes the caller already confirmed the store can lock
+     * (`ConversionArtifactStore::cacheStoreCanLock()`), matching every other
+     * lock acquisition in `DocumentDeleter`.
+     */
+    public static function acquireForRemoval(string $disk, string $fullPath): ?LockContract
+    {
+        $lock = Cache::lock(self::key($disk, $fullPath), self::DELETION_HOLD_SECONDS);
+
+        return $lock->get() ? $lock : null;
     }
 
     private static function warnOnce(string $key, string $message, array $context): void

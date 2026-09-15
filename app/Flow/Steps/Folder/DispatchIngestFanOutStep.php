@@ -202,6 +202,10 @@ final class DispatchIngestFanOutStep implements FlowStepHandler
         // `kb:prune-orphan-files` would see an ordinary orphan and delete the
         // bytes out from under the conversion. Released whatever the outcome;
         // the TTL is only the backstop for a process killed mid-conversion.
+        // A CONTENDED key throws (SourceReservationContendedException) rather
+        // than degrading, and that is deliberately left uncaught here: the
+        // caller's per-file try/catch already records it as an ordinary
+        // ingest failure, exactly like a bad file or a conversion error.
         $reservation = SourceInFlight::reserve($disk, $fullPath);
         try {
             if (! $storage->exists($fullPath)) {

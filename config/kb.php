@@ -495,7 +495,15 @@ return [
         // the ingest job timeout and the re-run lock are all bounded by it —
         // and the queue's `retry_after` only has to exceed THIS (+ margins),
         // never a driver's theoretical worst case.
-        'job_timeout' => (int) env('KB_OCR_JOB_TIMEOUT', 3600),
+        //
+        // Kept RAW (no `(int)` cast, SEC-SETTING-SHAPE-001): `SourceInFlight
+        // ::defaultSeconds()` validates this through `SettingInt::whole()` —
+        // a cast here would truncate a fractional misconfiguration BEFORE
+        // that validator could refuse it, silently shortening the
+        // reservation a slow OCR run needs to outlive. `OcrService::
+        // runBudgetSeconds()` still casts its own local copy defensively;
+        // that consumer's behaviour is unchanged either way.
+        'job_timeout' => env('KB_OCR_JOB_TIMEOUT', 3600),
         'max_bytes' => (int) env('KB_OCR_MAX_BYTES', 26214400), // 25 MiB, the upload cap
         // Largest single figure a driver may hand back (remote drivers return
         // base64 images inside the response body).

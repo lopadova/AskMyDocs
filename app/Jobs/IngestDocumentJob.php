@@ -129,10 +129,18 @@ class IngestDocumentJob implements ShouldQueue
 
     /**
      * The reservation over this job's source object, or null when there is
-     * nothing to reserve: a store that cannot exclude anyone (R43 — the
-     * sweep then falls back to the grace, exactly as before), a recorded
-     * prefix that cannot name a path, or a concurrent ingest of the same
-     * object that already holds it (which protects the file just as well).
+     * nothing TO reserve: a store that cannot exclude anyone (R43 — the
+     * sweep then falls back to the grace, exactly as before), or a recorded
+     * prefix that cannot name a path.
+     *
+     * A CONTENDED key (another holder — an ingest OR a deleting sweep — has
+     * it right now) is not degraded to null: {@see SourceInFlight::reserve()}
+     * throws {@see \App\Support\Kb\SourceReservationContendedException},
+     * which this method deliberately does NOT catch. Proceeding to read and
+     * convert with no exclusion at all would be exactly the gap the
+     * reservation exists to close; letting the job fail here means the
+     * queue's own `$tries`/`backoff` policy re-attempts once the contention
+     * has likely cleared, rather than converting unprotected.
      */
     private function reserveSource(): ?\Illuminate\Contracts\Cache\Lock
     {

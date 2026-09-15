@@ -10,6 +10,7 @@ use App\Services\Kb\DocumentDeleter;
 use App\Support\Kb\SourceInFlight;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
@@ -236,20 +237,38 @@ final class IngestDocumentJobSourceReservationTest extends TestCase
      * TTL a killed worker left behind — are exactly the ones this guard
      * exists for.
      */
-    public function test_a_contended_reservation_is_reported_rather_than_assumed_safe(): void
+    public function test_a_contended_reservation_fails_the_attempt_rather_than_assumed_safe(): void
     {
         $other = Cache::lock(SourceInFlight::key('kb', 'docs/taken.md'), 60);
         $this->assertTrue($other->get());
-        \Illuminate\Support\Facades\Log::spy();
         try {
-            $this->assertNull(SourceInFlight::reserve('kb', 'docs/taken.md'));
+            SourceInFlight::reserve('kb', 'docs/taken.md');
+            $this->fail('a contended reservation must not silently succeed');
+        } catch (\App\Support\Kb\SourceReservationContendedException $e) {
+            $this->assertStringContainsString('docs/taken.md', $e->getMessage());
         } finally {
             $other->release();
         }
+    }
 
-        \Illuminate\Support\Facades\Log::shouldHaveReceived('warning')
-            ->withArgs(static fn (string $message): bool => str_contains($message, 'only the age grace guards this ingest'))
-            ->once();
+    /**
+     * The job lets the contention exception propagate — it does NOT swallow
+     * it and proceed unreserved. The queue's own `$tries`/`backoff` retries
+     * the attempt once the contention has likely cleared.
+     */
+    public function test_the_job_fails_rather_than_convert_unreserved_when_contended(): void
+    {
+        Storage::fake('kb');
+        Storage::disk('kb')->put('docs/busy.md', "# Busy\n\nBody.");
+        $other = Cache::lock(SourceInFlight::key('kb', 'docs/busy.md'), 60);
+        $this->assertTrue($other->get());
+
+        try {
+            $this->expectException(\App\Support\Kb\SourceReservationContendedException::class);
+            $this->app->call([new IngestDocumentJob(projectKey: 'demo', relativePath: 'docs/busy.md', disk: 'kb'), 'handle']);
+        } finally {
+            $other->release();
+        }
     }
 
     /**
@@ -363,5 +382,109 @@ final class IngestDocumentJobSourceReservationTest extends TestCase
         // floor: a 60 s reservation would lapse under an ordinary ingest.
         config(['kb.ocr.job_timeout' => 1, 'kb.sources.inflight_reservation_seconds' => null]);
         $this->assertSame(600, SourceInFlight::seconds());
+    }
+
+    /**
+     * Round-33 finding (Copilot, `DocumentDeleter.php:861` / suppressed
+     * `:1171`): `SourceInFlight::held()` used to be a PROBE — acquire, give
+     * back, THEN decide — so a new ingest could reserve and start reading in
+     * the instant between the probe and the delete. The sweep must instead
+     * ACQUIRE the reservation and hold it through its entire decision, so a
+     * `reserve()` attempted from anywhere during that window finds the key
+     * CONTENDED. Observed via a DB query listener: `firstDocumentReferencingStorageKey()`
+     * runs a query squarely inside the decision, so a probe launched from
+     * there proves the reservation is still held at that instant, not just
+     * at the start.
+     */
+    public function test_the_orphan_sweep_holds_its_own_reservation_through_the_whole_decision_and_delete(): void
+    {
+        Storage::fake('kb');
+        Storage::disk('kb')->put('docs/held-through.md', 'x');
+        config(['kb.sources.orphan_grace_seconds' => 0]);
+
+        $observed = [];
+        DB::listen(function ($query) use (&$observed) {
+            // The reference re-check is the query squarely inside the
+            // decision (`->where('source_path', ...)`); other queries (test
+            // framework bookkeeping) are not what this test is about.
+            if (str_contains($query->sql, 'source_path')) {
+                $observed[] = SourceInFlight::held('kb', 'docs/held-through.md');
+            }
+        });
+
+        $outcome = app(DocumentDeleter::class)->removeSourceFileIfUnreferenced('kb', 'docs/held-through.md', 'docs/held-through.md');
+
+        $this->assertSame(\App\Services\Kb\Versioning\ConversionArtifactStore::REMOVED, $outcome);
+        $this->assertNotSame([], $observed, 'at least one query must have run during the decision (the reference scan)');
+        $this->assertSame([true], array_values(array_unique($observed)), 'the reservation was held for every query the decision made — never a false in the middle');
+        $this->assertFalse(SourceInFlight::held('kb', 'docs/held-through.md'), 'released once the decision (and delete) finished');
+    }
+
+    /**
+     * Same finding, the HARD-DELETE path (`DocumentDeleter.php:1171`,
+     * suppressed): `removeSourceObjectUnderLock()` must hold its reservation
+     * through the OCR-asset purge and the delete, not merely probe it before
+     * either.
+     */
+    public function test_the_hard_delete_holds_its_own_reservation_through_the_whole_removal(): void
+    {
+        Storage::fake('kb');
+        Storage::disk('kb')->put('docs/hard-held.md', '# Hard held');
+        $doc = \App\Models\KnowledgeDocument::create([
+            'project_key' => 'demo',
+            'source_type' => 'markdown',
+            'title' => 'Hard held',
+            'source_path' => 'docs/hard-held.md',
+            'mime_type' => 'text/markdown',
+            'language' => 'it',
+            'access_scope' => 'internal',
+            'status' => 'active',
+            'document_hash' => hash('sha256', 'hard-held'),
+            'version_hash' => hash('sha256', 'hard-held'),
+            'metadata' => ['disk' => 'kb', 'prefix' => ''],
+            'indexed_at' => now(),
+        ]);
+
+        // `OcrFigureStore::purgeBeside()` runs squarely inside the window
+        // between the reservation being acquired and the file being deleted
+        // (`$held?->assertHeld('OCR asset purge')` immediately precedes it).
+        // A partial Mockery spy on the REAL instance intercepts it without
+        // touching its `final` declaration or its own behaviour.
+        $real = app(\App\Services\Kb\Ocr\OcrFigureStore::class);
+        $observed = [];
+        $spy = \Mockery::mock($real)->makePartial();
+        $spy->shouldReceive('purgeBeside')->once()->andReturnUsing(function (string $disk, string $fullPath) use ($real, &$observed) {
+            $observed[] = SourceInFlight::held('kb', 'docs/hard-held.md');
+
+            return $real->purgeBeside($disk, $fullPath);
+        });
+        $this->app->instance(\App\Services\Kb\Ocr\OcrFigureStore::class, $spy);
+
+        $result = app(DocumentDeleter::class)->delete($doc, force: true);
+
+        $this->assertTrue($result['file_deleted']);
+        $this->assertSame([true], $observed, 'the reservation was still held during the OCR-asset purge, squarely between acquisition and the file delete');
+        $this->assertFalse(SourceInFlight::held('kb', 'docs/hard-held.md'), 'released once the removal finished');
+    }
+
+    /**
+     * A deployment with conversion artifacts OFF and a cache store that
+     * cannot lock at all still deletes an orphan, protected only by the age
+     * grace — the same residual documented before the reservation existed
+     * (R43). The reservation gate must not make this WORSE by refusing a
+     * delete the pre-reservation code always allowed.
+     */
+    public function test_artifacts_off_with_no_lock_store_still_deletes_protected_by_the_grace_alone(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => false, 'cache.default' => 'null', 'kb.sources.orphan_grace_seconds' => 60]);
+        Cache::purge('null');
+        Storage::fake('kb');
+        Storage::disk('kb')->put('docs/unlocked.md', 'x');
+        $this->travel(600)->seconds();
+
+        $outcome = app(DocumentDeleter::class)->removeSourceFileIfUnreferenced('kb', 'docs/unlocked.md', 'docs/unlocked.md');
+
+        $this->assertSame(\App\Services\Kb\Versioning\ConversionArtifactStore::REMOVED, $outcome);
+        Storage::disk('kb')->assertMissing('docs/unlocked.md');
     }
 }

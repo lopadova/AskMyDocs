@@ -340,14 +340,61 @@ class DocumentIngestor
      * tenant's ingest would find tenant A's row, treat it as an idempotent
      * no-op, and bump tenant A's `indexed_at` instead of creating tenant B's
      * row. Closes the cross-tenant leak Copilot flagged on PR #115 iteration 2.
+     *
+     * `withTrashed()` — a soft-deleted row occupies the SAME
+     * `(tenant_id, project_key, source_path, version_hash)` slot the unique
+     * index protects (`uq_kb_doc_tenant_version`), and the index does not
+     * honour soft-delete any more than it honours the ACL/canonical scopes
+     * R10 point 4 already calls out for slug/doc_id. An identical re-ingest
+     * after a soft delete would otherwise MISS this row, fall through to
+     * `persistDocumentAndChunks()`, and crash `updateOrCreate()` on the
+     * unique constraint — a caller simply re-ingesting the same bytes,
+     * breaking on a delete it never asked to touch. The two upstream
+     * callers ({@see persistDrafts()}, {@see persistFromDrafts()}) restore
+     * a trashed match via {@see restoreIfTrashed()} before treating it as
+     * the idempotent no-op.
      */
     private function findExistingVersion(string $projectKey, string $sourcePath, string $versionHash): ?KnowledgeDocument
     {
-        return KnowledgeDocument::forTenant(app(TenantContext::class)->current())
+        return KnowledgeDocument::withTrashed()
+            ->forTenant(app(TenantContext::class)->current())
             ->where('project_key', $projectKey)
             ->where('source_path', $sourcePath)
             ->where('version_hash', $versionHash)
             ->first();
+    }
+
+    /**
+     * A `findExistingVersion()` match that is soft-deleted is un-deleted
+     * here, at the one point both persistence entry points call before
+     * their idempotency short-circuit — never inside
+     * `persistDocumentAndChunks()`, which only ever sees a match that
+     * already passed through this restore (or none at all).
+     *
+     * Lighter than `DocumentVersionService::restore()`: that one moves
+     * LIVE status between two DIFFERENT rows of a family (a genuinely more
+     * elaborate scenario — "make an archived version live again", with
+     * canonical-identity juggling and a displaced sibling). This is the
+     * SAME row, the SAME hash, coming back from the SAME delete — there is
+     * nothing to displace. It mirrors that service's `metadata['restores']`
+     * provenance shape so `DocumentVersionService::lastRestoreOf()` reads
+     * either kind of restore the same way.
+     */
+    private function restoreIfTrashed(KnowledgeDocument $existing): void
+    {
+        if (! $existing->trashed()) {
+            return;
+        }
+        $metadata = is_array($existing->metadata) ? $existing->metadata : [];
+        $restores = is_array($metadata['restores'] ?? null) ? $metadata['restores'] : [];
+        $restores[] = [
+            'actor' => 'system:ingest',
+            'at' => now()->toIso8601String(),
+            'previous_live_id' => null,
+        ];
+        $metadata['restores'] = $restores;
+        $existing->metadata = $metadata;
+        $existing->restore();
     }
 
     // -----------------------------------------------------------------
@@ -425,6 +472,7 @@ class DocumentIngestor
         // — otherwise the row would keep pointing at the previous run while
         // the new one was billed and recorded. Same mechanics as forceReembed.
         if (! $replaceExisting && $existing !== null) {
+            $this->restoreIfTrashed($existing);
             $existing->update(['indexed_at' => now()]);
             $this->repairArtifactOfExistingVersion($existing, $markdown, $metadata);
 
@@ -500,6 +548,7 @@ class DocumentIngestor
         // AndChunks then REPLACES the existing version's chunks rather than
         // accumulating them.
         if (! $forceReembed && $existing !== null) {
+            $this->restoreIfTrashed($existing);
             $existing->update(['indexed_at' => now()]);
             $this->repairArtifactOfExistingVersion($existing, $markdown, $metadata);
 
@@ -643,7 +692,21 @@ class DocumentIngestor
         // rewrite who created it (a restore's `user:{id}` stays), nor null a
         // stored artifact because the flag is off today: only a freshly
         // staged artifact updates the pointer on an existing row.
-        $isNewVersion = $this->findExistingVersion($projectKey, $sourcePath, $versionHash) === null;
+        //
+        // This is reached with a match that is still soft-deleted when the
+        // caller chose `replaceExisting`/`forceReembed` over the idempotent
+        // short-circuit (persistDrafts()/persistFromDrafts() only restore on
+        // THEIR OWN early-return branch — this call bypasses it). Restored
+        // here too, BEFORE `updateOrCreate()` below: that call's lookup is
+        // the plain (non-`withTrashed()`) query every other write uses, so a
+        // still-trashed row would stay invisible to it and the insert would
+        // die on `uq_kb_doc_tenant_version` — the same crash R10 point 4
+        // describes for the ACL/canonical scopes, one guard short of here.
+        $existingVersion = $this->findExistingVersion($projectKey, $sourcePath, $versionHash);
+        $isNewVersion = $existingVersion === null;
+        if ($existingVersion !== null) {
+            $this->restoreIfTrashed($existingVersion);
+        }
         $attributes = array_merge($this->buildDocumentAttributes(
             $title,
             $mimeType,
@@ -924,22 +987,38 @@ class DocumentIngestor
 
             return;
         }
-        $expected = is_string($existing->content_hash) && $existing->content_hash !== '' ? $existing->content_hash : hash('sha256', $markdown);
-        if (hash('sha256', $markdown) !== $expected) {
-            // Cannot happen for the same version_hash; refuse to "repair" with bytes that are not the recorded ones.
-            Log::warning('DocumentIngestor: converted bytes do not match the recorded content_hash; artifact left as is', ['document_id' => $existing->id]);
+        // `document_hash`, not `content_hash`, is the authoritative expected
+        // hash — the same choice `kb:artifacts-backfill` makes
+        // (KbArtifactsBackfillCommand::backfill(), comparing against
+        // `$row->document_hash`), and for the same reason: `content_hash` is
+        // "an integrity check, not a second identity" (CLAUDE.md §4) and can
+        // itself be stale — a legacy pointer that never recorded one, or one
+        // left behind by an interrupted repair. Trusting it here as
+        // `$expected` would compare the freshly converted markdown against a
+        // WRONG value and either refuse a legitimate repair (the warning
+        // below, on bytes that are actually correct) or accept a corrupt
+        // file as verified. `document_hash` is fixed at the row's own
+        // creation and is exactly what `findExistingVersion()` already
+        // matched this row on via `version_hash` (`document_hash` equals it
+        // by construction).
+        $expected = (string) $existing->document_hash;
+        if ($expected === '' || hash('sha256', $markdown) !== $expected) {
+            // Cannot happen for the same version_hash on a healthy row;
+            // refuse to "repair" with bytes that contradict the recorded
+            // document_hash rather than silently trust either side (R14).
+            Log::warning('DocumentIngestor: converted bytes do not match the recorded document_hash; artifact left as is', ['document_id' => $existing->id]);
 
             return;
         }
         try {
             $current = $store->read($disk, $path);
             if (is_string($current) && hash('sha256', $current) === $expected) {
-                $this->recordContentHashIfMissing($existing, $expected);
+                $this->recordContentHashIfDiffers($existing, $expected);
             } else {
                 if (! $this->writeAndPublishOrDiscard($disk, $path, $markdown, $existing)) {
                     return; // the row is gone meanwhile: nothing to repair
                 }
-                $this->recordContentHashIfMissing($existing, $expected);
+                $this->recordContentHashIfDiffers($existing, $expected);
                 Log::info('DocumentIngestor: artifact repaired from an identical re-ingest', ['document_id' => $existing->id, 'disk' => $disk, 'markdown_path' => $path, 'was' => $current === null ? 'missing' : 'corrupt']);
             }
         } catch (\Throwable $e) {
@@ -983,10 +1062,18 @@ class DocumentIngestor
      * before the hash was recorded) stays `unverified` on every surface until
      * the hash is persisted: once the stored bytes are known to be THE bytes
      * of this version, record it so the artifact becomes `verified`.
+     *
+     * The condition is "differs from the version's hash", never "is empty":
+     * two rows need the write, not one — the legacy pointer above AND a row
+     * whose recorded `content_hash` is present but WRONG, a stale value left
+     * by an earlier interrupted repair, which would otherwise report
+     * `mismatch` forever while the file on disk is provably correct. Same
+     * reasoning, and the same condition, as
+     * `KbArtifactsBackfillCommand::backfill()`.
      */
-    private function recordContentHashIfMissing(KnowledgeDocument $existing, string $hash): void
+    private function recordContentHashIfDiffers(KnowledgeDocument $existing, string $hash): void
     {
-        if (is_string($existing->content_hash) && $existing->content_hash !== '') {
+        if ($existing->content_hash === $hash) {
             return;
         }
         if ($existing->updateUnscopedWithinOwnTenant(['content_hash' => $hash]) === 0) {

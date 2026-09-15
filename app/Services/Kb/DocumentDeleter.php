@@ -832,33 +832,33 @@ class DocumentDeleter
      * or a disk that refused is FAILED — reported, never a stack trace
      * mid-sweep and never a delete under a live row.
      *
-     * A source an ingest RESERVED, or one younger than the in-flight grace,
-     * is KEPT_IN_FLIGHT before any of that: an ingest reads and converts its
-     * source BEFORE it takes the key's lock, so in that window the file has
-     * neither a row nor a holder. The reservation is the guard; the grace is
-     * what stands when the store cannot lock. A disk that cannot date a file
-     * cannot prove it is old: that is FAILED (reported, exit non-zero),
-     * never a sweep that reads as clean.
+     * The RESERVATION is ACQUIRED here, not merely probed, and HELD through
+     * the whole decision-and-delete sequence below — the age check, the
+     * storage-key lock wait, the reference re-check, and the delete itself —
+     * released only in the `finally`. A transient probe (take it, give it
+     * back, then decide) would leave the exact TOCTOU this class exists to
+     * close: a new ingest could reserve and start reading in the instant
+     * between the probe and the delete. Holding it instead means any such
+     * ingest finds the key CONTENDED and refuses to proceed unprotected
+     * ({@see SourceInFlight::reserve()}) for as long as this method is
+     * still deciding. A key already held by an ingest (KEPT_IN_FLIGHT) or a
+     * store that cannot lock at all (R43 — the age grace is the sole guard)
+     * are both handled before anything is acquired. A disk that cannot date
+     * a file cannot prove it is old: that is FAILED (reported, exit
+     * non-zero), never a sweep that reads as clean.
      *
      * @return string one of ConversionArtifactStore::REMOVED | ABSENT | KEPT | FAILED, or self::KEPT_IN_FLIGHT
      */
     public function removeSourceFileIfUnreferenced(string $disk, string $fullPath, string $sourcePath): string
     {
-        // An ingest READS and CONVERTS its source before it takes the storage
-        // key's lock — an OCR run can take minutes — so between the two there
-        // is no row to find and no lock to block on: the sweep would see a
-        // perfectly ordinary orphan and delete the file out from under the
-        // conversion. The RESERVATION is the first guard and states the fact:
-        // the ingest takes it before it reads a byte and drops it in a
-        // `finally` (SourceInFlight, taken in IngestDocumentJob and in the
-        // inline `--sync` path), so a file someone is working on is never an
-        // orphan to decide today. The grace below still covers what a
-        // reservation cannot: a store that cannot exclude anyone (which
-        // answers `false` here, exactly as before — R43), a file written and
-        // queued whose job has not started yet, and a retry that could not
-        // re-take the reservation a killed worker left behind.
+        if (! ConversionArtifactStore::cacheStoreCanLock()) {
+            // No mutex at all: the age grace is the ONLY guard, exactly as
+            // it was before the reservation existed (R43).
+            return $this->removeSourceFileUnderGraceOnly($disk, $fullPath, $sourcePath);
+        }
+
         try {
-            $reserved = SourceInFlight::held($disk, $fullPath);
+            $reservation = SourceInFlight::acquireForRemoval($disk, $fullPath);
         } catch (\Throwable $e) {
             // A store that cannot answer cannot clear the file: reported and
             // counted `failed` (exit non-zero), never an unhandled throw that
@@ -868,26 +868,124 @@ class DocumentDeleter
 
             return ConversionArtifactStore::FAILED;
         }
-        if ($reserved) {
+        if ($reservation === null) {
+            // An ingest holds it right now — not a probe result that a new
+            // ingest could slip in behind, the ACTUAL, current holder.
             Log::info('DocumentDeleter: orphan source kept — an ingest holds its reservation right now', ['disk' => $disk, 'path' => $fullPath]);
 
             return self::KEPT_IN_FLIGHT;
         }
+
+        try {
+            // Still holding the reservation: no NEW ingest can start reading
+            // this object while this method decides. The age grace below
+            // covers the one thing the reservation itself cannot — a file
+            // written and queued whose job has not started yet — so it is
+            // checked here, under the same hold, rather than skipped.
+            $grace = self::orphanSourceGraceSeconds();
+            if ($grace > 0) {
+                try {
+                    $age = now()->getTimestamp() - (int) Storage::disk($disk)->lastModified($fullPath);
+                } catch (\Throwable $e) {
+                    // Flysystem throws for a MISSING object too: a file that
+                    // vanished between the snapshot and this call is `absent`
+                    // (the end state the caller wanted), not an undatable disk.
+                    if (! $this->sourceStillThere($disk, $fullPath)) {
+                        return ConversionArtifactStore::ABSENT;
+                    }
+                    // A disk that cannot date a file cannot prove it is old, and
+                    // a sweep that keeps everything for that reason must not read
+                    // as clean (R14): reported once per disk, counted, exit
+                    // non-zero.
+                    if (! isset(self::$warnedUndatableDisks[$disk])) {
+                        self::$warnedUndatableDisks[$disk] = true;
+                        Log::warning('DocumentDeleter: orphan sources cannot be dated on this disk, so none can be judged against the in-flight grace; the sweep reports them failed', ['disk' => $disk, 'path' => $fullPath, 'error' => $e->getMessage()]);
+                    }
+
+                    return ConversionArtifactStore::FAILED;
+                }
+                if ($age < $grace) {
+                    Log::info('DocumentDeleter: orphan source kept — younger than the in-flight grace; an ingest may be converting it right now', ['disk' => $disk, 'path' => $fullPath, 'age_seconds' => $age, 'grace_seconds' => $grace]);
+
+                    return self::KEPT_IN_FLIGHT;
+                }
+            }
+
+            // The storage-key lock protects the COMMIT (a row commit, a
+            // `markdown_only` drop); with artifacts OFF nothing else ever
+            // takes it, so this delete does not take it either (R43 — the
+            // sweep never depends on a lock store it was not configured
+            // for). This is unrelated to the reservation above, which is
+            // already held regardless of the artifacts setting.
+            $lock = null;
+            $held = null;
+            if (app(ConversionArtifactStore::class)->enabled()) {
+                try {
+                    $lock = SourceKeyLock::make($disk, $fullPath);
+                    $lock->block(SourceKeyLock::waitSeconds());
+                    $held = new HeldLock($lock, 'storage key');
+                } catch (LockTimeoutException) {
+                    // Another holder (a row commit, a drop) is on this key
+                    // right now: the file is in flight, not an orphan to
+                    // decide today.
+                    Log::info('DocumentDeleter: orphan source kept — the storage key is held by a concurrent writer; the next sweep decides', ['disk' => $disk, 'path' => $fullPath]);
+
+                    return ConversionArtifactStore::KEPT;
+                } catch (\Throwable $e) {
+                    Log::warning('DocumentDeleter: orphan source not removed — the storage key lock could not be taken', ['disk' => $disk, 'path' => $fullPath, 'exception' => $e::class, 'error' => $e->getMessage()]);
+
+                    return ConversionArtifactStore::FAILED;
+                }
+            }
+            try {
+                if ($this->firstDocumentReferencingStorageKey($disk, $fullPath, $sourcePath) !== null) {
+                    return ConversionArtifactStore::KEPT;
+                }
+                $storage = Storage::disk($disk);
+                if (! $storage->exists($fullPath)) {
+                    return ConversionArtifactStore::ABSENT;
+                }
+                // Right before the irreversible step, after the existence probe
+                // (a network round-trip on a bucket disk): a lapsed TTL refuses.
+                $held?->assertHeld('orphan source removal');
+
+                return $storage->delete($fullPath) ? ConversionArtifactStore::REMOVED : ConversionArtifactStore::FAILED;
+            } catch (\Throwable $e) {
+                Log::warning('DocumentDeleter: orphan source not removed — the reference gate could not decide', ['disk' => $disk, 'path' => $fullPath, 'exception' => $e::class, 'error' => $e->getMessage()]);
+
+                return ConversionArtifactStore::FAILED;
+            } finally {
+                HeldLock::releaseQuietly($lock);
+            }
+        } finally {
+            // The decision (and the delete, if it happened) is over: give the
+            // reservation back so an ingest queued behind it — or the next
+            // sweep, for a candidate this one kept — may proceed.
+            HeldLock::releaseQuietly($reservation);
+        }
+    }
+
+    /**
+     * The path for a store that cannot lock at all (R43): no reservation
+     * exists to close the read/convert window, so an age threshold is the
+     * sole guard against it, exactly as it was before {@see SourceInFlight}
+     * existed. The storage-key lock the mutex path would additionally take
+     * is a SEPARATE concern (it serializes against a commit, needed only
+     * while conversion artifacts are on) — with artifacts on and no lock
+     * store this refuses (FAILED); with artifacts off nothing else ever
+     * takes that lock either, so the delete proceeds unguarded by it, the
+     * same as before the reservation existed.
+     */
+    private function removeSourceFileUnderGraceOnly(string $disk, string $fullPath, string $sourcePath): string
+    {
         $grace = self::orphanSourceGraceSeconds();
         if ($grace > 0) {
             try {
                 $age = now()->getTimestamp() - (int) Storage::disk($disk)->lastModified($fullPath);
             } catch (\Throwable $e) {
-                // Flysystem throws for a MISSING object too: a file that
-                // vanished between the snapshot and this call is `absent`
-                // (the end state the caller wanted), not an undatable disk.
                 if (! $this->sourceStillThere($disk, $fullPath)) {
                     return ConversionArtifactStore::ABSENT;
                 }
-                // A disk that cannot date a file cannot prove it is old, and
-                // a sweep that keeps everything for that reason must not read
-                // as clean (R14): reported once per disk, counted, exit
-                // non-zero.
                 if (! isset(self::$warnedUndatableDisks[$disk])) {
                     self::$warnedUndatableDisks[$disk] = true;
                     Log::warning('DocumentDeleter: orphan sources cannot be dated on this disk, so none can be judged against the in-flight grace; the sweep reports them failed', ['disk' => $disk, 'path' => $fullPath, 'error' => $e->getMessage()]);
@@ -901,34 +999,18 @@ class DocumentDeleter
                 return self::KEPT_IN_FLIGHT;
             }
         }
-        $lock = null;
-        $held = null;
         if (app(ConversionArtifactStore::class)->enabled()) {
-            if (! ConversionArtifactStore::cacheStoreCanLock()) {
-                // A store that cannot lock — or one that grants every lock
-                // without excluding anyone — gives no serialization: the
-                // delete is refused and reported, never run believing the
-                // key is held (SEC-FAILCLOSED-001).
-                Log::warning('DocumentDeleter: orphan source not removed — the cache store cannot exclude concurrent holders, so the storage key lock is unavailable', ['disk' => $disk, 'path' => $fullPath]);
+            // Artifacts on: the storage-key lock the mutex path would take
+            // is genuinely needed (it serializes against a commit), and this
+            // deployment's cache store cannot provide it — refused, never
+            // run believing a key is held (SEC-FAILCLOSED-001).
+            Log::warning('DocumentDeleter: orphan source not removed — the cache store cannot exclude concurrent holders, so the storage key lock is unavailable', ['disk' => $disk, 'path' => $fullPath]);
 
-                return ConversionArtifactStore::FAILED;
-            }
-            try {
-                $lock = SourceKeyLock::make($disk, $fullPath);
-                $lock->block(SourceKeyLock::waitSeconds());
-                $held = new HeldLock($lock, 'storage key');
-            } catch (LockTimeoutException) {
-                // Another holder (a row commit, a drop) is on this key right
-                // now: the file is in flight, not an orphan to decide today.
-                Log::info('DocumentDeleter: orphan source kept — the storage key is held by a concurrent writer; the next sweep decides', ['disk' => $disk, 'path' => $fullPath]);
-
-                return ConversionArtifactStore::KEPT;
-            } catch (\Throwable $e) {
-                Log::warning('DocumentDeleter: orphan source not removed — the storage key lock could not be taken', ['disk' => $disk, 'path' => $fullPath, 'exception' => $e::class, 'error' => $e->getMessage()]);
-
-                return ConversionArtifactStore::FAILED;
-            }
+            return ConversionArtifactStore::FAILED;
         }
+        // Artifacts off: nothing else ever takes the storage-key lock
+        // either, so the delete proceeds unguarded by it — the same
+        // behaviour as before the reservation existed (R43).
         try {
             if ($this->firstDocumentReferencingStorageKey($disk, $fullPath, $sourcePath) !== null) {
                 return ConversionArtifactStore::KEPT;
@@ -937,20 +1019,14 @@ class DocumentDeleter
             if (! $storage->exists($fullPath)) {
                 return ConversionArtifactStore::ABSENT;
             }
-            // Right before the irreversible step, after the existence probe
-            // (a network round-trip on a bucket disk): a lapsed TTL refuses.
-            $held?->assertHeld('orphan source removal');
 
             return $storage->delete($fullPath) ? ConversionArtifactStore::REMOVED : ConversionArtifactStore::FAILED;
         } catch (\Throwable $e) {
             Log::warning('DocumentDeleter: orphan source not removed — the reference gate could not decide', ['disk' => $disk, 'path' => $fullPath, 'exception' => $e::class, 'error' => $e->getMessage()]);
 
             return ConversionArtifactStore::FAILED;
-        } finally {
-            HeldLock::releaseQuietly($lock);
         }
     }
-
     /**
      * Remove the row's own version artifact (ADR 0030 §8). Returns true when
      * NO artifact remains FOR THE ROW afterwards (deleted, never written,
@@ -1040,11 +1116,15 @@ class DocumentDeleter
         // ADR 0030 §3 — the shared source is removed under the SAME storage
         // key lock a row commit and a `markdown_only` drop hold, so a hard
         // delete cannot slip between a concurrent ingest's reference scan and
-        // its commit. (It does not cover that ingest's READ/CONVERT phase,
-        // which starts before any lock exists — the residual the sweep's
-        // in-flight grace narrows and the recorded reservation follow-up
-        // would close.) With artifacts off nothing else takes that lock, so
-        // none is taken here either (R43).
+        // its commit. That lock does not cover an ingest's READ/CONVERT
+        // phase, which starts before any lock exists — `removeSourceObjectUnderLock()`
+        // closes THAT window separately, by acquiring and holding the
+        // `SourceInFlight` reservation through its own removal decision (on
+        // a store that can lock at all; a store that cannot is the one
+        // residual left, same as the ingest side, R43). With artifacts off
+        // nothing else takes the STORAGE-KEY lock, so none is taken here
+        // either (R43) — that is independent of the reservation, which this
+        // method takes regardless of the artifacts setting.
         if (! app(ConversionArtifactStore::class)->enabled()) {
             return $this->removeSourceObjectUnderLock($disk, $fullPath, $documentId, $sourcePath, null);
         }
@@ -1159,74 +1239,93 @@ class DocumentDeleter
         // can own these bytes: an ingest that is READING or CONVERTING this
         // very object has no row yet, so the scan above finds nothing and the
         // delete would take the source out from under a conversion that then
-        // commits `full_copy` over an original that is already gone. A
-        // reserved source is therefore kept — not because the operator's
+        // commits `full_copy` over an original that is already gone. The
+        // reservation is ACQUIRED here, not merely probed, and HELD through
+        // the OCR purge and the delete below (released in the `finally`): a
+        // transient probe would leave the exact TOCTOU this exists to close
+        // — a new ingest could reserve and start reading in the instant
+        // between the probe and the delete. Holding it instead means such an
+        // ingest finds the key CONTENDED for as long as this method is still
+        // working ({@see SourceInFlight::reserve()}).
+        //
+        // A source already reserved is kept — not because the operator's
         // delete is refused (the ROW is already gone; `file_deleted: false`
         // is an outcome this method already reports for a key a writer holds
         // right now), but because the file waits for the orphan sweep, which
         // removes it once nobody is working on it and nobody references it.
-        // A store that cannot answer keeps the file the same way: this is the
-        // conservative direction, and a stale file must never fail a delete.
-        try {
-            $reserved = SourceInFlight::held($disk, $fullPath);
-        } catch (\Throwable $e) {
-            Log::warning('DocumentDeleter: cannot ask whether an ingest reserved this source; keeping the file for the sweep', [
-                'document_id' => $documentId,
-                'source_path' => $sourcePath,
-                'disk' => $disk,
-                'full_path' => $fullPath,
-                'error' => $e->getMessage(),
-            ]);
+        //
+        // A store that cannot lock at all gets NO reservation, same as the
+        // ingest side (R43): this residual — the read/convert race this
+        // reservation exists to close is not covered on such a store — is
+        // the one already documented before the reservation existed; nothing
+        // here makes it worse.
+        $reservation = null;
+        if (ConversionArtifactStore::cacheStoreCanLock()) {
+            try {
+                $reservation = SourceInFlight::acquireForRemoval($disk, $fullPath);
+            } catch (\Throwable $e) {
+                Log::warning('DocumentDeleter: cannot ask whether an ingest reserved this source; keeping the file for the sweep', [
+                    'document_id' => $documentId,
+                    'source_path' => $sourcePath,
+                    'disk' => $disk,
+                    'full_path' => $fullPath,
+                    'error' => $e->getMessage(),
+                ]);
 
-            return ['file_deleted' => false, 'ocr_assets_deleted' => null];
+                return ['file_deleted' => false, 'ocr_assets_deleted' => null];
+            }
+            if ($reservation === null) {
+                Log::info('DocumentDeleter: preserving physical file reserved by an ingest in flight', [
+                    'deleted_document_id' => $documentId,
+                    'source_path' => $sourcePath,
+                    'disk' => $disk,
+                    'full_path' => $fullPath,
+                ]);
+
+                return ['file_deleted' => false, 'ocr_assets_deleted' => null];
+            }
         }
-        if ($reserved) {
-            Log::info('DocumentDeleter: preserving physical file reserved by an ingest in flight', [
-                'deleted_document_id' => $documentId,
-                'source_path' => $sourcePath,
-                'disk' => $disk,
-                'full_path' => $fullPath,
-            ]);
-
-            return ['file_deleted' => false, 'ocr_assets_deleted' => null];
-        }
-
-        // v8.36 / ADR 0029 — the OCR assets (`{fullPath}.ocr/`) belong to the
-        // same storage key and pass the same reference gate above: they go
-        // when the last row referencing the source goes, never before.
-        // This is the FIRST irreversible step of the section, so it asserts
-        // too: a run purged under a lapsed lock is a paid re-run for whoever
-        // holds the key now.
-        $held?->assertHeld('OCR asset purge');
-        $ocrAssetsDeleted = $this->removeOcrAssets($disk, $fullPath, $documentId);
 
         try {
-            $storage = Storage::disk($disk);
-            if (! $storage->exists($fullPath)) {
+            // v8.36 / ADR 0029 — the OCR assets (`{fullPath}.ocr/`) belong to
+            // the same storage key and pass the same reference gate above:
+            // they go when the last row referencing the source goes, never
+            // before. This is the FIRST irreversible step of the section, so
+            // it asserts too: a run purged under a lapsed lock is a paid
+            // re-run for whoever holds the key now.
+            $held?->assertHeld('OCR asset purge');
+            $ocrAssetsDeleted = $this->removeOcrAssets($disk, $fullPath, $documentId);
+
+            try {
+                $storage = Storage::disk($disk);
+                if (! $storage->exists($fullPath)) {
+                    return ['file_deleted' => false, 'ocr_assets_deleted' => $ocrAssetsDeleted];
+                }
+                // The reference scan and the OCR purge above are round-trips: the
+                // delete runs only while the key is still ours (a lapse throws,
+                // the caller keeps the file).
+                $held?->assertHeld('source file removal');
+
+                return ['file_deleted' => (bool) $storage->delete($fullPath), 'ocr_assets_deleted' => $ocrAssetsDeleted];
+            } catch (LockLostException $e) {
+                // Order matters: LockLostException IS a RuntimeException, and the
+                // catch-all below would report a lapsed lock as a disk failure.
+                throw $e;
+            } catch (\Throwable $e) {
+                // A stale/missing file on the disk must never stop a DB deletion
+                // from completing — log and move on.
+                Log::warning('DocumentDeleter: failed to remove physical file', [
+                    'document_id' => $documentId,
+                    'source_path' => $sourcePath,
+                    'disk' => $disk,
+                    'full_path' => $fullPath,
+                    'error' => $e->getMessage(),
+                ]);
+
                 return ['file_deleted' => false, 'ocr_assets_deleted' => $ocrAssetsDeleted];
             }
-            // The reference scan and the OCR purge above are round-trips: the
-            // delete runs only while the key is still ours (a lapse throws,
-            // the caller keeps the file).
-            $held?->assertHeld('source file removal');
-
-            return ['file_deleted' => (bool) $storage->delete($fullPath), 'ocr_assets_deleted' => $ocrAssetsDeleted];
-        } catch (LockLostException $e) {
-            // Order matters: LockLostException IS a RuntimeException, and the
-            // catch-all below would report a lapsed lock as a disk failure.
-            throw $e;
-        } catch (\Throwable $e) {
-            // A stale/missing file on the disk must never stop a DB deletion
-            // from completing — log and move on.
-            Log::warning('DocumentDeleter: failed to remove physical file', [
-                'document_id' => $documentId,
-                'source_path' => $sourcePath,
-                'disk' => $disk,
-                'full_path' => $fullPath,
-                'error' => $e->getMessage(),
-            ]);
-
-            return ['file_deleted' => false, 'ocr_assets_deleted' => $ocrAssetsDeleted];
+        } finally {
+            HeldLock::releaseQuietly($reservation);
         }
     }
 

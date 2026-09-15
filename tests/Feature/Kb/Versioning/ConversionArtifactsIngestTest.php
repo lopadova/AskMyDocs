@@ -364,6 +364,89 @@ Inert knob.", 'docs/inert.md');
     }
 
     /**
+     * A `content_hash` that is present but WRONG (a stale value left by an
+     * earlier interrupted repair) must not be trusted as the expected hash:
+     * the repair compares against the row's authoritative `document_hash` —
+     * the same choice `kb:artifacts-backfill` makes — and corrects the stale
+     * value once the on-disk artifact verifies against it. Trusting the
+     * stale value instead would either refuse a legitimate repair (comparing
+     * fresh bytes against the wrong hash) or leave the row reporting
+     * `mismatch` forever despite a provably correct file on disk.
+     */
+    public function test_an_identical_re_ingest_repairs_a_stale_content_hash_using_the_authoritative_document_hash(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => true]);
+        $markdown = "# Stale hash\n\nRepaired via document_hash, not the stale content_hash.";
+        $doc = $this->ingestMarkdown($markdown, 'docs/stale-hash.md');
+        $correctHash = $doc->fresh()->document_hash;
+        $this->assertSame($correctHash, $doc->fresh()->content_hash);
+
+        // A stale value: present, but not the version's actual hash.
+        $stale = str_repeat('f', 64);
+        $doc->updateUnscopedWithinOwnTenant(['content_hash' => $stale]);
+        $this->assertSame($stale, $doc->fresh()->content_hash);
+
+        $again = $this->ingestMarkdown($markdown, 'docs/stale-hash.md');
+
+        $this->assertSame($doc->id, $again->id);
+        $this->assertSame($correctHash, $again->fresh()->content_hash);
+    }
+
+    /**
+     * A soft-deleted row occupies the SAME `(tenant_id, project_key,
+     * source_path, version_hash)` slot the unique index protects
+     * (`uq_kb_doc_tenant_version`) — the index does not honour soft-delete.
+     * An identical re-ingest after a soft delete must restore the SAME row
+     * (stamping a `restores` provenance entry) instead of missing it and
+     * crashing `updateOrCreate()` on the unique constraint.
+     */
+    public function test_an_identical_re_ingest_after_soft_delete_restores_the_row_instead_of_crashing(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => true]);
+        $markdown = "# Soft deleted\n\nSame bytes come back.";
+        $doc = $this->ingestMarkdown($markdown, 'docs/soft-deleted.md');
+        $this->assertTrue($doc->delete());
+        $this->assertSoftDeleted('knowledge_documents', ['id' => $doc->id]);
+
+        $again = $this->ingestMarkdown($markdown, 'docs/soft-deleted.md');
+
+        $this->assertSame($doc->id, $again->id);
+        $fresh = $again->fresh();
+        $this->assertNotNull($fresh);
+        $this->assertNull($fresh->deleted_at);
+        $restores = is_array($fresh->metadata) ? ($fresh->metadata['restores'] ?? null) : null;
+        $this->assertIsArray($restores);
+        $this->assertNotEmpty($restores);
+        $this->assertSame('system:ingest', $restores[array_key_last($restores)]['actor']);
+    }
+
+    /**
+     * `forceReembed` bypasses `persistFromDrafts()`'s OWN idempotent
+     * short-circuit (the one the previous test exercises) and reaches
+     * `persistDocumentAndChunks()` directly — that method must restore a
+     * trashed match on its own before `updateOrCreate()`, or the same crash
+     * resurfaces on this different code path.
+     */
+    public function test_a_forced_reembed_after_soft_delete_restores_the_row_instead_of_crashing(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => true]);
+        $markdown = "# Reembed after soft delete\n\nSame bytes, forced re-embed.";
+        $doc = $this->ingestMarkdown($markdown, 'docs/reembed-soft-deleted.md');
+        $this->assertTrue($doc->delete());
+        $this->assertSoftDeleted('knowledge_documents', ['id' => $doc->id]);
+
+        $again = app(DocumentIngestor::class)->ingest('eng', new SourceDocument(
+            sourcePath: 'docs/reembed-soft-deleted.md', mimeType: 'text/markdown', bytes: $markdown,
+            externalUrl: null, externalId: null, connectorType: 'local', metadata: ['disk' => 'kb', 'prefix' => ''],
+        ), 'Note', forceReembed: true);
+
+        $this->assertSame($doc->id, $again->id);
+        $fresh = $again->fresh();
+        $this->assertNotNull($fresh);
+        $this->assertNull($fresh->deleted_at);
+    }
+
+    /**
      * ADR 0030 §3 / R21 — the `markdown_only` drop and the row commits of the
      * same storage key share one lock. A single process cannot interleave two
      * real transactions on SQLite, so the PERSIST side is exercised against a
