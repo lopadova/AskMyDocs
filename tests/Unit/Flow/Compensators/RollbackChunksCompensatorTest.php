@@ -116,13 +116,15 @@ final class RollbackChunksCompensatorTest extends TestCase
     }
 
     /**
-     * R14 — within the bound tenant, "already gone" and "exists but I cannot
-     * see it" are different facts and only one is benign: an ACCESS scope
-     * narrowing the read would leave the orphan row AND its chunks in place
-     * while the compensation returned silently. So the probe lifts that scope
-     * and says so.
+     * v8.36 / PR #479 Copilot review — a document hidden by the CURRENT
+     * actor's project/path ACL is still this tenant's row to unwind:
+     * compensation is a system-level cleanup, not a user-facing read, so
+     * AccessScopeScope must not stop it from finding (and deleting) a row
+     * that belongs to the bound tenant. An earlier revision only logged a
+     * warning here and left the orphan row, its chunks and its graph
+     * projection behind (R14) — this proves the actual cleanup happens.
      */
-    public function test_a_row_hidden_by_the_access_scope_is_reported_not_silently_skipped(): void
+    public function test_a_row_hidden_by_the_access_scope_is_still_compensated(): void
     {
         $cache = Mockery::mock(EmbeddingCacheService::class);
         $cache->shouldReceive('generate')->andReturn(new EmbeddingsResponse(
@@ -142,22 +144,24 @@ final class RollbackChunksCompensatorTest extends TestCase
         );
 
         // A reader with no project membership: AccessScopeScope narrows every
-        // KnowledgeDocument read to nothing, so the row is invisible to the
-        // compensator's scoped lookup while still sitting in this tenant.
+        // KnowledgeDocument READ to nothing for this actor, while the row
+        // still sits in this tenant — the fact this compensator must act on.
         config(['rbac.enforced' => true]);
         $this->actingAs(\App\Models\User::create([
             'name' => 'Scoped', 'email' => 'scoped@example.test', 'password' => bcrypt('secret'),
         ]));
 
-        \Illuminate\Support\Facades\Log::spy();
         $this->app->make(RollbackChunksCompensator::class)->compensate(
             new FlowContext(flowRunId: 'rollback-run', definitionName: 'kb.ingest', input: ['tenant_id' => 'acme']),
             FlowStepResult::success(output: ['knowledge_document_id' => (int) $ours->id]),
         );
 
-        \Illuminate\Support\Facades\Log::shouldHaveReceived('warning')
-            ->withArgs(static fn (string $message): bool => str_contains($message, 'not visible under the bound access scope'))
-            ->once();
+        $this->assertSame(
+            0,
+            KnowledgeDocument::withoutGlobalScopes()->whereKey($ours->id)->count(),
+            'the row must be gone, not merely reported as invisible',
+        );
+        $this->assertSame(0, KnowledgeChunk::where('knowledge_document_id', $ours->id)->count());
     }
 
     /**

@@ -9,7 +9,6 @@ use App\Models\KnowledgeDocument;
 use App\Scopes\AccessScopeScope;
 use App\Services\Kb\DocumentDeleter;
 use App\Support\TenantContext;
-use Illuminate\Support\Facades\Log;
 use Padosoft\LaravelFlow\FlowCompensator;
 use Padosoft\LaravelFlow\FlowContext;
 use Padosoft\LaravelFlow\FlowStepResult;
@@ -61,37 +60,24 @@ final class RollbackChunksCompensator implements FlowCompensator
         // R30 — and scoped to the tenant the context just bound: a stale or
         // replayed flow output naming another tenant's id must find nothing,
         // never delete that tenant's row (and, since v8.36, its artifact).
-        $document = KnowledgeDocument::withTrashed()
+        //
+        // AccessScopeScope is deliberately LIFTED here too, on the PRIMARY
+        // lookup: it narrows what the CURRENT authenticated actor may READ,
+        // which has nothing to do with whether this tenant-owned row needs
+        // to be unwound. Compensation is a system-level cleanup, not a
+        // user-facing read — a row hidden by a request-scoped project/path
+        // ACL is exactly as much this saga's to roll back as a visible one.
+        // Applying the scope here (as an earlier revision did) would leave
+        // the document, its chunks, its graph projection and its conversion
+        // artifact behind while reporting nothing at all (R14) — the tenant
+        // filter above is the boundary that actually matters for this
+        // operation, not the current reader's project membership.
+        $document = KnowledgeDocument::withoutGlobalScope(AccessScopeScope::class)
+            ->withTrashed()
             ->forTenant(app(TenantContext::class)->current())
             ->find($documentId);
         if ($document === null) {
-            // Already gone — saga rollback is idempotent by contract. But
-            // "gone" and "not visible to me" are different facts and only one
-            // of them is benign: a request-scoped ACCESS scope narrowing the
-            // read would leave the orphan row AND its chunks in place while
-            // the compensation reported nothing at all (R14). Probe once with
-            // that scope lifted, and say so.
-            //
-            // The TENANT filter stays on the probe (R30). Dropping it would
-            // answer "does id N exist anywhere?", which is a cross-tenant
-            // existence oracle a replayed flow output could walk — and it
-            // would tell us nothing we may act on anyway, since a row in
-            // another tenant is not this compensation's to roll back. What
-            // is left is exactly the question worth asking: is there a row
-            // HERE that this reader cannot see?
-            $existsElsewhere = KnowledgeDocument::withoutGlobalScope(AccessScopeScope::class)
-                ->withTrashed()
-                ->forTenant(app(TenantContext::class)->current())
-                ->whereKey($documentId)
-                ->exists();
-            if ($existsElsewhere) {
-                Log::warning('RollbackChunksCompensator: the row exists in this tenant but is not visible under the bound access scope — nothing was rolled back', [
-                    'knowledge_document_id' => $documentId,
-                    'tenant_id' => app(TenantContext::class)->current(),
-                    'flow_run_id' => $context->flowRunId,
-                ]);
-            }
-
+            // Already gone — saga rollback is idempotent by contract.
             return;
         }
 
