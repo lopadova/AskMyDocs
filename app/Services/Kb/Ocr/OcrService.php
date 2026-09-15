@@ -1138,9 +1138,7 @@ final class OcrService
 
         $metadata = is_array($document->metadata) ? $document->metadata : [];
         $disk = StorageNamespace::diskOf($metadata);
-        $prefix = array_key_exists('prefix', $metadata)
-            ? (string) $metadata['prefix']
-            : (string) config('kb.sources.path_prefix', '');
+        $prefix = StorageNamespace::recordedPrefix($metadata);
         $sourcePath = KbPath::normalize((string) $document->source_path);
         // The same key the ingest resolved: prefix + source through the one
         // normaliser (a prefix with backslashes or repeated separators reads

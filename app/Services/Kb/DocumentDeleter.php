@@ -350,9 +350,7 @@ class DocumentDeleter
 
         $metadata = is_array($document->metadata) ? $document->metadata : [];
         $disk = StorageNamespace::diskOf($metadata);
-        $prefix = array_key_exists('prefix', $metadata)
-            ? (string) $metadata['prefix']
-            : (string) config('kb.sources.path_prefix', '');
+        $prefix = StorageNamespace::recordedPrefix($metadata);
         // R1 — every KB source path goes through KbPath::normalize() so
         // the resulting key is byte-identical to what the ingest pipeline
         // wrote (collapses `//`, normalizes `\\`, rejects `..` traversal).
@@ -466,9 +464,7 @@ class DocumentDeleter
 
         $metadata = is_array($document->metadata) ? $document->metadata : [];
         $disk = StorageNamespace::diskOf($metadata);
-        $prefix = array_key_exists('prefix', $metadata)
-            ? (string) $metadata['prefix']
-            : (string) config('kb.sources.path_prefix', '');
+        $prefix = StorageNamespace::recordedPrefix($metadata);
         // R1 — same KbPath::normalize() guard as deleteRowsOnly().
         // Iteration 4 (PR #116) — resolveFullPath returns null when the
         // path is un-normalisable (traversal, empty); skip the disk
@@ -1363,9 +1359,7 @@ class DocumentDeleter
         // resolution in the deleting consumers — they treat it as a
         // reference by path ({@see documentRecordsStorageNamespace()}).
         $candidateDisk = StorageNamespace::diskOf($metadata);
-        $candidatePrefix = array_key_exists('prefix', $metadata)
-            ? (string) $metadata['prefix']
-            : (string) config('kb.sources.path_prefix', '');
+        $candidatePrefix = StorageNamespace::recordedPrefix($metadata);
         $candidateFullPath = $this->resolveFullPath($candidatePrefix, (string) $document->source_path);
         if ($candidateFullPath === null) {
             // The row records a namespace that cannot be resolved (a prefix or

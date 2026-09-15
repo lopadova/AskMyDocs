@@ -122,7 +122,9 @@ when that env is false the slot never runs regardless of its `SCHEDULE_*` value.
   previews the in-flight grace (a modification time is deterministic) but not
   `kept_meanwhile` from a held key: who holds a key at that instant is not
   something a preview can know. The candidate lists are bounded by
-  `KB_ORPHAN_SCAN_MAX_ITEMS` (default 50 000, `0` disables): a sweep that hits
+  `KB_ORPHAN_SCAN_MAX_ITEMS` (default 50 000; not switchable off — a
+  non-positive value is the default, since an unbounded walk would OOM the
+  worker on a large disk): a sweep that hits
   the cap reports `scan_truncated=1` and exits non-zero rather than presenting
   a partial pass as a complete one, and the next run continues where it
   stopped. A source younger than

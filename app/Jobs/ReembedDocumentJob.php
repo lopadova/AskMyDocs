@@ -200,9 +200,7 @@ class ReembedDocumentJob implements ShouldQueue
         if ($recorded === null) {
             return ['disk' => (string) $current['disk'], 'absolute' => (string) $current['absolute']];
         }
-        $prefix = array_key_exists('prefix', $metadata)
-            ? trim(str_replace('\\', '/', (string) $metadata['prefix']), '/')
-            : trim((string) config('kb.sources.path_prefix', ''), '/');
+        $prefix = trim(str_replace('\\', '/', StorageNamespace::recordedPrefix($metadata)), '/');
         $relative = (string) $current['relative'];
 
         return ['disk' => $recorded, 'absolute' => KbPath::normalize($prefix === '' ? $relative : $prefix.'/'.$relative)];

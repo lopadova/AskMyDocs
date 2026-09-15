@@ -14,6 +14,7 @@ use App\Models\KnowledgeDocument;
 use App\Services\Admin\Pdf\PdfRenderer;
 use App\Services\Kb\Canonical\CanonicalParser;
 use App\Services\Kb\DocumentDeleter;
+use App\Support\Kb\StorageNamespace;
 use App\Support\KbDiskResolver;
 use App\Support\KbPath;
 use Illuminate\Http\JsonResponse;
@@ -743,9 +744,7 @@ class KbDocumentController extends Controller
     private function fullPathFor(KnowledgeDocument $document, string $normalizedPath): string
     {
         $metadata = is_array($document->metadata) ? $document->metadata : [];
-        $prefix = array_key_exists('prefix', $metadata)
-            ? (string) $metadata['prefix']
-            : (string) config('kb.sources.path_prefix', '');
+        $prefix = StorageNamespace::recordedPrefix($metadata);
         $prefix = trim($prefix, '/');
 
         return $prefix === '' ? $normalizedPath : $prefix.'/'.$normalizedPath;

@@ -928,7 +928,7 @@ class PruneOrphanFilesCommandTest extends TestCase
             ->assertExitCode(1);
     }
 
-    /** The cap is off by default in these tests' fixtures, so an ordinary sweep never reports truncation. */
+    /** The default cap is far above these fixtures, so an ordinary sweep never reports truncation. */
     public function test_an_ordinary_sweep_is_not_reported_as_truncated(): void
     {
         Storage::disk('kb')->put('docs/orphan-a.md', 'a');
@@ -936,6 +936,25 @@ class PruneOrphanFilesCommandTest extends TestCase
         $this->artisan('kb:prune-orphan-files')
             ->doesntExpectOutputToContain('scan_truncated=')
             ->assertExitCode(0);
+    }
+
+    /**
+     * SEC-SETTING-SHAPE-001 — the cap cannot be switched OFF while the walk
+     * collects its candidates in memory: `0`, a negative or a non-number is
+     * the documented default, never an unbounded sweep that would OOM the
+     * worker on a large shared disk — silently, which is the worst way to
+     * learn it.
+     */
+    public function test_a_non_positive_cap_is_the_default_not_an_unbounded_sweep(): void
+    {
+        foreach ([0, -5, 'off', null] as $configured) {
+            config(['kb.sources.orphan_scan_max_items' => $configured]);
+            Storage::disk('kb')->put('docs/orphan-a.md', 'a');
+
+            $this->artisan('kb:prune-orphan-files')
+                ->doesntExpectOutputToContain('scan_truncated=')
+                ->assertExitCode(0);
+        }
     }
 
 }

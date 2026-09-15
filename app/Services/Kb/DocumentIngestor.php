@@ -848,9 +848,7 @@ class DocumentIngestor
             return null;
         }
         $disk = StorageNamespace::diskOf($metadata);
-        $prefix = array_key_exists('prefix', $metadata)
-            ? (string) $metadata['prefix']
-            : (string) config('kb.sources.path_prefix', '');
+        $prefix = StorageNamespace::recordedPrefix($metadata);
         $final = $store->pathFor(app(TenantContext::class)->current(), $projectKey, $sourcePath, $versionHash, $prefix);
 
         return ['disk' => $disk, 'tmp' => $store->writeTemp($disk, $final, $markdown), 'final' => $final];
@@ -1284,9 +1282,7 @@ class DocumentIngestor
         }
         $store = app(ConversionArtifactStore::class);
         $artifact = ['disk' => $disk, 'final' => $final];
-        $prefix = array_key_exists('prefix', $metadata)
-            ? (string) $metadata['prefix']
-            : (string) config('kb.sources.path_prefix', '');
+        $prefix = StorageNamespace::recordedPrefix($metadata);
         try {
             $sourcePath = KbPath::normalize((string) $document->source_path);
             $original = $prefix === '' ? $sourcePath : KbPath::normalize($prefix.'/'.$sourcePath);
@@ -1492,9 +1488,7 @@ class DocumentIngestor
 
                         continue;
                     }
-                    $rowPrefix = array_key_exists('prefix', $rowMetadata)
-                        ? (string) $rowMetadata['prefix']
-                        : (string) config('kb.sources.path_prefix', '');
+                    $rowPrefix = StorageNamespace::recordedPrefix($rowMetadata);
                     try {
                         $rowFull = $rowPrefix === '' ? KbPath::normalize((string) $row->source_path) : KbPath::normalize($rowPrefix.'/'.$row->source_path);
                     } catch (\InvalidArgumentException) {
@@ -1587,9 +1581,7 @@ class DocumentIngestor
             return $commit();
         }
         $disk = StorageNamespace::diskOf($metadata);
-        $prefix = array_key_exists('prefix', $metadata)
-            ? (string) $metadata['prefix']
-            : (string) config('kb.sources.path_prefix', '');
+        $prefix = StorageNamespace::recordedPrefix($metadata);
         try {
             $fullPath = $prefix === '' ? KbPath::normalize($sourcePath) : KbPath::normalize($prefix.'/'.$sourcePath);
         } catch (\InvalidArgumentException) {

@@ -82,9 +82,11 @@ final class RunBenchmarkCommand extends Command
         $this->renderScorecard($card);
         if (($card['corpus_failures'] ?? []) !== []) {
             // A partial corpus is a partial benchmark: fewer distractors
-            // flatter the ranking metrics, so the gate must never read a
-            // truncated load as a clean pass without saying so (R14).
-            $this->warn(sprintf('%d corpus file(s) could not be ingested and were NOT benchmarked: %s', count($card['corpus_failures']), implode(', ', $card['corpus_failures'])));
+            // flatter the ranking metrics, so the run does not pass — the
+            // runner already set `passed` to false, which is what `--gate`
+            // reads and what the persisted scorecard records. This line says
+            // WHICH files, so the operator can fix them (R14).
+            $this->warn(sprintf('%d corpus file(s) could not be ingested and were NOT benchmarked — the run cannot pass: %s', count($card['corpus_failures']), implode(', ', $card['corpus_failures'])));
         }
         $reportPath = $this->persist($card);
         $this->line("\nReport: {$reportPath}");

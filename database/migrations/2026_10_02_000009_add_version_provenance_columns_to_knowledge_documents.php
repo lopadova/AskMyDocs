@@ -42,16 +42,18 @@ return new class extends Migration
         // every name in the batch and would fail on the missing one — or, if
         // it were ever restored, drop these columns twice. The stale entry
         // names exactly the columns THIS migration owns, so removing it leaves
-        // one record for one schema change. Best-effort: a deployment that
-        // never ran the old name has nothing to delete, and a failure here
-        // must not abort a migration whose schema work already succeeded.
-        try {
+        // one record for one schema change.
+        //
+        // The only condition tested here is the one that is legitimately
+        // absent — no `migrations` table at all (a `schema:dump` install).
+        // Everything else PROPAGATES: a delete the database refuses is the
+        // reconciliation failing, and swallowing it would record this
+        // migration as applied while the stale row survives — precisely the
+        // broken rollback this block exists to prevent, reported as success.
+        if (Schema::hasTable('migrations')) {
             DB::table('migrations')
                 ->where('migration', '2026_10_02_000008_add_version_provenance_columns_to_knowledge_documents')
                 ->delete();
-        } catch (\Throwable) {
-            // No `migrations` table (a schema:dump install) or a driver that
-            // refuses the write: the schema is correct either way.
         }
     }
 

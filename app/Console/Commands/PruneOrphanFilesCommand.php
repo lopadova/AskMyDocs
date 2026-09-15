@@ -233,10 +233,10 @@ class PruneOrphanFilesCommand extends Command
         // default (1000 vs 50 000) this is exactly today's behaviour, and it
         // keeps the cap meaningful for a small configured value instead of
         // deferring every decision to a batch that may never fill.
-        $batchSize = $cap > 0 ? max(1, min(1000, $cap)) : 1000;
+        $batchSize = max(1, min(1000, $cap));
         $truncated = false;
         foreach (LazyDiskListing::files($storage, $prefix) as $raw) {
-            if ($cap > 0 && (count($orphans) + count($trees) + count($runs)) >= $cap) {
+            if ((count($orphans) + count($trees) + count($runs)) >= $cap) {
                 // Bounded, and honest about it: what was collected is swept,
                 // the rest waits for the next run, and the caller exits
                 // non-zero so a truncated sweep is never read as a clean one.
@@ -283,15 +283,23 @@ class PruneOrphanFilesCommand extends Command
 
     /**
      * How many candidates one sweep may hold before it stops and reports
-     * itself truncated (`kb.sources.orphan_scan_max_items`). A value that is
-     * not a positive integer disables the cap — stated, not guessed: an
-     * operator who wants an unbounded sweep says so with `0`.
+     * itself truncated (`kb.sources.orphan_scan_max_items`).
+     *
+     * The cap cannot be switched OFF while the walk still collects its
+     * candidates in memory: `0`, a negative, a non-number — any value that is
+     * not a positive integer — is the documented default, not an unbounded
+     * sweep. An operator who disabled it would get exactly the failure the cap
+     * exists for, a nightly command that OOMs the worker on a large shared
+     * disk, and would get it silently. Raising it is the supported knob; the
+     * follow-up that removes the need for it is the streaming walk recorded in
+     * the hand-off (SEC-SETTING-SHAPE-001: a setting cannot coerce to
+     * unprotected).
      */
     private function scanCap(): int
     {
         $configured = config('kb.sources.orphan_scan_max_items', 50000);
 
-        return is_numeric($configured) && (int) $configured >= 0 ? (int) $configured : 50000;
+        return is_numeric($configured) && (int) $configured >= 1 ? (int) $configured : 50000;
     }
 
     /**

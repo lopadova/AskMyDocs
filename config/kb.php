@@ -668,10 +668,12 @@ return [
         'timeline_limit' => (int) env('KB_VERSIONS_TIMELINE_LIMIT', 100),
         // ADR 0030 §5 — a version's artifact state is a READ + hash check, so
         // a timeline page would fetch one object per row from a bucket on
-        // every listing. The result is memoized for this many seconds under a
-        // key carrying disk + path + content_hash (all immutable for a
-        // published artifact, so a republished version never reads a stale
-        // entry). `0` verifies on every read: the badge can then never lag,
+        // every listing. Only the VERIFIED state is memoized, for this many
+        // seconds, under a key of disk + path — and the value stored is the
+        // `content_hash` that was proved. A read is a hit only when the row's
+        // hash still equals that value, so a republished version (a different
+        // hash) never reads a stale entry, and a repairable state (missing,
+        // mismatch) is always re-read. `0` verifies on every read: the badge can then never lag,
         // at the cost of one object read per listed version. A file deleted
         // or tampered inside the window may keep its badge until the entry
         // expires; the content and diff endpoints always re-read and report
@@ -959,7 +961,10 @@ return [
          * bounds the CANDIDATE lists, which on a large shared disk would
          * otherwise grow with the whole listing. A truncated sweep reports
          * `scan_truncated=1` and exits non-zero — the next run continues.
-         * `0` disables the cap (an unbounded sweep, stated on purpose).
+         * The cap cannot be switched off while the walk collects in memory:
+         * a value that is not a positive integer is this default, never an
+         * unbounded sweep (it would OOM the worker on a large disk, silently).
+         * Raise it if a run truncates too often.
          */
         'orphan_scan_max_items' => env('KB_ORPHAN_SCAN_MAX_ITEMS', 50000),
         /*

@@ -43,4 +43,25 @@ final class StorageNamespace
     {
         return self::recordedDisk($metadata) ?? (string) config('kb.sources.disk', 'kb');
     }
+
+    /**
+     * The prefix a row's objects live under: the recorded one when it is a
+     * STRING, else the configured source prefix.
+     *
+     * The `is_string` guard is the point. `metadata` is persisted JSON and a
+     * legacy or directly-ingested row can carry anything under `prefix`; a
+     * bare `(string)` cast turns an array into the literal `"Array"` (with a
+     * PHP warning) and a path composed from that silently names a namespace
+     * nobody recorded. An explicit empty string is NOT malformed — it is a
+     * row that recorded "no prefix" and must keep it, never the configured
+     * default. One reading for every consumer, exactly like recordedDisk().
+     *
+     * @param  mixed  $metadata  the row's `metadata` (an array, or anything else — treated as no namespace)
+     */
+    public static function recordedPrefix(mixed $metadata): string
+    {
+        $prefix = is_array($metadata) ? ($metadata['prefix'] ?? null) : null;
+
+        return is_string($prefix) ? $prefix : (string) config('kb.sources.path_prefix', '');
+    }
 }

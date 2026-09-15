@@ -87,7 +87,14 @@ final class BenchmarkRunner
             'queries' => $rows,
             'aggregate' => $aggregate,
             'thresholds' => $thresholds,
-            'passed' => $this->meetsThresholds($aggregate, $thresholds),
+            // A truncated corpus cannot PASS. Fewer distractors flatter every
+            // ranking metric, so thresholds met over a partial load say
+            // nothing about the real corpus — and `--gate` reads exactly this
+            // field. Warning about it while still reporting `passed: true`
+            // would let a broken corpus file turn a gate green (R14); the
+            // scorecard that is rendered, persisted and gated all carry the
+            // same verdict.
+            'passed' => $this->corpusFailures === [] && $this->meetsThresholds($aggregate, $thresholds),
         ];
     }
 
