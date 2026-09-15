@@ -65,6 +65,36 @@ final class StorageNamespaceTest extends TestCase
         $this->assertSame([], $offenders, 'every consumer must read the recorded prefix through StorageNamespace::recordedPrefix()');
     }
 
+    /**
+     * The other way to get a second, different judgement: read `metadata.disk`
+     * / `metadata.prefix` back through a JSON SELECTOR as a column and test it
+     * with `is_string()`. A JSON driver returns a non-scalar as its JSON TEXT
+     * (`[]`, `{"disk":"kb"}`) and a number as its literal, so that test passes
+     * for values this class calls malformed — and the consumer then acts on a
+     * namespace nobody recorded. Narrow in SQL, judge in PHP.
+     */
+    public function test_no_consumer_judges_a_recorded_namespace_from_a_json_selector_column(): void
+    {
+        $root = dirname(__DIR__, 4);
+        $offenders = [];
+        foreach (['app/Services/Kb', 'app/Console/Commands', 'app/Jobs', 'app/Http/Controllers/Api'] as $dir) {
+            $iterator = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($root.'/'.$dir));
+            foreach ($iterator as $file) {
+                if ($file->getExtension() !== 'php') {
+                    continue;
+                }
+                $source = (string) file_get_contents($file->getPathname());
+                // `metadata->disk as …` / `metadata->prefix as …` in a select:
+                // the value leaves SQL as a column and is judged there.
+                if (preg_match('/metadata->(disk|prefix)\s+as\s+/i', $source) === 1) {
+                    $offenders[] = str_replace($root.'/', '', $file->getPathname());
+                }
+            }
+        }
+
+        $this->assertSame([], $offenders, 'select the metadata and judge it through StorageNamespace; a JSON selector column is a second, weaker judgement');
+    }
+
     /** An explicit empty string is a row that recorded "no prefix" — it keeps it, never the configured default. */
     public function test_an_explicit_empty_prefix_is_recorded_not_replaced(): void
     {

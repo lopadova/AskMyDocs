@@ -303,6 +303,65 @@ final class KbDocumentVersionControllerTest extends TestCase
     }
 
     /**
+     * The probe has to see what the INDEX sees, not what this reader is
+     * allowed to read. A soft-deleted holder keeps its slug — the unique
+     * still rejects the write — so a probe under the default scopes would
+     * report "free" and hand the restore the very 500 it exists to prevent.
+     * (`AccessScopeScope` is lifted for the same structural reason: an
+     * ACL-hidden holder is invisible to the reader and not to the database.)
+     */
+    public function test_a_reclaimed_slug_held_by_a_soft_deleted_document_still_degrades_the_restore(): void
+    {
+        $admin = $this->makeAdmin();
+        $archived = $this->makeVersion('v1rrr', 'archived', 'old body', wasCanonical: true);
+        $this->makeVersion('v2sss', 'active', 'new body');
+        $holder = $this->makeVersion('v3ttt', 'active', 'other doc', canonical: true, sourcePath: 'docs/other.md');
+        $holder->delete(); // soft — the row, and its slug, are still there
+        \Illuminate\Support\Facades\Log::spy();
+
+        $this->actingAs($admin)->postJson("/api/admin/kb/documents/{$archived->id}/restore-version")
+            ->assertOk()
+            ->assertJsonPath('data.status', 'active')
+            ->assertJsonPath('data.is_canonical', false);
+
+        $archived->refresh();
+        $this->assertSame('active', $archived->status, 'the content is restored either way');
+        $this->assertNull($archived->slug, 'the slug a trashed row still holds is not reclaimed');
+        $this->assertSame('dec-1', KnowledgeDocument::withTrashed()->findOrFail($holder->id)->slug);
+        \Illuminate\Support\Facades\Log::shouldHaveReceived('warning')
+            ->withArgs(static fn (string $message): bool => str_contains($message, 'held by another document'))
+            ->once();
+    }
+
+    /**
+     * The other direction: since 2026_10_02_000011 the uniques start with
+     * `tenant_id`, so a holder in ANOTHER tenant is not a conflict — the
+     * database accepts the write and the probe must not invent a refusal.
+     * A probe querying "global uniqueness" would strip the identity from a
+     * restore the schema permits.
+     */
+    public function test_a_holder_in_another_tenant_does_not_block_the_reclaim(): void
+    {
+        $admin = $this->makeAdmin();
+        $archived = $this->makeVersion('v1uuu', 'archived', 'old body', wasCanonical: true);
+        $this->makeVersion('v2vvv', 'active', 'new body');
+
+        $tenantContext = app(\App\Support\TenantContext::class);
+        $mine = $tenantContext->current();
+        $tenantContext->set('other-tenant');
+        $foreign = $this->makeVersion('v3www', 'active', 'their doc', canonical: true, sourcePath: 'docs/theirs.md');
+        $tenantContext->set($mine);
+
+        $this->actingAs($admin)->postJson("/api/admin/kb/documents/{$archived->id}/restore-version")
+            ->assertOk()
+            ->assertJsonPath('data.status', 'active')
+            ->assertJsonPath('data.is_canonical', true);
+
+        $this->assertSame('dec-1', $archived->refresh()->slug);
+        $this->assertSame('dec-1', KnowledgeDocument::withoutGlobalScopes()->findOrFail($foreign->id)->slug, "the other tenant keeps its own");
+    }
+
+    /**
      * R10 — the reconstruction runs the SAME parser + validator the ingest
      * path runs, so a restore can never resurrect an identity ingestion would
      * have refused. A retained frontmatter with an invalid status degrades to

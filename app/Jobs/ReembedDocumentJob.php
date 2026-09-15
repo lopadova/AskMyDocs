@@ -133,7 +133,17 @@ class ReembedDocumentJob implements ShouldQueue
                 // The artifact lives on the same recorded disk.
                 $artifact = app(\App\Services\Kb\Versioning\ConversionArtifactStore::class)->read($resolved['disk'], $artifactPath);
                 if ($artifact !== null) {
-                    $expected = (string) ($document->content_hash ?? $document->document_hash);
+                    // `??` is not enough: a legacy or directly-ingested row
+                    // can carry a pointer with `content_hash = ''`, and an
+                    // artifact compared against `''` never matches — the
+                    // re-embed would silently skip a document whose bytes are
+                    // fine. A hash is recorded only when it is a NON-EMPTY
+                    // string; otherwise the version's `document_hash` names
+                    // the same bytes (they are equal by construction). Same
+                    // reading as DocumentIngestor's artifact staging.
+                    $expected = is_string($document->content_hash) && $document->content_hash !== ''
+                        ? $document->content_hash
+                        : (string) $document->document_hash;
                     if (hash('sha256', $artifact) !== $expected) {
                         Log::warning('ReembedDocumentJob: stored artifact does not hash to the version; skipping re-embed.', [
                             'document_id' => $document->id,

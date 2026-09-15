@@ -7,6 +7,7 @@ namespace App\Services\Kb\Versioning;
 use App\Models\KbCanonicalAudit;
 use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
+use App\Scopes\AccessScopeScope;
 use App\Services\Kb\Canonical\CanonicalParser;
 use App\Support\Kb\StorageNamespace;
 use App\Support\MarkdownDiff;
@@ -670,12 +671,22 @@ final class DocumentVersionService
      * slug or doc_id the restore is about to reclaim, or null when the slots
      * are free.
      *
-     * The composite uniques are `(project_key, slug)` and
-     * `(project_key, doc_id)`, and only the family's ACTIVE rows are vacated
-     * before the assignment — an archived sibling of this family (a re-ingest
-     * that dropped the frontmatter never vacates) or a live row of ANOTHER
-     * source path can still hold the value. Writing it anyway raises a
-     * `QueryException` the restore has no business turning into a 500.
+     * The composite uniques are `(tenant_id, project_key, slug)` and
+     * `(tenant_id, project_key, doc_id)` since 2026_10_02_000011, and only
+     * the family's ACTIVE rows are vacated before the assignment — an
+     * archived sibling of this family (a re-ingest that dropped the
+     * frontmatter never vacates) or a live row of ANOTHER source path can
+     * still hold the value. Writing it anyway raises a `QueryException` the
+     * restore has no business turning into a 500.
+     *
+     * The probe therefore has to see EXACTLY what the index sees. A holder
+     * the reader is not allowed to read still occupies the slot, so the two
+     * global scopes are lifted here: `withTrashed()` because a soft-deleted
+     * row keeps its slug, and `AccessScopeScope` because an ACL-hidden
+     * holder is invisible to this admin yet not to the database. Dropping
+     * either one turns a degraded restore back into the 500 this probe
+     * exists to prevent. The tenant filter STAYS — it is the first column of
+     * the index.
      *
      * @param  array<string, mixed>  $identity
      */
@@ -687,7 +698,8 @@ final class DocumentVersionService
             return null;
         }
 
-        $holder = KnowledgeDocument::query()
+        $holder = KnowledgeDocument::withTrashed()
+            ->withoutGlobalScope(AccessScopeScope::class)
             ->forTenant($tenantId)
             ->where('project_key', $locked->project_key)
             ->where('id', '!=', $locked->id)

@@ -659,6 +659,13 @@ class DocumentIngestor
         // the other. The BelongsToTenant trait would auto-fill tenant_id on
         // a fresh insert, but updateOrCreate's lookup phase ignores it
         // unless we pass it explicitly.
+        //
+        // The lookup and the constraint have to agree or the isolation is
+        // only advertised: a tenant-scoped lookup under a `project_key`-only
+        // unique misses the other tenant's row and then dies on the insert.
+        // 2026_10_02_000011 rebuilt the index as
+        // `uq_kb_doc_tenant_version (tenant_id, project_key, source_path,
+        // version_hash)`, so the four keys below ARE the unique.
         $document = KnowledgeDocument::updateOrCreate(
             [
                 'tenant_id' => $tenantId,

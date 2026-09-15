@@ -138,11 +138,16 @@ retention, so the orphan sweeps never read the missing file as an orphan.
 `retrieval_priority` (smallint 0–100, default 50), `source_of_truth`
 (bool, default true), `frontmatter_json` (full parsed YAML + `_derived`
 sub-map with validated slug lists).
-**Uniqueness:** `(project_key, source_path, version_hash)` — the idempotency
-anchor. Additional composite uniques scoped per project: `(project_key,
-doc_id)` = `uq_kb_doc_doc_id`, `(project_key, slug)` = `uq_kb_doc_slug`.
-The canonical identifiers are tenant-scoped — two projects can legitimately
-share the same slug / doc_id.
+**Uniqueness:** `(tenant_id, project_key, source_path, version_hash)` =
+`uq_kb_doc_tenant_version` — the idempotency anchor. Additional composite
+uniques: `(tenant_id, project_key, doc_id)` = `uq_kb_doc_tenant_doc_id`,
+`(tenant_id, project_key, slug)` = `uq_kb_doc_tenant_slug`. All three were
+rebuilt from their `project_key`-only v3-era shape by
+`2026_10_02_000011_tenant_scope_knowledge_document_uniques.php` (R30/R31):
+`project_key` is not a tenant boundary, so the old indexes made row identity
+global while every read/write path scoped by `tenant_id` — a tenant-scoped
+lookup then missed the other tenant's row and died on the insert. Two
+projects, and two tenants, can legitimately share the same slug / doc_id.
 
 ### `knowledge_chunks`
 `id`, `knowledge_document_id` FK (ON DELETE CASCADE), `project_key`,
@@ -341,12 +346,22 @@ rotation. `kb:rebuild-graph` is a no-op when no canonical docs exist.
   and `RejectedApproachInjector::pick()` returns empty. Existing consumers
   see identical retrieval behaviour until they canonicalize. Never write
   code that assumes either feature is "always populated".
-- **Canonical slug + doc_id are tenant-scoped, NOT global.** Two projects
-  can legitimately share `dec-cache-v2`. The composite uniques are
-  `(project_key, slug)` and `(project_key, doc_id)`; the composite FKs on
-  `kb_edges` are **project-scoped** (intra-project referential integrity) —
-  cross-tenant isolation is the application-layer R30 `forTenant()` scope, not
-  the FK. Never assume global slug uniqueness in new code.
+- **Canonical slug + doc_id are tenant-scoped, NOT global.** Two projects —
+  and two tenants — can legitimately share `dec-cache-v2`. On
+  `knowledge_documents` the SCHEMA says so since
+  `2026_10_02_000011_tenant_scope_knowledge_document_uniques.php`: the
+  composite uniques are `(tenant_id, project_key, slug)` and
+  `(tenant_id, project_key, doc_id)`, so a tenant-scoped query and the index
+  agree. Any query that probes those slots for a conflict must therefore see
+  what the INDEX sees, not what the reader may read — `withTrashed()` and
+  `withoutGlobalScope(AccessScopeScope::class)`, as
+  `DocumentVersionService::conflictingCanonicalHolderId()` does. The
+  composite FKs on `kb_edges` are still **project-scoped** (intra-project
+  referential integrity) and the `kb_nodes` unique is still
+  `(project_key, node_uid)` — their rebuild is deferred because the FK
+  targets the unique — so for the graph tables cross-tenant isolation remains
+  the application-layer R30 `forTenant()` scope, not the FK. Never assume
+  global slug uniqueness in new code.
 - **The artifact root and the OCR run directories are swept CROSS-TENANT
   (deliberate R30 exception, ADR 0030 §3/§8).** `.artifacts/` is one physical
   tree shared by every tenant (namespaced by safe segment) and an OCR run

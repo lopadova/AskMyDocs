@@ -171,11 +171,23 @@ final class PruneArchivedVersionsCommand extends Command
     }
 
     /**
-     * The configured namespace first, then every distinct `(disk, prefix)`
-     * recorded on a row that points at an artifact — read in SQL (JSON
-     * selectors, portable), never by decoding every row — and whose disk this
-     * deployment can resolve (an unknown or unconstructible disk cannot be
-     * swept: reported per namespace and counted in `$skipped`).
+     * The configured namespace first, then every `(disk, prefix)` recorded on
+     * a row that points at an artifact, and whose disk this deployment can
+     * resolve (an unknown or unconstructible disk cannot be swept: reported
+     * per namespace and counted in `$skipped`).
+     *
+     * The SQL only NARROWS the rows (`markdown_path` set, `metadata.disk`
+     * present); the namespace itself is read from the hydrated `metadata`
+     * through `StorageNamespace`, exactly like every other consumer. Reading
+     * the two JSON selectors back as columns instead would put a SECOND
+     * judgement here and get a different answer: a JSON driver hands a
+     * non-scalar back as its JSON TEXT (`[]`, `{"disk":"kb"}`) and a number
+     * as its literal, so an `is_string()` check on the selector accepts a
+     * malformed value as a literal disk name and the sweep then reports —
+     * and counts as a permanent leak — a namespace nobody ever recorded.
+     * The dedup the `DISTINCT` used to do is done on the keyed map below, so
+     * the only thing lost is a driver-side narrowing; the per-namespace
+     * sweep that follows walks whole directories and dwarfs it.
      *
      * @return list<array{0: string, 1: string}>
      */
@@ -188,22 +200,15 @@ final class PruneArchivedVersionsCommand extends Command
             ->withoutGlobalScopes()
             ->whereNotNull('markdown_path')
             ->whereNotNull('metadata->disk')
-            ->select(['metadata->disk as artifact_disk', 'metadata->prefix as artifact_prefix'])
-            ->distinct()
-            ->cursor(); // hydrated one pair at a time (R3: bounds model memory; the pgsql driver still buffers the result set)
+            ->select(['metadata'])
+            ->cursor(); // hydrated one row at a time (R3: bounds model memory; the pgsql driver still buffers the result set)
         foreach ($recorded as $row) {
-            // The JSON selector hands back whatever the column holds, so the
-            // values are judged like `StorageNamespace` judges them rather
-            // than cast: a non-string disk is not a recorded disk (a `(string)`
-            // cast would invent one — `Array`, or a JSON fragment — and the
-            // sweep would then report a namespace nobody recorded), and a
-            // non-string prefix is the configured one.
-            $disk = is_string($row->artifact_disk) ? $row->artifact_disk : '';
-            // A JSON `null` prefix is read as the configured one: the JSON
-            // selector cannot tell an absent key (configured prefix, as the
-            // deleter resolves it) from an explicit null (`''` there); ingest
-            // never writes an explicit null, so the two agree in practice.
-            $prefix = is_string($row->artifact_prefix) ? $row->artifact_prefix : $configuredPrefix;
+            // The ONE reading (R30/ADR 0030 §8): a malformed disk is not a
+            // recorded disk, and a malformed or absent prefix is the
+            // configured one — the same answers the deleter and the backfill
+            // get for the same row.
+            $disk = StorageNamespace::recordedDisk($row->metadata) ?? '';
+            $prefix = StorageNamespace::recordedPrefix($row->metadata);
             if ($disk === '' || isset($namespaces[$disk.'|'.$prefix])) {
                 continue;
             }

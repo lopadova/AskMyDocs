@@ -513,7 +513,13 @@ flowchart LR
   doc_id is already held by another document (an archived sibling, or another
   source path in the same project), the content is restored **without** the
   identity and a warning names the holder — never a failed restore, and never
-  a slug taken from its current owner.
+  a slug taken from its current owner. "Held" is judged the way the unique
+  index judges it, not the way this reader may read: a soft-deleted or
+  ACL-hidden holder still occupies the slot, so the probe lifts both global
+  scopes. It keeps the tenant filter, because the uniques themselves are
+  `(tenant_id, project_key, slug)` / `(tenant_id, project_key, doc_id)` — a
+  holder in **another** tenant is not a conflict and does not cost this
+  restore its identity.
 - **A tampered artifact is never served as faithful.** `content_hash` is the
   integrity check of the stored bytes: `contentFor()` re-hashes what it reads
   and, on a mismatch, logs, falls back to the reconstruction and says so

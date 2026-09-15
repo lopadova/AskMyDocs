@@ -850,6 +850,37 @@ MD;
         $this->assertSame(1, KnowledgeDocument::withoutGlobalScopes()->where('source_path', 'docs/zero.md')->count());
     }
 
+    /**
+     * A pointer whose `content_hash` was never recorded (a legacy or
+     * directly-ingested row carrying `''`) still names bytes: the version's
+     * `document_hash` is the same hash by construction. `??` does not treat
+     * an empty string as missing, so the artifact would be compared against
+     * `''`, never match, and the re-embed would log "corrupt" and skip a
+     * document whose bytes are fine.
+     */
+    public function test_a_forced_reembed_falls_back_to_the_document_hash_when_the_content_hash_is_empty(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => true]);
+        $markdown = "# Empty content hash\n\nThe artifact still hashes to the version.";
+        $doc = $this->ingestMarkdown($markdown, 'docs/empty-hash.md', ['disk' => 'kb', 'prefix' => '']);
+        $chunksBefore = $doc->chunks()->count();
+        $this->assertGreaterThan(0, $chunksBefore);
+        // Discriminator (R16): the source is gone and the chunk set is empty,
+        // so ONLY the artifact branch can restore it — and only if the
+        // fallback picks a hash the artifact actually matches.
+        $doc->chunks()->delete();
+        Storage::disk('kb')->delete('docs/empty-hash.md');
+        KnowledgeDocument::withoutGlobalScopes()->whereKey($doc->id)->update(['content_hash' => '']);
+        \Illuminate\Support\Facades\Log::spy();
+
+        (new \App\Jobs\ReembedDocumentJob((int) $doc->id, app(TenantContext::class)->current()))->handle(app(TenantContext::class), app(DocumentIngestor::class));
+
+        $fresh = $doc->fresh();
+        $this->assertSame('active', $fresh->status);
+        $this->assertSame($chunksBefore, $fresh->chunks()->count(), 're-chunked from the artifact instead of being skipped as corrupt');
+        \Illuminate\Support\Facades\Log::shouldNotHaveReceived('warning', [\Mockery::on(static fn (string $message): bool => str_contains($message, 'does not hash to the version'))]);
+    }
+
     /** The artifact branch of the re-embed (original dropped, the stored artifact re-chunked) gets the same outcome: done, logged, never a failed job. */
     public function test_a_forced_reembed_from_the_artifact_whose_publish_fails_completes_and_logs_the_missing_artifact(): void
     {

@@ -476,6 +476,35 @@ final class ArtifactsRetentionCommandsTest extends TestCase
     }
 
     /**
+     * ADR 0030 §8 — the namespace is read from the row's `metadata` through
+     * `StorageNamespace`, so a malformed `disk` is the same "no recorded
+     * namespace" every other consumer sees. Reading the JSON SELECTOR back
+     * as a column instead would judge it here a second time and differently:
+     * a JSON driver hands a non-scalar back as its JSON TEXT, `is_string()`
+     * accepts that as a literal disk name, and the run then reports a
+     * namespace nobody recorded AND exits non-zero on the "leak".
+     */
+    public function test_a_malformed_recorded_disk_is_not_a_namespace_to_sweep_or_to_report(): void
+    {
+        $malformed = $this->row(2, 'active', null, 'docs/malformed.md');
+        $malformed->update([
+            'markdown_path' => '.artifacts/x/eng/docs/malformed.md.versions/h.md',
+            'metadata' => ['disk' => ['kb2'], 'prefix' => ''],
+        ]);
+
+        // A per-namespace `[…]` line is printed only when the run found MORE
+        // than one namespace, so its absence — together with the untouched
+        // summary and a clean exit — is the discriminator: the malformed
+        // value neither became a namespace nor a reported permanent leak.
+        $this->artisan('kb:prune-archived-versions')
+            ->expectsOutputToContain('artifact_temps_swept=0 artifact_temps_failed=0 artifact_orphans_removed=0 artifact_orphans_failed=0')
+            ->doesntExpectOutputToContain('artifact_namespaces_skipped')
+            ->doesntExpectOutputToContain('which cannot be resolved here')
+            ->doesntExpectOutputToContain('  [')
+            ->assertExitCode(0);
+    }
+
+    /**
      * ADR 0030 §8 — an OCR run directory is namespaced by disk, prefix,
      * source path and run: a row naming the same run under another prefix
      * references ANOTHER directory and does not keep this one alive; a

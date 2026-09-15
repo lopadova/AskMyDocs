@@ -169,13 +169,20 @@ failures), and the retry that repairs the artifact runs the indexer step.
 Only the retention tail that follows a successful publish (the
 `markdown_only` drop) stays best effort: a job whose retry would be a
 version-hash no-op with nothing left to publish is not failed for it.
-Today's database
-uniqueness is `uq_kb_doc_version = (project_key, source_path, version_hash)`
-— the tenant migration deferred rebuilding the composite uniques with
-`tenant_id` — so identical content at one path cannot be stored for two
-tenants today (a pre-existing limitation this ADR neither introduces nor
-fixes); the path already carries `tenant_id`, so the day the unique is rebuilt
-the artifact identity matches. There is nothing to reference-count.
+Database uniqueness is
+`uq_kb_doc_tenant_version = (tenant_id, project_key, source_path, version_hash)`
+since `2026_10_02_000011_tenant_scope_knowledge_document_uniques.php`, which
+finally rebuilt the three `knowledge_documents` composite uniques the
+`tenant_id` rollout had deferred (`uq_kb_doc_doc_id` and `uq_kb_doc_slug`
+with it). Until then the indexes were keyed on `project_key` alone while
+every read and write scoped by `tenant_id`, so the two disagreed in the
+direction that hurts: the ingestor's tenant-scoped `updateOrCreate` lookup
+missed the other tenant's row and the insert then died on a unique keyed on
+columns the query never filtered by, and the restore path's conflict probe
+could not see a holder the database would still reject. Widening a unique
+can never fail on existing data, so the rebuild is a plain forward migration.
+The artifact path already carried `tenant_id`, so identity matches the
+constraint without a change here. There is nothing to reference-count.
 `kb:prune-archived-versions` additionally sweeps `.tmp` leftovers older than
 one hour **that no live writer leases** — a writer takes a cache lease on its
 temp (`kb:artifact-temp:{sha1(disk|tmp)}`, `KB_CONVERSION_ARTIFACTS_TMP_LEASE`,
@@ -575,6 +582,16 @@ the disk resolves on this deployment; a disk that does not is reported per
 namespace and counted (`artifact_namespaces_skipped`, additive in the summary
 line), never silently left to leak. The batched gate above and the single gate
 are one predicate.
+
+What each row recorded is read from its hydrated `metadata` through
+`StorageNamespace`, exactly as every other consumer reads it; the SQL only
+narrows the rows. Reading the two JSON **selectors** back as columns would be
+cheaper and wrong: a JSON driver hands a non-scalar back as its JSON *text*
+(`[]`, `{"disk":"kb"}`) and a number as its literal, so an `is_string()` test
+on the selector accepts a malformed value as a literal disk name — and the
+run then reports, and counts as a permanent leak, a namespace nobody ever
+recorded. A malformed `metadata.disk` is not a recorded disk here for the
+same reason it is not one for the deleter.
 
 ### 9. The MCP read surface the v8.7 feature never got
 
