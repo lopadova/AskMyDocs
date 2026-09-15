@@ -16,6 +16,7 @@ use App\Services\Kb\Versioning\DocumentVersionService;
 use App\Support\Kb\HeldLock;
 use App\Support\Kb\LockLostException;
 use App\Support\Kb\SettingInt;
+use App\Support\Kb\SourceInFlight;
 use App\Support\Kb\SourceKeyLock;
 use App\Support\Kb\StorageNamespace;
 use App\Support\KbPath;
@@ -764,7 +765,7 @@ class DocumentDeleter
         return $referenced;
     }
 
-    /** A source kept because it is still within the in-flight grace — distinct from a key a row or a writer holds. */
+    /** A source kept because an ingest reserved it, or because it is still within the in-flight grace — distinct from a key a row or a writer holds. */
     public const KEPT_IN_FLIGHT = 'kept_in_flight';
 
     /** Whether the file is still on the disk; true also when the disk refuses to say (the conservative reading before a delete). */
@@ -831,11 +832,13 @@ class DocumentDeleter
      * or a disk that refused is FAILED — reported, never a stack trace
      * mid-sweep and never a delete under a live row.
      *
-     * A source younger than the in-flight grace is KEPT_IN_FLIGHT before any
-     * of that: an ingest reads and converts its source BEFORE it takes the
-     * key's lock, so in that window the file has neither a row nor a holder.
-     * A disk that cannot date a file cannot prove it is old: that is FAILED
-     * (reported, exit non-zero), never a sweep that reads as clean.
+     * A source an ingest RESERVED, or one younger than the in-flight grace,
+     * is KEPT_IN_FLIGHT before any of that: an ingest reads and converts its
+     * source BEFORE it takes the key's lock, so in that window the file has
+     * neither a row nor a holder. The reservation is the guard; the grace is
+     * what stands when the store cannot lock. A disk that cannot date a file
+     * cannot prove it is old: that is FAILED (reported, exit non-zero),
+     * never a sweep that reads as clean.
      *
      * @return string one of ConversionArtifactStore::REMOVED | ABSENT | KEPT | FAILED, or self::KEPT_IN_FLIGHT
      */
@@ -845,13 +848,31 @@ class DocumentDeleter
         // key's lock — an OCR run can take minutes — so between the two there
         // is no row to find and no lock to block on: the sweep would see a
         // perfectly ordinary orphan and delete the file out from under the
-        // conversion. A file younger than the grace is therefore never an
-        // orphan to decide today (the same in-flight posture the OCR run
-        // sweep already takes). The window is not closed by this — a
-        // conversion slower than the grace is still exposed, and the lock
-        // covers only the commit half — so the grace is configurable and the
-        // residual is recorded in the hand-off with the ingest-side
-        // reservation that would close it.
+        // conversion. The RESERVATION is the first guard and states the fact:
+        // the ingest takes it before it reads a byte and drops it in a
+        // `finally` (SourceInFlight, taken in IngestDocumentJob and in the
+        // inline `--sync` path), so a file someone is working on is never an
+        // orphan to decide today. The grace below still covers what a
+        // reservation cannot: a store that cannot exclude anyone (which
+        // answers `false` here, exactly as before — R43), a file written and
+        // queued whose job has not started yet, and a retry that could not
+        // re-take the reservation a killed worker left behind.
+        try {
+            $reserved = SourceInFlight::held($disk, $fullPath);
+        } catch (\Throwable $e) {
+            // A store that cannot answer cannot clear the file: reported and
+            // counted `failed` (exit non-zero), never an unhandled throw that
+            // ends a sweep mid-way — the same posture as the lock acquisition
+            // below, and the same reason (R14).
+            Log::warning('DocumentDeleter: cannot ask whether an ingest reserved this source, so it is not swept', ['disk' => $disk, 'path' => $fullPath, 'error' => $e->getMessage()]);
+
+            return ConversionArtifactStore::FAILED;
+        }
+        if ($reserved) {
+            Log::info('DocumentDeleter: orphan source kept — an ingest holds its reservation right now', ['disk' => $disk, 'path' => $fullPath]);
+
+            return self::KEPT_IN_FLIGHT;
+        }
         $grace = self::orphanSourceGraceSeconds();
         if ($grace > 0) {
             try {
@@ -1126,6 +1147,42 @@ class DocumentDeleter
             Log::info('DocumentDeleter: preserving physical file still referenced by another document', [
                 'deleted_document_id' => $documentId,
                 'referencing_document_id' => $referencingDocumentId,
+                'source_path' => $sourcePath,
+                'disk' => $disk,
+                'full_path' => $fullPath,
+            ]);
+
+            return ['file_deleted' => false, 'ocr_assets_deleted' => null];
+        }
+
+        // v8.36 / ADR 0030 §3 — a committed row is not the only thing that
+        // can own these bytes: an ingest that is READING or CONVERTING this
+        // very object has no row yet, so the scan above finds nothing and the
+        // delete would take the source out from under a conversion that then
+        // commits `full_copy` over an original that is already gone. A
+        // reserved source is therefore kept — not because the operator's
+        // delete is refused (the ROW is already gone; `file_deleted: false`
+        // is an outcome this method already reports for a key a writer holds
+        // right now), but because the file waits for the orphan sweep, which
+        // removes it once nobody is working on it and nobody references it.
+        // A store that cannot answer keeps the file the same way: this is the
+        // conservative direction, and a stale file must never fail a delete.
+        try {
+            $reserved = SourceInFlight::held($disk, $fullPath);
+        } catch (\Throwable $e) {
+            Log::warning('DocumentDeleter: cannot ask whether an ingest reserved this source; keeping the file for the sweep', [
+                'document_id' => $documentId,
+                'source_path' => $sourcePath,
+                'disk' => $disk,
+                'full_path' => $fullPath,
+                'error' => $e->getMessage(),
+            ]);
+
+            return ['file_deleted' => false, 'ocr_assets_deleted' => null];
+        }
+        if ($reserved) {
+            Log::info('DocumentDeleter: preserving physical file reserved by an ingest in flight', [
+                'deleted_document_id' => $documentId,
                 'source_path' => $sourcePath,
                 'disk' => $disk,
                 'full_path' => $fullPath,

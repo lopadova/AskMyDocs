@@ -959,6 +959,13 @@ return [
         // NOT cast here, or `off` / `1h` / `` would coerce to 0 — a silently
         // disabled grace, indistinguishable from the explicit `0`.
         'orphan_grace_seconds' => env('KB_ORPHAN_SOURCE_GRACE_SECONDS', 3600),
+        // ADR 0030 §3 — how long an ingest's reservation over its SOURCE
+        // object lives when the worker holding it dies. It is a backstop, not
+        // the mechanism: the reservation is released as soon as the read +
+        // convert + commit window closes. Default: the OCR job timeout plus a
+        // margin, because the conversion is what the window is made of. Raw,
+        // like every setting SettingInt::whole() validates at the point of use.
+        'inflight_reservation_seconds' => env('KB_SOURCE_INFLIGHT_RESERVATION_SECONDS'),
 
         /*
          * How many candidates one `kb:prune-orphan-files` sweep may hold in

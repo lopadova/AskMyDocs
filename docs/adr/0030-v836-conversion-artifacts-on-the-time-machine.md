@@ -242,16 +242,52 @@ since the OCR assets lock is older than this ADR — and every artifact-enabled
 ingest rolls back and retries, and every prune reports `failed`, until
 `CACHE_STORE` names a lock-capable store (Redis in production). The orphan-file sweep's deletion of a
 source re-checks the references first (a row that took the key between the
-snapshot and the delete keeps its file, `kept_meanwhile`), keeps any source
-younger than `KB_ORPHAN_SOURCE_GRACE_SECONDS` (an ingest reads and converts
-its source BEFORE it takes the key's lock, so in that window the file has
-neither a row nor a holder). The grace narrows that window; it does not
-close it, and it keys on when the BYTES were written, not on when the
-conversion started — so a first ingest of a file staged earlier
-(`kb:ingest-folder` over a corpus copied days ago, a job that waited in a
-backed-up queue) gets no protection from it at all. The reservation that
-would close both is a recorded follow-up and, while artifacts
-are on, runs under the same storage key lock (`App\Support\Kb\SourceKeyLock`,
+snapshot and the delete keeps its file, `kept_meanwhile`), and keeps any
+source an ingest has RESERVED (reported per file, and counted in the
+summary's `kept_meanwhile` — the sweep's one counter for "not an orphan to
+decide today"; `in_flight=` in the same line counts dangling OCR trees and is
+a different thing).
+
+The reservation (`App\Support\Kb\SourceInFlight`) is what closes the read +
+convert window. An ingest reads and converts its source BEFORE it takes the
+key's lock — an OCR run takes minutes — so in that window the file has neither
+a row nor a holder, and the sweep sees a perfectly ordinary orphan: it deletes
+the bytes out from under the conversion, after which the row commits
+`full_copy` over an original that is already gone. `IngestDocumentJob` takes
+the reservation before it reads a byte and gives it back in a `finally`
+(`KB_SOURCE_INFLIGHT_RESERVATION_SECONDS`, default `kb.ocr.job_timeout` + 5 min
+with a 600 s floor, is only the backstop for a worker killed mid-conversion).
+
+Every consumer that DELETES a source honours it: the orphan sweep (which
+reports the file per line and counts it in `kept_meanwhile`), its `--dry-run`
+preview, and the hard delete of `DocumentDeleter` (HTTP, `kb:delete --force`,
+`kb:prune-deleted`, the Flow compensation). On the hard-delete path this
+refuses nothing the operator asked for: the ROW is already deleted, and
+`file_deleted: false` is an outcome that path already reports for a key a
+writer holds right now — the file simply waits for the sweep instead of being
+taken from a conversion in progress. A store that cannot answer the probe
+keeps the file the same way (conservative direction; a stale file must never
+fail a delete). `kb:ingest-folder --sync`, which converts inline instead of
+queueing, takes the reservation too.
+
+`KB_ORPHAN_SOURCE_GRACE_SECONDS` remains as the SECOND guard, for the cases
+the reservation cannot cover: a cache store that cannot exclude anyone (where
+`reserve()` hands back null and `held()` answers false rather than pinning
+every file — R43), a file written and queued whose job has not started yet,
+and a retry that could not re-take the reservation a killed worker left
+behind under its TTL. A reservation that could not be taken is REPORTED
+(`SourceInFlight: … only the age grace guards this ingest`), so that
+degradation is visible in the log rather than discovered as a deleted source.
+It is only a second guard because an age threshold is
+a guess about how long work takes — OCR (`kb.ocr.job_timeout`, 3600 s) can
+outlast the 3600 s grace on its own — and because it keys on when the BYTES
+were written, not on when the conversion started, so a first ingest of a file
+staged earlier (`kb:ingest-folder` over a corpus copied days ago, a job that
+waited in a backed-up queue) gets no protection from it at all. The reservation
+has neither limitation: it states the fact instead of estimating it.
+
+While artifacts are on, the sweep's re-check and delete also run under the
+same storage key lock (`App\Support\Kb\SourceKeyLock`,
 shared with the `markdown_only` drop and the row commits of non-Markdown
 sources — a Markdown source's commit takes no lock, so for it the re-check alone
 narrows the window); a key a writer holds right now is kept as in flight. With
@@ -265,8 +301,10 @@ stale file must never fail a deletion: a key a writer holds right now
 (`LockTimeoutException`), a cache store that cannot exclude anyone, any other
 acquisition failure, and a lapse mid-section are all `file_deleted: false`. With
 artifacts off nothing else takes that lock, so the hard delete takes none either
-(R43). The residual is the same one the sweep carries: the ingest's
-READ/CONVERT phase begins before any lock exists.
+(R43). The window in which the ingest's READ/CONVERT phase runs before any
+lock exists is covered by the reservation above, which this path honours too
+— before the OCR purge, so neither the run nor the source is taken from a
+conversion in progress.
 The
 artifact root itself is checked before it is probed or listed (a `.artifacts`
 that is a symlink out of the disk is a refused sweep, never an enumeration of

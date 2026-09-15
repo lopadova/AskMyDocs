@@ -289,6 +289,44 @@ class PruneOrphanFilesCommandTest extends TestCase
     }
 
     /**
+     * ADR 0030 §3 — the sweep honours the RESERVATION an ingest holds over
+     * its source, which is what the age grace could only estimate: an OCR run
+     * can outlast the grace on its own, and a file staged days before its
+     * first ingest gets no protection from an mtime at all. A reserved source
+     * is kept whatever its age, and swept once the ingest gives it back.
+     */
+    public function test_a_reserved_source_is_kept_whatever_its_age_and_swept_once_released(): void
+    {
+        config(['kb.sources.orphan_grace_seconds' => 60]);
+        Storage::fake('kb');
+        Storage::disk('kb')->put('docs/being-converted.md', 'an OCR run is reading this right now');
+        $this->travel(600)->seconds(); // far past the grace: only the reservation can keep it
+
+        $reservation = \App\Support\Kb\SourceInFlight::reserve('kb', 'docs/being-converted.md');
+        $this->assertNotNull($reservation);
+        try {
+            $this->artisan('kb:prune-orphan-files')
+                ->expectsOutputToContain('an ingest reserved it')
+                ->expectsOutputToContain('scanned=1 orphans=1 deleted=0 failed=0 orphan_ocr_kept=0 dangling_ocr=0 purged=0 in_flight=0 ocr_failed=0 stale_runs=0 runs_purged=0 runs_in_flight=0 runs_failed=0 kept_meanwhile=1')
+                ->assertSuccessful();
+            Storage::disk('kb')->assertExists('docs/being-converted.md');
+
+            // …and the preview says the same thing, so a nightly --dry-run
+            // never promises a deletion the real run would not make.
+            $this->artisan('kb:prune-orphan-files --dry-run')
+                ->expectsOutputToContain('kept (reserved by an ingest)')
+                ->assertSuccessful();
+        } finally {
+            $reservation->release();
+        }
+
+        $this->artisan('kb:prune-orphan-files')
+            ->expectsOutputToContain('deleted=1')
+            ->assertSuccessful();
+        Storage::disk('kb')->assertMissing('docs/being-converted.md');
+    }
+
+    /**
      * The preview says what the real run would do: the in-flight grace is a
      * modification time, not a race, so a `--dry-run` that promised to delete
      * a file the real run keeps would be worse than no preview at all.
@@ -301,14 +339,14 @@ class PruneOrphanFilesCommandTest extends TestCase
 
         $this->artisan('kb:prune-orphan-files --dry-run')
             ->expectsOutputToContain('kept (in-flight grace)')
-            ->expectsOutputToContain('1 of them are younger than the in-flight grace and would be kept.')
+            ->expectsOutputToContain('1 of them are reserved by an ingest or younger than the in-flight grace and would be kept.')
             ->assertSuccessful();
 
         $this->travel(3600 + 60)->seconds();
 
         $this->artisan('kb:prune-orphan-files --dry-run')
             ->expectsOutputToContain('would delete')
-            ->doesntExpectOutputToContain('younger than the in-flight grace and would be kept')
+            ->doesntExpectOutputToContain('would be kept')
             ->assertSuccessful();
         Storage::disk('kb')->assertExists('docs/fresh.md'); // a dry run deletes nothing
     }

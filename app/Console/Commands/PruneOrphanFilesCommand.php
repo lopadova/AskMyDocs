@@ -8,6 +8,7 @@ use App\Services\Kb\Ocr\OcrFigureStore;
 use App\Services\Kb\Versioning\ConversionArtifactStore;
 use App\Support\Kb\LazyDiskListing;
 use App\Support\Kb\SettingInt;
+use App\Support\Kb\SourceInFlight;
 use App\Support\Kb\SourceType;
 use App\Support\KbDiskResolver;
 use App\Support\KbPath;
@@ -21,14 +22,23 @@ use Illuminate\Support\Facades\Storage;
  * delete them. Designed to run as a nightly `--dry-run` from the
  * scheduler so operators can inspect leftovers before purging.
  *
- * The dry run lists the snapshot's candidates and re-checks nothing:
- * `kept_meanwhile` is a real-run outcome only (a row that took the key
- * between the snapshot and the delete, or a writer holding the key at that
- * instant) — a preview cannot know who will hold a key when the real run
- * reaches it, and re-running the same snapshot predicate a moment later
- * would only pretend to. (The artifact sweep of `kb:prune-archived-versions`
- * previews `artifact_orphans_kept` because THAT gate re-reads rows, not
- * locks.)
+ * The dry run lists the snapshot's candidates and re-checks only what a
+ * preview can actually know. A row that takes the key between the snapshot
+ * and the delete, or a writer holding the storage key at that instant, is a
+ * real-run outcome only (`kept_meanwhile`): a preview cannot know who will
+ * hold a key when the real run reaches it, and re-running the same snapshot
+ * predicate a moment later would only pretend to. (The artifact sweep of
+ * `kb:prune-archived-versions` previews `artifact_orphans_kept` because THAT
+ * gate re-reads rows, not locks.)
+ *
+ * The two guards that ARE knowable it does ask, because the real run asks
+ * them first and a preview that promised a deletion the real run keeps would
+ * be worse than no preview: the in-flight grace (a modification time) and
+ * the source RESERVATION (ADR 0030 §3 — probed by taking the key for an
+ * instant and giving it straight back; the release is owner-scoped by the
+ * cache store, so a probe can never take a reservation from its holder).
+ * That probe is the one write this preview makes: one add + one owner-checked
+ * delete per candidate against the cache store, per nightly run.
  *
  * Memory-safe (R3): the disk is walked ONCE, lazily (Flysystem's listing is
  * a generator — `allFiles()` would materialise the whole tree), and sources
@@ -633,7 +643,7 @@ class PruneOrphanFilesCommand extends Command
 
     /**
      * @param  array<int,string>  $orphans
-     * @return array{0:int,1:int,2:int,3:int} [deleted (a file that vanished between the snapshot and the gate counts here: the end state is the same), failed (a refused re-check, a lapsed lock, a disk that cannot date its files, or a cache store that cannot exclude concurrent holders), ocr trees kept (in flight), kept meanwhile (a row took the key after the snapshot, a writer holds it right now, or the file is younger than the in-flight grace)]
+     * @return array{0:int,1:int,2:int,3:int} [deleted (a file that vanished between the snapshot and the gate counts here: the end state is the same), failed (a refused re-check, a lapsed lock, a disk that cannot date its files, or a cache store that cannot exclude concurrent holders), ocr trees kept (in flight), kept meanwhile (a row took the key after the snapshot, a writer holds it right now, an ingest reserved the file, or it is younger than the in-flight grace)]
      */
     private function deleteOrphans($storage, array $orphans, string $prefix, string $disk): array
     {
@@ -653,7 +663,7 @@ class PruneOrphanFilesCommand extends Command
             $outcome = $deleter->removeSourceFileIfUnreferenced($disk, $target, $relative);
             if ($outcome === DocumentDeleter::KEPT_IN_FLIGHT) {
                 $keptMeanwhile++;
-                $this->line("  ~ kept (younger than the in-flight grace: an ingest may be converting it): {$target}");
+                $this->line("  ~ kept (an ingest reserved it, or it is younger than the in-flight grace: it may be being converted right now): {$target}");
                 continue;
             }
             if ($outcome === ConversionArtifactStore::KEPT) {
@@ -700,10 +710,11 @@ class PruneOrphanFilesCommand extends Command
      */
     private function renderDryRun($storage, array $orphans, string $disk, string $prefix): void
     {
-        // The in-flight grace IS knowable in a preview — it reads a
-        // modification time, not who holds a key at that instant — so the
-        // preview says which candidates the real run would not touch yet,
-        // instead of promising deletions that will not happen.
+        // The reservation and the in-flight grace ARE knowable in a preview —
+        // a reservation is probed and given straight back, and the grace
+        // reads a modification time — so the preview says which candidates
+        // the real run would not touch yet, instead of promising deletions
+        // that will not happen.
         $grace = DocumentDeleter::orphanSourceGraceSeconds();
         $rows = [];
         $graced = 0;
@@ -711,18 +722,20 @@ class PruneOrphanFilesCommand extends Command
             $target = $this->applyPrefix($relative, $prefix);
             $exists = $storage->exists($target);
             $size = $exists ? $storage->size($target) : 0;
-            $verdict = $this->dryRunVerdict($storage, $target, $grace, $exists);
-            $graced += $verdict === self::DRY_RUN_KEPT ? 1 : 0;
+            $verdict = $this->dryRunVerdict($storage, $disk, $target, $grace, $exists);
+            $graced += ($verdict === self::DRY_RUN_KEPT || $verdict === self::DRY_RUN_RESERVED) ? 1 : 0;
             $rows[] = [$target, $this->formatSize($size), $verdict];
         }
 
         $this->table(['Path on disk ['.$disk.']', 'Size', 'Verdict'], $rows);
         if ($graced > 0) {
-            $this->line("  ~ {$graced} of them are younger than the in-flight grace and would be kept.");
+            $this->line("  ~ {$graced} of them are reserved by an ingest or younger than the in-flight grace and would be kept.");
         }
     }
 
     private const DRY_RUN_KEPT = 'kept (in-flight grace)';
+
+    private const DRY_RUN_RESERVED = 'kept (reserved by an ingest)';
 
     /**
      * What the real run would do with this candidate. A file the disk cannot
@@ -730,8 +743,19 @@ class PruneOrphanFilesCommand extends Command
      * deletion (a file that VANISHED is still "would delete": the real run
      * counts `absent` as deleted, the end state being the same).
      */
-    private function dryRunVerdict($storage, string $target, int $grace, bool $exists): string
+    private function dryRunVerdict($storage, string $disk, string $target, int $grace, bool $exists): string
     {
+        // Asked before the grace, exactly as the real run asks it: a file an
+        // ingest is reading or converting right now is kept whatever its age.
+        // A store that cannot answer is the case the real run reports
+        // `failed`, never a promised deletion.
+        try {
+            if ($exists && SourceInFlight::held($disk, $target)) {
+                return self::DRY_RUN_RESERVED;
+            }
+        } catch (\Throwable) {
+            return 'cannot ask (would be reported failed)';
+        }
         if ($grace <= 0 || ! $exists) {
             return 'would delete';
         }

@@ -667,6 +667,7 @@ abstract class TestCase extends OrchestraTestCase
         \App\Services\Kb\Versioning\DocumentVersionService::resetWarnings();
         \App\Support\Kb\HeldLock::resetWarnings();
         \App\Support\Kb\SourceKeyLock::resetWarnings();
+        \App\Support\Kb\SourceInFlight::resetWarnings();
         \App\Services\Kb\DocumentDeleter::resetWarnings();
 
         if ($this->app !== null && $this->app->bound(\App\Support\TenantContext::class)) {

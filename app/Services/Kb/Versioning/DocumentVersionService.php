@@ -165,8 +165,12 @@ final class DocumentVersionService
      * versions would fetch that many objects from a bucket on every listing
      * and on every "load older" page. `verified` — and ONLY `verified` — is
      * therefore memoized for `kb.versioning.artifact_state_cache_seconds`
-     * (0 disables it, R43) under a key carrying the bytes' identity: disk,
-     * path and `content_hash`, all three immutable for a published artifact.
+     * (0 disables it, R43). The memo is keyed on `(disk, path)` and its VALUE
+     * is the `content_hash` it was verified against, so the hash is compared
+     * rather than baked into the key: a hit requires the recorded hash to
+     * still be the one that was verified, and a row whose hash changed reads
+     * as a miss and is re-verified. All three are immutable for a published
+     * artifact, so the memo cannot outlive the bytes it describes.
      *
      * The asymmetry is the point. A state that can be repaired — `missing`,
      * `mismatch`, `unverified`, `none` — is never memoized, so the identical

@@ -6,7 +6,11 @@ use App\Flow\Definitions\IngestDocumentFlow;
 use App\Services\Kb\Ocr\OcrDriverUnavailableException;
 use App\Services\Kb\Ocr\OcrLimitExceededException;
 use App\Services\Kb\Ocr\OcrService;
+use App\Support\Kb\HeldLock;
+use App\Support\Kb\SourceInFlight;
 use App\Support\Kb\SourceType;
+use App\Support\Kb\StorageNamespace;
+use App\Support\KbPath;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -123,6 +127,28 @@ class IngestDocumentJob implements ShouldQueue
         );
     }
 
+    /**
+     * The reservation over this job's source object, or null when there is
+     * nothing to reserve: a store that cannot exclude anyone (R43 — the
+     * sweep then falls back to the grace, exactly as before), a recorded
+     * prefix that cannot name a path, or a concurrent ingest of the same
+     * object that already holds it (which protects the file just as well).
+     */
+    private function reserveSource(): ?\Illuminate\Contracts\Cache\Lock
+    {
+        $prefix = trim(str_replace('\\', '/', StorageNamespace::recordedPrefix($this->metadata)), '/');
+        if (! StorageNamespace::prefixCanNamePath($prefix)) {
+            return null;
+        }
+        try {
+            $fullPath = KbPath::normalize($prefix === '' ? $this->relativePath : $prefix.'/'.$this->relativePath);
+        } catch (\InvalidArgumentException) {
+            return null;
+        }
+
+        return SourceInFlight::reserve($this->disk, $fullPath);
+    }
+
     public function handle(TenantContext $tenantContext): void
     {
         // PR #115 review iteration 2 (R30) — capture the previous tenant
@@ -158,6 +184,18 @@ class IngestDocumentJob implements ShouldQueue
 
             $title = $this->title ?: pathinfo($this->relativePath, PATHINFO_FILENAME);
             $mimeType = $this->mimeType ?? 'text/markdown';
+
+            // ADR 0030 §3 — reserve the SOURCE for the whole read + convert +
+            // commit window. The storage-key lock covers only the commit, and
+            // before it the file has no row and no holder: an orphan sweep
+            // sees an ordinary orphan and deletes the bytes out from under a
+            // conversion that is still running, after which the row commits
+            // `full_copy` over an original that is already gone. The grace
+            // narrowed that window but cannot close it — an age threshold is
+            // a guess about how long work takes, and an OCR run can outlast
+            // it on its own. Released in the `finally` below; the TTL is only
+            // the backstop for a worker killed mid-conversion.
+            $reservation = $this->reserveSource();
 
             $run = Flow::execute(
                 IngestDocumentFlow::NAME,
@@ -283,6 +321,10 @@ class IngestDocumentJob implements ShouldQueue
             // keep it — see failed() for the other outcome).
             OcrService::releaseRerunLock($this->metadata);
         } finally {
+            // The source is no longer being read or converted, whatever the
+            // outcome: give the reservation back so the next sweep may judge
+            // the file instead of waiting out its TTL.
+            HeldLock::releaseQuietly($reservation ?? null);
             // Restore even on exception/throw so a failing job never leaves
             // the singleton stuck on this job's tenant for the next one.
             $tenantContext->set($previousTenant);
