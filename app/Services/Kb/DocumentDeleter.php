@@ -9,18 +9,19 @@ use App\Models\KbCanonicalAudit;
 use App\Models\KbNode;
 use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
+use App\Services\Kb\Analysis\ChangeAnalysisGate;
 use App\Services\Kb\Ocr\OcrFigureStore;
 use App\Services\Kb\Versioning\ConversionArtifactStore;
 use App\Services\Kb\Versioning\DocumentVersionService;
-use App\Services\Kb\Analysis\ChangeAnalysisGate;
 use App\Support\Kb\HeldLock;
 use App\Support\Kb\LockLostException;
-use Illuminate\Contracts\Cache\LockTimeoutException;
+use App\Support\Kb\SettingInt;
 use App\Support\Kb\SourceKeyLock;
 use App\Support\Kb\StorageNamespace;
 use App\Support\KbPath;
 use App\Support\LikeEscaper;
 use DateTimeInterface;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -767,8 +768,9 @@ class DocumentDeleter
     public static function orphanSourceGraceSeconds(): int
     {
         $configured = config('kb.sources.orphan_grace_seconds', 3600);
-        if (is_numeric($configured) && (int) $configured >= 0) {
-            return (int) $configured;
+        $seconds = SettingInt::whole($configured, 0);
+        if ($seconds !== null) {
+            return $seconds;
         }
         if (! isset(self::$warnedUndatableDisks['__grace_shape'])) {
             self::$warnedUndatableDisks['__grace_shape'] = true;

@@ -190,7 +190,12 @@ default 7200 s, the primary guard: one configured shorter than the age
 threshold is raised to it and reported once) before the bytes land and gives it back at publish or
 discard, so a temp still inside a slow transaction is reported
 `artifact_temps_in_flight` and never deleted under its writer's feet, whatever
-its age; the age threshold remains the second guard for a lease the store lost
+its age; every one of these durations is read through
+`App\Support\Kb\SettingInt::whole()` (SEC-SETTING-SHAPE-001), which refuses a
+value that is not a whole number instead of truncating it — `is_numeric($v)
+&& (int) $v >= 1` turns a configured `1.9` into a ONE-SECOND lease that
+satisfies the clamp, lapses mid-commit and tells nobody, which is the exact
+failure the clamp exists to prevent. The age threshold remains the second guard for a lease the store lost
 or a cache store that cannot lock (reported once, never an ingest outage). The
 artifact **path lock** has no such fallback: a publish or a removal without it
 would race every other writer of the path, so on a store that cannot lock both

@@ -6,6 +6,7 @@ namespace App\Services\Kb\Versioning;
 
 use App\Support\Kb\HeldLock;
 use App\Support\Kb\LazyDiskListing;
+use App\Support\Kb\SettingInt;
 use App\Support\KbPath;
 use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Support\Facades\Cache;
@@ -94,8 +95,9 @@ final class ConversionArtifactStore
     {
         $configured = config('kb.conversion_artifacts.tmp_lease_seconds', self::DEFAULT_TMP_LEASE_SECONDS);
         $seconds = self::DEFAULT_TMP_LEASE_SECONDS;
-        if (is_numeric($configured) && (int) $configured > 0) {
-            $seconds = (int) $configured;
+        $whole = SettingInt::whole($configured, 1);
+        if ($whole !== null) {
+            $seconds = $whole;
         } else {
             self::warnOnce('lease_shape', 'ConversionArtifactStore: kb.conversion_artifacts.tmp_lease_seconds is not a positive number of seconds; using the default', [
                 'configured' => $configured,
@@ -195,7 +197,7 @@ final class ConversionArtifactStore
     {
         $configured = config('kb.conversion_artifacts.source_lock_seconds', 60);
 
-        return is_numeric($configured) && (int) $configured >= 1 ? (int) $configured : 60;
+        return SettingInt::whole($configured, 1) ?? 60;
     }
 
     /** The cache lease key of a temp file (one per attempt: the temp name carries a UUID). */

@@ -367,6 +367,16 @@ class IngestDocumentJob implements ShouldQueue
         // filesystem bytes and need not be valid UTF-8 — a file from a
         // Windows share must not fail to ingest because its name cannot be
         // encoded.
+        //
+        // The `|` is FRAMING, not a delimiter the values must avoid, so a
+        // value containing one is not ambiguous: each length field is decimal
+        // digits terminated by the first `|`, and the next N BYTES are the
+        // value whatever they contain — a reader skips exactly N and lands on
+        // the `|` that implode() put there. A tenant literally called `3|x`
+        // encodes as `3|3|x|…` and decodes back to `3|x`, not to `3` + `x`.
+        // Injectivity is the point of the length prefix; the separator only
+        // terminates the digits. Proven by
+        // IngestDocumentJobIdempotencyKeyTest against pipe-bearing values.
         $runKey = ($this->runKey !== null && $this->runKey !== '') ? $this->runKey : '';
         $digest = hash('sha256', implode('|', [
             strlen($tenantId), $tenantId,

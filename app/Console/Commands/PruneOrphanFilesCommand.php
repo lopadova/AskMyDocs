@@ -2,13 +2,14 @@
 
 namespace App\Console\Commands;
 
+use App\Models\KnowledgeDocument;
 use App\Services\Kb\DocumentDeleter;
 use App\Services\Kb\Ocr\OcrFigureStore;
 use App\Services\Kb\Versioning\ConversionArtifactStore;
-use App\Models\KnowledgeDocument;
 use App\Support\Kb\LazyDiskListing;
-use App\Support\KbDiskResolver;
+use App\Support\Kb\SettingInt;
 use App\Support\Kb\SourceType;
+use App\Support\KbDiskResolver;
 use App\Support\KbPath;
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\FilesystemAdapter;
@@ -299,7 +300,7 @@ class PruneOrphanFilesCommand extends Command
     {
         $configured = config('kb.sources.orphan_scan_max_items', 50000);
 
-        return is_numeric($configured) && (int) $configured >= 1 ? (int) $configured : 50000;
+        return SettingInt::whole($configured, 1) ?? 50000;
     }
 
     /**

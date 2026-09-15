@@ -52,8 +52,9 @@ final class SourceKeyLock
     public static function seconds(): int
     {
         $configured = config('kb.conversion_artifacts.source_lock_seconds', self::DEFAULT_SECONDS);
-        if (is_numeric($configured) && (int) $configured >= 1) {
-            return (int) $configured;
+        $seconds = SettingInt::whole($configured, 1);
+        if ($seconds !== null) {
+            return $seconds;
         }
         if (! self::$warnedInvalidSeconds) {
             self::$warnedInvalidSeconds = true;

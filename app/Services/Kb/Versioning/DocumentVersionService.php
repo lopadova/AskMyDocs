@@ -9,6 +9,7 @@ use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
 use App\Scopes\AccessScopeScope;
 use App\Services\Kb\Canonical\CanonicalParser;
+use App\Support\Kb\SettingInt;
 use App\Support\Kb\StorageNamespace;
 use App\Support\MarkdownDiff;
 use App\Support\TenantContext;
@@ -110,8 +111,9 @@ final class DocumentVersionService
     public static function timelineLimit(?int $requested = null): int
     {
         $configured = config('kb.versioning.timeline_limit', 100);
-        $max = is_numeric($configured) && (int) $configured >= 1 ? (int) $configured : 100;
-        if (($max !== (int) $configured || ! is_numeric($configured)) && ! self::$warnedTimelineLimit) {
+        $whole = SettingInt::whole($configured, 1);
+        $max = $whole ?? 100;
+        if ($whole === null && ! self::$warnedTimelineLimit) {
             // Once per process, not once per call: the limit is read by every
             // surface (HTTP / MCP / CLI) on every page, and a misconfiguration
             // must stay visible without sustained noise.
@@ -245,8 +247,9 @@ final class DocumentVersionService
     public static function artifactStateCacheSeconds(): int
     {
         $configured = config('kb.versioning.artifact_state_cache_seconds', 300);
-        if (is_numeric($configured) && (int) $configured >= 0) {
-            return (int) $configured;
+        $seconds = SettingInt::whole($configured, 0);
+        if ($seconds !== null) {
+            return $seconds;
         }
         if (! self::$warnedArtifactStateCache) {
             self::$warnedArtifactStateCache = true;

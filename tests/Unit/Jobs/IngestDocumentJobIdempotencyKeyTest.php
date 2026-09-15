@@ -128,4 +128,36 @@ final class IngestDocumentJobIdempotencyKeyTest extends TestCase
 
         $this->assertNotSame($a->idempotencyKeyFor('acme', 1), $b->idempotencyKeyFor('acme:demo', 1));
     }
+
+    /**
+     * The `|` in the digested tuple is FRAMING, not a delimiter the values
+     * must avoid: each length field is decimal digits terminated by the first
+     * `|`, and the next N bytes are the value whatever they contain. So a
+     * pipe inside a tenant, project, path or run key cannot be re-read as a
+     * field boundary, and two tuples that differ only in where the pipe sits
+     * still digest differently. The pairs below all compose the SAME byte
+     * sequence under a naive `implode` with no lengths.
+     */
+    public function test_a_pipe_inside_a_value_cannot_be_re_read_as_a_field_boundary(): void
+    {
+        // The returned key carries tenant and project verbatim in its PREFIX,
+        // so a collision is only observable when those two match and the
+        // ambiguity is in the path and the run key. These two compose the
+        // IDENTICAL byte sequence under a naive `implode('|', …)` with no
+        // lengths — `…a||b|1` — and must not share a key.
+        $base = str_repeat('deep/', 60).'a';
+        $trailingPipe = new IngestDocumentJob('demo', $base.'|', 'kb', tenantId: 'acme', runKey: 'b');
+        $leadingPipe = new IngestDocumentJob('demo', $base, 'kb', tenantId: 'acme', runKey: '|b');
+
+        $this->assertNotSame(
+            $trailingPipe->idempotencyKeyFor('acme', 1),
+            $leadingPipe->idempotencyKeyFor('acme', 1),
+            'the pipe is framing, not a field boundary: where it sits is part of the value',
+        );
+
+        // And a pipe-bearing value is still STABLE: the same inputs digest to
+        // the same key, so a retry finds its own run and not a neighbour's.
+        $this->assertSame($trailingPipe->idempotencyKeyFor('acme', 1), $trailingPipe->idempotencyKeyFor('acme', 1));
+        $this->assertNotSame($trailingPipe->idempotencyKeyFor('acme', 1), $trailingPipe->idempotencyKeyFor('acme', 2));
+    }
 }

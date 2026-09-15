@@ -46,8 +46,10 @@ final class StorageNamespace
 
     /**
      * The prefix a row's objects live under: the recorded one when it is a
-     * STRING that can actually name a path, else the configured source
-     * prefix.
+     * STRING — ANY string, verbatim — else the configured source prefix.
+     * Whether that string can actually name a path is a SEPARATE question,
+     * asked by {@see prefixCanNamePath()}; it is deliberately not enforced
+     * here (see below).
      *
      * The `is_string` guard is half the point. `metadata` is persisted JSON
      * and a legacy or directly-ingested row can carry anything under
