@@ -192,12 +192,18 @@ final class PruneArchivedVersionsCommand extends Command
             ->distinct()
             ->cursor(); // hydrated one pair at a time (R3: bounds model memory; the pgsql driver still buffers the result set)
         foreach ($recorded as $row) {
-            $disk = (string) $row->artifact_disk;
+            // The JSON selector hands back whatever the column holds, so the
+            // values are judged like `StorageNamespace` judges them rather
+            // than cast: a non-string disk is not a recorded disk (a `(string)`
+            // cast would invent one — `Array`, or a JSON fragment — and the
+            // sweep would then report a namespace nobody recorded), and a
+            // non-string prefix is the configured one.
+            $disk = is_string($row->artifact_disk) ? $row->artifact_disk : '';
             // A JSON `null` prefix is read as the configured one: the JSON
             // selector cannot tell an absent key (configured prefix, as the
             // deleter resolves it) from an explicit null (`''` there); ingest
             // never writes an explicit null, so the two agree in practice.
-            $prefix = (string) ($row->artifact_prefix ?? $configuredPrefix);
+            $prefix = is_string($row->artifact_prefix) ? $row->artifact_prefix : $configuredPrefix;
             if ($disk === '' || isset($namespaces[$disk.'|'.$prefix])) {
                 continue;
             }
@@ -433,9 +439,7 @@ final class PruneArchivedVersionsCommand extends Command
                     // (R14), an already-missing file is simply absent.
                     $metadata = is_array($row->metadata) ? $row->metadata : [];
                     $disk = StorageNamespace::diskOf($metadata);
-                    $prefix = array_key_exists('prefix', $metadata)
-                        ? (string) $metadata['prefix']
-                        : (string) config('kb.sources.path_prefix', '');
+                    $prefix = StorageNamespace::recordedPrefix($metadata);
                     if (is_string($row->markdown_path) && $row->markdown_path !== '') {
                         // Through the deleter's reference gate (ADR 0030 §8):
                         // under the path's lock the references are re-checked,

@@ -602,9 +602,7 @@ final class OcrService
 
         $filename = basename($doc->sourcePath);
         $disk = StorageNamespace::diskOf($doc->metadata);
-        $prefix = array_key_exists('prefix', $doc->metadata)
-            ? (string) $doc->metadata['prefix']
-            : (string) config('kb.sources.path_prefix', '');
+        $prefix = StorageNamespace::recordedPrefix($doc->metadata);
         // ADR 0029 §5 / ADR 0030 §3 — the `.ocr/` directory is a local copy
         // and is retention-aware: in `reference_only` no run is recorded and
         // no figure is stored (nothing to reuse from, no `images/` reference).

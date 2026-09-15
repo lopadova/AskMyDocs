@@ -133,9 +133,7 @@ final class KbArtifactsBackfillCommand extends Command
             return 'intentionally_missing';
         }
         $disk = StorageNamespace::diskOf($metadata);
-        $prefix = array_key_exists('prefix', $metadata)
-            ? (string) $metadata['prefix']
-            : (string) config('kb.sources.path_prefix', '');
+        $prefix = StorageNamespace::recordedPrefix($metadata);
         // A row whose recorded disk this deployment cannot resolve — or
         // cannot reach when its source is probed below — is ONE reported row
         // in its own bucket (`disk_unavailable`: an operator / infrastructure

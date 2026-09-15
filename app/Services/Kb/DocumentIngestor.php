@@ -1002,9 +1002,7 @@ class DocumentIngestor
 
             return false;
         }
-        $prefix = array_key_exists('prefix', $existingMetadata)
-            ? (string) $existingMetadata['prefix']
-            : (string) config('kb.sources.path_prefix', '');
+        $prefix = StorageNamespace::recordedPrefix($existingMetadata);
         $final = null;
         try {
             // The row is the authority on its namespace, not the ambient

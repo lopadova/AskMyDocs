@@ -38,6 +38,33 @@ final class StorageNamespaceTest extends TestCase
         }
     }
 
+    /**
+     * The contract is only worth anything if every consumer uses it. A raw
+     * `(string)` cast anywhere in the artifact lifecycle reintroduces the
+     * `"Array"` namespace this helper exists to prevent, and the reader then
+     * looks in a place nobody recorded — so the absence of those casts is
+     * asserted, not assumed (they were found in ten files, then four more).
+     */
+    public function test_no_consumer_casts_a_recorded_prefix_instead_of_reading_it(): void
+    {
+        $root = dirname(__DIR__, 4);
+        $offenders = [];
+        foreach (['app/Services/Kb', 'app/Console/Commands', 'app/Jobs', 'app/Http/Controllers/Api'] as $dir) {
+            $iterator = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($root.'/'.$dir));
+            foreach ($iterator as $file) {
+                if ($file->getExtension() !== 'php') {
+                    continue;
+                }
+                $source = (string) file_get_contents($file->getPathname());
+                if (preg_match('/\(string\)\s*\$[A-Za-z_>\-\[\]\x27]*\[\x27prefix\x27\]/', $source) === 1) {
+                    $offenders[] = str_replace($root.'/', '', $file->getPathname());
+                }
+            }
+        }
+
+        $this->assertSame([], $offenders, 'every consumer must read the recorded prefix through StorageNamespace::recordedPrefix()');
+    }
+
     /** An explicit empty string is a row that recorded "no prefix" — it keeps it, never the configured default. */
     public function test_an_explicit_empty_prefix_is_recorded_not_replaced(): void
     {
