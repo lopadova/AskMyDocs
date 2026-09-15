@@ -103,4 +103,48 @@ describe('useRealtimeAgent', () => {
         expect(result.current.error?.message).toContain('Allow microphone access');
         expect(request.mock.calls.some(([, init]) => (init as RequestInit).method === 'DELETE')).toBe(true);
     });
+
+    it('finishes the server session when OpenAI microphone preflight is denied', async () => {
+        const descriptor: RealtimeAgentConnection = {
+            session_id: '01KSESSION',
+            provider: 'openai',
+            connection: {
+                transport: 'webrtc',
+                api_variant: 'live',
+                bootstrap_url: '/realtime-agent/sessions/01KSESSION/connect',
+            },
+            state,
+            conversation_id: 7,
+            expires_at: '2026-09-15T16:00:00Z',
+        };
+        vi.spyOn(chatApi, 'startRealtimeAgent').mockResolvedValue(descriptor);
+        vi.stubGlobal('navigator', {
+            mediaDevices: {
+                getUserMedia: vi.fn().mockRejectedValue(
+                    new DOMException('Permission denied', 'NotAllowedError'),
+                ),
+            },
+        });
+        const request = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({
+            state: {
+                ...state,
+                session: { ...state.session, revision: 2, status: 'finished' },
+            },
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+        vi.stubGlobal('fetch', request);
+        const { result } = renderHook(() => useRealtimeAgent({
+            conversationId: 7,
+            filters: {},
+            availability: { available: true, reason: null },
+            onRequireConversation: vi.fn().mockResolvedValue(7),
+            onAdoptRun: vi.fn().mockResolvedValue(undefined),
+        }));
+
+        await act(async () => {
+            await expect(result.current.start()).rejects.toThrow('Microphone access was denied.');
+        });
+
+        expect(result.current.status).toBe('error');
+        expect(request.mock.calls.filter(([, init]) => (init as RequestInit).method === 'DELETE')).toHaveLength(1);
+    });
 });

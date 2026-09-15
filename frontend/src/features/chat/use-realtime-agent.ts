@@ -3,7 +3,6 @@ import {
     ElevenLabsRealtimeDriver,
     FakeRealtimeDriver,
     LaravelControlTransport,
-    OpenAILiveDriver,
     RealtimeAgentClient,
     SurfaceRegistry,
     type AgentState,
@@ -30,6 +29,7 @@ import {
     type FilterState,
     type LiveSourceSelection,
 } from './chat.api';
+import { createAskMyDocsOpenAILiveDriver } from './openai-live-driver';
 
 export type RealtimeAgentStatus =
     | 'idle'
@@ -152,13 +152,21 @@ export function useRealtimeAgent(options: UseRealtimeAgentOptions): UseRealtimeA
                 }),
                 actions: {},
             });
-            const provider = descriptor.provider === 'fake'
-                ? new FakeRealtimeDriver()
-                : descriptor.provider === 'openai'
-                    ? new OpenAILiveDriver(request)
-                    : descriptor.provider === 'elevenlabs'
-                        ? new ElevenLabsRealtimeDriver(request)
-                        : null;
+            let provider;
+            try {
+                provider = descriptor.provider === 'fake'
+                    ? new FakeRealtimeDriver()
+                    : descriptor.provider === 'openai'
+                        ? await createAskMyDocsOpenAILiveDriver(request)
+                        : descriptor.provider === 'elevenlabs'
+                            ? new ElevenLabsRealtimeDriver(request)
+                            : null;
+            } catch (reason) {
+                // Audio is prepared before the client exists, so finish the
+                // server session explicitly when permission/device setup fails.
+                await control.finish(Number(descriptor.state.session.revision)).catch(() => undefined);
+                throw reason;
+            }
             if (provider === null) throw new Error(`Unsupported realtime provider: ${descriptor.provider}`);
 
             const client = new RealtimeAgentClient(surfaces, provider, control, {
