@@ -6,6 +6,7 @@ use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Requests\Auth\TokenRequest;
 use App\Invitations\RegistrationAccountCompletionService;
 use App\Models\User;
+use App\Realtime\RealtimeAgentAvailability;
 use App\Services\Auth\CompanyOnboardingEligibility;
 use App\Services\Auth\UserTeamsResolver;
 use App\Support\DesktopToken;
@@ -32,6 +33,7 @@ class AuthController extends Controller
 {
     public function __construct(
         private readonly RegistrationAccountCompletionService $registration,
+        private readonly RealtimeAgentAvailability $realtimeAgentAvailability,
     ) {}
 
     public function login(LoginRequest $request): JsonResponse
@@ -217,6 +219,7 @@ class AuthController extends Controller
             'features' => [
                 'invitations_admin' => (bool) config('invitations-admin.enabled', false),
                 'system_admin' => $user->can(\App\Support\PlatformAccess::PLATFORM_ADMIN_PERMISSION),
+                'realtime_agent_live' => $this->realtimeAgentAvailability->status(),
             ],
         ], 200);
     }

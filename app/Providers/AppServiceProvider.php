@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use AgentsFullDuplex\RealtimeAgent\Events\AgentUsageRecorded;
 use App\Agent\DefaultAgentRunHandler;
 use App\Contracts\AgentRunHandler;
 use App\Ai\Tools\ChatToolSourceContract;
@@ -33,6 +34,7 @@ use App\Console\Commands\PruneDeletedDocumentsCommand;
 use App\Console\Commands\PruneEmbeddingCacheCommand;
 use App\Console\Commands\PruneNotificationsCommand;
 use App\Console\Commands\PruneOrphanFilesCommand;
+use App\Console\Commands\PruneRealtimeAgentSessionsCommand;
 use App\Console\Commands\SmokeMcpConnectorCommand;
 use App\Connectors\HostIngestionBridge;
 use App\Mcp\Adapters\EloquentMcpServerRegistry;
@@ -59,6 +61,7 @@ use App\Invitations\ProtectedRoleProvisioner;
 use Padosoft\Invitations\Contracts\TenantResolver as InvitationsTenantResolver;
 use Padosoft\Invitations\Services\AccountProvisioningService;
 use App\Policies\KnowledgeDocumentPolicy;
+use App\Realtime\ProjectRealtimeUsageToFinOps;
 use App\Services\Admin\Pdf\PdfRenderer;
 use App\Services\Admin\Pdf\PdfRendererFactory;
 use App\Services\Kb\Pipeline\PipelineRegistry;
@@ -242,6 +245,10 @@ class AppServiceProvider extends ServiceProvider
             McpToolInvocationFinished::class,
             McpConnectorInvocationAuditListener::class,
         );
+        $this->app->make(Dispatcher::class)->listen(
+            AgentUsageRecorded::class,
+            ProjectRealtimeUsageToFinOps::class,
+        );
 
         // v8.21 (Ciclo 2) — observe ConnectorSyncJob via the queue lifecycle to
         // record per-run rows in `connector_sync_runs` (the package job emits no
@@ -274,6 +281,16 @@ class AppServiceProvider extends ServiceProvider
         $this->registerInvitationsIntegration();
         $this->registerInvitationsGates();
         $this->registerPiiRedactorTenancy();
+        $this->registerRealtimeAgentGate();
+    }
+
+    private function registerRealtimeAgentGate(): void
+    {
+        Gate::define('useAskMyDocsRealtimeSession', function ($user, $session): bool {
+            return $user instanceof \App\Models\User
+                && $session instanceof \AgentsFullDuplex\RealtimeAgent\Data\AgentSession
+                && app(\App\Realtime\RealtimeSessionAccess::class)->allows($user, $session);
+        });
     }
 
     /**
@@ -869,6 +886,7 @@ class AppServiceProvider extends ServiceProvider
         $this->commands([
             PruneEmbeddingCacheCommand::class,
             PruneChatLogsCommand::class,
+            PruneRealtimeAgentSessionsCommand::class,
             PruneDeletedDocumentsCommand::class,
             PruneOrphanFilesCommand::class,
             KbIngestCommand::class,

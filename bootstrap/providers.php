@@ -88,6 +88,12 @@ $providers = [
     // AppServiceProvider so ChatRetrievalService is bound for
     // SearchKnowledgeBaseTool.
     App\Providers\WidgetServiceProvider::class,
+    // Realtime Agent core. Listed explicitly because package discovery is not
+    // a reliable bootstrap boundary in this application (the same posture used
+    // for the other Padosoft packages above). Host-specific authorization,
+    // tenancy, compliance and usage projection are registered by
+    // AppServiceProvider after this provider has bound the vendor runtime.
+    AgentsFullDuplex\RealtimeAgent\RealtimeAgentServiceProvider::class,
     // v4.6 — Connector framework SP (padosoft/askmydocs-connector-base
     // v1.1.1). Listed explicitly for the same auto-discovery
     // brittleness rationale as the siblings above. Required to

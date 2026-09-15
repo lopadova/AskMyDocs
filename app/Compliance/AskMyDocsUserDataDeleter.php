@@ -2,9 +2,11 @@
 
 namespace App\Compliance;
 
+use AgentsFullDuplex\RealtimeAgent\Models\AgentSessionRecord;
 use App\Models\Conversation;
 use App\Models\ChatLog;
 use App\Models\McpToolCallAudit;
+use App\Models\RealtimeAgentSessionLink;
 use App\Services\Kb\Pii\SubjectErasureService;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
@@ -66,6 +68,14 @@ class AskMyDocsUserDataDeleter
         // surrogate permanently unresolvable. Tenant-scoped (R30). A null email
         // (no linkable value) shreds nothing — eraseValues guards the empty set.
         $this->eraser->eraseValues($tenantId, $userEmail !== null ? [$userEmail] : []);
+
+        $realtimeSessionIds = RealtimeAgentSessionLink::query()
+            ->forTenant($tenantId)
+            ->where('user_id', $userId)
+            ->pluck('session_id');
+        AgentSessionRecord::query()
+            ->whereIn('id', $realtimeSessionIds)
+            ->delete();
 
         // v7.0/W6.3 — the package writes audit rows with
         // `user_id=null` and an opaque `actor` string (e.g.

@@ -249,6 +249,10 @@ abstract class TestCase extends OrchestraTestCase
         // in its own getEnvironmentSetUp to prove the wired-and-secured route.
         $app->register(\Padosoft\Invitations\Admin\InvitationsAdminServiceProvider::class);
 
+        // Agents Bridge. Testbench skips bootstrap/providers.php and the
+        // package intentionally leaves migration ownership to the host.
+        $app->register(\AgentsFullDuplex\RealtimeAgent\RealtimeAgentServiceProvider::class);
+
         $app->register(\App\Providers\AiServiceProvider::class);
         $app->register(\App\Providers\ChatLogServiceProvider::class);
         $app->register(\App\Providers\AppServiceProvider::class);
@@ -309,6 +313,7 @@ abstract class TestCase extends OrchestraTestCase
         // the disk or validate the config shape.
         $app['config']->set('filesystems', require __DIR__.'/../config/filesystems.php');
         $app['config']->set('chat-log', require __DIR__.'/../config/chat-log.php');
+        $app['config']->set('realtime-agent', require __DIR__.'/../config/realtime-agent.php');
         $app['config']->set('sanctum', require __DIR__.'/../config/sanctum.php');
         $app['config']->set('cors', require __DIR__.'/../config/cors.php');
         // Security response headers (Testbench does not auto-load host config/).

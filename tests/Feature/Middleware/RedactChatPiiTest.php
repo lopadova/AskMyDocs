@@ -141,6 +141,30 @@ final class RedactChatPiiTest extends TestCase
         $this->assertSame($first, $second);
     }
 
+    public function test_redacts_realtime_message_and_tool_question_shapes(): void
+    {
+        config([
+            'kb.pii_redactor.enabled' => true,
+            'kb.pii_redactor.persist_chat_redacted' => true,
+        ]);
+
+        $request = Request::create('/realtime-agent/sessions/test/tools', 'POST', [
+            'type' => 'message',
+            'message' => 'Scrivi a mario@example.com',
+            'arguments' => ['question' => 'Contatta mario@example.com'],
+        ]);
+
+        $this->app->make(RedactChatPii::class)->handle($request, function (Request $passed) {
+            $this->assertStringNotContainsString('mario@example.com', (string) $passed->input('message'));
+            $this->assertStringNotContainsString(
+                'mario@example.com',
+                (string) $passed->input('arguments.question'),
+            );
+
+            return response('ok');
+        });
+    }
+
     public function test_empty_content_is_safe_no_op(): void
     {
         config([

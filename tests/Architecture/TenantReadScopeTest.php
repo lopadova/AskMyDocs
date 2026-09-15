@@ -43,7 +43,7 @@ final class TenantReadScopeTest extends TestCase
         'McpTenantToken', 'McpToolCallAudit', 'Message', 'NotificationDigest',
         'NotificationEvent', 'NotificationPreference', 'NotificationTenantDefault',
         'AppSetting', 'ConnectorSyncRun', 'ImapBackfill', 'ImapBackfillWindow',
-        'Project', 'ProjectMembership', 'TabularCell', 'TabularReview',
+        'Project', 'ProjectMembership', 'RealtimeAgentSessionLink', 'TabularCell', 'TabularReview',
         'TenantBranding', 'TenantSchedulerOverride', 'WidgetIdentity', 'WidgetKey', 'WidgetSession',
         'WidgetSessionStep', 'WidgetSessionToken', 'Workflow',
     ];

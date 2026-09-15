@@ -4,19 +4,21 @@ declare(strict_types=1);
 
 namespace App\Http\Middleware;
 
+use App\Services\Chat\ChatInputRedactor;
 use Closure;
 use Illuminate\Http\Request;
-use Padosoft\PiiRedactor\RedactorEngine;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
  * Redact PII from the `content` field of incoming chat-message requests.
  *
- * Wraps the three POST endpoints that persist user-submitted chat content:
+ * Wraps the chat-writing endpoints that persist user-submitted content:
  *
  *   POST /conversations/{conversation}/messages         (sync — MessageController::store)
  *   POST /conversations/{conversation}/messages/agent   (durable agent loop)
  *   POST /conversations/{conversation}/messages/stream  (SSE — MessageStreamController::store)
+ *   POST /conversations/{conversation}/realtime-agent   (trusted live-session start)
+ *   POST /realtime-agent/{session}/tools                (live server-tool execution)
  *
  * When BOTH `kb.pii_redactor.enabled` AND
  * `kb.pii_redactor.persist_chat_redacted` are true, the middleware reads
@@ -31,7 +33,7 @@ use Symfony\Component\HttpFoundation\Response;
  * behaviour change until they explicitly flip BOTH integration knobs ON.
  *
  * Scope (architecture-tested by `tests/Architecture/PiiRedactionMiddlewareScopeTest`):
- *   - Bound ONLY to the three chat-message routes via the `redact-chat-pii`
+ *   - Bound ONLY to chat-message and realtime-agent routes via the `redact-chat-pii`
  *     alias declared in `bootstrap/app.php`.
  *   - NEVER bound to `/admin/*` / `/insights/*` / `/api/kb/ingest|delete/*`
  *     routes — those carry curator-supplied content that must NOT be
@@ -51,24 +53,31 @@ use Symfony\Component\HttpFoundation\Response;
 final class RedactChatPii
 {
     public function __construct(
-        private readonly RedactorEngine $engine,
+        private readonly ChatInputRedactor $redactor,
     ) {}
 
     public function handle(Request $request, Closure $next): Response
     {
-        $config = config('kb.pii_redactor');
-
-        if (! ($config['enabled'] ?? false) || ! ($config['persist_chat_redacted'] ?? false)) {
-            return $next($request);
-        }
-
         $content = $request->input('content');
-        if (! is_string($content) || $content === '') {
-            return $next($request);
+        if (is_string($content) && $content !== '') {
+            $request->merge(['content' => $this->redactor->redact($content)]);
         }
 
-        $redacted = $this->engine->redact($content);
-        $request->merge(['content' => $redacted]);
+        // Agents Bridge accepts provider transcripts (`content`), server-side
+        // text continuation (`message`) and server-tool arguments. Redact each
+        // user-input shape before the vendor controller audits or executes it.
+        $message = $request->input('message');
+        if ($request->input('type') === 'message' && is_string($message) && $message !== '') {
+            $request->merge(['message' => $this->redactor->redact($message)]);
+        }
+
+        $arguments = $request->input('arguments');
+        if (is_array($arguments) && is_string($arguments['question'] ?? null)) {
+            $request->merge(['arguments' => [
+                ...$arguments,
+                'question' => $this->redactor->redact($arguments['question']),
+            ]]);
+        }
 
         return $next($request);
     }

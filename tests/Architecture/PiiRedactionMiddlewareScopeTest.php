@@ -14,7 +14,9 @@ use Tests\TestCase;
  *
  * The `redact-chat-pii` middleware (registered in `bootstrap/app.php`,
  * implemented in `App\Http\Middleware\RedactChatPii`) MUST be bound
- * ONLY to the three chat-message persistence endpoints:
+ * ONLY to the chat-message persistence endpoints and the Agents Bridge
+ * session transport. The latter uses one shared middleware group for its
+ * authenticated state, audit, transport and tool routes.
  *
  *   - POST /conversations/{conversation}/messages         (sync)
  *   - POST /conversations/{conversation}/messages/agent   (durable agent loop)
@@ -49,7 +51,7 @@ final class PiiRedactionMiddlewareScopeTest extends TestCase
         'testing/',
     ];
 
-    public function test_redact_chat_pii_middleware_is_bound_to_exactly_three_chat_routes(): void
+    public function test_redact_chat_pii_middleware_is_bound_only_to_chat_and_realtime_routes(): void
     {
         $boundRoutes = $this->routesWithMiddleware(RedactChatPii::class);
 
@@ -67,9 +69,23 @@ final class PiiRedactionMiddlewareScopeTest extends TestCase
                 'conversations/{conversation}/messages',
                 'conversations/{conversation}/messages/agent',
                 'conversations/{conversation}/messages/stream',
+                'conversations/{conversation}/realtime-agent',
+                'realtime-agent/sessions/{session}',
+                'realtime-agent/sessions/{session}',
+                'realtime-agent/sessions/{session}/audit',
+                'realtime-agent/sessions/{session}/audit/reconcile',
+                'realtime-agent/sessions/{session}/commands/{command}',
+                'realtime-agent/sessions/{session}/confirmations/{confirmation}',
+                'realtime-agent/sessions/{session}/connect',
+                'realtime-agent/sessions/{session}/messages',
+                'realtime-agent/sessions/{session}/surface',
+                'realtime-agent/sessions/{session}/surface',
+                'realtime-agent/sessions/{session}/text',
+                'realtime-agent/sessions/{session}/tools',
+                'realtime-agent/sessions/{session}/usage',
             ],
             $uris,
-            'redact-chat-pii must be bound to EXACTLY the three chat-message routes — '
+            'redact-chat-pii must be bound only to the chat and realtime-agent routes — '
             .'any additional binding risks redacting curator/admin content.'
         );
     }

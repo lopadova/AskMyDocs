@@ -4,12 +4,11 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api;
 
+use App\Agent\AgentChatTurnStarter;
 use App\Agent\AgentExecutionContextFactory;
-use App\Agent\AgentRunDispatcher;
+use App\Http\Requests\AgentChatScopeRules;
 use App\Mcp\Apps\McpAppTurnContext;
 use App\Models\Conversation;
-use App\Support\Canonical\CanonicalType;
-use App\Support\Kb\SourceType;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -22,7 +21,7 @@ final class AgentMessageController extends Controller
         Request $request,
         Conversation $conversation,
         AgentExecutionContextFactory $contexts,
-        AgentRunDispatcher $runs,
+        AgentChatTurnStarter $turns,
         McpAppTurnContext $mcpAppContext,
     ): JsonResponse {
         $user = $request->user();
@@ -38,13 +37,8 @@ final class AgentMessageController extends Controller
                 'selection' => ['sometimes', 'array'],
                 'selection.message_id' => ['required_with:selection', 'integer', 'min:1'],
                 'selection.row_key' => ['required_with:selection', 'string', 'max:128'],
-                'live_sources' => ['sometimes', 'array'],
-                'live_sources.api' => ['sometimes', 'array', 'max:250'],
-                'live_sources.api.*' => ['string', 'max:180'],
-                'live_sources.mcp' => ['sometimes', 'array', 'max:250'],
-                'live_sources.mcp.*' => ['string', 'max:180'],
             ],
-            $this->retrievalFilterRules(),
+            AgentChatScopeRules::rules(),
         ));
         $mcpAppId = is_string($validated['mcp_app_id'] ?? null)
             ? $validated['mcp_app_id']
@@ -61,18 +55,9 @@ final class AgentMessageController extends Controller
         $question = $selection === null
             ? $content
             : $this->selectionModelMessage($selection, $context->locale);
-        $message = $conversation->messages()->create([
-            'role' => 'user',
-            'content' => $content,
-            'metadata' => $selection === null ? null : [
-                'agent_selection' => $selection,
-                'locale' => $context->locale,
-            ],
-        ]);
         $input = [
             'question' => $question,
             'filters' => is_array($validated['filters'] ?? null) ? $validated['filters'] : [],
-            'user_message_id' => $message->id,
         ];
         if ($appContext !== null && $mcpAppId !== null) {
             $input['mcp_app_id'] = $mcpAppId;
@@ -83,14 +68,19 @@ final class AgentMessageController extends Controller
         if (is_array($validated['live_sources'] ?? null)) {
             $input['live_sources'] = $validated['live_sources'];
         }
-        $run = $runs->dispatch($context, $input, [
-            'user_id' => $user->id,
-            'conversation_id' => $conversation->id,
-        ]);
-        $message->forceFill(['metadata' => array_merge(
-            is_array($message->metadata) ? $message->metadata : [],
-            ['agent_run_id' => $run->run_id],
-        )])->save();
+        $turn = $turns->start(
+            $context,
+            $conversation,
+            $user,
+            $content,
+            $input,
+            $selection === null ? null : [
+                'agent_selection' => $selection,
+                'locale' => $context->locale,
+            ],
+        );
+        $message = $turn->message;
+        $run = $turn->run;
 
         return response()->json([
             'run_id' => $run->run_id,
@@ -232,39 +222,4 @@ final class AgentMessageController extends Controller
         return $fields;
     }
 
-    /** @return array<string,array<int,string>> */
-    private function retrievalFilterRules(): array
-    {
-        $sourceTypes = collect(SourceType::cases())
-            ->reject(fn (SourceType $type): bool => $type === SourceType::UNKNOWN)
-            ->map(fn (SourceType $type): string => $type->value)
-            ->all();
-        $canonicalTypes = array_map(
-            static fn (CanonicalType $type): string => $type->value,
-            CanonicalType::cases(),
-        );
-
-        return [
-            'filters' => ['nullable', 'array'],
-            'filters.project_keys' => ['nullable', 'array'],
-            'filters.project_keys.*' => ['string', 'max:120'],
-            'filters.tag_slugs' => ['nullable', 'array'],
-            'filters.tag_slugs.*' => ['string', 'max:120'],
-            'filters.source_types' => ['nullable', 'array'],
-            'filters.source_types.*' => ['string', 'in:'.implode(',', $sourceTypes)],
-            'filters.canonical_types' => ['nullable', 'array'],
-            'filters.canonical_types.*' => ['string', 'in:'.implode(',', $canonicalTypes)],
-            'filters.connector_types' => ['nullable', 'array'],
-            'filters.connector_types.*' => ['string', 'max:120'],
-            'filters.doc_ids' => ['nullable', 'array'],
-            'filters.doc_ids.*' => ['integer', 'min:1'],
-            'filters.collection_id' => ['nullable', 'integer', 'min:1'],
-            'filters.folder_globs' => ['nullable', 'array'],
-            'filters.folder_globs.*' => ['string', 'max:255'],
-            'filters.date_from' => ['nullable', 'date'],
-            'filters.date_to' => ['nullable', 'date', 'after_or_equal:filters.date_from'],
-            'filters.languages' => ['nullable', 'array'],
-            'filters.languages.*' => ['string', 'size:2'],
-        ];
-    }
 }
