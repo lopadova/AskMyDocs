@@ -349,8 +349,15 @@ final class KbDocumentVersionControllerTest extends TestCase
         $tenantContext = app(\App\Support\TenantContext::class);
         $mine = $tenantContext->current();
         $tenantContext->set('other-tenant');
-        $foreign = $this->makeVersion('v3www', 'active', 'their doc', canonical: true, sourcePath: 'docs/theirs.md');
-        $tenantContext->set($mine);
+
+        try {
+            $foreign = $this->makeVersion('v3www', 'active', 'their doc', canonical: true, sourcePath: 'docs/theirs.md');
+        } finally {
+            // Unconditional (R16): a throw inside the foreign-tenant window
+            // would otherwise leave the container singleton switched for the
+            // rest of this test and make the failure unreadable.
+            $tenantContext->set($mine);
+        }
 
         $this->actingAs($admin)->postJson("/api/admin/kb/documents/{$archived->id}/restore-version")
             ->assertOk()

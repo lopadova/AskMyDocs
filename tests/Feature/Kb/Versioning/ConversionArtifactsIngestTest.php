@@ -877,8 +877,16 @@ MD;
 
         $fresh = $doc->fresh();
         $this->assertSame('active', $fresh->status);
+        // Asserted BEFORE the chunk count so this line is the one that fails
+        // first when the fallback regresses — an assertion that can only run
+        // after an earlier one already failed proves nothing about itself.
+        // `shouldNotHaveReceived('warning', [Mockery::on(...)])` would be
+        // VACUOUS here: a single-element `withArgs(array)` builds an argument
+        // LIST of one, the real call is `warning($message, $context)` — two
+        // args — so the expectation never matches and `never()` passes
+        // whatever was logged. The no-args form compares nothing and holds.
+        \Illuminate\Support\Facades\Log::shouldNotHaveReceived('warning');
         $this->assertSame($chunksBefore, $fresh->chunks()->count(), 're-chunked from the artifact instead of being skipped as corrupt');
-        \Illuminate\Support\Facades\Log::shouldNotHaveReceived('warning', [\Mockery::on(static fn (string $message): bool => str_contains($message, 'does not hash to the version'))]);
     }
 
     /** The artifact branch of the re-embed (original dropped, the stored artifact re-chunked) gets the same outcome: done, logged, never a failed job. */

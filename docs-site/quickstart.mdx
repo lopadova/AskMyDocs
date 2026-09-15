@@ -96,7 +96,7 @@ matrix and production hardening, see [Installation](/installation).
 ## What just happened
 
 1. Your markdown was chunked (section-aware), embedded, and upserted into
-   PostgreSQL on the idempotency tuple `(project_key, source_path, version_hash)`.
+   PostgreSQL on the idempotency tuple `(tenant_id, project_key, source_path, version_hash)`.
 2. Your question was embedded and run through **hybrid retrieval** — vector +
    full-text — then fused by the [reranker](/core-concepts).
 3. The grounded context was composed into a prompt and sent to your provider via

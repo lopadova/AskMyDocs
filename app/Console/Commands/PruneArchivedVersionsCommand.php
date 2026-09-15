@@ -185,9 +185,12 @@ final class PruneArchivedVersionsCommand extends Command
      * as its literal, so an `is_string()` check on the selector accepts a
      * malformed value as a literal disk name and the sweep then reports —
      * and counts as a permanent leak — a namespace nobody ever recorded.
-     * The dedup the `DISTINCT` used to do is done on the keyed map below, so
-     * the only thing lost is a driver-side narrowing; the per-namespace
-     * sweep that follows walks whole directories and dwarfs it.
+     * The dedup the `DISTINCT` used to do is done on the keyed map below —
+     * and the bound it also provided is restored by `lazyById()`, because
+     * `metadata` is `json`, not `jsonb`, so `SELECT DISTINCT metadata` is not
+     * even expressible on Postgres. What is lost is a driver-side narrowing;
+     * the per-namespace sweep that follows walks whole directories and dwarfs
+     * it.
      *
      * @return list<array{0: string, 1: string}>
      */
@@ -200,8 +203,15 @@ final class PruneArchivedVersionsCommand extends Command
             ->withoutGlobalScopes()
             ->whereNotNull('markdown_path')
             ->whereNotNull('metadata->disk')
-            ->select(['metadata'])
-            ->cursor(); // hydrated one row at a time (R3: bounds model memory; the pgsql driver still buffers the result set)
+            ->select(['id', 'metadata'])
+            // R3 — `lazyById()`, not `cursor()`. The `DISTINCT` this replaced
+            // kept the result set at one row per namespace whatever the corpus
+            // size; without it a `cursor()` hands the driver every
+            // artifact-bearing row at once (pgsql and buffered MySQL PDO
+            // materialise the whole set), and this sweep runs AFTER the row
+            // prune has committed — an OOM here leaves rows gone, bytes
+            // leaked and nothing reported. Paged by id, the bound is the page.
+            ->lazyById(500);
         foreach ($recorded as $row) {
             // The ONE reading (R30/ADR 0030 §8): a malformed disk is not a
             // recorded disk, and a malformed or absent prefix is the

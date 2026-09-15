@@ -621,9 +621,10 @@ class DocumentIngestor
         ?array $artifact = null,
     ): KnowledgeDocument {
         // If this is a canonical re-ingest with changed content, previous
-        // versions still hold the (project_key, slug) / (project_key, doc_id)
-        // unique slots. We must vacate those slots BEFORE the updateOrCreate
-        // below, otherwise the insert violates `uq_kb_doc_slug` / `uq_kb_doc_doc_id`.
+        // versions still hold the (tenant_id, project_key, slug) /
+        // (tenant_id, project_key, doc_id) unique slots. We must vacate those
+        // slots BEFORE the updateOrCreate below, otherwise the insert violates
+        // `uq_kb_doc_tenant_slug` / `uq_kb_doc_tenant_doc_id`.
         if ($canonical !== null) {
             $this->vacateCanonicalIdentifiersOnPreviousVersions($projectKey, $sourcePath, $versionHash);
         }

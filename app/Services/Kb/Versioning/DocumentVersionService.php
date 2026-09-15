@@ -567,8 +567,8 @@ final class DocumentVersionService
             // reclaimed slug/doc_id can still be held by an archived sibling
             // (a re-ingest that dropped the frontmatter vacates nothing) or by
             // a live row of ANOTHER source path in the same project. Writing
-            // it anyway raises a QueryException on `uq_kb_doc_slug` /
-            // `uq_kb_doc_doc_id` — a 500 with a raw SQL message. The restore's
+            // it anyway raises a QueryException on `uq_kb_doc_tenant_slug` /
+            // `uq_kb_doc_tenant_doc_id` — a 500 with a raw SQL message. The restore's
             // job is to bring the CONTENT back, so a taken slot degrades the
             // row to non-canonical, loudly, rather than failing the restore or
             // stealing the slot from its current holder.
@@ -698,6 +698,10 @@ final class DocumentVersionService
             return null;
         }
 
+        // `value('id')` and not `first()`: with `AccessScopeScope` lifted the
+        // row may be one this admin is not allowed to read, and the only
+        // thing this probe is entitled to is whether the slot is taken. The
+        // lock clause is on the query, so the row is still locked.
         $holder = KnowledgeDocument::withTrashed()
             ->withoutGlobalScope(AccessScopeScope::class)
             ->forTenant($tenantId)
@@ -712,8 +716,8 @@ final class DocumentVersionService
                 }
             })
             ->lockForUpdate()
-            ->first();
+            ->value('id');
 
-        return $holder !== null ? (int) $holder->id : null;
+        return $holder !== null ? (int) $holder : null;
     }
 }

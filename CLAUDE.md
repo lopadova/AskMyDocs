@@ -519,8 +519,11 @@ deliberately. 10-point operational checklist:
    `project_key` (the FK is `(project_key, node_uid)`; tenant isolation is the
    application-layer R30 `forTenant()` scope, not the FK). FK violations are
    bugs to fix, not silence.
-4. Slug + doc_id uniqueness is scoped per project. Two different projects
-   CAN and SHOULD share `dec-cache-v2`.
+4. Slug + doc_id uniqueness is scoped per tenant AND project
+   (`uq_kb_doc_tenant_slug` / `uq_kb_doc_tenant_doc_id`). Two different
+   projects — and two different tenants — CAN and SHOULD share
+   `dec-cache-v2`. A conflict probe on those slots must lift the
+   soft-delete and ACL scopes: the index does not honour either.
 5. Hard delete cascades the graph via `DocumentDeleter::forceDelete()`;
    soft delete leaves it intact. Never replicate either path manually.
 6. Canonical re-ingest must vacate prior identifiers first or the

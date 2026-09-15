@@ -32,10 +32,14 @@ use Illuminate\Support\Facades\Schema;
  * the target of a composite FK and needs the raw DROP CONSTRAINT ...
  * CASCADE + FK rebuild the note in 2026_05_26_000001 describes.
  *
- * No table's FK references any of the three indexes touched here
- * (`knowledge_chunks`, `knowledge_document_tags` and
- * `knowledge_document_acl` all reference `knowledge_documents.id`), so the
- * portable Blueprint API is enough.
+ * No table's FK references any of the three indexes touched here: every
+ * child table that points at this one does so with
+ * `foreignId(...)->constrained('knowledge_documents')`, i.e. at the primary
+ * key (`knowledge_chunks`, `knowledge_document_tags`,
+ * `knowledge_document_acl`, `tabular_cells`,
+ * `kb_canonical_health_snapshot`, `kb_collection_members`,
+ * `kb_unmapped_source_principals`). So the portable Blueprint API is enough,
+ * with no DROP CONSTRAINT ... CASCADE and no FK rebuild.
  */
 return new class extends Migration
 {
@@ -60,9 +64,23 @@ return new class extends Migration
     }
 
     /**
-     * Drop `$from` when it is really there and create `$to` when it is not:
-     * both halves are conditional because the test schema never created
-     * `uq_kb_doc_version` at all, and a re-run must stay a no-op.
+     * Create `$to` when it is not there and drop `$from` when it is — in that
+     * ORDER, because `Blueprint::build()` runs the two as separate statements
+     * and `Schema::table()` is not transactional (MySQL auto-commits DDL
+     * regardless). Dropping first would leave the table with NO unique
+     * whenever the create fails, and in `down()` it can: `down()` recreates
+     * `uq_kb_doc_version (project_key, source_path, version_hash)`, which
+     * `up()` deliberately made violable — two tenants sharing one tuple is
+     * the legal state this migration introduces. Creating first turns that
+     * into a clean, reversible failure with the wide unique still standing
+     * instead of an idempotency anchor silently gone. The two indexes differ
+     * in name AND columns, so they coexist for the one statement in between.
+     *
+     * Both halves are conditional: the test schema never created
+     * `uq_kb_doc_version` at all — so `up()` ADDS `uq_kb_doc_tenant_version`
+     * there for the first time and `down()` would leave behind a
+     * `uq_kb_doc_version` that schema never described — and a re-run in
+     * either direction must stay a no-op.
      *
      * @param  \Closure(array{0: string, 1: list<string>, 2: string, 3: list<string>}): array{0: string, 1: string, 2: list<string>}  $direction
      */
@@ -76,11 +94,11 @@ return new class extends Migration
         foreach ($this->uniques as $spec) {
             [$from, $to, $columns] = $direction($spec);
             Schema::table('knowledge_documents', function (Blueprint $table) use ($existing, $from, $to, $columns): void {
-                if (in_array($from, $existing, true)) {
-                    $table->dropUnique($from);
-                }
                 if (! in_array($to, $existing, true)) {
                     $table->unique($columns, $to);
+                }
+                if (in_array($from, $existing, true)) {
+                    $table->dropUnique($from);
                 }
             });
         }

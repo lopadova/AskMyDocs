@@ -167,7 +167,8 @@ class KnowledgeDocument extends Model
     }
 
     /**
-     * Lookup by project-scoped slug. Canonical slugs are unique per project.
+     * Lookup by project-scoped slug. Canonical slugs are unique per
+     * (tenant, project) — the caller supplies the tenant scope (R30).
      */
     public function scopeBySlug(Builder $query, string $projectKey, string $slug): Builder
     {
