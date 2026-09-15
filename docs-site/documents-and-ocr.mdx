@@ -539,8 +539,12 @@ flowchart LR
   without the stamp, which counts as `full_copy`) blocks the drop; a
   `reference_only` row never needed the local source. The stamp is host-owned
   — `source_retention` / `source_dropped` sent by a client or a connector are
-  stripped like `version_actor`, an unknown value resolves to the configured
-  mode — and the drop is gated on the row's **own** stamp, never on the
+  stripped like `version_actor`. An unknown value resolves to the configured
+  mode only when a NEW version is being stamped; a row ALREADY persisted with
+  an invalid or absent stamp reads as `full_copy`, the conservative mode, and
+  keeps its original whatever `KB_SOURCE_RETENTION` says today. Do not expect
+  a historical row with a malformed stamp to follow a later change of the
+  setting. The drop is gated on the row's **own** stamp, never on the
   configured mode of the day: a `full_copy` version re-embedded after
   `KB_SOURCE_RETENTION` moved to `markdown_only` keeps its original, and a
   version being replaced (a forced re-embed, a fresh OCR run) keeps the

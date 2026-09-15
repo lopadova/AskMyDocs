@@ -403,6 +403,39 @@ final class KbDocumentVersionControllerTest extends TestCase
     }
 
     /**
+     * An identity is handed on only when BOTH halves move. Restoring
+     * `(doc_id=dec-1, slug=dec-1)` over `(doc_id=dec-other, slug=dec-1)`
+     * shares only the slug: the node still owned by `dec-other` is orphaned,
+     * and it sits on the very `node_uid` the re-index is about to upsert
+     * (`uq_kb_nodes_project_uid`). Matching on either half would leave it.
+     */
+    public function test_restoring_over_a_partially_matching_identity_still_removes_the_stale_node(): void
+    {
+        \Illuminate\Support\Facades\Queue::fake();
+        $admin = $this->makeAdmin();
+        $archived = $this->makeVersion('v1pmi', 'archived', 'old body', wasCanonical: true);
+        $live = $this->makeVersion('v2pmi', 'active', 'new body', canonical: true);
+        // Same slug, different doc_id — only one half of the identity moves.
+        KnowledgeDocument::withoutGlobalScopes()->whereKey($live->id)->update(['doc_id' => 'dec-other']);
+        KbNode::create([
+            'node_uid' => 'dec-1', 'node_type' => 'decision', 'label' => 'Dec 1',
+            'project_key' => 'eng', 'source_doc_id' => 'dec-other', 'payload_json' => [],
+        ]);
+
+        $this->actingAs($admin)->postJson("/api/admin/kb/documents/{$archived->id}/restore-version")
+            ->assertOk()
+            ->assertJsonPath('data.is_canonical', true)
+            ->assertJsonPath('data.slug', 'dec-1');
+
+        $this->assertSame(
+            0,
+            KbNode::withoutGlobalScopes()->where('project_key', 'eng')->where('source_doc_id', 'dec-other')->count(),
+            'the node owned by the doc_id that did NOT move is removed',
+        );
+        \Illuminate\Support\Facades\Queue::assertPushed(CanonicalIndexerJob::class);
+    }
+
+    /**
      * The other half: an identity the restored row DOES hold stays, and the
      * indexer rebuilds it — forced past its `(tenant, document, version_hash)`
      * idempotency key, because the restored version's hash is one it has

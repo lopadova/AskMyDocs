@@ -657,7 +657,16 @@ final class DocumentVersionService
                 if ($docId === null && $slug === null) {
                     continue;
                 }
-                if (($docId !== null && $docId === $restoredDocId) || ($slug !== null && $slug === $restoredSlug)) {
+                // BOTH halves, not either: an identity is handed on only when
+                // the restored row holds the same doc_id AND the same slug.
+                // Restoring `(D1, S1)` over `(D2, S1)` shares only the slug,
+                // and the node still owned by `D2` would survive — orphaned,
+                // and sitting on the `node_uid` the indexer is about to
+                // upsert (`uq_kb_nodes_project_uid`). The mirror case,
+                // `(D1, S1)` over `(D1, S2)`, strands the node named `S2`.
+                // Removing either is safe: what the restored row does own is
+                // rebuilt by the forced re-index below.
+                if ($docId === $restoredDocId && $slug === $restoredSlug) {
                     continue; // handed to the restored row; the indexer rebuilds it
                 }
                 $deleter->removeGraphNodesForIdentity($tenantId, $restoredProjectKey, $docId, $slug);

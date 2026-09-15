@@ -1010,6 +1010,57 @@ MD;
         $this->assertGreaterThan(0, $fresh->chunks()->count(), 'the re-embed is done');
     }
 
+    /**
+     * ADR 0030 §3 — the publish asserts its lock immediately before the move,
+     * on EVERY path that reaches one. `moveOver()` has two: the replace
+     * branch, and the fallback taken when the first `move()` throws and the
+     * final path turns out to be absent. Only the first asserted, so a lock
+     * that lapsed during the caught failure and the existence probes still
+     * let the fallback move bytes — racing whichever holder took the path
+     * meanwhile, which is the one thing the lock exists to prevent.
+     *
+     * The lapse is staged inside the failing move itself, which is exactly
+     * the window the assertion has to cover.
+     */
+    public function test_a_publish_that_falls_back_to_a_second_move_re_asserts_its_lock(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => true]);
+        $store = app(ConversionArtifactStore::class);
+        $final = $store->pathFor(app(TenantContext::class)->current(), 'eng', 'docs/lapse.md', str_repeat('c', 64));
+        $temp = $store->writeTemp('kb', $final, '# Bytes');
+
+        $healthy = Storage::disk('kb');
+        $root = $healthy->path('');
+        $refusedOnce = false;
+        $adapter = new \Tests\Fixtures\Storage\WriteRefusingAdapter(
+            new \League\Flysystem\Local\LocalFilesystemAdapter($root),
+            function (string $path) use ($final, &$refusedOnce): bool {
+                if ($path !== $final || $refusedOnce) {
+                    return false; // the fallback move is allowed through
+                }
+                $refusedOnce = true;
+                // The TTL lapses while the first move is failing.
+                \Illuminate\Support\Facades\Cache::lock('kb:artifact:kb:'.sha1($final))->forceRelease();
+
+                return true;
+            },
+        );
+        Storage::set('kb', new \Illuminate\Filesystem\FilesystemAdapter(new \League\Flysystem\Filesystem($adapter), $adapter, ['root' => $root]));
+
+        $lock = \Illuminate\Support\Facades\Cache::lock('kb:artifact:kb:'.sha1($final), 60);
+        $this->assertTrue($lock->get(), 'the test holds the path lock the publish runs under');
+
+        try {
+            $store->publish('kb', $temp, $final, new \App\Support\Kb\HeldLock($lock, 'artifact path'));
+            $this->fail('the publish moved bytes after its lock had lapsed');
+        } catch (\App\Support\Kb\LockLostException) {
+            $this->assertTrue($refusedOnce, 'the first move really did fail');
+        } finally {
+            Storage::set('kb', $healthy);
+            \App\Support\Kb\HeldLock::releaseQuietly($lock);
+        }
+    }
+
     /** SEC-PATH-001 — a temp path outside the artifact root is refused by publish() and discardTemp() before any storage operation. */
     public function test_publish_and_discard_refuse_a_temp_path_outside_the_artifact_root(): void
     {

@@ -555,10 +555,17 @@ final class ConversionArtifactStore
             if (! $storage->delete($finalPath)) {
                 return false;
             }
-            // The delete is a round-trip of its own: between it and the move
-            // another holder could take the path this one just emptied.
-            $held?->assertHeld('artifact replace move');
         }
+
+        // The single point every publish move goes through, and the last
+        // assertion before the irreversible step (ADR 0030 §3). BOTH paths
+        // reach it having spent storage round-trips since their last check —
+        // the replace branch its `exists` + `delete`, the fallback its caught
+        // failure and its own `exists` probes — and a TTL can lapse inside
+        // any of them. Asserting only in the replace branch left the
+        // "final absent" fallback able to move bytes after its lock was gone,
+        // racing whichever holder took the path meanwhile.
+        $held?->assertHeld('artifact publish move');
 
         return (bool) $storage->move($tmpPath, $finalPath);
     }
