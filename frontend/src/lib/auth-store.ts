@@ -24,6 +24,10 @@ export type AuthProject = {
 export type AuthFeatures = {
     invitations_admin?: boolean;
     system_admin?: boolean;
+    realtime_agent_live?: {
+        available: boolean;
+        reason: string | null;
+    };
 };
 
 export type AuthMePayload = {

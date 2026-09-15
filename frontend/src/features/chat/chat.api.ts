@@ -284,6 +284,17 @@ export interface AgentTurnStarted {
     user_message: Message;
 }
 
+export interface RealtimeAgentConnection {
+    session_id: string;
+    provider: string;
+    connection: Record<string, unknown>;
+    state: Record<string, unknown> & {
+        session: Record<string, unknown> & { id: string; revision: number; status: string };
+    };
+    conversation_id: number;
+    expires_at: string;
+}
+
 export interface RunnerUpChunk {
     chunk_id: number;
     project_key: string | null;
@@ -379,6 +390,22 @@ export const chatApi = {
         }
         const { data } = await api.post<AgentTurnStarted>(
             `/conversations/${conversationId}/messages/agent`,
+            payload,
+        );
+
+        return data;
+    },
+
+    async startRealtimeAgent(
+        conversationId: number,
+        filters?: FilterState,
+        liveSources?: LiveSourceSelection,
+    ): Promise<RealtimeAgentConnection> {
+        const payload: { filters?: FilterState; live_sources?: LiveSourceSelection } = {};
+        if (filters && !isFilterStateEmpty(filters)) payload.filters = filters;
+        if (liveSources) payload.live_sources = liveSources;
+        const { data } = await api.post<RealtimeAgentConnection>(
+            `/conversations/${conversationId}/realtime-agent`,
             payload,
         );
 

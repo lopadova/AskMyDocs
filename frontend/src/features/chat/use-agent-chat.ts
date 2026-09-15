@@ -49,6 +49,7 @@ export interface UseAgentChatResult {
     stop: () => void;
     regenerate: () => void;
     continueRun: () => Promise<void>;
+    adoptExternalRun: (run: AgentTurnStarted) => Promise<void>;
     setMessages: (next: SetStateAction<Message[]>) => void;
 }
 
@@ -236,6 +237,32 @@ export function useAgentChat(options: UseAgentChatOptions): UseAgentChatResult {
         }
     }, [confirmation, consume, reportError]);
 
+    const adoptExternalRun = useCallback(async (run: AgentTurnStarted): Promise<void> => {
+        if (conversationId === null) throw new Error('A conversation is required.');
+        const generation = ++generationRef.current;
+        abortRef.current?.abort();
+        const controller = new AbortController();
+        abortRef.current = controller;
+        runRef.current = run;
+        turnInFlightRef.current = true;
+        lastSequenceRef.current = 0;
+        setError(null);
+        setEvents([]);
+        setConfirmation(null);
+        setActiveRun(run);
+        setMessages((current) => current.some((item) => item.id === run.user_message.id)
+            ? current
+            : [...current, run.user_message]);
+        setStatus('streaming');
+
+        try {
+            await consume(run, controller, generation);
+        } catch (reason) {
+            reportError(reason, generation);
+            throw reason;
+        }
+    }, [consume, conversationId, reportError]);
+
     const regenerate = useCallback(() => {
         const lastUser = [...messages].reverse().find((message) => message.role === 'user');
         if (lastUser) void sendMessage({ text: lastUser.content });
@@ -252,6 +279,7 @@ export function useAgentChat(options: UseAgentChatOptions): UseAgentChatResult {
         stop,
         regenerate,
         continueRun,
+        adoptExternalRun,
         setMessages,
     };
 }

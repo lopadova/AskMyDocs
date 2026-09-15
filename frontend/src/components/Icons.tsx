@@ -234,6 +234,19 @@ export const Icon = {
             }
         />
     ),
+    Waveform: (p: IconProps) => (
+        <I
+            {...p}
+            d={
+                <>
+                    <path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4" />
+                </>
+            }
+        />
+    ),
+    StopCircle: (p: IconProps) => (
+        <I {...p} d={<><circle cx="12" cy="12" r="9" /><rect x="9" y="9" width="6" height="6" rx="1" /></>} />
+    ),
     Send: (p: IconProps) => <I {...p} d={<path d="M4 12 21 4l-8 17-2-7z" />} />,
     Chevron: (p: IconProps) => <I {...p} d={<path d="m9 6 6 6-6 6" />} />,
     ChevronDown: (p: IconProps) => <I {...p} d={<path d="m6 9 6 6 6-6" />} />,

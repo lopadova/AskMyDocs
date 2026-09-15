@@ -14,6 +14,8 @@ import { MentionPopover } from './MentionPopover';
 import { useChatStore } from './chat.store';
 import { VoiceInput } from './VoiceInput';
 import { LiveSourcesControl } from './LiveSourcesControl';
+import { RealtimeVoiceControl } from './RealtimeVoiceControl';
+import type { UseRealtimeAgentResult, RealtimeAgentFeatureStatus } from './use-realtime-agent';
 import type { MentionResult } from './use-mention-search';
 import type { FilterState, LiveSourceCatalog, LiveSourceKind, LiveSourceSelection } from './chat.api';
 import type { ChatCollectionOption } from './chat.api';
@@ -75,6 +77,9 @@ export interface ComposerProps {
      * 'streaming'`). Disables the textarea + flips Send → Stop.
      */
     isStreaming: boolean;
+    realtime?: Pick<UseRealtimeAgentResult, 'status' | 'error' | 'active' | 'start' | 'stop'> & {
+        availability?: RealtimeAgentFeatureStatus;
+    };
     /**
      * Surface from `useChatStream().error`. Renders the
      * chat-composer-error inline when set.
@@ -107,6 +112,7 @@ export function Composer({
     onSend,
     onStop,
     isStreaming,
+    realtime,
     error,
 }: ComposerProps): ReactNode {
     const draft = useChatStore((s) => s.draft);
@@ -136,6 +142,8 @@ export function Composer({
     // mention, so the FilterBar can show "Doc: HR Policy v2" instead of
     // "#42". Survives across turns inside the same composer mount.
     const [docLabelMap, setDocLabelMap] = useState<Record<number, string>>(docLabels);
+    const realtimeVoiceActive = realtime?.active === true && realtime.status !== 'paused';
+    const composerDisabled = isStreaming || realtimeVoiceActive;
 
     const send = async () => {
         // Re-entrancy + concurrency guard. `isStreaming` catches the
@@ -144,7 +152,7 @@ export function Composer({
         // transition to 'submitted'). Together they reject every
         // double-fire path — Enter spam, click spam, programmatic
         // form-submit + Enter combo.
-        if (isStreaming || isSubmittingRef.current) {
+        if (composerDisabled || isSubmittingRef.current) {
             return;
         }
         const trimmed = draft.trim();
@@ -289,7 +297,7 @@ export function Composer({
                         ref={textareaRef}
                         className="chat-composer-input"
                         value={draft}
-                        disabled={isStreaming}
+                        disabled={composerDisabled}
                         onChange={onChange}
                         onFocus={() => setFocused(true)}
                         onBlur={() => setFocused(false)}
@@ -311,7 +319,11 @@ export function Composer({
                         />
                     )}
                 </div>
-                <div className="chat-composer-options" aria-label="Sources and filters">
+                <fieldset
+                    className="chat-composer-options"
+                    aria-label="Sources and filters"
+                    disabled={isStreaming || realtime?.active === true}
+                >
                     <FilterBar
                         filters={filters}
                         onChange={onFiltersChange}
@@ -348,12 +360,12 @@ export function Composer({
                             <LiveSourcesControl
                                 sources={liveSources}
                                 selection={liveSourceSelection}
-                                disabled={isStreaming}
+                                disabled={isStreaming || realtime?.active === true}
                                 onChange={onLiveSourcesChange}
                             />
                         )}
                     </div>
-                </div>
+                </fieldset>
                 <div className="chat-composer-actions">
                     <div className="chat-composer-tools" aria-label="Message tools">
                         <Button
@@ -364,11 +376,23 @@ export function Composer({
                             data-testid="chat-composer-attach"
                             aria-label="Attach file"
                             title="Attach file"
+                            disabled={isStreaming || realtime?.active === true}
                         >
                             <Icon.Plus size={13} />
                         </Button>
-                        {!isStreaming && (
+                        {!isStreaming && !realtimeVoiceActive && (
                             <VoiceInput onTranscript={(t) => appendToDraft((draft ? ' ' : '') + t)} />
+                        )}
+                        {realtime && (
+                            <RealtimeVoiceControl
+                                availability={realtime.availability}
+                                status={realtime.status}
+                                error={realtime.error}
+                                active={realtime.active}
+                                disabled={isStreaming}
+                                onStart={realtime.start}
+                                onStop={realtime.stop}
+                            />
                         )}
                     </div>
                     <span className="chat-composer-shortcut">Shift+⏎ for a new line</span>
@@ -413,6 +437,7 @@ export function Composer({
                             size="sm"
                             data-testid="chat-composer-send"
                             leadingIcon={<Icon.Send size={12} />}
+                            disabled={composerDisabled}
                         >
                             Send
                         </Button>

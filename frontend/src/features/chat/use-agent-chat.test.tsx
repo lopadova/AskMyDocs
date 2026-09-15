@@ -181,6 +181,30 @@ describe('useAgentChat', () => {
         );
     });
 
+    it('adopts a realtime-created durable run into canonical chat history', async () => {
+        vi.spyOn(chatApi, 'listMessages').mockResolvedValue([userMessage, assistantMessage]);
+        vi.stubGlobal('fetch', vi.fn(async () => eventResponse(completedEvent())));
+        const { result } = renderHook(() => useAgentChat({
+            conversationId: 7,
+            filters: {},
+            initialMessages: emptyMessages,
+        }));
+
+        await act(async () => result.current.adoptExternalRun({
+            run_id: 'run-1',
+            status: 'completed',
+            locale: 'it-IT',
+            events_url: '/agent-runs/run-1/events',
+            cancel_url: '/agent-runs/run-1/cancel',
+            continue_url: '/agent-runs/run-1/continue',
+            user_message: userMessage,
+        }));
+
+        expect(result.current.messages).toEqual([userMessage, assistantMessage]);
+        expect(result.current.status).toBe('ready');
+        expect(chatApi.listMessages).toHaveBeenCalledWith(7);
+    });
+
     it('cancels the current backend run when stopped', async () => {
         let resolveStart: ((value: Awaited<ReturnType<typeof chatApi.startAgentTurn>>) => void) | undefined;
         vi.spyOn(chatApi, 'startAgentTurn').mockImplementation(() => new Promise((resolve) => { resolveStart = resolve; }));

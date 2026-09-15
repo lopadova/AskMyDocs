@@ -1504,6 +1504,7 @@ textarea:focus-visible {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-a) 6%, transparent), 0 14px 36px -24px rgba(5, 5, 14, .32);
 }
 .chat-composer-options {
+  min-width: 0;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -1511,7 +1512,9 @@ textarea:focus-visible {
   margin: 0 12px;
   padding: 4px 0;
   border-block: 1px solid var(--hairline);
+  border-inline: 0;
 }
+.chat-composer-options:disabled { opacity: .64; }
 .chat-filter-bar {
   position: relative;
   display: flex;
@@ -1634,6 +1637,40 @@ textarea:focus-visible {
 .chat-composer-error-popover .ui-alert { box-shadow: none; }
 .chat-composer-tools { display: inline-flex; align-items: center; gap: 8px; }
 .chat-composer-tool-button { color: var(--fg-2); }
+.chat-realtime-control { display: inline-flex; align-items: center; gap: 7px; }
+.chat-realtime-button {
+  --button-bg: color-mix(in srgb, var(--accent-b) 8%, var(--bg-2));
+  --button-bg-hover: color-mix(in srgb, var(--accent-b) 14%, var(--bg-3));
+  --button-border: color-mix(in srgb, var(--accent-b) 28%, var(--panel-border));
+  --button-color: var(--fg-1);
+  --button-glow: color-mix(in srgb, var(--accent-b) 18%, transparent);
+}
+.chat-realtime-control:not([data-state="idle"]):not([data-state="error"]) .chat-realtime-button {
+  --button-bg: color-mix(in srgb, var(--accent-b) 14%, var(--bg-2));
+  --button-border: color-mix(in srgb, var(--accent-b) 44%, var(--panel-border));
+  --button-color: var(--accent-b);
+}
+.chat-realtime-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--fg-2);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+.chat-realtime-status > span {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--accent-b);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-b) 12%, transparent);
+  animation: pulse 1.4s infinite;
+}
+.chat-realtime-control[data-state="paused"] .chat-realtime-status > span {
+  background: var(--warn);
+  box-shadow: none;
+  animation: none;
+}
 .chat-composer-voice { position: relative; }
 .chat-composer-voice[data-state="listening"] {
   --button-bg: color-mix(in srgb, var(--accent-a) 10%, var(--bg-3));
@@ -3059,6 +3096,7 @@ textarea:focus-visible {
   .agent-activity-live,
   .agent-activity-details,
   .chat-live-source-popover,
+  .chat-realtime-status > span,
   .chat-composer-error-popover { animation: none; }
 }
 

@@ -45,6 +45,7 @@ export interface ProjectSelectorProps {
     projects: string[];
     /** When true, offer an "All projects" entry (value `''`). */
     allowAll?: boolean;
+    disabled?: boolean;
     /** Fired with the chosen value: a `project_key` or `''` for All. */
     onChange: (next: string) => void;
 }
@@ -53,6 +54,7 @@ export function ProjectSelector({
     value,
     projects,
     allowAll = false,
+    disabled = false,
     onChange,
 }: ProjectSelectorProps): ReactNode {
     // Always represent a concrete effective value, even if it is not in the
@@ -77,6 +79,7 @@ export function ProjectSelector({
             data-testid="chat-project-selector"
             aria-label="Project scope"
             value={value ?? '__unset__'}
+            disabled={disabled}
             onChange={(e) => onChange(e.target.value)}
         >
             {value === null && (

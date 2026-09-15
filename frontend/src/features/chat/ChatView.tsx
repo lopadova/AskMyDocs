@@ -21,6 +21,7 @@ import { selectCurrentHash, useTeamStore } from '../../lib/team-store';
 import { Icon } from '../../components/Icons';
 import { Button } from '../../components/Button';
 import { useAgentChat } from './use-agent-chat';
+import { useRealtimeAgent } from './use-realtime-agent';
 import { SuggestedFollowups } from './SuggestedFollowups';
 import { CitationDocumentModal } from './CitationDocumentModal';
 import { chatPreferencesApi, CHAT_PREFERENCES_QUERY_KEY } from './chat-preferences.api';
@@ -138,6 +139,7 @@ export function ChatView(): ReactNode {
     // Base" deep-link inside the modal (the old navigate target, which lives
     // behind the admin RBAC gate).
     const roles = useAuthStore((s) => s.roles);
+    const realtimeAvailability = useAuthStore((s) => s.features.realtime_agent_live);
     const canViewKb = roles.includes('admin') || roles.includes('super-admin');
     const [sourceCitation, setSourceCitation] = useState<MessageCitation | null>(null);
 
@@ -471,6 +473,15 @@ export function ChatView(): ReactNode {
         }
     };
 
+    const realtime = useRealtimeAgent({
+        conversationId: activeId,
+        filters: effectiveFilters,
+        liveSources: liveSourceSelection,
+        availability: realtimeAvailability,
+        onRequireConversation: requireConversation,
+        onAdoptRun: chat.adoptExternalRun,
+    });
+
     // Deferred-send queue. When the user sends the first message on
     // a brand-new chat (activeId === null), Composer's send() awaits
     // `onRequireConversation()` which calls `setActive(newId)`. That
@@ -694,6 +705,7 @@ export function ChatView(): ReactNode {
                                             value={projectScopeValue}
                                             projects={teamProjectKeys}
                                             allowAll
+                                            disabled={realtime.active}
                                             onChange={handleScopeChange}
                                         />
                                     </div>
@@ -763,7 +775,8 @@ export function ChatView(): ReactNode {
                             onSend={handleSend}
                             onStop={chat.stop}
                             isStreaming={isStreaming}
-                            error={chat.error ?? null}
+                            realtime={{ ...realtime, availability: realtimeAvailability }}
+                            error={chat.error ?? realtime.error}
                         />
                     </div>
                 )}
