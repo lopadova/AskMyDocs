@@ -263,6 +263,42 @@ class PruneOrphanFilesCommandTest extends TestCase
     }
 
     /**
+     * The beside OCR purge must run UNDER the same reservation the source
+     * delete holds, not as a separate call after it is released — otherwise
+     * a concurrent ingest could reserve this exact source and commit a
+     * reference to the OCR assets in the gap between the two calls. A
+     * partial spy on `purgeBeside()` observes `SourceInFlight::held()` is
+     * still true at the moment of the purge, proving the two share one hold.
+     */
+    public function test_the_ocr_purge_runs_under_the_same_reservation_as_the_source_delete(): void
+    {
+        Storage::fake('kb');
+        Storage::disk('kb')->put('docs/orphan.md', 'o');
+        Storage::disk('kb')->put('docs/orphan.md.ocr/'.self::RUN.'/images/fig-1-1.png', 'figure');
+        // Past the in-flight grace (ADR 0029 §6): a fresh run counts as an
+        // active conversion and purgeBeside() would keep it regardless of
+        // what this test is proving.
+        $this->travel(OcrFigureStore::inFlightGraceSeconds() + 60)->seconds();
+
+        $real = app(OcrFigureStore::class);
+        $observed = [];
+        $spy = Mockery::mock($real)->makePartial();
+        $spy->shouldReceive('purgeBeside')->once()->andReturnUsing(function (string $disk, string $fullPath) use ($real, &$observed) {
+            $observed[] = \App\Support\Kb\SourceInFlight::held('kb', 'docs/orphan.md');
+
+            return $real->purgeBeside($disk, $fullPath);
+        });
+        $this->app->instance(OcrFigureStore::class, $spy);
+
+        $this->artisan('kb:prune-orphan-files')->assertSuccessful();
+
+        $this->assertSame([true], $observed, 'the reservation was still held during the OCR purge, squarely between the source delete and its release');
+        Storage::disk('kb')->assertMissing('docs/orphan.md');
+        $this->assertFalse(Storage::disk('kb')->directoryExists('docs/orphan.md.ocr'));
+        $this->assertFalse(\App\Support\Kb\SourceInFlight::held('kb', 'docs/orphan.md'), 'the reservation is released once the command returns');
+    }
+
+    /**
      * ADR 0030 §3 — an ingest READS and CONVERTS its source before it takes
      * the storage key's lock (an OCR run takes minutes): in that window the
      * file has no row and no holder, and a sweep would delete it out from
@@ -995,4 +1031,9 @@ class PruneOrphanFilesCommandTest extends TestCase
         }
     }
 
+    protected function tearDown(): void
+    {
+        parent::tearDown();
+        Mockery::close();
+    }
 }

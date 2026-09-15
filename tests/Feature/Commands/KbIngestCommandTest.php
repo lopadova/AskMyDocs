@@ -7,6 +7,7 @@ use App\Models\KnowledgeDocument;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
+use Mockery;
 use Tests\TestCase;
 
 class KbIngestCommandTest extends TestCase
@@ -140,6 +141,33 @@ class KbIngestCommandTest extends TestCase
         $this->assertSame(0, KnowledgeDocument::count());
     }
 
+    /** R14 — exists() says yes but get() throws (a file that vanished, or a driver refusing the read): a clean one-line failure, never a stack trace out of a CLI command. */
+    public function test_fails_cleanly_when_get_throws(): void
+    {
+        config()->set('kb.sources.disk', 'kb');
+
+        Storage::shouldReceive('disk')->with('kb')->andReturn(new class
+        {
+            public function exists(string $path): bool
+            {
+                return true;
+            }
+
+            public function get(string $path): string
+            {
+                throw new \RuntimeException("vanished: {$path}");
+            }
+        });
+
+        $this->artisan('kb:ingest', [
+            'path' => 'vanished.md',
+        ])
+            ->expectsOutputToContain('could not be read')
+            ->assertFailed();
+
+        $this->assertSame(0, KnowledgeDocument::count());
+    }
+
     public function test_disk_cli_option_overrides_config(): void
     {
         Storage::fake('other');
@@ -154,5 +182,11 @@ class KbIngestCommandTest extends TestCase
         ])->assertSuccessful();
 
         $this->assertSame(1, KnowledgeDocument::count());
+    }
+
+    protected function tearDown(): void
+    {
+        parent::tearDown();
+        Mockery::close();
     }
 }

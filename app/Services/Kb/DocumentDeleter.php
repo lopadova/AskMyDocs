@@ -847,14 +847,25 @@ class DocumentDeleter
      * a file cannot prove it is old: that is FAILED (reported, exit
      * non-zero), never a sweep that reads as clean.
      *
+     * `$whileHeld`, when given, runs AFTER the source outcome is decided as
+     * REMOVED or ABSENT — the source is gone either way — but BEFORE the
+     * reservation is released in the `finally` below: a caller that also
+     * needs to purge the source's beside OCR assets (`{fullPath}.ocr/`) gets
+     * to do so under the SAME hold, closing the gap a separate call after
+     * this method returns would leave open (a new ingest reserving and
+     * committing a reference to those assets between the two calls).
+     *
      * @return string one of ConversionArtifactStore::REMOVED | ABSENT | KEPT | FAILED, or self::KEPT_IN_FLIGHT
      */
-    public function removeSourceFileIfUnreferenced(string $disk, string $fullPath, string $sourcePath): string
+    public function removeSourceFileIfUnreferenced(string $disk, string $fullPath, string $sourcePath, ?callable $whileHeld = null): string
     {
         if (! ConversionArtifactStore::cacheStoreCanLock()) {
             // No mutex at all: the age grace is the ONLY guard, exactly as
-            // it was before the reservation existed (R43).
-            return $this->removeSourceFileUnderGraceOnly($disk, $fullPath, $sourcePath);
+            // it was before the reservation existed (R43). `$whileHeld` still
+            // runs here (the caller's OCR purge must still happen), but
+            // unprotected — the same posture as the source delete itself in
+            // this branch.
+            return $this->removeSourceFileUnderGraceOnly($disk, $fullPath, $sourcePath, $whileHeld);
         }
 
         try {
@@ -943,13 +954,20 @@ class DocumentDeleter
                 }
                 $storage = Storage::disk($disk);
                 if (! $storage->exists($fullPath)) {
+                    $whileHeld?->__invoke();
+
                     return ConversionArtifactStore::ABSENT;
                 }
                 // Right before the irreversible step, after the existence probe
                 // (a network round-trip on a bucket disk): a lapsed TTL refuses.
                 $held?->assertHeld('orphan source removal');
 
-                return $storage->delete($fullPath) ? ConversionArtifactStore::REMOVED : ConversionArtifactStore::FAILED;
+                if (! $storage->delete($fullPath)) {
+                    return ConversionArtifactStore::FAILED;
+                }
+                $whileHeld?->__invoke();
+
+                return ConversionArtifactStore::REMOVED;
             } catch (\Throwable $e) {
                 Log::warning('DocumentDeleter: orphan source not removed — the reference gate could not decide', ['disk' => $disk, 'path' => $fullPath, 'exception' => $e::class, 'error' => $e->getMessage()]);
 
@@ -976,7 +994,7 @@ class DocumentDeleter
      * takes that lock either, so the delete proceeds unguarded by it, the
      * same as before the reservation existed.
      */
-    private function removeSourceFileUnderGraceOnly(string $disk, string $fullPath, string $sourcePath): string
+    private function removeSourceFileUnderGraceOnly(string $disk, string $fullPath, string $sourcePath, ?callable $whileHeld = null): string
     {
         $grace = self::orphanSourceGraceSeconds();
         if ($grace > 0) {
@@ -984,6 +1002,8 @@ class DocumentDeleter
                 $age = now()->getTimestamp() - (int) Storage::disk($disk)->lastModified($fullPath);
             } catch (\Throwable $e) {
                 if (! $this->sourceStillThere($disk, $fullPath)) {
+                    $whileHeld?->__invoke();
+
                     return ConversionArtifactStore::ABSENT;
                 }
                 if (! isset(self::$warnedUndatableDisks[$disk])) {
@@ -1017,10 +1037,16 @@ class DocumentDeleter
             }
             $storage = Storage::disk($disk);
             if (! $storage->exists($fullPath)) {
+                $whileHeld?->__invoke();
+
                 return ConversionArtifactStore::ABSENT;
             }
+            if (! $storage->delete($fullPath)) {
+                return ConversionArtifactStore::FAILED;
+            }
+            $whileHeld?->__invoke();
 
-            return $storage->delete($fullPath) ? ConversionArtifactStore::REMOVED : ConversionArtifactStore::FAILED;
+            return ConversionArtifactStore::REMOVED;
         } catch (\Throwable $e) {
             Log::warning('DocumentDeleter: orphan source not removed — the reference gate could not decide', ['disk' => $disk, 'path' => $fullPath, 'exception' => $e::class, 'error' => $e->getMessage()]);
 

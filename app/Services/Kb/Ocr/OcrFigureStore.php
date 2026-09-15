@@ -245,9 +245,22 @@ final class OcrFigureStore
      * throws when the disk refuses the removal (R14 — never a silent
      * "kept").
      *
+     * This reservation protects against a CONCURRENT CONVERTER reusing the
+     * SAME run — it says nothing about a document row committing a NEW
+     * reference to it. Both callers decide "unreferenced" from a database
+     * snapshot taken BEFORE this call, and a restore or a fresh ingest can
+     * commit a row naming this run in the gap between that snapshot and the
+     * deletion below. `$referencedCheck`, when given, closes it: invoked
+     * under the SAME held reservation, immediately before the delete — a
+     * `true` result means a row now references the run and the purge is
+     * skipped, exactly as if the caller's own pre-check had found it. The
+     * caller's own snapshot check therefore stays a cheap early exit (skip
+     * even trying the lock for an obviously-referenced run); this is the
+     * authoritative one.
+     *
      * @throws RuntimeException when the directory exists, is not in flight, and cannot be removed
      */
-    public function purgeRun(string $disk, string $sourcePath, string $prefix, string $runKey): bool
+    public function purgeRun(string $disk, string $sourcePath, string $prefix, string $runKey, ?callable $referencedCheck = null): bool
     {
         $storage = Storage::disk($disk);
         $runDir = $this->runDirFor($sourcePath, $prefix, $runKey);
@@ -272,6 +285,11 @@ final class OcrFigureStore
             // across the scan defers the purge instead of deleting a run a
             // converter has since reserved (ADR 0030 §3).
             $held->assertHeld('OCR run purge');
+            if ($referencedCheck !== null && $referencedCheck()) {
+                Log::info('OcrFigureStore: OCR run purge skipped — a document committed a reference to it after the caller\'s snapshot', ['disk' => $disk, 'run_dir' => $runDir]);
+
+                return false;
+            }
             if (! $storage->deleteDirectory($runDir)) {
                 throw new RuntimeException("OcrFigureStore: failed to remove OCR run {$runDir} on disk [{$disk}].");
             }

@@ -29,7 +29,18 @@ class KbIngestCommand extends Command
             return self::FAILURE;
         }
 
-        $markdown = Storage::disk($disk)->get($fullPath);
+        try {
+            $markdown = Storage::disk($disk)->get($fullPath);
+        } catch (\Throwable $e) {
+            // `exists()` returning true does not guarantee `get()` succeeds:
+            // the file can vanish in the gap, or a driver configured to
+            // `throw` on failure raises instead of returning null. Same
+            // clean one-line failure as the no-bytes case below (R14) —
+            // never a stack trace out of a CLI command.
+            $this->error("Disk [{$disk}] could not be read for {$fullPath}: {$e->getMessage()}; nothing was ingested.");
+
+            return self::FAILURE;
+        }
         if (! is_string($markdown) || $markdown === '') {
             // `exists()` said yes, `get()` said nothing (an adapter that
             // refuses the read without `throw`, a zero-byte object): one

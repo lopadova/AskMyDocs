@@ -14,20 +14,20 @@ export interface DocVersion {
     is_live: boolean;
     indexed_at: string | null;
     created_at: string | null;
-    /** v8.36 / ADR 0030 — who created the version (`user:{id}`, `system:ingest`, `system:ocr`, …); null on rows that predate it */
-    version_actor?: string | null;
-    /** v8.36 / ADR 0030 — free-text reason (`restore of #12`, `ocr re-run (docling)`, …) */
-    version_reason?: string | null;
-    /** v8.36 / ADR 0030 — SHA-256 of the stored artifact; null when none is stored */
-    content_hash?: string | null;
-    /** v8.36 / ADR 0030 — true when the converted Markdown of this version is stored on disk */
-    has_artifact?: boolean;
-    /** v8.36 / ADR 0030 §5 — the verified state behind `has_artifact`: none · verified · unverified · missing · mismatch (additive, R27) */
-    artifact_state?: 'none' | 'verified' | 'unverified' | 'missing' | 'mismatch';
-    /** v8.36 / ADR 0030 §6 — who last restored this version (kept apart from the creation provenance); null when never restored */
-    restored_by?: string | null;
-    /** v8.36 / ADR 0030 §6 — when it was last restored (ISO-8601) */
-    restored_at?: string | null;
+    /** v8.36 / ADR 0030 — who created the version (`user:{id}`, `system:ingest`, `system:ocr`, …); null on rows that predate it. The backend ALWAYS returns this key — never omitted — so it is required here, not optional: a consumer must not treat "missing" and "present but null" as the same case. */
+    version_actor: string | null;
+    /** v8.36 / ADR 0030 — free-text reason (`restore of #12`, `ocr re-run (docling)`, …). Always present, per the same server guarantee as `version_actor`. */
+    version_reason: string | null;
+    /** v8.36 / ADR 0030 — SHA-256 of the stored artifact; null when none is stored. Always present. */
+    content_hash: string | null;
+    /** v8.36 / ADR 0030 — true when the converted Markdown of this version is stored on disk (a VERIFIED claim, `DocumentVersionService::isVerifiedArtifactState()`). Always present, always a boolean — never omitted or null. */
+    has_artifact: boolean;
+    /** v8.36 / ADR 0030 §5 — the verified state behind `has_artifact`: none · verified · unverified · missing · mismatch. Always present. */
+    artifact_state: 'none' | 'verified' | 'unverified' | 'missing' | 'mismatch';
+    /** v8.36 / ADR 0030 §6 — who last restored this version (kept apart from the creation provenance); null when never restored. Always present. */
+    restored_by: string | null;
+    /** v8.36 / ADR 0030 §6 — when it was last restored (ISO-8601). Always present. */
+    restored_at: string | null;
 }
 
 /** Where one side of a diff came from (v8.36 / ADR 0030 §5). */

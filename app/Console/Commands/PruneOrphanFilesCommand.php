@@ -395,13 +395,21 @@ class PruneOrphanFilesCommand extends Command
         $inFlight = 0;
         $failed = 0;
         $store = app(OcrFigureStore::class);
+        $deleter = app(DocumentDeleter::class);
         foreach ($staleRuns as [$key, $run]) {
+            $sourcePath = $this->stripPrefix($key, $prefix);
             try {
-                // `purgeRun()` throws when the disk refuses the removal
-                // (counted as failed below, exit non-zero); false is only a
-                // run kept inside the in-flight grace or reserved by a
-                // converter — never a storage failure reported as "kept".
-                if ($store->purgeRun($disk, $this->stripPrefix($key, $prefix), $prefix, $run)) {
+                // `documentsReferencingOcrRuns()` batch-judged this run as
+                // stale from a SNAPSHOT (`detectStaleOcrRuns()`); a restore
+                // or a fresh ingest can commit a reference to it before this
+                // loop reaches it. `purgeRun()` re-checks under its own
+                // reservation, immediately before the delete — authoritative,
+                // not the snapshot. It throws when the disk refuses the
+                // removal (counted as failed below, exit non-zero); false is
+                // a run kept inside the in-flight grace, reserved by a
+                // converter, or referenced again — never a storage failure
+                // reported as "kept".
+                if ($store->purgeRun($disk, $sourcePath, $prefix, $run, fn (): bool => $deleter->documentReferencingOcrRun($disk, $prefix, $sourcePath, $run) !== null)) {
                     $purged++;
                     continue;
                 }
@@ -656,11 +664,30 @@ class PruneOrphanFilesCommand extends Command
         foreach ($orphans as $relative) {
             $target = $this->applyPrefix($relative, $prefix);
 
+            // The beside OCR assets are purged INSIDE the source gate's own
+            // reservation hold (`$whileHeld`, right after the source is
+            // decided REMOVED/ABSENT, before the reservation is released) —
+            // never as a separate call after this method returns. A separate
+            // call would leave the exact gap this closes: a new ingest could
+            // reserve this source and commit a reference to `{target}.ocr/`
+            // between the source delete and a later purge.
+            $ocrPurged = false;
+            $ocrFailed = false;
+            $ocrError = null;
+            $whileHeld = function () use ($disk, $target, &$ocrPurged, &$ocrFailed, &$ocrError): void {
+                try {
+                    $ocrPurged = app(OcrFigureStore::class)->purgeBeside($disk, $target);
+                } catch (\Throwable $e) {
+                    $ocrFailed = true;
+                    $ocrError = $e->getMessage();
+                }
+            };
+
             // The snapshot chose the candidate; the deletion re-checks the
             // references under the storage key's lock (the lock a row commit
             // and a `markdown_only` drop hold): a row that took the key since
             // the snapshot keeps its file — it is simply not an orphan any more.
-            $outcome = $deleter->removeSourceFileIfUnreferenced($disk, $target, $relative);
+            $outcome = $deleter->removeSourceFileIfUnreferenced($disk, $target, $relative, $whileHeld);
             if ($outcome === DocumentDeleter::KEPT_IN_FLIGHT) {
                 $keptMeanwhile++;
                 $this->line("  ~ kept (an ingest reserved it, or it is younger than the in-flight grace: it may be being converted right now): {$target}");
@@ -683,20 +710,18 @@ class PruneOrphanFilesCommand extends Command
             // purge that fails is a failed sweep (R14): the source is gone
             // but generated OCR data stayed behind, so the path counts as
             // failed and the command exits non-zero, never a clean report.
-            try {
-                app(OcrFigureStore::class)->purgeBeside($disk, $target);
-                // `purgeBeside()` is false both for "nothing there" and for a
-                // run kept inside the in-flight grace: only a tree still on
-                // the disk is reported (kept, never a failure — the next
-                // sweep takes it once aged, as for a dangling tree).
-                if ($storage->directoryExists($target.OcrFigureStore::DIR_SUFFIX)) {
-                    $ocrKept++;
-                    $this->line("  ~ kept (in flight): {$target}".OcrFigureStore::DIR_SUFFIX);
-                }
-            } catch (\Throwable $e) {
+            if ($ocrFailed) {
                 $failed++;
-                $this->error("  ! source deleted but its OCR assets could not be purged beside {$target}: {$e->getMessage()}");
+                $this->error("  ! source deleted but its OCR assets could not be purged beside {$target}: {$ocrError}");
                 continue;
+            }
+            // `purgeBeside()` returning false covers both "nothing there" and
+            // a run kept inside the in-flight grace: only a tree still on
+            // the disk is reported (kept, never a failure — the next sweep
+            // takes it once aged, as for a dangling tree).
+            if (! $ocrPurged && $storage->directoryExists($target.OcrFigureStore::DIR_SUFFIX)) {
+                $ocrKept++;
+                $this->line("  ~ kept (in flight): {$target}".OcrFigureStore::DIR_SUFFIX);
             }
 
             $deleted++;

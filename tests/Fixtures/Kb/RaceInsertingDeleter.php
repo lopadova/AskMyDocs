@@ -36,13 +36,13 @@ final class RaceInsertingDeleter extends DocumentDeleter
         return parent::artifactReferenced($disk, $path);
     }
 
-    public function removeSourceFileIfUnreferenced(string $disk, string $fullPath, string $sourcePath): string
+    public function removeSourceFileIfUnreferenced(string $disk, string $fullPath, string $sourcePath, ?callable $whileHeld = null): string
     {
         if (self::$beforeSourceGate !== null) {
             (self::$beforeSourceGate)($disk, $fullPath, $sourcePath);
         }
 
-        return parent::removeSourceFileIfUnreferenced($disk, $fullPath, $sourcePath);
+        return parent::removeSourceFileIfUnreferenced($disk, $fullPath, $sourcePath, $whileHeld);
     }
 
     public function removeArtifactIfUnreferenced(string $disk, string $path): string

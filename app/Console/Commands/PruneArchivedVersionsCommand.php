@@ -97,12 +97,16 @@ final class PruneArchivedVersionsCommand extends Command
         // soft-deleted rows, the run directory is shared by every version born
         // from the same bytes IN THIS STORAGE NAMESPACE (disk + prefix +
         // source path) — one definition of "referenced" for the hard delete
-        // and for the prune.
-        if (app(DocumentDeleter::class)->documentReferencingOcrRun($disk, $prefix, $sourcePath, $run) !== null) {
+        // and for the prune. This is a cheap early exit on the pre-purge
+        // snapshot; the authoritative re-check runs under `purgeRun()`'s own
+        // reservation, immediately before the delete (a restore or a fresh
+        // ingest can commit a reference in the gap between this line and it).
+        $deleter = app(DocumentDeleter::class);
+        if ($deleter->documentReferencingOcrRun($disk, $prefix, $sourcePath, $run) !== null) {
             return $outcome;
         }
         try {
-            if (app(OcrFigureStore::class)->purgeRun($disk, $sourcePath, $prefix, $run)) {
+            if (app(OcrFigureStore::class)->purgeRun($disk, $sourcePath, $prefix, $run, fn (): bool => $deleter->documentReferencingOcrRun($disk, $prefix, $sourcePath, $run) !== null)) {
                 $outcome['purged'] = true;
 
                 return $outcome;
