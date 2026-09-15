@@ -615,6 +615,33 @@ whose bytes are fine. `recordedPrefix()` therefore returns the recorded value
 verbatim: rewriting it to the configured prefix would make the row claim an
 object at a location it never recorded, and the deleter would then delete it.
 
+### 8b. One active version per family, against a concurrent restore
+
+`archivePreviousVersions()` locks the WHOLE family — every row of
+`(tenant_id, project_key, source_path)`, whatever its status — before it
+archives, and only then runs its `UPDATE … WHERE status != 'archived'`.
+
+The UPDATE alone is not the invariant it looks like. Under PostgreSQL READ
+COMMITTED its WHERE is evaluated at scan time; when a matched row is locked
+by another transaction the row is re-checked after the lock clears, but a row
+that did NOT match at scan time is never revisited. An archived version that
+a Time Machine restore activates in the window between the ingest's scan and
+its commit is therefore missed, and the family ends with **two active rows** —
+ambiguous for every reader that resolves the live version by `status`.
+
+The status-free locking read closes it from the ingest side; the restore side
+was already closed by its own post-update `$concurrentlyActive` sweep, which
+runs on a fresh statement snapshot. Whichever transaction reaches the family
+second blocks on the other's rows and re-reads them: restore-first, the
+ingest archives the newly active row; ingest-first, the restore's sweep
+archives the newly inserted one. Either order leaves exactly one active
+version.
+
+SQLite has no row-level MVCC, so the regression test pins the ORDER the fix
+depends on (the family is locked and read after the new version exists)
+rather than the cross-process interleaving, which no in-process test can
+stage.
+
 ### 9. The MCP read surface the v8.7 feature never got
 
 `KbDocumentVersionsTool` (read) lists a document's family with `id`, `status`,

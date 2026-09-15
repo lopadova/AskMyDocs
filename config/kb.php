@@ -380,7 +380,12 @@ return [
 
     'conversion_artifacts' => [
         'enabled' => filter_var(env('KB_CONVERSION_ARTIFACTS_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
-        'tmp_max_age_seconds' => (int) env('KB_CONVERSION_ARTIFACTS_TMP_MAX_AGE', 3600),
+        // Kept RAW (no `(int)` cast): every one of these durations is validated by
+        // `App\Support\Kb\SettingInt::whole()` at the point of use, and a cast here
+        // would truncate `0.5` to `0` and `1.9` to `1` BEFORE the validator could
+        // refuse them — the strict reading would then only ever see values it
+        // already had to accept (SEC-SETTING-SHAPE-001).
+        'tmp_max_age_seconds' => env('KB_CONVERSION_ARTIFACTS_TMP_MAX_AGE', 3600),
         // ADR 0030 §3 — the per-storage-key lock a `markdown_only` drop and the
         // row commits of the same key share, and the per-artifact-path lock a
         // publish shares with every delete and sweep of that path (needs an
@@ -388,8 +393,8 @@ return [
         // for it, and how long it lives when its holder dies. Neither lock is
         // renewed: a holder asserts it still owns the lock right before its
         // irreversible step (App\Support\Kb\HeldLock) and refuses otherwise.
-        'source_lock_wait_seconds' => (int) env('KB_CONVERSION_ARTIFACTS_SOURCE_LOCK_WAIT', 10),
-        'source_lock_seconds' => (int) env('KB_CONVERSION_ARTIFACTS_SOURCE_LOCK_TTL', 60),
+        'source_lock_wait_seconds' => env('KB_CONVERSION_ARTIFACTS_SOURCE_LOCK_WAIT', 10),
+        'source_lock_seconds' => env('KB_CONVERSION_ARTIFACTS_SOURCE_LOCK_TTL', 60),
         // How long a writer's lease on its artifact temp file lives (taken
         // before the temp is written, released by the publish or the discard):
         // the temp sweep never removes a leased temp, whatever its age, so a
@@ -400,7 +405,7 @@ return [
         // dead one exactly in the window the lease exists for. Needs a lock-capable
         // cache store (Redis in production); a store that cannot lock leaves
         // the age threshold alone in charge, reported once.
-        'tmp_lease_seconds' => (int) env('KB_CONVERSION_ARTIFACTS_TMP_LEASE', 7200),
+        'tmp_lease_seconds' => env('KB_CONVERSION_ARTIFACTS_TMP_LEASE', 7200),
     ],
 
     /*
@@ -665,7 +670,8 @@ return [
         'keep_archived' => (int) env('KB_KEEP_ARCHIVED_VERSIONS', 10),
         // The most versions a timeline listing (HTTP, MCP, CLI) hydrates and
         // verifies per call (R3); the surfaces report `truncated` beyond it.
-        'timeline_limit' => (int) env('KB_VERSIONS_TIMELINE_LIMIT', 100),
+        // Raw, like every setting `SettingInt::whole()` validates at the point of use.
+        'timeline_limit' => env('KB_VERSIONS_TIMELINE_LIMIT', 100),
         // ADR 0030 §5 — a version's artifact state is a READ + hash check, so
         // a timeline page would fetch one object per row from a bucket on
         // every listing. Only the VERIFIED state is memoized, for this many
@@ -678,7 +684,7 @@ return [
         // or tampered inside the window may keep its badge until the entry
         // expires; the content and diff endpoints always re-read and report
         // `missing` / `mismatch` faithfully.
-        'artifact_state_cache_seconds' => (int) env('KB_VERSIONS_ARTIFACT_STATE_CACHE', 300),
+        'artifact_state_cache_seconds' => env('KB_VERSIONS_ARTIFACT_STATE_CACHE', 300),
     ],
 
     /*

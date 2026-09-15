@@ -75,6 +75,8 @@ final class ConversionArtifactStore
         return (bool) config('kb.conversion_artifacts.enabled', false);
     }
 
+    private const DEFAULT_TMP_MAX_AGE_SECONDS = 3600;
+
     /**
      * Seconds a writer's temp lease lives (`kb.conversion_artifacts.tmp_lease_seconds`)
      * — long enough for the source-key lock wait, the row's transaction and
@@ -104,7 +106,7 @@ final class ConversionArtifactStore
                 'default' => self::DEFAULT_TMP_LEASE_SECONDS,
             ]);
         }
-        $maxAge = (int) config('kb.conversion_artifacts.tmp_max_age_seconds', 3600);
+        $maxAge = self::tempMaxAgeSeconds();
         if ($seconds < $maxAge) {
             // Clamped, not merely reported: a lease that expires before the
             // sweep may delete makes its writer indistinguishable from a dead
@@ -198,6 +200,31 @@ final class ConversionArtifactStore
         $configured = config('kb.conversion_artifacts.source_lock_seconds', 60);
 
         return SettingInt::whole($configured, 1) ?? 60;
+    }
+
+    /**
+     * Seconds a temp file must be older than before a sweep may consider it
+     * (`kb.conversion_artifacts.tmp_max_age_seconds`). ONE reading, shared
+     * with `kb:prune-archived-versions`: this threshold is the only guard
+     * left when the cache store cannot lease, so a `(int)` cast that turned
+     * `0.5` or `abc` into `0` would make every live writer's temp eligible
+     * for deletion the instant it is written. `0` is a legitimate setting —
+     * it means "age is no protection", which is why the floor is 0 and not 1
+     * — so only a value that is not a whole number at all falls back.
+     */
+    public static function tempMaxAgeSeconds(): int
+    {
+        $configured = config('kb.conversion_artifacts.tmp_max_age_seconds', self::DEFAULT_TMP_MAX_AGE_SECONDS);
+        $seconds = SettingInt::whole($configured, 0);
+        if ($seconds !== null) {
+            return $seconds;
+        }
+        self::warnOnce('max_age_shape', 'ConversionArtifactStore: kb.conversion_artifacts.tmp_max_age_seconds is not a whole number of seconds; using the default', [
+            'configured' => is_scalar($configured) ? $configured : gettype($configured),
+            'default' => self::DEFAULT_TMP_MAX_AGE_SECONDS,
+        ]);
+
+        return self::DEFAULT_TMP_MAX_AGE_SECONDS;
     }
 
     /** The cache lease key of a temp file (one per attempt: the temp name carries a UUID). */

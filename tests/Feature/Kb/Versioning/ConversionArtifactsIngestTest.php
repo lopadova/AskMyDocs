@@ -923,6 +923,54 @@ MD;
         $this->assertSame($chunksBefore, $fresh->chunks()->count(), 're-chunked from the artifact instead of failing the job');
     }
 
+    /**
+     * R21 — one active version per family, even when a Time Machine restore
+     * activates an archived sibling inside the ingest's transaction window.
+     *
+     * The bare `UPDATE … WHERE status != 'archived'` cannot carry this alone
+     * under MVCC: PostgreSQL READ COMMITTED evaluates that WHERE at scan time
+     * and never revisits a row that did not match then, so a version the
+     * restore activates in the window is missed. `archivePreviousVersions()`
+     * therefore locks the WHOLE family first, whatever each row's status.
+     *
+     * SQLite has no row-level MVCC, so this pins the ORDER the fix depends on
+     * — the family is locked, and the archive sweep reads the family, AFTER
+     * the new version exists — rather than the cross-process interleaving
+     * itself, which no in-process test can stage.
+     */
+    public function test_a_version_activated_during_the_ingest_transaction_is_still_archived(): void
+    {
+        $markdown = "# Family\n\nFirst version.";
+        $first = $this->ingestMarkdown($markdown, 'docs/family.md', ['disk' => 'kb', 'prefix' => '']);
+        $this->assertSame('active', $first->fresh()->status);
+
+        // The concurrent restore, staged inside the ingest's transaction: the
+        // moment the new version's row exists, flip the previous one back to
+        // active behind the ingestor's back (a query-builder update — no
+        // events, exactly like another connection committing).
+        $flipped = false;
+        \Illuminate\Support\Facades\DB::listen(function ($query) use ($first, &$flipped): void {
+            if ($flipped || ! str_contains(strtolower($query->sql), 'knowledge_documents')) {
+                return;
+            }
+            if (! str_starts_with(strtolower(ltrim($query->sql)), 'insert')) {
+                return;
+            }
+            $flipped = true;
+            \Illuminate\Support\Facades\DB::table('knowledge_documents')->where('id', $first->id)->update(['status' => 'active']);
+        });
+
+        $second = $this->ingestMarkdown($markdown."\n\nSecond version.", 'docs/family.md', ['disk' => 'kb', 'prefix' => '']);
+
+        $this->assertTrue($flipped, 'the simulated restore ran inside the ingest');
+        $active = KnowledgeDocument::withoutGlobalScopes()
+            ->where('source_path', 'docs/family.md')
+            ->where('status', 'active')
+            ->pluck('id')
+            ->all();
+        $this->assertSame([(int) $second->id], array_map('intval', $active), 'exactly one active version survives the ingest');
+    }
+
     /** The artifact branch of the re-embed (original dropped, the stored artifact re-chunked) gets the same outcome: done, logged, never a failed job. */
     public function test_a_forced_reembed_from_the_artifact_whose_publish_fails_completes_and_logs_the_missing_artifact(): void
     {

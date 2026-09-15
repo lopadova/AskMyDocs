@@ -1825,11 +1825,39 @@ class DocumentIngestor
 
     private function archivePreviousVersions(string $projectKey, string $sourcePath, int $currentDocumentId): void
     {
+        $tenantId = app(TenantContext::class)->current();
+        // R21 — Lock the WHOLE family first, whatever each row's status, and
+        // only then archive. The bare UPDATE below is not enough on its own
+        // under MVCC: PostgreSQL READ COMMITTED evaluates its WHERE at scan
+        // time and, when a row it matched was locked by another transaction,
+        // re-checks only THAT row after the lock clears. A row that did NOT
+        // match at scan time is never revisited — so an archived version that
+        // a concurrent Time Machine restore activates in the window between
+        // this scan and this commit is missed, and the family ends with two
+        // active rows.
+        //
+        // The locking read has no status predicate, so it takes the restore's
+        // target too. Whichever transaction reaches the family second blocks
+        // on the other's rows and re-reads them afterwards: restore-first
+        // means this UPDATE sees the newly active row and archives it;
+        // ingest-first means the restore's own post-update sweep (the
+        // `$concurrentlyActive` pass in DocumentVersionService) sees this row
+        // and archives it. Either order leaves exactly one active version.
+        //
         // R30/R31 — scope by tenant_id so a re-ingest under tenant A never
         // archives the same `(project_key, source_path)` row owned by
         // tenant B. project_key + source_path are NOT globally unique.
+        // R3 — ids only, and the family is capped by kb:prune-archived-versions.
         KnowledgeDocument::query()
-            ->forTenant(app(TenantContext::class)->current())
+            ->forTenant($tenantId)
+            ->where('project_key', $projectKey)
+            ->where('source_path', $sourcePath)
+            ->where('id', '!=', $currentDocumentId)
+            ->lockForUpdate()
+            ->pluck('id');
+
+        KnowledgeDocument::query()
+            ->forTenant($tenantId)
             ->where('project_key', $projectKey)
             ->where('source_path', $sourcePath)
             ->where('id', '!=', $currentDocumentId)

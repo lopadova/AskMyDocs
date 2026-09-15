@@ -19,6 +19,8 @@ final class SourceKeyLock
 {
     public const DEFAULT_SECONDS = 60;
 
+    public const DEFAULT_WAIT_SECONDS = 10;
+
     /** whether the invalid-TTL fallback was already reported in this process (once, not once per lock: a sweep takes one per orphan) */
     private static bool $warnedInvalidSeconds = false;
 
@@ -33,10 +35,17 @@ final class SourceKeyLock
         return Cache::lock('kb:source:'.$disk.':'.sha1($fullPath), self::seconds());
     }
 
-    /** Seconds a holder waits for the lock before giving up (`kb.conversion_artifacts.source_lock_wait_seconds`). */
+    /**
+     * Seconds a holder waits for the lock before giving up
+     * (`kb.conversion_artifacts.source_lock_wait_seconds`). `0` is a
+     * legitimate setting — do not block, fail fast — so the floor is 0; a
+     * value that is not a whole number falls back to the default rather than
+     * being truncated into one (SEC-SETTING-SHAPE-001).
+     */
     public static function waitSeconds(): int
     {
-        return max(0, (int) config('kb.conversion_artifacts.source_lock_wait_seconds', 10));
+        return SettingInt::whole(config('kb.conversion_artifacts.source_lock_wait_seconds', self::DEFAULT_WAIT_SECONDS), 0)
+            ?? self::DEFAULT_WAIT_SECONDS;
     }
 
     /**

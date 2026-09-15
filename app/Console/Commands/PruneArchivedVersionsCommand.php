@@ -244,7 +244,11 @@ final class PruneArchivedVersionsCommand extends Command
      */
     private function sweepArtifactNamespace(ConversionArtifactStore $artifacts, string $disk, string $prefix, bool $dryRun): array
     {
-        $maxAge = max(0, (int) config('kb.conversion_artifacts.tmp_max_age_seconds', 3600));
+        // The SAME reading the store uses (SEC-SETTING-SHAPE-001): when the
+        // cache store cannot lease, this threshold is the only thing standing
+        // between a live writer's temp and this sweep, so it must not be a
+        // `(int)` cast that turns `0.5` or `abc` into `0`.
+        $maxAge = ConversionArtifactStore::tempMaxAgeSeconds();
 
         try {
             $temps = $artifacts->sweepTemps($disk, $prefix, $maxAge, $dryRun);

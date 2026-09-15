@@ -63,4 +63,34 @@ final class SettingIntTest extends TestCase
         $this->assertNull(SettingInt::whole('1e3', 1));
         $this->assertNull(SettingInt::whole('1E3', 1));
     }
+
+    /**
+     * The validator only ever sees what `config/kb.php` hands it. A `(int)`
+     * cast on the env read there truncates `0.5` to `0` and `1.9` to `1`
+     * BEFORE this class can refuse them, so the strict reading would be left
+     * validating values it had already been forced to accept — and for
+     * `tmp_max_age_seconds`, a `0` is not a harmless default: when the cache
+     * store cannot lease, that threshold is the only thing standing between a
+     * live writer's temp and the sweep.
+     *
+     * So the config declaration for every SettingInt-validated key stays RAW.
+     * This asserts it, because the cast is one keystroke and re-reads as a
+     * tidy-up.
+     */
+    public function test_the_config_declaration_of_a_validated_setting_is_not_pre_cast(): void
+    {
+        $source = (string) file_get_contents(dirname(__DIR__, 4).'/config/kb.php');
+        $keys = [
+            'tmp_max_age_seconds', 'source_lock_wait_seconds', 'source_lock_seconds', 'tmp_lease_seconds',
+            'orphan_grace_seconds', 'orphan_scan_max_items', 'timeline_limit', 'artifact_state_cache_seconds',
+        ];
+
+        foreach ($keys as $key) {
+            $this->assertMatchesRegularExpression(
+                "/'".preg_quote($key, '/')."'\s*=>\s*env\(/",
+                $source,
+                "config/kb.php must hand [{$key}] to SettingInt raw — a cast here validates nothing",
+            );
+        }
+    }
 }
