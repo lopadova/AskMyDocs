@@ -704,6 +704,60 @@ final class ArtifactsRetentionCommandsTest extends TestCase
         $this->assertTrue($row->fresh()->metadata['source_dropped']);
     }
 
+    /**
+     * v8.36 / PR #479 Copilot review — finalizeSourceRetention()'s own
+     * SourceKeyLock only serializes against a CONCURRENT INGEST'S ROW
+     * COMMIT; it says nothing about a fresh ingest still READING the same
+     * source. The backfill must hold the SAME SourceInFlight reservation
+     * every other deleting consumer does before it drops the original, so
+     * a job actively converting this exact source blocks the drop instead
+     * of racing it.
+     */
+    public function test_backfill_defers_the_retention_drop_while_an_ingest_holds_the_source_reservation(): void
+    {
+        config(['kb.ocr.enabled' => true, 'kb.ocr.driver' => 'fake', 'kb.ocr.fake.pages' => [['markdown' => 'scanned text']]]);
+        $cache = \Mockery::mock(\App\Services\Kb\EmbeddingCacheService::class);
+        $cache->shouldReceive('generate')->andReturnUsing(
+            fn (array $texts) => new \App\Ai\EmbeddingsResponse(embeddings: array_map(fn () => array_fill(0, 8, 0.0), $texts), provider: 'fake', model: 'fake-8'),
+        );
+        $this->app->instance(\App\Services\Kb\EmbeddingCacheService::class, $cache);
+        $tenant = app(TenantContext::class)->current();
+        $png = (string) base64_decode(\App\Services\Kb\Ocr\Drivers\FakeOcrDriver::PNG_1X1, true);
+        Storage::disk('kb')->put('scans/held.png', $png);
+        config(['kb.source_retention.mode' => 'markdown_only']);
+        $row = app(\App\Services\Kb\DocumentIngestor::class)->ingest('eng', new \App\Services\Kb\Pipeline\SourceDocument(
+            sourcePath: 'scans/held.png', mimeType: 'image/png', bytes: $png,
+            externalUrl: null, externalId: null, connectorType: 'local', metadata: ['disk' => 'kb', 'prefix' => ''],
+        ), 'Held');
+        // The original comes back (a restore from backup) while the verified artifact is still there.
+        Storage::disk('kb')->put('scans/held.png', $png);
+        KnowledgeDocument::withoutGlobalScopes()->whereKey($row->id)->update(['metadata' => array_diff_key($row->fresh()->metadata, ['source_dropped' => true])]);
+
+        // Simulates a concurrent ingest job mid-conversion of this exact
+        // source: it holds the reservation the whole time it reads/converts,
+        // exactly like IngestDocumentJob::reserveSource().
+        $holder = \App\Support\Kb\SourceInFlight::reserve('kb', 'scans/held.png');
+        $this->assertNotNull($holder);
+
+        $this->artisan('kb:artifacts-backfill', ['--tenant' => $tenant])
+            ->expectsOutputToContain('retention not finalized (an ingest is reading this source right now')
+            ->expectsOutputToContain('already_stored=1 written=0 intentionally_missing=0 source_missing=0 hash_mismatch=0 conversion_failed=0')
+            ->assertExitCode(0);
+
+        // the original must survive while an ingest is reading it
+        Storage::disk('kb')->assertExists('scans/held.png');
+        $this->assertArrayNotHasKey('source_dropped', $row->fresh()->metadata ?? []);
+
+        $holder->release();
+
+        // Once the ingest is done, the SAME row is repaired on the next run.
+        $this->artisan('kb:artifacts-backfill', ['--tenant' => $tenant])
+            ->expectsOutputToContain('already_stored (original dropped: markdown_only)')
+            ->assertExitCode(0);
+        Storage::disk('kb')->assertMissing('scans/held.png');
+        $this->assertTrue($row->fresh()->metadata['source_dropped']);
+    }
+
     /** R14 — a row whose recorded disk cannot be resolved here is one reported row, never an abort that leaves the rest of the corpus unprocessed. */
     public function test_backfill_reports_a_row_on_an_unresolvable_disk_and_goes_on(): void
     {

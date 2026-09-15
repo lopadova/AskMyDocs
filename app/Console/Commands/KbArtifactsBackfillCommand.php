@@ -11,6 +11,7 @@ use App\Services\Kb\Pipeline\SourceDocument;
 use App\Services\Kb\Versioning\ConversionArtifactStore;
 use App\Services\Kb\Versioning\SourceRetentionResolver;
 use App\Support\KbPath;
+use App\Support\Kb\SourceInFlight;
 use App\Support\Kb\StorageNamespace;
 use App\Support\TenantContext;
 use Illuminate\Console\Command;
@@ -181,7 +182,7 @@ final class KbArtifactsBackfillCommand extends Command
                 // the gate is a disk write.
                 if (! $dryRun) {
                     try {
-                        if ($ingestor->finalizeSourceRetention($row, $disk, $pointer)) {
+                        if ($this->finalizeSourceRetentionUnderReservation($ingestor, $row, $disk, $prefix, $pointer)) {
                             $this->originalsDropped++;
                             $this->line("  #{$row->id} {$row->source_path}: already_stored (original dropped: markdown_only)");
                         }
@@ -339,7 +340,7 @@ final class KbArtifactsBackfillCommand extends Command
         // row's line and the run goes on — never a stack trace mid-corpus
         // that loses the counts of the rows already repaired (R14).
         try {
-            $dropped = $ingestor->finalizeSourceRetention($row, $disk, $final);
+            $dropped = $this->finalizeSourceRetentionUnderReservation($ingestor, $row, $disk, $prefix, $final);
         } catch (\Throwable $e) {
             $this->line("  #{$row->id} {$sourcePath}: written {$final} (retention not finalized: {$e->getMessage()})");
 
@@ -351,6 +352,49 @@ final class KbArtifactsBackfillCommand extends Command
         $this->line("  #{$row->id} {$sourcePath}: written {$final}".($dropped ? ' (original dropped: markdown_only)' : ''));
 
         return 'written';
+    }
+
+    /**
+     * v8.36 — the round-34/36 acquire-and-hold pattern, applied to retention
+     * finalization: `DocumentIngestor::finalizeSourceRetention()` already
+     * serializes against a CONCURRENT INGEST'S ROW COMMIT (its own internal
+     * `SourceKeyLock`), but says nothing about a fresh ingest that is still
+     * READING/CONVERTING the same source — the exact half `SourceInFlight`
+     * exists to cover (its own docblock: "a job reads the source and
+     * converts it ... in that window the file has no row and no holder").
+     * Reserved here, same as every other deleting consumer (`DocumentDeleter`,
+     * `PruneOrphanFilesCommand`), so a fresh ingest reading this very file
+     * blocks the drop instead of racing it.
+     */
+    private function finalizeSourceRetentionUnderReservation(DocumentIngestor $ingestor, KnowledgeDocument $row, string $disk, string $prefix, string $final): bool
+    {
+        if (! ConversionArtifactStore::cacheStoreCanLock()) {
+            // No mutex at all: finalizeSourceRetention()'s own storage-key
+            // lock is the only guard left (R43), exactly as before this fix.
+            return $ingestor->finalizeSourceRetention($row, $disk, $final);
+        }
+        try {
+            $sourcePath = KbPath::normalize((string) $row->source_path);
+            $fullPath = $prefix === '' ? $sourcePath : KbPath::normalize($prefix.'/'.$sourcePath);
+        } catch (\InvalidArgumentException) {
+            // An un-normalizable path: finalizeSourceRetention() resolves the
+            // SAME path internally and returns false for the same reason, so
+            // calling it unprotected here changes nothing about its outcome.
+            return $ingestor->finalizeSourceRetention($row, $disk, $final);
+        }
+        $reservation = SourceInFlight::acquireForRemoval($disk, $fullPath);
+        if ($reservation === null) {
+            // An ingest holds it right now: the retention drop is deferred,
+            // never raced. The next run retries it once the ingest finishes.
+            $this->line("  #{$row->id} {$row->source_path}: retention not finalized (an ingest is reading this source right now; retried on the next run)");
+
+            return false;
+        }
+        try {
+            return $ingestor->finalizeSourceRetention($row, $disk, $final);
+        } finally {
+            $reservation->release();
+        }
     }
 
     /**
