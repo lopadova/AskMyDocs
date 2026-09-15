@@ -152,11 +152,17 @@ final class KbArtifactsBackfillCommand extends Command
             // read() never throws: an unreadable pointer is null → repaired below.
             $current = $store->read($disk, $pointer);
             if (is_string($current) && hash('sha256', $current) === (string) $row->document_hash) {
-                // A stored file that IS the version's bytes is verified: a
-                // row whose `content_hash` was never recorded (a legacy
-                // pointer) gets it now, so the Time Machine can claim
-                // integrity instead of `unverified` forever.
-                if (! $dryRun && (! is_string($row->content_hash) || $row->content_hash === '')) {
+                // A stored file that IS the version's bytes is verified, so
+                // the recorded hash must say so. Two rows need the write, not
+                // one: the legacy pointer whose `content_hash` was never
+                // recorded (`unverified` forever otherwise) AND the row whose
+                // recorded hash is present but WRONG — a stale value left by
+                // a repair, which the Time Machine reports as `mismatch`
+                // forever while the file on disk is provably correct. The
+                // condition is therefore "differs from the version's hash",
+                // never "is empty": the second row is the one an operator
+                // actually runs this command for.
+                if (! $dryRun && (string) $row->content_hash !== (string) $row->document_hash) {
                     // The same integrity-only write as the identical re-ingest
                     // (DocumentIngestor::recordContentHashIfMissing): bound to
                     // the row's own tenant (R30). A row that is no longer the

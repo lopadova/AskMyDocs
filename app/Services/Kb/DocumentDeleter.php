@@ -522,6 +522,36 @@ class DocumentDeleter
      *
      * No-op only when BOTH `doc_id` and `slug` are null (truly non-canonical).
      */
+    /**
+     * The identity-only form of {@see cascadeGraphFor()}, for a caller that
+     * holds a canonical identity no active row owns any more but no longer
+     * holds the row that owned it — the Time Machine restore, which VACATES
+     * the outgoing live version's `doc_id` / `slug` before it archives it.
+     * Reading the row afterwards would find nothing to cascade, so the
+     * identity is captured first and handed here.
+     *
+     * Same rule and same tenant scoping as the row form: nodes owned by the
+     * `doc_id`, else the node named by the slug; the composite FK on
+     * `kb_edges` takes the edges.
+     */
+    public function removeGraphNodesForIdentity(string $tenantId, string $projectKey, ?string $docId, ?string $slug): void
+    {
+        if ($docId !== null) {
+            KbNode::where('tenant_id', $tenantId)
+                ->where('project_key', $projectKey)
+                ->where('source_doc_id', $docId)
+                ->delete();
+
+            return;
+        }
+        if ($slug !== null) {
+            KbNode::where('tenant_id', $tenantId)
+                ->where('project_key', $projectKey)
+                ->where('node_uid', $slug)
+                ->delete();
+        }
+    }
+
     private function cascadeGraphFor(KnowledgeDocument $document): void
     {
         // R30/R31 — slug + doc_id are tenant-scoped per CLAUDE.md R10. Two

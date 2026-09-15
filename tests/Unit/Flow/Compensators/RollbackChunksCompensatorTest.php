@@ -116,12 +116,58 @@ final class RollbackChunksCompensatorTest extends TestCase
     }
 
     /**
-     * R14 — "already gone" and "exists but not mine" are different facts and
-     * only one is benign. A replayed cross-tenant id leaves the row AND its
-     * chunks in place while the compensation returns silently, so the
-     * compensator says so instead of reporting nothing at all.
+     * R14 — within the bound tenant, "already gone" and "exists but I cannot
+     * see it" are different facts and only one is benign: an ACCESS scope
+     * narrowing the read would leave the orphan row AND its chunks in place
+     * while the compensation returned silently. So the probe lifts that scope
+     * and says so.
      */
-    public function test_a_row_that_exists_but_is_out_of_scope_is_reported_not_silently_skipped(): void
+    public function test_a_row_hidden_by_the_access_scope_is_reported_not_silently_skipped(): void
+    {
+        $cache = Mockery::mock(EmbeddingCacheService::class);
+        $cache->shouldReceive('generate')->andReturn(new EmbeddingsResponse(
+            embeddings: [[0.1, 0.2, 0.3]],
+            provider: 'openai',
+            model: 'text-embedding-3-small',
+        ));
+        $this->app->instance(EmbeddingCacheService::class, $cache);
+
+        $tenants = $this->app->make(\App\Support\TenantContext::class);
+        $tenants->set('acme');
+        $ours = $this->app->make(DocumentIngestor::class)->ingestMarkdown(
+            projectKey: 'demo',
+            sourcePath: 'docs/reported.md',
+            title: 'Ours',
+            markdown: "# Ours\n\nBody.",
+        );
+
+        // A reader with no project membership: AccessScopeScope narrows every
+        // KnowledgeDocument read to nothing, so the row is invisible to the
+        // compensator's scoped lookup while still sitting in this tenant.
+        config(['rbac.enforced' => true]);
+        $this->actingAs(\App\Models\User::create([
+            'name' => 'Scoped', 'email' => 'scoped@example.test', 'password' => bcrypt('secret'),
+        ]));
+
+        \Illuminate\Support\Facades\Log::spy();
+        $this->app->make(RollbackChunksCompensator::class)->compensate(
+            new FlowContext(flowRunId: 'rollback-run', definitionName: 'kb.ingest', input: ['tenant_id' => 'acme']),
+            FlowStepResult::success(output: ['knowledge_document_id' => (int) $ours->id]),
+        );
+
+        \Illuminate\Support\Facades\Log::shouldHaveReceived('warning')
+            ->withArgs(static fn (string $message): bool => str_contains($message, 'not visible under the bound access scope'))
+            ->once();
+    }
+
+    /**
+     * R30 — the probe keeps the tenant filter. A replayed output naming
+     * another tenant's id finds nothing and says nothing: answering "does id
+     * N exist anywhere?" would be a cross-tenant existence oracle, and the
+     * answer is not actionable here anyway — a row in another tenant is not
+     * this compensation's to roll back.
+     */
+    public function test_a_cross_tenant_id_is_not_probed_and_reveals_nothing(): void
     {
         $cache = Mockery::mock(EmbeddingCacheService::class);
         $cache->shouldReceive('generate')->andReturn(new EmbeddingsResponse(
@@ -146,9 +192,8 @@ final class RollbackChunksCompensatorTest extends TestCase
             FlowStepResult::success(output: ['knowledge_document_id' => (int) $theirs->id]),
         );
 
-        \Illuminate\Support\Facades\Log::shouldHaveReceived('warning')
-            ->withArgs(static fn (string $message): bool => str_contains($message, 'not visible under the bound tenant scope'))
-            ->once();
+        \Illuminate\Support\Facades\Log::shouldNotHaveReceived('warning');
+        $this->assertDatabaseHas('knowledge_documents', ['id' => $theirs->id, 'tenant_id' => 'acme']);
     }
 
     /** A genuinely absent row stays quiet: the rollback is idempotent by contract, not a problem to report. */

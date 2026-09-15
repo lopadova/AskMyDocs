@@ -6,6 +6,7 @@ namespace App\Flow\Compensators;
 
 use App\Flow\Steps\StepTenantBinder;
 use App\Models\KnowledgeDocument;
+use App\Scopes\AccessScopeScope;
 use App\Services\Kb\DocumentDeleter;
 use App\Support\TenantContext;
 use Illuminate\Support\Facades\Log;
@@ -66,16 +67,25 @@ final class RollbackChunksCompensator implements FlowCompensator
         if ($document === null) {
             // Already gone — saga rollback is idempotent by contract. But
             // "gone" and "not visible to me" are different facts and only one
-            // of them is benign: a replayed/cross-tenant output, or a request
-            // -scoped access scope narrowing the read, would leave the orphan
-            // row AND its chunks in place while the compensation reported
-            // nothing at all (R14). Probe once, unscoped, and say so.
-            $existsElsewhere = KnowledgeDocument::withoutGlobalScopes()
+            // of them is benign: a request-scoped ACCESS scope narrowing the
+            // read would leave the orphan row AND its chunks in place while
+            // the compensation reported nothing at all (R14). Probe once with
+            // that scope lifted, and say so.
+            //
+            // The TENANT filter stays on the probe (R30). Dropping it would
+            // answer "does id N exist anywhere?", which is a cross-tenant
+            // existence oracle a replayed flow output could walk — and it
+            // would tell us nothing we may act on anyway, since a row in
+            // another tenant is not this compensation's to roll back. What
+            // is left is exactly the question worth asking: is there a row
+            // HERE that this reader cannot see?
+            $existsElsewhere = KnowledgeDocument::withoutGlobalScope(AccessScopeScope::class)
                 ->withTrashed()
+                ->forTenant(app(TenantContext::class)->current())
                 ->whereKey($documentId)
                 ->exists();
             if ($existsElsewhere) {
-                Log::warning('RollbackChunksCompensator: the row exists but is not visible under the bound tenant scope — nothing was rolled back', [
+                Log::warning('RollbackChunksCompensator: the row exists in this tenant but is not visible under the bound access scope — nothing was rolled back', [
                     'knowledge_document_id' => $documentId,
                     'tenant_id' => app(TenantContext::class)->current(),
                     'flow_run_id' => $context->flowRunId,

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Api\Admin;
 
+use App\Jobs\CanonicalIndexerJob;
+use App\Models\KbNode;
 use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
 use App\Models\User;
@@ -366,6 +368,68 @@ final class KbDocumentVersionControllerTest extends TestCase
 
         $this->assertSame('dec-1', $archived->refresh()->slug);
         $this->assertSame('dec-1', KnowledgeDocument::withoutGlobalScopes()->findOrFail($foreign->id)->slug, "the other tenant keeps its own");
+    }
+
+    /**
+     * R10 §5/§9 — the graph projection follows the ACTIVE version, so a
+     * restore moves it. Restoring a NON-canonical version is the case an
+     * indexer dispatch cannot cover: it would short-circuit on a row with no
+     * identity and leave the outgoing version's whole graph standing, so
+     * every identity the restore vacated and did not hand on has its nodes
+     * removed.
+     */
+    public function test_restoring_a_non_canonical_version_removes_the_outgoing_versions_graph_nodes(): void
+    {
+        \Illuminate\Support\Facades\Queue::fake();
+        $admin = $this->makeAdmin();
+        $archived = $this->makeVersion('v1xxx', 'archived', 'plain body');
+        $live = $this->makeVersion('v2yyy', 'active', 'canonical body', canonical: true);
+        KbNode::create([
+            'node_uid' => 'dec-1', 'node_type' => 'decision', 'label' => 'Dec 1',
+            'project_key' => 'eng', 'source_doc_id' => 'dec-1', 'payload_json' => [],
+        ]);
+
+        $this->actingAs($admin)->postJson("/api/admin/kb/documents/{$archived->id}/restore-version")
+            ->assertOk()
+            ->assertJsonPath('data.is_canonical', false);
+
+        $this->assertSame('archived', $live->refresh()->status);
+        $this->assertSame(
+            0,
+            KbNode::withoutGlobalScopes()->where('project_key', 'eng')->where('source_doc_id', 'dec-1')->count(),
+            'the graph of the version that is no longer live does not outlive it',
+        );
+        \Illuminate\Support\Facades\Queue::assertNotPushed(CanonicalIndexerJob::class);
+    }
+
+    /**
+     * The other half: an identity the restored row DOES hold stays, and the
+     * indexer rebuilds it — forced past its `(tenant, document, version_hash)`
+     * idempotency key, because the restored version's hash is one it has
+     * already indexed.
+     */
+    public function test_restoring_a_canonical_version_reindexes_it_instead_of_dropping_its_graph(): void
+    {
+        \Illuminate\Support\Facades\Queue::fake();
+        $admin = $this->makeAdmin();
+        $archived = $this->makeVersion('v1zzz', 'archived', 'old canonical', canonical: true);
+        $live = $this->makeVersion('v2aab', 'active', 'new plain body');
+        KbNode::create([
+            'node_uid' => 'dec-1', 'node_type' => 'decision', 'label' => 'Dec 1',
+            'project_key' => 'eng', 'source_doc_id' => 'dec-1', 'payload_json' => [],
+        ]);
+
+        $this->actingAs($admin)->postJson("/api/admin/kb/documents/{$archived->id}/restore-version")
+            ->assertOk()
+            ->assertJsonPath('data.is_canonical', true);
+
+        $this->assertSame('archived', $live->refresh()->status);
+        $this->assertSame(
+            1,
+            KbNode::withoutGlobalScopes()->where('project_key', 'eng')->where('source_doc_id', 'dec-1')->count(),
+            'the identity moved to the restored row, so its node is rebuilt rather than removed',
+        );
+        \Illuminate\Support\Facades\Queue::assertPushed(CanonicalIndexerJob::class, static fn (CanonicalIndexerJob $job): bool => $job->documentId === (int) $archived->id && $job->forceReindex);
     }
 
     /**

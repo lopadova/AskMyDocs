@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Kb\Versioning;
 
+use App\Jobs\CanonicalIndexerJob;
 use App\Models\KbCanonicalAudit;
 use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
@@ -437,7 +438,15 @@ final class DocumentVersionService
     {
         $tenantId = $this->tenant->current();
 
-        DB::transaction(function () use ($target, $tenantId, $actor): void {
+        // Captured out of the transaction: the graph projection is reconciled
+        // AFTER the commit (see below), and by then the identities have been
+        // vacated from the rows that held them.
+        $vacatedIdentities = [];
+        $restoredId = null;
+        $restoredProjectKey = null;
+        $restoredIdentity = [];
+
+        DB::transaction(function () use ($target, $tenantId, $actor, &$vacatedIdentities, &$restoredId, &$restoredProjectKey, &$restoredIdentity): void {
             // R21 — Re-read and lock the target first; the stale $target loaded
             // by the controller cannot be trusted once we cross the lock boundary.
             $locked = KnowledgeDocument::query()
@@ -492,6 +501,9 @@ final class DocumentVersionService
             }
 
             if ($live !== null) {
+                // Captured BEFORE the vacate: after it the row no longer knows
+                // which graph nodes it owned, and those nodes outlive it.
+                $vacatedIdentities[] = ['doc_id' => $live->doc_id, 'slug' => $live->slug];
                 // Vacate the outgoing live version's canonical identity FIRST
                 // so the composite uniques (project, slug)/(project, doc_id)
                 // are free before we assign them to the target.
@@ -543,6 +555,7 @@ final class DocumentVersionService
                     ];
                     $restoreCanonical = true;
                 }
+                $vacatedIdentities[] = ['doc_id' => $other->doc_id, 'slug' => $other->slug];
                 // Vacate BEFORE the target takes the identity (composite uniques).
                 $other->update([
                     'status' => 'archived',
@@ -596,6 +609,10 @@ final class DocumentVersionService
                 'metadata' => array_merge($lockedMetadata, ['restores' => $restores]),
             ], $identity));
 
+            $restoredId = (int) $locked->id;
+            $restoredProjectKey = (string) $locked->project_key;
+            $restoredIdentity = $identity;
+
             if ($restoreCanonical && (bool) config('kb.canonical.audit_enabled', true)) {
                 KbCanonicalAudit::create([
                     'project_key' => (string) $locked->project_key,
@@ -609,6 +626,46 @@ final class DocumentVersionService
                 ]);
             }
         });
+
+        // The graph projection follows the ACTIVE version, so a restore moves
+        // it (R10 §5/§9). Two halves, and the second is the one an indexer
+        // alone cannot do:
+        //
+        //  - every identity this restore vacated and did NOT hand to the
+        //    restored row is now owned by no active version, so its nodes are
+        //    removed (the composite FK takes the edges). Restoring a
+        //    NON-canonical version is exactly this case, and it is why
+        //    dispatching the indexer is not sufficient: it would short-circuit
+        //    on a row with no identity and leave the whole previous graph
+        //    standing;
+        //  - an identity the restored row DOES hold is left in place and
+        //    rebuilt by the indexer, which is forced past its
+        //    `(tenant, document, version_hash)` idempotency key because the
+        //    restored version's hash is one it has already indexed before.
+        //
+        // After the commit, never inside it: a queued job must not see a
+        // transaction that may still roll back, and a node delete that
+        // preceded a rollback would leave the graph short of a version that
+        // is still live.
+        if ($restoredId !== null && $restoredProjectKey !== null) {
+            $restoredDocId = $restoredIdentity['doc_id'] ?? null;
+            $restoredSlug = $restoredIdentity['slug'] ?? null;
+            $deleter = app(\App\Services\Kb\DocumentDeleter::class);
+            foreach ($vacatedIdentities as $vacated) {
+                $docId = $vacated['doc_id'];
+                $slug = $vacated['slug'];
+                if ($docId === null && $slug === null) {
+                    continue;
+                }
+                if (($docId !== null && $docId === $restoredDocId) || ($slug !== null && $slug === $restoredSlug)) {
+                    continue; // handed to the restored row; the indexer rebuilds it
+                }
+                $deleter->removeGraphNodesForIdentity($tenantId, $restoredProjectKey, $docId, $slug);
+            }
+            if (($restoredIdentity['is_canonical'] ?? false) === true) {
+                CanonicalIndexerJob::dispatch($restoredId, $tenantId, forceReindex: true);
+            }
+        }
 
         return $target->fresh() ?? throw new \RuntimeException('Restored version has been deleted.');
     }

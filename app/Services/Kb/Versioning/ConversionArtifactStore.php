@@ -7,6 +7,7 @@ namespace App\Services\Kb\Versioning;
 use App\Support\Kb\HeldLock;
 use App\Support\Kb\LazyDiskListing;
 use App\Support\Kb\SettingInt;
+use App\Support\Kb\SourceKeyLock;
 use App\Support\KbPath;
 use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Support\Facades\Cache;
@@ -190,16 +191,23 @@ final class ConversionArtifactStore
         }
     }
 
+    /**
+     * The artifact PATH lock is configured by the same two knobs as the
+     * storage-KEY lock (ADR 0030 §3), so it reads them through the same
+     * methods rather than re-deriving them: a second reading is a second
+     * chance to disagree, and this one already had — it cast the wait with
+     * `(int)`, so `0.5` became `0` and a contended publish failed
+     * immediately instead of taking the validated fallback, while its
+     * sibling refused the value (SEC-SETTING-SHAPE-001).
+     */
     private static function pathLockWaitSeconds(): int
     {
-        return max(0, (int) config('kb.conversion_artifacts.source_lock_wait_seconds', 10));
+        return SourceKeyLock::waitSeconds();
     }
 
     private static function pathLockSeconds(): int
     {
-        $configured = config('kb.conversion_artifacts.source_lock_seconds', 60);
-
-        return SettingInt::whole($configured, 1) ?? 60;
+        return SourceKeyLock::seconds();
     }
 
     /**
