@@ -6,6 +6,7 @@ namespace App\Connectors\Imap\Backfill;
 
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
+use InvalidArgumentException;
 use Padosoft\AskMyDocsConnectorImap\Imap\ImapAttachment;
 use Padosoft\AskMyDocsConnectorImap\Imap\ImapClientInterface;
 use Padosoft\AskMyDocsConnectorImap\Imap\ImapMessage;
@@ -39,7 +40,22 @@ final class ImapBackfillMailboxClient implements ImapBackfillClient
     /** @return list<string> */
     public function mailboxes(): array
     {
-        return $this->client->listMailboxes();
+        // Connect through the package client so its auth classification and
+        // close() lifecycle remain intact, then retain LIST's folder attributes.
+        if (! $this->client->ping()) {
+            throw new RuntimeException('IMAP connection unavailable while listing backfill mailboxes.');
+        }
+
+        $mailboxes = [];
+        // A flat LIST retains selectable descendants of a \Noselect container
+        // (e.g. [Gmail]) without attempting STATUS/SELECT on the container itself.
+        foreach ($this->rawClient->getFolders(false) as $folder) {
+            if (! $folder->no_select) {
+                $mailboxes[] = $folder->full_name; // Decoded UTF-8, not raw UTF7-IMAP.
+            }
+        }
+
+        return $mailboxes;
     }
 
     public function selectMailbox(string $mailbox): MailboxState
@@ -96,16 +112,42 @@ final class ImapBackfillMailboxClient implements ImapBackfillClient
             throw new RuntimeException('The configured IMAP protocol cannot fetch INTERNALDATE.');
         }
 
-        $dates = $connection
-            ->fetch(['INTERNALDATE'], [$uid], null, IMAP::ST_UID)
-            ->validatedData();
+        $response = $connection->fetch(['INTERNALDATE'], [$uid], null, IMAP::ST_UID);
+        // Validate command completion before considering any partial wire data.
+        $dates = $response->validatedData();
         $value = is_array($dates) ? ($dates[$uid] ?? $dates[(string) $uid] ?? null) : null;
+
+        // Webklex 6.2 splits a quoted string when its closing quote is followed
+        // by ')'. Gmail sends exactly that shape: (UID n INTERNALDATE "...").
+        // Recover the complete value from this same metadata-only response, not
+        // another message's date or its RFC822 headers. Other shapes keep the
+        // library's decoded value. No extra network command is needed.
+        foreach ($response->getResponse() as $line) {
+            if (is_string($line) && preg_match(
+                '/\A\* [1-9][0-9]* FETCH \(UID '.$uid.' INTERNALDATE "([^"\r\n]+)"\)\r?\n?\z/i',
+                $line,
+                $match,
+            )) {
+                $value = $match[1];
+                break;
+            }
+        }
         if (! is_string($value) || trim($value) === '') {
             throw new RuntimeException("IMAP did not return INTERNALDATE for UID {$uid}.");
         }
 
         try {
-            return Carbon::parse($value);
+            $value = ltrim($value, ' '); // RFC 3501 also permits a space-padded day.
+            if (! preg_match('/\A[0-9]{1,2}-[A-Za-z]{3}-[0-9]{4} [0-9]{2}:[0-9]{2}:[0-9]{2} [+-][0-9]{4}\z/', $value)) {
+                throw new RuntimeException('Expected a complete IMAP date, time and numeric offset.');
+            }
+            $date = Carbon::createFromFormat('!j-M-Y H:i:s O', $value);
+            $errors = Carbon::getLastErrors();
+            if ($date === null || ($errors !== false && ($errors['warning_count'] > 0 || $errors['error_count'] > 0))) {
+                throw new RuntimeException('Invalid IMAP calendar date or time.');
+            }
+
+            return $date;
         } catch (\Throwable $exception) {
             throw new RuntimeException("IMAP returned an invalid INTERNALDATE for UID {$uid}.", previous: $exception);
         }
@@ -123,6 +165,13 @@ final class ImapBackfillMailboxClient implements ImapBackfillClient
         if ($uids === []) {
             return [];
         }
+        // The raw UID search criterion below must contain only protocol numbers,
+        // never arbitrary strings supplied through PHP's untyped array elements.
+        foreach ($uids as $uid) {
+            if (! is_int($uid) || $uid < 1 || $uid > 4294967295) {
+                throw new InvalidArgumentException('IMAP UIDs must be positive 32-bit integers.');
+            }
+        }
         $folder = $this->rawClient->getFolder($mailbox);
         if ($folder === null) {
             throw new RuntimeException("Mailbox not found: {$mailbox}");
@@ -130,7 +179,11 @@ final class ImapBackfillMailboxClient implements ImapBackfillClient
 
         try {
             $messages = [];
-            foreach ($folder->query()->whereUidIn($uids)->setSequence(IMAP::ST_UID)->get() as $rawMessage) {
+            // Webklex 6.2 quotes whereUidIn() as UID "1,2,3", but an IMAP
+            // sequence-set is not a string (RFC 3501 section 9). CUSTOM leaves
+            // this validated numeric criterion unquoted; other filters stay escaped.
+            $query = $folder->query()->where('CUSTOM UID '.implode(',', $uids))->setSequence(IMAP::ST_UID);
+            foreach ($query->get() as $rawMessage) {
                 if ($rawMessage instanceof Message) {
                     $messages[] = $this->mapMessage($mailbox, $rawMessage);
                 }
@@ -258,7 +311,10 @@ final class ImapBackfillMailboxClient implements ImapBackfillClient
         if ($end !== null) {
             $query->before($end);
         }
-        $query->whereUid(max(1, $fromUid).':'.($throughUid ?? '*'));
+        // whereUid("1:1000") is quoted by Webklex 6.2 and rejected as BAD by
+        // strict servers. These bounds are typed integers (or the literal '*'),
+        // so emit only the UID criterion raw and retain normal date formatting.
+        $query->where('CUSTOM UID '.max(1, $fromUid).':'.($throughUid ?? '*'));
 
         $uids = array_map('intval', $query->search()->all());
         sort($uids, SORT_NUMERIC);
