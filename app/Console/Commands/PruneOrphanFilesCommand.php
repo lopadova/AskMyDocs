@@ -159,7 +159,7 @@ class PruneOrphanFilesCommand extends Command
         }
 
         [$deleted, $failed, $orphanOcrKept, $keptMeanwhile] = $this->deleteOrphans($storage, $orphans, $prefix, $disk);
-        [$purged, $inFlight, $ocrFailed] = $this->purgeDanglingOcrTrees($danglingOcr, $disk);
+        [$purged, $inFlight, $ocrFailed] = $this->purgeDanglingOcrTrees($danglingOcr, $prefix, $disk);
         [$runsPurged, $runsInFlight, $runsFailed] = $this->purgeStaleOcrRuns($staleRuns, $disk, $prefix);
 
         $this->info(sprintf(
@@ -532,20 +532,74 @@ class PruneOrphanFilesCommand extends Command
     }
 
     /**
+     * A dangling tree has no source FILE at all, so unlike an orphan source
+     * (deleteOrphans(), which already holds SourceInFlight across its own
+     * delete and the beside-OCR-purge via $whileHeld) nothing here was
+     * reserving the source key while the pre-purge snapshot was taken. A
+     * fresh upload/ingest can reserve that same key, write the source and
+     * commit a row naming this very tree between the snapshot and this
+     * call — the tree would stop being dangling, but purgeBeside() has no
+     * way to know that on its own. The reservation closes it: held from
+     * before the authoritative re-check through the delete, exactly the
+     * "acquire-and-hold" shape DocumentDeleter::removeSourceFileIfUnreferenced()
+     * uses for the file case, applied here to the tree-only case.
+     *
      * @param  array<int,string>  $danglingOcr
      * @return array{0:int,1:int,2:int} [purged, in_flight (kept), failed]
      */
-    private function purgeDanglingOcrTrees(array $danglingOcr, string $disk): array
+    private function purgeDanglingOcrTrees(array $danglingOcr, string $prefix, string $disk): array
     {
         $purged = 0;
         $inFlight = 0;
         $failed = 0;
         $store = app(OcrFigureStore::class);
+        $deleter = app(DocumentDeleter::class);
+        $canLock = ConversionArtifactStore::cacheStoreCanLock();
         foreach ($danglingOcr as $sourceKey) {
+            // No mutex at all: fall back to the tree's own in-flight grace,
+            // exactly as before this fix (R43 — never depend on a lock
+            // store this deployment was not configured for).
+            if (! $canLock) {
+                try {
+                    if ($store->purgeBeside($disk, $sourceKey)) {
+                        $purged++;
+                    } else {
+                        $inFlight++;
+                        $this->line("  ~ kept (in flight): {$sourceKey}".OcrFigureStore::DIR_SUFFIX);
+                    }
+                } catch (\Throwable $e) {
+                    $failed++;
+                    $this->error("  ! could not purge dangling OCR tree {$sourceKey}".OcrFigureStore::DIR_SUFFIX.": {$e->getMessage()}");
+                }
+
+                continue;
+            }
+
             try {
-                // Grace-aware: a run recorded inside the in-flight window is
-                // kept (its row may be about to commit) and picked up by the
-                // next sweep once aged.
+                $reservation = SourceInFlight::acquireForRemoval($disk, $sourceKey);
+            } catch (\Throwable $e) {
+                $failed++;
+                $this->error("  ! could not ask whether an ingest reserved {$sourceKey}, so its dangling OCR tree was not swept: {$e->getMessage()}");
+
+                continue;
+            }
+            if ($reservation === null) {
+                // An ingest holds it right now — not a probe result a new
+                // ingest could slip in behind, the ACTUAL current holder.
+                $inFlight++;
+                $this->line("  ~ kept (in flight): {$sourceKey}".OcrFigureStore::DIR_SUFFIX);
+
+                continue;
+            }
+            try {
+                // Authoritative re-check under the reservation: a row
+                // committed between the pre-purge snapshot and this call is
+                // now visible, and the tree is no longer dangling.
+                if ($deleter->documentReferencingStorageKey($disk, $sourceKey, $this->stripPrefix($sourceKey, $prefix)) !== null) {
+                    continue;
+                }
+                // Grace-aware too: a run recorded inside the in-flight
+                // window is kept and picked up by the next sweep once aged.
                 if ($store->purgeBeside($disk, $sourceKey)) {
                     $purged++;
                     continue;
@@ -555,6 +609,8 @@ class PruneOrphanFilesCommand extends Command
             } catch (\Throwable $e) {
                 $failed++;
                 $this->error("  ! could not purge dangling OCR tree {$sourceKey}".OcrFigureStore::DIR_SUFFIX.": {$e->getMessage()}");
+            } finally {
+                $reservation->release();
             }
         }
 

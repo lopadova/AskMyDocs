@@ -483,6 +483,13 @@ class DocumentIngestor
         // staged or dropped (the same rule as persistFromDrafts()).
         $metadata = $this->stampSourceRetention($metadata, $existing);
 
+        // v8.36 — resets the OCR run's isInFlight() freshness clock right
+        // next to the write phase that is about to commit a reference to it
+        // (OcrService::touchRunBeforeCommit() docblock: the archived-version
+        // prune race). No-op for the vast majority of documents with no OCR
+        // run in their metadata.
+        app(\App\Services\Kb\Ocr\OcrService::class)->touchRunBeforeCommit($metadata, $sourcePath);
+
         // v8.36 / ADR 0030 §3 — the artifact temp file is written BEFORE the
         // transaction and moved into place only after commit; a failed
         // transaction discards this attempt's temp and nothing else.
@@ -576,6 +583,13 @@ class DocumentIngestor
         $embeddingResponse = $this->embeddingCache->generate(
             array_map(fn (ChunkDraft $d) => $d->text, $chunkDrafts),
         );
+
+        // v8.36 — resets the OCR run's isInFlight() freshness clock right
+        // next to the write phase that is about to commit a reference to it
+        // (OcrService::touchRunBeforeCommit() docblock: the archived-version
+        // prune race). No-op for the vast majority of documents with no OCR
+        // run in their metadata.
+        app(\App\Services\Kb\Ocr\OcrService::class)->touchRunBeforeCommit($metadata, $sourcePath);
 
         // v8.36 / ADR 0030 §3 — temp before the transaction, move after commit,
         // this attempt's temp discarded on failure (one core, both paths).

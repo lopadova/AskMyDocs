@@ -565,6 +565,52 @@ final class OcrService
     }
 
     /**
+     * v8.36 — narrows the TOCTOU window between this run's reservation being
+     * released (at the end of `convert()`, once the driver call / figure
+     * writes / `result.json` finish) and the caller's document row actually
+     * committing: `PruneArchivedVersionsCommand`'s OCR-run purge decides
+     * "unreferenced" from a database snapshot taken BEFORE that commit, and
+     * once the run's `isInFlight()` grace (default 1800s) has elapsed since
+     * OCR finished, it purges — leaving the about-to-commit
+     * `metadata.converter.ocr.run` pointer dangling.
+     *
+     * `DocumentIngestor` calls this immediately before the write phase that
+     * commits the row: it re-touches `result.json` — the SAME rewrite the
+     * reuse path already does under `underAssetsLock()` (ADR 0029 §6) — so
+     * the freshness clock `isInFlight()` reads resets to "now" right next to
+     * the transaction that commits the reference. The residual unprotected
+     * window shrinks from "however long ingest ran after OCR finished"
+     * (unbounded) to the write phase itself. A run genuinely gone by this
+     * point (already purged) throws: this row must not commit a pointer to
+     * a directory that no longer exists (R14) — the caller's ingest fails
+     * and a retry reconverts under a fresh run key.
+     *
+     * No-op when the metadata carries no OCR run (most documents).
+     *
+     * @param  array<string,mixed>  $metadata
+     */
+    public function touchRunBeforeCommit(array $metadata, string $sourcePath): void
+    {
+        $runKey = $metadata['converter']['ocr']['run'] ?? null;
+        if (! is_string($runKey) || $runKey === '') {
+            return;
+        }
+        $disk = StorageNamespace::diskOf($metadata);
+        $prefix = StorageNamespace::recordedPrefix($metadata);
+        // With reuse disabled, convert() never records result.json (nothing
+        // to reuse from — see the `if ($reuseEnabled)` guard below): there
+        // is no reservation to refresh, and no risk of THIS race either —
+        // a reuse-off run carries a random per-attempt salt (runVariant()),
+        // so it cannot collide with an archived version's run key the way a
+        // reused run can. `refreshReservation()` throws on a run it did not
+        // record; this check keeps that contract instead of loosening it.
+        if (! Storage::disk($disk)->exists($this->figures->resultPath($sourcePath, $prefix, $runKey))) {
+            return;
+        }
+        $this->underAssetsLock($disk, $sourcePath, $prefix, fn () => $this->figures->refreshReservation($disk, $sourcePath, $prefix, $runKey));
+    }
+
+    /**
      * Run the configured driver and render the PdfPageChunker shape.
      *
      * @param  string  $converterName  recorded in extractionMeta.converter

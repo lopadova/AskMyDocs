@@ -3,6 +3,7 @@
 namespace Tests\Feature\Commands;
 
 use App\Models\KnowledgeDocument;
+use App\Services\Kb\DocumentDeleter;
 use App\Services\Kb\Ocr\OcrFigureStore;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
@@ -575,6 +576,48 @@ class PruneOrphanFilesCommandTest extends TestCase
             ->expectsOutputToContain('dangling_ocr=1 purged=1')
             ->assertSuccessful();
         $this->assertFalse(Storage::disk('kb')->directoryExists('docs/elsewhere.md.ocr'));
+    }
+
+    /**
+     * v8.36 — the TOCTOU race Copilot found on PR #479: detectDanglingOcrTrees()
+     * decides "dangling" from a pre-purge snapshot; a fresh upload/ingest can
+     * reserve the same source key, write it and commit a row referencing
+     * this exact tree between that snapshot and purgeDanglingOcrTrees()'s
+     * delete. The authoritative re-check under the SourceInFlight
+     * reservation — added right before purgeBeside() — must catch a
+     * reference that appears in that window, the same "acquire-and-hold"
+     * shape DocumentDeleter::removeSourceFileIfUnreferenced() already uses
+     * for the orphan-SOURCE case.
+     */
+    public function test_a_dangling_ocr_tree_referenced_after_the_snapshot_is_kept_not_purged(): void
+    {
+        Storage::fake('kb');
+        Storage::disk('kb')->put('docs/dangling.md.ocr/'.self::RUN.'/images/fig-1-1.png', 'figure');
+        $this->travel(OcrFigureStore::inFlightGraceSeconds() + 60)->seconds();
+
+        $real = app(DocumentDeleter::class);
+        $calls = 0;
+        $spy = Mockery::mock($real)->makePartial();
+        $spy->shouldReceive('documentReferencingStorageKey')
+            ->andReturnUsing(function (string $disk, string $fullPath, string $sourcePath) use ($real, &$calls) {
+                $calls++;
+                if ($calls === 2) {
+                    // Simulates the race: a fresh ingest reserved this
+                    // source key, wrote it and committed a row BETWEEN the
+                    // pre-purge snapshot (call #1, detectDanglingOcrTrees())
+                    // and the authoritative re-check under the reservation
+                    // (call #2, purgeDanglingOcrTrees()).
+                    $this->seedDoc($sourcePath, hash('sha256', 'race-'.$sourcePath));
+                }
+
+                return $real->documentReferencingStorageKey($disk, $fullPath, $sourcePath);
+            });
+        $this->app->instance(DocumentDeleter::class, $spy);
+
+        $this->artisan('kb:prune-orphan-files')->assertSuccessful();
+
+        $this->assertSame(2, $calls, 'the re-check under the reservation must actually run a second, authoritative query');
+        $this->assertTrue(Storage::disk('kb')->directoryExists('docs/dangling.md.ocr/'.self::RUN), 'the tree must survive — a document now references it');
     }
 
     /**
