@@ -95,6 +95,35 @@ final class StorageNamespaceTest extends TestCase
         $this->assertSame([], $offenders, 'select the metadata and judge it through StorageNamespace; a JSON selector column is a second, weaker judgement');
     }
 
+    /**
+     * A string is not automatically a prefix. `KbPath::normalize()` refuses a
+     * `.` / `..` segment and every consumer composes the recorded prefix
+     * through it, so a value like `../outside` does not degrade on its own —
+     * it throws, in whatever ran next.
+     *
+     * The JUDGEMENT is shared; what to do with it is not, so the recorded
+     * value is still returned verbatim. Rewriting it to the configured prefix
+     * here would make the row claim an object at a location it never
+     * recorded, and the deleter — which must see what the row really recorded
+     * to fail closed on it — would then remove bytes that may belong to
+     * another row.
+     */
+    public function test_a_prefix_that_cannot_name_a_path_is_recognised_but_returned_verbatim(): void
+    {
+        config(['kb.sources.path_prefix' => 'configured']);
+
+        foreach (['../outside', '..', '.', 'docs/../../etc', 'docs/./x', '..\\outside', 'a/../b'] as $prefix) {
+            $this->assertFalse(StorageNamespace::prefixCanNamePath($prefix), $prefix);
+            $this->assertSame($prefix, StorageNamespace::recordedPrefix(['prefix' => $prefix]), 'never rewritten: '.$prefix);
+        }
+
+        // Still a prefix: these compose fine, and a row that recorded one
+        // must keep it.
+        foreach (['', 'docs', 'a/b/c', 'kb-2026', 'with.dot', '..leading-dots-in-a-segment'] as $prefix) {
+            $this->assertTrue(StorageNamespace::prefixCanNamePath($prefix), $prefix);
+        }
+    }
+
     /** An explicit empty string is a row that recorded "no prefix" — it keeps it, never the configured default. */
     public function test_an_explicit_empty_prefix_is_recorded_not_replaced(): void
     {

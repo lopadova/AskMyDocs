@@ -857,6 +857,23 @@ class DocumentIngestor
         }
         $disk = StorageNamespace::diskOf($metadata);
         $prefix = StorageNamespace::recordedPrefix($metadata);
+        if (! StorageNamespace::prefixCanNamePath($prefix)) {
+            // A row can carry `prefix: '../outside'`. `rootFor()` refuses it
+            // (SEC-PATH-001) by throwing, which would fail the whole ingest —
+            // including a forced re-embed of a version whose bytes are fine.
+            // Staging nothing is the fail-closed answer for a WRITE: an
+            // existing pointer is kept as it is (persistFromDrafts only
+            // rewrites it for a freshly staged artifact), so the row keeps
+            // the artifact it already has at the path it was really stored
+            // under, and the content is still re-chunked.
+            Log::warning('DocumentIngestor: the recorded path prefix cannot name a path; no conversion artifact staged for this version.', [
+                'project_key' => $projectKey,
+                'source_path' => $sourcePath,
+                'disk' => $disk,
+            ]);
+
+            return null;
+        }
         $final = $store->pathFor(app(TenantContext::class)->current(), $projectKey, $sourcePath, $versionHash, $prefix);
 
         return ['disk' => $disk, 'tmp' => $store->writeTemp($disk, $final, $markdown), 'final' => $final];

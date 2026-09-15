@@ -889,6 +889,40 @@ MD;
         $this->assertSame($chunksBefore, $fresh->chunks()->count(), 're-chunked from the artifact instead of being skipped as corrupt');
     }
 
+    /**
+     * A legacy or directly-ingested row can carry `prefix: '../outside'`.
+     * `KbPath::normalize()` refuses traversal, so a value carried forward
+     * would throw on BOTH sides of a re-embed at once — the source read and
+     * the artifact staging that follows it — turning one row's bad metadata
+     * into a failed job. `StorageNamespace::recordedPrefix()` judges it
+     * unusable and hands back the configured prefix, the same answer it gives
+     * for an array, so every consumer degrades instead of one `catch` per
+     * call site.
+     */
+    public function test_a_forced_reembed_survives_a_recorded_prefix_that_cannot_name_a_path(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => true]);
+        $markdown = "# Traversing prefix\n\nThe artifact still carries the version.";
+        $doc = $this->ingestMarkdown($markdown, 'docs/traversing.md', ['disk' => 'kb', 'prefix' => '']);
+        $chunksBefore = $doc->chunks()->count();
+        $this->assertGreaterThan(0, $chunksBefore);
+        // Discriminator (R16): the source is gone and the chunk set is empty,
+        // so ONLY the stored artifact can restore it — and only if composing
+        // the paths degraded instead of throwing. The artifact is keyed by
+        // tenant, project, source path and version hash, never by the prefix.
+        $doc->chunks()->delete();
+        Storage::disk('kb')->delete('docs/traversing.md');
+        KnowledgeDocument::withoutGlobalScopes()->whereKey($doc->id)->update([
+            'metadata' => ['disk' => 'kb', 'prefix' => '../outside'],
+        ]);
+
+        (new \App\Jobs\ReembedDocumentJob((int) $doc->id, app(TenantContext::class)->current()))->handle(app(TenantContext::class), app(DocumentIngestor::class));
+
+        $fresh = $doc->fresh();
+        $this->assertSame('active', $fresh->status);
+        $this->assertSame($chunksBefore, $fresh->chunks()->count(), 're-chunked from the artifact instead of failing the job');
+    }
+
     /** The artifact branch of the re-embed (original dropped, the stored artifact re-chunked) gets the same outcome: done, logged, never a failed job. */
     public function test_a_forced_reembed_from_the_artifact_whose_publish_fails_completes_and_logs_the_missing_artifact(): void
     {

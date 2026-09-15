@@ -593,6 +593,23 @@ run then reports, and counts as a permanent leak, a namespace nobody ever
 recorded. A malformed `metadata.disk` is not a recorded disk here for the
 same reason it is not one for the deleter.
 
+A prefix needs the same judgement and a different answer. A string is not
+automatically a prefix: `KbPath::normalize()` refuses a `.` / `..` segment
+and every consumer composes the recorded prefix through it, so a row carrying
+`prefix: '../outside'` does not degrade on its own — it throws, in whatever
+ran next. It did, on both sides of a forced re-embed at once: the source read
+and the artifact staging that follows it (`rootFor()`), from one value.
+
+`StorageNamespace::prefixCanNamePath()` is that judgement, asked BEFORE
+anything composes the value. What to do with an unusable one is deliberately
+NOT shared, because the safe direction differs: a **deleting** consumer treats
+the row as referencing its path everywhere and fails closed (removing bytes on
+a guess is unrecoverable), while a **read** reads no original and a **write**
+stages no artifact, so one row's bad metadata cannot fail a job for a version
+whose bytes are fine. `recordedPrefix()` therefore returns the recorded value
+verbatim: rewriting it to the configured prefix would make the row claim an
+object at a location it never recorded, and the deleter would then delete it.
+
 ### 9. The MCP read surface the v8.7 feature never got
 
 `KbDocumentVersionsTool` (read) lists a document's family with `id`, `status`,

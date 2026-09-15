@@ -109,10 +109,13 @@ class ReembedDocumentJob implements ShouldQueue
             // skip, no TOCTOU exists()+get() race. REAL I/O failures (permissions,
             // a transient storage outage) propagate so the job retries instead of
             // silently leaving stale chunks.
-            try {
-                $bytes = Storage::disk($resolved['disk'])->get($resolved['absolute']);
-            } catch (FileNotFoundException|UnableToReadFile $e) {
-                $bytes = null;
+            $bytes = null;
+            if ($resolved['absolute'] !== null) {
+                try {
+                    $bytes = Storage::disk($resolved['disk'])->get($resolved['absolute']);
+                } catch (FileNotFoundException|UnableToReadFile $e) {
+                    $bytes = null;
+                }
             }
             if ($bytes === '') {
                 // A zero-byte read is not a source: it takes the same branch
@@ -200,8 +203,23 @@ class ReembedDocumentJob implements ShouldQueue
     }
 
     /**
+     * Where this row's ORIGINAL is read from. `absolute` is null when the
+     * recorded namespace cannot name a path — a legacy or directly-ingested
+     * row may carry `prefix: '../outside'`, which `KbPath::normalize()`
+     * refuses, and composing it anyway would throw and fail the job for a
+     * version whose bytes are fine.
+     *
+     * The degrade reads NO original; it does not fall back to the
+     * connector's current path. That would be a guess: after a disk or prefix
+     * change the current path may hold another file entirely, which is the
+     * whole reason the recorded namespace is consulted first. The caller then
+     * takes the stored-artifact branch — the artifact is keyed by tenant,
+     * project, source path and version hash, never by the prefix, so it is
+     * still reachable and still hash-verified — and failing that logs the
+     * same skip it logs for a missing original.
+     *
      * @param  array<string, mixed>  $metadata
-     * @return array{disk: string, absolute: string}
+     * @return array{disk: string, absolute: string|null}
      */
     private function resolveSourceFor(KnowledgeDocument $document, array $metadata): array
     {
@@ -210,7 +228,18 @@ class ReembedDocumentJob implements ShouldQueue
         if ($recorded === null) {
             return ['disk' => (string) $current['disk'], 'absolute' => (string) $current['absolute']];
         }
-        $prefix = trim(str_replace('\\', '/', StorageNamespace::recordedPrefix($metadata)), '/');
+        $recordedPrefix = StorageNamespace::recordedPrefix($metadata);
+        if (! StorageNamespace::prefixCanNamePath($recordedPrefix)) {
+            Log::warning('ReembedDocumentJob: the recorded path prefix cannot name a path; reading no original for this version.', [
+                'document_id' => $document->id,
+                'source_path' => $document->source_path,
+                'disk' => $recorded,
+                'tenant_id' => $this->tenantId,
+            ]);
+
+            return ['disk' => $recorded, 'absolute' => null];
+        }
+        $prefix = trim(str_replace('\\', '/', $recordedPrefix), '/');
         $relative = (string) $current['relative'];
 
         return ['disk' => $recorded, 'absolute' => KbPath::normalize($prefix === '' ? $relative : $prefix.'/'.$relative)];

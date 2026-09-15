@@ -46,15 +46,26 @@ final class StorageNamespace
 
     /**
      * The prefix a row's objects live under: the recorded one when it is a
-     * STRING, else the configured source prefix.
+     * STRING that can actually name a path, else the configured source
+     * prefix.
      *
-     * The `is_string` guard is the point. `metadata` is persisted JSON and a
-     * legacy or directly-ingested row can carry anything under `prefix`; a
-     * bare `(string)` cast turns an array into the literal `"Array"` (with a
-     * PHP warning) and a path composed from that silently names a namespace
-     * nobody recorded. An explicit empty string is NOT malformed — it is a
-     * row that recorded "no prefix" and must keep it, never the configured
-     * default. One reading for every consumer, exactly like recordedDisk().
+     * The `is_string` guard is half the point. `metadata` is persisted JSON
+     * and a legacy or directly-ingested row can carry anything under
+     * `prefix`; a bare `(string)` cast turns an array into the literal
+     * `"Array"` (with a PHP warning) and a path composed from that silently
+     * names a namespace nobody recorded.
+     *
+     * A recorded prefix is returned VERBATIM even when it cannot name a path
+     * (`../outside`): substituting the configured prefix for it would make
+     * the row claim an object at a location it never recorded, and a deleting
+     * consumer would then remove bytes that may belong to another row. What
+     * such a value means is a decision per consumer, not a silent rewrite
+     * here — {@see prefixCanNamePath()} is the shared judgement, and the
+     * deleter fails closed on it while the read/write paths degrade.
+     *
+     * An explicit empty string is NOT malformed — it is a row that recorded
+     * "no prefix" and must keep it, never the configured default. One reading
+     * for every consumer, exactly like recordedDisk().
      *
      * @param  mixed  $metadata  the row's `metadata` (an array, or anything else — treated as no namespace)
      */
@@ -63,5 +74,30 @@ final class StorageNamespace
         $prefix = is_array($metadata) ? ($metadata['prefix'] ?? null) : null;
 
         return is_string($prefix) ? $prefix : (string) config('kb.sources.path_prefix', '');
+    }
+
+    /**
+     * Whether a prefix can take part in a composed path: the same rule
+     * `KbPath::normalize()` enforces, asked BEFORE composition so a consumer
+     * can decide instead of catching. An empty prefix is usable (it is "no
+     * prefix"); a `\`-separated one is normalised the way every consumer
+     * normalises it before the segments are read.
+     *
+     * The consumers do NOT agree on what to do with an unusable one, and
+     * should not: a deleting consumer treats the row as referencing its path
+     * everywhere (fail closed — never remove bytes on a guess), while a read
+     * or a write degrades (read no original, stage no artifact) so one row's
+     * bad metadata cannot fail a job for a version whose bytes are fine. What
+     * they share is this judgement.
+     */
+    public static function prefixCanNamePath(string $prefix): bool
+    {
+        foreach (explode('/', str_replace('\\', '/', $prefix)) as $segment) {
+            if ($segment === '.' || $segment === '..') {
+                return false;
+            }
+        }
+
+        return true;
     }
 }
