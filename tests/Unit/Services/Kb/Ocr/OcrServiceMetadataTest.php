@@ -33,6 +33,28 @@ final class OcrServiceMetadataTest extends TestCase
         // The storage namespace (`disk` / `prefix`) is the host's: a client
         // value would point the queued read at another object.
         $this->assertSame(['title' => 't'], OcrService::stripTrustedOnlyKeys(['title' => 't', 'prefix' => '../x', 'disk' => 'other']));
+        // ADR 0030 §4 — the client never sets the version actor.
+        $this->assertSame(['title' => 't'], OcrService::stripTrustedOnlyKeys(['title' => 't', 'version_actor' => 'user:9']));
+        // ADR 0030 §3 — the retention contract and the dropped-original stamp are host-owned: a client cannot
+        // mark a `full_copy` row as one that no longer needs its shared original.
+        $this->assertSame(['title' => 't'], OcrService::stripTrustedOnlyKeys(['title' => 't', 'source_retention' => 'reference_only', 'source_dropped' => true]));
+        // ADR 0030 §6 — the restore ledger is appended by the trusted restore path only.
+        $this->assertSame(['title' => 't'], OcrService::stripTrustedOnlyKeys(['title' => 't', 'restores' => [['actor' => 'user:1', 'at' => '2026-01-01T00:00:00Z']]]));
+        // `converter` is the host's record of how the text was obtained: a
+        // client bag carrying one would read as a re-run of an existing
+        // version (`retentionModeOf()`) and turn a `reference_only`
+        // deployment into one that records runs and stores figures.
+        $this->assertSame(['title' => 't'], OcrService::stripTrustedOnlyKeys(['title' => 't', 'converter' => ['provenance' => 'ocr', 'ocr' => ['run' => str_repeat('a', 64)]]]));
+        $this->assertSame(['title' => 't', 'converter_hints' => ['lang' => 'it']], OcrService::stripTrustedOnlyKeys(['title' => 't', 'converter' => 'ocr', 'converter_hints' => ['lang' => 'it', 'converter' => 'ocr']]));
+    }
+
+    public function test_the_persist_step_strips_only_the_run_control_keys_and_keeps_the_trusted_actor(): void
+    {
+        $this->assertSame(
+            ['version_actor' => 'user:9', 'version_reason' => 'r', 'ocr' => ['note' => 'kept']],
+            OcrService::stripRunControlKeys(['version_actor' => 'user:9', 'version_reason' => 'r', 'dry_run' => true, 'ocr' => ['note' => 'kept', 'force' => true, 'rerun_lock' => ['key' => 'k', 'owner' => 'o']]]),
+        );
+        $this->assertSame(['title' => 't'], OcrService::stripRunControlKeys(['title' => 't', 'ocr' => ['force' => true]]));
     }
 
     public function test_the_persist_step_strips_only_the_run_control_keys_and_keeps_the_storage_namespace(): void

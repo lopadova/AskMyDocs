@@ -166,6 +166,195 @@ final class ReembedTest extends TestCase
         $this->assertMatchesRegularExpression('/\[tok:[A-Za-z0-9_]+:[0-9a-f]+\]/', $text);
     }
 
+    /**
+     * v8.36 / ADR 0030 §5 — a `markdown_only` row whose original was dropped
+     * is re-embedded from its stored artifact WITHOUT a converter: the row's
+     * mime is a binary format (PDF) whose converter would fail on Markdown
+     * bytes or start an OCR run; the chunks are replaced, the row keeps its
+     * identity, no new version appears.
+     */
+    public function test_job_reembeds_a_markdown_only_row_from_its_artifact_without_a_converter(): void
+    {
+        Storage::fake('kb');
+        config(['kb.ocr.enabled' => false, 'kb.pdf.pdftotext_bin' => '/nonexistent/pdftotext']);
+        $this->fakeEmbeddingCache();
+        // A PDF/OCR artifact carries the `## Page N` markers the PDF chunker slices on.
+        $markdown = "# 1.pdf\n\n## Page 1\n\nContact Mario Rossi at ".self::EMAIL.".\n";
+        $hash = hash('sha256', $markdown);
+        $store = app(\App\Services\Kb\Versioning\ConversionArtifactStore::class);
+        $artifactPath = $store->pathFor('test-tenant', 'support', 'scans/1.pdf', $hash);
+        Storage::disk('kb')->put($artifactPath, $markdown);
+
+        $doc = KnowledgeDocument::create([
+            'tenant_id' => 'test-tenant', 'project_key' => 'support', 'source_type' => 'pdf', 'mime_type' => 'application/pdf',
+            'title' => 'Scan', 'source_path' => 'scans/1.pdf', 'language' => 'en',
+            'access_scope' => 'internal', 'status' => 'active',
+            'document_hash' => $hash, 'version_hash' => $hash, 'content_hash' => $hash,
+            'markdown_path' => $artifactPath,
+            'metadata' => ['disk' => 'kb', 'prefix' => '', 'source_dropped' => true, 'converter' => ['converter' => 'pdf-converter']],
+        ]);
+        KnowledgeChunk::create([
+            'knowledge_document_id' => $doc->id, 'project_key' => 'support', 'chunk_order' => 0,
+            'chunk_hash' => hash('sha256', 'old'), 'heading_path' => '', 'chunk_text' => 'old [REDACTED] chunk',
+            'metadata' => [], 'embedding' => [0.1, 0.2, 0.3],
+        ]);
+
+        $this->setPolicy('tokenise');
+        $this->fakeEmbeddingCache();
+        // The original is NOT on the disk: only the artifact is.
+        Storage::disk('kb')->assertMissing('scans/1.pdf');
+
+        (new ReembedDocumentJob($doc->id, 'test-tenant'))->handle(app(TenantContext::class), app(DocumentIngestor::class));
+
+        $this->assertSame(1, KnowledgeDocument::withoutGlobalScopes()->where('source_path', 'scans/1.pdf')->count(), 'no new version');
+        $fresh = $doc->fresh();
+        $this->assertSame('application/pdf', $fresh->mime_type);
+        $this->assertSame('pdf', $fresh->source_type);
+        $this->assertSame($hash, $fresh->version_hash);
+        $text = KnowledgeChunk::where('knowledge_document_id', $doc->id)->get()->pluck('chunk_text')->implode("\n");
+        $this->assertStringNotContainsString('[REDACTED]', $text);
+        $this->assertStringNotContainsString(self::EMAIL, $text);
+        $this->assertMatchesRegularExpression('/\[tok:[A-Za-z0-9_]+:[0-9a-f]+\]/', $text);
+    }
+
+    /**
+     * R14 — an artifact the row's source-type chunker cannot slice (no
+     * `## Page N` markers on a PDF row) still re-embeds through the generic
+     * Markdown chunker instead of replacing the live chunks with nothing.
+     */
+    public function test_job_falls_back_to_the_markdown_chunker_when_the_artifact_has_no_page_markers(): void
+    {
+        Storage::fake('kb');
+        config(['kb.ocr.enabled' => false, 'kb.pdf.pdftotext_bin' => '/nonexistent/pdftotext']);
+        $this->fakeEmbeddingCache();
+        $markdown = "# Scan\n\nContact Mario Rossi at ".self::EMAIL.".\n";
+        $hash = hash('sha256', $markdown);
+        $store = app(\App\Services\Kb\Versioning\ConversionArtifactStore::class);
+        $artifactPath = $store->pathFor('test-tenant', 'support', 'scans/3.pdf', $hash);
+        Storage::disk('kb')->put($artifactPath, $markdown);
+        $doc = KnowledgeDocument::create([
+            'tenant_id' => 'test-tenant', 'project_key' => 'support', 'source_type' => 'pdf', 'mime_type' => 'application/pdf',
+            'title' => 'Scan', 'source_path' => 'scans/3.pdf', 'language' => 'en',
+            'access_scope' => 'internal', 'status' => 'active',
+            'document_hash' => $hash, 'version_hash' => $hash, 'content_hash' => $hash,
+            'markdown_path' => $artifactPath, 'metadata' => ['disk' => 'kb', 'prefix' => '', 'source_dropped' => true],
+        ]);
+        KnowledgeChunk::create([
+            'knowledge_document_id' => $doc->id, 'project_key' => 'support', 'chunk_order' => 0,
+            'chunk_hash' => hash('sha256', 'old'), 'heading_path' => '', 'chunk_text' => 'old [REDACTED] chunk',
+            'metadata' => [], 'embedding' => [0.1, 0.2, 0.3],
+        ]);
+        $this->setPolicy('tokenise');
+        $this->fakeEmbeddingCache();
+
+        (new ReembedDocumentJob($doc->id, 'test-tenant'))->handle(app(TenantContext::class), app(DocumentIngestor::class));
+
+        $chunks = KnowledgeChunk::where('knowledge_document_id', $doc->id)->get();
+        $this->assertGreaterThan(0, $chunks->count(), 'the live chunks must never be replaced by nothing');
+        $text = $chunks->pluck('chunk_text')->implode("\n");
+        $this->assertStringNotContainsString('[REDACTED]', $text);
+        $this->assertStringNotContainsString(self::EMAIL, $text);
+        $this->assertMatchesRegularExpression('/\[tok:[A-Za-z0-9_]+:[0-9a-f]+\]/', $text);
+    }
+
+    /** The artifact is read from the disk the version RECORDED, not from the connector's current one. */
+    public function test_job_reads_the_artifact_from_the_versions_recorded_disk(): void
+    {
+        Storage::fake('kb');
+        Storage::fake('kb-archive');
+        config(['kb.ocr.enabled' => false, 'kb.pdf.pdftotext_bin' => '/nonexistent/pdftotext', 'kb.sources.disk' => 'kb']);
+        $this->fakeEmbeddingCache();
+        $markdown = "# 4.pdf\n\n## Page 1\n\nContact Mario Rossi at ".self::EMAIL.".\n";
+        $hash = hash('sha256', $markdown);
+        $store = app(\App\Services\Kb\Versioning\ConversionArtifactStore::class);
+        $artifactPath = $store->pathFor('test-tenant', 'support', 'scans/4.pdf', $hash);
+        Storage::disk('kb-archive')->put($artifactPath, $markdown); // only on the recorded disk
+        $doc = KnowledgeDocument::create([
+            'tenant_id' => 'test-tenant', 'project_key' => 'support', 'source_type' => 'pdf', 'mime_type' => 'application/pdf',
+            'title' => 'Scan', 'source_path' => 'scans/4.pdf', 'language' => 'en',
+            'access_scope' => 'internal', 'status' => 'active',
+            'document_hash' => $hash, 'version_hash' => $hash, 'content_hash' => $hash,
+            'markdown_path' => $artifactPath, 'metadata' => ['disk' => 'kb-archive', 'prefix' => '', 'source_dropped' => true],
+        ]);
+        KnowledgeChunk::create([
+            'knowledge_document_id' => $doc->id, 'project_key' => 'support', 'chunk_order' => 0,
+            'chunk_hash' => hash('sha256', 'old'), 'heading_path' => '', 'chunk_text' => 'old [REDACTED] chunk',
+            'metadata' => [], 'embedding' => [0.1, 0.2, 0.3],
+        ]);
+        $this->setPolicy('tokenise');
+        $this->fakeEmbeddingCache();
+
+        (new ReembedDocumentJob($doc->id, 'test-tenant'))->handle(app(TenantContext::class), app(DocumentIngestor::class));
+
+        $text = KnowledgeChunk::where('knowledge_document_id', $doc->id)->get()->pluck('chunk_text')->implode("\n");
+        $this->assertStringNotContainsString('[REDACTED]', $text);
+        $this->assertMatchesRegularExpression('/\[tok:[A-Za-z0-9_]+:[0-9a-f]+\]/', $text);
+    }
+
+    /** The source is read from the namespace the version RECORDED: a different file at the connector's current path never mints a new version. */
+    public function test_job_reads_the_source_from_the_versions_recorded_namespace(): void
+    {
+        Storage::fake('kb');
+        Storage::fake('kb-archive');
+        config(['kb.sources.disk' => 'kb', 'kb.sources.path_prefix' => '']);
+        $this->fakeEmbeddingCache();
+        $recorded = "# Recorded\n\nContact Mario Rossi at ".self::EMAIL.".\n";
+        Storage::disk('kb-archive')->put('old/notes/5.md', $recorded);   // the version's own bytes, under its recorded prefix
+        Storage::disk('kb')->put('notes/5.md', "# Another file entirely\n\nWritten later at the current path.\n");
+        $hash = hash('sha256', $recorded);
+        $doc = KnowledgeDocument::create([
+            'tenant_id' => 'test-tenant', 'project_key' => 'support', 'source_type' => 'markdown', 'mime_type' => 'text/markdown',
+            'title' => 'Notes', 'source_path' => 'notes/5.md', 'language' => 'en',
+            'access_scope' => 'internal', 'status' => 'active',
+            'document_hash' => $hash, 'version_hash' => $hash,
+            'metadata' => ['disk' => 'kb-archive', 'prefix' => 'old'],
+        ]);
+        KnowledgeChunk::create([
+            'knowledge_document_id' => $doc->id, 'project_key' => 'support', 'chunk_order' => 0,
+            'chunk_hash' => hash('sha256', 'old'), 'heading_path' => '', 'chunk_text' => 'old [REDACTED] chunk',
+            'metadata' => [], 'embedding' => [0.1, 0.2, 0.3],
+        ]);
+        $this->setPolicy('tokenise');
+        $this->fakeEmbeddingCache();
+
+        (new ReembedDocumentJob($doc->id, 'test-tenant'))->handle(app(TenantContext::class), app(DocumentIngestor::class));
+
+        $this->assertSame(1, KnowledgeDocument::withoutGlobalScopes()->where('source_path', 'notes/5.md')->count(), 'no new version from the file at the current path');
+        $text = KnowledgeChunk::where('knowledge_document_id', $doc->id)->get()->pluck('chunk_text')->implode("\n");
+        $this->assertStringNotContainsString('Another file entirely', $text);
+        $this->assertStringNotContainsString('[REDACTED]', $text);
+        $this->assertMatchesRegularExpression('/\[tok:[A-Za-z0-9_]+:[0-9a-f]+\]/', $text);
+    }
+
+    /** R14 — an artifact that no longer hashes to the version is a logged skip, never a new version or a converter run. */
+    public function test_job_skips_a_corrupt_artifact(): void
+    {
+        Storage::fake('kb');
+        config(['kb.ocr.enabled' => false, 'kb.pdf.pdftotext_bin' => '/nonexistent/pdftotext']);
+        $this->fakeEmbeddingCache();
+        $hash = hash('sha256', 'the original markdown');
+        $store = app(\App\Services\Kb\Versioning\ConversionArtifactStore::class);
+        $artifactPath = $store->pathFor('test-tenant', 'support', 'scans/2.pdf', $hash);
+        Storage::disk('kb')->put($artifactPath, 'tampered');
+        $doc = KnowledgeDocument::create([
+            'tenant_id' => 'test-tenant', 'project_key' => 'support', 'source_type' => 'pdf', 'mime_type' => 'application/pdf',
+            'title' => 'Scan', 'source_path' => 'scans/2.pdf', 'language' => 'en',
+            'access_scope' => 'internal', 'status' => 'active',
+            'document_hash' => $hash, 'version_hash' => $hash, 'content_hash' => $hash,
+            'markdown_path' => $artifactPath, 'metadata' => ['disk' => 'kb', 'prefix' => ''],
+        ]);
+        KnowledgeChunk::create([
+            'knowledge_document_id' => $doc->id, 'project_key' => 'support', 'chunk_order' => 0,
+            'chunk_hash' => hash('sha256', 'kept'), 'heading_path' => '', 'chunk_text' => 'kept chunk',
+            'metadata' => [], 'embedding' => [0.1, 0.2, 0.3],
+        ]);
+
+        (new ReembedDocumentJob($doc->id, 'test-tenant'))->handle(app(TenantContext::class), app(DocumentIngestor::class));
+
+        $this->assertSame('kept chunk', KnowledgeChunk::where('knowledge_document_id', $doc->id)->value('chunk_text'));
+        $this->assertSame(1, KnowledgeDocument::withoutGlobalScopes()->where('source_path', 'scans/2.pdf')->count());
+    }
+
     public function test_job_skips_cleanly_when_the_source_is_missing_on_disk(): void
     {
         Storage::fake('kb'); // empty disk — the source file does not exist

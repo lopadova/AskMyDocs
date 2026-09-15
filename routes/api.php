@@ -681,10 +681,17 @@ Route::middleware([
             ->whereNumber('id')->name('api.admin.kb.documents.versions.index');
         Route::get('/kb/documents/{id}/versions/diff', [\App\Http\Controllers\Api\Admin\KbDocumentVersionController::class, 'diff'])
             ->whereNumber('id')->name('api.admin.kb.documents.versions.diff');
-        // `restore-version` (NOT `restore`) — `POST /kb/documents/{document}/restore`
-        // already exists for un-deleting SOFT-DELETED docs (KbDocumentController);
-        // the Time Machine restore re-activates an ARCHIVED VERSION, a distinct op
-        // (R20 — route contracts must not collide).
+        // v8.36 / ADR 0030 §5 — a version's content (artifact or reconstruction).
+        // R32 — `/api/admin/kb/documents/1/versions/1/content` is the matrix row.
+        Route::get('/kb/documents/{id}/versions/{versionId}/content', [\App\Http\Controllers\Api\Admin\KbDocumentVersionController::class, 'content'])
+            ->whereNumber('id')->whereNumber('versionId')->name('api.admin.kb.documents.versions.content');
+        // This route is named `restore-version`, NOT `restore`: that plain
+        // name is already taken by the DIFFERENT, already-registered route
+        // `POST /kb/documents/{document}/restore` above (line ~452,
+        // KbDocumentController::restore), which un-deletes a SOFT-DELETED
+        // document. THIS route re-activates an ARCHIVED VERSION of a live
+        // document — a distinct operation, hence the distinct name (R20 —
+        // route contracts must not collide).
         Route::post('/kb/documents/{id}/restore-version', [\App\Http\Controllers\Api\Admin\KbDocumentVersionController::class, 'restore'])
             ->whereNumber('id')->name('api.admin.kb.documents.versions.restore');
 

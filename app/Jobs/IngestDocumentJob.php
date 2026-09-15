@@ -6,7 +6,11 @@ use App\Flow\Definitions\IngestDocumentFlow;
 use App\Services\Kb\Ocr\OcrDriverUnavailableException;
 use App\Services\Kb\Ocr\OcrLimitExceededException;
 use App\Services\Kb\Ocr\OcrService;
+use App\Support\Kb\HeldLock;
+use App\Support\Kb\SourceInFlight;
 use App\Support\Kb\SourceType;
+use App\Support\Kb\StorageNamespace;
+use App\Support\KbPath;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -41,6 +45,13 @@ class IngestDocumentJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 3;
+
+    /**
+     * The marker of a HASHED source path in the idempotency key. Reserved:
+     * a literal path starting with it is hashed too, so the verbatim and the
+     * hashed forms never overlap.
+     */
+    private const HASHED_PATH_MARKER = 'h-';
 
     /**
      * Queue timeout. 300 s for every document that will not OCR; for an
@@ -116,6 +127,36 @@ class IngestDocumentJob implements ShouldQueue
         );
     }
 
+    /**
+     * The reservation over this job's source object, or null when there is
+     * nothing TO reserve: a store that cannot exclude anyone (R43 — the
+     * sweep then falls back to the grace, exactly as before), or a recorded
+     * prefix that cannot name a path.
+     *
+     * A CONTENDED key (another holder — an ingest OR a deleting sweep — has
+     * it right now) is not degraded to null: {@see SourceInFlight::reserve()}
+     * throws {@see \App\Support\Kb\SourceReservationContendedException},
+     * which this method deliberately does NOT catch. Proceeding to read and
+     * convert with no exclusion at all would be exactly the gap the
+     * reservation exists to close; letting the job fail here means the
+     * queue's own `$tries`/`backoff` policy re-attempts once the contention
+     * has likely cleared, rather than converting unprotected.
+     */
+    private function reserveSource(): ?\Illuminate\Contracts\Cache\Lock
+    {
+        $prefix = trim(str_replace('\\', '/', StorageNamespace::recordedPrefix($this->metadata)), '/');
+        if (! StorageNamespace::prefixCanNamePath($prefix)) {
+            return null;
+        }
+        try {
+            $fullPath = KbPath::normalize($prefix === '' ? $this->relativePath : $prefix.'/'.$this->relativePath);
+        } catch (\InvalidArgumentException) {
+            return null;
+        }
+
+        return SourceInFlight::reserve($this->disk, $fullPath);
+    }
+
     public function handle(TenantContext $tenantContext): void
     {
         // PR #115 review iteration 2 (R30) — capture the previous tenant
@@ -152,6 +193,18 @@ class IngestDocumentJob implements ShouldQueue
             $title = $this->title ?: pathinfo($this->relativePath, PATHINFO_FILENAME);
             $mimeType = $this->mimeType ?? 'text/markdown';
 
+            // ADR 0030 §3 — reserve the SOURCE for the whole read + convert +
+            // commit window. The storage-key lock covers only the commit, and
+            // before it the file has no row and no holder: an orphan sweep
+            // sees an ordinary orphan and deletes the bytes out from under a
+            // conversion that is still running, after which the row commits
+            // `full_copy` over an original that is already gone. The grace
+            // narrowed that window but cannot close it — an age threshold is
+            // a guess about how long work takes, and an OCR run can outlast
+            // it on its own. Released in the `finally` below; the TTL is only
+            // the backstop for a worker killed mid-conversion.
+            $reservation = $this->reserveSource();
+
             $run = Flow::execute(
                 IngestDocumentFlow::NAME,
                 [
@@ -176,7 +229,7 @@ class IngestDocumentJob implements ShouldQueue
                     // handles content-level dedup, so re-dispatching the same
                     // path under the same tenant short-circuits at the engine
                     // level (existing FlowRun returned).
-                    idempotencyKey: $this->buildIdempotencyKey($this->tenantId),
+                    idempotencyKey: $this->idempotencyKeyFor($this->tenantId, $this->attempts()),
                     correlationId: $this->tenantId,
                 ),
             );
@@ -276,6 +329,10 @@ class IngestDocumentJob implements ShouldQueue
             // keep it — see failed() for the other outcome).
             OcrService::releaseRerunLock($this->metadata);
         } finally {
+            // The source is no longer being read or converted, whatever the
+            // outcome: give the reservation back so the next sweep may judge
+            // the file instead of waiting out its TTL.
+            HeldLock::releaseQuietly($reservation ?? null);
             // Restore even on exception/throw so a failing job never leaves
             // the singleton stuck on this job's tenant for the next one.
             $tenantContext->set($previousTenant);
@@ -297,24 +354,88 @@ class IngestDocumentJob implements ShouldQueue
         ]);
     }
 
-    private function buildIdempotencyKey(string $tenantId): string
+    /**
+     * The flow idempotency key of one ATTEMPT of this job.
+     *
+     * The first attempt keeps the legacy key (`tenant:project:path[:runKey]`
+     * — unless the path is long, carries a `:` (which would make the
+     * concatenation ambiguous against the attempt salt), or wears the
+     * reserved `h-` marker, in which case the whole length-prefixed tuple is
+     * digested to `tenant:project:h-<sha256>` instead),
+     * so a duplicate dispatch of the same path still short-circuits to the
+     * run already recorded. A RETRY is salted with its attempt number: with
+     * flow persistence on, the store returns the recorded run for a key
+     * whatever its status — a `failed` one included — so an unsalted retry
+     * would get the failed run back without executing a single step and
+     * die in `failed_jobs` having repaired nothing (Copilot review 11 on
+     * ADR 0030: the retry of a refused artifact publish IS the identical
+     * re-ingest that repairs it, and it must actually run).
+     */
+    public function idempotencyKeyFor(string $tenantId, int $attempt = 1): string
     {
         // FlowExecutionOptions enforces ≤ 255 characters for the key.
-        // tenant_id (≤ 50) + ":" + project_key (often ≤ 64) + ":" +
-        // source_path can exceed that limit on long deeply-nested paths,
-        // so for safety we hash the tail beyond a comfortable plain
-        // prefix and surface a fixed-length key. The hash is content-
-        // agnostic (path-only) so tenant + project + path uniquely
-        // identify the row regardless of file bytes.
-        $raw = "{$tenantId}:{$this->projectKey}:{$this->relativePath}";
-        if ($this->runKey !== null && $this->runKey !== '') {
-            $raw .= ':'.$this->runKey;
+        // tenant_id (≤ 50) + ":" + project_key (≤ 120, the column width) +
+        // ":" + source_path can exceed that limit on long deeply-nested
+        // paths, so beyond a comfortable plain budget the WHOLE tuple is
+        // digested (not a tail) into a fixed-length key. The digest is
+        // content-agnostic (path-only) so tenant + project + path uniquely
+        // identify the row regardless of file bytes: 50 + 1 + 120 + 1 + 2
+        // (the `h-` marker) + 64 = 238 bytes worst case.
+        $salt = ($this->runKey !== null && $this->runKey !== '') ? ':'.$this->runKey : '';
+        if ($attempt > 1) {
+            $salt .= ':attempt'.$attempt;
         }
-        if (strlen($raw) <= 200) {
+        $raw = "{$tenantId}:{$this->projectKey}:{$this->relativePath}{$salt}";
+        // The plain form survives only where it is UNAMBIGUOUS. `:` is the
+        // separator AND the salt marker, so a path (or run key) carrying one
+        // makes the concatenation ambiguous: `docs/a.md` on attempt 2 and
+        // `docs/a.md:attempt2` on attempt 1 compose the very same string,
+        // and the retry that must repair a refused publish would be handed
+        // the OTHER document's recorded run and die having repaired nothing.
+        // `KbPath::normalize()` permits `:`, and `source_path` comes from the
+        // client, so this is reachable, not theoretical. A path that ALREADY
+        // starts with the reserved marker is hashed whatever its length too:
+        // the two forms are then disjoint, so a document literally named
+        // `h-<64 hex>` can never share a key with the long path that hashes
+        // to it (the same injectivity rule as
+        // ConversionArtifactStore::safeSegment()).
+        $ambiguous = str_contains($this->relativePath, ':')
+            || str_contains((string) $this->runKey, ':')
+            || str_contains($tenantId, ':')
+            || str_contains($this->projectKey, ':');
+        if (strlen($raw) <= 200
+            && ! $ambiguous
+            && ! str_starts_with($this->relativePath, self::HASHED_PATH_MARKER)) {
             return $raw;
         }
-        $tail = $this->relativePath.(($this->runKey !== null && $this->runKey !== '') ? ':'.$this->runKey : '');
 
-        return "{$tenantId}:{$this->projectKey}:".hash('sha256', $tail);
+        // The hashed form digests a LENGTH-PREFIXED tuple, never the
+        // concatenation above: `path:attempt2` on attempt 1 and `path` on
+        // attempt 2 compose the same bytes, so a concatenated digest would
+        // give a retry the key of a different job (and hand it that job's
+        // recorded run). Length prefixes, not JSON: a source path is raw
+        // filesystem bytes and need not be valid UTF-8 — a file from a
+        // Windows share must not fail to ingest because its name cannot be
+        // encoded.
+        //
+        // The `|` is FRAMING, not a delimiter the values must avoid, so a
+        // value containing one is not ambiguous: each length field is decimal
+        // digits terminated by the first `|`, and the next N BYTES are the
+        // value whatever they contain — a reader skips exactly N and lands on
+        // the `|` that implode() put there. A tenant literally called `3|x`
+        // encodes as `3|3|x|…` and decodes back to `3|x`, not to `3` + `x`.
+        // Injectivity is the point of the length prefix; the separator only
+        // terminates the digits. Proven by
+        // IngestDocumentJobIdempotencyKeyTest against pipe-bearing values.
+        $runKey = ($this->runKey !== null && $this->runKey !== '') ? $this->runKey : '';
+        $digest = hash('sha256', implode('|', [
+            strlen($tenantId), $tenantId,
+            strlen($this->projectKey), $this->projectKey,
+            strlen($this->relativePath), $this->relativePath,
+            strlen($runKey), $runKey,
+            $attempt,
+        ]));
+
+        return "{$tenantId}:{$this->projectKey}:".self::HASHED_PATH_MARKER.$digest;
     }
 }

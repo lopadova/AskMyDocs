@@ -384,6 +384,99 @@ class DocumentDeleterTest extends TestCase
         Storage::disk('archive')->assertExists('history/docs/shared.md');
     }
 
+    /**
+     * The recorded storage namespace has ONE reading (StorageNamespace): only
+     * a non-empty string disk is recorded. A null, empty or malformed value
+     * is a legacy, ambiguous row that references its path on every disk —
+     * the same answer the artifact gate gives — never "recorded, elsewhere".
+     */
+    public function test_a_null_empty_or_malformed_recorded_disk_is_a_legacy_reference_on_every_disk(): void
+    {
+        $deleter = app(DocumentDeleter::class);
+        foreach ([['disk' => null, 'prefix' => ''], ['disk' => '', 'prefix' => ''], ['disk' => ['x'], 'prefix' => ''], ['prefix' => ''], []] as $i => $metadata) {
+            $document = $this->makeDocument(['metadata' => $metadata, 'source_path' => 'docs/legacy-'.$i.'.md', 'document_hash' => hash('sha256', json_encode($metadata)), 'version_hash' => hash('sha256', json_encode($metadata))]);
+            $this->assertFalse($deleter->documentRecordsStorageNamespace($document), json_encode($metadata));
+            $this->assertTrue($deleter->documentReferencesStorageKey($document, 'kb', $document->source_path), json_encode($metadata));
+            $this->assertTrue($deleter->documentReferencesStorageKey($document, 'other-disk', $document->source_path), json_encode($metadata));
+        }
+        $recorded = $this->makeDocument(['metadata' => ['disk' => 'other-disk', 'prefix' => ''], 'source_path' => 'docs/recorded.md', 'document_hash' => hash('sha256', 'r'), 'version_hash' => hash('sha256', 'r')]);
+        $this->assertTrue($deleter->documentRecordsStorageNamespace($recorded));
+        $this->assertFalse($deleter->documentReferencesStorageKey($recorded, 'kb', 'docs/recorded.md'), 'a recorded disk elsewhere is not a reference here');
+        $this->assertTrue($deleter->documentReferencesStorageKey($recorded, 'other-disk', 'docs/recorded.md'));
+
+        // A namespace that IS recorded but cannot be RESOLVED (a prefix that
+        // will not normalize) is the same ambiguity, and fails closed the same
+        // way: a reference, never "recorded, elsewhere". Anything else would
+        // let a deleting consumer remove bytes this row may still own.
+        $unresolvable = $this->makeDocument(['metadata' => ['disk' => 'kb', 'prefix' => '../outside'], 'source_path' => 'docs/unresolvable.md', 'document_hash' => hash('sha256', 'u'), 'version_hash' => hash('sha256', 'u')]);
+        $this->assertTrue($deleter->documentRecordsStorageNamespace($unresolvable), 'the disk IS recorded');
+        $this->assertTrue($deleter->documentReferencesStorageKey($unresolvable, 'kb', 'docs/unresolvable.md'));
+        $this->assertTrue($deleter->documentReferencesStorageKey($unresolvable, 'other-disk', 'docs/unresolvable.md'));
+
+        // The artifact reference gate answers alike for every shape (judged in PHP through StorageNamespace,
+        // so a malformed value — an array — counts as a reference exactly like a null or an empty one).
+        foreach ([['', 'empty'], [null, 'null']] as [$value, $label]) { // pairs: a null array KEY would collapse onto ''
+            $pointer = '.artifacts/t/demo/docs/legacy-'.$label.'.md.versions/'.str_repeat('a', 64).'.md';
+            $this->makeDocument(['metadata' => ['disk' => $value, 'prefix' => ''], 'source_path' => 'docs/legacy-pointer-'.$label.'.md', 'markdown_path' => $pointer, 'document_hash' => hash('sha256', 'p'.$label), 'version_hash' => hash('sha256', 'p'.$label)]);
+            $this->assertTrue($deleter->artifactReferenced('kb', $pointer), $label);
+            $this->assertTrue($deleter->artifactReferenced('other-disk', $pointer), $label);
+        }
+        $malformed = '.artifacts/t/demo/docs/legacy-malformed.md.versions/'.str_repeat('b', 64).'.md';
+        $this->makeDocument(['metadata' => ['disk' => ['x'], 'prefix' => ''], 'source_path' => 'docs/legacy-pointer-malformed.md', 'markdown_path' => $malformed, 'document_hash' => hash('sha256', 'pm'), 'version_hash' => hash('sha256', 'pm')]);
+        $this->assertTrue($deleter->artifactReferenced('kb', $malformed));
+        $this->assertTrue($deleter->artifactReferenced('other-disk', $malformed));
+        $elsewhere = '.artifacts/t/demo/docs/elsewhere.md.versions/'.str_repeat('c', 64).'.md';
+        $this->makeDocument(['metadata' => ['disk' => 'other-disk', 'prefix' => ''], 'source_path' => 'docs/elsewhere-pointer.md', 'markdown_path' => $elsewhere, 'document_hash' => hash('sha256', 'pe'), 'version_hash' => hash('sha256', 'pe')]);
+        $this->assertFalse($deleter->artifactReferenced('kb', $elsewhere), 'a recorded disk elsewhere does not reference this one');
+        $this->assertTrue($deleter->artifactReferenced('other-disk', $elsewhere));
+    }
+
+    /**
+     * The batch gate judges every chunk on its own: with more than one
+     * chunk of 500 paths, a referenced path in the second chunk must be
+     * reported referenced too (a cumulative count that satisfied the
+     * per-chunk target after the first row would report the rest of the
+     * chunk unreferenced — and a caller would delete a live row's artifact).
+     */
+    public function test_the_batch_artifact_gate_reports_every_referenced_path_across_chunks(): void
+    {
+        $paths = [];
+        $rows = [];
+        for ($i = 0; $i < 502; $i++) {
+            $path = '.artifacts/t/demo/docs/bulk-'.$i.'.md.versions/'.hash('sha256', 'bulk-'.$i).'.md';
+            $paths[] = $path;
+            $rows[] = [
+                'tenant_id' => 'default',
+                'project_key' => 'demo',
+                'source_type' => 'markdown',
+                'title' => 'Bulk '.$i,
+                'source_path' => 'docs/bulk-'.$i.'.md',
+                'mime_type' => 'text/markdown',
+                'language' => 'it',
+                'access_scope' => 'internal',
+                'status' => 'active',
+                'document_hash' => hash('sha256', 'bulk-'.$i),
+                'version_hash' => hash('sha256', 'bulk-'.$i),
+                'markdown_path' => $path,
+                'metadata' => json_encode(['disk' => 'kb', 'prefix' => '']),
+                'indexed_at' => now(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ];
+        }
+        foreach (array_chunk($rows, 100) as $batch) {
+            \Illuminate\Support\Facades\DB::table('knowledge_documents')->insert($batch);
+        }
+        $unreferenced = '.artifacts/t/demo/docs/nobody.md.versions/'.str_repeat('d', 64).'.md';
+
+        $referenced = app(DocumentDeleter::class)->artifactsReferenced('kb', [...$paths, $unreferenced]);
+
+        $this->assertCount(502, $referenced);
+        $this->assertArrayHasKey($paths[500], $referenced, 'the first path of the second chunk');
+        $this->assertArrayHasKey($paths[501], $referenced, 'the last path of the second chunk');
+        $this->assertArrayNotHasKey($unreferenced, $referenced);
+    }
+
     public function test_hard_delete_refuses_storage_call_for_traversal_path(): void
     {
         // Iteration 4 (PR #116) — R1 + R4 + R14. KbPath::normalize()

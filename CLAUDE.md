@@ -121,16 +121,33 @@ kb:delete / DELETE /api/kb/documents / --prune-orphans / kb:prune-deleted
 `language`, `access_scope`, `status`, `document_hash`, `version_hash` (both
 SHA-256), `metadata` JSON, `source_updated_at`, `indexed_at`, `created_at`,
 `updated_at`, `deleted_at` (soft delete).
+**Retention / version-provenance columns** (v8.11 + v8.36, ADR 0014/0030, all
+nullable): `markdown_path` (disk-relative path of the stored conversion artifact
+`.artifacts/{tenant}/{project}/{source_path}.versions/{version_hash}.md`, null
+when none is stored), `version_actor` (`user:{id}` · `system:ingest` ·
+`system:ocr` …, the CREATION provenance, immutable — a restore never rewrites it
+but appends `{actor, at, previous_live_id}` to `metadata.restores`, surfaced as
+`restored_by` / `restored_at`; derived server-side and stripped from client
+metadata), `version_reason` (free text ≤ 1024), `content_hash` (SHA-256 of the
+stored artifact — equals `document_hash` by construction, null without an
+artifact; an integrity check, not a second identity). `metadata.source_dropped`
+(`true`) marks a row whose original binary was dropped by `markdown_only`
+retention, so the orphan sweeps never read the missing file as an orphan.
 **Canonical columns** (nullable, added in phase 1): `doc_id`, `slug`,
 `canonical_type`, `canonical_status`, `is_canonical` (bool, default false),
 `retrieval_priority` (smallint 0–100, default 50), `source_of_truth`
 (bool, default true), `frontmatter_json` (full parsed YAML + `_derived`
 sub-map with validated slug lists).
-**Uniqueness:** `(project_key, source_path, version_hash)` — the idempotency
-anchor. Additional composite uniques scoped per project: `(project_key,
-doc_id)` = `uq_kb_doc_doc_id`, `(project_key, slug)` = `uq_kb_doc_slug`.
-The canonical identifiers are tenant-scoped — two projects can legitimately
-share the same slug / doc_id.
+**Uniqueness:** `(tenant_id, project_key, source_path, version_hash)` =
+`uq_kb_doc_tenant_version` — the idempotency anchor. Additional composite
+uniques: `(tenant_id, project_key, doc_id)` = `uq_kb_doc_tenant_doc_id`,
+`(tenant_id, project_key, slug)` = `uq_kb_doc_tenant_slug`. All three were
+rebuilt from their `project_key`-only v3-era shape by
+`2026_10_02_000011_tenant_scope_knowledge_document_uniques.php` (R30/R31):
+`project_key` is not a tenant boundary, so the old indexes made row identity
+global while every read/write path scoped by `tenant_id` — a tenant-scoped
+lookup then missed the other tenant's row and died on the insert. Two
+projects, and two tenants, can legitimately share the same slug / doc_id.
 
 ### `knowledge_chunks`
 `id`, `knowledge_document_id` FK (ON DELETE CASCADE), `project_key`,
@@ -329,12 +346,40 @@ rotation. `kb:rebuild-graph` is a no-op when no canonical docs exist.
   and `RejectedApproachInjector::pick()` returns empty. Existing consumers
   see identical retrieval behaviour until they canonicalize. Never write
   code that assumes either feature is "always populated".
-- **Canonical slug + doc_id are tenant-scoped, NOT global.** Two projects
-  can legitimately share `dec-cache-v2`. The composite uniques are
-  `(project_key, slug)` and `(project_key, doc_id)`; the composite FKs on
-  `kb_edges` are **project-scoped** (intra-project referential integrity) —
-  cross-tenant isolation is the application-layer R30 `forTenant()` scope, not
-  the FK. Never assume global slug uniqueness in new code.
+- **Canonical slug + doc_id are tenant-scoped, NOT global.** Two projects —
+  and two tenants — can legitimately share `dec-cache-v2`. On
+  `knowledge_documents` the SCHEMA says so since
+  `2026_10_02_000011_tenant_scope_knowledge_document_uniques.php`: the
+  composite uniques are `(tenant_id, project_key, slug)` and
+  `(tenant_id, project_key, doc_id)`, so a tenant-scoped query and the index
+  agree. Any query that probes those slots for a conflict must therefore see
+  what the INDEX sees, not what the reader may read — `withTrashed()` and
+  `withoutGlobalScope(AccessScopeScope::class)`, as
+  `DocumentVersionService::conflictingCanonicalHolderId()` does. The
+  composite FKs on `kb_edges` are still **project-scoped** (intra-project
+  referential integrity) and the `kb_nodes` unique is still
+  `(project_key, node_uid)` — their rebuild is deferred because the FK
+  targets the unique — so for the graph tables cross-tenant isolation remains
+  the application-layer R30 `forTenant()` scope, not the FK. Never assume
+  global slug uniqueness in new code.
+- **The artifact root and the OCR run directories are swept CROSS-TENANT
+  (deliberate R30 exception, ADR 0030 §3/§8).** `.artifacts/` is one physical
+  tree shared by every tenant (namespaced by safe segment) and an OCR run
+  directory is shared by every version born from the same bytes on a shared
+  disk, so "no row references this file any more" is decided with
+  `withoutGlobalScopes()` — live, archived and soft-deleted rows of ALL tenants
+  — and a file is deleted only at zero references. That read lives in ONE
+  place, `DocumentDeleter::artifactReferenced()` behind
+  `removeArtifactIfUnreferenced()`, and is the gate for EVERY artifact
+  removal: hard delete (`DELETE /api/kb/documents`, `kb:delete --force`,
+  `kb:prune-deleted`, the Flow compensation), the per-row prune and the orphan
+  sweep of `kb:prune-archived-versions`. Scoping that check to
+  one tenant would delete another tenant's artifact; the conservative direction
+  is the cross-tenant one. The sweeps cover the configured `kb.sources.disk` /
+  `path_prefix` namespace PLUS every `(metadata.disk, metadata.prefix)` recorded
+  by a row with an artifact pointer whose disk this deployment can resolve; a
+  disk unknown here is reported (`artifact_namespaces_skipped`), not swept.
+  Same posture as the IMAP mailbox lock below.
 - **IMAP connections are serialized per mailbox, CROSS-TENANT (deliberate R30
   exception).** At most ONE live IMAP connection per account
   (host+port+username) exists at a time, across ALL surfaces (sync, health,
@@ -474,8 +519,11 @@ deliberately. 10-point operational checklist:
    `project_key` (the FK is `(project_key, node_uid)`; tenant isolation is the
    application-layer R30 `forTenant()` scope, not the FK). FK violations are
    bugs to fix, not silence.
-4. Slug + doc_id uniqueness is scoped per project. Two different projects
-   CAN and SHOULD share `dec-cache-v2`.
+4. Slug + doc_id uniqueness is scoped per tenant AND project
+   (`uq_kb_doc_tenant_slug` / `uq_kb_doc_tenant_doc_id`). Two different
+   projects — and two different tenants — CAN and SHOULD share
+   `dec-cache-v2`. A conflict probe on those slots must lift the
+   soft-delete and ACL scopes: the index does not honour either.
 5. Hard delete cascades the graph via `DocumentDeleter::forceDelete()`;
    soft delete leaves it intact. Never replicate either path manually.
 6. Canonical re-ingest must vacate prior identifiers first or the

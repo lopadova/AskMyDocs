@@ -74,6 +74,15 @@ final class ParseMarkdownStep implements FlowStepHandler
                 "ParseMarkdownStep: failed to read file [{$disk}]: {$fullPath}"
             );
         }
+        if ($bytes === '') {
+            // A zero-byte object is not a source (a truncated upload, a
+            // bucket that answered with an empty body): a failed step, never
+            // an empty version that archives the valid live one (R14). Every
+            // queued ingest reads through here, so this is the one guard.
+            throw new RuntimeException(
+                "ParseMarkdownStep: disk [{$disk}] returned no bytes for {$fullPath}"
+            );
+        }
 
         $combinedMetadata = array_merge($metadata, [
             'disk' => $disk,

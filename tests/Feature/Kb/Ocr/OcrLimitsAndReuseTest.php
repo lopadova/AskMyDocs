@@ -812,6 +812,52 @@ final class OcrLimitsAndReuseTest extends TestCase
         $converter->convert($this->image('docs/other.png', "\x89PNG\r\n\x1a\n".pack('N', 13).'IHDR'.pack('NN', 2, 2)."\x08\x02\x00\x00\x00".pack('N', 0)));
     }
 
+    /**
+     * ADR 0029 §5 / ADR 0030 §3 — `.ocr/` is a local copy, so it obeys the
+     * retention mode: in `reference_only` nothing is recorded beside the
+     * source, figures are not stored, and a second pass is not "reused".
+     */
+    #[Test]
+    public function reference_only_retention_records_no_run_and_stores_no_figure(): void
+    {
+        // The retention mode is wired by KB_CONVERSION_ARTIFACTS_ENABLED (ADR 0030 §2).
+        config(['kb.conversion_artifacts.enabled' => true, 'kb.source_retention.mode' => 'reference_only', 'kb.ocr.fake.pages' => [['markdown' => 'p1', 'figures' => [FakeOcrDriver::PNG_1X1]]]]);
+        $converter = $this->app->make(OcrConverter::class);
+
+        $first = $converter->convert($this->image());
+        $second = $converter->convert($this->image());
+
+        $this->assertSame([], Storage::disk('kb')->allFiles('docs'));
+        $this->assertSame([], $first->mediaItems);
+        $this->assertStringNotContainsString('images/', $first->markdown);
+        $this->assertFalse($second->extractionMeta['ocr']['reused']);
+
+        // full_copy (the default): the run is recorded and reused.
+        config(['kb.source_retention.mode' => 'full_copy']);
+        $converter->convert($this->image());
+        $this->assertTrue($converter->convert($this->image())->extractionMeta['ocr']['reused']);
+    }
+
+    /**
+     * R43 — with KB_CONVERSION_ARTIFACTS_ENABLED off the retention knob is the
+     * inert foundation it was before v8.36: a deployment that set
+     * `reference_only` while it was unwired keeps figures and run reuse
+     * exactly as before the upgrade.
+     */
+    #[Test]
+    public function with_the_artifacts_flag_off_the_retention_mode_does_not_touch_figures_or_reuse(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => false, 'kb.source_retention.mode' => 'reference_only', 'kb.ocr.fake.pages' => [['markdown' => 'p1', 'figures' => [FakeOcrDriver::PNG_1X1]]]]);
+        $converter = $this->app->make(OcrConverter::class);
+
+        $first = $converter->convert($this->image());
+        $run = $first->extractionMeta['ocr']['run'];
+        Storage::disk('kb')->assertExists("docs/scan.png.ocr/{$run}/result.json");
+        Storage::disk('kb')->assertExists("docs/scan.png.ocr/{$run}/images/fig-1-1.png");
+        $this->assertCount(1, $first->mediaItems);
+        $this->assertTrue((bool) $converter->convert($this->image())->extractionMeta['ocr']['reused']);
+    }
+
     #[Test]
     public function the_run_key_changes_with_the_engine_so_another_driver_never_overwrites_a_run(): void
     {

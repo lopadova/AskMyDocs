@@ -73,6 +73,16 @@ class PruneDeletedDocumentsCommand extends Command
                 $totalDeleted += $count;
                 $verb = $dryRun ? 'Would prune' : 'Pruned';
                 $this->info("[{$tenantId}] {$verb} {$count} soft-deleted document(s) older than {$days} days (cutoff: {$cutoffIso}).");
+                // v8.36 / ADR 0030 §3 — additive (R27): rows whose source file
+                // was NOT removed (still referenced by another version, or the
+                // storage key was held / unlockable / lapsed). Printed only
+                // when non-zero so a clean run stays quiet, and never an
+                // error: the rows are gone and the orphan sweep takes the
+                // bytes once nothing references them.
+                $kept = $this->extractFilesKept($run, $dryRun);
+                if ($kept > 0) {
+                    $this->info("[{$tenantId}] files_kept={$kept} (source not removed; kb:prune-orphan-files takes them once unreferenced).");
+                }
             }
         } finally {
             $context->set($previousTenant);
@@ -107,6 +117,19 @@ class PruneDeletedDocumentsCommand extends Command
         $deleteResult = $run->stepResults['hard-delete-soft-deleted'] ?? null;
         return $deleteResult instanceof \Padosoft\LaravelFlow\FlowStepResult
             ? (int) ($deleteResult->output['deleted_count'] ?? 0)
+            : 0;
+    }
+
+    /** Rows whose source file survived the hard delete (0 on a dry run: nothing was removed). */
+    private function extractFilesKept(FlowRun $run, bool $dryRun): int
+    {
+        if ($dryRun) {
+            return 0;
+        }
+        $deleteResult = $run->stepResults['hard-delete-soft-deleted'] ?? null;
+
+        return $deleteResult instanceof \Padosoft\LaravelFlow\FlowStepResult
+            ? (int) ($deleteResult->output['files_kept'] ?? 0)
             : 0;
     }
 

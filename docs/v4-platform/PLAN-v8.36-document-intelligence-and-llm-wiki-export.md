@@ -336,15 +336,19 @@ path is normalised with `KbPath::normalize()` (which refuses `.` / `..`) and
 must resolve **inside** the artifact root (`realpath` containment where the
 disk is local). Tests: a project key of `../../outside`, one of 120
 characters, two keys that collide only after encoding, and a literal
-`h-<64 hex>` key against the unsafe value whose digest it spells. Today's database uniqueness is `uq_kb_doc_version` =
-`(project_key, source_path, version_hash)` — the tenant migration deferred
-rebuilding the composite uniques with `tenant_id`, so identical content at
-one path cannot be stored for two tenants **today** (a pre-existing
-limitation, not one W2 introduces or fixes): no two rows can name one
-artifact under the current constraint either, and the path carries
-`tenant_id` so the day the unique is rebuilt (its own migration + mirrored
-SQLite test migration, out of W2's scope and tracked as the deferred item)
-the artifact identity already matches. There is nothing to reference-count. The publish is race-safe against two
+`h-<64 hex>` key against the unsafe value whose digest it spells. Database
+uniqueness is `uq_kb_doc_tenant_version` =
+`(tenant_id, project_key, source_path, version_hash)`: W2 closed the item the
+`tenant_id` rollout had deferred with
+`2026_10_02_000011_tenant_scope_knowledge_document_uniques.php` and its
+mirrored SQLite test migration, rebuilding that unique and the two canonical
+ones (`uq_kb_doc_tenant_doc_id`, `uq_kb_doc_tenant_slug`) to start with
+`tenant_id`. It had to: the ingestor's lookup and the restore path's conflict
+probe are both tenant-scoped, and under a `project_key`-only index a
+tenant-scoped query cannot see the row the database will still reject — the
+isolation was advertised and unusable. Widening a unique never fails on
+existing data. The artifact path already carried `tenant_id`, so identity
+matches the constraint. There is nothing to reference-count. The publish is race-safe against two
 concurrent identical ingests: each writer writes to its own temporary name
 (`{final}.{uuid}.tmp`), commits the row with the **final** path recorded, and
 only after commit moves its temp file into place. A final file that already

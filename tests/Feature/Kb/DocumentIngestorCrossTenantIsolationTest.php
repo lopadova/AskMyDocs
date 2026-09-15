@@ -113,4 +113,74 @@ final class DocumentIngestorCrossTenantIsolationTest extends TestCase
         $this->assertSame($first->id, $second->id);
         $this->assertSame(1, KnowledgeDocument::where('tenant_id', 'tenant-a')->count());
     }
+
+    /**
+     * R30/R31 — the lookup above is only isolation if the DATABASE agrees.
+     * With `uq_kb_doc_version (project_key, source_path, version_hash)` the
+     * tenant-scoped lookup finds no row for the second tenant and the insert
+     * then dies on a unique keyed on columns the query never filtered by, so
+     * the isolation would be advertised and unusable. 2026_10_02_000011
+     * rebuilt all three composite uniques to START with `tenant_id`; this
+     * asserts the schema, so a later migration cannot narrow them back
+     * without a red test.
+     */
+    public function test_the_composite_uniques_are_keyed_on_tenant_id_first(): void
+    {
+        $uniques = [];
+        foreach (\Illuminate\Support\Facades\Schema::getIndexes('knowledge_documents') as $index) {
+            if (($index['unique'] ?? false) === true) {
+                $uniques[(string) $index['name']] = array_map('strtolower', (array) $index['columns']);
+            }
+        }
+
+        foreach ([
+            'uq_kb_doc_tenant_version' => ['tenant_id', 'project_key', 'source_path', 'version_hash'],
+            'uq_kb_doc_tenant_doc_id' => ['tenant_id', 'project_key', 'doc_id'],
+            'uq_kb_doc_tenant_slug' => ['tenant_id', 'project_key', 'slug'],
+        ] as $name => $columns) {
+            $this->assertArrayHasKey($name, $uniques, "the tenant-scoped unique [{$name}] is missing");
+            $this->assertSame($columns, $uniques[$name], "[{$name}] must be keyed on tenant_id first");
+        }
+
+        foreach (['uq_kb_doc_version', 'uq_kb_doc_doc_id', 'uq_kb_doc_slug'] as $legacy) {
+            $this->assertArrayNotHasKey($legacy, $uniques, "the project-keyed unique [{$legacy}] still shadows the tenant-scoped one");
+        }
+    }
+
+    /**
+     * The other half of the same contract: the write the lookup leads to must
+     * actually be accepted. Two tenants writing the same
+     * `(project_key, source_path, version_hash)` tuple is a legal state, not
+     * a `QueryException` the caller has to catch.
+     */
+    public function test_two_tenants_can_hold_the_same_version_tuple_at_the_database_level(): void
+    {
+        $tenantContext = app(TenantContext::class);
+        $row = static fn (string $tenant): array => [
+            'tenant_id' => $tenant,
+            'project_key' => 'demo',
+            'source_type' => 'markdown',
+            'title' => 'Intro',
+            'source_path' => 'docs/intro.md',
+            'document_hash' => str_repeat('a', 64),
+            'version_hash' => str_repeat('b', 64),
+            'status' => 'indexed',
+            // The canonical slots too: all three uniques are the same claim.
+            'is_canonical' => true,
+            'doc_id' => 'dec-shared',
+            'slug' => 'dec-shared',
+            'canonical_type' => 'decision',
+            'canonical_status' => 'accepted',
+        ];
+
+        $tenantContext->set('tenant-a');
+        KnowledgeDocument::create($row('tenant-a'));
+        $tenantContext->set('tenant-b');
+        KnowledgeDocument::create($row('tenant-b'));
+
+        $this->assertSame(
+            2,
+            KnowledgeDocument::withoutGlobalScopes()->where('source_path', 'docs/intro.md')->count(),
+        );
+    }
 }

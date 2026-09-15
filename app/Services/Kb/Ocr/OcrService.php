@@ -10,7 +10,11 @@ use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
 use App\Services\Kb\Pipeline\ConvertedDocument;
 use App\Services\Kb\Pipeline\SourceDocument;
+use App\Services\Kb\Versioning\ConversionArtifactStore;
+use App\Services\Kb\Versioning\SourceRetentionResolver;
 use App\Support\Kb\FileTypeSniffer;
+use App\Support\Kb\HeldLock;
+use App\Support\Kb\StorageNamespace;
 use App\Support\KbPath;
 use App\Support\TenantContext;
 use Illuminate\Contracts\Cache\LockTimeoutException;
@@ -208,9 +212,14 @@ final class OcrService
      * does not finish in time is a retryable failure, never a write into a
      * directory that is being removed.
      *
+     * ADR 0030 §3 — the write phase RECEIVES the lock (`HeldLock`) so it can
+     * assert, right before each of its own irreversible writes, that the TTL
+     * has not lapsed while it ran: a long figure write must not continue
+     * under a purge that has since taken the directory.
+     *
      * @template T
      *
-     * @param  \Closure(): T  $write
+     * @param  \Closure(HeldLock): T  $write
      * @return T
      */
     private function underAssetsLock(string $disk, string $sourcePath, string $prefix, \Closure $write): mixed
@@ -223,7 +232,7 @@ final class OcrService
             throw new \RuntimeException(sprintf('OCR assets directory "%s" is being purged on disk [%s]; retry once the purge has finished.', $assetsDir, $disk));
         }
         try {
-            return $write();
+            return $write(new HeldLock($lock, 'OCR assets directory'));
         } finally {
             $lock->release();
         }
@@ -413,6 +422,16 @@ final class OcrService
     }
 
     /**
+     * Extraction-metadata keys only a converter may set (ADR 0029 §8): they
+     * decide the version's actor (`system:ocr`), its generation tier and the
+     * chunker it goes through. Never accepted from `converter_hints` — the
+     * untrusted boundaries strip them there (stripTrustedOnlyKeys()) and the
+     * ingestor refuses them again when it projects the hints
+     * (DocumentIngestor::projectChunkerHints()).
+     */
+    public const TRUSTED_ONLY_EXTRACTION_KEYS = ['provenance', 'ocr', 'converter', 'source_type', 'extraction_strategy'];
+
+    /**
      * Ingest-metadata keys only the host may set: `ocr.force` starts a billed
      * engine run, `ocr.rerun_lock` names a lock this job will release,
      * `dry_run` turns the conversion into a preview. They travel on the
@@ -425,17 +444,52 @@ final class OcrService
      */
     public static function stripTrustedOnlyKeys(array $metadata): array
     {
+        // ADR 0030 §4 — the version actor is an audit identity: derived by the
+        // trusted caller (authenticated principal, CLI, connector bridge),
+        // never accepted from a client payload.
+        unset($metadata['version_actor']);
         // `disk` and `prefix` name the storage namespace the source was
         // written under: the host records them at ingest and a re-run
         // carries them from the row — a client or a connector must not, or
         // the queued read would resolve another object than the one the
         // boundary persisted (ParseMarkdownStep honours `metadata.prefix`).
         unset($metadata['disk'], $metadata['prefix']);
+        // ADR 0030 §3 — `source_retention` is the retention contract the row
+        // was ingested under and `source_dropped` the host's record that the
+        // original went with it: both drive what a later `markdown_only`
+        // pass may drop, so they are stamped server-side by the ingestor
+        // (and carried back from the row by trusted replays such as
+        // ReembedDocumentJob) — never accepted from a client or a connector,
+        // which could otherwise mark a `full_copy` row as one that no longer
+        // needs its shared original.
+        unset($metadata['source_retention'], $metadata['source_dropped']);
+        // ADR 0030 §6 — `restores` is the Time Machine's restore ledger
+        // (who brought a version back, when): appended by the trusted
+        // restore path only, never accepted from a client that could
+        // fabricate a restore actor and timestamp.
+        unset($metadata['restores']);
         // `ocr` is a host-owned block: a scalar a client put there carries
         // nothing the pipeline reads and would only trip the array accessors
         // downstream, so it is dropped with the reserved keys.
         if (array_key_exists('ocr', $metadata) && ! is_array($metadata['ocr'])) {
             unset($metadata['ocr']);
+        }
+        // `converter` is the host's record of how the text was obtained,
+        // written by the converter after the fact (and carried back from the
+        // row only by trusted replays, which never cross this boundary): a
+        // client or connector bag carrying one would be read as a re-run of
+        // an existing version by `retentionModeOf()` and could turn a
+        // `reference_only` deployment into one that records OCR runs and
+        // stores figures — a client input is not a retention policy.
+        unset($metadata['converter']);
+        // ADR 0029 §8 — `converter_hints` is the connectors' namespaced bag
+        // for the chunkers; a key in it that describes how the text was
+        // obtained is a forgery (`provenance=ocr` would record a plain
+        // document as machine-read) and never reaches the row.
+        if (is_array($metadata['converter_hints'] ?? null)) {
+            foreach (self::TRUSTED_ONLY_EXTRACTION_KEYS as $key) {
+                unset($metadata['converter_hints'][$key]);
+            }
         }
 
         return self::stripRunControlKeys($metadata);
@@ -447,7 +501,11 @@ final class OcrService
      * these — and only these — so the host-resolved storage namespace the
      * same job carries (`disk` / `prefix`, set by ParseMarkdownStep) is
      * persisted with the row, where a later re-run or delete reads it back
-     * to resolve the SAME object after a configuration change.
+     * to resolve the SAME object after a configuration change, and a
+     * trusted audit input it carries (`version_actor`, ADR 0030 §4) still
+     * reaches the ingestor — while a row never keeps a control key that
+     * would force the next ingest built from its metadata or expose a lock
+     * payload through document reads.
      *
      * @param  array<string, mixed>  $metadata
      * @return array<string, mixed>
@@ -466,6 +524,35 @@ final class OcrService
     }
 
     /**
+     * The retention contract a conversion runs under: the row's own valid
+     * stamp when the metadata carries one (a re-run, a replay); `full_copy`
+     * for a re-run or replay of a row that predates the stamp — the same
+     * rule the ingestor applies when it REPLACES such a row
+     * (`DocumentIngestor::stampSourceRetention()`), so an OCR re-run after
+     * `KB_SOURCE_RETENTION` moved to `reference_only` still records its run
+     * and keeps its figures for a version that was ingested to keep them;
+     * the configured mode only for a FIRST conversion (no stamp, no prior
+     * conversion, not forced).
+     *
+     * @param  array<string, mixed>  $metadata
+     */
+    public static function retentionModeOf(array $metadata): string
+    {
+        $mode = $metadata['source_retention'] ?? null;
+        if (is_string($mode) && in_array($mode, SourceRetentionResolver::MODES, true)) {
+            return $mode;
+        }
+        // A forced re-run (`ocr.force`) or a replay carrying a previous
+        // conversion's provenance (`converter`) is a re-run of an EXISTING
+        // version: a stamp-less one predates v8.36 and counts as `full_copy`.
+        if (self::isForced($metadata) || is_array($metadata['converter'] ?? null)) {
+            return SourceRetentionResolver::FULL_COPY;
+        }
+
+        return app(SourceRetentionResolver::class)->mode();
+    }
+
+    /**
      * `Flow::dryRun()` reaches the converter through ParseMarkdownStep, which
      * marks the SourceDocument; a dry run must have NO write and NO cost
      * side effect — no driver call, no figure write, no ledger row.
@@ -475,6 +562,52 @@ final class OcrService
     public static function isDryRun(array $metadata): bool
     {
         return ($metadata['dry_run'] ?? false) === true;
+    }
+
+    /**
+     * v8.36 — narrows the TOCTOU window between this run's reservation being
+     * released (at the end of `convert()`, once the driver call / figure
+     * writes / `result.json` finish) and the caller's document row actually
+     * committing: `PruneArchivedVersionsCommand`'s OCR-run purge decides
+     * "unreferenced" from a database snapshot taken BEFORE that commit, and
+     * once the run's `isInFlight()` grace (default 1800s) has elapsed since
+     * OCR finished, it purges — leaving the about-to-commit
+     * `metadata.converter.ocr.run` pointer dangling.
+     *
+     * `DocumentIngestor` calls this immediately before the write phase that
+     * commits the row: it re-touches `result.json` — the SAME rewrite the
+     * reuse path already does under `underAssetsLock()` (ADR 0029 §6) — so
+     * the freshness clock `isInFlight()` reads resets to "now" right next to
+     * the transaction that commits the reference. The residual unprotected
+     * window shrinks from "however long ingest ran after OCR finished"
+     * (unbounded) to the write phase itself. A run genuinely gone by this
+     * point (already purged) throws: this row must not commit a pointer to
+     * a directory that no longer exists (R14) — the caller's ingest fails
+     * and a retry reconverts under a fresh run key.
+     *
+     * No-op when the metadata carries no OCR run (most documents).
+     *
+     * @param  array<string,mixed>  $metadata
+     */
+    public function touchRunBeforeCommit(array $metadata, string $sourcePath): void
+    {
+        $runKey = $metadata['converter']['ocr']['run'] ?? null;
+        if (! is_string($runKey) || $runKey === '') {
+            return;
+        }
+        $disk = StorageNamespace::diskOf($metadata);
+        $prefix = StorageNamespace::recordedPrefix($metadata);
+        // With reuse disabled, convert() never records result.json (nothing
+        // to reuse from — see the `if ($reuseEnabled)` guard below): there
+        // is no reservation to refresh, and no risk of THIS race either —
+        // a reuse-off run carries a random per-attempt salt (runVariant()),
+        // so it cannot collide with an archived version's run key the way a
+        // reused run can. `refreshReservation()` throws on a run it did not
+        // record; this check keeps that contract instead of loosening it.
+        if (! Storage::disk($disk)->exists($this->figures->resultPath($sourcePath, $prefix, $runKey))) {
+            return;
+        }
+        $this->underAssetsLock($disk, $sourcePath, $prefix, fn () => $this->figures->refreshReservation($disk, $sourcePath, $prefix, $runKey));
     }
 
     /**
@@ -514,16 +647,26 @@ final class OcrService
         };
 
         $filename = basename($doc->sourcePath);
-        $disk = (string) ($doc->metadata['disk'] ?? config('kb.sources.disk', 'kb'));
-        $prefix = array_key_exists('prefix', $doc->metadata)
-            ? (string) $doc->metadata['prefix']
-            : (string) config('kb.sources.path_prefix', '');
-        $figuresEnabled = (bool) config('kb.ocr.figures.enabled', true);
+        $disk = StorageNamespace::diskOf($doc->metadata);
+        $prefix = StorageNamespace::recordedPrefix($doc->metadata);
+        // ADR 0029 §5 / ADR 0030 §3 — the `.ocr/` directory is a local copy
+        // and is retention-aware: in `reference_only` no run is recorded and
+        // no figure is stored (nothing to reuse from, no `images/` reference).
+        // The retention mode is wired by KB_CONVERSION_ARTIFACTS_ENABLED
+        // (ADR 0030 §2): with that flag off a deployment that set the knob
+        // while it was a foundation keeps figures and reuse as before (R43).
+        // The contract is the ROW's when the conversion is a re-run of an
+        // existing version (its stamped `metadata.source_retention` rides the
+        // job); a first conversion has no stamp yet and gets the configured
+        // mode — never the configured mode for a row that recorded another.
+        $retainsLocal = ! app(ConversionArtifactStore::class)->enabled()
+            || self::retentionModeOf($doc->metadata) !== SourceRetentionResolver::REFERENCE_ONLY;
+        $figuresEnabled = (bool) config('kb.ocr.figures.enabled', true) && $retainsLocal;
+        $reuseEnabled = (bool) config('kb.ocr.reuse.enabled', true) && $retainsLocal;
         // Idempotency (CLAUDE.md §5): the same bytes through the same driver
         // produce the same result — reuse the recorded run instead of paying
         // for it again (a re-ingest of identical bytes, an IMAP backfill, a
         // GH-action full sync). `ocr.force` (kb:ocr) bypasses the reuse.
-        $reuseEnabled = (bool) config('kb.ocr.reuse.enabled', true);
         $reuseAllowed = ! self::isForced($doc->metadata) && $reuseEnabled;
         // Engine-aware run key: bytes × driver × the driver's variant × the
         // figure switch — anything that shapes the output shapes the key.
@@ -639,7 +782,7 @@ final class OcrService
                     // the purge takes for the whole removal of the tree: a
                     // sweep that found the directory empty a moment ago can
                     // never delete it under these writes (ADR 0029 §6).
-                    $written = $this->underAssetsLock($disk, $doc->sourcePath, $prefix, function () use ($disk, $doc, $prefix, $runKey, $allFigures, $figuresEnabled, $reuseEnabled, $result): array {
+                    $written = $this->underAssetsLock($disk, $doc->sourcePath, $prefix, function (HeldLock $held) use ($disk, $doc, $prefix, $runKey, $allFigures, $figuresEnabled, $reuseEnabled, $result): array {
                         $written = $figuresEnabled ? $this->figures->store($disk, $doc->sourcePath, $prefix, $runKey, $allFigures) : [];
                         // The immutable run is persisted while the reservation
                         // is held, THEN metered: a `result.json` write that
@@ -647,6 +790,13 @@ final class OcrService
                         // job retry with nothing to reuse and bill the same
                         // attempt twice. The meter is best-effort and never throws.
                         if ($reuseEnabled) {
+                            // The figure write above can be long: the run is
+                            // recorded only while the directory lock is still
+                            // ours, so a purge that took the tree meanwhile
+                            // never gets a `result.json` written back into it
+                            // (an assertion right after taking the lock would
+                            // prove nothing — nothing has happened yet).
+                            $held->assertHeld('OCR run record');
                             $this->recordRun($disk, $doc->sourcePath, $prefix, $runKey, $result, $written);
                         }
 
@@ -1031,10 +1181,8 @@ final class OcrService
         }
 
         $metadata = is_array($document->metadata) ? $document->metadata : [];
-        $disk = (string) ($metadata['disk'] ?? config('kb.sources.disk', 'kb'));
-        $prefix = array_key_exists('prefix', $metadata)
-            ? (string) $metadata['prefix']
-            : (string) config('kb.sources.path_prefix', '');
+        $disk = StorageNamespace::diskOf($metadata);
+        $prefix = StorageNamespace::recordedPrefix($metadata);
         $sourcePath = KbPath::normalize((string) $document->source_path);
         // The same key the ingest resolved: prefix + source through the one
         // normaliser (a prefix with backslashes or repeated separators reads

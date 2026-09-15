@@ -14,6 +14,35 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 class KnowledgeDocument extends Model
 {
     use BelongsToTenant;
+
+    /**
+     * An integrity-only write on THIS row (a pointer, a hash, a retention
+     * stamp) that cannot go through the tenant-scoped query — the row may
+     * belong to another tenant than the active one (the cross-tenant storage
+     * sweeps of ADR 0030 §3/§8) — but that still carries the row's OWN tenant
+     * (R30): the write is bound to the row as read, never to a bare primary
+     * key, so a lookup that ever drifted could not turn it into a cross-tenant
+     * mutation. A builder update: no model events, no observer (the version
+     * itself did not change; `updated_at` is touched as on any update).
+     *
+     * A row hydrated without its `tenant_id` (a partial select) cannot bind
+     * the write: that is a programming error and says so, never a silent
+     * zero-row update.
+     *
+     * @param  array<string, mixed>  $attributes
+     * @return int rows affected (0 when the row is no longer the one read — the caller decides what that means)
+     */
+    public function updateUnscopedWithinOwnTenant(array $attributes): int
+    {
+        if (! $this->exists || ! is_string($this->tenant_id) || $this->tenant_id === '') {
+            throw new \LogicException('updateUnscopedWithinOwnTenant() needs a persisted row hydrated with its tenant_id.');
+        }
+
+        return static::withoutGlobalScopes()
+            ->whereKey($this->getKey())
+            ->where('tenant_id', $this->tenant_id)
+            ->update($attributes);
+    }
     use SoftDeletes;
 
     protected $fillable = [
@@ -23,6 +52,10 @@ class KnowledgeDocument extends Model
         'title',
         'source_path',
         'markdown_path',
+        // --- v8.36 / ADR 0030 version provenance ----------------------
+        'version_actor',
+        'version_reason',
+        'content_hash',
         'mime_type',
         'language',
         'access_scope',
@@ -134,7 +167,8 @@ class KnowledgeDocument extends Model
     }
 
     /**
-     * Lookup by project-scoped slug. Canonical slugs are unique per project.
+     * Lookup by project-scoped slug. Canonical slugs are unique per
+     * (tenant, project) — the caller supplies the tenant scope (R30).
      */
     public function scopeBySlug(Builder $query, string $projectKey, string $slug): Builder
     {
