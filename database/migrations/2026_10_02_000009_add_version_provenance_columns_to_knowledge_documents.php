@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /*
@@ -34,6 +35,24 @@ return new class extends Migration
                 $table->string('content_hash', 64)->nullable()->after('version_reason');
             }
         });
+
+        // …and the history is reconciled, not only the schema. A database that
+        // ran the old filename keeps a `migrations` row naming a file that no
+        // longer exists: `migrate` ignores it, but `migrate:rollback` resolves
+        // every name in the batch and would fail on the missing one — or, if
+        // it were ever restored, drop these columns twice. The stale entry
+        // names exactly the columns THIS migration owns, so removing it leaves
+        // one record for one schema change. Best-effort: a deployment that
+        // never ran the old name has nothing to delete, and a failure here
+        // must not abort a migration whose schema work already succeeded.
+        try {
+            DB::table('migrations')
+                ->where('migration', '2026_10_02_000008_add_version_provenance_columns_to_knowledge_documents')
+                ->delete();
+        } catch (\Throwable) {
+            // No `migrations` table (a schema:dump install) or a driver that
+            // refuses the write: the schema is correct either way.
+        }
     }
 
     public function down(): void

@@ -121,7 +121,11 @@ when that env is false the slot never runs regardless of its `SCHEDULE_*` value.
   lapsed is a reported failure). `--dry-run` lists the snapshot's candidates
   previews the in-flight grace (a modification time is deterministic) but not
   `kept_meanwhile` from a held key: who holds a key at that instant is not
-  something a preview can know. A source younger than
+  something a preview can know. The candidate lists are bounded by
+  `KB_ORPHAN_SCAN_MAX_ITEMS` (default 50 000, `0` disables): a sweep that hits
+  the cap reports `scan_truncated=1` and exits non-zero rather than presenting
+  a partial pass as a complete one, and the next run continues where it
+  stopped. A source younger than
   `KB_ORPHAN_SOURCE_GRACE_SECONDS` (default 3600 s, `0` disables) is kept
   whatever else is true: an ingest reads and converts its source before it
   takes the storage key's lock, so in that window a perfectly ordinary-looking

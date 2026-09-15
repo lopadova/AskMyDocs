@@ -374,6 +374,11 @@ final class ArtifactsRetentionCommandsTest extends TestCase
      */
     public function test_prune_sweep_judges_artifact_references_by_the_rows_recorded_disk(): void
     {
+        // A RESOLVABLE second disk: the point here is which disk a row's
+        // reference belongs to, not what happens to a namespace the
+        // deployment cannot reach (that case is its own test, and it now
+        // exits non-zero because an unsweepable namespace is a leak).
+        Storage::fake('kb-archive');
         $store = app(ConversionArtifactStore::class);
         $tenant = app(TenantContext::class)->current();
         $otherDiskPath = $store->pathFor($tenant, 'eng', 'docs/other.md', str_repeat('d', 64));
@@ -460,7 +465,10 @@ final class ArtifactsRetentionCommandsTest extends TestCase
             ->expectsOutputToContain('[kb2] temps_swept=1 temps_failed=0 orphans_removed=1 orphans_failed=0')
             ->expectsOutputToContain('rows record artifacts on disk [nowhere], which cannot be resolved here')
             ->expectsOutputToContain('artifact_temps_swept=1 artifact_temps_failed=0 artifact_orphans_removed=1 artifact_orphans_failed=0 artifact_namespaces_skipped=1')
-            ->assertExitCode(0);
+            // R14 — a namespace that could not be swept at all is a permanent
+            // leak, so the run is a partial failure: a scheduler that exits 0
+            // tells nobody.
+            ->assertExitCode(1);
 
         Storage::disk('kb2')->assertExists($kept);
         Storage::disk('kb2')->assertMissing($orphan);

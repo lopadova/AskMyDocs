@@ -951,6 +951,17 @@ return [
         // NOT cast here, or `off` / `1h` / `` would coerce to 0 — a silently
         // disabled grace, indistinguishable from the explicit `0`.
         'orphan_grace_seconds' => env('KB_ORPHAN_SOURCE_GRACE_SECONDS', 3600),
+
+        /*
+         * How many candidates one `kb:prune-orphan-files` sweep may hold in
+         * memory (orphan sources + `.ocr/` trees + runs) before it stops and
+         * reports itself truncated. The DB lookups are already batched; this
+         * bounds the CANDIDATE lists, which on a large shared disk would
+         * otherwise grow with the whole listing. A truncated sweep reports
+         * `scan_truncated=1` and exits non-zero — the next run continues.
+         * `0` disables the cap (an unbounded sweep, stated on purpose).
+         */
+        'orphan_scan_max_items' => env('KB_ORPHAN_SCAN_MAX_ITEMS', 50000),
         /*
         | Laravel filesystem disk used to read KB markdown files.
         | Change to 's3' (and provide AWS_* env) to serve docs from S3.

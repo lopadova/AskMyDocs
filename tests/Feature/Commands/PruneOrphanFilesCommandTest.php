@@ -910,4 +910,32 @@ class PruneOrphanFilesCommandTest extends TestCase
         Storage::disk('kb')->assertExists('kb/proj/docs/kept.md');
         Storage::disk('kb')->assertMissing('kb/proj/docs/orphan.md');
     }
+    /**
+     * R3 / R14 — the candidate lists are bounded. A sweep that hits the cap
+     * has NOT finished the disk, so it says `scan_truncated=1` and exits
+     * non-zero: the next run continues where this one stopped, and a
+     * scheduler never reads a partial sweep as a clean one.
+     */
+    public function test_a_sweep_that_hits_the_candidate_cap_reports_itself_truncated_and_exits_non_zero(): void
+    {
+        config(['kb.sources.orphan_scan_max_items' => 1]);
+        Storage::disk('kb')->put('docs/orphan-a.md', 'a');
+        Storage::disk('kb')->put('docs/orphan-b.md', 'b');
+        Storage::disk('kb')->put('docs/orphan-c.md', 'c');
+
+        $this->artisan('kb:prune-orphan-files')
+            ->expectsOutputToContain('scan_truncated=1')
+            ->assertExitCode(1);
+    }
+
+    /** The cap is off by default in these tests' fixtures, so an ordinary sweep never reports truncation. */
+    public function test_an_ordinary_sweep_is_not_reported_as_truncated(): void
+    {
+        Storage::disk('kb')->put('docs/orphan-a.md', 'a');
+
+        $this->artisan('kb:prune-orphan-files')
+            ->doesntExpectOutputToContain('scan_truncated=')
+            ->assertExitCode(0);
+    }
+
 }

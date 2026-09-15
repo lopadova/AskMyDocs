@@ -163,7 +163,11 @@ final class PruneArchivedVersionsCommand extends Command
             $dryRun ? ' (dry-run)' : '',
         ));
 
-        return $totals['temps_failed'] + $totals['orphans_failed'];
+        // A skipped namespace counts as a failure too: the summary calls it a
+        // permanent leak, and a leak the scheduler exits 0 on is a leak nobody
+        // is told about (R14). The command already exits non-zero for a
+        // refused delete; a namespace it could not sweep AT ALL is not milder.
+        return $totals['temps_failed'] + $totals['orphans_failed'] + $skipped;
     }
 
     /**

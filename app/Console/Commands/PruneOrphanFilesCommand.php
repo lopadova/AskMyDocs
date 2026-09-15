@@ -108,7 +108,13 @@ class PruneOrphanFilesCommand extends Command
         // kept (fail closed); the run exits non-zero so the refusal is never
         // read as a clean sweep (R14).
         $probeSuffix = $treeProbeFailed > 0 ? " tree_probe_failed={$treeProbeFailed}" : '';
-        $probeExit = $treeProbeFailed > 0 ? self::FAILURE : self::SUCCESS;
+        // A sweep that stopped at the candidate cap has not finished the disk:
+        // reported in every summary line and non-zero like a refused probe, so
+        // the scheduler's log says "come back", never "clean" (R14).
+        if ($scan['truncated']) {
+            $probeSuffix .= ' scan_truncated=1';
+        }
+        $probeExit = ($treeProbeFailed > 0 || $scan['truncated']) ? self::FAILURE : self::SUCCESS;
 
         if ($scanned === 0 && $danglingOcr === [] && $staleRuns === []) {
             $this->info("No source files found on disk [{$disk}].{$probeSuffix}");
@@ -167,7 +173,9 @@ class PruneOrphanFilesCommand extends Command
             $probeSuffix,
         ));
 
-        return ($failed === 0 && $ocrFailed === 0 && $runsFailed === 0 && $treeProbeFailed === 0) ? self::SUCCESS : self::FAILURE;
+        return ($failed === 0 && $ocrFailed === 0 && $runsFailed === 0 && $treeProbeFailed === 0 && ! $scan['truncated'])
+            ? self::SUCCESS
+            : self::FAILURE;
     }
 
     /**
@@ -195,7 +203,19 @@ class PruneOrphanFilesCommand extends Command
      * `scanned` counts the source files walked (deduplicated within a
      * batch), not distinct keys.
      *
-     * @return array{scanned: int, orphans: array<int,string>, trees: array<string,bool>, runs: array<string,array{0:string,1:string}>}
+     * The DB lookups are batched (1000 keys at a time, R3), but the CANDIDATES
+     * the walk accumulates — orphan sources, `.ocr/` trees, runs — are not
+     * bounded by that batch: on a large shared disk one entry per converted
+     * document would make the nightly sweep's memory proportional to the whole
+     * listing. So the walk stops at `kb.sources.orphan_scan_max_items` (default
+     * 50 000) candidates and says so: the batch already collected is acted on,
+     * the rest is left for the next run, and the run reports `scan_truncated`
+     * and exits non-zero rather than presenting a partial sweep as a complete
+     * one (R14). Streaming the deletions instead — so the sweep has no cap at
+     * all — is recorded as a follow-up; it changes the dry-run contract, which
+     * lists every candidate.
+     *
+     * @return array{scanned: int, orphans: array<int,string>, trees: array<string,bool>, runs: array<string,array{0:string,1:string}>, truncated: bool}
      *
      * @throws \Throwable when the disk refuses the walk (reported by the caller, R14)
      */
@@ -208,7 +228,21 @@ class PruneOrphanFilesCommand extends Command
         $trees = [];
         $runs = [];
         $batch = [];
+        $cap = $this->scanCap();
+        // The lookup batch can never exceed the candidate cap: with the
+        // default (1000 vs 50 000) this is exactly today's behaviour, and it
+        // keeps the cap meaningful for a small configured value instead of
+        // deferring every decision to a batch that may never fill.
+        $batchSize = $cap > 0 ? max(1, min(1000, $cap)) : 1000;
+        $truncated = false;
         foreach (LazyDiskListing::files($storage, $prefix) as $raw) {
+            if ($cap > 0 && (count($orphans) + count($trees) + count($runs)) >= $cap) {
+                // Bounded, and honest about it: what was collected is swept,
+                // the rest waits for the next run, and the caller exits
+                // non-zero so a truncated sweep is never read as a clean one.
+                $truncated = true;
+                break;
+            }
             $normalized = KbPath::normalize($raw);
             $key = self::ocrTreeSourceKey($normalized, $suffix);
             if ($key !== null) {
@@ -232,7 +266,7 @@ class PruneOrphanFilesCommand extends Command
             }
             $batch[$relative] = true;
             $scanned++;
-            if (count($batch) < 1000) {
+            if (count($batch) < $batchSize) {
                 continue;
             }
             array_push($orphans, ...$this->detectOrphans(array_keys($batch), $prefix, $disk));
@@ -244,7 +278,20 @@ class PruneOrphanFilesCommand extends Command
         $orphans = array_values(array_unique($orphans));
         sort($orphans);
 
-        return ['scanned' => $scanned, 'orphans' => $orphans, 'trees' => $trees, 'runs' => $runs];
+        return ['scanned' => $scanned, 'orphans' => $orphans, 'trees' => $trees, 'runs' => $runs, 'truncated' => $truncated];
+    }
+
+    /**
+     * How many candidates one sweep may hold before it stops and reports
+     * itself truncated (`kb.sources.orphan_scan_max_items`). A value that is
+     * not a positive integer disables the cap — stated, not guessed: an
+     * operator who wants an unbounded sweep says so with `0`.
+     */
+    private function scanCap(): int
+    {
+        $configured = config('kb.sources.orphan_scan_max_items', 50000);
+
+        return is_numeric($configured) && (int) $configured >= 0 ? (int) $configured : 50000;
     }
 
     /**
