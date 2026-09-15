@@ -36,7 +36,17 @@ final class KbDocVersionsCommand extends Command
 
             return self::FAILURE;
         }
-        $id = (int) $this->argument('document');
+        $documentArgument = trim((string) $this->argument('document'));
+        if ($documentArgument === '' || ! ctype_digit($documentArgument) || (int) $documentArgument < 1) {
+            // A bare `(int)` cast turns non-numeric input into `0` silently
+            // — "Document 0 not found" then blames a row that was never
+            // asked for, instead of the argument the operator actually
+            // typed. Same `ctype_digit` shape as --limit/--offset below.
+            $this->error("Invalid document id: '{$this->argument('document')}'. It must be a positive integer.");
+
+            return self::FAILURE;
+        }
+        $id = (int) $documentArgument;
 
         $previous = $tenants->current();
         $tenants->set($tenant);

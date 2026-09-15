@@ -363,6 +363,23 @@ final class DocumentVersionArtifactsTest extends TestCase
             ->assertExitCode(1);
     }
 
+    /**
+     * A bare `(int)` cast on the `document` argument turns non-numeric input
+     * into `0` silently, so a typo reads back as "Document 0 not found" —
+     * blaming a row the operator never asked for instead of naming what they
+     * actually typed.
+     */
+    public function test_a_non_numeric_document_argument_is_refused_by_name_not_cast_to_zero(): void
+    {
+        $tenant = app(TenantContext::class)->current();
+
+        foreach (['abc', '1.5', '-1', '0', ''] as $bad) {
+            $this->artisan('kb:doc-versions', ['document' => $bad, '--tenant' => $tenant])
+                ->expectsOutputToContain("Invalid document id: '{$bad}'")
+                ->assertExitCode(1);
+        }
+    }
+
     public function test_mcp_tool_lists_metadata_only_and_is_tenant_scoped(): void
     {
         $doc = $this->version('v1', 'active', 'index a', "# Doc\n\nartifact a\n");
