@@ -170,8 +170,12 @@ export function useRealtimeAgent(options: UseRealtimeAgentOptions): UseRealtimeA
             client.on((event) => handleClientEvent(event, setStatus, setError, setActive));
             await client.connect(descriptor as unknown as ConnectionDescriptor);
         } catch (reason) {
-            await release(false);
-            const next = reason instanceof Error ? reason : new Error(String(reason));
+            // The server session already exists by the time a browser/provider
+            // connection can fail (for example when microphone access is
+            // denied). Finish it immediately so retries do not accumulate
+            // active sessions until the TTL expires.
+            await release(true);
+            const next = realtimeAgentConnectionError(reason);
             setError(next);
             setStatus('error');
             throw next;
@@ -196,6 +200,28 @@ export function useRealtimeAgent(options: UseRealtimeAgentOptions): UseRealtimeA
         start,
         stop,
     };
+}
+
+/** Translate browser media failures into instructions a user can act on. */
+export function realtimeAgentConnectionError(reason: unknown): Error {
+    const error = reason instanceof Error ? reason : new Error(String(reason));
+    const name = reason !== null && typeof reason === 'object' && 'name' in reason
+        ? String(reason.name)
+        : error.name;
+
+    if (name === 'NotAllowedError' || name === 'SecurityError') {
+        return new Error(
+            'Microphone access was denied. Allow microphone access for this site in your browser settings, then try again.',
+        );
+    }
+    if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+        return new Error('No microphone was found. Connect or enable a microphone, then try again.');
+    }
+    if (name === 'NotReadableError' || name === 'TrackStartError') {
+        return new Error('The microphone is unavailable or already in use by another application.');
+    }
+
+    return error;
 }
 
 class ObservingControlTransport implements ControlTransport {
