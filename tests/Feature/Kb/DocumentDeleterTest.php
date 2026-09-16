@@ -221,7 +221,7 @@ class DocumentDeleterTest extends TestCase
 
     public function test_delete_by_path_returns_null_when_not_found(): void
     {
-        $result = (new DocumentDeleter)->deleteByPath('missing', 'nope.md');
+        $result = (new DocumentDeleter)->deleteByPath(app(\App\Support\TenantContext::class)->current(), 'missing', 'nope.md');
 
         $this->assertNull($result);
     }
@@ -231,7 +231,7 @@ class DocumentDeleterTest extends TestCase
         config()->set('kb.deletion.soft_delete', true);
         $document = $this->makeDocument();
 
-        $result = (new DocumentDeleter)->deleteByPath($document->project_key, $document->source_path);
+        $result = (new DocumentDeleter)->deleteByPath($document->tenant_id, $document->project_key, $document->source_path);
 
         $this->assertNotNull($result);
         $this->assertSame('soft', $result['mode']);
@@ -245,12 +245,12 @@ class DocumentDeleterTest extends TestCase
         $document = $this->makeDocument();
 
         $deleter = new DocumentDeleter;
-        $first = $deleter->deleteByPath($document->project_key, $document->source_path);
+        $first = $deleter->deleteByPath($document->tenant_id, $document->project_key, $document->source_path);
         $this->assertSame('soft', $first['mode']);
 
         // Force a hard delete on the already-soft-deleted row. With the
         // previous implementation this would return null.
-        $second = $deleter->deleteByPath($document->project_key, $document->source_path, force: true);
+        $second = $deleter->deleteByPath($document->tenant_id, $document->project_key, $document->source_path, force: true);
 
         $this->assertNotNull($second);
         $this->assertSame('hard', $second['mode']);
@@ -266,11 +266,11 @@ class DocumentDeleterTest extends TestCase
         $document = $this->makeDocument();
 
         $deleter = new DocumentDeleter;
-        $deleter->deleteByPath($document->project_key, $document->source_path);
+        $deleter->deleteByPath($document->tenant_id, $document->project_key, $document->source_path);
         $originalDeletedAt = KnowledgeDocument::withTrashed()->find($document->id)->deleted_at;
 
         // A second soft-delete must not bump deleted_at nor touch the file.
-        $result = $deleter->deleteByPath($document->project_key, $document->source_path);
+        $result = $deleter->deleteByPath($document->tenant_id, $document->project_key, $document->source_path);
 
         $this->assertSame('soft', $result['mode']);
         $this->assertFalse($result['file_deleted']);
@@ -279,6 +279,45 @@ class DocumentDeleterTest extends TestCase
             KnowledgeDocument::withTrashed()->find($document->id)->deleted_at?->toIso8601String(),
         );
         Storage::disk('kb')->assertExists('docs/sample.md');
+    }
+
+    /**
+     * Round-9 Copilot review on PR #479: `deleteByPath()` located rows by
+     * `project_key` + `source_path` alone, with no tenant parameter.
+     * `project_key` is not a tenant boundary (R30 — two tenants can
+     * legitimately share one, and here they share the SAME source_path
+     * too), and `BelongsToTenant` installs no automatic read scope, so the
+     * lookup could resolve — and delete — another tenant's identically-keyed
+     * row. This is the `deleteByPath()` counterpart of
+     * `test_delete_orphans_respects_tenant_boundary_when_tenant_id_passed()`.
+     */
+    public function test_delete_by_path_respects_the_tenant_boundary(): void
+    {
+        config()->set('kb.deletion.soft_delete', true);
+
+        // Tenant B's row is created FIRST (lower id) so an unscoped
+        // project_key+source_path lookup's default `->first()` would resolve
+        // it instead of tenant A's — the discriminator (R16) that proves the
+        // tenant scope, not creation order, decides which row is found.
+        $docB = $this->makeDocument([
+            'tenant_id' => 'tenant-b',
+            'project_key' => 'demo',
+            'source_path' => 'docs/shared-key.md',
+            'version_hash' => 'vb',
+        ]);
+        $docA = $this->makeDocument([
+            'tenant_id' => 'tenant-a',
+            'project_key' => 'demo',
+            'source_path' => 'docs/shared-key.md',
+            'version_hash' => 'va',
+        ]);
+
+        $result = (new DocumentDeleter)->deleteByPath('tenant-a', 'demo', 'docs/shared-key.md');
+
+        $this->assertNotNull($result, "tenant A's own row is found and deleted");
+        $this->assertSame((int) $docA->id, $result['document_id']);
+        $this->assertNull(KnowledgeDocument::forTenant('tenant-a')->find($docA->id), 'tenant A row soft-deleted');
+        $this->assertNotNull(KnowledgeDocument::forTenant('tenant-b')->find($docB->id), "tenant B's identically-keyed (and earlier-created) row is untouched");
     }
 
     public function test_delete_orphans_removes_only_rows_whose_file_is_missing(): void

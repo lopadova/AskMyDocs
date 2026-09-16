@@ -139,17 +139,24 @@ class DocumentDeleter
     }
 
     /**
-     * Locate a document by project+source_path and delete it. Returns null
-     * when no row exists at all. Already-soft-deleted rows are still
-     * reachable so `force=true` can promote a soft delete to a hard delete,
-     * and repeated soft-deletes are idempotent (no-op returning a soft
-     * result).
+     * Locate a document by tenant+project+source_path and delete it.
+     * Returns null when no row exists at all. Already-soft-deleted rows are
+     * still reachable so `force=true` can promote a soft delete to a hard
+     * delete, and repeated soft-deletes are idempotent (no-op returning a
+     * soft result).
+     *
+     * R30 — `project_key` is NOT a tenant boundary (two tenants can
+     * legitimately share one); `$tenantId` is required so this public
+     * contract can never resolve another tenant's same-key row. `withTrashed()`
+     * still needs the scope: `BelongsToTenant` installs no automatic read
+     * scope (see `scopeForTenant()`), only the assignment-on-create hook.
      *
      * @return array{mode: string, document_id: int, project_key: string, source_path: string, file_deleted: bool, ocr_assets_deleted?: bool, artifact_deleted?: bool}|null
      */
-    public function deleteByPath(string $projectKey, string $sourcePath, ?bool $force = null): ?array
+    public function deleteByPath(string $tenantId, string $projectKey, string $sourcePath, ?bool $force = null): ?array
     {
         $document = KnowledgeDocument::withTrashed()
+            ->forTenant($tenantId)
             ->where('project_key', $projectKey)
             ->where('source_path', $sourcePath)
             ->first();

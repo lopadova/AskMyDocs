@@ -21,6 +21,7 @@ use App\Support\Canonical\GenerationSource;
 use App\Services\Kb\Versioning\ArtifactPublishFailedException;
 use App\Services\Kb\Versioning\ConversionArtifactStore;
 use App\Services\Kb\Versioning\SourceRetentionResolver;
+use App\Support\Kb\ActiveSourceReservation;
 use App\Support\Kb\HeldLock;
 use App\Support\Kb\LockLostException;
 use App\Support\Kb\SourceKeyLock;
@@ -1061,11 +1062,22 @@ class DocumentIngestor
      * version-hash no-op with nothing left to publish (R14); the next
      * identical ingest or the backfill retries the drop. The artifact
      * PUBLISH is not best effort: see publishArtifactOrThrow().
+     *
+     * Round-9 Copilot review on PR #479 — this runs inside the SAME
+     * in-process ingest as `IngestDocumentJob` / `DispatchIngestFanOutStep::ingestSync()`,
+     * which reserve the source for the whole read+convert+commit window
+     * (ADR 0030 §3) but sit several calls above this one, past the
+     * `Flow::execute()` boundary a live lock object cannot cross as step
+     * input. Resolving {@see ActiveSourceReservation} here — the carrier
+     * those two callers bind before calling in — threads their reservation
+     * into the same assert-before-destroy check `KbArtifactsBackfillCommand`
+     * already gets by passing its own explicitly. Absent (no ambient
+     * caller, e.g. a direct unit-test call) resolves to null, same as today.
      */
     private function finalizeSourceRetentionOrLog(KnowledgeDocument $existing, string $disk, string $final): void
     {
         try {
-            $this->finalizeSourceRetention($existing, $disk, $final);
+            $this->finalizeSourceRetention($existing, $disk, $final, app(ActiveSourceReservation::class)->lock);
         } catch (\Throwable $e) {
             Log::error('DocumentIngestor: markdown_only retention could not be finalized on an identical re-ingest; the next identical ingest or kb:artifacts-backfill retries the drop', [
                 'document_id' => (int) $existing->id,

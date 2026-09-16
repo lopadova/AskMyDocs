@@ -207,6 +207,11 @@ final class DispatchIngestFanOutStep implements FlowStepHandler
         // caller's per-file try/catch already records it as an ordinary
         // ingest failure, exactly like a bad file or a conversion error.
         $reservation = SourceInFlight::reserve($disk, $fullPath);
+        // Round-9 Copilot review on PR #479 (IngestDocumentJob counterpart)
+        // — bind it so DocumentIngestor::finalizeSourceRetention()'s
+        // markdown_only drop of the shared original can assert it is still
+        // held, the same as the queued job does.
+        app()->instance(\App\Support\Kb\ActiveSourceReservation::class, new \App\Support\Kb\ActiveSourceReservation($reservation));
         try {
             if (! $storage->exists($fullPath)) {
                 throw new RuntimeException("File vanished before ingestion: {$fullPath}");
@@ -235,6 +240,7 @@ final class DispatchIngestFanOutStep implements FlowStepHandler
                 title: $title,
             );
         } finally {
+            app()->forgetInstance(\App\Support\Kb\ActiveSourceReservation::class);
             HeldLock::releaseQuietly($reservation);
         }
     }

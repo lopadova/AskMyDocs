@@ -204,6 +204,13 @@ class IngestDocumentJob implements ShouldQueue
             // it on its own. Released in the `finally` below; the TTL is only
             // the backstop for a worker killed mid-conversion.
             $reservation = $this->reserveSource();
+            // Round-9 Copilot review on PR #479 — the retention tail this
+            // reservation must also guard (DocumentIngestor::finalizeSourceRetention()'s
+            // markdown_only drop of the shared original) runs several calls
+            // deeper, inside Flow::execute()'s persist-chunks step: bind it
+            // so DocumentIngestor can resolve and thread it into that drop's
+            // assert-before-destroy check (see ActiveSourceReservation).
+            app()->instance(\App\Support\Kb\ActiveSourceReservation::class, new \App\Support\Kb\ActiveSourceReservation($reservation));
 
             $run = Flow::execute(
                 IngestDocumentFlow::NAME,
@@ -329,6 +336,11 @@ class IngestDocumentJob implements ShouldQueue
             // keep it — see failed() for the other outcome).
             OcrService::releaseRerunLock($this->metadata);
         } finally {
+            // Forget the binding BEFORE releasing the reservation itself: a
+            // long-lived worker must never leave a stale (and about-to-be-
+            // invalid) reservation resolvable by the NEXT job it drains, and
+            // the order matters less than doing both unconditionally here.
+            app()->forgetInstance(\App\Support\Kb\ActiveSourceReservation::class);
             // The source is no longer being read or converted, whatever the
             // outcome: give the reservation back so the next sweep may judge
             // the file instead of waiting out its TTL.

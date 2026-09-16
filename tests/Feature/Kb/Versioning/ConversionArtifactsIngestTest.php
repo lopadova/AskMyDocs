@@ -172,6 +172,86 @@ final class ConversionArtifactsIngestTest extends TestCase
     }
 
     /**
+     * Round-9 Copilot review on PR #479: `IngestDocumentJob` (and
+     * `DispatchIngestFanOutStep::ingestSync()`) reserve the source for the
+     * whole read+convert+commit window, but the retention tail's
+     * `markdown_only` drop runs several calls deeper — past the
+     * `Flow::execute()` boundary — and, before this fix, never threaded that
+     * reservation into `dropOriginalUnderLock()`'s assert-before-destroy
+     * check the way `KbArtifactsBackfillCommand` already does with its own.
+     *
+     * This proves the OTHER half of the fix (`ActiveSourceReservation`
+     * carrying the caller's reservation across that boundary): binds a lock
+     * whose ownership can no longer be verified — the same shape a lapsed
+     * TTL or a stolen key would produce — and confirms the drop this test's
+     * sibling above performs unconditionally is instead REFUSED, keeping the
+     * original. `test_a_forced_reembed_...` tests already prove
+     * `DocumentIngestor` degrades gracefully when nothing is bound at all
+     * (the ambient default, `lock: null`); this proves the bound case is
+     * actually READ, not merely accepted and ignored.
+     */
+    public function test_markdown_only_drop_keeps_the_original_when_the_ambient_source_reservation_cannot_be_verified(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => true, 'kb.source_retention.mode' => 'markdown_only']);
+        $bytes = PdfFixtureBuilder::buildThreePageSample();
+        Storage::disk('kb')->put('reports/q1-reserved.pdf', $bytes);
+
+        $unverifiable = new class implements \Illuminate\Contracts\Cache\Lock
+        {
+            public function get($callback = null)
+            {
+                return true;
+            }
+
+            public function block($seconds, $callback = null)
+            {
+                return true;
+            }
+
+            public function release()
+            {
+                return true;
+            }
+
+            public function isOwnedByCurrentProcess()
+            {
+                return false;
+            }
+
+            public function owner()
+            {
+                return 'ingest-job-attempt-1';
+            }
+
+            public function forceRelease()
+            {
+            }
+        };
+        $this->app->instance(\App\Support\Kb\ActiveSourceReservation::class, new \App\Support\Kb\ActiveSourceReservation($unverifiable));
+
+        try {
+            $doc = app(DocumentIngestor::class)->ingest('eng', new SourceDocument(
+                sourcePath: 'reports/q1-reserved.pdf',
+                mimeType: 'application/pdf',
+                bytes: $bytes,
+                externalUrl: null,
+                externalId: null,
+                connectorType: 'local',
+                metadata: ['disk' => 'kb', 'prefix' => ''],
+            ), 'Q1 reserved');
+        } finally {
+            $this->app->forgetInstance(\App\Support\Kb\ActiveSourceReservation::class);
+        }
+
+        // The row and its artifact are correct either way (best effort, R14)
+        // — only the drop of the shared original is refused.
+        $this->assertNotNull($doc->markdown_path);
+        Storage::disk('kb')->assertExists((string) $doc->markdown_path);
+        Storage::disk('kb')->assertExists('reports/q1-reserved.pdf');
+        $this->assertArrayNotHasKey('source_dropped', $doc->fresh()->metadata ?? []);
+    }
+
+    /**
      * ADR 0030 §3 — the original goes only once every referencing row's
      * artifact is PRESENT on disk: a pointer whose file never landed (a
      * publish that failed after commit) does not stand in for it.
