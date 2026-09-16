@@ -23,6 +23,11 @@ import { resetAndSeed } from './setup-helpers';
 
 const PASSWORD = 'password';
 
+// Declared BEFORE ENDPOINTS because rows below reference it: a `const`
+// used earlier in module evaluation than its declaration is a
+// temporal-dead-zone ReferenceError, not a hoisted value.
+const ALL_ROLES = ['system-admin', 'super-admin', 'admin', 'dpo', 'editor', 'viewer'] as const;
+
 // Representative no-path-param admin endpoint → exact allow-set of roles.
 // Mirrors AdminAuthorizationMatrixTest::matrix().
 const ENDPOINTS: ReadonlyArray<{ uri: string; allowed: readonly string[] }> = [
@@ -36,6 +41,12 @@ const ENDPOINTS: ReadonlyArray<{ uri: string; allowed: readonly string[] }> = [
     { uri: '/api/system-admin/super-admins', allowed: ['system-admin'] },
     { uri: '/api/admin/logs/chat', allowed: ['admin', 'super-admin'] },
     { uri: '/api/admin/kb/tree', allowed: ['admin', 'super-admin'] },
+    // v8.x — authenticated reader surfaces. NO role gate by design: every
+    // member of the tenant may reach them, and the real boundary is
+    // per-user ownership (chat-folders) or the SQL access scope (kb/tree).
+    // Listed so a future role gate cannot appear here unnoticed.
+    { uri: '/api/chat-folders', allowed: ALL_ROLES },
+    { uri: '/api/kb/tree', allowed: ALL_ROLES },
     // gate-based groups
     { uri: '/api/admin/connectors', allowed: ['admin', 'super-admin'] },
     // v8.27 — API Connector (Connettore API) admin group (gate: manageConnectors;
@@ -59,8 +70,6 @@ const ENDPOINTS: ReadonlyArray<{ uri: string; allowed: readonly string[] }> = [
     // v8.x — invitations admin (gate: manageInvitations; core API mounted by PR #363)
     { uri: '/api/admin/invitations/metrics', allowed: ['admin', 'super-admin'] },
 ];
-
-const ALL_ROLES = ['system-admin', 'super-admin', 'admin', 'dpo', 'editor', 'viewer'] as const;
 
 // DemoSeeder seeds the super-admin as `super@demo.local` (NOT
 // `super-admin@demo.local`); every other role uses `<role>@demo.local`.

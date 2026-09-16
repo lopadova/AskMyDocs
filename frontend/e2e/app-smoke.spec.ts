@@ -26,6 +26,9 @@ const FATAL_CONSOLE = /Type validation failed|Cannot read|is not a function|Maxi
 // Admin-accessible main screens. Each renders the shell + its own feature.
 const ROUTES: string[] = [
     '/app/chat',
+    // v8.x — the Sessions workspace and the reader KB explorer.
+    '/app/sessions',
+    '/app/knowledge',
     '/app/admin',
     '/app/admin/kb',
     '/app/admin/kb/health',

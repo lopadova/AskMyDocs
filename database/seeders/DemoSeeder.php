@@ -407,16 +407,57 @@ class DemoSeeder extends Seeder
         ]);
     }
 
+    /**
+     * Seed a small but NON-TRIVIAL set of chat sessions.
+     *
+     * The Sessions workspace groups by pinned / folder / unfiled and
+     * hides archived threads, so a single conversation would leave every
+     * one of those branches unexercised on first paint — and an E2E
+     * scenario asserting "pinned sorts first" would pass on an empty
+     * group. One folder plus one session per state keeps each branch
+     * visible.
+     *
+     * Idempotent: no-op when this tenant already has sessions.
+     */
     private function seedConversations(User $admin): void
     {
         if ($admin->conversations()->forTenant(self::PRIMARY_TENANT)->count() > 0) {
             return;
         }
 
+        $folder = \App\Models\ChatFolder::create([
+            'tenant_id' => self::PRIMARY_TENANT,
+            'user_id' => $admin->id,
+            'name' => 'Issue 42 — onboarding',
+            'position' => 0,
+        ]);
+
         Conversation::create([
             'user_id' => $admin->id,
             'title' => 'Welcome — remote work questions',
             'project_key' => 'hr-portal',
+        ]);
+
+        Conversation::create([
+            'user_id' => $admin->id,
+            'title' => 'Pinned — expense policy',
+            'project_key' => 'hr-portal',
+            'pinned_at' => \Illuminate\Support\Carbon::now()->subHour(),
+        ]);
+
+        Conversation::create([
+            'user_id' => $admin->id,
+            'title' => 'Filed — onboarding checklist',
+            'project_key' => 'hr-portal',
+            'chat_folder_id' => $folder->id,
+            'importance' => \App\Support\Chat\ConversationImportance::Critical->value,
+        ]);
+
+        Conversation::create([
+            'user_id' => $admin->id,
+            'title' => 'Archived — old laptop request',
+            'project_key' => 'hr-portal',
+            'archived_at' => \Illuminate\Support\Carbon::now()->subDay(),
         ]);
     }
 
