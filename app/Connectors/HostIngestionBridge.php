@@ -13,6 +13,10 @@ use App\Services\Demo\EmailDataset\EmailDatasetReader;
 use App\Services\Demo\EmailDataset\FixtureMetadataIndex;
 use App\Services\Kb\DocumentDeleter;
 use App\Services\Kb\Pii\IngestStrategyResolver;
+use App\Services\Kb\Versioning\ConversionArtifactStore;
+use App\Support\Kb\HeldLock;
+use App\Support\Kb\LockLostException;
+use App\Support\Kb\SourceInFlight;
 use App\Support\Kb\SourceType;
 use App\Support\KbPath;
 use App\Support\TenantContext;
@@ -226,24 +230,67 @@ final class HostIngestionBridge implements ConnectorIngestionContract
             if (! $storage->exists($resolved['absolute'])) {
                 return false;
             }
-            // The IMAP connector names attachments by UID: a backfill can
-            // re-present the SAME key a live row (ingested while OCR was on)
-            // still points at. Same reference gate as DocumentDeleter (R4).
-            $referencedBy = $this->deleter->documentReferencingStorageKey($disk, $resolved['absolute'], $relativePath);
-            if ($referencedBy !== null) {
-                Log::info('HostIngestionBridge: refused image source kept, still referenced by a document', [
+            // PR #492 Copilot round-7 — the reference check and delete were
+            // not protected by SourceInFlight: a previously dispatched OCR
+            // job can already hold the source reservation while its
+            // document row is not yet committed, so
+            // documentReferencingStorageKey() (below) sees no row and this
+            // method would delete the bytes out from under that conversion.
+            // Acquired and HELD through the whole decision+delete, the same
+            // TOCTOU-safe pattern DocumentDeleter::removeSourceFileIfUnreferenced()
+            // uses — a probe-then-release would leave the exact gap this
+            // exists to close.
+            if (! ConversionArtifactStore::cacheStoreCanLock()) {
+                Log::warning('HostIngestionBridge: refused image source removal refused — the cache store cannot exclude a concurrent ingest; configure a lock-capable cache store (Redis in production)', [
                     'relative_path' => $relativePath,
-                    // The gate crosses tenants by design (a storage key is
-                    // infrastructure); the foreign id stays out of this
-                    // tenant's log.
-                    'referenced' => true,
+                ]);
+
+                return null;
+            }
+            $reservation = SourceInFlight::acquireForRemoval($disk, $resolved['absolute']);
+            if ($reservation === null) {
+                Log::info('HostIngestionBridge: refused image source kept — an ingest holds its reservation right now', [
+                    'relative_path' => $relativePath,
                 ]);
 
                 return false;
             }
+            $held = new HeldLock($reservation, 'refused image source reservation');
+            try {
+                // The IMAP connector names attachments by UID: a backfill can
+                // re-present the SAME key a live row (ingested while OCR was on)
+                // still points at. Same reference gate as DocumentDeleter (R4).
+                $referencedBy = $this->deleter->documentReferencingStorageKey($disk, $resolved['absolute'], $relativePath);
+                if ($referencedBy !== null) {
+                    Log::info('HostIngestionBridge: refused image source kept, still referenced by a document', [
+                        'relative_path' => $relativePath,
+                        // The gate crosses tenants by design (a storage key is
+                        // infrastructure); the foreign id stays out of this
+                        // tenant's log.
+                        'referenced' => true,
+                    ]);
 
-            // R4 — a `false` from the disk is a failed removal, not "removed".
-            return $storage->delete($resolved['absolute']) ? true : null;
+                    return false;
+                }
+                // The reference query above is a DB round-trip: assert the
+                // reservation is still ours right before the delete, so a
+                // TTL that lapsed across it defers to KEPT rather than
+                // deleting under a fresh ingest that has since reserved and
+                // started reading.
+                $held->assertHeld('refused image source removal');
+
+                // R4 — a `false` from the disk is a failed removal, not "removed".
+                return $storage->delete($resolved['absolute']) ? true : null;
+            } catch (LockLostException $e) {
+                Log::warning('HostIngestionBridge: refused image source removal deferred — the reservation lapsed during the reference check', [
+                    'relative_path' => $relativePath,
+                    'error' => $e->getMessage(),
+                ]);
+
+                return false;
+            } finally {
+                HeldLock::releaseQuietly($reservation);
+            }
         } catch (\Throwable $e) {
             Log::warning('HostIngestionBridge: could not remove refused image source', [
                 'relative_path' => $relativePath,

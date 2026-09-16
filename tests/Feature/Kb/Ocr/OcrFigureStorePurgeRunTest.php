@@ -154,4 +154,43 @@ final class OcrFigureStorePurgeRunTest extends TestCase
             $lock?->release();
         }
     }
+
+    /**
+     * PR #492 Copilot round-7 (Finding B) — the run reservation
+     * (`OcrService::runLockKey()`) and the source reservation
+     * (`SourceInFlight::acquireForRemoval()`) were asymmetric: `purgeRun()`
+     * asserted the RUN lock was still held right before the delete, via
+     * {@see \App\Support\Kb\HeldLock}, but the SOURCE reservation — taken
+     * earlier in the same call, right before `isInFlight()` reads the
+     * directory — was only checked for successful ACQUISITION, never for
+     * still being owned at the decisive moment. A source reservation whose
+     * lease lapsed mid-call (a slow filesystem, GC pause, or a driver whose
+     * TTL is shorter than this method's own work) left the delete completely
+     * unguarded from the source's point of view: the fix Finding A closes
+     * for `HostIngestionBridge` had a twin gap here.
+     *
+     * `LapsingLockStore` grants the source reservation (so
+     * `acquireForRemoval()` returns a non-null lock and `purgeRun()`
+     * proceeds past that guard) but reports it unowned from the first
+     * `isOwnedByCurrentProcess()` call onward — the deterministic stand-in
+     * for "the lease lapsed between acquisition and the assertion right
+     * before the irreversible step" (see the fixture's own docblock). The
+     * predicate is scoped to `SourceInFlight`'s key prefix only, so the RUN
+     * reservation (a DIFFERENT key, `OcrService::runLockKey()`) stays
+     * genuinely owned via the delegated `ArrayStore` — proving the run purge
+     * refuses on the SOURCE reservation specifically, not merely because
+     * every lock in the store is fake.
+     */
+    public function test_a_run_is_kept_when_the_source_reservation_lapses_before_the_delete(): void
+    {
+        \Illuminate\Support\Facades\Cache::extend('lapsing', static fn ($app) => \Illuminate\Support\Facades\Cache::repository(
+            new \Tests\Fixtures\Cache\LapsingLockStore(static fn (string $name): bool => str_starts_with($name, 'kb:source-inflight:'))
+        ));
+        config(['cache.stores.lapsing' => ['driver' => 'lapsing'], 'cache.default' => 'lapsing']);
+
+        $purged = app(OcrFigureStore::class)->purgeRun('kb', 'docs/x.md', '', self::RUN, fn (): bool => false);
+
+        $this->assertFalse($purged, 'a source reservation that lapsed before the delete must defer the purge, not proceed unguarded');
+        $this->assertTrue(Storage::disk('kb')->directoryExists('docs/x.md.ocr/'.self::RUN));
+    }
 }

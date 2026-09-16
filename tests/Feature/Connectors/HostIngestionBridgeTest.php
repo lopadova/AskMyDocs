@@ -295,6 +295,147 @@ final class HostIngestionBridgeTest extends TestCase
         $this->assertFalse($audit->metadata_json['metadata']['source_removed']);
     }
 
+    /**
+     * PR #492 Copilot round-7 — the reference check and delete were not
+     * protected by SourceInFlight: a previously dispatched OCR job can
+     * already hold the source reservation while its document row is NOT
+     * yet committed, so documentReferencingStorageKey() sees no row and
+     * (before this fix) removeRefusedSource() would delete the bytes out
+     * from under that conversion. This is a DIFFERENT scenario from the
+     * "a live row still references it" test above: here there is no row
+     * at all yet — only the reservation an in-flight ingest holds.
+     */
+    public function test_refused_imap_image_keeps_a_source_an_in_flight_ingest_reserved(): void
+    {
+        Queue::fake();
+        Storage::fake('kb');
+        config()->set('kb.ocr.enabled', false);
+        config()->set('kb.sources.disk', 'kb');
+        config()->set('kb.sources.path_prefix', '');
+        $path = 'connector-email/connectors/imap/installation-12/inbox/66.png';
+        Storage::disk('kb')->put($path, 'PNG');
+        // Simulates an ingest job mid-flight on this exact source: reserved,
+        // no document row committed yet — the case documentReferencingStorageKey()
+        // alone cannot see.
+        $lock = \App\Support\Kb\SourceInFlight::reserve('kb', $path);
+        $this->assertNotNull($lock, 'the test itself needs a lock-capable store to hold the reservation');
+
+        try {
+            /** @var HostIngestionBridge $bridge */
+            $bridge = $this->app->make(ConnectorIngestionContract::class);
+            $bridge->dispatchIngestion(
+                projectKey: 'connector-email',
+                relativePath: $path,
+                disk: 'kb',
+                title: 'scan.png',
+                metadata: ['connector' => 'imap', 'installation_id' => 12, 'imap_uid' => '66', 'imap_doc_key' => 'INBOX:1:66', 'imap_mailbox' => 'INBOX'],
+                mimeType: 'image/png',
+                tenantId: 'acme',
+            );
+        } finally {
+            $lock->release();
+        }
+
+        Queue::assertNothingPushed();
+        // The bytes an in-flight ingest reserved must never be deleted out from under it.
+        Storage::disk('kb')->assertExists($path);
+        $audit = KbCanonicalAudit::query()->where('event_type', 'connector_ingest_refused')->firstOrFail();
+        $this->assertFalse($audit->metadata_json['metadata']['source_removed']);
+        $this->assertFalse($audit->metadata_json['metadata']['cleanup_failed']);
+    }
+
+    /**
+     * PR #492 Copilot round-7 (implied by "as the other source-deletion
+     * paths do") — SourceInFlight::acquireForRemoval() only means anything
+     * on a store that can actually exclude a concurrent holder
+     * (cacheStoreCanLock()); on a store that cannot lock, a real reservation
+     * would silently grant every acquisition regardless of a genuine
+     * in-flight ingest. Refused outright, the same posture as every other
+     * source-deletion path in this PR cycle.
+     */
+    public function test_refused_imap_image_removal_refuses_on_a_store_without_locks(): void
+    {
+        \Illuminate\Support\Facades\Cache::extend('nolock', static fn ($app) => \Illuminate\Support\Facades\Cache::repository(new \Tests\Fixtures\Cache\NoLockStore));
+        config(['cache.stores.nolock' => ['driver' => 'nolock'], 'cache.default' => 'nolock']);
+        Queue::fake();
+        Storage::fake('kb');
+        config()->set('kb.ocr.enabled', false);
+        config()->set('kb.sources.disk', 'kb');
+        config()->set('kb.sources.path_prefix', '');
+        $path = 'connector-email/connectors/imap/installation-12/inbox/44.png';
+        Storage::disk('kb')->put($path, 'PNG');
+
+        /** @var HostIngestionBridge $bridge */
+        $bridge = $this->app->make(ConnectorIngestionContract::class);
+        try {
+            $bridge->dispatchIngestion(
+                projectKey: 'connector-email',
+                relativePath: $path,
+                disk: 'kb',
+                title: 'scan.png',
+                metadata: ['connector' => 'imap', 'installation_id' => 12, 'imap_uid' => '44', 'imap_doc_key' => 'INBOX:1:44', 'imap_mailbox' => 'INBOX'],
+                mimeType: 'image/png',
+                tenantId: 'acme',
+            );
+            $this->fail('a removal that cannot exclude a concurrent ingest must be refused, not run unguarded');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('could not be removed', $e->getMessage());
+        }
+
+        Storage::disk('kb')->assertExists($path);
+        $audit = KbCanonicalAudit::query()->where('event_type', 'connector_ingest_refused')->firstOrFail();
+        $this->assertNull($audit->metadata_json['metadata']['source_removed']);
+        $this->assertTrue($audit->metadata_json['metadata']['cleanup_failed']);
+    }
+
+    /**
+     * PR #492 Copilot round-7 (Finding A) — the reservation was acquired
+     * and checked for existence, but never re-asserted still owned right
+     * before the delete: a TTL that lapsed during the DB round-trip
+     * (`documentReferencingStorageKey()`) left the actual removal
+     * unguarded. `LapsingLockStore` grants the reservation (so
+     * `acquireForRemoval()` returns non-null and the method proceeds past
+     * that guard and the "still referenced" check) but reports it unowned
+     * from the first `isOwnedByCurrentProcess()` call onward — the
+     * deterministic stand-in for a lease that lapsed mid-call (see the
+     * fixture's own docblock and the twin test on `OcrFigureStorePurgeRunTest`
+     * for Finding B, the same gap one call site over).
+     */
+    public function test_refused_imap_image_removal_defers_when_the_reservation_lapses_before_the_delete(): void
+    {
+        \Illuminate\Support\Facades\Cache::extend('lapsing', static fn ($app) => \Illuminate\Support\Facades\Cache::repository(
+            new \Tests\Fixtures\Cache\LapsingLockStore(static fn (string $name): bool => str_starts_with($name, 'kb:source-inflight:'))
+        ));
+        config(['cache.stores.lapsing' => ['driver' => 'lapsing'], 'cache.default' => 'lapsing']);
+        Queue::fake();
+        Storage::fake('kb');
+        config()->set('kb.ocr.enabled', false);
+        config()->set('kb.sources.disk', 'kb');
+        config()->set('kb.sources.path_prefix', '');
+        $path = 'connector-email/connectors/imap/installation-12/inbox/77.png';
+        Storage::disk('kb')->put($path, 'PNG');
+
+        /** @var HostIngestionBridge $bridge */
+        $bridge = $this->app->make(ConnectorIngestionContract::class);
+        $bridge->dispatchIngestion(
+            projectKey: 'connector-email',
+            relativePath: $path,
+            disk: 'kb',
+            title: 'scan.png',
+            metadata: ['connector' => 'imap', 'installation_id' => 12, 'imap_uid' => '77', 'imap_doc_key' => 'INBOX:1:77', 'imap_mailbox' => 'INBOX'],
+            mimeType: 'image/png',
+            tenantId: 'acme',
+        );
+
+        Queue::assertNothingPushed();
+        // A reservation that lapsed before the delete must defer (KEPT), not
+        // proceed unguarded.
+        Storage::disk('kb')->assertExists($path);
+        $audit = KbCanonicalAudit::query()->where('event_type', 'connector_ingest_refused')->firstOrFail();
+        $this->assertFalse($audit->metadata_json['metadata']['source_removed']);
+        $this->assertFalse($audit->metadata_json['metadata']['cleanup_failed']);
+    }
+
     public function test_dispatch_ingestion_queues_an_image_when_ocr_is_on(): void
     {
         Queue::fake();

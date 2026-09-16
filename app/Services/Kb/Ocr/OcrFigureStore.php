@@ -342,6 +342,14 @@ final class OcrFigureStore
         // for the source file itself.
         $fullSourcePath = $this->sourceFullPath($sourcePath, $prefix);
         $sourceReservation = null;
+        // PR #492 Copilot round-7 — `$sourceReservation` has its own
+        // PURGE_LOCK_SECONDS-scale lease, but unlike the run reservation it
+        // was never wrapped in a HeldLock or re-asserted before the delete:
+        // if the in-flight scan runs past that TTL, a NEW ingest can acquire
+        // the source reservation and start reading while this purge still
+        // proceeds to delete the run. Wrapped and asserted alongside the
+        // run reservation, immediately before the same irreversible step.
+        $sourceHeld = null;
         if ($fullSourcePath !== null) {
             try {
                 $sourceReservation = SourceInFlight::acquireForRemoval($disk, $fullSourcePath);
@@ -355,6 +363,7 @@ final class OcrFigureStore
 
                 return false;
             }
+            $sourceHeld = new HeldLock($sourceReservation, 'OCR run source reservation');
         }
         try {
             $reservation = Cache::lock(OcrService::runLockKey($disk, KbPath::normalize($runDir)), self::PURGE_LOCK_SECONDS);
@@ -370,11 +379,14 @@ final class OcrFigureStore
 
                     return false;
                 }
-                // The in-flight scan reads the directory: assert the reservation
-                // is still ours right before the removal, so a TTL that lapsed
-                // across the scan defers the purge instead of deleting a run a
-                // converter has since reserved (ADR 0030 §3).
+                // The in-flight scan reads the directory: assert BOTH
+                // reservations are still ours right before the removal, so
+                // a TTL that lapsed across the scan defers the purge instead
+                // of deleting a run a converter has since reserved, or a run
+                // whose source a new ingest has since started reading
+                // (ADR 0030 §3).
                 $held->assertHeld('OCR run purge');
+                $sourceHeld?->assertHeld('OCR run purge');
                 if ($referencedCheck !== null && $referencedCheck()) {
                     Log::info('OcrFigureStore: OCR run purge skipped — a document committed a reference to it after the caller\'s snapshot', ['disk' => $disk, 'run_dir' => $runDir]);
 
