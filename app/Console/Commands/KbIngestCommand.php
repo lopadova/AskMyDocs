@@ -19,11 +19,31 @@ class KbIngestCommand extends Command
 
     public function handle(DocumentIngestor $ingestor): int
     {
-        $relativePath = (string) $this->argument('path');
+        $rawPath = (string) $this->argument('path');
         $projectKey = (string) ($this->option('project') ?? 'default');
         $disk = (string) ($this->option('disk') ?: config('kb.sources.disk', 'kb'));
         $prefix = (string) config('kb.sources.path_prefix', '');
-        $fullPath = ltrim($prefix.'/'.ltrim($relativePath, '/'), '/');
+
+        // v8.36 / ADR 0029 §6 / PR #479 Copilot review round 4 — R1: every
+        // KB source path goes through `KbPath::normalize()` before any disk
+        // op or path-shape decision, the same contract the HTTP/folder entry
+        // points already follow. A raw `docs/../outside.md` reaching
+        // Storage::exists()/get() unnormalized is a traversal risk (and on a
+        // driver that rejects `..` outright, an uncaught throw outside this
+        // command's clean R14 error handling); the generated-asset check two
+        // lines down is meaningless run against a path that could still
+        // smuggle `..` past it. `$relativePath` (used below as both the
+        // ingested `sourcePath` and the title fallback) is the normalized
+        // bare path — `DocumentIngestor::ingest()` normalizes it again
+        // internally, but idempotently, so nothing downstream diverges.
+        try {
+            $relativePath = KbPath::normalize($rawPath);
+            $fullPath = $prefix === '' ? $relativePath : KbPath::normalize($prefix.'/'.$relativePath);
+        } catch (\InvalidArgumentException $e) {
+            $this->error("Invalid source path [{$rawPath}]: {$e->getMessage()}");
+
+            return self::FAILURE;
+        }
 
         // v8.36 / ADR 0029 §6 — the converters' own output (`{source}.ocr/`,
         // `.artifacts/`) is never a source: `KbIngestController` and

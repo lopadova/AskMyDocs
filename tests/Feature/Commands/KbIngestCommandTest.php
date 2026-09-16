@@ -136,6 +136,30 @@ class KbIngestCommandTest extends TestCase
         $this->assertSame(0, KnowledgeDocument::count());
     }
 
+    /**
+     * v8.36 / PR #479 Copilot review round 4 — R1: every KB source path
+     * goes through `KbPath::normalize()` before any disk op or path-shape
+     * decision, the same contract the HTTP/folder entry points already
+     * follow. A raw `..` segment must never reach `Storage::exists()`/
+     * `get()` at all — a clean, normalized-path error instead of a
+     * traversal attempt or an uncaught driver exception outside R14's
+     * one-line handling.
+     */
+    public function test_refuses_a_source_path_with_traversal_segments(): void
+    {
+        Storage::fake('kb');
+        config()->set('kb.sources.disk', 'kb');
+        config()->set('kb.sources.path_prefix', '');
+
+        $this->artisan('kb:ingest', [
+            'path' => 'docs/../outside.md',
+        ])
+            ->expectsOutputToContain('Invalid source path')
+            ->assertFailed();
+
+        $this->assertSame(0, KnowledgeDocument::count());
+    }
+
     public function test_fails_cleanly_when_file_missing(): void
     {
         Storage::fake('kb');
