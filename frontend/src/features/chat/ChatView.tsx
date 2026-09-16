@@ -54,6 +54,7 @@ export function ChatView(): ReactNode {
         activeId,
         activeConversation,
         activeConversationKnown,
+        activeConversationResolved,
         projectKey,
         projectLabel,
         projectScopeValue,
@@ -146,7 +147,9 @@ export function ChatView(): ReactNode {
                                                     ? activeConversation.title
                                                     : activeConversationKnown
                                                       ? `Conversation #${activeId}`
-                                                      : 'Loading…'
+                                                      : activeConversationResolved
+                                                        ? 'Not found'
+                                                        : 'Loading…'
                                             }
                                         />
                                     ) : (

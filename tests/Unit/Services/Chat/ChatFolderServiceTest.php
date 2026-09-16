@@ -117,7 +117,7 @@ final class ChatFolderServiceTest extends TestCase
         $this->assertSame(3, ChatFolder::query()->where('name', 'Issue 42')->count());
     }
 
-    public function test_a_duplicate_name_raises_a_validation_error_not_a_driver_error(): void
+    public function test_a_duplicate_name_raises_a_domain_collision_not_a_driver_error(): void
     {
         // The service is a public PHP surface (R44) and validate-then-insert
         // is not atomic, so the DB unique is the real invariant. A DOMAIN
@@ -131,7 +131,7 @@ final class ChatFolderServiceTest extends TestCase
         $this->service->create($owner->id, 'acme', 'Issue 42');
     }
 
-    public function test_renaming_onto_a_taken_name_raises_a_validation_error(): void
+    public function test_renaming_onto_a_taken_name_raises_a_domain_collision(): void
     {
         $owner = $this->user();
         $this->service->create($owner->id, 'acme', 'Taken');

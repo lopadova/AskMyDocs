@@ -19,8 +19,14 @@ use Illuminate\Database\UniqueConstraintViolationException;
  * policy and no global scope by design, mirroring
  * {@see \App\Models\ChatFilterPreset}, so CLI and queue contexts can
  * still operate without an authenticated user.
+ *
+ * Deliberately NOT final, for the same reason `AiManager` is not (see
+ * CLAUDE.md §8): the controller's translation of
+ * {@see \App\Exceptions\Chat\ChatFolderNameTakenException} into a 422
+ * is reachable only when two writes race past validation, so the only way
+ * to pin that branch is a test double bound in the container.
  */
-final class ChatFolderService
+class ChatFolderService
 {
     /**
      * The acting user's folders, in sidebar order.

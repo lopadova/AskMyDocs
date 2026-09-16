@@ -269,23 +269,25 @@ describe('SessionSidebar', () => {
         await waitFor(() => expect(remove).toHaveBeenCalledWith(10));
     });
 
-    it('counts pinned and filtered-out members in the delete prompt', async () => {
-        // The rendered rows are `unpinned` and search-filtered, so counting
-        // them would under-report the blast radius — here 3 sessions move
-        // out of the folder while only 2 are visible in it.
+    it('states the delete consequence without quoting a count that could be wrong', async () => {
+        // A folder can hold pinned, search-filtered and archived members
+        // the sidebar never renders (or never fetched), so any number here
+        // would eventually lie on a destructive confirmation.
         vi.mocked(chatFoldersApi.list).mockResolvedValue([folder(10, 'Issue 42')]);
         vi.mocked(chatApi.listConversations).mockResolvedValue([
             conversation({ id: 1, title: 'Pinned member', chat_folder_id: 10, pinned_at: 'x' }),
             conversation({ id: 2, title: 'Plain member', chat_folder_id: 10 }),
-            conversation({ id: 3, title: 'Another member', chat_folder_id: 10 }),
         ]);
         renderSidebar(<SessionSidebar {...props} />);
 
         await userEvent.click(await screen.findByTestId('chat-sessions-folder-10-delete'));
 
-        expect(
-            screen.getByTestId('chat-sessions-folder-10-delete-confirm-prompt'),
-        ).toHaveTextContent('Its 3 sessions are moved out of the folder, not deleted.');
+        const prompt = screen.getByTestId('chat-sessions-folder-10-delete-confirm-prompt');
+        expect(prompt).toHaveTextContent('moved out of the folder, not deleted');
+        // No count PHRASE — the folder's own name may legitimately contain
+        // digits ("Issue 42"), so assert on the shape a count would take.
+        expect(prompt.textContent).not.toMatch(/\d+\s+sessions?/i);
+        expect(prompt.textContent).not.toMatch(/its session is/i);
     });
 
     it('abandons a folder delete when the confirm is cancelled', async () => {

@@ -69,8 +69,10 @@ export interface UseChatSessionResult {
     // Scope + identity.
     activeId: number | null;
     activeConversation: Conversation | null;
-    /** False when `activeId` is set but the row is in neither cache. */
+    /** False when `activeId` is set but the row is in neither slice. */
     activeConversationKnown: boolean;
+    /** True once both slices have answered — tells pending from absent. */
+    activeConversationResolved: boolean;
     /** Exposed for assertions; surfaces read `activeConversation` instead. */
     conversationsQuery: UseQueryResult<Conversation[]>;
     projectKey: string | null;
@@ -294,6 +296,19 @@ export function useChatSession({ nav }: UseChatSessionOptions): UseChatSessionRe
      */
     const activeConversationKnown = activeId === null || activeConversation !== null;
 
+    /**
+     * True once both slices have answered.
+     *
+     * Without this, `known === false` covers two opposite situations —
+     * "the lookup is in flight" and "the lookup came back empty" — so a
+     * bogus id would render "Loading…" forever, which is the R14 shape of
+     * pending being indistinguishable from failed.
+     */
+    const activeConversationResolved =
+        activeId === null
+        || fromActiveSlice !== undefined
+        || (conversationsQuery.isSuccess && archivedQuery.isFetched);
+
     // Effective project scope. For an EXISTING conversation the bound
     // `conversations.project_key` is authoritative (the BE scopes every
     // turn to it; a per-turn project filter can only narrow within it).
@@ -317,7 +332,7 @@ export function useChatSession({ nav }: UseChatSessionOptions): UseChatSessionRe
     // An unresolved session has no known scope — saying "all projects"
     // there would assert something we have not established.
     const projectLabel = !activeConversationKnown
-        ? 'resolving…'
+        ? (activeConversationResolved ? 'unknown' : 'resolving…')
         : projectKey ?? (isAllProjects ? 'all projects' : 'default');
 
     // The value rendered in the selector: '' for All, the project_key
@@ -803,6 +818,7 @@ export function useChatSession({ nav }: UseChatSessionOptions): UseChatSessionRe
         activeId,
         activeConversation,
         activeConversationKnown,
+        activeConversationResolved,
         conversationsQuery,
         projectKey,
         projectLabel,

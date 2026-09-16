@@ -47,6 +47,7 @@ export function SessionsView(): ReactNode {
         activeId,
         activeConversation,
         activeConversationKnown,
+        activeConversationResolved,
         projectKey,
         projectLabel,
         projectScopeValue,
@@ -146,7 +147,9 @@ export function SessionsView(): ReactNode {
                                                     ? activeConversation.title
                                                     : activeConversationKnown
                                                       ? `Session #${activeId}`
-                                                      : 'Loading…'
+                                                      : activeConversationResolved
+                                                        ? 'Not found'
+                                                        : 'Loading…'
                                             }
                                         />
                                     ) : (

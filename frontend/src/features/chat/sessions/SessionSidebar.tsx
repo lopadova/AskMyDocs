@@ -141,17 +141,20 @@ export function SessionSidebar({
     const byFolder = (folderId: number): Conversation[] =>
         unpinned.filter((c) => c.chat_folder_id === folderId);
 
-    /**
-     * How many sessions a folder deletion would unfile.
+    /*
+     * The delete prompt states the CONSEQUENCE, not a count.
      *
-     * Counted from the FULL list, not from the rendered rows: those are
-     * `unpinned` and search-filtered, so a folder holding one pinned and
-     * two unpinned sessions would have promised "2 sessions" while three
-     * moved out — and an active search term could shrink it further.
-     * Stating the blast radius is the whole reason the prompt exists.
+     * Counting was attempted twice and is wrong both ways. The rendered
+     * rows are `unpinned` and search-filtered, so a folder with one
+     * pinned and two unpinned members promised "2 sessions" while three
+     * moved out. Counting the active slice instead still misses archived
+     * members, which the BE unfiles too but which the sidebar may never
+     * have fetched — and it reads "Its 0 sessions are moved out" for an
+     * empty folder. On a destructive confirmation a number that can lie
+     * is worse than no number, so the copy asserts only what is always
+     * true. The folder's own data-count badge still reports what is
+     * visible, which is a different (and answerable) question.
      */
-    const folderMemberCount = (folderId: number): number =>
-        sessions.filter((c) => c.chat_folder_id === folderId).length;
 
     const state = sessionsQuery.isLoading
         ? 'loading'
@@ -371,11 +374,8 @@ export function SessionSidebar({
                                 data-testid={`chat-sessions-folder-${folder.id}-delete-confirm-prompt`}
                             >
                                 <p>
-                                    Delete “{folder.name}”?{' '}
-                                    {folderMemberCount(folder.id) === 1
-                                        ? 'Its session is'
-                                        : `Its ${folderMemberCount(folder.id)} sessions are`}{' '}
-                                    moved out of the folder, not deleted.
+                                    Delete “{folder.name}”? Any sessions filed here are moved
+                                    out of the folder, not deleted.
                                 </p>
                                 <div className="chat-sessions-folder-confirm-actions">
                                     <Button

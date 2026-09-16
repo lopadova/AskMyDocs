@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Api;
 
+use App\Exceptions\Chat\ChatFolderNameTakenException;
 use App\Models\ChatFolder;
+use App\Services\Chat\ChatFolderService;
 use App\Models\Conversation;
 use App\Models\User;
 use App\Support\TenantContext;
@@ -255,6 +257,31 @@ final class ChatFolderControllerTest extends TestCase
             ->postJson('/api/chat-folders', ['name' => ''])
             ->assertStatus(422)
             ->assertJsonValidationErrors('name');
+    }
+
+    public function test_a_collision_that_races_past_validation_is_still_a_422(): void
+    {
+        // The FormRequest catches the ordinary duplicate, so the
+        // controller's translation of the service's domain collision is
+        // only reachable when two writes race past validation — i.e. never
+        // from a normal request, and therefore never from the test above.
+        // Bind a service that raises the collision to exercise that branch;
+        // swapping the caught type would otherwise leave every test green
+        // while a real race regressed to a 500.
+        $user = $this->user();
+        $this->app->bind(ChatFolderService::class, fn (): ChatFolderService => new class extends ChatFolderService
+        {
+            public function create(int $userId, string $tenantId, string $name, int $position = 0): ChatFolder
+            {
+                throw ChatFolderNameTakenException::forName($name);
+            }
+        });
+
+        $this->actingAs($user)
+            ->postJson('/api/chat-folders', ['name' => 'Racing name'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('name')
+            ->assertJsonPath('errors.name.0', ChatFolderNameTakenException::MESSAGE);
     }
 
     public function test_a_non_numeric_folder_id_is_a_404_not_a_500(): void
