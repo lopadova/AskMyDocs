@@ -13,6 +13,8 @@ import { z } from 'zod';
 import { AppShell } from '../components/shell/AppShell';
 import { ChatView } from '../features/chat/ChatView';
 import { AnonymousChatView } from '../features/chat/AnonymousChatView';
+import { SessionsView } from '../features/chat/sessions/SessionsView';
+import { KnowledgeBrowseView } from '../features/kb-browse/KnowledgeBrowseView';
 import { DashboardView } from '../features/admin/dashboard/DashboardView';
 import { UsersView } from '../features/admin/users/UsersView';
 import { RolesView } from '../features/admin/roles/RolesView';
@@ -371,6 +373,36 @@ const chatConversationRoute = createRoute({
     getParentRoute: () => teamRoute,
     path: 'chat/$conversationId',
     component: ChatView,
+});
+
+// v8.x — the ChatGPT-style Sessions workspace, alongside /chat rather
+// than replacing it. FLAT SIBLINGS for the same reason as the chat
+// routes above: SessionsView renders no <Outlet />, so a nested
+// `$conversationId` child would never mount.
+const sessionsRoute = createRoute({
+    getParentRoute: () => teamRoute,
+    path: 'sessions',
+    component: SessionsView,
+});
+const sessionsConversationRoute = createRoute({
+    getParentRoute: () => teamRoute,
+    path: 'sessions/$conversationId',
+    component: SessionsView,
+});
+// Reader-side KB explorer. Deliberately NOT the `kb` path: that slot is
+// a legacy alias redirecting to /admin/kb, and admin-sidebar-nav.spec.ts
+// asserts exactly that redirect.
+// `?doc=` preselects a document, so a citation chip in the Sessions
+// thread can open the exact source a reader just cited.
+const knowledgeSearchSchema = z.object({
+    doc: z.coerce.number().int().positive().optional(),
+});
+
+const knowledgeRoute = createRoute({
+    getParentRoute: () => teamRoute,
+    path: 'knowledge',
+    validateSearch: knowledgeSearchSchema,
+    component: KnowledgeBrowseView,
 });
 function UiFoundationsRoute() {
     return (
@@ -1441,6 +1473,9 @@ const teamChildren = [
     chatRoute,
     chatAnonymousRoute,
     chatConversationRoute,
+    sessionsRoute,
+    sessionsConversationRoute,
+    knowledgeRoute,
     buttonSystemDemoRoute,
     uiFoundationsRoute,
     dashboardRoute,

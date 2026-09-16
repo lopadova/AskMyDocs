@@ -15,6 +15,8 @@ import type { AuthFeatures } from '../../lib/auth-store';
 
 export type SidebarSection =
     | 'chat'
+    | 'sessions'
+    | 'kb-browse'
     | 'dashboard'
     | 'insights'
     | 'projects'
@@ -83,6 +85,13 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'Workspace',
         items: [
             { id: 'chat', label: 'Chat', icon: 'Chat', route: '/app/$teamHash/chat' },
+            // v8.x — ChatGPT-style workspace: KB access plus sessions
+            // organised into folders, pinned, archived and flagged.
+            // Ungated like Chat: the boundary is per-user ownership, not role.
+            { id: 'sessions', label: 'Sessions', icon: 'Chat', route: '/app/$teamHash/sessions' },
+            // Reader-side KB explorer. NOT the `kb` id (that one is the
+            // admin explorer in the Knowledge group) and NOT the `kb` path.
+            { id: 'kb-browse', label: 'Browse KB', icon: 'Book', route: '/app/$teamHash/knowledge' },
             // v8.15/W4.2 — personal "your KB" dashboard; any authenticated user.
             { id: 'my-kb', label: 'My KB', icon: 'Sparkles', route: '/app/me' },
             { id: 'connected-apps', label: 'Connected Apps', icon: 'Link', route: '/app/connected-apps' },
