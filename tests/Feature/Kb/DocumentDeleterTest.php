@@ -163,6 +163,46 @@ class DocumentDeleterTest extends TestCase
         $this->assertNull(KnowledgeDocument::withTrashed()->find($document->id), 'the DB row is gone even though the file was kept');
     }
 
+    /**
+     * v8.36 / PR #479 Copilot review round 6 — the row-delete transaction
+     * (forceDelete()) commits the DB row BEFORE removeSourceObjectUnderLock()
+     * decides anything about the file: the two are separate steps with no
+     * reservation spanning both, which a review round flagged as a race
+     * (a concurrent ingest could read the source, the row-delete commits,
+     * the file-removal step then finds no referencing row and takes the
+     * file the ingest is still converting).
+     *
+     * That race does NOT reach the file: removeSourceObjectUnderLock()
+     * checks SourceInFlight::acquireForRemoval() before touching anything,
+     * and a concurrent ingest holds that SAME reservation (SourceInFlight::
+     * reserve()) for its whole read+convert+persist window — so the delete's
+     * acquire finds it CONTENDED and defers, exactly as it does for the
+     * orphan sweep (IngestDocumentJobSourceReservationTest::
+     * test_the_orphan_sweep_keeps_a_reserved_source_and_deletes_it_once_released).
+     * This test is the same proof for the HARD-DELETE path specifically —
+     * kept as a permanent regression so a future refactor of
+     * removeSourceObjectUnderLock() cannot silently drop the check without
+     * a test going red.
+     */
+    public function test_hard_delete_keeps_the_file_while_a_concurrent_ingest_holds_the_source_reservation(): void
+    {
+        config()->set('kb.deletion.soft_delete', false);
+        Storage::disk('kb')->put('docs/sample.md', '# hi');
+        $document = $this->makeDocument();
+
+        $reservation = \App\Support\Kb\SourceInFlight::reserve('kb', 'docs/sample.md');
+        $this->assertNotNull($reservation, 'the test cache store must be able to hold a reservation');
+
+        $result = (new DocumentDeleter)->delete($document, force: true);
+
+        $this->assertSame('hard', $result['mode']);
+        $this->assertFalse($result['file_deleted'], 'a concurrent ingest holds the reservation: the file must be kept');
+        Storage::disk('kb')->assertExists('docs/sample.md');
+        $this->assertNull(KnowledgeDocument::withTrashed()->find($document->id), 'the DB row is gone even though the file was kept');
+
+        $reservation->release();
+    }
+
     public function test_hard_delete_applies_path_prefix_from_metadata(): void
     {
         config()->set('kb.deletion.soft_delete', false);
