@@ -14,6 +14,7 @@ use App\Services\Kb\Pipeline\SourceDocument;
 use App\Support\Kb\SourceType;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\Fixtures\Pdf\PdfFixtureBuilder;
 use Tests\TestCase;
@@ -449,6 +450,75 @@ final class OcrLimitsAndReuseTest extends TestCase
         $again = $converter->convert($this->image());
 
         $this->assertFalse($again->extractionMeta['ocr']['reused']);
+    }
+
+    /**
+     * PR #492 Copilot round-1 — `reusableResult()` used to accept ANY
+     * parseable `result.json`: `{}`, a page missing its number, two pages
+     * sharing one, or a page count that no longer matches the document all
+     * became a reusable `OcrResult` with garbage (empty Markdown, a
+     * shrunk/duplicated page set) rather than a rerun. Each case here
+     * corrupts a genuinely-recorded run the same way, then reconfigures the
+     * fake driver to answer something distinguishable ('Beta') — proving
+     * the corrupt recording was discarded and the driver actually ran
+     * again, not merely that a flag flipped.
+     *
+     * @return array<string, array{\Closure(array<string, mixed>): array<string, mixed>}>
+     */
+    public static function corruptedResultRecordings(): array
+    {
+        return [
+            'page missing its number and markdown' => [static function (array $recorded): array {
+                $recorded['pages'] = [[]];
+
+                return $recorded;
+            }],
+            'page number zero' => [static function (array $recorded): array {
+                $recorded['pages'][0]['number'] = 0;
+
+                return $recorded;
+            }],
+            'two pages sharing the same number' => [static function (array $recorded): array {
+                $recorded['pages'][] = $recorded['pages'][0];
+
+                return $recorded;
+            }],
+            'markdown is not a string' => [static function (array $recorded): array {
+                $recorded['pages'][0]['markdown'] = ['not', 'a', 'string'];
+
+                return $recorded;
+            }],
+            'confidence is not numeric' => [static function (array $recorded): array {
+                $recorded['pages'][0]['confidence'] = 'high';
+
+                return $recorded;
+            }],
+            'an extra page beyond what this document has' => [static function (array $recorded): array {
+                $recorded['pages'][] = ['number' => 2, 'markdown' => 'Extra'];
+
+                return $recorded;
+            }],
+        ];
+    }
+
+    #[Test]
+    #[DataProvider('corruptedResultRecordings')]
+    public function a_parseable_but_corrupt_recording_is_treated_as_stale_and_rerun(\Closure $corrupt): void
+    {
+        config(['kb.ocr.fake.pages' => [['markdown' => 'Alpha', 'confidence' => 0.8]]]);
+        $converter = $this->app->make(OcrConverter::class);
+        $converter->convert($this->image());
+        $run = OcrFigureStore::runKeyFor((string) base64_decode(FakeOcrDriver::PNG_1X1, true), 'fake', OcrService::runVariant('fake', true));
+        $path = "docs/scan.png.ocr/{$run}/result.json";
+        $recorded = json_decode((string) Storage::disk('kb')->get($path), true);
+        Storage::disk('kb')->put($path, (string) json_encode($corrupt($recorded)));
+
+        config(['kb.ocr.fake.pages' => [['markdown' => 'Beta (proves the driver actually ran again)', 'confidence' => 0.5]]]);
+        $again = $converter->convert($this->image());
+
+        $this->assertFalse($again->extractionMeta['ocr']['reused']);
+        $this->assertStringContainsString('Beta (proves the driver actually ran again)', $again->markdown);
+        $this->assertStringNotContainsString('Alpha', $again->markdown);
     }
 
     #[Test]

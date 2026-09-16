@@ -697,7 +697,7 @@ final class OcrService
             // driver (paid, remote for some), never writes `.ocr/` — not even
             // a reservation refresh — never meters. A recorded run is shown
             // read-only, outside the reservation (it holds no reference).
-            $reused = $reuseAllowed ? $this->reusableResult($disk, $doc->sourcePath, $prefix, $runKey, $driver->name()) : null;
+            $reused = $reuseAllowed ? $this->reusableResult($disk, $doc->sourcePath, $prefix, $runKey, $driver->name(), $pages) : null;
             if ($reused === null) {
                 $assertRunnable();
 
@@ -732,7 +732,7 @@ final class OcrService
                 // refresh that fails is a failed ingest, never a row that
                 // cites figures a sweep may already have taken.
                 if ($reuseAllowed) {
-                    $reused = $this->reusableResult($disk, $doc->sourcePath, $prefix, $runKey, $driver->name());
+                    $reused = $this->reusableResult($disk, $doc->sourcePath, $prefix, $runKey, $driver->name(), $pages);
                 }
                 if ($reused !== null) {
                     $result = $reused['result'];
@@ -990,9 +990,15 @@ final class OcrService
     }
 
     /**
+     * `$expectedPages` is the SAME number `assertWithinLimits()` already
+     * computed for this document before this is called — the one a fresh
+     * remote run is required to match (line ~758) — so a reused run is held
+     * to the identical bar: it can never silently stand in for a document
+     * whose page count it does not match.
+     *
      * @return array{result: OcrResult, written: list<array{path: string, page: int, index: int, bytes: int, relative: string}>}|null
      */
-    private function reusableResult(string $disk, string $sourcePath, string $prefix, string $runKey, string $driverName): ?array
+    private function reusableResult(string $disk, string $sourcePath, string $prefix, string $runKey, string $driverName, int $expectedPages): ?array
     {
         $recorded = $this->figures->loadResult($disk, $sourcePath, $prefix, $runKey);
         if ($recorded === null || ($recorded['driver'] ?? null) !== $driverName || ! is_array($recorded['pages'] ?? null)) {
@@ -1002,15 +1008,16 @@ final class OcrService
         $storage = Storage::disk($disk);
         $written = [];
         foreach ((array) ($recorded['figures'] ?? []) as $figure) {
-            if (! is_array($figure) || ! isset($figure['path']) || ! $storage->exists((string) $figure['path'])) {
-                // A figure went missing (manual cleanup): the run is stale, re-run.
+            if (! self::isValidRecordedFigure($figure) || ! $storage->exists((string) $figure['path'])) {
+                // A malformed entry, or a figure gone missing (manual
+                // cleanup): the run is stale either way, re-run.
                 return null;
             }
             $written[] = [
                 'path' => (string) $figure['path'],
                 'relative' => (string) ($figure['relative'] ?? ''),
-                'page' => (int) ($figure['page'] ?? 0),
-                'index' => (int) ($figure['index'] ?? 0),
+                'page' => (int) $figure['page'],
+                'index' => (int) $figure['index'],
                 'bytes' => (int) ($figure['bytes'] ?? 0),
             ];
         }
@@ -1023,24 +1030,83 @@ final class OcrService
             $figuresByPage[$entry['page']][] = new OcrFigure($entry['page'], $entry['index'], '', $ext);
         }
 
+        // PR #492 Copilot round-1 — a parseable-but-corrupt recording
+        // (`{}`, a page missing its number, two pages sharing one) used to
+        // silently become an OcrResult with empty Markdown or a shrunk page
+        // set, replacing a valid prior run without ever calling the driver
+        // again. Every page must carry a real, unique, 1-based number and a
+        // string Markdown body — one violation invalidates the WHOLE run
+        // (a partially-trustworthy recording is not a partially-reusable
+        // one) — and the page numbers recovered must be exactly the
+        // 1..$expectedPages this ingest actually needs, not merely present.
         $pages = [];
+        $seenNumbers = [];
         foreach ($recorded['pages'] as $page) {
-            if (! is_array($page)) {
+            if (! self::isValidRecordedPage($page)) {
                 return null;
             }
-            $number = (int) ($page['number'] ?? 0);
+            $number = (int) $page['number'];
+            if (isset($seenNumbers[$number])) {
+                return null;
+            }
+            $seenNumbers[$number] = true;
             $pages[] = new OcrPage(
                 number: $number,
-                markdown: (string) ($page['markdown'] ?? ''),
+                markdown: $page['markdown'],
                 confidence: isset($page['confidence']) ? (float) $page['confidence'] : null,
                 figures: $figuresByPage[$number] ?? [],
             );
+        }
+        if (count($pages) !== $expectedPages || $expectedPages < 1) {
+            return null;
+        }
+        ksort($seenNumbers);
+        if (array_keys($seenNumbers) !== range(1, $expectedPages)) {
+            return null;
         }
 
         return [
             'result' => new OcrResult(driver: $driverName, pages: $pages, meta: (array) ($recorded['meta'] ?? [])),
             'written' => $written,
         ];
+    }
+
+    /**
+     * @param  mixed  $page  a `pages[]` entry straight from decoded JSON
+     */
+    private static function isValidRecordedPage(mixed $page): bool
+    {
+        if (! is_array($page)) {
+            return false;
+        }
+        $number = $page['number'] ?? null;
+        $isPositiveInt = is_int($number) || (is_string($number) && ctype_digit($number) && $number !== '0');
+        if (! $isPositiveInt || (int) $number < 1) {
+            return false;
+        }
+        if (! is_string($page['markdown'] ?? null)) {
+            return false;
+        }
+        if (isset($page['confidence']) && ! is_int($page['confidence']) && ! is_float($page['confidence'])) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * @param  mixed  $figure  a `figures[]` entry straight from decoded JSON
+     */
+    private static function isValidRecordedFigure(mixed $figure): bool
+    {
+        if (! is_array($figure) || ! isset($figure['path']) || ! is_string($figure['path']) || $figure['path'] === '') {
+            return false;
+        }
+        $page = $figure['page'] ?? null;
+        $index = $figure['index'] ?? null;
+
+        return (is_int($page) || (is_string($page) && ctype_digit($page)))
+            && (is_int($index) || (is_string($index) && ctype_digit($index)));
     }
 
     /**

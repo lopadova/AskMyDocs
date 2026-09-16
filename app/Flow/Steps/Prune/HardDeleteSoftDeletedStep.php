@@ -59,7 +59,17 @@ final class HardDeleteSoftDeletedStep implements FlowStepHandler
             ->orderBy('id')
             ->chunkById(100, function ($rows) use (&$deleted, &$filesKept): void {
                 foreach ($rows as $row) {
-                    $hadFile = $row->source_path !== null && $row->source_path !== '';
+                    // PR #492 Copilot round-1 — a `markdown_only`-retention
+                    // row keeps a non-empty `source_path` after its original
+                    // was intentionally dropped (`DocumentIngestor`, same
+                    // reading as `DocumentDeleter::deleteOrphans()` above):
+                    // `delete()` then answers `file_deleted=false` for a file
+                    // that was never there to keep, and counting it here
+                    // reports bytes retained that `kb:prune-orphan-files` has
+                    // nothing to reap.
+                    $metadata = is_array($row->metadata) ? $row->metadata : [];
+                    $sourceWasDropped = ($metadata['source_dropped'] ?? false) === true;
+                    $hadFile = $row->source_path !== null && $row->source_path !== '' && ! $sourceWasDropped;
                     $result = $this->deleter->delete($row, force: true);
                     if ($hadFile && ($result['file_deleted'] ?? false) === false) {
                         $filesKept++;

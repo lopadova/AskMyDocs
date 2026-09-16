@@ -144,4 +144,51 @@ class PruneDeletedDocumentsCommandTest extends TestCase
 
         Storage::disk('kb')->assertMissing('docs/lonely.md');
     }
+
+    /**
+     * v8.36 / ADR 0030 §3 + PR #492 Copilot round-1 — a `markdown_only`
+     * retention row keeps a non-empty `source_path` after `DocumentIngestor`
+     * intentionally drops the original and stamps `metadata.source_dropped`
+     * (the SAME stamp `DocumentDeleter::deleteOrphans()` already reads to
+     * skip these rows). `delete()` correctly answers `file_deleted=false`
+     * for a file that was never there — but that is retention working as
+     * designed, not bytes the sweep failed to reap: it must NOT surface as
+     * `files_kept`.
+     */
+    public function test_does_not_report_files_kept_for_a_row_whose_source_was_intentionally_dropped(): void
+    {
+        // No file written to `kb` disk at all — `source_dropped` rows never
+        // have one, by construction of the retention mode this simulates.
+        $document = KnowledgeDocument::create([
+            'project_key' => 'demo',
+            'source_type' => 'markdown',
+            'title' => 'Sample',
+            'source_path' => 'docs/dropped.md',
+            'language' => 'it',
+            'access_scope' => 'internal',
+            'status' => 'active',
+            'document_hash' => 'v-dropped',
+            'version_hash' => 'v-dropped',
+            'metadata' => ['disk' => 'kb', 'prefix' => '', 'source_dropped' => true],
+            'indexed_at' => now(),
+        ]);
+        KnowledgeChunk::create([
+            'knowledge_document_id' => $document->id,
+            'project_key' => $document->project_key,
+            'chunk_order' => 0,
+            'chunk_hash' => hash('sha256', 'chunk-'.$document->id),
+            'chunk_text' => 'body',
+            'metadata' => [],
+            'embedding' => [0.1],
+        ]);
+        $document->delete();
+        KnowledgeDocument::withTrashed()->where('id', $document->id)->update(['deleted_at' => now()->subDays(60)]);
+
+        $this->artisan('kb:prune-deleted', ['--days' => 30])
+            ->expectsOutputToContain('Pruned 1')
+            ->doesntExpectOutputToContain('files_kept=')
+            ->assertSuccessful();
+
+        $this->assertNull(KnowledgeDocument::withTrashed()->find($document->id));
+    }
 }
