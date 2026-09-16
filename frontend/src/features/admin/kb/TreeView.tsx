@@ -35,6 +35,13 @@ export interface TreeViewProps {
     onModeChange: (next: KbTreeMode) => void;
     withTrashed: boolean;
     onWithTrashedChange: (next: boolean) => void;
+    /**
+     * Offer the "Include deleted" checkbox. Default true keeps the admin
+     * explorer unchanged; the reader-side Browse KB page passes false,
+     * because its endpoint never returns soft-deleted documents (R2) and
+     * a control that cannot change the result is worse than no control.
+     */
+    allowTrashedToggle?: boolean;
     selectedPath: string | null;
     onSelect: (path: string | null, meta: KbTreeNode | null) => void;
 }
@@ -49,6 +56,7 @@ export function TreeView(props: TreeViewProps) {
         onModeChange,
         withTrashed,
         onWithTrashedChange,
+        allowTrashedToggle = true,
         selectedPath,
         onSelect,
     } = props;
@@ -142,23 +150,25 @@ export function TreeView(props: TreeViewProps) {
                         <option value="canonical">Canonical only</option>
                         <option value="raw">Raw only</option>
                     </select>
-                    <label
-                        style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: 6,
-                            fontSize: 12,
-                            color: 'var(--fg-2)',
-                        }}
-                    >
-                        <input
-                            type="checkbox"
-                            data-testid="kb-tree-with-trashed"
-                            checked={withTrashed}
-                            onChange={(e) => onWithTrashedChange(e.target.checked)}
-                        />
-                        Include deleted
-                    </label>
+                    {allowTrashedToggle ? (
+                        <label
+                            style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 6,
+                                fontSize: 12,
+                                color: 'var(--fg-2)',
+                            }}
+                        >
+                            <input
+                                type="checkbox"
+                                data-testid="kb-tree-with-trashed"
+                                checked={withTrashed}
+                                onChange={(e) => onWithTrashedChange(e.target.checked)}
+                            />
+                            Include deleted
+                        </label>
+                    ) : null}
                     {data ? (
                         <span
                             data-testid="kb-tree-counts"
