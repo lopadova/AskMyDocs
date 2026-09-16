@@ -77,6 +77,17 @@ final class KbTextCorrectionCandidate extends Model
         return $query->where('status', self::STATUS_PENDING);
     }
 
+    /**
+     * Each field is hashed to a FIXED-length (64 hex char) digest before
+     * concatenation, so the final digest is injective over the 7-tuple: no
+     * field boundary can shift between two DIFFERENT tuples and collide.
+     * A plain delimiter-joined string is NOT injective when old_text/
+     * new_text are arbitrary OCR text — moving a delimiter character from
+     * the end of one field to the start of the next can reproduce the
+     * same preimage for a legitimately different proposal, which would
+     * make the idempotency_key UNIQUE constraint reject it as a spurious
+     * replay (Copilot PR #494).
+     */
     public static function idempotencyKeyFor(
         string $tenantId,
         string $userIdentity,
@@ -86,14 +97,19 @@ final class KbTextCorrectionCandidate extends Model
         string $oldText,
         string $newText,
     ): string {
-        return hash('sha256', implode('.', [
-            $tenantId,
-            $userIdentity,
-            (string) $documentId,
-            $versionHash,
-            (string) $pageNumber,
-            $oldText,
-            $newText,
-        ]));
+        $digests = array_map(
+            static fn (string $part): string => hash('sha256', $part),
+            [
+                $tenantId,
+                $userIdentity,
+                (string) $documentId,
+                $versionHash,
+                (string) $pageNumber,
+                $oldText,
+                $newText,
+            ],
+        );
+
+        return hash('sha256', implode('', $digests));
     }
 }

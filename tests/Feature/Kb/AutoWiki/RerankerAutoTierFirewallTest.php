@@ -39,6 +39,14 @@ final class RerankerAutoTierFirewallTest extends TestCase
         return $ranked->mapWithKeys(fn (array $c) => [(int) $c['chunk_id'] => (float) $c['rerank_score']])->all();
     }
 
+    /**
+     * @return array<int, float> chunk_id => rerank_detail.canonical_penalty
+     */
+    private function canonicalPenaltyById(Collection $ranked): array
+    {
+        return $ranked->mapWithKeys(fn (array $c) => [(int) $c['chunk_id'] => (float) $c['rerank_detail']['canonical_penalty']])->all();
+    }
+
     public function test_human_outranks_auto_outranks_raw(): void
     {
         config([
@@ -112,8 +120,18 @@ final class RerankerAutoTierFirewallTest extends TestCase
             $this->chunk(2, canonical: false, generationSource: 'human'),
         ]);
 
-        $scores = $this->scoreById((new Reranker)->rerank('cache strategy', $chunks, limit: 10));
+        $ranked = (new Reranker)->rerank('cache strategy', $chunks, limit: 10);
+        $scores = $this->scoreById($ranked);
+        $penalties = $this->canonicalPenaltyById($ranked);
 
+        // Copilot PR #494 — an equality-only assertion would still pass if
+        // the implementation wrongly applied the SAME nonzero auto-tier
+        // penalty to every non-canonical `human` row (both sides shifted by
+        // the same amount tie just as well as both sides shifted by zero).
+        // Pin the actual mechanism instead: rerank_detail.canonical_penalty
+        // must be the known zero baseline for BOTH rows.
+        $this->assertSame(0.0, $penalties[1], 'a non-canonical human-default row must pay zero auto-tier penalty');
+        $this->assertSame(0.0, $penalties[2], 'a non-canonical human-default row must pay zero auto-tier penalty');
         $this->assertEqualsWithDelta($scores[1], $scores[2], 1e-9, 'two non-canonical human-default rows must still tie');
     }
 

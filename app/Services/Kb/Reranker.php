@@ -255,11 +255,22 @@ class Reranker
     /**
      * Additive score delta from the canonical layer.
      *
-     *   boost   = +priorityWeight × retrieval_priority       (0..0.30 at default weight)
-     *   penalty = -configured penalty per non-retrievable status
+     *   boost   = +priorityWeight × retrieval_priority       (canonical-only,
+     *             0..0.30 at default weight — a retrieval_priority reads
+     *             meaningless on a non-canonical row)
+     *   penalty = -autoTierPenalty(generation_source)        (BOTH canonical
+     *             and non-canonical rows, v8.37/W3 ADR 0031 §5)
+     *             -statusPenalty(canonical_status)           (canonical-only)
      *
-     * Non-canonical chunks get zero adjustment (delta = 0) so legacy
-     * documents rank identically to pre-canonical behaviour.
+     * A non-canonical, `generation_source = 'human'` chunk (every pre-v8.11
+     * canonical row and every pre-v8.37 row of any kind — 'human' is the
+     * column default) gets zero adjustment, so legacy documents rank
+     * identically to pre-canonical / pre-Digitization-Review behaviour. A
+     * non-canonical `generation_source = 'auto'` chunk (an OCR'd scan's
+     * default state before review, W1) is NOT zero-delta any more: it pays
+     * the same auto-tier penalty a canonical `auto` doc pays, so a reviewed
+     * (`human`) sibling scan always outranks it (ADR 0014's firewall,
+     * closed for the OCR case this method used to miss).
      *
      * @return array{delta: float, boost: float, penalty: float}
      */

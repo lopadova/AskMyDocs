@@ -43,6 +43,13 @@ return new class extends Migration
                 ['tenant_id', 'knowledge_document_id', 'status'],
                 'idx_kb_correction_candidates_tenant_doc_status',
             );
+            // Copilot PR #494 — every index above LEADS with tenant_id, but
+            // the FK cascade fired by a hard document delete probes by
+            // knowledge_document_id ALONE (Postgres does not auto-index FK
+            // columns). A document-id-leading index keeps that cascade a
+            // fast index scan instead of a full-table scan as this table
+            // grows.
+            $table->index('knowledge_document_id', 'idx_kb_correction_candidates_document_id');
         });
     }
 

@@ -91,6 +91,39 @@ final class KbTextCorrectionCandidateTest extends TestCase
         $this->assertSame(64, strlen($key('teh cache')), 'sha256 hex digest is 64 chars');
     }
 
+    /**
+     * Copilot PR #494 (critical) — a naive delimiter-joined preimage is NOT
+     * injective when old_text/new_text are arbitrary OCR text: shifting a
+     * delimiter character across the old_text/new_text boundary can
+     * reproduce the exact same joined string for two GENUINELY DIFFERENT
+     * proposals. Here "teh cache." + " the cach" and "teh cache" + ". the
+     * cach" both join (on '.') to "teh cache. the cach" — a real collision
+     * under the old implementation. The fixed implementation hashes each
+     * field to a fixed-length digest BEFORE concatenating, so the two
+     * distinct 7-tuples must produce distinct keys.
+     */
+    public function test_idempotency_key_for_does_not_collide_across_a_shifted_field_boundary(): void
+    {
+        $key = fn (string $oldText, string $newText) => KbTextCorrectionCandidate::idempotencyKeyFor(
+            tenantId: 'default',
+            userIdentity: 'agent:claude',
+            documentId: 42,
+            versionHash: str_repeat('b', 64),
+            pageNumber: 1,
+            oldText: $oldText,
+            newText: $newText,
+        );
+
+        $a = $key('teh cache.', ' the cach');
+        $b = $key('teh cache', '. the cach');
+
+        $this->assertNotSame(
+            $a,
+            $b,
+            'shifting a delimiter across the old_text/new_text boundary must NOT collide',
+        );
+    }
+
     public function test_deleting_the_document_cascades_its_correction_candidates(): void
     {
         $doc = $this->makeDoc();

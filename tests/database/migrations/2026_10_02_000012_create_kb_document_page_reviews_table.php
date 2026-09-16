@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -37,7 +38,28 @@ return new class extends Migration
                 ['tenant_id', 'knowledge_document_id', 'status'],
                 'idx_kb_page_reviews_tenant_doc_status',
             );
+            // Copilot PR #494 — every index above LEADS with tenant_id, but
+            // the FK cascade fired by a hard document delete probes by
+            // knowledge_document_id ALONE (Postgres does not auto-index FK
+            // columns). A document-id-leading index keeps that cascade a
+            // fast index scan instead of a full-table scan as this table
+            // grows.
+            $table->index('knowledge_document_id', 'idx_kb_page_reviews_document_id');
         });
+
+        // Copilot PR #494 — page_number is 1-based (ADR 0031 §2); a bare
+        // unsignedInteger still admits 0. KbReviewService::markPageReviewed()
+        // guards this at the application layer (the single write path every
+        // surface funnels through, R44) — this CHECK is defense-in-depth on
+        // Postgres, the production driver. SQLite cannot ALTER TABLE ADD a
+        // CHECK constraint after CREATE TABLE (same limitation the pgvector
+        // fallback above this migration's sibling already documents), so the
+        // SQLite test mirror relies on the application-layer guard alone.
+        if (DB::getDriverName() === 'pgsql') {
+            DB::statement(
+                'ALTER TABLE kb_document_page_reviews ADD CONSTRAINT chk_kb_page_reviews_page_number_positive CHECK (page_number >= 1)',
+            );
+        }
     }
 
     public function down(): void
