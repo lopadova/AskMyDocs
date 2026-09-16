@@ -28,6 +28,9 @@ const PASSWORD = 'password';
 // temporal-dead-zone ReferenceError, not a hoisted value.
 const ALL_ROLES = ['system-admin', 'super-admin', 'admin', 'dpo', 'editor', 'viewer'] as const;
 
+/** Every role the seeder gives an actual tenant membership. */
+const TENANT_MEMBER_ROLES = ['super-admin', 'admin', 'dpo', 'editor', 'viewer'] as const;
+
 // Representative no-path-param admin endpoint → exact allow-set of roles.
 // Mirrors AdminAuthorizationMatrixTest::matrix().
 const ENDPOINTS: ReadonlyArray<{ uri: string; allowed: readonly string[] }> = [
@@ -42,11 +45,20 @@ const ENDPOINTS: ReadonlyArray<{ uri: string; allowed: readonly string[] }> = [
     { uri: '/api/admin/logs/chat', allowed: ['admin', 'super-admin'] },
     { uri: '/api/admin/kb/tree', allowed: ['admin', 'super-admin'] },
     // v8.x — authenticated reader surfaces. NO role gate by design: every
-    // member of the tenant may reach them, and the real boundary is
+    // MEMBER of the tenant may reach them, and the real boundary is
     // per-user ownership (chat-folders) or the SQL access scope (kb/tree).
     // Listed so a future role gate cannot appear here unnoticed.
-    { uri: '/api/chat-folders', allowed: ALL_ROLES },
-    { uri: '/api/kb/tree', allowed: ALL_ROLES },
+    //
+    // `system-admin` is deliberately absent, and the PHP matrix row for
+    // the same URIs deliberately includes it. Both are right: since v8.30
+    // no role bypasses tenant membership, and the DemoSeeder
+    // system-administrator is a GLOBAL platform account with none — so
+    // `tenant.authorize` refuses it here, correctly. The PHPUnit matrix
+    // synthesizes a membership for every role it creates
+    // (AdminAuthorizationMatrixTest::userWithRole), which is why the same
+    // allow-set reads differently there.
+    { uri: '/api/chat-folders', allowed: TENANT_MEMBER_ROLES },
+    { uri: '/api/kb/tree', allowed: TENANT_MEMBER_ROLES },
     // gate-based groups
     { uri: '/api/admin/connectors', allowed: ['admin', 'super-admin'] },
     // v8.27 — API Connector (Connettore API) admin group (gate: manageConnectors;
