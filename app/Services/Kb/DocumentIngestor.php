@@ -915,10 +915,15 @@ class DocumentIngestor
     /**
      * Write this version's Markdown to a temp file beside its final artifact
      * path — or return null when nothing is to be stored (flag off,
-     * `reference_only` retention, dry run). A configured prefix that cannot
-     * form an artifact root (a traversal, the reserved `.artifacts` segment)
-     * throws here, BEFORE anything is committed: it fails the ingest loudly —
-     * a misconfiguration is not a document to store half-way (R14).
+     * `reference_only` retention, dry run, or a recorded prefix that cannot
+     * name an artifact root — a traversal, the reserved `.artifacts`
+     * segment). That last case does NOT throw: `rootFor()` would (SEC-PATH-001),
+     * which would fail the whole ingest — including a forced re-embed of a
+     * version whose bytes are fine — over a namespace problem unrelated to
+     * those bytes. Staging nothing is the fail-closed answer for a WRITE
+     * instead: a warning is logged, no artifact is staged for this version,
+     * an existing pointer on the row is left as it is, and the row still
+     * commits with its content re-chunked (see the guard below).
      *
      * @param  array<string,mixed>  $metadata
      * @return array{disk: string, tmp: string, final: string}|null
