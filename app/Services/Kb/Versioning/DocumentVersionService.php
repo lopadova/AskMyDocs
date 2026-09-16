@@ -14,6 +14,7 @@ use App\Support\Kb\SettingInt;
 use App\Support\Kb\StorageNamespace;
 use App\Support\MarkdownDiff;
 use App\Support\TenantContext;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -607,11 +608,50 @@ final class DocumentVersionService
                 }
             }
 
-            $locked->update(array_merge([
-                'status' => 'active',
-                'indexed_at' => now(),
-                'metadata' => array_merge($lockedMetadata, ['restores' => $restores]),
-            ], $identity));
+            // The probe above only ever finds an EXISTING holder — it has
+            // nothing to lock when the slot is genuinely free. Two restores
+            // in different families can both observe "free" and race to
+            // claim the SAME identity; the loser's write here is the only
+            // moment left to catch it, so it runs inside a nested transaction
+            // (a SAVEPOINT — `DB::transaction()` called while one is already
+            // open) and the composite unique is the arbiter. A SAVEPOINT
+            // keeps the failure local to this statement: without it, Postgres
+            // marks the WHOLE outer transaction aborted and every statement
+            // after — including the graceful retry below — would fail too.
+            try {
+                DB::transaction(function () use ($locked, $identity, $lockedMetadata, $restores): void {
+                    $locked->update(array_merge([
+                        'status' => 'active',
+                        'indexed_at' => now(),
+                        'metadata' => array_merge($lockedMetadata, ['restores' => $restores]),
+                    ], $identity));
+                });
+            } catch (QueryException $e) {
+                if ($identity === [] || ! $this->isCanonicalIdentityConflict($e)) {
+                    throw $e;
+                }
+                Log::warning('DocumentVersionService: restoring without the canonical identity — a concurrent restore claimed its slug or doc_id first', [
+                    'knowledge_document_id' => (int) $locked->id,
+                    'project_key' => (string) $locked->project_key,
+                    'slug' => $identity['slug'] ?? null,
+                    'doc_id' => $identity['doc_id'] ?? null,
+                ]);
+                $identity = [];
+                $restoreCanonical = false;
+                // The failed attempt's `fill()` left `$locked` dirty with the
+                // identity it could not claim — the ROLLBACK TO SAVEPOINT
+                // undid the WRITE, not the in-memory model, so retrying on
+                // this same instance would silently resend the stale values
+                // even though this call omits them. The row's OWN lock was
+                // taken before the savepoint and survives the rollback, so a
+                // plain re-fetch (no re-lock needed) is enough to retry clean.
+                $locked = $locked->fresh();
+                $locked->update(array_merge([
+                    'status' => 'active',
+                    'indexed_at' => now(),
+                    'metadata' => array_merge($lockedMetadata, ['restores' => $restores]),
+                ], $identity));
+            }
 
             $restoredId = (int) $locked->id;
             $restoredProjectKey = (string) $locked->project_key;
@@ -803,5 +843,34 @@ final class DocumentVersionService
             ->value('id');
 
         return $holder !== null ? (int) $holder : null;
+    }
+
+    /**
+     * Recognise the `uq_kb_doc_tenant_slug` / `uq_kb_doc_tenant_doc_id`
+     * unique violation across drivers — the arbiter for the race
+     * {@see conflictingCanonicalHolderId()} cannot cover: two restores
+     * claiming the SAME previously-free identity both see "nothing to lock"
+     * and only the database catches the second write.
+     *
+     * R14: confirm it IS an integrity/unique constraint violation via
+     * SQLSTATE BEFORE inspecting the message, so a schema error or an
+     * unrelated constraint that happens to mention `knowledge_documents` is
+     * never misclassified as a race to gracefully degrade past. SQLSTATE
+     * 23505 = Postgres unique; 23000 = MySQL/SQLite integrity (covers
+     * duplicate-key + UNIQUE). The message check then narrows to the two
+     * identity constraints specifically: the named index (Postgres/MySQL)
+     * or the column-list form SQLite emits.
+     */
+    private function isCanonicalIdentityConflict(QueryException $e): bool
+    {
+        if (! in_array($e->errorInfo[0] ?? '', ['23000', '23505'], true)) {
+            return false;
+        }
+        $message = $e->getMessage();
+
+        return str_contains($message, 'uq_kb_doc_tenant_slug')
+            || str_contains($message, 'uq_kb_doc_tenant_doc_id')
+            || str_contains($message, 'knowledge_documents.slug')
+            || str_contains($message, 'knowledge_documents.doc_id');
     }
 }

@@ -341,6 +341,64 @@ final class KbDocumentVersionControllerTest extends TestCase
     }
 
     /**
+     * Copilot round-8 finding on PR #479: `conflictingCanonicalHolderId()`
+     * only ever locks an EXISTING holder — when the slot is genuinely free
+     * at probe time there is nothing to lock, so two restores in different
+     * families can both see "free" and race to claim the SAME identity.
+     * This stages that exact race in-process (no cross-process interleaving
+     * can be staged against SQLite, same limitation documented on the
+     * archive-sweep test in ConversionArtifactsIngestTest): `DB::listen()`
+     * fires right after the probe SELECT returns "nothing held" and, in
+     * that window, makes ANOTHER family commit the same slug directly —
+     * the concurrent restore that wins the race. Only then does THIS
+     * restore's own identity-assignment UPDATE run and hit the composite
+     * unique the probe never got a chance to see coming.
+     */
+    public function test_a_slug_claimed_by_a_concurrent_restore_in_the_probes_blind_spot_still_degrades_the_restore(): void
+    {
+        $admin = $this->makeAdmin();
+        $archived = $this->makeVersion('v1qqq', 'archived', 'old body', wasCanonical: true);
+        $this->makeVersion('v2ppp', 'active', 'new body');
+        // The race's eventual winner: a real row NOT holding `dec-1` yet
+        // when the probe runs — that is the whole point, nothing exists for
+        // the probe to find or lock.
+        $winner = $this->makeVersion('v3rrr', 'active', 'other doc', sourcePath: 'docs/other.md');
+        \Illuminate\Support\Facades\Log::spy();
+
+        $fired = false;
+        \Illuminate\Support\Facades\DB::listen(function ($query) use (&$fired, $winner): void {
+            if ($fired || ! str_contains($query->sql, 'knowledge_documents')) {
+                return;
+            }
+            $lower = strtolower($query->sql);
+            // The identity probe is the only SELECT in this flow that tests
+            // both `slug` and `doc_id` — it just reported the slot free.
+            if (! str_starts_with(ltrim($lower), 'select') || ! str_contains($lower, 'slug') || ! str_contains($lower, 'doc_id')) {
+                return;
+            }
+            $fired = true;
+            \Illuminate\Support\Facades\DB::table('knowledge_documents')
+                ->where('id', $winner->id)
+                ->update(['slug' => 'dec-1', 'doc_id' => 'dec-1', 'is_canonical' => true, 'canonical_status' => 'accepted']);
+        });
+
+        $this->actingAs($admin)->postJson("/api/admin/kb/documents/{$archived->id}/restore-version")
+            ->assertOk()
+            ->assertJsonPath('data.status', 'active')
+            ->assertJsonPath('data.is_canonical', false);
+
+        $this->assertTrue($fired, 'the race window was actually staged');
+        $archived->refresh();
+        $this->assertSame('active', $archived->status, 'the content is restored either way');
+        $this->assertNull($archived->slug);
+        $this->assertFalse((bool) $archived->is_canonical);
+        $this->assertSame('dec-1', $winner->refresh()->slug, 'the concurrent winner keeps the slug it committed first');
+        \Illuminate\Support\Facades\Log::shouldHaveReceived('warning')
+            ->withArgs(static fn (string $message): bool => str_contains($message, 'claimed its slug or doc_id first'))
+            ->once();
+    }
+
+    /**
      * The probe has to see what the INDEX sees, not what this reader is
      * allowed to read. A soft-deleted holder keeps its slug — the unique
      * still rejects the write — so a probe under the default scopes would
