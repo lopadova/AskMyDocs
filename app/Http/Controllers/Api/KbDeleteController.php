@@ -108,6 +108,13 @@ class KbDeleteController extends Controller
                 'document_id' => (int) ($loadOutput['document_id'] ?? 0),
                 'mode' => $hardDeleted ? 'hard' : 'soft',
                 'file_deleted' => (bool) ($fileOutput['file_deleted'] ?? false),
+                // v8.36 / ADR 0030 §8 / PR #479 Copilot review round 5 —
+                // additive (R27): whether THIS call also removed the row's
+                // version artifact. Read from `hard-delete-rows`' own step
+                // output, not `remove-file`'s (the source file and the
+                // artifact are two different objects removed by two
+                // different steps).
+                'artifact_deleted' => (bool) ($hardOutput['artifact_deleted'] ?? false),
                 'status' => 'deleted',
             ];
         }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Kb\Ocr;
 
+use App\Services\Kb\Versioning\ConversionArtifactStore;
 use App\Support\Kb\HeldLock;
 use App\Support\Kb\LockLostException;
 use App\Support\KbPath;
@@ -317,6 +318,19 @@ final class OcrFigureStore
             return false;
         }
 
+        // v8.36 / PR #479 Copilot review round 5 (R43) — this method used to
+        // call Cache::lock() unconditionally, so a caller on a store without
+        // LockProvider (PruneOrphanFilesCommand's own "no mutex at all"
+        // fallback, added for exactly this case) got an uncaught throw here
+        // instead of the grace-only purge its own comment promises. The age
+        // grace is the ONLY guard on such a store — the same posture
+        // DocumentDeleter::removeSourceFileUnderGraceOnly() already takes for
+        // the source-file case — never a lock this deployment was not
+        // configured for.
+        if (! ConversionArtifactStore::cacheStoreCanLock()) {
+            return $this->purgeAtUnderGraceOnly($storage, $disk, $dir);
+        }
+
         // The whole removal — enumeration, each run, the directory itself —
         // runs under the assets-directory lock a converter holds for its
         // write phase (OcrService::underAssetsLock()): the per-run locks
@@ -406,6 +420,62 @@ final class OcrFigureStore
             $held->assertHeld('OCR assets directory purge');
         } catch (LockLostException $e) {
             Log::warning('OcrFigureStore: OCR assets directory kept — the lock lapsed during the purge; the next sweep decides', ['disk' => $disk, 'dir' => $dir, 'error' => $e->getMessage()]);
+
+            return false;
+        }
+        if (! $storage->deleteDirectory($dir)) {
+            throw new RuntimeException("OcrFigureStore: failed to remove OCR assets directory {$dir} on disk [{$disk}].");
+        }
+
+        return true;
+    }
+
+    /**
+     * v8.36 / PR #479 Copilot review round 5 — the lock-free twin of
+     * {@see purgeUnderAssetsLock()} for a cache store without `LockProvider`
+     * (R43): the same age-grace decision (`isInFlight()`), with no
+     * assets-directory lock and no per-run reservation at all — there is
+     * nothing to take them on. This is a narrower guarantee than the locked
+     * path: a converter could in principle start writing into a run between
+     * this method's age check and its delete, on a store that cannot
+     * exclude it either way. The grace window is the only defense such a
+     * store ever had before reservations existed (`removeSourceFileUnderGraceOnly()`
+     * takes the identical posture for the source file itself), so this
+     * restores that behaviour rather than crashing every call — the crash
+     * this method replaces reported "failed" for every aged, genuinely
+     * removable tree, which was strictly worse than the grace-only guard.
+     */
+    private function purgeAtUnderGraceOnly(Filesystem $storage, string $disk, string $dir): bool
+    {
+        $threshold = now()->getTimestamp() - self::inFlightGraceSeconds();
+        $kept = [];
+        foreach ($storage->directories($dir) as $runDir) {
+            if ($this->isInFlight($storage, $runDir, $threshold)) {
+                $kept[] = $runDir;
+                continue;
+            }
+            if (! $storage->deleteDirectory($runDir)) {
+                throw new RuntimeException("OcrFigureStore: failed to remove OCR run {$runDir} on disk [{$disk}].");
+            }
+        }
+
+        if ($kept !== []) {
+            Log::info('OcrFigureStore: OCR runs were kept — inside the in-flight grace (no lock-capable cache store to reserve them); the orphan sweep removes them once aged', [
+                'disk' => $disk,
+                'dir' => $dir,
+                'kept' => $kept,
+                'grace_seconds' => self::inFlightGraceSeconds(),
+            ]);
+
+            return false;
+        }
+
+        // Re-checked: a run written between the enumeration and this point
+        // is one to keep, never one to remove with its parent — the same
+        // re-check the locked path performs, just without a lock to hold
+        // across it.
+        if ($storage->directories($dir) !== []) {
+            Log::info('OcrFigureStore: a run appeared under the OCR assets directory during the purge; the directory is kept', ['disk' => $disk, 'dir' => $dir]);
 
             return false;
         }

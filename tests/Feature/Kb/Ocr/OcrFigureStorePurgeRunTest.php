@@ -61,4 +61,50 @@ final class OcrFigureStorePurgeRunTest extends TestCase
         $this->assertTrue($purged);
         $this->assertFalse(Storage::disk('kb')->directoryExists('docs/x.md.ocr/'.self::RUN));
     }
+
+    /**
+     * v8.36 / PR #479 Copilot review round 5 (R43) — `purge()`/`purgeBeside()`
+     * used to call `Cache::lock()` unconditionally, so a caller on a store
+     * without `LockProvider` (`PruneOrphanFilesCommand`'s own "no mutex at
+     * all" fallback) got an uncaught throw instead of the grace-only purge
+     * that branch's own comment promises. On such a store the age grace is
+     * the ONLY guard — an aged run purges by age alone, with no lock at all.
+     */
+    public function test_purge_beside_on_a_store_without_locks_removes_an_aged_run_by_grace_alone(): void
+    {
+        \Illuminate\Support\Facades\Cache::extend('nolock', static fn ($app) => \Illuminate\Support\Facades\Cache::repository(new \Tests\Fixtures\Cache\NoLockStore));
+        config(['cache.stores.nolock' => ['driver' => 'nolock'], 'cache.default' => 'nolock']);
+
+        $purged = app(OcrFigureStore::class)->purgeBeside('kb', 'docs/x.md');
+
+        $this->assertTrue($purged);
+        Storage::disk('kb')->assertMissing('docs/x.md.ocr/'.self::RUN);
+    }
+
+    /**
+     * Same no-lock store, but the run is still inside the grace: kept, not
+     * thrown, not reported failed. `Storage::fake('kb')` mtimes are the
+     * REAL filesystem clock, not Carbon's — this class's `setUp()` travels
+     * Carbon's `now()` forward so the threshold computed FROM it moves past
+     * every file written before that point (the pattern the other tests in
+     * this file rely on), which means a file written fresh IN this test
+     * body would still read as older than that already-advanced threshold.
+     * `touch()`-ing it to a REAL future mtime is the one way to land it
+     * inside the grace regardless (see `OcrServiceTouchRunBeforeCommitTest`'s
+     * docblock for the same distinction from the other side).
+     */
+    public function test_purge_beside_on_a_store_without_locks_keeps_a_run_still_inside_the_grace(): void
+    {
+        Storage::disk('kb')->put('docs/y.md.ocr/'.self::RUN.'/result.json', '{}');
+        $absolute = Storage::disk('kb')->path('docs/y.md.ocr/'.self::RUN.'/result.json');
+        touch($absolute, time() + 3600);
+        clearstatcache(true, $absolute);
+        \Illuminate\Support\Facades\Cache::extend('nolock', static fn ($app) => \Illuminate\Support\Facades\Cache::repository(new \Tests\Fixtures\Cache\NoLockStore));
+        config(['cache.stores.nolock' => ['driver' => 'nolock'], 'cache.default' => 'nolock']);
+
+        $purged = app(OcrFigureStore::class)->purgeBeside('kb', 'docs/y.md');
+
+        $this->assertFalse($purged);
+        Storage::disk('kb')->assertExists('docs/y.md.ocr/'.self::RUN.'/result.json');
+    }
 }

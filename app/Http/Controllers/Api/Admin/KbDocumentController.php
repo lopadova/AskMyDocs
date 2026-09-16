@@ -395,6 +395,12 @@ class KbDocumentController extends Controller
             'mode' => $result['mode'],
             'document_id' => $result['document_id'],
             'file_deleted' => (bool) ($result['file_deleted'] ?? false),
+            // v8.36 / ADR 0030 §8 / PR #479 Copilot review round 5 —
+            // additive (R27): whether this call also removed the row's
+            // version artifact. `DocumentDeleter::delete()`'s own result
+            // already carries it (this controller calls the deleter
+            // directly, not through the Flow saga).
+            'artifact_deleted' => (bool) ($result['artifact_deleted'] ?? false),
         ], Response::HTTP_OK);
     }
 

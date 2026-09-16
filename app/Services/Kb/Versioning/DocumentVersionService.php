@@ -680,7 +680,18 @@ final class DocumentVersionService
             }
         }
 
-        return $target->fresh() ?? throw new \RuntimeException('Restored version has been deleted.');
+        // v8.36 / PR #479 Copilot review round 5 (R30) — `$target->fresh()`
+        // is a bare primary-key lookup with NO tenant predicate at all;
+        // `BelongsToTenant` installs no global scope (the docblock above,
+        // on the transaction's own re-read, says so explicitly: "the stale
+        // $target ... cannot be trusted"). That re-read scopes by
+        // `forTenant($tenantId)`; this final response lookup, reached
+        // AFTER the transaction commits, must hold the same boundary —
+        // an ID that happens to collide across tenants, or a caller
+        // supplying an already-stale model, must never return another
+        // tenant's row here.
+        return KnowledgeDocument::query()->forTenant($tenantId)->find($target->id)
+            ?? throw new \RuntimeException('Restored version has been deleted.');
     }
 
     /**

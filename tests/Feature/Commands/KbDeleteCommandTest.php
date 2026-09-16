@@ -87,6 +87,34 @@ class KbDeleteCommandTest extends TestCase
         Storage::disk('kb')->assertMissing('docs/sample.md');
     }
 
+    /**
+     * v8.36 / ADR 0030 §8 / PR #479 Copilot review round 5 — additive
+     * (R27): this CLI discarded `hard-delete-rows`' `artifact_deleted`
+     * output entirely, so an operator running `kb:delete --force` had no
+     * way to know whether the row's version artifact was also removed.
+     */
+    public function test_force_flag_output_notes_artifact_removed(): void
+    {
+        config()->set('kb.deletion.soft_delete', true);
+        config()->set('kb.conversion_artifacts.enabled', true);
+        Storage::disk('kb')->put('docs/sample.md', 'hi');
+        $doc = $this->seedDocument();
+        $artifactPath = '.artifacts/default/demo/docs/sample.md.versions/'.$doc->version_hash.'.md';
+        Storage::disk('kb')->put($artifactPath, 'hi');
+        $doc->markdown_path = $artifactPath;
+        $doc->save();
+
+        $this->artisan('kb:delete', [
+            'path' => 'docs/sample.md',
+            '--project' => 'demo',
+            '--force' => true,
+        ])
+            ->expectsOutputToContain('(file removed) (artifact removed)')
+            ->assertSuccessful();
+
+        Storage::disk('kb')->assertMissing($artifactPath);
+    }
+
     public function test_soft_flag_overrides_hard_config_default(): void
     {
         config()->set('kb.deletion.soft_delete', false);

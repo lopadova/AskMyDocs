@@ -167,6 +167,42 @@ final class KbDocumentVersionControllerTest extends TestCase
     }
 
     /**
+     * v8.36 / PR #479 Copilot review round 5 (R30) — the response
+     * `DocumentVersionService::restore()` returns is read AFTER the
+     * transaction commits, by `$target->id` alone. `BelongsToTenant`
+     * installs no global scope, so that final read must carry an explicit
+     * tenant predicate itself — the transaction's own re-read already does
+     * (`forTenant($tenantId)->where('id', $target->id)->lockForUpdate()`),
+     * and this is the SAME boundary applied to the read that produces the
+     * caller-visible result. Captured via `DB::listen()` rather than
+     * engineering an actual cross-tenant PK collision (Laravel's default
+     * auto-increment `id` makes one artificial to construct honestly): the
+     * SQL of the LAST SELECT this endpoint issues on `knowledge_documents`
+     * by primary key must itself carry `tenant_id =`, proving the fix is on
+     * the query that answers the caller, not only the query inside the
+     * transaction.
+     */
+    public function test_restore_response_is_read_back_through_the_tenant_boundary(): void
+    {
+        $admin = $this->makeAdmin();
+        $archived = $this->makeVersion('v1ccc', 'archived', 'old body');
+
+        $lastFinalSelectSql = null;
+        \Illuminate\Support\Facades\DB::listen(function ($query) use (&$lastFinalSelectSql): void {
+            $sql = strtolower($query->sql);
+            if (str_starts_with($sql, 'select') && str_contains($sql, 'knowledge_documents') && str_contains($sql, '"id" = ?')) {
+                $lastFinalSelectSql = $sql;
+            }
+        });
+
+        $this->actingAs($admin)->postJson("/api/admin/kb/documents/{$archived->id}/restore-version")
+            ->assertOk();
+
+        $this->assertNotNull($lastFinalSelectSql, 'no primary-key SELECT on knowledge_documents was observed');
+        $this->assertStringContainsString('tenant_id', $lastFinalSelectSql, 'the final read-back must be tenant-scoped, not a bare PK lookup');
+    }
+
+    /**
      * R21 — concurrent-restore sweep.
      *
      * Simulates the PostgreSQL EvalPlanQual scenario where a second version
