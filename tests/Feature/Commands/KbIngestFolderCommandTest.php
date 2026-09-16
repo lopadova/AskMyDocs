@@ -161,6 +161,44 @@ class KbIngestFolderCommandTest extends TestCase
         $this->assertSame(1, KnowledgeDocument::count());
     }
 
+    /** ADR 0030 §3 — a `--sync` document ingested whose artifact publish was refused is counted as ingested, listed apart, and the run exits non-zero. */
+    public function test_sync_mode_reports_a_document_ingested_without_a_published_artifact_and_fails(): void
+    {
+        Queue::fake();
+        Storage::fake('kb');
+        Storage::disk('kb')->put('a.md', "# Hi\n\nBody.");
+        config()->set('kb.embedding_cache.enabled', false);
+        config()->set('ai.default', 'openai');
+        config()->set('ai.embeddings_provider', 'openai');
+        config()->set('kb.conversion_artifacts.enabled', true);
+        Http::fake([
+            'api.openai.com/*' => function ($request) {
+                $inputs = $request->data()['input'] ?? [];
+                $data = [];
+                foreach ($inputs as $i => $_text) {
+                    $data[] = ['index' => $i, 'embedding' => [0.1, 0.2, 0.3]];
+                }
+
+                return Http::response(['model' => 'text-embedding-3-small', 'data' => $data, 'usage' => ['total_tokens' => count($inputs)]], 200);
+            },
+        ]);
+        $healthy = Storage::disk('kb');
+        $root = $healthy->path('');
+        $adapter = new \Tests\Fixtures\Storage\WriteRefusingAdapter(new \League\Flysystem\Local\LocalFilesystemAdapter($root), static fn (string $path): bool => str_contains($path, '.versions/') && str_ends_with($path, '.md'));
+        Storage::set('kb', new \Illuminate\Filesystem\FilesystemAdapter(new \League\Flysystem\Filesystem($adapter), $adapter, ['root' => $root]));
+
+        try {
+            $this->artisan('kb:ingest-folder', ['--project' => 'demo', '--sync' => true])
+                ->expectsOutputToContain('ingested, artifact not published: a.md')
+                ->expectsOutputToContain('Ingested 1 document(s). 1 ingested without a published artifact')
+                ->assertExitCode(1);
+        } finally {
+            Storage::set('kb', $healthy);
+        }
+
+        $this->assertSame(1, KnowledgeDocument::count(), 'the document is ingested; only its artifact is missing');
+    }
+
     public function test_empty_folder_returns_success_with_warning(): void
     {
         Queue::fake();

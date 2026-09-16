@@ -111,6 +111,54 @@ final class IngestDocumentFlowTest extends TestCase
         $this->assertGreaterThan(0, $auditCount);
     }
 
+    /**
+     * ADR 0030 §3 — on the Flow saga a refused artifact publish fails the
+     * `persist-chunks` step AFTER the row committed: the row and its pointer
+     * stay (state `missing`, never rolled back — compensators fire only for
+     * downstream failures), the indexer step of THAT attempt does not run,
+     * and the retry — a new run under the attempt-salted key, an identical
+     * re-ingest — repairs the artifact and dispatches the indexer.
+     */
+    public function test_a_refused_artifact_publish_fails_the_persist_step_keeps_the_row_and_the_retry_repairs_and_indexes(): void
+    {
+        config(['kb.conversion_artifacts.enabled' => true]);
+        \Illuminate\Support\Facades\Queue::fake();
+        Storage::fake('kb');
+        Storage::disk('kb')->put('decisions/dec-flow-refused.md', "---\nid: DEC-2026-0778\nslug: dec-flow-refused\ntype: decision\nstatus: accepted\n---\n\n# Refused on the saga\n\nStill a decision.\n");
+        $healthy = Storage::disk('kb');
+        $root = $healthy->path('');
+        $adapter = new \Tests\Fixtures\Storage\WriteRefusingAdapter(new \League\Flysystem\Local\LocalFilesystemAdapter($root), static fn (string $path): bool => str_contains($path, '.versions/') && str_ends_with($path, '.md'));
+        Storage::set('kb', new \Illuminate\Filesystem\FilesystemAdapter(new \League\Flysystem\Filesystem($adapter), $adapter, ['root' => $root]));
+        $job = new IngestDocumentJob('demo', 'decisions/dec-flow-refused.md', 'kb', tenantId: 'test-tenant');
+
+        $first = Flow::execute(
+            IngestDocumentFlow::NAME,
+            $this->buildInput('test-tenant', 'demo', 'decisions/dec-flow-refused.md'),
+            FlowExecutionOptions::make(idempotencyKey: $job->idempotencyKeyFor('test-tenant', 1), correlationId: 'test-tenant'),
+        );
+
+        $this->assertNotSame(FlowRun::STATUS_SUCCEEDED, $first->status);
+        $this->assertSame('persist-chunks', $first->failedStep);
+        $doc = KnowledgeDocument::withoutGlobalScopes()->where('tenant_id', 'test-tenant')->where('source_path', 'decisions/dec-flow-refused.md')->first();
+        $this->assertNotNull($doc, 'the row committed before the publish and is never rolled back');
+        $this->assertTrue((bool) $doc->is_canonical);
+        $this->assertNotNull($doc->markdown_path, 'the pointer is kept as the repairable `missing` state');
+        \Illuminate\Support\Facades\Queue::assertNotPushed(\App\Jobs\CanonicalIndexerJob::class);
+
+        Storage::set('kb', $healthy);
+        $retry = Flow::execute(
+            IngestDocumentFlow::NAME,
+            $this->buildInput('test-tenant', 'demo', 'decisions/dec-flow-refused.md'),
+            FlowExecutionOptions::make(idempotencyKey: $job->idempotencyKeyFor('test-tenant', 2), correlationId: 'test-tenant'),
+        );
+
+        $this->assertNotSame($first->id, $retry->id, 'a retry is a new run: the failed run is not handed back');
+        $this->assertSame(FlowRun::STATUS_SUCCEEDED, $retry->status);
+        $this->assertSame(1, KnowledgeDocument::withoutGlobalScopes()->where('tenant_id', 'test-tenant')->count(), 'the retry is an identical re-ingest, not a second version');
+        Storage::disk('kb')->assertExists((string) $doc->markdown_path);
+        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\CanonicalIndexerJob::class, static fn (\App\Jobs\CanonicalIndexerJob $pushed): bool => (int) $pushed->documentId === (int) $doc->id);
+    }
+
     public function test_idempotency_returns_existing_run_on_redispatch(): void
     {
         Storage::fake('kb');

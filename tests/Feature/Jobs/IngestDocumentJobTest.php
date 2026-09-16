@@ -104,6 +104,8 @@ class IngestDocumentJobTest extends TestCase
         });
         $queueJob->shouldReceive('isReleased')->andReturn(false)->byDefault();
         $queueJob->shouldReceive('hasFailed')->andReturn(false)->byDefault();
+        // The flow idempotency key is salted per retry attempt (a first attempt keeps the plain key).
+        $queueJob->shouldReceive('attempts')->andReturn(1)->byDefault();
         $job->setJob($queueJob);
 
         // No exception escapes: the job is failed, not re-queued.

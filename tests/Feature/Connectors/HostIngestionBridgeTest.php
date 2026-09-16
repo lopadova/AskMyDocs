@@ -88,8 +88,9 @@ final class HostIngestionBridgeTest extends TestCase
             title: 'Page ABC',
             // `disk` / `prefix` name the storage namespace: a connector must
             // not point the queued read at another object than the one it
-            // persisted (ParseMarkdownStep honours `metadata.prefix`).
-            metadata: ['notion_page_id' => 'abc-123', 'dry_run' => true, 'ocr' => ['force' => true], 'prefix' => 'other-tenant', 'disk' => 'elsewhere'],
+            // persisted (ParseMarkdownStep honours `metadata.prefix`); the
+            // version actor is an audit identity the host derives (ADR 0030 §4).
+            metadata: ['notion_page_id' => 'abc-123', 'dry_run' => true, 'ocr' => ['force' => true], 'prefix' => 'other-tenant', 'disk' => 'elsewhere', 'version_actor' => 'user:1'],
             mimeType: 'text/markdown',
             tenantId: 'acme',
         );

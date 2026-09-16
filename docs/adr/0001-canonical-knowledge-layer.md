@@ -38,6 +38,9 @@ New columns (all nullable except booleans with sensible defaults):
 | `frontmatter_json` | jsonb | NULL | Full parsed YAML frontmatter |
 
 New composite unique indexes: `(project_key, doc_id)` and `(project_key, slug)`.
+(Superseded by `2026_10_02_000011_tenant_scope_knowledge_document_uniques.php`,
+which rebuilt both — and the idempotency anchor below — to start with
+`tenant_id`; see ADR 0030 §3.)
 
 ## Rationale
 

@@ -5,9 +5,14 @@ declare(strict_types=1);
 namespace App\Console\Commands;
 
 use App\Models\KnowledgeDocument;
+use App\Services\Kb\DocumentDeleter;
+use App\Services\Kb\Ocr\OcrFigureStore;
+use App\Services\Kb\Versioning\ConversionArtifactStore;
+use App\Support\Kb\StorageNamespace;
 use App\Support\TenantContext;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * v8.7/W5 — Cloud Time Machine retention.
@@ -28,35 +33,341 @@ final class PruneArchivedVersionsCommand extends Command
 
     protected $description = 'Hard-delete old archived document versions beyond the retention cap';
 
-    public function handle(TenantContext $tenants): int
+    public function handle(TenantContext $tenants, ConversionArtifactStore $artifacts): int
     {
         $keep = max(0, (int) ($this->option('keep') ?? config('kb.versioning.keep_archived', 10)));
         $dryRun = (bool) $this->option('dry-run');
 
         $tenantIds = $this->resolveTenantIds();
         if ($tenantIds === []) {
-            $this->info('No documents found. Nothing to prune.');
-
-            return self::SUCCESS;
+            $this->info('No archived versions to prune; running the artifact sweeps.');
         }
 
         $previousTenant = $tenants->current();
+        $failed = 0;
 
         try {
             foreach ($tenantIds as $tenantId) {
                 $tenants->set($tenantId);
-                $pruned = $this->pruneTenant($tenantId, $keep, $dryRun);
-                $this->info("[{$tenantId}] archived_versions_pruned={$pruned}".($dryRun ? ' (dry-run)' : ''));
+                $result = $this->pruneTenant($tenantId, $keep, $dryRun);
+                $failed += $result['artifacts_failed'] + $result['ocr_failed'];
+                $this->info(sprintf(
+                    '[%s] archived_versions_pruned=%d artifacts_removed=%d artifacts_absent=%d artifacts_failed=%d ocr_runs_purged=%d ocr_runs_kept=%d ocr_failed=%d%s%s%s',
+                    $tenantId,
+                    $result['pruned'],
+                    $result['artifacts_removed'],
+                    $result['artifacts_absent'],
+                    $result['artifacts_failed'],
+                    $result['ocr_purged'],
+                    $result['ocr_kept'],
+                    $result['ocr_failed'],
+                    $result['restored_meanwhile'] > 0 ? " restored_meanwhile={$result['restored_meanwhile']}" : '',
+                    // additive, printed only when the reference gate kept an
+                    // artifact a newer identical version points at
+                    $result['artifacts_kept'] > 0 ? " artifacts_kept={$result['artifacts_kept']}" : '',
+                    $dryRun ? ' (dry-run)' : '',
+                ));
             }
         } finally {
             $tenants->set($previousTenant);
         }
 
-        return self::SUCCESS;
+        // v8.36 / ADR 0030 §3 — the artifact root is shared by every tenant
+        // (namespaced by segment), so its sweeps run once, whatever tenants
+        // had archived rows: temp leftovers of a dead writer, then artifacts
+        // no row references any more (trashed rows included, R2).
+        $failed += $this->sweepArtifacts($artifacts, $dryRun);
+
+        // R14 — a refused delete is a failed cleanup, never a clean exit:
+        // the rows are gone, the bytes are not, and the operator must know.
+        return $failed === 0 ? self::SUCCESS : self::FAILURE;
     }
 
-    private function pruneTenant(string $tenantId, int $keep, bool $dryRun): int
+    /**
+     * @return array{purged: bool, kept: bool, failed: bool}
+     */
+    private function purgeUnreferencedOcrRun(string $disk, string $prefix, string $sourcePath, string $run): array
     {
+        $outcome = ['purged' => false, 'kept' => false, 'failed' => false];
+        if (preg_match('/^[a-f0-9]{64}$/', $run) !== 1) {
+            return $outcome;
+        }
+
+        // The deleter's gate decides (ADR 0030 §8): across tenants and
+        // soft-deleted rows, the run directory is shared by every version born
+        // from the same bytes IN THIS STORAGE NAMESPACE (disk + prefix +
+        // source path) — one definition of "referenced" for the hard delete
+        // and for the prune. This is a cheap early exit on the pre-purge
+        // snapshot; the authoritative re-check runs under `purgeRun()`'s own
+        // reservation, immediately before the delete (a restore or a fresh
+        // ingest can commit a reference in the gap between this line and it).
+        $deleter = app(DocumentDeleter::class);
+        if ($deleter->documentReferencingOcrRun($disk, $prefix, $sourcePath, $run) !== null) {
+            return $outcome;
+        }
+        try {
+            if (app(OcrFigureStore::class)->purgeRun($disk, $sourcePath, $prefix, $run, fn (): bool => $deleter->documentReferencingOcrRun($disk, $prefix, $sourcePath, $run) !== null)) {
+                $outcome['purged'] = true;
+
+                return $outcome;
+            }
+            // Nothing there, or a run inside the in-flight grace / reserved
+            // by a converter: kept, the orphan sweep takes it once aged.
+            $outcome['kept'] = true;
+        } catch (\Throwable $e) {
+            $outcome['failed'] = true;
+            $this->error("Could not purge OCR run {$run} beside {$sourcePath} on disk [{$disk}]: {$e->getMessage()}");
+        }
+
+        return $outcome;
+    }
+
+    /**
+     * Sweeps EVERY artifact namespace the corpus records — the configured
+     * `(disk, prefix)` and every `(metadata.disk, metadata.prefix)` a row
+     * with an artifact pointer persisted, as long as the disk is configured
+     * — so a deployment with a second artifact disk (a project or connector
+     * disk) does not leak temps and orphans there forever. The summary line
+     * aggregates the namespaces; one line per namespace precedes it when
+     * there is more than one.
+     *
+     * @return int failures (temps or orphans the disk refused, or entries refused by the containment check)
+     */
+    private function sweepArtifacts(ConversionArtifactStore $artifacts, bool $dryRun): int
+    {
+        $skipped = 0;
+        $namespaces = $this->artifactNamespaces($skipped);
+        $totals = ['temps' => 0, 'temps_failed' => 0, 'temps_in_flight' => 0, 'orphans' => 0, 'orphans_failed' => 0, 'orphans_kept' => 0];
+        foreach ($namespaces as [$disk, $prefix]) {
+            $outcome = $this->sweepArtifactNamespace($artifacts, $disk, $prefix, $dryRun);
+            if (count($namespaces) > 1) {
+                $this->line(sprintf('  [%s%s] temps_swept=%d temps_failed=%d orphans_removed=%d orphans_failed=%d%s%s', $disk, $prefix === '' ? '' : ':'.$prefix, $outcome['temps'], $outcome['temps_failed'], $outcome['orphans'], $outcome['orphans_failed'], $outcome['temps_in_flight'] > 0 ? " temps_in_flight={$outcome['temps_in_flight']}" : '', $outcome['orphans_kept'] > 0 ? " orphans_kept={$outcome['orphans_kept']}" : ''));
+            }
+            foreach ($outcome as $k => $v) {
+                $totals[$k] += $v;
+            }
+        }
+        // Additive, printed only when non-zero: `artifact_temps_in_flight`
+        // (temps a live writer holds the lease of — kept, whatever their age)
+        // and `artifact_namespaces_skipped` (a recorded namespace that could
+        // not be swept — a disk this deployment cannot resolve: a permanent
+        // leak that must be observable in the summary the scheduler logs,
+        // not only in a warning line).
+        $this->info(sprintf(
+            'artifact_temps_swept=%d artifact_temps_failed=%d artifact_orphans_removed=%d artifact_orphans_failed=%d%s%s%s%s',
+            $totals['temps'],
+            $totals['temps_failed'],
+            $totals['orphans'],
+            $totals['orphans_failed'],
+            $totals['temps_in_flight'] > 0 ? " artifact_temps_in_flight={$totals['temps_in_flight']}" : '',
+            // …and `artifact_orphans_kept`: orphan candidates a row took
+            // since the snapshot (an identical ingest recreating the path)
+            $totals['orphans_kept'] > 0 ? " artifact_orphans_kept={$totals['orphans_kept']}" : '',
+            $skipped > 0 ? " artifact_namespaces_skipped={$skipped}" : '',
+            $dryRun ? ' (dry-run)' : '',
+        ));
+
+        // A skipped namespace counts as a failure too: the summary calls it a
+        // permanent leak, and a leak the scheduler exits 0 on is a leak nobody
+        // is told about (R14). The command already exits non-zero for a
+        // refused delete; a namespace it could not sweep AT ALL is not milder.
+        return $totals['temps_failed'] + $totals['orphans_failed'] + $skipped;
+    }
+
+    /**
+     * The configured namespace first, then every `(disk, prefix)` recorded on
+     * a row that points at an artifact, and whose disk this deployment can
+     * resolve (an unknown or unconstructible disk cannot be swept: reported
+     * per namespace and counted in `$skipped`).
+     *
+     * The SQL only NARROWS the rows (`markdown_path` set, `metadata.disk`
+     * present); the namespace itself is read from the hydrated `metadata`
+     * through `StorageNamespace`, exactly like every other consumer. Reading
+     * the two JSON selectors back as columns instead would put a SECOND
+     * judgement here and get a different answer: a JSON driver hands a
+     * non-scalar back as its JSON TEXT (`[]`, `{"disk":"kb"}`) and a number
+     * as its literal, so an `is_string()` check on the selector accepts a
+     * malformed value as a literal disk name and the sweep then reports —
+     * and counts as a permanent leak — a namespace nobody ever recorded.
+     * The dedup the `DISTINCT` used to do is done on the keyed map below —
+     * and the bound it also provided is restored by `lazyById()`, because
+     * `metadata` is `json`, not `jsonb`, so `SELECT DISTINCT metadata` is not
+     * even expressible on Postgres. What is lost is a driver-side narrowing;
+     * the per-namespace sweep that follows walks whole directories and dwarfs
+     * it.
+     *
+     * @return list<array{0: string, 1: string}>
+     */
+    private function artifactNamespaces(int &$skipped): array
+    {
+        $configuredDisk = (string) config('kb.sources.disk', 'kb');
+        $configuredPrefix = (string) config('kb.sources.path_prefix', '');
+        $namespaces = [$configuredDisk.'|'.$configuredPrefix => [$configuredDisk, $configuredPrefix]];
+        $recorded = KnowledgeDocument::query()
+            ->withoutGlobalScopes()
+            ->whereNotNull('markdown_path')
+            ->whereNotNull('metadata->disk')
+            ->select(['id', 'metadata'])
+            // R3 — `lazyById()`, not `cursor()`. The `DISTINCT` this replaced
+            // kept the result set at one row per namespace whatever the corpus
+            // size; without it a `cursor()` hands the driver every
+            // artifact-bearing row at once (pgsql and buffered MySQL PDO
+            // materialise the whole set), and this sweep runs AFTER the row
+            // prune has committed — an OOM here leaves rows gone, bytes
+            // leaked and nothing reported. Paged by id, the bound is the page.
+            ->lazyById(500);
+        foreach ($recorded as $row) {
+            // The ONE reading (R30/ADR 0030 §8): a malformed disk is not a
+            // recorded disk, and a malformed or absent prefix is the
+            // configured one — the same answers the deleter and the backfill
+            // get for the same row.
+            $disk = StorageNamespace::recordedDisk($row->metadata) ?? '';
+            $prefix = StorageNamespace::recordedPrefix($row->metadata);
+            if ($disk === '' || isset($namespaces[$disk.'|'.$prefix])) {
+                continue;
+            }
+            try {
+                Storage::disk($disk); // resolves configured AND runtime-registered disks; throws for an unknown one
+            } catch (\Throwable $e) {
+                // Unknown disk (InvalidArgumentException) or an adapter that
+                // cannot be constructed here: either way nothing can be swept
+                // on it, and the run must not abort after the row prune (R14).
+                $this->warn("  ! rows record artifacts on disk [{$disk}], which cannot be resolved here ({$e->getMessage()}): not swept");
+                $skipped++;
+
+                continue;
+            }
+            $namespaces[$disk.'|'.$prefix] = [$disk, $prefix];
+        }
+
+        return array_values($namespaces);
+    }
+
+    /**
+     * @return array{temps: int, temps_failed: int, temps_in_flight: int, orphans: int, orphans_failed: int, orphans_kept: int}
+     */
+    private function sweepArtifactNamespace(ConversionArtifactStore $artifacts, string $disk, string $prefix, bool $dryRun): array
+    {
+        // The SAME reading the store uses (SEC-SETTING-SHAPE-001): when the
+        // cache store cannot lease, this threshold is the only thing standing
+        // between a live writer's temp and this sweep, so it must not be a
+        // `(int)` cast that turns `0.5` or `abc` into `0`.
+        $maxAge = ConversionArtifactStore::tempMaxAgeSeconds();
+
+        try {
+            $temps = $artifacts->sweepTemps($disk, $prefix, $maxAge, $dryRun);
+        } catch (\Throwable $e) {
+            // A configured prefix that cannot form an artifact root (R14:
+            // reported as a failed sweep, never an unhandled crash).
+            $this->error("  ! could not sweep the artifact root on disk [{$disk}]: {$e->getMessage()}");
+
+            return ['temps' => 0, 'temps_failed' => 1, 'temps_in_flight' => 0, 'orphans' => 0, 'orphans_failed' => 1, 'orphans_kept' => 0];
+        }
+        $orphans = 0;
+        $orphansFailed = 0;
+        $orphansKept = 0;
+        $deleter = app(DocumentDeleter::class);
+        try {
+            // The listing is lazy (R3): batches of 500 paths are judged and
+            // released as the tree is walked, never the whole corpus at once.
+            // A refused walk (a symbolic link under the root) ends the sweep
+            // where it stands: earlier batches stay swept, the failure is
+            // counted and reported, the exit is non-zero (partial, reported).
+            $batch = [];
+            foreach ($artifacts->listArtifacts($disk, $prefix) as $path) {
+                $batch[] = $path;
+                if (count($batch) < 500) {
+                    continue;
+                }
+                $this->sweepArtifactBatch($deleter, $disk, $batch, $dryRun, $orphans, $orphansFailed, $orphansKept);
+                $batch = [];
+            }
+            if ($batch !== []) {
+                $this->sweepArtifactBatch($deleter, $disk, $batch, $dryRun, $orphans, $orphansFailed, $orphansKept);
+            }
+        } catch (\Throwable $e) {
+            // The walk is lazy, so the enumeration and the batches share this
+            // guard: the class says which one gave up (an adapter refusing a
+            // symlink, a DB error in a batch, a disk `throw` on delete).
+            $this->error('  ! artifact orphan sweep aborted on disk ['.$disk.'] ('.$e::class."): {$e->getMessage()}");
+            $orphansFailed++;
+        }
+
+        return ['temps' => $temps['removed'], 'temps_failed' => $temps['failed'], 'temps_in_flight' => $temps['in_flight'], 'orphans' => $orphans, 'orphans_failed' => $orphansFailed, 'orphans_kept' => $orphansKept];
+    }
+
+    /**
+     * @param  list<string>  $batch
+     */
+    private function sweepArtifactBatch(DocumentDeleter $deleter, string $disk, array $batch, bool $dryRun, int &$orphans, int &$orphansFailed, int &$orphansKept): void
+    {
+        // Authoritative check first: a path is an orphan only when NO row —
+        // live, archived or soft-deleted — points at it ON THIS DISK.
+        // Artifact disks are independent storage objects: a row whose
+        // recorded disk is another one references another file with the
+        // same path, and must neither keep this orphan alive nor be
+        // ignored; a row without a usable recorded disk (absent, null or
+        // empty — StorageNamespace) references the path wherever the sweep
+        // looks (fail closed, as for source files).
+        $referenced = [];
+        $rows = KnowledgeDocument::withoutGlobalScopes()
+            ->whereIn('markdown_path', $batch)
+            ->select(['id', 'markdown_path', 'metadata'])
+            ->cursor();
+        foreach ($rows as $row) {
+            $recorded = StorageNamespace::recordedDisk($row->metadata);
+            if ($recorded !== null && $recorded !== $disk) {
+                continue;
+            }
+            $referenced[(string) $row->markdown_path] = true;
+        }
+        // The preview answers the same question the removal will (the
+        // gate's reference check, without the lock and without the delete),
+        // asked ONCE per batch (R3): a candidate a row took since the
+        // snapshot (an ingest that recreated the content-addressed path) is
+        // reported kept, never as a removal the real run would not make.
+        $gateKeeps = $dryRun ? $deleter->artifactsReferenced($disk, array_keys(array_diff_key(array_flip($batch), $referenced))) : [];
+        foreach ($batch as $path) {
+            if (isset($referenced[$path])) {
+                continue;
+            }
+            if ($dryRun && isset($gateKeeps[$path])) {
+                $orphansKept++;
+
+                continue;
+            }
+            if ($dryRun) {
+                $orphans++;
+
+                continue;
+            }
+            // The snapshot above chose the candidates; the removal itself
+            // re-checks the references under the path's lock (the lock a
+            // publish holds): a row that took the path since the snapshot —
+            // an identical ingest recreating this content-addressed file —
+            // keeps it, and it is simply not an orphan any more.
+            $removal = $deleter->removeArtifactIfUnreferenced($disk, $path);
+            if ($removal === ConversionArtifactStore::KEPT) {
+                $orphansKept++;
+
+                continue;
+            }
+            if ($removal === ConversionArtifactStore::FAILED) {
+                $orphansFailed++;
+                $this->error("  ! could not remove orphan artifact [{$disk}] {$path}");
+                continue;
+            }
+            $orphans++;
+        }
+    }
+
+    /**
+     * @return array{pruned: int, restored_meanwhile: int, artifacts_removed: int, artifacts_absent: int, artifacts_kept: int, artifacts_failed: int, ocr_purged: int, ocr_kept: int, ocr_failed: int}
+     */
+    private function pruneTenant(string $tenantId, int $keep, bool $dryRun): array
+    {
+        $result = ['pruned' => 0, 'restored_meanwhile' => 0, 'artifacts_removed' => 0, 'artifacts_absent' => 0, 'artifacts_kept' => 0, 'artifacts_failed' => 0, 'ocr_purged' => 0, 'ocr_kept' => 0, 'ocr_failed' => 0];
+        $deleter = app(DocumentDeleter::class);
         // Families with MORE than `keep` archived versions.
         $families = KnowledgeDocument::query()
             ->forTenant($tenantId)
@@ -64,9 +375,15 @@ final class PruneArchivedVersionsCommand extends Command
             ->select('project_key', 'source_path', DB::raw('count(*) as version_count'))
             ->groupBy('project_key', 'source_path')
             ->havingRaw('count(*) > ?', [$keep])
-            ->get();
+            // Streamed (R3): families are HYDRATED one at a time (the pgsql
+            // driver still buffers the grouped result set client-side, so
+            // this bounds model memory, not the result set). A cursor is a
+            // single query, so the groups that vanish as their surplus is
+            // pruned never shift a page the way an offset-based chunk would;
+            // deleting from the same table inside the loop is safe because
+            // the grouped result is computed before the first row is read.
+            ->cursor();
 
-        $pruned = 0;
         foreach ($families as $family) {
             $surplusCount = max(0, (int) $family->version_count - $keep);
             if ($surplusCount === 0) {
@@ -76,7 +393,7 @@ final class PruneArchivedVersionsCommand extends Command
             // Dry-run reports the full surplus from the grouped count without
             // touching the DB.
             if ($dryRun) {
-                $pruned += $surplusCount;
+                $result['pruned'] += $surplusCount;
                 continue;
             }
 
@@ -87,32 +404,108 @@ final class PruneArchivedVersionsCommand extends Command
             // and deletes the next-oldest batch; the kept set never moves.
             $batch = 500;
             while (true) {
-                $surplusIds = KnowledgeDocument::query()
+                $surplus = KnowledgeDocument::query()
                     ->forTenant($tenantId)
                     ->where('status', 'archived')
                     ->where('project_key', $family->project_key)
                     ->where('source_path', $family->source_path)
+                    // NULL `indexed_at` sorts LAST on every driver, as on the
+                    // timeline (DocumentVersionService::versionsFor()): under a
+                    // plain DESC PostgreSQL puts NULLs first, and a row that
+                    // never recorded when it was indexed would then be kept
+                    // as the family's "newest" while a real version is pruned.
+                    ->orderByRaw('CASE WHEN indexed_at IS NULL THEN 1 ELSE 0 END')
                     ->orderByDesc('indexed_at')
                     ->orderByDesc('id')
                     ->skip($keep)
                     ->take($batch)
-                    ->pluck('id')
-                    ->all();
-
-                if ($surplusIds === []) {
+                    ->get();
+                if ($surplus->isEmpty()) {
                     break;
                 }
-                $pruned += count($surplusIds);
+                // Hard delete through the deleter's row path — chunks, the
+                // graph nodes an archived canonical version may still own,
+                // and the deprecation audit row, in one transaction per row
+                // — the same cascade every other hard delete takes; the
+                // source file is shared with the live version and is never
+                // touched here.
+                $runsToCheck = [];
+                foreach ($surplus as $candidate) {
+                    // R21 — the batch was SELECTED as archived; a Time Machine
+                    // restore can activate a row between that read and this
+                    // delete. The row is re-read and locked in the deleting
+                    // transaction and pruned only if it is still archived:
+                    // a version restored meanwhile is skipped and counted,
+                    // never deleted under the operator's feet.
+                    $row = DB::transaction(function () use ($tenantId, $candidate, $deleter): ?KnowledgeDocument {
+                        $locked = KnowledgeDocument::query()
+                            ->forTenant($tenantId)
+                            ->whereKey($candidate->id)
+                            ->where('status', 'archived')
+                            ->lockForUpdate()
+                            ->first();
+                        if ($locked === null) {
+                            return null;
+                        }
+                        $deleter->deleteRowsOnly($locked, removeArtifact: false);
 
-                // Hard delete (chunks cascade via FK ON DELETE CASCADE).
-                KnowledgeDocument::query()
-                    ->forTenant($tenantId)
-                    ->whereIn('id', $surplusIds)
-                    ->forceDelete();
+                        return $locked;
+                    });
+                    if ($row === null) {
+                        $result['restored_meanwhile']++;
+
+                        continue;
+                    }
+                    $result['pruned']++;
+                    // v8.36 / ADR 0030 §8 — the artifact goes with the row it
+                    // belongs to; a refused delete is counted and reported
+                    // (R14), an already-missing file is simply absent.
+                    $metadata = is_array($row->metadata) ? $row->metadata : [];
+                    $disk = StorageNamespace::diskOf($metadata);
+                    $prefix = StorageNamespace::recordedPrefix($metadata);
+                    if (is_string($row->markdown_path) && $row->markdown_path !== '') {
+                        // Through the deleter's reference gate (ADR 0030 §8):
+                        // under the path's lock the references are re-checked,
+                        // so an identical ingest that recreated the same
+                        // content-addressed path meanwhile keeps its artifact
+                        // (`artifacts_kept`), never deleted under its row.
+                        $removal = $deleter->removeArtifactIfUnreferenced($disk, $row->markdown_path);
+                        match ($removal) {
+                            ConversionArtifactStore::REMOVED => $result['artifacts_removed']++,
+                            ConversionArtifactStore::ABSENT => $result['artifacts_absent']++,
+                            ConversionArtifactStore::KEPT => $result['artifacts_kept']++,
+                            // An outcome this command does not know is a
+                            // removal it cannot vouch for: counted and
+                            // reported as failed (exit non-zero), never an
+                            // UnhandledMatchError that aborts the prune
+                            // mid-corpus and loses every count so far.
+                            default => $result['artifacts_failed']++,
+                        };
+                        if (! in_array($removal, [ConversionArtifactStore::REMOVED, ConversionArtifactStore::ABSENT, ConversionArtifactStore::KEPT], true)) {
+                            $this->error("  ! could not remove the artifact of pruned version #{$row->id} [{$disk}] {$row->markdown_path} ({$removal})");
+                        }
+                    }
+                    // …and so does the row's recorded OCR run — but only when
+                    // no remaining row of ANY tenant sharing the same run
+                    // directory (disk + prefix + source path) still references
+                    // it; the `.ocr/` tree as a whole still goes with the last
+                    // referencing row of the source.
+                    $run = $metadata['converter']['ocr']['run'] ?? null;
+                    if (is_string($run)) {
+                        // One family scan per distinct run DIRECTORY, not per pruned row (R3).
+                        $runsToCheck[$disk.'|'.$prefix.'|'.$run] = [$disk, $prefix, $run];
+                    }
+                }
+                foreach ($runsToCheck as [$disk, $prefix, $run]) {
+                    $outcome = $this->purgeUnreferencedOcrRun($disk, $prefix, (string) $family->source_path, $run);
+                    $result['ocr_purged'] += $outcome['purged'] ? 1 : 0;
+                    $result['ocr_kept'] += $outcome['kept'] ? 1 : 0;
+                    $result['ocr_failed'] += $outcome['failed'] ? 1 : 0;
+                }
             }
         }
 
-        return $pruned;
+        return $result;
     }
 
     /**

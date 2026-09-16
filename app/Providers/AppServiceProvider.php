@@ -912,6 +912,9 @@ class AppServiceProvider extends ServiceProvider
             \App\Console\Commands\PruneArchivedVersionsCommand::class,
             // v8.36 / ADR 0029 — OCR PHP surface (R44): re-run + status.
             \App\Console\Commands\KbOcrCommand::class,
+            // v8.36 / ADR 0030 — Time Machine PHP surface (R44) + operator backfill.
+            \App\Console\Commands\KbDocVersionsCommand::class,
+            \App\Console\Commands\KbArtifactsBackfillCommand::class,
             // v8.9 — UI upload staging buffer retention sweep.
             \App\Console\Commands\PruneStagingBatchesCommand::class,
             // v8.11/P1b — evidence-tier PHP surface (AutoSci #67, R44).

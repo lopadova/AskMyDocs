@@ -23,7 +23,8 @@ the `canonical_type` column). The nine `CanonicalType` values:
 `CanonicalStatus` values: `draft` · `review` · `accepted` · `superseded` ·
 `deprecated` · `archived`. Canonical identifiers (`slug`, `doc_id`) are
 **tenant-scoped, not global** — two projects can both own `dec-cache-v2`. The
-composite uniques are `(project_key, slug)` and `(project_key, doc_id)`.
+composite uniques are `(tenant_id, project_key, slug)` and
+`(tenant_id, project_key, doc_id)`, so two tenants may share one too.
 
 ## The promotion pipeline (human-gated)
 

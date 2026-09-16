@@ -97,4 +97,51 @@ class PruneDeletedDocumentsCommandTest extends TestCase
 
         $this->assertNotNull(KnowledgeDocument::withTrashed()->find($old->id));
     }
+
+    /**
+     * v8.36 / ADR 0030 §3 + R14 — a hard delete can legitimately KEEP the
+     * source file (here: a live sibling still references it; in production
+     * also a held storage key or a store that cannot lock). The rows are
+     * gone either way, so a run that leaves bytes behind must say so rather
+     * than print "Pruned N document(s)" and read as a completed cleanup.
+     */
+    public function test_reports_the_rows_whose_source_file_was_kept(): void
+    {
+        Storage::disk('kb')->put('docs/shared.md', 'hi');
+        // Two versions of ONE physical source: the live one keeps the file.
+        $this->softDeletedDoc('docs/shared.md', now()->subDays(60), 'v-old');
+        KnowledgeDocument::create([
+            'project_key' => 'demo',
+            'source_type' => 'markdown',
+            'title' => 'Sample live',
+            'source_path' => 'docs/shared.md',
+            'language' => 'it',
+            'access_scope' => 'internal',
+            'status' => 'active',
+            'document_hash' => 'v-live',
+            'version_hash' => 'v-live',
+            'metadata' => ['disk' => 'kb', 'prefix' => ''],
+            'indexed_at' => now(),
+        ]);
+
+        $this->artisan('kb:prune-deleted', ['--days' => 30])
+            ->expectsOutputToContain('Pruned 1')
+            ->expectsOutputToContain('files_kept=1')
+            ->assertSuccessful();
+
+        Storage::disk('kb')->assertExists('docs/shared.md');
+    }
+
+    /** The counter stays out of the way when nothing was kept: a clean run prints no `files_kept` line. */
+    public function test_does_not_report_files_kept_when_every_source_was_removed(): void
+    {
+        Storage::disk('kb')->put('docs/lonely.md', 'hi');
+        $this->softDeletedDoc('docs/lonely.md', now()->subDays(60), 'v-lonely');
+
+        $this->artisan('kb:prune-deleted', ['--days' => 30])
+            ->doesntExpectOutputToContain('files_kept=')
+            ->assertSuccessful();
+
+        Storage::disk('kb')->assertMissing('docs/lonely.md');
+    }
 }

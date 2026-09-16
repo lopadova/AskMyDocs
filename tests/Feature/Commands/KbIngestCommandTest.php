@@ -7,6 +7,7 @@ use App\Models\KnowledgeDocument;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
+use Mockery;
 use Tests\TestCase;
 
 class KbIngestCommandTest extends TestCase
@@ -68,6 +69,32 @@ class KbIngestCommandTest extends TestCase
         $this->assertGreaterThan(0, KnowledgeChunk::count());
     }
 
+    /** R14 — a refused artifact publish is one error line naming the committed document and the repair, never a stack trace. */
+    public function test_a_refused_artifact_publish_is_reported_with_the_committed_document_and_exits_non_zero(): void
+    {
+        Storage::fake('kb');
+        Storage::disk('kb')->put('docs/refused.md', "# Title\n\nBody paragraph.");
+        config()->set('kb.sources.disk', 'kb');
+        config()->set('kb.sources.path_prefix', '');
+        config()->set('kb.conversion_artifacts.enabled', true);
+        $healthy = Storage::disk('kb');
+        $root = $healthy->path('');
+        $adapter = new \Tests\Fixtures\Storage\WriteRefusingAdapter(new \League\Flysystem\Local\LocalFilesystemAdapter($root), static fn (string $path): bool => str_contains($path, '.versions/') && str_ends_with($path, '.md'));
+        Storage::set('kb', new \Illuminate\Filesystem\FilesystemAdapter(new \League\Flysystem\Filesystem($adapter), $adapter, ['root' => $root]));
+
+        try {
+            $this->artisan('kb:ingest', ['path' => 'docs/refused.md', '--project' => 'demo'])
+                ->expectsOutputToContain('was ingested from kb://docs/refused.md, but its conversion artifact could not be published on disk [kb]')
+                ->assertExitCode(1);
+        } finally {
+            Storage::set('kb', $healthy);
+        }
+
+        $doc = KnowledgeDocument::first();
+        $this->assertNotNull($doc, 'the document is committed; only its artifact is missing');
+        $this->assertNotNull($doc->markdown_path);
+    }
+
     public function test_applies_configured_path_prefix(): void
     {
         Storage::fake('kb');
@@ -84,6 +111,55 @@ class KbIngestCommandTest extends TestCase
         $this->assertSame(1, KnowledgeDocument::count());
     }
 
+    /**
+     * v8.36 / PR #479 Copilot review round 3 — `KbIngestController` and
+     * `ListFolderFilesStep` already reject a generated-asset source path
+     * (`.artifacts/`, `{x}.ocr/`) before a row is ever created. `kb:ingest`
+     * had no such guard: an operator (or a script) pointing it at the store's
+     * own converted output would self-ingest it, composing a nested artifact
+     * one level deeper under itself. The check runs before any disk read —
+     * the file must never even be opened.
+     */
+    public function test_refuses_a_generated_asset_path_as_a_source(): void
+    {
+        Storage::fake('kb');
+        Storage::disk('kb')->put('.artifacts/default/eng/docs/report.md.versions/'.str_repeat('a', 64).'.md', '# converted');
+        config()->set('kb.sources.disk', 'kb');
+        config()->set('kb.sources.path_prefix', '');
+
+        $this->artisan('kb:ingest', [
+            'path' => '.artifacts/default/eng/docs/report.md.versions/'.str_repeat('a', 64).'.md',
+        ])
+            ->expectsOutputToContain('generated-asset directory')
+            ->assertFailed();
+
+        $this->assertSame(0, KnowledgeDocument::count());
+    }
+
+    /**
+     * v8.36 / PR #479 Copilot review round 4 — R1: every KB source path
+     * goes through `KbPath::normalize()` before any disk op or path-shape
+     * decision, the same contract the HTTP/folder entry points already
+     * follow. A raw `..` segment must never reach `Storage::exists()`/
+     * `get()` at all — a clean, normalized-path error instead of a
+     * traversal attempt or an uncaught driver exception outside R14's
+     * one-line handling.
+     */
+    public function test_refuses_a_source_path_with_traversal_segments(): void
+    {
+        Storage::fake('kb');
+        config()->set('kb.sources.disk', 'kb');
+        config()->set('kb.sources.path_prefix', '');
+
+        $this->artisan('kb:ingest', [
+            'path' => 'docs/../outside.md',
+        ])
+            ->expectsOutputToContain('Invalid source path')
+            ->assertFailed();
+
+        $this->assertSame(0, KnowledgeDocument::count());
+    }
+
     public function test_fails_cleanly_when_file_missing(): void
     {
         Storage::fake('kb');
@@ -93,6 +169,49 @@ class KbIngestCommandTest extends TestCase
             'path' => 'missing.md',
         ])
             ->expectsOutputToContain('Markdown file not found')
+            ->assertFailed();
+
+        $this->assertSame(0, KnowledgeDocument::count());
+    }
+
+    /** R14 — `exists()` said yes, `get()` returned nothing: one error line, exit 1, no empty version. */
+    public function test_fails_cleanly_when_the_file_has_no_bytes(): void
+    {
+        Storage::fake('kb');
+        Storage::disk('kb')->put('empty.md', '');
+        config()->set('kb.sources.disk', 'kb');
+
+        $this->artisan('kb:ingest', [
+            'path' => 'empty.md',
+        ])
+            ->expectsOutputToContain('returned no bytes')
+            ->assertFailed();
+
+        $this->assertSame(0, KnowledgeDocument::count());
+    }
+
+    /** R14 — exists() says yes but get() throws (a file that vanished, or a driver refusing the read): a clean one-line failure, never a stack trace out of a CLI command. */
+    public function test_fails_cleanly_when_get_throws(): void
+    {
+        config()->set('kb.sources.disk', 'kb');
+
+        Storage::shouldReceive('disk')->with('kb')->andReturn(new class
+        {
+            public function exists(string $path): bool
+            {
+                return true;
+            }
+
+            public function get(string $path): string
+            {
+                throw new \RuntimeException("vanished: {$path}");
+            }
+        });
+
+        $this->artisan('kb:ingest', [
+            'path' => 'vanished.md',
+        ])
+            ->expectsOutputToContain('could not be read')
             ->assertFailed();
 
         $this->assertSame(0, KnowledgeDocument::count());
@@ -112,5 +231,11 @@ class KbIngestCommandTest extends TestCase
         ])->assertSuccessful();
 
         $this->assertSame(1, KnowledgeDocument::count());
+    }
+
+    protected function tearDown(): void
+    {
+        parent::tearDown();
+        Mockery::close();
     }
 }

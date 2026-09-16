@@ -329,15 +329,14 @@ return [
     | Source retention policy (v8.11) — SCHEMA/CONFIG FOUNDATION
     |--------------------------------------------------------------------------
     |
-    | NOTE: this knob + the `knowledge_documents.markdown_path` column are the
+    | NOTE: this knob + the `knowledge_documents.markdown_path` column were the
     | foundation declared in v8.11.0; the INGEST WIRING that reads this mode and
-    | writes the markdown artifact / drops the original did NOT land in v8.11.x —
-    | it is W2 of the v8.36 Document Intelligence cycle (ADR 0030, behind
-    | KB_CONVERSION_ARTIFACTS_ENABLED). Until then ingest behaves as before
-    | (`reference_only`-style metadata + chunks, original kept on disk).
+    | writes the markdown artifact / drops the original landed in v8.36 (W2,
+    | ADR 0030) behind KB_CONVERSION_ARTIFACTS_ENABLED (below). With that flag
+    | off ingest behaves as before (metadata + chunks, original kept on disk).
     |
-    | Intended (once wired) — what is kept on ingest, globally (and per-connector
-    | via config/connectors.php overrides):
+    | What is kept on ingest, globally (one setting; there is no per-connector
+    | override today):
     |   - full_copy      : original binary on the KB disk + chunks + the
     |                      converted markdown as a first-class artifact
     |                      (knowledge_documents.markdown_path). Today's default
@@ -358,6 +357,55 @@ return [
         // the default only kicks in when the var is ABSENT. Same normalization
         // as the auto-wiki AI override knobs above.
         'mode' => env('KB_SOURCE_RETENTION') ?: 'full_copy',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Conversion artifacts on the Time Machine (v8.36 / ADR 0030)
+    |--------------------------------------------------------------------------
+    |
+    | With `enabled`, the exact Markdown the chunker received is stored per
+    | version at `{prefix}/.artifacts/{tenant}/{project}/{source_path}.versions/
+    | {version_hash}.md` and recorded in `knowledge_documents.markdown_path`,
+    | honouring `source_retention.mode` (`reference_only` stores nothing;
+    | `markdown_only` drops the original binary after the artifact commit).
+    | Diff / restore / the versions endpoints then read the document itself
+    | instead of a chunk reconstruction. Default OFF (R43): no new artifact is
+    | written, existing ones keep being read. `tmp_max_age_seconds` bounds the
+    | sweep of temp files a dead writer left behind (kb:prune-archived-versions);
+    | a temp whose writer still holds its lease (`tmp_lease_seconds`) is never
+    | swept, however old.
+    |
+    */
+
+    'conversion_artifacts' => [
+        'enabled' => filter_var(env('KB_CONVERSION_ARTIFACTS_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+        // Kept RAW (no `(int)` cast): every one of these durations is validated by
+        // `App\Support\Kb\SettingInt::whole()` at the point of use, and a cast here
+        // would truncate `0.5` to `0` and `1.9` to `1` BEFORE the validator could
+        // refuse them — the strict reading would then only ever see values it
+        // already had to accept (SEC-SETTING-SHAPE-001).
+        'tmp_max_age_seconds' => env('KB_CONVERSION_ARTIFACTS_TMP_MAX_AGE', 3600),
+        // ADR 0030 §3 — the per-storage-key lock a `markdown_only` drop and the
+        // row commits of the same key share, and the per-artifact-path lock a
+        // publish shares with every delete and sweep of that path (needs an
+        // atomic lock store, Redis in production): how long a holder waits
+        // for it, and how long it lives when its holder dies. Neither lock is
+        // renewed: a holder asserts it still owns the lock right before its
+        // irreversible step (App\Support\Kb\HeldLock) and refuses otherwise.
+        'source_lock_wait_seconds' => env('KB_CONVERSION_ARTIFACTS_SOURCE_LOCK_WAIT', 10),
+        'source_lock_seconds' => env('KB_CONVERSION_ARTIFACTS_SOURCE_LOCK_TTL', 60),
+        // How long a writer's lease on its artifact temp file lives (taken
+        // before the temp is written, released by the publish or the discard):
+        // the temp sweep never removes a leased temp, whatever its age, so a
+        // slow transaction is never mistaken for a dead writer. The lease is
+        // the primary guard: one configured shorter than `tmp_max_age_seconds`
+        // is RAISED to it and reported once — a lease that expired before the
+        // sweep may delete would make a slow writer indistinguishable from a
+        // dead one exactly in the window the lease exists for. Needs a lock-capable
+        // cache store (Redis in production); a store that cannot lock leaves
+        // the age threshold alone in charge, reported once.
+        'tmp_lease_seconds' => env('KB_CONVERSION_ARTIFACTS_TMP_LEASE', 7200),
     ],
 
     /*
@@ -447,7 +495,15 @@ return [
         // the ingest job timeout and the re-run lock are all bounded by it —
         // and the queue's `retry_after` only has to exceed THIS (+ margins),
         // never a driver's theoretical worst case.
-        'job_timeout' => (int) env('KB_OCR_JOB_TIMEOUT', 3600),
+        //
+        // Kept RAW (no `(int)` cast, SEC-SETTING-SHAPE-001): `SourceInFlight
+        // ::defaultSeconds()` validates this through `SettingInt::whole()` —
+        // a cast here would truncate a fractional misconfiguration BEFORE
+        // that validator could refuse it, silently shortening the
+        // reservation a slow OCR run needs to outlive. `OcrService::
+        // runBudgetSeconds()` still casts its own local copy defensively;
+        // that consumer's behaviour is unchanged either way.
+        'job_timeout' => env('KB_OCR_JOB_TIMEOUT', 3600),
         'max_bytes' => (int) env('KB_OCR_MAX_BYTES', 26214400), // 25 MiB, the upload cap
         // Largest single figure a driver may hand back (remote drivers return
         // base64 images inside the response body).
@@ -620,6 +676,23 @@ return [
 
     'versioning' => [
         'keep_archived' => (int) env('KB_KEEP_ARCHIVED_VERSIONS', 10),
+        // The most versions a timeline listing (HTTP, MCP, CLI) hydrates and
+        // verifies per call (R3); the surfaces report `truncated` beyond it.
+        // Raw, like every setting `SettingInt::whole()` validates at the point of use.
+        'timeline_limit' => env('KB_VERSIONS_TIMELINE_LIMIT', 100),
+        // ADR 0030 §5 — a version's artifact state is a READ + hash check, so
+        // a timeline page would fetch one object per row from a bucket on
+        // every listing. Only the VERIFIED state is memoized, for this many
+        // seconds, under a key of disk + path — and the value stored is the
+        // `content_hash` that was proved. A read is a hit only when the row's
+        // hash still equals that value, so a republished version (a different
+        // hash) never reads a stale entry, and a repairable state (missing,
+        // mismatch) is always re-read. `0` verifies on every read: the badge can then never lag,
+        // at the cost of one object read per listed version. A file deleted
+        // or tampered inside the window may keep its badge until the entry
+        // expires; the content and diff endpoints always re-read and report
+        // `missing` / `mismatch` faithfully.
+        'artifact_state_cache_seconds' => env('KB_VERSIONS_ARTIFACT_STATE_CACHE', 300),
     ],
 
     /*
@@ -884,6 +957,37 @@ return [
     ],
 
     'sources' => [
+        // ADR 0030 §3 — seconds a source file must be untouched before
+        // `kb:prune-orphan-files` may consider it an orphan. An ingest reads
+        // and converts its source (an OCR run takes minutes) BEFORE it takes
+        // the storage key's lock: in that window the file has no row and no
+        // holder, and a sweep would delete it out from under the conversion.
+        // `0` disables the grace and restores the pre-v8.36 behaviour.
+        // Read (and validated) by DocumentDeleter::orphanSourceGraceSeconds():
+        // NOT cast here, or `off` / `1h` / `` would coerce to 0 — a silently
+        // disabled grace, indistinguishable from the explicit `0`.
+        'orphan_grace_seconds' => env('KB_ORPHAN_SOURCE_GRACE_SECONDS', 3600),
+        // ADR 0030 §3 — how long an ingest's reservation over its SOURCE
+        // object lives when the worker holding it dies. It is a backstop, not
+        // the mechanism: the reservation is released as soon as the read +
+        // convert + commit window closes. Default: the OCR job timeout plus a
+        // margin, because the conversion is what the window is made of. Raw,
+        // like every setting SettingInt::whole() validates at the point of use.
+        'inflight_reservation_seconds' => env('KB_SOURCE_INFLIGHT_RESERVATION_SECONDS'),
+
+        /*
+         * How many candidates one `kb:prune-orphan-files` sweep may hold in
+         * memory (orphan sources + `.ocr/` trees + runs) before it stops and
+         * reports itself truncated. The DB lookups are already batched; this
+         * bounds the CANDIDATE lists, which on a large shared disk would
+         * otherwise grow with the whole listing. A truncated sweep reports
+         * `scan_truncated=1` and exits non-zero — the next run continues.
+         * The cap cannot be switched off while the walk collects in memory:
+         * a value that is not a positive integer is this default, never an
+         * unbounded sweep (it would OOM the worker on a large disk, silently).
+         * Raise it if a run truncates too often.
+         */
+        'orphan_scan_max_items' => env('KB_ORPHAN_SCAN_MAX_ITEMS', 50000),
         /*
         | Laravel filesystem disk used to read KB markdown files.
         | Change to 's3' (and provide AWS_* env) to serve docs from S3.

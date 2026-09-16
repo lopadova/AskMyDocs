@@ -106,7 +106,7 @@ through a tenant-scoped route binding (no cross-tenant IDOR).
 ## Idempotency (the load-bearing invariant)
 
 `DocumentIngestor` hashes the markdown and **upserts on
-`(project_key, source_path, version_hash)`**. Consequences:
+`(tenant_id, project_key, source_path, version_hash)`**. Consequences:
 
 - Re-pushing identical bytes → no-op.
 - New bytes at the same `source_path` → a new version; the previous version's

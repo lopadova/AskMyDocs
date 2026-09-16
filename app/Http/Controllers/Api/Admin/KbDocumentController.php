@@ -14,6 +14,7 @@ use App\Models\KnowledgeDocument;
 use App\Services\Admin\Pdf\PdfRenderer;
 use App\Services\Kb\Canonical\CanonicalParser;
 use App\Services\Kb\DocumentDeleter;
+use App\Support\Kb\StorageNamespace;
 use App\Support\KbDiskResolver;
 use App\Support\KbPath;
 use Illuminate\Http\JsonResponse;
@@ -394,6 +395,12 @@ class KbDocumentController extends Controller
             'mode' => $result['mode'],
             'document_id' => $result['document_id'],
             'file_deleted' => (bool) ($result['file_deleted'] ?? false),
+            // v8.36 / ADR 0030 §8 / PR #479 Copilot review round 5 —
+            // additive (R27): whether this call also removed the row's
+            // version artifact. `DocumentDeleter::delete()`'s own result
+            // already carries it (this controller calls the deleter
+            // directly, not through the Flow saga).
+            'artifact_deleted' => (bool) ($result['artifact_deleted'] ?? false),
         ], Response::HTTP_OK);
     }
 
@@ -743,9 +750,7 @@ class KbDocumentController extends Controller
     private function fullPathFor(KnowledgeDocument $document, string $normalizedPath): string
     {
         $metadata = is_array($document->metadata) ? $document->metadata : [];
-        $prefix = array_key_exists('prefix', $metadata)
-            ? (string) $metadata['prefix']
-            : (string) config('kb.sources.path_prefix', '');
+        $prefix = StorageNamespace::recordedPrefix($metadata);
         $prefix = trim($prefix, '/');
 
         return $prefix === '' ? $normalizedPath : $prefix.'/'.$normalizedPath;
