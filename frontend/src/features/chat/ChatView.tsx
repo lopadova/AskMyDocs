@@ -53,6 +53,7 @@ export function ChatView(): ReactNode {
     const {
         activeId,
         activeConversation,
+        activeConversationKnown,
         projectKey,
         projectLabel,
         projectScopeValue,
@@ -143,7 +144,9 @@ export function ChatView(): ReactNode {
                                             title={
                                                 activeConversation?.title?.trim()
                                                     ? activeConversation.title
-                                                    : `Conversation #${activeId}`
+                                                    : activeConversationKnown
+                                                      ? `Conversation #${activeId}`
+                                                      : 'Loading…'
                                             }
                                         />
                                     ) : (

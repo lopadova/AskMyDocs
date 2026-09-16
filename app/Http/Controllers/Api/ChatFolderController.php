@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api;
 
+use App\Exceptions\Chat\ChatFolderNameTakenException;
 use App\Http\Requests\Api\StoreChatFolderRequest;
 use App\Http\Requests\Api\UpdateChatFolderRequest;
 use App\Models\ChatFolder;
@@ -12,6 +13,7 @@ use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 /**
@@ -44,12 +46,12 @@ final class ChatFolderController extends Controller
 
     public function store(StoreChatFolderRequest $request, TenantContext $tenant): JsonResponse
     {
-        $folder = $this->folders->create(
+        $folder = $this->nameCollisionAs422(fn (): ChatFolder => $this->folders->create(
             (int) $request->user()->id,
             $tenant->current(),
             $request->string('name')->toString(),
             (int) $request->input('position', 0),
-        );
+        ));
 
         return response()->json(['data' => $this->presentOne($folder)], 201);
     }
@@ -57,7 +59,9 @@ final class ChatFolderController extends Controller
     public function update(UpdateChatFolderRequest $request, int $id, TenantContext $tenant): JsonResponse
     {
         $folder = $this->findOwnedOr404($request, $id, $tenant);
-        $renamed = $this->folders->rename($folder, $request->string('name')->toString());
+        $renamed = $this->nameCollisionAs422(
+            fn (): ChatFolder => $this->folders->rename($folder, $request->string('name')->toString()),
+        );
 
         return response()->json(['data' => $this->presentOne($renamed)]);
     }
@@ -92,6 +96,25 @@ final class ChatFolderController extends Controller
             'created_at' => $folder->created_at,
             'updated_at' => $folder->updated_at,
         ];
+    }
+
+    /**
+     * Translate the service's domain collision into the 422 field error
+     * the request contract promises. The name is validated up front, so
+     * this only fires when two creates race past validation and the DB
+     * unique — the real invariant — settles it.
+     *
+     * @param  callable(): ChatFolder  $write
+     */
+    private function nameCollisionAs422(callable $write): ChatFolder
+    {
+        try {
+            return $write();
+        } catch (ChatFolderNameTakenException) {
+            throw ValidationException::withMessages([
+                'name' => ChatFolderNameTakenException::MESSAGE,
+            ]);
+        }
     }
 
     private function findOwnedOr404(Request $request, int $id, TenantContext $tenant): ChatFolder

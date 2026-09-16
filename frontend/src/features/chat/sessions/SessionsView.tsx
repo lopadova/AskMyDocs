@@ -46,6 +46,7 @@ export function SessionsView(): ReactNode {
     const {
         activeId,
         activeConversation,
+        activeConversationKnown,
         projectKey,
         projectLabel,
         projectScopeValue,
@@ -143,7 +144,9 @@ export function SessionsView(): ReactNode {
                                             title={
                                                 activeConversation?.title?.trim()
                                                     ? activeConversation.title
-                                                    : `Session #${activeId}`
+                                                    : activeConversationKnown
+                                                      ? `Session #${activeId}`
+                                                      : 'Loading…'
                                             }
                                         />
                                     ) : (

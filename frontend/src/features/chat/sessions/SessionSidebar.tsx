@@ -141,6 +141,18 @@ export function SessionSidebar({
     const byFolder = (folderId: number): Conversation[] =>
         unpinned.filter((c) => c.chat_folder_id === folderId);
 
+    /**
+     * How many sessions a folder deletion would unfile.
+     *
+     * Counted from the FULL list, not from the rendered rows: those are
+     * `unpinned` and search-filtered, so a folder holding one pinned and
+     * two unpinned sessions would have promised "2 sessions" while three
+     * moved out — and an active search term could shrink it further.
+     * Stating the blast radius is the whole reason the prompt exists.
+     */
+    const folderMemberCount = (folderId: number): number =>
+        sessions.filter((c) => c.chat_folder_id === folderId).length;
+
     const state = sessionsQuery.isLoading
         ? 'loading'
         : sessionsQuery.isError
@@ -359,8 +371,11 @@ export function SessionSidebar({
                                 data-testid={`chat-sessions-folder-${folder.id}-delete-confirm-prompt`}
                             >
                                 <p>
-                                    Delete “{folder.name}”? Its {rows.length === 1 ? 'session' : 'sessions'}{' '}
-                                    {rows.length === 1 ? 'is' : 'are'} moved out of the folder, not deleted.
+                                    Delete “{folder.name}”?{' '}
+                                    {folderMemberCount(folder.id) === 1
+                                        ? 'Its session is'
+                                        : `Its ${folderMemberCount(folder.id)} sessions are`}{' '}
+                                    moved out of the folder, not deleted.
                                 </p>
                                 <div className="chat-sessions-folder-confirm-actions">
                                     <Button

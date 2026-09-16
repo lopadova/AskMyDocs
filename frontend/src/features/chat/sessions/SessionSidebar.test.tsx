@@ -269,6 +269,25 @@ describe('SessionSidebar', () => {
         await waitFor(() => expect(remove).toHaveBeenCalledWith(10));
     });
 
+    it('counts pinned and filtered-out members in the delete prompt', async () => {
+        // The rendered rows are `unpinned` and search-filtered, so counting
+        // them would under-report the blast radius — here 3 sessions move
+        // out of the folder while only 2 are visible in it.
+        vi.mocked(chatFoldersApi.list).mockResolvedValue([folder(10, 'Issue 42')]);
+        vi.mocked(chatApi.listConversations).mockResolvedValue([
+            conversation({ id: 1, title: 'Pinned member', chat_folder_id: 10, pinned_at: 'x' }),
+            conversation({ id: 2, title: 'Plain member', chat_folder_id: 10 }),
+            conversation({ id: 3, title: 'Another member', chat_folder_id: 10 }),
+        ]);
+        renderSidebar(<SessionSidebar {...props} />);
+
+        await userEvent.click(await screen.findByTestId('chat-sessions-folder-10-delete'));
+
+        expect(
+            screen.getByTestId('chat-sessions-folder-10-delete-confirm-prompt'),
+        ).toHaveTextContent('Its 3 sessions are moved out of the folder, not deleted.');
+    });
+
     it('abandons a folder delete when the confirm is cancelled', async () => {
         vi.mocked(chatFoldersApi.list).mockResolvedValue([folder(10, 'Issue 42')]);
         const remove = vi.spyOn(chatFoldersApi, 'remove').mockResolvedValue(undefined);

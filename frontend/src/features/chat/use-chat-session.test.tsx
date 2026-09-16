@@ -237,21 +237,50 @@ describe('useChatSession — project scope', () => {
 });
 
 describe('useChatSession — an archived session opened by URL', () => {
-    it('resolves the session from the archived cache, not as an unknown row', async () => {
-        // ['conversations'] holds the ACTIVE slice only, so a thread opened
-        // from the Archived drawer would otherwise be invisible to the hook.
+    it('fetches the archived slice to resolve a session missing from the active one', async () => {
+        // ['conversations'] holds the ACTIVE slice only, so an archived
+        // thread would otherwise be invisible to the hook. The lookup is a
+        // real query, not a cache peek, so a pasted URL resolves even
+        // though nothing has populated that cache.
         const archived = conversation({ id: 7, title: 'Old laptop request', archived_at: 'x' });
-        vi.mocked(chatApi.listConversations).mockResolvedValue([]);
+        vi.mocked(chatApi.listConversations).mockImplementation(async (scope) =>
+            scope === 'archived' ? [archived] : [],
+        );
         routeParams = { conversationId: '7' };
 
-        const { result, client } = harness();
-        client.setQueryData(['conversations', 'archived'], [archived]);
+        const { result } = harness();
 
         await waitFor(() => expect(result.current.activeConversation?.id).toBe(7));
         expect(result.current.activeConversationKnown).toBe(true);
         // The bound project is preserved, so the scope does not silently
         // widen to "all projects".
         expect(result.current.projectKey).toBe('engineering');
+        expect(result.current.projectLabel).toBe('engineering');
+    });
+
+    it('does not look up the archived slice when the active one already has the session', async () => {
+        // The lookup is conditional: opening a normal thread must not cost
+        // a second request.
+        vi.mocked(chatApi.listConversations).mockResolvedValue([conversation({ id: 7 })]);
+        routeParams = { conversationId: '7' };
+
+        const { result } = harness();
+        await waitFor(() => expect(result.current.activeConversation?.id).toBe(7));
+
+        expect(chatApi.listConversations).not.toHaveBeenCalledWith('archived');
+    });
+
+    it('reports an unresolved session as loading rather than as "all projects"', async () => {
+        // A session in neither slice has no KNOWN scope; claiming "all
+        // projects" would assert something never established.
+        vi.mocked(chatApi.listConversations).mockResolvedValue([]);
+        routeParams = { conversationId: '7' };
+
+        const { result } = harness();
+        await waitFor(() => expect(result.current.activeId).toBe(7));
+
+        expect(result.current.activeConversationKnown).toBe(false);
+        expect(result.current.projectLabel).toBe('resolving…');
     });
 
     it('never auto-titles a session it cannot see in either cache', async () => {
@@ -356,6 +385,28 @@ describe('useChatSession — deferred send queue', () => {
 
         const cached = client.getQueryData<Conversation[]>(['conversations']) ?? [];
         expect(cached.filter((c) => c.id === 42)).toHaveLength(1);
+    });
+
+    it('does not duplicate a branched session already present in the cache', async () => {
+        // The same R25 prepend shape lives in handleBranchAt; covering only
+        // requireConversation would leave it free to regress.
+        const branch = conversation({ id: 99, title: 'Thread (branch)' });
+        vi.mocked(chatApi.listConversations).mockResolvedValue([branch]);
+        vi.spyOn(chatApi, 'branchFromMessage').mockResolvedValue({
+            conversation: branch,
+            copied_message_ids: [1, 2],
+        });
+        routeParams = { conversationId: '7' };
+        const { result, client } = harness();
+        await waitFor(() => expect(result.current.activeId).toBe(7));
+
+        await act(async () => {
+            await result.current.handleBranchAt(11);
+        });
+
+        const cached = client.getQueryData<Conversation[]>(['conversations']) ?? [];
+        expect(cached.filter((c) => c.id === 99)).toHaveLength(1);
+        expect(nav.toConversation).toHaveBeenCalledWith(99);
     });
 
     it('returns null and stays on a new chat when conversation creation fails', async () => {

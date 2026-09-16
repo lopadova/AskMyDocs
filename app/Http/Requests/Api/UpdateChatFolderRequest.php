@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\Api;
 
+use App\Exceptions\Chat\ChatFolderNameTakenException;
 use App\Support\TenantContext;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -38,7 +39,7 @@ final class UpdateChatFolderRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'name.unique' => 'You already have a folder with this name.',
+            'name.unique' => ChatFolderNameTakenException::MESSAGE,
         ];
     }
 }

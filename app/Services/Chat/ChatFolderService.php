@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace App\Services\Chat;
 
+use App\Exceptions\Chat\ChatFolderNameTakenException;
 use App\Models\ChatFolder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\UniqueConstraintViolationException;
-use Illuminate\Validation\ValidationException;
 
 /**
  * CRUD for the user-created folders that group chat sessions.
@@ -59,10 +59,11 @@ final class ChatFolderService
      * here, but validate-then-insert is not atomic: two simultaneous
      * creates of the same name both pass validation and one then hits the
      * DB unique. The constraint is the real invariant — this catch only
-     * translates it back into the 422 the request contract promises,
-     * instead of letting a driver error surface as a 500 (R14).
+     * names the collision, so the HTTP layer can answer the 422 its
+     * request contract promises instead of letting a driver error surface
+     * as a 500 (R14).
      *
-     * @throws ValidationException when the name is already taken
+     * @throws ChatFolderNameTakenException when the name is already taken
      */
     public function create(int $userId, string $tenantId, string $name, int $position = 0): ChatFolder
     {
@@ -74,21 +75,17 @@ final class ChatFolderService
                 'position' => $position,
             ]);
         } catch (UniqueConstraintViolationException) {
-            throw ValidationException::withMessages([
-                'name' => 'You already have a folder with this name.',
-            ]);
+            throw ChatFolderNameTakenException::forName($name);
         }
     }
 
-    /** @throws ValidationException when the name is already taken */
+    /** @throws ChatFolderNameTakenException when the name is already taken */
     public function rename(ChatFolder $folder, string $name): ChatFolder
     {
         try {
             $folder->update(['name' => $name]);
         } catch (UniqueConstraintViolationException) {
-            throw ValidationException::withMessages([
-                'name' => 'You already have a folder with this name.',
-            ]);
+            throw ChatFolderNameTakenException::forName($name);
         }
 
         return $folder->refresh();

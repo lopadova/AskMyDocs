@@ -252,13 +252,46 @@ export function useChatSession({ nav }: UseChatSessionOptions): UseChatSessionRe
      * cache", which is NOT the same as "has no title" or "has no project".
      * Anything destructive must branch on `known`, never on nullish data.
      */
-    const archivedCache = qc.getQueryData<Conversation[]>(['conversations', 'archived']);
+    const fromActiveSlice =
+        activeId !== null ? conversationsQuery.data?.find((c) => c.id === activeId) : undefined;
+
+    /*
+     * Look in the archived slice ONLY when the active one does not hold the
+     * open session — which is the archived-thread case, plus a cold deep
+     * link where the drawer was never opened.
+     *
+     * This is a real `useQuery`, not a `getQueryData()` peek, for two
+     * reasons. It SUBSCRIBES the hook to the key, so a resolution or a
+     * refetch re-renders instead of leaving the session unresolved until
+     * some unrelated state change; and it actually FETCHES, so a pasted
+     * `/sessions/{archivedId}` URL resolves even though nothing has
+     * populated that cache. It shares the sidebar drawer's key, so opening
+     * the drawer costs no second request.
+     *
+     * Gated on `isSuccess`, not merely on a miss: during the active list's
+     * own load `fromActiveSlice` is undefined for every session, so
+     * without it EVERY thread open would fire a wasted archived fetch in
+     * the first render window.
+     */
+    const archivedQuery = useQuery<Conversation[]>({
+        queryKey: ['conversations', 'archived'],
+        queryFn: () => chatApi.listConversations('archived'),
+        enabled: activeId !== null && conversationsQuery.isSuccess && fromActiveSlice === undefined,
+        staleTime: 30_000,
+    });
+
     const activeConversation =
         activeId !== null
-            ? conversationsQuery.data?.find((c) => c.id === activeId)
-                ?? archivedCache?.find((c) => c.id === activeId)
-                ?? null
+            ? fromActiveSlice ?? archivedQuery.data?.find((c) => c.id === activeId) ?? null
             : null;
+
+    /**
+     * False while the open session is in neither slice.
+     *
+     * Distinct from "has no title" and from "has no project": a session
+     * still being looked up, or one that genuinely no longer exists, must
+     * not be rendered as though its fields were empty.
+     */
     const activeConversationKnown = activeId === null || activeConversation !== null;
 
     // Effective project scope. For an EXISTING conversation the bound
@@ -281,7 +314,11 @@ export function useChatSession({ nav }: UseChatSessionOptions): UseChatSessionRe
     // the WHOLE tenant — a cross-membership leak. The constraint is applied
     // via `effectiveFilters` below (project_keys = my projects).
     const isAllProjects = activeId !== null ? conversationProjectKey === null : scope === '';
-    const projectLabel = projectKey ?? (isAllProjects ? 'all projects' : 'default');
+    // An unresolved session has no known scope — saying "all projects"
+    // there would assert something we have not established.
+    const projectLabel = !activeConversationKnown
+        ? 'resolving…'
+        : projectKey ?? (isAllProjects ? 'all projects' : 'default');
 
     // The value rendered in the selector: '' for All, the project_key
     // otherwise. A new chat with no explicit choice shows the default.

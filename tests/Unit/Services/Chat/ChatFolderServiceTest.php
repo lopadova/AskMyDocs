@@ -9,7 +9,7 @@ use App\Models\Conversation;
 use App\Models\User;
 use App\Services\Chat\ChatFolderService;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Validation\ValidationException;
+use App\Exceptions\Chat\ChatFolderNameTakenException;
 use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -120,12 +120,14 @@ final class ChatFolderServiceTest extends TestCase
     public function test_a_duplicate_name_raises_a_validation_error_not_a_driver_error(): void
     {
         // The service is a public PHP surface (R44) and validate-then-insert
-        // is not atomic, so the DB unique is the real invariant. This proves
-        // the constraint surfaces as a 422-shaped failure rather than a 500.
+        // is not atomic, so the DB unique is the real invariant. A DOMAIN
+        // exception, not a ValidationException: a CLI or queue caller should
+        // not have to catch an HTTP-validator type for a DB collision (the
+        // controller does that translation).
         $owner = $this->user();
         $this->service->create($owner->id, 'acme', 'Issue 42');
 
-        $this->expectException(ValidationException::class);
+        $this->expectException(ChatFolderNameTakenException::class);
         $this->service->create($owner->id, 'acme', 'Issue 42');
     }
 
@@ -135,7 +137,7 @@ final class ChatFolderServiceTest extends TestCase
         $this->service->create($owner->id, 'acme', 'Taken');
         $folder = $this->service->create($owner->id, 'acme', 'Mine');
 
-        $this->expectException(ValidationException::class);
+        $this->expectException(ChatFolderNameTakenException::class);
         $this->service->rename($folder, 'Taken');
     }
 
