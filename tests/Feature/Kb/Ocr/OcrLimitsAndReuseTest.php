@@ -429,7 +429,7 @@ final class OcrLimitsAndReuseTest extends TestCase
         $held = new HeldLock($lock, 'test');
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('could not refresh the reservation');
-        $store->refreshReservation('kb', 'docs/scan.png', '', $run, $held);
+        $store->refreshReservation('kb', 'docs/scan.png', '', $run, $held, $held);
     }
 
     #[Test]

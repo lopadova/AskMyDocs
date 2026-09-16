@@ -640,6 +640,13 @@ final class OcrService
                 $disk,
             ));
         }
+        // PR #492 Copilot round-5 — this reservation's lease is a bare
+        // PURGE_LOCK_SECONDS (60s), but the assets-lock wait plus the
+        // storage round-trips below can outlive it: without asserting THIS
+        // lock too, right beside the assets lock, a lapsed run reservation
+        // let purgeRun() (which acquires the identical key) delete runDir
+        // while this method believed it still excluded it.
+        $runHeld = new HeldLock($reservation, 'OCR run reservation');
         try {
             // With reuse disabled, convert() never records result.json
             // (nothing to reuse from — see the `if ($reuseEnabled)` guard
@@ -652,7 +659,7 @@ final class OcrService
             if (! Storage::disk($disk)->exists($this->figures->resultPath($sourcePath, $prefix, $runKey))) {
                 return;
             }
-            $this->underAssetsLock($disk, $sourcePath, $prefix, fn (HeldLock $held) => $this->figures->refreshReservation($disk, $sourcePath, $prefix, $runKey, $held));
+            $this->underAssetsLock($disk, $sourcePath, $prefix, fn (HeldLock $assetsHeld) => $this->figures->refreshReservation($disk, $sourcePath, $prefix, $runKey, $assetsHeld, $runHeld));
         } finally {
             $reservation->release();
         }
@@ -785,6 +792,14 @@ final class OcrService
                     $runKey,
                 ));
             }
+            // PR #492 Copilot round-5 — `leaseFor()` sizes this reservation
+            // for the DRIVER call's own worst case, but the reuse branch
+            // below skips the driver and goes straight to a refresh: its
+            // lease is still whatever `leaseFor()` computed, and asserting
+            // it (not just the assets lock) right beside the write closes
+            // the same TOCTOU window `touchRunBeforeCommit()` closes for its
+            // own, much shorter-lived reservation.
+            $runHeld = new HeldLock($reservation, 'OCR run reservation');
             try {
                 // The recorded-run check and the reservation refresh happen
                 // UNDER the run lock, so no purge can remove the tree between
@@ -798,7 +813,7 @@ final class OcrService
                 if ($reused !== null) {
                     $result = $reused['result'];
                     $written = $reused['written'];
-                    $this->underAssetsLock($disk, $doc->sourcePath, $prefix, fn (HeldLock $held) => $this->figures->refreshReservation($disk, $doc->sourcePath, $prefix, $runKey, $held));
+                    $this->underAssetsLock($disk, $doc->sourcePath, $prefix, fn (HeldLock $assetsHeld) => $this->figures->refreshReservation($disk, $doc->sourcePath, $prefix, $runKey, $assetsHeld, $runHeld));
                 } else {
                     $assertRunnable();
                     $result = $driver->recognise(new OcrRequest(

@@ -102,14 +102,39 @@ final class OcrFigureStoreHeldLockTest extends TestCase
         Storage::disk('kb')->assertMissing('docs/x.md.ocr/'.self::RUN.'/images/fig-1-2.png');
     }
 
-    public function test_refresh_reservation_refuses_the_rewrite_once_the_lock_is_no_longer_held(): void
+    public function test_refresh_reservation_refuses_the_rewrite_once_the_assets_lock_is_no_longer_held(): void
     {
         Storage::disk('kb')->put('docs/x.md.ocr/'.self::RUN.'/result.json', '{"pages":[]}');
         $store = app(OcrFigureStore::class);
+        $runLock = Cache::lock('test-ocr-figure-store-run-'.uniqid('', true), 60);
+        $runLock->get();
 
         try {
-            $store->refreshReservation('kb', 'docs/x.md', '', self::RUN, $this->unownedHeldLock());
+            $store->refreshReservation('kb', 'docs/x.md', '', self::RUN, $this->unownedHeldLock(), new HeldLock($runLock, 'test run'));
             $this->fail('Expected a RuntimeException wrapping the lost lock.');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('could not refresh the reservation', $e->getMessage());
+        }
+    }
+
+    /**
+     * PR #492 Copilot round-5 — the assets lock alone used to be asserted;
+     * the caller's OWN run-level reservation (the SAME key `purgeRun()`
+     * acquires before it may delete the run directory) was never checked at
+     * all. A run reservation lost mid-refresh — the assets lock is still
+     * genuinely held — must refuse exactly like a lost assets lock does,
+     * proving `$runHeld` is now asserted, not merely accepted and ignored.
+     */
+    public function test_refresh_reservation_refuses_the_rewrite_once_the_run_reservation_is_no_longer_held(): void
+    {
+        Storage::disk('kb')->put('docs/x.md.ocr/'.self::RUN.'/result.json', '{"pages":[]}');
+        $store = app(OcrFigureStore::class);
+        $assetsLock = Cache::lock('test-ocr-figure-store-assets-'.uniqid('', true), 60);
+        $assetsLock->get();
+
+        try {
+            $store->refreshReservation('kb', 'docs/x.md', '', self::RUN, new HeldLock($assetsLock, 'test assets'), $this->unownedHeldLock());
+            $this->fail('Expected a RuntimeException wrapping the lost run reservation.');
         } catch (\RuntimeException $e) {
             $this->assertStringContainsString('could not refresh the reservation', $e->getMessage());
         }

@@ -47,7 +47,7 @@ final class ArtifactsRetentionCommandsTest extends TestCase
         if ($artifact !== null) {
             $store = app(ConversionArtifactStore::class);
             $final = $store->pathFor(app(TenantContext::class)->current(), 'eng', $path, $hash);
-            $store->publish('kb', $store->writeTemp('kb', $final, $artifact), $final);
+            $store->publishUnderOwnLock('kb', $store->writeTemp('kb', $final, $artifact), $final);
             $attributes['markdown_path'] = $final;
             $attributes['content_hash'] = $hash;
         }
@@ -140,7 +140,7 @@ final class ArtifactsRetentionCommandsTest extends TestCase
         $trashed->delete(); // soft-deleted rows still own their artifact (R2)
         $store = app(ConversionArtifactStore::class);
         $orphan = $store->pathFor(app(TenantContext::class)->current(), 'eng', 'docs/gone.md', str_repeat('b', 64));
-        $store->publish('kb', $store->writeTemp('kb', $orphan, 'nobody points here'), $orphan);
+        $store->publishUnderOwnLock('kb', $store->writeTemp('kb', $orphan, 'nobody points here'), $orphan);
         $staleTmp = $orphan.'.dead-writer.tmp';
         Storage::disk('kb')->put($staleTmp, 'half written');
         touch(Storage::disk('kb')->path($staleTmp), time() - 7200);
@@ -170,9 +170,9 @@ final class ArtifactsRetentionCommandsTest extends TestCase
         $store = app(ConversionArtifactStore::class);
         $tenant = app(TenantContext::class)->current();
         $raced = $store->pathFor($tenant, 'eng', 'docs/raced.md', str_repeat('d', 64));
-        $store->publish('kb', $store->writeTemp('kb', $raced, 'a row takes this path meanwhile'), $raced);
+        $store->publishUnderOwnLock('kb', $store->writeTemp('kb', $raced, 'a row takes this path meanwhile'), $raced);
         $orphan = $store->pathFor($tenant, 'eng', 'docs/gone.md', str_repeat('e', 64));
-        $store->publish('kb', $store->writeTemp('kb', $orphan, 'nobody points here'), $orphan);
+        $store->publishUnderOwnLock('kb', $store->writeTemp('kb', $orphan, 'nobody points here'), $orphan);
         $takePath = function (string $disk, string $path): void {
             if (KnowledgeDocument::withoutGlobalScopes()->where('markdown_path', $path)->exists()) {
                 return;
@@ -195,7 +195,7 @@ final class ArtifactsRetentionCommandsTest extends TestCase
             // The preview asks the gate's question too: a candidate a row took
             // since the snapshot is reported kept, and nothing is deleted.
             $late = $store->pathFor($tenant, 'eng', 'docs/late.md', str_repeat('f', 64));
-            $store->publish('kb', $store->writeTemp('kb', $late, 'taken during the preview'), $late);
+            $store->publishUnderOwnLock('kb', $store->writeTemp('kb', $late, 'taken during the preview'), $late);
             \Tests\Fixtures\Kb\RaceInsertingDeleter::$beforeGate = static function (string $disk, string $path) use ($late, $takePath): void {
                 if ($path === $late) {
                     $takePath($disk, $path);
@@ -220,7 +220,7 @@ final class ArtifactsRetentionCommandsTest extends TestCase
         $this->app->bind(\App\Services\Kb\DocumentDeleter::class, \Tests\Fixtures\Kb\RaceInsertingDeleter::class);
         $store = app(ConversionArtifactStore::class);
         $orphan = $store->pathFor(app(TenantContext::class)->current(), 'eng', 'docs/gone.md', str_repeat('e', 64));
-        $store->publish('kb', $store->writeTemp('kb', $orphan, 'nobody points here'), $orphan);
+        $store->publishUnderOwnLock('kb', $store->writeTemp('kb', $orphan, 'nobody points here'), $orphan);
         try {
             \Tests\Fixtures\Kb\RaceInsertingDeleter::$insideGate = static function (string $disk, string $path): void {
                 Cache::lock('kb:artifact:'.$disk.':'.sha1($path))->forceRelease(); // the TTL lapsed mid-section
@@ -247,10 +247,10 @@ final class ArtifactsRetentionCommandsTest extends TestCase
         $store = app(ConversionArtifactStore::class);
         $tenant = app(TenantContext::class)->current();
         $nullDisk = $store->pathFor($tenant, 'eng', 'docs/null-disk.md', str_repeat('d', 64));
-        $store->publish('kb', $store->writeTemp('kb', $nullDisk, 'null disk'), $nullDisk);
+        $store->publishUnderOwnLock('kb', $store->writeTemp('kb', $nullDisk, 'null disk'), $nullDisk);
         $this->row(5, 'archived', null, 'docs/null-disk.md')->forceFill(['markdown_path' => $nullDisk, 'metadata' => ['disk' => null, 'prefix' => '']])->save();
         $emptyDisk = $store->pathFor($tenant, 'eng', 'docs/empty-disk.md', str_repeat('e', 64));
-        $store->publish('kb', $store->writeTemp('kb', $emptyDisk, 'empty disk'), $emptyDisk);
+        $store->publishUnderOwnLock('kb', $store->writeTemp('kb', $emptyDisk, 'empty disk'), $emptyDisk);
         $this->row(6, 'archived', null, 'docs/empty-disk.md')->forceFill(['markdown_path' => $emptyDisk, 'metadata' => ['disk' => '', 'prefix' => '']])->save();
 
         // Neither is a candidate at all: nothing removed and nothing KEPT by
@@ -283,7 +283,7 @@ final class ArtifactsRetentionCommandsTest extends TestCase
     {
         $store = app(ConversionArtifactStore::class);
         $orphan = $store->pathFor(app(TenantContext::class)->current(), 'eng', 'docs/gone.md', str_repeat('c', 64));
-        $store->publish('kb', $store->writeTemp('kb', $orphan, 'orphan'), $orphan);
+        $store->publishUnderOwnLock('kb', $store->writeTemp('kb', $orphan, 'orphan'), $orphan);
 
         $this->artisan('kb:prune-archived-versions', ['--dry-run' => true])
             ->expectsOutputToContain('artifact_orphans_removed=1 artifact_orphans_failed=0 (dry-run)')
@@ -382,11 +382,11 @@ final class ArtifactsRetentionCommandsTest extends TestCase
         $store = app(ConversionArtifactStore::class);
         $tenant = app(TenantContext::class)->current();
         $otherDiskPath = $store->pathFor($tenant, 'eng', 'docs/other.md', str_repeat('d', 64));
-        $store->publish('kb', $store->writeTemp('kb', $otherDiskPath, 'on kb, referenced only on kb-archive'), $otherDiskPath);
+        $store->publishUnderOwnLock('kb', $store->writeTemp('kb', $otherDiskPath, 'on kb, referenced only on kb-archive'), $otherDiskPath);
         $onOtherDisk = $this->row(1, 'active', null, 'docs/other.md');
         $onOtherDisk->update(['markdown_path' => $otherDiskPath, 'metadata' => ['disk' => 'kb-archive', 'prefix' => '']]);
         $legacyPath = $store->pathFor($tenant, 'eng', 'docs/legacy.md', str_repeat('e', 64));
-        $store->publish('kb', $store->writeTemp('kb', $legacyPath, 'referenced by a row without a disk'), $legacyPath);
+        $store->publishUnderOwnLock('kb', $store->writeTemp('kb', $legacyPath, 'referenced by a row without a disk'), $legacyPath);
         $legacy = $this->row(2, 'active', null, 'docs/legacy.md');
         $legacy->update(['markdown_path' => $legacyPath, 'metadata' => []]);
 
@@ -446,12 +446,12 @@ final class ArtifactsRetentionCommandsTest extends TestCase
         $tenant = app(TenantContext::class)->current();
         // A row that recorded its artifact on the second disk keeps it alive there …
         $kept = $store->pathFor($tenant, 'eng', 'docs/second.md', str_repeat('f', 64));
-        $store->publish('kb2', $store->writeTemp('kb2', $kept, 'kept on kb2'), $kept);
+        $store->publishUnderOwnLock('kb2', $store->writeTemp('kb2', $kept, 'kept on kb2'), $kept);
         $row = $this->row(1, 'active', null, 'docs/second.md');
         $row->update(['markdown_path' => $kept, 'content_hash' => hash('sha256', 'kept on kb2'), 'metadata' => ['disk' => 'kb2', 'prefix' => '']]);
         // … while an orphan and a stale temp on that same disk are swept, like on the configured one.
         $orphan = $store->pathFor($tenant, 'eng', 'docs/gone.md', str_repeat('a', 63).'b');
-        $store->publish('kb2', $store->writeTemp('kb2', $orphan, 'orphan on kb2'), $orphan);
+        $store->publishUnderOwnLock('kb2', $store->writeTemp('kb2', $orphan, 'orphan on kb2'), $orphan);
         // A dead writer's leftover: its lease has lapsed, only the file remains.
         $staleTemp = $kept.'.dead-writer.tmp';
         Storage::disk('kb2')->put($staleTemp, 'stale temp');
@@ -976,7 +976,7 @@ final class ArtifactsRetentionCommandsTest extends TestCase
 
         // A publish gives the lease back; so does a discard.
         $published = $store->writeTemp('kb', $final, 'published');
-        $store->publish('kb', $published, $final);
+        $store->publishUnderOwnLock('kb', $published, $final);
         $this->assertFalse(ConversionArtifactStore::tempLeaseHeld('kb', $published));
         $discarded = $store->writeTemp('kb', $final, 'discarded');
         $store->discardTemp('kb', $discarded);
@@ -1092,10 +1092,15 @@ final class ArtifactsRetentionCommandsTest extends TestCase
      */
     public function test_a_cache_store_without_locks_leaves_the_temp_unleased_and_the_age_threshold_in_charge(): void
     {
+        // Seeded under the DEFAULT (lock-capable) cache store: this row's
+        // artifact is unrelated fixture noise (proves the sweep leaves an
+        // active row's artifact alone), not part of the no-lock scenario
+        // under test — publishing one legitimately requires a lock-capable
+        // store (PR #492 Copilot round-5: publish()'s lock is mandatory).
+        $this->row(9, 'active', 'live');
         Cache::extend('nolock', static fn ($app) => Cache::repository(new \Tests\Fixtures\Cache\NoLockStore));
         config(['cache.stores.nolock' => ['driver' => 'nolock'], 'cache.default' => 'nolock']);
         \Illuminate\Support\Facades\Log::spy();
-        $this->row(9, 'active', 'live');
         $store = app(ConversionArtifactStore::class);
         $final = $store->pathFor(app(TenantContext::class)->current(), 'eng', 'docs/nolock.md', str_repeat('d', 64));
 

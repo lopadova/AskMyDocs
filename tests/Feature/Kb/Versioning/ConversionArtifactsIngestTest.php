@@ -1231,6 +1231,40 @@ MD;
         }
     }
 
+    /**
+     * PR #492 Copilot round-5 — `publish()`'s lock used to be
+     * `?HeldLock $held = null`: nothing in the type system stopped a
+     * caller from reaching the move/delete probes with no path lock at
+     * all, silently skipping every `assertHeld()` in the path
+     * (`$held?->assertHeld()` is a no-op on `null`). Pinned by reflection
+     * so a future change cannot quietly reopen the loophole: `publish()`
+     * (and its private helpers `publishLeased()`/`moveOver()`, which take
+     * the SAME lock straight through) must declare `$held` as a mandatory,
+     * non-nullable `HeldLock` — no default, no `?` type. Callers that do
+     * not already hold the path lock use `publishUnderOwnLock()`, which
+     * acquires one via `underPathLock()` and inherits its own no-lock-store
+     * refusal (covered by
+     * `ArtifactsRetentionCommandsTest::test_a_cache_store_without_locks_refuses_artifact_removal_and_publish`).
+     */
+    public function test_publish_requires_a_held_lock_not_an_optional_one(): void
+    {
+        foreach (['publish', 'publishLeased', 'moveOver'] as $method) {
+            $reflection = new \ReflectionMethod(ConversionArtifactStore::class, $method);
+            $held = null;
+            foreach ($reflection->getParameters() as $parameter) {
+                if ($parameter->getName() === 'held') {
+                    $held = $parameter;
+                }
+            }
+            $this->assertNotNull($held, "{$method}() must still declare a \$held parameter");
+            $this->assertFalse($held->isOptional(), "{$method}()'s \$held must be mandatory (PR #492 round-5), not optional");
+            $this->assertFalse($held->allowsNull(), "{$method}()'s \$held must be non-nullable (PR #492 round-5): ?HeldLock reopens the unlocked-publish loophole");
+            $type = $held->getType();
+            $this->assertInstanceOf(\ReflectionNamedType::class, $type);
+            $this->assertSame(\App\Support\Kb\HeldLock::class, $type->getName(), "{$method}()'s \$held must be typed HeldLock");
+        }
+    }
+
     /** SEC-PATH-001 — a temp path outside the artifact root is refused by publish() and discardTemp() before any storage operation. */
     public function test_publish_and_discard_refuse_a_temp_path_outside_the_artifact_root(): void
     {
@@ -1240,7 +1274,7 @@ MD;
         Storage::disk('kb')->put('docs/stray.tmp', 'not ours');
 
         try {
-            $store->publish('kb', 'docs/stray.tmp', $final);
+            $store->publishUnderOwnLock('kb', 'docs/stray.tmp', $final);
             $this->fail('a temp outside the artifact root must be refused');
         } catch (\RuntimeException $e) {
             $this->assertStringContainsString('not under an artifact root', $e->getMessage());
@@ -1490,7 +1524,7 @@ MD;
         $markdown = "# Ambiguous\n\nstored\n";
         $hash = hash('sha256', $markdown);
         $final = $store->pathFor(app(TenantContext::class)->current(), 'eng', 'reports/ambiguous.pdf', $hash);
-        $store->publish('kb', $store->writeTemp('kb', $final, $markdown), $final);
+        $store->publishUnderOwnLock('kb', $store->writeTemp('kb', $final, $markdown), $final);
         $legacy = KnowledgeDocument::create([
             'project_key' => 'eng', 'source_path' => 'reports/ambiguous.pdf', 'source_type' => 'pdf', 'title' => 'Legacy',
             'mime_type' => 'application/pdf', 'language' => 'it', 'access_scope' => 'internal', 'status' => 'archived',
@@ -2063,11 +2097,11 @@ MD;
         $store = app(ConversionArtifactStore::class);
         $final = $store->pathFor('default', 'eng', 'docs/race.md', str_repeat('a', 64));
         $winner = $store->writeTemp('kb', $final, 'same bytes');
-        $store->publish('kb', $winner, $final);
+        $store->publishUnderOwnLock('kb', $winner, $final);
         $loser = $store->writeTemp('kb', $final, 'same bytes');
         $bystander = $store->writeTemp('kb', $final, 'same bytes');
 
-        $store->publish('kb', $loser, $final);
+        $store->publishUnderOwnLock('kb', $loser, $final);
 
         Storage::disk('kb')->assertExists($final);
         Storage::disk('kb')->assertMissing($loser);
@@ -2089,7 +2123,7 @@ MD;
         Storage::disk('kb')->put($final, '# Right'); // truncated on disk
         $temp = $store->writeTemp('kb', $final, $markdown);
 
-        $store->publish('kb', $temp, $final);
+        $store->publishUnderOwnLock('kb', $temp, $final);
 
         $this->assertSame($markdown, Storage::disk('kb')->get($final), 'the verified bytes replace the corrupt file');
         Storage::disk('kb')->assertMissing($temp);

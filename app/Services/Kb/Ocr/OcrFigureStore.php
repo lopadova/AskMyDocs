@@ -169,22 +169,35 @@ final class OcrFigureStore
      * no longer exist, so the caller's ingest fails (and the job retries)
      * instead of committing a dangling reference.
      *
-     * PR #492 Copilot round-2 — `$held` (the SAME lock the caller ran the
-     * read+existence check under) is asserted immediately before the
+     * PR #492 Copilot round-2 — `$assetsHeld` (the SAME lock the caller ran
+     * the read+existence check under) is asserted immediately before the
      * decisive `put()`: the read and the write straddle a storage
      * round-trip, and without the assertion a lapsed lock would let this
      * write proceed after a purge has since taken the directory.
      *
+     * PR #492 Copilot round-5 — the assets lock alone was not enough: the
+     * caller's OWN run-level reservation (the run-lock `purgeRun()` itself
+     * acquires before it may delete this run's directory) has a bare
+     * `OcrFigureStore::PURGE_LOCK_SECONDS`-second (60s) lease in
+     * `touchRunBeforeCommit()`, and this method's read+write can straddle a
+     * storage round-trip long enough to outlive it — a `purgeRun()` racing
+     * in right then would delete the run while this refresh believes it is
+     * still reserved. `$runHeld` closes it: asserted alongside `$assetsHeld`
+     * immediately before the same decisive `put()`, so a lapsed RUN
+     * reservation refuses the refresh exactly like a lapsed assets lock
+     * already does.
+     *
      * @throws RuntimeException
-     * @throws \App\Support\Kb\LockLostException when the assets lock lapses before the write
+     * @throws \App\Support\Kb\LockLostException when the assets lock or the run reservation lapses before the write
      */
-    public function refreshReservation(string $disk, string $sourcePath, string $prefix, string $runKey, HeldLock $held): void
+    public function refreshReservation(string $disk, string $sourcePath, string $prefix, string $runKey, HeldLock $assetsHeld, HeldLock $runHeld): void
     {
         $path = $this->resultPath($sourcePath, $prefix, $runKey);
         try {
             $storage = Storage::disk($disk);
             $bytes = $storage->exists($path) ? $storage->get($path) : null;
-            $held->assertHeld('OCR reservation refresh');
+            $runHeld->assertHeld('OCR reservation refresh');
+            $assetsHeld->assertHeld('OCR reservation refresh');
             $ok = is_string($bytes) && $storage->put($path, $bytes) !== false;
         } catch (\Throwable $e) {
             throw new RuntimeException("OcrFigureStore: could not refresh the reservation of reused run {$path} on disk [{$disk}]: {$e->getMessage()}", 0, $e);

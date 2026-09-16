@@ -477,7 +477,7 @@ final class ConversionArtifactStore
      *
      * @throws RuntimeException when the move fails and nothing verified is at the final path (R4)
      */
-    public function publish(string $disk, string $tmpPath, string $finalPath, ?HeldLock $held = null): void
+    public function publish(string $disk, string $tmpPath, string $finalPath, HeldLock $held): void
     {
         try {
             // Both paths are checked before any storage operation (SEC-PATH-001):
@@ -494,7 +494,35 @@ final class ConversionArtifactStore
         }
     }
 
-    private function publishLeased(string $disk, string $tmpPath, string $finalPath, ?HeldLock $held = null): void
+    /**
+     * PR #492 Copilot round-5 — `publish()`'s lock used to be `?HeldLock
+     * $held = null`: nothing in the type system stopped a caller from
+     * reaching the move/delete probes with no path lock at all, silently
+     * skipping every `assertHeld()` in the path (`$held?->assertHeld()` is
+     * a no-op on `null`) and racing a concurrent publish or reference-gated
+     * removal (ADR 0030 §3's whole point). `publish()`'s ONE real caller —
+     * `DocumentIngestor::publishArtifactForRow()` — always already holds
+     * the path lock (it does a row/tenant re-check INSIDE the same
+     * `underPathLock()` closure `publish()` itself must run under), so
+     * `publish()` cannot self-acquire the lock without re-entering the
+     * SAME key an outer holder already owns (a second `Cache::lock()` call
+     * gets a fresh, unrelated owner token — it would block against, not
+     * recognise, the caller's own lock). Making `$held` mandatory closes
+     * the loophole for a FUTURE caller without touching that one.
+     *
+     * This wrapper is the self-locking entry point for callers (mostly
+     * test fixtures seeding a published artifact with no re-check of their
+     * own) that do not already hold the path lock: it acquires one via
+     * {@see underPathLock()} and delegates.
+     */
+    public function publishUnderOwnLock(string $disk, string $tmpPath, string $finalPath): void
+    {
+        $this->underPathLock($disk, $finalPath, function (HeldLock $held) use ($disk, $tmpPath, $finalPath): void {
+            $this->publish($disk, $tmpPath, $finalPath, $held);
+        });
+    }
+
+    private function publishLeased(string $disk, string $tmpPath, string $finalPath, HeldLock $held): void
     {
         $storage = Storage::disk($disk);
         $this->assertContainedOnDisk($disk, $finalPath);
@@ -502,7 +530,7 @@ final class ConversionArtifactStore
             // This branch REPORTS SUCCESS (the bytes are already there), and
             // the caller reads that as licence to drop the original: it is
             // asserted like the move, after the two byte-probes above.
-            $held?->assertHeld('artifact publish');
+            $held->assertHeld('artifact publish');
             $this->discardTemp($disk, $tmpPath);
 
             return;
@@ -520,7 +548,7 @@ final class ConversionArtifactStore
         // and this branch REPORTS SUCCESS on the strength of what it found
         // there, which licenses the retention tail: asserted like the move.
         if ($this->finalMatchesTemp($storage, $tmpPath, $finalPath)) {
-            $held?->assertHeld('artifact publish');
+            $held->assertHeld('artifact publish');
             $this->discardTemp($disk, $tmpPath);
 
             return;
@@ -552,9 +580,9 @@ final class ConversionArtifactStore
      * local disk; an adapter that refuses to overwrite gets the stale file
      * removed first (the window between the two is the smallest available).
      */
-    private function moveOver(FilesystemAdapter $storage, string $tmpPath, string $finalPath, ?HeldLock $held = null): bool
+    private function moveOver(FilesystemAdapter $storage, string $tmpPath, string $finalPath, HeldLock $held): bool
     {
-        $held?->assertHeld('artifact publish');
+        $held->assertHeld('artifact publish');
         try {
             if ($storage->move($tmpPath, $finalPath)) {
                 return true;
@@ -568,7 +596,7 @@ final class ConversionArtifactStore
         if ($storage->exists($finalPath)) {
             // The replace branch DELETES what is there: assert again, the
             // probes since the first assertion were storage round-trips.
-            $held?->assertHeld('artifact replace');
+            $held->assertHeld('artifact replace');
             if (! $storage->delete($finalPath)) {
                 return false;
             }
@@ -582,7 +610,7 @@ final class ConversionArtifactStore
         // any of them. Asserting only in the replace branch left the
         // "final absent" fallback able to move bytes after its lock was gone,
         // racing whichever holder took the path meanwhile.
-        $held?->assertHeld('artifact publish move');
+        $held->assertHeld('artifact publish move');
 
         return (bool) $storage->move($tmpPath, $finalPath);
     }

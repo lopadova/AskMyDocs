@@ -78,7 +78,7 @@ final class DocumentVersionArtifactsTest extends TestCase
         if ($artifact !== null) {
             $store = app(ConversionArtifactStore::class);
             $final = $store->pathFor(app(TenantContext::class)->current(), 'eng', $path, $hash);
-            $store->publish('kb', $store->writeTemp('kb', $final, $artifact), $final);
+            $store->publishUnderOwnLock('kb', $store->writeTemp('kb', $final, $artifact), $final);
             $attributes['markdown_path'] = $final;
             $attributes['content_hash'] = hash('sha256', $artifact); // the integrity hash of the stored bytes (ADR 0030 §4)
             $attributes['version_actor'] = 'user:7';
