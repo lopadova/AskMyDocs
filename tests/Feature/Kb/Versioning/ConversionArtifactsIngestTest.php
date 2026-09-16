@@ -659,7 +659,14 @@ Inert knob.", 'docs/inert.md');
         Storage::disk('kb')->assertExists('reports/q16.pdf'); // a drop whose lock lapsed keeps the original
         $this->assertSame('markdown_only', $doc->fresh()->metadata['source_retention'], 'the contract is recorded; the next identical ingest retries the drop');
         $this->assertArrayNotHasKey('source_dropped', $doc->fresh()->metadata ?? []);
-        \Illuminate\Support\Facades\Log::shouldHaveReceived('warning')->once()->withArgs(static fn (string $message): bool => str_contains($message, 'the storage key lock lapsed during the reference scan'));
+        // v8.36 / PR #479 Copilot review round 2 — the message is now shared
+        // between the storage-key lock and the caller's optional
+        // SourceInFlight reservation (either can be the one that lapsed);
+        // this test injects only the storage-key lock, so it doesn't pin the
+        // wording to one lock's name — the exception message itself already
+        // does that, and is asserted separately by the tests that exercise
+        // the reservation.
+        \Illuminate\Support\Facades\Log::shouldHaveReceived('warning')->once()->withArgs(static fn (string $message): bool => str_contains($message, 'a lock guarding the section lapsed during the reference scan'));
     }
 
     /** ADR 0030 §3 — the retention contract is finalized on the identical re-ingest too: an original re-uploaded after a `markdown_only` drop is dropped again and the rows stamped. */

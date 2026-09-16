@@ -758,6 +758,62 @@ final class ArtifactsRetentionCommandsTest extends TestCase
         $this->assertTrue($row->fresh()->metadata['source_dropped']);
     }
 
+    /**
+     * v8.36 / PR #479 Copilot review round 2 — finalizeSourceRetention()'s
+     * own scan (firstRowBlockingDrop(), streamed over every referencing
+     * version) can outlive the backfill's SourceInFlight reservation exactly
+     * like it can outlive the storage-key lock it already asserts internally:
+     * this proves the reservation is now asserted at the SAME point, right
+     * before the delete — a store that reports another owner refuses the
+     * drop instead of letting a fresh ingest that has since reserved and
+     * started reading the same original find it removed out from under it.
+     */
+    public function test_backfill_refuses_the_retention_drop_when_the_source_reservation_lapsed(): void
+    {
+        config(['kb.ocr.enabled' => true, 'kb.ocr.driver' => 'fake', 'kb.ocr.fake.pages' => [['markdown' => 'scanned text']]]);
+        $cache = \Mockery::mock(\App\Services\Kb\EmbeddingCacheService::class);
+        $cache->shouldReceive('generate')->andReturnUsing(
+            fn (array $texts) => new \App\Ai\EmbeddingsResponse(embeddings: array_map(fn () => array_fill(0, 8, 0.0), $texts), provider: 'fake', model: 'fake-8'),
+        );
+        $this->app->instance(\App\Services\Kb\EmbeddingCacheService::class, $cache);
+        $tenant = app(TenantContext::class)->current();
+        $png = (string) base64_decode(\App\Services\Kb\Ocr\Drivers\FakeOcrDriver::PNG_1X1, true);
+        Storage::disk('kb')->put('scans/lapsed.png', $png);
+        config(['kb.source_retention.mode' => 'markdown_only']);
+        $row = app(\App\Services\Kb\DocumentIngestor::class)->ingest('eng', new \App\Services\Kb\Pipeline\SourceDocument(
+            sourcePath: 'scans/lapsed.png', mimeType: 'image/png', bytes: $png,
+            externalUrl: null, externalId: null, connectorType: 'local', metadata: ['disk' => 'kb', 'prefix' => ''],
+        ), 'Lapsed');
+        // The original comes back (a restore from backup) while the verified artifact is still there.
+        Storage::disk('kb')->put('scans/lapsed.png', $png);
+        KnowledgeDocument::withoutGlobalScopes()->whereKey($row->id)->update(['metadata' => array_diff_key($row->fresh()->metadata, ['source_dropped' => true])]);
+
+        $key = \App\Support\Kb\SourceInFlight::key('kb', 'scans/lapsed.png');
+        $store = Cache::store();
+        $lapsed = new class($key, 60) extends \Illuminate\Cache\Lock
+        {
+            public function acquire() { return true; }
+
+            public function release() { return true; }
+
+            public function forceRelease() {}
+
+            protected function getCurrentOwner() { return 'another-writer'; }
+        };
+        Cache::partialMock()
+            ->shouldReceive('lock')
+            ->andReturnUsing(fn (string $name, int $seconds = 0, $owner = null) => $name === $key ? $lapsed : $store->lock($name, $seconds, $owner));
+
+        $this->artisan('kb:artifacts-backfill', ['--tenant' => $tenant])
+            ->expectsOutputToContain('already_stored=1 written=0 intentionally_missing=0 source_missing=0 hash_mismatch=0 conversion_failed=0')
+            ->assertExitCode(0);
+
+        // the original must survive a lapsed reservation, never removed by a
+        // retention drop whose ownership assertion could not be verified.
+        Storage::disk('kb')->assertExists('scans/lapsed.png');
+        $this->assertArrayNotHasKey('source_dropped', $row->fresh()->metadata ?? []);
+    }
+
     /** R14 — a row whose recorded disk cannot be resolved here is one reported row, never an abort that leaves the rest of the corpus unprocessed. */
     public function test_backfill_reports_a_row_on_an_unresolvable_disk_and_goes_on(): void
     {

@@ -11,6 +11,7 @@ use App\Services\Kb\Pipeline\SourceDocument;
 use App\Services\Kb\Versioning\ConversionArtifactStore;
 use App\Services\Kb\Versioning\SourceRetentionResolver;
 use App\Support\KbPath;
+use App\Support\Kb\HeldLock;
 use App\Support\Kb\SourceInFlight;
 use App\Support\Kb\StorageNamespace;
 use App\Support\TenantContext;
@@ -390,8 +391,17 @@ final class KbArtifactsBackfillCommand extends Command
 
             return false;
         }
+        // v8.36 / PR #479 Copilot review round 2 — finalizeSourceRetention()'s
+        // own scan (firstRowBlockingDrop(), streamed over every referencing
+        // version) can outlive this reservation's fixed lease exactly like it
+        // can outlive the storage-key lock finalizeSourceRetention() already
+        // asserts internally. Wrapped and passed through so it is asserted at
+        // the SAME point, right before the delete — a lapsed reservation
+        // refuses the drop instead of letting a fresh ingest that has since
+        // reserved and started reading the same original find it removed out
+        // from under it.
         try {
-            return $ingestor->finalizeSourceRetention($row, $disk, $final);
+            return $ingestor->finalizeSourceRetention($row, $disk, $final, new HeldLock($reservation, 'orphan source reservation'));
         } finally {
             $reservation->release();
         }

@@ -1396,9 +1396,22 @@ class DocumentIngestor
      * `metadata.source_dropped = true` so the orphan sweeps never read the
      * missing file as an orphan.
      *
+     * @param  $sourceReservationHeld  v8.36 / PR #479 Copilot review — some
+     *     callers (`kb:artifacts-backfill`) already hold a `SourceInFlight`
+     *     reservation over `$original` for the whole call, the same
+     *     acquire-and-hold pattern `DocumentDeleter` uses. That reservation's
+     *     lease is fixed and this method's own scan (`firstRowBlockingDrop()`,
+     *     streamed over every referencing row) can outlive it, exactly like
+     *     the storage-key lock below can — asserted at the same point, right
+     *     before the delete, so a lapsed reservation refuses the drop instead
+     *     of letting a fresh ingest that has since reserved and started
+     *     reading the same original find it removed out from under it. `null`
+     *     (the fresh-ingest / identical-re-ingest callers, which do not have
+     *     a reservation object to hand down this deep) leaves the storage-key
+     *     lock as the only guard, unchanged from before this parameter.
      * @return bool true when THIS call dropped the original
      */
-    public function finalizeSourceRetention(KnowledgeDocument $document, string $disk, string $final): bool
+    public function finalizeSourceRetention(KnowledgeDocument $document, string $disk, string $final, ?HeldLock $sourceReservationHeld = null): bool
     {
         $metadata = is_array($document->metadata) ? $document->metadata : [];
         if ($this->sourceRetentionOf($metadata) !== SourceRetentionResolver::MARKDOWN_ONLY || (string) $document->source_type === 'markdown') {
@@ -1449,12 +1462,15 @@ class DocumentIngestor
             return false;
         }
         try {
-            return $this->dropOriginalUnderLock($storage, $store, $artifact, $document, $original, $sourcePath, new HeldLock($lock, 'storage key'));
+            return $this->dropOriginalUnderLock($storage, $store, $artifact, $document, $original, $sourcePath, new HeldLock($lock, 'storage key'), $sourceReservationHeld);
         } catch (LockLostException $e) {
-            // The scan outlived the lock's TTL: the delete is refused (the
+            // The scan outlived the TTL of one of the two locks guarding this
+            // section — the storage key, or the caller's SourceInFlight
+            // reservation when it passed one: the delete is refused (the
             // conservative direction — the original stays, the next identical
             // ingest retries the drop), never run past a lapsed lock.
-            Log::warning('DocumentIngestor: markdown_only retention kept the original — the storage key lock lapsed during the reference scan; the next identical ingest retries the drop', [
+            // $e->getMessage() names which one lapsed.
+            Log::warning('DocumentIngestor: markdown_only retention kept the original — a lock guarding the section lapsed during the reference scan; the next identical ingest retries the drop', [
                 'document_id' => (int) $document->id,
                 'disk' => $artifact['disk'],
                 'path' => $original,
@@ -1471,7 +1487,7 @@ class DocumentIngestor
      * @param  array{disk: string, final: string}  $artifact
      * @return bool true when the original was dropped
      */
-    private function dropOriginalUnderLock(Filesystem $storage, ConversionArtifactStore $store, array $artifact, KnowledgeDocument $document, string $original, string $sourcePath, HeldLock $held): bool
+    private function dropOriginalUnderLock(Filesystem $storage, ConversionArtifactStore $store, array $artifact, KnowledgeDocument $document, string $original, string $sourcePath, HeldLock $held, ?HeldLock $sourceReservationHeld = null): bool
     {
         // The original is dropped only once this row's final move has
         // succeeded (publish() threw otherwise) AND every other referencing
@@ -1491,9 +1507,15 @@ class DocumentIngestor
 
             return false;
         }
-        // The scan may have outlived the lock's TTL: the irreversible step is
-        // refused on a lock this holder no longer owns (LockLostException).
+        // The scan may have outlived the TTL of either lock guarding this
+        // section: the storage key, and — when the caller passed one — the
+        // SourceInFlight reservation it holds over the same original. Both
+        // are asserted right here, immediately before the irreversible step,
+        // so either lapsing refuses the delete (LockLostException) instead of
+        // one holder's expired lease letting a fresh ingest that has since
+        // reserved and started reading find its source removed from under it.
         $held->assertHeld('markdown_only drop of the original');
+        $sourceReservationHeld?->assertHeld('markdown_only drop of the original');
         if (! $storage->delete($original)) {
             Log::warning('DocumentIngestor: markdown_only retention could not drop the original after the artifact commit', [
                 'document_id' => (int) $document->id,
