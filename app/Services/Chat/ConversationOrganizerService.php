@@ -35,6 +35,14 @@ final class ConversationOrganizerService
      * The acting user's sessions: pinned first (most recently pinned
      * first), then by importance, then by recency.
      *
+     * UNBOUNDED, like the `index()` it replaced. A user's own session
+     * count is realistically in the tens, and silently truncating the
+     * sidebar would be a worse failure than a large response — so this
+     * is not capped rather than capped arbitrarily. If it ever needs a
+     * bound it wants cursor pagination with a visible "load more", not a
+     * hidden limit; the FE already groups and searches client-side over
+     * whatever it receives.
+     *
      * @return Collection<int, Conversation>
      */
     public function list(int $userId, string $tenantId, ConversationArchiveScope $scope): Collection

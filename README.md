@@ -340,7 +340,7 @@ could read a cited document but never browse the corpus.
   consume; `ChatView` shrank from 794 lines to ~220. A dedicated E2E scenario
   sends a real turn from the new panel to prove the two shells share one engine.
 
-**Try it.** Open `/app/sessions`. Create a folder, drop a session into it from
+**Try it.** Open `/app/{team}/sessions`. Create a folder, drop a session into it from
 the row menu, pin another, flag one critical, archive a fourth and reopen the
 Archived drawer. Click **Knowledge base** at the top of the rail to browse
 documents, then follow a citation from a chat answer straight into it.

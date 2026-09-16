@@ -13,7 +13,14 @@ namespace App\Support\Chat;
  * cannot express "keep an eye on this" separately from "this is on fire".
  *
  * The stored value is the machine-readable identifier and NEVER
- * localizes (R24); only {@see self::label()} is user-visible.
+ * localizes (R24). There is deliberately NO label() here: the only
+ * user-visible strings for this taxonomy live in the Sessions UI
+ * (`SessionRow` / `SessionRowMenu`), alongside every other literal in
+ * that panel. A server-side label would be a SECOND translation surface
+ * for the same three words — exactly what R24 forbids — and it could not
+ * serve the picker anyway, which needs labels for levels the
+ * conversation does not currently have. Localizing that panel is a
+ * separate, whole-panel task.
  *
  * {@see self::weight()} exists because the column is a string: ordering
  * on it directly would be ALPHABETICAL. `critical < high < normal`
@@ -34,15 +41,6 @@ enum ConversationImportance: string
             self::Critical => 0,
             self::High => 1,
             self::Normal => 2,
-        };
-    }
-
-    public function label(): string
-    {
-        return match ($this) {
-            self::Critical => __('chat.importance.critical'),
-            self::High => __('chat.importance.high'),
-            self::Normal => __('chat.importance.normal'),
         };
     }
 

@@ -64,15 +64,15 @@ final class ConversationImportanceTest extends TestCase
         );
     }
 
-    public function test_labels_are_localized_while_values_stay_english(): void
+    public function test_the_stored_value_is_locale_independent(): void
     {
-        // R24: the machine-readable identifier never localizes.
+        // R24: the machine-readable identifier never localizes. The
+        // user-visible labels live FE-side (see the enum's docblock), so
+        // there is nothing server-side to localize here.
         app()->setLocale('it');
-        $this->assertSame('Critica', ConversationImportance::Critical->label());
         $this->assertSame('critical', ConversationImportance::Critical->value);
 
         app()->setLocale('en');
-        $this->assertSame('Critical', ConversationImportance::Critical->label());
         $this->assertSame('critical', ConversationImportance::Critical->value);
     }
 }

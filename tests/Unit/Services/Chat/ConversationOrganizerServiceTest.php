@@ -141,6 +141,14 @@ final class ConversationOrganizerServiceTest extends TestCase
             'pinned_at' => Carbon::parse('2026-06-01 00:00:00'),
         ]);
 
+        // The fixture must FAIL under `updated_at DESC` alone (R16): give
+        // the MORE recently pinned thread the OLDER activity, so only the
+        // `pinned_at DESC` arm can produce the asserted order. Created in
+        // sequence they would have shared the recency order and the test
+        // would have passed with that arm deleted.
+        $older->forceFill(['updated_at' => Carbon::parse('2026-09-01 00:00:00')])->saveQuietly();
+        $newer->forceFill(['updated_at' => Carbon::parse('2026-01-01 00:00:00')])->saveQuietly();
+
         $titles = $this->service
             ->list($owner->id, 'acme', ConversationArchiveScope::Active)
             ->pluck('title')

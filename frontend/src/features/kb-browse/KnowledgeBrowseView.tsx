@@ -53,15 +53,23 @@ export function KnowledgeBrowseView(): ReactNode {
     const [mode, setMode] = useState<KbTreeMode>('all');
     const [q, setQ] = useState('');
     const [selected, setSelected] = useState<{ path: string; documentId: number | null } | null>(null);
+    // Tracked separately from `selected`, because `null` cannot tell
+    // "never clicked" apart from "clicked, but the node selects no
+    // document". TreeView only ever fires onSelect for a DOC node today
+    // (a folder click merely expands), so the second case is currently
+    // unreachable — but its prop type permits a null, and conflating the
+    // two would silently re-open the `?doc=` document the reader had
+    // navigated away from.
+    const [deepLinkConsumed, setDeepLinkConsumed] = useState(false);
 
     const treeQuery = useQuery({
         queryKey: ['kb-browse-tree', currentTeam, project === '' ? 'all-projects' : project, mode],
         queryFn: () => kbBrowseApi.tree(project === '' ? null : project, mode),
     });
 
-    // An explicit click always wins over the URL: once the reader picks a
-    // node in the tree, the deep link has served its purpose.
-    const documentId = selected !== null ? selected.documentId : deepLinkedDocumentId;
+    // An explicit click always wins over the URL: once the reader touches
+    // the tree at all, the deep link has served its purpose.
+    const documentId = deepLinkConsumed ? selected?.documentId ?? null : deepLinkedDocumentId;
 
     const docQuery = useQuery<CitationDocument>({
         queryKey: ['kb-browse-document', documentId],
@@ -132,6 +140,8 @@ export function KnowledgeBrowseView(): ReactNode {
                     allowTrashedToggle={false}
                     selectedPath={selected?.path ?? null}
                     onSelect={(path: string | null, meta: KbTreeNode | null) => {
+                        setDeepLinkConsumed(true);
+                        // Contract-defensive, not a live path: see above.
                         if (path === null || meta === null || meta.type !== 'doc') {
                             setSelected(null);
                             return;

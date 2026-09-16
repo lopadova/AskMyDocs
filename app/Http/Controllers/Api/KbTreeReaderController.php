@@ -25,10 +25,13 @@ use Illuminate\Support\Carbon;
  * capability already has both through the admin surface and the MCP
  * retrieval tools.
  *
- * Soft deletes (R2): `with_trashed` is NOT accepted and `false` is
- * passed unconditionally. A reader must never see a deleted document,
- * and an ignored-but-accepted parameter would read like a supported
- * option.
+ * Soft deletes (R2): `false` is passed unconditionally, so a reader can
+ * never see a deleted document. `with_trashed` is not DECLARED — and
+ * `validate()` does not reject undeclared keys, so a client that sends
+ * it gets a 200 with the parameter ignored rather than a 422. That is
+ * deliberate: rejecting a harmless extra query parameter is harsher than
+ * ignoring it, and the guarantee lives in the call below, not in the
+ * validator. `KbTreeReaderTest` pins the ignoring.
  *
  * Isolation (R30/R33): the service queries `KnowledgeDocument` with
  * `forTenant(current())` and WITHOUT `withoutGlobalScopes()`, so the
