@@ -262,15 +262,18 @@ class Reranker
      *             and non-canonical rows, v8.37/W3 ADR 0031 §5)
      *             -statusPenalty(canonical_status)           (canonical-only)
      *
-     * A non-canonical, `generation_source = 'human'` chunk (every pre-v8.11
-     * canonical row and every pre-v8.37 row of any kind — 'human' is the
-     * column default) gets zero adjustment, so legacy documents rank
-     * identically to pre-canonical / pre-Digitization-Review behaviour. A
-     * non-canonical `generation_source = 'auto'` chunk (an OCR'd scan's
-     * default state before review, W1) is NOT zero-delta any more: it pays
-     * the same auto-tier penalty a canonical `auto` doc pays, so a reviewed
-     * (`human`) sibling scan always outranks it (ADR 0014's firewall,
-     * closed for the OCR case this method used to miss).
+     * A non-canonical chunk whose `generation_source` was NEVER explicitly
+     * written as `'auto'` (the column default is `'human'`) gets zero
+     * adjustment, so legacy documents rank identically to pre-canonical /
+     * pre-Digitization-Review behaviour — this is every row before v8.36's
+     * OCR ingest path existed, and every non-OCR row since (nothing else
+     * writes `'auto'` on a non-canonical document). A non-canonical
+     * `generation_source = 'auto'` chunk (an OCR'd scan's default state
+     * before review — `DocumentIngestor` has written this since v8.36/W1)
+     * is NOT zero-delta any more: it pays the same auto-tier penalty a
+     * canonical `auto` doc pays, so a reviewed (`human`) sibling scan
+     * always outranks it (ADR 0014's firewall, closed for the OCR case
+     * this method used to miss between v8.36 and this v8.37/W3 fix).
      *
      * @return array{delta: float, boost: float, penalty: float}
      */
@@ -281,9 +284,12 @@ class Reranker
         // v8.11 Auto-Wiki firewall — an AUTO-tier doc (generation_source='auto')
         // takes a small extra penalty so a human-curated `accepted` doc on the
         // same topic always outranks the auto-compiled one (anti-hallucination
-        // guarantee). Default-`human` rows (every pre-v8.11/pre-v8.37 doc) get
-        // 0 here, so ranking is byte-identical to before this row existed
-        // until an auto doc does.
+        // guarantee). A row whose generation_source has never been explicitly
+        // set to 'auto' (the column default is 'human') gets 0 here, so
+        // ranking is byte-identical to before this column existed. Non-
+        // canonical documents have been able to carry 'auto' since v8.36/W1
+        // (DocumentIngestor on the OCR ingest path) — this is NOT limited to
+        // canonical rows or to any particular release date.
         //
         // v8.37/W3 (ADR 0031 §5) — this read used to sit AFTER the
         // is_canonical early return below, so a non-canonical `auto` row

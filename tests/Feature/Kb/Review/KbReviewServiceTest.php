@@ -212,5 +212,69 @@ final class KbReviewServiceTest extends TestCase
 
         $this->assertFalse($result['approved']);
         $this->assertSame('not_auto', $result['reason']);
+        // Copilot PR #494 round 2 — the return flags alone don't prove
+        // nothing was written; a bug could mutate the row or write an
+        // audit entry and this test would still pass on the flags. Assert
+        // the row is genuinely untouched and no audit row exists.
+        $doc->refresh();
+        $this->assertSame(GenerationSource::Human->value, $doc->generation_source);
+        $this->assertDatabaseCount('kb_canonical_audit', 0);
+    }
+
+    /**
+     * R21 (Copilot PR #494 round 2) — approve() now locks the document row
+     * INSIDE its transaction and re-reads is_canonical/generation_source
+     * from that locked row rather than the CALLER'S copy. SQLite cannot
+     * enforce real blocking on `lockForUpdate()` (same limitation
+     * documented on KbDocumentVersionControllerTest's races: `DB::listen`
+     * fires AFTER a query executes, not before, so it cannot intercept a
+     * read mid-flight either), so a true two-connection interleaving isn't
+     * stageable here. What IS directly testable — and is exactly the bug
+     * shape this fix closes — is that the decision comes from a FRESH read
+     * of the row, not from the `KnowledgeDocument` INSTANCE the caller
+     * happens to be holding: simulate "a concurrent worker already
+     * committed the approval" by updating the DB directly (bypassing the
+     * `$doc` instance in memory, which still reports the OLD generation_
+     * source) and writing that winner's audit row, THEN call approve()
+     * with the now-stale `$doc` instance. Pre-fix, the method decided from
+     * `$document->generation_source` (the stale in-memory 'auto') and
+     * would flip the row AGAIN, producing a second audit row. Post-fix, it
+     * re-queries inside the transaction, sees the DB's 'human', and
+     * returns the safe not_auto no-op — exactly one audit row survives.
+     */
+    public function test_approve_decides_from_a_fresh_read_not_the_callers_stale_document_instance(): void
+    {
+        config(['kb.review.enabled' => true, 'kb.canonical.audit_enabled' => true]);
+        $doc = $this->doc(['is_canonical' => false, 'generation_source' => GenerationSource::Auto->value]);
+
+        // A concurrent worker's approve() call that already committed,
+        // bypassing the in-memory $doc instance entirely.
+        \Illuminate\Support\Facades\DB::table('knowledge_documents')
+            ->where('id', $doc->id)
+            ->update(['generation_source' => GenerationSource::Human->value]);
+        \App\Models\KbCanonicalAudit::create([
+            'tenant_id' => 'default',
+            'project_key' => (string) $doc->project_key,
+            'doc_id' => $doc->doc_id,
+            'slug' => $doc->slug,
+            'event_type' => 'promoted',
+            'actor' => 'user:2',
+            'before_json' => ['generation_source' => 'auto'],
+            'after_json' => ['generation_source' => 'human'],
+            'metadata_json' => ['source' => 'concurrent_winner'],
+        ]);
+
+        $this->assertSame(
+            GenerationSource::Auto->value,
+            $doc->generation_source,
+            'the in-memory $doc instance must still report the stale value — the concurrent write bypassed it',
+        );
+
+        $result = $this->svc->approve($doc, 'user:1');
+
+        $this->assertFalse($result['approved'], 'a fresh read must see the concurrent winner\'s human state');
+        $this->assertSame('not_auto', $result['reason']);
+        // exactly the concurrent winner's audit row must exist, never a second one
+        $this->assertDatabaseCount('kb_canonical_audit', 1);
     }
 }

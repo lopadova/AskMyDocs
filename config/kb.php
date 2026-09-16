@@ -627,7 +627,7 @@ return [
 
     // v8.37/W3 — Digitization Review (ADR 0031). Default OFF (R43): the flag
     // gates the review HTTP surface + FE routes with a clean 404 and gates
-    // KbReviewService's mutating entry points with a FeatureDisabledException
+    // KbReviewService's mutating entry points with a KbReviewDisabledException
     // (never a silent no-op) — MCP tool REGISTRATION stays flag-independent
     // per ADR 0031 §1 (KnowledgeBaseServerRegistrationTest derives the roster
     // from files in app/Mcp/Tools/, not from config), so a disabled tool call

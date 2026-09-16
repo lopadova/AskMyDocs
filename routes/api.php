@@ -674,6 +674,17 @@ Route::middleware([
         Route::post('/kb/documents/{id}/wiki-discard', [\App\Http\Controllers\Api\Admin\KbWikiExplorerController::class, 'discard'])
             ->whereNumber('id')->name('api.admin.kb.documents.wiki-discard');
 
+        // v8.37/W3 (ADR 0031 §2/§4) — Digitization Review: read a document's
+        // page-review summary, mark a page reviewed, approve a document
+        // (auto -> human). R32 — same admin KB group gate as the
+        // representative `/api/admin/kb/evidence-tiers` row.
+        Route::get('/kb/documents/{id}/review-summary', [\App\Http\Controllers\Api\Admin\KbReviewController::class, 'summary'])
+            ->whereNumber('id')->name('api.admin.kb.documents.review-summary');
+        Route::patch('/kb/documents/{id}/pages/{page}/review-status', [\App\Http\Controllers\Api\Admin\KbReviewController::class, 'markPageReviewed'])
+            ->whereNumber(['id', 'page'])->name('api.admin.kb.documents.pages.review-status');
+        Route::post('/kb/documents/{id}/review-approve', [\App\Http\Controllers\Api\Admin\KbReviewController::class, 'approve'])
+            ->whereNumber('id')->name('api.admin.kb.documents.review-approve');
+
         // v8.7/W5 — Cloud Time Machine: version timeline + diff + restore.
         // R32 — covered by the AdminAuthorizationMatrix
         // (`/api/admin/kb/documents/1/versions`).

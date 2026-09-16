@@ -1059,6 +1059,15 @@ Default **OFF** (`KB_OCR_ENABLED=false`, [ADR 0029](docs/adr/0029-v836-ocr-conve
 
 Docs: [Documents & OCR](https://padosoft.mintlify.app/documents-and-ocr).
 
+### Digitization Review (v8.37, in progress)
+
+Default **OFF** (`KB_DIGITIZATION_REVIEW_ENABLED=false`, [ADR 0031](docs/adr/0031-v837-digitization-review-and-auto-tier-mapping.md)). This W3 cycle wires the existing `generation_source` tier (`human` / `auto`, ADR 0014) to what OCR produces: a converted page defaults to `auto` until a person looks at it and **approves** the document (the `auto → human` transition), branched on canonicity — a canonical document's approval reuses the Wiki Explorer's `promote()`; a non-canonical document (the ordinary OCR'd-scan case) gets the identical flip and audit event without touching `canonical_status`. Every mutating entry point is atomic under concurrent approvals (R21 — a `lockForUpdate()`'d re-read decides, never the caller's possibly-stale copy).
+
+- **Reranker firewall closed for OCR**: the `human > auto > raw` anti-hallucination ranking (ADR 0014) now applies to non-canonical rows too — an unreviewed scan (`generation_source = auto`) ranks below a reviewed sibling scan at equal similarity, which was not true before this cycle (the auto-tier penalty used to short-circuit to zero for every non-canonical chunk).
+- **Per-page review**: `kb_document_page_reviews` records one row per (tenant, document, page); marking a page reviewed is an idempotent database-level upsert (`INSERT ... ON CONFLICT/ON DUPLICATE KEY UPDATE`), never a second row even under concurrent reviewers.
+- **Tri-surface, so far**: `kb:review {document} [--page=N] [--approve] [--report]` (CLI) · `GET /api/admin/kb/documents/{id}/review-summary`, `PATCH .../pages/{n}/review-status`, `POST .../review-approve` (HTTP, admin-gated) · MCP `KbReviewStatusTool` (read-only — reports progress, never marks or approves anything itself, per ADR 0003's "agent proposes, a person commits" boundary).
+- **Not yet shipped**: the review UI (original ↔ Markdown side-by-side, confidence heat-map), the agent-proposed text-correction-candidate flow (`KbProposeTextCorrectionTool`, ADR 0031 §6-7), and the CER/WER quality metrics — these land in later W3 sub-branches before the v8.37 GA tag.
+
 Built-in chunkers (v3.0):
 
 - `PdfPageChunker` — handles `pdf` and (v8.36) `image` source-types. Slices on the `## Page N` heading boundaries emitted by `PdfConverter`; emits one chunk per non-empty page with `heading_path = "Page N"` so citations like "see page N of foo.pdf" map 1:1 to a single chunk row. Pages exceeding `KB_CHUNK_HARD_CAP_TOKENS` are split intra-page on `\n\n` paragraph boundaries; all pieces of the same page share the same `heading_path` so page-level citations still resolve cleanly.

@@ -41,6 +41,17 @@ class KbReviewService
      * key — re-marking an already-reviewed page is an idempotent no-op with
      * a fresh reviewed_by/reviewed_at, never a second row (ADR 0031 §2).
      *
+     * R21 (Copilot PR #494 round 3) — a plain `updateOrCreate()` is a SELECT
+     * then an INSERT/UPDATE, not one atomic statement: two reviewers marking
+     * the SAME page concurrently can both miss the row on the SELECT and
+     * both attempt an INSERT, so one of them would hit the unique
+     * constraint as an uncaught exception instead of the promised
+     * idempotent upsert. `Model::upsert()` compiles to the database's
+     * native single-statement upsert (`INSERT ... ON CONFLICT DO UPDATE` /
+     * `ON DUPLICATE KEY UPDATE`), so the database itself — not two round
+     * trips from PHP — resolves the race; the loser's insert becomes the
+     * update, never an exception.
+     *
      * @throws \InvalidArgumentException  page_number is 1-based (ADR 0031
      *     §2); this is the application-layer guard every surface (CLI now,
      *     HTTP/MCP in a later W3 sub-branch) funnels through (R44's "one
@@ -57,18 +68,28 @@ class KbReviewService
             throw new \InvalidArgumentException("page_number must be >= 1, got {$pageNumber}.");
         }
 
-        return KbDocumentPageReview::query()->updateOrCreate(
+        $tenantId = (string) $document->tenant_id;
+
+        KbDocumentPageReview::query()->upsert(
             [
-                'tenant_id' => (string) $document->tenant_id,
-                'knowledge_document_id' => $document->id,
-                'page_number' => $pageNumber,
+                [
+                    'tenant_id' => $tenantId,
+                    'knowledge_document_id' => $document->id,
+                    'page_number' => $pageNumber,
+                    'status' => KbDocumentPageReview::STATUS_REVIEWED,
+                    'reviewed_by' => $this->resolveUserId($actor),
+                    'reviewed_at' => now(),
+                ],
             ],
-            [
-                'status' => KbDocumentPageReview::STATUS_REVIEWED,
-                'reviewed_by' => $this->resolveUserId($actor),
-                'reviewed_at' => now(),
-            ],
+            ['tenant_id', 'knowledge_document_id', 'page_number'],
+            ['status', 'reviewed_by', 'reviewed_at'],
         );
+
+        return KbDocumentPageReview::query()
+            ->where('tenant_id', $tenantId)
+            ->where('knowledge_document_id', $document->id)
+            ->where('page_number', $pageNumber)
+            ->firstOrFail();
     }
 
     /**
@@ -106,37 +127,59 @@ class KbReviewService
      * double-click / double-call is a safe no-op — same posture as
      * WikiExplorerService::promote().
      *
+     * R21 (Copilot PR #494 round 2) — the whole method runs inside ONE
+     * transaction that `lockForUpdate()`s the tenant-scoped document row
+     * FIRST and re-reads `is_canonical` / `generation_source` from that
+     * locked row, not from the `$document` argument the caller passed in
+     * (which may be stale by the time this runs). This serializes
+     * concurrent approve() calls on the SAME document — including the
+     * canonical branch, which delegates to
+     * {@see WikiExplorerService::promote()} INSIDE the held lock: promote()
+     * opens its own (nested, savepoint-backed) transaction and reads/writes
+     * the row while this method still holds the outer row lock, so a second
+     * concurrent approve() blocks on the SELECT ... FOR UPDATE until the
+     * first one commits, then re-reads the now-`human` row and returns the
+     * safe `not_auto` no-op instead of racing to a duplicate audit row.
+     *
      * @return array{approved: bool, reason?: string}
      */
     public function approve(KnowledgeDocument $document, string $actor): array
     {
         $this->assertEnabled();
 
-        if ((bool) $document->is_canonical) {
-            $result = $this->wikiExplorer->promote($document, $actor);
-
-            return [
-                'approved' => (bool) ($result['promoted'] ?? false),
-                'reason' => $result['reason'] ?? null,
-            ];
-        }
-
-        if ((string) ($document->generation_source ?? GenerationSource::Human->value) !== GenerationSource::Auto->value) {
-            return ['approved' => false, 'reason' => 'not_auto'];
-        }
-
         $tenantId = (string) $document->tenant_id;
-        $before = ['generation_source' => (string) $document->generation_source];
+        $documentId = (int) $document->id;
 
-        DB::transaction(function () use ($document, $tenantId, $actor, $before): void {
-            $document->forceFill(['generation_source' => GenerationSource::Human->value])->save();
+        return DB::transaction(function () use ($tenantId, $documentId, $actor): array {
+            /** @var KnowledgeDocument $locked */
+            $locked = KnowledgeDocument::query()
+                ->forTenant($tenantId)
+                ->lockForUpdate()
+                ->findOrFail($documentId);
+
+            if ((bool) $locked->is_canonical) {
+                $result = $this->wikiExplorer->promote($locked, $actor);
+
+                return [
+                    'approved' => (bool) ($result['promoted'] ?? false),
+                    'reason' => $result['reason'] ?? null,
+                ];
+            }
+
+            if ((string) ($locked->generation_source ?? GenerationSource::Human->value) !== GenerationSource::Auto->value) {
+                return ['approved' => false, 'reason' => 'not_auto'];
+            }
+
+            $before = ['generation_source' => (string) $locked->generation_source];
+
+            $locked->forceFill(['generation_source' => GenerationSource::Human->value])->save();
 
             if ((bool) config('kb.canonical.audit_enabled', true)) {
                 KbCanonicalAudit::create([
                     'tenant_id' => $tenantId,
-                    'project_key' => (string) $document->project_key,
-                    'doc_id' => $document->doc_id,
-                    'slug' => $document->slug,
+                    'project_key' => (string) $locked->project_key,
+                    'doc_id' => $locked->doc_id,
+                    'slug' => $locked->slug,
                     'event_type' => 'promoted',
                     'actor' => $actor,
                     'before_json' => $before,
@@ -144,9 +187,9 @@ class KbReviewService
                     'metadata_json' => ['source' => 'kb_review_approve_non_canonical'],
                 ]);
             }
-        });
 
-        return ['approved' => true];
+            return ['approved' => true];
+        });
     }
 
     private function assertEnabled(): void

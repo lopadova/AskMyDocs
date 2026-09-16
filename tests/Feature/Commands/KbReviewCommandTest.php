@@ -7,6 +7,7 @@ namespace Tests\Feature\Commands;
 use App\Models\KbDocumentPageReview;
 use App\Models\KnowledgeDocument;
 use App\Support\Canonical\GenerationSource;
+use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -101,6 +102,38 @@ final class KbReviewCommandTest extends TestCase
         $doc = $this->doc();
 
         $this->artisan('kb:review', ['document' => $doc->id, '--page' => 1])
+            // Copilot PR #494 round 2 — exit code 1 alone doesn't prove
+            // WHICH error fired; assert the actual disabled message so an
+            // unrelated failure (e.g. a DB error) cannot pass this test.
+            ->expectsOutputToContain('Digitization Review is disabled')
             ->assertExitCode(1);
+    }
+
+    /**
+     * Copilot PR #494 round 2 — `TenantContext` is a process-wide
+     * singleton (`KbOcrCommand` established the restore pattern this
+     * command now follows). Without restoring it, a command run with
+     * `--tenant=other` would leave a SUBSEQUENT tenant-aware operation in
+     * the same Artisan/test process pinned to `other` instead of whatever
+     * the caller had set. Assert the context is back to the pre-call
+     * tenant after the command returns, on both the success path and the
+     * early "document not found" return.
+     */
+    public function test_restores_the_previous_tenant_context_after_running(): void
+    {
+        $tenants = app(TenantContext::class);
+        $tenants->set('pre-existing-tenant');
+        $doc = $this->doc(['tenant_id' => 'other-tenant']);
+
+        $this->artisan('kb:review', ['document' => $doc->id, '--report' => true, '--tenant' => 'other-tenant'])
+            ->assertExitCode(0);
+
+        $this->assertSame('pre-existing-tenant', $tenants->current());
+
+        // Also on the early not-found return path.
+        $this->artisan('kb:review', ['document' => 999999, '--tenant' => 'other-tenant'])
+            ->assertExitCode(1);
+
+        $this->assertSame('pre-existing-tenant', $tenants->current());
     }
 }
