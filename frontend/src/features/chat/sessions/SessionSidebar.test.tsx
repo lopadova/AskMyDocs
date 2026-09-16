@@ -247,13 +247,62 @@ describe('SessionSidebar', () => {
         await waitFor(() => expect(create).toHaveBeenCalledWith('Issue 7'));
     });
 
-    it('deletes a folder, which unfiles rather than deletes its sessions', async () => {
+    it('asks before deleting a folder, and says the sessions are only unfiled', async () => {
         vi.mocked(chatFoldersApi.list).mockResolvedValue([folder(10, 'Issue 42')]);
+        vi.mocked(chatApi.listConversations).mockResolvedValue([
+            conversation({ id: 2, chat_folder_id: 10 }),
+        ]);
         const remove = vi.spyOn(chatFoldersApi, 'remove').mockResolvedValue(undefined);
         renderSidebar(<SessionSidebar {...props} />);
 
         await userEvent.click(await screen.findByTestId('chat-sessions-folder-10-delete'));
 
+        // Nothing deleted yet: the first click only asked.
+        expect(remove).not.toHaveBeenCalled();
+        const prompt = screen.getByTestId('chat-sessions-folder-10-delete-confirm-prompt');
+        // The consequence has to be stated — a bin icon does not convey
+        // "your sessions survive".
+        expect(prompt).toHaveTextContent(/not deleted/i);
+
+        await userEvent.click(screen.getByTestId('chat-sessions-folder-10-delete-confirm'));
+
         await waitFor(() => expect(remove).toHaveBeenCalledWith(10));
+    });
+
+    it('abandons a folder delete when the confirm is cancelled', async () => {
+        vi.mocked(chatFoldersApi.list).mockResolvedValue([folder(10, 'Issue 42')]);
+        const remove = vi.spyOn(chatFoldersApi, 'remove').mockResolvedValue(undefined);
+        renderSidebar(<SessionSidebar {...props} />);
+
+        await userEvent.click(await screen.findByTestId('chat-sessions-folder-10-delete'));
+        await userEvent.click(screen.getByTestId('chat-sessions-folder-10-delete-cancel'));
+
+        expect(remove).not.toHaveBeenCalled();
+        expect(
+            screen.queryByTestId('chat-sessions-folder-10-delete-confirm-prompt'),
+        ).not.toBeInTheDocument();
+    });
+
+    it('surfaces a failed folder delete instead of leaving the row unchanged', async () => {
+        vi.mocked(chatFoldersApi.list).mockResolvedValue([folder(10, 'Issue 42')]);
+        vi.spyOn(chatFoldersApi, 'remove').mockRejectedValue(new Error('403'));
+        renderSidebar(<SessionSidebar {...props} />);
+
+        await userEvent.click(await screen.findByTestId('chat-sessions-folder-10-delete'));
+        await userEvent.click(screen.getByTestId('chat-sessions-folder-10-delete-confirm'));
+
+        expect(await screen.findByTestId('chat-sessions-folder-delete-error')).toBeVisible();
+    });
+
+    it('surfaces a failed session delete', async () => {
+        vi.mocked(chatApi.listConversations).mockResolvedValue([conversation({ id: 1 })]);
+        vi.spyOn(chatApi, 'deleteConversation').mockRejectedValue(new Error('500'));
+        renderSidebar(<SessionSidebar {...props} />);
+
+        await userEvent.click(await screen.findByTestId('chat-sessions-row-1-menu'));
+        await userEvent.click(screen.getByTestId('chat-sessions-row-1-delete'));
+        await userEvent.click(screen.getByTestId('chat-sessions-row-1-delete-confirm'));
+
+        expect(await screen.findByTestId('chat-sessions-delete-error')).toBeVisible();
     });
 });

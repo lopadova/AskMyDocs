@@ -55,6 +55,10 @@ export function SessionSidebar({
     const [collapsedFolders, setCollapsedFolders] = useState<Record<number, boolean>>({});
     const [folderDialog, setFolderDialog] = useState<{ mode: 'create' } | { mode: 'rename'; folder: ChatFolder } | null>(null);
     const [renaming, setRenaming] = useState<Conversation | null>(null);
+    // Folder deletion asks first. It is irreversible, and what it does to
+    // the filed sessions (unfile, NOT delete) is not obvious from a bin
+    // icon — ChatFolderController's docblock says the UI must state it.
+    const [confirmingFolderDelete, setConfirmingFolderDelete] = useState<number | null>(null);
 
     const sessionsQuery = useQuery<Conversation[]>({
         queryKey: ACTIVE_KEY,
@@ -233,6 +237,22 @@ export function SessionSidebar({
                     {organize.error.message}
                 </p>
             )}
+            {/* Both deletes used to fail silently: a 403 or a 500 left the row
+                in place with no explanation (R11/R14). */}
+            {deleteSession.isError && (
+                <p className="chat-sessions-error" role="alert" data-testid="chat-sessions-delete-error">
+                    The session could not be deleted. {deleteSession.error.message}
+                </p>
+            )}
+            {deleteFolder.isError && (
+                <p
+                    className="chat-sessions-error"
+                    role="alert"
+                    data-testid="chat-sessions-folder-delete-error"
+                >
+                    The folder could not be deleted. {deleteFolder.error.message}
+                </p>
+            )}
 
             <div className="chat-sessions-search">
                 <label className="sr-only" htmlFor="chat-sessions-search-input">
@@ -326,11 +346,45 @@ export function SessionSidebar({
                                 iconOnly
                                 data-testid={`chat-sessions-folder-${folder.id}-delete`}
                                 aria-label={`Delete folder ${folder.name}`}
-                                onClick={() => deleteFolder.mutate(folder.id)}
+                                onClick={() => setConfirmingFolderDelete(folder.id)}
                             >
                                 <Icon.Trash size={12} />
                             </Button>
                         </div>
+                        {confirmingFolderDelete === folder.id && (
+                            <div
+                                className="chat-sessions-folder-confirm"
+                                role="alertdialog"
+                                aria-label={`Delete folder ${folder.name}?`}
+                                data-testid={`chat-sessions-folder-${folder.id}-delete-confirm-prompt`}
+                            >
+                                <p>
+                                    Delete “{folder.name}”? Its {rows.length === 1 ? 'session' : 'sessions'}{' '}
+                                    {rows.length === 1 ? 'is' : 'are'} moved out of the folder, not deleted.
+                                </p>
+                                <div className="chat-sessions-folder-confirm-actions">
+                                    <Button
+                                        variant="danger"
+                                        size="sm"
+                                        data-testid={`chat-sessions-folder-${folder.id}-delete-confirm`}
+                                        onClick={() => {
+                                            setConfirmingFolderDelete(null);
+                                            deleteFolder.mutate(folder.id);
+                                        }}
+                                    >
+                                        Delete folder
+                                    </Button>
+                                    <Button
+                                        variant="secondary"
+                                        size="sm"
+                                        data-testid={`chat-sessions-folder-${folder.id}-delete-cancel`}
+                                        onClick={() => setConfirmingFolderDelete(null)}
+                                    >
+                                        Cancel
+                                    </Button>
+                                </div>
+                            </div>
+                        )}
                         <div id={panelId} hidden={collapsed}>
                             {rows.length === 0 ? (
                                 <p className="chat-sessions-hint is-nested">Empty folder.</p>

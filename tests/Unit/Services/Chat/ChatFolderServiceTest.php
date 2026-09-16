@@ -9,6 +9,7 @@ use App\Models\Conversation;
 use App\Models\User;
 use App\Services\Chat\ChatFolderService;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\ValidationException;
 use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -114,6 +115,28 @@ final class ChatFolderServiceTest extends TestCase
         $this->service->create($a->id, 'globex', 'Issue 42');
 
         $this->assertSame(3, ChatFolder::query()->where('name', 'Issue 42')->count());
+    }
+
+    public function test_a_duplicate_name_raises_a_validation_error_not_a_driver_error(): void
+    {
+        // The service is a public PHP surface (R44) and validate-then-insert
+        // is not atomic, so the DB unique is the real invariant. This proves
+        // the constraint surfaces as a 422-shaped failure rather than a 500.
+        $owner = $this->user();
+        $this->service->create($owner->id, 'acme', 'Issue 42');
+
+        $this->expectException(ValidationException::class);
+        $this->service->create($owner->id, 'acme', 'Issue 42');
+    }
+
+    public function test_renaming_onto_a_taken_name_raises_a_validation_error(): void
+    {
+        $owner = $this->user();
+        $this->service->create($owner->id, 'acme', 'Taken');
+        $folder = $this->service->create($owner->id, 'acme', 'Mine');
+
+        $this->expectException(ValidationException::class);
+        $this->service->rename($folder, 'Taken');
     }
 
     public function test_rename_persists_the_new_name(): void

@@ -223,6 +223,10 @@ Route::middleware([
     Route::apiResource('/chat-folders', ChatFolderController::class)
         ->only(['index', 'store', 'update', 'destroy'])
         ->parameters(['chat-folders' => 'id'])
+        // The controller signatures are `int $id`, so a non-numeric segment
+        // would be a TypeError -> 500 on attacker-chosen input. Constrain
+        // the route instead, so `/api/chat-folders/abc` is simply a 404.
+        ->whereNumber('id')
         ->names('api.chat-folders');
     Route::delete('/kb/documents', KbDeleteController::class);
 

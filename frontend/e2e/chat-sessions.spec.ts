@@ -172,6 +172,12 @@ test.describe('Sessions workspace — organising chat sessions', () => {
         );
 
         await page.getByTestId(`chat-sessions-folder-${folderId}-delete`).click();
+        // Deleting a folder is irreversible and its effect on the filed
+        // sessions is not obvious from a bin icon, so it asks first.
+        await expect(
+            page.getByTestId(`chat-sessions-folder-${folderId}-delete-confirm-prompt`),
+        ).toContainText(/not deleted/i);
+        await page.getByTestId(`chat-sessions-folder-${folderId}-delete-confirm`).click();
 
         await expect(folder).toBeHidden({ timeout: 15_000 });
         // The session survives, merely unfiled — the whole point of

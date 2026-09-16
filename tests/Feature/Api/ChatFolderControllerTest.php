@@ -257,6 +257,18 @@ final class ChatFolderControllerTest extends TestCase
             ->assertJsonValidationErrors('name');
     }
 
+    public function test_a_non_numeric_folder_id_is_a_404_not_a_500(): void
+    {
+        // The controller signatures are `int $id`; without whereNumber on
+        // the route, attacker-chosen input reached them as a TypeError.
+        $user = $this->user();
+
+        $this->actingAs($user)->deleteJson('/api/chat-folders/abc')->assertStatus(404);
+        $this->actingAs($user)
+            ->patchJson('/api/chat-folders/abc', ['name' => 'Whatever'])
+            ->assertStatus(404);
+    }
+
     public function test_a_guest_is_unauthenticated(): void
     {
         $this->getJson('/api/chat-folders')->assertStatus(401);

@@ -3843,3 +3843,19 @@ textarea:focus-visible {
   .kb-browse-layout { grid-template-columns: minmax(0, 1fr); overflow-y: auto; }
   .kb-browse-detail { overflow: visible; }
 }
+
+/* Folder-delete confirmation. Inline rather than a modal: it belongs to
+   one row, and the count of affected sessions has to be readable beside
+   the folder it names. */
+.chat-sessions-folder-confirm {
+  display: grid;
+  gap: 8px;
+  margin: 2px 0 6px;
+  padding: 9px 10px;
+  background: color-mix(in srgb, var(--danger, #e5534b) 8%, var(--bg-1));
+  border: 1px solid color-mix(in srgb, var(--danger, #e5534b) 24%, var(--panel-border));
+  border-radius: 10px;
+}
+
+.chat-sessions-folder-confirm p { margin: 0; color: var(--fg-1); font-size: 12px; line-height: 1.55; }
+.chat-sessions-folder-confirm-actions { display: flex; gap: 6px; }
