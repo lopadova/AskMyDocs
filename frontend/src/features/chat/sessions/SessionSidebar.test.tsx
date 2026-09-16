@@ -240,7 +240,7 @@ describe('SessionSidebar', () => {
         const create = vi.spyOn(chatFoldersApi, 'create').mockResolvedValue(folder(11, 'Issue 7'));
         renderSidebar(<SessionSidebar {...props} />);
 
-        await userEvent.click(await screen.findByTestId('chat-sessions-folder-create'));
+        await userEvent.click(await screen.findByTestId('chat-sessions-new-folder'));
         await userEvent.type(screen.getByTestId('chat-sessions-folder-dialog-input'), 'Issue 7');
         await userEvent.click(screen.getByTestId('chat-sessions-folder-dialog-submit'));
 

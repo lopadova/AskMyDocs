@@ -38,9 +38,24 @@ test.describe('Sessions workspace — a real turn on the shared chat engine', ()
         // A brand-new session: no conversation id in the URL yet.
         await expect(page.getByTestId('chat-sessions-header')).toContainText('New session');
 
+        // R22 §4: a non-2xx on the conversation create used to surface here
+        // as a generic "thread stayed idle" timeout. Failing on the real
+        // status instead keeps the next diagnosis one line long.
+        const createResponse = page.waitForResponse(
+            (r) => r.url().endsWith('/conversations') && r.request().method() === 'POST',
+            { timeout: 20_000 },
+        );
+
         const { input, send } = composer(page);
         await input.fill('How does the remote work stipend apply?');
         await send.click();
+
+        const created = await createResponse;
+        if (!created.ok()) {
+            throw new Error(
+                `POST /conversations returned ${created.status()}: ${await created.text()}`,
+            );
+        }
 
         await waitForThreadReady(page, 45_000);
         await expect(thread(page)).toHaveAttribute('data-state', 'ready');

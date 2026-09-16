@@ -35,7 +35,7 @@ test.describe('Sessions workspace — organising chat sessions', () => {
 
         // The seeded folder is rendered with its one filed session, and
         // that session carries the critical flag.
-        const folder = sidebar.locator('[data-testid^="chat-sessions-folder-"]').first();
+        const folder = sidebar.locator('section[data-testid^="chat-sessions-folder-"]').first();
         await expect(folder).toContainText('Issue 42 — onboarding');
         await expect(folder).toContainText('Filed — onboarding checklist');
         await expect(
@@ -88,14 +88,17 @@ test.describe('Sessions workspace — organising chat sessions', () => {
         const sidebar = page.getByTestId(SIDEBAR);
         await expect(sidebar).toHaveAttribute('data-state', 'ready', { timeout: 20_000 });
 
-        await page.getByTestId('chat-sessions-folder-create').click();
+        await page.getByTestId('chat-sessions-new-folder').click();
         const dialog = page.getByTestId('chat-sessions-folder-dialog');
         await expect(dialog).toBeVisible();
         await page.getByTestId('chat-sessions-folder-dialog-input').fill('Refactor auth');
         await page.getByTestId('chat-sessions-folder-dialog-submit').click();
         await expect(dialog).toBeHidden();
 
-        const newFolder = sidebar.locator('[data-testid^="chat-sessions-folder-"]', {
+        // `section[...]` and not a bare prefix match: the folder GROUPS are
+        // sections, and a looser selector also catches the toggle button
+        // nested inside each one.
+        const newFolder = sidebar.locator('section[data-testid^="chat-sessions-folder-"]', {
             hasText: 'Refactor auth',
         });
         await expect(newFolder).toBeVisible({ timeout: 15_000 });
@@ -160,7 +163,7 @@ test.describe('Sessions workspace — organising chat sessions', () => {
         const sidebar = page.getByTestId(SIDEBAR);
         await expect(sidebar).toHaveAttribute('data-state', 'ready', { timeout: 20_000 });
 
-        const folder = sidebar.locator('[data-testid^="chat-sessions-folder-"]', {
+        const folder = sidebar.locator('section[data-testid^="chat-sessions-folder-"]', {
             hasText: 'Issue 42 — onboarding',
         });
         const folderId = (await folder.getAttribute('data-testid'))?.replace(
@@ -211,7 +214,7 @@ test.describe('Sessions workspace — organising chat sessions', () => {
 
         // The seeded folder already holds this name for this user, so the
         // real BE answers 422 — no interception needed.
-        await page.getByTestId('chat-sessions-folder-create').click();
+        await page.getByTestId('chat-sessions-new-folder').click();
         await page
             .getByTestId('chat-sessions-folder-dialog-input')
             .fill('Issue 42 — onboarding');

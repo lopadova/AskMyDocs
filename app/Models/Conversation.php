@@ -31,6 +31,22 @@ class Conversation extends Model
     ];
 
     /**
+     * Mirror the column default on the MODEL, not just in the schema.
+     *
+     * `importance` has a DB default, so a row is always valid — but a
+     * freshly `create()`d instance that never sent the column has the
+     * attribute ABSENT, and the enum cast then yields null. Anything
+     * reading `$conversation->importance->value` on that instance blows
+     * up with "property value on null", which is exactly how POST
+     * /conversations started answering 500 once it began returning the
+     * full resource. Defaulting here keeps a new instance coherent
+     * without a re-read.
+     */
+    protected $attributes = [
+        'importance' => 'normal',
+    ];
+
+    /**
      * R30 (Audit#3 HIGH-4) — scope implicit route-model binding to the
      * active tenant. The chat controllers (Conversation/Message/MessageStream)
      * check $conversation->user_id but Laravel resolves {conversation} by

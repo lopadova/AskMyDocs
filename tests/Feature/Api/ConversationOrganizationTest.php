@@ -42,6 +42,7 @@ final class ConversationOrganizationTest extends TestCase
         $router->middleware([\App\Http\Middleware\ResolveTenant::class, 'web'])
             ->group(function () use ($router): void {
                 $router->get('/conversations', [ConversationController::class, 'index']);
+                $router->post('/conversations', [ConversationController::class, 'store']);
                 $router->patch('/conversations/{conversation}', [ConversationController::class, 'update']);
             });
     }
@@ -105,6 +106,33 @@ final class ConversationOrganizationTest extends TestCase
         // The machine-readable identifier, never localized (R24).
         $this->assertSame('normal', $body[0]['importance']);
         $this->assertNull($body[0]['pinned_at']);
+    }
+
+    public function test_creating_a_session_returns_the_full_shape_with_a_usable_importance(): void
+    {
+        // Regression: the model now defaults `importance` because the
+        // column default lives in the DB only. Without it a freshly
+        // created instance has the attribute ABSENT, the enum cast yields
+        // null, and rendering the resource threw — POST /conversations
+        // answered 500 while every read path stayed green, because reads
+        // re-load the row. This test is the read-path blind spot closed.
+        $user = $this->user();
+
+        $response = $this->actingAs($user)
+            ->withHeader('X-Tenant-Id', 'acme')
+            ->postJson('/conversations', ['project_key' => 'engineering'])
+            ->assertCreated();
+
+        $this->assertSame([
+            'id', 'title', 'project_key', 'chat_folder_id',
+            'pinned_at', 'archived_at', 'importance',
+            'created_at', 'updated_at',
+        ], array_keys($response->json()));
+        $this->assertSame('normal', $response->json('importance'));
+        $this->assertNull($response->json('chat_folder_id'));
+        $this->assertNull($response->json('archived_at'));
+        // The tenant id must not travel back to the client.
+        $response->assertJsonMissingPath('tenant_id')->assertJsonMissingPath('user_id');
     }
 
     public function test_the_list_never_echoes_the_tenant_or_owner_id(): void

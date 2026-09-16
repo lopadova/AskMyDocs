@@ -215,7 +215,7 @@ export function SessionSidebar({
                 <Button
                     variant="secondary"
                     size="sm"
-                    data-testid="chat-sessions-folder-create"
+                    data-testid="chat-sessions-new-folder"
                     onClick={() => setFolderDialog({ mode: 'create' })}
                     leadingIcon={<Icon.Folder size={13} />}
                 >

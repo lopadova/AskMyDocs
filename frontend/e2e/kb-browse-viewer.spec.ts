@@ -31,8 +31,13 @@ test.describe('Browse KB — viewer can read the knowledge base', () => {
         await expect(page.getByTestId('kb-browse-detail')).toHaveAttribute('data-state', 'idle');
         await expect(page.getByTestId('kb-browse-detail-idle')).toBeVisible();
 
-        // Open the first document leaf.
-        await tree.locator('[data-testid^="kb-tree-node-"]').first().click();
+        // Open the first document LEAF. Folder nodes share the
+        // `kb-tree-node-` prefix and select nothing, so target a path that
+        // ends in a markdown extension.
+        await tree
+            .locator('[data-testid^="kb-tree-node-"][data-testid$=".md"]')
+            .first()
+            .click();
 
         const detail = page.getByTestId('kb-browse-detail');
         await expect(detail).not.toHaveAttribute('data-state', 'idle', { timeout: 20_000 });
@@ -77,7 +82,10 @@ test.describe('Browse KB — viewer can read the knowledge base', () => {
         const tree = page.getByTestId('kb-tree');
         await expect(tree).toHaveAttribute('data-state', 'ready', { timeout: 20_000 });
 
-        await tree.locator('[data-testid^="kb-tree-node-"]').first().click();
+        await tree
+            .locator('[data-testid^="kb-tree-node-"][data-testid$=".md"]')
+            .first()
+            .click();
 
         await expect(page.getByTestId('kb-browse-detail')).toHaveAttribute('data-state', 'error', {
             timeout: 20_000,
