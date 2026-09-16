@@ -235,7 +235,7 @@ export function useChatSession({ nav }: UseChatSessionOptions): UseChatSessionRe
     // queryKey so this does not double-fetch.
     const conversationsQuery = useQuery<Conversation[]>({
         queryKey: ['conversations'],
-        queryFn: chatApi.listConversations,
+        queryFn: () => chatApi.listConversations(),
     });
     const activeConversation =
         activeId !== null ? conversationsQuery.data?.find((c) => c.id === activeId) ?? null : null;

@@ -116,12 +116,44 @@ export function countSelectedFilters(f: FilterState): number {
     ].filter(Boolean).length;
 }
 
+/**
+ * How much a session matters to its owner. The machine-readable value
+ * is stable and never localized — the BE sends the label separately
+ * when one is needed (R24).
+ */
+export type ConversationImportance = 'normal' | 'high' | 'critical';
+
 export interface Conversation {
     id: number;
     title: string | null;
     project_key: string | null;
+    /** Null = unfiled, which is also what deleting a folder leaves behind. */
+    chat_folder_id: number | null;
+    /**
+     * Pin and archive are TIMESTAMPS on the way back but BOOLEANS on the
+     * way in (see `organizeConversation`). The client must never invent a
+     * date — it asks for the state and reads back when it happened.
+     */
+    pinned_at: string | null;
+    archived_at: string | null;
+    importance: ConversationImportance;
     created_at: string;
     updated_at: string;
+}
+
+/**
+ * Which slice of the session list to fetch. Archived threads are
+ * excluded server-side by default, so the plain list needs no flag.
+ */
+export type ConversationArchiveScope = 'active' | 'archived' | 'all';
+
+/** Partial organisation change. Omitted fields are left untouched. */
+export interface ConversationOrganizePayload {
+    title?: string;
+    chat_folder_id?: number | null;
+    pinned?: boolean;
+    archived?: boolean;
+    importance?: ConversationImportance;
 }
 
 export interface MessageCitation {
@@ -321,8 +353,30 @@ export interface ChatCollectionOption {
 }
 
 export const chatApi = {
-    async listConversations(): Promise<Conversation[]> {
-        const { data } = await api.get<Conversation[]>('/conversations');
+    async listConversations(
+        scope: ConversationArchiveScope = 'active',
+    ): Promise<Conversation[]> {
+        const { data } = await api.get<Conversation[]>('/conversations', {
+            // `active` is the server default, so the plain list stays a
+            // bare GET and the existing cache entry is unchanged.
+            params: scope === 'active' ? undefined : { archived: scope === 'all' ? 'all' : 1 },
+        });
+        return data;
+    },
+
+    /**
+     * Apply a partial organisation change: file/unfile, pin, archive,
+     * flag importance, rename.
+     *
+     * One endpoint rather than five, because the BE applies whichever
+     * fields are present — and an EMPTY payload is a 422 there, not a
+     * silent no-op, so callers must send something.
+     */
+    async organizeConversation(
+        id: number,
+        payload: ConversationOrganizePayload,
+    ): Promise<Conversation> {
+        const { data } = await api.patch<Conversation>(`/conversations/${id}`, payload);
         return data;
     },
 

@@ -24,7 +24,7 @@ export function ConversationList({ projectKey, onSelect, onNewAnonymous }: Conve
 
     const { data, isLoading, isError } = useQuery<Conversation[]>({
         queryKey: ['conversations'],
-        queryFn: chatApi.listConversations,
+        queryFn: () => chatApi.listConversations(),
     });
 
     const createMutation = useMutation<Conversation, Error, void>({

@@ -21,6 +21,12 @@ function conversation(id: number, title: string, ageMs: number): Conversation {
         id,
         title,
         project_key: 'date',
+        // Organisation fields are ADDITIVE (R27): this panel ignores them,
+        // and must keep rendering unchanged now that they are present.
+        chat_folder_id: null,
+        pinned_at: null,
+        archived_at: null,
+        importance: 'normal',
         created_at: timestamp,
         updated_at: timestamp,
     };
