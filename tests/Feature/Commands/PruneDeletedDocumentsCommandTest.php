@@ -191,4 +191,28 @@ class PruneDeletedDocumentsCommandTest extends TestCase
 
         $this->assertNull(KnowledgeDocument::withTrashed()->find($document->id));
     }
+
+    /**
+     * PR #492 Copilot round-4 — `source_dropped` only covers the ONE known
+     * way a non-empty `source_path` can outlive its bytes (`markdown_only`
+     * retention). A row whose file went missing OUT OF BAND — deleted by
+     * hand, by a bug, by anything this row's metadata never recorded — is a
+     * DIFFERENT case: `DocumentDeleter::delete()` still answers
+     * `file_deleted=false` (there was nothing to remove), and before this
+     * fix that was indistinguishable from a genuinely KEPT file. No file is
+     * ever written to `kb` disk here, and no live sibling references the
+     * path either — the counter must not claim bytes were kept when none
+     * were ever observed present.
+     */
+    public function test_does_not_report_files_kept_for_a_row_whose_source_was_missing_out_of_band(): void
+    {
+        $this->softDeletedDoc('docs/vanished.md', now()->subDays(60), 'v-vanished');
+
+        $this->artisan('kb:prune-deleted', ['--days' => 30])
+            ->expectsOutputToContain('Pruned 1')
+            ->doesntExpectOutputToContain('files_kept=')
+            ->assertSuccessful();
+
+        Storage::disk('kb')->assertMissing('docs/vanished.md');
+    }
 }
