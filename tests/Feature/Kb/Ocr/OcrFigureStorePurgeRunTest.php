@@ -128,4 +128,30 @@ final class OcrFigureStorePurgeRunTest extends TestCase
         $this->assertFalse($purged, 'a store that cannot exclude a concurrent converter must refuse the purge, not report success');
         $this->assertTrue(Storage::disk('kb')->directoryExists('docs/x.md.ocr/'.self::RUN));
     }
+
+    /**
+     * PR #492 Copilot round-3 — `$referencedCheck` only sees COMMITTED
+     * `knowledge_documents` rows: an ingest that already called convert()
+     * (this run's result.json is on disk — the fixture in setUp()) but has
+     * not yet committed its document row is invisible to it, and this run
+     * is past the in-flight grace, so BOTH existing guards would let the
+     * purge proceed. That ingest DOES hold {@see \App\Support\Kb\SourceInFlight}
+     * for its whole read+convert+commit window — reserved here directly,
+     * the same call `IngestDocumentJob::reserveSource()` makes — and the
+     * run must be kept on that alone, even with a `$referencedCheck` that
+     * (correctly, from the DB's point of view) says "not referenced".
+     */
+    public function test_a_run_whose_source_an_ingest_still_holds_is_kept_even_though_no_row_references_it_yet(): void
+    {
+        $lock = \App\Support\Kb\SourceInFlight::reserve('kb', 'docs/x.md');
+
+        try {
+            $purged = app(OcrFigureStore::class)->purgeRun('kb', 'docs/x.md', '', self::RUN, fn (): bool => false);
+
+            $this->assertFalse($purged, 'an ingest still holding the source reservation must keep the run, regardless of the committed-rows check');
+            $this->assertTrue(Storage::disk('kb')->directoryExists('docs/x.md.ocr/'.self::RUN));
+        } finally {
+            $lock?->release();
+        }
+    }
 }

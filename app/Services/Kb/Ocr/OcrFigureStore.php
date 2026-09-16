@@ -7,6 +7,7 @@ namespace App\Services\Kb\Ocr;
 use App\Services\Kb\Versioning\ConversionArtifactStore;
 use App\Support\Kb\HeldLock;
 use App\Support\Kb\LockLostException;
+use App\Support\Kb\SourceInFlight;
 use App\Support\KbPath;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Cache;
@@ -280,6 +281,12 @@ final class OcrFigureStore
      * even trying the lock for an obviously-referenced run); this is the
      * authoritative one.
      *
+     * `$referencedCheck` only sees COMMITTED rows, so it cannot see an
+     * ingest that wrote this run's `result.json` but has not yet committed
+     * its document row (PR #492 Copilot round-3): that ingest's
+     * {@see SourceInFlight} reservation over the SOURCE is probed first and
+     * held through the whole decision+delete, closing that gap too.
+     *
      * @throws RuntimeException when the directory exists, is not in flight, and cannot be removed
      */
     public function purgeRun(string $disk, string $sourcePath, string $prefix, string $runKey, ?callable $referencedCheck = null): bool
@@ -305,40 +312,94 @@ final class OcrFigureStore
 
             return false;
         }
-        $reservation = Cache::lock(OcrService::runLockKey($disk, KbPath::normalize($runDir)), self::PURGE_LOCK_SECONDS);
-        if (! $reservation->get()) {
-            Log::info('OcrFigureStore: OCR run is reserved by a converter; the purge is deferred to the next sweep', ['disk' => $disk, 'run_dir' => $runDir]);
+        // PR #492 Copilot round-3 — `$referencedCheck` (below) only sees
+        // COMMITTED `knowledge_documents` rows. An ingest that already
+        // called `OcrService::convert()` — this exact run's `result.json`
+        // is already on disk — but has not yet committed its document row
+        // is invisible to that check: the row commits several steps later
+        // (chunking, redaction, embedding), and once the in-flight grace
+        // elapses this purge could delete the run out from under it. That
+        // ingest DOES hold {@see SourceInFlight} for its whole
+        // read+convert+commit window ({@see \App\Jobs\IngestDocumentJob}),
+        // so probing the SOURCE's reservation — not the run's — catches
+        // exactly this gap. Held through the whole decision+delete below
+        // (not merely probed and released), so a NEW ingest cannot start
+        // reading this source in between either: the same TOCTOU-safe
+        // pattern `DocumentDeleter::removeSourceFileIfUnreferenced()` uses
+        // for the source file itself.
+        $fullSourcePath = $this->sourceFullPath($sourcePath, $prefix);
+        $sourceReservation = null;
+        if ($fullSourcePath !== null) {
+            try {
+                $sourceReservation = SourceInFlight::acquireForRemoval($disk, $fullSourcePath);
+            } catch (\Throwable $e) {
+                Log::warning('OcrFigureStore: cannot ask whether an ingest reserved this run\'s source, so the run is not purged', ['disk' => $disk, 'run_dir' => $runDir, 'source_path' => $fullSourcePath, 'error' => $e->getMessage()]);
 
-            return false;
+                return false;
+            }
+            if ($sourceReservation === null) {
+                Log::info('OcrFigureStore: OCR run kept — an ingest holds its source reservation right now', ['disk' => $disk, 'run_dir' => $runDir, 'source_path' => $fullSourcePath]);
+
+                return false;
+            }
         }
-        $held = new HeldLock($reservation, 'OCR run reservation');
         try {
-            if ($this->isInFlight($storage, $runDir, now()->getTimestamp() - self::inFlightGraceSeconds())) {
-                Log::info('OcrFigureStore: OCR run inside the in-flight grace was kept', ['disk' => $disk, 'run_dir' => $runDir]);
+            $reservation = Cache::lock(OcrService::runLockKey($disk, KbPath::normalize($runDir)), self::PURGE_LOCK_SECONDS);
+            if (! $reservation->get()) {
+                Log::info('OcrFigureStore: OCR run is reserved by a converter; the purge is deferred to the next sweep', ['disk' => $disk, 'run_dir' => $runDir]);
 
                 return false;
             }
-            // The in-flight scan reads the directory: assert the reservation
-            // is still ours right before the removal, so a TTL that lapsed
-            // across the scan defers the purge instead of deleting a run a
-            // converter has since reserved (ADR 0030 §3).
-            $held->assertHeld('OCR run purge');
-            if ($referencedCheck !== null && $referencedCheck()) {
-                Log::info('OcrFigureStore: OCR run purge skipped — a document committed a reference to it after the caller\'s snapshot', ['disk' => $disk, 'run_dir' => $runDir]);
+            $held = new HeldLock($reservation, 'OCR run reservation');
+            try {
+                if ($this->isInFlight($storage, $runDir, now()->getTimestamp() - self::inFlightGraceSeconds())) {
+                    Log::info('OcrFigureStore: OCR run inside the in-flight grace was kept', ['disk' => $disk, 'run_dir' => $runDir]);
+
+                    return false;
+                }
+                // The in-flight scan reads the directory: assert the reservation
+                // is still ours right before the removal, so a TTL that lapsed
+                // across the scan defers the purge instead of deleting a run a
+                // converter has since reserved (ADR 0030 §3).
+                $held->assertHeld('OCR run purge');
+                if ($referencedCheck !== null && $referencedCheck()) {
+                    Log::info('OcrFigureStore: OCR run purge skipped — a document committed a reference to it after the caller\'s snapshot', ['disk' => $disk, 'run_dir' => $runDir]);
+
+                    return false;
+                }
+                if (! $storage->deleteDirectory($runDir)) {
+                    throw new RuntimeException("OcrFigureStore: failed to remove OCR run {$runDir} on disk [{$disk}].");
+                }
+
+                return true;
+            } catch (LockLostException $e) {
+                Log::warning('OcrFigureStore: OCR run purge deferred — the reservation lapsed during the in-flight scan; the next sweep decides', ['disk' => $disk, 'run_dir' => $runDir, 'error' => $e->getMessage()]);
 
                 return false;
+            } finally {
+                $reservation->release();
             }
-            if (! $storage->deleteDirectory($runDir)) {
-                throw new RuntimeException("OcrFigureStore: failed to remove OCR run {$runDir} on disk [{$disk}].");
-            }
-
-            return true;
-        } catch (LockLostException $e) {
-            Log::warning('OcrFigureStore: OCR run purge deferred — the reservation lapsed during the in-flight scan; the next sweep decides', ['disk' => $disk, 'run_dir' => $runDir, 'error' => $e->getMessage()]);
-
-            return false;
         } finally {
-            $reservation->release();
+            HeldLock::releaseQuietly($sourceReservation);
+        }
+    }
+
+    /**
+     * The SAME full-path formula {@see \App\Jobs\IngestDocumentJob::reserveSource()}
+     * and `DocumentDeleter::resolveFullPath()` use to key {@see SourceInFlight}:
+     * must be byte-identical, or this probe would ask about a DIFFERENT
+     * reservation than the one an ingest of this exact source actually holds.
+     * Null only when the recorded prefix/source cannot name a path — the
+     * same case `runDirFor()` above has already proven does NOT apply to
+     * `$sourcePath` itself (it normalizes it via `assetsDirFor()`), so this
+     * can only fail on a `$prefix` that recombines into a "." / ".." segment.
+     */
+    private function sourceFullPath(string $sourcePath, string $prefix): ?string
+    {
+        try {
+            return KbPath::normalize($prefix === '' ? $sourcePath : $prefix.'/'.$sourcePath);
+        } catch (\InvalidArgumentException) {
+            return null;
         }
     }
 
