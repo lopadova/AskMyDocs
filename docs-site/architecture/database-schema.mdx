@@ -35,6 +35,7 @@ erDiagram
     knowledge_documents }o--o{ kb_nodes : "source_doc_id"
     kb_nodes ||--o{ kb_edges : "(project_key, node_uid)"
     conversations ||--o{ messages : "cascade delete"
+    chat_folders ||--o{ conversations : "nullOnDelete (unfiles)"
     knowledge_documents {
       bigint id PK
       string tenant_id
@@ -120,6 +121,31 @@ User-scoped chat history. `conversations`: `tenant_id`, `user_id` FK
 (cascade), `title?`, `project_key`, with index `(user_id, updated_at)`.
 `messages`: `tenant_id`, `conversation_id` FK (cascade), `role`, `content`,
 `metadata` JSON (citations + provider/model telemetry + grounding), `created_at`.
+
+Session organisation for the [Sessions workspace](/chat-sessions-workspace)
+adds four columns to `conversations`: `chat_folder_id` FK **nullOnDelete**
+(never cascade — deleting a folder unfiles its sessions, it does not destroy
+chat history), `pinned_at?`, `archived_at?` and `importance`
+(`normal | high | critical`). Indexes `(tenant_id, user_id, archived_at)` —
+the sidebar's only selective predicate — and `chat_folder_id`, because
+`nullOnDelete` sweeps conversations by it on every folder delete.
+
+`pinned_at` / `archived_at` are timestamps rather than booleans, so the
+request contract is asymmetric: clients send `{"pinned": true}` and read
+back the timestamp. Organisation writes run with `timestamps = false`,
+because `updated_at` is both the recency ordering key and the displayed
+"last activity" — a pin must not reorder the list.
+
+### `chat_folders`
+
+User-created folders grouping chat sessions. `tenant_id`, `user_id` FK
+(cascade), `name`, `position`, timestamps. Unique
+`(tenant_id, user_id, name)` = `uq_chat_folders_tenant_user_name` — R31, so
+two tenants and two users in one tenant may each keep an "Issue 42". A
+folder is private to one user: there is no sharing, no nesting, and
+authorization lives in `ChatFolderService` (`forTenant()` +
+`where('user_id')`), not in a policy or a global scope — the same posture as
+`chat_filter_presets`.
 
 ### `kb_nodes` / `kb_edges`
 

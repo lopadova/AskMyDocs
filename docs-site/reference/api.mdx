@@ -63,6 +63,7 @@ global identity key.
 | `GET` | `/api/kb/related` | `auth:sanctum` | graph neighbours |
 | `GET` | `/api/kb/documents/search` | `auth:sanctum` + `token.ability:kb:read` | document search |
 | `GET` | `/api/kb/documents/{documentId}/preview` | `auth:sanctum` + `token.ability:kb:read` | document source preview |
+| `GET` | `/api/kb/tree` | `auth:sanctum` + `token.ability:kb:read` | reader-side document tree |
 | `GET` | `/api/kb/collections` | `auth:sanctum` | collection picker |
 | `GET` | `/api/kb/resolve-wikilink` | `auth:sanctum` | resolve a `[[slug]]` |
 | `DELETE` | `/api/kb/documents` | `auth:sanctum` | delete by path |
@@ -141,9 +142,36 @@ See [canonical & promotion](/canonical-and-promotion).
 
 | Area | Base path | Auth |
 |---|---|---|
+| Chat sessions | `/conversations` (CRUD, **no `/api` prefix** — session-auth AJAX) | `auth` + `tenant.authorize` |
+| Chat folders | `/api/chat-folders` (index/store/update/destroy) | `auth:sanctum` |
 | Chat-filter presets | `/api/chat-filter-presets` (CRUD) | `auth:sanctum` |
 | Chat preferences | `/api/me/chat-preferences` (GET/PATCH) | `auth:sanctum` |
 | Notifications | `/api/notifications` (+ `unread-count`, `preferences`, `mark-all-read`, `{id}/mark-read`, `{id}/dismiss`) | `auth:sanctum` |
+
+**`GET /conversations`** — the acting user's sessions in the active tenant,
+ordered pinned-first (most recently pinned first), then by importance, then by
+recency. Optional `?archived=` selects the slice: absent → active only (the
+default, so the plain call is unchanged), `1` → archived only, `all` → both. An
+unrecognised value falls back to *active* rather than widening the listing.
+
+The response is a **bare JSON array**, not a `{data: …}` envelope — it always
+has been, and wrapping it would be a breaking change, so extensions here are
+additive only. Each row:
+`{ id, title, project_key, chat_folder_id, pinned_at, archived_at, importance,
+created_at, updated_at }`.
+
+**`PATCH /conversations/{id}`** — rename and/or organise, applying whichever of
+`title`, `chat_folder_id`, `pinned`, `archived`, `importance` are present. Note
+the deliberate asymmetry: pin and archive are **booleans in, timestamps out**,
+so a client never invents a date. `chat_folder_id: null` unfiles the session,
+which is different from omitting the key (leave the folder alone). An **empty
+body is a 422**, not a 200 no-op. `chat_folder_id` must name a folder the acting
+user owns in the active tenant — otherwise 422, never a cross-file. A session in
+another tenant is a 404 (no existence oracle); another user's session is a 403.
+
+Organisation writes do **not** touch `updated_at`, because it is both the
+recency ordering key and the displayed "last activity"; a rename still does.
+See the [Sessions workspace](/chat-sessions-workspace).
 
 ## Admin — `/api/admin`
 
