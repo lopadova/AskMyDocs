@@ -329,14 +329,14 @@ return [
     | Source retention policy (v8.11) — SCHEMA/CONFIG FOUNDATION
     |--------------------------------------------------------------------------
     |
-    | NOTE: this knob + the `knowledge_documents.markdown_path` column are the
+    | NOTE: this knob + the `knowledge_documents.markdown_path` column were the
     | foundation declared in v8.11.0; the INGEST WIRING that reads this mode and
-    | writes the markdown artifact / drops the original lands with the
-    | AutoWikiCompiler in a later v8.11.x release. Until then ingest behaves as
-    | before (`reference_only`-style metadata + chunks, original kept on disk).
+    | writes the markdown artifact / drops the original landed in v8.36 (W2,
+    | ADR 0030) behind KB_CONVERSION_ARTIFACTS_ENABLED (below). With that flag
+    | off ingest behaves as before (metadata + chunks, original kept on disk).
     |
-    | Intended (once wired) — what is kept on ingest, globally (and per-connector
-    | via config/connectors.php overrides):
+    | What is kept on ingest, globally (one setting; there is no per-connector
+    | override today):
     |   - full_copy      : original binary on the KB disk + chunks + the
     |                      converted markdown as a first-class artifact
     |                      (knowledge_documents.markdown_path). Today's default
@@ -357,6 +357,272 @@ return [
         // the default only kicks in when the var is ABSENT. Same normalization
         // as the auto-wiki AI override knobs above.
         'mode' => env('KB_SOURCE_RETENTION') ?: 'full_copy',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Conversion artifacts on the Time Machine (v8.36 / ADR 0030)
+    |--------------------------------------------------------------------------
+    |
+    | With `enabled`, the exact Markdown the chunker received is stored per
+    | version at `{prefix}/.artifacts/{tenant}/{project}/{source_path}.versions/
+    | {version_hash}.md` and recorded in `knowledge_documents.markdown_path`,
+    | honouring `source_retention.mode` (`reference_only` stores nothing;
+    | `markdown_only` drops the original binary after the artifact commit).
+    | Diff / restore / the versions endpoints then read the document itself
+    | instead of a chunk reconstruction. Default OFF (R43): no new artifact is
+    | written, existing ones keep being read. `tmp_max_age_seconds` bounds the
+    | sweep of temp files a dead writer left behind (kb:prune-archived-versions);
+    | a temp whose writer still holds its lease (`tmp_lease_seconds`) is never
+    | swept, however old.
+    |
+    */
+
+    'conversion_artifacts' => [
+        'enabled' => filter_var(env('KB_CONVERSION_ARTIFACTS_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+        // Kept RAW (no `(int)` cast): every one of these durations is validated by
+        // `App\Support\Kb\SettingInt::whole()` at the point of use, and a cast here
+        // would truncate `0.5` to `0` and `1.9` to `1` BEFORE the validator could
+        // refuse them — the strict reading would then only ever see values it
+        // already had to accept (SEC-SETTING-SHAPE-001).
+        'tmp_max_age_seconds' => env('KB_CONVERSION_ARTIFACTS_TMP_MAX_AGE', 3600),
+        // ADR 0030 §3 — the per-storage-key lock a `markdown_only` drop and the
+        // row commits of the same key share, and the per-artifact-path lock a
+        // publish shares with every delete and sweep of that path (needs an
+        // atomic lock store, Redis in production): how long a holder waits
+        // for it, and how long it lives when its holder dies. Neither lock is
+        // renewed: a holder asserts it still owns the lock right before its
+        // irreversible step (App\Support\Kb\HeldLock) and refuses otherwise.
+        'source_lock_wait_seconds' => env('KB_CONVERSION_ARTIFACTS_SOURCE_LOCK_WAIT', 10),
+        'source_lock_seconds' => env('KB_CONVERSION_ARTIFACTS_SOURCE_LOCK_TTL', 60),
+        // How long a writer's lease on its artifact temp file lives (taken
+        // before the temp is written, released by the publish or the discard):
+        // the temp sweep never removes a leased temp, whatever its age, so a
+        // slow transaction is never mistaken for a dead writer. The lease is
+        // the primary guard: one configured shorter than `tmp_max_age_seconds`
+        // is RAISED to it and reported once — a lease that expired before the
+        // sweep may delete would make a slow writer indistinguishable from a
+        // dead one exactly in the window the lease exists for. Needs a lock-capable
+        // cache store (Redis in production); a store that cannot lock leaves
+        // the age threshold alone in charge, reported once.
+        'tmp_lease_seconds' => env('KB_CONVERSION_ARTIFACTS_TMP_LEASE', 7200),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | OCR — ingest with eyes (v8.36 / ADR 0029)
+    |--------------------------------------------------------------------------
+    |
+    | Scanned PDFs and images (png / jpeg / tiff / webp) become Markdown of the
+    | same `# {filename}` + `## Page N` shape PdfConverter emits, so
+    | PdfPageChunker chunks them unchanged. One converter, four drivers behind
+    | one contract (App\Services\Kb\Ocr\OcrDriver), selected by KB_OCR_DRIVER.
+    |
+    | DEFAULT-OFF (R43). With `enabled=false` the deployment is byte-for-byte
+    | the v8.35 one: image MIMEs are refused with the same 422, a scanned PDF
+    | yields the same empty document, SourceType::supportedMimes() is
+    | unchanged. Both states are tested.
+    |
+    | Drivers:
+    |   docling      IBM Docling CLI (local process) — layout, tables, figures,
+    |                formulas → LaTeX. Default for sovereign installs.
+    |   mistral-ocr  Mistral OCR API (EU-hosted). Strongest on tables/layouts.
+    |   vision-llm   laravel/ai vision call (Claude / Gemini / Regolo) — zero
+    |                new infra, metered by FinOps like any chat call.
+    |   tesseract    Tesseract CLI (local) — free fallback, no layout.
+    |   fake         deterministic driver for tests and the E2E harness. Only
+    |                resolvable outside production (R43 / SEC-ENV-001).
+    |
+    */
+
+    /*
+    |--------------------------------------------------------------------------
+    | PDF text extraction
+    |--------------------------------------------------------------------------
+    | PdfConverter reads the text layer with smalot/pdfparser and falls back
+    | to Poppler's pdftotext when smalot rejects the file. The binary path
+    | is configurable so a host can point at a non-PATH install (and tests
+    | can substitute a stub).
+    */
+    'pdf' => [
+        'pdftotext_bin' => env('KB_PDFTOTEXT_BIN', 'pdftotext'),
+        // Bound on one `pdftotext` run (seconds): the fallback runs BEFORE
+        // OCR (and in the upload estimate), outside any OCR run budget, so a
+        // malformed PDF could otherwise hold a worker or the estimate
+        // indefinitely. A run past it is the deterministic `run_too_long`
+        // refusal, never a retry and never a silent hand-off to OCR.
+        'pdftotext_timeout' => (int) env('KB_PDFTOTEXT_TIMEOUT', 60),
+        // PR #492 Copilot round-6 — `Process` buffers ALL stdout in memory
+        // until `getOutput()` is called, and the input byte/page caps bound
+        // the SOURCE PDF, not what a pathological content stream (a
+        // decompression-bomb style PDF, well within the upload cap) can
+        // expand INTO as extracted text. Bounded independently, refused the
+        // same deterministic way a timeout is (`output_too_large`).
+        'pdftotext_max_output_bytes' => (int) env('KB_PDFTOTEXT_MAX_OUTPUT_BYTES', 52428800), // 50 MiB of extracted text
+    ],
+
+    'ocr' => [
+        'enabled' => filter_var(env('KB_OCR_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+        // `?: 'tesseract'` — a present-but-blank KB_OCR_DRIVER= is invalid, not
+        // "use the default" (same normalisation as the autowiki knobs above).
+        'driver' => env('KB_OCR_DRIVER') ?: 'tesseract',
+
+        // Final-egress policy (ADR 0029 §7). `mistral-ocr` and `vision-llm`
+        // send the document bytes to a remote service BEFORE the PII seam
+        // can see the text. They run only when this is true; the registry
+        // refuses them otherwise (fail closed). Strict `=== true` after the
+        // cast so a malformed value keeps the door shut.
+        'allow_remote' => filter_var(env('KB_OCR_ALLOW_REMOTE', false), FILTER_VALIDATE_BOOLEAN),
+
+        // Driver registry — key → FQCN. Validated at boot (R23): every class
+        // must implement OcrDriver or OcrDriverRegistry throws.
+        'drivers' => [
+            'docling' => \App\Services\Kb\Ocr\Drivers\DoclingOcrDriver::class,
+            'mistral-ocr' => \App\Services\Kb\Ocr\Drivers\MistralOcrDriver::class,
+            'vision-llm' => \App\Services\Kb\Ocr\Drivers\VisionLlmOcrDriver::class,
+            'tesseract' => \App\Services\Kb\Ocr\Drivers\TesseractOcrDriver::class,
+            'fake' => \App\Services\Kb\Ocr\Drivers\FakeOcrDriver::class,
+        ],
+
+        // Image MIMEs the OcrConverter claims (SourceType::IMAGE). Kept here so
+        // the converter, SourceType::imageMimes() and mime_to_source_type in
+        // config/kb-pipeline.php move in lockstep (a test asserts equality).
+        'image_mimes' => ['image/png', 'image/jpeg', 'image/tiff', 'image/webp'],
+
+        // Bounded work BEFORE egress / spend (SEC-LLM-001 gate 7, ADR 0029
+        // §4): a document over either limit fails loudly with a reason —
+        // never page-by-page billing on a 2 000-page scan. Pages are counted
+        // by the probe's parser; bytes are the request size. A PDF the parser
+        // cannot read has only a `/Type /Page` floor, and a floor is not a cap
+        // input: it is refused for a remote driver (`pages_uncountable`).
+        'max_pages' => (int) env('KB_OCR_MAX_PAGES', 200),
+        // Wall-clock budget of ONE OCR run (seconds). The drivers enforce it
+        // (a page-by-page engine stops at it with `run_too_long`, a
+        // whole-file engine's timeout is capped by it), so the run lease,
+        // the ingest job timeout and the re-run lock are all bounded by it —
+        // and the queue's `retry_after` only has to exceed THIS (+ margins),
+        // never a driver's theoretical worst case.
+        //
+        // Kept RAW (no `(int)` cast, SEC-SETTING-SHAPE-001): `SourceInFlight
+        // ::defaultSeconds()` validates this through `SettingInt::whole()` —
+        // a cast here would truncate a fractional misconfiguration BEFORE
+        // that validator could refuse it, silently shortening the
+        // reservation a slow OCR run needs to outlive. `OcrService::
+        // runBudgetSeconds()` still casts its own local copy defensively;
+        // that consumer's behaviour is unchanged either way.
+        'job_timeout' => env('KB_OCR_JOB_TIMEOUT', 3600),
+        'max_bytes' => (int) env('KB_OCR_MAX_BYTES', 26214400), // 25 MiB, the upload cap
+        // Largest single figure a driver may hand back (remote drivers return
+        // base64 images inside the response body).
+        'max_figure_bytes' => (int) env('KB_OCR_MAX_FIGURE_BYTES', 10485760),
+        // Aggregate figure budget of ONE run (every accepted figure is held
+        // in memory until the run is recorded): how many figures a run may
+        // keep and how many bytes they may add up to; a figure over the
+        // budget is omitted, and the Markdown says so.
+        'max_figures_per_run' => (int) env('KB_OCR_MAX_FIGURES', 200),
+        'max_figures_total_bytes' => (int) env('KB_OCR_MAX_FIGURES_TOTAL_BYTES', 104857600), // 100 MiB
+
+        // Rendered-page bounds for the drivers that rasterise a PDF page by
+        // page (tesseract, vision-llm): the source byte cap above bounds the
+        // FILE, these bound what a page RENDERS to — the long side no page
+        // may exceed in pixels (the render DPI is lowered from the page
+        // geometry pdfinfo reports so every page fits; a page that cannot fit
+        // at 50 DPI is refused before rendering), and the PNG size a page may
+        // reach before it is decoded locally or posted to a vision provider
+        // (ADR 0029 §4).
+        'raster' => [
+            'max_page_px' => (int) env('KB_OCR_RASTER_MAX_PAGE_PX', 6000),
+            'max_page_bytes' => (int) env('KB_OCR_RASTER_MAX_PAGE_BYTES', 10485760),
+        ],
+
+        // Recorded-run reuse (ADR 0029 §5): the raw OCR pages of a run are
+        // kept at {source}.ocr/{run}/result.json — beside the figures, under
+        // the source's own ACL, purged with it — so identical bytes through
+        // the same engine never pay twice. Off = every ingest runs the
+        // driver and nothing is recorded (the disk then holds pixels only).
+        // Seconds a worker waits for the reservation of a run directory another
+        // worker is writing (same bytes, same engine) before giving up and
+        // letting the job retry; the first worker's run is then reused.
+        'run_lock' => [
+            'wait_seconds' => (int) env('KB_OCR_RUN_LOCK_WAIT', 300),
+        ],
+
+        // Seconds a recorded run counts as IN FLIGHT: it is recorded before the
+        // row that references it commits, so a hard delete or orphan sweep
+        // that sees no referencing row inside this grace keeps the run instead
+        // of removing the figures a row is about to point at (ADR 0029 §6).
+        'purge_grace_seconds' => (int) env('KB_OCR_PURGE_GRACE_SECONDS', 1800),
+
+        'reuse' => [
+            'enabled' => filter_var(env('KB_OCR_REUSE_ENABLED', true), FILTER_VALIDATE_BOOLEAN),
+        ],
+
+        // PDF text-layer probe, decided PER PAGE: a page with fewer than
+        // `min_text_chars` extractable characters that carries an image is a
+        // scanned page. No text page at all → `empty` (routed to OCR); text
+        // pages AND scanned pages → `mixed` (the whole document is routed to
+        // OCR so no page is lost); otherwise `present` (today's text path).
+        // Recorded in extractionMeta.text_layer_probe. `pages` = 0 probes
+        // every page up to KB_OCR_MAX_PAGES; a positive value bounds the
+        // window (a scanned page beyond it is not seen). `force` on the
+        // ingest metadata (`metadata.ocr.force = true`, kb:ocr) bypasses it.
+        'text_layer_probe' => [
+            'pages' => (int) env('KB_OCR_PROBE_PAGES', 0),
+            'min_text_chars' => (int) env('KB_OCR_PROBE_MIN_CHARS', 20),
+        ],
+
+        // FinOps: per-page rate (base currency, ai-finops.currency.base) used
+        // for the `ocr` purpose tag on locally-priced drivers (docling,
+        // tesseract, mistral-ocr) and for the estimate on the upload modal.
+        // vision-llm is metered by the laravel/ai lifecycle hook per token and
+        // is NOT double-counted here.
+        'rate_per_page' => (float) env('KB_OCR_RATE_PER_PAGE', 0.004),
+
+        // Where figures land on the kb disk, relative to the source path's
+        // directory: `{dir}/{basename}.ocr/{run}/images/fig-{page}-{n}.png`,
+        // `{run}` content-addressed (OcrFigureStore::runKeyFor). The markdown
+        // references them as `![Figure p.n](images/fig-p-n.png)`.
+        'figures' => [
+            'enabled' => filter_var(env('KB_OCR_FIGURES_ENABLED', true), FILTER_VALIDATE_BOOLEAN),
+        ],
+
+        'docling' => [
+            'binary' => env('KB_OCR_DOCLING_BIN', 'docling'),
+            'timeout' => (int) env('KB_OCR_DOCLING_TIMEOUT', 600),
+        ],
+        'tesseract' => [
+            'binary' => env('KB_OCR_TESSERACT_BIN', 'tesseract'),
+            'pdftoppm' => env('KB_OCR_PDFTOPPM_BIN', 'pdftoppm'),
+            'pdfinfo' => env('KB_OCR_PDFINFO_BIN', 'pdfinfo'),
+            'lang' => env('KB_OCR_TESSERACT_LANG', 'eng'),
+            'dpi' => (int) env('KB_OCR_TESSERACT_DPI', 200),
+            'timeout' => (int) env('KB_OCR_TESSERACT_TIMEOUT', 300),
+        ],
+        'mistral' => [
+            'api_key' => env('KB_OCR_MISTRAL_API_KEY') ?: env('MISTRAL_API_KEY'),
+            'url' => env('KB_OCR_MISTRAL_URL', 'https://api.mistral.eu/v1/ocr'),
+            // Exact host allow-list for the OCR endpoint (SEC-SSRF-001): the
+            // driver refuses any other host BEFORE sending the document.
+            'allowed_hosts' => array_values(array_filter(array_map('trim', explode(',', (string) env('KB_OCR_MISTRAL_ALLOWED_HOSTS', 'api.mistral.eu,api.mistral.ai'))))),
+            'max_response_bytes' => (int) env('KB_OCR_MISTRAL_MAX_RESPONSE_BYTES', 67108864),
+            'model' => env('KB_OCR_MISTRAL_MODEL', 'mistral-ocr-latest'),
+            'timeout' => (int) env('KB_OCR_MISTRAL_TIMEOUT', 120),
+        ],
+        'vision_llm' => [
+            // Empty → the default chat provider/model of AiManager.
+            'provider' => env('KB_OCR_VISION_PROVIDER') ?: null,
+            'model' => env('KB_OCR_VISION_MODEL') ?: null,
+            'max_tokens' => (int) env('KB_OCR_VISION_MAX_TOKENS', 4000),
+            'pdftoppm' => env('KB_OCR_PDFTOPPM_BIN', 'pdftoppm'),
+            'pdfinfo' => env('KB_OCR_PDFINFO_BIN', 'pdfinfo'),
+            'dpi' => (int) env('KB_OCR_VISION_DPI', 150),
+            'timeout' => (int) env('KB_OCR_VISION_TIMEOUT', 300),
+        ],
+        'fake' => [
+            // Pages the fake driver returns; each page may carry `markdown`,
+            // `confidence` and `figures` (count). Null → one synthetic page.
+            'pages' => null,
+        ],
     ],
 
     /*
@@ -417,6 +683,23 @@ return [
 
     'versioning' => [
         'keep_archived' => (int) env('KB_KEEP_ARCHIVED_VERSIONS', 10),
+        // The most versions a timeline listing (HTTP, MCP, CLI) hydrates and
+        // verifies per call (R3); the surfaces report `truncated` beyond it.
+        // Raw, like every setting `SettingInt::whole()` validates at the point of use.
+        'timeline_limit' => env('KB_VERSIONS_TIMELINE_LIMIT', 100),
+        // ADR 0030 §5 — a version's artifact state is a READ + hash check, so
+        // a timeline page would fetch one object per row from a bucket on
+        // every listing. Only the VERIFIED state is memoized, for this many
+        // seconds, under a key of disk + path — and the value stored is the
+        // `content_hash` that was proved. A read is a hit only when the row's
+        // hash still equals that value, so a republished version (a different
+        // hash) never reads a stale entry, and a repairable state (missing,
+        // mismatch) is always re-read. `0` verifies on every read: the badge can then never lag,
+        // at the cost of one object read per listed version. A file deleted
+        // or tampered inside the window may keep its badge until the entry
+        // expires; the content and diff endpoints always re-read and report
+        // `missing` / `mismatch` faithfully.
+        'artifact_state_cache_seconds' => env('KB_VERSIONS_ARTIFACT_STATE_CACHE', 300),
     ],
 
     /*
@@ -681,6 +964,37 @@ return [
     ],
 
     'sources' => [
+        // ADR 0030 §3 — seconds a source file must be untouched before
+        // `kb:prune-orphan-files` may consider it an orphan. An ingest reads
+        // and converts its source (an OCR run takes minutes) BEFORE it takes
+        // the storage key's lock: in that window the file has no row and no
+        // holder, and a sweep would delete it out from under the conversion.
+        // `0` disables the grace and restores the pre-v8.36 behaviour.
+        // Read (and validated) by DocumentDeleter::orphanSourceGraceSeconds():
+        // NOT cast here, or `off` / `1h` / `` would coerce to 0 — a silently
+        // disabled grace, indistinguishable from the explicit `0`.
+        'orphan_grace_seconds' => env('KB_ORPHAN_SOURCE_GRACE_SECONDS', 3600),
+        // ADR 0030 §3 — how long an ingest's reservation over its SOURCE
+        // object lives when the worker holding it dies. It is a backstop, not
+        // the mechanism: the reservation is released as soon as the read +
+        // convert + commit window closes. Default: the OCR job timeout plus a
+        // margin, because the conversion is what the window is made of. Raw,
+        // like every setting SettingInt::whole() validates at the point of use.
+        'inflight_reservation_seconds' => env('KB_SOURCE_INFLIGHT_RESERVATION_SECONDS'),
+
+        /*
+         * How many candidates one `kb:prune-orphan-files` sweep may hold in
+         * memory (orphan sources + `.ocr/` trees + runs) before it stops and
+         * reports itself truncated. The DB lookups are already batched; this
+         * bounds the CANDIDATE lists, which on a large shared disk would
+         * otherwise grow with the whole listing. A truncated sweep reports
+         * `scan_truncated=1` and exits non-zero — the next run continues.
+         * The cap cannot be switched off while the walk collects in memory:
+         * a value that is not a positive integer is this default, never an
+         * unbounded sweep (it would OOM the worker on a large disk, silently).
+         * Raise it if a run truncates too often.
+         */
+        'orphan_scan_max_items' => env('KB_ORPHAN_SCAN_MAX_ITEMS', 50000),
         /*
         | Laravel filesystem disk used to read KB markdown files.
         | Change to 's3' (and provide AWS_* env) to serve docs from S3.

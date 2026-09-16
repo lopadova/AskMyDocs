@@ -29,11 +29,32 @@ final class KbDocumentVersionController extends Controller
     /**
      * GET /api/admin/kb/documents/{id}/versions
      */
-    public function index(int $id): JsonResponse
+    public function index(Request $request, int $id): JsonResponse
     {
         $document = $this->findOr404($id);
+        // R3 — the listing is bounded and paged: `?limit=` (1..configured
+        // max, default the max) and `?offset=` (newest skipped); an invalid
+        // value is a 422, never a silently satisfied request (R14).
+        // `meta.total` is the family size and `meta.truncated` says when it
+        // holds more than the page (R27, additive).
+        $validated = $request->validate([
+            'limit' => ['sometimes', 'integer', 'min:1'],
+            'offset' => ['sometimes', 'integer', 'min:0'],
+        ]);
+        $limit = DocumentVersionService::timelineLimit(isset($validated['limit']) ? (int) $validated['limit'] : null);
+        $offset = (int) ($validated['offset'] ?? 0);
+        $total = $this->versions->familySizeFor($document);
 
-        $rows = $this->versions->versionsFor($document)->map(fn (KnowledgeDocument $v): array => [
+        $rows = $this->versions->versionsFor($document, $limit, $offset)->map(function (KnowledgeDocument $v): array {
+            // ADR 0030 §6 — the last restore, read once per row.
+            $restore = DocumentVersionService::lastRestoreOf($v);
+            // ADR 0030 §5 — a stored artifact is one that can be READ and
+            // VERIFIED (hashes to content_hash), not a pointer: the same check the content endpoint
+            // serves with, so the UI never shows the "stored" badge over a
+            // file that is missing or corrupt.
+            $artifactState = $this->versions->artifactStateFor($v);
+
+            return [
             'id' => $v->id,
             'title' => $v->title,
             'version_hash' => $v->version_hash,
@@ -43,14 +64,29 @@ final class KbDocumentVersionController extends Controller
             'is_live' => $v->status === 'active',
             'indexed_at' => $v->indexed_at,
             'created_at' => $v->created_at,
-        ])->all();
+            // v8.36 / ADR 0030 §4 — additive (R27): null / false on rows that
+            // predate the artifacts, never a changed key.
+            'version_actor' => $v->version_actor,
+            'version_reason' => $v->version_reason,
+            'content_hash' => $v->content_hash,
+            'has_artifact' => DocumentVersionService::isVerifiedArtifactState($artifactState),
+            // additive (R27): none · verified · unverified · missing · mismatch
+            'artifact_state' => $artifactState,
+            // ADR 0030 §6 — the last restore, kept apart from the creation provenance
+            'restored_by' => $restore['actor'] ?? null,
+            'restored_at' => $restore['at'] ?? null,
+            ];
+        })->all();
 
         return response()->json([
             'data' => $rows,
             'meta' => [
                 'project_key' => $document->project_key,
                 'source_path' => $document->source_path,
-                'total' => count($rows),
+                'total' => $total,
+                'limit' => $limit,
+                'offset' => $offset,
+                'truncated' => $total > $offset + count($rows),
             ],
         ]);
     }
@@ -101,6 +137,33 @@ final class KbDocumentVersionController extends Controller
         ]);
     }
 
+    /**
+     * GET /api/admin/kb/documents/{id}/versions/{versionId}/content
+     *
+     * v8.36 / ADR 0030 §5 — the version's content and which source it came
+     * from (`artifact` | `reconstruction`). `{versionId}` must belong to
+     * `{id}`'s family. Admin-only and un-redacted by design: this is the one
+     * read path that returns the converter's output before the PII seam,
+     * which is why it has no MCP twin (documented R44 exception).
+     */
+    public function content(int $id, int $versionId): JsonResponse
+    {
+        $anchor = $this->findOr404($id);
+        $version = $this->resolveFamilyMember($anchor, $versionId);
+        $content = $this->versions->contentFor($version);
+
+        return response()->json([
+            'data' => [
+                'id' => (int) $version->id,
+                'source' => $content['source'],
+                // ADR 0030 §5 — verified | mismatch | null (no content_hash to check against)
+                'integrity' => $content['integrity'] ?? null,
+                'content_hash' => $version->content_hash,
+                'content' => $content['content'],
+            ],
+        ]);
+    }
+
     private function findOr404(int $id): KnowledgeDocument
     {
         $document = KnowledgeDocument::query()->forTenant($this->tenant->current())->find($id);
@@ -118,16 +181,9 @@ final class KbDocumentVersionController extends Controller
      */
     private function resolveFamilyMember(KnowledgeDocument $anchor, int $versionId): KnowledgeDocument
     {
-        $version = KnowledgeDocument::query()
-            ->forTenant($this->tenant->current())
-            ->where('project_key', $anchor->project_key)
-            ->where('source_path', $anchor->source_path)
-            ->find($versionId);
-
-        if ($version === null) {
-            throw new NotFoundHttpException('Version not found in this document family.');
-        }
-
-        return $version;
+        // One definition of "the same family" for every surface (R44):
+        // DocumentVersionService::versionInFamily(), tenant-scoped.
+        return $this->versions->versionInFamily($anchor, $versionId)
+            ?? throw new NotFoundHttpException('Version not found in this document family.');
     }
 }

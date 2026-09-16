@@ -97,4 +97,122 @@ class PruneDeletedDocumentsCommandTest extends TestCase
 
         $this->assertNotNull(KnowledgeDocument::withTrashed()->find($old->id));
     }
+
+    /**
+     * v8.36 / ADR 0030 §3 + R14 — a hard delete can legitimately KEEP the
+     * source file (here: a live sibling still references it; in production
+     * also a held storage key or a store that cannot lock). The rows are
+     * gone either way, so a run that leaves bytes behind must say so rather
+     * than print "Pruned N document(s)" and read as a completed cleanup.
+     */
+    public function test_reports_the_rows_whose_source_file_was_kept(): void
+    {
+        Storage::disk('kb')->put('docs/shared.md', 'hi');
+        // Two versions of ONE physical source: the live one keeps the file.
+        $this->softDeletedDoc('docs/shared.md', now()->subDays(60), 'v-old');
+        KnowledgeDocument::create([
+            'project_key' => 'demo',
+            'source_type' => 'markdown',
+            'title' => 'Sample live',
+            'source_path' => 'docs/shared.md',
+            'language' => 'it',
+            'access_scope' => 'internal',
+            'status' => 'active',
+            'document_hash' => 'v-live',
+            'version_hash' => 'v-live',
+            'metadata' => ['disk' => 'kb', 'prefix' => ''],
+            'indexed_at' => now(),
+        ]);
+
+        $this->artisan('kb:prune-deleted', ['--days' => 30])
+            ->expectsOutputToContain('Pruned 1')
+            ->expectsOutputToContain('files_kept=1')
+            ->assertSuccessful();
+
+        Storage::disk('kb')->assertExists('docs/shared.md');
+    }
+
+    /** The counter stays out of the way when nothing was kept: a clean run prints no `files_kept` line. */
+    public function test_does_not_report_files_kept_when_every_source_was_removed(): void
+    {
+        Storage::disk('kb')->put('docs/lonely.md', 'hi');
+        $this->softDeletedDoc('docs/lonely.md', now()->subDays(60), 'v-lonely');
+
+        $this->artisan('kb:prune-deleted', ['--days' => 30])
+            ->doesntExpectOutputToContain('files_kept=')
+            ->assertSuccessful();
+
+        Storage::disk('kb')->assertMissing('docs/lonely.md');
+    }
+
+    /**
+     * v8.36 / ADR 0030 §3 + PR #492 Copilot round-1 — a `markdown_only`
+     * retention row keeps a non-empty `source_path` after `DocumentIngestor`
+     * intentionally drops the original and stamps `metadata.source_dropped`
+     * (the SAME stamp `DocumentDeleter::deleteOrphans()` already reads to
+     * skip these rows). `delete()` correctly answers `file_deleted=false`
+     * for a file that was never there — but that is retention working as
+     * designed, not bytes the sweep failed to reap: it must NOT surface as
+     * `files_kept`.
+     */
+    public function test_does_not_report_files_kept_for_a_row_whose_source_was_intentionally_dropped(): void
+    {
+        // No file written to `kb` disk at all — `source_dropped` rows never
+        // have one, by construction of the retention mode this simulates.
+        $document = KnowledgeDocument::create([
+            'project_key' => 'demo',
+            'source_type' => 'markdown',
+            'title' => 'Sample',
+            'source_path' => 'docs/dropped.md',
+            'language' => 'it',
+            'access_scope' => 'internal',
+            'status' => 'active',
+            'document_hash' => 'v-dropped',
+            'version_hash' => 'v-dropped',
+            'metadata' => ['disk' => 'kb', 'prefix' => '', 'source_dropped' => true],
+            'indexed_at' => now(),
+        ]);
+        KnowledgeChunk::create([
+            'knowledge_document_id' => $document->id,
+            'project_key' => $document->project_key,
+            'chunk_order' => 0,
+            'chunk_hash' => hash('sha256', 'chunk-'.$document->id),
+            'chunk_text' => 'body',
+            'metadata' => [],
+            'embedding' => [0.1],
+        ]);
+        $document->delete();
+        KnowledgeDocument::withTrashed()->where('id', $document->id)->update(['deleted_at' => now()->subDays(60)]);
+
+        $this->artisan('kb:prune-deleted', ['--days' => 30])
+            ->expectsOutputToContain('Pruned 1')
+            ->doesntExpectOutputToContain('files_kept=')
+            ->assertSuccessful();
+
+        $this->assertNull(KnowledgeDocument::withTrashed()->find($document->id));
+    }
+
+    /**
+     * PR #492 Copilot round-4 — `source_dropped` only covers the ONE known
+     * way a non-empty `source_path` can outlive its bytes (`markdown_only`
+     * retention). A row whose file went missing OUT OF BAND — deleted by
+     * hand, by a bug, by anything this row's metadata never recorded — is a
+     * DIFFERENT case: `DocumentDeleter::delete()` still answers
+     * `file_deleted=false` (there was nothing to remove), and before this
+     * fix that was indistinguishable from a genuinely KEPT file. No file is
+     * ever written to `kb` disk here, and no live sibling references the
+     * path either — the counter must not claim bytes were kept when none
+     * were ever observed present.
+     */
+    public function test_does_not_report_files_kept_for_a_row_whose_source_was_missing_out_of_band(): void
+    {
+        $this->softDeletedDoc('docs/vanished.md', now()->subDays(60), 'v-vanished');
+
+        $this->artisan('kb:prune-deleted', ['--days' => 30])
+            ->expectsOutputToContain('Pruned 1')
+            ->doesntExpectOutputToContain('files_kept=')
+            ->assertSuccessful();
+
+        Storage::disk('kb')->assertMissing('docs/vanished.md');
+    }
 }

@@ -884,7 +884,12 @@ function AdminKbTimeMachineRoute() {
         <RequireRole roles={['admin', 'super-admin']}>
             <AdminShell section="time-machine">
                 {Number.isFinite(docId) && docId > 0 ? (
-                    <TimeMachineView docId={docId} />
+                    // `key` remounts the view on a client-side route-param
+                    // change between documents (no in-app link targets this
+                    // route yet — defensive): picked versions, appended pages
+                    // and restore status are document-specific and never
+                    // carry over.
+                    <TimeMachineView key={docId} docId={docId} />
                 ) : (
                     <p data-testid="kb-time-machine-invalid" style={{ padding: 24, color: 'var(--err)' }}>
                         Invalid document id.

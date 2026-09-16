@@ -89,6 +89,10 @@ class KbDeleteCommand extends Command
         $fileOutput = $run->stepResults['remove-file']?->output ?? [];
         $hardDeleted = (bool) ($hardOutput['hard_deleted'] ?? false);
         $fileDeleted = (bool) ($fileOutput['file_deleted'] ?? false);
+        // v8.36 / ADR 0030 §8 / PR #479 Copilot review round 5 — additive
+        // (R27): whether this call also removed the row's version artifact.
+        // Read from `hard-delete-rows`' own step output, not `remove-file`'s.
+        $artifactDeleted = (bool) ($hardOutput['artifact_deleted'] ?? false);
 
         $mode = $hardDeleted ? 'hard-deleted' : 'soft-deleted';
         $fileNote = '';
@@ -96,6 +100,9 @@ class KbDeleteCommand extends Command
             $fileNote = $fileDeleted
                 ? ' (file removed)'
                 : ($this->option('keep-file') ? ' (file preserved by --keep-file)' : ' (no file on disk)');
+            if ($artifactDeleted) {
+                $fileNote .= ' (artifact removed)';
+            }
         }
         $this->info("Document #{$documentId} {$mode} [{$projectKey}/{$sourcePath}]{$fileNote}.");
 

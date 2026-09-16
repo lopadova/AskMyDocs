@@ -517,6 +517,9 @@ Route::middleware([
                 ->name('api.admin.kb.uploads.show');
             Route::get('/{uploadBatch}/status', [\App\Http\Controllers\Api\Admin\KbUploadController::class, 'status'])
                 ->name('api.admin.kb.uploads.status');
+            // v8.36 / ADR 0029 §8 — OCR cost estimate before commit.
+            Route::get('/{uploadBatch}/estimate', [\App\Http\Controllers\Api\Admin\KbUploadController::class, 'estimate'])
+                ->name('api.admin.kb.uploads.estimate');
             Route::post('/{uploadBatch}/commit', [\App\Http\Controllers\Api\Admin\KbUploadController::class, 'commit'])
                 ->name('api.admin.kb.uploads.commit');
             Route::post('/{uploadBatch}/cancel', [\App\Http\Controllers\Api\Admin\KbUploadController::class, 'cancel'])
@@ -678,12 +681,26 @@ Route::middleware([
             ->whereNumber('id')->name('api.admin.kb.documents.versions.index');
         Route::get('/kb/documents/{id}/versions/diff', [\App\Http\Controllers\Api\Admin\KbDocumentVersionController::class, 'diff'])
             ->whereNumber('id')->name('api.admin.kb.documents.versions.diff');
-        // `restore-version` (NOT `restore`) — `POST /kb/documents/{document}/restore`
-        // already exists for un-deleting SOFT-DELETED docs (KbDocumentController);
-        // the Time Machine restore re-activates an ARCHIVED VERSION, a distinct op
-        // (R20 — route contracts must not collide).
+        // v8.36 / ADR 0030 §5 — a version's content (artifact or reconstruction).
+        // R32 — `/api/admin/kb/documents/1/versions/1/content` is the matrix row.
+        Route::get('/kb/documents/{id}/versions/{versionId}/content', [\App\Http\Controllers\Api\Admin\KbDocumentVersionController::class, 'content'])
+            ->whereNumber('id')->whereNumber('versionId')->name('api.admin.kb.documents.versions.content');
+        // This route is named `restore-version`, NOT `restore`: that plain
+        // name is already taken by the DIFFERENT, already-registered route
+        // `POST /kb/documents/{document}/restore` above (line ~452,
+        // KbDocumentController::restore), which un-deletes a SOFT-DELETED
+        // document. THIS route re-activates an ARCHIVED VERSION of a live
+        // document — a distinct operation, hence the distinct name (R20 —
+        // route contracts must not collide).
         Route::post('/kb/documents/{id}/restore-version', [\App\Http\Controllers\Api\Admin\KbDocumentVersionController::class, 'restore'])
             ->whereNumber('id')->name('api.admin.kb.documents.versions.restore');
+
+        // v8.36 / ADR 0029 — OCR status + re-run (R44 HTTP surface). R32 —
+        // covered by the AdminAuthorizationMatrix (`/api/admin/kb/documents/1/ocr`).
+        Route::get('/kb/documents/{id}/ocr', [\App\Http\Controllers\Api\Admin\KbOcrController::class, 'status'])
+            ->whereNumber('id')->name('api.admin.kb.documents.ocr.status');
+        Route::post('/kb/documents/{id}/ocr', [\App\Http\Controllers\Api\Admin\KbOcrController::class, 'rerun'])
+            ->whereNumber('id')->name('api.admin.kb.documents.ocr.rerun');
 
         Route::apiResource('kb/collections', KbCollectionController::class)
             ->parameters(['collections' => 'id'])

@@ -196,13 +196,36 @@ class ConceptSynthesizer
             $markdown = $this->buildMarkdown($candidate, $title, $summary, $body);
             $relativePath = $this->writeToDisk($projectKey, $candidate['slug'], $markdown);
 
-            $doc = $this->ingestor->ingestMarkdown(
-                projectKey: $projectKey,
-                sourcePath: $relativePath,
-                title: $title,
-                markdown: $markdown,
-                metadata: ['autowiki_concept' => true, 'source_slug_count' => count($candidate['sources'])],
-            );
+            try {
+                $doc = $this->ingestor->ingestMarkdown(
+                    projectKey: $projectKey,
+                    sourcePath: $relativePath,
+                    title: $title,
+                    markdown: $markdown,
+                    metadata: ['autowiki_concept' => true, 'source_slug_count' => count($candidate['sources'])],
+                );
+            } catch (\App\Services\Kb\Versioning\ArtifactPublishFailedException $e) {
+                // The concept page IS committed — only its conversion artifact
+                // is missing (repaired by the next identical ingest or the
+                // backfill). Skipping the audit here would leave a canonical
+                // document without its `kb_canonical_audit` row forever:
+                // `conceptExists()` matches its slug on every later sweep, so
+                // this is the only chance to write it (R10 §9).
+                // A recovery read of the row just committed: tenant-scoped
+                // (R30) but never hidden by the acting user's read ACL — the
+                // audit must be written whoever triggered the sweep.
+                $doc = KnowledgeDocument::query()
+                    ->withoutGlobalScope(\App\Scopes\AccessScopeScope::class)
+                    ->forTenant($tenantId)
+                    ->find($e->documentId);
+                if ($doc === null) {
+                    throw $e;
+                }
+                Log::warning('ConceptSynthesizer: concept page ingested but its artifact could not be published; audited anyway, artifact repaired forward', [
+                    'concept' => $candidate['concept'], 'project_key' => $projectKey, 'tenant_id' => $tenantId,
+                    'document_id' => $e->documentId, 'error' => $e->getMessage(),
+                ]);
+            }
 
             $this->audit($doc, $candidate);
 

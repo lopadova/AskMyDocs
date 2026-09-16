@@ -119,7 +119,7 @@ selected via env:
 ```bash
 KB_FILESYSTEM_DISK=kb       # which configured disk to use (kb | s3 | r2 | …)
 KB_DISK_DRIVER=local        # driver of the default "kb" disk (local | s3)
-KB_PATH_PREFIX=             # optional prefix every path is resolved under
+KB_PATH_PREFIX=             # optional prefix every path is resolved under (never a `.artifacts` segment: reserved)
 KB_RAW_DISK=kb-raw          # raw (pre-conversion) source retention
 ```
 

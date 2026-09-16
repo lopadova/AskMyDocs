@@ -41,7 +41,14 @@ final class SourceTypeTest extends TestCase
             SourceType::DOCX,
         ];
         yield 'octet-stream → UNKNOWN' => ['application/octet-stream', SourceType::UNKNOWN];
-        yield 'image/png → UNKNOWN'    => ['image/png', SourceType::UNKNOWN];
+        // v8.36 / ADR 0029 — images map to IMAGE; whether they are ACCEPTED is
+        // decided at the entry points by `kb.ocr.enabled` (see the
+        // supportedMimes()/knownExtensions() flag tests below).
+        yield 'image/png → IMAGE'      => ['image/png', SourceType::IMAGE];
+        yield 'image/jpeg → IMAGE'     => ['image/jpeg', SourceType::IMAGE];
+        yield 'image/tiff → IMAGE'     => ['image/tiff', SourceType::IMAGE];
+        yield 'image/webp → IMAGE'     => ['image/webp', SourceType::IMAGE];
+        yield 'image/gif → UNKNOWN'    => ['image/gif', SourceType::UNKNOWN];
         yield 'empty → UNKNOWN'        => ['', SourceType::UNKNOWN];
     }
 
@@ -64,7 +71,10 @@ final class SourceTypeTest extends TestCase
         yield 'pdf'           => ['pdf', SourceType::PDF];
         yield '.PDF uppercase' => ['.PDF', SourceType::PDF];
         yield 'docx'          => ['docx', SourceType::DOCX];
-        yield 'unknown'       => ['png', SourceType::UNKNOWN];
+        yield 'png → IMAGE'   => ['png', SourceType::IMAGE];
+        yield '.JPG → IMAGE'  => ['.JPG', SourceType::IMAGE];
+        yield 'tiff → IMAGE'  => ['tiff', SourceType::IMAGE];
+        yield 'unknown'       => ['gif', SourceType::UNKNOWN];
         yield 'empty'         => ['', SourceType::UNKNOWN];
     }
 
@@ -80,12 +90,13 @@ final class SourceTypeTest extends TestCase
         $this->assertSame('application/octet-stream', SourceType::UNKNOWN->toMime());
     }
 
-    public function test_is_binary_only_true_for_pdf_and_docx(): void
+    public function test_is_binary_true_for_pdf_docx_and_image_only(): void
     {
         $this->assertFalse(SourceType::MARKDOWN->isBinary());
         $this->assertFalse(SourceType::TEXT->isBinary());
         $this->assertTrue(SourceType::PDF->isBinary());
         $this->assertTrue(SourceType::DOCX->isBinary());
+        $this->assertTrue(SourceType::IMAGE->isBinary());
         $this->assertFalse(SourceType::UNKNOWN->isBinary());
     }
 
@@ -105,5 +116,30 @@ final class SourceTypeTest extends TestCase
         $this->assertContains('pdf', $exts);
         $this->assertContains('docx', $exts);
         $this->assertNotContains('unknown', $exts);
+    }
+
+    /**
+     * v8.36 / ADR 0029 — R43: the OFF path (default) is byte-identical to
+     * v8.35; image entries appear only when the caller opts in with the flag.
+     */
+    public function test_images_are_listed_only_when_the_caller_includes_them(): void
+    {
+        $this->assertNotContains('image/png', SourceType::supportedMimes());
+        $this->assertNotContains('png', SourceType::knownExtensions());
+        $this->assertSame(
+            ['text/markdown', 'text/x-markdown', 'text/plain', 'application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+            SourceType::supportedMimes(false),
+        );
+
+        foreach (SourceType::imageMimes() as $mime) {
+            $this->assertContains($mime, SourceType::supportedMimes(true));
+            $this->assertSame(SourceType::IMAGE, SourceType::fromMime($mime));
+        }
+        foreach (SourceType::imageExtensions() as $ext) {
+            $this->assertContains($ext, SourceType::knownExtensions(true));
+            $this->assertSame(SourceType::IMAGE, SourceType::fromExtension($ext));
+        }
+        $this->assertSame('image/png', SourceType::IMAGE->toMime());
+        $this->assertSame('image', SourceType::IMAGE->value);
     }
 }

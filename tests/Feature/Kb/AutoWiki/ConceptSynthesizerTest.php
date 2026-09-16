@@ -126,6 +126,36 @@ final class ConceptSynthesizerTest extends TestCase
         ]);
     }
 
+    /** ADR 0030 §3 / R10 §9 — a concept page whose artifact publish fails is still committed: it is audited and counted, never a silent skip that leaves a canonical row without its audit forever. */
+    public function test_a_concept_page_whose_artifact_publish_fails_is_still_audited(): void
+    {
+        $this->doc(['cache', 'eviction']);
+        $this->doc(['cache']);
+        $this->doc(['cache', 'redis']);
+        $ai = $this->aiReturning(['title' => 'Cache', 'summary' => 'Caching overview.', 'body' => 'Cache body.']);
+        $ingestor = Mockery::mock(DocumentIngestor::class);
+        $ingestor->shouldReceive('ingestMarkdown')->andReturnUsing(function (string $projectKey, string $sourcePath, string $title, string $markdown, array $metadata = []) {
+            preg_match('/slug:\s*(\S+)/', $markdown, $m);
+            $doc = KnowledgeDocument::create([
+                'tenant_id' => 'default', 'project_key' => $projectKey, 'source_type' => 'markdown',
+                'title' => $title, 'source_path' => $sourcePath, 'mime_type' => 'text/markdown',
+                'status' => 'active', 'document_hash' => str_repeat('b', 64),
+                'version_hash' => 'cv'.($m[1] ?? 'x'), 'is_canonical' => true,
+                'slug' => $m[1] ?? null, 'canonical_type' => 'domain-concept', 'generation_source' => 'auto',
+            ]);
+            // The row committed; the artifact behind its pointer did not land.
+            throw new \App\Services\Kb\Versioning\ArtifactPublishFailedException((int) $doc->id, 'kb', '.artifacts/x/'.$sourcePath.'.versions/h.md', 'write refused');
+        });
+
+        $result = $this->synthesizer($ai, $ingestor)->synthesize('default', 'docs-v3');
+
+        $this->assertTrue($result['ran']);
+        $this->assertContains('auto-cache', $result['created']);
+        $this->assertDatabaseHas('kb_canonical_audit', [
+            'project_key' => 'docs-v3', 'event_type' => 'promoted', 'actor' => 'system:autowiki', 'slug' => 'auto-cache',
+        ]);
+    }
+
     public function test_below_frequency_threshold_is_not_a_candidate(): void
     {
         $this->doc(['rare']);

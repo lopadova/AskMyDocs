@@ -162,6 +162,13 @@ class KbIngestFolderCommand extends Command
             ? (array) ($dispatchResult->output['failures'] ?? [])
             : [];
         $failureCount = count($failures);
+        // ADR 0030 §3 — documents INGESTED whose conversion artifact could
+        // not be published (sync mode): counted in `dispatched`, reported
+        // apart, and a non-zero exit — a degraded document is not a clean run.
+        $artifactFailures = $dispatchResult instanceof FlowStepResult
+            ? (array) ($dispatchResult->output['artifact_failures'] ?? [])
+            : [];
+        $artifactFailureCount = count($artifactFailures);
 
         foreach ($failures as $failure) {
             if (! is_array($failure)) {
@@ -169,14 +176,23 @@ class KbIngestFolderCommand extends Command
             }
             $this->error("  ! failed: {$failure['path']} — {$failure['reason']}");
         }
+        foreach ($artifactFailures as $failure) {
+            if (! is_array($failure)) {
+                continue;
+            }
+            $this->error("  ! ingested, artifact not published: {$failure['path']} (document #{$failure['document_id']}) — {$failure['reason']}");
+        }
 
         $verb = $sync ? 'Ingested' : 'Queued';
         $tail = $failureCount > 0 ? " — {$failureCount} failure(s)." : '.';
+        if ($artifactFailureCount > 0) {
+            $tail .= " {$artifactFailureCount} ingested without a published artifact (kb:artifacts-backfill repairs them).";
+        }
         $this->info("{$verb} {$dispatched} document(s){$tail}");
 
         $this->reportOrphanResult($run, $pruneOrphans, $dryRun);
 
-        return $failureCount === 0 ? self::SUCCESS : self::FAILURE;
+        return ($failureCount === 0 && $artifactFailureCount === 0) ? self::SUCCESS : self::FAILURE;
     }
 
     private function reportOrphanResult(FlowRun $run, bool $pruneOrphans, bool $dryRun): void
@@ -212,8 +228,9 @@ class KbIngestFolderCommand extends Command
     private function parsePatterns(string $raw): array
     {
         if ($raw === '') {
-            // Default to every supported source-type extension.
-            return SourceType::knownExtensions();
+            // Default to every supported source-type extension (images only
+            // when OCR is on — v8.36 / ADR 0029, R43).
+            return SourceType::knownExtensions((bool) config('kb.ocr.enabled', false));
         }
         $parts = array_filter(array_map('trim', explode(',', $raw)));
         $extensions = [];

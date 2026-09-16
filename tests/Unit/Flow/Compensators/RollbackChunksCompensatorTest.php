@@ -54,7 +54,7 @@ final class RollbackChunksCompensatorTest extends TestCase
         $context = new FlowContext(
             flowRunId: 'rollback-run',
             definitionName: 'kb.ingest',
-            input: ['tenant_id' => 'default'],
+            input: ['tenant_id' => app(\App\Support\TenantContext::class)->current()], // the flow carries the tenant the row was ingested under (R30)
         );
         $stepResult = FlowStepResult::success(
             output: ['knowledge_document_id' => (int) $document->id],
@@ -71,13 +71,187 @@ final class RollbackChunksCompensatorTest extends TestCase
         $this->assertSame(0, KnowledgeChunk::count(), 'chunks must cascade away with the parent doc.');
     }
 
+    /**
+     * R30 — a stale or replayed flow output naming ANOTHER tenant's document
+     * id must find nothing: the compensator resolves the row inside the
+     * tenant its context just bound, so it can never force-delete that
+     * tenant's row (nor, since v8.36, its artifact).
+     */
+    public function test_a_document_id_of_another_tenant_is_not_compensated(): void
+    {
+        $cache = Mockery::mock(EmbeddingCacheService::class);
+        $cache->shouldReceive('generate')->andReturn(new EmbeddingsResponse(
+            embeddings: [[0.1, 0.2, 0.3]],
+            provider: 'openai',
+            model: 'text-embedding-3-small',
+        ));
+        $this->app->instance(EmbeddingCacheService::class, $cache);
+
+        $tenants = $this->app->make(\App\Support\TenantContext::class);
+        $tenants->set('acme');
+        $theirs = $this->app->make(DocumentIngestor::class)->ingestMarkdown(
+            projectKey: 'demo',
+            sourcePath: 'docs/theirs.md',
+            title: 'Theirs',
+            markdown: "# Theirs\n\nBody.",
+        );
+        $this->assertSame('acme', (string) $theirs->tenant_id);
+
+        // A flow of ANOTHER tenant replays that id.
+        $context = new FlowContext(
+            flowRunId: 'rollback-run',
+            definitionName: 'kb.ingest',
+            input: ['tenant_id' => 'globex'],
+        );
+        $this->app->make(RollbackChunksCompensator::class)->compensate(
+            $context,
+            FlowStepResult::success(output: ['knowledge_document_id' => (int) $theirs->id]),
+        );
+
+        $this->assertSame(
+            1,
+            KnowledgeDocument::withoutGlobalScopes()->whereKey($theirs->id)->whereNull('deleted_at')->count(),
+            "another tenant's row is untouched",
+        );
+    }
+
+    /**
+     * v8.36 / PR #479 Copilot review — a document hidden by the CURRENT
+     * actor's project/path ACL is still this tenant's row to unwind:
+     * compensation is a system-level cleanup, not a user-facing read, so
+     * AccessScopeScope must not stop it from finding (and deleting) a row
+     * that belongs to the bound tenant. An earlier revision only logged a
+     * warning here and left the orphan row, its chunks and its graph
+     * projection behind (R14) — this proves the actual cleanup happens.
+     */
+    public function test_a_row_hidden_by_the_access_scope_is_still_compensated(): void
+    {
+        $cache = Mockery::mock(EmbeddingCacheService::class);
+        $cache->shouldReceive('generate')->andReturn(new EmbeddingsResponse(
+            embeddings: [[0.1, 0.2, 0.3]],
+            provider: 'openai',
+            model: 'text-embedding-3-small',
+        ));
+        $this->app->instance(EmbeddingCacheService::class, $cache);
+
+        $tenants = $this->app->make(\App\Support\TenantContext::class);
+        $tenants->set('acme');
+        $ours = $this->app->make(DocumentIngestor::class)->ingestMarkdown(
+            projectKey: 'demo',
+            sourcePath: 'docs/reported.md',
+            title: 'Ours',
+            markdown: "# Ours\n\nBody.",
+        );
+
+        // A reader with no project membership: AccessScopeScope narrows every
+        // KnowledgeDocument READ to nothing for this actor, while the row
+        // still sits in this tenant — the fact this compensator must act on.
+        config(['rbac.enforced' => true]);
+        $this->actingAs(\App\Models\User::create([
+            'name' => 'Scoped', 'email' => 'scoped@example.test', 'password' => bcrypt('secret'),
+        ]));
+
+        $this->app->make(RollbackChunksCompensator::class)->compensate(
+            new FlowContext(flowRunId: 'rollback-run', definitionName: 'kb.ingest', input: ['tenant_id' => 'acme']),
+            FlowStepResult::success(output: ['knowledge_document_id' => (int) $ours->id]),
+        );
+
+        $this->assertSame(
+            0,
+            KnowledgeDocument::withoutGlobalScopes()->whereKey($ours->id)->count(),
+            'the row must be gone, not merely reported as invisible',
+        );
+        $this->assertSame(0, KnowledgeChunk::where('knowledge_document_id', $ours->id)->count());
+    }
+
+    /**
+     * R30 — the probe keeps the tenant filter. A replayed output naming
+     * another tenant's id finds nothing and says nothing: answering "does id
+     * N exist anywhere?" would be a cross-tenant existence oracle, and the
+     * answer is not actionable here anyway — a row in another tenant is not
+     * this compensation's to roll back.
+     */
+    public function test_a_cross_tenant_id_is_not_probed_and_reveals_nothing(): void
+    {
+        $cache = Mockery::mock(EmbeddingCacheService::class);
+        $cache->shouldReceive('generate')->andReturn(new EmbeddingsResponse(
+            embeddings: [[0.1, 0.2, 0.3]],
+            provider: 'openai',
+            model: 'text-embedding-3-small',
+        ));
+        $this->app->instance(EmbeddingCacheService::class, $cache);
+
+        $tenants = $this->app->make(\App\Support\TenantContext::class);
+        $tenants->set('acme');
+        $theirs = $this->app->make(DocumentIngestor::class)->ingestMarkdown(
+            projectKey: 'demo',
+            sourcePath: 'docs/reported.md',
+            title: 'Theirs',
+            markdown: "# Theirs\n\nBody.",
+        );
+
+        \Illuminate\Support\Facades\Log::spy();
+        $this->app->make(RollbackChunksCompensator::class)->compensate(
+            new FlowContext(flowRunId: 'rollback-run', definitionName: 'kb.ingest', input: ['tenant_id' => 'globex']),
+            FlowStepResult::success(output: ['knowledge_document_id' => (int) $theirs->id]),
+        );
+
+        \Illuminate\Support\Facades\Log::shouldNotHaveReceived('warning');
+        $this->assertDatabaseHas('knowledge_documents', ['id' => $theirs->id, 'tenant_id' => 'acme']);
+    }
+
+    /** A genuinely absent row stays quiet: the rollback is idempotent by contract, not a problem to report. */
+    public function test_an_absent_row_is_not_reported(): void
+    {
+        \Illuminate\Support\Facades\Log::spy();
+        $this->app->make(RollbackChunksCompensator::class)->compensate(
+            new FlowContext(flowRunId: 'rollback-run', definitionName: 'kb.ingest', input: ['tenant_id' => 'globex']),
+            FlowStepResult::success(output: ['knowledge_document_id' => 987654]),
+        );
+
+        \Illuminate\Support\Facades\Log::shouldNotHaveReceived('warning');
+    }
+
+    /** v8.36 / ADR 0030 §8 — the compensated row's own version artifact goes with it; the source stays. */
+    public function test_removes_the_rows_version_artifact_but_preserves_the_source(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('kb');
+        config(['kb.sources.disk' => 'kb', 'kb.sources.path_prefix' => '', 'kb.conversion_artifacts.enabled' => true]);
+        $cache = Mockery::mock(EmbeddingCacheService::class);
+        $cache->shouldReceive('generate')->once()->andReturn(new EmbeddingsResponse(
+            embeddings: [[0.1, 0.2, 0.3]],
+            provider: 'openai',
+            model: 'text-embedding-3-small',
+        ));
+        $this->app->instance(EmbeddingCacheService::class, $cache);
+        \Illuminate\Support\Facades\Storage::disk('kb')->put('docs/intro.md', "# Heading\n\nBody.");
+        $document = $this->app->make(DocumentIngestor::class)->ingestMarkdown(
+            projectKey: 'demo',
+            sourcePath: 'docs/intro.md',
+            title: 'Intro',
+            markdown: "# Heading\n\nBody.",
+        );
+        $artifact = (string) $document->markdown_path;
+        $this->assertNotSame('', $artifact);
+        \Illuminate\Support\Facades\Storage::disk('kb')->assertExists($artifact);
+
+        $this->app->make(RollbackChunksCompensator::class)->compensate(
+            new FlowContext(flowRunId: 'rollback-run', definitionName: 'kb.ingest', input: ['tenant_id' => app(\App\Support\TenantContext::class)->current()]),
+            FlowStepResult::success(output: ['knowledge_document_id' => (int) $document->id]),
+        );
+
+        $this->assertSame(0, KnowledgeDocument::withTrashed()->count());
+        \Illuminate\Support\Facades\Storage::disk('kb')->assertMissing($artifact);
+        \Illuminate\Support\Facades\Storage::disk('kb')->assertExists('docs/intro.md'); // the source is never the flow's to destroy
+    }
+
     public function test_no_op_when_document_already_deleted(): void
     {
         $compensator = $this->app->make(RollbackChunksCompensator::class);
         $context = new FlowContext(
             flowRunId: 'rollback-run',
             definitionName: 'kb.ingest',
-            input: ['tenant_id' => 'default'],
+            input: ['tenant_id' => app(\App\Support\TenantContext::class)->current()], // the flow carries the tenant the row was ingested under (R30)
         );
         $stepResult = FlowStepResult::success(
             output: ['knowledge_document_id' => 999_999],
@@ -95,7 +269,7 @@ final class RollbackChunksCompensatorTest extends TestCase
         $context = new FlowContext(
             flowRunId: 'rollback-run',
             definitionName: 'kb.ingest',
-            input: ['tenant_id' => 'default'],
+            input: ['tenant_id' => app(\App\Support\TenantContext::class)->current()], // the flow carries the tenant the row was ingested under (R30)
         );
         $stepResult = FlowStepResult::success(output: []);
 

@@ -25,6 +25,12 @@ return [
     'converters' => [
         \App\Services\Kb\Converters\MarkdownPassthroughConverter::class,
         \App\Services\Kb\Converters\TextPassthroughConverter::class,
+        // v8.36 / ADR 0029 — OCR. Claims `image/*` only when `kb.ocr.enabled`
+        // is true (OFF → supports() is false for every MIME, so the registry
+        // falls through exactly as before). Scanned PDFs are NOT claimed here:
+        // the registry resolves by MIME alone, so the text-layer decision lives
+        // as a fallback inside PdfConverter, delegating to the same OcrService.
+        \App\Services\Kb\Converters\OcrConverter::class,
         \App\Services\Kb\Converters\PdfConverter::class,
         \App\Services\Kb\Converters\DocxConverter::class,
         \App\Services\Kb\Converters\VendorMarkdownPassthroughConverter::class,
@@ -71,6 +77,13 @@ return [
         'text/plain'      => 'text',
         'application/pdf' => 'pdf',
         'application/vnd.openxmlformats-officedocument.wordprocessingml.document' => 'docx',
+        // v8.36 / ADR 0029 — scanned images (OcrConverter → PdfPageChunker).
+        // Static mapping; whether an image is ACCEPTED is decided at the
+        // entry points by `kb.ocr.enabled` (SourceType::supportedMimes(true)).
+        'image/png'  => 'image',
+        'image/jpeg' => 'image',
+        'image/tiff' => 'image',
+        'image/webp' => 'image',
 
         // v4.5/W5.5 — synthetic vendor MIME tokens. Connectors set the
         // source MIME on the SourceDocument so the registry routes to
