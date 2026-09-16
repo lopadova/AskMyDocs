@@ -142,22 +142,35 @@ export interface UseChatSessionResult {
 export function useChatSession({ nav }: UseChatSessionOptions): UseChatSessionResult {
     const params = useParams({ strict: false }) as { conversationId?: string };
     const qc = useQueryClient();
-    const activeId = useChatStore((s) => s.activeConversationId);
     const setActive = useChatStore((s) => s.setActiveConversation);
+    const storeActiveId = useChatStore((s) => s.activeConversationId);
 
-    // Sync URL param → store. The URL is the source of truth (R11 §5).
+    // The URL is the source of truth (R11 §5), so the active id is DERIVED
+    // from the route rather than read back out of the store. The store used
+    // to be authoritative, with an effect pushing the URL into it; that
+    // made the id lag the route by one render, and because `useChatStore`
+    // is a module singleton the lag is VISIBLE across surfaces: opening
+    // /sessions right after /chat rendered the previous thread for a frame
+    // and fired a wasted ['messages', staleId] fetch before correcting.
     //
-    // Copilot #6 fix: compute a sanitized `safeId` first. Without this,
-    // a non-numeric URL segment produced NaN, and `NaN !== activeId`
-    // evaluates true on every render, which re-fired `setActive(null)`
-    // every render and thrashed Zustand subscribers into a loop.
-    useEffect(() => {
+    // Deriving also retires a whole bug class. The old comparison
+    // `safeId !== activeId` had to sanitize NaN by hand (Copilot #6 on
+    // PR #20), because `NaN !== activeId` is true on EVERY render and
+    // re-fired setActive in a loop. A `useMemo` keyed on the raw param
+    // cannot loop no matter what the segment contains.
+    const activeId = useMemo<number | null>(() => {
         const parsed = params.conversationId !== undefined ? Number(params.conversationId) : NaN;
-        const safeId: number | null = Number.isFinite(parsed) ? parsed : null;
-        if (safeId !== activeId) {
-            setActive(safeId);
+        return Number.isFinite(parsed) ? parsed : null;
+    }, [params.conversationId]);
+
+    // The store stays as a MIRROR for the components that read it without
+    // access to the route (ConversationList's active-row highlight). It is
+    // now a downstream copy, never an input to this hook.
+    useEffect(() => {
+        if (storeActiveId !== activeId) {
+            setActive(activeId);
         }
-    }, [params.conversationId, activeId, setActive]);
+    }, [activeId, storeActiveId, setActive]);
 
     // Active project = first project the user can access in the ACTIVE
     // TEAM (team-store, synced from /api/auth/me `teams`). Replaces the
@@ -490,8 +503,10 @@ export function useChatSession({ nav }: UseChatSessionOptions): UseChatSessionRe
         },
     });
 
+    // Navigation only: the route change re-derives `activeId`, and the
+    // mirror effect syncs the store. Writing the store here too would race
+    // that effect for a render.
     const onSelectConversation = (id: number | null) => {
-        setActive(id);
         if (id !== null) {
             nav.toConversation(id);
             return;
@@ -509,7 +524,6 @@ export function useChatSession({ nav }: UseChatSessionOptions): UseChatSessionRe
         setScope(next);
         const nextProjectKey = next === '' ? null : next;
         if (activeId !== null && conversationProjectKey !== nextProjectKey) {
-            setActive(null);
             nav.toNewChat();
         }
     };
@@ -523,7 +537,6 @@ export function useChatSession({ nav }: UseChatSessionOptions): UseChatSessionRe
             qc.setQueryData<Conversation[]>(['conversations'], (old) =>
                 old ? [created, ...old] : [created],
             );
-            setActive(created.id);
             nav.toConversation(created.id);
             return created.id;
         } catch {
@@ -671,7 +684,6 @@ export function useChatSession({ nav }: UseChatSessionOptions): UseChatSessionRe
             qc.setQueryData<Conversation[]>(['conversations'], (old) =>
                 old ? [result.conversation, ...old] : [result.conversation],
             );
-            setActive(result.conversation.id);
             nav.toConversation(result.conversation.id);
         } catch (err) {
             // Branch is a non-critical action — log and let the user

@@ -151,6 +151,27 @@ describe('useChatSession — URL sync', () => {
         await waitFor(() => expect(result.current.activeId).toBe(7));
     });
 
+    it('mirrors the derived id into the store for the sidebar highlight', async () => {
+        // ConversationList reads the store, not the route, so the mirror is
+        // a real contract — but it flows one way only (route -> store).
+        routeParams = { conversationId: '7' };
+        const { result } = harness();
+        await waitFor(() => expect(useChatStore.getState().activeConversationId).toBe(7));
+        expect(result.current.activeId).toBe(7);
+    });
+
+    it('ignores a stale store value instead of rendering the wrong thread', async () => {
+        // The store is a module singleton shared by /chat and /sessions. If
+        // it were an INPUT, opening the second surface would render the
+        // other surface's last thread for a frame and fetch its messages.
+        useChatStore.getState().setActiveConversation(99);
+        routeParams = {};
+        const { result } = harness();
+
+        await waitFor(() => expect(result.current.activeId).toBeNull());
+        expect(chatApi.listMessages).not.toHaveBeenCalled();
+    });
+
     it('treats a non-numeric id as "new chat" without thrashing the store', async () => {
         // Regression guard for the NaN loop: `NaN !== activeId` is always
         // true, so an unsanitized parse re-fired setActive on every render.
