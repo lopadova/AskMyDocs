@@ -78,6 +78,21 @@ class ReembedDocumentJob implements ShouldQueue
         ]);
     }
 
+    /**
+     * PR #479 Copilot round-50 — a delete racing this job's read is a benign,
+     * expected outcome (the delete is the more recent, deliberate action and
+     * stays durable), never a job failure: retrying would just hit the same
+     * guard again, forever, until the retry budget is exhausted and the job
+     * is reported failed for a document that was correctly deleted.
+     */
+    private function logSkippedBecauseNoLongerActive(\App\Services\Kb\Versioning\ReembedTargetNoLongerActiveException $e): void
+    {
+        Log::info('ReembedDocumentJob: document was deleted or archived while this job was reading/converting it; re-embed skipped', [
+            'document_id' => $e->documentId,
+            'tenant_id' => $this->tenantId,
+        ]);
+    }
+
     public function handle(TenantContext $tenantContext, DocumentIngestor $ingestor): void
     {
         $previousTenant = $tenantContext->current();
@@ -163,6 +178,8 @@ class ReembedDocumentJob implements ShouldQueue
                         $ingestor->reembedFromMarkdown($document, $artifact);
                     } catch (\App\Services\Kb\Versioning\ArtifactPublishFailedException $e) {
                         $this->logArtifactNotPublished($e);
+                    } catch (\App\Services\Kb\Versioning\ReembedTargetNoLongerActiveException $e) {
+                        $this->logSkippedBecauseNoLongerActive($e);
                     }
 
                     return;
@@ -193,9 +210,16 @@ class ReembedDocumentJob implements ShouldQueue
                     ),
                     title: (string) $document->title,
                     forceReembed: true,
+                    // PR #479 Copilot round-50 — this is the SAME row loaded
+                    // as `active` above; the read+chunk+embed work between
+                    // that query and this write is unlocked time a concurrent
+                    // delete can land in. Refused, not resurrected/recreated.
+                    requireActiveDocumentId: $document->id,
                 );
             } catch (\App\Services\Kb\Versioning\ArtifactPublishFailedException $e) {
                 $this->logArtifactNotPublished($e);
+            } catch (\App\Services\Kb\Versioning\ReembedTargetNoLongerActiveException $e) {
+                $this->logSkippedBecauseNoLongerActive($e);
             }
         } finally {
             $tenantContext->set($previousTenant);

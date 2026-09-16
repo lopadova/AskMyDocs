@@ -167,6 +167,63 @@ final class ReembedTest extends TestCase
     }
 
     /**
+     * PR #479 Copilot round-50 — a concurrent soft delete landing in the
+     * window between the job's initial `active` read and the eventual write
+     * is a benign, expected outcome: the delete is the more recent,
+     * deliberate action and must stay durable, never undone by
+     * `persistDocumentAndChunks()`'s own `restoreIfTrashed()` (needed so an
+     * ORDINARY re-ingest of a document whose source still exists on disk
+     * DOES restore it, R2). No cross-process interleaving can be staged
+     * against SQLite (same limitation documented on the round-48
+     * concurrent-restore race test): `DB::listen()` fires on the exact query
+     * `persistFromDrafts()`'s `findExistingVersion()` issues — the last DB
+     * read before the transaction that holds the new
+     * `assertDocumentStillActive()` guard — and soft-deletes the row
+     * directly via the query builder, simulating a delete that landed in
+     * that window.
+     */
+    public function test_job_skips_cleanly_when_the_document_is_deleted_while_it_is_being_re_embedded(): void
+    {
+        Storage::fake('kb');
+        Storage::disk('kb')->put('tickets/1.md', $this->markdown());
+        $this->fakeEmbeddingCache();
+
+        $hash = hash('sha256', $this->markdown());
+        $doc = KnowledgeDocument::create([
+            'tenant_id' => 'test-tenant', 'project_key' => 'support', 'source_type' => 'markdown',
+            'title' => 'Ticket', 'source_path' => 'tickets/1.md', 'language' => 'en',
+            'access_scope' => 'internal', 'status' => 'active',
+            'document_hash' => $hash, 'version_hash' => $hash,
+        ]);
+        KnowledgeChunk::create([
+            'knowledge_document_id' => $doc->id, 'project_key' => 'support', 'chunk_order' => 0,
+            'chunk_hash' => hash('sha256', 'old'), 'heading_path' => '', 'chunk_text' => 'old chunk',
+            'metadata' => [], 'embedding' => [0.1, 0.2, 0.3],
+        ]);
+
+        $this->setPolicy('tokenise');
+        $this->fakeEmbeddingCache();
+
+        $fired = false;
+        \Illuminate\Support\Facades\DB::listen(function ($query) use (&$fired, $doc): void {
+            if ($fired || ! str_contains($query->sql, 'version_hash')) {
+                return;
+            }
+            $fired = true;
+            \Illuminate\Support\Facades\DB::table('knowledge_documents')->where('id', $doc->id)->update(['deleted_at' => now()]);
+        });
+
+        (new ReembedDocumentJob($doc->id, 'test-tenant'))->handle(app(TenantContext::class), app(DocumentIngestor::class));
+
+        $this->assertTrue($fired, 'the race window was actually staged');
+        $this->assertSoftDeleted('knowledge_documents', ['id' => $doc->id]);
+        // The chunk from BEFORE the race is untouched: the re-embed refused
+        // to write, so the row was never restored nor its chunks replaced.
+        $text = KnowledgeChunk::where('knowledge_document_id', $doc->id)->get()->pluck('chunk_text')->implode("\n");
+        $this->assertSame('old chunk', $text);
+    }
+
+    /**
      * v8.36 / ADR 0030 §5 — a `markdown_only` row whose original was dropped
      * is re-embedded from its stored artifact WITHOUT a converter: the row's
      * mime is a binary format (PDF) whose converter would fail on Markdown
@@ -215,6 +272,59 @@ final class ReembedTest extends TestCase
         $this->assertStringNotContainsString('[REDACTED]', $text);
         $this->assertStringNotContainsString(self::EMAIL, $text);
         $this->assertMatchesRegularExpression('/\[tok:[A-Za-z0-9_]+:[0-9a-f]+\]/', $text);
+    }
+
+    /**
+     * PR #479 Copilot round-50 — the SAME guard as the fresh-bytes test
+     * above, on the OTHER call site: {@see \App\Services\Kb\DocumentIngestor::reembedFromMarkdown()}
+     * (the artifact-only path for a `markdown_only` row) passes
+     * `requireActiveDocumentId` unconditionally, not only when the caller
+     * remembers to. Proven independently since it wires the guard through a
+     * different method with its own signature.
+     */
+    public function test_job_skips_cleanly_when_the_artifact_only_document_is_deleted_while_it_is_being_re_embedded(): void
+    {
+        Storage::fake('kb');
+        config(['kb.ocr.enabled' => false, 'kb.pdf.pdftotext_bin' => '/nonexistent/pdftotext']);
+        $this->fakeEmbeddingCache();
+        $markdown = "# 1.pdf\n\n## Page 1\n\nContact Mario Rossi at ".self::EMAIL.".\n";
+        $hash = hash('sha256', $markdown);
+        $store = app(\App\Services\Kb\Versioning\ConversionArtifactStore::class);
+        $artifactPath = $store->pathFor('test-tenant', 'support', 'scans/2.pdf', $hash);
+        Storage::disk('kb')->put($artifactPath, $markdown);
+
+        $doc = KnowledgeDocument::create([
+            'tenant_id' => 'test-tenant', 'project_key' => 'support', 'source_type' => 'pdf', 'mime_type' => 'application/pdf',
+            'title' => 'Scan', 'source_path' => 'scans/2.pdf', 'language' => 'en',
+            'access_scope' => 'internal', 'status' => 'active',
+            'document_hash' => $hash, 'version_hash' => $hash, 'content_hash' => $hash,
+            'markdown_path' => $artifactPath,
+            'metadata' => ['disk' => 'kb', 'prefix' => '', 'source_dropped' => true, 'converter' => ['converter' => 'pdf-converter']],
+        ]);
+        KnowledgeChunk::create([
+            'knowledge_document_id' => $doc->id, 'project_key' => 'support', 'chunk_order' => 0,
+            'chunk_hash' => hash('sha256', 'old'), 'heading_path' => '', 'chunk_text' => 'old chunk',
+            'metadata' => [], 'embedding' => [0.1, 0.2, 0.3],
+        ]);
+
+        $this->setPolicy('tokenise');
+        $this->fakeEmbeddingCache();
+
+        $fired = false;
+        \Illuminate\Support\Facades\DB::listen(function ($query) use (&$fired, $doc): void {
+            if ($fired || ! str_contains($query->sql, 'version_hash')) {
+                return;
+            }
+            $fired = true;
+            \Illuminate\Support\Facades\DB::table('knowledge_documents')->where('id', $doc->id)->update(['deleted_at' => now()]);
+        });
+
+        (new ReembedDocumentJob($doc->id, 'test-tenant'))->handle(app(TenantContext::class), app(DocumentIngestor::class));
+
+        $this->assertTrue($fired, 'the race window was actually staged');
+        $this->assertSoftDeleted('knowledge_documents', ['id' => $doc->id]);
+        $text = KnowledgeChunk::where('knowledge_document_id', $doc->id)->get()->pluck('chunk_text')->implode("\n");
+        $this->assertSame('old chunk', $text);
     }
 
     /**

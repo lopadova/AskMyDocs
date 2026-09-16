@@ -17,9 +17,11 @@ use App\Services\Kb\Pii\ChunkRedactor;
 use App\Services\Kb\Pipeline\ChunkDraft;
 use App\Services\Kb\Pipeline\PipelineRegistry;
 use App\Services\Kb\Pipeline\SourceDocument;
+use App\Scopes\AccessScopeScope;
 use App\Support\Canonical\GenerationSource;
 use App\Services\Kb\Versioning\ArtifactPublishFailedException;
 use App\Services\Kb\Versioning\ConversionArtifactStore;
+use App\Services\Kb\Versioning\ReembedTargetNoLongerActiveException;
 use App\Services\Kb\Versioning\SourceRetentionResolver;
 use App\Support\Kb\ActiveSourceReservation;
 use App\Support\Kb\HeldLock;
@@ -85,6 +87,16 @@ class DocumentIngestor
      * carefully the caller pre-normalised. Per R1 in CLAUDE.md.
      *
      * @param  array<string,mixed>  $extraMetadata  merged on top of $source->metadata
+     * @param  int|null  $requireActiveDocumentId  PR #479 Copilot round-50 —
+     *   when set, the persist is refused (throws
+     *   {@see ReembedTargetNoLongerActiveException}) unless this EXACT row is
+     *   still active at write time, checked under `lockForUpdate()` inside
+     *   the same transaction as the write. Every other caller leaves this
+     *   `null`: an ordinary re-ingest restoring a soft-deleted row whose
+     *   source still exists is the intended behaviour (R2), not a race to
+     *   guard against. Only {@see \App\Jobs\ReembedDocumentJob}'s fresh-bytes
+     *   fallback passes it, for the same reason {@see reembedFromMarkdown()}
+     *   always does.
      */
     public function ingest(
         string $projectKey,
@@ -92,6 +104,7 @@ class DocumentIngestor
         string $title,
         array $extraMetadata = [],
         bool $forceReembed = false,
+        ?int $requireActiveDocumentId = null,
     ): KnowledgeDocument {
         $normalizedPath = KbPath::normalize($source->sourcePath);
         $normalizedSource = $source->sourcePath === $normalizedPath
@@ -147,6 +160,7 @@ class DocumentIngestor
             chunkDrafts: $chunkDrafts,
             metadata: $combinedMetadata,
             forceReembed: $replace,
+            requireActiveDocumentId: $requireActiveDocumentId,
         );
     }
 
@@ -327,6 +341,12 @@ class DocumentIngestor
             chunkDrafts: $chunkDrafts,
             metadata: $metadata,
             forceReembed: true,
+            // PR #479 Copilot round-50 — this method exists ONLY to re-embed
+            // an EXISTING row under the current PII policy; it never has a
+            // "restore on re-ingest" case to preserve, unlike ingest(). Always
+            // guarded, unconditionally, against the exact row `$document`
+            // having been deleted since the caller read it.
+            requireActiveDocumentId: (int) $document->id,
         );
     }
 
@@ -544,6 +564,7 @@ class DocumentIngestor
         array $chunkDrafts,
         array $metadata,
         bool $forceReembed = false,
+        ?int $requireActiveDocumentId = null,
     ): KnowledgeDocument {
         $documentHash = hash('sha256', $markdown);
         $versionHash = $documentHash;
@@ -613,7 +634,18 @@ class DocumentIngestor
                 $forceReembed,
                 $artifact,
                 $held,
+                $requireActiveDocumentId,
             ) {
+                // PR #479 Copilot round-50 — re-checked HERE, inside the SAME
+                // transaction as the write below, under lockForUpdate(): a
+                // concurrent soft/hard delete of this exact row serializes on
+                // the row lock either way (whichever transaction reaches it
+                // first wins), so this can never observe a stale "still
+                // active" read from before the caller's own I/O. Every other
+                // caller passes null and is unaffected.
+                if ($requireActiveDocumentId !== null) {
+                    $this->assertDocumentStillActive($requireActiveDocumentId);
+                }
                 $document = $this->persistDocumentAndChunks(
                     $projectKey,
                     $sourcePath,
@@ -664,6 +696,36 @@ class DocumentIngestor
     // -----------------------------------------------------------------
     // persistence (wrapped in transaction by the caller)
     // -----------------------------------------------------------------
+
+    /**
+     * PR #479 Copilot round-50 — the reembed-only guard {@see persistFromDrafts()}
+     * runs under `requireActiveDocumentId`. `lockForUpdate()` here is what
+     * makes the check airtight: it is taken from INSIDE the caller's
+     * transaction, so a concurrent delete of this exact row either commits
+     * first (this call then finds it gone/trashed and refuses) or blocks
+     * until this transaction commits (and then proceeds against whatever
+     * this reembed left behind) — never a window where both believe the row
+     * is theirs to decide alone.
+     *
+     * `AccessScopeScope` is bypassed to match how {@see \App\Jobs\ReembedDocumentJob}
+     * read the row in the first place (a maintenance job, not a request-scoped
+     * ACL context); the default SoftDeletes scope is intentionally NOT
+     * bypassed — a trashed row is exactly the "no longer active" case this
+     * guards against.
+     */
+    private function assertDocumentStillActive(int $documentId): void
+    {
+        $stillActive = KnowledgeDocument::query()
+            ->withoutGlobalScope(AccessScopeScope::class)
+            ->forTenant(app(TenantContext::class)->current())
+            ->where('id', $documentId)
+            ->where('status', 'active')
+            ->lockForUpdate()
+            ->exists();
+        if (! $stillActive) {
+            throw new ReembedTargetNoLongerActiveException($documentId);
+        }
+    }
 
     /**
      * @param  list<ChunkDraft>     $chunkDrafts
