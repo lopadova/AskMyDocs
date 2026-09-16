@@ -294,6 +294,27 @@ final class KbArtifactsBackfillCommand extends Command
 
             return 'written';
         }
+        // v8.36 / PR #479 Copilot round-9 — the reconversion's OWN converter
+        // metadata (an OCR run it just created, or reused) has to land on the
+        // row the same way a fresh ingest records it
+        // (DocumentIngestor::ingest(): `'converter' => $converted->extractionMeta`).
+        // Without it, PruneArchivedVersionsCommand::documentReferencingOcrRun()
+        // — which reads `metadata->converter->ocr->run` straight off the row,
+        // never off the artifact bytes — can never see THIS row as the run's
+        // referencer: a run this reconversion just created (or found and
+        // reused) is then indistinguishable from an orphan, and the next
+        // sweep deletes it out from under the artifact this very write is
+        // about to publish. Merged onto the row's OWN prior metadata (loaded
+        // once at the top of backfill()), not the throwaway bag the
+        // conversion above was called with.
+        $updatedMetadata = array_merge($metadata, ['converter' => $converted->extractionMeta]);
+        // Same reason the primary ingest path calls this right before it
+        // commits a reference to the run (OcrService::touchRunBeforeCommit()
+        // docblock: the archived-version prune race) — refreshes the run's
+        // isInFlight() freshness clock right next to the write below that is
+        // about to commit a reference to it. No-op for the vast majority of
+        // conversions with no OCR run in their metadata.
+        app(\App\Services\Kb\Ocr\OcrService::class)->touchRunBeforeCommit($updatedMetadata, $sourcePath);
         // Pointer first, bytes second — the same order as ingest (row commits
         // with the path, then the move): the orphan sweep only deletes files
         // no row points at, so a file published before its pointer would be
@@ -308,13 +329,14 @@ final class KbArtifactsBackfillCommand extends Command
         // between the chunk read and this write takes no pointer, so nothing
         // is published for it — bytes no row points at would be an orphan
         // reported as a repair.
-        if ($row->updateUnscopedWithinOwnTenant(['markdown_path' => $final, 'content_hash' => $hash]) === 0) {
+        if ($row->updateUnscopedWithinOwnTenant(['markdown_path' => $final, 'content_hash' => $hash, 'metadata' => $updatedMetadata]) === 0) {
             $this->line("  #{$row->id} {$sourcePath}: conversion_failed (the row changed underneath; nothing written)");
 
             return 'conversion_failed';
         }
         $row->markdown_path = $final;
         $row->content_hash = $hash;
+        $row->metadata = $updatedMetadata;
         try {
             // Under the path's lock, re-checking the row (the same publish an
             // ingest does): a failed publish discards its temp, never left

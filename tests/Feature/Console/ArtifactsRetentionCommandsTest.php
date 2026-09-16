@@ -634,6 +634,72 @@ final class ArtifactsRetentionCommandsTest extends TestCase
         $this->assertSame('full_copy', $recorded->fresh()->metadata['source_retention'], 'the row keeps its own contract');
     }
 
+    /**
+     * PR #479 Copilot round-9 — a row with NO recorded OCR run (pre-dating
+     * OCR, or whose recorded run is gone) reconverts under the backfill and
+     * the conversion creates a fresh run. That run's identity must land on
+     * the row exactly like a fresh ingest records it
+     * (DocumentIngestor::ingest(): `'converter' => $converted->extractionMeta`),
+     * or `PruneArchivedVersionsCommand::documentReferencingOcrRun()` — which
+     * reads `metadata->converter->ocr->run` straight off the row, never off
+     * the artifact bytes — can never see this row as the run's referencer.
+     * Proven end-to-end: an unrelated ARCHIVED sibling at the same source
+     * path that happens to share the run is pruned, and the run survives
+     * only because the backfilled row now correctly names it.
+     */
+    public function test_backfill_records_the_ocr_run_it_creates_so_a_later_prune_never_orphans_it(): void
+    {
+        config(['kb.ocr.enabled' => true, 'kb.ocr.driver' => 'fake', 'kb.ocr.fake.pages' => [['markdown' => 'scanned text']]]);
+        $cache = \Mockery::mock(\App\Services\Kb\EmbeddingCacheService::class);
+        $cache->shouldReceive('generate')->andReturnUsing(
+            fn (array $texts) => new \App\Ai\EmbeddingsResponse(embeddings: array_map(fn () => array_fill(0, 8, 0.0), $texts), provider: 'fake', model: 'fake-8'),
+        );
+        $this->app->instance(\App\Services\Kb\EmbeddingCacheService::class, $cache);
+        $tenant = app(TenantContext::class)->current();
+        $png = (string) base64_decode(\App\Services\Kb\Ocr\Drivers\FakeOcrDriver::PNG_1X1, true);
+        $path = 'scans/no-run-recorded.png';
+        Storage::disk('kb')->put($path, $png);
+        // Ingested normally so `document_hash` matches EXACTLY what the fake
+        // driver produces (the real run key, real recorded `.ocr/` tree) —
+        // then the row's OWN metadata is wiped down to what a row that
+        // predates OCR (or lost its recorded run) looks like: the run
+        // directory on disk survives (so reconversion reuses it, spends
+        // nothing, and reproduces byte-identical Markdown), but the ROW no
+        // longer names it. That gap is exactly what this fix closes.
+        $row = app(\App\Services\Kb\DocumentIngestor::class)->ingest('eng', new \App\Services\Kb\Pipeline\SourceDocument(
+            sourcePath: $path, mimeType: 'image/png', bytes: $png,
+            externalUrl: null, externalId: null, connectorType: 'local', metadata: ['disk' => 'kb', 'prefix' => ''],
+        ), 'No run recorded');
+        $this->assertIsString($row->metadata['converter']['ocr']['run'] ?? null, 'sanity: a fresh ingest DOES record the run');
+        Storage::disk('kb')->delete((string) $row->markdown_path);
+        $row->update(['markdown_path' => null, 'content_hash' => null, 'metadata' => ['disk' => 'kb', 'prefix' => '']]);
+        $this->assertArrayNotHasKey('converter', $row->fresh()->metadata);
+
+        $this->artisan('kb:artifacts-backfill', ['--tenant' => $tenant])
+            ->expectsOutputToContain('already_stored=0 written=1')
+            ->assertExitCode(0);
+
+        $run = $row->fresh()->metadata['converter']['ocr']['run'] ?? null;
+        $this->assertIsString($run, 'the run the backfill just reused is recorded back on the row');
+        Storage::disk('kb')->assertExists("{$path}.ocr/{$run}/result.json");
+
+        // An unrelated archived VERSION at the same path, sharing that run
+        // (content-addressed: same bytes would reuse the same key — this one
+        // is fabricated to isolate the assertion from the driver's own
+        // reuse mechanics, exactly like the sibling test above).
+        $sibling = $this->row(2, 'archived', null, $path);
+        $sibling->update(['metadata' => ['disk' => 'kb', 'prefix' => '', 'converter' => ['ocr' => ['run' => $run]]]]);
+
+        $this->travel(OcrFigureStore::inFlightGraceSeconds() + 60)->seconds();
+        $this->artisan('kb:prune-archived-versions', ['--keep' => 0])->assertExitCode(0);
+
+        $this->assertDatabaseMissing('knowledge_documents', ['id' => $sibling->id]);
+        // The artifact this backfill published, and the OCR run it depends
+        // on, both survive the sibling's prune.
+        Storage::disk('kb')->assertExists((string) $row->fresh()->markdown_path);
+        Storage::disk('kb')->assertExists("{$path}.ocr/{$run}/result.json");
+    }
+
     /** ADR 0030 §3 — a backfill write applies the row's retention contract: a `markdown_only` row's original goes through the same reference-aware gate as ingest. */
     public function test_backfill_applies_the_rows_retention_contract_after_a_write(): void
     {
