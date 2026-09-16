@@ -233,6 +233,38 @@ test.describe('Sessions workspace — organising chat sessions', () => {
         await expect(page.getByTestId('chat-sessions-folder-dialog')).toBeVisible();
     });
 
+    test('the workspace renders without the app frame, and offers a way back', async ({ page }) => {
+        await page.goto('/app/sessions');
+        await expect(page.getByTestId(SIDEBAR)).toHaveAttribute('data-state', 'ready', {
+            timeout: 20_000,
+        });
+
+        // The session rail must be the ONLY sidebar: the primary
+        // navigation and the app topbar are absent, not merely hidden.
+        await expect(page.getByTestId('standalone-shell')).toBeVisible();
+        await expect(page.getByTestId('appshell-root')).toHaveCount(0);
+        await expect(page.getByTestId('app-topbar')).toHaveCount(0);
+
+        // A chrome-less view still needs an exit and the tenant scope.
+        await expect(page.getByTestId('standalone-back')).toBeVisible();
+        await expect(page.getByTestId('team-switcher-trigger')).toBeVisible();
+
+        await page.getByTestId('standalone-back').click();
+
+        // Back inside the app frame, on the classic chat.
+        await expect(page.getByTestId('appshell-root')).toBeVisible({ timeout: 15_000 });
+        await expect(page).toHaveURL(/\/chat$/);
+    });
+
+    test('the classic chat keeps the app frame', async ({ page }) => {
+        // The paired assertion: only the new surfaces drop the shell, so
+        // this cannot pass by the frame being broken everywhere.
+        await page.goto('/app/chat');
+
+        await expect(page.getByTestId('appshell-root')).toBeVisible({ timeout: 20_000 });
+        await expect(page.getByTestId('standalone-shell')).toHaveCount(0);
+    });
+
     test('the knowledge-base entry opens the reader KB explorer', async ({ page }) => {
         await page.goto('/app/sessions');
         await expect(page.getByTestId(SIDEBAR)).toHaveAttribute('data-state', 'ready', {

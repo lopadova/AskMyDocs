@@ -47,8 +47,8 @@ flowchart TB
     end
 
     subgraph Surfaces["Presentation — two shells"]
-        CV["ChatView<br/>/chat"]
-        SV["SessionsView<br/>/sessions"]
+        CV["ChatView<br/>/chat · inside AppShell"]
+        SV["SessionsView<br/>/sessions · StandaloneShell"]
     end
 
     CV -->|"nav: /chat targets"| H
@@ -58,6 +58,30 @@ flowchart TB
     SV --> SB["SessionSidebar<br/>KB entry · folders · pin · importance · archive"]
     SV --> KB["KnowledgeBrowseView<br/>/knowledge"]
 ```
+
+### It renders outside the app frame
+
+Both surfaces are mounted under the team route but deliberately skip
+`AppShell`. The session rail is meant to be the **only** sidebar, so the
+primary navigation would be a second, competing one — and the point of the
+view is that you step into it, not that it is another admin page.
+
+`TeamGate` therefore chooses the chrome: `isStandaloneSurface(pathname)`
+selects `StandaloneShell` for the `sessions` and `knowledge` segments and
+`AppShell` for everything else. The tenant-sync logic is unchanged and shared,
+so a deep link and a legacy hash-less URL behave identically on both sides.
+
+`StandaloneShell` keeps the irreducible minimum: a way **back** (a chrome-less
+view without an exit is a trap), the **team switcher** (the tenant is the
+outermost scope of everything below it, and a multi-tenant user would
+otherwise be stranded), and the theme toggle. Absent by design: the nav
+sidebar, breadcrumbs, the notification bell, the command palette and the
+tweaks panel. A team switch swaps the hash **in place**, so it does not eject
+you back into the frame you just left.
+
+The entry point stays in the main sidebar — **Sessions** and **Browse KB** in
+the Workspace group — so `/chat` remains the page you arrive on and the door
+into the workspace.
 
 `ChatView` went from 794 lines to about 220. The only thing the hook cannot own
 is **navigation**: TanStack Router's `to` is a typed literal, so each surface
@@ -140,9 +164,14 @@ The column is a `string`, so ordering on it directly would be alphabetical.
 `critical < high < normal` happens to be almost correct today, which is precisely
 the trap: it breaks silently the day a fourth level lands.
 `ConversationImportance::orderByCaseSql()` builds the `ORDER BY CASE` **from the
-enum**, and a unit test asserts every case appears in it. The stored value is the
-machine-readable identifier and never localizes — only `label()` does
-(see [per-reason i18n](/best-practices/refusal-ux)).
+enum**, and a unit test asserts every case appears in it.
+
+The stored value is the machine-readable identifier and never localizes. There
+is deliberately **no** server-side label: the three user-visible strings live in
+the Sessions UI alongside every other literal in that panel, so there is exactly
+one translation surface rather than two that drift. A server-side label could
+not serve the picker anyway, which needs labels for the two levels a session is
+*not* at.
 
 The ordering also avoids `ORDER BY pinned_at DESC`, which is not portable:
 PostgreSQL sorts NULLs first on `DESC`, SQLite last, MySQL has no `NULLS LAST` at
@@ -265,6 +294,11 @@ Note `updated_at` in step 2: organising a session never moves it.
   attribute absent and the enum cast yields `null` — which is how
   `POST /conversations` briefly answered 500 while every read path stayed green.
   The default is mirrored on the model.
+- **These two routes render without `AppShell`.** Adding a third
+  full-screen surface means adding its segment to `STANDALONE_SEGMENTS` in
+  `frontend/src/routes/index.tsx`; forgetting it gives the new page two
+  sidebars, and adding a segment by mistake strips an admin page of its
+  navigation. `standalone-surface.test.ts` pins both directions.
 - **`/app/{team}/kb` is not this page.** That path is a legacy alias redirecting
   into the admin explorer; the reader page is `/app/{team}/knowledge`.
 

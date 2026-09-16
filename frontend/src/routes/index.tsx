@@ -7,10 +7,12 @@ import {
     redirect,
     useNavigate,
     useParams,
+    useRouterState,
     useSearch,
 } from '@tanstack/react-router';
 import { z } from 'zod';
 import { AppShell } from '../components/shell/AppShell';
+import { StandaloneShell } from '../components/shell/StandaloneShell';
 import { ChatView } from '../features/chat/ChatView';
 import { AnonymousChatView } from '../features/chat/AnonymousChatView';
 import { SessionsView } from '../features/chat/sessions/SessionsView';
@@ -279,6 +281,9 @@ function TeamGate() {
     const isSystemAdmin = useAuthStore((state) => state.features.system_admin === true);
     const onboardingRequired = useAuthStore((state) => state.onboarding.required);
     const navigate = useNavigate();
+    // Subscribed, not `window.location`: the chrome choice below is a
+    // RENDER decision, so it has to re-evaluate when the route changes.
+    const pathname = useRouterState({ select: (s) => s.location.pathname });
 
     const team = teams.find((t) => t.hash === teamHash);
 
@@ -313,7 +318,29 @@ function TeamGate() {
         return null; // redirecting (legacy URL) or syncing (deep link)
     }
 
-    return <AppShell />;
+    // The full-screen chat surfaces step OUT of the app frame: their only
+    // sidebar is the session rail, so AppShell's primary navigation would
+    // be a second, competing one. Everything else in the team subtree
+    // keeps the normal shell.
+    return isStandaloneSurface(pathname) ? <StandaloneShell /> : <AppShell />;
+}
+
+/**
+ * Surfaces that render without the app frame, keyed off the segment after
+ * the team hash.
+ *
+ * Matched on the PATH rather than on route ids because this decision is
+ * made by the PARENT route, which is defined before its children — and a
+ * path check keeps the rule readable in one place instead of spreading a
+ * flag across every child definition.
+ */
+const STANDALONE_SEGMENTS = new Set(['sessions', 'knowledge']);
+
+export function isStandaloneSurface(pathname: string): boolean {
+    // /app/{teamHash}/{segment}/... → the third segment decides.
+    const segment = pathname.replace(/^\/app\/[^/]+\/?/, '').split('/')[0];
+
+    return STANDALONE_SEGMENTS.has(segment);
 }
 
 const teamRoute = createRoute({
