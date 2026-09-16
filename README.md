@@ -307,6 +307,49 @@ Copy button.
 
 ---
 
+## ✨ Sessions workspace — organised chat, KB on top
+
+**A second chat surface in the ChatGPT/Claude mould: the knowledge base above
+the rail, sessions grouped into your own folders, pinnable, archivable and
+flagged by importance — over the *same* chat engine, not a fork of it.**
+
+The original `/app/chat` panel lists threads reverse-chronologically and nothing
+more. That is fine at ten sessions and unusable at fifty: no way to say *this one
+matters*, *these three are the same issue*, or *put this away*. The knowledge
+base had the mirror-image gap — every KB screen was admin-gated, so a `viewer`
+could read a cited document but never browse the corpus.
+
+- **Free-form folders** — `chat_folders`, private per (tenant, user). A session
+  belongs to at most one; "unfiled" is the default, and deleting a folder
+  *unfiles* its sessions rather than deleting them (`nullOnDelete`, never a
+  cascade). Grouping by **project** already existed via `conversations.project_key`
+  and is unchanged — folders are the free axis on top of it.
+- **Pin, archive, importance** — `pinned_at` / `archived_at` are timestamps (so
+  "most recently pinned first" and an archived-on date come free); importance is a
+  3-level enum (`normal` / `high` / `critical`) ordered by explicit weights, never
+  alphabetically. Organisation writes deliberately do **not** bump `updated_at`,
+  so archiving and restoring never teleports an untouched thread to the top.
+- **Browse KB for every role** — `GET /api/kb/tree` serves the reader-side
+  explorer at `/app/{team}/knowledge` through the *same* `KbTreeService` as the
+  admin tree, with soft-deleted documents never returned and the SQL
+  `AccessScopeScope` doing the enforcement. Read-only: no editing, upload,
+  history, graph or PDF export.
+- **Zero duplication, by construction** — the whole turn engine (deferred-send
+  queue, auto-titling, retrieval-filter constraints, realtime voice,
+  branch/edit/regenerate) lives in one `useChatSession()` hook that both surfaces
+  consume; `ChatView` shrank from 794 lines to ~220. A dedicated E2E scenario
+  sends a real turn from the new panel to prove the two shells share one engine.
+
+**Try it.** Open `/app/sessions`. Create a folder, drop a session into it from
+the row menu, pin another, flag one critical, archive a fourth and reopen the
+Archived drawer. Click **Knowledge base** at the top of the rail to browse
+documents, then follow a citation from a chat answer straight into it.
+
+See the [Sessions workspace deep-dive](https://doc.askmydocs.padosoft.com/chat-sessions-workspace)
+for the architecture, the R44 MCP exception and the visibility posture.
+
+---
+
 ## ✨ KITT — Knowledge Interface Tour Toolkit
 
 **KITT (Knowledge Interface Tour Toolkit) is a one-`<script>` embeddable, page-aware, agentic AI assistant for any website — it answers grounded questions with citations, *reads the page*, and (when allowed) drives it: clicks, types, navigates, submits, and calls your backend tools.**

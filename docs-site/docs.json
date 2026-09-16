@@ -27,6 +27,7 @@
         "pages": [
           "ingestion",
           "chat-and-retrieval",
+          "chat-sessions-workspace",
           "canonical-and-promotion",
           "auto-wiki",
           "connectors",
