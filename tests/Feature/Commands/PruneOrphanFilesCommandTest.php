@@ -233,6 +233,55 @@ class PruneOrphanFilesCommandTest extends TestCase
     }
 
     /**
+     * v8.36 / PR #479 Copilot review — SourceInFlight::acquireForRemoval()'s
+     * lease (DELETION_HOLD_SECONDS, 60s) is a fixed TTL, not a renewal: this
+     * asserts it the SAME way the storage-key lock is asserted above (the
+     * previous test) — a store that now reports another owner refuses the
+     * delete instead of letting a fresh ingest that has since reserved and
+     * started reading find its source removed out from under it.
+     */
+    public function test_with_a_lapsed_source_reservation_the_orphan_delete_is_refused_and_reported_failed(): void
+    {
+        Storage::fake('kb');
+        Storage::disk('kb')->put('docs/reserved.md', 'x');
+        Storage::disk('kb')->put('docs/orphan.md', 'o');
+        $key = \App\Support\Kb\SourceInFlight::key('kb', 'docs/reserved.md');
+        $store = \Illuminate\Support\Facades\Cache::store();
+        $lapsed = new class($key, 60) extends \Illuminate\Cache\Lock
+        {
+            public function acquire()
+            {
+                return true;
+            }
+
+            public function release()
+            {
+                return true;
+            }
+
+            public function forceRelease()
+            {
+            }
+
+            protected function getCurrentOwner()
+            {
+                return 'another-writer'; // the TTL lapsed and a fresh ingest took the reservation
+            }
+        };
+        \Illuminate\Support\Facades\Cache::partialMock()
+            ->shouldReceive('lock')
+            ->andReturnUsing(fn (string $name, int $seconds = 0, $owner = null) => $name === $key ? $lapsed : $store->lock($name, $seconds, $owner));
+
+        $this->artisan('kb:prune-orphan-files')
+            ->expectsOutputToContain('failed to delete: docs/reserved.md')
+            ->expectsOutputToContain('scanned=2 orphans=2 deleted=1 failed=1')
+            ->assertExitCode(1);
+
+        Storage::disk('kb')->assertExists('docs/reserved.md'); // refused, never deleted past a lapsed reservation
+        Storage::disk('kb')->assertMissing('docs/orphan.md');
+    }
+
+    /**
      * v8.36 / ADR 0029 — an orphan source (a failed first ingest) may have
      * left an OCR run beside it; the sweep removes both, and never treats
      * the run's own files as orphan candidates.

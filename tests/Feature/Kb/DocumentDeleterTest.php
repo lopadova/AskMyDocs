@@ -112,6 +112,57 @@ class DocumentDeleterTest extends TestCase
         $this->assertNull(KnowledgeDocument::withTrashed()->find($document->id));
     }
 
+    /**
+     * v8.36 / PR #479 Copilot review — SourceInFlight::acquireForRemoval()'s
+     * lease (DELETION_HOLD_SECONDS, 60s) is a fixed TTL, not a renewal: the
+     * OCR purge + reference scan + delete this section guards can outlive
+     * it the same way they can outlive the storage-key lock, which is
+     * already asserted at the same two steps. The DB row is still gone —
+     * that half of the delete already committed — but the physical file
+     * must survive a lapsed reservation instead of being removed out from
+     * under a fresh ingest that has since reserved and started reading it.
+     */
+    public function test_hard_delete_refuses_the_file_when_the_source_reservation_lapsed(): void
+    {
+        config()->set('kb.deletion.soft_delete', false);
+        Storage::disk('kb')->put('docs/sample.md', '# hi');
+        $document = $this->makeDocument();
+
+        $key = \App\Support\Kb\SourceInFlight::key('kb', 'docs/sample.md');
+        $store = \Illuminate\Support\Facades\Cache::store();
+        $lapsed = new class($key, 60) extends \Illuminate\Cache\Lock
+        {
+            public function acquire()
+            {
+                return true;
+            }
+
+            public function release()
+            {
+                return true;
+            }
+
+            public function forceRelease()
+            {
+            }
+
+            protected function getCurrentOwner()
+            {
+                return 'another-writer'; // the TTL lapsed and a fresh ingest took the reservation
+            }
+        };
+        \Illuminate\Support\Facades\Cache::partialMock()
+            ->shouldReceive('lock')
+            ->andReturnUsing(fn (string $name, int $seconds = 0, $owner = null) => $name === $key ? $lapsed : $store->lock($name, $seconds, $owner));
+
+        $result = (new DocumentDeleter)->delete($document);
+
+        $this->assertSame('hard', $result['mode']);
+        $this->assertFalse($result['file_deleted']);
+        Storage::disk('kb')->assertExists('docs/sample.md'); // refused, never deleted past a lapsed reservation
+        $this->assertNull(KnowledgeDocument::withTrashed()->find($document->id), 'the DB row is gone even though the file was kept');
+    }
+
     public function test_hard_delete_applies_path_prefix_from_metadata(): void
     {
         config()->set('kb.deletion.soft_delete', false);

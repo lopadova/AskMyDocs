@@ -886,6 +886,15 @@ class DocumentDeleter
 
             return self::KEPT_IN_FLIGHT;
         }
+        // v8.36 / PR #479 Copilot review — the reservation's TTL
+        // (SourceInFlight::DELETION_HOLD_SECONDS, 60s) is a fixed lease, not
+        // a renewal: a slow reference scan or disk probe can outlive it the
+        // same way a storage-key lock can, and $held already asserts THAT
+        // lock right before the delete. Wrapped and asserted here the same
+        // way, so a lapsed reservation refuses the delete instead of letting
+        // a fresh ingest that has since reserved and started reading find
+        // its source removed out from under it.
+        $reservationHeld = new HeldLock($reservation, 'orphan source reservation');
 
         try {
             // Still holding the reservation: no NEW ingest can start reading
@@ -961,6 +970,7 @@ class DocumentDeleter
                 // Right before the irreversible step, after the existence probe
                 // (a network round-trip on a bucket disk): a lapsed TTL refuses.
                 $held?->assertHeld('orphan source removal');
+                $reservationHeld->assertHeld('orphan source removal');
 
                 if (! $storage->delete($fullPath)) {
                     return ConversionArtifactStore::FAILED;
@@ -1152,7 +1162,17 @@ class DocumentDeleter
         // either (R43) — that is independent of the reservation, which this
         // method takes regardless of the artifacts setting.
         if (! app(ConversionArtifactStore::class)->enabled()) {
-            return $this->removeSourceObjectUnderLock($disk, $fullPath, $documentId, $sourcePath, null);
+            // The reservation is still taken here (the comment above), so a
+            // lapsed TTL can still throw LockLostException even with no
+            // storage-key lock in the picture — caught the same way the
+            // artifacts-on branch below catches it.
+            try {
+                return $this->removeSourceObjectUnderLock($disk, $fullPath, $documentId, $sourcePath, null);
+            } catch (LockLostException $e) {
+                Log::warning('DocumentDeleter: source file kept — a lock guarding the section lapsed mid-section', ['document_id' => $documentId, 'disk' => $disk, 'full_path' => $fullPath, 'error' => $e->getMessage()]);
+
+                return ['file_deleted' => false, 'ocr_assets_deleted' => null];
+            }
         }
         if (! ConversionArtifactStore::cacheStoreCanLock()) {
             Log::warning('DocumentDeleter: source file kept — the cache store cannot exclude concurrent holders, so the storage key lock is unavailable', ['document_id' => $documentId, 'disk' => $disk, 'full_path' => $fullPath]);
@@ -1182,11 +1202,13 @@ class DocumentDeleter
         try {
             return $this->removeSourceObjectUnderLock($disk, $fullPath, $documentId, $sourcePath, new HeldLock($lock, 'storage key'));
         } catch (LockLostException $e) {
-            // The message names the step the lapse was caught before (the
-            // OCR purge, or the delete that follows it), so an operator is
-            // not told "nothing happened" when the purge already ran; the
-            // caller's own probe reports whether a `.ocr/` tree remains.
-            Log::warning('DocumentDeleter: source file kept — the storage key lock lapsed mid-section', ['document_id' => $documentId, 'disk' => $disk, 'full_path' => $fullPath, 'error' => $e->getMessage()]);
+            // Either lock guarding the section — the storage key or the
+            // SourceInFlight reservation — can be the one that lapsed;
+            // $e->getMessage() names which one and the step it was caught
+            // before (the OCR purge, or the delete that follows it), so an
+            // operator is not told "nothing happened" when the purge already
+            // ran; the caller's own probe reports whether a `.ocr/` tree remains.
+            Log::warning('DocumentDeleter: source file kept — a lock guarding the section lapsed mid-section', ['document_id' => $documentId, 'disk' => $disk, 'full_path' => $fullPath, 'error' => $e->getMessage()]);
 
             return ['file_deleted' => false, 'ocr_assets_deleted' => null];
         } catch (\Throwable $e) {
@@ -1311,6 +1333,15 @@ class DocumentDeleter
                 return ['file_deleted' => false, 'ocr_assets_deleted' => null];
             }
         }
+        // v8.36 / PR #479 Copilot review — the reservation's TTL
+        // (SourceInFlight::DELETION_HOLD_SECONDS, 60s) is a fixed lease, not
+        // a renewal: the OCR purge below can outlive it on a large tree the
+        // same way it can outlive the storage-key lock $held already
+        // asserts against at the SAME two steps. Asserted here too, so a
+        // lapsed reservation refuses the delete instead of letting a fresh
+        // ingest that has since reserved and started reading find its
+        // source removed out from under it.
+        $reservationHeld = $reservation !== null ? new HeldLock($reservation, 'orphan source reservation') : null;
 
         try {
             // v8.36 / ADR 0029 — the OCR assets (`{fullPath}.ocr/`) belong to
@@ -1320,6 +1351,7 @@ class DocumentDeleter
             // it asserts too: a run purged under a lapsed lock is a paid
             // re-run for whoever holds the key now.
             $held?->assertHeld('OCR asset purge');
+            $reservationHeld?->assertHeld('OCR asset purge');
             $ocrAssetsDeleted = $this->removeOcrAssets($disk, $fullPath, $documentId);
 
             try {
@@ -1331,6 +1363,7 @@ class DocumentDeleter
                 // delete runs only while the key is still ours (a lapse throws,
                 // the caller keeps the file).
                 $held?->assertHeld('source file removal');
+                $reservationHeld?->assertHeld('source file removal');
 
                 return ['file_deleted' => (bool) $storage->delete($fullPath), 'ocr_assets_deleted' => $ocrAssetsDeleted];
             } catch (LockLostException $e) {
