@@ -152,6 +152,7 @@ final class AdminAuthorizationMatrixTest extends TestCase
             // Per-user ownership (not role) is the real boundary and is
             // covered by ChatFolderControllerTest.
             '/api/chat-folders' => self::ALL_ROLES,
+            '/api/kb/tree' => self::ALL_ROLES,
         ];
 
         // A system administrator always carries the companion super-admin

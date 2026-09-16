@@ -49,6 +49,7 @@ use App\Http\Controllers\Api\KbDocumentSearchController;
 use App\Http\Controllers\Api\KbIngestController;
 use App\Http\Controllers\Api\KbPromotionController;
 use App\Http\Controllers\Api\KbResolveWikilinkController;
+use App\Http\Controllers\Api\KbTreeReaderController;
 use App\Http\Controllers\Api\TenantLogoController;
 use App\Http\Controllers\Api\Widget\WidgetDocumentPreviewController;
 use App\Http\Controllers\Api\Widget\WidgetSessionController;
@@ -224,6 +225,14 @@ Route::middleware([
         ->parameters(['chat-folders' => 'id'])
         ->names('api.chat-folders');
     Route::delete('/kb/documents', KbDeleteController::class);
+
+    // v8.x — reader-side KB tree for the Browse KB page. SAME core as the
+    // admin tree (KbTreeService), with `with_trashed` neither accepted nor
+    // passed (R2): a reader never sees a deleted document. Tenant +
+    // AccessScope isolation come from the service's own query (R30/R33).
+    Route::get('/kb/tree', KbTreeReaderController::class)
+        ->middleware('token.ability:kb:read')
+        ->name('api.kb.tree');
 
     // Wikilink hover-card resolver for the React chat UI. Uses the
     // default-scoped KnowledgeDocument so soft-deletes + RBAC filter
