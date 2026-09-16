@@ -37,6 +37,7 @@ use App\Http\Controllers\Api\Auth\PasswordResetController as ApiPasswordResetCon
 use App\Http\Controllers\Api\Auth\RegisterController;
 use App\Http\Controllers\Api\Auth\TwoFactorController;
 use App\Http\Controllers\Api\ChatFilterPresetController;
+use App\Http\Controllers\Api\ChatFolderController;
 use App\Http\Controllers\Api\KbChatController;
 use App\Http\Controllers\Api\ChatPreferencesController;
 use App\Http\Controllers\Api\UserLocaleController;
@@ -207,6 +208,21 @@ Route::middleware([
     Route::apiResource('/chat-filter-presets', ChatFilterPresetController::class)
         ->parameters(['chat-filter-presets' => 'id'])
         ->names('api.chat-filter-presets');
+
+    // v8.x — user-created folders grouping chat sessions in the Sessions
+    // workspace. Per-(tenant, user) authorization lives inside
+    // ChatFolderService (forTenant + where user_id), exactly like the
+    // presets above: no policy, no global scope.
+    //
+    // Mounted HERE rather than beside /conversations in routes/web.php on
+    // purpose: AdminAuthorizationMatrixTest::defineRoutes() mounts ONLY
+    // routes/api.php, so anything in web.php is structurally invisible to
+    // the canonical R32 gate. A new resource belongs where the matrix can
+    // see it.
+    Route::apiResource('/chat-folders', ChatFolderController::class)
+        ->only(['index', 'store', 'update', 'destroy'])
+        ->parameters(['chat-folders' => 'id'])
+        ->names('api.chat-folders');
     Route::delete('/kb/documents', KbDeleteController::class);
 
     // Wikilink hover-card resolver for the React chat UI. Uses the

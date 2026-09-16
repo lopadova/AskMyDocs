@@ -140,6 +140,18 @@ final class AdminAuthorizationMatrixTest extends TestCase
             // ── Widget admin (M6) — Gate::define() in AppServiceProvider ──
             '/api/admin/widget-keys' => ['super-admin'],                     // manageWidgetKeys
             '/api/admin/widget-sessions' => ['admin', 'super-admin'],        // viewWidgetSessions
+
+            // ── Authenticated reader surfaces — NO role gate by design ──
+            // Every authenticated member of the tenant may reach these; the
+            // allow-set is deliberately ALL roles, so the
+            // roles-not-in-the-allow-set loop is empty for them. They are
+            // listed anyway because the value of this matrix is that a new
+            // protected route cannot ship without declaring its audience:
+            // an omitted route is indistinguishable from an ungated one,
+            // which is exactly the v8.4 finding this file exists for.
+            // Per-user ownership (not role) is the real boundary and is
+            // covered by ChatFolderControllerTest.
+            '/api/chat-folders' => self::ALL_ROLES,
         ];
 
         // A system administrator always carries the companion super-admin
