@@ -176,7 +176,7 @@ final class OcrCostEstimator
                 return ['id' => $id, 'would_ocr' => false, 'pages' => 0, 'cost' => 0.0, 'reason' => 'too_many_bytes', 'pages_exact' => true];
             }
             $stagingPath = (string) $item->staging_path;
-            if ($stagingPath === '' || ! Storage::disk($stagingDisk)->exists($stagingPath)) {
+            if ($stagingPath === '' || ! $this->existsSafely($stagingDisk, $stagingPath)) {
                 return ['id' => $id, 'would_ocr' => false, 'pages' => 0, 'cost' => 0.0, 'reason' => 'staged_file_missing', 'pages_exact' => true];
             }
             // The SAME function the service enforces the cap with, on the
@@ -232,7 +232,7 @@ final class OcrCostEstimator
         }
 
         $stagingPath = (string) $item->staging_path;
-        if ($stagingPath === '' || ! Storage::disk($stagingDisk)->exists($stagingPath)) {
+        if ($stagingPath === '' || ! $this->existsSafely($stagingDisk, $stagingPath)) {
             return ['id' => $id, 'would_ocr' => false, 'pages' => 0, 'cost' => 0.0, 'reason' => 'staged_file_missing', 'pages_exact' => true];
         }
 
@@ -305,6 +305,24 @@ final class OcrCostEstimator
     }
 
     /**
+     * PR #492 Copilot round-2 (suppressed comments) — the SAME reasoning
+     * `readStaged()`'s own docblock gives for `get()`: a Flysystem adapter
+     * may throw on `exists()` just as readily for an unreadable or
+     * concurrently-deleted staged object, and one bad item must not abort
+     * the whole batch estimate with a 500 — it is that item's own
+     * `staged_file_missing` / `ocr_disabled` state, decided by whichever
+     * caller passes the corresponding reason for a `false` here.
+     */
+    private function existsSafely(string $stagingDisk, string $stagingPath): bool
+    {
+        try {
+            return Storage::disk($stagingDisk)->exists($stagingPath);
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    /**
      * @return array{id: string, would_ocr: bool, pages: int, cost: float, reason: string, pages_exact: bool}
      */
     /**
@@ -316,7 +334,7 @@ final class OcrCostEstimator
     private function offPathPdfReason(KbIngestBatchItem $item, string $stagingDisk): string
     {
         $stagingPath = (string) $item->staging_path;
-        if ($stagingPath === '' || ! Storage::disk($stagingDisk)->exists($stagingPath)) {
+        if ($stagingPath === '' || ! $this->existsSafely($stagingDisk, $stagingPath)) {
             return 'ocr_disabled';
         }
         $bytes = $this->readStaged($stagingDisk, $stagingPath);

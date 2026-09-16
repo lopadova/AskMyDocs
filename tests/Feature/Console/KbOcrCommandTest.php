@@ -122,4 +122,26 @@ final class KbOcrCommandTest extends TestCase
             ->expectsOutputToContain('already queued')
             ->assertExitCode(1);
     }
+
+    /**
+     * PR #492 Copilot round-2 — on a store `cacheStoreCanLock()` rejects,
+     * `$lock->get()` used to succeed unconditionally, so the "one queued
+     * re-run per document" invariant silently stopped holding: TWO
+     * concurrent re-run requests would both queue (and, for a remote
+     * driver, both pay). Refused now, cleanly, before either request
+     * dispatches anything.
+     */
+    public function test_rerun_on_a_store_without_locks_refuses_rather_than_dispatching_unguarded(): void
+    {
+        config(['kb.ocr.enabled' => true, 'kb.ocr.driver' => 'fake', 'kb.sources.disk' => 'kb', 'kb.sources.path_prefix' => '']);
+        Queue::fake();
+        Storage::disk('kb')->put('scans/one.pdf', '%PDF-1.4');
+        $doc = $this->doc();
+        \Illuminate\Support\Facades\Cache::extend('nolock', static fn ($app) => \Illuminate\Support\Facades\Cache::repository(new \Tests\Fixtures\Cache\NoLockStore));
+        config(['cache.stores.nolock' => ['driver' => 'nolock'], 'cache.default' => 'nolock']);
+
+        $this->artisan('kb:ocr', ['document' => $doc->id])->assertFailed();
+
+        Queue::assertNothingPushed();
+    }
 }

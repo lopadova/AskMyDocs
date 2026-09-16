@@ -224,6 +224,21 @@ final class OcrService
      */
     private function underAssetsLock(string $disk, string $sourcePath, string $prefix, \Closure $write): mixed
     {
+        // PR #492 Copilot round-2 — on a store `cacheStoreCanLock()` rejects
+        // (NullStore, or no LockProvider at all), `Cache::lock()->block()`
+        // below succeeds unconditionally for every caller, so a purge could
+        // enter this same critical section while a write is still in it and
+        // the OCR tree could be deleted or partially interleaved with it.
+        // Refused before the acquisition, mirroring every other OCR/artifact
+        // lock in this cycle (`ConversionArtifactStore::cacheStoreCanLock()`
+        // is the single source of truth for this check).
+        if (! ConversionArtifactStore::cacheStoreCanLock()) {
+            throw new \RuntimeException(sprintf(
+                'OCR assets directory for "%s" cannot be locked on disk [%s]: the cache store cannot exclude a concurrent purge; configure a lock-capable cache store (Redis in production).',
+                $sourcePath,
+                $disk,
+            ));
+        }
         $assetsDir = KbPath::normalize($this->figures->assetsDirFor($sourcePath, $prefix));
         $lock = Cache::lock(self::assetsLockKey($disk, $assetsDir), self::ASSETS_LOCK_SECONDS);
         try {
@@ -597,17 +612,50 @@ final class OcrService
         }
         $disk = StorageNamespace::diskOf($metadata);
         $prefix = StorageNamespace::recordedPrefix($metadata);
-        // With reuse disabled, convert() never records result.json (nothing
-        // to reuse from — see the `if ($reuseEnabled)` guard below): there
-        // is no reservation to refresh, and no risk of THIS race either —
-        // a reuse-off run carries a random per-attempt salt (runVariant()),
-        // so it cannot collide with an archived version's run key the way a
-        // reused run can. `refreshReservation()` throws on a run it did not
-        // record; this check keeps that contract instead of loosening it.
-        if (! Storage::disk($disk)->exists($this->figures->resultPath($sourcePath, $prefix, $runKey))) {
-            return;
+        // PR #492 Copilot round-2 — the existence check and the refresh used
+        // to run under NO run-level reservation at all: `purgeRun()`'s own
+        // reservation (the SAME `runLockKey`) could be taken and the run
+        // deleted in the gap between this method's `exists()` check and the
+        // refresh, or between two callers of this method, and the ingest
+        // would then commit `metadata.converter.ocr.run` pointing at a
+        // directory a purge just removed. Held across BOTH steps, exactly
+        // the reservation `purgeRun()` needs before it may delete — so the
+        // two mutually exclude, the same guarantee `convert()`'s reuse path
+        // already has via the identical lock at its own acquisition.
+        if (! ConversionArtifactStore::cacheStoreCanLock()) {
+            throw new \RuntimeException(sprintf(
+                'OCR run for "%s" cannot be locked on disk [%s]: the cache store cannot exclude a concurrent purge; configure a lock-capable cache store (Redis in production).',
+                $sourcePath,
+                $disk,
+            ));
         }
-        $this->underAssetsLock($disk, $sourcePath, $prefix, fn () => $this->figures->refreshReservation($disk, $sourcePath, $prefix, $runKey));
+        $runDir = $this->figures->runDirFor($sourcePath, $prefix, $runKey);
+        $reservation = Cache::lock(self::runLockKey($disk, $runDir), OcrFigureStore::PURGE_LOCK_SECONDS);
+        try {
+            $reservation->block(max(1, (int) config('kb.ocr.run_lock.wait_seconds', 300)));
+        } catch (LockTimeoutException) {
+            throw new \RuntimeException(sprintf(
+                'OCR run "%s" is reserved by a purge on disk [%s]; retry once it has finished.',
+                $runDir,
+                $disk,
+            ));
+        }
+        try {
+            // With reuse disabled, convert() never records result.json
+            // (nothing to reuse from — see the `if ($reuseEnabled)` guard
+            // below): there is no reservation to refresh, and no risk of
+            // THIS race either — a reuse-off run carries a random
+            // per-attempt salt (runVariant()), so it cannot collide with an
+            // archived version's run key the way a reused run can.
+            // `refreshReservation()` throws on a run it did not record; this
+            // check keeps that contract instead of loosening it.
+            if (! Storage::disk($disk)->exists($this->figures->resultPath($sourcePath, $prefix, $runKey))) {
+                return;
+            }
+            $this->underAssetsLock($disk, $sourcePath, $prefix, fn (HeldLock $held) => $this->figures->refreshReservation($disk, $sourcePath, $prefix, $runKey, $held));
+        } finally {
+            $reservation->release();
+        }
     }
 
     /**
@@ -714,6 +762,19 @@ final class OcrService
             // never two nondeterministic remote results interleaved in it.
             // Needs an atomic lock store (Redis in production).
             $runDir = $this->figures->runDirFor($doc->sourcePath, $prefix, $runKey);
+            // PR #492 Copilot round-2 — on a store `cacheStoreCanLock()`
+            // rejects, `$reservation->block()` below succeeds unconditionally
+            // for every concurrent caller, so two workers could both believe
+            // they hold this run's mutual exclusion and either call a remote
+            // driver twice (double spend) or interleave two writes into the
+            // SAME immutable run directory.
+            if (! ConversionArtifactStore::cacheStoreCanLock()) {
+                throw new \RuntimeException(sprintf(
+                    'OCR run "%s" cannot be locked on disk [%s]: the cache store cannot exclude a concurrent conversion; configure a lock-capable cache store (Redis in production).',
+                    $runDir,
+                    $disk,
+                ));
+            }
             $reservation = Cache::lock(self::runLockKey($disk, $runDir), self::leaseFor($driver, $pages));
             try {
                 $reservation->block(max(1, (int) config('kb.ocr.run_lock.wait_seconds', 300)));
@@ -737,7 +798,7 @@ final class OcrService
                 if ($reused !== null) {
                     $result = $reused['result'];
                     $written = $reused['written'];
-                    $this->underAssetsLock($disk, $doc->sourcePath, $prefix, fn () => $this->figures->refreshReservation($disk, $doc->sourcePath, $prefix, $runKey));
+                    $this->underAssetsLock($disk, $doc->sourcePath, $prefix, fn (HeldLock $held) => $this->figures->refreshReservation($disk, $doc->sourcePath, $prefix, $runKey, $held));
                 } else {
                     $assertRunnable();
                     $result = $driver->recognise(new OcrRequest(
@@ -783,7 +844,7 @@ final class OcrService
                     // sweep that found the directory empty a moment ago can
                     // never delete it under these writes (ADR 0029 §6).
                     $written = $this->underAssetsLock($disk, $doc->sourcePath, $prefix, function (HeldLock $held) use ($disk, $doc, $prefix, $runKey, $allFigures, $figuresEnabled, $reuseEnabled, $result): array {
-                        $written = $figuresEnabled ? $this->figures->store($disk, $doc->sourcePath, $prefix, $runKey, $allFigures) : [];
+                        $written = $figuresEnabled ? $this->figures->store($disk, $doc->sourcePath, $prefix, $runKey, $allFigures, $held) : [];
                         // The immutable run is persisted while the reservation
                         // is held, THEN metered: a `result.json` write that
                         // fails after the FinOps row was written would let the
@@ -1006,11 +1067,20 @@ final class OcrService
         }
 
         $storage = Storage::disk($disk);
+        // PR #492 Copilot round-2 — a recorded figure used to be accepted
+        // once its path was non-empty and existed ANYWHERE on the disk. A
+        // corrupt or tampered result.json could point outside this run's
+        // own `.../{run}/images/` directory, and reuse would reconstruct
+        // `images/fig-...` Markdown links even though this run never wrote
+        // those files. `isValidRecordedFigure()` now also requires the
+        // figure to sit directly inside the run's OWN images directory.
+        $expectedImagesDir = $this->figures->runDirFor($sourcePath, $prefix, $runKey).'/images';
         $written = [];
         foreach ((array) ($recorded['figures'] ?? []) as $figure) {
-            if (! self::isValidRecordedFigure($figure) || ! $storage->exists((string) $figure['path'])) {
-                // A malformed entry, or a figure gone missing (manual
-                // cleanup): the run is stale either way, re-run.
+            if (! self::isValidRecordedFigure($figure, $expectedImagesDir) || ! $storage->exists((string) $figure['path'])) {
+                // A malformed entry, a figure outside this run's own
+                // directory, or a figure gone missing (manual cleanup): the
+                // run is stale either way, re-run.
                 return null;
             }
             $written[] = [
@@ -1095,11 +1165,23 @@ final class OcrService
     }
 
     /**
+     * PR #492 Copilot round-2 — `$expectedImagesDir` is the SAME base
+     * `OcrFigureStore::store()` writes to for THIS run
+     * (`{run dir}/images`); a figure's `path` must resolve to a file
+     * directly inside it. `dirname()` compared for EXACT equality, not a
+     * prefix match: figures never live in a sub-directory of `images/`
+     * (`fileName()` has none), so `dirname($path) === $expectedImagesDir`
+     * is the containment check — a prefix compare would let
+     * `images-evil/x.png` pass against `images`.
+     *
      * @param  mixed  $figure  a `figures[]` entry straight from decoded JSON
      */
-    private static function isValidRecordedFigure(mixed $figure): bool
+    private static function isValidRecordedFigure(mixed $figure, string $expectedImagesDir): bool
     {
         if (! is_array($figure) || ! isset($figure['path']) || ! is_string($figure['path']) || $figure['path'] === '') {
+            return false;
+        }
+        if (dirname($figure['path']) !== $expectedImagesDir) {
             return false;
         }
         $page = $figure['page'] ?? null;
@@ -1286,6 +1368,19 @@ final class OcrService
         // branch below when the dispatch itself fails; the TTL is only the
         // backstop for a worker that dies mid-run. Needs an atomic shared
         // lock store (Redis in production) to hold across pods.
+        // PR #492 Copilot round-2 — on a store `cacheStoreCanLock()` rejects,
+        // `$lock->get()` below succeeds unconditionally for every concurrent
+        // request, so the "one queued re-run per document" invariant this
+        // lock exists for would silently stop holding and a document could
+        // be dispatched for re-OCR (paid, for a remote driver) more than
+        // once at a time. Refused before the acquisition rather than let
+        // every caller through.
+        if (! ConversionArtifactStore::cacheStoreCanLock()) {
+            throw new \RuntimeException(sprintf(
+                'OCR re-run for document #%d cannot be locked: the cache store cannot exclude a concurrent re-run request; configure a lock-capable cache store (Redis in production).',
+                (int) $document->id,
+            ));
+        }
         $lockKey = self::rerunLockKey($this->tenants->current(), (int) $document->id);
         $lock = Cache::lock($lockKey, self::rerunLockTtlFor((string) $document->mime_type));
         if (! $lock->get()) {

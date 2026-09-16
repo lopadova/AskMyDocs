@@ -11,7 +11,9 @@ use App\Services\Kb\Ocr\OcrFigureStore;
 use App\Services\Kb\Ocr\OcrService;
 use App\Services\Kb\Ocr\OcrLimitExceededException;
 use App\Services\Kb\Pipeline\SourceDocument;
+use App\Support\Kb\HeldLock;
 use App\Support\Kb\SourceType;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -422,9 +424,12 @@ final class OcrLimitsAndReuseTest extends TestCase
         // No recorded run at that key: there is nothing to re-record, the
         // reservation cannot be refreshed, and that is an exception — not a
         // warning that lets the conversion commit a dangling reference.
+        $lock = Cache::lock('test-refresh-reservation-'.$run, 60);
+        $lock->get();
+        $held = new HeldLock($lock, 'test');
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('could not refresh the reservation');
-        $store->refreshReservation('kb', 'docs/scan.png', '', $run);
+        $store->refreshReservation('kb', 'docs/scan.png', '', $run, $held);
     }
 
     #[Test]
@@ -1011,5 +1016,70 @@ final class OcrLimitsAndReuseTest extends TestCase
     public function image_mimes_config_matches_source_type(): void
     {
         $this->assertSame(config('kb.ocr.image_mimes'), SourceType::imageMimes());
+    }
+
+    /**
+     * PR #492 Copilot round-2 — the run reservation's acquisition itself
+     * used to bypass `cacheStoreCanLock()`: on a store it rejects,
+     * `$reservation->block()` succeeds unconditionally for every concurrent
+     * caller, so two workers converting the SAME bytes could both believe
+     * they hold this run's mutual exclusion and either call the driver
+     * twice (double spend, for a remote driver) or interleave two writes
+     * into the SAME immutable run directory. Refused before the driver is
+     * ever called.
+     */
+    #[Test]
+    public function convert_on_a_store_without_locks_refuses_rather_than_running_the_driver_unguarded(): void
+    {
+        \Illuminate\Support\Facades\Cache::extend('nolock', static fn ($app) => \Illuminate\Support\Facades\Cache::repository(new \Tests\Fixtures\Cache\NoLockStore));
+        config(['cache.stores.nolock' => ['driver' => 'nolock'], 'cache.default' => 'nolock']);
+
+        try {
+            $this->app->make(OcrConverter::class)->convert($this->image());
+            $this->fail('expected the lock-capability check to refuse the conversion');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('cannot be locked', $e->getMessage());
+        }
+
+        $this->assertSame([], array_filter(Storage::disk('kb')->allFiles(), static fn (string $f): bool => str_contains($f, '.ocr/')), 'nothing may be written when the run cannot be locked');
+    }
+
+    /**
+     * PR #492 Copilot round-2 — a recorded figure used to be accepted once
+     * its path was merely non-empty and existed SOMEWHERE on disk. A
+     * result.json tampered to point a figure entry at a file outside this
+     * run's own `images/` directory (here: a sibling run's own figure,
+     * which genuinely exists) must NOT be reused — the driver reruns
+     * instead, proved by reconfiguring it to answer something
+     * distinguishable, the same proof pattern the corrupt-recording tests
+     * above use.
+     */
+    #[Test]
+    public function a_figure_recorded_outside_this_runs_own_directory_is_treated_as_stale_and_rerun(): void
+    {
+        config(['kb.ocr.fake.pages' => [['markdown' => 'Alpha', 'confidence' => 0.8]]]);
+        $converter = $this->app->make(OcrConverter::class);
+        $converter->convert($this->image());
+        $run = OcrFigureStore::runKeyFor((string) base64_decode(FakeOcrDriver::PNG_1X1, true), 'fake', OcrService::runVariant('fake', true));
+        $path = "docs/scan.png.ocr/{$run}/result.json";
+        $recorded = json_decode((string) Storage::disk('kb')->get($path), true);
+        // A figure entry pointing OUTSIDE this run's own images/ dir, at a
+        // file that genuinely exists (a sibling directory this test writes
+        // itself) — "exists on disk" alone must not be enough.
+        Storage::disk('kb')->put("docs/scan.png.ocr/{$run}-decoy/images/fig-1-1.png", 'not this run\'s figure');
+        $recorded['figures'] = [[
+            'path' => "docs/scan.png.ocr/{$run}-decoy/images/fig-1-1.png",
+            'relative' => 'images/fig-1-1.png',
+            'page' => 1,
+            'index' => 1,
+            'bytes' => 4,
+        ]];
+        Storage::disk('kb')->put($path, (string) json_encode($recorded));
+
+        config(['kb.ocr.fake.pages' => [['markdown' => 'Beta (proves the driver actually ran again)', 'confidence' => 0.5]]]);
+        $again = $converter->convert($this->image());
+
+        $this->assertFalse($again->extractionMeta['ocr']['reused']);
+        $this->assertStringContainsString('Beta (proves the driver actually ran again)', $again->markdown);
     }
 }

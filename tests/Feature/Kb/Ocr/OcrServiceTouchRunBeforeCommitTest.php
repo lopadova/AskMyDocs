@@ -113,4 +113,29 @@ final class OcrServiceTouchRunBeforeCommitTest extends TestCase
 
         $this->assertFalse(Storage::disk('kb')->exists('docs/x.md.ocr/'.self::RUN.'/result.json'));
     }
+
+    /**
+     * PR #492 Copilot round-2 — the existence check and the refresh used to
+     * run under NO run-level reservation at all: `purgeRun()` (the SAME
+     * `runLockKey`) could delete the run in the gap between them, or between
+     * two callers, and the ingest would commit `metadata.converter.ocr.run`
+     * pointing at a directory a purge just removed. On a store
+     * `cacheStoreCanLock()` rejects there is no reservation to take at all,
+     * so the touch is refused outright rather than running the exists-check
+     * and refresh unguarded.
+     */
+    public function test_on_a_store_without_locks_the_touch_is_refused_rather_than_run_unguarded(): void
+    {
+        Storage::disk('kb')->put('docs/x.md.ocr/'.self::RUN.'/result.json', '{}');
+        \Illuminate\Support\Facades\Cache::extend('nolock', static fn ($app) => \Illuminate\Support\Facades\Cache::repository(new \Tests\Fixtures\Cache\NoLockStore));
+        config(['cache.stores.nolock' => ['driver' => 'nolock'], 'cache.default' => 'nolock']);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('cannot be locked');
+
+        app(OcrService::class)->touchRunBeforeCommit(
+            ['disk' => 'kb', 'prefix' => '', 'converter' => ['ocr' => ['run' => self::RUN]]],
+            'docs/x.md',
+        );
+    }
 }

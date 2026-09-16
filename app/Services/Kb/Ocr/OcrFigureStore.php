@@ -92,10 +92,22 @@ final class OcrFigureStore
     }
 
     /**
+     * PR #492 Copilot round-2 — the caller holds the assets-directory lock
+     * across this call (`OcrService::underAssetsLock()`), but until now
+     * never handed it IN: a large figure set can outlive the lock's TTL
+     * (`ASSETS_LOCK_SECONDS`), and `purgeAt()` may then take the directory
+     * mid-loop while this keeps writing into it. `$held` is asserted right
+     * before EVERY write — the same "check immediately before the
+     * irreversible step" shape every other critical section in this cycle
+     * uses (ADR 0030 §3) — so a lapsed TTL stops the loop instead of
+     * writing figures a purge has since started removing.
+     *
      * @param  list<OcrFigure>  $figures
      * @return list<array{path: string, page: int, index: int, bytes: int, relative: string}>
+     *
+     * @throws \App\Support\Kb\LockLostException when the assets lock lapses mid-write
      */
-    public function store(string $disk, string $sourcePath, string $prefix, string $runKey, array $figures): array
+    public function store(string $disk, string $sourcePath, string $prefix, string $runKey, array $figures, HeldLock $held): array
     {
         if ($figures === []) {
             return [];
@@ -106,6 +118,7 @@ final class OcrFigureStore
         $written = [];
 
         foreach ($figures as $figure) {
+            $held->assertHeld('OCR figure write');
             $path = $base.'/'.$figure->fileName();
             if ($storage->put($path, $figure->bytes) === false) {
                 throw new RuntimeException("OcrFigureStore: failed to write figure {$path} on disk [{$disk}].");
@@ -155,14 +168,22 @@ final class OcrFigureStore
      * no longer exist, so the caller's ingest fails (and the job retries)
      * instead of committing a dangling reference.
      *
+     * PR #492 Copilot round-2 — `$held` (the SAME lock the caller ran the
+     * read+existence check under) is asserted immediately before the
+     * decisive `put()`: the read and the write straddle a storage
+     * round-trip, and without the assertion a lapsed lock would let this
+     * write proceed after a purge has since taken the directory.
+     *
      * @throws RuntimeException
+     * @throws \App\Support\Kb\LockLostException when the assets lock lapses before the write
      */
-    public function refreshReservation(string $disk, string $sourcePath, string $prefix, string $runKey): void
+    public function refreshReservation(string $disk, string $sourcePath, string $prefix, string $runKey, HeldLock $held): void
     {
         $path = $this->resultPath($sourcePath, $prefix, $runKey);
         try {
             $storage = Storage::disk($disk);
             $bytes = $storage->exists($path) ? $storage->get($path) : null;
+            $held->assertHeld('OCR reservation refresh');
             $ok = is_string($bytes) && $storage->put($path, $bytes) !== false;
         } catch (\Throwable $e) {
             throw new RuntimeException("OcrFigureStore: could not refresh the reservation of reused run {$path} on disk [{$disk}]: {$e->getMessage()}", 0, $e);
@@ -266,6 +287,22 @@ final class OcrFigureStore
         $storage = Storage::disk($disk);
         $runDir = $this->runDirFor($sourcePath, $prefix, $runKey);
         if (! $storage->directoryExists($runDir)) {
+            return false;
+        }
+        // PR #492 Copilot round-2 — this reservation is what makes the run
+        // "in use, do not delete" legible to a concurrent converter; on a
+        // store the interface presence check in `cacheStoreCanLock()`
+        // rejects (NullStore, or no LockProvider at all), `$reservation->get()`
+        // below would report success unconditionally, so a purge could
+        // remove a run a converter is reusing at this very moment and still
+        // report success. `purgeAt()` already takes this posture for the
+        // directory-level lock (`purgeAtUnderGraceOnly()`'s caller); here
+        // there is no documented no-lock fallback for the run-level
+        // reservation, so the purge is refused outright — deferred to the
+        // next sweep, exactly like a reservation this call could not take.
+        if (! ConversionArtifactStore::cacheStoreCanLock()) {
+            Log::warning('OcrFigureStore: OCR run purge refused — the cache store cannot exclude a concurrent converter reusing this run; configure a lock-capable cache store (Redis in production)', ['disk' => $disk, 'run_dir' => $runDir]);
+
             return false;
         }
         $reservation = Cache::lock(OcrService::runLockKey($disk, KbPath::normalize($runDir)), self::PURGE_LOCK_SECONDS);

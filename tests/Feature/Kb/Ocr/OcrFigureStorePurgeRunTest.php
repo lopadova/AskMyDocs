@@ -107,4 +107,25 @@ final class OcrFigureStorePurgeRunTest extends TestCase
         $this->assertFalse($purged);
         Storage::disk('kb')->assertExists('docs/y.md.ocr/'.self::RUN.'/result.json');
     }
+
+    /**
+     * PR #492 Copilot round-2 — unlike `purgeAt()` (which has the documented
+     * grace-only fallback exercised above), `purgeRun()` has NO no-lock
+     * fallback: on a store `cacheStoreCanLock()` rejects, `$reservation->get()`
+     * used to report success unconditionally (`NoLockStore`'s `ArrayStore`
+     * inner accepts every write), so a converter reusing this exact run
+     * would have had ZERO protection while `purgeRun()` deleted it out from
+     * under it — and still reported `true` (purged), not a refusal. Refused
+     * outright now, run kept, regardless of age.
+     */
+    public function test_purge_run_on_a_store_without_locks_refuses_rather_than_deleting_unguarded(): void
+    {
+        \Illuminate\Support\Facades\Cache::extend('nolock', static fn ($app) => \Illuminate\Support\Facades\Cache::repository(new \Tests\Fixtures\Cache\NoLockStore));
+        config(['cache.stores.nolock' => ['driver' => 'nolock'], 'cache.default' => 'nolock']);
+
+        $purged = app(OcrFigureStore::class)->purgeRun('kb', 'docs/x.md', '', self::RUN);
+
+        $this->assertFalse($purged, 'a store that cannot exclude a concurrent converter must refuse the purge, not report success');
+        $this->assertTrue(Storage::disk('kb')->directoryExists('docs/x.md.ocr/'.self::RUN));
+    }
 }

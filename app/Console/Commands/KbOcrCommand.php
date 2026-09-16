@@ -57,7 +57,11 @@ final class KbOcrCommand extends Command
 
             try {
                 $result = $ocr->rerun($document, 'cli:kb:ocr');
-            } catch (HttpException $e) {
+            } catch (HttpException|\RuntimeException $e) {
+                // PR #492 Copilot round-2 — rerun() can now also refuse with
+                // a bare RuntimeException (the cache store cannot lock the
+                // single-flight reservation): the same clean operator-facing
+                // message as the HttpException case, not a raw stack trace.
                 $this->error($e->getMessage());
 
                 return self::FAILURE;
