@@ -252,6 +252,42 @@ final class IngestDocumentJobSourceReservationTest extends TestCase
     }
 
     /**
+     * PR #492 Copilot round-8 — a store that PASSES `cacheStoreCanLock()`
+     * (it genuinely supports locking) but whose lock provider throws mid
+     * `block()` — a dropped Redis connection, for example — must NOT be
+     * treated as "this store has no locking after all" and degraded to
+     * `null`. That degradation would let the ingest proceed completely
+     * unreserved on a store that, moments earlier, proved it CAN exclude a
+     * concurrent holder — reopening the exact race this class exists to
+     * close. The exception propagates instead, the same treatment a
+     * contended key already gets.
+     */
+    public function test_a_lock_provider_failure_propagates_rather_than_degrading_to_unreserved(): void
+    {
+        Cache::shouldReceive('getStore')->andReturn(new \Illuminate\Cache\ArrayStore);
+        $throwingLock = new class implements \Illuminate\Contracts\Cache\Lock
+        {
+            public function get($callback = null) { throw new \RuntimeException('lock provider connection dropped'); }
+
+            public function block($seconds, $callback = null) { throw new \RuntimeException('lock provider connection dropped'); }
+
+            public function release(): bool { return true; }
+
+            public function owner() { return ''; }
+
+            public function forceRelease(): void {}
+        };
+        Cache::shouldReceive('lock')->andReturn($throwingLock);
+
+        try {
+            SourceInFlight::reserve('kb', 'docs/blipped.md');
+            $this->fail('a lock provider failure must not silently degrade to an unreserved ingest');
+        } catch (\RuntimeException $e) {
+            $this->assertSame('lock provider connection dropped', $e->getMessage());
+        }
+    }
+
+    /**
      * The job lets the contention exception propagate — it does NOT swallow
      * it and proceed unreserved. The queue's own `$tries`/`backoff` retries
      * the attempt once the contention has likely cleared.

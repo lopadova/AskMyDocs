@@ -123,12 +123,29 @@ final class SourceInFlight
      * Reserve the source for this ingest, or null ONLY when the store
      * cannot exclude anyone at all (R43 — no reservation is better than one
      * nobody honours, and the age grace is the sole guard from here on).
+     * That capability check is static and happens BEFORE any lock provider
+     * call — a store that reaches `Cache::lock()->block()` at all DOES
+     * support locking, so anything that call throws is a real failure of a
+     * real guarantee, not "this store has no locking after all".
      *
      * A CONTENDED key throws rather than degrading (see the class docblock):
      * a short block first lets a just-released holder hand over, and a
      * reservation still not taken after that is
      * {@see SourceReservationContendedException} — the caller must fail
      * this attempt rather than convert unprotected.
+     *
+     * PR #492 Copilot round-8 — any OTHER exception from the lock provider
+     * (a dropped Redis connection mid-`block()`, for example) used to be
+     * caught here and degraded to `null`: the ingest would then proceed
+     * WITHOUT a reservation on a store that genuinely supports locking,
+     * silently reopening the exact race this class exists to close if the
+     * provider happened to be blipping rather than genuinely lock-less.
+     * Every caller ({@see \App\Jobs\IngestDocumentJob::reserveSource()},
+     * {@see \App\Flow\Steps\Folder\DispatchIngestFanOutStep::ingestSync()})
+     * already lets `SourceReservationContendedException` propagate
+     * uncaught and treats it as an ordinary per-file/per-job failure the
+     * queue retries or the batch records — a provider exception now gets
+     * the identical treatment instead of a silent downgrade.
      *
      * @throws SourceReservationContendedException the key is held by
      *         another holder right now.
@@ -145,17 +162,6 @@ final class SourceInFlight
             }
         } catch (LockTimeoutException) {
             throw new SourceReservationContendedException($disk, $fullPath);
-        } catch (\Throwable $e) {
-            // A store that threw cannot be said to have refused: report it
-            // the same way as R43 and let the grace stand — a driver blip is
-            // not "someone else is protecting it".
-            Log::warning('SourceInFlight: could not reserve the source; only the age grace guards this ingest', [
-                'disk' => $disk,
-                'path' => $fullPath,
-                'error' => $e->getMessage(),
-            ]);
-
-            return null;
         }
 
         throw new SourceReservationContendedException($disk, $fullPath);

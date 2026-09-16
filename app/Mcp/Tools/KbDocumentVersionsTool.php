@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Mcp\Tools;
 
+use App\Mcp\Tools\Concerns\ValidatesIntegerArgument;
 use App\Models\KnowledgeDocument;
 use App\Services\Kb\Versioning\DocumentVersionService;
 use App\Support\TenantContext;
@@ -29,6 +30,8 @@ use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 #[IsIdempotent]
 class KbDocumentVersionsTool extends Tool
 {
+    use ValidatesIntegerArgument;
+
     public function schema(JsonSchema $schema): array
     {
         return [
@@ -97,25 +100,5 @@ class KbDocumentVersionsTool extends Tool
             'truncated' => $total > $offset + count($rows),
             'versions' => $rows,
         ]);
-    }
-
-    /**
-     * An argument as an ACTUAL integer: PHP int, or a string of digits with
-     * an optional sign — null when absent, false when it is anything else
-     * (a float, scientific notation, padding, an array).
-     */
-    private static function integerArgument(mixed $value): int|null|false
-    {
-        if ($value === null) {
-            return null;
-        }
-        if (is_int($value)) {
-            return $value;
-        }
-        if (is_string($value) && preg_match('/^[+-]?\d+$/', $value) === 1) {
-            return (int) $value;
-        }
-
-        return false;
     }
 }

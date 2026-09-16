@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Mcp\Tools;
 
+use App\Mcp\Tools\Concerns\ValidatesIntegerArgument;
 use App\Models\KnowledgeDocument;
 use App\Services\Kb\Ocr\OcrService;
 use App\Support\TenantContext;
@@ -29,6 +30,8 @@ use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 #[IsIdempotent]
 class KbOcrStatusTool extends Tool
 {
+    use ValidatesIntegerArgument;
+
     public function schema(JsonSchema $schema): array
     {
         return [
@@ -40,7 +43,15 @@ class KbOcrStatusTool extends Tool
 
     public function handle(Request $request, OcrService $ocr, TenantContext $tenants): Response
     {
-        $id = (int) ($request->get('document_id') ?? 0);
+        // PR #492 Copilot round-8 — `$schema->integer()` does not itself
+        // refuse a non-integer argument; `(int) "1.5"` silently truncates to
+        // `1` and this would answer for a different document than the one
+        // asked about. Validated the same strict way `KbDocumentVersionsTool`
+        // already does for the same argument.
+        $id = self::integerArgument($request->get('document_id'));
+        if ($id === null || $id === false || $id < 1) {
+            return Response::error('document_id must be a positive integer.');
+        }
         $document = KnowledgeDocument::query()->forTenant($tenants->current())->find($id);
 
         if ($document === null) {
