@@ -63,12 +63,24 @@ test.describe('App smoke — navigate the main screens with no errors', () => {
 
 async function visitAndSettle(page: Page, route: string): Promise<void> {
     await page.goto(route);
-    // The SPA shell wraps every /app screen; once it's visible the route's
+    // A shell wraps every /app screen; once one is visible the route's
     // feature component has mounted (or its RequireRole gate has rendered).
-    await expect(page.getByTestId('appshell-root'), `shell never mounted at ${route}`).toBeVisible({
-        timeout: 15_000,
-    });
-    await expect(page.getByTestId('sidebar-nav')).toBeVisible();
+    //
+    // TWO shells exist. Most screens render inside `AppShell` (primary
+    // sidebar + topbar); the full-screen chat surfaces render inside
+    // `StandaloneShell`, whose whole point is that the primary navigation
+    // is absent. Asserting either keeps this smoke check meaningful —
+    // "the SPA mounted and did not throw" — without asserting chrome the
+    // route deliberately does not have.
+    const shell = page
+        .getByTestId('appshell-root')
+        .or(page.getByTestId('standalone-shell'));
+    await expect(shell, `no shell mounted at ${route}`).toBeVisible({ timeout: 15_000 });
+
+    const standalone = await page.getByTestId('standalone-shell').count();
+    if (standalone === 0) {
+        await expect(page.getByTestId('sidebar-nav')).toBeVisible();
+    }
     // Give async data-fetching effects a beat to run so a render-time throw
     // surfaces as a pageerror before we move on. Network-idle is the right
     // signal here (we are not asserting a specific data-state per screen).
