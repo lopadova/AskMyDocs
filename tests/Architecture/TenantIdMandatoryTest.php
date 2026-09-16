@@ -58,6 +58,10 @@ final class TenantIdMandatoryTest extends TestCase
         // Copilot review.
         \App\Models\ChatLog::class,
         \App\Models\Conversation::class,
+        // v8.x — user-created folders grouping chat sessions in the
+        // Sessions workspace. Private per (tenant, user); the composite
+        // unique starts with tenant_id so two tenants may reuse a name.
+        \App\Models\ChatFolder::class,
         \App\Models\Message::class,
         \App\Models\KbNode::class,
         \App\Models\KbEdge::class,

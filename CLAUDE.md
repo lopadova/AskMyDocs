@@ -904,7 +904,8 @@ knowledge_documents, knowledge_chunks,
 chat_logs, conversations, messages, kb_nodes, kb_edges,
 kb_canonical_audit, project_memberships, kb_tags,
 knowledge_document_tags, knowledge_document_acl, admin_command_audit,
-admin_command_nonces, admin_insights_snapshots, chat_filter_presets.
+admin_command_nonces, admin_insights_snapshots, chat_filter_presets,
+chat_folders.
 **`embedding_cache` is intentionally NOT tenant-aware** — a cross-tenant reuse
 layer keyed `UNIQUE(text_hash, provider, model)` (same text+provider+model embeds once
 across tenants); `TenantIdMandatoryTest` documents the exclusion. (`User` is likewise
