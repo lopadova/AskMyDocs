@@ -63,6 +63,60 @@ final class RerankerAutoTierFirewallTest extends TestCase
         $this->assertSame([1, 2, 3], $ranked->pluck('chunk_id')->map('intval')->all());
     }
 
+    /**
+     * v8.37/W3 (ADR 0031 §5) — before this fix, canonicalAdjustment()
+     * returned a zero delta before ever reading generation_source for any
+     * non-canonical row, so an unreviewed OCR'd scan (`auto`) and a
+     * reviewed one (`human`) ranked identically. Two non-canonical chunks,
+     * otherwise identical, differing ONLY in generation_source: the
+     * reviewed one must now strictly outrank the unreviewed one.
+     */
+    public function test_reviewed_scan_outranks_unreviewed_scan_when_both_are_non_canonical(): void
+    {
+        config([
+            'kb.reranking.enabled' => true,
+            'kb.canonical.priority_weight' => 0.001,
+            'kb.canonical.auto_tier_penalty' => 0.02,
+        ]);
+
+        $chunks = collect([
+            $this->chunk(1, canonical: false, generationSource: 'auto'),
+            $this->chunk(2, canonical: false, generationSource: 'human'),
+        ]);
+
+        $ranked = (new Reranker)->rerank('cache strategy', $chunks, limit: 10);
+        $scores = $this->scoreById($ranked);
+
+        $this->assertGreaterThan($scores[1], $scores[2], 'a reviewed (human) non-canonical scan must outrank an unreviewed (auto) one');
+        $this->assertSame([2, 1], $ranked->pluck('chunk_id')->map('intval')->all());
+    }
+
+    /**
+     * v8.37/W3 — the pre-existing "raw" case in the firewall test above
+     * (non-canonical, generation_source='human') must rank UNCHANGED by
+     * this fix: autoTierPenalty('human') is 0.0 on both sides of the
+     * is_canonical branch, so a non-canonical human-default row pays
+     * nothing before or after — this is the "nothing re-orders but
+     * unreviewed OCR text" invariant ADR 0031 §5 names explicitly.
+     */
+    public function test_non_canonical_human_default_rows_are_unaffected_by_the_fix(): void
+    {
+        config([
+            'kb.reranking.enabled' => true,
+            'kb.canonical.priority_weight' => 0.001,
+            'kb.canonical.auto_tier_penalty' => 0.02,
+        ]);
+
+        $chunks = collect([
+            $this->chunk(1, canonical: false, generationSource: 'human'),
+            $this->chunk(2, canonical: false, generationSource: 'human'),
+        ]);
+
+        $scores = $this->scoreById((new Reranker)->rerank('cache strategy', $chunks, limit: 10));
+
+        $this->assertEqualsWithDelta($scores[1], $scores[2], 1e-9, 'two non-canonical human-default rows must still tie');
+    }
+
     public function test_zero_penalty_disables_the_firewall(): void
     {
         config([

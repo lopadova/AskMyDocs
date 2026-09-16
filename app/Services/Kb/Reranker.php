@@ -266,20 +266,31 @@ class Reranker
     private function canonicalAdjustment(array $chunk, float $priorityWeight): array
     {
         $doc = $chunk['document'] ?? [];
-        if (! (bool) ($doc['is_canonical'] ?? false)) {
-            return ['delta' => 0.0, 'boost' => 0.0, 'penalty' => 0.0];
-        }
-
-        $priority = (int) ($doc['retrieval_priority'] ?? 50);
-        $boost = $priorityWeight * $priority;
-        $penalty = $this->statusPenalty((string) ($doc['canonical_status'] ?? ''));
 
         // v8.11 Auto-Wiki firewall — an AUTO-tier doc (generation_source='auto')
         // takes a small extra penalty so a human-curated `accepted` doc on the
         // same topic always outranks the auto-compiled one (anti-hallucination
-        // guarantee). Default-`human` rows (every pre-v8.11 doc) get 0 here, so
-        // ranking is byte-identical to pre-v8.11 until an auto doc exists.
-        $penalty += $this->autoTierPenalty((string) ($doc['generation_source'] ?? 'human'));
+        // guarantee). Default-`human` rows (every pre-v8.11/pre-v8.37 doc) get
+        // 0 here, so ranking is byte-identical to before this row existed
+        // until an auto doc does.
+        //
+        // v8.37/W3 (ADR 0031 §5) — this read used to sit AFTER the
+        // is_canonical early return below, so a non-canonical `auto` row
+        // (an OCR'd scan's default state, W1) paid no penalty at all and
+        // ranked identically to a reviewed (`human`) sibling. Moved here so
+        // the penalty applies regardless of canonicity; the canonical
+        // boost/status-penalty below stay canonical-only (a
+        // retrieval_priority or canonical_status reads meaningless on a
+        // non-canonical row).
+        $penalty = $this->autoTierPenalty((string) ($doc['generation_source'] ?? 'human'));
+
+        if (! (bool) ($doc['is_canonical'] ?? false)) {
+            return ['delta' => -$penalty, 'boost' => 0.0, 'penalty' => $penalty];
+        }
+
+        $priority = (int) ($doc['retrieval_priority'] ?? 50);
+        $boost = $priorityWeight * $priority;
+        $penalty += $this->statusPenalty((string) ($doc['canonical_status'] ?? ''));
 
         return [
             'delta' => $boost - $penalty,
