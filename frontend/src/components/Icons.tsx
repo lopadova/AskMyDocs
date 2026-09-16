@@ -378,6 +378,41 @@ export const Icon = {
             }
         />
     ),
+    // v8.x — Sessions workspace row actions.
+    Pin: (p: IconProps) => (
+        <I
+            {...p}
+            d={
+                <>
+                    <path d="M12 17v5" />
+                    <path d="M9 3h6l-1 6 3 3v2H7v-2l3-3-1-6Z" />
+                </>
+            }
+        />
+    ),
+    Archive: (p: IconProps) => (
+        <I
+            {...p}
+            d={
+                <>
+                    <path d="M3 4h18v4H3z" />
+                    <path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8" />
+                    <path d="M10 12h4" />
+                </>
+            }
+        />
+    ),
+    Flag: (p: IconProps) => (
+        <I
+            {...p}
+            d={
+                <>
+                    <path d="M5 21V4" />
+                    <path d="M5 4h10l-1.5 4L15 12H5" />
+                </>
+            }
+        />
+    ),
     Trash: (p: IconProps) => (
         <I
             {...p}
