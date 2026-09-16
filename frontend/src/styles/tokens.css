@@ -3536,3 +3536,310 @@ textarea:focus-visible {
 @media (prefers-reduced-motion: reduce) {
   .chat-main-column .popin { animation: none; }
 }
+
+/* ─────────────────────────────────────────────────────────────────────
+   Sessions workspace (v8.x) — the ChatGPT-style rail: knowledge base on
+   top, then the project scope, then sessions grouped into Pinned /
+   folders / Unfiled / Archived.
+
+   Reuses `.chat-conversation-sidebar` for the shell and `.conv-row*` for
+   the row internals, so the two chat surfaces stay visually identical
+   where they do the same job. Only what is genuinely new lives here.
+   Colours come from tokens, so the light theme and the density modes
+   follow without per-rule overrides.
+   ───────────────────────────────────────────────────────────────────── */
+.chat-sessions-sidebar {
+  gap: 10px;
+  padding: 14px 12px;
+  overflow-y: auto;
+}
+
+/* The KB entry reads as a destination, not as a session: accent-tinted
+   and separated by a rule from the list below it. */
+.chat-sessions-kb-entry {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 11px;
+  color: var(--fg-0);
+  text-align: left;
+  background: color-mix(in srgb, var(--accent-a) 7%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-a) 16%, var(--panel-border));
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+
+.chat-sessions-kb-entry:hover {
+  background: color-mix(in srgb, var(--accent-a) 12%, transparent);
+  border-color: color-mix(in srgb, var(--accent-a) 26%, var(--panel-border));
+}
+
+.chat-sessions-kb-entry:focus-visible {
+  outline: 2px solid var(--accent-a);
+  outline-offset: 2px;
+}
+
+.chat-sessions-kb-icon { display: grid; place-items: center; color: var(--accent-a); }
+.chat-sessions-kb-copy { display: grid; gap: 1px; min-width: 0; flex: 1; }
+.chat-sessions-kb-title { font-size: 13px; font-weight: 550; letter-spacing: -.01em; }
+.chat-sessions-kb-hint { color: var(--fg-3); font-size: 11px; }
+
+.chat-sessions-scope {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 2px;
+}
+
+.chat-sessions-scope-label {
+  color: var(--fg-3);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+.chat-sessions-actions { display: flex; gap: 6px; }
+.chat-sessions-actions .ui-button { flex: 1; }
+
+.chat-sessions-search input {
+  width: 100%;
+  padding: 7px 10px;
+  color: var(--fg-0);
+  font-size: 13px;
+  background: var(--bg-0);
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+}
+
+.chat-sessions-hint {
+  margin: 0;
+  padding: 10px 2px;
+  color: var(--fg-3);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.chat-sessions-hint.is-nested { padding-left: 14px; font-size: 11.5px; }
+
+.chat-sessions-error {
+  margin: 0;
+  color: var(--danger, #e5534b);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.chat-sessions-group { display: grid; gap: 2px; }
+
+.chat-sessions-group-label {
+  margin: 0;
+  color: var(--fg-3);
+  font-size: 11px;
+  font-weight: 550;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+.chat-sessions-folder-head { display: flex; align-items: center; gap: 2px; }
+
+.chat-sessions-folder-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  padding: 6px 4px;
+  color: var(--fg-2);
+  background: none;
+  border: 0;
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.chat-sessions-folder-toggle:hover { background: var(--bg-2); }
+.chat-sessions-folder-toggle:focus-visible { outline: 2px solid var(--accent-a); outline-offset: 1px; }
+.chat-sessions-folder-toggle svg { flex: 0 0 auto; transition: transform var(--dur-fast) var(--ease); }
+
+.chat-sessions-folder-count {
+  margin-left: auto;
+  color: var(--fg-3);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+}
+
+.chat-sessions-archived { margin-top: auto; padding-top: 6px; border-top: 1px solid var(--hairline); }
+
+/* A row is a flex pair: the select button grows, the actions menu keeps
+   its width. The menu is a SIBLING, never nested in the button. */
+.chat-sessions-row { position: relative; display: flex; align-items: stretch; gap: 2px; }
+.chat-sessions-row-select { flex: 1; min-width: 0; }
+.chat-sessions-row[data-pinned='true'] .conv-row-icon { color: var(--accent-a); }
+
+/* Importance is carried by a token, not by colour alone — the row also
+   exposes data-importance for assistive tech and for tests. */
+.chat-sessions-importance-badge {
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  border-radius: 999px;
+  border: 1px solid transparent;
+}
+
+.chat-sessions-importance-badge[data-level='high'] {
+  color: var(--warn, #d98c1f);
+  background: color-mix(in srgb, var(--warn, #d98c1f) 12%, transparent);
+  border-color: color-mix(in srgb, var(--warn, #d98c1f) 28%, transparent);
+}
+
+.chat-sessions-importance-badge[data-level='critical'] {
+  color: var(--danger, #e5534b);
+  background: color-mix(in srgb, var(--danger, #e5534b) 13%, transparent);
+  border-color: color-mix(in srgb, var(--danger, #e5534b) 30%, transparent);
+}
+
+.chat-sessions-row-menu-wrap { position: relative; display: flex; align-items: center; }
+
+.chat-sessions-row-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 40;
+  display: grid;
+  gap: 1px;
+  min-width: 208px;
+  padding: 5px;
+  background: var(--bg-1);
+  border: 1px solid var(--panel-border);
+  border-radius: 11px;
+  box-shadow: var(--shadow-2, 0 12px 32px rgb(0 0 0 / 28%));
+}
+
+.chat-sessions-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  color: var(--fg-1);
+  font-size: 12.5px;
+  text-align: left;
+  background: none;
+  border: 0;
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.chat-sessions-menu-item:hover { background: var(--bg-2); color: var(--fg-0); }
+.chat-sessions-menu-item:focus-visible { outline: 2px solid var(--accent-a); outline-offset: -2px; }
+.chat-sessions-menu-item.is-danger { color: var(--danger, #e5534b); }
+
+/* The checked radio is marked by a leading dot as well as by weight, so
+   the current level is not communicated by colour alone. */
+.chat-sessions-menu-item[aria-checked='true'] { color: var(--fg-0); font-weight: 600; }
+.chat-sessions-menu-item[aria-checked='true']::before { content: '•'; margin-right: -3px; }
+
+.chat-sessions-menu-group {
+  display: grid;
+  gap: 1px;
+  padding-top: 4px;
+  margin-top: 3px;
+  border-top: 1px solid var(--hairline);
+}
+
+.chat-sessions-menu-group-label {
+  padding: 2px 8px;
+  color: var(--fg-3);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+.chat-sessions-menu-confirm {
+  display: grid;
+  gap: 2px;
+  padding-top: 4px;
+  margin-top: 3px;
+  border-top: 1px solid var(--hairline);
+}
+
+.chat-sessions-menu-confirm > span { padding: 2px 8px; color: var(--fg-2); font-size: 11.5px; }
+
+.chat-sessions-name-dialog { display: grid; gap: 10px; max-width: 420px; }
+.chat-sessions-name-label { color: var(--fg-2); font-size: 12px; }
+
+.chat-sessions-name-dialog input {
+  width: 100%;
+  padding: 8px 10px;
+  color: var(--fg-0);
+  font-size: 13px;
+  background: var(--bg-0);
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+}
+
+.chat-sessions-name-actions { display: flex; gap: 8px; }
+
+/* ── Browse KB (reader-side explorer) ───────────────────────────────── */
+.kb-browse-layout {
+  display: grid;
+  grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
+  gap: 16px;
+  height: 100%;
+  min-height: 0;
+  padding: 16px;
+}
+
+.kb-browse-tree { display: grid; gap: 10px; min-width: 0; align-content: start; }
+.kb-browse-scope { display: flex; align-items: center; gap: 8px; }
+.kb-browse-scope-label { color: var(--fg-3); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+
+.kb-browse-scope select {
+  flex: 1;
+  padding: 6px 8px;
+  color: var(--fg-1);
+  font-size: 12.5px;
+  background: var(--bg-0);
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+}
+
+.kb-browse-detail {
+  min-width: 0;
+  overflow-y: auto;
+  padding: 18px 20px;
+  background: var(--bg-1);
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+}
+
+.kb-browse-hint { margin: 0; color: var(--fg-3); font-size: 12.5px; line-height: 1.7; }
+.kb-browse-document { display: grid; gap: 14px; min-width: 0; }
+.kb-browse-document-head { display: flex; align-items: flex-start; gap: 10px; }
+.kb-browse-document-icon { display: grid; place-items: center; margin-top: 2px; color: var(--fg-3); }
+.kb-browse-document h1 { margin: 0; color: var(--fg-0); font-size: 19px; font-weight: 600; letter-spacing: -.02em; }
+.kb-browse-document-path { margin: 2px 0 0; color: var(--fg-3); font-family: var(--font-mono); font-size: 11px; }
+
+.kb-browse-pills { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; }
+
+.kb-browse-pill {
+  display: flex;
+  gap: 5px;
+  padding: 3px 8px;
+  font-size: 11px;
+  background: var(--bg-2);
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+}
+
+.kb-browse-pill dt { color: var(--fg-3); }
+.kb-browse-pill dd { margin: 0; color: var(--fg-1); }
+
+@media (max-width: 900px) {
+  /* One column: the tree sits above the document rather than squeezing
+     both into an unreadable width. */
+  .kb-browse-layout { grid-template-columns: minmax(0, 1fr); overflow-y: auto; }
+  .kb-browse-detail { overflow: visible; }
+}
