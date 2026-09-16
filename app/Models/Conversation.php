@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use App\Support\Chat\ConversationImportance;
 use App\Support\TenantContext;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -17,6 +18,16 @@ class Conversation extends Model
         'user_id',
         'title',
         'project_key',
+        'chat_folder_id',
+        'pinned_at',
+        'archived_at',
+        'importance',
+    ];
+
+    protected $casts = [
+        'pinned_at' => 'datetime',
+        'archived_at' => 'datetime',
+        'importance' => ConversationImportance::class,
     ];
 
     /**
@@ -40,6 +51,16 @@ class Conversation extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    /**
+     * The folder this session is filed under, if any. Null = "unfiled",
+     * which is the default and also what a folder delete leaves behind
+     * (nullOnDelete — never a cascade).
+     */
+    public function folder(): BelongsTo
+    {
+        return $this->belongsTo(ChatFolder::class, 'chat_folder_id');
     }
 
     public function messages(): HasMany
