@@ -111,6 +111,31 @@ class KbIngestCommandTest extends TestCase
         $this->assertSame(1, KnowledgeDocument::count());
     }
 
+    /**
+     * v8.36 / PR #479 Copilot review round 3 — `KbIngestController` and
+     * `ListFolderFilesStep` already reject a generated-asset source path
+     * (`.artifacts/`, `{x}.ocr/`) before a row is ever created. `kb:ingest`
+     * had no such guard: an operator (or a script) pointing it at the store's
+     * own converted output would self-ingest it, composing a nested artifact
+     * one level deeper under itself. The check runs before any disk read —
+     * the file must never even be opened.
+     */
+    public function test_refuses_a_generated_asset_path_as_a_source(): void
+    {
+        Storage::fake('kb');
+        Storage::disk('kb')->put('.artifacts/default/eng/docs/report.md.versions/'.str_repeat('a', 64).'.md', '# converted');
+        config()->set('kb.sources.disk', 'kb');
+        config()->set('kb.sources.path_prefix', '');
+
+        $this->artisan('kb:ingest', [
+            'path' => '.artifacts/default/eng/docs/report.md.versions/'.str_repeat('a', 64).'.md',
+        ])
+            ->expectsOutputToContain('generated-asset directory')
+            ->assertFailed();
+
+        $this->assertSame(0, KnowledgeDocument::count());
+    }
+
     public function test_fails_cleanly_when_file_missing(): void
     {
         Storage::fake('kb');

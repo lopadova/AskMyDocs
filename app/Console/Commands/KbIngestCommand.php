@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Services\Kb\DocumentIngestor;
+use App\Support\KbPath;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Storage;
 
@@ -23,6 +24,21 @@ class KbIngestCommand extends Command
         $disk = (string) ($this->option('disk') ?: config('kb.sources.disk', 'kb'));
         $prefix = (string) config('kb.sources.path_prefix', '');
         $fullPath = ltrim($prefix.'/'.ltrim($relativePath, '/'), '/');
+
+        // v8.36 / ADR 0029 §6 — the converters' own output (`{source}.ocr/`,
+        // `.artifacts/`) is never a source: `KbIngestController` and
+        // `ListFolderFilesStep` already reject it before a row is ever
+        // created (accepting it would let a caller re-ingest a recorded run
+        // or artifact and self-ingest it). This single-file CLI had no such
+        // guard — checked here, before any disk read, so the rejection is a
+        // clean one-line error (R14) instead of the RuntimeException
+        // `ConversionArtifactStore::pathFor()` now throws as the last-resort
+        // guard every artifact-path composition shares.
+        if (KbPath::isGeneratedAsset($fullPath)) {
+            $this->error("Path [{$fullPath}] is inside a generated-asset directory (.ocr/ or .artifacts/) and cannot be ingested as a source.");
+
+            return self::FAILURE;
+        }
 
         if (! Storage::disk($disk)->exists($fullPath)) {
             $this->error("Markdown file not found on disk [{$disk}]: {$fullPath}");

@@ -1907,6 +1907,39 @@ MD;
         $store->pathFor('t', 'p', '../outside.md', str_repeat('a', 64));
     }
 
+    /**
+     * v8.36 / PR #479 Copilot review round 3 — `pathFor()` is the shared
+     * choke point every caller (fresh ingest, identical re-ingest,
+     * `kb:artifacts-backfill`) composes the final artifact path through. A
+     * `$sourcePath` inside a generated-asset subtree — the store's own
+     * converted output, or an OCR run/figures directory — must never be
+     * accepted as a source to publish an artifact FOR: doing so would nest
+     * another artifact tree one level deeper under itself.
+     */
+    public function test_path_for_refuses_a_source_path_inside_a_generated_asset_subtree(): void
+    {
+        $store = app(ConversionArtifactStore::class);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('generated-asset directory');
+        $store->pathFor('t', 'p', '.artifacts/t/p/docs/report.md.versions/'.str_repeat('a', 64).'.md', str_repeat('b', 64));
+    }
+
+    /**
+     * Only `$sourcePath` is checked, never the prefix/root: a `.ocr/`
+     * segment belongs to the same generated-asset family as `.artifacts/`
+     * and is refused too, distinctly from `rootFor()`'s unrelated reserved-
+     * segment check on the prefix (`DocumentVersionArtifactsTest`).
+     */
+    public function test_path_for_refuses_a_source_path_inside_an_ocr_run_directory(): void
+    {
+        $store = app(ConversionArtifactStore::class);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('generated-asset directory');
+        $store->pathFor('t', 'p', 'scans/report.pdf.ocr/'.str_repeat('a', 64).'/result.json', str_repeat('b', 64));
+    }
+
     public function test_an_identical_re_ingest_is_a_no_op_that_keeps_one_artifact(): void
     {
         config(['kb.conversion_artifacts.enabled' => true]);

@@ -389,12 +389,29 @@ final class ConversionArtifactStore
     /**
      * Disk-relative final path of a version's artifact.
      *
-     * @throws RuntimeException when the composed path escapes the artifact root
+     * @throws RuntimeException when the composed path escapes the artifact
+     *     root, or `$sourcePath` itself lies inside a generated-asset
+     *     subtree (`.artifacts/`, `{x}.ocr/`) — v8.36 / PR #479 Copilot
+     *     review round 3. `KbIngestController` and `ListFolderFilesStep`
+     *     already reject those with `KbPath::isGeneratedAsset()` before a
+     *     row is ever created, but `kb:ingest` (the single-file CLI) reaches
+     *     `DocumentIngestor::ingestMarkdown()` — and this method — with no
+     *     such guard: it could ingest the store's own converted output
+     *     (`.artifacts/.../*.md`) as if it were a fresh source, composing a
+     *     path that nests another artifact tree one level deeper under
+     *     itself. Checked here, the shared choke point every caller
+     *     (fresh ingest, identical re-ingest, `kb:artifacts-backfill`)
+     *     composes the final artifact path through, closes the gap for all
+     *     of them regardless of which entry point let the source path in —
+     *     not only the one CLI command this round's finding named.
      */
     public function pathFor(string $tenantId, string $projectKey, string $sourcePath, string $versionHash, string $prefix = ''): string
     {
         if (preg_match('/^[a-f0-9]{64}$/', $versionHash) !== 1) {
             throw new RuntimeException('ConversionArtifactStore: version hash must be 64 lowercase hex chars.');
+        }
+        if (KbPath::isGeneratedAsset($sourcePath)) {
+            throw new RuntimeException('ConversionArtifactStore: source path is inside a generated-asset directory (.ocr/ or .artifacts/) and cannot be published as an artifact.');
         }
         $root = $this->rootFor($prefix);
         $path = KbPath::normalize(sprintf(
