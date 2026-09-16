@@ -14,7 +14,7 @@ import {
 } from './chat.api';
 import { useChatStore } from './chat.store';
 import { useAuthStore } from '../../lib/auth-store';
-import { selectCurrentHash, useTeamStore } from '../../lib/team-store';
+import { useTeamStore } from '../../lib/team-store';
 import { useAgentChat, type UseAgentChatResult } from './use-agent-chat';
 import {
     useRealtimeAgent,
@@ -68,14 +68,15 @@ export interface UseChatSessionOptions {
 export interface UseChatSessionResult {
     // Scope + identity.
     activeId: number | null;
-    teamHash: string;
     activeConversation: Conversation | null;
+    /** False when `activeId` is set but the row is in neither cache. */
+    activeConversationKnown: boolean;
+    /** Exposed for assertions; surfaces read `activeConversation` instead. */
     conversationsQuery: UseQueryResult<Conversation[]>;
     projectKey: string | null;
     projectLabel: string;
     projectScopeValue: string | null;
     teamProjectKeys: string[];
-    isAllProjects: boolean;
     headerMeta: string;
     canViewKb: boolean;
 
@@ -91,6 +92,7 @@ export interface UseChatSessionResult {
     // Composer inputs.
     filters: FilterState;
     setFilters: React.Dispatch<React.SetStateAction<FilterState>>;
+    /** Exposed for assertions; the turn engine consumes it internally. */
     effectiveFilters: FilterState;
     collections: ChatCollectionOption[];
     liveSources: LiveSourceCatalog | undefined;
@@ -180,7 +182,6 @@ export function useChatSession({ nav }: UseChatSessionOptions): UseChatSessionRe
     // conversation, same as the BE contract has always allowed.
     const teams = useTeamStore((s) => s.teams);
     const currentTeam = useTeamStore((s) => s.currentTeam);
-    const teamHash = useTeamStore(selectCurrentHash) ?? '';
     const activeTeam = teams.find((t) => t.tenant_id === currentTeam);
     // Reachable projects in the ACTIVE TEAM (R18 — the real membership
     // domain from /api/auth/me, never a literal list). The DISPLAY list is
@@ -237,8 +238,28 @@ export function useChatSession({ nav }: UseChatSessionOptions): UseChatSessionRe
         queryKey: ['conversations'],
         queryFn: () => chatApi.listConversations(),
     });
+    /**
+     * The open session, resolved across BOTH cached slices.
+     *
+     * `['conversations']` holds the ACTIVE slice only (the server excludes
+     * archived rows by default), so opening a thread from the Archived
+     * drawer would leave this null — and then the header shows
+     * "Session #12" instead of the title, the project scope reads as "all
+     * projects" for a project-bound thread, and `maybeGenerateTitle` sees
+     * no title and overwrites the user's with a fresh LLM one.
+     *
+     * `known` is the distinction that matters: null means "not in either
+     * cache", which is NOT the same as "has no title" or "has no project".
+     * Anything destructive must branch on `known`, never on nullish data.
+     */
+    const archivedCache = qc.getQueryData<Conversation[]>(['conversations', 'archived']);
     const activeConversation =
-        activeId !== null ? conversationsQuery.data?.find((c) => c.id === activeId) ?? null : null;
+        activeId !== null
+            ? conversationsQuery.data?.find((c) => c.id === activeId)
+                ?? archivedCache?.find((c) => c.id === activeId)
+                ?? null
+            : null;
+    const activeConversationKnown = activeId === null || activeConversation !== null;
 
     // Effective project scope. For an EXISTING conversation the bound
     // `conversations.project_key` is authoritative (the BE scopes every
@@ -301,8 +322,18 @@ export function useChatSession({ nav }: UseChatSessionOptions): UseChatSessionRe
         if (titleRequestedRef.current.has(id)) {
             return;
         }
-        const list = qc.getQueryData<Conversation[]>(['conversations']);
-        const current = list?.find((c) => c.id === id)?.title;
+        // Fail CLOSED on an unknown row. This used to read the title out of
+        // the cache and treat `undefined` as "untitled" — so a session that
+        // simply was not in the active slice (an archived one, or a cold
+        // deep link) got its user-chosen title overwritten by a real LLM
+        // call. Absence of evidence is not evidence of absence.
+        const row =
+            qc.getQueryData<Conversation[]>(['conversations'])?.find((c) => c.id === id)
+            ?? qc.getQueryData<Conversation[]>(['conversations', 'archived'])?.find((c) => c.id === id);
+        if (row === undefined) {
+            return;
+        }
+        const current = row.title;
         if (current != null && current.trim() !== '') {
             return;
         }
@@ -534,9 +565,15 @@ export function useChatSession({ nav }: UseChatSessionOptions): UseChatSessionRe
         }
         try {
             const created = await chatApi.createConversation(projectKey);
-            qc.setQueryData<Conversation[]>(['conversations'], (old) =>
-                old ? [created, ...old] : [created],
-            );
+            // R25: dedupe by the SERVER id before prepending. A refetch that
+            // resolves between the POST and this write (the onFinish
+            // invalidation, or the sidebar's own refresh) already holds this
+            // row, and an undeduped prepend then renders two components with
+            // the same id — a real regression, not flake.
+            qc.setQueryData<Conversation[]>(['conversations'], (old) => [
+                created,
+                ...(old ?? []).filter((c) => c.id !== created.id),
+            ]);
             nav.toConversation(created.id);
             return created.id;
         } catch {
@@ -681,9 +718,11 @@ export function useChatSession({ nav }: UseChatSessionOptions): UseChatSessionRe
             // Optimistically prepend the new conversation row to the
             // sidebar list so the user sees it immediately; the next
             // invalidate refreshes ordering.
-            qc.setQueryData<Conversation[]>(['conversations'], (old) =>
-                old ? [result.conversation, ...old] : [result.conversation],
-            );
+            // Same R25 dedupe as requireConversation above.
+            qc.setQueryData<Conversation[]>(['conversations'], (old) => [
+                result.conversation,
+                ...(old ?? []).filter((c) => c.id !== result.conversation.id),
+            ]);
             nav.toConversation(result.conversation.id);
         } catch (err) {
             // Branch is a non-critical action — log and let the user
@@ -725,14 +764,13 @@ export function useChatSession({ nav }: UseChatSessionOptions): UseChatSessionRe
 
     return {
         activeId,
-        teamHash,
         activeConversation,
+        activeConversationKnown,
         conversationsQuery,
         projectKey,
         projectLabel,
         projectScopeValue,
         teamProjectKeys,
-        isAllProjects,
         headerMeta,
         canViewKb,
 

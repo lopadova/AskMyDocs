@@ -198,7 +198,6 @@ describe('useChatSession — project scope', () => {
                 'engineering',
             ]),
         );
-        expect(result.current.isAllProjects).toBe(true);
         expect(result.current.projectKey).toBeNull();
     });
 
@@ -234,6 +233,67 @@ describe('useChatSession — project scope', () => {
         const { result } = harness();
         await waitFor(() => expect(result.current.projectKey).toBe('engineering'));
         expect(result.current.effectiveFilters.project_keys).toBeUndefined();
+    });
+});
+
+describe('useChatSession — an archived session opened by URL', () => {
+    it('resolves the session from the archived cache, not as an unknown row', async () => {
+        // ['conversations'] holds the ACTIVE slice only, so a thread opened
+        // from the Archived drawer would otherwise be invisible to the hook.
+        const archived = conversation({ id: 7, title: 'Old laptop request', archived_at: 'x' });
+        vi.mocked(chatApi.listConversations).mockResolvedValue([]);
+        routeParams = { conversationId: '7' };
+
+        const { result, client } = harness();
+        client.setQueryData(['conversations', 'archived'], [archived]);
+
+        await waitFor(() => expect(result.current.activeConversation?.id).toBe(7));
+        expect(result.current.activeConversationKnown).toBe(true);
+        // The bound project is preserved, so the scope does not silently
+        // widen to "all projects".
+        expect(result.current.projectKey).toBe('engineering');
+    });
+
+    it('never auto-titles a session it cannot see in either cache', async () => {
+        // Regression: the old guard read the title out of the active slice
+        // and treated `undefined` as "untitled", so an archived or
+        // cold-deep-linked session had its title overwritten by a real LLM
+        // call on the next settled turn.
+        const generateTitle = vi
+            .spyOn(chatApi, 'generateTitle')
+            .mockResolvedValue({ title: 'Regenerated' });
+        vi.mocked(chatApi.listConversations).mockResolvedValue([]);
+        routeParams = { conversationId: '7' };
+
+        const { result } = harness();
+        await waitFor(() => expect(result.current.activeId).toBe(7));
+        expect(result.current.activeConversationKnown).toBe(false);
+
+        await act(async () => {
+            agentOptions.onFinish?.();
+        });
+
+        expect(generateTitle).not.toHaveBeenCalled();
+    });
+
+    it('still auto-titles a known session whose title is empty', async () => {
+        // The paired assertion: failing closed must not disable the feature.
+        const generateTitle = vi
+            .spyOn(chatApi, 'generateTitle')
+            .mockResolvedValue({ title: 'Generated' });
+        vi.mocked(chatApi.listConversations).mockResolvedValue([
+            conversation({ id: 7, title: null }),
+        ]);
+        routeParams = { conversationId: '7' };
+
+        const { result } = harness();
+        await waitFor(() => expect(result.current.activeConversationKnown).toBe(true));
+
+        await act(async () => {
+            agentOptions.onFinish?.();
+        });
+
+        await waitFor(() => expect(generateTitle).toHaveBeenCalledWith(7));
     });
 });
 
@@ -275,6 +335,27 @@ describe('useChatSession — deferred send queue', () => {
                 await result.current.handleSend('ciao');
             }),
         ).rejects.toThrow('transport down');
+    });
+
+    it('does not duplicate a created session already present in the cache', async () => {
+        // R25: the prepend must dedupe by the SERVER id, or a refetch that
+        // resolved first leaves two rows with the same id.
+        const created = conversation({ id: 42, title: null });
+        // The list ALREADY contains the row the POST is about to return —
+        // the refetch-resolved-first race.
+        vi.mocked(chatApi.listConversations).mockResolvedValue([created]);
+        vi.spyOn(chatApi, 'createConversation').mockResolvedValue(created);
+        const { result, client } = harness();
+        await waitFor(() =>
+            expect(client.getQueryData<Conversation[]>(['conversations'])).toHaveLength(1),
+        );
+
+        await act(async () => {
+            await result.current.requireConversation();
+        });
+
+        const cached = client.getQueryData<Conversation[]>(['conversations']) ?? [];
+        expect(cached.filter((c) => c.id === 42)).toHaveLength(1);
     });
 
     it('returns null and stays on a new chat when conversation creation fails', async () => {
