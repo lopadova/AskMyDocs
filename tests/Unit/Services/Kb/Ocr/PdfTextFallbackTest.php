@@ -99,6 +99,34 @@ final class PdfTextFallbackTest extends TestCase
         $this->assertSame($before, glob(sys_get_temp_dir().'/kb_pdf_*') ?: [], 'no temporary PDF is left behind');
     }
 
+    /**
+     * PR #492 Copilot round-6 — `Process` buffers ALL stdout in memory until
+     * `getOutput()` is called, and the input byte/page caps bound the SOURCE
+     * PDF, not what a pathological content stream (a decompression-bomb
+     * style PDF, well within the upload cap) can expand INTO as extracted
+     * text. A run whose output crosses `kb.pdf.pdftotext_max_output_bytes`
+     * is refused the same deterministic way a timeout is — never "here is a
+     * truncated document" and never a generic error a job retries — and the
+     * temporary copy is still removed.
+     */
+    public function test_output_over_the_configured_cap_is_a_terminal_refusal_not_a_truncated_document(): void
+    {
+        config([
+            'kb.pdf.pdftotext_bin' => $this->stub("printf 'far more than ten bytes of extracted text right here\\f'"),
+            'kb.pdf.pdftotext_max_output_bytes' => 10,
+        ]);
+        $before = glob(sys_get_temp_dir().'/kb_pdf_*') ?: [];
+
+        try {
+            (new PdfTextFallback)->textPages('%PDF-1.4 bomb');
+            $this->fail('output over the cap must be refused');
+        } catch (OcrLimitExceededException $e) {
+            $this->assertSame('output_too_large', $e->reason);
+            $this->assertStringContainsString('KB_PDFTOTEXT_MAX_OUTPUT_BYTES', $e->getMessage());
+        }
+        $this->assertSame($before, glob(sys_get_temp_dir().'/kb_pdf_*') ?: [], 'no temporary PDF is left behind');
+    }
+
     private function stub(string $script): string
     {
         $path = tempnam(sys_get_temp_dir(), 'pdftotext_stub_');

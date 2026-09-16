@@ -77,7 +77,9 @@ final class PdfTextFallback
      * @throws ProcessRuntimeException    when the `pdftotext` binary is missing
      *                                    on PATH OR fails non-zero on the input.
      * @throws OcrLimitExceededException  when the run outlives `kb.pdf.pdftotext_timeout`
-     *                                    (`run_too_long` — deterministic, never retried).
+     *                                    (`run_too_long`) or its buffered output crosses
+     *                                    `kb.pdf.pdftotext_max_output_bytes`
+     *                                    (`output_too_large`) — both deterministic, never retried.
      * @throws \RuntimeException          when the temp file required for the
      *                                    run can't be created/written.
      */
@@ -97,10 +99,30 @@ final class PdfTextFallback
                 throw new \RuntimeException('Failed to write temporary PDF file for pdftotext fallback');
             }
             $timeout = max(1, (int) config('kb.pdf.pdftotext_timeout', 60));
+            $maxOutputBytes = max(1, (int) config('kb.pdf.pdftotext_max_output_bytes', 52428800));
             $process = new Process([(string) config('kb.pdf.pdftotext_bin', 'pdftotext'), '-layout', '-enc', 'UTF-8', $tmp, '-']);
             $process->setTimeout($timeout);
+            // PR #492 Copilot round-6 — `Process` buffers ALL stdout in
+            // memory until `getOutput()` is called; the upload/input byte
+            // cap bounds the SOURCE PDF, not what a pathological content
+            // stream (a decompression bomb, well within that cap) can
+            // expand INTO as extracted text. Counted incrementally from
+            // the callback so the worker is never asked to hold the whole
+            // runaway stream before this cap can act on it.
+            $outputBytes = 0;
+            $exceeded = false;
+            $overOutputCap = function (string $type, string $buffer) use (&$outputBytes, $maxOutputBytes, &$exceeded, $process): void {
+                if ($type !== Process::OUT || $exceeded) {
+                    return;
+                }
+                $outputBytes += strlen($buffer);
+                if ($outputBytes > $maxOutputBytes) {
+                    $exceeded = true;
+                    $process->stop(1);
+                }
+            };
             try {
-                $process->mustRun();
+                $process->mustRun($overOutputCap);
             } catch (ProcessTimedOutException) {
                 // Terminal: the same bytes would time out again. The same
                 // `run_too_long` refusal an OCR run past its budget raises,
@@ -110,6 +132,29 @@ final class PdfTextFallback
                     $timeout,
                     strlen($bytes),
                 ), 'run_too_long');
+            } catch (\Throwable $e) {
+                // stop() above terminates the process, which mustRun()
+                // surfaces as a generic failure — swallowed here and
+                // reclassified below into the SAME deterministic refusal
+                // the timeout raises, never a truncated document silently
+                // handed to the caller. A failure unrelated to the cap
+                // propagates as-is.
+                if (! $exceeded) {
+                    throw $e;
+                }
+            }
+            if ($exceeded) {
+                // Reached either from the catch above, or — a short-lived
+                // process can exit (and mustRun() return normally) before
+                // stop() has any observable effect — straight from a
+                // successful mustRun(): the cap was still crossed either
+                // way, and the caller must never receive a truncated
+                // stream as if it were the whole document's text.
+                throw new OcrLimitExceededException(sprintf(
+                    'pdftotext output exceeded %d bytes (KB_PDFTOTEXT_MAX_OUTPUT_BYTES) on a %d-byte PDF — refused, nothing is extracted or OCR\'d.',
+                    $maxOutputBytes,
+                    strlen($bytes),
+                ), 'output_too_large');
             }
             $text = $process->getOutput();
             $pages = preg_split("/\f/", $text);

@@ -452,6 +452,13 @@ return [
         // indefinitely. A run past it is the deterministic `run_too_long`
         // refusal, never a retry and never a silent hand-off to OCR.
         'pdftotext_timeout' => (int) env('KB_PDFTOTEXT_TIMEOUT', 60),
+        // PR #492 Copilot round-6 — `Process` buffers ALL stdout in memory
+        // until `getOutput()` is called, and the input byte/page caps bound
+        // the SOURCE PDF, not what a pathological content stream (a
+        // decompression-bomb style PDF, well within the upload cap) can
+        // expand INTO as extracted text. Bounded independently, refused the
+        // same deterministic way a timeout is (`output_too_large`).
+        'pdftotext_max_output_bytes' => (int) env('KB_PDFTOTEXT_MAX_OUTPUT_BYTES', 52428800), // 50 MiB of extracted text
     ],
 
     'ocr' => [

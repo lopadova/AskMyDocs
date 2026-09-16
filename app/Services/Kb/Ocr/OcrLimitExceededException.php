@@ -18,7 +18,7 @@ use RuntimeException;
  * estimator and the status surfaces reuse (`too_many_pages` |
  * `too_many_bytes` | `pages_uncountable` | `unrecognised_bytes` |
  * `multi_frame_image` | `rendered_page_too_large` | `run_too_long` |
- * `figure_budget_exceeded`).
+ * `figure_budget_exceeded` | `output_too_large`).
  */
 final class OcrLimitExceededException extends RuntimeException
 {
