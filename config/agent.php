@@ -10,6 +10,12 @@ return [
         'router_catalog_limit' => (int) env('AGENT_ROUTER_CATALOG_LIMIT', 40),
         'candidate_limit' => (int) env('AGENT_PLANNER_CANDIDATE_LIMIT', 8),
     ],
+    'grounding' => [
+        // Agent answers are assembled from evidence-bound claims. This remains
+        // configurable only as an emergency rollback; production defaults to
+        // fail closed for every agent surface.
+        'enabled' => (bool) env('AGENT_CLAIM_GROUNDING_ENABLED', true),
+    ],
     'events' => [
         'poll_ms' => (int) env('AGENT_EVENT_POLL_MS', 100),
         'stream_seconds' => (float) env('AGENT_EVENT_STREAM_SECONDS', 25),

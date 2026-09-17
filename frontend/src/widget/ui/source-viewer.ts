@@ -21,6 +21,7 @@ interface ViewerCitation extends SourceCitation {
     document_id: number;
     origins: string[];
     chunks: SourceCitationChunk[];
+    claims: Array<{ text: string; quote: string; evidence_hash: string }>;
 }
 
 /**
@@ -136,6 +137,7 @@ function mergeCitations(citations: SourceCitation[]): ViewerCitation[] {
                 document_id: id,
                 origins: origin ? [origin] : [],
                 chunks: [...chunks],
+                claims: Array.isArray(citation.claims) ? citation.claims : [],
             });
             continue;
         }
@@ -146,6 +148,11 @@ function mergeCitations(citations: SourceCitation[]): ViewerCitation[] {
             if (!known.has(key)) {
                 current.chunks.push(chunk);
                 known.add(key);
+            }
+        }
+        for (const claim of Array.isArray(citation.claims) ? citation.claims : []) {
+            if (!current.claims.some((item) => item.evidence_hash === claim.evidence_hash && item.text === claim.text)) {
+                current.claims.push(claim);
             }
         }
     }
@@ -436,22 +443,30 @@ export class SourceViewer {
         const nodes: Node[] = [];
 
         const evidence = citation.chunks.filter((chunk) => typeof chunk.snippet === 'string' && chunk.snippet.trim() !== '');
-        if (evidence.length > 0) {
+        if (evidence.length > 0 || citation.claims.length > 0) {
             const box = document.createElement('section');
             box.className = 'amd-source-evidence';
             box.dataset.testid = 'askmydocs-widget-source-evidence';
             const heading = document.createElement('h3');
             heading.textContent = evidence.length === 1 ? 'Passaggio usato nella risposta' : 'Passaggi usati nella risposta';
             box.append(heading);
+            const claimByHash = new Map(citation.claims.map((claim) => [claim.evidence_hash, claim]));
             for (const chunk of evidence) {
                 const quote = document.createElement('blockquote');
+                const claim = chunk.evidence_hash ? claimByHash.get(chunk.evidence_hash) : undefined;
+                if (claim) {
+                    const claimText = document.createElement('span');
+                    claimText.className = 'amd-source-evidence-heading';
+                    claimText.textContent = `Affermazione: ${claim.text}`;
+                    quote.append(claimText);
+                }
                 if (chunk.heading) {
                     const chunkHeading = document.createElement('span');
                     chunkHeading.className = 'amd-source-evidence-heading';
                     chunkHeading.textContent = chunk.heading;
                     quote.append(chunkHeading);
                 }
-                quote.append(document.createTextNode(chunk.snippet as string));
+                quote.append(document.createTextNode(claim?.quote || chunk.snippet as string));
                 box.append(quote);
             }
             nodes.push(box);

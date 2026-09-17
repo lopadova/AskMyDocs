@@ -60,6 +60,7 @@ final class AgentResultProjector
                     'completeness' => $answer->completeness,
                     'limitations' => $answer->limitations,
                     'locale' => $answer->locale,
+                    'grounding' => $answer->grounding,
                     'agent_artifact' => $answer->artifact,
                     'requires_selection' => $answer->requiresSelection,
                 ],
@@ -105,6 +106,7 @@ final class AgentResultProjector
                         'completeness' => $answer->completeness,
                         'limitations' => $answer->limitations,
                         'locale' => $answer->locale,
+                        'grounding' => $answer->grounding,
                     ]) ?? [],
                 ],
             );

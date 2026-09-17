@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { type ReactNode } from 'react';
+import { ExternalLink, XIcon } from 'lucide-react';
 
 import {
     Dialog,
@@ -11,6 +12,7 @@ import {
 } from '@/components/ui/dialog';
 import { Markdown } from '../../lib/markdown';
 import { chatApi, type MessageCitation } from './chat.api';
+import { Button } from '@/components/Button';
 
 export interface CitationDocumentModalProps {
     /**
@@ -71,6 +73,7 @@ export function CitationDocumentModal({ citation, onClose, onOpenInKb }: Citatio
     const state = isLoading ? 'loading' : isError ? 'error' : empty ? 'empty' : ready ? 'ready' : 'idle';
     const project = citation.project_key ?? data?.project_key ?? undefined;
     const origin = citation.origin ?? 'primary';
+    const claims = Array.isArray(citation.claims) ? citation.claims : [];
 
     // Defensive: ChatView + CitationsPopover only open a citation with a
     // concrete document_id; render nothing rather than a blank modal if a
@@ -115,23 +118,18 @@ export function CitationDocumentModal({ citation, onClose, onOpenInKb }: Citatio
                             {ORIGIN_LABEL[origin] ?? origin}
                         </span>
                         <DialogClose asChild>
-                            <button
-                                type="button"
+                            <Button
+                                variant="quiet"
+                                size="sm"
+                                iconOnly
                                 data-testid="chat-citation-modal-close"
                                 aria-label="Close source document"
                                 style={{
                                     marginLeft: 'auto',
-                                    cursor: 'pointer',
-                                    background: 'transparent',
-                                    border: 'none',
-                                    color: 'var(--fg-3)',
-                                    fontSize: 16,
-                                    lineHeight: 1,
-                                    padding: 4,
                                 }}
                             >
-                                ✕
-                            </button>
+                                <XIcon aria-hidden size={16} />
+                            </Button>
                         </DialogClose>
                     </div>
                     <DialogTitle data-testid="chat-citation-modal-title">{title}</DialogTitle>
@@ -182,9 +180,22 @@ export function CitationDocumentModal({ citation, onClose, onOpenInKb }: Citatio
                         </div>
                     )}
                     {ready && !empty && (
-                        <div data-testid="chat-citation-modal-content">
-                            <Markdown source={content} project={project ?? undefined} />
-                        </div>
+                        <>
+                            {claims.length > 0 && (
+                                <section data-testid="chat-citation-modal-evidence" style={{ marginBottom: 16, padding: 12, border: '1px solid var(--panel-border)', borderRadius: 8, background: 'var(--bg-2)' }}>
+                                    <strong style={{ fontSize: 12 }}>Passaggio usato nella risposta</strong>
+                                    {claims.map((claim) => (
+                                        <blockquote key={`${claim.evidence_hash}:${claim.text}`} style={{ margin: '8px 0 0', paddingLeft: 10, borderLeft: '3px solid var(--accent)', fontSize: 13 }}>
+                                            <div style={{ marginBottom: 4 }}>{claim.text}</div>
+                                            <div style={{ color: 'var(--fg-2)' }}>{claim.quote}</div>
+                                        </blockquote>
+                                    ))}
+                                </section>
+                            )}
+                            <div data-testid="chat-citation-modal-content">
+                                <Markdown source={content} project={project ?? undefined} />
+                            </div>
+                        </>
                     )}
                 </div>
 
@@ -197,22 +208,15 @@ export function CitationDocumentModal({ citation, onClose, onOpenInKb }: Citatio
                             paddingTop: 10,
                         }}
                     >
-                        <button
-                            type="button"
+                        <Button
+                            variant="secondary"
+                            size="sm"
                             data-testid="chat-citation-modal-open-kb"
                             onClick={() => onOpenInKb(citation)}
-                            style={{
-                                cursor: 'pointer',
-                                padding: '6px 14px',
-                                borderRadius: 8,
-                                border: '1px solid var(--panel-border)',
-                                background: 'var(--bg-2)',
-                                color: 'var(--fg-1)',
-                                fontSize: 12.5,
-                            }}
+                            trailingIcon={<ExternalLink aria-hidden size={14} />}
                         >
-                            Open in Knowledge Base ↗
-                        </button>
+                            Open in Knowledge Base
+                        </Button>
                     </div>
                 )}
             </DialogContent>

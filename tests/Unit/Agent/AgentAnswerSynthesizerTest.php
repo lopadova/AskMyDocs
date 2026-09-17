@@ -9,6 +9,7 @@ use App\Agent\Artifacts\AgentTableArtifactFactory;
 use App\Agent\AgentExecutionContext;
 use App\Agent\AgentLoopOutcome;
 use App\Agent\Evidence\AgentEvidenceFactory;
+use App\Agent\Grounding\AgentClaimGroundingValidator;
 use App\Agent\Tools\AgentToolDefinition;
 use App\Ai\AiManager;
 use App\Ai\AiResponse;
@@ -18,6 +19,46 @@ use Tests\TestCase;
 
 final class AgentAnswerSynthesizerTest extends TestCase
 {
+    public function test_it_returns_a_cautious_uncited_answer_for_an_unattested_entity(): void
+    {
+        $evidence = app(AgentEvidenceFactory::class)->empty();
+        $evidence->addDocument([
+            'document_id' => 90,
+            'title' => 'Notifiche push',
+            'source_path' => 'manual/push.md',
+            'origin' => 'primary',
+            'evidence' => [[
+                'content' => 'Le notifiche push raggiungono i clienti nell’app.',
+                'evidence_hash' => 'push-hash',
+            ]],
+        ]);
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->once()->andReturn(new AiResponse(
+            content: '', provider: 'fake', model: 'fake-agent', toolCalls: [[
+                'name' => 'submit_agent_answer',
+                'arguments' => [
+                    'completeness' => 'complete',
+                    'claims' => [[
+                        'text' => 'Figo invia notifiche push ai clienti.',
+                        'quote' => 'Le notifiche push raggiungono i clienti nell’app.',
+                        'document_id' => 90,
+                        'tool_execution_id' => null,
+                        'evidence_hash' => 'push-hash',
+                    ]],
+                    'limitations' => [], 'requires_selection' => false, 'render_table' => false,
+                ],
+            ]],
+        ));
+
+        $answer = (new AgentAnswerSynthesizer($ai, app(WidgetPiiMasker::class), app(AgentTableArtifactFactory::class), app(AgentClaimGroundingValidator::class)))
+            ->synthesize('Figo e come funziona?', $this->context(), new AgentLoopOutcome('answer', $evidence, []));
+
+        $this->assertSame('insufficient', $answer->completeness);
+        $this->assertSame([], $answer->citations);
+        $this->assertStringContainsString('Figo', $answer->answer);
+        $this->assertSame('unattested_entity', $answer->grounding['reason']);
+    }
+
     public function test_selection_does_not_force_a_detail_result_into_a_table(): void
     {
         $evidence = app(AgentEvidenceFactory::class)->empty();
@@ -60,10 +101,11 @@ final class AgentAnswerSynthesizerTest extends TestCase
             toolCalls: [[
                 'name' => 'submit_agent_answer',
                 'arguments' => [
-                    'answer' => 'Tizio ha l’ordine **A-100**; contatto admin@example.com.',
                     'completeness' => 'complete',
-                    'document_ids' => [12, 999],
-                    'tool_execution_ids' => [55, 999],
+                    'claims' => [
+                        ['text' => 'Gli ordini pagati sono definitivi.', 'quote' => 'Gli ordini pagati sono definitivi.', 'document_id' => 12, 'tool_execution_id' => null, 'evidence_hash' => 'doc-hash'],
+                        ['text' => 'L’ordine A-100 è paid.', 'quote' => '"number":"A-100","status":"paid"', 'document_id' => null, 'tool_execution_id' => 55, 'evidence_hash' => hash('sha256', json_encode(['data' => ['number' => 'A-100', 'status' => 'paid', 'line_items' => [['id' => 'LINE-1', 'name' => 'First item'], ['id' => 'LINE-2', 'name' => 'Second item']]]], JSON_UNESCAPED_UNICODE))],
+                    ],
                     'limitations' => ['Non mostrare Bearer eyJabcdefghijk.abcdefghijklmnopqrstu'],
                     'requires_selection' => false,
                     'render_table' => false,
@@ -75,6 +117,7 @@ final class AgentAnswerSynthesizerTest extends TestCase
             $ai,
             app(WidgetPiiMasker::class),
             app(AgentTableArtifactFactory::class),
+            app(AgentClaimGroundingValidator::class),
         ))->synthesize(
             'Dammi il dettaglio dell’ordine selezionato',
             $this->context(),
@@ -122,10 +165,8 @@ final class AgentAnswerSynthesizerTest extends TestCase
             toolCalls: [[
                 'name' => 'submit_agent_answer',
                 'arguments' => [
-                    'answer' => 'Ho trovato più utenti con questo nome. Quale vuoi scegliere?',
                     'completeness' => 'complete',
-                    'document_ids' => [],
-                    'tool_execution_ids' => [56],
+                    'claims' => [],
                     'limitations' => [],
                     // The runtime ambiguity guard must override a mistaken model classification.
                     'requires_selection' => false,
@@ -138,6 +179,7 @@ final class AgentAnswerSynthesizerTest extends TestCase
             $ai,
             app(WidgetPiiMasker::class),
             app(AgentTableArtifactFactory::class),
+            app(AgentClaimGroundingValidator::class),
         ))->synthesize(
             'Cerca Riccardo Lorini',
             $this->context(),
@@ -182,10 +224,8 @@ final class AgentAnswerSynthesizerTest extends TestCase
             toolCalls: [[
                 'name' => 'submit_agent_answer',
                 'arguments' => [
-                    'answer' => "Ecco gli ultimi ordini:\n\n| ID | Stato | Totale |\n|---|---|---|\n| ORDER-100 | paid | 120 |\n| ORDER-101 | pending | 80 |",
                     'completeness' => 'complete',
-                    'document_ids' => [],
-                    'tool_execution_ids' => [57],
+                    'claims' => [],
                     'limitations' => [],
                     'requires_selection' => false,
                     'render_table' => true,
@@ -197,6 +237,7 @@ final class AgentAnswerSynthesizerTest extends TestCase
             $ai,
             app(WidgetPiiMasker::class),
             app(AgentTableArtifactFactory::class),
+            app(AgentClaimGroundingValidator::class),
         ))->synthesize(
             'Mostrami gli ultimi ordini',
             $this->context(),

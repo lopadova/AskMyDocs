@@ -346,6 +346,11 @@ export interface Citation {
     chunks_used?: number;
     origin?: 'primary' | 'related' | 'rejected' | string | null;
     chunks?: CitationChunkEvidence[];
+    claims?: Array<{
+        text: string;
+        quote: string;
+        evidence_hash: string;
+    }>;
 }
 
 export interface WidgetDocumentSection {

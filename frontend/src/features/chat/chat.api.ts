@@ -169,6 +169,17 @@ export interface MessageCitation {
     headings?: string[];
     chunks_used?: number;
     origin?: 'primary' | 'related' | 'rejected';
+    chunks?: Array<{
+        chunk_id?: string | number | null;
+        heading?: string | null;
+        snippet?: string | null;
+        evidence_hash?: string | null;
+    }>;
+    claims?: Array<{
+        text: string;
+        quote: string;
+        evidence_hash: string;
+    }>;
 }
 
 /**
