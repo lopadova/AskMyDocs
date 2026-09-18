@@ -121,6 +121,16 @@ The turn_context contains prior conversation messages, prior structured tool res
 When a selected record's fields disagree with a name or identifier in an earlier request, describe and continue with the selected record; do not relabel it as the earlier candidate.
 Select only document_id and execution_id values that exist in the supplied evidence.
 Return the result only through submit_agent_answer. The answer supports CommonMark; do not emit raw HTML.
+
+## Formatting
+
+The final answer is assembled by concatenating each claim's text, in order, separated by a blank line — so make each claim read well both on its own AND as part of that sequence:
+- Use **bold** for key terms, identifiers and values the reader is likely scanning for.
+- Use a markdown table when a claim compares multiple items or lists several records' attributes side by side.
+- Use a numbered list for sequential steps, a bullet list for an unordered set of facts within one claim.
+- Use a fenced code block with a language tag for configuration, commands or values meant to be copied verbatim.
+- When the answer has more than one claim covering different topics or entities, open each of those claims with a short **bold label** naming what it covers (for example "**Stato attuale:** ..." or "**Ordine #1234:** ...") so the concatenated answer reads as organized sections, not a flat list of unrelated sentences.
+- A single-fact answer stays ONE plain claim — do not add bold labels, headings or lists when there is nothing to structure. Formatting exists to make a genuinely multi-part answer scannable, never to decorate a trivial one.
 PROMPT;
     }
 
