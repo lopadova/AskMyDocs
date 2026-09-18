@@ -241,6 +241,84 @@ describe('AgentActivityBar', () => {
         expect(screen.getByRole('button', { name: 'Copiato: Parametri' })).toBeInTheDocument();
     });
 
+    it('shows the KB search query and results inside the matching activity event', async () => {
+        const kbEvent: AgentRunEvent = {
+            ...progressEvent,
+            sequence: 5,
+            type: 'tool.completed',
+            message: 'search_knowledge_base completato.',
+            data: {
+                tool: 'search_knowledge_base',
+                tool_kind: 'knowledge',
+                kb_debug: {
+                    surface: 'knowledge_base',
+                    tool_name: 'search_knowledge_base',
+                    tool_display_name: 'Knowledge base',
+                    status: 'ok',
+                    duration_ms: 88,
+                    query: 'SizeCharts manuale',
+                    response: { documents: [{ title: 'SizeCharts Manual' }] },
+                    error: null,
+                },
+            },
+        };
+
+        render(
+            <AgentActivityBar events={[progressEvent, kbEvent]} active={false} awaitingConfirmation={false} onCancel={() => undefined} onContinue={() => undefined}>
+                {(info) => <footer>{info}</footer>}
+            </AgentActivityBar>,
+        );
+
+        expect(screen.queryByText('Dettagli ricerca')).not.toBeInTheDocument();
+        fireEvent.click(await screen.findByRole('button', { name: 'Informazioni sulla risposta' }));
+        expect(screen.getByRole('dialog')).toBeInTheDocument();
+        expect(screen.getByText('Dettagli ricerca')).toBeInTheDocument();
+        expect(screen.getByText('SizeCharts manuale')).toBeInTheDocument();
+        expect(screen.getByText('ok · 88 ms')).toBeInTheDocument();
+        const response = screen.getByTestId('agent-mcp-debug-response');
+        expect(within(response).getByText('documents')).toBeInTheDocument();
+        expect(within(response).getByText('SizeCharts Manual')).toBeInTheDocument();
+    });
+
+    it('labels a cascading tool.started event for a KB search as "Searching documents", not "Calling API"', () => {
+        render(
+            <AgentActivityBar
+                events={[{
+                    ...progressEvent,
+                    type: 'tool.started',
+                    message: null,
+                    data: { tool: 'search_knowledge_base', tool_kind: 'knowledge', tool_display_name: 'Knowledge base' },
+                }]}
+                active
+                awaitingConfirmation={false}
+                onCancel={() => undefined}
+                onContinue={() => undefined}
+            />,
+        );
+
+        expect(screen.getByTestId('agent-activity-heading')).toHaveTextContent('Ricerca nei documenti');
+        expect(screen.getByRole('progressbar')).toHaveAttribute('data-kind', 'documents');
+    });
+
+    it('labels the catalog tool distinctly from a content search', () => {
+        render(
+            <AgentActivityBar
+                events={[{
+                    ...progressEvent,
+                    type: 'tool.started',
+                    message: null,
+                    data: { tool: 'list_knowledge_documents', tool_kind: 'catalog', tool_display_name: 'Document catalog' },
+                }]}
+                active
+                awaitingConfirmation={false}
+                onCancel={() => undefined}
+                onContinue={() => undefined}
+            />,
+        );
+
+        expect(screen.getByTestId('agent-activity-heading')).toHaveTextContent('Ricerca nel catalogo documenti');
+    });
+
     it('turns embedded JSON strings into navigable fields instead of escaped text', () => {
         const mcpEvent: AgentRunEvent = {
             ...progressEvent,

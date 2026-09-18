@@ -62,6 +62,8 @@ export function AgentActivityBar({
             seconds: 's rimanenti',
             events: 'eventi',
             mcpDetails: 'Dettagli chiamata MCP',
+            kbDetails: 'Dettagli ricerca',
+            query: 'Query',
             parameters: 'Parametri',
             response: 'Risposta',
             error: 'Errore',
@@ -84,6 +86,8 @@ export function AgentActivityBar({
             seconds: 's remaining',
             events: 'events',
             mcpDetails: 'MCP call details',
+            kbDetails: 'Search details',
+            query: 'Query',
             parameters: 'Parameters',
             response: 'Response',
             error: 'Error',
@@ -110,7 +114,9 @@ export function AgentActivityBar({
     const percent = activityPercent(latest, likely, completed, state);
     const stage = activityStage(latest, state, locale);
     const timelineEvents = events.filter((event) => (
-        (typeof event.message === 'string' && event.message !== '') || mcpDebugData(event) !== null
+        (typeof event.message === 'string' && event.message !== '')
+        || mcpDebugData(event) !== null
+        || kbDebugData(event) !== null
     ));
     const progressOffset = RING_CIRCUMFERENCE * (1 - percent / 100);
 
@@ -148,6 +154,7 @@ export function AgentActivityBar({
             <ol>
                 {timelineEvents.map((event) => {
                     const debug = mcpDebugData(event);
+                    const kbDebug = kbDebugData(event);
                     const eventState = event.type === 'run.failed' || event.type === 'run.cancelled'
                         ? 'failed'
                         : event.type === 'run.awaiting_confirmation'
@@ -160,7 +167,7 @@ export function AgentActivityBar({
                     return (
                         <li
                             key={event.sequence}
-                            className={debug ? 'agent-activity-event has-mcp-debug' : 'agent-activity-event'}
+                            className={debug || kbDebug ? 'agent-activity-event has-mcp-debug' : 'agent-activity-event'}
                             data-kind={eventStage.kind}
                         >
                             <span className="agent-activity-event-icon" aria-hidden="true">{stageIcon(eventStage.kind, 12)}</span>
@@ -220,6 +227,45 @@ export function AgentActivityBar({
                                                 <DebugJson
                                                     label={copy.error}
                                                     value={debug.error}
+                                                    variant="error"
+                                                    locale={locale}
+                                                    copyLabel={copy.copy}
+                                                    copiedLabel={copy.copied}
+                                                    copyFailedLabel={copy.copyFailed}
+                                                />
+                                            )}
+                                        </div>
+                                    </details>
+                                )}
+                                {kbDebug && (
+                                    <details className="agent-mcp-debug" data-testid={`agent-kb-debug-${event.sequence}`}>
+                                        <summary>
+                                            <span className="agent-mcp-debug-title">{copy.kbDetails}</span>
+                                            <span className="agent-mcp-debug-tool">{kbDebug.tool_display_name}</span>
+                                            <span className="agent-mcp-debug-status" data-status={kbDebug.status}>
+                                                {kbDebug.status} · {kbDebug.duration_ms} ms
+                                            </span>
+                                        </summary>
+                                        <div className="agent-mcp-debug-body">
+                                            <dl className="agent-mcp-debug-meta">
+                                                <div>
+                                                    <dt>{copy.query}</dt>
+                                                    <dd>{kbDebug.query ?? (locale === 'it' ? 'tutti i documenti' : 'all documents')}</dd>
+                                                </div>
+                                            </dl>
+                                            <DebugJson
+                                                label={copy.response}
+                                                value={kbDebug.response}
+                                                variant="response"
+                                                locale={locale}
+                                                copyLabel={copy.copy}
+                                                copiedLabel={copy.copied}
+                                                copyFailedLabel={copy.copyFailed}
+                                            />
+                                            {kbDebug.error != null && (
+                                                <DebugJson
+                                                    label={copy.error}
+                                                    value={kbDebug.error}
                                                     variant="error"
                                                     locale={locale}
                                                     copyLabel={copy.copy}
@@ -451,6 +497,15 @@ function activityStage(
                 detail: mcpDetail,
             };
         }
+        if (toolKind === 'knowledge' || toolKind === 'catalog') {
+            return {
+                kind: 'documents',
+                title: toolKind === 'catalog'
+                    ? (italian ? 'Ricerca nel catalogo documenti' : 'Searching the document catalog')
+                    : (italian ? 'Ricerca nei documenti' : 'Searching documents'),
+                detail: kbQueryDetail(event, italian),
+            };
+        }
 
         return {
             kind: 'api',
@@ -462,14 +517,18 @@ function activityStage(
         return {
             kind: 'analyzing',
             title: italian ? 'Analisi del risultato' : 'Analyzing result',
-            detail: toolKind === 'mcp' ? mcpDetail : toolName,
+            detail: toolKind === 'mcp'
+                ? mcpDetail
+                : (toolKind === 'knowledge' || toolKind === 'catalog') ? kbQueryDetail(event, italian) : toolName,
         };
     }
     if (event?.type === 'tool.failed') {
         return {
             kind: 'error',
             title: italian ? 'Chiamata non riuscita' : 'Call failed',
-            detail: toolKind === 'mcp' ? mcpDetail : toolName,
+            detail: toolKind === 'mcp'
+                ? mcpDetail
+                : (toolKind === 'knowledge' || toolKind === 'catalog') ? kbQueryDetail(event, italian) : toolName,
         };
     }
     if (event?.type.startsWith('retrieval.')) {
@@ -519,13 +578,22 @@ function stageIcon(kind: ActivityStageKind, size = 16): ReactNode {
     return <Icon.Activity size={size} />;
 }
 
-function toolKindFor(event: AgentRunEvent | undefined): 'api' | 'mcp' {
+function toolKindFor(event: AgentRunEvent | undefined): 'api' | 'mcp' | 'knowledge' | 'catalog' {
     const explicit = stringValue(event?.data.tool_kind);
-    if (explicit === 'mcp') return 'mcp';
+    if (explicit === 'mcp' || explicit === 'knowledge' || explicit === 'catalog') return explicit;
     if (mcpDebugDataForEvent(event) !== null) return 'mcp';
+    if (kbDebugDataForEvent(event) !== null) return 'knowledge';
     const name = stringValue(event?.data.tool);
 
     return name?.startsWith('mcp_') ? 'mcp' : 'api';
+}
+
+/** The query/catalog-filter text for a knowledge/catalog tool event, falling back to the tool's display name. */
+function kbQueryDetail(event: AgentRunEvent | undefined, italian: boolean): string {
+    const query = kbDebugDataForEvent(event)?.query;
+    if (query) return query;
+
+    return italian ? 'tutti i documenti' : 'all documents';
 }
 
 function toolNameFor(event: AgentRunEvent | undefined): string {
@@ -540,6 +608,10 @@ function toolNameFor(event: AgentRunEvent | undefined): string {
 
 function mcpDebugDataForEvent(event: AgentRunEvent | undefined): McpDebugData | null {
     return event ? mcpDebugData(event) : null;
+}
+
+function kbDebugDataForEvent(event: AgentRunEvent | undefined): KbDebugData | null {
+    return event ? kbDebugData(event) : null;
 }
 
 function stringValue(value: unknown): string | null {
@@ -594,6 +666,39 @@ function mcpDebugData(event: AgentRunEvent): McpDebugData | null {
         status: debug.status,
         duration_ms: debug.duration_ms,
         parameters: debug.parameters,
+        response: debug.response,
+        error: debug.error,
+    };
+}
+
+interface KbDebugData {
+    tool_name: string;
+    tool_display_name: string;
+    status: string;
+    duration_ms: number;
+    query: string | null;
+    response: unknown;
+    error: unknown;
+}
+
+/** Reads event.data.kb_debug — the search_knowledge_base/list_knowledge_documents counterpart of mcpDebugData(). */
+function kbDebugData(event: AgentRunEvent): KbDebugData | null {
+    const candidate = event.data.kb_debug;
+    if (candidate === null || typeof candidate !== 'object' || Array.isArray(candidate)) return null;
+    const debug = candidate as Record<string, unknown>;
+    if (
+        typeof debug.tool_name !== 'string'
+        || typeof debug.tool_display_name !== 'string'
+        || typeof debug.status !== 'string'
+        || typeof debug.duration_ms !== 'number'
+    ) return null;
+
+    return {
+        tool_name: debug.tool_name,
+        tool_display_name: debug.tool_display_name,
+        status: debug.status,
+        duration_ms: debug.duration_ms,
+        query: typeof debug.query === 'string' ? debug.query : null,
         response: debug.response,
         error: debug.error,
     };
