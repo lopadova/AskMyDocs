@@ -38,6 +38,7 @@ final class AgentBudgetTracker
             'evidence_bytes' => 0,
             'signatures' => [],
             'auto_extended' => false,
+            'consecutive_unproductive_searches' => 0,
         ], is_array($run->counters_json) ? $run->counters_json : []);
     }
 
@@ -61,6 +62,15 @@ final class AgentBudgetTracker
     {
         if ((int) $this->state['consecutive_errors'] >= $this->limit('consecutive_errors', 3)) {
             return AgentBudgetDecision::stop('consecutive_error_limit');
+        }
+        // Fixed regardless of investigation depth (NOT in DEPTH_SCALED_LIMITS
+        // — see recordKnowledgeSearchResult()): a higher depth should search
+        // MORE when each round is finding something, never search blindly
+        // longer once it demonstrably isn't. Only gates the knowledge tool —
+        // the planner may still pivot to an MCP/API tool instead.
+        if ($tool->kind === 'knowledge'
+            && (int) $this->state['consecutive_unproductive_searches'] >= $this->limit('consecutive_unproductive_searches', 3)) {
+            return AgentBudgetDecision::stop('unproductive_search_limit');
         }
         if ((int) $this->state['evidence_bytes'] >= $this->limit('evidence_bytes', 524288)) {
             return AgentBudgetDecision::stop('evidence_size_limit');
@@ -117,6 +127,24 @@ final class AgentBudgetTracker
         $this->state['consecutive_errors'] = $success
             ? 0
             : (int) $this->state['consecutive_errors'] + 1;
+        $this->persist();
+    }
+
+    /**
+     * Call after every knowledge-base search (the always-on initial one
+     * included) with whether it added at least one document the run didn't
+     * already have. Resets on a productive search, increments otherwise —
+     * `reserve()` stops the knowledge tool once this run of DIFFERENT
+     * queries in a row that all failed to surface anything new crosses
+     * `consecutive_unproductive_searches`. Distinct from
+     * `duplicate_call_limit`, which only catches the SAME query repeated;
+     * this catches N different guesses that are each individually useless.
+     */
+    public function recordKnowledgeSearchResult(bool $addedNewEvidence): void
+    {
+        $this->state['consecutive_unproductive_searches'] = $addedNewEvidence
+            ? 0
+            : (int) $this->state['consecutive_unproductive_searches'] + 1;
         $this->persist();
     }
 

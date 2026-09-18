@@ -130,6 +130,63 @@ final class AgentBudgetTrackerTest extends TestCase
         $this->assertTrue($decision->allowed());
     }
 
+    public function test_knowledge_tool_stops_after_the_configured_run_of_unproductive_searches(): void
+    {
+        config()->set('agent.limits.consecutive_unproductive_searches', 3);
+        $run = $this->makeRun(['consecutive_unproductive_searches' => 3]);
+
+        $decision = (new AgentBudgetTracker($run))->reserve($this->knowledgeTool(), ['query' => 'anything']);
+
+        $this->assertFalse($decision->allowed());
+        $this->assertSame('unproductive_search_limit', $decision->reason);
+    }
+
+    public function test_the_unproductive_search_brake_does_not_block_other_tool_kinds(): void
+    {
+        config()->set('agent.limits.consecutive_unproductive_searches', 3);
+        $run = $this->makeRun(['consecutive_unproductive_searches' => 3]);
+
+        // Same run, same exhausted counter, but a DIFFERENT (api) tool — the
+        // planner pivoting away from knowledge search must still be allowed.
+        $decision = (new AgentBudgetTracker($run))->reserve($this->tool(), []);
+
+        $this->assertTrue($decision->allowed());
+    }
+
+    public function test_recording_a_productive_search_resets_the_unproductive_counter(): void
+    {
+        $run = $this->makeRun(['consecutive_unproductive_searches' => 2]);
+        $tracker = new AgentBudgetTracker($run);
+
+        $tracker->recordKnowledgeSearchResult(true);
+
+        $this->assertSame(0, $tracker->snapshot()['consecutive_unproductive_searches']);
+    }
+
+    public function test_recording_an_unproductive_search_increments_the_counter(): void
+    {
+        $run = $this->makeRun(['consecutive_unproductive_searches' => 1]);
+        $tracker = new AgentBudgetTracker($run);
+
+        $tracker->recordKnowledgeSearchResult(false);
+
+        $this->assertSame(2, $tracker->snapshot()['consecutive_unproductive_searches']);
+    }
+
+    public function test_unproductive_search_limit_is_not_scaled_by_depth(): void
+    {
+        config()->set('agent.depth.multipliers', [1 => 0.5, 2 => 0.75, 3 => 1.0, 4 => 2.0, 5 => 3.0]);
+        config()->set('agent.limits.consecutive_unproductive_searches', 3);
+        // Depth 5 (3.0x) scales iterations/logical/physical/time/evidence —
+        // it must NOT also raise this threshold to 9.
+        $run = $this->makeRun(['consecutive_unproductive_searches' => 3], depth: 5);
+
+        $decision = (new AgentBudgetTracker($run))->reserve($this->knowledgeTool(), ['query' => 'anything']);
+
+        $this->assertFalse($decision->allowed());
+        $this->assertSame('unproductive_search_limit', $decision->reason);
+    }
+
     /** @param array<string,mixed> $counters */
     private function makeRun(array $counters = [], ?int $depth = null): AgentRun
     {
@@ -161,6 +218,22 @@ final class AgentBudgetTrackerTest extends TestCase
             physicalMinimum: 1,
             physicalLikely: 1,
             physicalMaximum: $physicalMaximum,
+        );
+    }
+
+    private function knowledgeTool(): AgentToolDefinition
+    {
+        return new AgentToolDefinition(
+            name: 'search_knowledge_base',
+            displayName: 'Knowledge base',
+            description: 'Search',
+            kind: 'knowledge',
+            inputSchema: ['type' => 'object'],
+            readOnly: true,
+            idempotent: true,
+            physicalMinimum: 0,
+            physicalLikely: 0,
+            physicalMaximum: 0,
         );
     }
 }

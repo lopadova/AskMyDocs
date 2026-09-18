@@ -85,6 +85,7 @@ final readonly class AgentLoop
                 $documents = $this->evidenceFactory->fromSearchResult($search);
                 $evidence->import($documents->jsonSerialize());
                 $budget->recordResult(0, $documents->byteSize(), true);
+                $budget->recordKnowledgeSearchResult($documents->documents() !== []);
                 $this->events->publish(
                     $run,
                     'retrieval.completed',
@@ -362,11 +363,17 @@ final readonly class AgentLoop
             if ($query === '') {
                 throw new \InvalidArgumentException('knowledge_query_required');
             }
+            $documentsBefore = count($evidence->documents());
             $search = $this->retrieval->retrieve($query, $context->projectKey, $filters);
             $found = $this->evidenceFactory->fromSearchResult($search);
             $evidence->import($found->jsonSerialize());
             $body = ['documents' => $found->documents()];
             $budget->recordResult(0, strlen((string) json_encode($body)), true);
+            // Compared against the ACCUMULATED envelope, not $found alone —
+            // a search that only re-surfaces documents an earlier search in
+            // this same run already added is exactly as unproductive as one
+            // that returns nothing.
+            $budget->recordKnowledgeSearchResult(count($evidence->documents()) > $documentsBefore);
 
             return new AgentToolActionResult($body, 0);
         }

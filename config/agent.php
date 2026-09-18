@@ -34,6 +34,16 @@ return [
         'physical_hard' => (int) env('AGENT_PHYSICAL_HARD_LIMIT', 100),
         'consecutive_errors' => (int) env('AGENT_CONSECUTIVE_ERROR_LIMIT', 3),
         'duplicate_calls' => (int) env('AGENT_DUPLICATE_CALL_LIMIT', 2),
+        // Stops the knowledge-base tool after this many DIFFERENT queries in
+        // a row that each failed to surface any evidence the run didn't
+        // already have — a safety net against the planner blindly guessing
+        // topic after topic on a question with no answerable query (e.g. a
+        // catalog/overview request search_knowledge_base can't satisfy).
+        // Fixed regardless of investigation depth by design (AgentBudgetTracker::
+        // DEPTH_SCALED_LIMITS deliberately excludes it) — a higher depth
+        // should search MORE when it's finding something, never search
+        // blindly longer once it demonstrably isn't.
+        'consecutive_unproductive_searches' => (int) env('AGENT_CONSECUTIVE_UNPRODUCTIVE_SEARCH_LIMIT', 3),
         'interactive_time_seconds' => (int) env('AGENT_INTERACTIVE_TIME_LIMIT', 60),
         'bulk_time_seconds' => (int) env('AGENT_BULK_TIME_LIMIT', 90),
         'evidence_bytes' => (int) env('AGENT_EVIDENCE_BYTE_LIMIT', 524288),
