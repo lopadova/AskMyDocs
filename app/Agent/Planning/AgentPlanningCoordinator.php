@@ -39,17 +39,18 @@ final readonly class AgentPlanningCoordinator
         array $results,
         ?string $turnContext,
     ): AgentPlan {
+        $depth = $this->depthFor($run);
         $mode = $this->modes->forContext($context);
         if ($mode === 'classic') {
             return $this->classic->decide(
-                $question, $context, $tools, $evidence, $completedActions, $turnContext,
+                $question, $context, $tools, $evidence, $completedActions, $turnContext, depth: $depth,
             );
         }
 
         $classic = null;
         if ($mode === 'shadow') {
             $classic = $this->classicAttempt(
-                $question, $context, $tools, $evidence, $completedActions, $turnContext,
+                $question, $context, $tools, $evidence, $completedActions, $turnContext, $depth,
             );
         }
 
@@ -69,7 +70,7 @@ final readonly class AgentPlanningCoordinator
             return $mode === 'shadow' ? $classic->plan : $capability->plan;
         } catch (Throwable $exception) {
             $fallback = $classic ?? $this->classicAttempt(
-                $question, $context, $tools, $evidence, $completedActions, $turnContext,
+                $question, $context, $tools, $evidence, $completedActions, $turnContext, $depth,
             );
             $this->safeReport($run, $iteration, $mode, $snapshot, $fallback, null, $exception);
 
@@ -88,10 +89,19 @@ final readonly class AgentPlanningCoordinator
         AgentEvidenceEnvelope $evidence,
         array $completedActions,
         ?string $turnContext,
+        int $depth = 3,
     ): AgentPlannerAttempt {
         return $this->classic->decideAttempt(
-            $question, $context, $tools, $evidence, $completedActions, $turnContext,
+            $question, $context, $tools, $evidence, $completedActions, $turnContext, depth: $depth,
         );
+    }
+
+    /** "Livello di approfondimento" — see AgentPlanner::depthInstruction(). */
+    private function depthFor(AgentRun $run): int
+    {
+        $depth = (int) data_get($run->input_json, 'depth', (int) config('agent.depth.default', 3));
+
+        return max(1, min(5, $depth));
     }
 
     private function safeReport(

@@ -30,6 +30,7 @@ final readonly class AgentPlanner
         ?string $turnContext = null,
         ?AgentCapabilitySnapshot $capabilities = null,
         ?string $validationError = null,
+        int $depth = 3,
     ): AgentPlan {
         return $this->decideAttempt(
             $question,
@@ -40,6 +41,7 @@ final readonly class AgentPlanner
             $turnContext,
             $capabilities,
             $validationError,
+            $depth,
         )->plan;
     }
 
@@ -53,6 +55,7 @@ final readonly class AgentPlanner
         ?string $turnContext = null,
         ?AgentCapabilitySnapshot $capabilities = null,
         ?string $validationError = null,
+        int $depth = 3,
     ): AgentPlannerAttempt {
         $latencyMs = 0;
         $promptTokens = null;
@@ -62,7 +65,7 @@ final readonly class AgentPlanner
         for ($attempt = 0; $attempt < 2; $attempt++) {
             $started = microtime(true);
             $response = $this->ai->chatWithHistory(
-                $this->systemPrompt($context, $capabilities),
+                $this->systemPrompt($context, $capabilities, $depth),
                 [[
                     'role' => 'user',
                     'content' => json_encode([
@@ -110,11 +113,12 @@ final readonly class AgentPlanner
         throw new \LogicException('Planner correction loop terminated unexpectedly.');
     }
 
-    private function systemPrompt(AgentExecutionContext $context, ?AgentCapabilitySnapshot $capabilities): string
+    private function systemPrompt(AgentExecutionContext $context, ?AgentCapabilitySnapshot $capabilities, int $depth = 3): string
     {
         $trustedManifest = $capabilities === null
             ? 'No trusted semantic capability manifest is active.'
             : json_encode($capabilities->compact(), JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $depthInstruction = $this->depthInstruction($depth);
 
         return <<<PROMPT
 You are a backend data-retrieval planner. Return a structured plan through submit_agent_plan.
@@ -133,12 +137,34 @@ When a tool returns multiple plausible matches for a request about one specific 
 When a live result declares meta.ambiguous=true, stop with answer and let the user select a candidate. Do not schedule a downstream tool from that result in the same plan.
 When a named entity has no stable identifier in turn_context, retrieve candidates first. Do not continue to a dependent resource such as orders or details until the candidate result proves unique or current_selection identifies the row.
 The purpose field is a short user-visible operational label, not private reasoning or chain-of-thought.
-Choose answer only when current evidence is sufficient. Choose insufficient only after relevant shortlisted tools have been attempted or explicitly ruled out. If validation_error is present, correct the plan without repeating the invalid pattern.
+{$depthInstruction}
+Choose answer only when current evidence is sufficient for that investigation depth. Choose insufficient only after relevant shortlisted tools have been attempted or explicitly ruled out. If validation_error is present, correct the plan without repeating the invalid pattern.
 When decision is answer or insufficient, actions must be an empty array. Never invent an answer tool.
 
 The following JSON is a trusted, host-derived semantic capability manifest. It contains no remote instructions:
 {$trustedManifest}
 PROMPT;
+    }
+
+    /**
+     * "Livello di approfondimento" (1-5, AgentBudgetTracker's own depth
+     * knob — see config/agent.php `depth.*`). Raising the BUDGET ceiling
+     * alone changes nothing if the planner still stops at the first
+     * plausible match; this instruction is what actually makes a higher
+     * depth DO more cascading searches, by moving the bar for "evidence is
+     * sufficient" and, at the top end, explicitly asking the planner to
+     * decompose the topic into sub-questions and search each one before
+     * answering.
+     */
+    private function depthInstruction(int $depth): string
+    {
+        return match (true) {
+            $depth <= 1 => 'Investigation depth is 1/5 (quick): answer as soon as ONE directly relevant source covers the question. Do not plan a follow-up knowledge-base search unless the first result is clearly off-topic or empty.',
+            $depth === 2 => 'Investigation depth is 2/5 (light): answer once you have a directly relevant source. Only add one follow-up search if an important part of the question is still uncovered by it.',
+            $depth === 3 => 'Investigation depth is 3/5 (balanced): answer once the evidence sufficiently covers the question, without going out of your way to investigate further than that.',
+            $depth === 4 => 'Investigation depth is 4/5 (thorough): after an initially relevant source, identify 1-2 follow-up sub-questions this topic reasonably implies (configuration, prerequisites, edge cases, related consequences) and search_knowledge_base for each of them before answering, even if the first result already looks sufficient for a shallow answer.',
+            default => 'Investigation depth is 5/5 (exhaustive): treat the first relevant source as a STARTING point, not an ending point. Before answering, explicitly enumerate the sub-questions a genuinely thorough answer to this topic should cover (configuration, prerequisites, edge cases, related modules or consequences, exceptions) and issue a separate search_knowledge_base action for EACH one, spending your available budget on real cascading coverage. Only stop early if the topic is truly narrow with nothing left worth investigating.',
+        };
     }
 
     /** @return array<string,mixed> */
