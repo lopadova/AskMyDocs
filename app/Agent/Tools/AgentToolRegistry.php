@@ -33,7 +33,10 @@ final readonly class AgentToolRegistry
         ?User $user = null,
         array $clientTools = [],
     ): array {
-        $tools = ['search_knowledge_base' => $this->knowledgeTool()];
+        $tools = [
+            'search_knowledge_base' => $this->knowledgeTool(),
+            'list_knowledge_documents' => $this->catalogTool(),
+        ];
         $this->mergeMcpTools($tools, $context, $user);
         $this->mergeApiTools($tools, $context);
 
@@ -67,6 +70,35 @@ final readonly class AgentToolRegistry
             physicalLikely: 0,
             physicalMaximum: 0,
             executorReference: 'knowledge',
+        );
+    }
+
+    /**
+     * A CATALOG lookup by title — "what documents/manuals do we have" —
+     * distinct from search_knowledge_base's semantic content search. See
+     * AgentDocumentCatalogService for why this exists.
+     */
+    private function catalogTool(): AgentToolDefinition
+    {
+        return new AgentToolDefinition(
+            name: 'list_knowledge_documents',
+            displayName: 'Document catalog',
+            description: 'List indexed documents (manuals, decisions, runbooks, modules, etc.) in the current project BY TITLE, with a one-line summary each — it does not search document content. Use this for a catalog/overview request such as "what manuals do we have", "list the modules", "riassunto dei manuali" instead of search_knowledge_base, which only finds chunks matching one specific query and cannot enumerate everything that exists. Omit the query argument to list every document in scope.',
+            kind: 'catalog',
+            inputSchema: [
+                'type' => 'object',
+                'properties' => [
+                    'query' => ['type' => 'string', 'description' => 'Optional title keyword filter. Omit to list every document in scope.'],
+                    'limit' => ['type' => 'integer', 'description' => 'Max documents to return (default 30, max 100).'],
+                ],
+                'additionalProperties' => false,
+            ],
+            readOnly: true,
+            idempotent: true,
+            physicalMinimum: 0,
+            physicalLikely: 0,
+            physicalMaximum: 0,
+            executorReference: 'catalog',
         );
     }
 

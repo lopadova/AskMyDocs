@@ -25,6 +25,7 @@ final readonly class AgentServerToolRunner
         private ToolInvoker $mcp,
         private McpToolAuthorizer $mcpAuthorizer,
         private McpConnectorChatToolSource $connectorMcp,
+        private AgentDocumentCatalogService $catalog,
     ) {}
 
     /**
@@ -42,6 +43,7 @@ final readonly class AgentServerToolRunner
         return match ($tool->kind) {
             'api' => $this->executeApi($tool, $arguments, $context, $budget, $progress),
             'mcp' => $this->executeMcp($tool, $arguments, $context, $run, $budget),
+            'catalog' => $this->executeCatalog($arguments, $context, $budget),
             'client' => new AgentToolActionResult(
                 ['error' => 'client_tool_requires_handoff'],
                 0,
@@ -50,6 +52,27 @@ final readonly class AgentServerToolRunner
             ),
             default => throw new \DomainException("unsupported_server_tool:{$tool->kind}"),
         };
+    }
+
+    /**
+     * The document-catalog lookup (list_knowledge_documents). A local DB
+     * read, same zero-physical-cost shape as the knowledge tool — no
+     * external network call, so it never touches canIssuePhysical().
+     *
+     * @param  array<string,mixed>  $arguments
+     */
+    private function executeCatalog(
+        array $arguments,
+        AgentExecutionContext $context,
+        AgentBudgetTracker $budget,
+    ): AgentToolActionResult {
+        $query = is_string($arguments['query'] ?? null) ? $arguments['query'] : null;
+        $limit = is_numeric($arguments['limit'] ?? null) ? (int) $arguments['limit'] : null;
+
+        $body = $this->catalog->list($context, $query, $limit);
+        $budget->recordResult(0, $this->bytes($body), true);
+
+        return new AgentToolActionResult($body, 0);
     }
 
     /** @param array<string,mixed> $arguments @param null|callable(array<string,mixed>):void $progress */

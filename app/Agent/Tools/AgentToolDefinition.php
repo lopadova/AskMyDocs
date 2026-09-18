@@ -29,7 +29,7 @@ final readonly class AgentToolDefinition implements JsonSerializable
         if ($name === '' || preg_match('/^[a-zA-Z0-9_-]+$/', $name) !== 1) {
             throw new \InvalidArgumentException("Invalid agent tool name [{$name}].");
         }
-        if (! in_array($kind, ['knowledge', 'api', 'mcp', 'client'], true)) {
+        if (! in_array($kind, ['knowledge', 'catalog', 'api', 'mcp', 'client'], true)) {
             throw new \InvalidArgumentException("Invalid agent tool kind [{$kind}].");
         }
         if ($physicalMinimum < 0 || $physicalMinimum > $physicalLikely || $physicalLikely > $physicalMaximum) {

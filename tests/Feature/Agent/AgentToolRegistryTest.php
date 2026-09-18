@@ -30,8 +30,9 @@ final class AgentToolRegistryTest extends TestCase
 
         $tools = app(AgentToolRegistry::class)->forContext($this->context('acme', 'orders'));
 
-        $this->assertSame(['search_knowledge_base', 'get_orders'], array_keys($tools));
+        $this->assertSame(['search_knowledge_base', 'list_knowledge_documents', 'get_orders'], array_keys($tools));
         $this->assertSame('knowledge', $tools['search_knowledge_base']->kind);
+        $this->assertSame('catalog', $tools['list_knowledge_documents']->kind);
         $this->assertTrue($tools['get_orders']->readOnly);
         $this->assertSame(100, $tools['get_orders']->physicalMaximum);
         $this->assertSame('page', data_get($tools['get_orders']->metadata, 'pagination.type'));
@@ -46,7 +47,7 @@ final class AgentToolRegistryTest extends TestCase
 
         $tools = app(AgentToolRegistry::class)->forContext($this->context('acme', 'orders'));
 
-        $this->assertSame(['search_knowledge_base'], array_keys($tools));
+        $this->assertSame(['search_knowledge_base', 'list_knowledge_documents'], array_keys($tools));
     }
 
     public function test_capability_catalog_indexes_all_active_api_routes_beyond_legacy_prompt_cap(): void
@@ -58,7 +59,7 @@ final class AgentToolRegistryTest extends TestCase
 
         $tools = app(AgentToolRegistry::class)->forContext($this->context('acme', 'orders'));
 
-        $this->assertCount(26, $tools);
+        $this->assertCount(27, $tools);
         $this->assertArrayHasKey('orders_tool_25', $tools);
     }
 
@@ -82,7 +83,7 @@ final class AgentToolRegistryTest extends TestCase
             $user,
         );
 
-        $this->assertSame(['search_knowledge_base', $tool->local_name], array_keys($tools));
+        $this->assertSame(['search_knowledge_base', 'list_knowledge_documents', $tool->local_name], array_keys($tools));
         $definition = $tools[$tool->local_name];
         $this->assertSame('mcp', $definition->kind);
         $this->assertSame('list-my-orders', $definition->displayName);
@@ -167,7 +168,7 @@ final class AgentToolRegistryTest extends TestCase
             $user,
         );
 
-        $this->assertSame(['search_knowledge_base'], array_keys($tools));
+        $this->assertSame(['search_knowledge_base', 'list_knowledge_documents'], array_keys($tools));
     }
 
     private function route(string $tenant, string $project, string $slug, ?array $pagination = null): ApiRoute
