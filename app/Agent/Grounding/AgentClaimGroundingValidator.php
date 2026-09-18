@@ -93,7 +93,16 @@ final class AgentClaimGroundingValidator
     private function candidateTerms(string $question): array
     {
         preg_match_all("/(?<![\\p{L}\\p{N}])(?:[A-ZÀ-ÖØ-Þ][\\p{L}\\p{M}'’_-]{1,}|[A-Z0-9][A-Z0-9_-]{1,})(?![\\p{L}\\p{N}])/u", $question, $matches);
-        $ignored = ['che', 'chi', 'come', 'cosa', 'dammi', 'dove', 'fammi', 'mi', 'mostra', 'perche', 'perché', 'quale', 'quali'];
+        // Common Italian imperative-plus-clitic openers ("Parlami di...",
+        // "Raccontami...", "Spiegami..."). These are capitalized ONLY
+        // because they open the sentence — the same reason "che"/"cosa"/
+        // "dove" are already ignored below — never because they name an
+        // entity. A bare position-based fix (skip whatever word starts the
+        // question) would be wrong: the question can genuinely OPEN with
+        // the unattested entity itself (see the "Figo e come funziona?"
+        // test below), so this stays an explicit denylist, extended rather
+        // than replaced.
+        $ignored = ['che', 'chi', 'come', 'cosa', 'dammi', 'descrivi', 'descrivimi', 'dimmi', 'dove', 'elenca', 'elencami', 'fammi', 'illustrami', 'mi', 'mostra', 'mostrami', 'parlami', 'perche', 'perché', 'quale', 'quali', 'raccontami', 'spiega', 'spiegami'];
 
         return array_values(array_unique(array_filter($matches[0] ?? [], static function (string $term) use ($ignored): bool {
             return ! in_array(mb_strtolower($term), $ignored, true);
