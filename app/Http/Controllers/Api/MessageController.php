@@ -39,7 +39,7 @@ class MessageController extends Controller
 
     private const AGENT_ACTIVITY_DATA_KEYS = [
         'tool', 'tool_kind', 'tool_display_name', 'mcp_server_name',
-        'mcp_tool_name', 'mcp_debug', 'action_id', 'error_code',
+        'mcp_tool_name', 'mcp_debug', 'kb_debug', 'action_id', 'error_code',
     ];
 
     public function index(

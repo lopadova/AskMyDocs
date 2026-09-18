@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Agent;
 
+use App\Agent\Debug\KbActivityDebugPayload;
 use App\Mcp\Debug\McpActivityDebugPayload;
 use App\Models\AgentRun;
 use App\Models\AgentRunEvent;
@@ -16,6 +17,7 @@ final readonly class AgentEventPublisher
         private AgentMessageCatalog $messages,
         private WidgetPiiMasker $masker,
         private McpActivityDebugPayload $mcpDebug,
+        private KbActivityDebugPayload $kbDebug,
     ) {}
 
     /**
@@ -51,6 +53,15 @@ final readonly class AgentEventPublisher
                     $data['mcp_debug'] = $this->mcpDebug->sanitize($data['mcp_debug']);
                 } else {
                     unset($data['mcp_debug']);
+                }
+            }
+            if (array_key_exists('kb_debug', $data)) {
+                if (! $this->kbDebug->enabled()) {
+                    unset($data['kb_debug']);
+                } elseif (is_array($data['kb_debug'])) {
+                    $data['kb_debug'] = $this->mcpDebug->sanitize($data['kb_debug']);
+                } else {
+                    unset($data['kb_debug']);
                 }
             }
             $safeData = $this->masker->maskArray($data) ?? [];

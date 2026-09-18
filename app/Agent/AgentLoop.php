@@ -18,6 +18,7 @@ use App\Agent\Tools\AgentServerToolRunner;
 use App\Agent\Tools\AgentToolActionResult;
 use App\Agent\Tools\AgentToolDefinition;
 use App\Agent\Tools\AgentToolRegistry;
+use App\Agent\Debug\KbActivityDebugPayload;
 use App\Mcp\Debug\McpActivityDebugPayload;
 use App\Models\AgentRun;
 use App\Models\AgentToolExecution;
@@ -45,6 +46,7 @@ final readonly class AgentLoop
         private WidgetPiiMasker $masker,
         private AgentRetrievalFiltersFactory $retrievalFilters,
         private McpActivityDebugPayload $mcpDebug,
+        private KbActivityDebugPayload $kbDebug,
     ) {}
 
     public function run(
@@ -271,6 +273,16 @@ final readonly class AgentLoop
                     if ($debug !== null) {
                         $eventData['mcp_debug'] = $debug;
                     }
+                    $kbDebug = $this->kbDebug->capture(
+                        $tool,
+                        $resolved,
+                        $result->body,
+                        (int) round((microtime(true) - $started) * 1000),
+                        $result->successful() ? 'ok' : 'error',
+                    );
+                    if ($kbDebug !== null) {
+                        $eventData['kb_debug'] = $kbDebug;
+                    }
 
                     $this->events->publish(
                         $run,
@@ -331,6 +343,17 @@ final readonly class AgentLoop
                     );
                     if ($debug !== null) {
                         $eventData['mcp_debug'] = $debug;
+                    }
+                    $kbDebug = $this->kbDebug->capture(
+                        $tool,
+                        $resolved,
+                        null,
+                        (int) round((microtime(true) - $started) * 1000),
+                        'error',
+                        $exception,
+                    );
+                    if ($kbDebug !== null) {
+                        $eventData['kb_debug'] = $kbDebug;
                     }
 
                     $this->events->publish(
