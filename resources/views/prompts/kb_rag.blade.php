@@ -96,6 +96,18 @@ The following are examples of answers that users rated positively. Use them as a
 
 Project: {{ $projectKey ?? 'all' }}
 
+@if(isset($sessionRecap) && is_array($sessionRecap) && !empty($sessionRecap['summary'] ?? null))
+## Session Recap (carried over from earlier turns in this conversation)
+{{ $sessionRecap['summary'] }}
+@if(!empty($sessionRecap['topics'] ?? []))
+Topics so far: {{ implode(', ', $sessionRecap['topics']) }}
+@endif
+@if(!empty($sessionRecap['open_questions'] ?? []))
+Open questions: {{ implode(', ', $sessionRecap['open_questions']) }}
+@endif
+
+@endif
+
 @if(isset($rejected) && $rejected->isNotEmpty())
 ## ⚠ REJECTED APPROACHES (do NOT repeat — these were deliberately dismissed)
 

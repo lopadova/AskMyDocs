@@ -7,6 +7,7 @@ use App\Ai\StreamChunk;
 use App\Ai\AiResponse;
 use App\FinOps\ChatTraceContext;
 use App\FinOps\ChatTurnCostResolver;
+use App\Jobs\UpdateConversationRecapJob;
 use App\Mcp\Apps\McpAppTurnContext;
 use App\Mcp\Client\McpToolCallingService;
 use App\Models\ChatLog;
@@ -206,7 +207,14 @@ class MessageStreamController extends Controller
         // rejected) so the stream prompt matches the sync + chat channels.
         $systemPrompt = view('prompts.kb_rag', array_merge(
             $retrieval->promptContext($result),
-            ['projectKey' => $projectKey, 'fewShotExamples' => $fewShotExamples],
+            [
+                'projectKey' => $projectKey,
+                'fewShotExamples' => $fewShotExamples,
+                // Recap from the PREVIOUS turn — mirrors MessageController;
+                // keeps the two conversational surfaces in lockstep (same
+                // reason ChatRetrievalService is shared between them).
+                'sessionRecap' => $conversation->session_recap,
+            ],
         ))->render();
         if ($appContext !== null) {
             $systemPrompt .= "\n\n## Current MCP App context\n".$appContext;
@@ -648,6 +656,15 @@ class MessageStreamController extends Controller
             ]);
 
             $conversation->touch();
+
+            // Async, incremental session-recap update — off the request
+            // path (streaming has already flushed the response). Skipped on
+            // a self-refusal turn: nothing new was actually established,
+            // mirrors MessageController which never reaches its own
+            // dispatch call on that path either.
+            if (! $isSelfRefusal && (bool) config('kb.session_recap.enabled', true)) {
+                UpdateConversationRecapJob::dispatch($conversation->id, (string) $conversation->tenant_id);
+            }
 
             // v6.0/W7 — record token-level provenance for the assistant
             // turn (best-effort; logged on failure, never propagates).

@@ -7,6 +7,7 @@ use App\Ai\AiManager;
 use App\Ai\AiResponse;
 use App\FinOps\ChatTraceContext;
 use App\FinOps\ChatTurnCostResolver;
+use App\Jobs\UpdateConversationRecapJob;
 use App\Mcp\Client\McpToolCallingService;
 use App\Models\AgentRunEvent;
 use App\Models\Conversation;
@@ -180,7 +181,15 @@ class MessageController extends Controller
         // identically to /api/kb/chat.
         $systemPrompt = view('prompts.kb_rag', array_merge(
             $retrieval->promptContext($result),
-            ['projectKey' => $projectKey, 'fewShotExamples' => $fewShotExamples],
+            [
+                'projectKey' => $projectKey,
+                'fewShotExamples' => $fewShotExamples,
+                // The recap from the PREVIOUS turn — this turn's own update
+                // (below, after the assistant message is saved) only takes
+                // effect starting next turn, by design (async, off the
+                // request path).
+                'sessionRecap' => $conversation->session_recap,
+            ],
         ))->render();
 
         // 6. Send full history to AI provider
@@ -291,6 +300,13 @@ class MessageController extends Controller
         ]);
 
         $conversation->touch();
+
+        // 8b. Async, incremental session-recap update — off the request
+        // path so a slow/failed update never adds latency to (or breaks)
+        // the turn just answered. Config-gated (kb.session_recap.enabled).
+        if ((bool) config('kb.session_recap.enabled', true)) {
+            UpdateConversationRecapJob::dispatch($conversation->id, (string) $conversation->tenant_id);
+        }
 
         // 9. Log chat interaction (if enabled)
         $chatLog->log(new ChatLogEntry(
