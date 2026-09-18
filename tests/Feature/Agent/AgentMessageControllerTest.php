@@ -94,6 +94,65 @@ final class AgentMessageControllerTest extends TestCase
         $this->assertSame(['it'], $filters->languages);
     }
 
+    public function test_depth_defaults_to_3_when_the_client_omits_it(): void
+    {
+        Queue::fake();
+        app(TenantContext::class)->set('acme');
+        $user = $this->user('agent-depth-default@example.com');
+        ProjectMembership::create([
+            'tenant_id' => 'acme', 'user_id' => $user->id, 'project_key' => 'crm', 'role' => 'member',
+        ]);
+        $conversation = Conversation::create([
+            'tenant_id' => 'acme', 'user_id' => $user->id, 'project_key' => 'crm',
+        ]);
+
+        $this->actingAs($user)->postJson(
+            '/test-conversations/'.$conversation->id.'/messages/agent',
+            ['content' => 'Parlami del pannello delle notifiche push'],
+        )->assertAccepted();
+
+        $this->assertSame(3, data_get(AgentRun::query()->sole()->input_json, 'depth'));
+    }
+
+    public function test_an_explicit_depth_is_persisted_on_the_run(): void
+    {
+        Queue::fake();
+        app(TenantContext::class)->set('acme');
+        $user = $this->user('agent-depth-explicit@example.com');
+        ProjectMembership::create([
+            'tenant_id' => 'acme', 'user_id' => $user->id, 'project_key' => 'crm', 'role' => 'member',
+        ]);
+        $conversation = Conversation::create([
+            'tenant_id' => 'acme', 'user_id' => $user->id, 'project_key' => 'crm',
+        ]);
+
+        $this->actingAs($user)->postJson(
+            '/test-conversations/'.$conversation->id.'/messages/agent',
+            ['content' => 'Analizza a fondo il modulo di fatturazione', 'depth' => 5],
+        )->assertAccepted();
+
+        $this->assertSame(5, data_get(AgentRun::query()->sole()->input_json, 'depth'));
+    }
+
+    public function test_an_out_of_range_depth_is_rejected(): void
+    {
+        app(TenantContext::class)->set('acme');
+        $user = $this->user('agent-depth-invalid@example.com');
+        ProjectMembership::create([
+            'tenant_id' => 'acme', 'user_id' => $user->id, 'project_key' => 'crm', 'role' => 'member',
+        ]);
+        $conversation = Conversation::create([
+            'tenant_id' => 'acme', 'user_id' => $user->id, 'project_key' => 'crm',
+        ]);
+
+        $this->actingAs($user)->postJson(
+            '/test-conversations/'.$conversation->id.'/messages/agent',
+            ['content' => 'Domanda qualsiasi', 'depth' => 6],
+        )->assertUnprocessable()->assertJsonValidationErrors('depth');
+
+        $this->assertDatabaseCount('agent_runs', 0);
+    }
+
     public function test_authorized_mcp_app_context_is_attached_to_the_durable_run(): void
     {
         Queue::fake();
