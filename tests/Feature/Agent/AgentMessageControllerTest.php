@@ -386,6 +386,57 @@ final class AgentMessageControllerTest extends TestCase
         $this->assertSame('ui-data-table', data_get($message->metadata, 'agent_artifact.component_type'));
     }
 
+    public function test_search_stats_count_every_attempted_call_not_only_the_cited_ones(): void
+    {
+        app(TenantContext::class)->set('acme');
+        $user = $this->user('search-stats-agent@example.com');
+        $conversation = Conversation::create([
+            'tenant_id' => 'acme', 'user_id' => $user->id, 'project_key' => 'crm',
+        ]);
+        $run = AgentRun::create([
+            'run_id' => Str::uuid()->toString(),
+            'tenant_id' => 'acme',
+            'project_key' => 'crm',
+            'user_id' => $user->id,
+            'conversation_id' => $conversation->id,
+            'channel' => 'chat',
+            'actor_type' => 'user',
+            'actor_id' => (string) $user->id,
+            'locale' => 'it-IT',
+            'timezone' => 'Europe/Rome',
+            'status' => AgentRun::STATUS_COMPLETED,
+        ]);
+        // The always-on initial retrieval is NOT an AgentToolExecution row
+        // (it runs before the first planning iteration) — it is the "+1"
+        // baseline search_stats.kb_searches always carries.
+        $run->toolExecutions()->createMany([
+            // A cascading follow-up KB search the planner issued mid-run.
+            ['logical_index' => 1, 'tool_name' => 'search_knowledge_base', 'tool_kind' => 'knowledge', 'status' => 'completed'],
+            // A failed attempt still counts — the agent DID try.
+            ['logical_index' => 2, 'tool_name' => 'search_knowledge_base', 'tool_kind' => 'knowledge', 'status' => 'failed'],
+            ['logical_index' => 3, 'tool_name' => 'get_orders', 'tool_kind' => 'api', 'status' => 'completed'],
+            ['logical_index' => 4, 'tool_name' => 'reports.show', 'tool_kind' => 'mcp', 'status' => 'completed'],
+            // Never actually executed (a dependency failed to resolve) —
+            // must NOT be counted as an attempt.
+            ['logical_index' => 5, 'tool_name' => 'get_order_detail', 'tool_kind' => 'api', 'status' => 'skipped'],
+        ]);
+        $answer = new AgentAnswer(
+            answer: 'Trovati i dati richiesti.',
+            locale: 'it-IT',
+            completeness: 'complete',
+            citations: [],
+            toolSources: [['execution_id' => 3, 'tool' => 'get_orders']],
+        );
+
+        app(AgentResultProjector::class)->project($run, $answer);
+
+        $message = $conversation->messages()->sole();
+        // 1 (initial) + 2 knowledge-kind AgentToolExecution rows (completed + failed).
+        $this->assertSame(3, data_get($message->metadata, 'search_stats.kb_searches'));
+        // 1 api + 1 mcp, completed; the skipped one is excluded.
+        $this->assertSame(2, data_get($message->metadata, 'search_stats.tool_calls'));
+    }
+
     private function user(string $email): User
     {
         return User::create([

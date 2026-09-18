@@ -52,6 +52,12 @@ final class AgentResultProjector
                     'citations' => $answer->citations,
                     'tool_sources' => $answer->toolSources,
                     'tool_calls_count' => count($answer->toolSources),
+                    // "Livello di approfondimento" visibility: how many KB
+                    // searches and MCP/API calls this run actually attempted
+                    // over its WHOLE lifetime — not just the ones that ended
+                    // up cited (tool_sources/citations above are answer-only,
+                    // narrower). Surfaced as a chat-message badge.
+                    'search_stats' => $this->searchStats($run),
                     'tool_calls' => array_map(static fn (array $source): array => [
                         'id' => (string) ($source['execution_id'] ?? ''),
                         'name' => (string) ($source['tool'] ?? ''),
@@ -68,6 +74,31 @@ final class AgentResultProjector
             ],
         );
         $conversation->touch();
+    }
+
+    /**
+     * How many knowledge-base searches and how many MCP/API tool calls this
+     * run actually attempted, over the whole run (every re-plan iteration,
+     * not just what the final answer cites). Counts every EXECUTED attempt
+     * (completed or failed), never one skipped before it ran (a dependency-
+     * resolution failure). AgentLoop's always-on retrieval before the first
+     * planning iteration is not an AgentToolExecution row — it is a
+     * special-cased first step — so it is the +1 baseline: every run that
+     * reaches here (this method only runs after AgentLoop::run() produced
+     * an outcome) has always attempted exactly one.
+     *
+     * @return array{kb_searches: int, tool_calls: int}
+     */
+    private function searchStats(AgentRun $run): array
+    {
+        $attempted = $run->toolExecutions()
+            ->whereIn('status', ['completed', 'failed'])
+            ->get(['tool_kind']);
+
+        return [
+            'kb_searches' => 1 + $attempted->where('tool_kind', 'knowledge')->count(),
+            'tool_calls' => $attempted->whereIn('tool_kind', ['mcp', 'api'])->count(),
+        ];
     }
 
     private function projectWidget(AgentRun $run, AgentAnswer $answer): void
