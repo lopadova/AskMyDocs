@@ -38,6 +38,34 @@ final class AgentPlannerTest extends TestCase
         $this->assertStringContainsString('Investigation depth is 3/5 (balanced)', $prompt);
     }
 
+    /**
+     * Regression: the catalog-vs-content-search tool disambiguation was
+     * first added ONLY inside the depth 4/5 paragraph — at the default
+     * depth (3) and below, the planner had no guidance at all and kept
+     * defaulting to search_knowledge_base for a catalog-shaped question
+     * ("Fammi un riassunto sintetico dei manuali che abbiamo" still
+     * refused after the depth-4/5 fix). The rule must be depth-independent.
+     */
+    public function test_catalog_tool_guidance_is_present_at_every_depth_not_only_4_and_5(): void
+    {
+        foreach ([1, 2, 3, 4, 5] as $depth) {
+            $prompt = $this->capturedPrompt(fn (AgentPlanner $planner) => $planner->decide(
+                'Fammi un riassunto sintetico dei manuali che abbiamo',
+                $this->context(),
+                [],
+                app(AgentEvidenceFactory::class)->empty(),
+                depth: $depth,
+            ));
+
+            $this->assertStringContainsString(
+                'list_knowledge_documents',
+                $prompt,
+                "Catalog tool guidance missing from the prompt at depth {$depth}",
+            );
+            $this->assertStringContainsString('are NOT interchangeable, regardless of investigation depth', $prompt);
+        }
+    }
+
     public function test_depth_1_asks_for_a_quick_single_source_answer(): void
     {
         $prompt = $this->capturedPrompt(fn (AgentPlanner $planner) => $planner->decide(

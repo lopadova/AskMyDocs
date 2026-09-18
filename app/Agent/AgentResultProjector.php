@@ -96,7 +96,11 @@ final class AgentResultProjector
             ->get(['tool_kind']);
 
         return [
-            'kb_searches' => 1 + $attempted->where('tool_kind', 'knowledge')->count(),
+            // 'catalog' (list_knowledge_documents) counts as a document
+            // search too — it's a lookup ABOUT the KB, same as 'knowledge',
+            // just by title instead of by content. Omitting it here would
+            // make a catalog-tool call invisible in the badge.
+            'kb_searches' => 1 + $attempted->whereIn('tool_kind', ['knowledge', 'catalog'])->count(),
             'tool_calls' => $attempted->whereIn('tool_kind', ['mcp', 'api'])->count(),
         ];
     }

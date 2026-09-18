@@ -416,9 +416,12 @@ final class AgentMessageControllerTest extends TestCase
             ['logical_index' => 2, 'tool_name' => 'search_knowledge_base', 'tool_kind' => 'knowledge', 'status' => 'failed'],
             ['logical_index' => 3, 'tool_name' => 'get_orders', 'tool_kind' => 'api', 'status' => 'completed'],
             ['logical_index' => 4, 'tool_name' => 'reports.show', 'tool_kind' => 'mcp', 'status' => 'completed'],
+            // A catalog (list_knowledge_documents) call — counts as a
+            // document search too, same as 'knowledge', just by title.
+            ['logical_index' => 5, 'tool_name' => 'list_knowledge_documents', 'tool_kind' => 'catalog', 'status' => 'completed'],
             // Never actually executed (a dependency failed to resolve) —
             // must NOT be counted as an attempt.
-            ['logical_index' => 5, 'tool_name' => 'get_order_detail', 'tool_kind' => 'api', 'status' => 'skipped'],
+            ['logical_index' => 6, 'tool_name' => 'get_order_detail', 'tool_kind' => 'api', 'status' => 'skipped'],
         ]);
         $answer = new AgentAnswer(
             answer: 'Trovati i dati richiesti.',
@@ -431,8 +434,8 @@ final class AgentMessageControllerTest extends TestCase
         app(AgentResultProjector::class)->project($run, $answer);
 
         $message = $conversation->messages()->sole();
-        // 1 (initial) + 2 knowledge-kind AgentToolExecution rows (completed + failed).
-        $this->assertSame(3, data_get($message->metadata, 'search_stats.kb_searches'));
+        // 1 (initial) + 2 knowledge-kind + 1 catalog-kind AgentToolExecution rows.
+        $this->assertSame(4, data_get($message->metadata, 'search_stats.kb_searches'));
         // 1 api + 1 mcp, completed; the skipped one is excluded.
         $this->assertSame(2, data_get($message->metadata, 'search_stats.tool_calls'));
     }
