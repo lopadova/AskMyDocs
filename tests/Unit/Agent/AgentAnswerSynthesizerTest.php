@@ -141,6 +141,82 @@ final class AgentAnswerSynthesizerTest extends TestCase
         $this->assertSame([90], array_column($answer->toolSources, 'execution_id'));
     }
 
+    /**
+     * Reproduces the deterministic-refusal bug behind the repeated "Fammi un
+     * riassunto sintetico dei manuali che abbiamo" reports: a
+     * list_knowledge_documents result's OWN payload has a "documents" array
+     * with per-row "id" fields — structurally similar enough to the real
+     * evidence.documents[] that a claim can plausibly cite that inner id as
+     * document_id instead of the tool's execution_id. That id was never
+     * added via addDocument(), so AgentClaimGroundingValidator can never
+     * find it and fails 'quote_not_in_chunk' — the SAME reason, every
+     * time, regardless of how many searches actually ran. This pins the
+     * failure mode explicitly (rather than only fixing the prompt text
+     * that asks the model not to do this) so a regression here is caught
+     * even though the prompt wording itself isn't directly testable.
+     */
+    public function test_citing_a_catalog_rows_inner_id_as_document_id_is_rejected(): void
+    {
+        $evidence = app(AgentEvidenceFactory::class)->empty();
+        $catalogResult = [
+            'count' => 1,
+            'documents' => [
+                ['id' => 1, 'title' => 'SizeCharts Manual', 'summary' => 'Guida taglie.'],
+            ],
+        ];
+        $tool = new AgentToolDefinition(
+            name: 'list_knowledge_documents',
+            displayName: 'Document catalog',
+            description: 'List indexed documents by title.',
+            kind: 'catalog',
+            inputSchema: ['type' => 'object'],
+            readOnly: true,
+            idempotent: true,
+            physicalMinimum: 0,
+            physicalLikely: 0,
+            physicalMaximum: 0,
+            executorReference: 'catalog',
+        );
+        $evidence->addToolResult($tool, [], $catalogResult, 91);
+        $catalogHash = hash('sha256', (string) json_encode($catalogResult, JSON_UNESCAPED_UNICODE));
+
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->once()->andReturn(new AiResponse(
+            content: '',
+            provider: 'fake',
+            model: 'fake-agent',
+            toolCalls: [[
+                'name' => 'submit_agent_answer',
+                'arguments' => [
+                    'completeness' => 'complete',
+                    'claims' => [[
+                        'text' => '**SizeCharts Manual** — guida alla gestione delle taglie.',
+                        'quote' => 'SizeCharts Manual',
+                        // Wrong: the catalog row's own "id" (1), NOT the
+                        // tool's execution_id (91) — exactly the mistake
+                        // the fixed prompt now explicitly forbids.
+                        'document_id' => 1,
+                        'tool_execution_id' => null,
+                        'evidence_hash' => $catalogHash,
+                    ]],
+                    'limitations' => [],
+                    'requires_selection' => false,
+                    'render_table' => false,
+                ],
+            ]],
+        ));
+
+        $answer = (new AgentAnswerSynthesizer(
+            $ai,
+            app(WidgetPiiMasker::class),
+            app(AgentTableArtifactFactory::class),
+            app(AgentClaimGroundingValidator::class),
+        ))->synthesize('Fammi un riassunto sintetico dei manuali che abbiamo', $this->context(), new AgentLoopOutcome('answer', $evidence, []));
+
+        $this->assertSame('insufficient', $answer->completeness);
+        $this->assertSame('quote_not_in_chunk', $answer->grounding['reason']);
+    }
+
     public function test_selection_does_not_force_a_detail_result_into_a_table(): void
     {
         $evidence = app(AgentEvidenceFactory::class)->empty();
