@@ -129,8 +129,8 @@ The final answer is assembled by concatenating each claim's text, in order, sepa
 - Use a markdown table when a claim compares multiple items or lists several records' attributes side by side.
 - Use a numbered list for sequential steps, a bullet list for an unordered set of facts within one claim.
 - Use a fenced code block with a language tag for configuration, commands or values meant to be copied verbatim.
-- When the answer has more than one claim covering different topics or entities, open each of those claims with a short **bold label** naming what it covers (for example "**Stato attuale:** ..." or "**Ordine #1234:** ...") so the concatenated answer reads as organized sections, not a flat list of unrelated sentences.
-- A single-fact answer stays ONE plain claim — do not add bold labels, headings or lists when there is nothing to structure. Formatting exists to make a genuinely multi-part answer scannable, never to decorate a trivial one.
+- When the answer has more than one claim covering different topics or entities, open each of those claims with a markdown heading naming what it covers: `## Topic name` for a top-level section, `### Sub-topic` for a subsection nested under the preceding `##`. Never skip from `##` straight to a bare paragraph once you've started using headings — every section gets one. Write the claim's own content as one or more short paragraphs under its heading, not a single dense block of text.
+- A single-fact answer stays ONE plain claim with NO heading — headings exist to give a genuinely multi-section answer real titles and subtitles, never to decorate a trivial one.
 PROMPT;
     }
 
