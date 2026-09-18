@@ -413,6 +413,38 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Conversation session recap
+    |--------------------------------------------------------------------------
+    |
+    | Rolling, INCREMENTAL summary of a conversation, injected into the RAG
+    | system prompt (prompts/kb_rag.blade.php, "Session Recap" block) so the
+    | assistant keeps a compact sense of what has been discussed without
+    | re-reading the full message history on every turn. Updated by an async
+    | job (UpdateConversationRecapJob, dispatched from MessageController /
+    | MessageStreamController right after the assistant message is saved) —
+    | never on the request path, so a slow/failed update never adds latency
+    | to, or breaks, the turn the user is waiting on.
+    |
+    | The update itself is incremental: ConversationRecapService feeds the
+    | LLM the PREVIOUS recap + only the last `window_messages` messages —
+    | never the whole conversation — so the cost of keeping it fresh stays
+    | constant regardless of how long the conversation grows.
+    |
+    | `update_every_n_messages` = 1 (default) updates after every turn; a
+    | higher value trades recap freshness for fewer LLM calls on long,
+    | chatty conversations. Stateless (KbChatController) has no conversation
+    | to attach a recap to and is unaffected by this feature.
+    |
+    */
+    'session_recap' => [
+        'enabled' => (bool) env('KB_SESSION_RECAP_ENABLED', true),
+        'update_every_n_messages' => (int) env('KB_SESSION_RECAP_EVERY_N_MESSAGES', 1),
+        'window_messages' => (int) env('KB_SESSION_RECAP_WINDOW_MESSAGES', 6),
+        'queue' => env('KB_SESSION_RECAP_QUEUE', 'default'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Cloud Time Machine — archived-version retention (v8.7/W5)
     |--------------------------------------------------------------------------
     |

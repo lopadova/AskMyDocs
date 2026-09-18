@@ -28,6 +28,10 @@ class Conversation extends Model
         'pinned_at' => 'datetime',
         'archived_at' => 'datetime',
         'importance' => ConversationImportance::class,
+        // System-written only (ConversationRecapService) — deliberately NOT
+        // in $fillable so a mass-assignment from an HTTP request can never
+        // forge it.
+        'session_recap' => 'array',
     ];
 
     /**
