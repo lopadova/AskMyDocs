@@ -245,6 +245,13 @@ export interface MessageMetadata {
     agent_activity?: AgentRunEvent[];
     requires_selection?: boolean;
     locale?: string;
+    /**
+     * How many KB searches / MCP+API tool calls this agent run actually
+     * attempted over its whole lifetime — see AgentResultProjector::
+     * searchStats(). Rendered by SearchStatsBadge. Absent on non-agent
+     * (legacy sync/stream) messages.
+     */
+    search_stats?: { kb_searches: number; tool_calls: number } | null;
 }
 
 export interface AgentSelectionDisplayField {

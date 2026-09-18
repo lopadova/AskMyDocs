@@ -5,6 +5,7 @@ import { Markdown } from '../../lib/markdown';
 import { CitationsPopover } from './CitationsPopover';
 import { RelatedPanel } from './RelatedPanel';
 import { ConfidenceBadge } from './ConfidenceBadge';
+import { SearchStatsBadge } from './SearchStatsBadge';
 import { RefusalNotice } from './RefusalNotice';
 import { ThinkingTrace } from './ThinkingTrace';
 import { MessageActions } from './MessageActions';
@@ -319,6 +320,7 @@ export function MessageBubble({
                                 confidence={confidence}
                                 refusalReason={refusalReason}
                             />
+                            <SearchStatsBadge stats={meta.search_stats} />
                             {meta.model && (
                                 <span
                                     data-testid={`chat-message-${messageId}-meta`}
