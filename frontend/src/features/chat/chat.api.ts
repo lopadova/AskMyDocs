@@ -439,8 +439,9 @@ export const chatApi = {
         mcpAppId?: string,
         selection?: AgentSelectionRequest,
         liveSources?: LiveSourceSelection,
+        depth?: number,
     ): Promise<AgentTurnStarted> {
-        const payload: { content: string; filters?: FilterState; mcp_app_id?: string; selection?: AgentSelectionRequest; live_sources?: LiveSourceSelection } = { content };
+        const payload: { content: string; filters?: FilterState; mcp_app_id?: string; selection?: AgentSelectionRequest; live_sources?: LiveSourceSelection; depth?: number } = { content };
         if (filters && !isFilterStateEmpty(filters)) {
             payload.filters = filters;
         }
@@ -452,6 +453,12 @@ export const chatApi = {
         }
         if (liveSources) {
             payload.live_sources = liveSources;
+        }
+        // "Investigation depth" (1-5). Omitted when it's the server default
+        // (3) so a client that never touches the control sends a payload
+        // byte-identical to before this knob existed.
+        if (depth !== undefined && depth !== 3) {
+            payload.depth = depth;
         }
         const { data } = await api.post<AgentTurnStarted>(
             `/conversations/${conversationId}/messages/agent`,

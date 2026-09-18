@@ -23,6 +23,8 @@ export interface UseAgentChatOptions {
     conversationId: number | null;
     filters: FilterState;
     liveSources?: LiveSourceSelection;
+    /** "Investigation depth" (1-5, default 3) — see chat.api.ts startAgentTurn(). */
+    depth?: number;
     initialMessages?: Message[];
     onFinish?: () => void;
     onError?: (error: Error) => void;
@@ -54,7 +56,7 @@ export interface UseAgentChatResult {
 }
 
 export function useAgentChat(options: UseAgentChatOptions): UseAgentChatResult {
-    const { conversationId, filters, liveSources, initialMessages, onFinish, onError } = options;
+    const { conversationId, filters, liveSources, depth, initialMessages, onFinish, onError } = options;
     const [messages, setMessages] = useState<Message[]>(initialMessages ?? []);
     const [status, setStatus] = useState<ChatStatus>('ready');
     const [error, setError] = useState<Error | null>(null);
@@ -68,11 +70,13 @@ export function useAgentChat(options: UseAgentChatOptions): UseAgentChatResult {
     const generationRef = useRef(0);
     const filtersRef = useRef(filters);
     const liveSourcesRef = useRef(liveSources);
+    const depthRef = useRef(depth);
     const initialMessagesRef = useRef(initialMessages);
     const callbacksRef = useRef({ onFinish, onError });
 
     filtersRef.current = filters;
     liveSourcesRef.current = liveSources;
+    depthRef.current = depth;
     initialMessagesRef.current = initialMessages;
     callbacksRef.current = { onFinish, onError };
 
@@ -189,6 +193,7 @@ export function useAgentChat(options: UseAgentChatOptions): UseAgentChatResult {
                 messageOptions?.mcpAppId,
                 messageOptions?.selection,
                 liveSourcesRef.current,
+                depthRef.current,
             );
             if (generation !== generationRef.current) return;
             runRef.current = run;

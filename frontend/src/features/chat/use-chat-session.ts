@@ -96,6 +96,9 @@ export interface UseChatSessionResult {
     setFilters: React.Dispatch<React.SetStateAction<FilterState>>;
     /** Exposed for assertions; the turn engine consumes it internally. */
     effectiveFilters: FilterState;
+    /** "Investigation depth" (1-5, default 3) — see chat.api.ts startAgentTurn(). */
+    depth: number;
+    setDepth: React.Dispatch<React.SetStateAction<number>>;
     collections: ChatCollectionOption[];
     liveSources: LiveSourceCatalog | undefined;
     liveSourceSelection: LiveSourceSelection | undefined;
@@ -405,6 +408,11 @@ export function useChatSession({ nav }: UseChatSessionOptions): UseChatSessionRe
     // filters via `filters` + `onFiltersChange` props.
     const [filters, setFilters] = useState<FilterState>({});
     const [disabledLiveSourcesByScope, setDisabledLiveSourcesByScope] = useState<Record<string, string[]>>({});
+    // "Investigation depth" (1-5, default 3 = server default = today's
+    // unscaled agent budget). Lifted here for the same reason `filters`
+    // is: Composer is a controlled component, the turn engine
+    // (useAgentChat) needs the live value when it builds each turn.
+    const [depth, setDepth] = useState<number>(3);
 
     const effectiveFilters = useMemo<FilterState>(() => {
         // Any project-less conversation must be explicitly constrained to the
@@ -560,6 +568,7 @@ export function useChatSession({ nav }: UseChatSessionOptions): UseChatSessionRe
         conversationId: activeId,
         filters: effectiveFilters,
         liveSources: liveSourceSelection,
+        depth,
         initialMessages,
         onFinish: () => {
             // Refetch the conversations list (sidebar's recent activity
@@ -838,6 +847,8 @@ export function useChatSession({ nav }: UseChatSessionOptions): UseChatSessionRe
         filters,
         setFilters,
         effectiveFilters,
+        depth,
+        setDepth,
         collections: collectionsQuery.data ?? [],
         liveSources: liveSourcesQuery.data,
         liveSourceSelection,

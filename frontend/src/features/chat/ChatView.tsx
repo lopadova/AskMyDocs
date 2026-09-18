@@ -70,6 +70,8 @@ export function ChatView(): ReactNode {
         turnSettleId,
         filters,
         setFilters,
+        depth,
+        setDepth,
         collections,
         liveSources,
         liveSourceSelection,
@@ -230,6 +232,8 @@ export function ChatView(): ReactNode {
                             availableCollections={collections}
                             filters={filters}
                             onFiltersChange={setFilters}
+                            depth={depth}
+                            onDepthChange={setDepth}
                             liveSources={liveSources}
                             liveSourceSelection={liveSourceSelection}
                             onLiveSourcesChange={onLiveSourcesChange}

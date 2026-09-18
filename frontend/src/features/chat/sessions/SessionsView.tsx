@@ -62,6 +62,8 @@ export function SessionsView(): ReactNode {
         turnSettleId,
         filters,
         setFilters,
+        depth,
+        setDepth,
         collections,
         liveSources,
         liveSourceSelection,
@@ -222,6 +224,8 @@ export function SessionsView(): ReactNode {
                             availableCollections={collections}
                             filters={filters}
                             onFiltersChange={setFilters}
+                            depth={depth}
+                            onDepthChange={setDepth}
                             liveSources={liveSources}
                             liveSourceSelection={liveSourceSelection}
                             onLiveSourcesChange={onLiveSourcesChange}

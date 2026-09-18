@@ -54,6 +54,13 @@ export interface ComposerProps {
      */
     filters: FilterState;
     onFiltersChange: (next: FilterState | ((prev: FilterState) => FilterState)) => void;
+    /**
+     * "Investigation depth" (1-5, default 3) — how many cascading
+     * plan->act->observe cycles the agent is allowed before it must
+     * synthesize a final answer. Controlled, same pattern as `filters`.
+     */
+    depth: number;
+    onDepthChange: (next: number) => void;
     liveSources?: LiveSourceCatalog;
     liveSourceSelection?: LiveSourceSelection;
     onLiveSourcesChange?: (kind: LiveSourceKind, enabledKeys: string[]) => void;
@@ -106,6 +113,8 @@ export function Composer({
     docLabels = {},
     filters,
     onFiltersChange,
+    depth,
+    onDepthChange,
     liveSources,
     liveSourceSelection,
     onLiveSourcesChange,
@@ -352,6 +361,22 @@ export function Composer({
                                         {row.name}
                                     </option>
                                 ))}
+                            </select>
+                            <span aria-hidden="true"><Icon.ChevronDown size={10} /></span>
+                        </label>
+                        <label className="chat-composer-scope" title="How many cascading searches the agent runs before answering">
+                            <span aria-hidden="true"><Icon.Sliders size={12} /></span>
+                            <select
+                                data-testid="chat-depth-picker"
+                                value={depth}
+                                onChange={(e) => onDepthChange(Number(e.target.value))}
+                                aria-label="Investigation depth"
+                            >
+                                <option value={1}>Depth 1 · quick</option>
+                                <option value={2}>Depth 2</option>
+                                <option value={3}>Depth 3 · balanced</option>
+                                <option value={4}>Depth 4</option>
+                                <option value={5}>Depth 5 · thorough</option>
                             </select>
                             <span aria-hidden="true"><Icon.ChevronDown size={10} /></span>
                         </label>

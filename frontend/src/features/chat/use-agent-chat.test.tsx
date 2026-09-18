@@ -82,6 +82,7 @@ describe('useAgentChat', () => {
             mcpAppId,
             undefined,
             undefined,
+            undefined,
         );
         expect(result.current.messages).toEqual([userMessage, assistantMessage]);
         expect(result.current.events.at(-1)?.message).toBe('La risposta è pronta.');
@@ -151,6 +152,7 @@ describe('useAgentChat', () => {
             undefined,
             { message_id: 90, row_key: '102' },
             undefined,
+            undefined,
         );
     });
 
@@ -178,6 +180,34 @@ describe('useAgentChat', () => {
             undefined,
             undefined,
             liveSources,
+            undefined,
+        );
+    });
+
+    it('passes the current investigation depth to every new run', async () => {
+        vi.spyOn(chatApi, 'startAgentTurn').mockResolvedValue({
+            run_id: 'run-depth', status: 'queued', locale: 'it-IT',
+            events_url: '/events', cancel_url: '/cancel', continue_url: '/continue', user_message: userMessage,
+        });
+        vi.spyOn(chatApi, 'listMessages').mockResolvedValue([userMessage, assistantMessage]);
+        vi.stubGlobal('fetch', vi.fn(async () => eventResponse(completedEvent())));
+        const { result } = renderHook(() => useAgentChat({
+            conversationId: 7,
+            filters: {},
+            depth: 5,
+            initialMessages: emptyMessages,
+        }));
+
+        await act(async () => result.current.sendMessage({ text: 'Analizza a fondo il modulo di fatturazione' }));
+
+        expect(chatApi.startAgentTurn).toHaveBeenCalledWith(
+            7,
+            'Analizza a fondo il modulo di fatturazione',
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            5,
         );
     });
 

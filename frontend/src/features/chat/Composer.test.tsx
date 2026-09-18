@@ -26,6 +26,8 @@ function makeProps(overrides: Partial<{
     conversationId: number | null;
     filters: FilterState;
     onFiltersChange: (next: FilterState | ((p: FilterState) => FilterState)) => void;
+    depth: number;
+    onDepthChange: (next: number) => void;
     onSend: (content: string) => void | Promise<void>;
     onStop: () => void;
     isStreaming: boolean;
@@ -35,6 +37,8 @@ function makeProps(overrides: Partial<{
         conversationId: 1,
         filters: {},
         onFiltersChange: vi.fn(),
+        depth: 3,
+        onDepthChange: vi.fn(),
         onSend: vi.fn(),
         onStop: vi.fn(),
         isStreaming: false,
