@@ -674,16 +674,22 @@ Route::middleware([
         Route::post('/kb/documents/{id}/wiki-discard', [\App\Http\Controllers\Api\Admin\KbWikiExplorerController::class, 'discard'])
             ->whereNumber('id')->name('api.admin.kb.documents.wiki-discard');
 
-        // v8.37/W3 (ADR 0031 §2/§4) — Digitization Review: read a document's
-        // page-review summary, mark a page reviewed, approve a document
-        // (auto -> human). R32 — same admin KB group gate as the
-        // representative `/api/admin/kb/evidence-tiers` row.
+        // v8.37/W3 (ADR 0031 §2/§4/§9) — Digitization Review: read a
+        // document's page-review summary or a single page's status, set a
+        // page's review status, approve a document (auto -> human). Paths
+        // match ADR 0031 §9's documented HTTP contract table exactly
+        // (Copilot PR #494 round 4 flagged `/review-approve` diverging from
+        // the ADR's `/approve`, and the missing per-page GET). R32 — same
+        // admin KB group gate as the representative
+        // `/api/admin/kb/evidence-tiers` row.
         Route::get('/kb/documents/{id}/review-summary', [\App\Http\Controllers\Api\Admin\KbReviewController::class, 'summary'])
             ->whereNumber('id')->name('api.admin.kb.documents.review-summary');
+        Route::get('/kb/documents/{id}/pages/{page}', [\App\Http\Controllers\Api\Admin\KbReviewController::class, 'pageStatus'])
+            ->whereNumber(['id', 'page'])->name('api.admin.kb.documents.pages.status');
         Route::patch('/kb/documents/{id}/pages/{page}/review-status', [\App\Http\Controllers\Api\Admin\KbReviewController::class, 'markPageReviewed'])
             ->whereNumber(['id', 'page'])->name('api.admin.kb.documents.pages.review-status');
-        Route::post('/kb/documents/{id}/review-approve', [\App\Http\Controllers\Api\Admin\KbReviewController::class, 'approve'])
-            ->whereNumber('id')->name('api.admin.kb.documents.review-approve');
+        Route::post('/kb/documents/{id}/approve', [\App\Http\Controllers\Api\Admin\KbReviewController::class, 'approve'])
+            ->whereNumber('id')->name('api.admin.kb.documents.approve');
 
         // v8.7/W5 — Cloud Time Machine: version timeline + diff + restore.
         // R32 — covered by the AdminAuthorizationMatrix

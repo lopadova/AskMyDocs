@@ -48,7 +48,7 @@ return new class extends Migration
         });
 
         // Copilot PR #494 — page_number is 1-based (ADR 0031 §2); a bare
-        // unsignedInteger still admits 0. KbReviewService::markPageReviewed()
+        // unsignedInteger still admits 0. KbReviewService::setPageReviewStatus()
         // guards this at the application layer (the single write path every
         // surface funnels through, R44) — this CHECK is defense-in-depth on
         // Postgres, the production driver. SQLite cannot ALTER TABLE ADD a

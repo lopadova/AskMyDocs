@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Exceptions\KbReviewDisabledException;
+use App\Models\KbDocumentPageReview;
 use App\Models\KnowledgeDocument;
 use App\Services\Kb\Review\KbReviewService;
 use App\Support\TenantContext;
@@ -14,10 +15,11 @@ use Illuminate\Routing\Controller;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 /**
- * v8.37/W3 (ADR 0031 §2/§4) — HTTP surface (R44) of Digitization Review:
- *   GET  /api/admin/kb/documents/{id}/review-summary            → read status
- *   PATCH /api/admin/kb/documents/{id}/pages/{page}/review-status → mark reviewed
- *   POST /api/admin/kb/documents/{id}/review-approve             → approve (auto -> human)
+ * v8.37/W3 (ADR 0031 §2/§4/§9) — HTTP surface (R44) of Digitization Review:
+ *   GET   /api/admin/kb/documents/{id}/review-summary              → document-wide aggregate read
+ *   GET   /api/admin/kb/documents/{id}/pages/{page}                → single-page read (ADR 0031 §9's documented contract)
+ *   PATCH /api/admin/kb/documents/{id}/pages/{page}/review-status  → set a page's status (reviewed|unreviewed)
+ *   POST  /api/admin/kb/documents/{id}/approve                     → approve (auto -> human)
  * Delegates to {@see KbReviewService}; tenant-scoped (R30), RBAC-gated by the
  * same admin KB route group as the representative `/api/admin/kb/evidence-tiers`
  * R32 matrix row.
@@ -46,13 +48,38 @@ final class KbReviewController extends Controller
         return response()->json(['data' => $this->reviews->documentReviewSummary($this->find($id))]);
     }
 
+    public function pageStatus(int $id, int $page): JsonResponse
+    {
+        // Same "whole capability inert when off" posture as summary() above.
+        if (! (bool) config('kb.review.enabled', false)) {
+            throw new KbReviewDisabledException();
+        }
+
+        try {
+            $status = $this->reviews->pageReviewStatus($this->find($id), $page);
+        } catch (\InvalidArgumentException $e) {
+            // Out-of-range page: an addressing failure, not a body-shape
+            // one — 404, mirroring the "document not found" 404 below.
+            throw new NotFoundHttpException($e->getMessage());
+        }
+
+        return response()->json(['data' => [
+            'page_number' => $status['page_number'],
+            'status' => $status['status'],
+            'reviewed_by' => $status['reviewed_by'],
+            'reviewed_at' => optional($status['reviewed_at'])->toIso8601String(),
+        ]]);
+    }
+
     public function markPageReviewed(Request $request, int $id, int $page): JsonResponse
     {
+        $status = (string) $request->input('status', KbDocumentPageReview::STATUS_REVIEWED);
+
         try {
-            $review = $this->reviews->markPageReviewed($this->find($id), $page, $this->actor($request));
+            $review = $this->reviews->setPageReviewStatus($this->find($id), $page, $status, $this->actor($request));
         } catch (\InvalidArgumentException $e) {
-            // KbReviewService's page_number >= 1 guard — R14: a client
-            // input error is 422, never a 500.
+            // KbReviewService's page_number / page_count / status guards —
+            // R14: a client input error is 422, never a 500.
             return response()->json(['message' => $e->getMessage()], 422);
         }
 

@@ -303,7 +303,10 @@ kb_text_correction_candidates
   old_text            text
   new_text            text (<= 4000 chars, enforced app-side)
   rationale           string(500) nullable
-  idempotency_key      string(64) — sha256(tenant.user.document.version_hash.page.old.new)
+  idempotency_key      string(64) — sha256 of the concatenation of the per-field
+                        sha256 digests of (tenant, user, document, version_hash,
+                        page, old, new); hashing each field first keeps the key
+                        injective (a plain concatenation of raw fields is not)
   status              string: pending | applied | rejected
   proposed_by          string — the MCP caller's immutable identity
   consumed_at          nullable timestamp

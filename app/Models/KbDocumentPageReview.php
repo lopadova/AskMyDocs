@@ -11,8 +11,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * v8.37 / ADR 0031 §2 — per-page review progress on a converted document.
- * One row per (tenant, document, page); `markPageReviewed()` upserts on the
- * unique key rather than accumulating rows.
+ * One row per (tenant, document, page); `KbReviewService::setPageReviewStatus()`
+ * upserts on the unique key rather than accumulating rows.
  *
  * @property int $id
  * @property string $tenant_id

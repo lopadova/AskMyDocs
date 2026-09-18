@@ -10,11 +10,18 @@ use Illuminate\Support\Facades\Schema;
  * v8.37 / ADR 0031 §6-7 — an agent-proposed text correction CANDIDATE, never
  * applied content (ADR 0003's /suggest -> /candidates -> /promote pattern,
  * restated for OCR page text). `idempotency_key` is the replay/dedup
- * mechanism (sha256 of tenant.user.document.version_hash.page.old.new);
- * `status` + `consumed_at` make approval single-use under a `lockForUpdate()`
+ * mechanism: sha256 of the CONCATENATION of the per-field sha256 digests of
+ * (tenant, user, document, version_hash, page, old, new) — see
+ * {@see \App\Models\KbTextCorrectionCandidate::idempotencyKeyFor()}. Hashing
+ * each field first, before concatenating the digests, is deliberate: a plain
+ * concatenation of the raw fields (`old_text="ab", new_text="c"` vs.
+ * `old_text="a", new_text="bc"`) is not injective and can collide two
+ * genuinely different corrections onto the same key. `status` +
+ * `consumed_at` make approval single-use under a `lockForUpdate()`
  * transaction (R21). No FK from `kb_canonical_audit` to this table, by the
  * same no-FK-by-design rule every other row that table records already
- * follows.
+ * follows. Mirrored verbatim from the production migration (SQLite
+ * test-schema convention).
  */
 return new class extends Migration
 {

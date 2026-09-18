@@ -11,10 +11,11 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * v8.37/W3 (ADR 0031 §2) — schema-level regression coverage for the new
- * per-page review table, ahead of KbReviewService landing in a later W3
- * sub-branch. Proves: (a) the tenant-scoped unique key
- * (tenant_id, knowledge_document_id, page_number) really rejects a
+ * v8.37/W3 (ADR 0031 §2) — schema-level regression coverage for the
+ * per-page review table, independent of {@see \App\Services\Kb\Review\KbReviewService}
+ * (covered separately by KbReviewServiceTest): this file exercises the raw
+ * Eloquent model + migration directly. Proves: (a) the tenant-scoped unique
+ * key (tenant_id, knowledge_document_id, page_number) really rejects a
  * duplicate row rather than silently accumulating one review per save,
  * (b) the FK cascade-deletes review rows with their document (R30/R31),
  * and (c) the reviewed/unreviewed scopes filter correctly.

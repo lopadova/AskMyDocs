@@ -13,8 +13,8 @@ use Tests\TestCase;
 
 /**
  * v8.37/W3 (ADR 0031, R44 PHP/CLI surface) — `kb:review` mirrors
- * KbReviewService: mark a page reviewed, approve a document, report its
- * review summary.
+ * KbReviewService: set a page's review status, approve a document, report
+ * its review summary.
  */
 final class KbReviewCommandTest extends TestCase
 {
@@ -38,13 +38,22 @@ final class KbReviewCommandTest extends TestCase
         ], $over));
     }
 
-    public function test_marks_a_page_reviewed(): void
+    /** A converted document with a recorded page count — the precondition
+     *  KbReviewService::setPageReviewStatus() now requires. */
+    private function convertedDoc(int $pageCount = 5, array $over = []): KnowledgeDocument
+    {
+        return $this->doc(array_merge([
+            'metadata' => ['converter' => ['page_count' => $pageCount]],
+        ], $over));
+    }
+
+    public function test_sets_a_page_to_reviewed_by_default(): void
     {
         config(['kb.review.enabled' => true]);
-        $doc = $this->doc();
+        $doc = $this->convertedDoc();
 
         $this->artisan('kb:review', ['document' => $doc->id, '--page' => 1])
-            ->expectsOutputToContain('Page 1 marked reviewed.')
+            ->expectsOutputToContain("Page 1 set to 'reviewed'.")
             ->assertExitCode(0);
 
         $this->assertDatabaseHas('kb_document_page_reviews', [
@@ -52,6 +61,39 @@ final class KbReviewCommandTest extends TestCase
             'page_number' => 1,
             'status' => KbDocumentPageReview::STATUS_REVIEWED,
         ]);
+    }
+
+    /**
+     * ADR 0031 §9's `--status=` contract — a page can be reverted back to
+     * unreviewed, not just marked reviewed once.
+     */
+    public function test_status_option_can_revert_a_page_to_unreviewed(): void
+    {
+        config(['kb.review.enabled' => true]);
+        $doc = $this->convertedDoc();
+        $this->artisan('kb:review', ['document' => $doc->id, '--page' => 1])->assertExitCode(0);
+
+        $this->artisan('kb:review', ['document' => $doc->id, '--page' => 1, '--status' => 'unreviewed'])
+            ->expectsOutputToContain("Page 1 set to 'unreviewed'.")
+            ->assertExitCode(0);
+
+        $this->assertDatabaseHas('kb_document_page_reviews', [
+            'knowledge_document_id' => $doc->id,
+            'page_number' => 1,
+            'status' => KbDocumentPageReview::STATUS_UNREVIEWED,
+            'reviewed_by' => null,
+        ]);
+    }
+
+    public function test_status_option_rejects_an_unknown_value(): void
+    {
+        config(['kb.review.enabled' => true]);
+        $doc = $this->convertedDoc();
+
+        $this->artisan('kb:review', ['document' => $doc->id, '--page' => 1, '--status' => 'bogus'])
+            ->assertExitCode(1);
+
+        $this->assertSame(0, KbDocumentPageReview::where('knowledge_document_id', $doc->id)->count());
     }
 
     public function test_approves_a_document(): void
@@ -81,9 +123,52 @@ final class KbReviewCommandTest extends TestCase
     public function test_fails_cleanly_on_a_non_positive_page_number(): void
     {
         config(['kb.review.enabled' => true]);
-        $doc = $this->doc();
+        $doc = $this->convertedDoc();
 
         $this->artisan('kb:review', ['document' => $doc->id, '--page' => 0])
+            ->assertExitCode(1);
+
+        $this->assertSame(0, KbDocumentPageReview::where('knowledge_document_id', $doc->id)->count());
+    }
+
+    /**
+     * Copilot PR #494 round 4 (must-fix) — `(int) '12.5'` silently
+     * truncates to 12, so `kb:review 12.5 --approve` could act on the WRONG
+     * document without any error. Both the positional document id and the
+     * --page option must reject a malformed value rather than truncate it.
+     */
+    public function test_rejects_a_non_integer_document_argument_rather_than_truncating(): void
+    {
+        config(['kb.review.enabled' => true]);
+
+        $this->artisan('kb:review', ['document' => '12.5'])
+            ->expectsOutputToContain('document must be a positive integer')
+            ->assertExitCode(1);
+    }
+
+    public function test_rejects_a_non_integer_page_option_rather_than_truncating(): void
+    {
+        config(['kb.review.enabled' => true]);
+        $doc = $this->convertedDoc();
+
+        $this->artisan('kb:review', ['document' => $doc->id, '--page' => '1.5'])
+            ->expectsOutputToContain('--page must be a positive integer')
+            ->assertExitCode(1);
+
+        $this->assertSame(0, KbDocumentPageReview::where('knowledge_document_id', $doc->id)->count());
+    }
+
+    /**
+     * Copilot PR #494 round 4 — a page number beyond the document's own
+     * recorded page count is a defined failure, not a silently-created
+     * phantom row.
+     */
+    public function test_fails_cleanly_when_the_page_exceeds_the_documents_page_count(): void
+    {
+        config(['kb.review.enabled' => true]);
+        $doc = $this->convertedDoc(pageCount: 1);
+
+        $this->artisan('kb:review', ['document' => $doc->id, '--page' => 999])
             ->assertExitCode(1);
 
         $this->assertSame(0, KbDocumentPageReview::where('knowledge_document_id', $doc->id)->count());
@@ -99,7 +184,7 @@ final class KbReviewCommandTest extends TestCase
     public function test_surfaces_the_disabled_flag_rather_than_crashing(): void
     {
         config(['kb.review.enabled' => false]);
-        $doc = $this->doc();
+        $doc = $this->convertedDoc();
 
         $this->artisan('kb:review', ['document' => $doc->id, '--page' => 1])
             // Copilot PR #494 round 2 — exit code 1 alone doesn't prove
@@ -132,6 +217,22 @@ final class KbReviewCommandTest extends TestCase
 
         // Also on the early not-found return path.
         $this->artisan('kb:review', ['document' => 999999, '--tenant' => 'other-tenant'])
+            ->assertExitCode(1);
+
+        $this->assertSame('pre-existing-tenant', $tenants->current());
+    }
+
+    /**
+     * The document-argument validation (Copilot round 4) happens BEFORE
+     * the tenant is switched — confirm it does not leak a tenant switch
+     * either, on a document id that fails validation outright.
+     */
+    public function test_restores_the_previous_tenant_context_when_the_document_argument_is_invalid(): void
+    {
+        $tenants = app(TenantContext::class);
+        $tenants->set('pre-existing-tenant');
+
+        $this->artisan('kb:review', ['document' => '12.5', '--tenant' => 'other-tenant'])
             ->assertExitCode(1);
 
         $this->assertSame('pre-existing-tenant', $tenants->current());

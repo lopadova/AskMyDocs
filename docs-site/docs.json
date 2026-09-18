@@ -27,6 +27,7 @@
         "pages": [
           "ingestion",
           "documents-and-ocr",
+          "digitization-review",
           "chat-and-retrieval",
           "canonical-and-promotion",
           "auto-wiki",
