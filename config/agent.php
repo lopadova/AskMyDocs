@@ -40,6 +40,37 @@ return [
         'confirmation_logical_extension_max' => (int) env('AGENT_CONFIRMATION_LOGICAL_EXTENSION_MAX', 25),
         'confirmation_physical_extension_max' => (int) env('AGENT_CONFIRMATION_PHYSICAL_EXTENSION_MAX', 100),
     ],
+    /*
+    |--------------------------------------------------------------------------
+    | Investigation depth (1-5, user-facing "livello di approfondimento")
+    |--------------------------------------------------------------------------
+    |
+    | A per-run multiplier applied by AgentBudgetTracker::limit() to the
+    | depth-eligible entries in `limits` above (iterations, logical_soft/
+    | hard, physical_hard, both time budgets, evidence_bytes) — NOT to
+    | consecutive_errors/duplicate_calls, which stay fixed loop-safety
+    | guards regardless of how deep the caller asked to go. A higher depth
+    | gives the planner more plan->act->observe cycles to decide it needs
+    | another cascading KB search (or another tool call), and more evidence
+    | headroom + wall-clock time to actually finish that investigation — the
+    | run is durable/async (AgentRun + polling), so a longer time budget
+    | never blocks the initiating HTTP request.
+    |
+    | Level 3 = 1.0x = today's unscaled defaults, so a caller that never
+    | sends `depth` (or any pre-existing client) behaves byte-identically
+    | to before this knob existed.
+    |
+    */
+    'depth' => [
+        'multipliers' => [
+            1 => (float) env('AGENT_DEPTH_MULTIPLIER_1', 0.5),
+            2 => (float) env('AGENT_DEPTH_MULTIPLIER_2', 0.75),
+            3 => (float) env('AGENT_DEPTH_MULTIPLIER_3', 1.0),
+            4 => (float) env('AGENT_DEPTH_MULTIPLIER_4', 2.0),
+            5 => (float) env('AGENT_DEPTH_MULTIPLIER_5', 3.0),
+        ],
+        'default' => (int) env('AGENT_DEPTH_DEFAULT', 3),
+    ],
     'locales' => [
         'supported' => array_values(array_filter(array_map(
             static fn (string $locale): string => trim($locale),

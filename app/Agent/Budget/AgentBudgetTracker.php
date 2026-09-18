@@ -9,6 +9,22 @@ use App\Models\AgentRun;
 
 final class AgentBudgetTracker
 {
+    /**
+     * Limit keys scaled by the run's investigation depth (config
+     * `agent.depth.multipliers`, input_json.depth, 1-5, default 3 = 1.0x =
+     * unscaled). Loop-safety guards (consecutive_errors, duplicate_calls)
+     * are deliberately excluded — they must hold regardless of depth.
+     */
+    private const DEPTH_SCALED_LIMITS = [
+        'iterations',
+        'logical_soft',
+        'logical_hard',
+        'physical_hard',
+        'interactive_time_seconds',
+        'bulk_time_seconds',
+        'evidence_bytes',
+    ];
+
     /** @var array<string,mixed> */
     private array $state;
 
@@ -143,7 +159,34 @@ final class AgentBudgetTracker
 
     private function limit(string $key, int $default): int
     {
-        return max(1, (int) config('agent.limits.'.$key, $default));
+        $base = max(1, (int) config('agent.limits.'.$key, $default));
+        if (! in_array($key, self::DEPTH_SCALED_LIMITS, true)) {
+            return $base;
+        }
+
+        return max(1, (int) round($base * $this->depthMultiplier()));
+    }
+
+    /**
+     * "Livello di approfondimento": 1-5, defaults to `agent.depth.default`
+     * (3 = 1.0x) when the caller never set one. Stamped on the run's own
+     * input_json at turn-start (AgentMessageController) rather than read
+     * live from the request, so a run's effective budget stays fixed for
+     * its whole (possibly resumed-after-confirmation) lifetime.
+     */
+    private function depthLevel(): int
+    {
+        $depth = (int) data_get($this->run->input_json, 'depth', (int) config('agent.depth.default', 3));
+
+        return max(1, min(5, $depth));
+    }
+
+    private function depthMultiplier(): float
+    {
+        $multipliers = config('agent.depth.multipliers', []);
+        $value = is_array($multipliers) ? ($multipliers[$this->depthLevel()] ?? null) : null;
+
+        return is_numeric($value) ? max(0.1, (float) $value) : 1.0;
     }
 
     /** @param array<string,mixed> $arguments */
