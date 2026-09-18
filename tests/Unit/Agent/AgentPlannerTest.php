@@ -63,7 +63,11 @@ final class AgentPlannerTest extends TestCase
         ));
 
         $this->assertStringContainsString('Investigation depth is 5/5 (exhaustive)', $prompt);
-        $this->assertStringContainsString('issue a separate search_knowledge_base action for EACH one', $prompt);
+        $this->assertStringContainsString('issue a separate tool call for EACH one', $prompt);
+        // R: must not steer every sub-question toward the SAME content-search
+        // tool by name — a catalog-shaped sub-question needs a different tool.
+        $this->assertStringContainsString('pick the RIGHT tool per sub-question', $prompt);
+        $this->assertStringContainsString('list_knowledge_documents instead', $prompt);
     }
 
     private function capturedPrompt(callable $call): string

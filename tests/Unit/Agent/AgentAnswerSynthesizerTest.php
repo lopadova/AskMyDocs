@@ -59,6 +59,88 @@ final class AgentAnswerSynthesizerTest extends TestCase
         $this->assertSame('unattested_entity', $answer->grounding['reason']);
     }
 
+    /**
+     * Regression for the "Fammi un riassunto sintetico dei manuali che
+     * abbiamo" case: a catalog/overview request must be answerable as
+     * prose (render_table=false) built from list_knowledge_documents
+     * evidence — one claim per document, quoting its title — not blocked
+     * by the claim-grounding contract just because the request word is
+     * "riassunto" (summary) rather than a literal quote of any one document.
+     */
+    public function test_it_builds_a_multi_claim_overview_from_a_document_catalog_result(): void
+    {
+        $evidence = app(AgentEvidenceFactory::class)->empty();
+        $catalogResult = [
+            'count' => 2,
+            'documents' => [
+                ['id' => 1, 'title' => 'SizeCharts Manual', 'source_path' => 'docs/sizecharts.md', 'source_type' => 'markdown', 'is_canonical' => false, 'canonical_type' => null, 'generation_source' => 'auto', 'summary' => 'Guida alla gestione delle taglie prodotto.'],
+                ['id' => 2, 'title' => 'Manuale Fatturazione', 'source_path' => 'docs/fatturazione.md', 'source_type' => 'markdown', 'is_canonical' => false, 'canonical_type' => null, 'generation_source' => 'auto', 'summary' => null],
+            ],
+        ];
+        $tool = new AgentToolDefinition(
+            name: 'list_knowledge_documents',
+            displayName: 'Document catalog',
+            description: 'List indexed documents by title.',
+            kind: 'catalog',
+            inputSchema: ['type' => 'object'],
+            readOnly: true,
+            idempotent: true,
+            physicalMinimum: 0,
+            physicalLikely: 0,
+            physicalMaximum: 0,
+            executorReference: 'catalog',
+        );
+        $evidence->addToolResult($tool, [], $catalogResult, 90);
+        $catalogHash = hash('sha256', (string) json_encode($catalogResult, JSON_UNESCAPED_UNICODE));
+
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->once()->andReturn(new AiResponse(
+            content: '',
+            provider: 'fake',
+            model: 'fake-agent',
+            toolCalls: [[
+                'name' => 'submit_agent_answer',
+                'arguments' => [
+                    'completeness' => 'complete',
+                    'claims' => [
+                        [
+                            'text' => '**SizeCharts Manual** — guida alla gestione delle taglie prodotto.',
+                            'quote' => 'SizeCharts Manual',
+                            'document_id' => null,
+                            'tool_execution_id' => 90,
+                            'evidence_hash' => $catalogHash,
+                        ],
+                        [
+                            'text' => '**Manuale Fatturazione** — copre i processi di fatturazione.',
+                            'quote' => 'Manuale Fatturazione',
+                            'document_id' => null,
+                            'tool_execution_id' => 90,
+                            'evidence_hash' => $catalogHash,
+                        ],
+                    ],
+                    'limitations' => [],
+                    'requires_selection' => false,
+                    'render_table' => false,
+                ],
+            ]],
+        ));
+
+        $answer = (new AgentAnswerSynthesizer(
+            $ai,
+            app(WidgetPiiMasker::class),
+            app(AgentTableArtifactFactory::class),
+            app(AgentClaimGroundingValidator::class),
+        ))->synthesize('Fammi un riassunto sintetico dei manuali che abbiamo', $this->context(), new AgentLoopOutcome('answer', $evidence, []));
+
+        $this->assertSame('complete', $answer->completeness);
+        $this->assertNull($answer->artifact);
+        $this->assertStringContainsString('SizeCharts Manual', $answer->answer);
+        $this->assertStringContainsString('Manuale Fatturazione', $answer->answer);
+        // One evidence entry (a single addToolResult() call) even though two
+        // claims reference it — selectedTools() dedupes by the tool, not the claim.
+        $this->assertSame([90], array_column($answer->toolSources, 'execution_id'));
+    }
+
     public function test_selection_does_not_force_a_detail_result_into_a_table(): void
     {
         $evidence = app(AgentEvidenceFactory::class)->empty();
