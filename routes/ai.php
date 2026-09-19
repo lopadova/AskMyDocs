@@ -8,19 +8,18 @@ use Laravel\Mcp\Facades\Mcp;
 | AI / MCP Routes
 |--------------------------------------------------------------------------
 |
-| Per ambiente interno semplice:
-|   - puoi usare Sanctum
+| Auth is EnforceMcpScope ("mcp.scope") alone: it looks up the request's
+| Bearer token against McpTenantToken (its own hashed-token table),
+| validates revocation/expiry/tenant match, and enforces the per-tool
+| read/propose/write scope — entirely independent of Sanctum/Auth::user(),
+| which real MCP clients (McpConnectCommand emits an `askmd_...`
+| McpTenantToken, never a Sanctum PAT) never populate.
 |
-| Per esposizione enterprise più robusta verso client remoti:
-|   - valuta Passport / OAuth 2.1
+| Rate limiting is the dedicated "mcp" limiter (AppServiceProvider),
+| keyed by the McpTenantToken bearer hash + tenant — not "api", which is
+| never registered in this app and would throw on every request.
 |
 */
 
-// Variante semplice:
 Mcp::web('/mcp/kb', KnowledgeBaseServer::class)
-    ->middleware(['auth:sanctum', 'mcp.scope', 'throttle:api']);
-
-// Variante enterprise (attivare se scegli Passport):
-// Mcp::oauthRoutes();
-// Mcp::web('/mcp/kb', KnowledgeBaseServer::class)
-//     ->middleware(['auth:api', 'throttle:api']);
+    ->middleware(['mcp.scope', 'throttle:mcp']);

@@ -8,6 +8,7 @@ use App\Mcp\Tools\KbProposeTextCorrectionTool;
 use App\Models\KbTextCorrectionCandidate;
 use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
+use App\Models\McpTenantToken;
 use App\Services\Kb\Review\KbReviewService;
 use App\Support\Canonical\GenerationSource;
 use App\Support\TenantContext;
@@ -204,5 +205,78 @@ final class KbProposeTextCorrectionToolTest extends TestCase
 
         $this->assertNotContains(\Laravel\Mcp\Server\Tools\Annotations\IsReadOnly::class, $names, 'a write tool must not be annotated read-only');
         $this->assertContains(\Laravel\Mcp\Server\Tools\Annotations\IsIdempotent::class, $names);
+    }
+
+    /**
+     * v8.37/W3b round 7 (Copilot PR #496 must-fix) — every other test in
+     * this file invokes the tool CLASS directly (`(new
+     * KbProposeTextCorrectionTool())->handle(...)`), which never exercises
+     * the real `/mcp/kb` route or its middleware stack at all. That gap is
+     * exactly how `routes/ai.php`'s stale `auth:sanctum` entry — leftover
+     * scaffolding from before `EnforceMcpScope`/`McpTenantToken` became the
+     * actual auth mechanism, predating this PR — went undetected: it would
+     * reject the REAL `askmd_...` `McpTenantToken` bearer token
+     * `McpConnectCommand` emits (not a Sanctum personal access token)
+     * before `EnforceMcpScope` ever runs, making every MCP tool
+     * unreachable over HTTP despite every MCP test passing. This test
+     * drives a genuine JSON-RPC `tools/call` request through the REAL
+     * route (`postJson`, not a direct method call and not
+     * `EnforceMcpScope` invoked standalone like
+     * `McpWriteToolScopeTest::callTool()` does) with a real, persisted
+     * `McpTenantToken`, proving the full stack — routing, auth, scope
+     * enforcement, and the tool itself — actually works end-to-end.
+     */
+    public function test_a_real_http_request_with_a_tenant_token_reaches_the_tool_end_to_end(): void
+    {
+        config(['kb.review.enabled' => true]);
+        $doc = $this->docWithPage1('Bod is the supplier.');
+
+        $plainToken = 'askmd_test-token-'.bin2hex(random_bytes(8));
+        McpTenantToken::query()->create([
+            'tenant_id' => app(TenantContext::class)->current(),
+            'label' => 'e2e test',
+            'token_hash' => hash('sha256', $plainToken),
+            'token_last4' => substr($plainToken, -4),
+            'scopes_json' => ['mcp:read', 'mcp:tools:write'],
+        ]);
+
+        $toolName = (new KbProposeTextCorrectionTool())->name();
+
+        $response = $this->withHeader('Authorization', "Bearer {$plainToken}")
+            ->postJson('/mcp/kb', [
+                'jsonrpc' => '2.0',
+                'id' => 1,
+                'method' => 'tools/call',
+                'params' => [
+                    'name' => $toolName,
+                    'arguments' => [
+                        'document_id' => $doc->id,
+                        'page' => 1,
+                        'old_text' => 'Bod',
+                        'new_text' => 'Bob',
+                    ],
+                ],
+            ]);
+
+        $response->assertOk();
+        $body = json_decode((string) $response->getContent(), true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame('2.0', $body['jsonrpc'] ?? null);
+        $this->assertArrayNotHasKey('error', $body, 'the real route must reach the tool, not be rejected by routing/auth before it');
+        // v8.37/W3b round 7 — a routing/auth/scope rejection surfaces as a
+        // top-level JSON-RPC `error`; a TOOL-level failure (validation,
+        // tenant mismatch, ...) surfaces as `result.isError = true` with
+        // the message in `result.content` (CallTool implements Errable,
+        // so ToolInvoker never escalates it to a protocol-level error).
+        // The assertion above alone would silently pass a 200 response
+        // whose tool call actually failed.
+        $this->assertFalse(
+            (bool) ($body['result']['isError'] ?? true),
+            'the tool call itself must succeed: '.json_encode($body['result']['content'] ?? $body, JSON_UNESCAPED_SLASHES)
+        );
+        $this->assertDatabaseHas('kb_text_correction_candidates', [
+            'knowledge_document_id' => $doc->id,
+            'old_text' => 'Bod',
+            'new_text' => 'Bob',
+        ]);
     }
 }

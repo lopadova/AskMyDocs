@@ -117,6 +117,12 @@ final class KbReviewController extends Controller
      * `kb.review.corrections_page_size` (default 50); `?offset=` pages
      * through the rest. `has_more` tells the caller whether another page
      * exists without a second COUNT query.
+     *
+     * Round 7 (Copilot PR #496, previously-missed MEDIUM) — the query
+     * itself moved into {@see KbReviewService::pendingCorrections()} (R44):
+     * this method now only clamps the HTTP-specific `?limit=`/`?offset=`
+     * inputs and shapes the JSON response, matching every sibling method
+     * on this controller.
      */
     public function corrections(Request $request, int $id): JsonResponse
     {
@@ -130,22 +136,9 @@ final class KbReviewController extends Controller
         $limit = min($pageSize, max(1, (int) $request->integer('limit', $pageSize)));
         $offset = max(0, (int) $request->integer('offset', 0));
 
-        $candidates = KbTextCorrectionCandidate::query()
-            ->forTenant($this->tenants->current())
-            ->where('knowledge_document_id', $document->id)
-            ->pending()
-            ->orderBy('created_at')
-            // A unique tie-breaker (Copilot PR #496 round 2): without it,
-            // pagination over candidates sharing a created_at timestamp
-            // (common with batch inserts) is nondeterministic — rows can
-            // be duplicated or skipped between pages.
-            ->orderBy('id')
-            ->offset($offset)
-            ->limit($limit + 1)
-            ->get();
-
-        $hasMore = $candidates->count() > $limit;
-        $candidates = $candidates->take($limit);
+        $result = $this->reviews->pendingCorrections($document, $limit, $offset);
+        $candidates = $result['candidates'];
+        $hasMore = $result['has_more'];
 
         return response()->json(['data' => $candidates->map(fn (KbTextCorrectionCandidate $c): array => [
             'id' => $c->id,

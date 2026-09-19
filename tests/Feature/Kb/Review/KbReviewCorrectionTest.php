@@ -14,12 +14,15 @@ use App\Models\KnowledgeDocument;
 use App\Models\User;
 use App\Services\Kb\EmbeddingCacheService;
 use App\Services\Kb\Review\KbReviewService;
+use App\Jobs\WriteKbTextCorrectionAuditJob;
 use App\Support\Canonical\GenerationSource;
 use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Mockery;
 use Tests\TestCase;
@@ -576,6 +579,41 @@ final class KbReviewCorrectionTest extends TestCase
         $audit = KbCanonicalAudit::query()->where('event_type', 'updated')->latest('id')->first();
         $this->assertSame('kb_review_correction_candidate', $audit->metadata_json['source']);
         $this->assertSame($candidate->id, $audit->metadata_json['candidate_id']);
+    }
+
+    /**
+     * v8.37/W3b round 7 (Copilot PR #496 must-fix, escalated HIGH) — when
+     * the synchronous `kb_canonical_audit` write fails, the approval must
+     * still report success (the correction genuinely DID apply — a new
+     * document version exists) AND a durable retry must be dispatched, not
+     * just logged and abandoned. Dropping the table forces the exact same
+     * QueryException a momentary outage would raise.
+     */
+    public function test_approve_correction_dispatches_a_durable_retry_when_the_synchronous_audit_write_fails(): void
+    {
+        Queue::fake();
+        config(['kb.review.enabled' => true, 'kb.canonical.audit_enabled' => true]);
+        $doc = $this->docWithContent();
+        $reviewer = $this->user();
+        $candidate = $this->svc->proposeCorrection($doc, 1, 'Bod', 'Bob', 'ocr misread', 'user:1');
+
+        // SQLite DDL is transactional — dropping the table here is undone by
+        // RefreshDatabase's own per-test rollback, exactly like every row
+        // this test writes. No manual restore needed.
+        Schema::dropIfExists('kb_canonical_audit');
+        $result = $this->svc->approveCorrection($candidate, "user:{$reviewer->id}", (int) $reviewer->id);
+
+        $this->assertTrue($result['applied'], 'the correction genuinely applied — a synchronous audit-write failure must not be reported to the caller as a failed approval');
+
+        $candidate->refresh();
+        $this->assertSame(KbTextCorrectionCandidate::STATUS_APPLIED, $candidate->status, 'the candidate must still reach its terminal state even when the audit write failed');
+
+        Queue::assertPushed(WriteKbTextCorrectionAuditJob::class, function (WriteKbTextCorrectionAuditJob $job) use ($candidate, $reviewer): bool {
+            return $job->candidateId === $candidate->id
+                && $job->actor === "user:{$reviewer->id}"
+                && $job->beforeJson['old_text'] === 'Bod'
+                && $job->afterJson['new_text'] === 'Bob';
+        });
     }
 
     /**
@@ -1237,5 +1275,54 @@ final class KbReviewCorrectionTest extends TestCase
 
         $this->assertFalse($result['rejected']);
         $this->assertSame('already_consumed', $result['reason']);
+    }
+
+    /**
+     * v8.37/W3b round 7 (Copilot PR #496, previously-missed MEDIUM) —
+     * direct-service coverage for {@see KbReviewService::pendingCorrections()},
+     * extracted from KbReviewController::corrections(). The pagination/
+     * ordering/has_more shape itself is already exhaustively covered at
+     * the HTTP layer (KbReviewControllerTest); this proves the SERVICE
+     * contract at its own layer per R44, and that a candidate on ANOTHER
+     * document in the same tenant is excluded.
+     */
+    public function test_pending_corrections_returns_only_pending_candidates_for_the_given_document(): void
+    {
+        config(['kb.review.enabled' => true]);
+        $doc = $this->docWithContent();
+        $other = $this->docWithContent();
+        $candidateA = $this->svc->proposeCorrection($doc, 1, 'Bod', 'Bob', null, 'user:1');
+        $candidateB = $this->svc->proposeCorrection($doc, 2, 'boilerplate', 'filler', null, 'user:1');
+        // On a DIFFERENT document — must not leak into $doc's queue.
+        $this->svc->proposeCorrection($other, 1, 'Bod', 'Bob', null, 'user:1');
+        // Already resolved — the `pending()` scope must exclude it.
+        $this->svc->rejectCorrection($candidateB, null);
+
+        $result = $this->svc->pendingCorrections($doc, 50, 0);
+
+        $this->assertFalse($result['has_more']);
+        $this->assertCount(1, $result['candidates']);
+        $this->assertSame($candidateA->id, $result['candidates']->first()->id);
+    }
+
+    /**
+     * Same active-context-is-the-trust-boundary posture as
+     * proposeCorrection()/approveCorrection()/rejectCorrection() — a
+     * foreign-tenant document's queue reads back EMPTY (never another
+     * tenant's candidates), since the query itself is scoped by the
+     * active TenantContext, not by `$document->tenant_id`.
+     */
+    public function test_pending_corrections_is_empty_for_a_document_belonging_to_a_different_tenant(): void
+    {
+        config(['kb.review.enabled' => true]);
+        app(TenantContext::class)->set('other-tenant');
+        $foreignDoc = $this->docWithContent(['tenant_id' => 'other-tenant']);
+        $this->svc->proposeCorrection($foreignDoc, 1, 'Bod', 'Bob', null, 'user:1');
+        app(TenantContext::class)->set('default');
+
+        $result = $this->svc->pendingCorrections($foreignDoc, 50, 0);
+
+        $this->assertFalse($result['has_more']);
+        $this->assertCount(0, $result['candidates']);
     }
 }

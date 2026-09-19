@@ -1169,5 +1169,25 @@ class AppServiceProvider extends ServiceProvider
 
             return Limit::perMinute($max)->by($identity.'|t:'.$tenant);
         });
+
+        // v8.37/W3b round 7 (SEC-THROTTLE-001) — routes/ai.php's inbound
+        // /mcp/kb transport referenced `throttle:api`, a limiter that has
+        // never been registered anywhere in this app (the `api` middleware
+        // GROUP does not include throttling by default — Laravel only adds
+        // it when `->throttleApi()` is called in bootstrap/app.php, which
+        // this app does not do). Every real request would have thrown
+        // "Rate limiter [api] is not defined" (500), on top of the
+        // routing/auth bugs fixed alongside this. There is no Sanctum user
+        // on this route (EnforceMcpScope validates a McpTenantToken, not a
+        // session) — key by the bearer token hash, matching how
+        // EnforceMcpScope itself resolves the token, plus tenant so a
+        // token cannot be starved by another tenant's traffic.
+        RateLimiter::for('mcp', function (Request $request) {
+            $tenant = app(\App\Support\TenantContext::class)->current();
+            $tokenHash = hash('sha256', (string) $request->bearerToken());
+            $max = max(1, (int) config('mcp.server.rate_limit_per_minute', 60));
+
+            return Limit::perMinute($max)->by($tokenHash.'|t:'.$tenant);
+        });
     }
 }

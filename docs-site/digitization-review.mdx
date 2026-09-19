@@ -319,7 +319,7 @@ The R44 tri-surface, all adapting the same `KbReviewService`:
 | Read a page's status | `kb:review {document} --page={n} --report` | `GET /api/admin/kb/documents/{id}/pages/{n}` | `KbReviewStatusTool` (`page` argument) |
 | Read the document summary | `kb:review {document} --report` | `GET /api/admin/kb/documents/{id}/review-summary` | `KbReviewStatusTool` (no `page`) |
 | Propose a text correction | `KbReviewService::proposeCorrection()` | — (MCP-only, see below) | `KbProposeTextCorrectionTool` (write — a CANDIDATE only) |
-| List pending correction candidates | `KbReviewService`-adjacent read (direct query) | `GET /api/admin/kb/documents/{id}/corrections` | — |
+| List pending correction candidates | `KbReviewService::pendingCorrections()` | `GET /api/admin/kb/documents/{id}/corrections` | — |
 | Approve a correction candidate | `KbReviewService::approveCorrection()` | `POST /api/admin/kb/corrections/{id}/approve` | — (documented exception, [§8](#no-mcp-write-a-documented-exception)) |
 | Reject a correction candidate | `KbReviewService::rejectCorrection()` | `POST /api/admin/kb/corrections/{id}/reject` | — (same exception) |
 | Reconcile stuck approvals (H-B) | `kb:review-reconcile-stuck-corrections` | — | — (R44 documented single-surface exception: a scheduler-only maintenance sweep with no caller-facing read, same posture as `kb:artifacts-backfill`) |
@@ -647,18 +647,31 @@ curl -X POST /api/admin/kb/corrections/7/approve
   unapplied, and a reviewer's retry would then find the superseded old
   version and get rejected outright — losing a correction that actually
   succeeded.
-- **The audit row is best-effort, deliberately — it can never turn an
-  already-successful approval into a reported failure (previously-missed
-  MEDIUM, round 4).** By the time phase 3 runs, the correction has
-  genuinely applied (phase 1 + phase 2 already committed). If writing the
-  `kb_canonical_audit` row itself fails, that failure is caught and
-  `Log::critical()`'d rather than propagated — letting it bubble up would
-  tell the caller the approval FAILED when it in fact succeeded, and a
-  client that reacts by retrying would then hit `already_consumed` (409)
-  on a candidate that isn't pending anymore, which reads as corruption,
-  not as "it actually worked" (mirrors `ChatLogManager::log()`'s
-  established "never let logging/auditing failure break an
-  already-successful outcome" posture).
+- **A failed audit write can never turn an already-successful approval into
+  a reported failure — and it is durably retried, not just logged
+  (previously-missed MEDIUM round 4, escalated to a must-fix in round 7).**
+  By the time phase 3 runs, the correction has genuinely applied (phase 1 +
+  phase 2 already committed), so the failure is still caught rather than
+  propagated — letting it bubble up would tell the caller the approval
+  FAILED when it in fact succeeded, and a client that reacts by retrying
+  would then hit `already_consumed` (409) on a candidate that isn't pending
+  anymore, which reads as corruption, not as "it actually worked" (mirrors
+  `ChatLogManager::log()`'s established "never let logging/auditing failure
+  break an already-successful outcome" posture). What round 7 changed: on
+  failure, `WriteKbTextCorrectionAuditJob` is now dispatched
+  ($tries=4/backoff=[10,30,60], the same durability idiom as
+  `IngestDocumentJob`/`SendExternalNotificationJob`) instead of only being
+  logged — `kb_canonical_audit` is CLAUDE.md's one IMMUTABLE
+  FORENSIC/COMPLIANCE trail, unlike `chat_logs`, so "log a critical line and
+  hope a human reads it" alone was not durable enough for the ORIGINAL
+  scenario this gotcha names ("a momentary DB outage"), which a queued
+  retry with real wall-clock backoff genuinely survives and an inline retry
+  inside the already-returned HTTP/MCP request cannot. The synchronous
+  write stays primary (the >99% common case, zero added latency); the job
+  checks for an existing row by `metadata_json.candidate_id` before writing
+  (the sync attempt can fail AFTER its own INSERT actually committed) and
+  only falls back to `Log::critical()` once its OWN retries are exhausted
+  too — a true last resort, not the first one.
 - **Not yet shipped**: the review UI (original ↔ Markdown side-by-side,
   confidence heat-map — propose/approve/reject above are HTTP + MCP only
   today, with no dedicated frontend), and the CER/WER quality metrics. These

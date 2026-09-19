@@ -6,6 +6,7 @@ namespace App\Services\Kb\Review;
 
 use App\Exceptions\KbReviewDisabledException;
 use App\Exceptions\KbReviewRateLimitedException;
+use App\Jobs\WriteKbTextCorrectionAuditJob;
 use App\Models\KbCanonicalAudit;
 use App\Models\KbDocumentPageReview;
 use App\Models\KbTextCorrectionCandidate;
@@ -719,11 +720,14 @@ class KbReviewService
      *    the now-successful correction. The candidate's `status`/
      *    `consumed_at`/`consumed_by` are already committed from phase 1, and
      *    phase 2's new document version is already committed too, so a
-     *    failure writing THIS row is caught and `Log::critical()`'d rather
-     *    than propagated (a narrow, honestly-accepted gap — a successful
-     *    correction whose audit row must be hand-reconstructed from the log
-     *    — rather than telling the caller the approval failed when it
-     *    didn't, or reopening the R21 race phase 1 closes).
+     *    failure writing THIS row is caught here rather than propagated
+     *    (never telling the caller the approval failed when it didn't, or
+     *    reopening the R21 race phase 1 closes). Round 7 (Copilot PR #496)
+     *    made this durable rather than merely logged: on failure,
+     *    {@see \App\Jobs\WriteKbTextCorrectionAuditJob} is dispatched to
+     *    retry the write with real wall-clock backoff, only falling back to
+     *    a `Log::critical()`-and-give-up once ITS retries are also
+     *    exhausted.
      *
      * Crash recovery (Copilot PR #496 round 5, H-B) — phases 1 and 2 are
      * each individually atomic (a DB transaction, and `reembedFromMarkdown()`'s
@@ -968,28 +972,40 @@ class KbReviewService
 
         // Phase 3 — the audit row for the now-successful correction.
         //
-        // Copilot PR #496 round 4 (previously-missed MEDIUM finding) — this
-        // write is caught and logged rather than left to propagate. By this
-        // point the correction has ALREADY applied: phase 1 committed the
-        // candidate as `applying` and the step just above flipped it to the
-        // terminal `applied` state once phase 2 confirmed success. Letting
-        // an audit-write failure (e.g. a momentary DB
-        // outage) bubble up as an uncaught exception would tell the caller
-        // the approval FAILED when it in fact SUCCEEDED — and a client that
-        // reacts to that by retrying the same approve call would then hit
-        // `already_consumed` (409) on a candidate that isn't pending
-        // anymore, which reads as corruption, not as "it actually worked".
-        // A durable outbox/reconciliation path for the audit row itself
-        // (so a dropped write is automatically re-materialized rather than
-        // only loggable) is deliberately out of scope here — it is the same
-        // class of larger-scope work as the phase-1/phase-2 crash window
-        // documented on this method's own docblock, and this PR's target is
-        // the propose/approve/reject flow, not a general audit-durability
-        // subsystem. `Log::critical()` keeps every field needed to hand-
-        // reconstruct the row (mirrors `ChatLogManager::log()`'s established
-        // "never let logging/auditing failure break an already-successful
-        // user-facing outcome" posture, CLAUDE.md §6).
+        // Copilot PR #496 round 4 (previously-missed MEDIUM) established that
+        // this write must not propagate its failure to the caller: by this
+        // point the correction has ALREADY applied (phase 1 committed the
+        // candidate as `applying`, the step just above flipped it to the
+        // terminal `applied` state), so an uncaught exception here would
+        // tell the caller the approval FAILED when it in fact SUCCEEDED —
+        // and a client that reacts by retrying would hit `already_consumed`
+        // (409) on a candidate that isn't pending anymore, which reads as
+        // corruption, not "it actually worked". That part of the reasoning
+        // still holds.
+        //
+        // Round 7 (must-fix, escalated to HIGH) correctly rejected what
+        // round 4/5 did on FAILURE of this write: `Log::critical()` and
+        // give up is not durable recovery for `kb_canonical_audit`, the one
+        // table CLAUDE.md documents as an IMMUTABLE FORENSIC/COMPLIANCE
+        // trail (survives hard deletes by design) — unlike `chat_logs`
+        // (CLAUDE.md §6's "never break the user path" precedent this
+        // mirrors for NOT propagating), a lost row here is a genuine
+        // compliance gap a human can only ever find by grepping logs.
+        // {@see WriteKbTextCorrectionAuditJob} is dispatched on failure:
+        // the SAME durability tool every other resilience-sensitive write
+        // in this app already uses ($tries/backoff), giving a transient
+        // failure (the ORIGINAL "momentary DB outage" scenario this
+        // comment named) real wall-clock time to recover that an inline
+        // retry inside this already-returning HTTP/MCP request cannot.
+        // The synchronous attempt below stays PRIMARY (the >99% common
+        // case: immediately consistent, zero added latency); the job is
+        // the fallback, not the default path, and itself logs critical
+        // only once its own retries are exhausted too — a true last
+        // resort, not the first one.
         if ((bool) config('kb.canonical.audit_enabled', true)) {
+            $beforeJson = ['document_id' => $live->id, 'version_hash' => $live->version_hash, 'old_text' => $candidate->old_text];
+            $afterJson = ['document_id' => $newVersion->id, 'version_hash' => $newVersion->version_hash, 'new_text' => $candidate->new_text, 'page_number' => $candidate->page_number];
+
             try {
                 KbCanonicalAudit::create([
                     'tenant_id' => $tenantId,
@@ -998,22 +1014,28 @@ class KbReviewService
                     'slug' => $newVersion->slug,
                     'event_type' => 'updated',
                     'actor' => $actor,
-                    'before_json' => ['document_id' => $live->id, 'version_hash' => $live->version_hash, 'old_text' => $candidate->old_text],
-                    'after_json' => ['document_id' => $newVersion->id, 'version_hash' => $newVersion->version_hash, 'new_text' => $candidate->new_text, 'page_number' => $candidate->page_number],
+                    'before_json' => $beforeJson,
+                    'after_json' => $afterJson,
                     'metadata_json' => ['source' => 'kb_review_correction_candidate', 'candidate_id' => $candidateId],
                 ]);
             } catch (\Throwable $e) {
-                Log::critical('KbReviewService::approveCorrection — the correction applied successfully but its audit row failed to write; reconstruct manually from these fields', [
+                Log::critical('KbReviewService::approveCorrection — the correction applied successfully but its synchronous audit write failed; a durable retry job was dispatched', [
                     'candidate_id' => $candidateId,
                     'tenant_id' => $tenantId,
                     'actor' => $actor,
-                    'before_document_id' => $live->id,
-                    'before_version_hash' => $live->version_hash,
-                    'after_document_id' => $newVersion->id,
-                    'after_version_hash' => $newVersion->version_hash,
-                    'page_number' => $candidate->page_number,
                     'exception' => $e->getMessage(),
                 ]);
+
+                WriteKbTextCorrectionAuditJob::dispatch(
+                    tenantId: $tenantId,
+                    candidateId: $candidateId,
+                    actor: $actor,
+                    projectKey: (string) $newVersion->project_key,
+                    docId: $newVersion->doc_id,
+                    slug: $newVersion->slug,
+                    beforeJson: $beforeJson,
+                    afterJson: $afterJson,
+                );
             }
         }
 
@@ -1081,9 +1103,9 @@ class KbReviewService
             ->where('status', KbTextCorrectionCandidate::STATUS_APPLYING)
             ->where('consumed_at', '<', $threshold)
             ->select('id')
-            ->chunkById(100, function ($chunk) use ($tenantId, &$finalized, &$reverted, &$skipped): void {
+            ->chunkById(100, function ($chunk) use ($tenantId, $threshold, &$finalized, &$reverted, &$skipped): void {
                 foreach ($chunk as $row) {
-                    $outcome = $this->reconcileOneStuckCorrection($tenantId, (int) $row->id);
+                    $outcome = $this->reconcileOneStuckCorrection($tenantId, (int) $row->id, $threshold);
                     match ($outcome) {
                         'finalized' => $finalized++,
                         'reverted' => $reverted++,
@@ -1095,16 +1117,31 @@ class KbReviewService
         return ['finalized' => $finalized, 'reverted' => $reverted, 'skipped' => $skipped];
     }
 
-    private function reconcileOneStuckCorrection(string $tenantId, int $candidateId): string
+    private function reconcileOneStuckCorrection(string $tenantId, int $candidateId, \Illuminate\Support\Carbon $threshold): string
     {
-        return DB::transaction(function () use ($tenantId, $candidateId): string {
+        return DB::transaction(function () use ($tenantId, $candidateId, $threshold): string {
             /** @var KbTextCorrectionCandidate|null $locked */
             $locked = KbTextCorrectionCandidate::query()
                 ->forTenant($tenantId)
                 ->lockForUpdate()
                 ->find($candidateId);
 
-            if ($locked === null || $locked->status !== KbTextCorrectionCandidate::STATUS_APPLYING) {
+            // Copilot PR #496 round 7 (must-fix) — the OUTER chunkById()
+            // scan selects rows that were stale at scan time, but between
+            // that scan and THIS lock, another reconciler could already
+            // have reverted this exact row to `pending` and a reviewer
+            // could have re-claimed it (a fresh `applying`, fresh
+            // `consumed_at`, same candidate id). Re-checking `status`
+            // alone isn't enough to rule that out — it would still read
+            // `applying`. Re-check `consumed_at` against the SAME
+            // `$threshold` the outer scan used, under this lock, so a
+            // genuinely fresh in-flight approval is never swept up.
+            if (
+                $locked === null
+                || $locked->status !== KbTextCorrectionCandidate::STATUS_APPLYING
+                || $locked->consumed_at === null
+                || $locked->consumed_at->greaterThanOrEqualTo($threshold)
+            ) {
                 return 'skipped';
             }
 
@@ -1190,6 +1227,57 @@ class KbReviewService
 
             return ['rejected' => true];
         });
+    }
+
+    /**
+     * v8.37/W3b round 7 (Copilot PR #496, previously-missed MEDIUM) — the
+     * pending correction-candidate queue for one document (ADR 0031 §6).
+     * Previously lived as a raw Eloquent query inline in
+     * {@see \App\Http\Controllers\Api\Admin\KbReviewController::corrections()},
+     * the only method on that controller NOT delegating to this shared
+     * core (every sibling — propose/approve/reject/approve(non-canonical)
+     * — does). R44: the controller adapts input -> core -> output; the
+     * query itself belongs here so a future MCP/CLI read surface reuses
+     * it rather than re-implementing the pagination.
+     *
+     * Scopes the query by the ACTIVE `TenantContext`, never `$document->
+     * tenant_id` (unlike the older {@see pageReviewStatus()} /
+     * {@see documentReviewSummary()}, which trust the model's own field —
+     * this method belongs to the SAME newer propose/approve/reject family
+     * as {@see proposeCorrection()} / {@see approveCorrection()} /
+     * {@see rejectCorrection()}, all of which treat the active context, not
+     * a passed-in model's field, as the trust boundary, because this
+     * service is R44-callable outside the tenant-prescoping HTTP
+     * controller). Today's only caller already resolves `$document`
+     * through a tenant-scoped lookup, so the two agree in practice — the
+     * active-context check is what keeps that true for every future
+     * caller too. `$limit`/`$offset` are the caller's already-clamped
+     * values (the controller enforces the `kb.review.corrections_page_size`
+     * ceiling before calling this).
+     *
+     * @return array{candidates: \Illuminate\Support\Collection<int, KbTextCorrectionCandidate>, has_more: bool}
+     */
+    public function pendingCorrections(KnowledgeDocument $document, int $limit, int $offset): array
+    {
+        $this->assertEnabled();
+
+        $candidates = KbTextCorrectionCandidate::query()
+            ->forTenant($this->tenant->current())
+            ->where('knowledge_document_id', $document->id)
+            ->pending()
+            ->orderBy('created_at')
+            // A unique tie-breaker (Copilot PR #496 round 2): without it,
+            // pagination over candidates sharing a created_at timestamp
+            // (common with batch inserts) is nondeterministic — rows can
+            // be duplicated or skipped between pages.
+            ->orderBy('id')
+            ->offset($offset)
+            ->limit($limit + 1)
+            ->get();
+
+        $hasMore = $candidates->count() > $limit;
+
+        return ['candidates' => $candidates->take($limit)->values(), 'has_more' => $hasMore];
     }
 
     /**
