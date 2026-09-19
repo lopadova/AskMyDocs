@@ -740,7 +740,7 @@ class KbReviewService
      * approval, findable with a plain `status='applying'` query, rather
      * than requiring a LEFT JOIN against `kb_canonical_audit` to tell an
      * `applied`-but-unaudited success from an `applied`-but-nothing-ever-
-     * happened crash. `kb:review:reconcile-stuck-corrections`
+     * happened crash. `kb:review-reconcile-stuck-corrections`
      * (`kb.review.stuck_applying_minutes`, default 15) finds candidates
      * stuck past that threshold, cross-references `kb_canonical_audit` for
      * a matching `metadata_json.candidate_id` to tell "phase 2 actually
@@ -851,7 +851,7 @@ class KbReviewService
             // (Copilot PR #496 round 5, H-B): if the process crashes
             // anywhere in phase 2/3, a row stuck in `applying` is visibly
             // DISTINGUISHABLE from a genuine success — see
-            // `kb:review:reconcile-stuck-corrections`, which is what
+            // `kb:review-reconcile-stuck-corrections`, which is what
             // resolves it. An ordinary approveCorrection() call never
             // resumes an `applying` row itself (below, `!== PENDING`
             // covers it the same as any other non-pending status) — that
@@ -960,7 +960,7 @@ class KbReviewService
         // does not build), but it keeps that window as narrow as it can be
         // made, and — combined with the `applying` status itself being
         // distinguishable from `applied` — is exactly what makes a stuck
-        // row detectable and safe for `kb:review:reconcile-stuck-corrections`
+        // row detectable and safe for `kb:review-reconcile-stuck-corrections`
         // to resolve rather than silently indistinguishable from success.
         DB::transaction(fn () => KbTextCorrectionCandidate::query()
             ->forTenant($tenantId)->lockForUpdate()->whereKey($candidateId)
@@ -1048,12 +1048,15 @@ class KbReviewService
      * already-existing rows should not depend on whether NEW proposals are
      * currently accepted (mirrors `kb:prune-deleted` not gating on whatever
      * flag governs live deletion). Called by
-     * `kb:review:reconcile-stuck-corrections` (R44 — a scheduler-only
+     * `kb:review-reconcile-stuck-corrections` (R44 — a scheduler-only
      * maintenance sweep with no caller-facing read, CLI-only by design).
-     * Each candidate is resolved under its own `lockForUpdate()`
-     * transaction, re-checking `status === STATUS_APPLYING` inside it (a
-     * genuinely-still-in-flight approval racing this sweep is simply
-     * skipped, not disturbed).
+     * Stuck IDs are walked via `chunkById()` (R3 — never a whole-table
+     * `pluck()`, so an arbitrarily large `applying` backlog stays memory-
+     * bounded), and each candidate is resolved under its own
+     * `lockForUpdate()` transaction ({@see reconcileOneStuckCorrection()}),
+     * re-checking `status === STATUS_APPLYING` inside it (a genuinely-
+     * still-in-flight approval racing this sweep is simply skipped, not
+     * disturbed).
      *
      * @return array{finalized: int, reverted: int, skipped: int}
      */
@@ -1062,69 +1065,81 @@ class KbReviewService
         $minutes = $olderThanMinutes ?? max(1, (int) config('kb.review.stuck_applying_minutes', 15));
         $threshold = now()->subMinutes($minutes);
 
-        $stuckIds = KbTextCorrectionCandidate::query()
-            ->forTenant($tenantId)
-            ->where('status', KbTextCorrectionCandidate::STATUS_APPLYING)
-            ->where('consumed_at', '<', $threshold)
-            ->pluck('id');
-
         $finalized = 0;
         $reverted = 0;
         $skipped = 0;
 
-        foreach ($stuckIds as $candidateId) {
-            $outcome = DB::transaction(function () use ($tenantId, $candidateId): string {
-                /** @var KbTextCorrectionCandidate|null $locked */
-                $locked = KbTextCorrectionCandidate::query()
-                    ->forTenant($tenantId)
-                    ->lockForUpdate()
-                    ->find($candidateId);
-
-                if ($locked === null || $locked->status !== KbTextCorrectionCandidate::STATUS_APPLYING) {
-                    return 'skipped';
+        // R3 — a large `applying` backlog is bounded/chunked rather than
+        // `pluck()`'d into memory whole (Copilot PR #496 round 6). Each
+        // chunk's rows are resolved by ID only, then locked+re-checked
+        // individually inside their own transaction below — safe under
+        // chunkById() because the outer WHERE (status=applying) narrows on
+        // every re-query, and a row this call itself just resolved out of
+        // `applying` simply drops out of the NEXT chunk's window.
+        KbTextCorrectionCandidate::query()
+            ->forTenant($tenantId)
+            ->where('status', KbTextCorrectionCandidate::STATUS_APPLYING)
+            ->where('consumed_at', '<', $threshold)
+            ->select('id')
+            ->chunkById(100, function ($chunk) use ($tenantId, &$finalized, &$reverted, &$skipped): void {
+                foreach ($chunk as $row) {
+                    $outcome = $this->reconcileOneStuckCorrection($tenantId, (int) $row->id);
+                    match ($outcome) {
+                        'finalized' => $finalized++,
+                        'reverted' => $reverted++,
+                        default => $skipped++,
+                    };
                 }
-
-                /** @var KbCanonicalAudit|null $audit */
-                $audit = KbCanonicalAudit::query()
-                    ->forTenant($tenantId)
-                    ->where('event_type', 'updated')
-                    ->where('metadata_json->candidate_id', $locked->id)
-                    ->first();
-
-                if ($audit !== null) {
-                    $locked->forceFill(['status' => KbTextCorrectionCandidate::STATUS_APPLIED])->save();
-
-                    Log::info('kb:review:reconcile-stuck-corrections — finalized a stuck candidate (its correction had genuinely committed)', [
-                        'candidate_id' => $locked->id,
-                        'tenant_id' => $tenantId,
-                        'document_id' => $audit->after_json['document_id'] ?? null,
-                    ]);
-
-                    return 'finalized';
-                }
-
-                $locked->forceFill([
-                    'status' => KbTextCorrectionCandidate::STATUS_PENDING,
-                    'consumed_at' => null,
-                    'consumed_by' => null,
-                ])->save();
-
-                Log::warning('kb:review:reconcile-stuck-corrections — reverted a stuck candidate to pending (no evidence its correction ever committed)', [
-                    'candidate_id' => $locked->id,
-                    'tenant_id' => $tenantId,
-                ]);
-
-                return 'reverted';
             });
 
-            match ($outcome) {
-                'finalized' => $finalized++,
-                'reverted' => $reverted++,
-                default => $skipped++,
-            };
-        }
-
         return ['finalized' => $finalized, 'reverted' => $reverted, 'skipped' => $skipped];
+    }
+
+    private function reconcileOneStuckCorrection(string $tenantId, int $candidateId): string
+    {
+        return DB::transaction(function () use ($tenantId, $candidateId): string {
+            /** @var KbTextCorrectionCandidate|null $locked */
+            $locked = KbTextCorrectionCandidate::query()
+                ->forTenant($tenantId)
+                ->lockForUpdate()
+                ->find($candidateId);
+
+            if ($locked === null || $locked->status !== KbTextCorrectionCandidate::STATUS_APPLYING) {
+                return 'skipped';
+            }
+
+            /** @var KbCanonicalAudit|null $audit */
+            $audit = KbCanonicalAudit::query()
+                ->forTenant($tenantId)
+                ->where('event_type', 'updated')
+                ->where('metadata_json->candidate_id', $locked->id)
+                ->first();
+
+            if ($audit !== null) {
+                $locked->forceFill(['status' => KbTextCorrectionCandidate::STATUS_APPLIED])->save();
+
+                Log::info('kb:review-reconcile-stuck-corrections — finalized a stuck candidate (its correction had genuinely committed)', [
+                    'candidate_id' => $locked->id,
+                    'tenant_id' => $tenantId,
+                    'document_id' => $audit->after_json['document_id'] ?? null,
+                ]);
+
+                return 'finalized';
+            }
+
+            $locked->forceFill([
+                'status' => KbTextCorrectionCandidate::STATUS_PENDING,
+                'consumed_at' => null,
+                'consumed_by' => null,
+            ])->save();
+
+            Log::warning('kb:review-reconcile-stuck-corrections — reverted a stuck candidate to pending (no evidence its correction ever committed)', [
+                'candidate_id' => $locked->id,
+                'tenant_id' => $tenantId,
+            ]);
+
+            return 'reverted';
+        });
     }
 
     /**
@@ -1139,6 +1154,19 @@ class KbReviewService
     public function rejectCorrection(KbTextCorrectionCandidate $candidate, ?int $reviewerUserId): array
     {
         $this->assertEnabled();
+
+        // Copilot PR #496 round 6 (must-fix) — mirrors the same guard on
+        // proposeCorrection()/approveCorrection(): the shared core must not
+        // simply trust the candidate INSTANCE's own tenant_id. Unlike
+        // those two, rejectCorrection() never calls
+        // DocumentVersionService/DocumentIngestor, so there is no
+        // cross-service scoping to disagree — but a direct caller (this
+        // service is R44-callable outside the tenant-prescoping HTTP
+        // controller) could still pass a foreign-tenant candidate and
+        // mutate it. Refuse outright, before any read or write.
+        if ((string) $candidate->tenant_id !== $this->tenant->current()) {
+            throw new \InvalidArgumentException('The correction candidate does not belong to the active tenant.');
+        }
 
         $tenantId = (string) $candidate->tenant_id;
         $candidateId = (int) $candidate->id;

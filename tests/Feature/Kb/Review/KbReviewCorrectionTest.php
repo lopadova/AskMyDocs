@@ -1136,6 +1136,37 @@ final class KbReviewCorrectionTest extends TestCase
         $this->assertSame(KbTextCorrectionCandidate::STATUS_PENDING, $candidate->fresh()->status);
     }
 
+    /**
+     * v8.37/W3b round 6 (Copilot PR #496 must-fix) — the stuck-ID query is
+     * now walked via `chunkById()` (R3) instead of a whole-table `pluck()`.
+     * Multiple stuck candidates in one sweep must ALL be resolved and
+     * aggregated correctly — not just the single-candidate case every
+     * other reconcile test above covers.
+     */
+    public function test_reconcile_stuck_corrections_processes_every_stuck_candidate_in_one_sweep(): void
+    {
+        config(['kb.review.enabled' => true]);
+        $doc1 = $this->docWithContent();
+        $doc2 = $this->docWithContent();
+        $doc3 = $this->docWithContent();
+        $c1 = $this->svc->proposeCorrection($doc1, 1, 'Bod', 'Bob', null, 'user:1');
+        $c2 = $this->svc->proposeCorrection($doc2, 1, 'Bod', 'Bob', null, 'user:1');
+        $c3 = $this->svc->proposeCorrection($doc3, 1, 'Bod', 'Bob', null, 'user:1');
+        foreach ([$c1, $c2, $c3] as $c) {
+            DB::table('kb_text_correction_candidates')->where('id', $c->id)->update([
+                'status' => KbTextCorrectionCandidate::STATUS_APPLYING,
+                'consumed_at' => now()->subMinutes(20),
+            ]);
+        }
+
+        $result = $this->svc->reconcileStuckCorrections('default');
+
+        $this->assertSame(['finalized' => 0, 'reverted' => 3, 'skipped' => 0], $result);
+        foreach ([$c1, $c2, $c3] as $c) {
+            $this->assertSame(KbTextCorrectionCandidate::STATUS_PENDING, $c->fresh()->status);
+        }
+    }
+
     // --- rejectCorrection -------------------------------------------------
 
     public function test_reject_correction_throws_when_disabled(): void
@@ -1156,6 +1187,27 @@ final class KbReviewCorrectionTest extends TestCase
 
         $this->expectException(KbReviewDisabledException::class);
         $this->svc->rejectCorrection($candidate, null);
+    }
+
+    /**
+     * v8.37/W3b round 6 (Copilot PR #496 must-fix) — mirrors the propose-
+     * and approve-side cross-tenant tests: `rejectCorrection()` never calls
+     * `DocumentVersionService`/`DocumentIngestor`, so there's no cross-
+     * service scoping to disagree, but a direct caller of this shared
+     * core (R44 — not only reachable through the tenant-prescoping HTTP
+     * controller) must still be refused from mutating a foreign-tenant
+     * candidate.
+     */
+    public function test_reject_correction_refuses_a_candidate_belonging_to_a_different_tenant(): void
+    {
+        config(['kb.review.enabled' => true]);
+        app(TenantContext::class)->set('other-tenant');
+        $foreignDoc = $this->docWithContent(['tenant_id' => 'other-tenant']);
+        $foreignCandidate = $this->svc->proposeCorrection($foreignDoc, 1, 'Bod', 'Bob', null, 'user:1');
+        app(TenantContext::class)->set('default');
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->svc->rejectCorrection($foreignCandidate, null);
     }
 
     public function test_reject_correction_marks_the_candidate_rejected(): void

@@ -297,7 +297,9 @@ kb_text_correction_candidates
                          per-field sha256 digests of (tenant, user,
                          document, version_hash, page, old, new); hashing
                          each field first keeps the key injective
-  status                 string: pending | applied | rejected
+  status                 string: pending | applying | applied | rejected
+                         (`applying` = phase 1's claim, before phase 2
+                         confirms success — see the crash-recovery gotcha)
   proposed_by            string — the MCP caller's immutable identity
   consumed_at            nullable timestamp
   consumed_by            nullable FK -> users (the reviewer who approved/rejected)

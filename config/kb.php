@@ -648,7 +648,7 @@ return [
         // v8.37/W3b round 5 (Copilot PR #496, H-B) — a candidate left in
         // STATUS_APPLYING longer than this is considered stuck (the
         // approving process crashed between claiming it and completing
-        // phase 2/3), and is picked up by `kb:review:reconcile-stuck-corrections`.
+        // phase 2/3), and is picked up by `kb:review-reconcile-stuck-corrections`.
         'stuck_applying_minutes' => (int) env('KB_REVIEW_STUCK_APPLYING_MINUTES', 15),
     ],
 
