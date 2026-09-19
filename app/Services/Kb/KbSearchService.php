@@ -519,42 +519,7 @@ class KbSearchService
         );
 
         // ── Map to array format ──────────────────────────────────
-        $chunks = collect($semanticChunks)->map(function ($chunk): array {
-            return [
-                'chunk_id' => $chunk->id,
-                'project_key' => $chunk->project_key,
-                'heading_path' => $chunk->heading_path,
-                'chunk_text' => $chunk->chunk_text,
-                'metadata' => $chunk->metadata ?? [],
-                'vector_score' => (float) ($chunk->vector_score ?? $chunk->rrf_score ?? 0),
-                'document' => [
-                    'id' => $chunk->document?->id,
-                    'title' => $chunk->document?->title,
-                    'source_path' => $chunk->document?->source_path,
-                    'source_type' => $chunk->document?->source_type,
-                    // Canonical fields: consumed by Reranker (priority boost +
-                    // status penalty) and by GraphExpander (seed node slugs).
-                    'doc_id' => $chunk->document?->doc_id,
-                    'slug' => $chunk->document?->slug,
-                    'is_canonical' => (bool) ($chunk->document?->is_canonical ?? false),
-                    'canonical_type' => $chunk->document?->canonical_type,
-                    'canonical_status' => $chunk->document?->canonical_status,
-                    'retrieval_priority' => (int) ($chunk->document?->retrieval_priority ?? 50),
-                    'generation_source' => $chunk->document?->generation_source ?? 'human',
-                    'evidence_tier' => $chunk->document?->evidence_tier,
-                    // Copilot PR #494 round 6 — a derived boolean, not the
-                    // document's raw metadata (kept off this array by
-                    // design). Reranker::canonicalAdjustment() uses it to
-                    // scope the non-canonical auto-tier penalty to
-                    // OCR-originated rows only: generation_source='auto' on
-                    // a non-canonical document is NOT exclusive to OCR
-                    // (AutoWikiCompiler marks enriched raw documents 'auto'
-                    // too), and only OCR content is what ADR 0031 §5's
-                    // review penalty is meant to demote.
-                    'ocr_origin' => (($chunk->document?->metadata['converter']['provenance'] ?? null) === 'ocr'),
-                ],
-            ];
-        });
+        $chunks = collect($semanticChunks)->map(fn ($chunk): array => $this->mapChunkToArray($chunk));
 
         // v8.2 (finding #7/#9) — rerank scale calibration. In hybrid mode a
         // chunk's vector_score is a cosine (0..1) for semantic hits but the
@@ -577,6 +542,55 @@ class KbSearchService
             : [];
 
         return $this->reranker->rerank($query, $chunks, $limit, $boostDocIds);
+    }
+
+    /**
+     * A single candidate chunk, mapped to the array shape {@see Reranker}
+     * and {@see \App\Services\Kb\Retrieval\GraphExpander} consume. Extracted
+     * (Copilot PR #494 round 9) from `search()`'s inline closure so the
+     * `ocr_origin` derivation — the one field on this array NOT copied
+     * verbatim from a model attribute — is directly unit-testable against
+     * real Eloquent models, without the vector-SQL hot path SQLite can't
+     * run.
+     *
+     * @return array<string,mixed>
+     */
+    private function mapChunkToArray(KnowledgeChunk $chunk): array
+    {
+        return [
+            'chunk_id' => $chunk->id,
+            'project_key' => $chunk->project_key,
+            'heading_path' => $chunk->heading_path,
+            'chunk_text' => $chunk->chunk_text,
+            'metadata' => $chunk->metadata ?? [],
+            'vector_score' => (float) ($chunk->vector_score ?? $chunk->rrf_score ?? 0),
+            'document' => [
+                'id' => $chunk->document?->id,
+                'title' => $chunk->document?->title,
+                'source_path' => $chunk->document?->source_path,
+                'source_type' => $chunk->document?->source_type,
+                // Canonical fields: consumed by Reranker (priority boost +
+                // status penalty) and by GraphExpander (seed node slugs).
+                'doc_id' => $chunk->document?->doc_id,
+                'slug' => $chunk->document?->slug,
+                'is_canonical' => (bool) ($chunk->document?->is_canonical ?? false),
+                'canonical_type' => $chunk->document?->canonical_type,
+                'canonical_status' => $chunk->document?->canonical_status,
+                'retrieval_priority' => (int) ($chunk->document?->retrieval_priority ?? 50),
+                'generation_source' => $chunk->document?->generation_source ?? 'human',
+                'evidence_tier' => $chunk->document?->evidence_tier,
+                // Copilot PR #494 round 6 — a derived boolean, not the
+                // document's raw metadata (kept off this array by
+                // design). Reranker::canonicalAdjustment() uses it to
+                // scope the non-canonical auto-tier penalty to
+                // OCR-originated rows only: generation_source='auto' on
+                // a non-canonical document is NOT exclusive to OCR
+                // (AutoWikiCompiler marks enriched raw documents 'auto'
+                // too), and only OCR content is what ADR 0031 §5's
+                // review penalty is meant to demote.
+                'ocr_origin' => (($chunk->document?->metadata['converter']['provenance'] ?? null) === 'ocr'),
+            ],
+        ];
     }
 
     /**

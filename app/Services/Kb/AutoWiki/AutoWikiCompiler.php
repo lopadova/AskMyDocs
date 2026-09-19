@@ -60,9 +60,31 @@ class AutoWikiCompiler
      */
     public function compile(KnowledgeDocument $document): array
     {
+        $isHuman = (string) ($document->generation_source ?? GenerationSource::Human->value) === GenerationSource::Human->value;
+
         // Firewall: never auto-edit the human-vouched authoritative tier.
-        if ((bool) $document->is_canonical
-            && (string) ($document->generation_source ?? GenerationSource::Human->value) === GenerationSource::Human->value) {
+        //
+        // Copilot PR #494 round 9 (must-fix) — the canonical-only half of
+        // this check missed a durability bug: an OCR'd document approved
+        // via Digitization Review (ADR 0031, KbReviewService::approve()'s
+        // non-canonical branch) flips generation_source auto -> human
+        // WITHOUT ever setting is_canonical. A later compile pass over
+        // that same row (re-ingest, a scheduled backfill) would see
+        // is_canonical=false and proceed straight past this guard,
+        // re-enrich the document, and stamp generation_source back to
+        // 'auto' in apply() below — silently undoing the human approval
+        // while the kb_canonical_audit trail still says 'promoted'.
+        // Reranker would then start penalizing the row again despite it.
+        //
+        // The fix does NOT skip every non-canonical `human` row: that is
+        // the ordinary default for raw markdown with no frontmatter, and
+        // it is exactly the content this compiler exists to enrich (see
+        // the class docblock's "raw / already-auto documents" firewall).
+        // Only an OCR-DERIVED row (metadata.converter.provenance ===
+        // 'ocr') that is already `human` is exempt — that combination is
+        // governed by Digitization Review, not AutoWiki, canonical or not.
+        $isOcrOrigin = (($document->metadata['converter']['provenance'] ?? null) === 'ocr');
+        if ($isHuman && ((bool) $document->is_canonical || $isOcrOrigin)) {
             return ['applied' => false, 'reason' => 'human_curated'];
         }
 

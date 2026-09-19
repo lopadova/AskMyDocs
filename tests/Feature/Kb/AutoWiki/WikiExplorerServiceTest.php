@@ -175,6 +175,56 @@ final class WikiExplorerServiceTest extends TestCase
         $this->assertDatabaseCount('kb_canonical_audit', 0);
     }
 
+    /**
+     * Copilot PR #494 round 9 (must-fix, 2 findings) — promote() now locks
+     * the document row INSIDE its transaction and re-reads
+     * is_canonical/generation_source from that locked row rather than the
+     * CALLER'S copy. Mirrors
+     * `KbReviewServiceTest::test_approve_decides_from_a_fresh_read_not_the_callers_stale_document_instance`
+     * (SQLite cannot enforce real `lockForUpdate()` blocking, so a true
+     * two-connection interleaving isn't stageable here — see that test's
+     * docblock for the full rationale): simulate "a concurrent promote
+     * already committed" by updating the DB directly, bypassing the `$doc`
+     * instance in memory (which still reports the stale 'auto' value), and
+     * writing that winner's audit row. Pre-fix, promote() decided from
+     * `$doc->generation_source` (the stale in-memory 'auto') and would
+     * flip the row AGAIN, producing a second `promoted` audit row for
+     * exactly the race the direct Wiki Explorer HTTP/CLI/MCP adapters and
+     * `KbReviewService::approve()`'s canonical branch can hit concurrently.
+     * Post-fix, promote() re-queries inside its own transaction, sees the
+     * DB's 'human', and returns the safe not_auto no-op.
+     */
+    public function test_promote_decides_from_a_fresh_read_not_the_callers_stale_document_instance(): void
+    {
+        $doc = $this->doc(['slug' => 'auto-a', 'generation_source' => 'auto', 'canonical_status' => 'review']);
+
+        // A concurrent promote() call that already committed, bypassing
+        // the in-memory $doc instance entirely.
+        \Illuminate\Support\Facades\DB::table('knowledge_documents')
+            ->where('id', $doc->id)
+            ->update(['generation_source' => GenerationSource::Human->value, 'canonical_status' => 'accepted']);
+        KbCanonicalAudit::create([
+            'tenant_id' => 'default',
+            'project_key' => (string) $doc->project_key,
+            'doc_id' => $doc->doc_id,
+            'slug' => $doc->slug,
+            'event_type' => 'promoted',
+            'actor' => 'admin:2',
+            'before_json' => ['generation_source' => 'auto', 'canonical_status' => 'review'],
+            'after_json' => ['generation_source' => 'human', 'canonical_status' => 'accepted'],
+            'metadata_json' => ['source' => 'concurrent_winner'],
+        ]);
+
+        $this->assertSame('auto', $doc->generation_source, 'the in-memory $doc instance must still report the stale value — the concurrent write bypassed it');
+
+        $result = $this->svc->promote($doc, 'admin:1');
+
+        $this->assertFalse($result['promoted'], 'a fresh read must see the concurrent winner\'s human state');
+        $this->assertSame('not_auto', $result['reason']);
+        // exactly the concurrent winner's audit row must exist, never a second one
+        $this->assertDatabaseCount('kb_canonical_audit', 1);
+    }
+
     public function test_discard_soft_deletes_an_auto_doc_and_audits(): void
     {
         $doc = $this->doc(['slug' => 'auto-a', 'generation_source' => 'auto']);

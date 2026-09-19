@@ -100,44 +100,72 @@ class WikiExplorerService
      * avoids in its own non-canonical branch, which flips
      * `generation_source` WITHOUT ever touching `canonical_status`.
      *
+     * Copilot PR #494 round 9 (must-fix, 2 findings) — the eligibility
+     * checks and `$before` audit snapshot used to run BEFORE any lock was
+     * taken, against the `$doc` argument the caller happened to load. Two
+     * races followed: (1) `KbReviewService::approve()`'s canonical branch
+     * already `lockForUpdate()`s the row and calls this method from
+     * INSIDE that lock — but the direct Wiki Explorer HTTP/CLI/MCP
+     * adapters load the row with a plain `find()` and call this method
+     * with no lock at all, so a concurrent promote-via-approve() and a
+     * direct promote() could both pass the (stale) `auto` check before
+     * either commits, racing to write two `promoted` audit rows; (2) a
+     * concurrent re-ingest could flip the row non-canonical between the
+     * caller's read and this method's write, and the write would still
+     * stamp `canonical_status=accepted` on a now-non-canonical row. Moving
+     * the `lockForUpdate()`, the eligibility re-check, and the `$before`
+     * snapshot inside ONE transaction fixes both: every caller — locked
+     * (approve(), whose lock this nests a savepoint under and re-reads for
+     * free) or unlocked (the direct adapters) — now serializes on the
+     * SAME row lock and decides from the row's state at the moment it
+     * actually commits, never from a possibly-stale argument.
+     *
      * @return array{promoted: bool, reason?: string, slug?: ?string}
      */
     public function promote(KnowledgeDocument $doc, string $actor): array
     {
-        if ((string) ($doc->generation_source ?? GenerationSource::Human->value) !== GenerationSource::Auto->value) {
-            return ['promoted' => false, 'reason' => 'not_auto', 'slug' => $doc->slug];
-        }
-
-        if (! (bool) $doc->is_canonical) {
-            return ['promoted' => false, 'reason' => 'not_canonical', 'slug' => $doc->slug];
-        }
-
         $tenantId = (string) $doc->tenant_id;
-        $before = ['generation_source' => (string) $doc->generation_source, 'canonical_status' => (string) ($doc->canonical_status ?? '')];
+        $documentId = (int) $doc->id;
 
-        DB::transaction(function () use ($doc, $tenantId, $actor, $before): void {
+        return DB::transaction(function () use ($tenantId, $documentId, $actor): array {
+            /** @var KnowledgeDocument $locked */
+            $locked = KnowledgeDocument::query()
+                ->forTenant($tenantId)
+                ->lockForUpdate()
+                ->findOrFail($documentId);
+
+            if ((string) ($locked->generation_source ?? GenerationSource::Human->value) !== GenerationSource::Auto->value) {
+                return ['promoted' => false, 'reason' => 'not_auto', 'slug' => $locked->slug];
+            }
+
+            if (! (bool) $locked->is_canonical) {
+                return ['promoted' => false, 'reason' => 'not_canonical', 'slug' => $locked->slug];
+            }
+
+            $before = ['generation_source' => (string) $locked->generation_source, 'canonical_status' => (string) ($locked->canonical_status ?? '')];
+
             // Copilot PR #494 round 5 — save() returns false when a model
             // event vetoes the write. Ignoring that let the transaction
             // fall through to writing the 'promoted' audit row (and this
             // method returning promoted=true) while generation_source/
             // canonical_status stayed untouched on disk. Throwing here
-            // rolls back the whole transaction, audit row included, for
-            // every caller of promote() (the Wiki Explorer HTTP/CLI/MCP
-            // surface and, via delegation, KbReviewService::approve()'s
-            // canonical branch).
-            if (! $doc->forceFill([
+            // rolls back the whole transaction (row lock included), audit
+            // row included, for every caller of promote() (the Wiki
+            // Explorer HTTP/CLI/MCP surface and, via delegation,
+            // KbReviewService::approve()'s canonical branch).
+            if (! $locked->forceFill([
                 'generation_source' => GenerationSource::Human->value,
                 'canonical_status' => 'accepted',
             ])->save()) {
-                throw new \RuntimeException("Failed to persist promotion for document {$doc->id} (tenant {$tenantId}); a model event vetoed the save.");
+                throw new \RuntimeException("Failed to persist promotion for document {$documentId} (tenant {$tenantId}); a model event vetoed the save.");
             }
 
             if ((bool) config('kb.canonical.audit_enabled', true)) {
                 KbCanonicalAudit::create([
                     'tenant_id' => $tenantId,
-                    'project_key' => (string) $doc->project_key,
-                    'doc_id' => $doc->doc_id,
-                    'slug' => $doc->slug,
+                    'project_key' => (string) $locked->project_key,
+                    'doc_id' => $locked->doc_id,
+                    'slug' => $locked->slug,
                     'event_type' => 'promoted',
                     'actor' => $actor,
                     'before_json' => $before,
@@ -145,9 +173,9 @@ class WikiExplorerService
                     'metadata_json' => ['source' => 'wiki_explorer_promote'],
                 ]);
             }
-        });
 
-        return ['promoted' => true, 'slug' => $doc->slug];
+            return ['promoted' => true, 'slug' => $locked->slug];
+        });
     }
 
     /**

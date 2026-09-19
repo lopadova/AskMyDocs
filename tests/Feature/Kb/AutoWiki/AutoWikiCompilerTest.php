@@ -187,6 +187,55 @@ final class AutoWikiCompilerTest extends TestCase
         $this->assertSame('human', $doc->fresh()->generation_source);
     }
 
+    /**
+     * Copilot PR #494 round 9 (must-fix) — a non-canonical OCR row that a
+     * human approved via Digitization Review (`KbReviewService::approve()`,
+     * `generation_source` auto -> human, `is_canonical` untouched) must
+     * NOT be re-enriched by a later compile pass. Before this fix, the
+     * canonical-only firewall missed it entirely (is_canonical=false), so
+     * compile() would proceed, call the LLM, and apply() would stamp
+     * generation_source back to 'auto' — silently undoing the approval
+     * while the audit trail still says 'promoted'.
+     */
+    public function test_skips_a_human_approved_non_canonical_ocr_row(): void
+    {
+        $doc = $this->doc([
+            'is_canonical' => false,
+            'generation_source' => 'human',
+            'metadata' => ['converter' => ['provenance' => 'ocr']],
+        ]);
+
+        // The LLM must NOT be touched for an approved OCR row.
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldNotReceive('provider');
+
+        $result = (new AutoWikiCompiler($ai, $this->searchEmpty()))->compile($doc);
+
+        $this->assertFalse($result['applied']);
+        $this->assertSame('human_curated', $result['reason']);
+        $this->assertSame('human', $doc->fresh()->generation_source, 'a human-approved OCR row must never be flipped back to auto by AutoWiki');
+    }
+
+    /**
+     * The narrower firewall must NOT over-reach: an ordinary non-canonical
+     * `human`-default raw document (no frontmatter, never OCR'd — the
+     * pre-W3 default for every non-canonical row) is exactly the content
+     * this compiler exists to enrich. Only the OCR-origin combination is
+     * exempt.
+     */
+    public function test_still_enriches_an_ordinary_non_canonical_human_default_doc(): void
+    {
+        $doc = $this->doc(['is_canonical' => false, 'generation_source' => 'human']);
+        $ai = $this->aiReturning([
+            'tags' => ['cache'], 'summary' => 's', 'aliases' => [], 'cross_references' => [],
+        ]);
+
+        $result = (new AutoWikiCompiler($ai, $this->searchEmpty()))->compile($doc);
+
+        $this->assertTrue($result['applied']);
+        $this->assertSame('auto', $doc->fresh()->generation_source);
+    }
+
     public function test_model_override_selects_the_configured_provider_and_model(): void
     {
         config(['kb.autowiki.ai_provider' => 'openrouter', 'kb.autowiki.ai_model' => 'qwen/qwen3']);
