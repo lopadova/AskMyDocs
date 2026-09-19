@@ -461,6 +461,18 @@ describe('ReviewTab', () => {
         expect(screen.getByTestId('kb-review-corrections')).toHaveAttribute('aria-busy', 'true');
     });
 
+    // Copilot review PR #497 (pullrequestreview-5258042823) — correctionsBusy
+    // (aria-busy above) already included query.isFetching, but the per-row
+    // Approve/Reject buttons were only disabled on mutation-pending, NOT on
+    // refetch. A re-click during that window could fire a duplicate
+    // approve/reject (often surfacing as a 409 already_consumed).
+    it('disables correction row buttons while the corrections query is refetching (not just during a mutation)', () => {
+        correctionsState.isFetching = true;
+        wrap(<ReviewTab documentId={7} />);
+        expect(screen.getByTestId('kb-review-correction-51-approve')).toBeDisabled();
+        expect(screen.getByTestId('kb-review-correction-51-reject')).toBeDisabled();
+    });
+
     it('renders the empty state when there are no pending candidates', () => {
         correctionsState.data = { data: [], meta: { limit: 20, offset: 0, has_more: false } };
         wrap(<ReviewTab documentId={7} />);

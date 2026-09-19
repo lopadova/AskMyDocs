@@ -503,7 +503,17 @@ function CorrectionsSection({
                         <CorrectionRow
                             key={candidate.id}
                             candidate={candidate}
-                            isBusy={approveMut.isPending || rejectMut.isPending}
+                            // Copilot review PR #497 (pullrequestreview-5258042823) —
+                            // this used to pass only the mutation-pending flags,
+                            // contradicting the comment above ("Buttons disable in
+                            // that state") and correctionsBusy's own inclusion of
+                            // query.isFetching: a row's buttons stayed clickable
+                            // while the list was refetching after invalidation, so
+                            // a re-click during that window could fire a duplicate
+                            // approve/reject (surfacing as a 409 already_consumed).
+                            // Pass the same correctionsBusy the section's aria-busy
+                            // already uses, mirroring PageReviewNavigator's navBusy.
+                            isBusy={correctionsBusy}
                             onApprove={() => handleApprove(candidate.id)}
                             onReject={() => handleReject(candidate.id)}
                         />
